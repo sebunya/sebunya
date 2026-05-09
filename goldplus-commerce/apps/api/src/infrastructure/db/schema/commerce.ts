@@ -1,4 +1,5 @@
 import { pgTable, uuid, varchar, timestamp, integer } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
 import { products } from './products';
 
 export const carts = pgTable('carts', {
@@ -33,6 +34,37 @@ export const orderItems = pgTable('order_items', {
   unitPrice: integer('unit_price').notNull(),
 });
 
+export const cartsRelations = relations(carts, ({ many }) => ({
+  items: many(cartItems),
+}));
+
+export const cartItemsRelations = relations(cartItems, ({ one }) => ({
+  cart: one(carts, {
+    fields: [cartItems.cartId],
+    references: [carts.id],
+  }),
+  product: one(products, {
+    fields: [cartItems.productId],
+    references: [products.id],
+  }),
+}));
+
+export const ordersRelations = relations(orders, ({ many }) => ({
+  items: many(orderItems),
+}));
+
+
+export const orderItemsRelations = relations(orderItems, ({ one }) => ({
+  order: one(orders, {
+    fields: [orderItems.orderId],
+    references: [orders.id],
+  }),
+  product: one(products, {
+    fields: [orderItems.productId],
+    references: [products.id],
+  }),
+}));
+
 export const payments = pgTable('payments', {
   id: uuid('id').defaultRandom().primaryKey(),
   orderId: uuid('order_id').references(() => orders.id).notNull(),
@@ -43,3 +75,4 @@ export const payments = pgTable('payments', {
   status: varchar('status', { length: 30 }).default('PENDING').notNull(),
   paidAt: timestamp('paid_at', { withTimezone: true }),
 });
+

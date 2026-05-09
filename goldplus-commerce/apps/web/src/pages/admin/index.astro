@@ -1,0 +1,101 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+// Mock admin data
+const admin = {
+  stats: {
+    pendingProducts: 3,
+    pendingDealers: 2,
+    activeSecurityAlerts: 0,
+    dailyVerificationChecks: 124
+  }
+};
+---
+
+<BaseLayout title="GoldPlus Admin - Governance Dashboard">
+  <div class="flex h-screen bg-gray-100 overflow-hidden">
+    
+    {/* Admin Sidebar */}
+    <aside class="w-64 bg-black text-white flex-shrink-0 flex flex-col">
+      <div class="p-6 border-b border-gray-900 flex items-center gap-2">
+        <div class="w-6 h-6 bg-brand-gold rounded-sm"></div>
+        <h2 class="text-xl font-black text-white tracking-tight">GP ADMIN</h2>
+      </div>
+      <nav class="p-4 space-y-2 flex-grow">
+        <a href="/admin" class="block px-4 py-2 bg-gray-900 text-white rounded-lg font-bold text-sm">Dashboard</a>
+        <a href="/admin/products" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm flex justify-between">
+          Products
+          <span class="bg-brand-gold text-black text-[10px] px-1.5 rounded-full">{admin.stats.pendingProducts}</span>
+        </a>
+        <a href="/admin/dealers" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm flex justify-between">
+          Dealers
+          <span class="bg-brand-gold text-black text-[10px] px-1.5 rounded-full">{admin.stats.pendingDealers}</span>
+        </a>
+        <a href="#" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm">Verification Audits</a>
+        <a href="#" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm">Security Logs</a>
+      </nav>
+      <div class="p-4 border-t border-gray-900">
+         <p class="text-[10px] text-gray-600 font-bold uppercase tracking-widest text-center">GoldPlus Governance v1.0</p>
+      </div>
+    </aside>
+
+    {/* Main Admin Area */}
+    <main class="flex-grow flex flex-col overflow-y-auto">
+      <header class="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
+        <h1 class="text-xl font-bold text-brand-dark">Governance Overview</h1>
+        <div class="text-xs font-bold text-gray-400">Environment: Production (Uganda)</div>
+      </header>
+
+      <div class="p-8">
+        
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+          <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Pending Products</p>
+            <p class="text-3xl font-black text-brand-dark">{admin.stats.pendingProducts}</p>
+          </div>
+          <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Pending Dealers</p>
+            <p class="text-3xl font-black text-brand-dark">{admin.stats.pendingDealers}</p>
+          </div>
+          <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Verification Volume</p>
+            <p class="text-3xl font-black text-brand-dark">{admin.stats.dailyVerificationChecks}</p>
+          </div>
+          <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Security Alerts</p>
+            <p class={`text-3xl font-black ${admin.stats.activeSecurityAlerts > 0 ? 'text-red-600' : 'text-brand-green'}`}>{admin.stats.activeSecurityAlerts}</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+           <div class="bg-white rounded-2xl border border-gray-200 shadow-sm">
+             <div class="p-6 border-b border-gray-100 font-bold text-sm uppercase tracking-widest text-brand-dark">Anti-Hallucination Queue</div>
+             <div class="p-12 text-center text-gray-400">
+               <p class="text-sm">3 products require spec verification.</p>
+               <a href="/admin/products" class="inline-block mt-4 text-brand-green font-bold text-sm">Review Queue &rarr;</a>
+             </div>
+           </div>
+           <div class="bg-white rounded-2xl border border-gray-200 shadow-sm">
+             <div class="p-6 border-b border-gray-100 font-bold text-sm uppercase tracking-widest text-brand-dark">System Integrity</div>
+             <div class="p-6 space-y-4">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-gray-500">API Latency</span>
+                  <span class="font-bold text-brand-green">24ms</span>
+                </div>
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-gray-500">DB Connectivity</span>
+                  <span class="font-bold text-brand-green">Healthy</span>
+                </div>
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-gray-500">Audit Logs</span>
+                  <span class="font-bold text-brand-green">Encrypted & Verified</span>
+                </div>
+             </div>
+           </div>
+        </div>
+
+      </div>
+    </main>
+
+  </div>
+</BaseLayout>

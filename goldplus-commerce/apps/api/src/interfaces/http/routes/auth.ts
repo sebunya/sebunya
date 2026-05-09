@@ -12,3 +12,6 @@ authRouter.post('/login', async (c) => {
   
   return c.json(result);
 });
+
+export default authRouter;
+

@@ -2,6 +2,9 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { ApiResponse } from '@goldplus/shared';
+import authRoutes from './routes/auth';
+import productRoutes from './routes/products';
+import commerceRoutes from './routes/commerce';
 
 // Define typed variables for the Hono context
 type Variables = {
@@ -13,6 +16,12 @@ const app = new Hono<{ Variables: Variables }>();
 // Global Middleware
 app.use('*', cors());
 app.use('*', logger());
+
+// Routes
+app.route('/auth', authRoutes);
+app.route('/products', productRoutes);
+app.route('/commerce', commerceRoutes);
+
 
 // Request ID Middleware
 app.use('*', async (c, next) => {

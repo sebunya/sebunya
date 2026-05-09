@@ -1,16 +1,116 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+
+// Mock order summary for checkout
+const summary = {
+  subtotal: 180000,
+  shipping: 0,
+  total: 180000,
+  items: [
+    { name: "Generic Fast Charger", qty: 2, price: 50000 },
+    { name: "Wireless Earbuds", qty: 1, price: 80000 }
+  ]
+};
+
+const formattedTotal = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX' }).format(summary.total);
 ---
 
-<BaseLayout title="Checkout">
-  <div class="py-8">
-    <h1 class="text-3xl font-bold mb-6">Checkout</h1>
-    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-      <div class="flex">
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            This is a Phase 1 module shell. Future implementation goes here.
-          </p>
+<BaseLayout title="Checkout - GoldPlus">
+  <div class="bg-gray-50 py-12 border-b border-gray-200">
+    <div class="container mx-auto px-4 lg:px-8">
+      <h1 class="text-3xl md:text-5xl font-black tracking-tight text-brand-dark mb-4">Checkout</h1>
+      <p class="text-gray-600 max-w-2xl text-lg">Provide your delivery details and secure your order. GoldPlus electronics are verified authentic before dispatch.</p>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 lg:px-8 py-12">
+    <div class="flex flex-col lg:flex-row gap-12">
+      
+      {/* Checkout Form */}
+      <div class="w-full lg:w-2/3">
+        <form class="space-y-8">
+          <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm">
+            <h2 class="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+              <span class="w-8 h-8 rounded-full bg-brand-dark text-white flex items-center justify-center text-sm">1</span>
+              Customer Details
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label for="name" class="block text-sm font-bold text-brand-dark mb-2">Full Name</label>
+                <input type="text" id="name" name="name" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-all">
+              </div>
+              <div>
+                <label for="email" class="block text-sm font-bold text-brand-dark mb-2">Email Address</label>
+                <input type="email" id="email" name="email" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-all">
+              </div>
+              <div>
+                <label for="phone" class="block text-sm font-bold text-brand-dark mb-2">Phone Number (MTN/Airtel)</label>
+                <input type="tel" id="phone" name="phone" required placeholder="07XX XXX XXX" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-all">
+              </div>
+              <div>
+                <label for="location" class="block text-sm font-bold text-brand-dark mb-2">Delivery Location / District</label>
+                <input type="text" id="location" name="location" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-all">
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm opacity-60">
+            <h2 class="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+              <span class="w-8 h-8 rounded-full bg-brand-dark text-white flex items-center justify-center text-sm">2</span>
+              Payment Method
+            </h2>
+            <div class="bg-gray-100 p-6 rounded-xl border-2 border-dashed border-gray-300 text-center">
+              <p class="font-bold text-gray-500 mb-2">Mobile Money / Cards</p>
+              <span class="inline-block bg-white text-gray-400 text-xs font-bold px-3 py-1 rounded-full border border-gray-200">Not Configured</span>
+              <p class="text-sm text-gray-400 mt-4">Real payment integration requires provider credentials. Order can be created for manual review.</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-4">
+             <button type="submit" class="bg-brand-dark text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-black transition-all transform hover:-translate-y-1 shadow-lg shadow-gray-200">
+               Place Order & Request Review
+             </button>
+             <p class="text-sm text-gray-500 italic">By placing an order, you agree to GoldPlus Terms of Service.</p>
+          </div>
+        </form>
+      </div>
+
+      {/* Summary Sidebar */}
+      <div class="w-full lg:w-1/3">
+        <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm sticky top-24">
+          <h2 class="text-xl font-bold text-brand-dark mb-6">Your Order</h2>
+          <ul class="space-y-4 mb-6 border-b border-gray-100 pb-6">
+            {summary.items.map(item => (
+              <li class="flex justify-between items-center text-sm">
+                <div class="text-gray-600">
+                  <span class="font-bold text-brand-dark">{item.qty}x</span> {item.name}
+                </div>
+                <span class="font-bold text-brand-dark">UGX {(item.qty * item.price).toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+          <div class="space-y-4 mb-6">
+            <div class="flex justify-between text-gray-600 text-sm">
+              <span>Subtotal</span>
+              <span class="font-bold text-brand-dark">UGX {summary.subtotal.toLocaleString()}</span>
+            </div>
+            <div class="flex justify-between text-gray-600 text-sm">
+              <span>Delivery Fee</span>
+              <span class="text-brand-green font-bold uppercase text-[10px]">Free for Phase 1</span>
+            </div>
+            <div class="border-t border-gray-100 pt-4 flex justify-between items-end">
+              <span class="text-lg font-bold text-brand-dark">Total</span>
+              <span class="text-2xl font-black text-brand-green">{formattedTotal}</span>
+            </div>
+          </div>
+          
+          <div class="bg-brand-gold/10 p-4 rounded-xl border border-brand-gold/20 mb-6">
+            <p class="text-xs text-brand-gold-dark leading-relaxed">
+              <strong>Phase 1 Note:</strong> Live payment is currently disabled. Our operations team will contact you on WhatsApp to confirm delivery and payment.
+            </p>
+          </div>
+
+          <a href="/cart" class="block w-full text-center text-gray-500 text-sm font-bold hover:text-brand-dark transition-colors">Edit Cart</a>
         </div>
       </div>
     </div>

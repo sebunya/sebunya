@@ -1,18 +1,54 @@
 ---
 import BaseLayout from "../../../layouts/BaseLayout.astro";
+
+// Mock pending products
+const pendingProducts = [
+  { id: 'p1', name: 'New Fast Charger', model: 'Missing', status: 'draft' },
+  { id: 'p2', name: 'Stereo Buds X', model: 'Missing', status: 'draft' },
+  { id: 'p3', name: 'Car Mount Pro', model: 'Missing', status: 'draft' }
+];
 ---
 
-<BaseLayout title="Product Admin Shell">
-  <div class="py-8">
-    <h1 class="text-3xl font-bold mb-6">Product Admin Shell</h1>
-    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-      <div class="flex">
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            This is a Phase 1 module shell. Future implementation goes here.
-          </p>
-        </div>
+<BaseLayout title="Product Governance - GoldPlus Admin">
+  <div class="container mx-auto px-4 lg:px-8 py-12">
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-black text-brand-dark">Product Governance</h1>
+        <p class="text-gray-500">Review and approve product specifications to prevent data hallucination.</p>
       </div>
+      <a href="/admin" class="text-sm font-bold text-gray-500 hover:text-brand-dark">&larr; Back to Dashboard</a>
+    </div>
+
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      <table class="w-full text-left border-collapse">
+        <thead>
+          <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+            <th class="p-6">Product Name</th>
+            <th class="p-6">Model Status</th>
+            <th class="p-6">Governance Status</th>
+            <th class="p-6">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="text-sm">
+          {pendingProducts.map(p => (
+            <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+              <td class="p-6 font-bold text-brand-dark">{p.name}</td>
+              <td class="p-6">
+                <span class="bg-red-50 text-red-600 px-2 py-1 rounded font-bold text-[10px] uppercase">{p.model}</span>
+              </td>
+              <td class="p-6">
+                <span class="bg-orange-50 text-orange-600 px-2 py-1 rounded font-bold text-[10px] uppercase italic">Awaiting Fact Check</span>
+              </td>
+              <td class="p-6">
+                <button class="bg-brand-dark text-white px-4 py-2 rounded font-bold text-xs hover:bg-black transition-colors">Verify & Approve</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {pendingProducts.length === 0 && (
+        <div class="p-20 text-center text-gray-400 italic">No products currently awaiting governance approval.</div>
+      )}
     </div>
   </div>
 </BaseLayout>

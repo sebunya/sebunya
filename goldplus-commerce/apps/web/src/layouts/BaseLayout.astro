@@ -15,9 +15,25 @@ const { title, description = "GoldPlus - Premium Electronics in Uganda" } = Astr
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
     <meta name="description" content={description} />
-    <title>{title} | GoldPlus</title>
+    <title>{title} | GoldPlus Uganda</title>
+    
+    {/* OpenGraph / Facebook */}
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={Astro.url} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="/og-image.jpg" />
+
+    {/* Twitter */}
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={Astro.url} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+    <meta property="twitter:image" content="/og-image.jpg" />
+
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#111111" />
+
   </head>
   <body class="bg-white text-brand-dark flex flex-col min-h-screen font-sans selection:bg-brand-gold selection:text-brand-dark">
     

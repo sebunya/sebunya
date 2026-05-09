@@ -1,18 +1,98 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+
+// Mock cart data for Phase 1
+const cartItems = [
+  {
+    id: "generic-fast-charger",
+    name: "Generic Fast Charger",
+    category: "Power",
+    price: 50000,
+    quantity: 2,
+    hasImage: false,
+  },
+  {
+    id: "wireless-earbuds",
+    name: "Wireless Earbuds",
+    category: "Sound",
+    price: 80000,
+    quantity: 1,
+    hasImage: false,
+  }
+];
+
+const subtotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+const formattedTotal = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX' }).format(subtotal);
 ---
 
-<BaseLayout title="Cart">
-  <div class="py-8">
-    <h1 class="text-3xl font-bold mb-6">Cart</h1>
-    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-      <div class="flex">
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            This is a Phase 1 module shell. Future implementation goes here.
-          </p>
-        </div>
+<BaseLayout title="Your Cart - GoldPlus">
+  <div class="container mx-auto px-4 lg:px-8 py-12">
+    {cartItems.length === 0 ? (
+      <div class="text-center py-20 bg-white rounded-2xl border border-gray-200">
+        <svg class="w-20 h-20 mx-auto text-gray-200 mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+        <h2 class="text-2xl font-bold text-brand-dark mb-2">Your cart is empty</h2>
+        <p class="text-gray-500 mb-8">Looks like you haven't added any premium electronics yet.</p>
+        <a href="/shop" class="inline-block px-8 py-3 bg-brand-green text-white rounded-lg font-bold hover:bg-green-700 transition-colors">Start Shopping</a>
       </div>
-    </div>
+    ) : (
+      <div class="flex flex-col lg:flex-row gap-12">
+        
+        {/* Cart Items */}
+        <div class="w-full lg:w-2/3">
+          <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+            <ul class="divide-y divide-gray-100">
+              {cartItems.map(item => (
+                <li class="p-6 flex flex-col sm:flex-row items-center gap-6">
+                  <div class="w-24 h-24 bg-gray-50 rounded-xl flex-shrink-0 flex items-center justify-center text-[10px] text-gray-400 font-bold border border-gray-100 uppercase text-center p-2">
+                    {item.hasImage ? 'Image' : 'Missing Image'}
+                  </div>
+                  <div class="flex-grow text-center sm:text-left">
+                    <p class="text-xs font-bold text-brand-green uppercase tracking-widest mb-1">{item.category}</p>
+                    <h3 class="text-lg font-bold text-brand-dark mb-1">{item.name}</h3>
+                    <p class="text-brand-dark font-black">UGX {item.price.toLocaleString()}</p>
+                  </div>
+                  <div class="flex items-center gap-4 bg-gray-50 rounded-lg p-1 border border-gray-200">
+                    <button class="w-8 h-8 flex items-center justify-center font-bold text-gray-500 hover:text-brand-dark transition-colors">-</button>
+                    <span class="w-8 text-center font-bold text-brand-dark">{item.quantity}</span>
+                    <button class="w-8 h-8 flex items-center justify-center font-bold text-gray-500 hover:text-brand-dark transition-colors">+</button>
+                  </div>
+                  <div class="text-right min-w-[120px]">
+                    <p class="text-lg font-black text-brand-dark">UGX {(item.price * item.quantity).toLocaleString()}</p>
+                    <button class="text-sm font-bold text-red-500 hover:text-red-700 transition-colors mt-1">Remove</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Order Summary */}
+        <div class="w-full lg:w-1/3">
+          <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm sticky top-24">
+            <h2 class="text-xl font-bold text-brand-dark mb-6">Order Summary</h2>
+            <div class="space-y-4 mb-6">
+              <div class="flex justify-between text-gray-600">
+                <span>Subtotal</span>
+                <span class="font-bold text-brand-dark">UGX {subtotal.toLocaleString()}</span>
+              </div>
+              <div class="flex justify-between text-gray-600">
+                <span>Shipping</span>
+                <span class="text-sm italic">Calculated at checkout</span>
+              </div>
+              <div class="border-t border-gray-100 pt-4 flex justify-between items-end">
+                <span class="text-lg font-bold text-brand-dark">Total</span>
+                <span class="text-2xl font-black text-brand-green">{formattedTotal}</span>
+              </div>
+            </div>
+            <a href="/checkout" class="block w-full text-center bg-brand-dark text-white py-4 rounded-xl font-bold text-lg hover:bg-black transition-all transform hover:-translate-y-1 shadow-lg shadow-gray-200">
+              Proceed to Checkout
+            </a>
+            <p class="text-center text-xs text-gray-400 mt-6">Secure Checkout Powered by GoldPlus Commerce OS</p>
+          </div>
+        </div>
+
+      </div>
+    )}
   </div>
 </BaseLayout>
+

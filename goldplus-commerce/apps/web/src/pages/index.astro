@@ -1,11 +1,33 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+
+// Mock seed data safely (do not invent product facts)
+const featuredProducts = [
+  {
+    id: "generic-fast-charger",
+    name: "Generic Fast Charger",
+    category: "Power Devices",
+    price: "UGX 50,000",
+    inStock: true,
+    model: "Missing. Requires admin review.",
+    hasImage: false,
+  },
+  {
+    id: "wireless-earbuds",
+    name: "Wireless Earbuds",
+    category: "Sound Devices",
+    price: "UGX 80,000",
+    inStock: true,
+    model: "Missing. Requires admin review.",
+    hasImage: false,
+  }
+];
 ---
 
-<BaseLayout title="Premium Electronics">
+<BaseLayout title="Premium Electronics - Uganda">
   
-  {/* Hero Section - High Contrast, Clean */}
-  <section class="bg-gray-50 flex-grow flex flex-col justify-center items-center text-center px-4 py-20 lg:py-32">
+  {/* Hero Section */}
+  <section class="bg-gray-50 flex-grow flex flex-col justify-center items-center text-center px-4 py-20 lg:py-32 border-b border-gray-200">
     <div class="max-w-3xl mx-auto">
       <span class="inline-block py-1 px-3 rounded-full bg-brand-green/10 text-brand-green text-sm font-bold tracking-wide uppercase mb-6">
         Guaranteed Authenticity
@@ -14,58 +36,121 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         Power your lifestyle with <span class="text-brand-gold relative inline-block">GoldPlus</span>
       </h1>
       <p class="text-lg md:text-xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-        Engineered for the Ugandan market. Durable, reliable, and verified original electronics.
+        Engineered for the Ugandan market. Durable, reliable, and verified original electronics. Power, Sound, Storage, and Car Accessories.
       </p>
       
       <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
         <a href="/shop" class="w-full sm:w-auto bg-brand-dark text-white px-8 py-4 rounded-lg font-bold hover:bg-black transition-colors focus:ring-4 focus:ring-gray-300 outline-none text-lg">
-          Explore Products
+          Shop All Products
         </a>
         <a href="/verification" class="w-full sm:w-auto bg-white text-brand-dark border-2 border-gray-200 px-8 py-4 rounded-lg font-bold hover:border-brand-dark transition-colors focus:ring-4 focus:ring-gray-100 outline-none text-lg">
-          Verify Purchase
+          Verify Product
         </a>
       </div>
     </div>
   </section>
 
-  {/* Category Teaser - Mobile Horizontal Scroll */}
-  <section class="border-t border-gray-200 bg-white py-16">
+  {/* Trust Section */}
+  <section class="bg-white py-12 border-b border-gray-100">
+    <div class="container mx-auto px-4 lg:px-8">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+        <div>
+          <h3 class="font-bold text-lg text-brand-dark mb-2">Originality Verified</h3>
+          <p class="text-gray-600 text-sm">Every product includes a verification code. Check it online instantly.</p>
+        </div>
+        <div>
+          <h3 class="font-bold text-lg text-brand-dark mb-2">No Fake Claims</h3>
+          <p class="text-gray-600 text-sm">If a spec isn't verified, we tell you it's missing. Honest specifications.</p>
+        </div>
+        <div>
+          <h3 class="font-bold text-lg text-brand-dark mb-2">Direct Support</h3>
+          <p class="text-gray-600 text-sm">Report issues or fake products directly to our Ugandan team.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* Category Blocks */}
+  <section class="bg-gray-50 py-16">
+    <div class="container mx-auto px-4 lg:px-8">
+      <h2 class="text-3xl font-black tracking-tight text-brand-dark mb-8 text-center">Shop by Category</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { name: 'Power Devices', desc: 'Chargers, Banks', slug: 'power' },
+          { name: 'Sound Devices', desc: 'Earbuds, Speakers', slug: 'sound' },
+          { name: 'Storage Devices', desc: 'Flash drives, SDs', slug: 'storage' },
+          { name: 'Car Accessories', desc: 'Mounts, Chargers', slug: 'car' }
+        ].map(cat => (
+          <a href={`/shop?category=${cat.slug}`} class="block group">
+            <div class="bg-white border border-gray-200 aspect-[4/3] rounded-2xl p-6 flex flex-col justify-end relative overflow-hidden transition-all hover:border-brand-gold hover:shadow-lg">
+               <div class="absolute inset-0 flex items-center justify-center text-gray-300 font-medium">
+                 No Image
+               </div>
+               <div class="relative z-10 bg-white/90 p-3 rounded-lg backdrop-blur-sm">
+                 <h3 class="text-xl font-bold text-brand-dark mb-1">{cat.name}</h3>
+                 <p class="text-sm text-gray-600 font-medium group-hover:text-brand-green transition-colors">{cat.desc}</p>
+               </div>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  {/* Featured Products */}
+  <section class="bg-white py-16 border-t border-gray-200">
     <div class="container mx-auto px-4 lg:px-8">
       <div class="flex items-center justify-between mb-8">
-        <h2 class="text-2xl font-bold tracking-tight">Our Categories</h2>
-        <a href="/shop" class="text-sm font-semibold text-brand-green hover:text-green-800 flex items-center gap-1">
-          View All <span aria-hidden="true">&rarr;</span>
-        </a>
+        <h2 class="text-3xl font-black tracking-tight text-brand-dark">Featured Products</h2>
+        <a href="/shop" class="text-brand-green font-bold hover:underline">View All &rarr;</a>
       </div>
-      
-      <div class="flex overflow-x-auto pb-8 gap-6 no-scrollbar snap-x snap-mandatory">
-        
-        {/* Card 1 */}
-        <a href="/categories/power" class="snap-start shrink-0 w-72 md:w-1/3 group block">
-          <div class="bg-gray-100 aspect-[4/3] rounded-2xl mb-4 p-6 flex flex-col justify-end relative overflow-hidden transition-colors group-hover:bg-gray-200">
-             <div class="absolute inset-0 flex items-center justify-center text-gray-400 font-medium">
-               No Image Available
-             </div>
-             <div class="relative z-10">
-               <h3 class="text-xl font-bold text-brand-dark mb-1">Power Devices</h3>
-               <p class="text-sm text-gray-600 font-medium group-hover:text-brand-dark transition-colors">Fast chargers & Power banks</p>
-             </div>
-          </div>
-        </a>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {featuredProducts.map(p => (
+          <article class="group flex flex-col h-full border border-gray-200 rounded-2xl p-4 hover:shadow-md transition-shadow">
+            <a href={`/products/${p.id}`} class="block aspect-square bg-gray-50 rounded-xl mb-4 overflow-hidden relative">
+              <div class="absolute inset-0 flex items-center justify-center text-gray-400 text-sm font-medium">
+                {p.hasImage ? 'Image' : 'Missing. Requires admin review.'}
+              </div>
+              <div class="absolute top-2 left-2">
+                 <span class="bg-brand-dark text-white text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">
+                   {p.inStock ? 'In Stock' : 'Out of Stock'}
+                 </span>
+              </div>
+            </a>
+            <div class="flex flex-col flex-grow">
+              <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">{p.category}</p>
+              <h3 class="text-lg font-bold text-brand-dark leading-tight mb-1 group-hover:text-brand-green transition-colors">{p.name}</h3>
+              <p class="text-xs text-red-600 mb-4 bg-red-50 p-2 rounded line-clamp-2 border border-red-100">Model: {p.model}</p>
+              <div class="mt-auto flex items-center justify-between">
+                <p class="text-lg font-black text-brand-dark">{p.price}</p>
+                <a href={`/products/${p.id}`} class="px-3 py-1 bg-gray-100 text-brand-dark rounded font-bold text-sm hover:bg-gray-200">View</a>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
 
-        {/* Card 2 */}
-        <a href="/categories/sound" class="snap-start shrink-0 w-72 md:w-1/3 group block">
-          <div class="bg-gray-100 aspect-[4/3] rounded-2xl mb-4 p-6 flex flex-col justify-end relative overflow-hidden transition-colors group-hover:bg-gray-200">
-             <div class="absolute inset-0 flex items-center justify-center text-gray-400 font-medium">
-               No Image Available
-             </div>
-             <div class="relative z-10">
-               <h3 class="text-xl font-bold text-brand-dark mb-1">Sound Devices</h3>
-               <p class="text-sm text-gray-600 font-medium group-hover:text-brand-dark transition-colors">Earbuds & Speakers</p>
-             </div>
-          </div>
-        </a>
-
+  {/* Business Pathways */}
+  <section class="bg-brand-dark text-white py-16">
+    <div class="container mx-auto px-4 lg:px-8">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="border border-gray-700 p-8 rounded-2xl">
+          <h3 class="text-2xl font-bold text-brand-gold mb-4">Retail Customers</h3>
+          <p class="text-gray-400 mb-6 leading-relaxed">Shop our verified products directly and verify authenticity instantly.</p>
+          <a href="/shop" class="inline-block px-6 py-2 bg-white text-brand-dark font-bold rounded-lg hover:bg-gray-200">Start Shopping</a>
+        </div>
+        <div class="border border-gray-700 p-8 rounded-2xl">
+          <h3 class="text-2xl font-bold text-brand-gold mb-4">Dealers</h3>
+          <p class="text-gray-400 mb-6 leading-relaxed">Apply to become an authorized GoldPlus dealer in Uganda.</p>
+          <a href="/dealers/apply" class="inline-block px-6 py-2 bg-transparent border border-white font-bold rounded-lg hover:bg-gray-800">Apply Now</a>
+        </div>
+        <div class="border border-gray-700 p-8 rounded-2xl">
+          <h3 class="text-2xl font-bold text-brand-gold mb-4">Corporate Buyers</h3>
+          <p class="text-gray-400 mb-6 leading-relaxed">Request wholesale quotes for corporate electronics deployment.</p>
+          <a href="/quotes" class="inline-block px-6 py-2 bg-transparent border border-white font-bold rounded-lg hover:bg-gray-800">Request Quote</a>
+        </div>
       </div>
     </div>
   </section>

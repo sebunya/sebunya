@@ -2,17 +2,63 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 ---
 
-<BaseLayout title="Dealer Application">
-  <div class="py-8">
-    <h1 class="text-3xl font-bold mb-6">Dealer Application</h1>
-    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-      <div class="flex">
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            This is a Phase 1 module shell. Future implementation goes here.
-          </p>
-        </div>
+<BaseLayout title="Apply to be a GoldPlus Dealer - Uganda">
+  <div class="bg-brand-dark text-white py-16 border-b border-gray-800">
+    <div class="container mx-auto px-4 lg:px-8 text-center">
+      <h1 class="text-3xl md:text-5xl font-black tracking-tight mb-4 text-brand-gold">Authorized Dealership</h1>
+      <p class="text-gray-400 max-w-2xl mx-auto text-lg">Partner with Uganda's most trusted electronics brand. Benefit from verified stock, marketing support, and exclusive dealer pricing.</p>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 lg:px-8 py-16">
+    <div class="max-w-3xl mx-auto">
+      
+      <div class="bg-white p-10 rounded-2xl border border-gray-200 shadow-xl">
+        <h2 class="text-2xl font-bold text-brand-dark mb-8 pb-4 border-b border-gray-100">Application Form</h2>
+        
+        <form class="space-y-8">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="col-span-full">
+              <label for="biz_name" class="block text-sm font-bold text-brand-dark mb-2 uppercase tracking-widest">Business Legal Name</label>
+              <input type="text" id="biz_name" name="biz_name" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-gold focus:border-brand-gold outline-none transition-all">
+            </div>
+            <div>
+              <label for="contact_name" class="block text-sm font-bold text-brand-dark mb-2">Contact Person</label>
+              <input type="text" id="contact_name" name="contact_name" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-gold focus:border-brand-gold outline-none transition-all">
+            </div>
+            <div>
+              <label for="tin" class="block text-sm font-bold text-brand-dark mb-2">TIN Number (URA)</label>
+              <input type="text" id="tin" name="tin" required placeholder="100XXXXXXXX" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-gold focus:border-brand-gold outline-none transition-all">
+            </div>
+            <div>
+              <label for="email" class="block text-sm font-bold text-brand-dark mb-2">Business Email</label>
+              <input type="email" id="email" name="email" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-gold focus:border-brand-gold outline-none transition-all">
+            </div>
+            <div>
+              <label for="phone" class="block text-sm font-bold text-brand-dark mb-2">Business Phone</label>
+              <input type="tel" id="phone" name="phone" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-gold focus:border-brand-gold outline-none transition-all">
+            </div>
+            <div class="col-span-full">
+              <label for="location" class="block text-sm font-bold text-brand-dark mb-2">Store Location (Street/Town/City)</label>
+              <input type="text" id="location" name="location" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-gold focus:border-brand-gold outline-none transition-all">
+            </div>
+          </div>
+
+          <div class="bg-gray-50 p-6 rounded-xl border border-gray-200">
+            <h3 class="font-bold text-brand-dark mb-2">Dealer Commitment</h3>
+            <p class="text-xs text-gray-500 leading-relaxed mb-4">By applying, you commit to only selling original GoldPlus products and maintaining the brand's pricing and service standards in Uganda.</p>
+            <label class="flex items-center gap-3 cursor-pointer group">
+              <input type="checkbox" required class="w-5 h-5 rounded border-gray-300 text-brand-gold focus:ring-brand-gold">
+              <span class="text-sm font-bold text-gray-700 group-hover:text-brand-dark transition-colors">I agree to the GoldPlus Dealer Terms</span>
+            </label>
+          </div>
+
+          <button type="submit" class="w-full bg-brand-dark text-white py-4 rounded-xl font-bold text-lg hover:bg-black transition-all shadow-lg shadow-gray-200">
+            Submit Application
+          </button>
+        </form>
       </div>
+
     </div>
   </div>
 </BaseLayout>
