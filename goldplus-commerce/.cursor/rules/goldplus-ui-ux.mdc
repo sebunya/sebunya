@@ -1,0 +1,7 @@
+---
+description: GoldPlus UI/UX Rules
+globs: ["**/*.astro", "**/*.tsx", "**/*.css"]
+---
+- Mobile-first, accessible, and simplified.
+- Ethical behavioural economics only. Do not use dark patterns or fake urgency.
+- Global benchmark websites are for inspiration only, do NOT copy them.

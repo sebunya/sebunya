@@ -1,0 +1,65 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="Shop All Products">
+  <div class="bg-gray-50 py-8 border-b border-gray-200">
+    <div class="container mx-auto px-4 lg:px-8">
+      <h1 class="text-3xl md:text-4xl font-black tracking-tight text-brand-dark mb-2">The Catalog</h1>
+      <p class="text-gray-600 max-w-xl">Browse our full range of rigorously tested electronics. Select a product to view technical specifications.</p>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 lg:px-8 py-12">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-12">
+      
+      {/* Product Card 1 */}
+      <article class="group flex flex-col h-full">
+        <a href="/products/generic-fast-charger" class="block aspect-square bg-gray-100 rounded-2xl mb-4 overflow-hidden relative outline-none focus-visible:ring-4 focus-visible:ring-brand-gold">
+          <div class="absolute inset-0 flex items-center justify-center text-gray-400 font-medium">
+            No Image Available
+          </div>
+          <div class="absolute top-4 left-4">
+             <span class="bg-brand-dark text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">In Stock</span>
+          </div>
+        </a>
+        <div class="flex flex-col flex-grow">
+          <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Power</p>
+          <h2 class="text-lg font-bold text-brand-dark leading-tight mb-1 group-hover:underline decoration-2 underline-offset-4">Generic Fast Charger</h2>
+          <p class="text-sm text-gray-500 mb-4 line-clamp-2">Model: Missing. Requires admin review.</p>
+          <div class="mt-auto flex items-center justify-between">
+            <p class="text-lg font-black text-brand-dark">UGX 50,000</p>
+            <button class="w-10 h-10 rounded-full bg-brand-green text-white flex items-center justify-center hover:bg-green-700 transition-colors focus:ring-4 focus:ring-green-200 outline-none cursor-pointer" aria-label="Add Generic Fast Charger to cart">
+               <span aria-hidden="true" class="text-xl font-bold leading-none">+</span>
+            </button>
+          </div>
+        </div>
+      </article>
+      
+      {/* Product Card 2 */}
+      <article class="group flex flex-col h-full">
+        <a href="/products/wireless-earbuds" class="block aspect-square bg-gray-100 rounded-2xl mb-4 overflow-hidden relative outline-none focus-visible:ring-4 focus-visible:ring-brand-gold">
+          <div class="absolute inset-0 flex items-center justify-center text-gray-400 font-medium">
+            No Image Available
+          </div>
+          <div class="absolute top-4 left-4">
+             <span class="bg-brand-dark text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">In Stock</span>
+          </div>
+        </a>
+        <div class="flex flex-col flex-grow">
+          <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Sound</p>
+          <h2 class="text-lg font-bold text-brand-dark leading-tight mb-1 group-hover:underline decoration-2 underline-offset-4">Wireless Earbuds</h2>
+          <p class="text-sm text-gray-500 mb-4 line-clamp-2">Model: Missing. Requires admin review.</p>
+          <div class="mt-auto flex items-center justify-between">
+            <p class="text-lg font-black text-brand-dark">UGX 80,000</p>
+            <button class="w-10 h-10 rounded-full bg-brand-green text-white flex items-center justify-center hover:bg-green-700 transition-colors focus:ring-4 focus:ring-green-200 outline-none cursor-pointer" aria-label="Add Wireless Earbuds to cart">
+               <span aria-hidden="true" class="text-xl font-bold leading-none">+</span>
+            </button>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</BaseLayout>
+

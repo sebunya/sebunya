@@ -1,0 +1,7 @@
+---
+description: GoldPlus Testing Rules
+globs: ["**/*.test.ts"]
+---
+- Tests and architecture checks are mandatory. Do not bypass them.
+- TDD where practical.
+- Payment webhook idempotency must be tested.

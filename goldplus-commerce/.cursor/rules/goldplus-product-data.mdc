@@ -1,0 +1,7 @@
+---
+description: GoldPlus Product Data Rules
+globs: ["**/*.ts"]
+---
+- NO invented product facts, fake reviews, fake ratings, or fake scarcity.
+- NO fake integrations. Disabled integrations must return "Not configured".
+- Dealer pricing and supplier costs must NEVER appear in public APIs.

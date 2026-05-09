@@ -1,0 +1,12 @@
+---
+description: GoldPlus Architecture Rules
+globs: ["**/*.ts"]
+---
+- Phase 1 only.
+- Modular monolith first.
+- Clean Architecture / Hexagonal Architecture / DDD.
+- Hono routes must be thin.
+- Domain logic must NOT import Hono, Drizzle, or external adapters.
+- All mutations must go through Application Use Cases.
+- Use Cases must rely on Repository Interfaces and Ports.
+- Infrastructure implements repositories and ports.

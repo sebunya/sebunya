@@ -1,0 +1,15 @@
+
+> goldplus-commerce@1.0.0 test:architecture /Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce
+> vitest run tests/architecture
+
+
+ RUN  v1.6.1 /Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce
+
+ ✓ tests/architecture/boundaries.test.ts  (2 tests) 8ms
+ ✓ tests/architecture/domain-purity.test.ts  (5 tests) 9ms
+
+ Test Files  2 passed (2)
+      Tests  7 passed (7)
+   Start at  19:18:07
+   Duration  797ms (transform 200ms, setup 0ms, collect 208ms, tests 17ms, environment 1ms, prepare 413ms)
+

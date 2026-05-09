@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "extends": "../../tsconfig.base.json",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ESNext",
+    "jsx": "react-jsx",
+    "jsxImportSource": "astro",
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["src/*"]
+    }
+  },
+  "include": ["src/**/*", ".astro/types.d.ts"]
+}

@@ -1,0 +1,7 @@
+src/application/use-cases/DealerApplicationUseCase.ts(2,10): error TS2305: Module '"@goldplus/shared"' has no exported member 'DOMAIN_EVENTS'.
+src/application/use-cases/PublishProductUseCase.ts(2,10): error TS2305: Module '"@goldplus/shared"' has no exported member 'DOMAIN_EVENTS'.
+src/application/use-cases/VerificationCheckUseCase.ts(2,10): error TS2305: Module '"@goldplus/shared"' has no exported member 'DOMAIN_EVENTS'.
+src/domain/advertising/ProductFeedEligibilityRule.ts(5,18): error TS2339: Property 'isFeedEligible' does not exist on type 'ProductEntity'.
+src/domain/payments/PaymentIdempotencyService.ts(1,10): error TS2305: Module '"@goldplus/shared"' has no exported member 'DOMAIN_EVENTS'.
+src/interfaces/http/routes/auth.ts(2,41): error TS2307: Cannot find module '../../application/use-cases/identity/AuthenticateUserUseCase' or its corresponding type declarations.
+tsconfig.json(3,5): error TS5023: Unknown compiler option 'extends'.

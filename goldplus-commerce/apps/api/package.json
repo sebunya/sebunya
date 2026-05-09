@@ -1,0 +1,29 @@
+{
+  "name": "@goldplus/api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/interfaces/http/server.ts",
+    "build": "tsc",
+    "start": "node dist/interfaces/http/server.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/infrastructure/db/migrations/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "@hono/node-server": "^1.8.0",
+    "@hono/zod-validator": "^0.2.0",
+    "zod": "^3.22.4",
+    "drizzle-orm": "^0.29.3",
+    "postgres": "^3.4.3",
+    "@goldplus/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.20.14",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}
