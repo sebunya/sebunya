@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Local grounding/source documents
+*.pdf
+*.txt
+
+# Environment files
+.env
+.env.local
+
+# Dependencies and build outputs
+node_modules/
+dist/
+.astro/
+.cache/
+coverage/
