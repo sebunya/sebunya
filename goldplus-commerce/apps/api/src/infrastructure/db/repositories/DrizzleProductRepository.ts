@@ -57,4 +57,21 @@ export class DrizzleProductRepository {
     });
   }
 
+  async findAll(): Promise<ProductEntity[]> {
+    const results = await db.query.products.findMany();
+    return results.map(result => new ProductEntity(
+      result.id,
+      result.sku,
+      result.modelNumber,
+      result.name,
+      result.categoryId,
+      result.approvalStatus as 'draft' | 'approved' | 'rejected',
+      result.isPreOrderEnabled,
+      result.hasRetailPrice,
+      result.hasImage,
+      result.stockQuantity,
+      result.specifications as Record<string, string | number>
+    ));
+  }
 }
+

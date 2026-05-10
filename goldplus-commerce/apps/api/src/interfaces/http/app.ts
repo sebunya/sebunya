@@ -5,6 +5,8 @@ import { ApiResponse } from '@goldplus/shared';
 import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import commerceRoutes from './routes/commerce';
+import governanceRoutes from './routes/governance';
+
 
 // Define typed variables for the Hono context
 type Variables = {
@@ -21,6 +23,8 @@ app.use('*', logger());
 app.route('/auth', authRoutes);
 app.route('/products', productRoutes);
 app.route('/commerce', commerceRoutes);
+app.route('/governance', governanceRoutes);
+
 
 
 // Request ID Middleware

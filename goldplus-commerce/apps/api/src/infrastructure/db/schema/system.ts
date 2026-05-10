@@ -1,4 +1,5 @@
-import { pgTable, uuid, varchar, timestamp, boolean, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, jsonb, text } from 'drizzle-orm/pg-core';
+
 import { products } from './products';
 
 export const auditLogs = pgTable('audit_logs', {
@@ -28,3 +29,14 @@ export const verificationCodes = pgTable('verification_codes', {
   isUsed: boolean('is_used').default(false).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
 });
+
+export const verificationAttempts = pgTable('verification_attempts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  code: varchar('code', { length: 50 }).notNull(),
+  productId: uuid('product_id'),
+  isSuccessful: boolean('is_successful').notNull(),
+  ipAddress: varchar('ip_address', { length: 100 }),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+

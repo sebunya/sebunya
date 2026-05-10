@@ -1,24 +1,36 @@
-import { IEventPublisher } from '../ports';
-import { DOMAIN_EVENTS } from '@goldplus/shared';
+import { DrizzleDealerRepository } from '../../infrastructure/db/repositories/DrizzleDealerRepository';
+import { Dealer } from '../../domain/dealers/Dealer';
+import * as nodeCrypto from 'node:crypto';
+
 
 export interface DealerApplicationDto {
   businessName: string;
   contactName: string;
   email: string;
   phone: string;
-  taxId?: string;
+  tinNumber: string;
+  location: string;
 }
 
 export class DealerApplicationUseCase {
-  constructor(private readonly eventPublisher: IEventPublisher) {}
+  constructor(private readonly dealerRepo: DrizzleDealerRepository) {}
 
   public async execute(dto: DealerApplicationDto): Promise<void> {
     if (!dto.businessName || !dto.email || !dto.phone) {
       throw new Error('Business name, email, and phone are required.');
     }
 
-    // Process logic here (save to DB)
-    
-    await this.eventPublisher.publish(DOMAIN_EVENTS.DEALER_APPLICATION_SUBMITTED, dto);
+    const dealer = Dealer.apply(
+      nodeCrypto.randomUUID(),
+
+      dto.businessName,
+      dto.contactName,
+      dto.email,
+      dto.phone,
+      dto.tinNumber,
+      dto.location
+    );
+
+    await this.dealerRepo.save(dealer);
   }
 }
