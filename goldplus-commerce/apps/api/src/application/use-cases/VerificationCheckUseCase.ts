@@ -1,19 +1,34 @@
-import { IEventPublisher } from '../ports';
-import { DOMAIN_EVENTS } from '@goldplus/shared';
+import { DrizzleVerificationRepository } from '../../infrastructure/db/repositories/DrizzleVerificationRepository';
+import { VerificationAttempt } from '../../domain/verification/VerificationAttempt';
+import * as nodeCrypto from 'node:crypto';
+
 
 export class VerificationCheckUseCase {
-  constructor(private readonly eventPublisher: IEventPublisher) {}
+  constructor(private readonly verificationRepo: DrizzleVerificationRepository) {}
 
-  public async execute(code: string): Promise<boolean> {
-    // 1. Look up code in Database
-    const isValid = code === 'VALID-CODE'; // Mock logic for MVP
+  public async execute(code: string, ipAddress?: string, userAgent?: string): Promise<{ success: boolean; productId?: string }> {
+    const codeInfo = await this.verificationRepo.findCode(code);
     
-    if (isValid) {
-      await this.eventPublisher.publish(DOMAIN_EVENTS.PRODUCT_VERIFIED, { code });
-      return true;
-    } else {
-      await this.eventPublisher.publish(DOMAIN_EVENTS.VERIFICATION_FAILED, { code });
-      return false;
+    const isSuccessful = !!codeInfo && !codeInfo.isUsed;
+    const productId = codeInfo?.productId || null;
+
+    const attempt = VerificationAttempt.record(
+      nodeCrypto.randomUUID(),
+
+      code,
+      productId,
+      isSuccessful,
+      ipAddress || null,
+      userAgent || null
+    );
+
+    await this.verificationRepo.saveAttempt(attempt);
+
+    if (isSuccessful) {
+      await this.verificationRepo.markCodeAsUsed(code);
+      return { success: true, productId: productId! };
     }
+
+    return { success: false };
   }
 }
