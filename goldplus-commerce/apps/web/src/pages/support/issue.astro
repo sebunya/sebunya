@@ -1,38 +1,66 @@
 ---
-import BaseLayout from "../../layouts/BaseLayout.astro";
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import FormField from '../../components/FormField.astro';
+import FormFeedback from '../../components/FormFeedback.astro';
+import { postJson } from '../../lib/api';
+
+let status: 'success' | 'error' | 'received' | null = null;
+let message: string | undefined;
+let reference: string | undefined;
+let values: Record<string, string> = {};
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const dto = {
+    subject: String(form.get('subject') ?? '').trim(),
+    productModel: String(form.get('productModel') ?? '').trim(),
+    description: String(form.get('description') ?? '').trim(),
+    contact: String(form.get('contact') ?? '').trim(),
+  };
+  values = dto;
+  const missing = (['subject', 'description', 'contact'] as const)
+    .filter((k) => !dto[k as keyof typeof dto]);
+  if (missing.length > 0) {
+    status = 'error';
+    message = `Please fill in all required fields: ${missing.join(', ')}.`;
+  } else {
+    const result = await postJson('/governance/support/report-issue', dto);
+    reference = result.ok ? result.reference : undefined;
+    if (result.ok) {
+      status = 'received';
+      message = 'Report received. A support officer will follow up using the contact you provided.';
+      values = {};
+    } else {
+      status = 'error';
+      message = result.code === 'NETWORK'
+        ? 'Cannot reach the support service right now. Please try again shortly.'
+        : result.message;
+    }
+  }
+}
 ---
 
-<BaseLayout title="Report an Issue - GoldPlus">
+<BaseLayout title="Report a technical issue">
   <div class="container mx-auto px-4 lg:px-8 py-12">
     <div class="max-w-2xl mx-auto">
-      <h1 class="text-3xl font-black text-brand-dark mb-2">Report a Technical Issue</h1>
-      <p class="text-gray-600 mb-8">Tell us what's wrong, and our technical team will help you resolve it. Please be as descriptive as possible.</p>
+      <h1 class="text-2xl md:text-3xl font-black text-brand-dark mb-2">Report a technical issue</h1>
+      <p class="text-gray-600 mb-8 leading-relaxed">
+        Describe what's happening so our technical team can help you. The more detail, the faster we can resolve it.
+      </p>
 
-      <form class="space-y-6">
-        <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm">
-          <div class="space-y-4">
-            <div>
-              <label for="subject" class="block text-sm font-bold text-brand-dark mb-2">Issue Subject</label>
-              <input type="text" id="subject" name="subject" required placeholder="e.g. Charger not fast charging" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-all">
-            </div>
-            <div>
-              <label for="product" class="block text-sm font-bold text-brand-dark mb-2">Product Model (if known)</label>
-              <input type="text" id="product" name="product" placeholder="e.g. GoldPlus GP-CH-01" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-all">
-            </div>
-            <div>
-              <label for="description" class="block text-sm font-bold text-brand-dark mb-2">Description of the problem</label>
-              <textarea id="description" name="description" rows="5" required placeholder="Describe what happened..." class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-all"></textarea>
-            </div>
-            <div>
-              <label for="contact" class="block text-sm font-bold text-brand-dark mb-2">Your Contact (Phone or Email)</label>
-              <input type="text" id="contact" name="contact" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-all">
-            </div>
-          </div>
+      <FormFeedback status={status} message={message} reference={reference} />
+
+      <form method="POST" action="/support/issue" novalidate class="space-y-6">
+        <div class="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm space-y-5">
+          <FormField id="subject" name="subject" label="Issue subject" required defaultValue={values.subject} placeholder="e.g. Charger not fast charging" />
+          <FormField id="productModel" name="productModel" label="Product model (if known)" defaultValue={values.productModel} placeholder="e.g. GP-CH-01" helperText="If your product packaging shows a model number, include it here." />
+          <FormField id="description" name="description" label="Description of the problem" type="textarea" rows={5} required defaultValue={values.description} placeholder="When did it start? What did you try?" />
+          <FormField id="contact" name="contact" label="Your contact (phone or email)" required defaultValue={values.contact} autocomplete="email" />
         </div>
 
         <div class="flex items-center gap-4">
-          <button type="submit" class="bg-brand-dark text-white px-8 py-3 rounded-xl font-bold hover:bg-black transition-all">
-            Submit Issue
+          <button type="submit" class="bg-brand-green text-white px-8 py-3 rounded-xl font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-green/30 outline-none transition-all">
+            Submit issue
           </button>
           <a href="/support" class="text-sm font-bold text-gray-500 hover:text-brand-dark transition-colors">Cancel</a>
         </div>

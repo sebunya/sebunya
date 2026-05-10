@@ -1,0 +1,77 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import AdminPageHeader from '../../../components/AdminPageHeader.astro';
+import AdminTable from '../../../components/AdminTable.astro';
+import StatusBadge from '../../../components/StatusBadge.astro';
+import EmptyState from '../../../components/EmptyState.astro';
+import Notice from '../../../components/Notice.astro';
+import { tryFetchAdminList } from '../../../lib/api';
+import { SAMPLE_SUPPORT_TICKETS, type SampleSupportTicket } from '../../../lib/sample-data';
+
+const result = await tryFetchAdminList<SampleSupportTicket>(
+  '/governance/admin/support',
+  SAMPLE_SUPPORT_TICKETS,
+  'Sample support tickets shown until /governance/admin/support is wired.',
+);
+
+const statusBadge: Record<SampleSupportTicket['status'], 'pending' | 'warning' | 'success' | 'neutral'> = {
+  open: 'pending',
+  'in-progress': 'warning',
+  resolved: 'success',
+  closed: 'neutral',
+};
+
+const priorityBadge: Record<SampleSupportTicket['priority'], 'neutral' | 'info' | 'warning' | 'danger'> = {
+  low: 'neutral',
+  medium: 'info',
+  high: 'warning',
+  urgent: 'danger',
+};
+
+const typeLabel: Record<SampleSupportTicket['type'], string> = {
+  issue: 'Issue',
+  fake_report: 'Fake report',
+  inquiry: 'Inquiry',
+};
+---
+
+<BaseLayout title="Support tickets — Admin">
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <AdminPageHeader
+      title="Support tickets"
+      description="Customer-reported issues, fake-product reports and general inquiries."
+    />
+
+    {result.isSample && (
+      <div class="mb-6">
+        <Notice kind="sample" message={result.reason} />
+      </div>
+    )}
+
+    {result.items.length === 0 ? (
+      <EmptyState
+        title="No support tickets yet"
+        message="Reports submitted at /support/issue and /support/fake will appear here."
+      />
+    ) : (
+      <AdminTable caption={`Last ${result.items.length} tickets`}>
+        <Fragment slot="head">
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Subject</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Type</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Priority</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Status</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Created</th>
+        </Fragment>
+        {result.items.map((t) => (
+          <tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="px-6 py-4 font-bold text-brand-dark">{t.subject}</td>
+            <td class="px-6 py-4 text-gray-700 text-xs uppercase tracking-widest">{typeLabel[t.type]}</td>
+            <td class="px-6 py-4"><StatusBadge status={priorityBadge[t.priority]} label={t.priority} /></td>
+            <td class="px-6 py-4"><StatusBadge status={statusBadge[t.status]} label={t.status} /></td>
+            <td class="px-6 py-4 text-gray-500 text-xs">{new Date(t.createdAt).toLocaleDateString('en-GB')}</td>
+          </tr>
+        ))}
+      </AdminTable>
+    )}
+  </div>
+</BaseLayout>
