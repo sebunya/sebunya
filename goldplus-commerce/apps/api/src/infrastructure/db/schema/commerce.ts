@@ -1,6 +1,7 @@
 import { pgTable, uuid, varchar, timestamp, integer } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { products } from './products';
+import { users } from './identity';
 
 export const carts = pgTable('carts', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -17,6 +18,7 @@ export const cartItems = pgTable('cart_items', {
 
 export const orders = pgTable('orders', {
   id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id),
   orderNumber: varchar('order_number', { length: 20 }).unique().notNull(),
   buyerType: varchar('buyer_type', { length: 20 }).default('retail').notNull(),
   customerName: varchar('customer_name', { length: 255 }).notNull(),

@@ -6,7 +6,7 @@
     "dev": "tsx watch src/interfaces/http/server.ts",
     "build": "tsc",
     "start": "node dist/interfaces/http/server.js",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate:pg",
     "db:migrate": "tsx src/infrastructure/db/migrations/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",

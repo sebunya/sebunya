@@ -1,0 +1,82 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import FormField from '../components/FormField.astro';
+import FormFeedback from '../components/FormFeedback.astro';
+import Notice from '../components/Notice.astro';
+import { apiBase } from '../lib/api';
+import { sessionCookieValue } from '../lib/session';
+
+let status: 'success' | 'error' | null = null;
+let message: string | undefined;
+let values: { email?: string } = {};
+let notConfigured = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const email = String(form.get('email') ?? '').trim();
+  const password = String(form.get('password') ?? '');
+  values = { email };
+
+  if (!email || !password) {
+    status = 'error';
+    message = 'Email and password are required.';
+  } else {
+    try {
+      const res = await fetch(`${apiBase}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const json: any = await res.json().catch(() => null);
+
+      if (res.ok && json?.success && json.data?.token) {
+        Astro.response.headers.set('Set-Cookie', sessionCookieValue(json.data.token));
+        const returnTo = Astro.url.searchParams.get('returnTo');
+        const safe = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/account';
+        return Astro.redirect(safe, 303);
+      }
+
+      if (json?.error?.code === 'AUTH_NOT_CONFIGURED') {
+        notConfigured = true;
+        message = json.error.message;
+      } else {
+        status = 'error';
+        message = json?.error?.message ?? `Login failed (HTTP ${res.status}).`;
+      }
+    } catch {
+      status = 'error';
+      message = 'Cannot reach the authentication service right now. Please try again shortly.';
+    }
+  }
+}
+---
+
+<BaseLayout title="Sign in" description="Sign in to your GoldPlus account.">
+  <div class="container mx-auto px-4 lg:px-8 py-12 md:py-20">
+    <div class="max-w-md mx-auto">
+      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal mb-2 tracking-tight">Sign in</h1>
+      <p class="text-brand-mutedGrey mb-6 text-sm leading-relaxed">Access your orders, addresses and account.</p>
+
+      {notConfigured && (
+        <div class="mb-6">
+          <Notice kind="not-configured" title="Sign-in not configured" message={message} />
+        </div>
+      )}
+      {!notConfigured && <FormFeedback status={status} message={message} />}
+
+      <form method="POST" action="/login" novalidate class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm space-y-5">
+        <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" defaultValue={values.email} />
+        <FormField id="password" name="password" label="Password" type="password" required autocomplete="current-password" />
+        <button
+          type="submit"
+          class="w-full bg-brand-primary text-brand-charcoal py-3 rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none"
+        >
+          Sign in
+        </button>
+        <p class="text-xs text-brand-mutedGrey text-center">
+          Don't have an account? Customer registration is being rolled out — please contact support to get set up.
+        </p>
+      </form>
+    </div>
+  </div>
+</BaseLayout>

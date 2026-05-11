@@ -16,3 +16,4 @@ export const DOMAIN_EVENTS = {
 } as const;
 
 export * from './types/product';
+export * from './types/account';
