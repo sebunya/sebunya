@@ -91,8 +91,16 @@ const canonical = Astro.url.toString();
 
         <div class="w-full lg:w-1/2">
           <div class="bg-white aspect-square rounded-2xl flex items-center justify-center relative overflow-hidden border border-brand-borderGrey">
-            {product.hasImage ? (
-              <div class="absolute inset-0 flex items-center justify-center text-brand-mutedGrey">Image not yet rendered in Phase 1.</div>
+            {product.primaryImageUrl ? (
+              <img
+                src={product.primaryImageUrl}
+                alt={product.images[0]?.alt ?? product.name}
+                width="800"
+                height="800"
+                class="w-full h-full object-contain"
+                loading="eager"
+                decoding="async"
+              />
             ) : (
               <div class="absolute inset-0 flex items-center justify-center text-brand-mutedGrey p-6 text-center">
                 <span>Image. Missing. Requires admin review.</span>
@@ -130,7 +138,7 @@ const canonical = Astro.url.toString();
 
           <div class="border border-brand-borderGrey rounded-xl overflow-hidden mb-8 bg-white">
             <table class="w-full text-sm text-left">
-              <caption class="sr-only">Verified specifications for {product.name}</caption>
+              <caption class="sr-only">Specifications for {product.name}</caption>
               <tbody>
                 {product.sku && (
                   <tr class="border-b border-brand-borderGrey">
@@ -138,15 +146,20 @@ const canonical = Astro.url.toString();
                     <td class="px-4 py-3 text-brand-charcoal font-mono">{product.sku}</td>
                   </tr>
                 )}
-                {Object.entries(product.verifiedSpecs).map(([k, v]) => (
+                {product.attributeValues.map((v) => (
                   <tr class="border-b border-brand-borderGrey last:border-b-0">
-                    <th scope="row" class="px-4 py-3 bg-brand-softGrey font-bold text-brand-charcoal w-1/3">{k}</th>
-                    <td class="px-4 py-3 text-brand-charcoal">{v}</td>
+                    <th scope="row" class="px-4 py-3 bg-brand-softGrey font-bold text-brand-charcoal w-1/3">{v.name}</th>
+                    <td class="px-4 py-3 text-brand-charcoal flex items-center gap-2">
+                      <span>{v.value}{v.unit ? ` ${v.unit}` : ''}</span>
+                      {!v.isVerified && (
+                        <span class="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold uppercase tracking-widest">Pending review</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
-                {Object.keys(product.verifiedSpecs).length === 0 && !product.sku && (
+                {product.attributeValues.length === 0 && !product.sku && (
                   <tr>
-                    <td class="px-4 py-6 text-brand-mutedGrey italic text-center" colspan="2">No verified specifications published yet. Owner review required.</td>
+                    <td class="px-4 py-6 text-brand-mutedGrey italic text-center" colspan="2">No specifications published yet. Owner review required.</td>
                   </tr>
                 )}
               </tbody>

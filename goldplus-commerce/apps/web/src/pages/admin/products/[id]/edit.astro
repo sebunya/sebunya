@@ -1,0 +1,166 @@
+---
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import AdminPageHeader from '../../../../components/AdminPageHeader.astro';
+import FormField from '../../../../components/FormField.astro';
+import FormFeedback from '../../../../components/FormFeedback.astro';
+import Notice from '../../../../components/Notice.astro';
+import StatusBadge from '../../../../components/StatusBadge.astro';
+import { apiBase } from '../../../../lib/api';
+import { readSessionToken, clearSessionCookie } from '../../../../lib/session';
+import type { ProductPublicDto } from '@goldplus/shared';
+
+const { id } = Astro.params;
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}/edit`, 303);
+}
+
+let status: 'success' | 'error' | null = null;
+let message: string | undefined;
+
+async function authedJson<T>(path: string, init?: RequestInit): Promise<{ status: number; data: T | null; error?: string }> {
+  const res = await fetch(`${apiBase}${path}`, {
+    ...(init ?? {}),
+    headers: { ...(init?.headers as any ?? {}), Authorization: `Bearer ${token}` },
+  });
+  const json = await res.json().catch(() => null);
+  return { status: res.status, data: json?.success ? (json.data as T) : null, error: json?.error?.message };
+}
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('_action') ?? '');
+
+  if (action === 'add_image') {
+    const url = String(form.get('url') ?? '').trim();
+    const altText = String(form.get('altText') ?? '').trim() || null;
+    const makePrimary = form.get('makePrimary') === 'on';
+    const res = await authedJson(`/admin/products/${encodeURIComponent(id ?? '')}/images`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, altText, makePrimary }),
+    });
+    if (res.status >= 200 && res.status < 300) {
+      status = 'success';
+      message = 'Image added.';
+    } else {
+      status = 'error';
+      message = res.error ?? `Could not add image (HTTP ${res.status}).`;
+    }
+  } else if (action === 'set_attribute') {
+    const attributeId = String(form.get('attributeId') ?? '').trim();
+    const value = String(form.get('value') ?? '').trim();
+    const isVerified = form.get('isVerified') === 'on';
+    const res = await authedJson(`/admin/products/${encodeURIComponent(id ?? '')}/attribute-values`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attributeId, value, isVerified }),
+    });
+    if (res.status >= 200 && res.status < 300) {
+      status = 'success';
+      message = 'Attribute value set.';
+    } else {
+      status = 'error';
+      message = res.error ?? `Could not set attribute value (HTTP ${res.status}).`;
+    }
+  }
+}
+
+const productRes = await authedJson<ProductPublicDto>(`/products/${encodeURIComponent(id ?? '')}`);
+if (productRes.status === 401 || productRes.status === 403) {
+  Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+  return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}/edit`, 303);
+}
+const product = productRes.data;
+---
+
+<BaseLayout title={product ? `Edit ${product.name}` : 'Edit product'}>
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <AdminPageHeader
+      title={product ? `Edit: ${product.name}` : 'Edit product'}
+      description="Add images by URL and set verified attribute values. Every change is audited."
+      backHref="/admin/products"
+      backLabel="Back to products"
+    />
+
+    {!product ? (
+      <Notice kind="not-configured" title="Product unavailable" message="Could not load this product from the API." />
+    ) : (
+      <div class="space-y-8">
+        <FormFeedback status={status} message={message} />
+
+        <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+          <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4">Images ({product.images.length})</h2>
+
+          {product.images.length === 0 ? (
+            <p class="text-sm text-brand-mutedGrey italic mb-4">No images yet. Add the first image below.</p>
+          ) : (
+            <ul class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              {product.images.map((img, idx) => (
+                <li class="border border-brand-borderGrey rounded-xl overflow-hidden bg-brand-softGrey">
+                  <div class="aspect-square bg-white flex items-center justify-center">
+                    <img src={img.url} alt={img.alt ?? ''} class="max-w-full max-h-full object-contain" />
+                  </div>
+                  <div class="p-2 text-[10px] font-mono text-brand-mutedGrey break-all">
+                    {idx === 0 && <span class="inline-block px-1 py-0.5 mr-1 bg-brand-primary text-brand-charcoal font-bold uppercase tracking-widest">Primary</span>}
+                    {img.url.slice(0, 60)}…
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <form method="POST" action={Astro.url.pathname} class="space-y-4">
+            <input type="hidden" name="_action" value="add_image" />
+            <FormField id="url" name="url" label="Image URL" type="url" required placeholder="https://…" helperText="Must be https. No file upload in Phase 1.1." />
+            <FormField id="altText" name="altText" label="Alt text" helperText="Short description for accessibility and SEO." />
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" name="makePrimary" class="w-5 h-5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
+              <span class="text-sm font-bold text-brand-charcoal">Make primary image</span>
+            </label>
+            <button type="submit" class="bg-brand-primary text-brand-charcoal px-6 py-2 rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none">
+              Add image
+            </button>
+          </form>
+        </section>
+
+        <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+          <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4">Attribute values ({product.attributeValues.length})</h2>
+
+          {product.attributeValues.length === 0 ? (
+            <p class="text-sm text-brand-mutedGrey italic mb-4">No attribute values set yet.</p>
+          ) : (
+            <ul class="divide-y divide-brand-borderGrey mb-6">
+              {product.attributeValues.map((v) => (
+                <li class="py-2 flex items-center justify-between gap-3">
+                  <span class="text-sm font-bold text-brand-charcoal">{v.name}</span>
+                  <span class="text-sm text-brand-charcoal flex items-center gap-2">
+                    {v.value}{v.unit ? ` ${v.unit}` : ''}
+                    {v.isVerified
+                      ? <StatusBadge status="success" label="Verified" />
+                      : <StatusBadge status="warning" label="Unverified" />}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <Notice kind="info" title="Adding new attribute slots" message="Defining new attributes per category is a separate flow (POST /admin/products/attributes). The form below sets values against existing attribute UUIDs." />
+
+          <form method="POST" action={Astro.url.pathname} class="space-y-4 mt-4">
+            <input type="hidden" name="_action" value="set_attribute" />
+            <FormField id="attributeId" name="attributeId" label="Attribute ID" required helperText="UUID of the attribute defined for this product's category." />
+            <FormField id="value" name="value" label="Value" required helperText="e.g. 20W, 5000mAh, USB-C" />
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" name="isVerified" class="w-5 h-5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
+              <span class="text-sm font-bold text-brand-charcoal">Mark as verified (eligible for SEO structured data)</span>
+            </label>
+            <button type="submit" class="bg-brand-primary text-brand-charcoal px-6 py-2 rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none">
+              Set value
+            </button>
+          </form>
+        </section>
+      </div>
+    )}
+  </div>
+</BaseLayout>

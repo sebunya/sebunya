@@ -1,9 +1,19 @@
-export type NotificationResult = {
-  success: boolean;
-  code?: string;
-  message?: string;
-};
+export type NotificationStatus = 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'DISABLED';
+
+export interface NotificationDispatchPayload {
+  recipient: string;
+  template: string;
+  data: Record<string, unknown>;
+  relatedEntity: string;
+  relatedEntityId: string;
+}
+
+export interface NotificationDispatchResult {
+  status: NotificationStatus;
+  providerCode: string | null;
+  providerMessage: string;
+}
 
 export interface INotificationProvider {
-  send(recipient: string, message: string): Promise<NotificationResult>;
+  dispatch(payload: NotificationDispatchPayload): Promise<NotificationDispatchResult>;
 }

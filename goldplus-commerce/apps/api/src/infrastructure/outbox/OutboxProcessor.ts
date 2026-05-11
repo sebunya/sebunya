@@ -1,6 +1,9 @@
+import { Registry } from '../Registry';
+
 export class OutboxProcessor {
   async processPendingEvents() {
-    // Read from outbox_events where isProcessed = false
-    console.log('Processing outbox events...');
+    // Shim to delegate execution to the centralized architecture pattern Use Case
+    const registry = Registry.getInstance();
+    return registry.processOutboxBatchUseCase.execute();
   }
 }

@@ -11,6 +11,8 @@ import accountRoutes from './routes/account';
 import adminAuditRoutes from './routes/admin/audit';
 import adminUsersRoutes from './routes/admin/users';
 import adminRolesRoutes from './routes/admin/roles';
+import adminProductsRoutes from './routes/admin/products';
+import adminNotificationsRoutes from './routes/admin/notifications';
 
 
 // Define typed variables for the Hono context
@@ -34,6 +36,8 @@ app.route('/account', accountRoutes);
 app.route('/admin/audit', adminAuditRoutes);
 app.route('/admin/users', adminUsersRoutes);
 app.route('/admin/roles', adminRolesRoutes);
+app.route('/admin/products', adminProductsRoutes);
+app.route('/admin/notifications', adminNotificationsRoutes);
 
 
 

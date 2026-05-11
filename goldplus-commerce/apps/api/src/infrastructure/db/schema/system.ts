@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, boolean, jsonb, text } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, jsonb, text, integer } from 'drizzle-orm/pg-core';
 
 import { products } from './products';
 
@@ -20,6 +20,9 @@ export const outboxEvents = pgTable('outbox_events', {
   isProcessed: boolean('is_processed').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   processedAt: timestamp('processed_at', { withTimezone: true }),
+  attemptCount: integer('attempt_count').default(0).notNull(),
+  lastError: text('last_error'),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const verificationCodes = pgTable('verification_codes', {

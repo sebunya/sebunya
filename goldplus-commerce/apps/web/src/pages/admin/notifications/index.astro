@@ -1,18 +1,183 @@
 ---
-import BaseLayout from "../../../layouts/BaseLayout.astro";
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import AdminPageHeader from '../../../components/AdminPageHeader.astro';
+import StatusBadge from '../../../components/StatusBadge.astro';
+import Notice from '../../../components/Notice.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken, clearSessionCookie } from '../../../lib/session';
+import type { ApiEnvelope } from '@goldplus/shared';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect(`/admin/login?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 303);
+}
+
+interface NotificationAttemptDto {
+  id: string;
+  channel: string;
+  recipient: string;
+  template: string;
+  status: 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'DISABLED';
+  providerCode: string | null;
+  providerMessage: string | null;
+  relatedEntity: string | null;
+  relatedEntityId: string | null;
+  attemptedAt: string;
+}
+
+let attempts: NotificationAttemptDto[] = [];
+let fetchError: string | null = null;
+
+try {
+  const res = await fetch(`${apiBase}/admin/notifications?limit=100`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    return Astro.redirect(`/admin/login?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 303);
+  }
+
+  if (!res.ok) {
+    fetchError = `API returned HTTP ${res.status}`;
+  } else {
+    const json = await res.json() as ApiEnvelope<NotificationAttemptDto[]>;
+    if (json.success && Array.isArray(json.data)) {
+      attempts = json.data;
+    } else {
+      fetchError = json.error?.message ?? 'Invalid data received from server.';
+    }
+  }
+} catch (err: any) {
+  fetchError = `Network failure loading notifications.`;
+}
+
+// Precompute stats
+const sentCount = attempts.filter(a => a.status === 'SENT').length;
+const notConfigCount = attempts.filter(a => a.status === 'NOT_CONFIGURED' || a.status === 'DISABLED').length;
+const failedCount = attempts.filter(a => a.status === 'FAILED').length;
+
+function maskRecipient(recipient: string, channel: string): string {
+  if (!recipient) return 'N/A';
+  const r = recipient.trim();
+  if (channel === 'email' || r.includes('@')) {
+    const parts = r.split('@');
+    if (parts.length < 2) return r.slice(0, 3) + '...';
+    const local = parts[0];
+    const domain = parts[1];
+    const maskedLocal = local.length > 2 ? local.slice(0, 2) + '…' : local + '…';
+    return `${maskedLocal}@${domain}`;
+  }
+  // Phone number / other format
+  if (r.length <= 6) return '***' + r.slice(-2);
+  return r.slice(0, 3) + '…' + r.slice(-3);
+}
+
+const statusToBadgeKind = {
+  SENT: 'success',
+  FAILED: 'error',
+  NOT_CONFIGURED: 'warning',
+  DISABLED: 'inactive',
+} as const;
+
 ---
 
-<BaseLayout title="Notification Logs Admin Shell">
-  <div class="py-8">
-    <h1 class="text-3xl font-bold mb-6">Notification Logs Admin Shell</h1>
-    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-      <div class="flex">
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            This is a Phase 1 module shell. Future implementation goes here.
-          </p>
-        </div>
+<BaseLayout title="System Notifications | GoldPlus Admin">
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <AdminPageHeader
+      title="Notification History"
+      description="Truthful system log of all triggered customer and operational notifications."
+      backHref="/admin"
+      backLabel="Dashboard"
+    />
+
+    {fetchError && (
+      <div class="mb-8">
+        <Notice kind="not-configured" title="Failed to load logs" message={fetchError} />
       </div>
-    </div>
+    )}
+
+    {!fetchError && (
+      <>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div class="bg-white rounded-2xl p-6 border border-brand-borderGrey shadow-sm">
+            <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-1">Sent</p>
+            <h3 class="text-3xl font-black text-green-600">{sentCount}</h3>
+            <p class="text-xs text-brand-mutedGrey mt-2">Confirmed by provider</p>
+          </div>
+          <div class="bg-white rounded-2xl p-6 border border-brand-borderGrey shadow-sm">
+            <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-1">Not Ready</p>
+            <h3 class="text-3xl font-black text-amber-600">{notConfigCount}</h3>
+            <p class="text-xs text-brand-mutedGrey mt-2">Configuration missing / disabled</p>
+          </div>
+          <div class="bg-white rounded-2xl p-6 border border-brand-borderGrey shadow-sm">
+            <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-1">Failed</p>
+            <h3 class="text-3xl font-black text-red-600">{failedCount}</h3>
+            <p class="text-xs text-brand-mutedGrey mt-2">Terminal delivery failure</p>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-brand-borderGrey shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-brand-softGrey border-b border-brand-borderGrey">
+                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Attempted</th>
+                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Channel</th>
+                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Template</th>
+                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Recipient</th>
+                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Status</th>
+                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Response</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-brand-borderGrey">
+                {attempts.length === 0 ? (
+                  <tr>
+                    <td colspan="6" class="px-6 py-12 text-center text-brand-mutedGrey italic">
+                      No recent notification attempts found.
+                    </td>
+                  </tr>
+                ) : (
+                  attempts.map((a) => (
+                    <tr class="hover:bg-brand-softGrey/30 transition-colors group">
+                      <td class="px-6 py-4 text-sm text-brand-charcoal font-medium whitespace-nowrap">
+                        {new Date(a.attemptedAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
+                      </td>
+                      <td class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey whitespace-nowrap">
+                        {a.channel}
+                      </td>
+                      <td class="px-6 py-4 text-sm font-mono text-brand-charcoal">
+                        {a.template}
+                      </td>
+                      <td class="px-6 py-4 text-sm text-brand-charcoal whitespace-nowrap">
+                        {maskRecipient(a.recipient, a.channel)}
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap">
+                        <StatusBadge
+                          status={statusToBadgeKind[a.status] || 'inactive'}
+                          label={a.status.replace('_', ' ')}
+                        />
+                      </td>
+                      <td class="px-6 py-4">
+                        <div class="text-xs text-brand-charcoal truncate max-w-[250px] group-hover:whitespace-normal group-hover:break-words" title={`${a.providerCode || ''}: ${a.providerMessage || ''}`}>
+                          <span class="font-bold mr-1">{a.providerCode || 'N/A'}</span>
+                          <span class="text-brand-mutedGrey">{a.providerMessage || '-'}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="mt-4 text-xs text-brand-mutedGrey italic text-right">
+          Displaying top {attempts.length} recent events.
+        </div>
+      </>
+    )}
   </div>
 </BaseLayout>
