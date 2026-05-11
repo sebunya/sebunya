@@ -6,6 +6,7 @@ import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import commerceRoutes from './routes/commerce';
 import governanceRoutes from './routes/governance';
+import webhookRoutes from './routes/webhooks';
 
 
 // Define typed variables for the Hono context
@@ -24,6 +25,7 @@ app.route('/auth', authRoutes);
 app.route('/products', productRoutes);
 app.route('/commerce', commerceRoutes);
 app.route('/governance', governanceRoutes);
+app.route('/webhooks', webhookRoutes);
 
 
 
@@ -46,7 +48,24 @@ app.get('/health', (c) => {
 // Error Handling
 app.onError((err, c) => {
   console.error(`[ERROR] ${err.message}`);
-  // Intentionally omitting err.stack in response to avoid leaking details
+  
+  // Detect database connection issues to deliver typed fallback requirement
+  const isDbError = err.message?.includes('ECONNREFUSED') || err.message?.includes('DATABASE_URL') || !process.env.DATABASE_URL;
+  
+  if (isDbError) {
+    const dbRes: ApiResponse<never> = {
+      success: false,
+      error: {
+        code: 'DB_NOT_CONFIGURED',
+        message: 'Service temporarily offline: The persistent layer is unconfigured.',
+      },
+      meta: {
+        requestId: c.get('requestId') as string,
+      }
+    };
+    return c.json(dbRes, 503);
+  }
+
   const res: ApiResponse<never> = {
     success: false,
     error: {

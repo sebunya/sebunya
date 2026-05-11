@@ -1,18 +1,68 @@
 ---
-import BaseLayout from "../../../layouts/BaseLayout.astro";
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import AdminPageHeader from '../../../components/AdminPageHeader.astro';
+import AdminTable from '../../../components/AdminTable.astro';
+import StatusBadge from '../../../components/StatusBadge.astro';
+import EmptyState from '../../../components/EmptyState.astro';
+import Notice from '../../../components/Notice.astro';
+import { tryFetchAdminList } from '../../../lib/api';
+import { SAMPLE_QUOTES, type SampleQuote } from '../../../lib/sample-data';
+
+const result = await tryFetchAdminList<SampleQuote>(
+  '/governance/admin/quotes',
+  SAMPLE_QUOTES,
+  'Sample quote requests shown until /governance/admin/quotes is wired.',
+);
+
+const statusToBadge: Record<SampleQuote['status'], { variant: 'pending' | 'info' | 'success' | 'neutral'; label: string }> = {
+  new: { variant: 'pending', label: 'New' },
+  quoted: { variant: 'info', label: 'Quoted' },
+  won: { variant: 'success', label: 'Won' },
+  lost: { variant: 'neutral', label: 'Lost' },
+};
 ---
 
-<BaseLayout title="Quote Admin Shell">
-  <div class="py-8">
-    <h1 class="text-3xl font-bold mb-6">Quote Admin Shell</h1>
-    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-      <div class="flex">
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            This is a Phase 1 module shell. Future implementation goes here.
-          </p>
-        </div>
+<BaseLayout title="Quote requests — Admin">
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <AdminPageHeader
+      title="Quote requests"
+      description="Retail bulk, wholesale and corporate quote enquiries. Owner sign-off required before pricing is sent."
+    />
+
+    {result.isSample && (
+      <div class="mb-6">
+        <Notice kind="sample" message={result.reason} />
       </div>
-    </div>
+    )}
+
+    {result.items.length === 0 ? (
+      <EmptyState
+        title="No quote requests yet"
+        message="Once buyers submit /quote-request, their enquiries appear here."
+      />
+    ) : (
+      <AdminTable caption={`Last ${result.items.length} requests`}>
+        <Fragment slot="head">
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Customer</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Product</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Quantity</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Contact</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Status</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Created</th>
+        </Fragment>
+        {result.items.map((q) => (
+          <tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="px-6 py-4 font-bold text-brand-dark">{q.customerName}</td>
+            <td class="px-6 py-4 text-gray-700">{q.productName}</td>
+            <td class="px-6 py-4 text-gray-700">{q.quantity}</td>
+            <td class="px-6 py-4 text-gray-600 text-xs">{q.email}<br />{q.phone}</td>
+            <td class="px-6 py-4">
+              <StatusBadge status={statusToBadge[q.status].variant} label={statusToBadge[q.status].label} />
+            </td>
+            <td class="px-6 py-4 text-gray-500 text-xs">{new Date(q.createdAt).toLocaleDateString('en-GB')}</td>
+          </tr>
+        ))}
+      </AdminTable>
+    )}
   </div>
 </BaseLayout>

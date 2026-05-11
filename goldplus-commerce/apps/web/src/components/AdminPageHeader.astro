@@ -1,0 +1,18 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+  backHref?: string;
+  backLabel?: string;
+}
+const { title, description, backHref = '/admin', backLabel = 'Back to dashboard' } = Astro.props;
+---
+<div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8 pb-6 border-b border-gray-200">
+  <div class="min-w-0">
+    <h1 class="text-2xl md:text-3xl font-black text-brand-dark tracking-tight">{title}</h1>
+    {description && <p class="text-gray-600 text-sm mt-1 max-w-2xl leading-relaxed">{description}</p>}
+  </div>
+  <a href={backHref} class="text-sm font-bold text-gray-600 hover:text-brand-dark inline-flex items-center gap-1 self-start focus-visible:ring-2 focus-visible:ring-brand-green focus-visible:ring-offset-2 outline-none rounded">
+    <span aria-hidden="true">&larr;</span> {backLabel}
+  </a>
+</div>

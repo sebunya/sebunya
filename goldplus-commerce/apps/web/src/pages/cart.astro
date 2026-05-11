@@ -1,96 +1,128 @@
 ---
-import BaseLayout from "../layouts/BaseLayout.astro";
+import BaseLayout from '../layouts/BaseLayout.astro';
+import EmptyState from '../components/EmptyState.astro';
+import Notice from '../components/Notice.astro';
+import { apiBase } from '../lib/api';
+import { readCartSessionId } from '../lib/cart-session';
+import type { ApiEnvelope } from '@goldplus/shared';
 
-// Mock cart data for Phase 1
-const cartItems = [
-  {
-    id: "generic-fast-charger",
-    name: "Generic Fast Charger",
-    category: "Power",
-    price: 50000,
-    quantity: 2,
-    hasImage: false,
-  },
-  {
-    id: "wireless-earbuds",
-    name: "Wireless Earbuds",
-    category: "Sound",
-    price: 80000,
-    quantity: 1,
-    hasImage: false,
+interface CartItem {
+  productId: string;
+  slug: string;
+  name: string;
+  categoryName: string | null;
+  quantity: number;
+  unitPriceUgx: number;
+}
+
+interface CartResponse {
+  id: string;
+  items: CartItem[];
+  subtotalUgx: number;
+}
+
+const sessionId = readCartSessionId(Astro.request);
+
+let cart: CartResponse | null = null;
+let fetchError: string | null = null;
+
+if (sessionId) {
+  try {
+    const res = await fetch(`${apiBase}/commerce/carts/${encodeURIComponent(sessionId)}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok && res.status !== 404) {
+      fetchError = `Failed to load cart (HTTP ${res.status})`;
+    } else if (res.ok) {
+      const json = (await res.json()) as ApiEnvelope<CartResponse>;
+      if (json.success && json.data) {
+        cart = json.data;
+      }
+    }
+  } catch {
+    fetchError = 'Cannot reach the commerce service right now.';
   }
-];
+}
 
-const subtotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
-const formattedTotal = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX' }).format(subtotal);
+const items: CartItem[] = cart?.items ?? [];
+const subtotal = cart?.subtotalUgx ?? 0;
+
+const formatUgx = (n: number): string =>
+  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
 ---
 
-<BaseLayout title="Your Cart - GoldPlus">
-  <div class="container mx-auto px-4 lg:px-8 py-12">
-    {cartItems.length === 0 ? (
-      <div class="text-center py-20 bg-white rounded-2xl border border-gray-200">
-        <svg class="w-20 h-20 mx-auto text-gray-200 mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-        <h2 class="text-2xl font-bold text-brand-dark mb-2">Your cart is empty</h2>
-        <p class="text-gray-500 mb-8">Looks like you haven't added any premium electronics yet.</p>
-        <a href="/shop" class="inline-block px-8 py-3 bg-brand-green text-white rounded-lg font-bold hover:bg-green-700 transition-colors">Start Shopping</a>
+<BaseLayout title="Your cart">
+  <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
+    <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal mb-8 tracking-tight">Your cart</h1>
+
+    {fetchError && (
+      <div class="mb-6">
+        <Notice kind="not-configured" title="Cart service unavailable" message={fetchError} />
       </div>
+    )}
+
+    {items.length === 0 ? (
+      <EmptyState
+        title="Your cart is empty"
+        message="Browse the shop and add a product to get started. Cart contents persist for this device."
+      >
+        <a href="/shop" class="inline-block px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none">
+          Start shopping
+        </a>
+      </EmptyState>
     ) : (
-      <div class="flex flex-col lg:flex-row gap-12">
-        
-        {/* Cart Items */}
+      <div class="flex flex-col lg:flex-row gap-10">
         <div class="w-full lg:w-2/3">
-          <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-            <ul class="divide-y divide-gray-100">
-              {cartItems.map(item => (
-                <li class="p-6 flex flex-col sm:flex-row items-center gap-6">
-                  <div class="w-24 h-24 bg-gray-50 rounded-xl flex-shrink-0 flex items-center justify-center text-[10px] text-gray-400 font-bold border border-gray-100 uppercase text-center p-2">
-                    {item.hasImage ? 'Image' : 'Missing Image'}
+          <div class="bg-white rounded-2xl border border-brand-borderGrey overflow-hidden shadow-sm">
+            <ul class="divide-y divide-brand-borderGrey" aria-label="Cart items">
+              {items.map((item) => (
+                <li class="p-5 md:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+                  <div class="w-20 h-20 bg-brand-softGrey rounded-lg flex-shrink-0 flex items-center justify-center text-[10px] text-brand-mutedGrey font-bold border border-brand-borderGrey uppercase text-center p-2">
+                    No image
                   </div>
-                  <div class="flex-grow text-center sm:text-left">
-                    <p class="text-xs font-bold text-brand-green uppercase tracking-widest mb-1">{item.category}</p>
-                    <h3 class="text-lg font-bold text-brand-dark mb-1">{item.name}</h3>
-                    <p class="text-brand-dark font-black">UGX {item.price.toLocaleString()}</p>
+                  <div class="flex-grow min-w-0">
+                    {item.categoryName && (
+                      <p class="text-xs font-bold text-brand-primary uppercase tracking-widest mb-1">{item.categoryName}</p>
+                    )}
+                    <a href={`/products/${item.slug}`} class="font-bold text-brand-charcoal hover:underline">{item.name}</a>
+                    <p class="text-sm text-brand-mutedGrey mt-1">Qty: {item.quantity} × {formatUgx(item.unitPriceUgx)}</p>
                   </div>
-                  <div class="flex items-center gap-4 bg-gray-50 rounded-lg p-1 border border-gray-200">
-                    <button class="w-8 h-8 flex items-center justify-center font-bold text-gray-500 hover:text-brand-dark transition-colors">-</button>
-                    <span class="w-8 text-center font-bold text-brand-dark">{item.quantity}</span>
-                    <button class="w-8 h-8 flex items-center justify-center font-bold text-gray-500 hover:text-brand-dark transition-colors">+</button>
-                  </div>
-                  <div class="text-right min-w-[120px]">
-                    <p class="text-lg font-black text-brand-dark">UGX {(item.price * item.quantity).toLocaleString()}</p>
-                    <button class="text-sm font-bold text-red-500 hover:text-red-700 transition-colors mt-1">Remove</button>
-                  </div>
+                  <p class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(item.unitPriceUgx * item.quantity)}</p>
                 </li>
               ))}
             </ul>
           </div>
         </div>
 
-        {/* Order Summary */}
-        <div class="w-full lg:w-1/3">
-          <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm sticky top-24">
-            <h2 class="text-xl font-bold text-brand-dark mb-6">Order Summary</h2>
-            <div class="space-y-4 mb-6">
-              <div class="flex justify-between text-gray-600">
-                <span>Subtotal</span>
-                <span class="font-bold text-brand-dark">UGX {subtotal.toLocaleString()}</span>
+        <aside class="w-full lg:w-1/3">
+          <div class="bg-white rounded-2xl border border-brand-borderGrey p-6 sticky top-24">
+            <h2 class="text-lg font-bold text-brand-charcoal mb-4">Summary</h2>
+            <dl class="space-y-2 text-sm">
+              <div class="flex items-center justify-between">
+                <dt class="text-brand-mutedGrey">Subtotal</dt>
+                <dd class="font-bold text-brand-charcoal">{formatUgx(subtotal)}</dd>
               </div>
-              <div class="flex justify-between text-gray-600">
-                <span>Shipping</span>
-                <span class="text-sm italic">Calculated at checkout</span>
+              <div class="flex items-center justify-between">
+                <dt class="text-brand-mutedGrey">Delivery</dt>
+                <dd class="text-brand-mutedGrey italic">Calculated at checkout</dd>
               </div>
-              <div class="border-t border-gray-100 pt-4 flex justify-between items-end">
-                <span class="text-lg font-bold text-brand-dark">Total</span>
-                <span class="text-2xl font-black text-brand-green">{formattedTotal}</span>
+              <div class="flex items-center justify-between pt-3 border-t border-brand-borderGrey">
+                <dt class="font-bold text-brand-charcoal">Total</dt>
+                <dd class="font-black text-brand-charcoal">{formatUgx(subtotal)}</dd>
               </div>
-            </div>
-            <a href="/checkout" class="block w-full text-center bg-brand-dark text-white py-4 rounded-xl font-bold text-lg hover:bg-black transition-all transform hover:-translate-y-1 shadow-lg shadow-gray-200">
-              Proceed to Checkout
-            </a>
-            <p class="text-center text-xs text-gray-400 mt-6">Secure Checkout Powered by GoldPlus Commerce OS</p>
-          </div>
-        </div>
+            </dl>
 
+            <a
+              href="/checkout"
+              class="block w-full text-center mt-6 px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none"
+            >
+              Continue to checkout
+            </a>
+            <a href="/shop" class="block text-center mt-3 text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">
+              Continue shopping
+            </a>
+          </div>
+        </aside>
       </div>
     )}
   </div>

@@ -1,0 +1,54 @@
+---
+interface Props {
+  kind: 'sample' | 'not-configured' | 'owner-review' | 'info';
+  title?: string;
+  message?: string;
+}
+const { kind, title, message } = Astro.props;
+
+const config = {
+  sample: {
+    title: title ?? 'Sample data',
+    message: message ?? 'Sample data. Replace with production records after DATABASE_URL is configured.',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+    text: 'text-amber-900',
+    glyph: 'i',
+  },
+  'not-configured': {
+    title: title ?? 'Not configured',
+    message: message ?? 'This integration is not configured. It will activate once credentials are supplied.',
+    bg: 'bg-gray-50',
+    border: 'border-gray-200',
+    text: 'text-gray-700',
+    glyph: '!',
+  },
+  'owner-review': {
+    title: title ?? 'Owner review required',
+    message: message ?? 'This area is awaiting owner sign-off. Some details may not yet be final.',
+    bg: 'bg-orange-50',
+    border: 'border-orange-200',
+    text: 'text-orange-900',
+    glyph: '?',
+  },
+  info: {
+    title: title ?? 'Heads up',
+    message: message ?? '',
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
+    text: 'text-blue-900',
+    glyph: 'i',
+  },
+} as const;
+
+const c = config[kind];
+---
+
+<div class={`${c.bg} border ${c.border} ${c.text} rounded-xl p-4 flex items-start gap-3`} role="status">
+  <span aria-hidden="true" class="w-6 h-6 rounded-full bg-white/70 flex items-center justify-center font-black text-sm shrink-0">{c.glyph}</span>
+  <div class="flex-1 min-w-0">
+    <p class="text-sm font-bold">{c.title}</p>
+    {c.message && <p class="text-xs mt-1 leading-relaxed">{c.message}</p>}
+    <slot />
+  </div>
+</div>

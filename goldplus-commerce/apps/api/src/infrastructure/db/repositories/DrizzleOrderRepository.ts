@@ -1,7 +1,7 @@
 import { db } from '../client';
 import { orders, orderItems } from '../schema/commerce';
-import { eq } from 'drizzle-orm';
-import { Order, OrderStatus, PaymentStatus } from '../../../domain/commerce/Order';
+import { eq, desc } from 'drizzle-orm';
+import { Order, OrderStatus, PaymentStatus, BuyerType } from '../../../domain/commerce/Order';
 
 export class DrizzleOrderRepository {
   async findById(id: string): Promise<Order | null> {
@@ -14,54 +14,101 @@ export class DrizzleOrderRepository {
 
     if (!result) return null;
 
-    // Mapping schema status to domain status
-    // Note: This needs careful mapping if domain and schema diverge
     return new Order(
       result.id,
-      result.userId || 'guest',
+      result.orderNumber,
+      result.customerName,
+      result.customerPhone,
+      result.customerEmail ?? undefined,
+      result.deliveryArea,
+      result.deliveryAddress,
+      result.buyerType as BuyerType,
       (result as any).items.map((item: any) => ({
         productId: item.productId,
-        name: 'Item', // Schema doesn't store name in order_items, usually joined from products
+        sku: item.sku,
+        name: item.productName,
         price: item.unitPrice,
         quantity: item.quantity,
       })),
+      result.subtotalAmount,
+      result.deliveryFee,
       result.totalAmount,
+      result.paymentStatus as PaymentStatus,
       result.status as OrderStatus,
-      'unpaid', // Placeholder mapping
       result.createdAt,
-      {
-        name: 'Customer',
-        email: result.customerEmail || '',
-        phone: result.customerPhone || '',
-      }
+      result.updatedAt
     );
+  }
+
+  async findAll(): Promise<Order[]> {
+    const results = await db.query.orders.findMany({
+      orderBy: [desc(orders.createdAt)],
+      with: {
+        items: true,
+      }
+    });
+
+    return results.map(result => new Order(
+      result.id,
+      result.orderNumber,
+      result.customerName,
+      result.customerPhone,
+      result.customerEmail ?? undefined,
+      result.deliveryArea,
+      result.deliveryAddress,
+      result.buyerType as BuyerType,
+      (result as any).items.map((item: any) => ({
+        productId: item.productId,
+        sku: item.sku,
+        name: item.productName,
+        price: item.unitPrice,
+        quantity: item.quantity,
+      })),
+      result.subtotalAmount,
+      result.deliveryFee,
+      result.totalAmount,
+      result.paymentStatus as PaymentStatus,
+      result.status as OrderStatus,
+      result.createdAt,
+      result.updatedAt
+    ));
   }
 
   async save(order: Order): Promise<void> {
     await db.transaction(async (tx) => {
       await tx.insert(orders).values({
         id: order.id,
-        orderNumber: `ORD-${order.id.substring(0, 8)}`,
-        userId: order.customerId === 'guest' ? null : order.customerId,
-        status: order.status,
-        totalAmount: order.total,
-        customerEmail: order.customerDetails.email,
-        customerPhone: order.customerDetails.phone,
+        orderNumber: order.orderNumber,
+        buyerType: order.buyerType,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        customerEmail: order.customerEmail,
+        deliveryArea: order.deliveryArea,
+        deliveryAddress: order.deliveryAddress,
+        status: order.orderStatus,
+        paymentStatus: order.paymentStatus,
+        subtotalAmount: order.subtotalUgx,
+        deliveryFee: order.deliveryFeeUgx,
+        totalAmount: order.totalUgx,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
       }).onConflictDoUpdate({
         target: orders.id,
         set: {
-          status: order.status,
-          totalAmount: order.total,
+          status: order.orderStatus,
+          paymentStatus: order.paymentStatus,
+          updatedAt: new Date(),
         }
       });
 
-      // Simple implementation: delete and re-insert items for now
       await tx.delete(orderItems).where(eq(orderItems.orderId, order.id));
       
       for (const item of order.items) {
         await tx.insert(orderItems).values({
           orderId: order.id,
           productId: item.productId,
+          sku: item.sku,
+          productName: item.name,
           quantity: item.quantity,
           unitPrice: item.price,
         });

@@ -10,7 +10,7 @@ export class ProductFeedEligibilityRule {
       return { isEligible: false, reason: 'Product fails core advertising requirements (e.g., missing price, stock < 5, or missing image).' };
     }
 
-    if (product.categoryId === 'other-category-id-placeholder') { // Replace with actual check
+    if (product.category === 'other-category-id-placeholder') { // Replace with actual check
       return { isEligible: false, reason: 'Products in the "Other" category are restricted from advertising.' };
     }
 

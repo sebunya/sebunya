@@ -1,0 +1,29 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import EmptyState from '../components/EmptyState.astro';
+
+Astro.response.status = 404;
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<BaseLayout title="Page not found" description="The page you were looking for could not be found.">
+  <div class="container mx-auto px-4 lg:px-8 py-16 md:py-24">
+    <div class="max-w-xl mx-auto">
+      <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4 text-center">Error 404</p>
+      <EmptyState
+        title="We could not find that page"
+        message="It may have been moved or the link may be wrong. Try the shop, or head back to the home page."
+        hint="If you arrived here from a search engine result, the page has likely been retired."
+      >
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <a href="/" class="inline-block w-full sm:w-auto px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none">
+            Go to home
+          </a>
+          <a href="/shop" class="inline-block w-full sm:w-auto px-6 py-3 bg-white text-brand-charcoal border-2 border-brand-borderGrey rounded-lg font-bold hover:border-brand-charcoal focus-visible:ring-4 focus-visible:ring-brand-charcoal/10 outline-none">
+            Browse shop
+          </a>
+        </div>
+      </EmptyState>
+    </div>
+  </div>
+</BaseLayout>

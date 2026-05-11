@@ -1,0 +1,100 @@
+---
+import type { ProductPublicDto } from '@goldplus/shared';
+
+interface Props {
+  product: ProductPublicDto;
+}
+
+const { product } = Astro.props;
+const inStock = product.availability.kind === 'in_stock' || product.availability.kind === 'pre_order';
+
+const formatter = new Intl.NumberFormat('en-UG', {
+  style: 'currency',
+  currency: 'UGX',
+  maximumFractionDigits: 0
+});
+
+const formattedPrice = product.retailPriceUgx 
+  ? formatter.format(product.retailPriceUgx) 
+  : 'Price on request';
+
+const availabilityLabel = (() => {
+  switch(product.availability.kind) {
+    case 'in_stock': return 'In Stock';
+    case 'pre_order': return 'Pre-Order';
+    case 'out_of_stock': return 'Out of Stock';
+    default: return 'Check Availability';
+  }
+})();
+
+const availabilityBadgeClass = (() => {
+  switch(product.availability.kind) {
+    case 'in_stock': return 'bg-brand-charcoal text-white';
+    case 'pre_order': return 'bg-brand-primary text-brand-charcoal';
+    default: return 'bg-red-100 text-red-800';
+  }
+})();
+---
+
+<article class="group flex flex-col h-full border border-brand-borderGrey rounded-2xl p-4 hover:border-brand-primary hover:shadow-lg transition-all bg-white">
+  
+  {/* Product Image & Status Badge */}
+  <div class="relative mb-4">
+    <a href={`/products/${product.slug}`} class="block aspect-square bg-brand-softGrey rounded-xl overflow-hidden relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30">
+      {product.primaryImageUrl ? (
+        <img 
+          src={product.primaryImageUrl} 
+          alt={`Photo of ${product.name}`} 
+          class="object-cover w-full h-full transition-transform group-hover:scale-105"
+          loading="lazy"
+        />
+      ) : (
+        <div class="absolute inset-0 flex flex-col items-center justify-center text-brand-mutedGrey bg-brand-softGrey p-4 text-center">
+          <svg class="w-8 h-8 mb-2 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+          <span class="text-xs font-bold uppercase tracking-widest">Image Pending</span>
+        </div>
+      )}
+      <div class="absolute top-2 left-2">
+         <span class={`text-xs font-bold px-2.5 py-1 rounded uppercase tracking-wider ${availabilityBadgeClass}`}>
+           {availabilityLabel}
+         </span>
+      </div>
+    </a>
+  </div>
+  
+  <div class="flex flex-col flex-grow">
+    {/* Category */}
+    <p class="text-xs font-bold text-brand-primary uppercase tracking-widest mb-1.5">{product.categoryName}</p>
+    
+    {/* Title */}
+    <h3 class="text-lg font-bold text-brand-charcoal leading-tight mb-2 group-hover:text-brand-primary transition-colors">
+      <a href={`/products/${product.slug}`} class="outline-none focus-visible:underline">
+        {product.name}
+      </a>
+    </h3>
+    
+    {/* Conditional SKU Tag */}
+    {product.sku ? (
+      <p class="text-xs text-brand-mutedGrey font-mono bg-brand-softGrey inline-block self-start px-2 py-1 rounded border border-brand-borderGrey mb-4">
+        SKU: {product.sku}
+      </p>
+    ) : (
+      <p class="text-xs text-red-600 italic bg-red-50 inline-block self-start px-2 py-1 rounded border border-red-100 mb-4">
+        Identifier pending review
+      </p>
+    )}
+
+    <div class="mt-auto pt-4 border-t border-brand-borderGrey flex items-center justify-between gap-2">
+      <p class={`font-black ${product.retailPriceUgx ? 'text-xl text-brand-charcoal' : 'text-sm text-brand-mutedGrey font-bold'}`}>
+        {formattedPrice}
+      </p>
+      
+      <a 
+        href={`/products/${product.slug}`}
+        class="px-4 py-2 rounded-lg font-bold text-sm transition-colors outline-none focus:ring-4 focus:ring-brand-primary/20 bg-brand-softGrey text-brand-charcoal hover:bg-brand-borderGrey"
+        aria-label={`View ${product.name}`}>
+         View
+      </a>
+    </div>
+  </div>
+</article>

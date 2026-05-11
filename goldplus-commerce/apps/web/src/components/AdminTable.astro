@@ -1,0 +1,17 @@
+---
+interface Props { caption?: string; }
+const { caption } = Astro.props;
+---
+<div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-left border-collapse">
+      {caption && <caption class="text-left text-xs text-gray-500 px-6 py-3 bg-gray-50 border-b border-gray-100">{caption}</caption>}
+      <thead class="bg-gray-50 border-b border-gray-200">
+        <tr><slot name="head" /></tr>
+      </thead>
+      <tbody class="text-sm">
+        <slot />
+      </tbody>
+    </table>
+  </div>
+</div>

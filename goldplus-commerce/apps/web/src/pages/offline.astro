@@ -1,0 +1,35 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="You are offline">
+  <div class="container mx-auto px-4 lg:px-8 py-20 md:py-28">
+    <div class="max-w-xl mx-auto text-center">
+      <div aria-hidden="true" class="w-16 h-16 mx-auto mb-6 rounded-full bg-brand-primary/15 text-brand-charcoal flex items-center justify-center font-black text-2xl">
+        ⌁
+      </div>
+      <h1 class="text-3xl md:text-4xl font-black text-brand-charcoal mb-3 tracking-tight">You are offline</h1>
+      <p class="text-brand-mutedGrey leading-relaxed mb-8">
+        We could not reach the GoldPlus servers. This usually means your device is offline.
+        Your cart and account are safe — they will sync as soon as you are back online.
+      </p>
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+        <button
+          type="button"
+          onclick="location.reload()"
+          class="w-full sm:w-auto bg-brand-primary text-brand-charcoal px-6 py-3 rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none"
+        >
+          Retry
+        </button>
+        <a
+          href="/"
+          class="w-full sm:w-auto bg-white text-brand-charcoal border-2 border-brand-borderGrey px-6 py-3 rounded-lg font-bold hover:border-brand-charcoal focus-visible:ring-4 focus-visible:ring-brand-charcoal/10 outline-none text-center"
+        >
+          Go to home
+        </a>
+      </div>
+      <p class="text-xs text-brand-mutedGrey mt-10 leading-relaxed">
+        If this keeps happening, try switching between Wi-Fi and mobile data, or contact your network provider.
+      </p>
+    </div>
+  </div>
+</BaseLayout>

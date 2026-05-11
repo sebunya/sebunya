@@ -1,0 +1,103 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import FormField from '../components/FormField.astro';
+import FormFeedback from '../components/FormFeedback.astro';
+import Notice from '../components/Notice.astro';
+import { postJson } from '../lib/api';
+
+let status: 'success' | 'error' | 'received' | null = null;
+let message: string | undefined;
+let reference: string | undefined;
+let values: Record<string, string> = {};
+
+const kindParam = Astro.url.searchParams.get('kind');
+const initialKind = kindParam === 'wholesale' || kindParam === 'corporate' ? kindParam : 'retail';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const dto = {
+    customerName: String(form.get('customerName') ?? '').trim(),
+    email: String(form.get('email') ?? '').trim(),
+    phone: String(form.get('phone') ?? '').trim(),
+    productName: String(form.get('productName') ?? '').trim(),
+    quantity: String(form.get('quantity') ?? '').trim(),
+    message: String(form.get('message') ?? '').trim(),
+    kind: String(form.get('kind') ?? initialKind),
+  };
+  values = dto;
+  const missing = (['customerName', 'email', 'phone', 'productName', 'quantity'] as const)
+    .filter((k) => !dto[k as keyof typeof dto]);
+  if (missing.length > 0) {
+    status = 'error';
+    message = `Please fill in all required fields: ${missing.join(', ')}.`;
+  } else {
+    const result = await postJson('/governance/quotes/request', dto);
+    reference = result.ok ? result.reference : undefined;
+    if (result.ok) {
+      status = 'received';
+      message = 'Quote request received. A sales officer will follow up on the email and phone you provided. Owner review required before pricing is confirmed.';
+      values = {};
+    } else {
+      status = 'error';
+      message = result.code === 'NETWORK'
+        ? 'Cannot reach the sales service right now. Please try again shortly.'
+        : result.message;
+    }
+  }
+}
+
+const buyerOptions = [
+  { v: 'retail', l: 'Retail bulk' },
+  { v: 'wholesale', l: 'Wholesale' },
+  { v: 'corporate', l: 'Corporate' },
+];
+const checkedKind = values.kind || initialKind;
+---
+
+<BaseLayout title="Request a quote">
+  <div class="bg-gray-50 py-12 border-b border-gray-200">
+    <div class="container mx-auto px-4 lg:px-8">
+      <h1 class="text-3xl md:text-4xl font-black tracking-tight text-brand-dark mb-2">Request a quote</h1>
+      <p class="text-gray-600 max-w-2xl text-base md:text-lg leading-relaxed">
+        Tell us what you need. Our sales team prepares pricing and lead times for retail bulk, wholesale and corporate orders.
+      </p>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <div class="max-w-2xl mx-auto space-y-6">
+      <FormFeedback status={status} message={message} reference={reference} />
+      <Notice kind="owner-review" message="Pricing for wholesale and corporate orders is set per request. Final figures require owner sign-off and are not auto-generated." />
+
+      <div class="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
+        <form method="POST" action="/quote-request" novalidate class="space-y-6">
+
+          <fieldset class="border border-gray-200 rounded-xl p-4">
+            <legend class="text-xs font-bold uppercase tracking-widest text-gray-500 px-2">Buyer type</legend>
+            <div class="grid grid-cols-3 gap-2 mt-2">
+              {buyerOptions.map((opt) => (
+                <label class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-gray-200 cursor-pointer text-sm font-bold hover:border-brand-green transition-colors">
+                  <input type="radio" name="kind" value={opt.v} checked={checkedKind === opt.v} class="text-brand-green focus:ring-brand-green" />
+                  <span>{opt.l}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField id="customerName" name="customerName" label="Your name" required defaultValue={values.customerName} autocomplete="name" />
+            <FormField id="email" name="email" label="Email" type="email" required defaultValue={values.email} autocomplete="email" />
+            <FormField id="phone" name="phone" label="Phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" />
+            <FormField id="quantity" name="quantity" label="Quantity needed" required defaultValue={values.quantity} placeholder="e.g. 50 units" />
+          </div>
+          <FormField id="productName" name="productName" label="Product or category" required defaultValue={values.productName} placeholder="e.g. Fast chargers, USB-C cables" />
+          <FormField id="message" name="message" label="Notes for sales" type="textarea" rows={4} defaultValue={values.message} placeholder="Anything we should know? Delivery deadlines, special needs, packaging…" />
+
+          <button type="submit" class="w-full bg-brand-green text-white py-4 rounded-xl font-bold text-lg hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-green/30 outline-none transition-all">
+            Request quote
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

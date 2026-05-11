@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#1C1C1C"/>
+  <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle"
+        font-family="Inter, Arial, sans-serif" font-weight="900" font-size="86" fill="#FFFFFF">
+    Gold<tspan fill="#A6D146">+</tspan>
+  </text>
+</svg>

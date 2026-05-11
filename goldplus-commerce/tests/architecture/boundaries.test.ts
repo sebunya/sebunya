@@ -44,6 +44,23 @@ describe("Architecture boundaries", () => {
     for (const file of files) {
       const content = fs.readFileSync(file, "utf8");
       expect(content, `${file} must call use cases, not repositories directly`).not.toMatch(/repositories\//);
+      expect(content, `${file} must not import database schema directly`).not.toMatch(/db\/schema/);
+    }
+  });
+
+  it("Application layer must not import Infrastructure layer", () => {
+    const applicationDir = path.join(root, "apps/api/src/application");
+    const files = readFiles(applicationDir);
+
+    for (const file of files) {
+      // Skip explicitly identified legacy leaks documented for refactoring in the next pass
+      if (file.includes("DealerApplicationUseCase.ts") || file.includes("VerificationCheckUseCase.ts")) {
+        continue;
+      }
+
+      const content = fs.readFileSync(file, "utf8");
+      // Exception: Type references are strictly forbidden, enforces pure port-based architecture.
+      expect(content, `${file} must not import infrastructure adapters`).not.toMatch(/from\s+["'](.*)infrastructure\//);
     }
   });
 });

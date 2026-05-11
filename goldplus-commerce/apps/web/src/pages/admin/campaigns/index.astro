@@ -1,18 +1,63 @@
 ---
-import BaseLayout from "../../../layouts/BaseLayout.astro";
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import AdminPageHeader from '../../../components/AdminPageHeader.astro';
+import AdminTable from '../../../components/AdminTable.astro';
+import StatusBadge from '../../../components/StatusBadge.astro';
+import EmptyState from '../../../components/EmptyState.astro';
+import Notice from '../../../components/Notice.astro';
+import { tryFetchAdminList } from '../../../lib/api';
+import { SAMPLE_CAMPAIGNS, type SampleCampaign } from '../../../lib/sample-data';
+
+const result = await tryFetchAdminList<SampleCampaign>(
+  '/governance/admin/campaigns',
+  SAMPLE_CAMPAIGNS,
+  'Marketing analytics data currently restricted to safe samples.',
+);
+
+const statusToBadge: Record<SampleCampaign['status'], { variant: 'pending' | 'info' | 'success' | 'neutral'; label: string }> = {
+  active: { variant: 'success', label: 'Running' },
+  paused: { variant: 'neutral', label: 'Paused' },
+  scheduled: { variant: 'info', label: 'Queueing' },
+};
 ---
 
-<BaseLayout title="Campaign Admin Shell">
-  <div class="py-8">
-    <h1 class="text-3xl font-bold mb-6">Campaign Admin Shell</h1>
-    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-      <div class="flex">
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            This is a Phase 1 module shell. Future implementation goes here.
-          </p>
-        </div>
+<BaseLayout title="Marketing Campaigns — Admin">
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <AdminPageHeader
+      title="Active Campaigns"
+      description="View reach and efficiency reporting for operational marketing initiatives."
+    />
+
+    {result.isSample && (
+      <div class="mb-6">
+        <Notice kind="sample" message={result.reason} />
       </div>
-    </div>
+    )}
+
+    {result.items.length === 0 ? (
+      <EmptyState
+        title="No Campaigns Live"
+        message="Historical reach analytics do not possess active triggers."
+      />
+    ) : (
+      <AdminTable caption="Global Marketing Metrics">
+        <Fragment slot="head">
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Campaign Title</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Traffic Vector</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-center">Status</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-right">C.V.R</th>
+        </Fragment>
+        {result.items.map((camp) => (
+          <tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="px-6 py-4 font-bold text-brand-dark">{camp.name}</td>
+            <td class="px-6 py-4 text-gray-600">{camp.channel}</td>
+            <td class="px-6 py-4 text-center">
+              <StatusBadge status={statusToBadge[camp.status].variant} label={statusToBadge[camp.status].label} />
+            </td>
+            <td class="px-6 py-4 text-right font-black text-brand-dark">{camp.conversionRate}</td>
+          </tr>
+        ))}
+      </AdminTable>
+    )}
   </div>
 </BaseLayout>

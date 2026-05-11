@@ -1,131 +1,183 @@
 ---
-import BaseLayout from "../../layouts/BaseLayout.astro";
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProductJsonLd from '../../components/ProductJsonLd.astro';
+import Notice from '../../components/Notice.astro';
+import { apiBase } from '../../lib/api';
+import type { ProductPublicDto, ApiEnvelope } from '@goldplus/shared';
 
-// This is a static placeholder for the Phase 1 build.
-// In a dynamic SSG/SSR setup, this would use getStaticPaths or direct DB lookup.
 const { slug } = Astro.params;
 
-// Mock product data to satisfy Phase 1 storefront requirements safely
-const product = {
-  id: slug,
-  name: slug === 'generic-fast-charger' ? 'Generic Fast Charger' : 'Wireless Earbuds',
-  category: slug === 'generic-fast-charger' ? 'Power Devices' : 'Sound Devices',
-  price: slug === 'generic-fast-charger' ? 'UGX 50,000' : 'UGX 80,000',
-  inStock: true,
-  model: 'Missing. Requires admin review.',
-  sku: 'Missing. Requires admin review.',
-  description: 'Missing. Requires admin review. Authentic product verified by GoldPlus.',
-  hasImage: false,
-  warranty: 'Unspecified in source.',
-  compatibility: 'Unspecified in source.'
+let product: ProductPublicDto | null = null;
+let fetchError: string | null = null;
+
+try {
+  const res = await fetch(`${apiBase}/products/${encodeURIComponent(slug ?? '')}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (res.status === 404) {
+    return Astro.redirect('/404', 404);
+  }
+  if (!res.ok) {
+    fetchError = `API responded with HTTP ${res.status}.`;
+  } else {
+    const json = (await res.json()) as ApiEnvelope<ProductPublicDto>;
+    if (json.success && json.data) {
+      product = json.data;
+    } else {
+      fetchError = json.error?.message ?? 'Unexpected API response.';
+    }
+  }
+} catch {
+  fetchError = 'Cannot reach the product service right now.';
+}
+
+if (!product && !fetchError) {
+  return Astro.redirect('/404', 404);
+}
+
+const formatUgx = (amount: number): string =>
+  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(amount);
+
+const availabilityLabel: Record<ProductPublicDto['availability']['kind'], string> = {
+  in_stock: 'In stock',
+  out_of_stock: 'Out of stock',
+  pre_order: 'Pre-order',
+  unknown: 'Stock not confirmed',
 };
+
+const availabilityClass: Record<ProductPublicDto['availability']['kind'], string> = {
+  in_stock: 'bg-green-50 text-green-700 border-green-200',
+  out_of_stock: 'bg-red-50 text-red-700 border-red-200',
+  pre_order: 'bg-blue-50 text-blue-700 border-blue-200',
+  unknown: 'bg-gray-100 text-gray-700 border-gray-200',
+};
+
+const canBuy = product?.availability.kind === 'in_stock';
+const pageTitle = product ? product.name : 'Product unavailable';
+const description = product
+  ? `${product.name} — ${product.categoryName} from GoldPlus Uganda.`
+  : 'This product is temporarily unavailable.';
+const canonical = Astro.url.toString();
 ---
 
-<BaseLayout title={`${product.name} | GoldPlus`}>
-  <div class="bg-gray-50 py-4 border-b border-gray-200">
+<BaseLayout title={pageTitle} description={description} canonicalUrl={canonical}>
+  {product && (
+    <Fragment slot="head">
+      <ProductJsonLd product={product} url={canonical} />
+    </Fragment>
+  )}
+
+  <div class="bg-brand-softGrey py-4 border-b border-brand-borderGrey">
     <div class="container mx-auto px-4 lg:px-8">
-      <nav class="flex text-sm text-gray-500 font-medium" aria-label="Breadcrumb">
-        <a href="/" class="hover:text-brand-dark transition-colors">Home</a>
-        <span class="mx-2">/</span>
-        <a href="/shop" class="hover:text-brand-dark transition-colors">Shop</a>
-        <span class="mx-2">/</span>
-        <a href={`/shop?category=${product.category.toLowerCase().split(' ')[0]}`} class="hover:text-brand-dark transition-colors">{product.category}</a>
-        <span class="mx-2">/</span>
-        <span class="text-brand-dark" aria-current="page">{product.name}</span>
+      <nav class="flex text-sm text-brand-mutedGrey font-medium" aria-label="Breadcrumb">
+        <a href="/" class="hover:text-brand-charcoal transition-colors">Home</a>
+        <span class="mx-2" aria-hidden="true">/</span>
+        <a href="/shop" class="hover:text-brand-charcoal transition-colors">Shop</a>
+        <span class="mx-2" aria-hidden="true">/</span>
+        <span class="text-brand-charcoal truncate" aria-current="page">{product?.name ?? slug}</span>
       </nav>
     </div>
   </div>
 
-  <div class="container mx-auto px-4 lg:px-8 py-12 lg:py-16">
-    <div class="flex flex-col lg:flex-row gap-12">
-      
-      {/* Product Image Area */}
-      <div class="w-full lg:w-1/2">
-        <div class="bg-gray-100 aspect-square rounded-2xl flex items-center justify-center relative overflow-hidden border border-gray-200">
-          <div class="text-gray-400 font-medium flex flex-col items-center">
-            <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-            <p>Image Missing. Requires admin review.</p>
+  <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
+    {fetchError && (
+      <div class="mb-8">
+        <Notice kind="not-configured" title="Product service unavailable" message={fetchError} />
+      </div>
+    )}
+
+    {product && (
+      <div class="flex flex-col lg:flex-row gap-10 lg:gap-14">
+
+        <div class="w-full lg:w-1/2">
+          <div class="bg-white aspect-square rounded-2xl flex items-center justify-center relative overflow-hidden border border-brand-borderGrey">
+            {product.hasImage ? (
+              <div class="absolute inset-0 flex items-center justify-center text-brand-mutedGrey">Image not yet rendered in Phase 1.</div>
+            ) : (
+              <div class="absolute inset-0 flex items-center justify-center text-brand-mutedGrey p-6 text-center">
+                <span>Image. Missing. Requires admin review.</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div class="w-full lg:w-1/2 flex flex-col">
+          <div class="mb-6">
+            <p class="text-xs font-bold text-brand-primary uppercase tracking-widest mb-2">{product.categoryName}</p>
+            <h1 class="text-3xl md:text-5xl font-black tracking-tight text-brand-charcoal mb-4">{product.name}</h1>
+
+            <div class="flex items-baseline gap-4 mb-4 flex-wrap">
+              {product.retailPriceUgx !== null ? (
+                <p class="text-3xl font-black text-brand-charcoal">{formatUgx(product.retailPriceUgx)}</p>
+              ) : (
+                <p class="text-base text-brand-mutedGrey italic">Price on request.</p>
+              )}
+              <span class={`inline-flex items-center px-3 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${availabilityClass[product.availability.kind]}`}>
+                {availabilityLabel[product.availability.kind]}
+              </span>
+            </div>
+
+            {product.modelNumber && (
+              <p class="text-xs text-brand-mutedGrey font-mono bg-brand-softGrey p-2 rounded inline-block">Model: {product.modelNumber}</p>
+            )}
+          </div>
+
+          {product.hasMissingSpecs && (
+            <div class="mb-6">
+              <Notice kind="owner-review" title="Some details are pending review" message="Some specifications for this product have not yet been verified by an admin. We do not invent claims." />
+            </div>
+          )}
+
+          <div class="border border-brand-borderGrey rounded-xl overflow-hidden mb-8 bg-white">
+            <table class="w-full text-sm text-left">
+              <caption class="sr-only">Verified specifications for {product.name}</caption>
+              <tbody>
+                {product.sku && (
+                  <tr class="border-b border-brand-borderGrey">
+                    <th scope="row" class="px-4 py-3 bg-brand-softGrey font-bold text-brand-charcoal w-1/3">SKU</th>
+                    <td class="px-4 py-3 text-brand-charcoal font-mono">{product.sku}</td>
+                  </tr>
+                )}
+                {Object.entries(product.verifiedSpecs).map(([k, v]) => (
+                  <tr class="border-b border-brand-borderGrey last:border-b-0">
+                    <th scope="row" class="px-4 py-3 bg-brand-softGrey font-bold text-brand-charcoal w-1/3">{k}</th>
+                    <td class="px-4 py-3 text-brand-charcoal">{v}</td>
+                  </tr>
+                ))}
+                {Object.keys(product.verifiedSpecs).length === 0 && !product.sku && (
+                  <tr>
+                    <td class="px-4 py-6 text-brand-mutedGrey italic text-center" colspan="2">No verified specifications published yet. Owner review required.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <form method="POST" action="/cart" class="flex flex-col sm:flex-row gap-4 mb-8">
+            <input type="hidden" name="productId" value={product.id} />
+            <input type="hidden" name="slug" value={product.slug} />
+            <button
+              type="submit"
+              disabled={!canBuy}
+              class={`flex-1 py-4 px-6 rounded-lg font-bold text-lg transition-colors outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 ${canBuy ? 'bg-brand-primary text-brand-charcoal hover:opacity-90' : 'bg-brand-softGrey text-brand-mutedGrey cursor-not-allowed'}`}
+            >
+              {canBuy ? 'Add to cart' : availabilityLabel[product.availability.kind]}
+            </button>
+            <a href={`/quote-request?productName=${encodeURIComponent(product.name)}`} class="flex-1 py-4 px-6 rounded-lg font-bold text-lg text-center transition-colors outline-none border-2 border-brand-borderGrey text-brand-charcoal hover:border-brand-charcoal focus-visible:ring-4 focus-visible:ring-brand-charcoal/10">
+              Request quote
+            </a>
+          </form>
+
+          <div class="border-t border-brand-borderGrey pt-6 mt-auto">
+            <h4 class="font-bold text-brand-charcoal mb-4 text-sm uppercase tracking-widest">Support &amp; trust</h4>
+            <div class="flex flex-wrap gap-3">
+              <a href="/verification" class="text-sm font-semibold text-brand-charcoal bg-brand-softGrey px-4 py-2 rounded hover:bg-brand-borderGrey transition-colors">Verify product</a>
+              <a href="/support/issue" class="text-sm font-semibold text-brand-charcoal bg-brand-softGrey px-4 py-2 rounded hover:bg-brand-borderGrey transition-colors">Report issue</a>
+              <a href="/support/fake" class="text-sm font-semibold text-brand-error bg-red-50 px-4 py-2 rounded hover:bg-red-100 transition-colors">Report fake</a>
+            </div>
           </div>
         </div>
       </div>
-
-      {/* Product Info Area */}
-      <div class="w-full lg:w-1/2 flex flex-col">
-        <div class="mb-6">
-          <p class="text-sm font-bold text-brand-green uppercase tracking-widest mb-2">{product.category}</p>
-          <h1 class="text-3xl md:text-5xl font-black tracking-tight text-brand-dark mb-4">{product.name}</h1>
-          
-          <div class="flex items-baseline gap-4 mb-4">
-            <p class="text-3xl font-black text-brand-dark">{product.price}</p>
-            <span class={`text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wider ${product.inStock ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-              {product.inStock ? 'In Stock' : 'Out of Stock'}
-            </span>
-          </div>
-          
-          <p class="text-gray-600 text-lg leading-relaxed">{product.description}</p>
-        </div>
-
-        {/* Missing Data Warning Panel */}
-        <div class="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-8">
-          <h3 class="font-bold text-orange-800 flex items-center gap-2 mb-2">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-            Data Missing
-          </h3>
-          <p class="text-sm text-orange-700">Some specifications for this product have not been verified by an admin yet. We do not invent claims.</p>
-        </div>
-
-        {/* Specs Table */}
-        <div class="border border-gray-200 rounded-xl overflow-hidden mb-8">
-          <table class="w-full text-sm text-left">
-            <tbody>
-              <tr class="border-b border-gray-200">
-                <th class="px-4 py-3 bg-gray-50 font-bold text-brand-dark w-1/3">Model</th>
-                <td class="px-4 py-3 text-red-600 font-medium">{product.model}</td>
-              </tr>
-              <tr class="border-b border-gray-200">
-                <th class="px-4 py-3 bg-gray-50 font-bold text-brand-dark w-1/3">SKU</th>
-                <td class="px-4 py-3 text-red-600 font-medium">{product.sku}</td>
-              </tr>
-              <tr class="border-b border-gray-200">
-                <th class="px-4 py-3 bg-gray-50 font-bold text-brand-dark w-1/3">Warranty</th>
-                <td class="px-4 py-3 text-gray-500 italic">{product.warranty}</td>
-              </tr>
-              <tr>
-                <th class="px-4 py-3 bg-gray-50 font-bold text-brand-dark w-1/3">Compatibility</th>
-                <td class="px-4 py-3 text-gray-500 italic">{product.compatibility}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        {/* Action Buttons */}
-        <div class="flex flex-col sm:flex-row gap-4 mb-8">
-          <button disabled={!product.inStock} class={`flex-1 py-4 px-6 rounded-lg font-bold text-lg transition-colors outline-none focus:ring-4 focus:ring-brand-gold ${product.inStock ? 'bg-brand-dark text-white hover:bg-black' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
-            {product.inStock ? 'Add to Cart' : 'Currently Unavailable'}
-          </button>
-          <a href="/quotes" class="flex-1 py-4 px-6 rounded-lg font-bold text-lg text-center transition-colors outline-none border-2 border-gray-200 text-brand-dark hover:border-brand-dark focus:ring-4 focus:ring-gray-100">
-            Request Quote
-          </a>
-        </div>
-
-        {/* Trust Links */}
-        <div class="border-t border-gray-200 pt-6 mt-auto">
-          <h4 class="font-bold text-brand-dark mb-4 text-sm uppercase tracking-widest">Support & Trust</h4>
-          <div class="flex flex-wrap gap-3">
-            <a href="/verification" class="text-sm font-semibold text-gray-600 bg-gray-100 px-4 py-2 rounded hover:bg-gray-200 hover:text-brand-dark transition-colors flex items-center gap-2">
-              <svg class="w-4 h-4 text-brand-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-              Verify Product
-            </a>
-            <a href="/support/issue" class="text-sm font-semibold text-gray-600 bg-gray-100 px-4 py-2 rounded hover:bg-gray-200 hover:text-brand-dark transition-colors">
-              Report Issue
-            </a>
-            <a href="/support/fake" class="text-sm font-semibold text-red-600 bg-red-50 px-4 py-2 rounded hover:bg-red-100 transition-colors">
-              Report Fake
-            </a>
-          </div>
-        </div>
-
-      </div>
-    </div>
+    )}
   </div>
 </BaseLayout>

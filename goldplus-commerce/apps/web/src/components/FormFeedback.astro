@@ -1,0 +1,27 @@
+---
+type Status = 'success' | 'error' | 'received' | null | undefined;
+
+interface Props {
+  status: Status;
+  message?: string;
+  reference?: string;
+}
+const { status, message, reference } = Astro.props;
+
+const palette = {
+  success: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-900', label: 'Success' },
+  received: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900', label: 'Received' },
+  error: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-900', label: 'Could not complete' },
+} as const;
+
+const c = status ? palette[status] : null;
+---
+{c && (
+  <div class={`${c.bg} border ${c.border} ${c.text} rounded-xl p-4 mb-6 flex items-start gap-3`} role="alert" aria-live="polite">
+    <div class="min-w-0">
+      <p class="text-sm font-bold">{c.label}</p>
+      {message && <p class="text-xs mt-1 leading-relaxed">{message}</p>}
+      {reference && <p class="text-xs mt-2 font-mono text-gray-700">Ref: {reference}</p>}
+    </div>
+  </div>
+)}

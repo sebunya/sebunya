@@ -1,0 +1,36 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Notice from '../components/Notice.astro';
+
+Astro.response.status = 500;
+Astro.response.headers.set('Cache-Control', 'no-store');
+
+const ref = Astro.request.headers.get('x-request-id') ?? null;
+---
+
+<BaseLayout title="Service error" description="Something went wrong on our side. Please try again shortly.">
+  <div class="container mx-auto px-4 lg:px-8 py-16 md:py-24">
+    <div class="max-w-xl mx-auto">
+      <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4 text-center">Error 500</p>
+      <h1 class="text-3xl md:text-4xl font-black text-brand-charcoal mb-3 tracking-tight text-center">Something went wrong on our side</h1>
+      <p class="text-brand-mutedGrey leading-relaxed mb-8 text-center">
+        We could not complete your request right now. Our team has been notified. Please try again in a moment, or contact support.
+      </p>
+
+      {ref && (
+        <div class="mb-8">
+          <Notice kind="info" title="Reference for support" message={`If you contact us about this, share this reference: ${ref}`} />
+        </div>
+      )}
+
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+        <a href="/" class="inline-block w-full sm:w-auto px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none">
+          Back to home
+        </a>
+        <a href="/support" class="inline-block w-full sm:w-auto px-6 py-3 bg-white text-brand-charcoal border-2 border-brand-borderGrey rounded-lg font-bold hover:border-brand-charcoal focus-visible:ring-4 focus-visible:ring-brand-charcoal/10 outline-none">
+          Contact support
+        </a>
+      </div>
+    </div>
+  </div>
+</BaseLayout>
