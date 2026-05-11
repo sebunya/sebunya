@@ -1,12 +1,15 @@
-import { INotificationProvider, NotificationResult } from '../../../application/ports/INotificationProvider';
+import {
+  INotificationProvider,
+  NotificationDispatchPayload,
+  NotificationDispatchResult,
+} from '../../../application/ports/INotificationProvider';
 
 export class DisabledSmsAdapter implements INotificationProvider {
-  async send(recipient: string, message: string): Promise<NotificationResult> {
-    console.warn(`[DISABLED] Attempted to send SMS to ${recipient}, but SMS is intentionally disabled in Phase 1.`);
+  async dispatch(payload: NotificationDispatchPayload): Promise<NotificationDispatchResult> {
     return {
-      success: false,
-      code: "DISABLED",
-      message: "SMS Provider is disabled for Phase 1"
+      status: 'DISABLED',
+      providerCode: 'CHANNEL_DISABLED',
+      providerMessage: 'SMS Channel is explicitly disabled in Phase 1 business logic.',
     };
   }
 }

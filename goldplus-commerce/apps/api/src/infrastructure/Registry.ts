@@ -15,8 +15,15 @@ import { DrizzleAdminRoleReadRepository } from './db/repositories/DrizzleAdminRo
 import { DrizzleAdminUserReadRepository } from './db/repositories/DrizzleAdminUserReadRepository';
 import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductImageRepository';
 import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
+import { DrizzleNotificationAttemptRepository } from './db/repositories/DrizzleNotificationAttemptRepository';
+import { DrizzleOutboxRepository } from './db/repositories/DrizzleOutboxRepository';
 import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
+
+import { WhatsAppAdapter } from './notifications/whatsapp/WhatsAppAdapter';
+import { ZeptoMailAdapter } from './notifications/zeptomail/ZeptoMailAdapter';
+import { DisabledSmsAdapter } from './notifications/sms/DisabledSmsAdapter';
+import { DefaultNotificationRouter } from './notifications/NotificationRouter';
 
 import { AddToCartUseCase } from '../application/use-cases/commerce/AddToCartUseCase';
 import { CheckoutUseCase } from '../application/use-cases/commerce/CheckoutUseCase';
@@ -27,6 +34,9 @@ import { GetOrderListUseCase } from '../application/use-cases/commerce/GetOrderL
 import { GetOrderByIdUseCase } from '../application/use-cases/commerce/GetOrderByIdUseCase';
 import { ListAdminUsersUseCase } from '../application/use-cases/admin/ListAdminUsersUseCase';
 import { ListAdminRolesUseCase } from '../application/use-cases/admin/ListAdminRolesUseCase';
+import { RecordNotificationAttemptUseCase } from '../application/use-cases/notifications/RecordNotificationAttemptUseCase';
+import { ListRecentNotificationsUseCase } from '../application/use-cases/notifications/ListRecentNotificationsUseCase';
+import { ProcessOutboxBatchUseCase } from '../application/use-cases/outbox/ProcessOutboxBatchUseCase';
 
 export class Registry {
   private static _instance: Registry;
@@ -49,6 +59,20 @@ export class Registry {
   public readonly adminUserReadRepo = new DrizzleAdminUserReadRepository();
   public readonly productImageRepo = new DrizzleProductImageRepository();
   public readonly attributeRepo = new DrizzleAttributeRepository();
+  public readonly notificationAttemptRepo = new DrizzleNotificationAttemptRepository();
+  public readonly outboxRepo = new DrizzleOutboxRepository();
+
+  // Infrastructure Adapters
+  public readonly whatsappAdapter = new WhatsAppAdapter();
+  public readonly zeptoMailAdapter = new ZeptoMailAdapter();
+  public readonly smsAdapter = new DisabledSmsAdapter();
+
+  // Services & Routers
+  public readonly notificationRouter = new DefaultNotificationRouter(
+    this.zeptoMailAdapter,
+    this.whatsappAdapter,
+    this.smsAdapter
+  );
 
 
   // Security Services
@@ -65,6 +89,13 @@ export class Registry {
   public readonly dealerApplicationUseCase = new DealerApplicationUseCase(this.dealerRepo);
   public readonly listAdminUsersUseCase = new ListAdminUsersUseCase(this.adminUserReadRepo);
   public readonly listAdminRolesUseCase = new ListAdminRolesUseCase(this.adminRoleReadRepo);
+  public readonly recordNotificationAttemptUseCase = new RecordNotificationAttemptUseCase(this.notificationAttemptRepo);
+  public readonly listRecentNotificationsUseCase = new ListRecentNotificationsUseCase(this.notificationAttemptRepo);
+  public readonly processOutboxBatchUseCase = new ProcessOutboxBatchUseCase(
+    this.outboxRepo,
+    this.notificationRouter,
+    this.recordNotificationAttemptUseCase
+  );
 
   public static getInstance(): Registry {
     if (!Registry._instance) {
