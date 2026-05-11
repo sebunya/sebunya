@@ -89,6 +89,32 @@ routes.get('/admin/stats', async (c) => {
   return c.json(res);
 });
 
+// Admin List Routes
+routes.get('/admin/orders', async (c) => {
+  try {
+    const orders = await registry.getOrderListUseCase.execute();
+    return c.json({ success: true, data: orders });
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
+    }
+    throw err;
+  }
+});
+
+routes.get('/admin/products', async (c) => {
+  try {
+    // Admin view fetches all products regardless of active state
+    const products = await registry.productRepo.findAll();
+    return c.json({ success: true, data: products });
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
+    }
+    throw err;
+  }
+});
+
 export default routes;
 
 

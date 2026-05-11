@@ -1,7 +1,7 @@
 import { db } from '../client';
 import { products } from '../schema/products';
 import { eq } from 'drizzle-orm';
-import { ProductEntity } from '../../../domain/products/ProductEntity';
+import { ProductEntity, StockStatus } from '../../../domain/products/ProductEntity';
 
 export class DrizzleProductRepository {
   async findBySlug(slug: string): Promise<ProductEntity | null> {
@@ -16,7 +16,53 @@ export class DrizzleProductRepository {
       result.sku,
       result.modelNumber,
       result.name,
-      result.categoryId,
+      result.slug,
+      result.categoryName ?? 'Uncategorized',
+      result.subcategory ?? undefined,
+      result.shortDescription,
+      result.longDescription,
+      result.priceUgx,
+      result.compareAtPriceUgx ?? undefined,
+      result.stockStatus as StockStatus,
+      result.imageUrl ?? undefined,
+      result.features as string[],
+      result.warrantyPeriod,
+      result.verificationEligible,
+      result.active,
+      result.approvalStatus as 'draft' | 'approved' | 'rejected',
+      result.isPreOrderEnabled,
+      result.hasRetailPrice,
+      result.hasImage,
+      result.stockQuantity,
+      result.specifications as Record<string, string | number>
+    );
+  }
+
+  async findById(id: string): Promise<ProductEntity | null> {
+    const result = await db.query.products.findFirst({
+      where: eq(products.id, id),
+    });
+
+    if (!result) return null;
+
+    return new ProductEntity(
+      result.id,
+      result.sku,
+      result.modelNumber,
+      result.name,
+      result.slug,
+      result.categoryName ?? 'Uncategorized',
+      result.subcategory ?? undefined,
+      result.shortDescription,
+      result.longDescription,
+      result.priceUgx,
+      result.compareAtPriceUgx ?? undefined,
+      result.stockStatus as StockStatus,
+      result.imageUrl ?? undefined,
+      result.features as string[],
+      result.warrantyPeriod,
+      result.verificationEligible,
+      result.active,
       result.approvalStatus as 'draft' | 'approved' | 'rejected',
       result.isPreOrderEnabled,
       result.hasRetailPrice,
@@ -32,8 +78,20 @@ export class DrizzleProductRepository {
       sku: product.sku,
       modelNumber: product.modelNumber,
       name: product.name,
-      slug: product.name.toLowerCase().replace(/ /g, '-'), // Generate slug from name
-      categoryId: product.categoryId,
+      slug: product.slug,
+      categoryId: '00000000-0000-0000-0000-000000000000', // Generic Category placeholder
+      categoryName: product.category,
+      subcategory: product.subcategory,
+      shortDescription: product.shortDescription,
+      longDescription: product.longDescription,
+      priceUgx: product.priceUgx,
+      compareAtPriceUgx: product.compareAtPriceUgx,
+      stockStatus: product.stockStatus,
+      imageUrl: product.imageUrl,
+      features: product.features,
+      warrantyPeriod: product.warrantyPeriod,
+      verificationEligible: product.verificationEligible,
+      active: product.active,
       specifications: product.specifications,
       approvalStatus: product.approvalStatus,
       isPreOrderEnabled: product.isPreOrderEnabled,
@@ -46,12 +104,9 @@ export class DrizzleProductRepository {
         sku: product.sku,
         modelNumber: product.modelNumber,
         name: product.name,
-        categoryId: product.categoryId,
-        specifications: product.specifications,
+        categoryName: product.category,
+        priceUgx: product.priceUgx,
         approvalStatus: product.approvalStatus,
-        isPreOrderEnabled: product.isPreOrderEnabled,
-        hasRetailPrice: product.hasRetailPrice,
-        hasImage: product.hasImage,
         stockQuantity: product.stockQuantity,
       }
     });
@@ -64,7 +119,19 @@ export class DrizzleProductRepository {
       result.sku,
       result.modelNumber,
       result.name,
-      result.categoryId,
+      result.slug,
+      result.categoryName ?? 'Uncategorized',
+      result.subcategory ?? undefined,
+      result.shortDescription,
+      result.longDescription,
+      result.priceUgx,
+      result.compareAtPriceUgx ?? undefined,
+      result.stockStatus as StockStatus,
+      result.imageUrl ?? undefined,
+      result.features as string[],
+      result.warrantyPeriod,
+      result.verificationEligible,
+      result.active,
       result.approvalStatus as 'draft' | 'approved' | 'rejected',
       result.isPreOrderEnabled,
       result.hasRetailPrice,

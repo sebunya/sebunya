@@ -1,17 +1,112 @@
 ---
 import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { tryFetchAdminList } from "../../../lib/api";
+
+const fallbackOrders = [
+  {
+    id: "1",
+    orderNumber: "GP-FALLBACK-1",
+    customerName: "Sample John",
+    customerPhone: "0788000000",
+    buyerType: "retail",
+    totalUgx: 150000,
+    paymentStatus: "unpaid",
+    orderStatus: "received",
+    createdAt: new Date().toISOString()
+  }
+];
+
+const result = await tryFetchAdminList('/governance/admin/orders', fallbackOrders);
+const orders = result.items;
+
+const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+
+function getStatusColor(status: string) {
+  switch (status) {
+    case 'received': return 'bg-blue-100 text-blue-800';
+    case 'pending_owner_review': return 'bg-yellow-100 text-yellow-800';
+    case 'completed': return 'bg-green-100 text-green-800';
+    case 'failed':
+    case 'cancelled': return 'bg-red-100 text-red-800';
+    default: return 'bg-gray-100 text-gray-800';
+  }
+}
 ---
 
-<BaseLayout title="Order Admin Shell">
-  <div class="py-8">
-    <h1 class="text-3xl font-bold mb-6">Order Admin Shell</h1>
-    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-      <div class="flex">
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            This is a Phase 1 module shell. Future implementation goes here.
-          </p>
+<BaseLayout title="Admin - Orders Dashboard">
+  <div class="container mx-auto px-4 lg:px-8 py-12">
+    <div class="flex justify-between items-center mb-8">
+      <div>
+        <h1 class="text-3xl font-black text-brand-dark">Admin Orders Command</h1>
+        <p class="text-gray-600 mt-2">Review live customer orders and evaluate for logistics readiness.</p>
+      </div>
+      <div class="bg-gray-100 px-4 py-2 rounded-lg text-sm font-bold font-mono text-gray-600 border border-gray-200">
+        TOTAL: {orders.length}
+      </div>
+    </div>
+
+    {result.isSample && (
+      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4">
+        <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
         </div>
+        <div>
+          <h3 class="font-bold">Offline Mode Active</h3>
+          <p class="text-sm opacity-90">{result.reason}</p>
+        </div>
+      </div>
+    )}
+
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider">
+              <th class="px-6 py-4">Order Num</th>
+              <th class="px-6 py-4">Created</th>
+              <th class="px-6 py-4">Customer</th>
+              <th class="px-6 py-4">Buyer Type</th>
+              <th class="px-6 py-4 text-right">Total</th>
+              <th class="px-6 py-4 text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            {orders.map(order => (
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-6 py-4 font-mono text-sm font-bold text-brand-dark">
+                  {order.orderNumber || order.id.substring(0,8)}
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-500">
+                  {new Date(order.createdAt).toLocaleDateString()}
+                </td>
+                <td class="px-6 py-4">
+                  <div class="text-sm font-bold text-brand-dark">{order.customerName}</div>
+                  <div class="text-xs text-gray-500">{order.customerPhone}</div>
+                </td>
+                <td class="px-6 py-4">
+                  <span class="text-xs uppercase font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded">
+                    {order.buyerType}
+                  </span>
+                </td>
+                <td class="px-6 py-4 text-sm font-black text-brand-dark text-right">
+                  {formatter.format(order.totalUgx)}
+                </td>
+                <td class="px-6 py-4 text-center">
+                  <span class={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase whitespace-nowrap ${getStatusColor(order.orderStatus)}`}>
+                    {order.orderStatus.replace(/_/g, ' ')}
+                  </span>
+                </td>
+              </tr>
+            ))}
+            {orders.length === 0 && (
+              <tr>
+                <td colspan="6" class="px-6 py-12 text-center text-gray-500 italic">
+                  No records returned from system query.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   </div>

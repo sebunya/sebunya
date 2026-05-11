@@ -18,18 +18,27 @@ export const cartItems = pgTable('cart_items', {
 export const orders = pgTable('orders', {
   id: uuid('id').defaultRandom().primaryKey(),
   orderNumber: varchar('order_number', { length: 20 }).unique().notNull(),
-  userId: uuid('user_id'),
-  status: varchar('status', { length: 30 }).default('PENDING_PAYMENT').notNull(),
-  totalAmount: integer('total_amount').notNull(),
+  buyerType: varchar('buyer_type', { length: 20 }).default('retail').notNull(),
+  customerName: varchar('customer_name', { length: 255 }).notNull(),
+  customerPhone: varchar('customer_phone', { length: 20 }).notNull(),
   customerEmail: varchar('customer_email', { length: 255 }),
-  customerPhone: varchar('customer_phone', { length: 20 }),
+  deliveryArea: varchar('delivery_area', { length: 255 }).notNull(),
+  deliveryAddress: varchar('delivery_address', { length: 255 }).notNull(),
+  status: varchar('status', { length: 30 }).default('received').notNull(),
+  paymentStatus: varchar('payment_status', { length: 30 }).default('unpaid').notNull(),
+  subtotalAmount: integer('subtotal_amount').notNull(),
+  deliveryFee: integer('delivery_fee').notNull().default(0),
+  totalAmount: integer('total_amount').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const orderItems = pgTable('order_items', {
   id: uuid('id').defaultRandom().primaryKey(),
   orderId: uuid('order_id').references(() => orders.id).notNull(),
   productId: uuid('product_id').references(() => products.id).notNull(),
+  sku: varchar('sku', { length: 50 }).notNull(),
+  productName: varchar('product_name', { length: 255 }).notNull(),
   quantity: integer('quantity').notNull(),
   unitPrice: integer('unit_price').notNull(),
 });

@@ -1,7 +1,4 @@
-import { Order, OrderItem } from '../../../domain/commerce/Order';
-import { Cart } from '../../../domain/commerce/Cart';
-
-import { ICartRepository } from './AddToCartUseCase';
+import { Order, OrderItem, BuyerType } from '../../../domain/commerce/Order';
 
 export interface IOrderRepository {
   save(order: Order): Promise<void>;
@@ -9,31 +6,38 @@ export interface IOrderRepository {
 }
 
 export interface CheckoutDto {
-  cartId: string;
-  customerId: string;
   customerDetails: {
     name: string;
-    email: string;
+    email?: string;
     phone: string;
-    address?: string;
+    deliveryArea: string;
+    deliveryAddress: string;
   };
+  buyerType: BuyerType;
+  items: Array<{
+    productId: string;
+    sku: string;
+    name: string;
+    price: number;
+    quantity: number;
+  }>;
 }
 
 export class CheckoutUseCase {
   constructor(
-    private readonly cartRepo: ICartRepository,
     private readonly orderRepo: IOrderRepository
   ) {}
 
   public async execute(dto: CheckoutDto): Promise<Order> {
-    const cart = await this.cartRepo.findById(dto.cartId);
-    if (!cart || cart.items.length === 0) {
-      throw new Error('Cart is empty');
+    if (!dto.items || dto.items.length === 0) {
+      throw new Error('Cannot process empty checkout');
     }
 
-    const orderId = `ord_${Math.random().toString(36).substring(2, 11)}`;
-    const orderItems: OrderItem[] = cart.items.map(i => ({
+    const orderId = crypto.randomUUID();
+    
+    const orderItems: OrderItem[] = dto.items.map(i => ({
       productId: i.productId,
+      sku: i.sku,
       name: i.name,
       price: i.price,
       quantity: i.quantity
@@ -41,16 +45,13 @@ export class CheckoutUseCase {
 
     const order = Order.create(
       orderId,
-      dto.customerId,
+      dto.customerDetails,
+      dto.buyerType,
       orderItems,
-      dto.customerDetails
+      0 // Phase 1: Free delivery / manually calculated later
     );
 
     await this.orderRepo.save(order);
-    
-    // Clear cart after order creation
-    await this.cartRepo.save(new Cart(dto.cartId, []));
-
 
     return order;
   }

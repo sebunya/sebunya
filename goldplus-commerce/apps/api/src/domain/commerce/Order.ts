@@ -1,72 +1,85 @@
-export type OrderStatus = 'pending' | 'processing' | 'paid' | 'failed' | 'cancelled';
+export type OrderStatus = 'received' | 'pending_payment' | 'pending_owner_review' | 'processing' | 'completed' | 'cancelled' | 'failed';
 export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'failed';
+export type BuyerType = 'retail' | 'wholesale' | 'corporate';
 
 export interface OrderItem {
   productId: string;
+  sku: string;
   name: string;
   price: number;
   quantity: number;
 }
 
+export interface OrderCustomerDetails {
+  name: string;
+  email?: string;
+  phone: string;
+  deliveryArea: string;
+  deliveryAddress: string;
+}
+
 export class Order {
   constructor(
     public readonly id: string,
-    public readonly customerId: string,
+    public readonly orderNumber: string,
+    public readonly customerName: string,
+    public readonly customerPhone: string,
+    public readonly customerEmail: string | undefined,
+    public readonly deliveryArea: string,
+    public readonly deliveryAddress: string,
+    public readonly buyerType: BuyerType,
     public readonly items: OrderItem[],
-    public readonly total: number,
-    public readonly status: OrderStatus,
+    public readonly subtotalUgx: number,
+    public readonly deliveryFeeUgx: number,
+    public readonly totalUgx: number,
     public readonly paymentStatus: PaymentStatus,
+    public readonly orderStatus: OrderStatus,
     public readonly createdAt: Date,
-    public readonly customerDetails: {
-      name: string;
-      email: string;
-      phone: string;
-      address?: string;
-    }
+    public readonly updatedAt: Date
   ) {}
 
   public static create(
     id: string,
-    customerId: string,
+    customer: OrderCustomerDetails,
+    buyerType: BuyerType,
     items: OrderItem[],
-    customerDetails: { name: string; email: string; phone: string; address?: string }
+    deliveryFeeUgx: number = 0
   ): Order {
-    const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const total = subtotal + deliveryFeeUgx;
+    const timestamp = new Date();
+    
+    // Business Rule: wholesale/corporate require pending_owner_review
+    const initialStatus: OrderStatus = (buyerType === 'wholesale' || buyerType === 'corporate') 
+      ? 'pending_owner_review' 
+      : 'received';
+
     return new Order(
       id,
-      customerId,
+      `GP-${timestamp.getFullYear()}${(timestamp.getMonth()+1).toString().padStart(2,'0')}-${id.substring(0, 4).toUpperCase()}`,
+      customer.name,
+      customer.phone,
+      customer.email,
+      customer.deliveryArea,
+      customer.deliveryAddress,
+      buyerType,
       items,
+      subtotal,
+      deliveryFeeUgx,
       total,
-      'pending',
       'unpaid',
-      new Date(),
-      customerDetails
+      initialStatus,
+      timestamp,
+      timestamp
     );
   }
 
-  public markAsPaid(): Order {
+  public transitionStatus(newStatus: OrderStatus): Order {
     return new Order(
-      this.id,
-      this.customerId,
-      this.items,
-      this.total,
-      'paid',
-      'paid',
-      this.createdAt,
-      this.customerDetails
-    );
-  }
-
-  public markAsFailed(): Order {
-    return new Order(
-      this.id,
-      this.customerId,
-      this.items,
-      this.total,
-      'failed',
-      'failed',
-      this.createdAt,
-      this.customerDetails
+      this.id, this.orderNumber, this.customerName, this.customerPhone, this.customerEmail,
+      this.deliveryArea, this.deliveryAddress, this.buyerType, this.items,
+      this.subtotalUgx, this.deliveryFeeUgx, this.totalUgx, this.paymentStatus,
+      newStatus, this.createdAt, new Date()
     );
   }
 }

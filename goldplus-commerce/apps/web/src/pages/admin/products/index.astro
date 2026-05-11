@@ -1,53 +1,84 @@
 ---
 import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { tryFetchAdminList } from "../../../lib/api";
 
-// Mock pending products
-const pendingProducts = [
-  { id: 'p1', name: 'New Fast Charger', model: 'Missing', status: 'draft' },
-  { id: 'p2', name: 'Stereo Buds X', model: 'Missing', status: 'draft' },
-  { id: 'p3', name: 'Car Mount Pro', model: 'Missing', status: 'draft' }
+const fallbackProducts = [
+  {
+    id: "p1",
+    name: "Generic Fast Charger",
+    sku: "GP-CHG-001",
+    modelNumber: "GP-001",
+    categoryName: "Power",
+    stockStatus: "in_stock",
+    priceUgx: 50000,
+    active: true,
+    approvalStatus: "approved"
+  }
 ];
+
+const result = await tryFetchAdminList('/governance/admin/products', fallbackProducts);
+const products = result.items;
+const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
 ---
 
-<BaseLayout title="Product Governance - GoldPlus Admin">
+<BaseLayout title="Product Management - GoldPlus Admin">
   <div class="container mx-auto px-4 lg:px-8 py-12">
     <div class="flex items-center justify-between mb-8">
       <div>
-        <h1 class="text-3xl font-black text-brand-dark">Product Governance</h1>
-        <p class="text-gray-500">Review and approve product specifications to prevent data hallucination.</p>
+        <h1 class="text-3xl font-black text-brand-dark">Product Catalog Admin</h1>
+        <p class="text-gray-500">Manage product inventory, review model integrity and enable storefront display.</p>
       </div>
       <a href="/admin" class="text-sm font-bold text-gray-500 hover:text-brand-dark">&larr; Back to Dashboard</a>
     </div>
+
+    {result.isSample && (
+      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-xl mb-8 flex items-center gap-4">
+        <div class="text-sm"><strong>Offline Alert:</strong> {result.reason}</div>
+      </div>
+    )}
 
     <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       <table class="w-full text-left border-collapse">
         <thead>
           <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
-            <th class="p-6">Product Name</th>
-            <th class="p-6">Model Status</th>
-            <th class="p-6">Governance Status</th>
-            <th class="p-6">Actions</th>
+            <th class="p-6">Product Details</th>
+            <th class="p-6">Category</th>
+            <th class="p-6">Stock</th>
+            <th class="p-6">Price</th>
+            <th class="p-6 text-center">Status</th>
           </tr>
         </thead>
         <tbody class="text-sm">
-          {pendingProducts.map(p => (
+          {products.map(p => (
             <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-              <td class="p-6 font-bold text-brand-dark">{p.name}</td>
               <td class="p-6">
-                <span class="bg-red-50 text-red-600 px-2 py-1 rounded font-bold text-[10px] uppercase">{p.model}</span>
+                <div class="font-bold text-brand-dark">{p.name}</div>
+                <div class="text-xs font-mono text-gray-400 mt-1">SKU: {p.sku} | Mod: {p.modelNumber}</div>
+              </td>
+              <td class="p-6 text-gray-600">
+                {p.categoryName || p.category || 'Uncategorized'}
               </td>
               <td class="p-6">
-                <span class="bg-orange-50 text-orange-600 px-2 py-1 rounded font-bold text-[10px] uppercase italic">Awaiting Fact Check</span>
+                <span class={`px-2 py-1 rounded font-bold text-[10px] uppercase ${p.stockStatus === 'in_stock' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  {p.stockStatus.replace('_', ' ')}
+                </span>
               </td>
-              <td class="p-6">
-                <button class="bg-brand-dark text-white px-4 py-2 rounded font-bold text-xs hover:bg-black transition-colors">Verify & Approve</button>
+              <td class="p-6 font-bold">
+                {formatter.format(p.priceUgx)}
+              </td>
+              <td class="p-6 text-center">
+                {p.active ? (
+                  <span class="bg-brand-green/10 text-brand-green text-[10px] px-2 py-1 rounded font-black uppercase">Active</span>
+                ) : (
+                  <span class="bg-gray-100 text-gray-400 text-[10px] px-2 py-1 rounded font-black uppercase">Inactive</span>
+                )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      {pendingProducts.length === 0 && (
-        <div class="p-20 text-center text-gray-400 italic">No products currently awaiting governance approval.</div>
+      {products.length === 0 && (
+        <div class="p-20 text-center text-gray-400 italic">No products found in database.</div>
       )}
     </div>
   </div>

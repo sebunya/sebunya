@@ -1,10 +1,24 @@
+export type StockStatus = 'in_stock' | 'low_stock' | 'out_of_stock' | 'pre_order';
+
 export class ProductEntity {
   constructor(
     public readonly id: string,
     public readonly sku: string,
     public readonly modelNumber: string,
     public readonly name: string,
-    public readonly categoryId: string,
+    public readonly slug: string,
+    public readonly category: string,
+    public readonly subcategory: string | undefined,
+    public readonly shortDescription: string,
+    public readonly longDescription: string,
+    public readonly priceUgx: number,
+    public readonly compareAtPriceUgx: number | undefined,
+    public readonly stockStatus: StockStatus,
+    public readonly imageUrl: string | undefined,
+    public readonly features: string[],
+    public readonly warrantyPeriod: string,
+    public readonly verificationEligible: boolean,
+    public readonly active: boolean,
     public readonly approvalStatus: 'draft' | 'approved' | 'rejected',
     public readonly isPreOrderEnabled: boolean,
     public readonly hasRetailPrice: boolean,
