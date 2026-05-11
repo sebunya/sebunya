@@ -1,9 +1,12 @@
 import { db } from '../client';
 import { orders, orderItems } from '../schema/commerce';
-import { eq, desc } from 'drizzle-orm';
-import { Order, OrderStatus, PaymentStatus, BuyerType } from '../../../domain/commerce/Order';
+import { products } from '../schema/products';
+import { and, eq, desc } from 'drizzle-orm';
+import { Order, OrderStatus as DomainOrderStatus, PaymentStatus, BuyerType } from '../../../domain/commerce/Order';
+import { ICustomerOrderRepository } from '../../../application/ports/ICustomerOrderRepository';
+import { OrderDetailDto, OrderSummaryDto, OrderStatus } from '@goldplus/shared';
 
-export class DrizzleOrderRepository {
+export class DrizzleOrderRepository implements ICustomerOrderRepository {
   async findById(id: string): Promise<Order | null> {
     const result = await db.query.orders.findFirst({
       where: eq(orders.id, id),
@@ -34,7 +37,7 @@ export class DrizzleOrderRepository {
       result.deliveryFee,
       result.totalAmount,
       result.paymentStatus as PaymentStatus,
-      result.status as OrderStatus,
+      result.status as DomainOrderStatus,
       result.createdAt,
       result.updatedAt
     );
@@ -68,7 +71,7 @@ export class DrizzleOrderRepository {
       result.deliveryFee,
       result.totalAmount,
       result.paymentStatus as PaymentStatus,
-      result.status as OrderStatus,
+      result.status as DomainOrderStatus,
       result.createdAt,
       result.updatedAt
     ));
@@ -114,5 +117,59 @@ export class DrizzleOrderRepository {
         });
       }
     });
+  }
+
+  // ICustomerOrderRepository Implementation
+  async listForUser(userId: string): Promise<OrderSummaryDto[]> {
+    const rows = await db.query.orders.findMany({
+      where: eq(orders.userId, userId),
+      with: { items: true },
+      orderBy: [desc(orders.createdAt)],
+      limit: 50,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      orderNumber: row.orderNumber,
+      status: row.status as OrderStatus,
+      totalAmountUgx: row.totalAmount,
+      itemCount: (row as any).items?.length ?? 0,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
+  async findByIdForUser(orderId: string, userId: string): Promise<OrderDetailDto | null> {
+    const row = await db.query.orders.findFirst({
+      where: and(eq(orders.id, orderId), eq(orders.userId, userId)),
+      with: { items: true },
+    });
+    if (!row) return null;
+
+    const productIds = ((row as any).items ?? []).map((i: any) => i.productId).filter(Boolean);
+    const productRows = productIds.length
+      ? await db.query.products.findMany({ where: (p, { inArray }) => inArray(p.id, productIds) })
+      : [];
+    const productById = new Map(productRows.map((p) => [p.id, p]));
+
+    return {
+      id: row.id,
+      orderNumber: row.orderNumber,
+      status: row.status as OrderStatus,
+      totalAmountUgx: row.totalAmount,
+      createdAt: row.createdAt.toISOString(),
+      items: ((row as any).items ?? []).map((i: any) => {
+        const product = productById.get(i.productId);
+        return {
+          productId: i.productId,
+          productName: product?.name ?? 'Product no longer available',
+          productSlug: product?.slug ?? null,
+          unitPriceUgx: i.unitPrice,
+          quantity: i.quantity,
+        };
+      }),
+      customer: {
+        email: row.customerEmail ?? null,
+        phone: row.customerPhone ?? null,
+      },
+    };
   }
 }

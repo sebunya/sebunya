@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, primaryKey } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -24,3 +24,19 @@ export const userRoles = pgTable('user_roles', {
   userId: uuid('user_id').references(() => users.id).notNull(),
   roleId: uuid('role_id').references(() => roles.id).notNull(),
 });
+
+export const rolePermissions = pgTable(
+  'role_permissions',
+  {
+    roleId: uuid('role_id')
+      .references(() => roles.id, { onDelete: 'cascade' })
+      .notNull(),
+    permissionId: uuid('permission_id')
+      .references(() => permissions.id, { onDelete: 'cascade' })
+      .notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.roleId, table.permissionId] }),
+  }),
+);
+

@@ -4,6 +4,7 @@ import * as nodeCrypto from 'node:crypto';
 
 
 export interface DealerApplicationDto {
+  id?: string; // Allow caller to inject ID for auditing trace
   businessName: string;
   contactName: string;
   email: string;
@@ -20,8 +21,9 @@ export class DealerApplicationUseCase {
       throw new Error('Business name, email, and phone are required.');
     }
 
+    const id = dto.id ?? nodeCrypto.randomUUID();
     const dealer = Dealer.apply(
-      nodeCrypto.randomUUID(),
+      id,
 
       dto.businessName,
       dto.contactName,

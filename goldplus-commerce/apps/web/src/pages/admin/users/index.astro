@@ -1,0 +1,98 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import AdminPageHeader from '../../../components/AdminPageHeader.astro';
+import AdminTable from '../../../components/AdminTable.astro';
+import StatusBadge from '../../../components/StatusBadge.astro';
+import EmptyState from '../../../components/EmptyState.astro';
+import Notice from '../../../components/Notice.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken, clearSessionCookie } from '../../../lib/session';
+import type { ApiEnvelope } from '@goldplus/shared';
+
+interface UserRow {
+  id: string;
+  email: string;
+  phone: string | null;
+  isActive: boolean;
+  roleNames: string[];
+  createdAt: string;
+}
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/users', 303);
+}
+
+let rows: UserRow[] = [];
+let fetchError: string | null = null;
+
+try {
+  const res = await fetch(`${apiBase}/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 401 || res.status === 403) {
+    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    return Astro.redirect('/admin/login?returnTo=/admin/users', 303);
+  }
+  if (!res.ok) {
+    fetchError = `Users service responded with HTTP ${res.status}.`;
+  } else {
+    const json = (await res.json()) as ApiEnvelope<UserRow[]>;
+    if (json.success && Array.isArray(json.data)) rows = json.data;
+    else fetchError = json.error?.message ?? 'Unexpected response.';
+  }
+} catch {
+  fetchError = 'Cannot reach the users service right now.';
+}
+---
+
+<BaseLayout title="Users — Admin">
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <AdminPageHeader
+      title="Users"
+      description="Everyone with an account. Role assignments determine what each user can do in admin. CRUD lands in a future pass."
+    />
+
+    {fetchError && (
+      <div class="mb-6">
+        <Notice kind="not-configured" title="Users service unavailable" message={fetchError} />
+      </div>
+    )}
+
+    {rows.length === 0 && !fetchError ? (
+      <EmptyState
+        title="No users yet"
+        message="Run scripts/bootstrap-admin.ts to seed the first owner account, then add additional staff via direct DB writes for now."
+      />
+    ) : rows.length > 0 ? (
+      <AdminTable caption={`${rows.length} user${rows.length === 1 ? '' : 's'}`}>
+        <Fragment slot="head">
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Email</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Phone</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Roles</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Status</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Joined</th>
+        </Fragment>
+        {rows.map((u) => (
+          <tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="px-6 py-3 font-bold text-brand-charcoal break-all">{u.email}</td>
+            <td class="px-6 py-3 text-sm text-brand-mutedGrey">{u.phone ?? '—'}</td>
+            <td class="px-6 py-3">
+              {u.roleNames.length === 0 ? (
+                <span class="text-xs text-brand-mutedGrey italic">No roles</span>
+              ) : (
+                <div class="flex flex-wrap gap-1">
+                  {u.roleNames.map((name) => (
+                    <span class="inline-flex items-center px-2 py-1 rounded bg-brand-softGrey text-brand-charcoal text-[10px] font-bold uppercase tracking-widest border border-brand-borderGrey">{name}</span>
+                  ))}
+                </div>
+              )}
+            </td>
+            <td class="px-6 py-3">
+              <StatusBadge status={u.isActive ? 'success' : 'danger'} label={u.isActive ? 'Active' : 'Disabled'} />
+            </td>
+            <td class="px-6 py-3 text-xs text-brand-mutedGrey">{new Date(u.createdAt).toLocaleDateString('en-GB')}</td>
+          </tr>
+        ))}
+      </AdminTable>
+    ) : null}
+  </div>
+</BaseLayout>

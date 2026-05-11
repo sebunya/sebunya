@@ -63,4 +63,51 @@ describe("Architecture boundaries", () => {
       expect(content, `${file} must not import infrastructure adapters`).not.toMatch(/from\s+["'](.*)infrastructure\//);
     }
   });
+
+  it("admin route files must import auth + requirePermissions", () => {
+    const adminRoutesDir = path.join(root, "apps/api/src/interfaces/http/routes/admin");
+    if (!fs.existsSync(adminRoutesDir)) {
+      return; // Vacuously satisfied
+    }
+    const files = readFiles(adminRoutesDir).filter((f) => f.endsWith(".ts"));
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, "utf8");
+      const hasAuth = /from\s+["'][^"']*\/middleware\/auth["']/.test(content);
+      const hasPerms = /requirePermissions\s*\(/.test(content);
+
+      expect(hasAuth, `${file} must import authMiddleware from middleware/auth`).toBe(true);
+      expect(hasPerms, `${file} must call requirePermissions(...) on each handler`).toBe(true);
+    }
+  });
+
+  it("admin and governance write routes must call CreateAuditLogUseCase", () => {
+    const candidateFiles: string[] = [];
+
+    const governance = path.join(root, "apps/api/src/interfaces/http/routes/governance.ts");
+    if (fs.existsSync(governance)) candidateFiles.push(governance);
+
+    const adminDir = path.join(root, "apps/api/src/interfaces/http/routes/admin");
+    if (fs.existsSync(adminDir)) {
+      candidateFiles.push(...readFiles(adminDir).filter((f) => f.endsWith(".ts")));
+    }
+
+    const writeVerbRegex = /\b(routes|app)\.(post|put|patch|delete)\s*\(/;
+    const auditRegex = /\bauditUc\.execute\s*\(|CreateAuditLogUseCase/;
+    const exemptionMarker = /\/\/\s*audit-exempt:/;
+
+    for (const file of candidateFiles) {
+      const content = fs.readFileSync(file, "utf8");
+      const hasWrite = writeVerbRegex.test(content);
+      if (!hasWrite) continue;
+      if (exemptionMarker.test(content)) continue;
+      const hasAudit = auditRegex.test(content);
+      expect(
+        hasAudit,
+        `${file} contains write verbs but never calls CreateAuditLogUseCase. ` +
+          `Either add audit, or add a "// audit-exempt: <reason>" comment for write endpoints that have a dedicated audit channel.`,
+      ).toBe(true);
+    }
+  });
 });
+

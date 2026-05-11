@@ -1,0 +1,117 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import EmptyState from '../../components/EmptyState.astro';
+import Notice from '../../components/Notice.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken, clearSessionCookie } from '../../lib/session';
+import type { MeDto, OrderSummaryDto, AddressDto, ApiResponse } from '@goldplus/shared';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/login?returnTo=/account', 303);
+}
+
+async function authedFetch<T>(path: string): Promise<{ status: number; data: T | null }> {
+  try {
+    const res = await fetch(`${apiBase}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return { status: res.status, data: null };
+    const json = (await res.json()) as ApiResponse<T>;
+    return { status: res.status, data: json.success ? (json.data ?? null) : null };
+  } catch (err) {
+    return { status: 500, data: null };
+  }
+}
+
+const [me, orders, addresses] = await Promise.all([
+  authedFetch<MeDto>('/account/me'),
+  authedFetch<OrderSummaryDto[]>('/account/orders'),
+  authedFetch<AddressDto[]>('/account/addresses'),
+]);
+
+if (me.status === 401 || orders.status === 401 || addresses.status === 401) {
+  Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+  return Astro.redirect('/login?returnTo=/account', 303);
+}
+
+const user = me.data;
+const orderList = orders.data ?? [];
+const addressList = addresses.data ?? [];
+
+const formatUgx = (n: number) =>
+  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
+
+const statusBadge: Record<string, string> = {
+  PENDING_PAYMENT: 'bg-orange-50 text-orange-700 border-orange-200',
+  PAID: 'bg-green-50 text-green-700 border-green-200',
+  PAYMENT_FAILED: 'bg-red-50 text-red-700 border-red-200',
+  PROCESSING: 'bg-blue-50 text-blue-700 border-blue-200',
+  SHIPPED: 'bg-blue-50 text-blue-700 border-blue-200',
+  DELIVERED: 'bg-green-50 text-green-700 border-green-200',
+  CANCELLED: 'bg-gray-100 text-gray-700 border-gray-200',
+};
+---
+
+<BaseLayout title="My account">
+  <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-8 pb-6 border-b border-brand-borderGrey">
+      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">My account</h1>
+      <a href="/logout" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">Sign out &rarr;</a>
+    </div>
+
+    {!user ? (
+      <Notice kind="not-configured" title="Account details unavailable" message="We could not load your account from the API." />
+    ) : (
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
+        <section class="bg-white border border-brand-borderGrey rounded-2xl p-6 lg:col-span-1">
+          <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Profile</h2>
+          <p class="font-bold text-brand-charcoal break-all">{user.email}</p>
+          <p class="text-sm text-brand-mutedGrey mt-1">{user.phone ?? 'No phone on file.'}</p>
+          <p class="text-xs text-brand-mutedGrey mt-3">Joined {new Date(user.createdAt).toLocaleDateString('en-GB')}</p>
+        </section>
+
+        <section class="bg-white border border-brand-borderGrey rounded-2xl p-6 lg:col-span-2">
+          <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Recent orders</h2>
+          {orderList.length === 0 ? (
+            <EmptyState title="No orders yet" message="When you place an order it will appear here." />
+          ) : (
+            <ul class="divide-y divide-brand-borderGrey">
+              {orderList.map((o) => (
+                <li class="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div class="min-w-0">
+                    <a href={`/orders/${o.id}`} class="font-bold text-brand-charcoal hover:underline">{o.orderNumber}</a>
+                    <p class="text-xs text-brand-mutedGrey mt-1">{new Date(o.createdAt).toLocaleDateString('en-GB')} · {o.itemCount} item{o.itemCount === 1 ? '' : 's'}</p>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <span class={`inline-flex items-center px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${statusBadge[o.status] ?? statusBadge.CANCELLED}`}>{o.status.replace(/_/g, ' ')}</span>
+                    <span class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(o.totalAmountUgx)}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    )}
+
+    <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+      <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Delivery addresses</h2>
+      {addressList.length === 0 ? (
+        <EmptyState title="No addresses saved" message="Add a delivery address to speed up checkout." />
+      ) : (
+        <ul class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {addressList.map((a) => (
+            <li class="border border-brand-borderGrey rounded-xl p-4">
+              <div class="flex items-center justify-between mb-1">
+                <p class="font-bold text-brand-charcoal">{a.label}</p>
+                {a.isDefault && <span class="text-[10px] font-bold uppercase tracking-widest text-brand-primary">Default</span>}
+              </div>
+              <p class="text-sm text-brand-charcoal">{a.recipientName}</p>
+              <p class="text-sm text-brand-mutedGrey">{a.district} · {a.areaDetails}</p>
+              <p class="text-xs text-brand-mutedGrey mt-1">{a.phone}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  </div>
+</BaseLayout>

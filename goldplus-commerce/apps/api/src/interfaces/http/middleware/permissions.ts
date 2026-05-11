@@ -2,7 +2,7 @@ import { Context, Next } from 'hono';
 import { ApiResponse } from '@goldplus/shared';
 
 export const requirePermissions = (requiredPermissions: string[]) => {
-  return async (c: Context, next: Next) => {
+  return async (c: Context<{ Variables: { user?: { id: string; email: string; permissions: string[] } } }>, next: Next) => {
     const user = c.get('user');
 
     if (!user) {
