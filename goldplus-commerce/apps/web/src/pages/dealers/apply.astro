@@ -3,30 +3,43 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
 import { postJson } from '../../lib/api';
+import UgandaLocationPicker from '../../components/UgandaLocationPicker.astro';
+import { formatLocationLabel } from '../../lib/location-utils';
+import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../../lib/formValidation';
 
 let status: 'success' | 'error' | 'received' | null = null;
 let message: string | undefined;
 let reference: string | undefined;
 let values: Record<string, string> = {};
+let errors: Record<string, string> = {};
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const dto = {
-    businessName: String(form.get('businessName') ?? '').trim(),
-    contactName: String(form.get('contactName') ?? '').trim(),
-    email: String(form.get('email') ?? '').trim(),
-    phone: String(form.get('phone') ?? '').trim(),
-    tinNumber: String(form.get('tinNumber') ?? '').trim(),
-    location: String(form.get('location') ?? '').trim(),
-  };
-  values = dto;
-  const missing = (['businessName', 'contactName', 'email', 'phone', 'tinNumber', 'location'] as const)
-    .filter((k) => !dto[k]);
-  if (missing.length > 0) {
-    status = 'error';
-    message = `Please fill in all required fields: ${missing.join(', ')}.`;
-  } else {
-    const result = await postJson('/governance/dealers/apply', dto);
+  const businessName = String(form.get('businessName') ?? '').trim();
+  const contactName = String(form.get('contactName') ?? '').trim();
+  const email = normalizeEmail(String(form.get('email') ?? ''));
+  const phone = normalizePhone(String(form.get('phone') ?? ''));
+  const tinNumber = String(form.get('tinNumber') ?? '').trim();
+  const locationJson = String(form.get('locationJson') ?? '').trim();
+  const shopDetails = String(form.get('shopDetails') ?? '').trim();
+  const agree = form.get('agree') === 'on';
+
+  values = { businessName, contactName, email, phone, tinNumber, locationJson, shopDetails };
+
+  if (!businessName) errors.businessName = 'Business name is required.';
+  if (!contactName) errors.contactName = 'Contact person is required.';
+  if (!isValidEmail(email)) errors.email = 'Valid business email is required.';
+  if (!isValidUgandanPhone(phone)) errors.phone = 'Valid Ugandan phone required.';
+  if (!tinNumber) errors.tinNumber = 'TIN is required.';
+  if (!locationJson) errors.locationJson = 'Please select location.';
+  if (!agree) errors.agree = 'You must accept terms.';
+
+  if (Object.keys(errors).length === 0) {
+    const formattedLoc = formatLocationLabel(locationJson);
+    const fullLocStr = `${formattedLoc} | DETAILS: ${shopDetails}`.trim();
+    const result = await postJson('/governance/dealers/apply', {
+      businessName, contactName, email, phone, tinNumber, location: fullLocStr
+    });
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'success';
@@ -36,8 +49,11 @@ if (Astro.request.method === 'POST') {
       status = 'error';
       message = result.code === 'NETWORK'
         ? 'Cannot reach the application service right now. Please try again shortly.'
-        : result.message;
+        : (result.message || 'Failed to apply.');
     }
+  } else {
+    status = 'error';
+    message = 'Please correct the errors below.';
   }
 }
 ---
@@ -62,15 +78,31 @@ if (Astro.request.method === 'POST') {
       <div class="bg-white p-8 md:p-10 rounded-2xl border border-gray-200 shadow-xl">
         <h2 class="text-xl md:text-2xl font-bold text-brand-dark mb-6 pb-4 border-b border-gray-100">Application form</h2>
 
-        <form method="POST" action="/dealers/apply" novalidate class="space-y-6">
-          <FormField id="businessName" name="businessName" label="Business legal name" required defaultValue={values.businessName} autocomplete="organization" />
+        <form method="POST" action="/dealers/apply" novalidate id="dealerForm" class="space-y-6">
+          <FormField id="businessName" name="businessName" label="Business legal name" required defaultValue={values.businessName} autocomplete="organization" errorMessage={errors.businessName} />
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FormField id="contactName" name="contactName" label="Contact person" required defaultValue={values.contactName} autocomplete="name" />
-            <FormField id="tinNumber" name="tinNumber" label="TIN number (URA)" required defaultValue={values.tinNumber} placeholder="100XXXXXXXX" />
-            <FormField id="email" name="email" label="Business email" type="email" required defaultValue={values.email} autocomplete="email" />
-            <FormField id="phone" name="phone" label="Business phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" />
+            <FormField id="contactName" name="contactName" label="Contact person" required defaultValue={values.contactName} autocomplete="name" errorMessage={errors.contactName} />
+            <FormField id="tinNumber" name="tinNumber" label="TIN number (URA)" required defaultValue={values.tinNumber} placeholder="100XXXXXXXX" errorMessage={errors.tinNumber} />
+            <FormField id="email" name="email" label="Business email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
+            <FormField id="phone" name="phone" label="Business phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="+2567..." errorMessage={errors.phone} />
           </div>
-          <FormField id="location" name="location" label="Store location (street, town, district)" required defaultValue={values.location} />
+          <div class="bg-gray-50 p-5 rounded-xl border border-gray-200 mb-6 space-y-4">
+            <UgandaLocationPicker 
+              name="locationJson" 
+              label="Business location" 
+              helperText="Search the parish, ward, town, or district where your business is located."
+              required={true} 
+              defaultValue={values.locationJson} 
+              errorMessage={errors.locationJson} 
+            />
+            <FormField 
+               id="shopDetails" 
+               name="shopDetails" 
+               label="Additional address details" 
+               placeholder="Shop, mall, road, building, trading centre, or nearby landmark"
+               defaultValue={values.shopDetails}
+            />
+          </div>
 
           <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
             <h3 class="font-bold text-brand-dark mb-2 text-sm">Dealer commitment</h3>
@@ -81,17 +113,78 @@ if (Astro.request.method === 'POST') {
               <input type="checkbox" name="agree" required class="w-5 h-5 rounded border-gray-300 text-brand-green focus:ring-brand-green" />
               <span class="text-sm font-bold text-gray-700">I agree to the GoldPlus dealer terms</span>
             </label>
+            {errors.agree && <p class="text-xs text-red-600 mt-1 font-bold">{errors.agree}</p>}
           </div>
 
-          <button type="submit" class="w-full bg-brand-green text-white py-4 rounded-xl font-bold text-lg hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-green/30 outline-none transition-all">
+          <button type="submit" id="submitBtn" class="w-full bg-brand-green text-white py-4 rounded-xl font-bold text-lg hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-green/30 outline-none transition-all">
             Submit application
           </button>
         </form>
       </div>
 
       <p class="text-xs text-gray-500 text-center mt-6 leading-relaxed max-w-md mx-auto">
-        We review applications in the order they arrive. Owner review required before a dealership is activated.
+        A dealer success team member will get in touch to finalize setup once the application passes initial operational review.
       </p>
     </div>
   </div>
 </BaseLayout>
+
+<script>
+  import { isValidEmail, isValidUgandanPhone } from '../../lib/formValidation';
+
+  const form = document.getElementById('dealerForm') as HTMLFormElement;
+  const btn = document.getElementById('submitBtn') as HTMLButtonElement;
+
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      let valid = true;
+
+      const setError = (id: string, msg: string | null) => {
+        const field = document.getElementById(id);
+        if (!field) return;
+        field.classList.remove('border-red-300', 'ring-2', 'ring-red-100');
+        field.removeAttribute('aria-invalid');
+        let next = field.nextElementSibling;
+        while (next && !next.classList.contains('text-red-600')) next = next.nextElementSibling;
+        if (next) next.remove();
+        if (msg) {
+          field.classList.add('border-red-300', 'ring-2', 'ring-red-100');
+          field.setAttribute('aria-invalid', 'true');
+          const p = document.createElement('p');
+          p.className = 'text-xs text-red-600 mt-1 font-bold js-error-msg';
+          p.textContent = msg;
+          field.parentNode?.insertBefore(p, field.nextSibling);
+          valid = false;
+        }
+      };
+
+      document.querySelectorAll('.js-error-msg').forEach(x => x.remove());
+
+      const bName = form.querySelector('[name="businessName"]') as HTMLInputElement;
+      const cName = form.querySelector('[name="contactName"]') as HTMLInputElement;
+      const tin = form.querySelector('[name="tinNumber"]') as HTMLInputElement;
+      const em = form.querySelector('[name="email"]') as HTMLInputElement;
+      const ph = form.querySelector('[name="phone"]') as HTMLInputElement;
+      const ag = form.querySelector('[name="agree"]') as HTMLInputElement;
+
+      if (!bName.value.trim()) setError('businessName', 'Required.');
+      if (!cName.value.trim()) setError('contactName', 'Required.');
+      if (!tin.value.trim()) setError('tinNumber', 'Required.');
+      if (!isValidEmail(em.value)) setError('email', 'Enter a valid email.');
+      if (!isValidUgandanPhone(ph.value)) setError('phone', 'Enter valid Ugandan phone.');
+      if (!ag.checked) {
+        valid = false;
+        alert('Please accept the dealer terms to continue.');
+      }
+
+      if (!valid) {
+        e.preventDefault();
+        const f = form.querySelector('[aria-invalid="true"]') as HTMLElement;
+        if (f) f.focus();
+      } else {
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+      }
+    });
+  }
+</script>

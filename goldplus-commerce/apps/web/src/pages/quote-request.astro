@@ -3,46 +3,73 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
 import Notice from '../components/Notice.astro';
+import UgandaLocationPicker from '../components/UgandaLocationPicker.astro';
+import { formatLocationLabel } from '../lib/location-utils';
 import { postJson } from '../lib/api';
+
+import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../lib/formValidation';
 
 let status: 'success' | 'error' | 'received' | null = null;
 let message: string | undefined;
 let reference: string | undefined;
 let values: Record<string, string> = {};
+let errors: Record<string, string> = {};
 
 const kindParam = Astro.url.searchParams.get('kind');
 const initialKind = kindParam === 'wholesale' || kindParam === 'corporate' ? kindParam : 'retail';
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const dto = {
+  
+  values = {
     customerName: String(form.get('customerName') ?? '').trim(),
-    email: String(form.get('email') ?? '').trim(),
-    phone: String(form.get('phone') ?? '').trim(),
+    email: normalizeEmail(String(form.get('email') ?? '')),
+    phone: normalizePhone(String(form.get('phone') ?? '')),
     productName: String(form.get('productName') ?? '').trim(),
     quantity: String(form.get('quantity') ?? '').trim(),
     message: String(form.get('message') ?? '').trim(),
     kind: String(form.get('kind') ?? initialKind),
+    locationJson: String(form.get('locationJson') ?? '').trim(),
+    deliveryAddress: String(form.get('deliveryAddress') ?? '').trim()
   };
-  values = dto;
-  const missing = (['customerName', 'email', 'phone', 'productName', 'quantity'] as const)
-    .filter((k) => !dto[k as keyof typeof dto]);
-  if (missing.length > 0) {
-    status = 'error';
-    message = `Please fill in all required fields: ${missing.join(', ')}.`;
-  } else {
-    const result = await postJson('/governance/quotes/request', dto);
+
+  if (!values.customerName) errors.customerName = 'Your name is required.';
+  if (!isValidEmail(values.email)) errors.email = 'A valid email is required.';
+  if (!isValidUgandanPhone(values.phone)) errors.phone = 'A valid Ugandan phone number is required.';
+  if (!values.productName) errors.productName = 'Please state the product you need.';
+  if (!values.quantity) errors.quantity = 'Required.';
+  if (!values.locationJson) errors.locationJson = 'Please select a location.';
+
+  if (Object.keys(errors).length === 0) {
+    const locStr = formatLocationLabel(values.locationJson);
+    let finalMsg = `${values.message}\n\n[Service Location: ${locStr}]`.trim();
+    if (values.deliveryAddress) {
+      finalMsg += `\n[Landmark/Details: ${values.deliveryAddress}]`;
+    }
+
+    const result = await postJson('/governance/quotes/request', {
+      customerName: values.customerName,
+      email: values.email,
+      phone: values.phone,
+      productName: values.productName,
+      quantity: values.quantity,
+      message: finalMsg,
+      kind: values.kind
+    });
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'received';
-      message = 'Quote request received. A sales officer will follow up on the email and phone you provided. Owner review required before pricing is confirmed.';
+      message = 'Quote request received successfully. A specialized sales agent will analyze the capacity and respond using the contact information you provided.';
       values = {};
     } else {
       status = 'error';
       message = result.code === 'NETWORK'
         ? 'Cannot reach the sales service right now. Please try again shortly.'
-        : result.message;
+        : (result.message || 'Failed to submit.');
     }
+  } else {
+    status = 'error';
+    message = 'Please fix errors before requesting a quote.';
   }
 }
 
@@ -67,10 +94,10 @@ const checkedKind = values.kind || initialKind;
   <div class="container mx-auto px-4 lg:px-8 py-10">
     <div class="max-w-2xl mx-auto space-y-6">
       <FormFeedback status={status} message={message} reference={reference} />
-      <Notice kind="owner-review" message="Pricing for wholesale and corporate orders is set per request. Final figures require owner sign-off and are not auto-generated." />
+      <Notice kind="info" message="Pricing for volume orders is calculated dynamically based on current inventory and routing. Submit this form and a sales agent will prepare a non-binding estimate for you." />
 
       <div class="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
-        <form method="POST" action="/quote-request" novalidate class="space-y-6">
+        <form method="POST" action="/quote-request" novalidate id="quoteForm" class="space-y-6">
 
           <fieldset class="border border-gray-200 rounded-xl p-4">
             <legend class="text-xs font-bold uppercase tracking-widest text-gray-500 px-2">Buyer type</legend>
@@ -85,15 +112,34 @@ const checkedKind = values.kind || initialKind;
           </fieldset>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FormField id="customerName" name="customerName" label="Your name" required defaultValue={values.customerName} autocomplete="name" />
-            <FormField id="email" name="email" label="Email" type="email" required defaultValue={values.email} autocomplete="email" />
-            <FormField id="phone" name="phone" label="Phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" />
-            <FormField id="quantity" name="quantity" label="Quantity needed" required defaultValue={values.quantity} placeholder="e.g. 50 units" />
+            <FormField id="customerName" name="customerName" label="Your name" required defaultValue={values.customerName} autocomplete="name" errorMessage={errors.customerName} />
+            <FormField id="email" name="email" label="Email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
+            <FormField id="phone" name="phone" label="Phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="+2567..." errorMessage={errors.phone} />
+            <FormField id="quantity" name="quantity" label="Quantity needed" required defaultValue={values.quantity} placeholder="e.g. 50 units" errorMessage={errors.quantity} />
+            <div class="md:col-span-2">
+            <div class="space-y-4">
+              <UgandaLocationPicker 
+                name="locationJson" 
+                label="Service location" 
+                helperText="Search the parish, ward, town, or district where support or delivery is needed."
+                required 
+                defaultValue={values.locationJson} 
+                errorMessage={errors.locationJson} 
+              />
+              <FormField 
+                id="deliveryAddress" 
+                name="deliveryAddress" 
+                label="Additional address details" 
+                placeholder="Building, road, estate, shop, or nearby landmark"
+                defaultValue={values.deliveryAddress}
+              />
+            </div>
+            </div>
           </div>
-          <FormField id="productName" name="productName" label="Product or category" required defaultValue={values.productName} placeholder="e.g. Fast chargers, USB-C cables" />
+          <FormField id="productName" name="productName" label="Product or category" required defaultValue={values.productName} placeholder="e.g. Fast chargers, USB-C cables" errorMessage={errors.productName} />
           <FormField id="message" name="message" label="Notes for sales" type="textarea" rows={4} defaultValue={values.message} placeholder="Anything we should know? Delivery deadlines, special needs, packaging…" />
 
-          <button type="submit" class="w-full bg-brand-green text-white py-4 rounded-xl font-bold text-lg hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-green/30 outline-none transition-all">
+          <button type="submit" id="submitBtn" class="w-full bg-brand-green text-white py-4 rounded-xl font-bold text-lg hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-green/30 outline-none transition-all">
             Request quote
           </button>
         </form>
@@ -101,3 +147,62 @@ const checkedKind = values.kind || initialKind;
     </div>
   </div>
 </BaseLayout>
+
+<script>
+  import { isValidEmail, isValidUgandanPhone } from '../lib/formValidation';
+
+  const form = document.getElementById('quoteForm') as HTMLFormElement;
+  const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement;
+
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      let valid = true;
+
+      const setError = (id: string, msg: string | null) => {
+        const field = document.getElementById(id);
+        if (!field) return;
+        field.classList.remove('border-red-300', 'ring-2', 'ring-red-100');
+        field.removeAttribute('aria-invalid');
+        
+        let next = field.nextElementSibling;
+        while (next && !next.classList.contains('text-red-600')) {
+          next = next.nextElementSibling;
+        }
+        if (next) next.remove();
+
+        if (msg) {
+          field.classList.add('border-red-300', 'ring-2', 'ring-red-100');
+          field.setAttribute('aria-invalid', 'true');
+          const p = document.createElement('p');
+          p.className = 'text-xs text-red-600 mt-1 font-bold js-error-msg';
+          p.textContent = msg;
+          field.parentNode?.insertBefore(p, field.nextSibling);
+          valid = false;
+        }
+      };
+
+      document.querySelectorAll('.js-error-msg').forEach(e => e.remove());
+
+      const nameIn = form.querySelector('[name="customerName"]') as HTMLInputElement;
+      const emailIn = form.querySelector('[name="email"]') as HTMLInputElement;
+      const phoneIn = form.querySelector('[name="phone"]') as HTMLInputElement;
+      const prodIn = form.querySelector('[name="productName"]') as HTMLInputElement;
+      const qIn = form.querySelector('[name="quantity"]') as HTMLInputElement;
+
+      if (!nameIn.value.trim()) setError('customerName', 'Required.');
+      if (!isValidEmail(emailIn.value)) setError('email', 'Enter a valid email.');
+      if (!isValidUgandanPhone(phoneIn.value)) setError('phone', 'Enter a valid Ugandan phone.');
+      if (!prodIn.value.trim()) setError('productName', 'Required.');
+      if (!qIn.value.trim()) setError('quantity', 'Required.');
+
+      if (!valid) {
+        e.preventDefault();
+        const first = form.querySelector('[aria-invalid="true"]') as HTMLElement;
+        if (first) first.focus();
+      } else {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+      }
+    });
+  }
+</script>

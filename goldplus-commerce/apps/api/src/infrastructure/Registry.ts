@@ -8,6 +8,8 @@ import { DrizzleVerificationRepository } from './db/repositories/DrizzleVerifica
 import { DrizzleAuditRepository } from './db/repositories/DrizzleAuditRepository';
 import { DrizzlePaymentRepository } from './db/repositories/DrizzlePaymentRepository';
 import { DrizzleUserRepository } from './db/repositories/DrizzleUserRepository';
+import { LocalProductImageStorage } from './storage/LocalProductImageStorage';
+import * as path from 'path';
 import { DrizzleAddressRepository } from './db/repositories/DrizzleAddressRepository';
 import { DrizzleRoleRepository } from './db/repositories/DrizzleRoleRepository';
 import { DrizzleFakeReportRepository } from './db/repositories/DrizzleFakeReportRepository';
@@ -37,6 +39,7 @@ import { ListAdminRolesUseCase } from '../application/use-cases/admin/ListAdminR
 import { RecordNotificationAttemptUseCase } from '../application/use-cases/notifications/RecordNotificationAttemptUseCase';
 import { ListRecentNotificationsUseCase } from '../application/use-cases/notifications/ListRecentNotificationsUseCase';
 import { ProcessOutboxBatchUseCase } from '../application/use-cases/outbox/ProcessOutboxBatchUseCase';
+import { UploadProductImagesUseCase } from '../application/use-cases/products/UploadProductImagesUseCase';
 
 export class Registry {
   private static _instance: Registry;
@@ -56,6 +59,12 @@ export class Registry {
   public readonly roleRepo = new DrizzleRoleRepository();
   public readonly fakeReportRepo = new DrizzleFakeReportRepository();
   public readonly adminRoleReadRepo = new DrizzleAdminRoleReadRepository();
+
+  // Storage
+  private readonly productImageStorage = new LocalProductImageStorage(
+    path.join(process.cwd().endsWith('apps/api') ? process.cwd() : path.join(process.cwd(), 'apps', 'api'), '..', 'web', 'public')
+  );
+
   public readonly adminUserReadRepo = new DrizzleAdminUserReadRepository();
   public readonly productImageRepo = new DrizzleProductImageRepository();
   public readonly attributeRepo = new DrizzleAttributeRepository();
@@ -91,6 +100,7 @@ export class Registry {
   public readonly listAdminRolesUseCase = new ListAdminRolesUseCase(this.adminRoleReadRepo);
   public readonly recordNotificationAttemptUseCase = new RecordNotificationAttemptUseCase(this.notificationAttemptRepo);
   public readonly listRecentNotificationsUseCase = new ListRecentNotificationsUseCase(this.notificationAttemptRepo);
+  public readonly uploadProductImagesUseCase = new UploadProductImagesUseCase(this.productImageStorage, this.productImageRepo);
   public readonly processOutboxBatchUseCase = new ProcessOutboxBatchUseCase(
     this.outboxRepo,
     this.notificationRouter,

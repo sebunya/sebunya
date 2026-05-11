@@ -10,3 +10,4 @@ export type ApiResponse<T> = {
     requestId?: string;
   };
 };
+export * from './locations';

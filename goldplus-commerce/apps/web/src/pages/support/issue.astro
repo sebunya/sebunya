@@ -3,39 +3,87 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
 import { postJson } from '../../lib/api';
+import UgandaLocationPicker from '../../components/UgandaLocationPicker.astro';
+import { formatLocationLabel } from '../../lib/location-utils';
+import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../../lib/formValidation';
 
 let status: 'success' | 'error' | 'received' | null = null;
 let message: string | undefined;
 let reference: string | undefined;
 let values: Record<string, string> = {};
+let errors: Record<string, string> = {};
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const dto = {
-    subject: String(form.get('subject') ?? '').trim(),
-    productModel: String(form.get('productModel') ?? '').trim(),
-    description: String(form.get('description') ?? '').trim(),
-    contact: String(form.get('contact') ?? '').trim(),
-  };
-  values = dto;
-  const missing = (['subject', 'description', 'contact'] as const)
-    .filter((k) => !dto[k as keyof typeof dto]);
-  if (missing.length > 0) {
-    status = 'error';
-    message = `Please fill in all required fields: ${missing.join(', ')}.`;
-  } else {
-    const result = await postJson('/governance/support/report-issue', dto);
+  
+  const subject = String(form.get('subject') ?? '').trim();
+  const description = String(form.get('description') ?? '').trim();
+  const productModel = String(form.get('productModel') ?? '').trim();
+  const email = normalizeEmail(String(form.get('email') ?? ''));
+  const phone = normalizePhone(String(form.get('phone') ?? ''));
+  const locationJson = String(form.get('locationJson') ?? '').trim();
+  const locationDetails = String(form.get('locationDetails') ?? '').trim();
+
+  values = { subject, description, productModel, email, phone, locationJson, locationDetails };
+
+  // Server-side isomorphic validation
+  if (!subject) errors.subject = 'Subject is required.';
+  if (!description) {
+    errors.description = 'Description is required.';
+  } else if (description.length < 20) {
+    errors.description = 'Please describe the issue in at least 20 characters.';
+  }
+  
+  if (!isValidEmail(email)) {
+    errors.email = 'A valid email address is required.';
+  }
+  if (!isValidUgandanPhone(phone)) {
+    errors.phone = 'A valid Ugandan phone number is required (e.g., +256700000000).';
+  }
+
+  // Location optional per audit guideline
+
+  if (Object.keys(errors).length === 0) {
+    let metadata: Record<string, any> = {};
+    try {
+      if (locationJson && locationJson.startsWith('{')) {
+         metadata.structuredLocation = JSON.parse(locationJson);
+      }
+    } catch(e) {}
+
+    let finalDesc = description;
+    if (locationJson && locationJson.startsWith('{')) {
+       const locTag = formatLocationLabel(locationJson);
+       finalDesc = `${description}\n\n[Location Context: ${locTag}]`.trim();
+       if (locationDetails) finalDesc += `\n[Details: ${locationDetails}]`;
+    } else if (locationDetails) {
+       finalDesc = `${description}\n\n[Location Details: ${locationDetails}]`.trim();
+    }
+
+    // Success pass to API
+    const result = await postJson('/governance/support/report-issue', {
+      subject, 
+      description: finalDesc, 
+      productModel, 
+      email, 
+      phone,
+      metadata
+    });
+    
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'received';
-      message = 'Report received. A support officer will follow up using the contact you provided.';
+      message = 'Your support request has been received. Our team can contact you using the email or phone number provided.';
       values = {};
     } else {
       status = 'error';
       message = result.code === 'NETWORK'
         ? 'Cannot reach the support service right now. Please try again shortly.'
-        : result.message;
+        : (result.message || 'Failed to submit request.');
     }
+  } else {
+    status = 'error';
+    message = 'Please correct the errors below before submitting.';
   }
 }
 ---
@@ -50,16 +98,87 @@ if (Astro.request.method === 'POST') {
 
       <FormFeedback status={status} message={message} reference={reference} />
 
-      <form method="POST" action="/support/issue" novalidate class="space-y-6">
+      <form method="POST" action="/support/issue" novalidate id="supportForm" class="space-y-6">
         <div class="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm space-y-5">
-          <FormField id="subject" name="subject" label="Issue subject" required defaultValue={values.subject} placeholder="e.g. Charger not fast charging" />
-          <FormField id="productModel" name="productModel" label="Product model (if known)" defaultValue={values.productModel} placeholder="e.g. GP-CH-01" helperText="If your product packaging shows a model number, include it here." />
-          <FormField id="description" name="description" label="Description of the problem" type="textarea" rows={5} required defaultValue={values.description} placeholder="When did it start? What did you try?" />
-          <FormField id="contact" name="contact" label="Your contact (phone or email)" required defaultValue={values.contact} autocomplete="email" />
+          <FormField 
+            id="subject" 
+            name="subject" 
+            label="Issue subject" 
+            required 
+            defaultValue={values.subject} 
+            placeholder="e.g. Charger not fast charging" 
+            errorMessage={errors.subject}
+          />
+          
+          <FormField 
+            id="productModel" 
+            name="productModel" 
+            label="Product model (if known)" 
+            defaultValue={values.productModel} 
+            placeholder="e.g. GP-CH-01" 
+            helperText="If your product packaging shows a model number, include it here." 
+            errorMessage={errors.productModel}
+          />
+
+          <FormField 
+            id="description" 
+            name="description" 
+            label="Description of the problem" 
+            type="textarea" 
+            rows={5} 
+            required 
+            defaultValue={values.description} 
+            placeholder="When did it start? What did you try?" 
+            errorMessage={errors.description}
+          />
+
+          <div class="space-y-4">
+            <UgandaLocationPicker 
+               name="locationJson" 
+               label="Location related to this issue" 
+               helperText="Optional. Add a location only if it helps us resolve the issue."
+               required={false} 
+               defaultValue={values.locationJson} 
+               errorMessage={errors.locationJson} 
+            />
+            {/* Instruction says Support Ticket includes 'Road, building...' additional details optionally */}
+            <FormField 
+               id="locationDetails" 
+               name="locationDetails" 
+               label="Additional address details" 
+               placeholder="Road, building, shop, branch, or nearby landmark"
+               defaultValue={values.locationDetails}
+            />
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+             <FormField 
+               id="email" 
+               name="email" 
+               label="Email address" 
+               type="email"
+               required 
+               defaultValue={values.email} 
+               autocomplete="email"
+               errorMessage={errors.email}
+             />
+             <FormField 
+               id="phone" 
+               name="phone" 
+               label="Phone number" 
+               type="tel"
+               required 
+               defaultValue={values.phone} 
+               autocomplete="tel"
+               placeholder="+2567..."
+               errorMessage={errors.phone}
+             />
+          </div>
+          <p class="text-xs text-gray-500">We use these only to follow up about your support request.</p>
         </div>
 
         <div class="flex items-center gap-4">
-          <button type="submit" class="bg-brand-green text-white px-8 py-3 rounded-xl font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-green/30 outline-none transition-all">
+          <button type="submit" id="submitBtn" class="bg-brand-green text-white px-8 py-3 rounded-xl font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-green/30 outline-none transition-all">
             Submit issue
           </button>
           <a href="/support" class="text-sm font-bold text-gray-500 hover:text-brand-dark transition-colors">Cancel</a>
@@ -68,3 +187,79 @@ if (Astro.request.method === 'POST') {
     </div>
   </div>
 </BaseLayout>
+
+<script>
+  import { isValidEmail, isValidUgandanPhone } from '../../lib/formValidation';
+
+  const form = document.getElementById('supportForm') as HTMLFormElement;
+  const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement;
+
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      let valid = true;
+
+      const setError = (id: string, msg: string | null) => {
+        const field = document.getElementById(id);
+        if (!field) return;
+        
+        // Clear existing browser error cues first
+        field.classList.remove('border-red-300', 'ring-2', 'ring-red-100');
+        field.removeAttribute('aria-invalid');
+        
+        // Locate or clear adjacent error message element injected by JS
+        let next = field.nextElementSibling;
+        while (next && !next.classList.contains('text-red-600')) {
+          next = next.nextElementSibling;
+        }
+        if (next) next.remove();
+
+        if (msg) {
+          field.classList.add('border-red-300', 'ring-2', 'ring-red-100');
+          field.setAttribute('aria-invalid', 'true');
+          const p = document.createElement('p');
+          p.className = 'text-xs text-red-600 mt-1 font-bold js-error-msg';
+          p.textContent = msg;
+          field.parentNode?.insertBefore(p, field.nextSibling);
+          valid = false;
+        }
+      };
+
+      // Clear old dynamically appended JS errors
+      document.querySelectorAll('.js-error-msg').forEach(e => e.remove());
+
+      const subjectInput = form.querySelector('[name="subject"]') as HTMLInputElement;
+      const descInput = form.querySelector('[name="description"]') as HTMLTextAreaElement;
+      const emailInput = form.querySelector('[name="email"]') as HTMLInputElement;
+      const phoneInput = form.querySelector('[name="phone"]') as HTMLInputElement;
+
+      if (!subjectInput.value.trim()) {
+        setError('subject', 'Subject is required.');
+      }
+      
+      if (!descInput.value.trim()) {
+        setError('description', 'Description is required.');
+      } else if (descInput.value.trim().length < 20) {
+        setError('description', 'Description must be at least 20 characters.');
+      }
+
+      if (!isValidEmail(emailInput.value)) {
+        setError('email', 'Enter a valid email address.');
+      }
+
+      if (!isValidUgandanPhone(phoneInput.value)) {
+        setError('phone', 'Enter a valid Ugandan phone number.');
+      }
+
+      if (!valid) {
+        e.preventDefault();
+        // Focus first error
+        const firstInvalid = form.querySelector('[aria-invalid="true"]') as HTMLElement;
+        if (firstInvalid) firstInvalid.focus();
+      } else {
+        // Prevent double submits
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+      }
+    });
+  }
+</script>

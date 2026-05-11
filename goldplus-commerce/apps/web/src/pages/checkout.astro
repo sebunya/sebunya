@@ -2,16 +2,21 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Notice from '../components/Notice.astro';
 import FormField from '../components/FormField.astro';
-import { apiBase } from '../lib/api';
+import FormFeedback from '../components/FormFeedback.astro';
+import UgandaLocationPicker from '../components/UgandaLocationPicker.astro';
+import { apiBase, postJson } from '../lib/api';
 import { readCartSessionId } from '../lib/cart-session';
+import { prepareCheckoutPayload, validateCheckoutPayload } from '../lib/checkout';
 import type { ApiEnvelope } from '@goldplus/shared';
 
 interface CartItem {
   productId: string;
   slug: string;
   name: string;
+  sku?: string;
   quantity: number;
   unitPriceUgx: number;
+  priceUgx: number; // Normalized used in cart logic
 }
 
 interface CartResponse {
@@ -21,11 +26,11 @@ interface CartResponse {
 }
 
 const sessionId = readCartSessionId(Astro.request);
-
 if (!sessionId) {
   return Astro.redirect('/cart', 303);
 }
 
+// Load cart from server API
 let cart: CartResponse | null = null;
 try {
   const res = await fetch(`${apiBase}/commerce/carts/${encodeURIComponent(sessionId)}`, {
@@ -35,12 +40,62 @@ try {
     const json = (await res.json()) as ApiEnvelope<CartResponse>;
     if (json.success && json.data) cart = json.data;
   }
-} catch {
-  /* fall through; checkout will redirect to /cart below */
-}
+} catch { /* ignore, treated as empty below */ }
 
 if (!cart || cart.items.length === 0) {
   return Astro.redirect('/cart', 303);
+}
+
+// Setup form state for lifecycle
+let status: 'success' | 'error' | 'received' | null = null;
+let message: string | undefined;
+let reference: string | undefined;
+let values: Record<string, string> = {};
+let errors: Record<string, string> = {};
+
+// Handle Form Submission (RESTORED FEATURE)
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  
+  // Extract raw strings for re-populating inputs on errors
+  values = {
+    name: String(formData.get('name') || '').trim(),
+    email: String(formData.get('email') || '').trim(),
+    phone: String(formData.get('phone') || '').trim(),
+    locationJson: String(formData.get('locationJson') || '').trim(),
+    deliveryAddress: String(formData.get('deliveryAddress') || '').trim(),
+  };
+
+  // Simple validation checks
+  if (!values.name) errors.name = 'Full name is required.';
+  if (!values.phone) errors.phone = 'Contact phone number is required.';
+  if (!values.locationJson) errors.locationJson = 'Please select a delivery location.';
+
+  if (Object.keys(errors).length === 0) {
+     // Prepare mapped payload compatible with Commerce API
+     // Map priceUgx field since interface varies slightly between cart api and checkout lib
+     const normalizedItems = cart.items.map(i => ({ ...i, priceUgx: i.priceUgx || i.unitPriceUgx }));
+     const payload = prepareCheckoutPayload(formData, normalizedItems as any);
+     
+     const res = await postJson('/commerce/orders/create', {
+        customerDetails: payload.customerDetails,
+        buyerType: payload.buyerType,
+        items: payload.items
+     });
+
+     if (res.ok) {
+        status = 'received';
+        message = 'Order successfully created for review. Our logistics team will contact you with final pricing.';
+        reference = res.data?.orderNumber || res.data?.id;
+        // Potentially clear cookie logic goes here if user provides that in previous passes
+     } else {
+        status = 'error';
+        message = res.message || 'Failed to create order. Service temporarily unavailable.';
+     }
+  } else {
+     status = 'error';
+     message = 'Fix form errors before submitting.';
+  }
 }
 
 const formatUgx = (n: number): string =>
@@ -51,83 +106,110 @@ const formatUgx = (n: number): string =>
   <div class="bg-brand-softGrey py-10 border-b border-brand-borderGrey">
     <div class="container mx-auto px-4 lg:px-8">
       <h1 class="text-2xl md:text-3xl font-black tracking-tight text-brand-charcoal mb-2">Checkout</h1>
-      <p class="text-brand-mutedGrey max-w-2xl">Provide your delivery details. Payment activation is pending — orders are received for manual review until mobile-money credentials are configured.</p>
+      <p class="text-brand-mutedGrey max-w-2xl">Verify your delivery zone accurately to accelerate shipment processing time.</p>
     </div>
   </div>
 
   <div class="container mx-auto px-4 lg:px-8 py-10">
-    <div class="flex flex-col lg:flex-row gap-10">
-
-      <div class="w-full lg:w-2/3">
-        <form method="POST" action="/checkout" novalidate class="space-y-6">
-          <div class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm">
-            <h2 class="text-lg md:text-xl font-bold text-brand-charcoal mb-6 flex items-center gap-2">
-              <span aria-hidden="true" class="w-8 h-8 rounded-full bg-brand-charcoal text-white flex items-center justify-center text-sm font-black">1</span>
-              Customer details
-            </h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField id="name" name="name" label="Full name" required autocomplete="name" />
-              <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" />
-              <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" />
-              <FormField id="location" name="location" label="Delivery location / district" required />
-            </div>
-          </div>
-
-          <div class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm">
-            <h2 class="text-lg md:text-xl font-bold text-brand-charcoal mb-4 flex items-center gap-2">
-              <span aria-hidden="true" class="w-8 h-8 rounded-full bg-brand-charcoal text-white flex items-center justify-center text-sm font-black">2</span>
-              Payment method
-            </h2>
-            <div class="bg-gray-100 p-6 rounded-xl border-2 border-dashed border-gray-300 text-center">
-              <p class="font-bold text-gray-500 mb-2">Mobile Money / Cards</p>
-              <span class="inline-block bg-red-50 text-red-600 text-xs font-bold px-3 py-1 rounded-full border border-red-100">Payment handoff is not configured yet</span>
-              <p class="text-sm text-gray-400 mt-4">This order will be created but not marked as paid. Awaiting payment confirmation offline.</p>
-            </div>
-            <Notice kind="not-configured" title="Mobile money / cards" message="Live customer-initiated payment is not yet configured. The order will be received for manual review and our sales team will follow up." />
-          </div>
-
-          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <button
-              type="submit"
-              class="bg-brand-primary text-brand-charcoal px-8 py-3 rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none"
-            >
-              Place order for review
-            </button>
-            <p class="text-xs text-brand-mutedGrey italic max-w-md leading-relaxed">By placing an order, you agree to the GoldPlus Terms. Owner review required before the order is confirmed.</p>
-          </div>
-        </form>
+    
+    {status === 'received' ? (
+      <div class="max-w-2xl mx-auto text-center py-16 bg-white border border-green-100 rounded-3xl shadow-sm">
+         <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+           <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+         </div>
+         <h2 class="text-3xl font-black text-brand-charcoal mb-2">Order Received</h2>
+         <p class="text-gray-600 text-lg mb-6">Reference: <strong class="font-mono bg-gray-100 px-2 py-0.5 rounded text-brand-charcoal">{reference}</strong></p>
+         <p class="text-gray-600 max-w-md mx-auto mb-10 leading-relaxed">Our distribution center will evaluate transit routing and contact you soon to confirm final delivery logistics.</p>
+         <a href="/products" class="bg-brand-charcoal text-white px-8 py-3 rounded-xl font-bold hover:bg-black transition-all">Continue shopping</a>
       </div>
+    ) : (
+      <div class="flex flex-col lg:flex-row gap-10">
 
-      <aside class="w-full lg:w-1/3">
-        <div class="bg-white rounded-2xl border border-brand-borderGrey p-6 sticky top-24">
-          <h2 class="text-lg font-bold text-brand-charcoal mb-4">Order summary</h2>
-          <ul class="space-y-3 text-sm mb-4" aria-label="Order items">
-            {cart.items.map((item) => (
-              <li class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <p class="font-bold text-brand-charcoal truncate">{item.name}</p>
-                  <p class="text-xs text-brand-mutedGrey">Qty {item.quantity} × {formatUgx(item.unitPriceUgx)}</p>
+        <div class="w-full lg:w-2/3">
+          <FormFeedback status={status} message={message} />
+          
+          <form method="POST" action="/checkout" novalidate class="space-y-6 mt-4">
+            <div class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm">
+              <h2 class="text-lg md:text-xl font-bold text-brand-charcoal mb-6 flex items-center gap-2">
+                <span aria-hidden="true" class="w-8 h-8 rounded-full bg-brand-charcoal text-white flex items-center justify-center text-sm font-black">1</span>
+                Customer details
+              </h2>
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <FormField id="name" name="name" label="Full name" required autocomplete="name" defaultValue={values.name} errorMessage={errors.name} />
+                <FormField id="email" name="email" label="Email" type="email" autocomplete="email" defaultValue={values.email} />
+                <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" defaultValue={values.phone} errorMessage={errors.phone} />
+                <div class="md:col-span-2 space-y-4">
+                   <UgandaLocationPicker 
+                     name="locationJson" 
+                     label="Delivery location" 
+                     helperText="Search the parish, ward, town, or district where the order should be delivered."
+                     required={true} 
+                     defaultValue={values.locationJson} 
+                     errorMessage={errors.locationJson} 
+                   />
+                   <FormField 
+                     id="deliveryAddress" 
+                     name="deliveryAddress" 
+                     label="Additional address details" 
+                     placeholder="House, road, estate, building, shop, or nearby landmark"
+                     defaultValue={values.deliveryAddress}
+                   />
                 </div>
-                <p class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(item.unitPriceUgx * item.quantity)}</p>
-              </li>
-            ))}
-          </ul>
-          <dl class="space-y-2 text-sm pt-3 border-t border-brand-borderGrey">
-            <div class="flex items-center justify-between">
-              <dt class="text-brand-mutedGrey">Subtotal</dt>
-              <dd class="font-bold text-brand-charcoal">{formatUgx(cart.subtotalUgx)}</dd>
+              </div>
             </div>
-            <div class="flex items-center justify-between">
-              <dt class="text-brand-mutedGrey">Delivery</dt>
-              <dd class="text-brand-mutedGrey italic">Calculated by sales</dd>
+
+            <div class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm">
+              <h2 class="text-lg md:text-xl font-bold text-brand-charcoal mb-4 flex items-center gap-2">
+                <span aria-hidden="true" class="w-8 h-8 rounded-full bg-brand-charcoal text-white flex items-center justify-center text-sm font-black">2</span>
+                Payment method
+              </h2>
+              <Notice kind="not-configured" title="Offline settlement required" message="Live mobile money checkout is configured only for administrator testing. Final invoice must be approved manually by sales agents." />
             </div>
-            <div class="flex items-center justify-between pt-3 border-t border-brand-borderGrey">
-              <dt class="font-bold text-brand-charcoal">Total</dt>
-              <dd class="font-black text-brand-charcoal">{formatUgx(cart.subtotalUgx)}</dd>
+
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <button
+                type="submit"
+                class="bg-brand-primary text-brand-charcoal px-8 py-4 rounded-xl font-bold text-lg hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none shadow-sm"
+              >
+                Lock Location & Place Order
+              </button>
+              <p class="text-xs text-brand-mutedGrey italic max-w-xs">Location verification safeguards delivery times.</p>
             </div>
-          </dl>
+          </form>
         </div>
-      </aside>
-    </div>
+
+        <aside class="w-full lg:w-1/3">
+          <div class="bg-white rounded-2xl border border-brand-borderGrey p-6 sticky top-24 shadow-sm">
+            <h2 class="text-lg font-bold text-brand-charcoal mb-4">Order summary</h2>
+            <ul class="space-y-3 text-sm mb-4" aria-label="Order items">
+              {cart.items.map((item) => (
+                <li class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="font-bold text-brand-charcoal truncate">{item.name}</p>
+                    <p class="text-xs text-brand-mutedGrey">Qty {item.quantity} × {formatUgx(item.unitPriceUgx || item.priceUgx)}</p>
+                  </div>
+                  <p class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx((item.unitPriceUgx || item.priceUgx) * item.quantity)}</p>
+                </li>
+              ))}
+            </ul>
+            <dl class="space-y-2 text-sm pt-3 border-t border-brand-borderGrey">
+              <div class="flex items-center justify-between">
+                <dt class="text-brand-mutedGrey">Subtotal</dt>
+                <dd class="font-bold text-brand-charcoal">{formatUgx(cart.subtotalUgx)}</dd>
+              </div>
+              <div class="flex items-center justify-between">
+                <dt class="text-brand-mutedGrey">Delivery estimate</dt>
+                <dd class="text-brand-green font-bold uppercase text-xs">Calculated post-zone</dd>
+              </div>
+              <div class="flex items-center justify-between pt-3 border-t border-brand-borderGrey">
+                <dt class="font-bold text-brand-charcoal text-base">Grand total</dt>
+                <dd class="font-black text-brand-charcoal text-lg">{formatUgx(cart.subtotalUgx)}</dd>
+              </div>
+            </dl>
+          </div>
+        </aside>
+      </div>
+    )}
   </div>
 </BaseLayout>

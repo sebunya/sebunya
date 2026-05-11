@@ -46,6 +46,69 @@ routes.post('/:id/images', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), asy
   return c.json(res, 201);
 });
 
+routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
+  const productId = c.req.param('id') ?? '';
+  
+  // Fetch body supporting multipart arrays
+  const body = await c.req.parseBody({ all: true });
+  
+  // Extract and normalize incoming single file or array to standard array
+  const rawFiles = body['files'];
+  const filesInput: File[] = Array.isArray(rawFiles) 
+    ? rawFiles.filter((f): f is File => f instanceof File) 
+    : (rawFiles instanceof File ? [rawFiles] : []);
+
+  if (filesInput.length === 0) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'At least one image file is required.' } }, 400);
+  }
+
+  // Transform web API Files to logical RawFilePayloads including raw Buffer
+  const logicalFiles = await Promise.all(filesInput.map(async (f) => ({
+    name: f.name,
+    type: f.type,
+    size: f.size,
+    buffer: Buffer.from(await f.arrayBuffer())
+  })));
+
+  const registry = Registry.getInstance();
+  try {
+    const savedImages = await registry.uploadProductImagesUseCase.execute({
+      productId,
+      files: logicalFiles,
+      altText: typeof body['altText'] === 'string' ? body['altText'] : undefined,
+      makeFirstPrimary: body['makeFirstPrimary'] === 'true' || body['makeFirstPrimary'] === '1'
+    });
+
+    // Bulk audit record
+    const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
+    await auditUc.execute({
+      actorId: (c.get('user') as any).id,
+      action: 'PRODUCT_IMAGE_UPLOADED',
+      entity: 'product',
+      entityId: productId,
+      newState: { 
+        count: savedImages.length, 
+        imageIds: savedImages.map(i => i.id) 
+      },
+    });
+
+    return c.json({
+      success: true,
+      data: savedImages
+    });
+
+  } catch (err: any) {
+    console.error('[ProductUploadRouter] Failed:', err);
+    return c.json({
+      success: false,
+      error: {
+        code: 'BAD_INPUT',
+        message: err.message || 'Failed to upload images.'
+      }
+    }, 400);
+  }
+});
+
 routes.delete('/images/:imageId', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
   const imageId = c.req.param('imageId') ?? '';
   const registry = Registry.getInstance();

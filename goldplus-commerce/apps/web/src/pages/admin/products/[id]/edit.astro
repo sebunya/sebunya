@@ -42,10 +42,45 @@ if (Astro.request.method === 'POST') {
     });
     if (res.status >= 200 && res.status < 300) {
       status = 'success';
-      message = 'Image added.';
+      message = 'Image URL linked.';
     } else {
       status = 'error';
       message = res.error ?? `Could not add image (HTTP ${res.status}).`;
+    }
+  } else if (action === 'upload_images') {
+    // Extract specific keys to relay to backend
+    const apiFormData = new FormData();
+    const allFiles = form.getAll('files');
+    
+    let validFiles = 0;
+    allFiles.forEach((f) => {
+      if (f instanceof File && f.size > 0) {
+        apiFormData.append('files', f);
+        validFiles++;
+      }
+    });
+
+    if (validFiles === 0) {
+      status = 'error';
+      message = 'Please select at least one valid image file to upload.';
+    } else {
+      apiFormData.append('altText', String(form.get('altText') ?? ''));
+      apiFormData.append('makeFirstPrimary', form.get('makePrimary') === 'on' ? 'true' : 'false');
+
+      const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/images/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: apiFormData,
+      });
+      const json = await res.json().catch(() => ({ error: { message: 'Network error.' } }));
+
+      if (res.ok) {
+        status = 'success';
+        message = 'Images uploaded successfully.';
+      } else {
+        status = 'error';
+        message = json.error?.message ?? 'Failed to upload images.';
+      }
     }
   } else if (action === 'set_attribute') {
     const attributeId = String(form.get('attributeId') ?? '').trim();
@@ -110,18 +145,56 @@ const product = productRes.data;
             </ul>
           )}
 
-          <form method="POST" action={Astro.url.pathname} class="space-y-4">
-            <input type="hidden" name="_action" value="add_image" />
-            <FormField id="url" name="url" label="Image URL" type="url" required placeholder="https://…" helperText="Must be https. No file upload in Phase 1.1." />
-            <FormField id="altText" name="altText" label="Alt text" helperText="Short description for accessibility and SEO." />
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" name="makePrimary" class="w-5 h-5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
-              <span class="text-sm font-bold text-brand-charcoal">Make primary image</span>
-            </label>
-            <button type="submit" class="bg-brand-primary text-brand-charcoal px-6 py-2 rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none">
-              Add image
-            </button>
-          </form>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6 border-t border-brand-borderGrey pt-6">
+            <div>
+              <h3 class="text-sm font-bold text-brand-charcoal mb-3">Upload local files</h3>
+              <form method="POST" action={Astro.url.pathname} enctype="multipart/form-data" class="space-y-4">
+                <input type="hidden" name="_action" value="upload_images" />
+                
+                <div class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:border-brand-primary/50 transition-colors cursor-pointer relative">
+                  <input 
+                    type="file" 
+                    name="files" 
+                    multiple 
+                    accept="image/jpeg,image/png,image/webp" 
+                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                    required
+                  />
+                  <div class="pointer-events-none">
+                    <div class="text-3xl mb-2">📁</div>
+                    <p class="text-sm font-bold text-brand-charcoal">Click to select files or drag and drop</p>
+                    <p class="text-xs text-brand-mutedGrey mt-1">Upload JPG, PNG, or WebP. Max 8 files, 5MB each.</p>
+                  </div>
+                </div>
+
+                <FormField id="upAltText" name="altText" label="Alt text for this batch" placeholder="Short image description..." />
+                <label class="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" name="makePrimary" class="w-5 h-5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
+                  <span class="text-sm font-bold text-brand-charcoal">Make first image primary</span>
+                </label>
+                
+                <button type="submit" class="w-full bg-brand-primary text-brand-charcoal py-3 rounded-lg font-bold hover:opacity-90 transition-all shadow-sm">
+                  Upload images
+                </button>
+              </form>
+            </div>
+
+            <div class="border-l border-brand-borderGrey pl-0 md:pl-8 pt-6 md:pt-0">
+              <h3 class="text-sm font-bold text-brand-charcoal mb-3">Link existing URL</h3>
+              <form method="POST" action={Astro.url.pathname} class="space-y-4">
+                <input type="hidden" name="_action" value="add_image" />
+                <FormField id="url" name="url" label="Image URL" type="url" required placeholder="https://…" helperText="Must reference a secure HTTPS domain." />
+                <FormField id="altText" name="altText" label="Alt text" />
+                <label class="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" name="makePrimary" class="w-5 h-5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
+                  <span class="text-sm font-bold text-brand-charcoal">Make primary image</span>
+                </label>
+                <button type="submit" class="w-full bg-gray-100 text-brand-charcoal py-3 rounded-lg font-bold hover:bg-gray-200 transition-all">
+                  Link URL
+                </button>
+              </form>
+            </div>
+          </div>
         </section>
 
         <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">

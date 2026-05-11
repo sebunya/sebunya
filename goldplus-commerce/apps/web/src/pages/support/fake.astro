@@ -3,39 +3,62 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
 import { postJson } from '../../lib/api';
+import UgandaLocationPicker from '../../components/UgandaLocationPicker.astro';
+import { formatLocationLabel } from '../../lib/location-utils';
+import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../../lib/formValidation';
 
 let status: 'success' | 'error' | 'received' | null = null;
 let message: string | undefined;
 let reference: string | undefined;
 let values: Record<string, string> = {};
+let errors: Record<string, string> = {};
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const dto = {
-    locationFound: String(form.get('locationFound') ?? '').trim(),
-    productDescription: String(form.get('productDescription') ?? '').trim(),
-    hologramCode: String(form.get('hologramCode') ?? '').trim(),
-    reporterContact: String(form.get('reporterContact') ?? '').trim(),
-  };
-  values = dto;
-  const missing = (['locationFound', 'productDescription'] as const)
-    .filter((k) => !dto[k as keyof typeof dto]);
-  if (missing.length > 0) {
-    status = 'error';
-    message = `Please fill in all required fields: ${missing.join(', ')}.`;
-  } else {
-    const result = await postJson('/governance/support/report-fake', dto);
+  const locationJson = String(form.get('locationJson') ?? '').trim();
+  const locationDetails = String(form.get('locationFound') ?? '').trim();
+  const productDescription = String(form.get('productDescription') ?? '').trim();
+  const hologramCode = String(form.get('hologramCode') ?? '').trim();
+  const reporterEmail = normalizeEmail(String(form.get('reporterEmail') ?? ''));
+  const reporterPhone = normalizePhone(String(form.get('reporterPhone') ?? ''));
+
+  values = { locationJson, locationFound: locationDetails, productDescription, hologramCode, reporterEmail, reporterPhone };
+
+  if (!locationDetails) errors.locationFound = 'Shop/location details required.';
+  if (!productDescription) errors.productDescription = 'Detailed product description is required.';
+  if (!isValidEmail(reporterEmail)) errors.reporterEmail = 'A valid reporter email is required.';
+  if (!isValidUgandanPhone(reporterPhone)) errors.reporterPhone = 'A valid Ugandan reporter phone is required.';
+
+  if (Object.keys(errors).length === 0) {
+    // Merge verified geo region with user specific text if available
+    let fullLocation = locationDetails;
+    if (locationJson && locationJson.startsWith('{')) {
+       const geoPrefix = formatLocationLabel(locationJson);
+       fullLocation = `${geoPrefix} | DETAILS: ${locationDetails}`;
+    }
+
+    const result = await postJson('/governance/support/report-fake', {
+      locationFound: fullLocation,
+      productDescription,
+      hologramCode,
+      reporterEmail,
+      reporterPhone
+    });
+
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'received';
-      message = 'Report received. The brand protection team investigates every counterfeit report.';
+      message = 'Your report has been received. Thank you for helping protect buyers.';
       values = {};
     } else {
       status = 'error';
       message = result.code === 'NETWORK'
         ? 'Cannot reach the report service right now. Please try again shortly.'
-        : result.message;
+        : (result.message || 'Failed to submit report.');
     }
+  } else {
+    status = 'error';
+    message = 'Please correct inputs before reporting.';
   }
 }
 ---
@@ -55,17 +78,79 @@ if (Astro.request.method === 'POST') {
 
       <FormFeedback status={status} message={message} reference={reference} />
 
-      <form method="POST" action="/support/fake" novalidate class="space-y-6">
+      <form method="POST" action="/support/fake" novalidate id="fakeForm" class="space-y-6">
         <div class="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm space-y-5">
-          <FormField id="locationFound" name="locationFound" label="Where did you find this product?" required defaultValue={values.locationFound} placeholder="Shop name, market stall, online store" />
-          <FormField id="productDescription" name="productDescription" label="What did the product look like?" type="textarea" rows={4} required defaultValue={values.productDescription} placeholder="e.g. Code rejected, poor build quality, strange packaging…" />
-          <FormField id="hologramCode" name="hologramCode" label="Hologram code (if any)" defaultValue={values.hologramCode} placeholder="GP-XXXX-XXXX-XXXX" helperText="Optional. Tells us which batch the counterfeit is targeting." />
-          <FormField id="reporterContact" name="reporterContact" label="Your contact (optional)" defaultValue={values.reporterContact} helperText="Optional. We can update you if we make progress on your report." />
-          <p class="text-xs text-gray-500 italic">Image upload is not active in this phase. Future module. Not active in Phase 1.</p>
+          <div class="space-y-4">
+            <UgandaLocationPicker 
+               name="locationJson" 
+               label="Where did you find the product?" 
+               helperText="Search the parish, ward, town, or district where the product was found."
+               required={false} 
+               defaultValue={values.locationJson} 
+               errorMessage={errors.locationJson} 
+            />
+            <FormField 
+               id="locationFound" 
+               name="locationFound" 
+               label="Additional address details" 
+               placeholder="Shop, market, mall, road, building, or nearby landmark"
+               required 
+               defaultValue={values.locationFound} 
+               errorMessage={errors.locationFound} 
+            />
+          </div>
+          
+          <FormField 
+            id="productDescription" 
+            name="productDescription" 
+            label="What did the product look like?" 
+            type="textarea" 
+            rows={4} 
+            required 
+            defaultValue={values.productDescription} 
+            placeholder="e.g. Code rejected, poor build quality, strange packaging…"
+            errorMessage={errors.productDescription}
+          />
+          <FormField 
+            id="hologramCode" 
+            name="hologramCode" 
+            label="Hologram code (if any)" 
+            defaultValue={values.hologramCode} 
+            placeholder="GP-XXXX-XXXX-XXXX" 
+            helperText="Optional. Tells us which batch the counterfeit is targeting." 
+          />
+          
+          <div class="pt-4 border-t border-gray-100">
+             <h3 class="text-sm font-bold text-brand-dark mb-3">Your Contact Details</h3>
+             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField 
+                  id="reporterEmail" 
+                  name="reporterEmail" 
+                  label="Email address" 
+                  type="email"
+                  required 
+                  defaultValue={values.reporterEmail} 
+                  autocomplete="email"
+                  errorMessage={errors.reporterEmail}
+                />
+                <FormField 
+                  id="reporterPhone" 
+                  name="reporterPhone" 
+                  label="Phone number" 
+                  type="tel"
+                  required 
+                  defaultValue={values.reporterPhone} 
+                  autocomplete="tel"
+                  placeholder="+2567..."
+                  errorMessage={errors.reporterPhone}
+                />
+             </div>
+             <p class="text-xs text-gray-500 mt-2">We may contact you to verify details. Your report protects buyers.</p>
+          </div>
         </div>
 
         <div class="flex items-center gap-4">
-          <button type="submit" class="bg-red-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-red-700 focus-visible:ring-4 focus-visible:ring-red-300 outline-none transition-all">
+          <button type="submit" id="submitBtn" class="bg-red-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-red-700 focus-visible:ring-4 focus-visible:ring-red-300 outline-none transition-all">
             Submit report
           </button>
           <a href="/support" class="text-sm font-bold text-gray-500 hover:text-brand-dark transition-colors">Cancel</a>
@@ -74,3 +159,69 @@ if (Astro.request.method === 'POST') {
     </div>
   </div>
 </BaseLayout>
+
+<script>
+  import { isValidEmail, isValidUgandanPhone } from '../../lib/formValidation';
+
+  const form = document.getElementById('fakeForm') as HTMLFormElement;
+  const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement;
+
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      let valid = true;
+
+      const setError = (id: string, msg: string | null) => {
+        const field = document.getElementById(id);
+        if (!field) return;
+        
+        field.classList.remove('border-red-300', 'ring-2', 'ring-red-100');
+        field.removeAttribute('aria-invalid');
+        
+        let next = field.nextElementSibling;
+        while (next && !next.classList.contains('text-red-600')) {
+          next = next.nextElementSibling;
+        }
+        if (next) next.remove();
+
+        if (msg) {
+          field.classList.add('border-red-300', 'ring-2', 'ring-red-100');
+          field.setAttribute('aria-invalid', 'true');
+          const p = document.createElement('p');
+          p.className = 'text-xs text-red-600 mt-1 font-bold js-error-msg';
+          p.textContent = msg;
+          field.parentNode?.insertBefore(p, field.nextSibling);
+          valid = false;
+        }
+      };
+
+      document.querySelectorAll('.js-error-msg').forEach(e => e.remove());
+
+      const locationInput = form.querySelector('[name="locationFound"]') as HTMLInputElement;
+      const descInput = form.querySelector('[name="productDescription"]') as HTMLTextAreaElement;
+      const emailInput = form.querySelector('[name="reporterEmail"]') as HTMLInputElement;
+      const phoneInput = form.querySelector('[name="reporterPhone"]') as HTMLInputElement;
+
+      if (!locationInput.value.trim()) {
+        setError('locationFound', 'Discovery location is required.');
+      }
+      if (!descInput.value.trim()) {
+        setError('productDescription', 'Detailed product description is required.');
+      }
+      if (!isValidEmail(emailInput.value)) {
+        setError('reporterEmail', 'Enter a valid reporter email.');
+      }
+      if (!isValidUgandanPhone(phoneInput.value)) {
+        setError('reporterPhone', 'Enter a valid Ugandan phone number.');
+      }
+
+      if (!valid) {
+        e.preventDefault();
+        const firstInvalid = form.querySelector('[aria-invalid="true"]') as HTMLElement;
+        if (firstInvalid) firstInvalid.focus();
+      } else {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+      }
+    });
+  }
+</script>

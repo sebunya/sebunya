@@ -10,7 +10,7 @@
     "db:migrate": "tsx src/infrastructure/db/migrations/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
     "hono": "^4.0.0",
