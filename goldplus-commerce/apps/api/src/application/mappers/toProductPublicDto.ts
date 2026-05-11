@@ -59,16 +59,37 @@ export function toProductPublicDto(
   source: ProductWithPrice,
   opts: { stockTracked?: boolean } = {},
 ): ProductPublicDto {
-  const { entity, retailPriceUgx, categoryName } = source;
+  const { entity, retailPriceUgx, categoryName, images, attributeValues } = source;
   const stockTracked = opts.stockTracked ?? true;
 
-  const verifiedSpecs = pickVerifiedSpecs(entity.specifications ?? {});
+  // Build new fields
+  const sortedImages = [...images].sort((a, b) => (a.isPrimary === b.isPrimary ? a.displayOrder - b.displayOrder : a.isPrimary ? -1 : 1));
+  const dtoImages = sortedImages.map((i) => ({ url: i.url, alt: i.altText }));
+  const primaryImageUrl = dtoImages[0]?.url ?? null;
+
+  const dtoAttrs = attributeValues
+    .map((v) => ({
+      name: v.attributeName,
+      unit: v.unit,
+      value: v.value,
+      isVerified: v.isVerified,
+    }))
+    .filter((v) => cleanString(v.value) !== null);
+
+  // Legacy compat: verifiedSpecs is now derived from verified attribute values.
+  const legacyVerifiedSpecs: Record<string, string | number> = {};
+  for (const v of dtoAttrs) {
+    if (!v.isVerified) continue;
+    const display = v.unit ? `${v.value} ${v.unit}` : v.value;
+    legacyVerifiedSpecs[v.name] = display;
+  }
+
   const sku = cleanString(entity.sku);
   const modelNumber = cleanString(entity.modelNumber);
   const cleanedCategoryName = cleanString(categoryName) ?? 'Uncategorised';
 
   const safeRetailPrice =
-    entity.hasRetailPrice && typeof retailPriceUgx === 'number' && Number.isFinite(retailPriceUgx) && retailPriceUgx > 0
+    typeof retailPriceUgx === 'number' && Number.isFinite(retailPriceUgx) && retailPriceUgx > 0
       ? Math.trunc(retailPriceUgx)
       : null;
 
@@ -80,16 +101,18 @@ export function toProductPublicDto(
 
   return {
     id: entity.id,
-    slug: entity.id, // The route currently keys by slug; the entity does not carry slug, so callers should overwrite if needed.
+    slug: entity.id, // overwritten by callers that carry the slug
     name: entity.name,
     categoryName: cleanedCategoryName,
     sku,
     modelNumber,
     retailPriceUgx: safeRetailPrice,
     availability,
-    hasImage: entity.hasImage,
-    primaryImageUrl: entity.hasImage && entity.imageUrl ? entity.imageUrl : null,
-    verifiedSpecs,
+    hasImage: dtoImages.length > 0,
+    verifiedSpecs: legacyVerifiedSpecs,
     hasMissingSpecs: sku === null || modelNumber === null,
+    primaryImageUrl,
+    images: dtoImages,
+    attributeValues: dtoAttrs,
   };
 }

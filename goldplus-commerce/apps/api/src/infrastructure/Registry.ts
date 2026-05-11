@@ -13,6 +13,8 @@ import { DrizzleRoleRepository } from './db/repositories/DrizzleRoleRepository';
 import { DrizzleFakeReportRepository } from './db/repositories/DrizzleFakeReportRepository';
 import { DrizzleAdminRoleReadRepository } from './db/repositories/DrizzleAdminRoleReadRepository';
 import { DrizzleAdminUserReadRepository } from './db/repositories/DrizzleAdminUserReadRepository';
+import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductImageRepository';
+import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
 import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
 
@@ -45,6 +47,8 @@ export class Registry {
   public readonly fakeReportRepo = new DrizzleFakeReportRepository();
   public readonly adminRoleReadRepo = new DrizzleAdminRoleReadRepository();
   public readonly adminUserReadRepo = new DrizzleAdminUserReadRepository();
+  public readonly productImageRepo = new DrizzleProductImageRepository();
+  public readonly attributeRepo = new DrizzleAttributeRepository();
 
 
   // Security Services

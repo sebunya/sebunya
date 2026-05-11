@@ -2,10 +2,10 @@ import { ProductEntity } from '../../domain/products/ProductEntity';
 
 export interface ProductWithPrice {
   entity: ProductEntity;
-  /** Joined retail price from product_prices. Null if no row exists. */
   retailPriceUgx: number | null;
-  /** Joined category display name. Null if the category row is missing. */
   categoryName: string | null;
+  images: Array<{ url: string; altText: string | null; displayOrder: number; isPrimary: boolean }>;
+  attributeValues: Array<{ attributeName: string; unit: string | null; value: string; isVerified: boolean }>;
 }
 
 export interface IProductRepository {

@@ -39,10 +39,23 @@ function makeSource(overrides: Partial<{
     overrides.stock ?? 10,
     overrides.specs ?? { Wattage: '20W' },
   );
+  const attrValues = Object.entries(overrides.specs ?? { Wattage: '20W' }).map(([k, v]) => ({
+    attributeName: k,
+    unit: null,
+    value: String(v),
+    isVerified: true,
+  }));
+
+  const defaultImages = overrides.hasImage !== false 
+    ? [{ url: 'http://test.img/prod.jpg', altText: null, displayOrder: 0, isPrimary: true }] 
+    : [];
+
   return {
     entity,
     retailPriceUgx: overrides.retailPrice === undefined ? 50000 : overrides.retailPrice,
     categoryName: overrides.categoryName === undefined ? 'Power devices' : overrides.categoryName,
+    images: defaultImages,
+    attributeValues: attrValues,
   };
 }
 
@@ -81,10 +94,7 @@ describe('toProductPublicDto', () => {
     expect(dto.verifiedSpecs).toEqual({ Wattage: '20W', Compatibility: 'USB-C' });
   });
 
-  it('returns null retailPriceUgx when hasRetailPrice is false', () => {
-    const dto = toProductPublicDto(makeSource({ hasRetailPrice: false, retailPrice: 99999 }));
-    expect(dto.retailPriceUgx).toBeNull();
-  });
+  // Test of hasRetailPrice removed, logic was migrated into repositories.
 
   it('returns null retailPriceUgx when join produced no price row', () => {
     const dto = toProductPublicDto(makeSource({ hasRetailPrice: true, retailPrice: null }));
@@ -107,17 +117,14 @@ describe('toProductPublicDto', () => {
   });
 
   it('returns primaryImageUrl if hasImage is true and image exists', () => {
-    const entity = makeSource({ hasImage: true });
-    // inject explicit imageUrl since helper hides detail
-    Object.defineProperty(entity.entity, 'imageUrl', { value: 'http://test.img/prod.jpg' });
-    const dto = toProductPublicDto(entity);
+    const source = makeSource({ hasImage: true });
+    const dto = toProductPublicDto(source);
     expect(dto.primaryImageUrl).toBe('http://test.img/prod.jpg');
   });
 
-  it('forcefully returns primaryImageUrl as null if hasImage is false, even if internal field is populated', () => {
-    const entity = makeSource({ hasImage: false });
-    Object.defineProperty(entity.entity, 'imageUrl', { value: 'http://test.img/shadow.jpg' });
-    const dto = toProductPublicDto(entity);
+  it('returns primaryImageUrl as null if image list is empty', () => {
+    const source = makeSource({ hasImage: false });
+    const dto = toProductPublicDto(source);
     expect(dto.primaryImageUrl).toBeNull();
   });
 

@@ -31,6 +31,21 @@ if (specEntries.length > 0) {
   node.description = specEntries.map(([k, v]) => `${k}: ${v}`).join('; ');
 }
 
+if (product.primaryImageUrl) node.image = product.primaryImageUrl;
+
+const verifiedAttrs = product.attributeValues.filter((v) => v.isVerified);
+if (verifiedAttrs.length > 0) {
+  node.additionalProperty = verifiedAttrs.map((v) => {
+    const prop: Record<string, unknown> = {
+      '@type': 'PropertyValue',
+      name: v.name,
+      value: v.value,
+    };
+    if (v.unit) prop.unitText = v.unit;
+    return prop;
+  });
+}
+
 if (product.retailPriceUgx !== null) {
   const offers: Record<string, unknown> = {
     '@type': 'Offer',

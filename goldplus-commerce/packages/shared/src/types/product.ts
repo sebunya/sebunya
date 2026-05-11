@@ -4,6 +4,21 @@ export type ProductAvailability =
   | { kind: 'pre_order' }
   | { kind: 'unknown' };
 
+export interface ProductImageDto {
+  url: string;
+  alt: string | null;
+}
+
+export interface ProductAttributeValueDto {
+  name: string;
+  /** Display unit if defined on the attribute (e.g. "W", "GB"). Null when not applicable. */
+  unit: string | null;
+  /** Free-text value as the admin entered it. */
+  value: string;
+  /** Only `true` values are safe to publish in structured data (JSON-LD). */
+  isVerified: boolean;
+}
+
 export interface ProductPublicDto {
   id: string;
   slug: string;
@@ -25,4 +40,6 @@ export interface ProductPublicDto {
   verifiedSpecs: Record<string, string | number>;
   /** Convenience flag for the UI: at least one safety/spec field is missing. */
   hasMissingSpecs: boolean;
+  images: ProductImageDto[];
+  attributeValues: ProductAttributeValueDto[];
 }
