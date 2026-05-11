@@ -49,16 +49,20 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     </div>
   </div>
 
-  <script is:inline>
+  <script>
+    import { calculateLineTotal, calculateSubtotal, type CartItem } from '../lib/cart';
+
     const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
     
     function loadCart() {
-      const cart = JSON.parse(localStorage.getItem('gp_cart') || '[]');
+      const cart: CartItem[] = JSON.parse(localStorage.getItem('gp_cart') || '[]');
       const list = document.getElementById('cart-list');
       const emptyMsg = document.getElementById('empty-cart-msg');
       const grid = document.getElementById('cart-grid');
       const summarySub = document.getElementById('summary-subtotal');
       const summaryTotal = document.getElementById('summary-total');
+
+      if (!list || !emptyMsg || !grid || !summarySub || !summaryTotal) return;
 
       if (cart.length === 0) {
         emptyMsg.classList.remove('hidden');
@@ -70,11 +74,11 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       grid.classList.remove('hidden');
 
       let html = '';
-      let total = 0;
+      
+      const total = calculateSubtotal(cart);
 
       cart.forEach((item, index) => {
-        const lineTotal = item.priceUgx * item.quantity;
-        total += lineTotal;
+        const lineTotal = calculateLineTotal(item.priceUgx, item.quantity);
         html += `
           <li class="p-6 flex flex-col sm:flex-row items-center gap-6">
             <div class="w-24 h-24 bg-gray-50 rounded-xl flex-shrink-0 flex items-center justify-center text-[10px] text-gray-400 font-bold border border-gray-100 uppercase text-center p-2">
@@ -103,8 +107,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       summaryTotal.innerText = formatter.format(total);
     }
 
-    window.updateQty = (index, delta) => {
-      const cart = JSON.parse(localStorage.getItem('gp_cart') || '[]');
+    (window as any).updateQty = (index: number, delta: number) => {
+      const cart: CartItem[] = JSON.parse(localStorage.getItem('gp_cart') || '[]');
       if (!cart[index]) return;
       cart[index].quantity += delta;
       if (cart[index].quantity <= 0) {
@@ -114,8 +118,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       loadCart();
     };
 
-    window.removeCartItem = (index) => {
-      const cart = JSON.parse(localStorage.getItem('gp_cart') || '[]');
+    (window as any).removeCartItem = (index: number) => {
+      const cart: CartItem[] = JSON.parse(localStorage.getItem('gp_cart') || '[]');
       cart.splice(index, 1);
       localStorage.setItem('gp_cart', JSON.stringify(cart));
       loadCart();

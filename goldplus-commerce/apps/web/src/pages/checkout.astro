@@ -121,10 +121,13 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     </div>
   </div>
 
-  <script is:inline>
+  <script>
+    import { prepareCheckoutPayload, validateCheckoutPayload } from '../lib/checkout';
+    import { calculateLineTotal, calculateSubtotal, type CartItem } from '../lib/cart';
+
     const apiBaseUrl = 'http://localhost:3000'; // Standard default API URL
     const fmt = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
-    let currentCart = [];
+    let currentCart: CartItem[] = [];
 
     function initCheckout() {
       currentCart = JSON.parse(localStorage.getItem('gp_cart') || '[]');
@@ -137,11 +140,12 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       const subtotalEl = document.getElementById('order-subtotal');
       const totalEl = document.getElementById('order-total');
 
-      let subtotal = 0;
+      if (!listEl || !subtotalEl || !totalEl) return;
+
+      const subtotal = calculateSubtotal(currentCart);
       let html = '';
       currentCart.forEach(item => {
-        const lineTotal = item.priceUgx * item.quantity;
-        subtotal += lineTotal;
+        const lineTotal = calculateLineTotal(item.priceUgx, item.quantity);
         html += `
           <li class="flex justify-between items-center text-sm">
             <div class="text-gray-600">
@@ -157,70 +161,70 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       totalEl.innerText = fmt.format(subtotal);
     }
 
-    document.getElementById('checkout-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById('submit-btn');
-      const banner = document.getElementById('error-banner');
-      
-      btn.disabled = true;
-      btn.innerText = 'Processing...';
-      banner.classList.add('hidden');
+    const checkoutForm = document.getElementById('checkout-form');
+    if (checkoutForm) {
+      checkoutForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('submit-btn') as HTMLButtonElement;
+        const banner = document.getElementById('error-banner');
+        
+        if (!btn || !banner) return;
 
-      const formData = new FormData(e.target);
-      const payload = {
-        customerDetails: {
-          name: formData.get('name'),
-          email: formData.get('email') || undefined,
-          phone: formData.get('phone'),
-          deliveryArea: formData.get('deliveryArea'),
-          deliveryAddress: formData.get('deliveryAddress')
-        },
-        buyerType: formData.get('buyerType'),
-        items: currentCart.map(i => ({
-          productId: i.productId,
-          sku: i.sku || 'GEN-SKU',
-          name: i.name,
-          price: i.priceUgx,
-          quantity: i.quantity
-        }))
-      };
+        btn.disabled = true;
+        btn.innerText = 'Processing...';
+        banner.classList.add('hidden');
 
-      try {
-        const res = await fetch(`${apiBaseUrl}/commerce/orders/create`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        const json = await res.json();
-
-        if (!res.ok || !json.success) {
-          throw new Error(json.error?.message || `Failed request (HTTP ${res.status})`);
+        const formData = new FormData(e.target as HTMLFormElement);
+        const payload = prepareCheckoutPayload(formData, currentCart);
+        
+        const validation = validateCheckoutPayload(payload);
+        if (!validation.valid) {
+          banner.innerHTML = validation.errors.join('<br/>');
+          banner.classList.remove('hidden');
+          btn.disabled = false;
+          btn.innerText = 'Place Order Now';
+          return;
         }
 
-        // Success state
-        localStorage.removeItem('gp_cart');
-        
-        document.getElementById('checkout-content').classList.add('hidden');
-        document.getElementById('checkout-success').classList.remove('hidden');
-        document.getElementById('success-ref').innerText = json.data.orderNumber || json.data.id;
-        
-        if (payload.buyerType === 'wholesale' || payload.buyerType === 'corporate') {
-          document.getElementById('wholesale-notice').classList.remove('hidden');
-          document.getElementById('retail-notice').classList.add('hidden');
-        }
+        try {
+          const res = await fetch(`${apiBaseUrl}/commerce/orders/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(payload)
+          });
 
-      } catch (err) {
-        console.error('Checkout fail', err);
-        banner.innerText = err.message.includes('Failed to fetch') ? 'Connection timed out. Backend API may be unreachable.' : err.message;
-        banner.classList.remove('hidden');
-        btn.disabled = false;
-        btn.innerText = 'Place Order Now';
-      }
-    });
+          const json = await res.json();
+
+          if (!res.ok || !json.success) {
+            throw new Error(json.error?.message || `Failed request (HTTP ${res.status})`);
+          }
+
+          // Success state
+          localStorage.removeItem('gp_cart');
+          
+          document.getElementById('checkout-content')?.classList.add('hidden');
+          document.getElementById('checkout-success')?.classList.remove('hidden');
+          const successRef = document.getElementById('success-ref');
+          if (successRef) successRef.innerText = json.data.orderNumber || json.data.id;
+          
+          if (payload.buyerType === 'wholesale' || payload.buyerType === 'corporate') {
+            document.getElementById('wholesale-notice')?.classList.remove('hidden');
+            document.getElementById('retail-notice')?.classList.add('hidden');
+          }
+
+        } catch (err: any) {
+          console.error('Checkout fail', err);
+          banner.innerText = err.message.includes('Failed to fetch') ? 'Connection timed out. Backend API may be unreachable.' : err.message;
+          banner.classList.remove('hidden');
+          btn.disabled = false;
+          btn.innerText = 'Place Order Now';
+        }
+      });
+    }
 
     // Wait for DOM load
     document.addEventListener('DOMContentLoaded', initCheckout);
+    // Execute immediately if DOM is already loaded or executing script at the end of body
     initCheckout();
   </script>
 </BaseLayout>

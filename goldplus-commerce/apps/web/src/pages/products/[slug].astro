@@ -164,21 +164,27 @@ const inStock = product.stockStatus !== 'out_of_stock';
     </div>
   </div>
 
-  <script is:inline>
+  <script>
+    import { addOrUpdateCartItem, type CartItem } from '../../lib/cart';
+
     const btn = document.getElementById('add-to-cart-btn');
     if (btn) {
       btn.addEventListener('click', () => {
-        const productData = JSON.parse(btn.getAttribute('data-product'));
-        const currentCart = JSON.parse(localStorage.getItem('gp_cart') || '[]');
+        const productData = JSON.parse(btn.getAttribute('data-product') || '{}');
+        const currentCart: CartItem[] = JSON.parse(localStorage.getItem('gp_cart') || '[]');
         
-        const existing = currentCart.find(item => item.productId === productData.productId);
-        if (existing) {
-          existing.quantity += 1;
-        } else {
-          currentCart.push({ ...productData, quantity: 1 });
-        }
+        const newItem: CartItem = {
+          productId: productData.productId,
+          sku: productData.sku || 'GEN-SKU',
+          name: productData.name,
+          priceUgx: productData.priceUgx,
+          category: productData.category,
+          quantity: 1
+        };
+
+        const updatedCart = addOrUpdateCartItem(currentCart, newItem);
         
-        localStorage.setItem('gp_cart', JSON.stringify(currentCart));
+        localStorage.setItem('gp_cart', JSON.stringify(updatedCart));
         
         const oldText = btn.innerText;
         btn.innerText = 'Added to Cart!';
