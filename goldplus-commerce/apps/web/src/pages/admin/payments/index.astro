@@ -1,18 +1,69 @@
 ---
-import BaseLayout from "../../../layouts/BaseLayout.astro";
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import AdminPageHeader from '../../../components/AdminPageHeader.astro';
+import AdminTable from '../../../components/AdminTable.astro';
+import StatusBadge from '../../../components/StatusBadge.astro';
+import EmptyState from '../../../components/EmptyState.astro';
+import Notice from '../../../components/Notice.astro';
+import { tryFetchAdminList } from '../../../lib/api';
+import { SAMPLE_PAYMENTS, type SamplePayment } from '../../../lib/sample-data';
+
+const result = await tryFetchAdminList<SamplePayment>(
+  '/governance/admin/payments',
+  SAMPLE_PAYMENTS,
+  'Sample payment history shown until transactional GET endpoint is wired.',
+);
+
+const statusToBadge: Record<SamplePayment['status'], { variant: 'pending' | 'info' | 'success' | 'neutral'; label: string }> = {
+  PENDING: { variant: 'pending', label: 'Pending' },
+  SUCCESS: { variant: 'success', label: 'Cleared' },
+  FAILED: { variant: 'neutral', label: 'Failed' },
+};
+
+const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
 ---
 
-<BaseLayout title="Payment Admin Shell">
-  <div class="py-8">
-    <h1 class="text-3xl font-bold mb-6">Payment Admin Shell</h1>
-    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-      <div class="flex">
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            This is a Phase 1 module shell. Future implementation goes here.
-          </p>
-        </div>
+<BaseLayout title="Payments Ledger — Admin">
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <AdminPageHeader
+      title="Payment Ledger"
+      description="View status of inbound payments and verify idempotency locks on delivery webhooks."
+    />
+
+    {result.isSample && (
+      <div class="mb-6">
+        <Notice kind="sample" message={result.reason} />
       </div>
-    </div>
+    )}
+
+    {result.items.length === 0 ? (
+      <EmptyState
+        title="No payment transactions yet"
+        message="Incoming transactional webhooks will form rows within this view."
+      />
+    ) : (
+      <AdminTable caption="Global Payments Log">
+        <Fragment slot="head">
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">ID</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Provider</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Order ID</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Amount</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-center">Status</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Timestamp</th>
+        </Fragment>
+        {result.items.map((p) => (
+          <tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="px-6 py-4 font-mono text-xs font-bold text-brand-dark">{p.id.substring(0, 12)}</td>
+            <td class="px-6 py-4 uppercase text-xs font-black text-gray-600">{p.provider}</td>
+            <td class="px-6 py-4 text-gray-700 font-mono text-xs">{p.orderId}</td>
+            <td class="px-6 py-4 font-bold text-brand-dark">{formatter.format(p.amount)}</td>
+            <td class="px-6 py-4 text-center">
+              <StatusBadge status={statusToBadge[p.status].variant} label={statusToBadge[p.status].label} />
+            </td>
+            <td class="px-6 py-4 text-gray-500 text-xs">{new Date(p.createdAt).toLocaleString('en-GB')}</td>
+          </tr>
+        ))}
+      </AdminTable>
+    )}
   </div>
 </BaseLayout>

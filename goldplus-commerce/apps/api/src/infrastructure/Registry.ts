@@ -6,6 +6,7 @@ import { DrizzleSupportRepository } from './db/repositories/DrizzleSupportReposi
 import { DrizzleQuoteRepository } from './db/repositories/DrizzleQuoteRepository';
 import { DrizzleVerificationRepository } from './db/repositories/DrizzleVerificationRepository';
 import { DrizzleAuditRepository } from './db/repositories/DrizzleAuditRepository';
+import { DrizzlePaymentRepository } from './db/repositories/DrizzlePaymentRepository';
 
 import { AddToCartUseCase } from '../application/use-cases/commerce/AddToCartUseCase';
 import { CheckoutUseCase } from '../application/use-cases/commerce/CheckoutUseCase';
@@ -26,6 +27,7 @@ export class Registry {
   public readonly quoteRepo = new DrizzleQuoteRepository();
   public readonly verificationRepo = new DrizzleVerificationRepository();
   public readonly auditRepo = new DrizzleAuditRepository();
+  public readonly paymentRepo = new DrizzlePaymentRepository();
 
   // Use Cases
   public readonly addToCartUseCase = new AddToCartUseCase(this.cartRepo);

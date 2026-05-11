@@ -62,3 +62,82 @@ export const SAMPLE_FAKE_REPORTS: SampleFakeReport[] = [
     createdAt: new Date().toISOString(),
   },
 ];
+
+export type SamplePayment = {
+  id: string;
+  provider: string;
+  orderId: string;
+  amount: number;
+  currency: string;
+  status: 'SUCCESS' | 'FAILED' | 'PENDING';
+  createdAt: string;
+};
+
+export const SAMPLE_PAYMENTS: SamplePayment[] = [
+  {
+    id: 'sample-pay-001',
+    provider: 'mtn',
+    orderId: 'sample-order-001',
+    amount: 0,
+    currency: 'UGX',
+    status: 'PENDING',
+    createdAt: new Date().toISOString(),
+  },
+];
+
+export type SampleAuditLog = {
+  id: string;
+  actor: string;
+  action: string;
+  resource: string;
+  ipAddress: string;
+  createdAt: string;
+};
+
+export const SAMPLE_AUDIT_LOGS: SampleAuditLog[] = [
+  {
+    id: 'sample-audit-001',
+    actor: 'System Monitor',
+    action: 'BOOT_COMPLETED',
+    resource: 'APP_SERVER',
+    ipAddress: '127.0.0.1',
+    createdAt: new Date().toISOString(),
+  },
+];
+
+export type SampleCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  productCount: number;
+  isActive: boolean;
+};
+
+export const SAMPLE_CATEGORIES: SampleCategory[] = [
+  {
+    id: 'sample-cat-001',
+    name: 'Sample Category',
+    slug: 'sample-category',
+    productCount: 0,
+    isActive: true,
+  },
+];
+
+export type SampleCampaign = {
+  id: string;
+  name: string;
+  channel: string;
+  status: 'active' | 'paused' | 'scheduled';
+  conversionRate: string;
+};
+
+export const SAMPLE_CAMPAIGNS: SampleCampaign[] = [
+  {
+    id: 'sample-camp-001',
+    name: 'Sample Campaign. Not Active.',
+    channel: 'Direct',
+    status: 'paused',
+    conversionRate: '0%',
+  },
+];
+

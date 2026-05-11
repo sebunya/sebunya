@@ -6,67 +6,68 @@ interface Props {
   description?: string;
 }
 
-const { title, description = "GoldPlus - Premium Electronics in Uganda" } = Astro.props;
+const { title, description = 'GoldPlus — Premium electronics in Uganda' } = Astro.props;
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en-UG">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
     <meta name="description" content={description} />
     <title>{title} | GoldPlus Uganda</title>
-    
-    {/* OpenGraph / Facebook */}
+
+    {/* Open Graph */}
     <meta property="og:type" content="website" />
     <meta property="og:url" content={Astro.url} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content="/og-image.jpg" />
+    <meta property="og:image" content="/icon-512.svg" />
 
     {/* Twitter */}
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:url" content={Astro.url} />
     <meta property="twitter:title" content={title} />
     <meta property="twitter:description" content={description} />
-    <meta property="twitter:image" content="/og-image.jpg" />
+    <meta property="twitter:image" content="/icon-512.svg" />
 
+    <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
+    <link rel="apple-touch-icon" href="/icon-192.svg" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#111111" />
-
+    <meta name="theme-color" content="#0A0A0A" />
   </head>
-  <body class="bg-white text-brand-dark flex flex-col min-h-screen font-sans selection:bg-brand-gold selection:text-brand-dark">
-    
-    {/* Minimalist, Premium Header */}
-    <header class="bg-brand-dark text-white sticky top-0 z-50 shadow-[0_2px_10px_rgba(0,0,0,0.1)]">
+  <body class="bg-brand-softGrey text-brand-charcoal flex flex-col min-h-screen font-sans selection:bg-brand-primary selection:text-brand-charcoal">
+
+    {/* Header */}
+    <header class="bg-brand-charcoal text-white sticky top-0 z-50 shadow-[0_2px_10px_rgba(0,0,0,0.1)]">
       <div class="container mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
-        
-        <a href="/" class="flex items-center gap-2 group outline-none focus-visible:ring-2 focus-visible:ring-brand-gold rounded">
-          <span class="text-2xl font-black tracking-tighter text-white transition-colors group-hover:text-gray-200">
-            Gold<span class="text-brand-gold">Plus</span>
+
+        <a href="/" class="flex items-center gap-2 group outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded">
+          <span class="text-2xl font-black tracking-tighter text-white transition-colors group-hover:text-brand-primary">
+            Gold<span class="text-brand-primary">Plus</span>
           </span>
         </a>
 
-        <nav class="hidden md:flex items-center gap-8 font-medium">
-          <a href="/shop" class="text-sm tracking-wide hover:text-brand-gold transition-colors focus-visible:ring-2 focus-visible:ring-brand-gold outline-none rounded px-1">Shop</a>
-          <a href="/verification" class="text-sm tracking-wide hover:text-brand-gold transition-colors focus-visible:ring-2 focus-visible:ring-brand-gold outline-none rounded px-1">Verify</a>
-          <a href="/support" class="text-sm tracking-wide hover:text-brand-gold transition-colors focus-visible:ring-2 focus-visible:ring-brand-gold outline-none rounded px-1">Support</a>
+        <nav class="hidden md:flex items-center gap-8 font-medium" aria-label="Primary">
+          <a href="/shop" class="text-sm tracking-wide hover:text-brand-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Shop</a>
+          <a href="/verification" class="text-sm tracking-wide hover:text-brand-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Verify</a>
+          <a href="/support" class="text-sm tracking-wide hover:text-brand-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Support</a>
         </nav>
 
         <div class="flex items-center gap-4">
-          <a href="/cart" class="text-sm font-semibold hover:text-brand-gold transition-colors flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-brand-gold outline-none rounded px-2 py-1">
+          <a href="/cart" class="text-sm font-semibold hover:text-brand-primary transition-colors flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-2 py-1">
             <span class="hidden sm:inline">Cart</span>
-            <span class="bg-brand-green text-white text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+            <span class="bg-brand-primary text-brand-charcoal text-xs px-2 py-0.5 rounded-full font-bold">0</span>
           </a>
         </div>
       </div>
-      
-      {/* Mobile Nav Scrollable Bar (Mobile-First Principle) */}
-      <div class="md:hidden border-t border-gray-800 bg-brand-dark overflow-x-auto no-scrollbar">
+
+      {/* Mobile nav */}
+      <div class="md:hidden border-t border-gray-800 bg-brand-charcoal overflow-x-auto no-scrollbar" aria-label="Mobile primary">
         <div class="flex px-4 py-3 gap-6 text-sm font-medium whitespace-nowrap">
-          <a href="/shop" class="hover:text-brand-gold">Shop Products</a>
-          <a href="/verification" class="hover:text-brand-gold">Verify Product</a>
-          <a href="/support" class="hover:text-brand-gold">Support Center</a>
+          <a href="/shop" class="hover:text-brand-primary">Shop products</a>
+          <a href="/verification" class="hover:text-brand-primary">Verify product</a>
+          <a href="/support" class="hover:text-brand-primary">Support centre</a>
         </div>
       </div>
     </header>
@@ -75,49 +76,48 @@ const { title, description = "GoldPlus - Premium Electronics in Uganda" } = Astr
       <slot />
     </main>
 
-    <footer class="bg-gray-50 border-t border-gray-200 mt-auto">
+    <footer class="bg-white border-t border-brand-borderGrey mt-auto">
       <div class="container mx-auto px-4 lg:px-8 py-12 md:py-16">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           <div>
-            <span class="text-2xl font-black tracking-tighter text-brand-dark block mb-4">
-              Gold<span class="text-brand-gold">Plus</span>
+            <span class="text-2xl font-black tracking-tighter text-brand-charcoal block mb-4">
+              Gold<span class="text-brand-primary">Plus</span>
             </span>
-            <p class="text-sm text-gray-600 leading-relaxed max-w-xs">
-              Engineered for reliability. Premium electronics built to power the Ugandan lifestyle with guaranteed authenticity.
+            <p class="text-sm text-brand-mutedGrey leading-relaxed max-w-xs">
+              Engineered for reliability. Premium electronics for the Ugandan lifestyle, with guaranteed authenticity.
             </p>
           </div>
-          
+
           <div>
-            <h3 class="font-bold text-sm uppercase tracking-wider mb-4 text-brand-dark">Shop</h3>
-            <ul class="space-y-3 text-sm text-gray-600">
-              <li><a href="/shop" class="hover:text-brand-green transition-colors">All Products</a></li>
-              <li><a href="/categories/power" class="hover:text-brand-green transition-colors">Power Devices</a></li>
-              <li><a href="/categories/sound" class="hover:text-brand-green transition-colors">Sound Devices</a></li>
+            <h3 class="font-bold text-sm uppercase tracking-wider mb-4 text-brand-charcoal">Shop</h3>
+            <ul class="space-y-3 text-sm text-brand-mutedGrey">
+              <li><a href="/shop" class="hover:text-brand-primary transition-colors">All products</a></li>
+              <li><a href="/shop?category=power" class="hover:text-brand-primary transition-colors">Power devices</a></li>
+              <li><a href="/shop?category=sound" class="hover:text-brand-primary transition-colors">Sound devices</a></li>
             </ul>
           </div>
 
           <div>
-            <h3 class="font-bold text-sm uppercase tracking-wider mb-4 text-brand-dark">Customer Service</h3>
-            <ul class="space-y-3 text-sm text-gray-600">
-              <li><a href="/verification" class="hover:text-brand-green transition-colors">Product Verification</a></li>
-              <li><a href="/support" class="hover:text-brand-green transition-colors">Contact Support</a></li>
-              <li><a href="/warranty" class="hover:text-brand-green transition-colors">Warranty Info</a></li>
+            <h3 class="font-bold text-sm uppercase tracking-wider mb-4 text-brand-charcoal">Customer service</h3>
+            <ul class="space-y-3 text-sm text-brand-mutedGrey">
+              <li><a href="/verification" class="hover:text-brand-primary transition-colors">Product verification</a></li>
+              <li><a href="/support" class="hover:text-brand-primary transition-colors">Contact support</a></li>
             </ul>
           </div>
 
           <div>
-            <h3 class="font-bold text-sm uppercase tracking-wider mb-4 text-brand-dark">Business</h3>
-            <ul class="space-y-3 text-sm text-gray-600">
-              <li><a href="/dealers" class="hover:text-brand-green transition-colors">Become a Dealer</a></li>
-              <li><a href="/admin" class="hover:text-red-600 transition-colors">Admin Login</a></li>
+            <h3 class="font-bold text-sm uppercase tracking-wider mb-4 text-brand-charcoal">Business</h3>
+            <ul class="space-y-3 text-sm text-brand-mutedGrey">
+              <li><a href="/dealers/apply" class="hover:text-brand-primary transition-colors">Become a dealer</a></li>
+              <li><a href="/quote-request" class="hover:text-brand-primary transition-colors">Request a quote</a></li>
             </ul>
           </div>
         </div>
-        <div class="border-t border-gray-200 mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-gray-500">
+        <div class="border-t border-brand-borderGrey mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-brand-mutedGrey">
           <p>&copy; {new Date().getFullYear()} GoldPlus. All rights reserved.</p>
           <div class="flex gap-4">
-            <a href="/privacy" class="hover:text-brand-dark">Privacy Policy</a>
-            <a href="/terms" class="hover:text-brand-dark">Terms of Service</a>
+            <a href="/privacy" class="hover:text-brand-charcoal">Privacy</a>
+            <a href="/terms" class="hover:text-brand-charcoal">Terms</a>
           </div>
         </div>
       </div>
@@ -126,7 +126,7 @@ const { title, description = "GoldPlus - Premium Electronics in Uganda" } = Astr
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(error => {
+          navigator.serviceWorker.register('/sw.js').catch((error) => {
             console.error('Service Worker registration failed:', error);
           });
         });

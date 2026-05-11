@@ -6,6 +6,7 @@ import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import commerceRoutes from './routes/commerce';
 import governanceRoutes from './routes/governance';
+import webhookRoutes from './routes/webhooks';
 
 
 // Define typed variables for the Hono context
@@ -24,6 +25,7 @@ app.route('/auth', authRoutes);
 app.route('/products', productRoutes);
 app.route('/commerce', commerceRoutes);
 app.route('/governance', governanceRoutes);
+app.route('/webhooks', webhookRoutes);
 
 
 

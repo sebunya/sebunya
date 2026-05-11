@@ -5,9 +5,19 @@ export default {
     extend: {
       colors: {
         brand: {
-          green: '#00A859', // GoldPlus Green
-          dark: '#111111',  // Near Black
-          gold: '#FFD700',  // Gold Accent
+          // Canonical GoldPlus tokens (spec)
+          primary: '#A6D146',
+          black: '#0A0A0A',
+          charcoal: '#1C1C1C',
+          softGrey: '#F7F7F7',
+          borderGrey: '#E5E5E5',
+          mutedGrey: '#6B6B6B',
+          error: '#D93025',
+          warning: '#F5A623',
+          // --- Back-compat aliases (do not use in new code) ---
+          green: '#A6D146', // alias of primary
+          dark: '#1C1C1C',  // alias of charcoal
+          gold: '#A6D146',  // alias of primary - NOT in spec, forces rendering as primary
         }
       },
       fontFamily: {

@@ -1,18 +1,57 @@
 ---
-import BaseLayout from "../../../layouts/BaseLayout.astro";
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import AdminPageHeader from '../../../components/AdminPageHeader.astro';
+import AdminTable from '../../../components/AdminTable.astro';
+import StatusBadge from '../../../components/StatusBadge.astro';
+import EmptyState from '../../../components/EmptyState.astro';
+import Notice from '../../../components/Notice.astro';
+import { tryFetchAdminList } from '../../../lib/api';
+import { SAMPLE_CATEGORIES, type SampleCategory } from '../../../lib/sample-data';
+
+const result = await tryFetchAdminList<SampleCategory>(
+  '/governance/admin/categories',
+  SAMPLE_CATEGORIES,
+  'Catalogue hierarchy data shown as placeholder.',
+);
 ---
 
-<BaseLayout title="Category Admin Shell">
-  <div class="py-8">
-    <h1 class="text-3xl font-bold mb-6">Category Admin Shell</h1>
-    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-      <div class="flex">
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            This is a Phase 1 module shell. Future implementation goes here.
-          </p>
-        </div>
+<BaseLayout title="Categories Management — Admin">
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <AdminPageHeader
+      title="Product Categories"
+      description="Manage user-facing navigation taxonomies across global web catalog structure."
+    />
+
+    {result.isSample && (
+      <div class="mb-6">
+        <Notice kind="sample" message={result.reason} />
       </div>
-    </div>
+    )}
+
+    {result.items.length === 0 ? (
+      <EmptyState
+        title="No Categories Listed"
+        message="Once categorization matrices exist, navigational lists appear here."
+      />
+    ) : (
+      <AdminTable caption="Catalogue Taxonomy">
+        <Fragment slot="head">
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Category Name</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Slug URL</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-center">Assigned Skus</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-center">Visibility</th>
+        </Fragment>
+        {result.items.map((cat) => (
+          <tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="px-6 py-4 font-bold text-brand-dark">{cat.name}</td>
+            <td class="px-6 py-4 text-gray-600 text-xs font-mono">/{cat.slug}</td>
+            <td class="px-6 py-4 text-center text-gray-700 font-bold">{cat.productCount}</td>
+            <td class="px-6 py-4 text-center">
+              <StatusBadge status={cat.isActive ? 'success' : 'neutral'} label={cat.isActive ? 'Active' : 'Hidden'} />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+    )}
   </div>
 </BaseLayout>
