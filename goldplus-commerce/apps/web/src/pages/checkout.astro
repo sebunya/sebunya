@@ -78,15 +78,12 @@ const formatUgx = (n: number): string =>
               <span aria-hidden="true" class="w-8 h-8 rounded-full bg-brand-charcoal text-white flex items-center justify-center text-sm font-black">2</span>
               Payment method
             </h2>
-<<<<<<< HEAD
             <div class="bg-gray-100 p-6 rounded-xl border-2 border-dashed border-gray-300 text-center">
               <p class="font-bold text-gray-500 mb-2">Mobile Money / Cards</p>
               <span class="inline-block bg-red-50 text-red-600 text-xs font-bold px-3 py-1 rounded-full border border-red-100">Payment handoff is not configured yet</span>
               <p class="text-sm text-gray-400 mt-4">This order will be created but not marked as paid. Awaiting payment confirmation offline.</p>
             </div>
-=======
             <Notice kind="not-configured" title="Mobile money / cards" message="Live customer-initiated payment is not yet configured. The order will be received for manual review and our sales team will follow up." />
->>>>>>> 82a6750 (Pass 5: harden public product DTOs schema and error pages)
           </div>
 
           <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
