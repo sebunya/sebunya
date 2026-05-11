@@ -83,5 +83,6 @@ export const payments = pgTable('payments', {
   amount: integer('amount').notNull(),
   status: varchar('status', { length: 30 }).default('PENDING').notNull(),
   paidAt: timestamp('paid_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

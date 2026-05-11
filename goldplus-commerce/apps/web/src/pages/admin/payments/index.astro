@@ -8,9 +8,11 @@ import Notice from '../../../components/Notice.astro';
 import { tryFetchAdminList } from '../../../lib/api';
 import { SAMPLE_PAYMENTS, type SamplePayment } from '../../../lib/sample-data';
 
+const fallbackPayments: SamplePayment[] = [];
+
 const result = await tryFetchAdminList<SamplePayment>(
   '/governance/admin/payments',
-  SAMPLE_PAYMENTS,
+  fallbackPayments,
   'Sample payment history shown until transactional GET endpoint is wired.',
 );
 

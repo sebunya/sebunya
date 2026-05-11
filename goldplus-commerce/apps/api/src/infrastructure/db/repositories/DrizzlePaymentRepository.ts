@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { db } from '../client';
 import { orders, payments } from '../schema/commerce';
 import { outboxEvents } from '../schema/system';
@@ -15,6 +15,7 @@ function rowToPayment(row: typeof payments.$inferSelect): RecordedPayment {
     amount: row.amount,
     status: row.status as PaymentWebhookOutcome,
     paidAt: row.paidAt ?? null,
+    createdAt: row.createdAt,
   };
 }
 
@@ -24,6 +25,13 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
       where: eq(payments.idempotencyKey, idempotencyKey),
     });
     return row ? rowToPayment(row) : null;
+  }
+
+  async findAll(): Promise<RecordedPayment[]> {
+    const rows = await db.query.payments.findMany({
+      orderBy: [desc(payments.createdAt)],
+    });
+    return rows.map(rowToPayment);
   }
 
   async recordWebhookOutcome(input: {
@@ -62,7 +70,10 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
 
         await tx
           .update(orders)
-          .set({ status: input.outcome === 'SUCCESS' ? 'PAID' : 'PAYMENT_FAILED' })
+          .set({ 
+            paymentStatus: input.outcome === 'SUCCESS' ? 'paid' : 'failed',
+            status: input.outcome === 'SUCCESS' ? 'processing' : 'pending_payment'
+          })
           .where(eq(orders.id, input.orderId));
 
         await tx.insert(outboxEvents).values({
@@ -93,3 +104,4 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
     }
   }
 }
+

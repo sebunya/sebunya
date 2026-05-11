@@ -114,7 +114,7 @@ const formatStatus = (status: string) => {
                  <span class="uppercase font-bold">{order.paymentStatus}</span>
               </div>
               {order.paymentStatus === 'unpaid' && (
-                <p class="text-xs text-gray-400 mt-4 leading-relaxed">Payment integration is offline. Operations team will confirm offline payment.</p>
+                <p class="text-xs text-gray-400 mt-4 leading-relaxed">Awaiting payment confirmation. Do not treat this order as paid until payment is confirmed.</p>
               )}
             </div>
             <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">

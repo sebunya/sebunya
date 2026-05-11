@@ -115,6 +115,18 @@ routes.get('/admin/products', async (c) => {
   }
 });
 
+routes.get('/admin/payments', async (c) => {
+  try {
+    const payments = await registry.paymentRepo.findAll();
+    return c.json({ success: true, data: payments });
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
+    }
+    throw err;
+  }
+});
+
 export default routes;
 
 

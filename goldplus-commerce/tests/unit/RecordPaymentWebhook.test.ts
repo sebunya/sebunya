@@ -26,6 +26,7 @@ function makeFakeRepo(): IPaymentRepository & { _store: Map<string, RecordedPaym
         amount: input.amount,
         status: input.outcome,
         paidAt: input.outcome === 'SUCCESS' ? new Date() : null,
+        createdAt: new Date(),
       };
       store.set(input.idempotencyKey, payment);
       return payment;

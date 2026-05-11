@@ -9,10 +9,13 @@ export interface RecordedPayment {
   amount: number;
   status: PaymentWebhookOutcome;
   paidAt: Date | null;
+  createdAt: Date;
 }
 
 export interface IPaymentRepository {
   findByIdempotencyKey(idempotencyKey: string): Promise<RecordedPayment | null>;
+
+  findAll(): Promise<RecordedPayment[]>;
 
   /**
    * Records the webhook outcome and updates the order status atomically.

@@ -67,6 +67,7 @@ function getStatusColor(status: string) {
               <th class="px-6 py-4">Customer</th>
               <th class="px-6 py-4">Buyer Type</th>
               <th class="px-6 py-4 text-right">Total</th>
+              <th class="px-6 py-4 text-center">Payment</th>
               <th class="px-6 py-4 text-center">Status</th>
             </tr>
           </thead>
@@ -92,7 +93,16 @@ function getStatusColor(status: string) {
                   {formatter.format(order.totalUgx)}
                 </td>
                 <td class="px-6 py-4 text-center">
-                  <span class={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase whitespace-nowrap ${getStatusColor(order.orderStatus)}`}>
+                  <span class={`inline-block px-3 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${
+                    order.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' :
+                    order.paymentStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                    'bg-orange-100 text-orange-800'
+                  }`}>
+                    {order.paymentStatus}
+                  </span>
+                </td>
+                <td class="px-6 py-4 text-center">
+                  <span class={`inline-block px-3 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${getStatusColor(order.orderStatus)}`}>
                     {order.orderStatus.replace(/_/g, ' ')}
                   </span>
                 </td>
