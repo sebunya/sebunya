@@ -2,8 +2,9 @@ import { db } from '../client';
 import { auditLogs } from '../schema/system';
 import { eq, desc } from 'drizzle-orm';
 import { AuditLogEntity } from '../../../domain/audit/AuditLogEntity';
+import { IAuditRepository } from '../../../application/ports/IAuditRepository';
 
-export class DrizzleAuditRepository {
+export class DrizzleAuditRepository implements IAuditRepository {
   async save(log: AuditLogEntity): Promise<void> {
     await db.insert(auditLogs).values({
       id: log.id,
@@ -17,9 +18,10 @@ export class DrizzleAuditRepository {
     });
   }
 
-  async findAll(): Promise<AuditLogEntity[]> {
+  async findAll(opts?: { limit?: number }): Promise<AuditLogEntity[]> {
     const results = await db.query.auditLogs.findMany({
       orderBy: [desc(auditLogs.createdAt)],
+      limit: opts?.limit,
     });
 
     return results.map(r => new AuditLogEntity(
@@ -52,3 +54,4 @@ export class DrizzleAuditRepository {
     ));
   }
 }
+

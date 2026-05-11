@@ -8,6 +8,7 @@ import commerceRoutes from './routes/commerce';
 import governanceRoutes from './routes/governance';
 import webhookRoutes from './routes/webhooks';
 import accountRoutes from './routes/account';
+import adminAuditRoutes from './routes/admin/audit';
 
 
 // Define typed variables for the Hono context
@@ -28,6 +29,8 @@ app.route('/commerce', commerceRoutes);
 app.route('/governance', governanceRoutes);
 app.route('/webhooks', webhookRoutes);
 app.route('/account', accountRoutes);
+app.route('/admin/audit', adminAuditRoutes);
+
 
 
 

@@ -9,6 +9,7 @@ import { DrizzleAuditRepository } from './db/repositories/DrizzleAuditRepository
 import { DrizzlePaymentRepository } from './db/repositories/DrizzlePaymentRepository';
 import { DrizzleUserRepository } from './db/repositories/DrizzleUserRepository';
 import { DrizzleAddressRepository } from './db/repositories/DrizzleAddressRepository';
+import { DrizzleRoleRepository } from './db/repositories/DrizzleRoleRepository';
 import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
 
@@ -35,6 +36,8 @@ export class Registry {
   public readonly paymentRepo = new DrizzlePaymentRepository();
   public readonly userRepo = new DrizzleUserRepository();
   public readonly addressRepo = new DrizzleAddressRepository();
+  public readonly roleRepo = new DrizzleRoleRepository();
+
 
   // Security Services
   public readonly passwordHasher = new ScryptPasswordHasher();

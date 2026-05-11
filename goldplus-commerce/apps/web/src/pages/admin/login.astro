@@ -1,0 +1,82 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import FormField from '../../components/FormField.astro';
+import FormFeedback from '../../components/FormFeedback.astro';
+import Notice from '../../components/Notice.astro';
+import { apiBase } from '../../lib/api';
+import { sessionCookieValue } from '../../lib/session';
+
+let status: 'success' | 'error' | null = null;
+let message: string | undefined;
+let values: { email?: string } = {};
+let notConfigured = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const email = String(form.get('email') ?? '').trim();
+  const password = String(form.get('password') ?? '');
+  values = { email };
+
+  if (!email || !password) {
+    status = 'error';
+    message = 'Email and password are required.';
+  } else {
+    try {
+      const res = await fetch(`${apiBase}/auth/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const json: any = await res.json().catch(() => null);
+
+      if (res.ok && json?.success && json.data?.token) {
+        Astro.response.headers.set('Set-Cookie', sessionCookieValue(json.data.token));
+        const returnTo = Astro.url.searchParams.get('returnTo');
+        const safe = returnTo && returnTo.startsWith('/admin') && !returnTo.startsWith('//') ? returnTo : '/admin';
+        return Astro.redirect(safe, 303);
+      }
+
+      if (json?.error?.code === 'AUTH_NOT_CONFIGURED') {
+        notConfigured = true;
+        message = json.error.message;
+      } else {
+        status = 'error';
+        message = json?.error?.message ?? `Sign-in failed (HTTP ${res.status}).`;
+      }
+    } catch {
+      status = 'error';
+      message = 'Cannot reach the authentication service right now. Please try again shortly.';
+    }
+  }
+}
+---
+
+<BaseLayout title="Admin sign-in" description="Sign in to the GoldPlus admin console.">
+  <div class="container mx-auto px-4 lg:px-8 py-12 md:py-20">
+    <div class="max-w-md mx-auto">
+      <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2 text-center">GoldPlus admin</p>
+      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal mb-6 tracking-tight text-center">Sign in</h1>
+
+      {notConfigured && (
+        <div class="mb-6">
+          <Notice kind="not-configured" title="Admin sign-in not configured" message={message} />
+        </div>
+      )}
+      {!notConfigured && <FormFeedback status={status} message={message} />}
+
+      <form method="POST" action="/admin/login" novalidate class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm space-y-5">
+        <FormField id="email" name="email" label="Work email" type="email" required autocomplete="email" defaultValue={values.email} />
+        <FormField id="password" name="password" label="Password" type="password" required autocomplete="current-password" helperText="Sessions expire after 7 days of inactivity." />
+        <button
+          type="submit"
+          class="w-full bg-brand-charcoal text-white py-3 rounded-lg font-bold hover:bg-black focus-visible:ring-4 focus-visible:ring-brand-charcoal/20 outline-none"
+        >
+          Sign in to admin
+        </button>
+        <p class="text-xs text-brand-mutedGrey text-center">
+          Owner review required to issue an admin account.
+        </p>
+      </form>
+    </div>
+  </div>
+</BaseLayout>

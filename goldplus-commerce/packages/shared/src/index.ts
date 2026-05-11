@@ -17,3 +17,5 @@ export const DOMAIN_EVENTS = {
 
 export * from './types/product';
 export * from './types/account';
+export * from './permissions';
+

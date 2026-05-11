@@ -63,4 +63,22 @@ describe("Architecture boundaries", () => {
       expect(content, `${file} must not import infrastructure adapters`).not.toMatch(/from\s+["'](.*)infrastructure\//);
     }
   });
+
+  it("admin route files must import auth + requirePermissions", () => {
+    const adminRoutesDir = path.join(root, "apps/api/src/interfaces/http/routes/admin");
+    if (!fs.existsSync(adminRoutesDir)) {
+      return; // Vacuously satisfied
+    }
+    const files = readFiles(adminRoutesDir).filter((f) => f.endsWith(".ts"));
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, "utf8");
+      const hasAuth = /from\s+["'][^"']*\/middleware\/auth["']/.test(content);
+      const hasPerms = /requirePermissions\s*\(/.test(content);
+
+      expect(hasAuth, `${file} must import authMiddleware from middleware/auth`).toBe(true);
+      expect(hasPerms, `${file} must call requirePermissions(...) on each handler`).toBe(true);
+    }
+  });
 });
+
