@@ -44,6 +44,7 @@ describe("Architecture boundaries", () => {
     for (const file of files) {
       const content = fs.readFileSync(file, "utf8");
       expect(content, `${file} must call use cases, not repositories directly`).not.toMatch(/repositories\//);
+      expect(content, `${file} must not import database schema directly`).not.toMatch(/db\/schema/);
     }
   });
 

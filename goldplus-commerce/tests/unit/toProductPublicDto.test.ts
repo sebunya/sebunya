@@ -106,6 +106,21 @@ describe('toProductPublicDto', () => {
     expect(dto.availability).toEqual({ kind: 'unknown' });
   });
 
+  it('returns primaryImageUrl if hasImage is true and image exists', () => {
+    const entity = makeSource({ hasImage: true });
+    // inject explicit imageUrl since helper hides detail
+    Object.defineProperty(entity.entity, 'imageUrl', { value: 'http://test.img/prod.jpg' });
+    const dto = toProductPublicDto(entity);
+    expect(dto.primaryImageUrl).toBe('http://test.img/prod.jpg');
+  });
+
+  it('forcefully returns primaryImageUrl as null if hasImage is false, even if internal field is populated', () => {
+    const entity = makeSource({ hasImage: false });
+    Object.defineProperty(entity.entity, 'imageUrl', { value: 'http://test.img/shadow.jpg' });
+    const dto = toProductPublicDto(entity);
+    expect(dto.primaryImageUrl).toBeNull();
+  });
+
   it('falls back to "Uncategorised" when the category join is empty', () => {
     const dto = toProductPublicDto(makeSource({ categoryName: null }));
     expect(dto.categoryName).toBe('Uncategorised');

@@ -10,10 +10,22 @@ routes.get('/', async (c) => {
   const registry = Registry.getInstance();
   const useCase = new ListPublicProductsUseCase(registry.productRepo);
 
+  const q = c.req.query('q');
+  const cat = c.req.query('category');
+  const inStock = c.req.query('inStock') === 'true';
   const limitParam = c.req.query('limit');
-  const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
+  const idsParam = c.req.query('ids');
 
-  const dtos = await useCase.execute({ limit: Number.isFinite(limit) ? (limit as number) : undefined });
+  const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
+  const ids = idsParam ? idsParam.split(',').map((i) => i.trim()).filter(Boolean) : undefined;
+
+  const dtos = await useCase.execute({
+    limit: Number.isFinite(limit) ? (limit as number) : undefined,
+    search: q,
+    category: cat,
+    inStock,
+    ids,
+  });
 
   const res: ApiResponse<ProductPublicDto[]> = {
     success: true,

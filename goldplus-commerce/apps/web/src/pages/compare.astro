@@ -1,124 +1,174 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { apiBase } from "../lib/api";
+import Notice from "../components/Notice.astro";
+import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
-// Mock comparison data for Phase 1
-const compareItems = [
-  {
-    id: "generic-fast-charger",
-    name: "Generic Fast Charger",
-    category: "Power",
-    price: "UGX 50,000",
-    inStock: true,
-    model: "Missing. Requires admin review.",
-    warranty: "Unspecified in source."
-  },
-  {
-    id: "wireless-earbuds",
-    name: "Wireless Earbuds",
-    category: "Sound",
-    price: "UGX 80,000",
-    inStock: true,
-    model: "Missing. Requires admin review.",
-    warranty: "Unspecified in source."
+const idsParam = Astro.url.searchParams.get('ids');
+const itemIds = idsParam ? idsParam.split(',').map(id => id.trim()).filter(Boolean).slice(0, 3) : [];
+
+let compareItems: ProductPublicDto[] = [];
+let fetchError: string | null = null;
+
+if (itemIds.length > 0) {
+  try {
+    const res = await fetch(`${apiBase}/products?ids=${itemIds.join(',')}`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const json = await res.json() as ApiResponse<ProductPublicDto[]>;
+      if (json.success) {
+        compareItems = json.data;
+      }
+    } else {
+      fetchError = "We were unable to retrieve comparison details.";
+    }
+  } catch {
+    fetchError = "Unable to fetch latest comparison data right now.";
   }
-];
+}
+
+const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+
+// Derive list of comparison keys across all items dynamically from their verified specs
+const specKeys = Array.from(
+  new Set(compareItems.flatMap(item => Object.keys(item.verifiedSpecs || {})))
+).sort();
+
+// Generate remove link for item
+const generateRemoveLink = (idToRemove: string) => {
+  const remain = itemIds.filter(id => id !== idToRemove);
+  return remain.length > 0 ? `/compare?ids=${remain.join(',')}` : '/compare';
+};
 ---
 
-<BaseLayout title="Compare Products | GoldPlus">
-  <div class="bg-gray-50 py-8 border-b border-gray-200">
+<BaseLayout title="Compare Certified Products | GoldPlus" description="Compare detailed, verified technical specifications side-by-side to make an informed purchase.">
+  <div class="bg-brand-charcoal py-12 border-b border-brand-borderGrey">
     <div class="container mx-auto px-4 lg:px-8">
-      <h1 class="text-3xl md:text-4xl font-black tracking-tight text-brand-dark mb-2">Compare Products</h1>
-      <p class="text-gray-600 max-w-xl">Evaluate verified specifications side by side. We highlight any missing data so you can make informed decisions.</p>
+      <h1 class="text-3xl md:text-4xl font-black tracking-tight text-brand-primary mb-2">Product Comparison</h1>
+      <p class="text-brand-mutedGrey max-w-xl">Examine technical specifications side by side. We strictly omit unverified data to ensure truthfulness.</p>
     </div>
   </div>
 
   <div class="container mx-auto px-4 lg:px-8 py-12">
     
-    {compareItems.length === 0 ? (
-      <div class="text-center py-20 bg-white rounded-2xl border border-gray-200">
-        <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-        <h2 class="text-xl font-bold text-brand-dark mb-2">No products selected</h2>
-        <p class="text-gray-500 mb-6">Go to the shop and select products to compare.</p>
-        <a href="/shop" class="inline-block px-6 py-2 bg-brand-dark text-white rounded-lg font-bold hover:bg-black transition-colors">Browse Catalog</a>
+    {fetchError && (
+      <div class="mb-8">
+         <Notice kind="warning" title="Service Unavailable" message={fetchError} />
       </div>
-    ) : (
-      <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+    )}
+
+    {compareItems.length === 0 && !fetchError ? (
+      <div class="text-center py-20 bg-brand-softGrey rounded-2xl border border-brand-borderGrey">
+        <svg class="w-16 h-16 mx-auto text-brand-mutedGrey/40 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+        <h2 class="text-xl font-bold text-brand-charcoal mb-2">No products selected for comparison</h2>
+        <p class="text-brand-mutedGrey mb-6">Browse our catalog and note valid IDs to populate this screen.</p>
+        <a href="/shop" class="inline-block px-6 py-2.5 bg-brand-charcoal text-white rounded-lg font-bold hover:opacity-90 transition-opacity">Go to Catalog</a>
+      </div>
+    ) : compareItems.length > 0 ? (
+      <div class="overflow-x-auto rounded-2xl border border-brand-borderGrey bg-white shadow-sm">
         <table class="w-full text-left border-collapse min-w-[800px]">
           <thead>
             <tr>
-              <th class="w-1/4 p-6 border-b border-r border-gray-200 bg-gray-50 align-top">
-                <h3 class="font-bold text-lg text-brand-dark mb-1">Features & Specs</h3>
-                <p class="text-xs text-gray-500 font-normal">Fields marked <span class="text-red-600">Missing</span> require admin verification.</p>
+              <th class="w-1/4 p-6 border-b border-r border-brand-borderGrey bg-brand-softGrey align-top">
+                <h3 class="font-bold text-lg text-brand-charcoal mb-1">Core Data</h3>
+                <p class="text-xs text-brand-mutedGrey font-normal">Authentic data joined securely from backend system records.</p>
               </th>
               {compareItems.map(item => (
-                <th class="w-1/4 p-6 border-b border-gray-200 bg-white align-top relative group">
-                  <button class="absolute top-4 right-4 text-gray-400 hover:text-red-600 transition-colors" aria-label="Remove from comparison">
+                <th class="w-1/4 p-6 border-b border-brand-borderGrey bg-white align-top relative group">
+                  <a href={generateRemoveLink(item.id)} class="absolute top-4 right-4 text-brand-mutedGrey hover:text-brand-error transition-colors" aria-label="Remove from comparison">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                  </button>
-                  <div class="w-32 h-32 bg-gray-100 rounded-xl mb-4 mx-auto flex items-center justify-center text-xs text-gray-400">No Image</div>
-                  <h4 class="font-bold text-brand-dark text-center leading-tight mb-2">{item.name}</h4>
-                  <p class="text-center text-lg font-black text-brand-dark">{item.price}</p>
+                  </a>
+                  <div class="w-32 h-32 bg-brand-softGrey rounded-xl mb-4 mx-auto flex items-center justify-center overflow-hidden relative">
+                    {item.primaryImageUrl ? (
+                       <img src={item.primaryImageUrl} alt="" class="object-cover w-full h-full" />
+                    ) : (
+                       <span class="text-xs text-brand-mutedGrey font-bold opacity-50 uppercase">Image Pending</span>
+                    )}
+                  </div>
+                  <h4 class="font-bold text-brand-charcoal text-center leading-tight mb-2">{item.name}</h4>
+                  <p class="text-center font-black text-brand-charcoal">
+                     {item.retailPriceUgx ? formatter.format(item.retailPriceUgx) : 'Price on Request'}
+                  </p>
                 </th>
               ))}
               {compareItems.length < 3 && (
-                <th class="w-1/4 p-6 border-b border-gray-200 bg-gray-50 align-middle text-center">
-                  <a href="/shop" class="inline-flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-brand-dark transition-colors group">
-                    <div class="w-12 h-12 rounded-full bg-white border-2 border-dashed border-gray-300 group-hover:border-brand-dark flex items-center justify-center mb-2 transition-colors">
-                      <span class="text-2xl font-bold">+</span>
+                <th class="w-1/4 p-6 border-b border-brand-borderGrey bg-brand-softGrey align-middle text-center">
+                  <a href="/shop" class="inline-flex flex-col items-center justify-center w-full h-full text-brand-mutedGrey hover:text-brand-charcoal transition-colors group">
+                    <div class="w-12 h-12 rounded-full bg-white border-2 border-dashed border-brand-borderGrey group-hover:border-brand-primary flex items-center justify-center mb-2 transition-colors">
+                      <span class="text-2xl font-bold text-brand-mutedGrey group-hover:text-brand-primary">+</span>
                     </div>
-                    <span class="text-sm font-bold">Add Product</span>
+                    <span class="text-sm font-bold">Add product</span>
                   </a>
                 </th>
               )}
             </tr>
           </thead>
           <tbody class="text-sm">
-            <tr class="border-b border-gray-100 hover:bg-gray-50">
-              <td class="p-4 border-r border-gray-200 font-bold text-gray-700 bg-gray-50">Category</td>
-              {compareItems.map(item => <td class="p-4 text-center">{item.category}</td>)}
-              {compareItems.length < 3 && <td class="p-4 bg-gray-50"></td>}
+            <tr class="border-b border-brand-borderGrey hover:bg-brand-softGrey/50">
+              <td class="p-4 border-r border-brand-borderGrey font-bold text-brand-charcoal bg-brand-softGrey">Identifier / SKU</td>
+              {compareItems.map(item => <td class="p-4 text-center font-mono text-xs">{item.sku || <span class="text-red-500 italic">Pending review</span>}</td>)}
+              {compareItems.length < 3 && <td class="p-4 bg-brand-softGrey"></td>}
             </tr>
-            <tr class="border-b border-gray-100 hover:bg-gray-50">
-              <td class="p-4 border-r border-gray-200 font-bold text-gray-700 bg-gray-50">Availability</td>
-              {compareItems.map(item => (
-                <td class="p-4 text-center">
-                  <span class={`font-bold px-2 py-1 rounded text-xs uppercase ${item.inStock ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {item.inStock ? 'In Stock' : 'Out of Stock'}
-                  </span>
+            
+            <tr class="border-b border-brand-borderGrey hover:bg-brand-softGrey/50">
+              <td class="p-4 border-r border-brand-borderGrey font-bold text-brand-charcoal bg-brand-softGrey">Category</td>
+              {compareItems.map(item => <td class="p-4 text-center">{item.categoryName}</td>)}
+              {compareItems.length < 3 && <td class="p-4 bg-brand-softGrey"></td>}
+            </tr>
+            
+            <tr class="border-b border-brand-borderGrey hover:bg-brand-softGrey/50">
+              <td class="p-4 border-r border-brand-borderGrey font-bold text-brand-charcoal bg-brand-softGrey">Availability</td>
+              {compareItems.map(item => {
+                const isInStock = item.availability.kind === 'in_stock' || item.availability.kind === 'pre_order';
+                return (
+                  <td class="p-4 text-center">
+                    <span class={`font-bold px-2 py-1 rounded text-xs uppercase ${isInStock ? 'bg-brand-charcoal text-white' : 'bg-red-100 text-red-800'}`}>
+                      {isInStock ? 'In Stock' : 'Out of Stock'}
+                    </span>
+                  </td>
+                );
+              })}
+              {compareItems.length < 3 && <td class="p-4 bg-brand-softGrey"></td>}
+            </tr>
+
+            {/* Section Divider for Verified Specifications */}
+            {specKeys.length > 0 && (
+              <tr class="bg-brand-charcoal text-white">
+                <td colspan={compareItems.length + (compareItems.length < 3 ? 2 : 1)} class="px-4 py-2 font-bold uppercase tracking-wider text-xs">
+                  Verified Technical Specifications
                 </td>
-              ))}
-              {compareItems.length < 3 && <td class="p-4 bg-gray-50"></td>}
-            </tr>
-            <tr class="border-b border-gray-100 hover:bg-gray-50">
-              <td class="p-4 border-r border-gray-200 font-bold text-gray-700 bg-gray-50">Model Number</td>
-              {compareItems.map(item => (
-                <td class="p-4 text-center">
-                  {item.model.includes('Missing') ? <span class="text-red-600 bg-red-50 px-2 py-1 rounded">{item.model}</span> : item.model}
-                </td>
-              ))}
-              {compareItems.length < 3 && <td class="p-4 bg-gray-50"></td>}
-            </tr>
-            <tr class="border-b border-gray-100 hover:bg-gray-50">
-              <td class="p-4 border-r border-gray-200 font-bold text-gray-700 bg-gray-50">Warranty</td>
-              {compareItems.map(item => (
-                <td class="p-4 text-center italic text-gray-500">{item.warranty}</td>
-              ))}
-              {compareItems.length < 3 && <td class="p-4 bg-gray-50"></td>}
-            </tr>
+              </tr>
+            )}
+
+            {specKeys.map(key => (
+              <tr class="border-b border-brand-borderGrey hover:bg-brand-softGrey/50">
+                 <td class="p-4 border-r border-brand-borderGrey font-bold text-brand-charcoal bg-brand-softGrey">{key}</td>
+                 {compareItems.map(item => (
+                   <td class="p-4 text-center">
+                      {item.verifiedSpecs[key] ?? <span class="text-brand-mutedGrey font-light italic">N/A</span>}
+                   </td>
+                 ))}
+                 {compareItems.length < 3 && <td class="p-4 bg-brand-softGrey"></td>}
+              </tr>
+            ))}
+            
             <tr>
-              <td class="p-4 border-r border-gray-200 bg-gray-50"></td>
+              <td class="p-4 border-r border-brand-borderGrey bg-brand-softGrey"></td>
               {compareItems.map(item => (
                 <td class="p-6 text-center">
-                  <button disabled={!item.inStock} class={`w-full py-2 px-4 rounded font-bold transition-colors ${item.inStock ? 'bg-brand-dark text-white hover:bg-black' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
-                    Add to Cart
-                  </button>
+                  <a 
+                    href={`/products/${item.slug}`}
+                    class="inline-block w-full py-2 px-4 rounded font-bold bg-brand-charcoal text-white hover:opacity-90 transition-all text-center"
+                  >
+                    View Details
+                  </a>
                 </td>
               ))}
-              {compareItems.length < 3 && <td class="p-4 bg-gray-50"></td>}
+              {compareItems.length < 3 && <td class="p-4 bg-brand-softGrey"></td>}
             </tr>
           </tbody>
         </table>
       </div>
-    )}
+    ) : null}
   </div>
 </BaseLayout>
+

@@ -1,6 +1,6 @@
 import { db } from '../client';
 import { products, productPrices, categories } from '../schema/products';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, and, or, ilike, SQL } from 'drizzle-orm';
 import { ProductEntity, StockStatus } from '../../../domain/products/ProductEntity';
 import { IProductRepository, ProductWithPrice } from '../../../application/ports/IProductRepository';
 
@@ -192,9 +192,55 @@ export class DrizzleProductRepository implements IProductRepository {
     };
   }
 
-  async findPublicViewList(opts: { limit?: number } = {}): Promise<ProductWithPrice[]> {
+  async findPublicViewList(opts: {
+    limit?: number;
+    search?: string;
+    category?: string;
+    inStock?: boolean;
+    ids?: string[];
+  } = {}): Promise<ProductWithPrice[]> {
+    let targetCategoryId: string | undefined;
+    if (opts.category && opts.category !== 'all') {
+      const foundCat = await db.query.categories.findFirst({
+        where: eq(categories.slug, opts.category),
+      });
+      if (foundCat) {
+        targetCategoryId = foundCat.id;
+      } else {
+        // If valid category search requested but none found, return empty
+        return [];
+      }
+    }
+
+    const conditions: (SQL | undefined)[] = [
+      eq(products.approvalStatus, 'approved'),
+    ];
+
+    if (targetCategoryId) {
+      conditions.push(eq(products.categoryId, targetCategoryId));
+    }
+
+    if (opts.inStock) {
+      conditions.push(eq(products.stockStatus, 'in_stock'));
+    }
+
+    if (opts.search) {
+      const needle = `%${opts.search}%`;
+      conditions.push(
+        or(
+          ilike(products.name, needle),
+          ilike(products.modelNumber, needle),
+          ilike(products.sku, needle)
+        )
+      );
+    }
+
+    if (opts.ids && opts.ids.length > 0) {
+      conditions.push(inArray(products.id, opts.ids));
+    }
+
     const rows = await db.query.products.findMany({
-      where: eq(products.approvalStatus, 'approved'),
+      where: and(...conditions),
       limit: opts.limit ?? 60,
     });
     if (rows.length === 0) return [];

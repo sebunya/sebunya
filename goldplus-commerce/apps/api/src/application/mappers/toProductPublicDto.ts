@@ -88,6 +88,7 @@ export function toProductPublicDto(
     retailPriceUgx: safeRetailPrice,
     availability,
     hasImage: entity.hasImage,
+    primaryImageUrl: entity.hasImage && entity.imageUrl ? entity.imageUrl : null,
     verifiedSpecs,
     hasMissingSpecs: sku === null || modelNumber === null,
   };

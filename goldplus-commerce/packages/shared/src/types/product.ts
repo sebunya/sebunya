@@ -19,6 +19,8 @@ export interface ProductPublicDto {
   availability: ProductAvailability;
   /** `true` only when the source row has hasImage=true. */
   hasImage: boolean;
+  /** Primary display image securely derived from internal URLs, null if missing. */
+  primaryImageUrl: string | null;
   /** Verified specifications. Keys whose value is "Missing. Requires admin review." are removed. */
   verifiedSpecs: Record<string, string | number>;
   /** Convenience flag for the UI: at least one safety/spec field is missing. */
