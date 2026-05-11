@@ -202,15 +202,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
           // Success state
           localStorage.removeItem('gp_cart');
           
-          document.getElementById('checkout-content')?.classList.add('hidden');
-          document.getElementById('checkout-success')?.classList.remove('hidden');
-          const successRef = document.getElementById('success-ref');
-          if (successRef) successRef.innerText = json.data.orderNumber || json.data.id;
-          
-          if (payload.buyerType === 'wholesale' || payload.buyerType === 'corporate') {
-            document.getElementById('wholesale-notice')?.classList.remove('hidden');
-            document.getElementById('retail-notice')?.classList.add('hidden');
-          }
+          window.location.href = `/orders/${json.data.id}`;
 
         } catch (err: any) {
           console.error('Checkout fail', err);

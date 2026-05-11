@@ -14,6 +14,7 @@ import { VerificationCheckUseCase } from '../application/use-cases/VerificationC
 import { DealerApplicationUseCase } from '../application/use-cases/DealerApplicationUseCase';
 import { GetProductListUseCase } from '../application/use-cases/commerce/GetProductListUseCase';
 import { GetOrderListUseCase } from '../application/use-cases/commerce/GetOrderListUseCase';
+import { GetOrderByIdUseCase } from '../application/use-cases/commerce/GetOrderByIdUseCase';
 
 export class Registry {
   private static _instance: Registry;
@@ -34,6 +35,7 @@ export class Registry {
   public readonly checkoutUseCase = new CheckoutUseCase(this.orderRepo);
   public readonly getProductListUseCase = new GetProductListUseCase(this.productRepo);
   public readonly getOrderListUseCase = new GetOrderListUseCase(this.orderRepo);
+  public readonly getOrderByIdUseCase = new GetOrderByIdUseCase(this.orderRepo);
   public readonly verificationCheckUseCase = new VerificationCheckUseCase(this.verificationRepo);
   public readonly dealerApplicationUseCase = new DealerApplicationUseCase(this.dealerRepo);
 

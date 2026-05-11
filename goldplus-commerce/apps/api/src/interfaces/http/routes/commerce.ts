@@ -38,4 +38,26 @@ routes.post('/orders/create', async (c) => {
   }
 });
 
+routes.get('/orders/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const order = await registry.getOrderByIdUseCase.execute(id);
+    
+    if (!order) {
+      return c.json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } }, 404);
+    }
+
+    const res: ApiResponse<any> = {
+      success: true,
+      data: order,
+    };
+    return c.json(res);
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL') || err.message.includes('relation "orders" does not exist')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured yet' } }, 503);
+    }
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } }, 500);
+  }
+});
+
 export default routes;
