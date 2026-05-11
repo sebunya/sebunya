@@ -1,0 +1,83 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import AdminPageHeader from '../../../components/AdminPageHeader.astro';
+import EmptyState from '../../../components/EmptyState.astro';
+import Notice from '../../../components/Notice.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken, clearSessionCookie } from '../../../lib/session';
+import type { ApiEnvelope } from '@goldplus/shared';
+
+interface RoleRow {
+  id: string;
+  name: string;
+  permissionCodes: string[];
+  userCount: number;
+}
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/roles', 303);
+}
+
+let rows: RoleRow[] = [];
+let fetchError: string | null = null;
+
+try {
+  const res = await fetch(`${apiBase}/admin/roles`, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 401 || res.status === 403) {
+    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    return Astro.redirect('/admin/login?returnTo=/admin/roles', 303);
+  }
+  if (!res.ok) {
+    fetchError = `Roles service responded with HTTP ${res.status}.`;
+  } else {
+    const json = (await res.json()) as ApiEnvelope<RoleRow[]>;
+    if (json.success && Array.isArray(json.data)) rows = json.data;
+    else fetchError = json.error?.message ?? 'Unexpected response.';
+  }
+} catch {
+  fetchError = 'Cannot reach the roles service right now.';
+}
+---
+
+<BaseLayout title="Roles — Admin">
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <AdminPageHeader
+      title="Roles"
+      description="Each role bundles a set of permission codes. Users gain a permission only by being assigned a role that grants it."
+    />
+
+    {fetchError && (
+      <div class="mb-6">
+        <Notice kind="not-configured" title="Roles service unavailable" message={fetchError} />
+      </div>
+    )}
+
+    {rows.length === 0 && !fetchError ? (
+      <EmptyState
+        title="No roles defined yet"
+        message="Run scripts/bootstrap-admin.ts to seed the Owner role with all permissions."
+      />
+    ) : (
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {rows.map((r) => (
+          <article class="bg-white border border-brand-borderGrey rounded-2xl p-5">
+            <div class="flex items-start justify-between gap-3 mb-3">
+              <h2 class="text-lg font-black text-brand-charcoal tracking-tight">{r.name}</h2>
+              <span class="text-xs font-bold text-brand-mutedGrey whitespace-nowrap">{r.userCount} user{r.userCount === 1 ? '' : 's'}</span>
+            </div>
+            {r.permissionCodes.length === 0 ? (
+              <p class="text-xs text-brand-mutedGrey italic">No permissions attached.</p>
+            ) : (
+              <div class="flex flex-wrap gap-1">
+                {r.permissionCodes.map((code) => (
+                  <code class="inline-flex items-center px-2 py-1 rounded bg-brand-softGrey text-brand-charcoal text-[10px] font-mono border border-brand-borderGrey">{code}</code>
+                ))}
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+    )}
+  </div>
+</BaseLayout>

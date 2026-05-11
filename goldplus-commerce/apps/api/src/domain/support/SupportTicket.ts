@@ -33,4 +33,26 @@ export class SupportTicket {
       new Date()
     );
   }
+
+  public static open(
+    id: string,
+    customerId: string | null,
+    subject: string,
+    description: string,
+    type: 'issue' | 'fake_report' | 'inquiry',
+    priority: TicketPriority,
+    metadata: Record<string, any> = {}
+  ): SupportTicket {
+    return new SupportTicket(
+      id,
+      customerId,
+      subject,
+      description,
+      'open',
+      priority,
+      type,
+      new Date(),
+      metadata
+    );
+  }
 }

@@ -80,5 +80,34 @@ describe("Architecture boundaries", () => {
       expect(hasPerms, `${file} must call requirePermissions(...) on each handler`).toBe(true);
     }
   });
+
+  it("admin and governance write routes must call CreateAuditLogUseCase", () => {
+    const candidateFiles: string[] = [];
+
+    const governance = path.join(root, "apps/api/src/interfaces/http/routes/governance.ts");
+    if (fs.existsSync(governance)) candidateFiles.push(governance);
+
+    const adminDir = path.join(root, "apps/api/src/interfaces/http/routes/admin");
+    if (fs.existsSync(adminDir)) {
+      candidateFiles.push(...readFiles(adminDir).filter((f) => f.endsWith(".ts")));
+    }
+
+    const writeVerbRegex = /\b(routes|app)\.(post|put|patch|delete)\s*\(/;
+    const auditRegex = /\bauditUc\.execute\s*\(|CreateAuditLogUseCase/;
+    const exemptionMarker = /\/\/\s*audit-exempt:/;
+
+    for (const file of candidateFiles) {
+      const content = fs.readFileSync(file, "utf8");
+      const hasWrite = writeVerbRegex.test(content);
+      if (!hasWrite) continue;
+      if (exemptionMarker.test(content)) continue;
+      const hasAudit = auditRegex.test(content);
+      expect(
+        hasAudit,
+        `${file} contains write verbs but never calls CreateAuditLogUseCase. ` +
+          `Either add audit, or add a "// audit-exempt: <reason>" comment for write endpoints that have a dedicated audit channel.`,
+      ).toBe(true);
+    }
+  });
 });
 
