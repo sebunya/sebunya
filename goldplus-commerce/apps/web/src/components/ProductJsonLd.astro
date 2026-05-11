@@ -1,0 +1,49 @@
+---
+import type { ProductPublicDto } from '@goldplus/shared';
+
+interface Props {
+  product: ProductPublicDto;
+  url: string;
+}
+
+const { product, url } = Astro.props;
+
+const availabilityUrl: Record<string, string | null> = {
+  in_stock: 'https://schema.org/InStock',
+  out_of_stock: 'https://schema.org/OutOfStock',
+  pre_order: 'https://schema.org/PreOrder',
+  unknown: null,
+};
+
+const node: Record<string, unknown> = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: product.name,
+  category: product.categoryName,
+  url,
+};
+
+if (product.sku) node.sku = product.sku;
+if (product.modelNumber) node.mpn = product.modelNumber;
+
+const specEntries = Object.entries(product.verifiedSpecs);
+if (specEntries.length > 0) {
+  node.description = specEntries.map(([k, v]) => `${k}: ${v}`).join('; ');
+}
+
+if (product.retailPriceUgx !== null) {
+  const offers: Record<string, unknown> = {
+    '@type': 'Offer',
+    priceCurrency: 'UGX',
+    price: product.retailPriceUgx,
+    url,
+  };
+  const availUrl = availabilityUrl[product.availability.kind];
+  if (availUrl) offers.availability = availUrl;
+  node.offers = offers;
+}
+
+// Two-space indent is fine; crawlers don't care. Keep newlines out of inline script.
+const jsonText = JSON.stringify(node);
+---
+<script type="application/ld+json" is:inline set:html={jsonText} />

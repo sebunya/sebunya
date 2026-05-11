@@ -1,9 +1,10 @@
 import { db } from '../client';
-import { products } from '../schema/products';
-import { eq } from 'drizzle-orm';
+import { products, productPrices, categories } from '../schema/products';
+import { eq, inArray } from 'drizzle-orm';
 import { ProductEntity, StockStatus } from '../../../domain/products/ProductEntity';
+import { IProductRepository, ProductWithPrice } from '../../../application/ports/IProductRepository';
 
-export class DrizzleProductRepository {
+export class DrizzleProductRepository implements IProductRepository {
   async findBySlug(slug: string): Promise<ProductEntity | null> {
     const result = await db.query.products.findFirst({
       where: eq(products.slug, slug),
@@ -139,6 +140,105 @@ export class DrizzleProductRepository {
       result.stockQuantity,
       result.specifications as Record<string, string | number>
     ));
+  }
+
+  async findPublicViewBySlug(slug: string): Promise<ProductWithPrice | null> {
+    const row = await db.query.products.findFirst({
+      where: eq(products.slug, slug),
+    });
+    if (!row) return null;
+
+    if (row.approvalStatus !== 'approved') return null;
+
+    const [priceRow, categoryRow] = await Promise.all([
+      db.query.productPrices.findFirst({
+        where: eq(productPrices.productId, row.id),
+      }),
+      db.query.categories.findFirst({
+        where: eq(categories.id, row.categoryId),
+      }),
+    ]);
+
+    const entity = new ProductEntity(
+      row.id,
+      row.sku,
+      row.modelNumber,
+      row.name,
+      row.slug,
+      row.categoryName ?? 'Uncategorized',
+      row.subcategory ?? undefined,
+      row.shortDescription,
+      row.longDescription,
+      row.priceUgx,
+      row.compareAtPriceUgx ?? undefined,
+      row.stockStatus as StockStatus,
+      row.imageUrl ?? undefined,
+      row.features as string[],
+      row.warrantyPeriod,
+      row.verificationEligible,
+      row.active,
+      row.approvalStatus as 'draft' | 'approved' | 'rejected',
+      row.isPreOrderEnabled,
+      row.hasRetailPrice,
+      row.hasImage,
+      row.stockQuantity,
+      (row.specifications ?? {}) as Record<string, string | number>
+    );
+
+    return {
+      entity,
+      retailPriceUgx: row.hasRetailPrice && priceRow?.retailPrice ? priceRow.retailPrice : null,
+      categoryName: categoryRow?.name ?? row.categoryName ?? null,
+    };
+  }
+
+  async findPublicViewList(opts: { limit?: number } = {}): Promise<ProductWithPrice[]> {
+    const rows = await db.query.products.findMany({
+      where: eq(products.approvalStatus, 'approved'),
+      limit: opts.limit ?? 60,
+    });
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((r) => r.id);
+    const categoryIds = Array.from(new Set(rows.map((r) => r.categoryId)));
+
+    const [priceRows, categoryRows] = await Promise.all([
+      db.query.productPrices.findMany({ where: inArray(productPrices.productId, ids) }),
+      db.query.categories.findMany({ where: inArray(categories.id, categoryIds) }),
+    ]);
+
+    const priceByProduct = new Map(priceRows.map((p) => [p.productId, p.retailPrice]));
+    const categoryById = new Map(categoryRows.map((c) => [c.id, c.name]));
+
+    return rows.map((row) => ({
+      entity: new ProductEntity(
+        row.id,
+        row.sku,
+        row.modelNumber,
+        row.name,
+        row.slug,
+        row.categoryName ?? 'Uncategorized',
+        row.subcategory ?? undefined,
+        row.shortDescription,
+        row.longDescription,
+        row.priceUgx,
+        row.compareAtPriceUgx ?? undefined,
+        row.stockStatus as StockStatus,
+        row.imageUrl ?? undefined,
+        row.features as string[],
+        row.warrantyPeriod,
+        row.verificationEligible,
+        row.active,
+        row.approvalStatus as 'draft' | 'approved' | 'rejected',
+        row.isPreOrderEnabled,
+        row.hasRetailPrice,
+        row.hasImage,
+        row.stockQuantity,
+        (row.specifications ?? {}) as Record<string, string | number>
+      ),
+      retailPriceUgx: row.hasRetailPrice ? priceByProduct.get(row.id) ?? null : null,
+      categoryName: categoryById.get(row.categoryId) ?? row.categoryName ?? null,
+    }));
   }
 }
 

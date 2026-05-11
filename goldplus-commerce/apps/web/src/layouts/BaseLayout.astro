@@ -4,9 +4,18 @@ import '../styles/global.css';
 interface Props {
   title: string;
   description?: string;
+  image?: string;
+  canonicalUrl?: string;
 }
 
-const { title, description = 'GoldPlus — Premium electronics in Uganda' } = Astro.props;
+const {
+  title,
+  description = 'GoldPlus — Premium electronics in Uganda',
+  image = '/icon-512.svg',
+  canonicalUrl,
+} = Astro.props;
+
+const canonical = canonicalUrl ?? Astro.url.toString();
 ---
 
 <!doctype html>
@@ -22,14 +31,16 @@ const { title, description = 'GoldPlus — Premium electronics in Uganda' } = As
     <meta property="og:url" content={Astro.url} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content="/icon-512.svg" />
+    <meta property="og:image" content={image} />
 
     {/* Twitter */}
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:url" content={Astro.url} />
     <meta property="twitter:title" content={title} />
     <meta property="twitter:description" content={description} />
-    <meta property="twitter:image" content="/icon-512.svg" />
+    <meta property="twitter:image" content={image} />
+    <link rel="canonical" href={canonical} />
+    <slot name="head" />
 
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
     <link rel="apple-touch-icon" href="/icon-192.svg" />

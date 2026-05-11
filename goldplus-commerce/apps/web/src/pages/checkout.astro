@@ -1,222 +1,136 @@
 ---
-import BaseLayout from "../layouts/BaseLayout.astro";
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Notice from '../components/Notice.astro';
+import FormField from '../components/FormField.astro';
+import { apiBase } from '../lib/api';
+import { readCartSessionId } from '../lib/cart-session';
+import type { ApiEnvelope } from '@goldplus/shared';
+
+interface CartItem {
+  productId: string;
+  slug: string;
+  name: string;
+  quantity: number;
+  unitPriceUgx: number;
+}
+
+interface CartResponse {
+  id: string;
+  items: CartItem[];
+  subtotalUgx: number;
+}
+
+const sessionId = readCartSessionId(Astro.request);
+
+if (!sessionId) {
+  return Astro.redirect('/cart', 303);
+}
+
+let cart: CartResponse | null = null;
+try {
+  const res = await fetch(`${apiBase}/commerce/carts/${encodeURIComponent(sessionId)}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (res.ok) {
+    const json = (await res.json()) as ApiEnvelope<CartResponse>;
+    if (json.success && json.data) cart = json.data;
+  }
+} catch {
+  /* fall through; checkout will redirect to /cart below */
+}
+
+if (!cart || cart.items.length === 0) {
+  return Astro.redirect('/cart', 303);
+}
+
+const formatUgx = (n: number): string =>
+  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
 ---
 
-<BaseLayout title="Checkout - GoldPlus">
-  <div class="bg-gray-50 py-12 border-b border-gray-200">
+<BaseLayout title="Checkout">
+  <div class="bg-brand-softGrey py-10 border-b border-brand-borderGrey">
     <div class="container mx-auto px-4 lg:px-8">
-      <h1 class="text-3xl md:text-5xl font-black tracking-tight text-brand-dark mb-4">Checkout</h1>
-      <p class="text-gray-600 max-w-2xl text-lg">Provide your delivery details and secure your order. GoldPlus electronics are verified authentic before dispatch.</p>
+      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-brand-charcoal mb-2">Checkout</h1>
+      <p class="text-brand-mutedGrey max-w-2xl">Provide your delivery details. Payment activation is pending — orders are received for manual review until mobile-money credentials are configured.</p>
     </div>
   </div>
 
-  <div class="container mx-auto px-4 lg:px-8 py-12">
-    
-    <!-- Success Message Container (Hidden) -->
-    <div id="checkout-success" class="hidden text-center py-20 bg-white border border-green-200 rounded-2xl shadow-sm">
-      <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-        <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-      </div>
-      <h2 class="text-3xl font-black text-brand-dark mb-2">Order Received!</h2>
-      <p class="text-gray-600 mb-4">Your order reference number is <span id="success-ref" class="font-bold font-mono bg-gray-100 px-2 py-1 rounded">GP-XXXX</span></p>
-      <div id="wholesale-notice" class="hidden bg-yellow-50 text-yellow-800 border border-yellow-100 p-4 max-w-md mx-auto rounded-xl mb-6">
-        <strong>Wholesale/Corporate Notice:</strong> Your request has been flagged for owner pricing review. We will contact you shortly.
-      </div>
-      <div id="retail-notice" class="bg-green-50 text-green-800 border border-green-100 p-4 max-w-md mx-auto rounded-xl mb-6">
-        Our team will contact you via WhatsApp to confirm delivery logistics.
-      </div>
-      <a href="/shop" class="inline-block bg-brand-dark text-white px-8 py-3 rounded-xl font-bold hover:bg-black transition-all">Return to Shop</a>
-    </div>
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <div class="flex flex-col lg:flex-row gap-10">
 
-    <div id="checkout-content" class="flex flex-col lg:flex-row gap-12">
-      
-      {/* Checkout Form */}
       <div class="w-full lg:w-2/3">
-        <div id="error-banner" class="hidden bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl mb-6 font-medium"></div>
-
-        <form id="checkout-form" class="space-y-8">
-          <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm">
-            <h2 class="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
-              <span class="w-8 h-8 rounded-full bg-brand-dark text-white flex items-center justify-center text-sm">1</span>
-              Customer Details
+        <form method="POST" action="/checkout" novalidate class="space-y-6">
+          <div class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm">
+            <h2 class="text-lg md:text-xl font-bold text-brand-charcoal mb-6 flex items-center gap-2">
+              <span aria-hidden="true" class="w-8 h-8 rounded-full bg-brand-charcoal text-white flex items-center justify-center text-sm font-black">1</span>
+              Customer details
             </h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label for="name" class="block text-sm font-bold text-brand-dark mb-2">Full Name</label>
-                <input type="text" id="name" name="name" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green outline-none transition-all">
-              </div>
-              <div>
-                <label for="email" class="block text-sm font-bold text-brand-dark mb-2">Email Address (Optional)</label>
-                <input type="email" id="email" name="email" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green outline-none transition-all">
-              </div>
-              <div>
-                <label for="phone" class="block text-sm font-bold text-brand-dark mb-2">Phone Number (MTN/Airtel)</label>
-                <input type="tel" id="phone" name="phone" required placeholder="07XX XXX XXX" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green outline-none transition-all">
-              </div>
-              <div>
-                <label for="buyerType" class="block text-sm font-bold text-brand-dark mb-2">Order Type</label>
-                <select id="buyerType" name="buyerType" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green outline-none">
-                  <option value="retail">Individual / Retail</option>
-                  <option value="wholesale">Wholesale / Resale</option>
-                  <option value="corporate">Corporate Bulk</option>
-                </select>
-              </div>
-              <div class="md:col-span-2">
-                <label for="deliveryArea" class="block text-sm font-bold text-brand-dark mb-2">Delivery Area (City / Town)</label>
-                <input type="text" id="deliveryArea" name="deliveryArea" required placeholder="e.g. Kampala Center, Entebbe, Mbarara" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green outline-none transition-all">
-              </div>
-              <div class="md:col-span-2">
-                <label for="deliveryAddress" class="block text-sm font-bold text-brand-dark mb-2">Full Address / Landmark</label>
-                <input type="text" id="deliveryAddress" name="deliveryAddress" required placeholder="e.g. Plot 5 Main St, Level 2" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green outline-none transition-all">
-              </div>
+              <FormField id="name" name="name" label="Full name" required autocomplete="name" />
+              <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" />
+              <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" />
+              <FormField id="location" name="location" label="Delivery location / district" required />
             </div>
           </div>
 
-          <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm opacity-60">
-            <h2 class="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
-              <span class="w-8 h-8 rounded-full bg-brand-dark text-white flex items-center justify-center text-sm">2</span>
-              Payment Method
+          <div class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm">
+            <h2 class="text-lg md:text-xl font-bold text-brand-charcoal mb-4 flex items-center gap-2">
+              <span aria-hidden="true" class="w-8 h-8 rounded-full bg-brand-charcoal text-white flex items-center justify-center text-sm font-black">2</span>
+              Payment method
             </h2>
+<<<<<<< HEAD
             <div class="bg-gray-100 p-6 rounded-xl border-2 border-dashed border-gray-300 text-center">
               <p class="font-bold text-gray-500 mb-2">Mobile Money / Cards</p>
               <span class="inline-block bg-red-50 text-red-600 text-xs font-bold px-3 py-1 rounded-full border border-red-100">Payment handoff is not configured yet</span>
               <p class="text-sm text-gray-400 mt-4">This order will be created but not marked as paid. Awaiting payment confirmation offline.</p>
             </div>
+=======
+            <Notice kind="not-configured" title="Mobile money / cards" message="Live customer-initiated payment is not yet configured. The order will be received for manual review and our sales team will follow up." />
+>>>>>>> 82a6750 (Pass 5: harden public product DTOs schema and error pages)
           </div>
 
-          <div class="flex items-center gap-4">
-             <button type="submit" id="submit-btn" class="bg-brand-dark text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-black transition-all shadow-lg shadow-gray-200 disabled:bg-gray-400 disabled:cursor-wait">
-               Place Order Now
-             </button>
-             <p class="text-sm text-gray-500 italic">Safe checkout secured by clean architecture.</p>
+          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <button
+              type="submit"
+              class="bg-brand-primary text-brand-charcoal px-8 py-3 rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none"
+            >
+              Place order for review
+            </button>
+            <p class="text-xs text-brand-mutedGrey italic max-w-md leading-relaxed">By placing an order, you agree to the GoldPlus Terms. Owner review required before the order is confirmed.</p>
           </div>
         </form>
       </div>
 
-      {/* Summary Sidebar */}
-      <div class="w-full lg:w-1/3">
-        <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm sticky top-24">
-          <h2 class="text-xl font-bold text-brand-dark mb-6">Your Order</h2>
-          <ul id="order-summary-list" class="space-y-4 mb-6 border-b border-gray-100 pb-6">
-            <!-- Hydrated via JS -->
+      <aside class="w-full lg:w-1/3">
+        <div class="bg-white rounded-2xl border border-brand-borderGrey p-6 sticky top-24">
+          <h2 class="text-lg font-bold text-brand-charcoal mb-4">Order summary</h2>
+          <ul class="space-y-3 text-sm mb-4" aria-label="Order items">
+            {cart.items.map((item) => (
+              <li class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="font-bold text-brand-charcoal truncate">{item.name}</p>
+                  <p class="text-xs text-brand-mutedGrey">Qty {item.quantity} × {formatUgx(item.unitPriceUgx)}</p>
+                </div>
+                <p class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(item.unitPriceUgx * item.quantity)}</p>
+              </li>
+            ))}
           </ul>
-          <div class="space-y-4 mb-6">
-            <div class="flex justify-between text-gray-600 text-sm">
-              <span>Subtotal</span>
-              <span id="order-subtotal" class="font-bold text-brand-dark">UGX 0</span>
+          <dl class="space-y-2 text-sm pt-3 border-t border-brand-borderGrey">
+            <div class="flex items-center justify-between">
+              <dt class="text-brand-mutedGrey">Subtotal</dt>
+              <dd class="font-bold text-brand-charcoal">{formatUgx(cart.subtotalUgx)}</dd>
             </div>
-            <div class="flex justify-between text-gray-600 text-sm">
-              <span>Delivery Fee</span>
-              <span class="text-brand-green font-bold uppercase text-[10px]">FREE FOR PHASE 1</span>
+            <div class="flex items-center justify-between">
+              <dt class="text-brand-mutedGrey">Delivery</dt>
+              <dd class="text-brand-mutedGrey italic">Calculated by sales</dd>
             </div>
-            <div class="border-t border-gray-100 pt-4 flex justify-between items-end">
-              <span class="text-lg font-bold text-brand-dark">Total</span>
-              <span id="order-total" class="text-2xl font-black text-brand-green">UGX 0</span>
+            <div class="flex items-center justify-between pt-3 border-t border-brand-borderGrey">
+              <dt class="font-bold text-brand-charcoal">Total</dt>
+              <dd class="font-black text-brand-charcoal">{formatUgx(cart.subtotalUgx)}</dd>
             </div>
-          </div>
-          
-          <a href="/cart" class="block w-full text-center text-gray-500 text-sm font-bold hover:text-brand-dark transition-colors">Edit Cart</a>
+          </dl>
         </div>
-      </div>
+      </aside>
     </div>
   </div>
-
-  <script>
-    import { prepareCheckoutPayload, validateCheckoutPayload } from '../lib/checkout';
-    import { calculateLineTotal, calculateSubtotal, type CartItem } from '../lib/cart';
-
-    const apiBaseUrl = 'http://localhost:3000'; // Standard default API URL
-    const fmt = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
-    let currentCart: CartItem[] = [];
-
-    function initCheckout() {
-      currentCart = JSON.parse(localStorage.getItem('gp_cart') || '[]');
-      if (currentCart.length === 0) {
-        window.location.href = '/cart';
-        return;
-      }
-
-      const listEl = document.getElementById('order-summary-list');
-      const subtotalEl = document.getElementById('order-subtotal');
-      const totalEl = document.getElementById('order-total');
-
-      if (!listEl || !subtotalEl || !totalEl) return;
-
-      const subtotal = calculateSubtotal(currentCart);
-      let html = '';
-      currentCart.forEach(item => {
-        const lineTotal = calculateLineTotal(item.priceUgx, item.quantity);
-        html += `
-          <li class="flex justify-between items-center text-sm">
-            <div class="text-gray-600">
-              <span class="font-bold text-brand-dark">${item.quantity}x</span> ${item.name}
-            </div>
-            <span class="font-bold text-brand-dark">${fmt.format(lineTotal)}</span>
-          </li>
-        `;
-      });
-
-      listEl.innerHTML = html;
-      subtotalEl.innerText = fmt.format(subtotal);
-      totalEl.innerText = fmt.format(subtotal);
-    }
-
-    const checkoutForm = document.getElementById('checkout-form');
-    if (checkoutForm) {
-      checkoutForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const btn = document.getElementById('submit-btn') as HTMLButtonElement;
-        const banner = document.getElementById('error-banner');
-        
-        if (!btn || !banner) return;
-
-        btn.disabled = true;
-        btn.innerText = 'Processing...';
-        banner.classList.add('hidden');
-
-        const formData = new FormData(e.target as HTMLFormElement);
-        const payload = prepareCheckoutPayload(formData, currentCart);
-        
-        const validation = validateCheckoutPayload(payload);
-        if (!validation.valid) {
-          banner.innerHTML = validation.errors.join('<br/>');
-          banner.classList.remove('hidden');
-          btn.disabled = false;
-          btn.innerText = 'Place Order Now';
-          return;
-        }
-
-        try {
-          const res = await fetch(`${apiBaseUrl}/commerce/orders/create`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-
-          const json = await res.json();
-
-          if (!res.ok || !json.success) {
-            throw new Error(json.error?.message || `Failed request (HTTP ${res.status})`);
-          }
-
-          // Success state
-          localStorage.removeItem('gp_cart');
-          
-          window.location.href = `/orders/${json.data.id}`;
-
-        } catch (err: any) {
-          console.error('Checkout fail', err);
-          banner.innerText = err.message.includes('Failed to fetch') ? 'Connection timed out. Backend API may be unreachable.' : err.message;
-          banner.classList.remove('hidden');
-          btn.disabled = false;
-          btn.innerText = 'Place Order Now';
-        }
-      });
-    }
-
-    // Wait for DOM load
-    document.addEventListener('DOMContentLoaded', initCheckout);
-    // Execute immediately if DOM is already loaded or executing script at the end of body
-    initCheckout();
-  </script>
 </BaseLayout>

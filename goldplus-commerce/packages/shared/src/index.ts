@@ -15,3 +15,4 @@ export const DOMAIN_EVENTS = {
   VERIFICATION_FAILED: 'VERIFICATION_FAILED',
 } as const;
 
+export * from './types/product';
