@@ -1,0 +1,295 @@
+---
+import BaseLayout from "../../../../layouts/BaseLayout.astro";
+import AdminPageHeader from "../../../../components/AdminPageHeader.astro";
+import FormField from "../../../../components/FormField.astro";
+import FormFeedback from "../../../../components/FormFeedback.astro";
+import Notice from "../../../../components/Notice.astro";
+import RecommendationRulePreviewPanel from "../../../../components/recommendations/RecommendationRulePreviewPanel.astro";
+
+import { createRecommendationRule } from "../../../../lib/admin-recommendations";
+import { readSessionToken } from "../../../../lib/session";
+import { apiBase } from "../../../../lib/api";
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login", 303);
+
+let feedback: { status: 'success' | 'error', message: string, details?: string[] } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  
+  const type = String(form.get('type'));
+  const name = String(form.get('name'));
+  const placement = String(form.get('placement'));
+  const targetType = String(form.get('targetType'));
+  const targetValue = String(form.get('targetValue') || '');
+  const priority = parseInt(String(form.get('priority') || '100'), 10);
+  const startsAt = String(form.get('startsAt') || '');
+  const endsAt = String(form.get('endsAt') || '');
+  
+  // Compute target action
+  const action: any = { type };
+  if (type === 'BOOST') action.boostScore = parseFloat(String(form.get('boostScore') || '0'));
+  if (type === 'SUPPRESS') action.suppress = true;
+  if (type === 'PIN') action.pinPosition = parseInt(String(form.get('pinPosition') || '1'), 10);
+  if (type === 'CAMPAIGN') {
+     action.boostScore = parseFloat(String(form.get('campBoostScore') || '0'));
+     action.campaignLabel = String(form.get('campaignLabel') || '');
+  }
+
+  const payload = {
+    name,
+    type: type as any,
+    placement: placement as any,
+    status: String(form.get('_submit_action') === 'save_activate' ? 'ACTIVE' : 'DRAFT') as any,
+    targetType: targetType as any,
+    targetValue: targetValue || undefined,
+    priority,
+    action,
+    conditions: {}, // V1 simplistic
+    startsAt: startsAt ? new Date(startsAt).toISOString() : undefined,
+    endsAt: endsAt ? new Date(endsAt).toISOString() : undefined,
+  };
+
+  const res = await createRecommendationRule(token, payload);
+  if (res.ok) {
+    return Astro.redirect(`/admin/recommendations/rules/${res.data.id}?created=true`, 303);
+  } else {
+    feedback = { 
+      status: 'error', 
+      message: res.message,
+      details: Array.isArray(res.details) ? res.details : undefined 
+    };
+  }
+}
+---
+
+<BaseLayout title="Create Rule - Recommendation Admin">
+  <div class="container mx-auto px-4 lg:px-8 py-10 max-w-5xl">
+    <AdminPageHeader
+      title="New Recommendation Rule"
+      description="Establish localized merchandising logic overriding base V1 scoring behaviors."
+      backHref="/admin/recommendations/rules"
+      backLabel="Back to rules"
+    />
+
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-8 mt-8">
+      <!-- Main Form Left -->
+      <div class="xl:col-span-7 space-y-6">
+        {feedback && <FormFeedback status={feedback.status} message={feedback.message} />}
+        {feedback?.details && (
+          <div class="bg-red-50 p-4 rounded-xl text-red-800 text-xs border border-red-100 -mt-4">
+            <p class="font-bold mb-1">Validation Failures:</p>
+            <ul class="list-disc list-inside">
+              {feedback.details.map(d => <li>{d}</li>)}
+            </ul>
+          </div>
+        )}
+
+        <form id="rule-main-form" method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="p-6 space-y-6">
+            <!-- Basic Meta -->
+            <div class="space-y-4">
+              <h3 class="text-xs uppercase font-black text-gray-400 tracking-widest">1. Basic Context</h3>
+              <FormField id="r_name" name="name" label="Rule Name" required placeholder="e.g. Summer iPhone 15 Boost" helperText="Internal business identification name." />
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-bold text-brand-dark mb-2">Target Placement</label>
+                  <select name="placement" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-green">
+                    <option value="home_trending">Home Trending</option>
+                    <option value="product_related">Product Related</option>
+                    <option value="cart_addon">Cart Addon</option>
+                    <option value="category_popular">Category Popular</option>
+                    <option value="complete_setup">Complete Setup</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-bold text-brand-dark mb-2">Rule Type</label>
+                  <select id="type-selector" name="type" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-green font-bold text-blue-700">
+                    <option value="BOOST">📈 Boost Scored List</option>
+                    <option value="PIN">📌 Pin to Absolute Position</option>
+                    <option value="SUPPRESS">🚫 Suppress / Remove</option>
+                    <option value="CAMPAIGN">🎯 Scheduled Campaign</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <hr class="border-gray-100" />
+
+            <!-- Logic & Action Configuration -->
+            <div class="space-y-4">
+              <h3 class="text-xs uppercase font-black text-gray-400 tracking-widest">2. Target & Actions</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-bold text-brand-dark mb-2">Target Scope</label>
+                  <select name="targetType" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-green">
+                    <option value="GLOBAL">Entire Inventory (Global)</option>
+                    <option value="PRODUCT">Specific Product ID</option>
+                    <option value="CATEGORY">Specific Category UUID</option>
+                    <option value="BRAND">Specific Brand Name</option>
+                  </select>
+                </div>
+                <FormField id="r_target_val" name="targetValue" label="Target Identifier (Optional)" placeholder="Product SKU / ID" helperText="Leave empty for Global scope." />
+              </div>
+
+              <!-- Conditional Action Fields -->
+              <div id="action-area" class="bg-blue-50/50 border border-blue-100 p-4 rounded-xl space-y-4">
+                
+                <!-- Action: BOOST -->
+                <div class="action-variant" data-type="BOOST">
+                  <FormField id="b_score" name="boostScore" type="number" label="Score Multiplier / Weight" defaultValue="50" helperText="Added directly to normal V1 product score." />
+                </div>
+
+                <!-- Action: PIN -->
+                <div class="hidden action-variant" data-type="PIN">
+                   <FormField id="p_pos" name="pinPosition" type="number" label="Fix into Slot Position" defaultValue="1" helperText="1 forces this result into the exact first slot." />
+                   <p class="text-[10px] font-bold text-amber-700 mt-2 bg-amber-50 p-2 rounded border border-amber-100">⚠️ Warning: Requires 'PRODUCT' target type specifically.</p>
+                </div>
+
+                <!-- Action: SUPPRESS -->
+                <div class="hidden action-variant" data-type="SUPPRESS">
+                   <div class="text-sm font-medium text-red-800 flex items-center gap-2">
+                     <span>⛔ Product will be strictly eliminated from visible recommendation outputs.</span>
+                   </div>
+                </div>
+
+                <!-- Action: CAMPAIGN -->
+                <div class="hidden action-variant" data-type="CAMPAIGN">
+                   <div class="grid grid-cols-2 gap-4">
+                     <FormField id="c_score" name="campBoostScore" type="number" label="Campaign Boost" defaultValue="100" />
+                     <FormField id="c_lbl" name="campaignLabel" label="Campaign Tag" placeholder="Black Friday 2026" />
+                   </div>
+                </div>
+              </div>
+            </div>
+
+            <hr class="border-gray-100" />
+
+            <!-- Schedule -->
+            <div class="space-y-4">
+               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField id="r_pri" name="priority" type="number" label="Priority Rank" defaultValue="100" helperText="Lower runs first." />
+                  <FormField id="r_start" name="startsAt" type="text" label="Start (Optional)" placeholder="YYYY-MM-DD" />
+                  <FormField id="r_end" name="endsAt" type="text" label="End (Optional)" placeholder="YYYY-MM-DD" />
+               </div>
+            </div>
+          </div>
+
+          <div class="p-6 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-end items-center gap-3">
+            <button type="button" id="btn-trigger-preview" class="w-full sm:w-auto bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-xl font-bold hover:bg-gray-100 shadow-sm">
+              🔍 Instant Preview
+            </button>
+            <button type="submit" name="_submit_action" value="save_draft" class="w-full sm:w-auto bg-gray-200 text-gray-800 px-6 py-3 rounded-xl font-bold hover:bg-gray-300 transition-colors">
+              Save Draft
+            </button>
+            <button type="submit" name="_submit_action" value="save_activate" class="w-full sm:w-auto bg-brand-green text-white px-6 py-3 rounded-xl font-black hover:opacity-90 shadow-md transition-all">
+              🚀 Save & Activate
+            </button>
+          </div>
+          <input type="hidden" id="session-token" value={token} />
+          <input type="hidden" id="api-base-url" value={apiBase} />
+        </form>
+      </div>
+
+      <!-- Preview Right / Collapsed sticky -->
+      <div class="xl:col-span-5">
+         <div class="sticky top-8 space-y-4">
+            <div id="preview-empty-hint" class="bg-gray-50 border border-gray-200 border-dashed rounded-2xl p-12 text-center flex flex-col items-center justify-center">
+               <span class="text-4xl mb-3 grayscale opacity-50">🔭</span>
+               <p class="text-sm text-gray-500 font-bold">Live Preview Inactive</p>
+               <p class="text-xs text-gray-400 mt-1 max-w-[200px]">Modify your rules and hit 'Instant Preview' to simulate the resulting list.</p>
+            </div>
+            
+            <!-- Reusable Component handles active state view -->
+            <RecommendationRulePreviewPanel />
+         </div>
+      </div>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  // Client-Side View Variant Switcher
+  const typeSel = document.getElementById('type-selector') as HTMLSelectElement;
+  const variants = document.querySelectorAll('.action-variant');
+  
+  typeSel?.addEventListener('change', () => {
+    const val = typeSel.value;
+    variants.forEach(v => {
+      if ((v as HTMLElement).dataset.type === val) {
+        v.classList.remove('hidden');
+      } else {
+        v.classList.add('hidden');
+      }
+    });
+  });
+
+  // Async Preview Connector
+  const btnPreview = document.getElementById('btn-trigger-preview');
+  const emptyHint = document.getElementById('preview-empty-hint');
+  const token = (document.getElementById('session-token') as HTMLInputElement)?.value;
+
+  btnPreview?.addEventListener('click', async () => {
+    btnPreview.textContent = "🔄 Computing...";
+    btnPreview.classList.add('opacity-50', 'pointer-events-none');
+
+    const form = document.getElementById('rule-main-form') as HTMLFormElement;
+    const fd = new FormData(form);
+
+    // Construct minimal draft payload mirroring structure backend consumes
+    const type = fd.get('type') as string;
+    const action: any = { type };
+    if (type === 'BOOST') action.boostScore = parseFloat(fd.get('boostScore') as string || '0');
+    if (type === 'SUPPRESS') action.suppress = true;
+    if (type === 'PIN') action.pinPosition = parseInt(fd.get('pinPosition') as string || '1', 10);
+    if (type === 'CAMPAIGN') {
+       action.boostScore = parseFloat(fd.get('campBoostScore') as string || '0');
+       action.campaignLabel = fd.get('campaignLabel') as string;
+    }
+
+    const payload = {
+      placement: fd.get('placement') as string,
+      draftRule: {
+        name: fd.get('name') as string,
+        type: type,
+        placement: fd.get('placement') as string,
+        targetType: fd.get('targetType') as string,
+        targetValue: fd.get('targetValue') as string || undefined,
+        action: action,
+        status: 'ACTIVE',
+        priority: parseInt(fd.get('priority') as string || '100', 10),
+        conditions: {}
+      }
+    };
+
+    try {
+      // Safely extract actual API base configured by server context
+      const apiBase = (document.getElementById('api-base-url') as HTMLInputElement)?.value || 'http://localhost:3000';
+      
+      const r = await fetch(`${apiBase}/admin/recommendations/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+      
+      const json = await r.json();
+      
+      if (json.success && json.data) {
+        emptyHint?.classList.add('hidden');
+        // Invoke the global handler contained inside RecommendationRulePreviewPanel.astro <script>
+        if (typeof (window as any).renderRecommendationPreview === 'function') {
+          (window as any).renderRecommendationPreview(json.data);
+        }
+      } else {
+        alert("Preview failed: " + (json.error?.message || "Invalid structure"));
+      }
+    } catch (err) {
+       alert("Connectivity error blocking preview simulation.");
+    } finally {
+      btnPreview.textContent = "🔍 Instant Preview";
+      btnPreview.classList.remove('opacity-50', 'pointer-events-none');
+    }
+  });
+</script>

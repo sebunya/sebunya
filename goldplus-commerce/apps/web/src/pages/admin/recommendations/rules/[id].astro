@@ -1,0 +1,309 @@
+---
+import BaseLayout from "../../../../layouts/BaseLayout.astro";
+import AdminPageHeader from "../../../../components/AdminPageHeader.astro";
+import FormField from "../../../../components/FormField.astro";
+import FormFeedback from "../../../../components/FormFeedback.astro";
+import Notice from "../../../../components/Notice.astro";
+import RuleStatusBadge from "../../../../components/recommendations/RuleStatusBadge.astro";
+import RecommendationRulePreviewPanel from "../../../../components/recommendations/RecommendationRulePreviewPanel.astro";
+
+import { getRecommendationRule, updateRecommendationRule, changeRecommendationRuleStatus, archiveRecommendationRule, getRecommendationRuleAuditLog } from "../../../../lib/admin-recommendations";
+import { readSessionToken } from "../../../../lib/session";
+import { apiBase } from "../../../../lib/api";
+
+const { id } = Astro.params;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login", 303);
+
+let feedback: { status: 'success' | 'error', message: string } | null = null;
+
+// Process Mutation Post handlers
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const actionVerb = String(form.get('_action') || '');
+
+  if (actionVerb === 'update_rule') {
+    const type = String(form.get('type'));
+    const payload: any = {
+      name: String(form.get('name')),
+      placement: String(form.get('placement')),
+      targetType: String(form.get('targetType')),
+      targetValue: String(form.get('targetValue') || ''),
+      priority: parseInt(String(form.get('priority')), 10),
+    };
+    const starts = String(form.get('startsAt') || '');
+    const ends = String(form.get('endsAt') || '');
+    if (starts) payload.startsAt = new Date(starts).toISOString();
+    if (ends) payload.endsAt = new Date(ends).toISOString();
+
+    const action: any = { type };
+    if (type === 'BOOST') action.boostScore = parseFloat(String(form.get('boostScore') || '0'));
+    if (type === 'SUPPRESS') action.suppress = true;
+    if (type === 'PIN') action.pinPosition = parseInt(String(form.get('pinPosition') || '1'), 10);
+    if (type === 'CAMPAIGN') {
+       action.boostScore = parseFloat(String(form.get('campBoostScore') || '0'));
+       action.campaignLabel = String(form.get('campaignLabel') || '');
+    }
+    payload.action = action;
+
+    const res = await updateRecommendationRule(token, id!, payload);
+    feedback = res.ok ? { status: 'success', message: 'Rule definition modified successfully.' } : { status: 'error', message: res.message };
+  } else if (actionVerb === 'set_status') {
+    const status = String(form.get('status')) as any;
+    const res = await changeRecommendationRuleStatus(token, id!, status);
+    feedback = res.ok ? { status: 'success', message: `Status successfully changed to ${status}.` } : { status: 'error', message: res.message };
+  } else if (actionVerb === 'archive') {
+    const res = await archiveRecommendationRule(token, id!);
+    feedback = res.ok ? { status: 'success', message: 'Rule has been formally archived.' } : { status: 'error', message: res.message };
+  }
+}
+
+// Fetch Core data fresh after possible mutation
+const ruleRes = await getRecommendationRule(token, id!);
+const auditRes = await getRecommendationRuleAuditLog(token, id!);
+
+const rule = ruleRes.ok ? ruleRes.data : null;
+const auditLogs = auditRes.ok ? auditRes.data.items : [];
+
+// Prep Dates
+const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
+---
+
+<BaseLayout title={rule ? `Manage: ${rule.name}` : 'Rule Not Found'}>
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    
+    {rule && (
+      <div class="flex flex-col md:flex-row items-start justify-between gap-6 mb-8 pb-6 border-b border-gray-200">
+         <AdminPageHeader 
+           title={rule.name} 
+           description={`System identity: ${rule.id}`}
+           backHref="/admin/recommendations/rules" 
+           backLabel="Back to rules" 
+         />
+         <div class="flex items-center gap-3 self-end md:self-auto">
+            <RuleStatusBadge status={rule.status} />
+         </div>
+      </div>
+    )}
+
+    {!rule ? (
+      <Notice kind="not-configured" title="404 Resource Misaligned" message="The specified recommendation rule was not located or access was formally denied." />
+    ) : (
+      <div class="grid grid-cols-1 xl:grid-cols-12 gap-8">
+        
+        <!-- PRIMARY CONFIGURATION LEFT -->
+        <div class="xl:col-span-8 space-y-6">
+           {feedback && <FormFeedback status={feedback.status} message={feedback.message} />}
+           
+           {rule.status === 'ARCHIVED' && (
+             <div class="bg-red-50 border border-red-200 p-4 rounded-xl text-red-900 text-sm font-bold flex items-center gap-3">
+               <span>🛑 View-Only Mode</span>
+               <span class="font-normal text-xs opacity-80">Archived rules remain frozen for historical integrity check constraints.</span>
+             </div>
+           )}
+
+           <form id="rule-edit-form" method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+             <input type="hidden" name="_action" value="update_rule" />
+             
+             <div class="p-6 space-y-6">
+               <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <FormField id="r_name" name="name" label="Display Name" defaultValue={rule.name} required />
+                 <div class="space-y-1">
+                    <label class="block text-sm font-bold text-brand-dark mb-2">Global Placement</label>
+                    <select name="placement" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+                      <option value="home_trending" selected={rule.placement==='home_trending'}>Home Trending</option>
+                      <option value="product_related" selected={rule.placement==='product_related'}>Product Related</option>
+                      <option value="cart_addon" selected={rule.placement==='cart_addon'}>Cart Addon</option>
+                      <option value="category_popular" selected={rule.placement==='category_popular'}>Category Popular</option>
+                      <option value="complete_setup" selected={rule.placement==='complete_setup'}>Complete Setup</option>
+                    </select>
+                 </div>
+               </div>
+
+               <div class="bg-gray-50 p-4 rounded-xl flex items-center gap-4">
+                 <div>
+                    <span class="text-xs font-bold text-gray-400 uppercase">Fixed Type</span>
+                    <div class="font-black text-blue-700">{rule.type}</div>
+                    <input type="hidden" name="type" value={rule.type} />
+                 </div>
+                 <div class="flex-grow">
+                    <div class="text-xs font-bold text-gray-400 uppercase">Logic Configuration</div>
+                    <div class="mt-2">
+                      {rule.type === 'BOOST' && <FormField id="boost" name="boostScore" type="number" label="Score Boost" defaultValue={String(rule.action.boostScore || 0)} />}
+                      {rule.type === 'PIN' && <FormField id="pin" name="pinPosition" type="number" label="Fix in Slot" defaultValue={String(rule.action.pinPosition || 1)} />}
+                      {rule.type === 'SUPPRESS' && <span class="text-xs font-bold text-red-600">🚫 Strict Suppression Enabled</span>}
+                      {rule.type === 'CAMPAIGN' && (
+                        <div class="grid grid-cols-2 gap-2">
+                           <FormField id="cboost" name="campBoostScore" type="number" label="Boost" defaultValue={String(rule.action.boostScore || 0)} />
+                           <FormField id="clbl" name="campaignLabel" label="Tag" defaultValue={rule.action.campaignLabel} />
+                        </div>
+                      )}
+                    </div>
+                 </div>
+               </div>
+
+               <hr class="border-gray-100" />
+
+               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                 <div>
+                    <label class="block text-sm font-bold text-brand-dark mb-2">Target Type</label>
+                    <select name="targetType" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+                      <option value="GLOBAL" selected={rule.targetType==='GLOBAL'}>Global</option>
+                      <option value="PRODUCT" selected={rule.targetType==='PRODUCT'}>Product</option>
+                      <option value="CATEGORY" selected={rule.targetType==='CATEGORY'}>Category</option>
+                      <option value="BRAND" selected={rule.targetType==='BRAND'}>Brand</option>
+                    </select>
+                 </div>
+                 <div class="md:col-span-2">
+                   <FormField id="t_val" name="targetValue" label="Target Value" defaultValue={rule.targetValue} placeholder="Identifier" />
+                 </div>
+               </div>
+
+               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                 <FormField id="pri" name="priority" type="number" label="Priority" defaultValue={String(rule.priority)} />
+                 <FormField id="st" name="startsAt" type="text" label="Start" defaultValue={fmtDate(rule.startsAt)} placeholder="YYYY-MM-DD" />
+                 <FormField id="en" name="endsAt" type="text" label="End" defaultValue={fmtDate(rule.endsAt)} placeholder="YYYY-MM-DD" />
+               </div>
+             </div>
+
+             {rule.status !== 'ARCHIVED' && (
+                <div class="bg-gray-50 border-t border-gray-200 p-4 flex items-center justify-between">
+                   <button type="button" id="btn-trigger-preview" class="bg-white border border-gray-300 px-4 py-2 rounded-lg font-bold text-sm shadow-sm hover:bg-gray-100">
+                     🔭 Run Instant Preview
+                   </button>
+                   <button type="submit" class="bg-brand-dark text-white px-6 py-2 rounded-lg font-bold hover:opacity-90 transition-opacity">
+                     Save Modification
+                   </button>
+                </div>
+             )}
+             <input type="hidden" id="session-token" value={token} />
+             <input type="hidden" id="api-base-url" value={apiBase} />
+             <input type="hidden" id="current-rule-id" value={rule.id} />
+           </form>
+
+           <!-- Diff Preview Panel (Revealed dynamically) -->
+           <RecommendationRulePreviewPanel />
+        </div>
+
+        <!-- SECONDARY CONTROL SIDEBAR -->
+        <div class="xl:col-span-4 space-y-6">
+          
+          <!-- State Actions Box -->
+          {rule.status !== 'ARCHIVED' && (
+            <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+              <h3 class="text-xs uppercase font-black text-gray-400 tracking-widest mb-4">Operations</h3>
+              <div class="flex flex-col gap-2">
+                {rule.status === 'ACTIVE' ? (
+                  <form method="POST">
+                    <input type="hidden" name="_action" value="set_status" />
+                    <input type="hidden" name="status" value="PAUSED" />
+                    <button class="w-full bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg font-bold text-sm hover:bg-amber-100">⏸️ Pause Rule</button>
+                  </form>
+                ) : (
+                  <form method="POST">
+                    <input type="hidden" name="_action" value="set_status" />
+                    <input type="hidden" name="status" value="ACTIVE" />
+                    <button class="w-full bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-green-100">▶️ Activate Runtime</button>
+                  </form>
+                )}
+                
+                <form method="POST" onsubmit="return confirm('Are you sure you wish to archive this rule permanently?');">
+                   <input type="hidden" name="_action" value="archive" />
+                   <button class="w-full mt-4 bg-white border border-red-200 text-red-600 px-4 py-2 rounded-lg font-bold text-xs hover:bg-red-50">⚠️ Retire & Archive</button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          <!-- Audit History -->
+          <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+             <div class="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                <span class="text-xs font-black text-gray-500 tracking-widest uppercase">Audit History</span>
+                <span class="text-[10px] font-mono bg-gray-200 px-1.5 rounded text-gray-600">{auditLogs.length} Logs</span>
+             </div>
+             <div class="divide-y divide-gray-100 max-h-[400px] overflow-y-auto">
+                {auditLogs.length === 0 ? (
+                   <div class="p-8 text-center text-xs text-gray-400 italic">No recorded transitions</div>
+                ) : (
+                  auditLogs.map(l => (
+                    <div class="p-4 text-xs hover:bg-gray-50">
+                       <div class="flex items-center justify-between mb-1">
+                          <span class={`font-bold ${l.action==='CREATED'?'text-green-600':l.action==='UPDATED'?'text-blue-600':'text-gray-600'}`}>{l.action}</span>
+                          <span class="text-gray-400 text-[10px]">{new Date(l.performedAt).toLocaleString('en-GB', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}</span>
+                       </div>
+                       <div class="text-gray-500 truncate font-mono text-[10px]">Actor: {l.performedBy || 'System'}</div>
+                    </div>
+                  ))
+                )}
+             </div>
+          </div>
+
+        </div>
+      </div>
+    )}
+  </div>
+</BaseLayout>
+
+<script>
+  // Shared Preview Connector adjusted to current ID capture
+  const btnPreview = document.getElementById('btn-trigger-preview');
+  const token = (document.getElementById('session-token') as HTMLInputElement)?.value;
+  
+  btnPreview?.addEventListener('click', async () => {
+    btnPreview.textContent = "Computing...";
+    btnPreview.classList.add('opacity-50', 'pointer-events-none');
+
+    const form = document.getElementById('rule-edit-form') as HTMLFormElement;
+    const fd = new FormData(form);
+
+    const type = fd.get('type') as string;
+    const action: any = { type };
+    if (type === 'BOOST') action.boostScore = parseFloat(fd.get('boostScore') as string || '0');
+    if (type === 'SUPPRESS') action.suppress = true;
+    if (type === 'PIN') action.pinPosition = parseInt(fd.get('pinPosition') as string || '1', 10);
+    if (type === 'CAMPAIGN') {
+       action.boostScore = parseFloat(fd.get('campBoostScore') as string || '0');
+       action.campaignLabel = fd.get('campaignLabel') as string;
+    }
+
+    const payload = {
+      placement: fd.get('placement') as string,
+      // On Edit mode, we inject the simulated active state OVERRIDING the current DB fetch
+      draftRule: {
+        id: (document.getElementById('current-rule-id') as HTMLInputElement)?.value,
+        name: fd.get('name') as string,
+        type,
+        placement: fd.get('placement') as string,
+        targetType: fd.get('targetType') as string,
+        targetValue: fd.get('targetValue') as string || undefined,
+        action,
+        status: 'ACTIVE',
+        priority: parseInt(fd.get('priority') as string || '100', 10),
+        conditions: {}
+      }
+    };
+
+    try {
+      const apiBase = (document.getElementById('api-base-url') as HTMLInputElement)?.value || 'http://localhost:3000';
+      const r = await fetch(`${apiBase}/admin/recommendations/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+      
+      const json = await r.json();
+      if (json.success && json.data) {
+        if (typeof (window as any).renderRecommendationPreview === 'function') {
+          (window as any).renderRecommendationPreview(json.data);
+        }
+      } else {
+         alert("Simulation Rejected: " + (json.error?.message || "Format error"));
+      }
+    } catch (err) {
+      alert("Preview runtime unavailable.");
+    } finally {
+      btnPreview.textContent = "🔭 Run Instant Preview";
+      btnPreview.classList.remove('opacity-50', 'pointer-events-none');
+    }
+  });
+</script>

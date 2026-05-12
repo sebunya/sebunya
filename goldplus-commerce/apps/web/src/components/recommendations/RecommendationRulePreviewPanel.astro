@@ -1,0 +1,157 @@
+---
+// RecommendationRulePreviewPanel.astro
+// Provides safe placeholder layout and standard styling for client-side JS injected Diff view.
+---
+
+<div id="recommendation-preview-panel" class="bg-gray-50 border border-gray-200 rounded-2xl p-6 hidden">
+  <h3 class="text-lg font-black text-brand-dark mb-6 flex items-center gap-3">
+    <span class="text-xl">📊</span> Impact Preview Simulation
+  </h3>
+
+  <!-- Warnings Container -->
+  <div id="preview-warnings-container" class="hidden mb-6 space-y-3"></div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Before Block -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div class="bg-gray-100 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+        <span class="text-xs font-bold uppercase tracking-widest text-gray-500">Current Baseline (V1)</span>
+        <span class="text-[10px] px-2 py-0.5 bg-gray-200 text-gray-600 rounded font-mono">Pre-Rule</span>
+      </div>
+      <div id="preview-before-list" class="divide-y divide-gray-100 min-h-[100px]">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- After Block -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div class="bg-brand-dark px-4 py-3 border-b border-brand-dark text-white flex items-center justify-between">
+        <span class="text-xs font-bold uppercase tracking-widest text-gray-300">Simulated Output (V2)</span>
+        <span class="text-[10px] px-2 py-0.5 bg-brand-gold text-black rounded font-black uppercase">Preview</span>
+      </div>
+      <div id="preview-after-list" class="divide-y divide-gray-100 min-h-[100px]">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-6 p-4 bg-white border border-gray-200 rounded-xl">
+    <div class="flex flex-wrap gap-2" id="preview-meta-badges">
+      <!-- Detail Badges -->
+    </div>
+  </div>
+</div>
+
+<!-- Micro-Templates for dynamic JS rendering -->
+<template id="preview-item-row-tpl">
+  <div class="p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors relative group">
+    <div class="w-8 h-8 rounded-full bg-gray-100 text-gray-500 font-bold text-xs flex items-center justify-center flex-shrink-0 num-box">1</div>
+    <div class="flex-grow min-w-0">
+      <div class="font-bold text-sm text-brand-dark truncate product-name">Product Name</div>
+      <div class="flex gap-2 mt-1 items-center text-[10px]">
+        <span class="font-mono text-gray-400 product-id">ID</span>
+        <span class="text-brand-green font-bold score-label">Score: 0</span>
+      </div>
+    </div>
+    <div class="flex gap-1 tags-container"></div>
+  </div>
+</template>
+
+<template id="warning-alert-tpl">
+  <div class="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">
+    <span class="text-lg">⚠️</span>
+    <span class="warning-text font-medium"></span>
+  </div>
+</template>
+
+<script>
+  // Global function definition bound to window for access by parent scripts
+  (window as any).renderRecommendationPreview = function(data: any) {
+    const panel = document.getElementById('recommendation-preview-panel');
+    if (!panel) return;
+
+    panel.classList.remove('hidden');
+
+    // Clear previous containers
+    const beforeList = document.getElementById('preview-before-list')!;
+    const afterList = document.getElementById('preview-after-list')!;
+    const warnsContainer = document.getElementById('preview-warnings-container')!;
+    const metaBadges = document.getElementById('preview-meta-badges')!;
+    
+    beforeList.innerHTML = '';
+    afterList.innerHTML = '';
+    warnsContainer.innerHTML = '';
+    warnsContainer.classList.add('hidden');
+    metaBadges.innerHTML = '';
+
+    const itemTpl = document.getElementById('preview-item-row-tpl') as HTMLTemplateElement;
+    const warnTpl = document.getElementById('warning-alert-tpl') as HTMLTemplateElement;
+
+    // Helper to render individual row
+    const buildRow = (item: any, index: number, isAfter: boolean) => {
+      const clone = itemTpl.content.cloneNode(true) as HTMLElement;
+      const numBox = clone.querySelector('.num-box')!;
+      numBox.textContent = (index + 1).toString();
+
+      clone.querySelector('.product-name')!.textContent = item.name || item.productId || "Unknown Product";
+      clone.querySelector('.product-id')!.textContent = item.productId?.slice(0,8) || "";
+      clone.querySelector('.score-label')!.textContent = item.score ? `Score: ${Math.round(item.score)}` : "No Score";
+
+      const tags = clone.querySelector('.tags-container')!;
+      
+      // Pinned check
+      if (isAfter && data.pinnedProductIds?.includes(item.productId)) {
+        tags.innerHTML += `<span class="bg-brand-gold text-black font-black px-2 py-0.5 rounded text-[10px] uppercase tracking-wider">Pinned</span>`;
+        numBox.className = "w-8 h-8 rounded-full bg-brand-gold text-black font-black text-xs flex items-center justify-center flex-shrink-0";
+      }
+
+      // Replaced/Merged reasonCodes logic (visual highlights for boosted items)
+      if (isAfter && Array.isArray(item.reasonCodes) && item.reasonCodes.includes('MERCHANDISING_BOOST')) {
+        tags.innerHTML += `<span class="bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded text-[10px] uppercase tracking-wider">Boosted</span>`;
+      }
+
+      return clone;
+    };
+
+    // Render Before
+    if (Array.isArray(data.before) && data.before.length > 0) {
+      data.before.forEach((it: any, i: number) => beforeList.appendChild(buildRow(it, i, false)));
+    } else {
+      beforeList.innerHTML = `<div class="p-8 text-center text-gray-400 text-sm italic">No base recommendations generated</div>`;
+    }
+
+    // Render After
+    if (Array.isArray(data.after) && data.after.length > 0) {
+      data.after.forEach((it: any, i: number) => afterList.appendChild(buildRow(it, i, true)));
+    } else {
+      afterList.innerHTML = `<div class="p-8 text-center text-gray-400 text-sm italic">Rules generated zero final results</div>`;
+    }
+
+    // Render Warnings
+    if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+      warnsContainer.classList.remove('hidden');
+      data.warnings.forEach((w: string) => {
+        const wc = warnTpl.content.cloneNode(true) as HTMLElement;
+        wc.querySelector('.warning-text')!.textContent = w;
+        warnsContainer.appendChild(wc);
+      });
+    }
+
+    // Meta Info Badges
+    const stats = [
+      { label: `Suppressed: ${data.suppressedProductIds?.length || 0}`, count: data.suppressedProductIds?.length },
+      { label: `Pinned: ${data.pinnedProductIds?.length || 0}`, count: data.pinnedProductIds?.length },
+      { label: `Applied Rules: ${data.appliedRuleIds?.length || 0}`, count: data.appliedRuleIds?.length }
+    ];
+    
+    stats.forEach(s => {
+      const color = s.count > 0 ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-gray-50 text-gray-400 border-gray-200';
+      metaBadges.innerHTML += `<span class="px-3 py-1 border rounded-full text-[10px] font-bold ${color}">${s.label}</span>`;
+    });
+
+    // Highlight Removed Items specifically if any exist that aren't in After
+    if (data.suppressedProductIds?.length > 0) {
+      metaBadges.innerHTML += `<span class="px-3 py-1 bg-red-50 border border-red-100 text-red-700 rounded-full text-[10px] font-bold flex items-center gap-1">🚫 Product Suppressed</span>`;
+    }
+  };
+</script>

@@ -1,0 +1,136 @@
+---
+import BaseLayout from "../../../../layouts/BaseLayout.astro";
+import AdminPageHeader from "../../../../components/AdminPageHeader.astro";
+import AdminTable from "../../../../components/AdminTable.astro";
+import EmptyState from "../../../../components/EmptyState.astro";
+import Notice from "../../../../components/Notice.astro";
+import RuleStatusBadge from "../../../../components/recommendations/RuleStatusBadge.astro";
+
+import { listRecommendationRules } from "../../../../lib/admin-recommendations";
+import { readSessionToken } from "../../../../lib/session";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/recommendations/rules", 303);
+}
+
+const url = new URL(Astro.request.url);
+const query = {
+  placement: url.searchParams.get('placement') || undefined,
+  status: url.searchParams.get('status') || undefined,
+  type: url.searchParams.get('type') || undefined,
+  search: url.searchParams.get('search') || undefined,
+};
+
+const res = await listRecommendationRules(token, query);
+const error = !res.ok ? res.message : null;
+const data = res.ok ? res.data : { rules: [], total: 0 };
+---
+
+<BaseLayout title="Recommendation Rules - Admin">
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-8">
+      <AdminPageHeader
+        title="Recommendation Rules"
+        description="Manage dynamic product injections, boosts, overrides and business ranking overrides."
+        backHref="/admin"
+        backLabel="Back to Dashboard"
+      />
+      <div>
+        <a href="/admin/recommendations/rules/new" class="bg-brand-dark text-white px-6 py-3 rounded-xl font-bold hover:bg-gray-900 shadow-sm flex items-center gap-2">
+          <span>➕</span> Create Rule
+        </a>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex flex-col md:flex-row items-center gap-4">
+      <form method="GET" class="flex-grow grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
+        <div>
+          <input type="text" name="search" value={query.search || ''} placeholder="Search name, target..." class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-green/20" />
+        </div>
+        <div>
+          <select name="placement" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+            <option value="">Any Placement</option>
+            <option value="product_related" selected={query.placement === 'product_related'}>Product Related</option>
+            <option value="cart_addon" selected={query.placement === 'cart_addon'}>Cart Addons</option>
+            <option value="home_trending" selected={query.placement === 'home_trending'}>Home Trending</option>
+            <option value="complete_setup" selected={query.placement === 'complete_setup'}>Complete Setup</option>
+            <option value="category_popular" selected={query.placement === 'category_popular'}>Category Popular</option>
+          </select>
+        </div>
+        <div>
+          <select name="type" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+            <option value="">Any Type</option>
+            <option value="BOOST" selected={query.type === 'BOOST'}>Boost</option>
+            <option value="PIN" selected={query.type === 'PIN'}>Pin</option>
+            <option value="SUPPRESS" selected={query.type === 'SUPPRESS'}>Suppress</option>
+            <option value="CAMPAIGN" selected={query.type === 'CAMPAIGN'}>Campaign</option>
+          </select>
+        </div>
+        <div class="flex gap-2">
+          <select name="status" class="flex-grow px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+            <option value="">Any Status</option>
+            <option value="ACTIVE" selected={query.status === 'ACTIVE'}>Active</option>
+            <option value="DRAFT" selected={query.status === 'DRAFT'}>Draft</option>
+            <option value="PAUSED" selected={query.status === 'PAUSED'}>Paused</option>
+          </select>
+          <button type="submit" class="bg-gray-100 px-4 rounded-lg font-bold text-sm hover:bg-gray-200">Filter</button>
+        </div>
+      </form>
+      {(query.placement || query.search || query.type || query.status) && (
+        <a href="/admin/recommendations/rules" class="text-xs font-bold text-gray-400 hover:text-red-600">Clear</a>
+      )}
+    </div>
+
+    {error && <Notice kind="not-configured" title="API Error" message={error} />}
+
+    {!error && data.rules.length === 0 ? (
+      <EmptyState 
+        title="No Rules Found" 
+        message="No merchandising rules match current filters. Create a new rule to override default engine sorting." 
+      />
+    ) : !error ? (
+      <AdminTable>
+        <Fragment slot="head">
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Rule Identity</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Placement</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Logic / Priority</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-center">Status</th>
+          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-right">Action</th>
+        </Fragment>
+        {data.rules.map((rule) => (
+          <tr class="border-b border-gray-100 hover:bg-gray-50/80 group">
+            <td class="px-6 py-4">
+              <div class="font-bold text-brand-dark group-hover:text-brand-green transition-colors">{rule.name}</div>
+              <div class="text-xs text-gray-400 mt-1 flex items-center gap-2">
+                 <span class="uppercase font-mono text-[9px] bg-gray-100 px-1 py-0.5 rounded">{rule.targetType}</span>
+                 {rule.targetValue && <span class="truncate max-w-[120px]">{rule.targetValue}</span>}
+              </div>
+            </td>
+            <td class="px-6 py-4 text-xs font-medium text-gray-600 font-mono">
+              {rule.placement}
+            </td>
+            <td class="px-6 py-4">
+              <div class="flex items-center gap-3">
+                <span class={`px-2 py-0.5 rounded text-[10px] font-bold ${rule.type === 'SUPPRESS' ? 'bg-red-50 text-red-700' : rule.type === 'PIN' ? 'bg-brand-gold text-black' : 'bg-blue-50 text-blue-700'}`}>
+                  {rule.type}
+                </span>
+                <span class="text-[10px] text-gray-400">Pri: <b class="text-gray-700">{rule.priority}</b></span>
+              </div>
+            </td>
+            <td class="px-6 py-4 text-center">
+              <RuleStatusBadge status={rule.status} />
+            </td>
+            <td class="px-6 py-4 text-right">
+              <a href={`/admin/recommendations/rules/${rule.id}`} class="inline-block text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 hover:border-gray-400 px-3 py-1.5 rounded-lg transition-all bg-white">
+                Manage &rarr;
+              </a>
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+    ) : null}
+
+  </div>
+</BaseLayout>

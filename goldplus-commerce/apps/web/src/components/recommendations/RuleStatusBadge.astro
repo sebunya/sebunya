@@ -1,0 +1,20 @@
+---
+import StatusBadge from "../StatusBadge.astro";
+import type { RecommendationRuleStatus } from "../../lib/admin-recommendations";
+
+interface Props {
+  status: RecommendationRuleStatus;
+}
+const { status } = Astro.props;
+
+const map: Record<RecommendationRuleStatus, { v: 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'pending', l: string }> = {
+  DRAFT: { v: 'neutral', l: 'Draft' },
+  ACTIVE: { v: 'success', l: 'Active' },
+  PAUSED: { v: 'warning', l: 'Paused' },
+  EXPIRED: { v: 'danger', l: 'Expired' },
+  ARCHIVED: { v: 'danger', l: 'Archived' },
+};
+
+const config = map[status] ?? { v: 'neutral', l: status };
+---
+<StatusBadge status={config.v} label={config.l} />

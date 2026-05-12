@@ -31,6 +31,9 @@ const admin = {
           Dealers
           <span class="bg-brand-gold text-black text-[10px] px-1.5 rounded-full">{admin.stats.pendingDealers}</span>
         </a>
+        <a href="/admin/recommendations/rules" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm">
+          Recommendation Rules
+        </a>
         <a href="#" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm">Verification Audits</a>
         <a href="#" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm">Security Logs</a>
       </nav>
@@ -67,7 +70,7 @@ const admin = {
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm">
              <div class="p-6 border-b border-gray-100 font-bold text-sm uppercase tracking-widest text-brand-dark">Anti-Hallucination Queue</div>
              <div class="p-12 text-center text-gray-400">
@@ -75,6 +78,21 @@ const admin = {
                <a href="/admin/products" class="inline-block mt-4 text-brand-green font-bold text-sm">Review Queue &rarr;</a>
              </div>
            </div>
+
+           <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+             <div class="p-6 border-b border-gray-100 font-bold text-sm uppercase tracking-widest text-brand-dark flex items-center justify-between bg-gray-50">
+               <span>Recommendation Engine</span>
+               <span class="text-brand-green font-black text-[10px]">Active</span>
+             </div>
+             <div class="p-6 space-y-4">
+               <p class="text-xs text-gray-500">Manage merchandising boosts, algorithmic pins, and localized product suppression.</p>
+               <div class="grid grid-cols-2 gap-3 pt-2">
+                  <a href="/admin/recommendations/rules" class="bg-gray-100 hover:bg-gray-200 text-brand-dark text-center py-3 rounded-lg font-bold text-xs transition-colors">View Rules</a>
+                  <a href="/admin/recommendations/preview" class="bg-brand-dark hover:opacity-90 text-white text-center py-3 rounded-lg font-bold text-xs transition-opacity">Sandbox</a>
+               </div>
+             </div>
+           </div>
+           
            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm">
              <div class="p-6 border-b border-gray-100 font-bold text-sm uppercase tracking-widest text-brand-dark">System Integrity</div>
              <div class="p-6 space-y-4">
