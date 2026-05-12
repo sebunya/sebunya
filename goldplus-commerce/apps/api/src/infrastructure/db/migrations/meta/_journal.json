@@ -43,6 +43,13 @@
       "when": 1778566733710,
       "tag": "0005_fast_proudstar",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1778576532417,
+      "tag": "0006_colossal_brood",
+      "breakpoints": true
     }
   ]
 }

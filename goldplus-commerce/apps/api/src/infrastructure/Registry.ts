@@ -20,6 +20,11 @@ import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRe
 import { DrizzleNotificationAttemptRepository } from './db/repositories/DrizzleNotificationAttemptRepository';
 import { DrizzleOutboxRepository } from './db/repositories/DrizzleOutboxRepository';
 import { DrizzleRecommendationEventRepository } from './db/repositories/DrizzleRecommendationEventRepository';
+import { DrizzleRecommendationRuleAuditRepository } from './db/repositories/DrizzleRecommendationRuleAuditRepository';
+import { DrizzleRecommendationRuleRepository } from './db/repositories/DrizzleRecommendationRuleRepository';
+import { RecommendationRuleConflictService } from '../application/recommendations/RecommendationRuleConflictService';
+import { RecommendationRuleApplicationService } from '../application/recommendations/RecommendationRuleApplicationService';
+
 import { DrizzleProductRecommendationReader } from './db/repositories/DrizzleProductRecommendationReader';
 import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
@@ -74,6 +79,8 @@ export class Registry {
   public readonly fakeReportRepo = new DrizzleFakeReportRepository();
   public readonly adminRoleReadRepo = new DrizzleAdminRoleReadRepository();
   public readonly recommendationEventRepo = new DrizzleRecommendationEventRepository();
+  public readonly recommendationRuleRepo = new DrizzleRecommendationRuleRepository();
+  public readonly recommendationRuleAuditRepo = new DrizzleRecommendationRuleAuditRepository();
   public readonly productRecommendationReader = new DrizzleProductRecommendationReader();
 
   // Storage
@@ -106,8 +113,8 @@ export class Registry {
   private readonly recommendationTrending = new TrendingScoreService(this.recommendationEventRepo);
   private readonly recommendationFallback = new RecommendationFallbackService(this.productRecommendationReader);
   private readonly recommendationEligibility = new RecommendationEligibilityService();
-  private readonly recommendationDedupe = new RecommendationDeduplicationService();
-  private readonly recommendationDiversity = new RecommendationDiversityService();
+  public readonly recommendationDedupe = new RecommendationDeduplicationService();
+  public readonly recommendationDiversity = new RecommendationDiversityService();
 
 
   // Security Services
@@ -137,16 +144,24 @@ export class Registry {
     this.recommendationEventRepo
   );
 
-  public readonly getRecommendationsUseCase = new GetRecommendationsUseCase(
-    this.productRecommendationReader,
-    this.recommendationSignalExtractor,
-    this.recommendationScoring,
-    this.recommendationTrending,
-    this.recommendationFallback,
-    this.recommendationEligibility,
-    this.recommendationDedupe,
-    this.recommendationDiversity
-  );
+    private readonly recommendationRuleConflictService = new RecommendationRuleConflictService();
+    public readonly recommendationRuleApplicationService = new RecommendationRuleApplicationService(
+      this.recommendationRuleRepo,
+      this.recommendationEligibility,
+      this.recommendationRuleConflictService,
+    );
+    
+    public readonly getRecommendationsUseCase = new GetRecommendationsUseCase(
+      this.productRecommendationReader,
+      this.recommendationSignalExtractor,
+      this.recommendationScoring,
+      this.recommendationTrending,
+      this.recommendationFallback,
+      this.recommendationEligibility,
+      this.recommendationDedupe,
+      this.recommendationDiversity,
+      this.recommendationRuleApplicationService,
+    );
 
   public readonly getRecentlyViewedUseCase = new GetRecentlyViewedUseCase(
     this.recommendationEventRepo,

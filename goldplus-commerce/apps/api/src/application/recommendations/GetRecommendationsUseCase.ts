@@ -14,6 +14,8 @@ import { RecommendationFallbackService } from "./RecommendationFallbackService";
 import { RecommendationEligibilityService } from "./RecommendationEligibilityService";
 import { RecommendationDeduplicationService } from "./RecommendationDeduplicationService";
 import { RecommendationDiversityService } from "./RecommendationDiversityService";
+import type { ApplyRecommendationRulesResult } from "./RecommendationRuleApplicationResult";
+import { RecommendationRuleApplicationService } from "./RecommendationRuleApplicationService";
 import type { RecommendationCandidate } from "../../domain/recommendations/RecommendationTypes";
 
 const DEFAULT_LIMITS = {
@@ -35,54 +37,53 @@ export class GetRecommendationsUseCase {
     private readonly eligibility: RecommendationEligibilityService,
     private readonly dedupe: RecommendationDeduplicationService,
     private readonly diversity: RecommendationDiversityService,
+    private readonly ruleApplication: RecommendationRuleApplicationService,
   ) {}
 
   async execute(input: GetRecommendationsInput): Promise<RecommendationResponseDto> {
     const limit = input.limit ?? DEFAULT_LIMITS[input.placement];
 
-    const contextProduct = input.productId
-      ? await this.products.findProductById(input.productId)
-      : null;
+    let candidates = await this.generateV1ScoredCandidates(input, limit);
 
-    const contextSignals = contextProduct
-      ? this.signalExtractor.extract(contextProduct)
-      : undefined;
+    // ---- V2 Rule Application (if enabled) ----
 
-    const cartProducts = input.cartProductIds?.length
-      ? await this.products.findProductsByIds(input.cartProductIds)
-      : [];
+    // ---- V2 Rule Application (if enabled) ----
+    const v2Enabled = (() => {
+      const env = process.env.NODE_ENV ?? 'development';
+      if (['development', 'test', 'local'].includes(env)) {
+        return process.env.RECOMMENDATION_V2_RULES_ENABLED !== 'false';
+      }
+      return process.env.RECOMMENDATION_V2_RULES_ENABLED === 'true';
+    })();
+    if (v2Enabled) {
+      try {
+        const ruleResult = await this.ruleApplication.apply({
+          placement: input.placement,
+          context: {
+            productId: input.productId,
+            categoryId: input.categoryId,
+            categorySlug: input.categorySlug,
+            cartProductIds: input.cartProductIds,
+          },
+          candidates,
+        });
+        candidates = ruleResult.candidates;
+        // (Applied rule IDs / warnings are not part of the external DTO but could be logged)
+      } catch (e) {
+        // Fail‑closed: keep original V1 candidates
+        // Optionally log the error via existing logger if available
+      }
+    }
 
-    const cartSignals = cartProducts.map((product) => this.signalExtractor.extract(product));
-
-    const rawCandidates = await this.generateCandidates(input, contextProduct, limit);
-    const trendingScores = await this.trending.getTrendingScores();
-
-    let candidates = this.toCandidates(rawCandidates);
-
-    candidates = this.eligibility.filter(candidates, {
-      placement: input.placement,
-      contextProductId: input.productId,
-      categoryId: input.categoryId,
-      categorySlug: input.categorySlug,
-      cartProductIds: input.cartProductIds,
-      requireImage: true,
-    });
-
-    candidates = this.scoring.scoreCandidates(candidates, {
-      placement: input.placement,
-      sourceSignals: contextSignals,
-      cartSignals,
-      trendingScores,
-    });
-
-    candidates = candidates
-      .filter((candidate) => candidate.score > -9999)
-      .sort((a, b) => b.score - a.score);
-
+    // Continue with deduplication and diversity after V2 rules
     candidates = this.dedupe.dedupe(candidates);
     candidates = this.diversity.diversify(candidates, input.placement, limit);
 
     if (candidates.length === 0) {
+      const contextProduct = input.productId
+        ? await this.products.findProductById(input.productId)
+        : null;
+
       const fallbackProducts = await this.fallback.getFallbackProducts({
         placement: input.placement,
         categoryId: input.categoryId ?? contextProduct?.categoryId ?? undefined,
@@ -119,6 +120,52 @@ export class GetRecommendationsUseCase {
       generatedAt: new Date().toISOString(),
       strategy: "rule_based_v1",
     };
+  }
+
+  /**
+   * Generates scored V1 candidates exactly as the pipeline would, 
+   * before any rule-based merchandising modifications.
+   * Used by runtime execute() and isolated Preview API.
+   */
+  public async generateV1ScoredCandidates(input: GetRecommendationsInput, limit: number): Promise<RecommendationCandidate[]> {
+    const contextProduct = input.productId
+      ? await this.products.findProductById(input.productId)
+      : null;
+
+    const contextSignals = contextProduct
+      ? this.signalExtractor.extract(contextProduct)
+      : undefined;
+
+    const cartProducts = input.cartProductIds?.length
+      ? await this.products.findProductsByIds(input.cartProductIds)
+      : [];
+
+    const cartSignals = cartProducts.map((product) => this.signalExtractor.extract(product));
+
+    const rawCandidates = await this.generateCandidates(input, contextProduct, limit);
+    const trendingScores = await this.trending.getTrendingScores();
+
+    let candidates = this.toCandidates(rawCandidates);
+
+    candidates = this.eligibility.filter(candidates, {
+      placement: input.placement,
+      contextProductId: input.productId,
+      categoryId: input.categoryId,
+      categorySlug: input.categorySlug,
+      cartProductIds: input.cartProductIds,
+      requireImage: true,
+    });
+
+    candidates = this.scoring.scoreCandidates(candidates, {
+      placement: input.placement,
+      sourceSignals: contextSignals,
+      cartSignals,
+      trendingScores,
+    });
+
+    return candidates
+      .filter((candidate) => candidate.score > -9999)
+      .sort((a, b) => b.score - a.score);
   }
 
   private async generateCandidates(
