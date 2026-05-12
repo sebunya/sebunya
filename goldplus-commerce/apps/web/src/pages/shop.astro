@@ -3,6 +3,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import { apiBase } from "../lib/api";
 import ProductCard from "../components/ProductCard.astro";
 import Notice from "../components/Notice.astro";
+import CategoryPopularRail from "../components/recommendations/CategoryPopularRail.astro";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
 const categories = [
@@ -140,6 +141,12 @@ try {
             )}
           </div>
         </div>
+
+        {category !== 'all' && !q && !fetchError && (
+          <div class="mb-10 pb-10 border-b border-brand-borderGrey">
+            <CategoryPopularRail categorySlug={category} />
+          </div>
+        )}
 
         {fetchError ? (
           <div class="mb-8">

@@ -1,0 +1,23 @@
+---
+import RecommendationRail from "./RecommendationRail.astro";
+import { getRecommendations } from "../../lib/recommendations";
+
+interface Props {
+  productId: string;
+}
+
+const { productId } = Astro.props;
+
+const response = await getRecommendations({
+  placement: "complete_setup",
+  productId,
+  limit: 3,
+});
+---
+
+<RecommendationRail
+  title="Complete Your Setup"
+  subtitle="Compatible essentials paired ideally with this product."
+  placement="complete_setup"
+  items={response.items}
+/>

@@ -3,6 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import { apiBase } from '../lib/api';
 import ProductCard from '../components/ProductCard.astro';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
+import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
 
 let featuredProducts: ProductPublicDto[] = [];
 let hasApiError = false;
@@ -119,6 +120,13 @@ try {
           <p class="text-brand-mutedGrey">No featured items highlighted right now.</p>
         </div>
       )}
+    </div>
+  </section>
+
+  {/* Trending Recommendations */}
+  <section class="bg-brand-softGrey py-16 border-t border-brand-borderGrey">
+    <div class="container mx-auto px-4 lg:px-8">
+      <PopularNowRail />
     </div>
   </section>
 

@@ -1,0 +1,16 @@
+---
+import RecommendationRail from "./RecommendationRail.astro";
+import { getRecommendations } from "../../lib/recommendations";
+
+const response = await getRecommendations({
+  placement: "home_trending",
+  limit: 8,
+});
+---
+
+<RecommendationRail
+  title="Popular Now"
+  subtitle="Explore highly rated and best selling products in Uganda."
+  placement="home_trending"
+  items={response.items}
+/>

@@ -4,6 +4,9 @@ import ProductJsonLd from '../../components/ProductJsonLd.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
 import type { ProductPublicDto, ApiEnvelope } from '@goldplus/shared';
+import CompleteSetupRail from '../../components/recommendations/CompleteSetupRail.astro';
+import RelatedProductsRail from '../../components/recommendations/RelatedProductsRail.astro';
+import RecentlyViewedRail from '../../components/recommendations/RecentlyViewedRail.astro';
 
 const { slug } = Astro.params;
 
@@ -192,5 +195,58 @@ const canonical = Astro.url.toString();
         </div>
       </div>
     )}
+
+    {/* Product-Specific Discovery Tracks */}
+    {product && (
+      <div 
+        class="mt-24 space-y-16"
+        data-product-tracking
+        data-product-id={product.id}
+        data-product-slug={product.slug}
+        data-product-name={product.name}
+        data-product-image={product.primaryImageUrl ?? ''}
+        data-product-price={product.retailPriceUgx ?? ''}
+      >
+        <div class="border-t border-brand-borderGrey pt-12">
+          <CompleteSetupRail productId={product.id} />
+        </div>
+        <div class="border-t border-brand-borderGrey pt-12">
+          <RelatedProductsRail productId={product.id} />
+        </div>
+        <div class="border-t border-brand-borderGrey pt-12">
+          <RecentlyViewedRail />
+        </div>
+      </div>
+    )}
   </div>
 </BaseLayout>
+
+<script>
+  import { trackProductView, saveRecentlyViewedLocal } from '../../lib/recommendations';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const root = document.querySelector('[data-product-tracking]');
+    if (!root) return;
+
+    const id = root.getAttribute('data-product-id');
+    const slug = root.getAttribute('data-product-slug');
+    const name = root.getAttribute('data-product-name');
+    const image = root.getAttribute('data-product-image');
+    const priceRaw = root.getAttribute('data-product-price');
+
+    if (id && slug && name) {
+      // Fire back analytics
+      trackProductView(id).catch(() => {});
+
+      // Update local history cache
+      saveRecentlyViewedLocal({
+        productId: id,
+        slug,
+        name,
+        imageUrl: image || undefined,
+        price: priceRaw ? Number(priceRaw) : undefined,
+        currency: 'UGX'
+      });
+    }
+  });
+</script>

@@ -1,0 +1,105 @@
+---
+import type {
+  RecommendationItemDto,
+  RecommendationPlacement,
+} from "@goldplus/shared";
+import RecommendationCard from "./RecommendationCard.astro";
+
+interface Props {
+  title: string;
+  placement: RecommendationPlacement;
+  items: RecommendationItemDto[];
+  subtitle?: string;
+}
+
+const { title, placement, items, subtitle } = Astro.props;
+
+if (!items || items.length === 0) {
+  return null;
+}
+
+const productIdsString = items.map((item) => item.productId).join(",");
+---
+
+<section
+  class="my-12"
+  aria-labelledby={`recommendation-title-${placement}`}
+  data-recommendation-rail
+  data-placement={placement}
+  data-product-ids={productIdsString}
+>
+  <div class="mb-6">
+    <h2 id={`recommendation-title-${placement}`} class="text-2xl font-black tracking-tight text-brand-charcoal">
+      {title}
+    </h2>
+    {subtitle && (
+      <p class="text-brand-mutedGrey text-sm mt-1 font-medium">{subtitle}</p>
+    )}
+  </div>
+
+  <ul class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+    {items.map((item) => (
+      <RecommendationCard item={item} placement={placement} />
+    ))}
+  </ul>
+</section>
+
+<script>
+  import {
+    trackRecommendationClick,
+    trackRecommendationImpression,
+  } from "../../lib/recommendations";
+
+  // Wait for DOM interactive so dynamic features register
+  document.addEventListener("DOMContentLoaded", () => {
+    const rails = document.querySelectorAll("[data-recommendation-rail]");
+
+    const seenRails = new WeakSet<Element>();
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting || seenRails.has(entry.target)) continue;
+
+          // Commit seen so it won't fire duplication streams on re-scroll.
+          seenRails.add(entry.target);
+
+          const placement = entry.target.getAttribute("data-placement");
+          const rawIds = entry.target.getAttribute("data-product-ids");
+          const productIds = rawIds ? rawIds.split(",").filter(Boolean) : [];
+
+          if (placement && productIds.length > 0) {
+            trackRecommendationImpression({
+              placement: placement as any,
+              productIds,
+              source: "recommendation_rail",
+            });
+          }
+        }
+      },
+      { threshold: 0.30 },
+    );
+
+    rails.forEach((rail) => observer.observe(rail));
+
+    // Event delegation approach for robust monitoring
+    document.addEventListener("click", (event) => {
+      const target = event.target instanceof Element
+        ? event.target.closest("[data-recommendation-click]")
+        : null;
+
+      if (!target) return;
+
+      const placement = target.getAttribute("data-placement");
+      const productId = target.getAttribute("data-product-id");
+
+      if (placement && productId) {
+        trackRecommendationClick({
+          placement: placement as any,
+          productId,
+          source: "recommendation_card",
+        });
+      }
+    });
+  });
+</script>

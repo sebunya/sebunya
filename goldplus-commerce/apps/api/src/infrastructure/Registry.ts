@@ -19,6 +19,8 @@ import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductI
 import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
 import { DrizzleNotificationAttemptRepository } from './db/repositories/DrizzleNotificationAttemptRepository';
 import { DrizzleOutboxRepository } from './db/repositories/DrizzleOutboxRepository';
+import { DrizzleRecommendationEventRepository } from './db/repositories/DrizzleRecommendationEventRepository';
+import { DrizzleProductRecommendationReader } from './db/repositories/DrizzleProductRecommendationReader';
 import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
 
@@ -26,6 +28,15 @@ import { WhatsAppAdapter } from './notifications/whatsapp/WhatsAppAdapter';
 import { ZeptoMailAdapter } from './notifications/zeptomail/ZeptoMailAdapter';
 import { DisabledSmsAdapter } from './notifications/sms/DisabledSmsAdapter';
 import { DefaultNotificationRouter } from './notifications/NotificationRouter';
+
+import { ProductSignalExtractor } from '../application/recommendations/ProductSignalExtractor';
+import { CompatibilityRuleService } from '../application/recommendations/CompatibilityRuleService';
+import { RecommendationScoringService } from '../application/recommendations/RecommendationScoringService';
+import { TrendingScoreService } from '../application/recommendations/TrendingScoreService';
+import { RecommendationFallbackService } from '../application/recommendations/RecommendationFallbackService';
+import { RecommendationEligibilityService } from '../application/recommendations/RecommendationEligibilityService';
+import { RecommendationDeduplicationService } from '../application/recommendations/RecommendationDeduplicationService';
+import { RecommendationDiversityService } from '../application/recommendations/RecommendationDiversityService';
 
 import { AddToCartUseCase } from '../application/use-cases/commerce/AddToCartUseCase';
 import { CheckoutUseCase } from '../application/use-cases/commerce/CheckoutUseCase';
@@ -40,6 +51,9 @@ import { RecordNotificationAttemptUseCase } from '../application/use-cases/notif
 import { ListRecentNotificationsUseCase } from '../application/use-cases/notifications/ListRecentNotificationsUseCase';
 import { ProcessOutboxBatchUseCase } from '../application/use-cases/outbox/ProcessOutboxBatchUseCase';
 import { UploadProductImagesUseCase } from '../application/use-cases/products/UploadProductImagesUseCase';
+import { TrackRecommendationEventUseCase } from '../application/recommendations/TrackRecommendationEventUseCase';
+import { GetRecommendationsUseCase } from '../application/recommendations/GetRecommendationsUseCase';
+import { GetRecentlyViewedUseCase } from '../application/recommendations/GetRecentlyViewedUseCase';
 
 export class Registry {
   private static _instance: Registry;
@@ -59,6 +73,8 @@ export class Registry {
   public readonly roleRepo = new DrizzleRoleRepository();
   public readonly fakeReportRepo = new DrizzleFakeReportRepository();
   public readonly adminRoleReadRepo = new DrizzleAdminRoleReadRepository();
+  public readonly recommendationEventRepo = new DrizzleRecommendationEventRepository();
+  public readonly productRecommendationReader = new DrizzleProductRecommendationReader();
 
   // Storage
   private readonly productImageStorage = new LocalProductImageStorage(
@@ -83,6 +99,16 @@ export class Registry {
     this.smsAdapter
   );
 
+  // Recommendation Logic
+  private readonly recommendationSignalExtractor = new ProductSignalExtractor();
+  private readonly recommendationCompatibility = new CompatibilityRuleService();
+  private readonly recommendationScoring = new RecommendationScoringService(this.recommendationCompatibility);
+  private readonly recommendationTrending = new TrendingScoreService(this.recommendationEventRepo);
+  private readonly recommendationFallback = new RecommendationFallbackService(this.productRecommendationReader);
+  private readonly recommendationEligibility = new RecommendationEligibilityService();
+  private readonly recommendationDedupe = new RecommendationDeduplicationService();
+  private readonly recommendationDiversity = new RecommendationDiversityService();
+
 
   // Security Services
   public readonly passwordHasher = new ScryptPasswordHasher();
@@ -105,6 +131,28 @@ export class Registry {
     this.outboxRepo,
     this.notificationRouter,
     this.recordNotificationAttemptUseCase
+  );
+
+  public readonly trackRecommendationEventUseCase = new TrackRecommendationEventUseCase(
+    this.recommendationEventRepo
+  );
+
+  public readonly getRecommendationsUseCase = new GetRecommendationsUseCase(
+    this.productRecommendationReader,
+    this.recommendationSignalExtractor,
+    this.recommendationScoring,
+    this.recommendationTrending,
+    this.recommendationFallback,
+    this.recommendationEligibility,
+    this.recommendationDedupe,
+    this.recommendationDiversity
+  );
+
+  public readonly getRecentlyViewedUseCase = new GetRecentlyViewedUseCase(
+    this.recommendationEventRepo,
+    this.productRecommendationReader,
+    this.recommendationSignalExtractor,
+    this.recommendationEligibility
   );
 
   public static getInstance(): Registry {

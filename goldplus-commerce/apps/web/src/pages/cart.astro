@@ -5,6 +5,7 @@ import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import { readCartSessionId } from '../lib/cart-session';
 import type { ApiEnvelope } from '@goldplus/shared';
+import CartAddonRail from '../components/recommendations/CartAddonRail.astro';
 
 interface CartItem {
   productId: string;
@@ -45,6 +46,7 @@ if (sessionId) {
 }
 
 const items: CartItem[] = cart?.items ?? [];
+const cartProductIds = items.map(i => i.productId);
 const subtotal = cart?.subtotalUgx ?? 0;
 
 const formatUgx = (n: number): string =>
@@ -123,6 +125,13 @@ const formatUgx = (n: number): string =>
             </a>
           </div>
         </aside>
+      </div>
+    )}
+
+    {/* Smart Upsell Area */}
+    {items.length > 0 && (
+      <div class="mt-16 pt-8 border-t border-brand-borderGrey">
+        <CartAddonRail cartProductIds={cartProductIds} />
       </div>
     )}
   </div>

@@ -1,0 +1,23 @@
+---
+import RecommendationRail from "./RecommendationRail.astro";
+import { getRecommendations } from "../../lib/recommendations";
+
+interface Props {
+  productId: string;
+}
+
+const { productId } = Astro.props;
+
+const response = await getRecommendations({
+  placement: "product_related",
+  productId,
+  limit: 4,
+});
+---
+
+<RecommendationRail
+  title="You May Also Like"
+  subtitle="Similar choices within our curated inventory."
+  placement="product_related"
+  items={response.items}
+/>
