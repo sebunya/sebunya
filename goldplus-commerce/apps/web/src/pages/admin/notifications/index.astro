@@ -1,7 +1,5 @@
 ---
-import BaseLayout from '../../../layouts/BaseLayout.astro';
-import AdminPageHeader from '../../../components/AdminPageHeader.astro';
-import StatusBadge from '../../../components/StatusBadge.astro';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
 import Notice from '../../../components/Notice.astro';
 import { apiBase } from '../../../lib/api';
 import { readSessionToken, clearSessionCookie } from '../../../lib/session';
@@ -55,7 +53,6 @@ try {
   fetchError = `Network failure loading notifications.`;
 }
 
-// Precompute stats
 const sentCount = attempts.filter(a => a.status === 'SENT').length;
 const notConfigCount = attempts.filter(a => a.status === 'NOT_CONFIGURED' || a.status === 'DISABLED').length;
 const failedCount = attempts.filter(a => a.status === 'FAILED').length;
@@ -71,100 +68,101 @@ function maskRecipient(recipient: string, channel: string): string {
     const maskedLocal = local.length > 2 ? local.slice(0, 2) + '…' : local + '…';
     return `${maskedLocal}@${domain}`;
   }
-  // Phone number / other format
   if (r.length <= 6) return '***' + r.slice(-2);
   return r.slice(0, 3) + '…' + r.slice(-3);
 }
 
 const statusToBadgeKind = {
-  SENT: 'success',
-  FAILED: 'error',
-  NOT_CONFIGURED: 'warning',
-  DISABLED: 'inactive',
+  SENT: 'bg-green-50 text-green-700 border-green-100',
+  FAILED: 'bg-red-50 text-red-700 border-red-100',
+  NOT_CONFIGURED: 'bg-yellow-50 text-yellow-700 border-yellow-100',
+  DISABLED: 'bg-gray-50 text-gray-700 border-gray-100',
 } as const;
-
 ---
 
-<BaseLayout title="System Notifications | GoldPlus Admin">
-  <div class="container mx-auto px-4 lg:px-8 py-10">
-    <AdminPageHeader
-      title="Notification History"
-      description="Truthful system log of all triggered customer and operational notifications."
-      backHref="/admin"
-      backLabel="Dashboard"
-    />
+<AdminLayout 
+  title="Notifications Ledger" 
+  description="Track delivery vectors across client notification pipelines."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Message Deliverability</h2>
+        <p class="text-sm text-gray-500 mt-1">Truthful ledger of triggered SMS and transactional email deliveries.</p>
+      </div>
+    </div>
 
     {fetchError && (
       <div class="mb-8">
-        <Notice kind="not-configured" title="Failed to load logs" message={fetchError} />
+        <Notice kind="not-configured" title="Telemetry Collection Interrupted" message={fetchError} />
       </div>
     )}
 
     {!fetchError && (
       <>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div class="bg-white rounded-2xl p-6 border border-brand-borderGrey shadow-sm">
-            <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-1">Sent</p>
-            <h3 class="text-3xl font-black text-green-600">{sentCount}</h3>
-            <p class="text-xs text-brand-mutedGrey mt-2">Confirmed by provider</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+          <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
+            <p class="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Successfully Dispatched</p>
+            <h3 class="text-2xl font-black text-green-600">{sentCount}</h3>
+            <p class="text-[10px] text-gray-400 mt-1 font-medium">Handed over to gateway.</p>
           </div>
-          <div class="bg-white rounded-2xl p-6 border border-brand-borderGrey shadow-sm">
-            <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-1">Not Ready</p>
-            <h3 class="text-3xl font-black text-amber-600">{notConfigCount}</h3>
-            <p class="text-xs text-brand-mutedGrey mt-2">Configuration missing / disabled</p>
+          <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
+            <p class="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Halted / Muted</p>
+            <h3 class="text-2xl font-black text-amber-600">{notConfigCount}</h3>
+            <p class="text-[10px] text-gray-400 mt-1 font-medium">Credentials pending setup.</p>
           </div>
-          <div class="bg-white rounded-2xl p-6 border border-brand-borderGrey shadow-sm">
-            <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-1">Failed</p>
-            <h3 class="text-3xl font-black text-red-600">{failedCount}</h3>
-            <p class="text-xs text-brand-mutedGrey mt-2">Terminal delivery failure</p>
+          <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
+            <p class="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Provider Failures</p>
+            <h3 class="text-2xl font-black text-red-600">{failedCount}</h3>
+            <p class="text-[10px] text-gray-400 mt-1 font-medium">Returned upstream errors.</p>
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl border border-brand-borderGrey shadow-sm overflow-hidden">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
               <thead>
-                <tr class="bg-brand-softGrey border-b border-brand-borderGrey">
-                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Attempted</th>
-                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Channel</th>
-                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Template</th>
-                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Recipient</th>
-                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Status</th>
-                  <th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Response</th>
+                <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+                  <th class="p-6">Transmission</th>
+                  <th class="p-6">Channel</th>
+                  <th class="p-6">Template Ref</th>
+                  <th class="p-6">Recipient Hash</th>
+                  <th class="p-6 text-center">State</th>
+                  <th class="p-6">Provider Response</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-brand-borderGrey">
+              <tbody class="text-xs divide-y divide-gray-50">
                 {attempts.length === 0 ? (
                   <tr>
-                    <td colspan="6" class="px-6 py-12 text-center text-brand-mutedGrey italic">
-                      No recent notification attempts found.
+                    <td colspan="6" class="p-12 text-center text-gray-400 font-medium italic">
+                      No historical logs logged in queue.
                     </td>
                   </tr>
                 ) : (
                   attempts.map((a) => (
-                    <tr class="hover:bg-brand-softGrey/30 transition-colors group">
-                      <td class="px-6 py-4 text-sm text-brand-charcoal font-medium whitespace-nowrap">
+                    <tr class="hover:bg-gray-50 transition-colors">
+                      <td class="p-6 font-mono text-[10px] text-gray-500 whitespace-nowrap font-medium">
                         {new Date(a.attemptedAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
                       </td>
-                      <td class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-brand-mutedGrey whitespace-nowrap">
+                      <td class="p-6 uppercase font-bold tracking-wider text-[9px] text-brand-dark">
                         {a.channel}
                       </td>
-                      <td class="px-6 py-4 text-sm font-mono text-brand-charcoal">
+                      <td class="p-6 font-mono text-gray-500 text-[10px] font-medium">
                         {a.template}
                       </td>
-                      <td class="px-6 py-4 text-sm text-brand-charcoal whitespace-nowrap">
+                      <td class="p-6 font-bold text-brand-dark">
                         {maskRecipient(a.recipient, a.channel)}
                       </td>
-                      <td class="px-6 py-4 whitespace-nowrap">
-                        <StatusBadge
-                          status={statusToBadgeKind[a.status] || 'inactive'}
-                          label={a.status.replace('_', ' ')}
-                        />
+                      <td class="p-6 text-center">
+                        <span class={`inline-block px-2 py-0.5 rounded text-[9px] font-black border uppercase tracking-wide ${statusToBadgeKind[a.status] || 'bg-gray-50 text-gray-700'}`}>
+                          {a.status.replace('_', ' ')}
+                        </span>
                       </td>
-                      <td class="px-6 py-4">
-                        <div class="text-xs text-brand-charcoal truncate max-w-[250px] group-hover:whitespace-normal group-hover:break-words" title={`${a.providerCode || ''}: ${a.providerMessage || ''}`}>
-                          <span class="font-bold mr-1">{a.providerCode || 'N/A'}</span>
-                          <span class="text-brand-mutedGrey">{a.providerMessage || '-'}</span>
+                      <td class="p-6 text-[10px]">
+                        <div class="truncate max-w-[180px] text-gray-500 font-medium" title={`${a.providerCode || ''}: ${a.providerMessage || ''}`}>
+                          <span class="font-bold text-brand-dark mr-1">{a.providerCode || 'N/A'}</span>
+                          <span>{a.providerMessage || '-'}</span>
                         </div>
                       </td>
                     </tr>
@@ -174,10 +172,11 @@ const statusToBadgeKind = {
             </table>
           </div>
         </div>
-        <div class="mt-4 text-xs text-brand-mutedGrey italic text-right">
-          Displaying top {attempts.length} recent events.
+        <div class="mt-4 text-[10px] font-mono text-gray-400 text-right">
+          EXPOSING TOP {attempts.length} RELATIONAL TRIES
         </div>
       </>
     )}
   </div>
-</BaseLayout>
+</AdminLayout>
+

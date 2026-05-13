@@ -1,6 +1,5 @@
 ---
-import BaseLayout from "../../../../layouts/BaseLayout.astro";
-import AdminPageHeader from "../../../../components/AdminPageHeader.astro";
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
 import FormField from "../../../../components/FormField.astro";
 import FormFeedback from "../../../../components/FormFeedback.astro";
 import Notice from "../../../../components/Notice.astro";
@@ -13,7 +12,7 @@ import { apiBase } from "../../../../lib/api";
 
 const { id } = Astro.params;
 const token = readSessionToken(Astro.request);
-if (!token) return Astro.redirect("/admin/login", 303);
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/recommendations/rules/${id}`, 303);
 
 let feedback: { status: 'success' | 'error', message: string } | null = null;
 
@@ -65,40 +64,46 @@ const auditRes = await getRecommendationRuleAuditLog(token, id!);
 const rule = ruleRes.ok ? ruleRes.data : null;
 const auditLogs = auditRes.ok ? auditRes.data.items : [];
 
-// Prep Dates
 const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
 ---
 
-<BaseLayout title={rule ? `Manage: ${rule.name}` : 'Rule Not Found'}>
-  <div class="container mx-auto px-4 lg:px-8 py-10">
+<AdminLayout 
+  title={rule ? `Edit Rule` : 'Rule Failure'} 
+  description={rule ? `Update properties of decision rule: ${rule.name}` : ''}
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
     {rule && (
-      <div class="flex flex-col md:flex-row items-start justify-between gap-6 mb-8 pb-6 border-b border-gray-200">
-         <AdminPageHeader 
-           title={rule.name} 
-           description={`System identity: ${rule.id}`}
-           backHref="/admin/recommendations/rules" 
-           backLabel="Back to rules" 
-         />
-         <div class="flex items-center gap-3 self-end md:self-auto">
-            <RuleStatusBadge status={rule.status} />
-         </div>
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+        <div>
+          <h2 class="text-2xl font-black text-brand-dark tracking-tight flex items-center gap-3 flex-wrap">
+            {rule.name}
+            <span class="text-xs font-black border border-gray-200 bg-gray-100 text-gray-500 px-2 py-0.5 rounded uppercase font-mono">ID: {rule.id.substring(0,8)}</span>
+          </h2>
+          <p class="text-sm text-gray-500 mt-1">Modify active behavior, targeted criteria and placement slots.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <RuleStatusBadge status={rule.status} />
+          <a href="/admin/recommendations/rules" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
+            &larr; Rules List
+          </a>
+        </div>
       </div>
     )}
 
     {!rule ? (
-      <Notice kind="not-configured" title="404 Resource Misaligned" message="The specified recommendation rule was not located or access was formally denied." />
+      <Notice kind="not-configured" title="Resource Not Found" message="The requested recommendation rule could not be located, or your security privileges prevent active viewing." />
     ) : (
-      <div class="grid grid-cols-1 xl:grid-cols-12 gap-8">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        <!-- PRIMARY CONFIGURATION LEFT -->
-        <div class="xl:col-span-8 space-y-6">
+        {/* PRIMARY CONFIGURATION LEFT */}
+        <div class="lg:col-span-8 space-y-6">
            {feedback && <FormFeedback status={feedback.status} message={feedback.message} />}
            
            {rule.status === 'ARCHIVED' && (
-             <div class="bg-red-50 border border-red-200 p-4 rounded-xl text-red-900 text-sm font-bold flex items-center gap-3">
-               <span>🛑 View-Only Mode</span>
-               <span class="font-normal text-xs opacity-80">Archived rules remain frozen for historical integrity check constraints.</span>
+             <div class="bg-red-50 border border-red-100 p-4 rounded-xl text-red-800 text-xs font-bold flex items-center gap-3">
+               <span>🛑 View-Only Mode Active</span>
+               <span class="font-normal opacity-80">Archived rules remain locked to preserve system historical audit logs.</span>
              </div>
            )}
 
@@ -107,10 +112,10 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
              
              <div class="p-6 space-y-6">
                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <FormField id="r_name" name="name" label="Display Name" defaultValue={rule.name} required />
-                 <div class="space-y-1">
-                    <label class="block text-sm font-bold text-brand-dark mb-2">Global Placement</label>
-                    <select name="placement" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+                 <FormField id="r_name" name="name" label="Rule Name" defaultValue={rule.name} required />
+                 <div>
+                    <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Target Placement</label>
+                    <select name="placement" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none">
                       <option value="home_trending" selected={rule.placement==='home_trending'}>Home Trending</option>
                       <option value="product_related" selected={rule.placement==='product_related'}>Product Related</option>
                       <option value="cart_addon" selected={rule.placement==='cart_addon'}>Cart Addon</option>
@@ -120,59 +125,57 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
                  </div>
                </div>
 
-               <div class="bg-gray-50 p-4 rounded-xl flex items-center gap-4">
+               <div class="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex flex-col sm:flex-row sm:items-center gap-6">
                  <div>
-                    <span class="text-xs font-bold text-gray-400 uppercase">Fixed Type</span>
-                    <div class="font-black text-blue-700">{rule.type}</div>
+                    <span class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Fixed Rule Type</span>
+                    <div class="font-black text-blue-700 text-sm mt-1 uppercase">{rule.type}</div>
                     <input type="hidden" name="type" value={rule.type} />
                  </div>
-                 <div class="flex-grow">
-                    <div class="text-xs font-bold text-gray-400 uppercase">Logic Configuration</div>
-                    <div class="mt-2">
-                      {rule.type === 'BOOST' && <FormField id="boost" name="boostScore" type="number" label="Score Boost" defaultValue={String(rule.action.boostScore || 0)} />}
-                      {rule.type === 'PIN' && <FormField id="pin" name="pinPosition" type="number" label="Fix in Slot" defaultValue={String(rule.action.pinPosition || 1)} />}
-                      {rule.type === 'SUPPRESS' && <span class="text-xs font-bold text-red-600">🚫 Strict Suppression Enabled</span>}
+                 <div class="flex-grow border-t sm:border-t-0 sm:border-l border-gray-200 sm:pl-6 pt-4 sm:pt-0">
+                    <div class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Action Parameters</div>
+                    <div class="mt-3">
+                      {rule.type === 'BOOST' && <FormField id="boost" name="boostScore" type="number" label="Active Score Multiplier" defaultValue={String(rule.action.boostScore || 0)} />}
+                      {rule.type === 'PIN' && <FormField id="pin" name="pinPosition" type="number" label="Absolute Position (Slot)" defaultValue={String(rule.action.pinPosition || 1)} />}
+                      {rule.type === 'SUPPRESS' && <span class="text-xs font-bold text-red-600 uppercase flex items-center gap-1"><span>🚫</span> Permanent Target Suppression</span>}
                       {rule.type === 'CAMPAIGN' && (
-                        <div class="grid grid-cols-2 gap-2">
-                           <FormField id="cboost" name="campBoostScore" type="number" label="Boost" defaultValue={String(rule.action.boostScore || 0)} />
-                           <FormField id="clbl" name="campaignLabel" label="Tag" defaultValue={rule.action.campaignLabel} />
+                        <div class="grid grid-cols-2 gap-3">
+                           <FormField id="cboost" name="campBoostScore" type="number" label="Boost Weight" defaultValue={String(rule.action.boostScore || 0)} />
+                           <FormField id="clbl" name="campaignLabel" label="Label / Name" defaultValue={rule.action.campaignLabel} />
                         </div>
                       )}
                     </div>
                  </div>
                </div>
 
-               <hr class="border-gray-100" />
-
                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                  <div>
-                    <label class="block text-sm font-bold text-brand-dark mb-2">Target Type</label>
-                    <select name="targetType" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm">
-                      <option value="GLOBAL" selected={rule.targetType==='GLOBAL'}>Global</option>
+                    <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Target Scope</label>
+                    <select name="targetType" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark">
+                      <option value="GLOBAL" selected={rule.targetType==='GLOBAL'}>Entire Inventory</option>
                       <option value="PRODUCT" selected={rule.targetType==='PRODUCT'}>Product</option>
                       <option value="CATEGORY" selected={rule.targetType==='CATEGORY'}>Category</option>
-                      <option value="BRAND" selected={rule.targetType==='BRAND'}>Brand</option>
+                      <option value="BRAND" selected={rule.targetType==='BRAND'}>Brand Name</option>
                     </select>
                  </div>
                  <div class="md:col-span-2">
-                   <FormField id="t_val" name="targetValue" label="Target Value" defaultValue={rule.targetValue} placeholder="Identifier" />
+                   <FormField id="t_val" name="targetValue" label="Target Key / Value" defaultValue={rule.targetValue} placeholder="UUID / Slug" />
                  </div>
                </div>
 
                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                 <FormField id="pri" name="priority" type="number" label="Priority" defaultValue={String(rule.priority)} />
-                 <FormField id="st" name="startsAt" type="text" label="Start" defaultValue={fmtDate(rule.startsAt)} placeholder="YYYY-MM-DD" />
-                 <FormField id="en" name="endsAt" type="text" label="End" defaultValue={fmtDate(rule.endsAt)} placeholder="YYYY-MM-DD" />
+                 <FormField id="pri" name="priority" type="number" label="Priority Order" defaultValue={String(rule.priority)} />
+                 <FormField id="st" name="startsAt" type="text" label="Starts (UTC)" defaultValue={fmtDate(rule.startsAt)} placeholder="YYYY-MM-DD" />
+                 <FormField id="en" name="endsAt" type="text" label="Ends (UTC)" defaultValue={fmtDate(rule.endsAt)} placeholder="YYYY-MM-DD" />
                </div>
              </div>
 
              {rule.status !== 'ARCHIVED' && (
-                <div class="bg-gray-50 border-t border-gray-200 p-4 flex items-center justify-between">
-                   <button type="button" id="btn-trigger-preview" class="bg-white border border-gray-300 px-4 py-2 rounded-lg font-bold text-sm shadow-sm hover:bg-gray-100">
+                <div class="p-6 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-end items-center gap-3">
+                   <button type="button" id="btn-trigger-preview" class="w-full sm:w-auto bg-white border border-gray-200 text-brand-dark px-5 py-2.5 rounded-xl font-bold hover:bg-gray-100 shadow-sm text-xs transition-colors">
                      🔭 Run Instant Preview
                    </button>
-                   <button type="submit" class="bg-brand-dark text-white px-6 py-2 rounded-lg font-bold hover:opacity-90 transition-opacity">
-                     Save Modification
+                   <button type="submit" class="w-full sm:w-auto bg-brand-dark text-white px-5 py-2.5 rounded-xl font-black hover:bg-black transition-colors text-xs shadow-sm">
+                     Apply Changes
                    </button>
                 </div>
              )}
@@ -181,57 +184,56 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
              <input type="hidden" id="current-rule-id" value={rule.id} />
            </form>
 
-           <!-- Diff Preview Panel (Revealed dynamically) -->
            <RecommendationRulePreviewPanel />
         </div>
 
-        <!-- SECONDARY CONTROL SIDEBAR -->
-        <div class="xl:col-span-4 space-y-6">
+        {/* SECONDARY CONTROL SIDEBAR */}
+        <div class="lg:col-span-4 space-y-6">
           
-          <!-- State Actions Box -->
+          {/* Operations Controls */}
           {rule.status !== 'ARCHIVED' && (
             <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-              <h3 class="text-xs uppercase font-black text-gray-400 tracking-widest mb-4">Operations</h3>
-              <div class="flex flex-col gap-2">
+              <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">Operation Lifecycle</h3>
+              <div class="flex flex-col gap-3">
                 {rule.status === 'ACTIVE' ? (
                   <form method="POST">
                     <input type="hidden" name="_action" value="set_status" />
                     <input type="hidden" name="status" value="PAUSED" />
-                    <button class="w-full bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg font-bold text-sm hover:bg-amber-100">⏸️ Pause Rule</button>
+                    <button class="w-full bg-yellow-50 border border-yellow-100 text-yellow-700 px-4 py-2.5 rounded-xl font-bold text-xs hover:bg-yellow-100 transition-colors">⏸️ Pause Evaluation</button>
                   </form>
                 ) : (
                   <form method="POST">
                     <input type="hidden" name="_action" value="set_status" />
                     <input type="hidden" name="status" value="ACTIVE" />
-                    <button class="w-full bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-green-100">▶️ Activate Runtime</button>
+                    <button class="w-full bg-green-50 border border-green-100 text-green-700 px-4 py-2.5 rounded-xl font-bold text-xs hover:bg-green-100 transition-colors">▶️ Resume Active Run</button>
                   </form>
                 )}
                 
-                <form method="POST" onsubmit="return confirm('Are you sure you wish to archive this rule permanently?');">
+                <form method="POST" onsubmit="return confirm('Retire this override rule permanently?');" class="pt-3 border-t border-dashed border-gray-200">
                    <input type="hidden" name="_action" value="archive" />
-                   <button class="w-full mt-4 bg-white border border-red-200 text-red-600 px-4 py-2 rounded-lg font-bold text-xs hover:bg-red-50">⚠️ Retire & Archive</button>
+                   <button class="w-full bg-red-50 text-red-700 font-black text-[10px] tracking-wide py-2 rounded-xl uppercase border border-red-100 hover:bg-red-100 transition-colors">⚠️ Retire & Archive</button>
                 </form>
               </div>
             </div>
           )}
 
-          <!-- Audit History -->
+          {/* Rule Transition History */}
           <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-             <div class="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                <span class="text-xs font-black text-gray-500 tracking-widest uppercase">Audit History</span>
-                <span class="text-[10px] font-mono bg-gray-200 px-1.5 rounded text-gray-600">{auditLogs.length} Logs</span>
+             <div class="px-5 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                <span class="text-[10px] font-black text-gray-400 tracking-widest uppercase">History Trail</span>
+                <span class="text-[8px] font-mono font-bold border border-gray-200 bg-white px-1.5 py-0.5 rounded text-gray-600">{auditLogs.length} Logs</span>
              </div>
-             <div class="divide-y divide-gray-100 max-h-[400px] overflow-y-auto">
+             <div class="divide-y divide-gray-100 max-h-[300px] overflow-y-auto text-xs">
                 {auditLogs.length === 0 ? (
-                   <div class="p-8 text-center text-xs text-gray-400 italic">No recorded transitions</div>
+                   <div class="p-10 text-center text-gray-400 italic font-medium">No historical events.</div>
                 ) : (
                   auditLogs.map(l => (
-                    <div class="p-4 text-xs hover:bg-gray-50">
-                       <div class="flex items-center justify-between mb-1">
-                          <span class={`font-bold ${l.action==='CREATED'?'text-green-600':l.action==='UPDATED'?'text-blue-600':'text-gray-600'}`}>{l.action}</span>
-                          <span class="text-gray-400 text-[10px]">{new Date(l.performedAt).toLocaleString('en-GB', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}</span>
+                    <div class="p-4 hover:bg-gray-50/80 transition-colors">
+                       <div class="flex items-center justify-between mb-1 font-bold">
+                          <span class={`${l.action==='CREATED'?'text-green-700':l.action==='UPDATED'?'text-blue-700':'text-gray-600'} uppercase tracking-wide text-[9px]`}>{l.action}</span>
+                          <span class="text-gray-400 text-[9px] font-medium">{new Date(l.performedAt).toLocaleDateString('en-GB', {month:'short', day:'numeric'})}</span>
                        </div>
-                       <div class="text-gray-500 truncate font-mono text-[10px]">Actor: {l.performedBy || 'System'}</div>
+                       <div class="text-gray-400 truncate font-mono text-[8px] mt-1">ACTOR: {l.performedBy || 'System Engine'}</div>
                     </div>
                   ))
                 )}
@@ -242,15 +244,14 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
       </div>
     )}
   </div>
-</BaseLayout>
+</AdminLayout>
 
 <script>
-  // Shared Preview Connector adjusted to current ID capture
   const btnPreview = document.getElementById('btn-trigger-preview');
   const token = (document.getElementById('session-token') as HTMLInputElement)?.value;
   
   btnPreview?.addEventListener('click', async () => {
-    btnPreview.textContent = "Computing...";
+    btnPreview.textContent = "Simulating...";
     btnPreview.classList.add('opacity-50', 'pointer-events-none');
 
     const form = document.getElementById('rule-edit-form') as HTMLFormElement;
@@ -268,7 +269,6 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
 
     const payload = {
       placement: fd.get('placement') as string,
-      // On Edit mode, we inject the simulated active state OVERRIDING the current DB fetch
       draftRule: {
         id: (document.getElementById('current-rule-id') as HTMLInputElement)?.value,
         name: fd.get('name') as string,
@@ -307,3 +307,4 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
     }
   });
 </script>
+

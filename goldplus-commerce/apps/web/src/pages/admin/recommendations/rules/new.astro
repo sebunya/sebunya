@@ -1,9 +1,7 @@
 ---
-import BaseLayout from "../../../../layouts/BaseLayout.astro";
-import AdminPageHeader from "../../../../components/AdminPageHeader.astro";
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
 import FormField from "../../../../components/FormField.astro";
 import FormFeedback from "../../../../components/FormFeedback.astro";
-import Notice from "../../../../components/Notice.astro";
 import RecommendationRulePreviewPanel from "../../../../components/recommendations/RecommendationRulePreviewPanel.astro";
 
 import { createRecommendationRule } from "../../../../lib/admin-recommendations";
@@ -11,7 +9,7 @@ import { readSessionToken } from "../../../../lib/session";
 import { apiBase } from "../../../../lib/api";
 
 const token = readSessionToken(Astro.request);
-if (!token) return Astro.redirect("/admin/login", 303);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/recommendations/rules/new", 303);
 
 let feedback: { status: 'success' | 'error', message: string, details?: string[] } | null = null;
 
@@ -64,18 +62,25 @@ if (Astro.request.method === 'POST') {
 }
 ---
 
-<BaseLayout title="Create Rule - Recommendation Admin">
-  <div class="container mx-auto px-4 lg:px-8 py-10 max-w-5xl">
-    <AdminPageHeader
-      title="New Recommendation Rule"
-      description="Establish localized merchandising logic overriding base V1 scoring behaviors."
-      backHref="/admin/recommendations/rules"
-      backLabel="Back to rules"
-    />
+<AdminLayout 
+  title="New Rule" 
+  description="Add catalog decision overrides for recommendation scoring."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">New Decision Rule</h2>
+        <p class="text-sm text-gray-500 mt-1">Establish dynamic overrides on base scoring algorithms.</p>
+      </div>
+      <a href="/admin/recommendations/rules" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
+        &larr; Rules List
+      </a>
+    </div>
 
-    <div class="grid grid-cols-1 xl:grid-cols-12 gap-8 mt-8">
-      <!-- Main Form Left -->
-      <div class="xl:col-span-7 space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      {/* Main Form Left */}
+      <div class="lg:col-span-7 space-y-6">
         {feedback && <FormFeedback status={feedback.status} message={feedback.message} />}
         {feedback?.details && (
           <div class="bg-red-50 p-4 rounded-xl text-red-800 text-xs border border-red-100 -mt-4">
@@ -88,15 +93,15 @@ if (Astro.request.method === 'POST') {
 
         <form id="rule-main-form" method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
           <div class="p-6 space-y-6">
-            <!-- Basic Meta -->
+            {/* Basic Meta */}
             <div class="space-y-4">
-              <h3 class="text-xs uppercase font-black text-gray-400 tracking-widest">1. Basic Context</h3>
+              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">1. Basic Context</h3>
               <FormField id="r_name" name="name" label="Rule Name" required placeholder="e.g. Summer iPhone 15 Boost" helperText="Internal business identification name." />
               
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-sm font-bold text-brand-dark mb-2">Target Placement</label>
-                  <select name="placement" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-green">
+                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Target Placement</label>
+                  <select name="placement" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none focus:border-brand-green">
                     <option value="home_trending">Home Trending</option>
                     <option value="product_related">Product Related</option>
                     <option value="cart_addon">Cart Addon</option>
@@ -105,8 +110,8 @@ if (Astro.request.method === 'POST') {
                   </select>
                 </div>
                 <div>
-                  <label class="block text-sm font-bold text-brand-dark mb-2">Rule Type</label>
-                  <select id="type-selector" name="type" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-green font-bold text-blue-700">
+                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Rule Type</label>
+                  <select id="type-selector" name="type" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-black text-blue-700 outline-none focus:border-brand-green">
                     <option value="BOOST">📈 Boost Scored List</option>
                     <option value="PIN">📌 Pin to Absolute Position</option>
                     <option value="SUPPRESS">🚫 Suppress / Remove</option>
@@ -116,15 +121,13 @@ if (Astro.request.method === 'POST') {
               </div>
             </div>
 
-            <hr class="border-gray-100" />
-
-            <!-- Logic & Action Configuration -->
+            {/* Logic & Action Configuration */}
             <div class="space-y-4">
-              <h3 class="text-xs uppercase font-black text-gray-400 tracking-widest">2. Target & Actions</h3>
+              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">2. Target & Actions</h3>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-sm font-bold text-brand-dark mb-2">Target Scope</label>
-                  <select name="targetType" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-green">
+                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Target Scope</label>
+                  <select name="targetType" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none focus:border-brand-green">
                     <option value="GLOBAL">Entire Inventory (Global)</option>
                     <option value="PRODUCT">Specific Product ID</option>
                     <option value="CATEGORY">Specific Category UUID</option>
@@ -134,28 +137,28 @@ if (Astro.request.method === 'POST') {
                 <FormField id="r_target_val" name="targetValue" label="Target Identifier (Optional)" placeholder="Product SKU / ID" helperText="Leave empty for Global scope." />
               </div>
 
-              <!-- Conditional Action Fields -->
-              <div id="action-area" class="bg-blue-50/50 border border-blue-100 p-4 rounded-xl space-y-4">
+              {/* Conditional Action Fields */}
+              <div id="action-area" class="bg-blue-50/50 border border-blue-100 p-5 rounded-2xl space-y-4">
                 
-                <!-- Action: BOOST -->
+                {/* Action: BOOST */}
                 <div class="action-variant" data-type="BOOST">
-                  <FormField id="b_score" name="boostScore" type="number" label="Score Multiplier / Weight" defaultValue="50" helperText="Added directly to normal V1 product score." />
+                  <FormField id="b_score" name="boostScore" type="number" label="Score Multiplier / Weight" defaultValue="50" helperText="Added directly to normal product score." />
                 </div>
 
-                <!-- Action: PIN -->
+                {/* Action: PIN */}
                 <div class="hidden action-variant" data-type="PIN">
                    <FormField id="p_pos" name="pinPosition" type="number" label="Fix into Slot Position" defaultValue="1" helperText="1 forces this result into the exact first slot." />
-                   <p class="text-[10px] font-bold text-amber-700 mt-2 bg-amber-50 p-2 rounded border border-amber-100">⚠️ Warning: Requires 'PRODUCT' target type specifically.</p>
+                   <p class="text-[10px] font-bold text-amber-700 mt-3 bg-amber-50 p-2 rounded-lg border border-amber-100">⚠️ Warning: Requires 'PRODUCT' target type specifically.</p>
                 </div>
 
-                <!-- Action: SUPPRESS -->
+                {/* Action: SUPPRESS */}
                 <div class="hidden action-variant" data-type="SUPPRESS">
-                   <div class="text-sm font-medium text-red-800 flex items-center gap-2">
-                     <span>⛔ Product will be strictly eliminated from visible recommendation outputs.</span>
+                   <div class="text-xs font-bold text-red-700 flex items-center gap-2">
+                     <span>⛔ Target will be strictly eliminated from visible outputs.</span>
                    </div>
                 </div>
 
-                <!-- Action: CAMPAIGN -->
+                {/* Action: CAMPAIGN */}
                 <div class="hidden action-variant" data-type="CAMPAIGN">
                    <div class="grid grid-cols-2 gap-4">
                      <FormField id="c_score" name="campBoostScore" type="number" label="Campaign Boost" defaultValue="100" />
@@ -165,10 +168,9 @@ if (Astro.request.method === 'POST') {
               </div>
             </div>
 
-            <hr class="border-gray-100" />
-
-            <!-- Schedule -->
+            {/* Schedule */}
             <div class="space-y-4">
+               <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">3. Timing & Context</h3>
                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <FormField id="r_pri" name="priority" type="number" label="Priority Rank" defaultValue="100" helperText="Lower runs first." />
                   <FormField id="r_start" name="startsAt" type="text" label="Start (Optional)" placeholder="YYYY-MM-DD" />
@@ -178,13 +180,13 @@ if (Astro.request.method === 'POST') {
           </div>
 
           <div class="p-6 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-end items-center gap-3">
-            <button type="button" id="btn-trigger-preview" class="w-full sm:w-auto bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-xl font-bold hover:bg-gray-100 shadow-sm">
+            <button type="button" id="btn-trigger-preview" class="w-full sm:w-auto bg-white border border-gray-200 text-brand-dark px-5 py-2.5 rounded-xl font-bold hover:bg-gray-100 shadow-sm text-xs transition-colors">
               🔍 Instant Preview
             </button>
-            <button type="submit" name="_submit_action" value="save_draft" class="w-full sm:w-auto bg-gray-200 text-gray-800 px-6 py-3 rounded-xl font-bold hover:bg-gray-300 transition-colors">
+            <button type="submit" name="_submit_action" value="save_draft" class="w-full sm:w-auto bg-gray-200 text-gray-700 px-5 py-2.5 rounded-xl font-bold hover:bg-gray-300 text-xs transition-colors">
               Save Draft
             </button>
-            <button type="submit" name="_submit_action" value="save_activate" class="w-full sm:w-auto bg-brand-green text-white px-6 py-3 rounded-xl font-black hover:opacity-90 shadow-md transition-all">
+            <button type="submit" name="_submit_action" value="save_activate" class="w-full sm:w-auto bg-brand-green text-white px-5 py-2.5 rounded-xl font-black hover:bg-emerald-600 text-xs shadow-sm transition-colors">
               🚀 Save & Activate
             </button>
           </div>
@@ -193,22 +195,20 @@ if (Astro.request.method === 'POST') {
         </form>
       </div>
 
-      <!-- Preview Right / Collapsed sticky -->
-      <div class="xl:col-span-5">
+      {/* Preview Right */}
+      <div class="lg:col-span-5">
          <div class="sticky top-8 space-y-4">
             <div id="preview-empty-hint" class="bg-gray-50 border border-gray-200 border-dashed rounded-2xl p-12 text-center flex flex-col items-center justify-center">
-               <span class="text-4xl mb-3 grayscale opacity-50">🔭</span>
-               <p class="text-sm text-gray-500 font-bold">Live Preview Inactive</p>
-               <p class="text-xs text-gray-400 mt-1 max-w-[200px]">Modify your rules and hit 'Instant Preview' to simulate the resulting list.</p>
+               <span class="text-3xl mb-3 grayscale opacity-50">🔭</span>
+               <p class="text-xs text-brand-dark font-black">Simulation Container</p>
+               <p class="text-[10px] text-gray-400 mt-1 max-w-[200px] leading-relaxed">Modify properties and trigger 'Instant Preview' to inspect results.</p>
             </div>
-            
-            <!-- Reusable Component handles active state view -->
             <RecommendationRulePreviewPanel />
          </div>
       </div>
     </div>
   </div>
-</BaseLayout>
+</AdminLayout>
 
 <script>
   // Client-Side View Variant Switcher
@@ -238,7 +238,6 @@ if (Astro.request.method === 'POST') {
     const form = document.getElementById('rule-main-form') as HTMLFormElement;
     const fd = new FormData(form);
 
-    // Construct minimal draft payload mirroring structure backend consumes
     const type = fd.get('type') as string;
     const action: any = { type };
     if (type === 'BOOST') action.boostScore = parseFloat(fd.get('boostScore') as string || '0');
@@ -265,7 +264,6 @@ if (Astro.request.method === 'POST') {
     };
 
     try {
-      // Safely extract actual API base configured by server context
       const apiBase = (document.getElementById('api-base-url') as HTMLInputElement)?.value || 'http://localhost:3000';
       
       const r = await fetch(`${apiBase}/admin/recommendations/preview`, {
@@ -278,7 +276,6 @@ if (Astro.request.method === 'POST') {
       
       if (json.success && json.data) {
         emptyHint?.classList.add('hidden');
-        // Invoke the global handler contained inside RecommendationRulePreviewPanel.astro <script>
         if (typeof (window as any).renderRecommendationPreview === 'function') {
           (window as any).renderRecommendationPreview(json.data);
         }
@@ -293,3 +290,4 @@ if (Astro.request.method === 'POST') {
     }
   });
 </script>
+

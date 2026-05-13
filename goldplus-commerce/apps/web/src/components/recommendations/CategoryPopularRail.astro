@@ -1,6 +1,7 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
+import { filterDisplayableRecommendations, shouldRenderRail } from "../../lib/recommendation-display";
 
 interface Props {
   categoryId?: string;
@@ -13,13 +14,21 @@ const response = await getRecommendations({
   placement: "category_popular",
   categoryId,
   categorySlug,
-  limit: 8,
+  limit: 12,
 });
+
+const displayItems = filterDisplayableRecommendations(response.items, {
+  limit: 4,
+});
+
+const render = shouldRenderRail(displayItems, 2);
 ---
 
-<RecommendationRail
-  title="Popular in Category"
-  subtitle="Most viewed options recently added by our editors."
-  placement="category_popular"
-  items={response.items}
-/>
+{render && (
+  <RecommendationRail
+    title="Popular in This Category"
+    subtitle="Top picks from this category."
+    placement="category_popular"
+    items={displayItems}
+  />
+)}

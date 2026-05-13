@@ -16,6 +16,37 @@ routes.post('/cart/add', async (c) => {
   return c.json(res);
 });
 
+routes.get('/carts/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    
+    // Validate UUID format before querying to prevent Postgres database syntax exceptions
+    const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    if (!uuidRegex.test(id)) {
+      const errRes: ApiResponse<never> = {
+        success: false,
+        error: { code: 'INVALID_UUID', message: 'Invalid cart session identifier format.' }
+      };
+      return c.json(errRes, 400);
+    }
+
+    const cartData = await registry.getCartByIdUseCase.execute(id);
+
+    const res: ApiResponse<any> = {
+      success: true,
+      data: cartData,
+    };
+    return c.json(res);
+  } catch (err: any) {
+    console.error('[API_ERROR] Failed to fetch cart data:', err);
+    const errRes: ApiResponse<never> = {
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err.message }
+    };
+    return c.json(errRes, 500);
+  }
+});
+
 routes.post('/orders/create', async (c) => {
   try {
     const body = await c.req.json();

@@ -1,0 +1,64 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/governance", 303);
+}
+
+const roles = [
+  { name: 'Super Administrator', key: 'ROLE_OWNER', count: 1, desc: 'Unrestricted access to every configuration and subsystem.' },
+  { name: 'Logistics Operator', key: 'ROLE_LOGISTICS', count: 0, desc: 'Permitted access to orders, payments and inventory lists.' },
+  { name: 'Merchandising Planner', key: 'ROLE_MERCHANDISER', count: 0, desc: 'Assesses recommendation rules, highlights and sandbox.' },
+];
+---
+
+<AdminLayout 
+  title="Platform Governance" 
+  description="Maintain administrative access, RBAC roles and authorization policies."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="mb-8 pb-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Access & Credentials</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+          Review RBAC definitions protecting backend resources. Granting user credentials requires direct database hydration during secure bootstrap.
+        </p>
+      </div>
+      <div class="bg-brand-dark text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-[10px] font-black tracking-wider uppercase">
+        🔒 SECURE REALM
+      </div>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden max-w-4xl">
+      <div class="p-5 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+        <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Pre-Defined Capabilities</h3>
+      </div>
+      <div class="divide-y divide-gray-100">
+        {roles.map(r => (
+          <div class="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-50/30 transition-colors">
+            <div class="space-y-1">
+              <h4 class="font-black text-sm text-brand-dark">{r.name}</h4>
+              <p class="text-xs text-gray-500 leading-relaxed max-w-lg">{r.desc}</p>
+              <code class="inline-block text-[9px] font-mono font-bold bg-gray-100 text-gray-500 px-1 py-0.5 rounded mt-2">{r.key}</code>
+            </div>
+            <div class="flex-shrink-0 text-right">
+              <span class="text-xs font-black text-gray-400">{r.count} User Assigned</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="mt-8 p-16 border border-dashed border-gray-300 bg-gray-50 rounded-2xl text-center max-w-4xl flex flex-col items-center justify-center">
+      <div class="text-3xl mb-3">🔑</div>
+      <h4 class="font-black text-brand-dark text-sm">Access Management Not Exposed</h4>
+      <p class="text-xs text-gray-500 mt-1 max-w-md leading-relaxed">
+        To prevent unauthorized elevation, addition of new administrative operators is gated at the environment configuration tier and not currently configurable via web console.
+      </p>
+    </div>
+
+  </div>
+</AdminLayout>

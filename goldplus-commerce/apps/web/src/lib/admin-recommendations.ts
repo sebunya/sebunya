@@ -102,7 +102,19 @@ export async function listRecommendationRules(token: string, params: {
   if (params.page) q.set('page', params.page.toString());
   if (params.pageSize) q.set('pageSize', params.pageSize.toString());
   
-  return fetchAuthed<{ rules: RecommendationRule[]; total: number; page: number; pageSize: number }>(`/admin/recommendations/rules?${q.toString()}`, token);
+  const res = await fetchAuthed<{ items: RecommendationRule[]; total: number; page: number; pageSize: number }>(`/admin/recommendations/rules?${q.toString()}`, token);
+  
+  if (!res.ok) return res;
+  
+  return {
+    ok: true,
+    data: {
+      rules: res.data.items,
+      total: res.data.total,
+      page: res.data.page,
+      pageSize: res.data.pageSize,
+    }
+  };
 }
 
 export async function getRecommendationRule(token: string, id: string) {

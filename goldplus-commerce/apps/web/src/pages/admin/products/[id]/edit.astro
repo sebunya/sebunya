@@ -1,10 +1,8 @@
 ---
-import BaseLayout from '../../../../layouts/BaseLayout.astro';
-import AdminPageHeader from '../../../../components/AdminPageHeader.astro';
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import FormField from '../../../../components/FormField.astro';
 import FormFeedback from '../../../../components/FormFeedback.astro';
 import Notice from '../../../../components/Notice.astro';
-import StatusBadge from '../../../../components/StatusBadge.astro';
 import { apiBase } from '../../../../lib/api';
 import { readSessionToken, clearSessionCookie } from '../../../../lib/session';
 import type { ProductPublicDto } from '@goldplus/shared';
@@ -48,7 +46,6 @@ if (Astro.request.method === 'POST') {
       message = res.error ?? `Could not add image (HTTP ${res.status}).`;
     }
   } else if (action === 'upload_images') {
-    // Extract specific keys to relay to backend
     const apiFormData = new FormData();
     const allFiles = form.getAll('files');
     
@@ -109,49 +106,58 @@ if (productRes.status === 401 || productRes.status === 403) {
 const product = productRes.data;
 ---
 
-<BaseLayout title={product ? `Edit ${product.name}` : 'Edit product'}>
-  <div class="container mx-auto px-4 lg:px-8 py-10">
-    <AdminPageHeader
-      title={product ? `Edit: ${product.name}` : 'Edit product'}
-      description="Add images by URL and set verified attribute values. Every change is audited."
-      backHref="/admin/products"
-      backLabel="Back to products"
-    />
+<AdminLayout 
+  title={product ? `Edit SKU` : 'Asset Management'} 
+  description="Manage dynamic configurations and physical assets."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">
+          {product ? product.name : 'Direct Catalogue Mutation'}
+        </h2>
+        <p class="text-sm text-gray-500 mt-1">Mutate structural specifications and syndication media assets.</p>
+      </div>
+      <a href="/admin/products" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
+        &larr; Product List
+      </a>
+    </div>
 
     {!product ? (
-      <Notice kind="not-configured" title="Product unavailable" message="Could not load this product from the API." />
+      <Notice kind="not-configured" title="Asset Unavailable" message="The requested product listing was not fetched from the core relational datastore." />
     ) : (
       <div class="space-y-8">
         <FormFeedback status={status} message={message} />
 
-        <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
-          <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4">Images ({product.images.length})</h2>
+        <section class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+          <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Syndication Images ({product.images.length})</h2>
 
           {product.images.length === 0 ? (
-            <p class="text-sm text-brand-mutedGrey italic mb-4">No images yet. Add the first image below.</p>
+            <p class="text-xs text-gray-400 italic mb-6 font-medium">No binary media attached. Establish primary links below.</p>
           ) : (
-            <ul class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 border-b border-gray-100 pb-8">
               {product.images.map((img, idx) => (
-                <li class="border border-brand-borderGrey rounded-xl overflow-hidden bg-brand-softGrey">
-                  <div class="aspect-square bg-white flex items-center justify-center">
-                    <img src={img.url} alt={img.alt ?? ''} class="max-w-full max-h-full object-contain" />
+                <div class="border border-gray-200 rounded-2xl overflow-hidden bg-gray-50 flex flex-col shadow-sm">
+                  <div class="aspect-square bg-white flex items-center justify-center p-3">
+                    <img src={img.url} alt={img.alt ?? ''} class="max-w-full max-h-full object-contain mix-blend-multiply" />
                   </div>
-                  <div class="p-2 text-[10px] font-mono text-brand-mutedGrey break-all">
-                    {idx === 0 && <span class="inline-block px-1 py-0.5 mr-1 bg-brand-primary text-brand-charcoal font-bold uppercase tracking-widest">Primary</span>}
-                    {img.url.slice(0, 60)}…
+                  <div class="p-3 text-[8px] font-mono text-gray-400 break-all border-t border-gray-100 bg-white flex-grow">
+                    {idx === 0 && <span class="inline-block px-1.5 py-0.5 mr-1.5 rounded bg-brand-green text-brand-dark font-black text-[7px] uppercase tracking-wide">Primary</span>}
+                    {img.url.length > 50 ? img.url.slice(0, 50) + '…' : img.url}
                   </div>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6 border-t border-brand-borderGrey pt-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
             <div>
-              <h3 class="text-sm font-bold text-brand-charcoal mb-3">Upload local files</h3>
+              <h3 class="text-xs font-black text-brand-dark uppercase tracking-wider mb-4">Local File Upload</h3>
               <form method="POST" action={Astro.url.pathname} enctype="multipart/form-data" class="space-y-4">
                 <input type="hidden" name="_action" value="upload_images" />
                 
-                <div class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:border-brand-primary/50 transition-colors cursor-pointer relative">
+                <div class="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center hover:border-brand-green/50 transition-colors cursor-pointer relative bg-gray-50">
                   <input 
                     type="file" 
                     name="files" 
@@ -161,79 +167,102 @@ const product = productRes.data;
                     required
                   />
                   <div class="pointer-events-none">
-                    <div class="text-3xl mb-2">📁</div>
-                    <p class="text-sm font-bold text-brand-charcoal">Click to select files or drag and drop</p>
-                    <p class="text-xs text-brand-mutedGrey mt-1">Upload JPG, PNG, or WebP. Max 8 files, 5MB each.</p>
+                    <div class="text-3xl mb-3">📤</div>
+                    <p class="text-xs font-black text-brand-dark">Click or Drag File Binaries</p>
+                    <p class="text-[9px] text-gray-400 mt-1 leading-relaxed">JPG, PNG, or WebP. Maximum batch count 8.</p>
                   </div>
                 </div>
 
-                <FormField id="upAltText" name="altText" label="Alt text for this batch" placeholder="Short image description..." />
+                <FormField id="upAltText" name="altText" label="Context Accessibility Alt Text" placeholder="Description of visual frame..." />
                 <label class="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" name="makePrimary" class="w-5 h-5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
-                  <span class="text-sm font-bold text-brand-charcoal">Make first image primary</span>
+                  <input type="checkbox" name="makePrimary" class="w-4 h-4 rounded-lg border-gray-300 text-brand-green focus:ring-brand-green" />
+                  <span class="text-xs font-bold text-brand-dark">Designate leading batch item as primary</span>
                 </label>
                 
-                <button type="submit" class="w-full bg-brand-primary text-brand-charcoal py-3 rounded-lg font-bold hover:opacity-90 transition-all shadow-sm">
-                  Upload images
+                <button type="submit" class="w-full bg-brand-dark text-white py-3 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-black transition-colors shadow-sm mt-2">
+                  Stream to Storage
                 </button>
               </form>
             </div>
 
-            <div class="border-l border-brand-borderGrey pl-0 md:pl-8 pt-6 md:pt-0">
-              <h3 class="text-sm font-bold text-brand-charcoal mb-3">Link existing URL</h3>
-              <form method="POST" action={Astro.url.pathname} class="space-y-4">
-                <input type="hidden" name="_action" value="add_image" />
-                <FormField id="url" name="url" label="Image URL" type="url" required placeholder="https://…" helperText="Must reference a secure HTTPS domain." />
-                <FormField id="altText" name="altText" label="Alt text" />
-                <label class="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" name="makePrimary" class="w-5 h-5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
-                  <span class="text-sm font-bold text-brand-charcoal">Make primary image</span>
-                </label>
-                <button type="submit" class="w-full bg-gray-100 text-brand-charcoal py-3 rounded-lg font-bold hover:bg-gray-200 transition-all">
-                  Link URL
-                </button>
-              </form>
+            <div class="border-t md:border-t-0 md:border-l border-gray-100 pt-8 md:pt-0 md:pl-8 flex flex-col justify-between">
+              <div>
+                <h3 class="text-xs font-black text-brand-dark uppercase tracking-wider mb-4">Synthesize External URL</h3>
+                <form method="POST" action={Astro.url.pathname} class="space-y-4">
+                  <input type="hidden" name="_action" value="add_image" />
+                  <FormField id="url" name="url" label="Fully Qualified Resource Link (HTTPS)" type="url" required placeholder="https://static.brand.cdn/img.jpg" />
+                  <FormField id="altText" name="altText" label="Context Accessibility Text" />
+                  <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" name="makePrimary" class="w-4 h-4 rounded-lg border-gray-300 text-brand-green focus:ring-brand-green" />
+                    <span class="text-xs font-bold text-brand-dark">Override current leading image</span>
+                  </label>
+                  <button type="submit" class="w-full bg-white border border-gray-200 text-brand-dark py-3 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-gray-50 transition-colors shadow-sm mt-2">
+                    Register URL Reference
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
         </section>
 
-        <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
-          <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4">Attribute values ({product.attributeValues.length})</h2>
+        <section class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+          <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Attribute Specification Logs ({product.attributeValues.length})</h2>
 
           {product.attributeValues.length === 0 ? (
-            <p class="text-sm text-brand-mutedGrey italic mb-4">No attribute values set yet.</p>
+            <p class="text-xs text-gray-400 italic mb-6 font-medium">No specific metadata rows bound.</p>
           ) : (
-            <ul class="divide-y divide-brand-borderGrey mb-6">
-              {product.attributeValues.map((v) => (
-                <li class="py-2 flex items-center justify-between gap-3">
-                  <span class="text-sm font-bold text-brand-charcoal">{v.name}</span>
-                  <span class="text-sm text-brand-charcoal flex items-center gap-2">
-                    {v.value}{v.unit ? ` ${v.unit}` : ''}
-                    {v.isVerified
-                      ? <StatusBadge status="success" label="Verified" />
-                      : <StatusBadge status="warning" label="Unverified" />}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div class="border border-gray-100 rounded-2xl overflow-hidden mb-6 text-xs">
+              <table class="w-full border-collapse text-left">
+                <thead>
+                  <tr class="bg-gray-50 text-[9px] uppercase font-black text-gray-400 border-b border-gray-100">
+                    <th class="p-4">Label</th>
+                    <th class="p-4">Registered Specification</th>
+                    <th class="p-4 text-right">Origin Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                  {product.attributeValues.map((v) => (
+                    <tr>
+                      <td class="p-4 font-black text-brand-dark uppercase tracking-wide text-[10px]">{v.name}</td>
+                      <td class="p-4 font-medium text-gray-600">{v.value}{v.unit ? ` ${v.unit}` : ''}</td>
+                      <td class="p-4 text-right">
+                        <span class={`inline-block px-2 py-0.5 rounded text-[9px] font-black border uppercase tracking-wide ${
+                          v.isVerified ? 'bg-green-50 text-green-700 border-green-100' : 'bg-yellow-50 text-yellow-700 border-yellow-100'
+                        }`}>
+                          {v.isVerified ? 'Verified Trace' : 'Self-Asserted'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
 
-          <Notice kind="info" title="Adding new attribute slots" message="Defining new attributes per category is a separate flow (POST /admin/products/attributes). The form below sets values against existing attribute UUIDs." />
+          <div class="bg-blue-50 border border-blue-100 p-5 rounded-2xl flex items-start gap-3 mb-6">
+            <span class="text-base">ℹ️</span>
+            <p class="text-[10px] text-blue-700 leading-relaxed font-medium">
+              <strong>Structural Restraint:</strong> Establishing NEW specifications keys requires explicit relational migration hooks. The form below modifies state against designated existing registry slots.
+            </p>
+          </div>
 
-          <form method="POST" action={Astro.url.pathname} class="space-y-4 mt-4">
+          <form method="POST" action={Astro.url.pathname} class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             <input type="hidden" name="_action" value="set_attribute" />
-            <FormField id="attributeId" name="attributeId" label="Attribute ID" required helperText="UUID of the attribute defined for this product's category." />
-            <FormField id="value" name="value" label="Value" required helperText="e.g. 20W, 5000mAh, USB-C" />
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" name="isVerified" class="w-5 h-5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
-              <span class="text-sm font-bold text-brand-charcoal">Mark as verified (eligible for SEO structured data)</span>
-            </label>
-            <button type="submit" class="bg-brand-primary text-brand-charcoal px-6 py-2 rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none">
-              Set value
-            </button>
+            <FormField id="attributeId" name="attributeId" label="Static Core Attribute Identifier (UUID)" required />
+            <FormField id="value" name="value" label="Mutation Value" placeholder="e.g. 20V / Carbon" required />
+            <div class="sm:col-span-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-t border-gray-100 pt-4 mt-2">
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" name="isVerified" class="w-4 h-4 rounded-lg border-gray-300 text-brand-green focus:ring-brand-green" />
+                <span class="text-xs font-bold text-brand-dark">Enforce formal verification signature</span>
+              </label>
+              <button type="submit" class="bg-brand-dark text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-black transition-colors shadow-sm">
+                Set Registry Value
+              </button>
+            </div>
           </form>
         </section>
       </div>
     )}
   </div>
-</BaseLayout>
+</AdminLayout>
+

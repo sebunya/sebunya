@@ -1,0 +1,113 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/recommendations", 303);
+}
+
+const placements = [
+  { id: 'product_related', name: 'Related Products (PDP)', description: 'Horizontal scroll of compatible accessories based on current viewer target.' },
+  { id: 'cart_addon', name: 'Cart Addons (Basket)', description: 'Last-minute high-margin impulsey selections matching cart weights.' },
+  { id: 'home_trending', name: 'Trending Now (Homepage)', description: 'High engagement event-driven dynamic list of recent bestsellers.' },
+  { id: 'complete_setup', name: 'Complete the Setup (Post-Purchase)', description: 'Dynamic upsells that finish the current ecosystem requirement.' },
+  { id: 'category_popular', name: 'Category Popular (PLP)', description: 'Best performers isolated to a single category namespace filter.' },
+];
+---
+
+<AdminLayout 
+  title="Recommendations Overview" 
+  description="Configure V2 decisioning logic, overrides and algorithmic ranking boosts."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="mb-8 border-b border-gray-200 pb-6 flex justify-between items-start">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Recommendation Engine V2</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+          Operate deterministic merchandising overrides rather than unpredictable ML loops. Manage boosts, pins, suppression filters, and real-time rule conflicts across public commerce rails.
+        </p>
+      </div>
+      <div class="bg-brand-dark text-white px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold">
+        <div class="w-2 h-2 rounded-full bg-brand-green animate-pulse"></div>
+        <span>Active Cluster</span>
+      </div>
+    </div>
+
+    {/* Central Launchpads Grid */}
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+      <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+        <div>
+          <div class="text-3xl mb-3">📜</div>
+          <h3 class="font-black text-lg text-brand-dark">Rules Engine</h3>
+          <p class="text-xs text-gray-500 mt-1 leading-relaxed">Create boosts for slow inventory or pin seasonal promotional campaign targets.</p>
+        </div>
+        <div class="mt-6">
+          <a href="/admin/recommendations/rules" class="inline-block w-full bg-brand-dark text-white hover:bg-black text-center py-2.5 rounded-xl font-bold text-xs transition-colors">
+            Manage Active Rules
+          </a>
+        </div>
+      </div>
+
+      <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+        <div>
+          <div class="text-3xl mb-3">🧪</div>
+          <h3 class="font-black text-lg text-brand-dark">Sandbox Simulator</h3>
+          <p class="text-xs text-gray-500 mt-1 leading-relaxed">Test and preview ranking outputs without modifying production user parameters.</p>
+        </div>
+        <div class="mt-6">
+          <a href="/admin/recommendations/preview" class="inline-block w-full bg-brand-primary text-brand-charcoal hover:bg-opacity-90 text-center py-2.5 rounded-xl font-bold text-xs transition-opacity">
+            Launch Sandbox
+          </a>
+        </div>
+      </div>
+
+      <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between opacity-60">
+        <div>
+          <div class="text-3xl mb-3">📊</div>
+          <h3 class="font-black text-lg text-brand-dark">Analytics Pipeline</h3>
+          <p class="text-xs text-gray-500 mt-1 leading-relaxed">View click-through ratios, revenue attribution and placement dropoffs.</p>
+        </div>
+        <div class="mt-6">
+          <span class="inline-block w-full bg-gray-50 border border-gray-200 text-gray-500 text-center py-2.5 rounded-xl font-bold text-xs select-none cursor-not-allowed">
+            Coming Soon (Pass 13)
+          </span>
+        </div>
+      </div>
+    </div>
+
+    {/* Technical Placement Grid */}
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-10">
+      <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+        <div>
+          <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Active Embedded Placements</h3>
+          <p class="text-[10px] text-gray-500 mt-0.5">Front-facing view layers configured to pull from decisioning engine.</p>
+        </div>
+        <span class="text-[10px] bg-brand-green/10 text-brand-green font-black px-2 py-0.5 rounded uppercase tracking-wide">5 Verified Zones</span>
+      </div>
+      <div class="divide-y divide-gray-100">
+        {placements.map(p => (
+          <div class="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-50/50 transition-colors">
+            <div>
+              <h4 class="font-black text-sm text-brand-dark flex items-center gap-2">
+                {p.name}
+                <span class="font-mono text-[9px] bg-gray-100 text-gray-500 px-1 rounded border border-gray-200">{p.id}</span>
+              </h4>
+              <p class="text-xs text-gray-500 mt-1">{p.description}</p>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <a href={`/admin/recommendations/rules?placement=${p.id}`} class="text-[10px] font-bold text-gray-500 hover:text-brand-dark border border-gray-200 hover:border-gray-400 px-2.5 py-1.5 rounded-lg transition-all bg-white">
+                Filter Rules
+              </a>
+              <a href={`/admin/recommendations/preview?placement=${p.id}`} class="text-[10px] font-bold text-gray-500 hover:text-brand-dark border border-gray-200 hover:border-gray-400 px-2.5 py-1.5 rounded-lg transition-all bg-white">
+                Test View
+              </a>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+  </div>
+</AdminLayout>

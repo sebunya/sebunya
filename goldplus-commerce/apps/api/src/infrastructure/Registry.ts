@@ -1,4 +1,5 @@
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
+import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
 import { DrizzleDealerRepository } from './db/repositories/DrizzleDealerRepository';
@@ -44,6 +45,7 @@ import { RecommendationDeduplicationService } from '../application/recommendatio
 import { RecommendationDiversityService } from '../application/recommendations/RecommendationDiversityService';
 
 import { AddToCartUseCase } from '../application/use-cases/commerce/AddToCartUseCase';
+import { GetCartByIdUseCase } from '../application/use-cases/commerce/GetCartByIdUseCase';
 import { CheckoutUseCase } from '../application/use-cases/commerce/CheckoutUseCase';
 import { VerificationCheckUseCase } from '../application/use-cases/VerificationCheckUseCase';
 import { DealerApplicationUseCase } from '../application/use-cases/DealerApplicationUseCase';
@@ -65,6 +67,7 @@ export class Registry {
   
   // Repositories
   public readonly cartRepo = new DrizzleCartRepository();
+  public readonly cartQueryRepo = new DrizzleCartQueryRepository();
   public readonly orderRepo = new DrizzleOrderRepository();
   public readonly productRepo = new DrizzleProductRepository();
   public readonly dealerRepo = new DrizzleDealerRepository();
@@ -123,6 +126,7 @@ export class Registry {
 
   // Use Cases
   public readonly addToCartUseCase = new AddToCartUseCase(this.cartRepo);
+  public readonly getCartByIdUseCase = new GetCartByIdUseCase(this.cartQueryRepo);
   public readonly checkoutUseCase = new CheckoutUseCase(this.orderRepo);
   public readonly getProductListUseCase = new GetProductListUseCase(this.productRepo);
   public readonly getOrderListUseCase = new GetOrderListUseCase(this.orderRepo);

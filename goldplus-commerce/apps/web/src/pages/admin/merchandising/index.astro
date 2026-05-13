@@ -1,0 +1,101 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/merchandising", 303);
+}
+
+const modules = [
+  {
+    name: "Homepage Highlights",
+    status: "Live (Seeded)",
+    desc: "Two high-prominence, product-led promotional grids supporting Hero CTAs.",
+    details: "Managed deterministically in [seed.ts](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/scripts/seed.ts) and hydrated server-side."
+  },
+  {
+    name: "Featured Catalog Grid",
+    status: "Live (API)",
+    desc: "Standard top-page priority listings.",
+    details: "Automatically aggregates verified, active products from core database."
+  },
+  {
+    name: "Trending Now Placement",
+    status: "Live (Dynamic)",
+    desc: "Deduped feed generated via automated user engagement triggers.",
+    details: "Strictly managed via cross-section allocation algorithm preventing duplication."
+  }
+];
+---
+
+<AdminLayout 
+  title="Merchandising Control" 
+  description="Examine promotional surfaces, homepage highlights and flash sale readiness."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="mb-8 border-b border-gray-200 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Front-Facing Merchandising</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+          Oversee active marketing and catalog spotlights embedded throughout public user viewport templates.
+        </p>
+      </div>
+      <a href="/" target="_blank" class="bg-brand-dark hover:bg-black text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shadow-sm text-center">
+        Launch Public Preview &rarr;
+      </a>
+    </div>
+
+    {/* Technical Spotlight Overview */}
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+      
+      <div class="lg:col-span-2 space-y-6">
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+            <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Active Surfaces</h3>
+            <span class="text-[9px] bg-brand-green/10 text-brand-green font-black px-2 py-0.5 rounded uppercase border border-brand-green/20">3 Configured</span>
+          </div>
+          <div class="divide-y divide-gray-100">
+            {modules.map(m => (
+              <div class="p-6 hover:bg-gray-50/50 transition-colors flex justify-between gap-4 items-start">
+                <div class="space-y-1">
+                  <h4 class="font-black text-sm text-brand-dark">{m.name}</h4>
+                  <p class="text-xs text-gray-500 leading-relaxed max-w-md">{m.desc}</p>
+                  <p class="text-[10px] text-gray-400 font-mono pt-1 italic">{m.details}</p>
+                </div>
+                <span class="bg-gray-100 text-gray-600 border border-gray-200 text-[8px] font-black px-2 py-0.5 rounded-full tracking-wide whitespace-nowrap">
+                  {m.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        {/* Future Feature Readiness */}
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6" id="campaigns">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xs font-black uppercase tracking-widest text-gray-400">Surfaces Coming Soon</h3>
+            <span class="text-[8px] bg-gray-100 text-gray-400 font-bold px-1.5 py-0.5 rounded uppercase">Roadmap</span>
+          </div>
+          
+          <div class="space-y-4 mt-4">
+            <div class="opacity-70 border-l-2 border-gray-200 pl-3">
+              <h4 class="text-xs font-black text-brand-dark">Flash Sales / Timed Offers</h4>
+              <p class="text-[10px] text-gray-500 mt-0.5">Supports global timestamp triggers and real price markdown validations.</p>
+            </div>
+            
+            <div class="opacity-70 border-l-2 border-gray-200 pl-3" id="flash">
+              <h4 class="text-xs font-black text-brand-dark">Promotional Banners</h4>
+              <p class="text-[10px] text-gray-500 mt-0.5">Admin-editable image surfaces with schedule parameters and UTM links.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</AdminLayout>

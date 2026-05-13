@@ -4,16 +4,20 @@ import { apiBase } from '../lib/api';
 import ProductCard from '../components/ProductCard.astro';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
+import RecentlyViewedRail from '../components/recommendations/RecentlyViewedRail.astro';
+import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
+import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
 
-let featuredProducts: ProductPublicDto[] = [];
+let allProducts: ProductPublicDto[] = [];
 let hasApiError = false;
 
 try {
-  const res = await fetch(`${apiBase}/products?limit=4`, { signal: AbortSignal.timeout(3000) });
+  // Fetch higher depth limit to satisfy full homepage allocation without duplicates
+  const res = await fetch(`${apiBase}/products?limit=12`, { signal: AbortSignal.timeout(3000) });
   if (res.ok) {
     const json = await res.json() as ApiResponse<ProductPublicDto[]>;
     if (json.success) {
-      featuredProducts = json.data;
+      allProducts = json.data;
     }
   } else {
     hasApiError = true;
@@ -21,11 +25,25 @@ try {
 } catch {
   hasApiError = true;
 }
+
+// Execute cross-section deduplication and building of allocations
+const allocation = buildHomepageProductAllocation(allProducts);
+
+const featuredProducts = allocation.featuredProducts;
+const promoProduct = allocation.promoProduct;
+const todaysPickProduct = allocation.todaysPickProduct;
+
+// Collect all IDs consumed so far to strictly isolate Trending Now
+const usedProductIds = [
+  ...featuredProducts.map(p => p.id),
+  promoProduct?.id,
+  todaysPickProduct?.id,
+].filter((id): id is string => typeof id === 'string');
 ---
 
 <BaseLayout title="Premium electronics — Uganda">
 
-  {/* Hero */}
+  {/* 1. Hero */}
   <section class="bg-brand-softGrey flex-grow flex flex-col justify-center items-center text-center px-4 py-20 lg:py-32 border-b border-brand-borderGrey">
     <div class="max-w-3xl mx-auto">
       <span class="inline-block py-1 px-3 rounded-full bg-brand-primary/15 text-brand-charcoal text-sm font-bold tracking-wide uppercase mb-6">
@@ -49,8 +67,13 @@ try {
     </div>
   </section>
 
-  {/* Trust */}
-  <section class="bg-white py-12 border-b border-brand-borderGrey">
+  {/* 2. Pick Up Where You Left Off (Returning Visitors Only) */}
+  <div id="homepage-recovery-strip" class="container mx-auto px-4 lg:px-8">
+    <RecentlyViewedRail />
+  </div>
+
+  {/* 3. Trust strip (New Visitors Only, hidden client-side if returning) */}
+  <section id="homepage-trust-strip" class="bg-white py-12 border-b border-brand-borderGrey">
     <div class="container mx-auto px-4 lg:px-8">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
         <div>
@@ -69,7 +92,10 @@ try {
     </div>
   </section>
 
-  {/* Categories */}
+  {/* 4. HomeCommerceHighlights */}
+  <HomeCommerceHighlights promoProduct={promoProduct} todaysPickProduct={todaysPickProduct} />
+
+  {/* 5. Shop by Category */}
   <section class="bg-brand-softGrey py-16">
     <div class="container mx-auto px-4 lg:px-8">
       <h2 class="text-3xl font-black tracking-tight text-brand-charcoal mb-8 text-center">Shop by category</h2>
@@ -96,7 +122,7 @@ try {
     </div>
   </section>
 
-  {/* Featured products */}
+  {/* 6. Featured products */}
   <section class="bg-white py-16 border-t border-brand-borderGrey">
     <div class="container mx-auto px-4 lg:px-8">
       <div class="flex items-center justify-between mb-8">
@@ -110,7 +136,7 @@ try {
            <a href="/shop" class="inline-block mt-4 text-brand-charcoal font-bold underline">Browse Catalog</a>
         </div>
       ) : featuredProducts.length > 0 ? (
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
           {featuredProducts.map((p) => (
             <ProductCard product={p} />
           ))}
@@ -123,14 +149,10 @@ try {
     </div>
   </section>
 
-  {/* Trending Recommendations */}
-  <section class="bg-brand-softGrey py-16 border-t border-brand-borderGrey">
-    <div class="container mx-auto px-4 lg:px-8">
-      <PopularNowRail />
-    </div>
-  </section>
+  {/* 7. Trending Now (with Cross-Section Deduplication) */}
+  <PopularNowRail excludeProductIds={usedProductIds} useContainerWrapper={true} />
 
-  {/* Business pathways */}
+  {/* 8. Business pathways */}
   <section class="bg-brand-charcoal text-white py-16">
     <div class="container mx-auto px-4 lg:px-8">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -154,3 +176,20 @@ try {
   </section>
 
 </BaseLayout>
+
+<script>
+  import { hasSeenBefore, handleUserVisitState } from "../lib/returning-user";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const trustStrip = document.getElementById("homepage-trust-strip");
+    
+    // First-party lock check: If they are a confirmed returning visitor, hide the Trust Strip
+    if (trustStrip && hasSeenBefore()) {
+      trustStrip.style.display = "none";
+    }
+
+    // Run user state persistence so this visit transitions them to "returning" for subsequent navigations
+    handleUserVisitState();
+  });
+</script>
+

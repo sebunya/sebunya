@@ -1,0 +1,170 @@
+---
+import '../styles/global.css';
+import { ADMIN_NAVIGATION } from '../lib/admin-navigation';
+
+interface Props {
+  title: string;
+  description?: string;
+  activePath?: string;
+}
+
+const {
+  title,
+  description = 'GoldPlus Commerce — Administration and Control Centre',
+  activePath,
+} = Astro.props;
+
+const currentPath = activePath ?? Astro.url.pathname;
+
+// Custom active indicator logic
+const isPathActive = (href: string) => {
+  if (href === '/admin') return currentPath === '/admin';
+  return currentPath.startsWith(href);
+};
+---
+
+<!doctype html>
+<html lang="en-UG" class="h-full bg-gray-900 text-gray-100 selection:bg-brand-primary selection:text-brand-charcoal antialiased">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title} | GoldPlus Admin</title>
+    <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0A0A0A" />
+    <slot name="head" />
+  </head>
+  <body class="h-full flex overflow-hidden font-sans">
+    
+    {/* Persistent Left Sidebar Navigation */}
+    <aside class="hidden lg:flex lg:flex-shrink-0">
+      <div class="flex flex-col w-64 bg-black border-r border-gray-800">
+        
+        {/* Sidebar Header / Brand */}
+        <div class="flex items-center h-16 px-6 border-b border-gray-800 bg-black">
+          <a href="/admin" class="flex items-center gap-2 group outline-none">
+            <div class="w-5 h-5 rounded-md bg-brand-primary flex items-center justify-center">
+              <span class="text-brand-charcoal font-black text-xs leading-none">G</span>
+            </div>
+            <span class="text-base font-black tracking-wider text-white uppercase">
+              GP <span class="text-brand-primary font-medium">Control</span>
+            </span>
+          </a>
+        </div>
+
+        {/* Sidebar Scrollable Navigation List */}
+        <nav class="flex-1 px-4 py-6 space-y-8 overflow-y-auto no-scrollbar select-none">
+          {ADMIN_NAVIGATION.map((group) => (
+            <div class="space-y-2">
+              <h3 class="px-3 text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                {group.title}
+              </h3>
+              <div class="space-y-1">
+                {group.items.map((item) => {
+                  const isActive = isPathActive(item.href);
+                  const isComing = item.status === 'coming_soon' || item.status === 'needs_api';
+                  return (
+                    <a
+                      href={isComing && item.href.startsWith('#') ? '#' : item.href}
+                      class={`group flex items-center justify-between px-3 py-2 text-xs font-bold rounded-lg transition-all ${
+                        isActive
+                          ? 'bg-brand-primary text-brand-charcoal'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+                      } ${isComing ? 'opacity-60 hover:opacity-100' : ''}`}
+                      title={item.description}
+                    >
+                      <span>{item.label}</span>
+                      
+                      {isComing && (
+                        <span class={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider whitespace-nowrap border ${
+                          isActive
+                            ? 'border-brand-charcoal/20 bg-brand-charcoal/10 text-brand-charcoal'
+                            : 'border-gray-700 bg-gray-800 text-gray-500'
+                        }`}>
+                          {item.status === 'needs_api' ? 'Needs API' : 'Soon'}
+                        </span>
+                      )}
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {/* Sidebar Footer / Quick Actions */}
+        <div class="p-4 border-t border-gray-800 bg-gray-950 flex items-center justify-between text-xs text-gray-500">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full bg-brand-green animate-pulse"></div>
+            <span class="font-medium tracking-wide uppercase text-[9px]">Live Cluster</span>
+          </div>
+          <a href="/" class="text-gray-500 hover:text-brand-primary transition-colors font-bold text-[10px] uppercase">
+            View Store &rarr;
+          </a>
+        </div>
+
+      </div>
+    </aside>
+
+    {/* Main Content Viewport Controller */}
+    <div class="flex flex-col flex-1 w-0 overflow-hidden bg-gray-950">
+      
+      {/* Top Header Container */}
+      <header class="relative z-10 flex flex-shrink-0 h-16 bg-black border-b border-gray-800">
+        
+        {/* Left: Responsive Header Elements / Title */}
+        <div class="flex-1 flex items-center justify-between px-6 lg:px-8">
+          <div class="flex items-center gap-4">
+            <h1 class="text-lg font-black tracking-tight text-white">
+              {title}
+            </h1>
+            {description && (
+              <span class="hidden xl:inline-block text-xs font-medium text-gray-500 border-l border-gray-800 pl-4 py-1">
+                {description}
+              </span>
+            )}
+          </div>
+
+          {/* Right: Session Status & Utilities */}
+          <div class="flex items-center gap-4">
+            
+            <div class="flex items-center gap-2.5 bg-gray-900/80 px-3.5 py-1.5 rounded-full border border-gray-800 shadow-sm select-none">
+              <div class="w-5 h-5 rounded-full bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary font-black text-[10px] uppercase tracking-wider">
+                A
+              </div>
+              <span class="text-xs font-bold text-gray-300">Administrator</span>
+            </div>
+
+            <button
+              id="admin-logout-btn"
+              type="button"
+              class="text-xs font-bold text-gray-500 hover:text-red-400 transition-colors px-2 py-1 select-none"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+
+      </header>
+
+      {/* Scrolling Area for Specific Page Content */}
+      <main class="flex-1 relative overflow-y-auto focus:outline-none bg-gray-50 text-brand-dark">
+        <div class="py-8">
+          <slot />
+        </div>
+      </main>
+
+    </div>
+
+    <script>
+      // Handle administrative logout directly client-side by clearing authentication cookie
+      document.getElementById('admin-logout-btn')?.addEventListener('click', () => {
+        if (confirm('Confirm action: Securely terminate administrative active session?')) {
+          document.cookie = "goldplus_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+          window.location.href = '/admin/login';
+        }
+      });
+    </script>
+  </body>
+</html>

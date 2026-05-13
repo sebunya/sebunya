@@ -1,12 +1,15 @@
 ---
-import BaseLayout from '../../../layouts/BaseLayout.astro';
-import AdminPageHeader from '../../../components/AdminPageHeader.astro';
-import AdminTable from '../../../components/AdminTable.astro';
-import StatusBadge from '../../../components/StatusBadge.astro';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
 import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { tryFetchAdminList } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
 import { SAMPLE_PAYMENTS, type SamplePayment } from '../../../lib/sample-data';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/payments", 303);
+}
 
 const fallbackPayments: SamplePayment[] = [];
 
@@ -25,16 +28,23 @@ const statusToBadge: Record<SamplePayment['status'], { variant: 'pending' | 'inf
 const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
 ---
 
-<BaseLayout title="Payments Ledger — Admin">
-  <div class="container mx-auto px-4 lg:px-8 py-10">
-    <AdminPageHeader
-      title="Payment Ledger"
-      description="View status of inbound payments and verify idempotency locks on delivery webhooks."
-    />
+<AdminLayout 
+  title="Payment Ledger" 
+  description="Examine webhook capture registries."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Payment Streams</h2>
+        <p class="text-sm text-gray-500 mt-1">Monitor real-time webhook ingress records and idempotent capture statuses.</p>
+      </div>
+    </div>
 
     {result.isSample && (
-      <div class="mb-6">
-        <Notice kind="sample" message={result.reason} />
+      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4">
+        <span class="text-2xl">💡</span>
+        <div class="text-xs leading-relaxed"><strong>Offline Sandbox Note:</strong> {result.reason}</div>
       </div>
     )}
 
@@ -44,28 +54,53 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
         message="Incoming transactional webhooks will form rows within this view."
       />
     ) : (
-      <AdminTable caption="Global Payments Log">
-        <Fragment slot="head">
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">ID</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Provider</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Order ID</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Amount</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-center">Status</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Timestamp</th>
-        </Fragment>
-        {result.items.map((p) => (
-          <tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="px-6 py-4 font-mono text-xs font-bold text-brand-dark">{p.id.substring(0, 12)}</td>
-            <td class="px-6 py-4 uppercase text-xs font-black text-gray-600">{p.provider}</td>
-            <td class="px-6 py-4 text-gray-700 font-mono text-xs">{p.orderId}</td>
-            <td class="px-6 py-4 font-bold text-brand-dark">{formatter.format(p.amount)}</td>
-            <td class="px-6 py-4 text-center">
-              <StatusBadge status={statusToBadge[p.status].variant} label={statusToBadge[p.status].label} />
-            </td>
-            <td class="px-6 py-4 text-gray-500 text-xs">{new Date(p.createdAt).toLocaleString('en-GB')}</td>
-          </tr>
-        ))}
-      </AdminTable>
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+                <th class="p-6">Transaction Key</th>
+                <th class="p-6">Provider</th>
+                <th class="p-6">Internal Order Reference</th>
+                <th class="p-6 text-right">Value</th>
+                <th class="p-6 text-center">State</th>
+                <th class="p-6 text-right">Processed</th>
+              </tr>
+            </thead>
+            <tbody class="text-xs divide-y divide-gray-50">
+              {result.items.map((p) => (
+                <tr class="hover:bg-gray-50 transition-colors">
+                  <td class="p-6 font-mono font-bold text-brand-dark text-[10px]">
+                    {p.id.substring(0, 12)}
+                  </td>
+                  <td class="p-6 uppercase font-black tracking-wide text-[9px] text-gray-600">
+                    {p.provider}
+                  </td>
+                  <td class="p-6 font-mono text-gray-500 text-[10px]">
+                    {p.orderId}
+                  </td>
+                  <td class="p-6 text-right font-black text-brand-dark text-sm font-mono">
+                    {formatter.format(p.amount)}
+                  </td>
+                  <td class="p-6 text-center">
+                    <span class={`inline-block px-2.5 py-0.5 rounded font-black text-[9px] uppercase tracking-wide border ${
+                      statusToBadge[p.status].variant === 'success' ? 'bg-green-50 text-green-700 border-green-100' :
+                      statusToBadge[p.status].variant === 'pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
+                      'bg-gray-50 text-gray-700 border-gray-100'
+                    }`}>
+                      {statusToBadge[p.status].label}
+                    </span>
+                  </td>
+                  <td class="p-6 text-right font-mono text-gray-400 text-[10px]">
+                    {new Date(p.createdAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     )}
   </div>
-</BaseLayout>
+</AdminLayout>
+

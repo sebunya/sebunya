@@ -1,0 +1,149 @@
+---
+import type { ProductPublicDto } from "@goldplus/shared";
+
+/**
+ * HomeCommerceHighlights.astro
+ * A compact, responsive two-card product-led merchandising row for the homepage.
+ * Uses genuine product candidates with native price formatting and zero fake urgency tags.
+ */
+interface Props {
+  promoProduct: ProductPublicDto | null;
+  todaysPickProduct: ProductPublicDto | null;
+}
+
+const { promoProduct, todaysPickProduct } = Astro.props;
+
+// If both sections are hidden due to deduplication constraints, skip rendering the entire row
+if (!promoProduct && !todaysPickProduct) {
+  return null;
+}
+
+function getFormattedPrice(p: ProductPublicDto) {
+  return (typeof p.retailPriceUgx === "number" && p.retailPriceUgx > 0)
+    ? `USh ${p.retailPriceUgx.toLocaleString("en-UG")}`
+    : "Price on request";
+}
+
+// Helper to extract high-level category type for empty placeholder fallback states
+function getProductType(p: ProductPublicDto) {
+  const lowerName = p.name.toLowerCase();
+  if (lowerName.includes("charger")) return "Charger";
+  if (lowerName.includes("earbud") || lowerName.includes("headphone") || lowerName.includes("sound")) return "Earbuds";
+  if (lowerName.includes("cable")) return "Cable";
+  if (lowerName.includes("power bank")) return "Power Bank";
+  if (lowerName.includes("drive") || lowerName.includes("sd") || lowerName.includes("storage")) return "Storage";
+  return "Accessory";
+}
+---
+
+<section class="py-12 border-b border-brand-borderGrey bg-brand-softGrey">
+  <div class="container mx-auto px-4 lg:px-8">
+    <div class={`grid grid-cols-1 gap-6 ${promoProduct && todaysPickProduct ? 'md:grid-cols-2' : 'max-w-3xl mx-auto'}`}>
+      
+      {/* Card 1: Promo / Campaign Product Card */}
+      {promoProduct && (
+        <div class="bg-brand-charcoal text-white rounded-2xl p-6 sm:p-8 flex flex-col justify-between border border-brand-borderGrey min-h-[280px] shadow-sm relative overflow-hidden group hover:border-brand-primary/40 transition-all">
+          <div class="flex flex-col sm:flex-row gap-6 items-start relative z-10">
+            
+            {/* Dynamic Product Image Box */}
+            <div class="w-24 h-24 sm:w-32 sm:h-32 bg-white/5 rounded-xl flex-shrink-0 overflow-hidden relative border border-white/10">
+              {promoProduct.primaryImageUrl ? (
+                <img
+                  src={promoProduct.primaryImageUrl}
+                  alt={promoProduct.name}
+                  class="object-cover w-full h-full transition-transform group-hover:scale-105"
+                  loading="lazy"
+                />
+              ) : (
+                <div class="absolute inset-0 flex flex-col items-center justify-center text-center p-2 select-none bg-white/5">
+                  <svg class="w-6 h-6 mb-1 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                  <span class="text-[8px] font-bold text-white/40 uppercase tracking-wider">{getProductType(promoProduct)}</span>
+                </div>
+              )}
+            </div>
+
+            <div class="flex-grow min-w-0">
+              <span class="inline-block text-brand-primary font-black uppercase tracking-widest text-[10px] mb-2">
+                Verified GoldPlus Pick
+              </span>
+              <h3 class="text-xl lg:text-2xl font-black tracking-tight mb-2 leading-tight text-white line-clamp-2 group-hover:text-brand-primary transition-colors">
+                <a href={`/products/${promoProduct.slug}`} class="outline-none focus:underline">
+                  {promoProduct.name}
+                </a>
+              </h3>
+              <p class="text-brand-mutedGrey text-xs sm:text-sm leading-relaxed mb-3 font-medium">
+                Authentic GoldPlus electronics, verified before you buy.
+              </p>
+              <p class={`font-black text-lg ${promoProduct.retailPriceUgx ? 'text-brand-primary' : 'text-brand-mutedGrey font-bold text-sm'}`}>
+                {getFormattedPrice(promoProduct)}
+              </p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-4 mt-6 pt-4 border-t border-white/5 relative z-10">
+            <a href={`/products/${promoProduct.slug}`} class="bg-brand-primary text-brand-charcoal px-5 py-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-charcoal">
+              View product
+            </a>
+            <a href="/verification" class="text-brand-mutedGrey hover:text-white font-semibold text-xs sm:text-sm underline decoration-2 underline-offset-4 transition-colors">
+              Verify product
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Card 2: Today's GoldPlus Picks Product Card */}
+      {todaysPickProduct && (
+        <div class="bg-white text-brand-charcoal rounded-2xl p-6 sm:p-8 flex flex-col justify-between border-2 border-brand-primary/10 min-h-[280px] shadow-sm relative overflow-hidden group hover:border-brand-primary/60 transition-all">
+          {/* Subtle decorative background motif */}
+          <div class="absolute top-0 right-0 -mt-6 -mr-6 w-24 h-24 bg-brand-primary/5 rounded-full blur-2xl group-hover:bg-brand-primary/10 transition-all"></div>
+          
+          <div class="flex flex-col sm:flex-row gap-6 items-start relative z-10">
+            
+            {/* Dynamic Product Image Box */}
+            <div class="w-24 h-24 sm:w-32 sm:h-32 bg-brand-softGrey rounded-xl flex-shrink-0 overflow-hidden relative border border-brand-borderGrey">
+              {todaysPickProduct.primaryImageUrl ? (
+                <img
+                  src={todaysPickProduct.primaryImageUrl}
+                  alt={todaysPickProduct.name}
+                  class="object-cover w-full h-full transition-transform group-hover:scale-105"
+                  loading="lazy"
+                />
+              ) : (
+                <div class="absolute inset-0 flex flex-col items-center justify-center text-center p-2 select-none bg-brand-softGrey">
+                  <svg class="w-6 h-6 mb-1 text-brand-mutedGrey/30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                  <span class="text-[8px] font-bold text-brand-mutedGrey tracking-wider uppercase">{getProductType(todaysPickProduct)}</span>
+                </div>
+              )}
+            </div>
+
+            <div class="flex-grow min-w-0">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse"></span>
+                <span class="text-brand-mutedGrey font-bold tracking-wider text-[10px] uppercase">Today's GoldPlus Pick</span>
+              </div>
+              <h3 class="text-xl lg:text-2xl font-black tracking-tight mb-2 leading-tight text-brand-charcoal line-clamp-2 group-hover:text-brand-primary transition-colors">
+                <a href={`/products/${todaysPickProduct.slug}`} class="outline-none focus:underline">
+                  {todaysPickProduct.name}
+                </a>
+              </h3>
+              <p class="text-brand-mutedGrey text-xs sm:text-sm leading-relaxed mb-3 font-medium">
+                Selected product worth checking out.
+              </p>
+              <p class={`font-black text-lg ${todaysPickProduct.retailPriceUgx ? 'text-brand-charcoal' : 'text-brand-mutedGrey font-bold text-sm'}`}>
+                {getFormattedPrice(todaysPickProduct)}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-6 pt-4 border-t border-brand-borderGrey flex items-center relative z-10">
+            <a href={`/products/${todaysPickProduct.slug}`} class="inline-flex items-center justify-center bg-brand-charcoal text-white px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-black transition-colors group-hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-charcoal focus:ring-offset-2">
+              Explore pick
+              <svg class="w-4 h-4 ml-2 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </a>
+          </div>
+        </div>
+      )}
+
+    </div>
+  </div>
+</section>

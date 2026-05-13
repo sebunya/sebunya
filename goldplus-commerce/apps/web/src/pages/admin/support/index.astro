@@ -1,12 +1,16 @@
 ---
-import BaseLayout from '../../../layouts/BaseLayout.astro';
-import AdminPageHeader from '../../../components/AdminPageHeader.astro';
-import AdminTable from '../../../components/AdminTable.astro';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
 import StatusBadge from '../../../components/StatusBadge.astro';
 import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { tryFetchAdminList } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
 import { SAMPLE_SUPPORT_TICKETS, type SampleSupportTicket } from '../../../lib/sample-data';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/support", 303);
+}
 
 const result = await tryFetchAdminList<SampleSupportTicket>(
   '/governance/admin/support',
@@ -35,16 +39,28 @@ const typeLabel: Record<SampleSupportTicket['type'], string> = {
 };
 ---
 
-<BaseLayout title="Support tickets — Admin">
-  <div class="container mx-auto px-4 lg:px-8 py-10">
-    <AdminPageHeader
-      title="Support tickets"
-      description="Customer-reported issues, fake-product reports and general inquiries."
-    />
+<AdminLayout 
+  title="Support Tickets" 
+  description="Assist users with technical difficulties and support cases."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Customer Support</h2>
+        <p class="text-sm text-gray-500 mt-1">Inspect customer reported technical issues and verified fake-product incident queues.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
+          CASES: {result.items.length}
+        </span>
+      </div>
+    </div>
 
     {result.isSample && (
-      <div class="mb-6">
-        <Notice kind="sample" message={result.reason} />
+      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4">
+        <span class="text-2xl">💡</span>
+        <div class="text-xs leading-relaxed"><strong>Offline Sandbox Note:</strong> {result.reason}</div>
       </div>
     )}
 
@@ -54,24 +70,57 @@ const typeLabel: Record<SampleSupportTicket['type'], string> = {
         message="Reports submitted at /support/issue and /support/fake will appear here."
       />
     ) : (
-      <AdminTable caption={`Last ${result.items.length} tickets`}>
-        <Fragment slot="head">
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Subject</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Type</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Priority</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Status</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Created</th>
-        </Fragment>
-        {result.items.map((t) => (
-          <tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="px-6 py-4 font-bold text-brand-dark">{t.subject}</td>
-            <td class="px-6 py-4 text-gray-700 text-xs uppercase tracking-widest">{typeLabel[t.type]}</td>
-            <td class="px-6 py-4"><StatusBadge status={priorityBadge[t.priority]} label={t.priority} /></td>
-            <td class="px-6 py-4"><StatusBadge status={statusBadge[t.status]} label={t.status} /></td>
-            <td class="px-6 py-4 text-gray-500 text-xs">{new Date(t.createdAt).toLocaleDateString('en-GB')}</td>
-          </tr>
-        ))}
-      </AdminTable>
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+                <th class="p-6">Topic / Subject</th>
+                <th class="p-6">Type</th>
+                <th class="p-6 text-center">Priority</th>
+                <th class="p-6 text-center">State</th>
+                <th class="p-6">Logged</th>
+              </tr>
+            </thead>
+            <tbody class="text-xs divide-y divide-gray-50">
+              {result.items.map((t) => (
+                <tr class="hover:bg-gray-50 transition-colors">
+                  <td class="p-6 font-bold text-brand-dark text-sm">
+                    {t.subject}
+                  </td>
+                  <td class="p-6 text-gray-600 font-medium uppercase tracking-wider text-[10px]">
+                    {typeLabel[t.type]}
+                  </td>
+                  <td class="p-6 text-center">
+                    <span class={`inline-block px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide border ${
+                      priorityBadge[t.priority] === 'danger' ? 'bg-red-50 text-red-700 border-red-100' :
+                      priorityBadge[t.priority] === 'warning' ? 'bg-orange-50 text-orange-700 border-orange-100' :
+                      priorityBadge[t.priority] === 'info' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                      'bg-gray-50 text-gray-700 border-gray-100'
+                    }`}>
+                      {t.priority}
+                    </span>
+                  </td>
+                  <td class="p-6 text-center">
+                    <span class={`inline-block px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide border ${
+                      statusBadge[t.status] === 'success' ? 'bg-green-50 text-green-700 border-green-100' :
+                      statusBadge[t.status] === 'warning' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
+                      statusBadge[t.status] === 'pending' ? 'bg-orange-50 text-orange-700 border-orange-100' :
+                      'bg-gray-50 text-gray-700 border-gray-100'
+                    }`}>
+                      {t.status}
+                    </span>
+                  </td>
+                  <td class="p-6 text-gray-500 font-medium">
+                    {new Date(t.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     )}
   </div>
-</BaseLayout>
+</AdminLayout>
+

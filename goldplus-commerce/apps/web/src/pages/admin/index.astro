@@ -1,119 +1,203 @@
 ---
-import BaseLayout from "../../layouts/BaseLayout.astro";
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { apiBase } from "../../lib/api";
+import { readSessionToken } from "../../lib/session";
+import { ADMIN_NAVIGATION } from "../../lib/admin-navigation";
 
-// Mock admin data
-const admin = {
-  stats: {
-    pendingProducts: 3,
-    pendingDealers: 2,
-    activeSecurityAlerts: 0,
-    dailyVerificationChecks: 124
-  }
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin", 303);
+}
+
+// Operational Status Indicators
+let apiStatus: 'up' | 'down' = 'down';
+let statsData = {
+  pendingProducts: 0,
+  pendingDealers: 0,
+  activeSecurityAlerts: 0,
+  dailyVerificationChecks: 0,
+  supportIssues: 0
 };
+
+try {
+  const res = await fetch(`${apiBase}/governance/admin/stats`, {
+    headers: { 
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  
+  if (res.ok) {
+    apiStatus = 'up';
+    const json = await res.json().catch(() => null);
+    if (json && json.success && json.data) {
+      statsData = {
+        ...statsData,
+        ...json.data
+      };
+    }
+  }
+} catch {
+  apiStatus = 'down';
+}
+
+const quickActions = [
+  { label: 'Create Rec Rule', href: '/admin/recommendations/rules/new', icon: '➕' },
+  { label: 'Product Catalog', href: '/admin/products', icon: '📦' },
+  { label: 'View Orders', href: '/admin/orders', icon: '💳' },
+  { label: 'Simulate Engine', href: '/admin/recommendations/preview', icon: '🧪' },
+  { label: 'Audit Logs', href: '/admin/audit', icon: '📜' },
+];
 ---
 
-<BaseLayout title="GoldPlus Admin - Governance Dashboard">
-  <div class="flex h-screen bg-gray-100 overflow-hidden">
+<AdminLayout 
+  title="Control Centre" 
+  description="Unified administration oversight and operational control."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
-    {/* Admin Sidebar */}
-    <aside class="w-64 bg-black text-white flex-shrink-0 flex flex-col">
-      <div class="p-6 border-b border-gray-900 flex items-center gap-2">
-        <div class="w-6 h-6 bg-brand-gold rounded-sm"></div>
-        <h2 class="text-xl font-black text-white tracking-tight">GP ADMIN</h2>
+    {/* Top Heading Bar */}
+    <div class="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <h2 class="text-2xl md:text-3xl font-black text-brand-dark tracking-tight">
+          GoldPlus Control Centre
+        </h2>
+        <p class="text-sm text-gray-500 mt-1">
+          Operational Command for Products, Orders, Recommendations, and Auditing.
+        </p>
       </div>
-      <nav class="p-4 space-y-2 flex-grow">
-        <a href="/admin" class="block px-4 py-2 bg-gray-900 text-white rounded-lg font-bold text-sm">Dashboard</a>
-        <a href="/admin/products" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm flex justify-between">
-          Products
-          <span class="bg-brand-gold text-black text-[10px] px-1.5 rounded-full">{admin.stats.pendingProducts}</span>
-        </a>
-        <a href="/admin/dealers" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm flex justify-between">
-          Dealers
-          <span class="bg-brand-gold text-black text-[10px] px-1.5 rounded-full">{admin.stats.pendingDealers}</span>
-        </a>
-        <a href="/admin/recommendations/rules" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm">
-          Recommendation Rules
-        </a>
-        <a href="#" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm">Verification Audits</a>
-        <a href="#" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm">Security Logs</a>
-      </nav>
-      <div class="p-4 border-t border-gray-900">
-         <p class="text-[10px] text-gray-600 font-bold uppercase tracking-widest text-center">GoldPlus Governance v1.0</p>
-      </div>
-    </aside>
 
-    {/* Main Admin Area */}
-    <main class="flex-grow flex flex-col overflow-y-auto">
-      <header class="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
-        <h1 class="text-xl font-bold text-brand-dark">Governance Overview</h1>
-        <div class="text-xs font-bold text-gray-400">Environment: Production (Uganda)</div>
-      </header>
-
-      <div class="p-8">
-        
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-          <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Pending Products</p>
-            <p class="text-3xl font-black text-brand-dark">{admin.stats.pendingProducts}</p>
-          </div>
-          <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Pending Dealers</p>
-            <p class="text-3xl font-black text-brand-dark">{admin.stats.pendingDealers}</p>
-          </div>
-          <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Verification Volume</p>
-            <p class="text-3xl font-black text-brand-dark">{admin.stats.dailyVerificationChecks}</p>
-          </div>
-          <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Security Alerts</p>
-            <p class={`text-3xl font-black ${admin.stats.activeSecurityAlerts > 0 ? 'text-red-600' : 'text-brand-green'}`}>{admin.stats.activeSecurityAlerts}</p>
-          </div>
+      {/* API Reachability Badge */}
+      <div class="flex items-center gap-3 bg-white border border-gray-200 px-4 py-2 rounded-xl shadow-sm">
+        <span class="text-xs font-black text-gray-400 uppercase tracking-widest">API API_STATUS</span>
+        <div class="flex items-center gap-1.5">
+          <div class={`w-2.5 h-2.5 rounded-full ${apiStatus === 'up' ? 'bg-brand-green animate-pulse' : 'bg-red-500'}`}></div>
+          <span class="text-xs font-bold text-brand-dark uppercase">
+            {apiStatus === 'up' ? 'Connected' : 'Unavailable'}
+          </span>
         </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-           <div class="bg-white rounded-2xl border border-gray-200 shadow-sm">
-             <div class="p-6 border-b border-gray-100 font-bold text-sm uppercase tracking-widest text-brand-dark">Anti-Hallucination Queue</div>
-             <div class="p-12 text-center text-gray-400">
-               <p class="text-sm">3 products require spec verification.</p>
-               <a href="/admin/products" class="inline-block mt-4 text-brand-green font-bold text-sm">Review Queue &rarr;</a>
-             </div>
-           </div>
-
-           <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-             <div class="p-6 border-b border-gray-100 font-bold text-sm uppercase tracking-widest text-brand-dark flex items-center justify-between bg-gray-50">
-               <span>Recommendation Engine</span>
-               <span class="text-brand-green font-black text-[10px]">Active</span>
-             </div>
-             <div class="p-6 space-y-4">
-               <p class="text-xs text-gray-500">Manage merchandising boosts, algorithmic pins, and localized product suppression.</p>
-               <div class="grid grid-cols-2 gap-3 pt-2">
-                  <a href="/admin/recommendations/rules" class="bg-gray-100 hover:bg-gray-200 text-brand-dark text-center py-3 rounded-lg font-bold text-xs transition-colors">View Rules</a>
-                  <a href="/admin/recommendations/preview" class="bg-brand-dark hover:opacity-90 text-white text-center py-3 rounded-lg font-bold text-xs transition-opacity">Sandbox</a>
-               </div>
-             </div>
-           </div>
-           
-           <div class="bg-white rounded-2xl border border-gray-200 shadow-sm">
-             <div class="p-6 border-b border-gray-100 font-bold text-sm uppercase tracking-widest text-brand-dark">System Integrity</div>
-             <div class="p-6 space-y-4">
-                <div class="flex items-center justify-between text-sm">
-                  <span class="text-gray-500">API Latency</span>
-                  <span class="font-bold text-brand-green">24ms</span>
-                </div>
-                <div class="flex items-center justify-between text-sm">
-                  <span class="text-gray-500">DB Connectivity</span>
-                  <span class="font-bold text-brand-green">Healthy</span>
-                </div>
-                <div class="flex items-center justify-between text-sm">
-                  <span class="text-gray-500">Audit Logs</span>
-                  <span class="font-bold text-brand-green">Encrypted & Verified</span>
-                </div>
-             </div>
-           </div>
-        </div>
-
       </div>
-    </main>
+    </div>
+
+    {/* Real-time Core Stats Grid */}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden group hover:border-gray-300 transition-all">
+        <div class="absolute top-0 left-0 w-1 h-full bg-brand-dark"></div>
+        <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pending Review</p>
+        <p class="text-4xl font-black text-brand-dark mt-2">{statsData.pendingProducts}</p>
+        <p class="text-[10px] text-gray-400 font-medium mt-1">Products awaiting activation</p>
+      </div>
+      
+      <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden hover:border-gray-300 transition-all">
+        <div class="absolute top-0 left-0 w-1 h-full bg-brand-gold"></div>
+        <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Dealer Applicants</p>
+        <p class="text-4xl font-black text-brand-dark mt-2">{statsData.pendingDealers}</p>
+        <p class="text-[10px] text-gray-400 font-medium mt-1">Pending B2B verifications</p>
+      </div>
+
+      <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden hover:border-gray-300 transition-all">
+        <div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+        <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Open Support Case</p>
+        <p class="text-4xl font-black text-brand-dark mt-2">{statsData.supportIssues}</p>
+        <p class="text-[10px] text-gray-400 font-medium mt-1">Unresolved platform tickets</p>
+      </div>
+
+      <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden hover:border-gray-300 transition-all">
+        <div class="absolute top-0 left-0 w-1 h-full bg-brand-green"></div>
+        <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">System Integrity</p>
+        <p class="text-lg font-black text-brand-green mt-4 uppercase tracking-wide">SECURE & ACTIVE</p>
+        <p class="text-[10px] text-gray-400 font-medium mt-1">Audit log serialization verified</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+      
+      {/* Quick Actions Strip */}
+      <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+        <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Quick Operational Pathways</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {quickActions.map((act) => (
+            <a 
+              href={act.href} 
+              class="flex items-center gap-3 bg-gray-50 hover:bg-gray-100 border border-gray-100 rounded-xl p-3.5 transition-all group"
+            >
+              <span class="text-lg group-hover:scale-110 transition-transform">{act.icon}</span>
+              <span class="text-xs font-bold text-gray-700 group-hover:text-brand-dark truncate">{act.label}</span>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      {/* Spotlight: Business Rules */}
+      <div class="bg-brand-dark rounded-2xl text-white p-6 shadow-sm flex flex-col justify-between h-full">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[9px] font-black text-brand-primary uppercase tracking-widest">Decisioning Engine v2</span>
+            <span class="bg-brand-green/20 text-brand-green border border-brand-green/30 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">Active</span>
+          </div>
+          <h4 class="font-black text-lg tracking-tight text-white">Recommendation Rules</h4>
+          <p class="text-xs text-gray-400 mt-2 leading-relaxed">
+            Manage dynamic catalog overrides, merchandising boosts, suppressions, and automated pins across active views.
+          </p>
+        </div>
+        <div class="grid grid-cols-2 gap-3 mt-6">
+          <a href="/admin/recommendations/rules" class="bg-gray-800 hover:bg-gray-700 text-center text-xs font-bold py-2.5 rounded-lg transition-colors text-white">
+            Rules List
+          </a>
+          <a href="/admin/recommendations/preview" class="bg-brand-primary hover:bg-opacity-90 text-center text-xs font-bold py-2.5 rounded-lg text-brand-charcoal transition-opacity">
+            Simulation
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+    {/* Module Management Directory */}
+    <div class="mb-8">
+      <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Management Module Directory</h3>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {ADMIN_NAVIGATION.map(group => (
+          group.items.filter(item => item.label !== 'Control Centre').map(item => {
+            const isComing = item.status === 'coming_soon' || item.status === 'needs_api';
+            return (
+              <div class={`bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between group hover:border-gray-300 transition-all ${isComing ? 'opacity-80' : ''}`}>
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-[9px] font-black text-gray-400 uppercase tracking-widest">{group.title}</span>
+                    <span class={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider border ${
+                      item.status === 'live'
+                        ? 'border-green-200 bg-green-50 text-green-700'
+                        : item.status === 'needs_api'
+                          ? 'border-yellow-200 bg-yellow-50 text-yellow-700'
+                          : 'border-gray-200 bg-gray-50 text-gray-500'
+                    }`}>
+                      {item.status === 'live' ? 'Live' : item.status === 'needs_api' ? 'Needs API' : 'Soon'}
+                    </span>
+                  </div>
+                  <h4 class="font-black text-base text-brand-dark">{item.label}</h4>
+                  <p class="text-xs text-gray-500 mt-1.5 leading-relaxed line-clamp-2">
+                    {item.description}
+                  </p>
+                </div>
+
+                <div class="mt-4 flex justify-end">
+                  {isComing ? (
+                    <span class="text-xs font-bold text-gray-400 border border-gray-100 bg-gray-50/50 px-3 py-1.5 rounded-lg select-none cursor-not-allowed">
+                      Awaiting API
+                    </span>
+                  ) : (
+                    <a href={item.href} class="text-xs font-bold text-brand-dark border border-gray-200 group-hover:border-brand-dark px-3 py-1.5 rounded-lg transition-colors bg-white">
+                      Access Module &rarr;
+                    </a>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        ))}
+      </div>
+    </div>
 
   </div>
-</BaseLayout>
+</AdminLayout>

@@ -1,8 +1,5 @@
 ---
-import BaseLayout from '../../../layouts/BaseLayout.astro';
-import AdminPageHeader from '../../../components/AdminPageHeader.astro';
-import AdminTable from '../../../components/AdminTable.astro';
-import StatusBadge from '../../../components/StatusBadge.astro';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
 import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { apiBase } from '../../../lib/api';
@@ -44,55 +41,80 @@ try {
 }
 ---
 
-<BaseLayout title="Users — Admin">
-  <div class="container mx-auto px-4 lg:px-8 py-10">
-    <AdminPageHeader
-      title="Users"
-      description="Everyone with an account. Role assignments determine what each user can do in admin. CRUD lands in a future pass."
-    />
+<AdminLayout 
+  title="Operator Accounts" 
+  description="Oversee platform identities and assignments."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">System Users</h2>
+        <p class="text-sm text-gray-500 mt-1">Platform identity listings holding administrative or operational scopes.</p>
+      </div>
+    </div>
 
     {fetchError && (
       <div class="mb-6">
-        <Notice kind="not-configured" title="Users service unavailable" message={fetchError} />
+        <Notice kind="not-configured" title="Directory Synchronization Halted" message={fetchError} />
       </div>
     )}
 
     {rows.length === 0 && !fetchError ? (
       <EmptyState
-        title="No users yet"
-        message="Run scripts/bootstrap-admin.ts to seed the first owner account, then add additional staff via direct DB writes for now."
+        title="No User Records Located"
+        message="Execute console seeding to instantiate the primary supervisor record."
       />
     ) : rows.length > 0 ? (
-      <AdminTable caption={`${rows.length} user${rows.length === 1 ? '' : 's'}`}>
-        <Fragment slot="head">
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Email</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Phone</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Roles</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Status</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Joined</th>
-        </Fragment>
-        {rows.map((u) => (
-          <tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="px-6 py-3 font-bold text-brand-charcoal break-all">{u.email}</td>
-            <td class="px-6 py-3 text-sm text-brand-mutedGrey">{u.phone ?? '—'}</td>
-            <td class="px-6 py-3">
-              {u.roleNames.length === 0 ? (
-                <span class="text-xs text-brand-mutedGrey italic">No roles</span>
-              ) : (
-                <div class="flex flex-wrap gap-1">
-                  {u.roleNames.map((name) => (
-                    <span class="inline-flex items-center px-2 py-1 rounded bg-brand-softGrey text-brand-charcoal text-[10px] font-bold uppercase tracking-widest border border-brand-borderGrey">{name}</span>
-                  ))}
-                </div>
-              )}
-            </td>
-            <td class="px-6 py-3">
-              <StatusBadge status={u.isActive ? 'success' : 'danger'} label={u.isActive ? 'Active' : 'Disabled'} />
-            </td>
-            <td class="px-6 py-3 text-xs text-brand-mutedGrey">{new Date(u.createdAt).toLocaleDateString('en-GB')}</td>
-          </tr>
-        ))}
-      </AdminTable>
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+                <th class="p-6">Email Handle</th>
+                <th class="p-6">Contact Trace</th>
+                <th class="p-6">Assigned Scopes</th>
+                <th class="p-6 text-center">Account State</th>
+                <th class="p-6 text-right">Registered</th>
+              </tr>
+            </thead>
+            <tbody class="text-xs divide-y divide-gray-50">
+              {rows.map((u) => (
+                <tr class="hover:bg-gray-50 transition-colors">
+                  <td class="p-6">
+                    <div class="font-bold text-brand-dark text-sm break-all">{u.email}</div>
+                  </td>
+                  <td class="p-6 font-mono text-gray-500 text-[10px]">
+                    {u.phone ?? '—'}
+                  </td>
+                  <td class="p-6">
+                    {u.roleNames.length === 0 ? (
+                      <span class="text-[10px] text-gray-400 italic font-medium">Zero Assigned Scopes</span>
+                    ) : (
+                      <div class="flex flex-wrap gap-1.5">
+                        {u.roleNames.map((name) => (
+                          <span class="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border bg-gray-100 text-gray-600 border-gray-200">{name}</span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td class="p-6 text-center">
+                    <span class={`inline-block px-2.5 py-0.5 rounded font-black text-[9px] uppercase tracking-wide border ${
+                      u.isActive ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
+                    }`}>
+                      {u.isActive ? 'Active' : 'Disabled'}
+                    </span>
+                  </td>
+                  <td class="p-6 text-right font-mono text-gray-400 text-[10px]">
+                    {new Date(u.createdAt).toLocaleDateString('en-GB')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     ) : null}
   </div>
-</BaseLayout>
+</AdminLayout>
+

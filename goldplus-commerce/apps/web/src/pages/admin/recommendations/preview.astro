@@ -1,71 +1,80 @@
 ---
-import BaseLayout from "../../../layouts/BaseLayout.astro";
-import AdminPageHeader from "../../../components/AdminPageHeader.astro";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
 import FormField from "../../../components/FormField.astro";
 import RecommendationRulePreviewPanel from "../../../components/recommendations/RecommendationRulePreviewPanel.astro";
 import { readSessionToken } from "../../../lib/session";
 import { apiBase } from "../../../lib/api";
 
 const token = readSessionToken(Astro.request);
-if (!token) return Astro.redirect("/admin/login", 303);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/recommendations/preview", 303);
 ---
 
-<BaseLayout title="Standalone Sandbox - Preview">
-  <div class="container mx-auto px-4 lg:px-8 py-10">
-    <AdminPageHeader
-      title="Recommendation Sandbox"
-      description="Visualize existing rule combination outputs live across specific context scenarios."
-      backHref="/admin/recommendations/rules"
-      backLabel="Back to rules"
-    />
+<AdminLayout 
+  title="Preview Sandbox" 
+  description="Inspect real-time recommendation array displacements and diagnostics."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Recommendation Matrix</h2>
+        <p class="text-sm text-gray-500 mt-1">Audit system combinations live against mock customer profiles.</p>
+      </div>
+      <a href="/admin/recommendations" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
+        &larr; Audit Center
+      </a>
+    </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-8">
       
-      <!-- INPUT CONTROLS -->
-      <div class="lg:col-span-1 space-y-6">
+      {/* INPUT CONTROLS */}
+      <div class="lg:col-span-4 space-y-6">
         <form id="sandbox-form" class="bg-white border border-gray-200 shadow-sm rounded-2xl overflow-hidden">
-           <div class="p-6 bg-gray-50 border-b border-gray-100">
-              <h3 class="text-xs uppercase font-black text-gray-500 tracking-widest">Placement Context</h3>
+           <div class="px-6 py-4 bg-gray-50 border-b border-gray-100">
+              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Placement Target</h3>
            </div>
-           <div class="p-6 space-y-4">
+           <div class="p-6 space-y-5">
              <div>
-               <label class="block text-xs font-bold text-brand-dark mb-2">Target Position</label>
-               <select id="s_placement" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg font-bold text-sm">
-                 <option value="home_trending">Home Trending</option>
-                 <option value="product_related">Product Related</option>
-                 <option value="cart_addon">Cart Addon</option>
-                 <option value="category_popular">Category Popular</option>
-                 <option value="complete_setup">Complete Setup</option>
+               <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Site Position</label>
+               <select id="s_placement" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-xs text-brand-dark outline-none focus:border-brand-green">
+                 <option value="home_trending">Home Trending (Index)</option>
+                 <option value="product_related">Product Related (PDP)</option>
+                 <option value="cart_addon">Cart Addon (Sidecart)</option>
+                 <option value="category_popular">Category Popular (PLP)</option>
+                 <option value="complete_setup">Complete Setup (Cross-sell)</option>
                </select>
              </div>
              
-             <div class="pt-4 border-t border-gray-100 space-y-3">
-                <h4 class="text-[10px] uppercase font-bold text-gray-400">Simulated Environment</h4>
-                <FormField id="s_prod" name="productId" label="Anchor Product UUID" placeholder="e.g. for product_related" />
-                <FormField id="s_cat" name="categorySlug" label="Category Slug" placeholder="power-banks" />
-                <FormField id="s_cart" name="cartItems" label="Active Cart CSV" placeholder="prod_1, prod_2" helperText="Separate multiple with comma." />
+             <div class="pt-5 border-t border-dashed border-gray-200 space-y-4">
+                <h4 class="text-[10px] uppercase font-black text-gray-400 tracking-wider">Environment Mocking</h4>
+                <FormField id="s_prod" name="productId" label="Anchor Product ID" placeholder="e.g. uuid-hash" />
+                <FormField id="s_cat" name="categorySlug" label="Category Slug" placeholder="wireless-audio" />
+                <FormField id="s_cart" name="cartItems" label="Cart Product IDs (CSV)" placeholder="prod_A, prod_B" helperText="Optional context list." />
              </div>
 
-             <button type="submit" class="w-full bg-brand-dark text-white font-black py-4 rounded-xl shadow-md hover:opacity-90 transition-opacity mt-4 flex items-center justify-center gap-2">
-               <span>⚡</span> Compute Matrix
+             <button type="submit" class="w-full bg-brand-dark text-white font-black text-xs uppercase tracking-wider py-3.5 rounded-xl shadow-sm hover:bg-black transition-colors mt-4 flex items-center justify-center gap-2">
+               <span>⚡</span> Compute Engine Outcomes
              </button>
            </div>
         </form>
 
-        <div class="bg-blue-50 border border-blue-100 p-6 rounded-2xl">
-           <h4 class="text-xs font-bold text-blue-800 mb-2">How it works</h4>
-           <p class="text-xs text-blue-700 leading-relaxed">
-             Unlike the Rule Editor, this sandbox fetches the CURRENT live active rules snapshot exactly as real shoppers would experience them right now, but displays visual diagnostics explaining which rules caused displacement.
-           </p>
+        <div class="bg-blue-50 border border-blue-100 p-5 rounded-2xl flex items-start gap-3">
+           <span class="text-base mt-0.5">💡</span>
+           <div>
+             <h4 class="text-xs font-bold text-blue-800">Snapshot Behavior</h4>
+             <p class="text-[10px] text-blue-700 leading-relaxed mt-1 font-medium">
+               Standalone testing bypasses active drafts to inspect the TRUE operational state experienced by production customers, complete with detailed displacement scores.
+             </p>
+           </div>
         </div>
       </div>
 
-      <!-- OUTPUT PANEL -->
-      <div class="lg:col-span-2">
-         <div id="sandbox-empty-state" class="bg-gray-50 border border-gray-200 border-dashed rounded-2xl p-12 text-center h-full flex flex-col items-center justify-center min-h-[400px]">
-             <span class="text-6xl grayscale opacity-40 mb-4">🔮</span>
-             <h3 class="text-lg font-bold text-gray-600">Matrix Engine Ready</h3>
-             <p class="text-sm text-gray-400 mt-1 max-w-xs">Set your placement and press 'Compute Matrix' to parse real-time distribution outcomes.</p>
+      {/* OUTPUT PANEL */}
+      <div class="lg:col-span-8">
+         <div id="sandbox-empty-state" class="bg-gray-50 border border-gray-200 border-dashed rounded-2xl p-12 text-center h-full flex flex-col items-center justify-center min-h-[350px]">
+             <span class="text-5xl grayscale opacity-40 mb-4">🔮</span>
+             <h3 class="text-sm font-black text-brand-dark">Sandbox Computation Area</h3>
+             <p class="text-xs text-gray-400 mt-2 max-w-[250px] leading-relaxed">Initialize variables inside the controls panel and trigger compute to stream matrix output.</p>
          </div>
          <RecommendationRulePreviewPanel />
       </div>
@@ -73,7 +82,7 @@ if (!token) return Astro.redirect("/admin/login", 303);
     <input type="hidden" id="session-token" value={token} />
     <input type="hidden" id="api-base-url" value={apiBase} />
   </div>
-</BaseLayout>
+</AdminLayout>
 
 <script>
   const form = document.getElementById('sandbox-form');
@@ -84,7 +93,7 @@ if (!token) return Astro.redirect("/admin/login", 303);
     e.preventDefault();
     const submitBtn = form.querySelector('button[type="submit"]')!;
     const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<span>⏳</span> Simulating Layer...';
+    submitBtn.innerHTML = '<span>⏳</span> Computing Matrix...';
     submitBtn.classList.add('opacity-50', 'pointer-events-none');
 
     const placement = (document.getElementById('s_placement') as HTMLSelectElement).value;
@@ -98,7 +107,7 @@ if (!token) return Astro.redirect("/admin/login", 303);
       productId,
       categorySlug: catSlug,
       cartProductIds,
-      draftOnly: false // Important: standalone uses real active database snapshot!
+      draftOnly: false
     };
 
     try {
@@ -126,3 +135,4 @@ if (!token) return Astro.redirect("/admin/login", 303);
     }
   });
 </script>
+

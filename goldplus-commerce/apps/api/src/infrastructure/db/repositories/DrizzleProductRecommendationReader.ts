@@ -1,10 +1,11 @@
-import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { and, eq, inArray, notInArray, asc } from "drizzle-orm";
 import type {
   IProductRecommendationReader,
   RecommendationProductRecord,
 } from "../../../application/ports/IProductRecommendationReader";
 import { db } from "../client";
-import { products, categories } from "../schema/products";
+import { products, categories, productPrices } from "../schema/products";
+import { productImages } from "../schema/phase11";
 
 export class DrizzleProductRecommendationReader implements IProductRecommendationReader {
   async findProductById(productId: string): Promise<RecommendationProductRecord | null> {
@@ -18,7 +19,9 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       .where(eq(products.id, productId))
       .limit(1);
 
-    return rows[0] ? this.mapProduct(rows[0].product, rows[0].category) : null;
+    if (rows.length === 0) return null;
+    const enriched = await this.enrichProducts(rows);
+    return enriched[0] ?? null;
   }
 
   async findProductsByIds(productIds: string[]): Promise<RecommendationProductRecord[]> {
@@ -33,7 +36,7 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       .leftJoin(categories, eq(products.categoryId, categories.id))
       .where(inArray(products.id, productIds));
 
-    return rows.map((row) => this.mapProduct(row.product, row.category));
+    return this.enrichProducts(rows);
   }
 
   async findPublicProducts(input?: {
@@ -86,10 +89,49 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       .where(conditions.length ? and(...conditions) : undefined)
       .limit(input?.limit ?? 200);
 
-    return rows.map((row) => this.mapProduct(row.product, row.category));
+    return this.enrichProducts(rows);
   }
 
-  private mapProduct(product: any, category?: any): RecommendationProductRecord {
+  private async enrichProducts(rows: any[]): Promise<RecommendationProductRecord[]> {
+    if (rows.length === 0) return [];
+    const productIds = rows.map((r) => r.product.id);
+
+    const [priceRows, imageRows] = await Promise.all([
+      db.query.productPrices.findMany({ where: inArray(productPrices.productId, productIds) }),
+      db.query.productImages.findMany({
+        where: inArray(productImages.productId, productIds),
+        orderBy: [asc(productImages.displayOrder)],
+      }),
+    ]);
+
+    const priceByProduct = new Map(priceRows.map((p) => [p.productId, p.retailPrice]));
+    const primaryImageByProduct = new Map<string, string>();
+    for (const img of imageRows) {
+      if (!primaryImageByProduct.has(img.productId) || img.isPrimary) {
+        primaryImageByProduct.set(img.productId, img.url);
+      }
+    }
+
+    return rows.map((row) =>
+      this.mapProduct(
+        row.product,
+        row.category,
+        priceByProduct.get(row.product.id),
+        primaryImageByProduct.get(row.product.id)
+      )
+    );
+  }
+
+  private mapProduct(
+    product: any,
+    category?: any,
+    joinedPrice?: number,
+    joinedImageUrl?: string
+  ): RecommendationProductRecord {
+    // Fallback securely if no joined value was recovered
+    const finalPrice = typeof joinedPrice === 'number' ? joinedPrice : product.priceUgx;
+    const finalImageUrl = joinedImageUrl ?? product.imageUrl;
+
     return {
       id: product.id,
       slug: product.slug,
@@ -98,8 +140,8 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       categoryId: product.categoryId,
       categorySlug: category?.slug,
       categoryName: category?.name,
-      imageUrl: product.imageUrl,
-      price: typeof product.priceUgx === 'number' ? product.priceUgx : undefined,
+      imageUrl: finalImageUrl,
+      price: typeof finalPrice === 'number' ? finalPrice : undefined,
       currency: "UGX",
       stockStatus: product.stockStatus,
       stockQuantity: product.stockQuantity,

@@ -1,12 +1,16 @@
 ---
-import BaseLayout from '../../../layouts/BaseLayout.astro';
-import AdminPageHeader from '../../../components/AdminPageHeader.astro';
-import AdminTable from '../../../components/AdminTable.astro';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
 import StatusBadge from '../../../components/StatusBadge.astro';
 import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { tryFetchAdminList } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
 import { SAMPLE_CATEGORIES, type SampleCategory } from '../../../lib/sample-data';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/categories", 303);
+}
 
 const result = await tryFetchAdminList<SampleCategory>(
   '/governance/admin/categories',
@@ -15,16 +19,28 @@ const result = await tryFetchAdminList<SampleCategory>(
 );
 ---
 
-<BaseLayout title="Categories Management — Admin">
-  <div class="container mx-auto px-4 lg:px-8 py-10">
-    <AdminPageHeader
-      title="Product Categories"
-      description="Manage user-facing navigation taxonomies across global web catalog structure."
-    />
+<AdminLayout 
+  title="Categories Management" 
+  description="Organize inventory into customer-facing groupings."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Catalog Taxonomies</h2>
+        <p class="text-sm text-gray-500 mt-1">Manage public site navigation trees and hierarchical grouping definitions.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
+          CLASSES: {result.items.length}
+        </span>
+      </div>
+    </div>
 
     {result.isSample && (
-      <div class="mb-6">
-        <Notice kind="sample" message={result.reason} />
+      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4">
+        <span class="text-2xl">💡</span>
+        <div class="text-xs leading-relaxed"><strong>Offline Sandbox Note:</strong> {result.reason}</div>
       </div>
     )}
 
@@ -34,24 +50,43 @@ const result = await tryFetchAdminList<SampleCategory>(
         message="Once categorization matrices exist, navigational lists appear here."
       />
     ) : (
-      <AdminTable caption="Catalogue Taxonomy">
-        <Fragment slot="head">
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Category Name</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Slug URL</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-center">Assigned Skus</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-center">Visibility</th>
-        </Fragment>
-        {result.items.map((cat) => (
-          <tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="px-6 py-4 font-bold text-brand-dark">{cat.name}</td>
-            <td class="px-6 py-4 text-gray-600 text-xs font-mono">/{cat.slug}</td>
-            <td class="px-6 py-4 text-center text-gray-700 font-bold">{cat.productCount}</td>
-            <td class="px-6 py-4 text-center">
-              <StatusBadge status={cat.isActive ? 'success' : 'neutral'} label={cat.isActive ? 'Active' : 'Hidden'} />
-            </td>
-          </tr>
-        ))}
-      </AdminTable>
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+                <th class="p-6">Category Classification</th>
+                <th class="p-6">Namespace Slug</th>
+                <th class="p-6 text-center">Assigned Assets</th>
+                <th class="p-6 text-center">Storefront Visibility</th>
+              </tr>
+            </thead>
+            <tbody class="text-xs divide-y divide-gray-50">
+              {result.items.map((cat) => (
+                <tr class="hover:bg-gray-50 transition-colors">
+                  <td class="p-6">
+                    <div class="font-bold text-brand-dark text-sm">{cat.name}</div>
+                  </td>
+                  <td class="p-6 font-mono text-gray-500 font-medium">
+                    /{cat.slug}
+                  </td>
+                  <td class="p-6 text-center font-bold font-mono text-brand-dark text-sm">
+                    {cat.productCount}
+                  </td>
+                  <td class="p-6 text-center">
+                    <span class={`inline-block px-2.5 py-1 rounded-lg font-black text-[9px] uppercase tracking-wide border ${
+                      cat.isActive ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-50 text-gray-700 border-gray-100'
+                    }`}>
+                      {cat.isActive ? 'Active' : 'Hidden'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     )}
   </div>
-</BaseLayout>
+</AdminLayout>
+

@@ -6,7 +6,6 @@ import { apiBase } from '../../lib/api';
 import type { ProductPublicDto, ApiEnvelope } from '@goldplus/shared';
 import CompleteSetupRail from '../../components/recommendations/CompleteSetupRail.astro';
 import RelatedProductsRail from '../../components/recommendations/RelatedProductsRail.astro';
-import RecentlyViewedRail from '../../components/recommendations/RecentlyViewedRail.astro';
 
 const { slug } = Astro.params;
 
@@ -212,9 +211,6 @@ const canonical = Astro.url.toString();
         </div>
         <div class="border-t border-brand-borderGrey pt-12">
           <RelatedProductsRail productId={product.id} />
-        </div>
-        <div class="border-t border-brand-borderGrey pt-12">
-          <RecentlyViewedRail />
         </div>
       </div>
     )}

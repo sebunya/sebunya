@@ -1,12 +1,15 @@
 ---
-import BaseLayout from '../../../layouts/BaseLayout.astro';
-import AdminPageHeader from '../../../components/AdminPageHeader.astro';
-import AdminTable from '../../../components/AdminTable.astro';
-import StatusBadge from '../../../components/StatusBadge.astro';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
 import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { tryFetchAdminList } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
 import { SAMPLE_CAMPAIGNS, type SampleCampaign } from '../../../lib/sample-data';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/campaigns", 303);
+}
 
 const result = await tryFetchAdminList<SampleCampaign>(
   '/governance/admin/campaigns',
@@ -21,16 +24,23 @@ const statusToBadge: Record<SampleCampaign['status'], { variant: 'pending' | 'in
 };
 ---
 
-<BaseLayout title="Marketing Campaigns — Admin">
-  <div class="container mx-auto px-4 lg:px-8 py-10">
-    <AdminPageHeader
-      title="Active Campaigns"
-      description="View reach and efficiency reporting for operational marketing initiatives."
-    />
+<AdminLayout 
+  title="Marketing Campaigns" 
+  description="Gauge reach and efficiency matrix distributions."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Active Campaigns</h2>
+        <p class="text-sm text-gray-500 mt-1">Track conversion rates and delivery vectors of public promotional links.</p>
+      </div>
+    </div>
 
     {result.isSample && (
-      <div class="mb-6">
-        <Notice kind="sample" message={result.reason} />
+      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4">
+        <span class="text-2xl">💡</span>
+        <div class="text-xs leading-relaxed"><strong>Offline Sandbox Note:</strong> {result.reason}</div>
       </div>
     )}
 
@@ -40,24 +50,45 @@ const statusToBadge: Record<SampleCampaign['status'], { variant: 'pending' | 'in
         message="Historical reach analytics do not possess active triggers."
       />
     ) : (
-      <AdminTable caption="Global Marketing Metrics">
-        <Fragment slot="head">
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Campaign Title</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest">Traffic Vector</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-center">Status</th>
-          <th class="px-6 py-4 text-[10px] uppercase font-black text-gray-500 tracking-widest text-right">C.V.R</th>
-        </Fragment>
-        {result.items.map((camp) => (
-          <tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="px-6 py-4 font-bold text-brand-dark">{camp.name}</td>
-            <td class="px-6 py-4 text-gray-600">{camp.channel}</td>
-            <td class="px-6 py-4 text-center">
-              <StatusBadge status={statusToBadge[camp.status].variant} label={statusToBadge[camp.status].label} />
-            </td>
-            <td class="px-6 py-4 text-right font-black text-brand-dark">{camp.conversionRate}</td>
-          </tr>
-        ))}
-      </AdminTable>
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+                <th class="p-6">Campaign Name</th>
+                <th class="p-6">Distribution Vector</th>
+                <th class="p-6 text-center">State</th>
+                <th class="p-6 text-right">Avg C.V.R</th>
+              </tr>
+            </thead>
+            <tbody class="text-xs divide-y divide-gray-50">
+              {result.items.map((camp) => (
+                <tr class="hover:bg-gray-50 transition-colors">
+                  <td class="p-6">
+                    <div class="font-bold text-brand-dark text-sm">{camp.name}</div>
+                  </td>
+                  <td class="p-6 text-gray-600 font-medium uppercase tracking-wider text-[10px]">
+                    {camp.channel}
+                  </td>
+                  <td class="p-6 text-center">
+                    <span class={`inline-block px-2.5 py-1 rounded-lg font-black text-[9px] uppercase tracking-wide border ${
+                      statusToBadge[camp.status].variant === 'success' ? 'bg-green-50 text-green-700 border-green-100' :
+                      statusToBadge[camp.status].variant === 'info' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                      'bg-gray-50 text-gray-700 border-gray-100'
+                    }`}>
+                      {statusToBadge[camp.status].label}
+                    </span>
+                  </td>
+                  <td class="p-6 text-right font-black font-mono text-brand-dark text-sm">
+                    {camp.conversionRate}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     )}
   </div>
-</BaseLayout>
+</AdminLayout>
+

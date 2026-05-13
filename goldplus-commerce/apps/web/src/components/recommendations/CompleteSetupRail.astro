@@ -1,6 +1,7 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
+import { filterDisplayableRecommendations, shouldRenderRail } from "../../lib/recommendation-display";
 
 interface Props {
   productId: string;
@@ -11,13 +12,22 @@ const { productId } = Astro.props;
 const response = await getRecommendations({
   placement: "complete_setup",
   productId,
+  limit: 6,
+});
+
+const displayItems = filterDisplayableRecommendations(response.items, {
+  currentProductId: productId,
   limit: 3,
 });
+
+const render = shouldRenderRail(displayItems, 1);
 ---
 
-<RecommendationRail
-  title="Complete Your Setup"
-  subtitle="Compatible essentials paired ideally with this product."
-  placement="complete_setup"
-  items={response.items}
-/>
+{render && (
+  <RecommendationRail
+    title="Complete Your Setup"
+    subtitle="Pair compatible GoldPlus products for a better charging experience."
+    placement="complete_setup"
+    items={displayItems}
+  />
+)}

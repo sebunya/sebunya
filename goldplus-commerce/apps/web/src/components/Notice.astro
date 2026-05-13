@@ -1,6 +1,6 @@
 ---
 interface Props {
-  kind: 'sample' | 'not-configured' | 'owner-review' | 'info';
+  kind: 'sample' | 'not-configured' | 'owner-review' | 'info' | 'warning';
   title?: string;
   message?: string;
 }
@@ -14,6 +14,14 @@ const config = {
     border: 'border-amber-200',
     text: 'text-amber-900',
     glyph: 'i',
+  },
+  warning: {
+    title: title ?? 'Warning',
+    message: message ?? 'Something went wrong.',
+    bg: 'bg-red-50',
+    border: 'border-red-200',
+    text: 'text-red-900',
+    glyph: '!',
   },
   'not-configured': {
     title: title ?? 'Not configured',

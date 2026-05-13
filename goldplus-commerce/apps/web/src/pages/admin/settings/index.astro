@@ -1,0 +1,64 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/settings", 303);
+}
+
+const configurations = [
+  { key: 'CURRENCY_DEFAULT', value: 'UGX', desc: 'Primary presentation unit for customer storefronts.' },
+  { key: 'REC_ENGINE_VERSION', value: 'v2.0-deterministic', desc: 'Active recommendation algorithmic runtime constraint.' },
+  { key: 'LOCATION_MODE', value: 'uganda_districts_strict', desc: 'Restricts delivery address collection to recognized districts.' },
+  { key: 'MAINTENANCE_MODE', value: 'FALSE', desc: 'Global storefront reachability toggle.' },
+];
+---
+
+<AdminLayout 
+  title="Global Settings" 
+  description="Review environment variables, localized behaviors and active toggles."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Platform Variables</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        Active system-wide configuration keys parsed during runtime bootstrap. Modifying these keys requires direct deployment updates.
+      </p>
+    </div>
+
+    {/* Settings Grid */}
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden max-w-4xl">
+      <div class="p-5 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+        <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Read-Only Environment Context</h3>
+      </div>
+      <div class="divide-y divide-gray-100">
+        {configurations.map(c => (
+          <div class="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <code class="font-mono text-xs font-bold text-brand-dark bg-gray-100 px-1.5 py-0.5 rounded">
+                {c.key}
+              </code>
+              <p class="text-xs text-gray-500 mt-1.5 max-w-lg">{c.desc}</p>
+            </div>
+            <div class="flex items-center gap-2 font-mono text-xs font-black text-gray-600 bg-gray-50 border border-gray-200 px-3 py-1 rounded-lg select-all">
+              {c.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="mt-8 bg-blue-50 border border-blue-200 rounded-2xl p-6 max-w-4xl flex gap-4 text-blue-800">
+      <span class="text-2xl">💡</span>
+      <div>
+        <h4 class="font-bold text-sm">Dynamic UI Modification</h4>
+        <p class="text-xs opacity-90 mt-1 leading-relaxed">
+          Modifying variables directly within this UI requires mounting a dynamic Settings/Etcd repository adapter, which is scheduled for later infrastructure passes.
+        </p>
+      </div>
+    </div>
+
+  </div>
+</AdminLayout>

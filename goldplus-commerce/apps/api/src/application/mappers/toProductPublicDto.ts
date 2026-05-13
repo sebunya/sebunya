@@ -101,7 +101,7 @@ export function toProductPublicDto(
 
   return {
     id: entity.id,
-    slug: entity.id, // overwritten by callers that carry the slug
+    slug: entity.slug,
     name: entity.name,
     categoryName: cleanedCategoryName,
     sku,

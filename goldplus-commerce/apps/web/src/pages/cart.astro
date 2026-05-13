@@ -6,6 +6,9 @@ import { apiBase } from '../lib/api';
 import { readCartSessionId } from '../lib/cart-session';
 import type { ApiEnvelope } from '@goldplus/shared';
 import CartAddonRail from '../components/recommendations/CartAddonRail.astro';
+import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
+
+import crypto from 'node:crypto';
 
 interface CartItem {
   productId: string;
@@ -22,7 +25,50 @@ interface CartResponse {
   subtotalUgx: number;
 }
 
-const sessionId = readCartSessionId(Astro.request);
+let sessionId = readCartSessionId(Astro.request);
+let isNewSession = false;
+
+// Handle Add-to-Cart and cart update POST form submissions
+if (Astro.request.method === 'POST') {
+  try {
+    const formData = await Astro.request.formData();
+    const productId = formData.get('productId')?.toString();
+    
+    if (productId) {
+      if (!sessionId) {
+        sessionId = crypto.randomUUID();
+        isNewSession = true;
+      }
+      
+      // Post addition directly to the core backend API
+      const apiRes = await fetch(`${apiBase}/commerce/cart/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cartId: sessionId,
+          item: {
+            productId,
+            quantity: 1
+          }
+        })
+      });
+
+      if (isNewSession && apiRes.ok) {
+        Astro.cookies.set('goldplus_cart_id', sessionId, {
+          path: '/',
+          maxAge: 60 * 60 * 24 * 365, // 1 year
+          sameSite: 'lax',
+          httpOnly: false
+        });
+      }
+      
+      // Perform standard PRG (Post-Redirect-Get) to prevent resubmission on page refresh
+      return Astro.redirect('/cart', 303);
+    }
+  } catch (err) {
+    console.error('[CART_POST_ERROR] Failed to add item to cart:', err);
+  }
+}
 
 let cart: CartResponse | null = null;
 let fetchError: string | null = null;
@@ -64,14 +110,19 @@ const formatUgx = (n: number): string =>
     )}
 
     {items.length === 0 ? (
-      <EmptyState
-        title="Your cart is empty"
-        message="Browse the shop and add a product to get started. Cart contents persist for this device."
-      >
-        <a href="/shop" class="inline-block px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none">
-          Start shopping
-        </a>
-      </EmptyState>
+      <>
+        <EmptyState
+          title="Your cart is empty"
+          message="Browse the shop and add a product to get started. Cart contents persist for this device."
+        >
+          <a href="/shop" class="inline-block px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none">
+            Start shopping
+          </a>
+        </EmptyState>
+        <div class="mt-16 pt-8 border-t border-brand-borderGrey">
+          <PopularNowRail />
+        </div>
+      </>
     ) : (
       <div class="flex flex-col lg:flex-row gap-10">
         <div class="w-full lg:w-2/3">

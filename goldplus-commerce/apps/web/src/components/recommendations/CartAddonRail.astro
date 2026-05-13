@@ -1,6 +1,7 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
+import { filterDisplayableRecommendations, shouldRenderRail } from "../../lib/recommendation-display";
 
 interface Props {
   cartProductIds: string[];
@@ -11,13 +12,22 @@ const { cartProductIds } = Astro.props;
 const response = await getRecommendations({
   placement: "cart_addon",
   cartProductIds,
+  limit: 8,
+});
+
+const displayItems = filterDisplayableRecommendations(response.items, {
+  excludeIds: cartProductIds,
   limit: 4,
 });
+
+const render = shouldRenderRail(displayItems, 1);
 ---
 
-<RecommendationRail
-  title="Add Before Checkout"
-  subtitle="Frequent small additions chosen by shoppers."
-  placement="cart_addon"
-  items={response.items}
-/>
+{render && (
+  <RecommendationRail
+    title="Add Before Checkout"
+    subtitle="Useful add-ons that complete your order."
+    placement="cart_addon"
+    items={displayItems}
+  />
+)}

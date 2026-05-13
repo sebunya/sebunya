@@ -4,7 +4,7 @@ import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
-import { sessionCookieValue } from '../../lib/session';
+import { sessionCookieValue, SESSION_COOKIE_NAME } from '../../lib/session';
 
 let status: 'success' | 'error' | null = null;
 let message: string | undefined;
@@ -30,7 +30,13 @@ if (Astro.request.method === 'POST') {
       const json: any = await res.json().catch(() => null);
 
       if (res.ok && json?.success && json.data?.token) {
-        Astro.response.headers.set('Set-Cookie', sessionCookieValue(json.data.token));
+        Astro.cookies.set(SESSION_COOKIE_NAME, json.data.token, {
+          path: '/',
+          httpOnly: true,
+          sameSite: 'lax',
+          maxAge: 604800,
+          secure: import.meta.env.PROD,
+        });
         const returnTo = Astro.url.searchParams.get('returnTo');
         const safe = returnTo && returnTo.startsWith('/admin') && !returnTo.startsWith('//') ? returnTo : '/admin';
         return Astro.redirect(safe, 303);
