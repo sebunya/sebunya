@@ -89,7 +89,7 @@ const placements = [
     </div>
 
     {/* Central Launchpads Grid */}
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
       <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between h-44">
         <div>
           <h3 class="font-black text-lg text-brand-dark">View rules</h3>
@@ -114,18 +114,31 @@ const placements = [
         </div>
       </div>
 
+      <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between h-44 border-brand-primary/20 bg-brand-primary/5">
+        <div>
+          <h3 class="font-black text-lg text-brand-dark">Analytics</h3>
+          <p class="text-xs text-gray-500 mt-1 leading-relaxed">Monitor CTR, impressions and attribution signals for recommendation performance.</p>
+        </div>
+        <div class="mt-6">
+          <a href="/admin/recommendations/analytics" class="inline-block w-full bg-brand-primary text-brand-charcoal hover:bg-brand-primary/80 text-center py-2.5 rounded-xl font-black text-xs transition-colors">
+            View analytics &rarr;
+          </a>
+        </div>
+      </div>
+
       <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between h-44">
         <div>
-          <h3 class="font-black text-lg text-brand-dark">Preview recommendations</h3>
+          <h3 class="font-black text-lg text-brand-dark">Preview</h3>
           <p class="text-xs text-gray-500 mt-1 leading-relaxed">Test product recommendations using actual configurations before customers see them.</p>
         </div>
         <div class="mt-6">
           <a href="/admin/recommendations/preview" class="inline-block w-full bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 text-center py-2.5 rounded-xl font-bold text-xs transition-colors">
-            Preview recommendations &rarr;
+            Preview &rarr;
           </a>
         </div>
       </div>
     </div>
+
 
     {/* Placement Grid */}
     <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-10">

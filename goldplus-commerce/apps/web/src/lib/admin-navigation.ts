@@ -50,6 +50,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Manage product recommendations shown across the store.'
   },
   {
+    label: 'Analytics',
+    href: '/admin/recommendations/analytics',
+    group: 'Recommendations',
+    status: 'working',
+    description: 'Track recommendation performance, CTR and conversion signals.'
+  },
+  {
     label: 'Rules',
     href: '/admin/recommendations/rules',
     group: 'Recommendations',

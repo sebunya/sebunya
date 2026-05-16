@@ -1,0 +1,388 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { getRecommendationAnalytics } from "../../../lib/admin-analytics";
+import { listRecommendationRules } from "../../../lib/admin-recommendations";
+import InfoTooltip from "../../../components/admin/InfoTooltip.astro";
+import StatusBadge from "../../../components/StatusBadge.astro";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/recommendations/analytics", 303);
+}
+
+// Extract query params for filtering
+const url = new URL(Astro.request.url);
+const startDate = url.searchParams.get("startDate") || "";
+const endDate = url.searchParams.get("endDate") || "";
+const placement = url.searchParams.get("placement") || "";
+const ruleId = url.searchParams.get("ruleId") || "";
+const productId = url.searchParams.get("productId") || "";
+
+// Fetch analytics data
+const res = await getRecommendationAnalytics(token, {
+  startDate,
+  endDate,
+  placement: placement as any,
+  ruleId,
+  productId,
+});
+
+const isApiLive = res.ok;
+const data = res.ok ? res.data : null;
+
+// Helper to format numbers
+const fmtNum = (n: number) => new Intl.NumberFormat('en-US').format(n);
+
+// Helper to format percentages
+const fmtPct = (n: number | null) => {
+  if (n === null) return "Not available";
+  return new Intl.NumberFormat('en-US', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
+};
+
+// Helper for relative time if needed, otherwise just ISO/Date string
+const fmtDate = (d: string | null) => {
+  if (!d) return "Never";
+  return new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+// Fetch rules for the filter dropdown
+const rulesRes = await listRecommendationRules(token, { pageSize: 100 });
+const allRules = rulesRes.ok ? rulesRes.data.rules : [];
+
+const placements = [
+  { id: 'product_related', name: 'Related Products' },
+  { id: 'cart_addon', name: 'Cart Addons' },
+  { id: 'home_trending', name: 'Trending Now' },
+  { id: 'complete_setup', name: 'Complete Setup' },
+  { id: 'category_popular', name: 'Category Popular' },
+  { id: 'recently_viewed', name: 'Recently Viewed' },
+];
+---
+
+<AdminLayout 
+  title="Recommendation analytics" 
+  description="Track recommendation performance, attribution quality and customer intelligence signals."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    
+    <div class="mb-8 border-b border-gray-200 pb-6">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Recommendation analytics</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+        Review performance metrics, health signals and attribution distribution across all recommendation surfaces.
+      </p>
+    </div>
+
+    {/* Filter Bar */}
+    <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-10">
+      <form id="analytics-filter-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+        <div>
+          <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Start Date</label>
+          <input type="date" name="startDate" value={startDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary" />
+        </div>
+        <div>
+          <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">End Date</label>
+          <input type="date" name="endDate" value={endDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary" />
+        </div>
+        <div>
+          <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Placement</label>
+          <select name="placement" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary appearance-none">
+            <option value="">All Placements</option>
+            {placements.map(p => (
+              <option value={p.id} selected={placement === p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Rule</label>
+          <select name="ruleId" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary appearance-none">
+            <option value="">All Rules</option>
+            {allRules.map((r: any) => (
+              <option value={r.id} selected={ruleId === r.id}>{r.name}</option>
+            ))}
+          </select>
+        </div>
+        <div class="flex gap-2">
+          <button type="submit" class="flex-1 bg-brand-dark text-white hover:bg-black px-4 py-2 rounded-lg font-bold text-xs transition-colors">Apply Filters</button>
+          <a href="/admin/recommendations/analytics" class="px-4 py-2 border border-gray-200 text-gray-500 hover:text-brand-dark rounded-lg font-bold text-xs transition-colors">Reset</a>
+        </div>
+      </form>
+    </div>
+
+    {!isApiLive ? (
+      <div class="bg-red-50 border border-red-200 rounded-2xl p-12 text-center">
+        <h3 class="text-lg font-black text-red-700">Analytics Service Offline</h3>
+        <p class="text-sm text-red-600 mt-2 max-w-md mx-auto">Unable to reach the commerce intelligence aggregation layer. Check system logs or database connectivity.</p>
+        <div class="mt-6">
+           <button onclick="window.location.reload()" class="bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-xs">Retry Connection</button>
+        </div>
+      </div>
+    ) : data?.eventHealth.trackingStatus === 'no_data' ? (
+      <div class="bg-gray-50 border border-gray-200 border-dashed rounded-2xl p-20 text-center">
+        <div class="w-16 h-16 bg-gray-200 rounded-full mx-auto flex items-center justify-center mb-6">
+           <div class="w-2 h-2 rounded-full bg-gray-400"></div>
+        </div>
+        <h3 class="text-xl font-black text-brand-dark">No events detected</h3>
+        <p class="text-sm text-gray-500 mt-2 max-w-sm mx-auto">No recommendation events have been captured for the selected time range or filters. Ensure storefront tracking is active.</p>
+      </div>
+    ) : (
+      <>
+        {/* Summary Grid */}
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Impressions</p>
+            <h4 class="text-2xl font-black text-brand-dark">{fmtNum(data!.summary.impressions)}</h4>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Clicks</p>
+            <h4 class="text-2xl font-black text-brand-dark">{fmtNum(data!.summary.clicks)}</h4>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">CTR</p>
+            <h4 class={`text-2xl font-black ${data!.summary.ctr && data!.summary.ctr > 0.05 ? 'text-brand-green' : 'text-brand-dark'}`}>
+              {fmtPct(data!.summary.ctr)}
+            </h4>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Added to Cart</p>
+            <h4 class="text-2xl font-black text-brand-dark">{fmtNum(data!.summary.addToCart)}</h4>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Add-to-cart Rate</p>
+            <h4 class="text-2xl font-black text-brand-dark">{fmtPct(data!.summary.addToCartRate)}</h4>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Attributed Share</p>
+            <h4 class="text-2xl font-black text-brand-dark">
+              {data!.summary.totalEvents > 0 ? fmtPct(data!.summary.attributedEvents / data!.summary.totalEvents) : '—'}
+            </h4>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Organic</p>
+            <h4 class="text-2xl font-black text-gray-500">{fmtNum(data!.summary.organicEvents)}</h4>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Rule Assisted</p>
+            <h4 class="text-2xl font-black text-blue-600">{fmtNum(data!.summary.ruleAssistedEvents)}</h4>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
+          {/* Health Panel */}
+          <div class="lg:col-span-1 space-y-6">
+            <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+              <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+                <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Event Health</h3>
+              </div>
+              <div class="p-6 space-y-4">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-500 font-bold">Tracking Status</span>
+                  <div class="flex items-center gap-2">
+                    {data!.eventHealth.trackingStatus === 'healthy' && <span class="text-[10px] font-black bg-brand-green/10 text-brand-green px-2 py-0.5 rounded uppercase">Healthy</span>}
+                    {data!.eventHealth.trackingStatus === 'quiet' && <span class="text-[10px] font-black bg-amber-50 text-amber-600 px-2 py-0.5 rounded uppercase">Quiet (Inactive)</span>}
+                  </div>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-500 font-bold">Latest Signal</span>
+                  <span class="text-xs font-mono font-bold text-brand-dark">{fmtDate(data!.eventHealth.latestEventAt)}</span>
+                </div>
+                <div class="pt-4 border-t border-gray-100 grid grid-cols-2 gap-4 text-center">
+                  <div>
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Missing Attr.</p>
+                    <p class="text-sm font-black text-brand-dark mt-0.5">{fmtNum(data!.eventHealth.missingAttributionId)}</p>
+                  </div>
+                  <div>
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Missing Product</p>
+                    <p class="text-sm font-black text-brand-dark mt-0.5">{fmtNum(data!.eventHealth.missingProductId)}</p>
+                  </div>
+                </div>
+                {data!.eventHealth.dataQualityWarnings.length > 0 && (
+                  <div class="mt-4 p-3 bg-red-50 rounded-xl border border-red-100">
+                    <h5 class="text-[9px] font-black text-red-800 uppercase tracking-widest mb-2">Quality Warnings</h5>
+                    <ul class="space-y-1.5">
+                      {data!.eventHealth.dataQualityWarnings.map(w => (
+                        <li class="text-[10px] text-red-600 font-bold flex items-start gap-2">
+                          <span class="mt-1 w-1 h-1 rounded-full bg-red-400 flex-shrink-0"></span>
+                          {w}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+              <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+                <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Identity Health</h3>
+              </div>
+              <div class="p-6 space-y-4">
+                 <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-500 font-bold">Identity Link Rate</span>
+                  <span class="text-xs font-black text-brand-dark">{fmtPct(data!.identityHealth.identityLinkRate)}</span>
+                </div>
+                <div class="grid grid-cols-2 gap-y-3 pt-2">
+                  <div>
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Lead Links</p>
+                    <p class="text-sm font-black text-brand-dark">{fmtNum(data!.identityHealth.anonymousToLeadLinks)}</p>
+                  </div>
+                  <div>
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Cust. Links</p>
+                    <p class="text-sm font-black text-brand-dark">{fmtNum(data!.identityHealth.anonymousToCustomerLinks)}</p>
+                  </div>
+                  <div>
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Total Links</p>
+                    <p class="text-sm font-black text-brand-dark">{fmtNum(data!.identityHealth.identityLinks)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Placement Table */}
+          <div class="lg:col-span-2">
+            <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden h-full">
+              <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+                <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Placement Performance</h3>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                  <thead class="bg-gray-50/50 border-b border-gray-100">
+                    <tr>
+                      <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest">Placement</th>
+                      <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Impressions</th>
+                      <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Clicks</th>
+                      <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">CTR</th>
+                      <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">ATC</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100">
+                    {data!.placementPerformance.map(p => (
+                      <tr class="hover:bg-gray-50/50 transition-colors">
+                        <td class="px-6 py-4">
+                          <div class="text-xs font-black text-brand-dark">{p.placement}</div>
+                        </td>
+                        <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.impressions)}</td>
+                        <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.clicks)}</td>
+                        <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(p.ctr)}</td>
+                        <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(p.addToCart)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Rule Performance Table */}
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-10">
+          <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Rule Performance</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="bg-gray-50/50 border-b border-gray-100">
+                <tr>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest">Rule / Bucket</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Impressions</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Clicks</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">CTR</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">ATC</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest">Placements</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                {data!.rulePerformance.map(r => (
+                  <tr class="hover:bg-gray-50/50 transition-colors">
+                    <td class="px-6 py-4">
+                      <div class="text-xs font-black text-brand-dark">{r.label}</div>
+                      {r.ruleId && <div class="text-[9px] font-mono text-gray-400 mt-0.5">{r.ruleId.slice(0,8)}</div>}
+                    </td>
+                    <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(r.impressions)}</td>
+                    <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(r.clicks)}</td>
+                    <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(r.ctr)}</td>
+                    <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(r.addToCart)}</td>
+                    <td class="px-6 py-4">
+                      <div class="flex flex-wrap gap-1">
+                        {r.placementsTouched.map(p => (
+                          <span class="text-[8px] font-black bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded uppercase">{p}</span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Product Performance Table */}
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-10">
+          <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Product Performance</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="bg-gray-50/50 border-b border-gray-100">
+                <tr>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest">Product</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest">SKU</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Impressions</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Clicks</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">CTR</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">ATC</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                {data!.productPerformance.map(p => (
+                  <tr class="hover:bg-gray-50/50 transition-colors">
+                    <td class="px-6 py-4">
+                      <div class="text-xs font-black text-brand-dark truncate max-w-xs">{p.productName || p.productId.slice(0,8)}</div>
+                    </td>
+                    <td class="px-6 py-4 text-xs font-mono text-gray-400">{p.sku || '—'}</td>
+                    <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.impressions)}</td>
+                    <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.clicks)}</td>
+                    <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(p.ctr)}</td>
+                    <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(p.addToCart)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Unavailable Metrics Section */}
+        <div class="bg-gray-100 border border-gray-200 rounded-2xl p-6 mb-10">
+          <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Unavailable Metrics</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {data!.unavailableMetrics.map(m => (
+              <div class="bg-white/50 border border-gray-200 rounded-xl p-4">
+                <h4 class="text-xs font-black text-gray-500 uppercase">{m.metric.replace(/([A-Z])/g, ' $1').trim()}</h4>
+                <p class="text-[10px] text-gray-400 mt-1 leading-relaxed">{m.reason}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </>
+    )}
+  </div>
+</AdminLayout>
+
+<script>
+  // Simple form handling for filters
+  const form = document.getElementById('analytics-filter-form') as HTMLFormElement;
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      const params = new URLSearchParams();
+      
+      formData.forEach((value, key) => {
+        if (value) params.set(key, value.toString());
+      });
+
+      window.location.search = params.toString();
+    });
+  }
+</script>
