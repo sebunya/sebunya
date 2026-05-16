@@ -111,10 +111,20 @@ const placements = [
 
     {!isApiLive ? (
       <div class="bg-red-50 border border-red-200 rounded-2xl p-12 text-center">
-        <h3 class="text-lg font-black text-red-700">Analytics Service Offline</h3>
-        <p class="text-sm text-red-600 mt-2 max-w-md mx-auto">Unable to reach the commerce intelligence aggregation layer. Check system logs or database connectivity.</p>
+        <h3 class="text-lg font-black text-red-700">
+          {(res as any).message?.toLowerCase().includes("date") ? "Invalid Filter Settings" : "Analytics Service Offline"}
+        </h3>
+        <p class="text-sm text-red-600 mt-2 max-w-md mx-auto">
+          {(res as any).message?.toLowerCase().includes("date")
+            ? `There was an issue with your filters: ${(res as any).message}. Please adjust the start/end dates and try again.`
+            : "We are unable to reach the commerce intelligence system. This usually means the API is temporarily down or there is a connectivity issue."}
+        </p>
         <div class="mt-6">
-           <button onclick="window.location.reload()" class="bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-xs">Retry Connection</button>
+          {(res as any).message?.toLowerCase().includes("date") ? (
+            <a href="/admin/recommendations/analytics" class="inline-block bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-xs">Reset Date Filter</a>
+          ) : (
+            <button onclick="window.location.reload()" class="bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-xs">Retry Connection</button>
+          )}
         </div>
       </div>
     ) : data?.eventHealth.trackingStatus === 'no_data' ? (
@@ -122,8 +132,11 @@ const placements = [
         <div class="w-16 h-16 bg-gray-200 rounded-full mx-auto flex items-center justify-center mb-6">
            <div class="w-2 h-2 rounded-full bg-gray-400"></div>
         </div>
-        <h3 class="text-xl font-black text-brand-dark">No events detected</h3>
-        <p class="text-sm text-gray-500 mt-2 max-w-sm mx-auto">No recommendation events have been captured for the selected time range or filters. Ensure storefront tracking is active.</p>
+        <h3 class="text-xl font-black text-brand-dark">No recommendation events found</h3>
+        <p class="text-sm text-gray-500 mt-2 max-w-sm mx-auto">No recommendation events found for this date range. If you just launched a campaign, it may take a few minutes for signals to appear.</p>
+        <div class="mt-8 flex justify-center gap-4">
+           <a href="/admin/recommendations/preview" class="text-xs font-bold text-brand-dark border border-gray-300 px-4 py-2 rounded-lg hover:bg-white transition-colors">Test Storefront Tracking</a>
+        </div>
       </div>
     ) : (
       <>
@@ -144,7 +157,7 @@ const placements = [
             </h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Added to Cart</p>
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Items added to cart</p>
             <h4 class="text-2xl font-black text-brand-dark">{fmtNum(data!.summary.addToCart)}</h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
@@ -152,17 +165,17 @@ const placements = [
             <h4 class="text-2xl font-black text-brand-dark">{fmtPct(data!.summary.addToCartRate)}</h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Attributed Share</p>
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Recommendation Share</p>
             <h4 class="text-2xl font-black text-brand-dark">
               {data!.summary.totalEvents > 0 ? fmtPct(data!.summary.attributedEvents / data!.summary.totalEvents) : '—'}
             </h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Organic</p>
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Organic / No Rule</p>
             <h4 class="text-2xl font-black text-gray-500">{fmtNum(data!.summary.organicEvents)}</h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Rule Assisted</p>
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Rule Influenced</p>
             <h4 class="text-2xl font-black text-blue-600">{fmtNum(data!.summary.ruleAssistedEvents)}</h4>
           </div>
         </div>
@@ -176,12 +189,15 @@ const placements = [
               </div>
               <div class="p-6 space-y-4">
                 <div class="flex items-center justify-between">
-                  <span class="text-xs text-gray-500 font-bold">Tracking Status</span>
+                  <span class="text-xs text-gray-500 font-bold">System Health</span>
                   <div class="flex items-center gap-2">
                     {data!.eventHealth.trackingStatus === 'healthy' && <span class="text-[10px] font-black bg-brand-green/10 text-brand-green px-2 py-0.5 rounded uppercase">Healthy</span>}
-                    {data!.eventHealth.trackingStatus === 'quiet' && <span class="text-[10px] font-black bg-amber-50 text-amber-600 px-2 py-0.5 rounded uppercase">Quiet (Inactive)</span>}
+                    {data!.eventHealth.trackingStatus === 'quiet' && <span class="text-[10px] font-black bg-amber-50 text-amber-600 px-2 py-0.5 rounded uppercase">Quiet / No Recent Signals</span>}
                   </div>
                 </div>
+                {data!.eventHealth.trackingStatus === 'quiet' && (
+                  <p class="text-[10px] text-amber-600 leading-relaxed font-medium">Tracking is quiet. No recent recommendation events were received in the selected period.</p>
+                )}
                 <div class="flex items-center justify-between">
                   <span class="text-xs text-gray-500 font-bold">Latest Signal</span>
                   <span class="text-xs font-mono font-bold text-brand-dark">{fmtDate(data!.eventHealth.latestEventAt)}</span>
@@ -218,9 +234,10 @@ const placements = [
               </div>
               <div class="p-6 space-y-4">
                  <div class="flex items-center justify-between">
-                  <span class="text-xs text-gray-500 font-bold">Identity Link Rate</span>
+                  <span class="text-xs text-gray-500 font-bold">Matched Visitors</span>
                   <span class="text-xs font-black text-brand-dark">{fmtPct(data!.identityHealth.identityLinkRate)}</span>
                 </div>
+                <p class="text-[10px] text-gray-500 leading-relaxed">Percentage of anonymous visitors successfully linked to an email or customer profile.</p>
                 <div class="grid grid-cols-2 gap-y-3 pt-2">
                   <div>
                     <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Lead Links</p>
@@ -257,17 +274,25 @@ const placements = [
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-gray-100">
-                    {data!.placementPerformance.map(p => (
-                      <tr class="hover:bg-gray-50/50 transition-colors">
-                        <td class="px-6 py-4">
-                          <div class="text-xs font-black text-brand-dark">{p.placement}</div>
+                    {data!.placementPerformance.length === 0 ? (
+                      <tr>
+                        <td colspan="5" class="px-6 py-8 text-center text-xs font-medium text-gray-400">
+                          No placement performance data found for this period.
                         </td>
-                        <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.impressions)}</td>
-                        <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.clicks)}</td>
-                        <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(p.ctr)}</td>
-                        <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(p.addToCart)}</td>
                       </tr>
-                    ))}
+                    ) : (
+                      data!.placementPerformance.map(p => (
+                        <tr class="hover:bg-gray-50/50 transition-colors">
+                          <td class="px-6 py-4">
+                            <div class="text-xs font-black text-brand-dark">{p.placement}</div>
+                          </td>
+                          <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.impressions)}</td>
+                          <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.clicks)}</td>
+                          <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(p.ctr)}</td>
+                          <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(p.addToCart)}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -293,27 +318,40 @@ const placements = [
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100">
-                {data!.rulePerformance.map(r => (
-                  <tr class="hover:bg-gray-50/50 transition-colors">
-                    <td class="px-6 py-4">
-                      <div class="text-xs font-black text-brand-dark">{r.label}</div>
-                      {r.ruleId && <div class="text-[9px] font-mono text-gray-400 mt-0.5">{r.ruleId.slice(0,8)}</div>}
-                    </td>
-                    <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(r.impressions)}</td>
-                    <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(r.clicks)}</td>
-                    <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(r.ctr)}</td>
-                    <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(r.addToCart)}</td>
-                    <td class="px-6 py-4">
-                      <div class="flex flex-wrap gap-1">
-                        {r.placementsTouched.map(p => (
-                          <span class="text-[8px] font-black bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded uppercase">{p}</span>
-                        ))}
-                      </div>
+                {data!.rulePerformance.length === 0 ? (
+                  <tr>
+                    <td colspan="6" class="px-6 py-8 text-center text-xs font-medium text-gray-400">
+                      No rule performance data found for this period.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  data!.rulePerformance.map(r => (
+                    <tr class="hover:bg-gray-50/50 transition-colors">
+                      <td class="px-6 py-4">
+                        <div class="text-xs font-black text-brand-dark">{r.label}</div>
+                        {r.ruleId && <div class="text-[9px] font-mono text-gray-400 mt-0.5">{r.ruleId.slice(0,8)}</div>}
+                      </td>
+                      <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(r.impressions)}</td>
+                      <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(r.clicks)}</td>
+                      <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(r.ctr)}</td>
+                      <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(r.addToCart)}</td>
+                      <td class="px-6 py-4">
+                        <div class="flex flex-wrap gap-1">
+                          {r.placementsTouched.map(p => (
+                            <span class="text-[8px] font-black bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded uppercase">{p}</span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
+          </div>
+          <div class="px-6 py-3 border-t border-gray-100 bg-gray-50/50">
+            <p class="text-[10px] text-gray-500 font-medium leading-relaxed">
+              * Organic / no rule means the product appeared without a merchandising rule.
+            </p>
           </div>
         </div>
 
@@ -335,18 +373,26 @@ const placements = [
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100">
-                {data!.productPerformance.map(p => (
-                  <tr class="hover:bg-gray-50/50 transition-colors">
-                    <td class="px-6 py-4">
-                      <div class="text-xs font-black text-brand-dark truncate max-w-xs">{p.productName || p.productId.slice(0,8)}</div>
+                {data!.productPerformance.length === 0 ? (
+                  <tr>
+                    <td colspan="6" class="px-6 py-8 text-center text-xs font-medium text-gray-400">
+                      No product performance data found for this period.
                     </td>
-                    <td class="px-6 py-4 text-xs font-mono text-gray-400">{p.sku || '—'}</td>
-                    <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.impressions)}</td>
-                    <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.clicks)}</td>
-                    <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(p.ctr)}</td>
-                    <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(p.addToCart)}</td>
                   </tr>
-                ))}
+                ) : (
+                  data!.productPerformance.map(p => (
+                    <tr class="hover:bg-gray-50/50 transition-colors">
+                      <td class="px-6 py-4">
+                        <div class="text-xs font-black text-brand-dark truncate max-w-xs">{p.productName || (p.productId ? p.productId.slice(0,8) : 'Unknown Product')}</div>
+                      </td>
+                      <td class="px-6 py-4 text-xs font-mono text-gray-400">{p.sku || '—'}</td>
+                      <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.impressions)}</td>
+                      <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.clicks)}</td>
+                      <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(p.ctr)}</td>
+                      <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(p.addToCart)}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
