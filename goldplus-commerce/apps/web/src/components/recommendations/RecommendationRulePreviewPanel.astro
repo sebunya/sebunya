@@ -3,9 +3,9 @@
 // Provides safe placeholder layout and standard styling for client-side JS injected Diff view.
 ---
 
-<div id="recommendation-preview-panel" class="bg-gray-50 border border-gray-200 rounded-2xl p-6 hidden">
+<div id="recommendation-preview-panel" class="bg-gray-50 border border-gray-200 rounded-2xl p-6">
   <h3 class="text-lg font-black text-brand-dark mb-6 flex items-center gap-3">
-    <span class="text-xl">📊</span> Impact Preview Simulation
+    Preview results
   </h3>
 
   <!-- Warnings Container -->
@@ -15,29 +15,32 @@
     <!-- Before Block -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       <div class="bg-gray-100 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-        <span class="text-xs font-bold uppercase tracking-widest text-gray-500">Current Baseline (V1)</span>
+        <span class="text-xs font-bold uppercase tracking-widest text-gray-500">Products before rules</span>
         <span class="text-[10px] px-2 py-0.5 bg-gray-200 text-gray-600 rounded font-mono">Pre-Rule</span>
       </div>
       <div id="preview-before-list" class="divide-y divide-gray-100 min-h-[100px]">
-        <!-- Populated by JS -->
+        <div class="p-8 text-center text-gray-400 text-xs italic">Run preview to load base products.</div>
       </div>
     </div>
 
     <!-- After Block -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       <div class="bg-brand-dark px-4 py-3 border-b border-brand-dark text-white flex items-center justify-between">
-        <span class="text-xs font-bold uppercase tracking-widest text-gray-300">Simulated Output (V2)</span>
-        <span class="text-[10px] px-2 py-0.5 bg-brand-gold text-black rounded font-black uppercase">Preview</span>
+        <span class="text-xs font-bold uppercase tracking-widest text-gray-300">Products after rules</span>
+        <span class="text-[10px] px-2 py-0.5 bg-brand-gold text-black rounded font-black uppercase">Simulated</span>
       </div>
       <div id="preview-after-list" class="divide-y divide-gray-100 min-h-[100px]">
-        <!-- Populated by JS -->
+        <div class="p-8 text-center text-gray-400 text-xs italic">Run preview to load simulated results.</div>
       </div>
     </div>
   </div>
 
   <div class="mt-6 p-4 bg-white border border-gray-200 rounded-xl">
+    <h4 class="text-[10px] uppercase font-black text-gray-400 mb-3">Applied Metrics</h4>
     <div class="flex flex-wrap gap-2" id="preview-meta-badges">
-      <!-- Detail Badges -->
+      <span class="px-3 py-1 border rounded-full text-[10px] font-bold bg-gray-50 text-gray-400 border-gray-200">Rules applied: 0</span>
+      <span class="px-3 py-1 border rounded-full text-[10px] font-bold bg-gray-50 text-gray-400 border-gray-200">Products hidden: 0</span>
+      <span class="px-3 py-1 border rounded-full text-[10px] font-bold bg-gray-50 text-gray-400 border-gray-200">Products pinned: 0</span>
     </div>
   </div>
 </div>
@@ -59,7 +62,6 @@
 
 <template id="warning-alert-tpl">
   <div class="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">
-    <span class="text-lg">⚠️</span>
     <span class="warning-text font-medium"></span>
   </div>
 </template>
@@ -139,9 +141,9 @@
 
     // Meta Info Badges
     const stats = [
-      { label: `Suppressed: ${data.suppressedProductIds?.length || 0}`, count: data.suppressedProductIds?.length },
-      { label: `Pinned: ${data.pinnedProductIds?.length || 0}`, count: data.pinnedProductIds?.length },
-      { label: `Applied Rules: ${data.appliedRuleIds?.length || 0}`, count: data.appliedRuleIds?.length }
+      { label: `Rules applied: ${data.appliedRuleIds?.length || 0}`, count: data.appliedRuleIds?.length },
+      { label: `Products hidden: ${data.suppressedProductIds?.length || 0}`, count: data.suppressedProductIds?.length },
+      { label: `Products pinned: ${data.pinnedProductIds?.length || 0}`, count: data.pinnedProductIds?.length }
     ];
     
     stats.forEach(s => {
@@ -151,7 +153,7 @@
 
     // Highlight Removed Items specifically if any exist that aren't in After
     if (data.suppressedProductIds?.length > 0) {
-      metaBadges.innerHTML += `<span class="px-3 py-1 bg-red-50 border border-red-100 text-red-700 rounded-full text-[10px] font-bold flex items-center gap-1">🚫 Product Suppressed</span>`;
+      metaBadges.innerHTML += `<span class="px-3 py-1 bg-red-50 border border-red-100 text-red-700 rounded-full text-[10px] font-bold flex items-center gap-1">Product Suppressed</span>`;
     }
   };
 </script>

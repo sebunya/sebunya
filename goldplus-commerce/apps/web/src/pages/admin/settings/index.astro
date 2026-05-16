@@ -1,63 +1,145 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
+import InfoTooltip from "../../../components/admin/InfoTooltip.astro";
+import { apiBase } from "../../../lib/api";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/settings", 303);
 }
 
-const configurations = [
-  { key: 'CURRENCY_DEFAULT', value: 'UGX', desc: 'Primary presentation unit for customer storefronts.' },
-  { key: 'REC_ENGINE_VERSION', value: 'v2.0-deterministic', desc: 'Active recommendation algorithmic runtime constraint.' },
-  { key: 'LOCATION_MODE', value: 'uganda_districts_strict', desc: 'Restricts delivery address collection to recognized districts.' },
-  { key: 'MAINTENANCE_MODE', value: 'FALSE', desc: 'Global storefront reachability toggle.' },
+const configGroups = [
+  {
+    id: 'grp-store-setup',
+    title: 'Store setup',
+    items: [
+      { label: 'Public API Connection', key: 'PUBLIC_API_URL', value: apiBase || 'UNCONFIGURED', desc: 'The core connection address resolving backend API queries.', source: 'Deployment setting' },
+      { label: 'Primary Currency', key: 'CURRENCY_DEFAULT', value: 'UGX', desc: 'The presentation monetary unit utilized on storefront layouts.', source: 'Deployment setting' },
+      { label: 'Default Language / Locale', key: 'DEFAULT_LOCALE', value: 'en-UG', desc: 'Language format determining number presentation.', source: 'Deployment setting' },
+      { label: 'Maintenance Status', key: 'MAINTENANCE_MODE', value: 'INACTIVE', desc: 'System toggle allowing store closure during scheduled maintenance.', source: 'Deployment setting' }
+    ]
+  },
+  {
+    id: 'grp-cart-settings',
+    title: 'Cart settings',
+    items: [
+      { label: 'Cart Retention Period', key: 'CART_EXPIRATION_TTL', value: '90 Days', desc: 'Guest carts are kept for 90 days so customers can return and continue shopping.', source: 'Deployment setting' },
+      { label: 'Guest Cart Resolution', key: 'CART_ASSOCIATION_METHOD', value: 'device-cookie-uuid', desc: 'Keeps guest carts tied to this browser.', source: 'Deployment setting' }
+    ]
+  },
+  {
+    id: 'grp-recommendations',
+    title: 'Recommendations',
+    items: [
+      { label: 'Placement Threshold Limit', key: 'MAX_PLACEMENT_ITEMS', value: '10 Products', desc: 'Defines maximum quantity limits allowed inside dynamic rails.', source: 'Deployment setting' },
+      { label: 'System Version', key: 'REC_ENGINE_VER', value: 'v2.0-live', desc: 'Active underlying decision architecture version.', source: 'Deployment setting' }
+    ]
+  },
+  {
+    id: 'grp-admin-access',
+    title: 'Admin access',
+    items: [
+      { label: 'Session Cookie Security', key: 'SESSION_SECURITY', value: 'HttpOnly-Strict', desc: 'Protects operational admin sessions against external browser reads.', source: 'Deployment setting' },
+      { label: 'Session Expiration Limit', key: 'SESSION_TTL_HOURS', value: '24 Hours', desc: 'Period of continuous idle time before forcing re-authentication.', source: 'Deployment setting' }
+    ]
+  },
+  {
+    id: 'grp-deployment',
+    title: 'Deployment-managed settings',
+    items: [
+      { label: 'Gateway Connection Timeout', key: 'GATEWAY_TIMEOUT', value: '30 Seconds', desc: 'Response waiting limit before emitting timeout errors.', source: 'Deployment setting' },
+      { label: 'JWT Token Signing Method', key: 'JWT_ALGORITHM', value: 'HS256', desc: 'Internal authentication signature verification protocol.', source: 'Deployment setting' }
+    ]
+  }
 ];
 ---
 
 <AdminLayout 
-  title="Global Settings" 
-  description="Review environment variables, localized behaviors and active toggles."
+  title="Settings" 
+  description="Review administrative, cart, and deployment settings configurations."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
-    <div class="mb-8 pb-6 border-b border-gray-200">
-      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Platform Variables</h2>
-      <p class="text-sm text-gray-500 mt-1">
-        Active system-wide configuration keys parsed during runtime bootstrap. Modifying these keys requires direct deployment updates.
-      </p>
-    </div>
-
-    {/* Settings Grid */}
-    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden max-w-4xl">
-      <div class="p-5 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-        <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Read-Only Environment Context</h3>
-      </div>
-      <div class="divide-y divide-gray-100">
-        {configurations.map(c => (
-          <div class="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <code class="font-mono text-xs font-bold text-brand-dark bg-gray-100 px-1.5 py-0.5 rounded">
-                {c.key}
-              </code>
-              <p class="text-xs text-gray-500 mt-1.5 max-w-lg">{c.desc}</p>
-            </div>
-            <div class="flex items-center gap-2 font-mono text-xs font-black text-gray-600 bg-gray-50 border border-gray-200 px-3 py-1 rounded-lg select-all">
-              {c.value}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-
-    <div class="mt-8 bg-blue-50 border border-blue-200 rounded-2xl p-6 max-w-4xl flex gap-4 text-blue-800">
-      <span class="text-2xl">💡</span>
+    <div class="mb-8 pb-6 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <h4 class="font-bold text-sm">Dynamic UI Modification</h4>
-        <p class="text-xs opacity-90 mt-1 leading-relaxed">
-          Modifying variables directly within this UI requires mounting a dynamic Settings/Etcd repository adapter, which is scheduled for later infrastructure passes.
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Settings</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+          Review administrative, cart, and deployment settings configurations.
         </p>
       </div>
+      <span class="bg-gray-50 border border-gray-200 text-gray-500 text-[10px] font-black px-3 py-1.5 rounded-lg flex items-center gap-2 uppercase tracking-wide">
+         Deployment-Locked
+         <InfoTooltip text="Settings are read-only in this dashboard and managed through secure server environment variables." align="right" />
+      </span>
+    </div>
+
+    {/* Compact Navigation Tabs */}
+    <div class="flex flex-wrap gap-2 mb-8 pb-2 overflow-x-auto border-b border-gray-100">
+      {configGroups.map(g => (
+        <a href={`#${g.id}`} class="text-[10px] font-black uppercase bg-white border border-gray-200 text-gray-500 hover:text-brand-dark hover:border-brand-dark px-3.5 py-1.5 rounded-lg transition-all whitespace-nowrap shadow-xs">
+          {g.title}
+        </a>
+      ))}
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
+       
+       {/* Main Content */}
+       <div class="lg:col-span-8 space-y-6">
+         {configGroups.map(group => (
+           <div id={group.id} class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden scroll-mt-6">
+             <div class="px-5 py-3 bg-gray-50 border-b border-gray-100">
+               <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">{group.title}</h3>
+             </div>
+             <div class="divide-y divide-gray-100">
+               {group.items.map(c => (
+                 <div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-50/20 transition-colors">
+                    <div class="space-y-1 flex-grow pr-4">
+                      <div class="flex flex-wrap items-center gap-2">
+                         <span class="font-black text-brand-dark text-xs">
+                           {c.label}
+                         </span>
+                         <code class="font-mono text-[9px] text-gray-400 bg-gray-50 border border-gray-200/50 px-1.5 py-0.5 rounded">
+                           {c.key}
+                         </code>
+                         <span class="text-[8px] font-bold uppercase px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">
+                           {c.source}
+                         </span>
+                      </div>
+                      <p class="text-xs text-gray-500 leading-relaxed max-w-xl font-medium">{c.desc}</p>
+                    </div>
+                    
+                    <div class="flex flex-col items-end gap-1 flex-shrink-0">
+                       <div class="font-mono text-xs font-black text-gray-600 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg select-all whitespace-nowrap shadow-xs">
+                         {c.value}
+                       </div>
+                       <span class="text-[8px] font-black text-gray-400 uppercase tracking-wider">
+                          Managed Value
+                       </span>
+                    </div>
+                 </div>
+               ))}
+             </div>
+           </div>
+         ))}
+       </div>
+
+       {/* Sticky Notice Card */}
+       <div class="lg:col-span-4">
+          <div class="bg-brand-dark text-white rounded-2xl p-6 sticky top-8 flex flex-col gap-4 shadow-md">
+             <div class="flex items-center gap-3 border-b border-white/10 pb-3">
+                <h4 class="font-black text-xs text-brand-gold uppercase tracking-widest">Deployment settings</h4>
+             </div>
+             <p class="text-[11px] leading-relaxed text-gray-300 font-medium">
+                These configurations reside inside core deployment configurations to ensure global stability.
+             </p>
+             <p class="text-[11px] leading-relaxed text-gray-400 font-medium bg-black/20 p-3 rounded-xl border border-white/5">
+                Modifications must be pushed via deployment pipelines and verified in continuous testing stages. Contact operations engineering to adjust these variables.
+             </p>
+          </div>
+       </div>
+
     </div>
 
   </div>

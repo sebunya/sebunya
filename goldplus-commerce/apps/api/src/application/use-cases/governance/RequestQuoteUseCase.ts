@@ -9,6 +9,7 @@ export interface RequestQuoteInput {
   phone: string;
   productName: string;
   quantity: string;
+  // TODO: migrate this workflow to persist structuredLocation as JSON metadata or dedicated columns.
   message?: string;
   kind: string;
 }

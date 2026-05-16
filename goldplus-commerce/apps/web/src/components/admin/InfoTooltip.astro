@@ -1,0 +1,42 @@
+---
+interface Props {
+  text: string;
+  label?: string;
+  align?: 'left' | 'center' | 'right';
+}
+
+const { text, label = '', align = 'center' } = Astro.props;
+---
+
+<div class="tooltip-wrapper group relative inline-flex items-center select-none">
+  {label && <span class="mr-1.5 text-xs text-gray-500 font-medium leading-none">{label}</span>}
+  <button 
+    type="button"
+    class="tooltip-trigger inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] font-black font-mono text-gray-400 border border-gray-300 rounded-full hover:text-brand-dark hover:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-400 transition-colors bg-white cursor-help"
+    aria-label={text}
+    title={text} 
+  >
+    i
+  </button>
+  <div 
+    role="tooltip"
+    class:list={[
+      "tooltip-content pointer-events-none absolute bottom-full mb-2 hidden group-hover:block group-focus-within:block w-56 bg-gray-900 text-white text-[10px] p-2.5 rounded-lg shadow-lg leading-relaxed z-50 border border-gray-800 font-medium text-left whitespace-normal",
+      {
+        "left-0 -translate-x-0": align === 'left',
+        "left-1/2 -translate-x-1/2": align === 'center',
+        "right-0 translate-x-0": align === 'right',
+      }
+    ]}
+  >
+    <span class="block text-gray-100">{text}</span>
+    <div class:list={[
+      "absolute top-full w-2 h-2 bg-gray-900 border-b border-r border-gray-800 rotate-45 -mt-1",
+      {
+        "left-1": align === 'left',
+        "left-1/2 -translate-x-1/2": align === 'center',
+        "right-2": align === 'right',
+      }
+    ]}></div>
+  </div>
+</div>

@@ -40,6 +40,7 @@ export class DrizzleCartQueryRepository implements ICartQueryRepository {
 
     return {
       id: cartRecord.id,
+      sessionId: cartRecord.sessionId || null,
       items,
       subtotalUgx,
     };

@@ -49,6 +49,9 @@ if (Astro.request.method === 'POST') {
       if (locationJson && locationJson.startsWith('{')) {
          metadata.structuredLocation = JSON.parse(locationJson);
       }
+      if (locationDetails) {
+         metadata.addressDetails = locationDetails;
+      }
     } catch(e) {}
 
     let finalDesc = description;

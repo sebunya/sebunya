@@ -1,92 +1,37 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
-import StatusBadge from '../../../components/StatusBadge.astro';
-import EmptyState from '../../../components/EmptyState.astro';
-import Notice from '../../../components/Notice.astro';
-import { tryFetchAdminList } from '../../../lib/api';
 import { readSessionToken } from '../../../lib/session';
-import { SAMPLE_CATEGORIES, type SampleCategory } from '../../../lib/sample-data';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/categories", 303);
 }
-
-const result = await tryFetchAdminList<SampleCategory>(
-  '/governance/admin/categories',
-  SAMPLE_CATEGORIES,
-  'Catalogue hierarchy data shown as placeholder.',
-);
 ---
 
 <AdminLayout 
-  title="Categories Management" 
-  description="Organize inventory into customer-facing groupings."
+  title="Categories — not yet available" 
+  description="Category management is not available in this admin yet."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Catalog Taxonomies</h2>
-        <p class="text-sm text-gray-500 mt-1">Manage public site navigation trees and hierarchical grouping definitions.</p>
-      </div>
-      <div class="flex items-center gap-2">
-        <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
-          CLASSES: {result.items.length}
-        </span>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Categories</h2>
+        <p class="text-sm text-gray-500 mt-1">Category management is not available in this admin yet.</p>
       </div>
     </div>
 
-    {result.isSample && (
-      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4">
-        <span class="text-2xl">💡</span>
-        <div class="text-xs leading-relaxed"><strong>Offline Sandbox Note:</strong> {result.reason}</div>
-      </div>
-    )}
+    <div class="mt-12 p-16 border border-dashed border-gray-300 bg-gray-50 rounded-2xl text-center max-w-3xl mx-auto flex flex-col items-center justify-center">
+      <h4 class="font-black text-brand-dark text-base">Feature Under Construction</h4>
+      <p class="text-xs text-gray-500 mt-2 max-w-md leading-relaxed font-medium">
+        Category configurations and taxonomy hierarchies are managed directly within the seed files and database layer. They are not yet exposed as a live, modifiable module.
+      </p>
+      <a href="/admin" class="mt-6 text-xs font-bold text-white bg-brand-dark hover:bg-black px-5 py-2.5 rounded-xl transition-colors shadow-sm">
+        Return to Control Centre
+      </a>
+    </div>
 
-    {result.items.length === 0 ? (
-      <EmptyState
-        title="No Categories Listed"
-        message="Once categorization matrices exist, navigational lists appear here."
-      />
-    ) : (
-      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse">
-            <thead>
-              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
-                <th class="p-6">Category Classification</th>
-                <th class="p-6">Namespace Slug</th>
-                <th class="p-6 text-center">Assigned Assets</th>
-                <th class="p-6 text-center">Storefront Visibility</th>
-              </tr>
-            </thead>
-            <tbody class="text-xs divide-y divide-gray-50">
-              {result.items.map((cat) => (
-                <tr class="hover:bg-gray-50 transition-colors">
-                  <td class="p-6">
-                    <div class="font-bold text-brand-dark text-sm">{cat.name}</div>
-                  </td>
-                  <td class="p-6 font-mono text-gray-500 font-medium">
-                    /{cat.slug}
-                  </td>
-                  <td class="p-6 text-center font-bold font-mono text-brand-dark text-sm">
-                    {cat.productCount}
-                  </td>
-                  <td class="p-6 text-center">
-                    <span class={`inline-block px-2.5 py-1 rounded-lg font-black text-[9px] uppercase tracking-wide border ${
-                      cat.isActive ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-50 text-gray-700 border-gray-100'
-                    }`}>
-                      {cat.isActive ? 'Active' : 'Hidden'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    )}
   </div>
 </AdminLayout>
+
 

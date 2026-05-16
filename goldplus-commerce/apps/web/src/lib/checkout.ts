@@ -56,9 +56,10 @@ export function prepareCheckoutPayload(formData: FormData, cartItems: CartItem[]
   if (locationJson.startsWith('{')) {
     try {
       const loc = JSON.parse(locationJson);
-      // Ensure all hierarchical layers survive flat concatenation:
       deliveryArea = `${loc.parishWard || loc.parish} | ${loc.subcountyDivisionTc || loc.subcounty}, ${loc.district}`;
-      deliveryAddress = `${loc.countyOrMunicipality || loc.county || ''} · ${loc.region} · Postcode ${loc.postcode}`.replace(/^\s*·\s*/, '').trim();
+      const rawDetails = String(formData.get('deliveryAddress') || '').trim();
+      const adminDetails = `${loc.countyOrMunicipality || loc.county || ''} · ${loc.region} · Postcode ${loc.postcode}`.replace(/^\s*·\s*/, '').trim();
+      deliveryAddress = rawDetails ? `${rawDetails} | ${adminDetails}` : adminDetails;
     } catch (e) {
       // fallback to whatever raw text was submitted if JSON decode exploded
       deliveryArea = String(formData.get('deliveryArea') || '');

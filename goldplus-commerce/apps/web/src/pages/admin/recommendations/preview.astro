@@ -2,26 +2,32 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import FormField from "../../../components/FormField.astro";
 import RecommendationRulePreviewPanel from "../../../components/recommendations/RecommendationRulePreviewPanel.astro";
+import InfoTooltip from "../../../components/admin/InfoTooltip.astro";
 import { readSessionToken } from "../../../lib/session";
 import { apiBase } from "../../../lib/api";
 
 const token = readSessionToken(Astro.request);
 if (!token) return Astro.redirect("/admin/login?returnTo=/admin/recommendations/preview", 303);
+
+// Allow deep-linking to instant preview settings from Rules Manager
+const url = new URL(Astro.request.url);
+const paramPlacement = url.searchParams.get('placement') || 'home_trending';
+const paramProductId = url.searchParams.get('productId') || '';
 ---
 
 <AdminLayout 
-  title="Preview Sandbox" 
-  description="Inspect real-time recommendation array displacements and diagnostics."
+  title="Preview recommendations" 
+  description="Verify how active rules dynamically adjust catalog outputs before site publishing."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Recommendation Matrix</h2>
-        <p class="text-sm text-gray-500 mt-1">Audit system combinations live against mock customer profiles.</p>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Preview recommendations</h2>
+        <p class="text-sm text-gray-500 mt-1">Verify how active rules dynamically adjust catalog outputs before site publishing.</p>
       </div>
       <a href="/admin/recommendations" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
-        &larr; Audit Center
+        &larr; Recommendations
       </a>
     </div>
 
@@ -29,53 +35,106 @@ if (!token) return Astro.redirect("/admin/login?returnTo=/admin/recommendations/
       
       {/* INPUT CONTROLS */}
       <div class="lg:col-span-4 space-y-6">
-        <form id="sandbox-form" class="bg-white border border-gray-200 shadow-sm rounded-2xl overflow-hidden">
+        <form id="preview-form" class="bg-white border border-gray-200 shadow-sm rounded-2xl overflow-hidden">
            <div class="px-6 py-4 bg-gray-50 border-b border-gray-100">
-              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Placement Target</h3>
+              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Preview setup</h3>
            </div>
            <div class="p-6 space-y-5">
              <div>
-               <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Site Position</label>
-               <select id="s_placement" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-xs text-brand-dark outline-none focus:border-brand-green">
-                 <option value="home_trending">Home Trending (Index)</option>
-                 <option value="product_related">Product Related (PDP)</option>
-                 <option value="cart_addon">Cart Addon (Sidecart)</option>
-                 <option value="category_popular">Category Popular (PLP)</option>
-                 <option value="complete_setup">Complete Setup (Cross-sell)</option>
+               <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-2">
+                 Placement
+                 <InfoTooltip text="The page section where these recommendations will be loaded." align="left" />
+               </label>
+               <select id="s_placement" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-xs text-brand-dark outline-none focus:border-brand-gold">
+                 <option value="home_trending" selected={paramPlacement === 'home_trending'}>Home Trending</option>
+                 <option value="product_related" selected={paramPlacement === 'product_related'}>Product Related</option>
+                 <option value="cart_addon" selected={paramPlacement === 'cart_addon'}>Cart Addons</option>
+                 <option value="category_popular" selected={paramPlacement === 'category_popular'}>Category Popular</option>
+                 <option value="complete_setup" selected={paramPlacement === 'complete_setup'}>Complete Setup</option>
                </select>
+
+               {/* Intelligent Dynamic Context Helper Banner */}
+               <div id="ctx-helper" class="mt-3 p-3 border rounded-xl hidden text-[10px] leading-relaxed flex items-start gap-2 font-medium transition-all">
+                  <span class="w-1.5 h-1.5 bg-current rounded-full inline-block mt-1.5 flex-shrink-0 opacity-60"></span>
+                  <span id="ctx-helper-txt"></span>
+               </div>
              </div>
              
              <div class="pt-5 border-t border-dashed border-gray-200 space-y-4">
-                <h4 class="text-[10px] uppercase font-black text-gray-400 tracking-wider">Environment Mocking</h4>
-                <FormField id="s_prod" name="productId" label="Anchor Product ID" placeholder="e.g. uuid-hash" />
-                <FormField id="s_cat" name="categorySlug" label="Category Slug" placeholder="wireless-audio" />
-                <FormField id="s_cart" name="cartItems" label="Cart Product IDs (CSV)" placeholder="prod_A, prod_B" helperText="Optional context list." />
+                <h4 class="text-[10px] uppercase font-black text-gray-400 tracking-wider flex items-center gap-2">
+                  Customer context
+                  <InfoTooltip text="Provide identifiers required by context-dependent rules to isolate exact matching logic." align="left" />
+                </h4>
+                <FormField id="s_prod" name="productId" label="Anchor product ID" value={paramProductId} placeholder="e.g. 00000000-0000-0000-0000-000000000000">
+                  <span slot="label" class="flex justify-between items-center">
+                     <span>Anchor product ID</span>
+                     <span id="req-badge-prod" class="text-[8px] text-gray-400 font-black uppercase hidden">Required</span>
+                  </span>
+                </FormField>
+                <FormField id="s_cat" name="categorySlug" label="Category slug" placeholder="e.g. wireless-audio">
+                  <span slot="label" class="flex justify-between items-center">
+                     <span>Category slug</span>
+                     <span id="req-badge-cat" class="text-[8px] text-gray-400 font-black uppercase hidden">Required</span>
+                  </span>
+                </FormField>
+                <FormField id="s_cart" name="cartItems" label="Cart product IDs" placeholder="uuid1, uuid2" helperText="Separate multiple active IDs with commas.">
+                  <span slot="label" class="flex justify-between items-center">
+                     <span>Cart product IDs</span>
+                     <span id="req-badge-cart" class="text-[8px] text-gray-400 font-black uppercase hidden">Required</span>
+                  </span>
+                </FormField>
              </div>
 
              <button type="submit" class="w-full bg-brand-dark text-white font-black text-xs uppercase tracking-wider py-3.5 rounded-xl shadow-sm hover:bg-black transition-colors mt-4 flex items-center justify-center gap-2">
-               <span>⚡</span> Compute Engine Outcomes
+               Run preview
              </button>
            </div>
         </form>
 
-        <div class="bg-blue-50 border border-blue-100 p-5 rounded-2xl flex items-start gap-3">
-           <span class="text-base mt-0.5">💡</span>
+        <div class="bg-blue-50 border border-blue-100 p-5 rounded-2xl flex items-start gap-3 shadow-xs">
            <div>
-             <h4 class="text-xs font-bold text-blue-800">Snapshot Behavior</h4>
+             <h4 class="text-xs font-bold text-blue-800">Operational preview</h4>
              <p class="text-[10px] text-blue-700 leading-relaxed mt-1 font-medium">
-               Standalone testing bypasses active drafts to inspect the TRUE operational state experienced by production customers, complete with detailed displacement scores.
+               Executes preview routines truthfully using current live relational configuration. This does not persist any configuration changes to storefront viewers.
              </p>
            </div>
         </div>
       </div>
 
       {/* OUTPUT PANEL */}
-      <div class="lg:col-span-8">
-         <div id="sandbox-empty-state" class="bg-gray-50 border border-gray-200 border-dashed rounded-2xl p-12 text-center h-full flex flex-col items-center justify-center min-h-[350px]">
-             <span class="text-5xl grayscale opacity-40 mb-4">🔮</span>
-             <h3 class="text-sm font-black text-brand-dark">Sandbox Computation Area</h3>
-             <p class="text-xs text-gray-400 mt-2 max-w-[250px] leading-relaxed">Initialize variables inside the controls panel and trigger compute to stream matrix output.</p>
+      <div class="lg:col-span-8 space-y-6">
+         <div id="preview-instructions" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-center">
+             <div class="mb-4 border-b border-gray-100 pb-3">
+                <h3 class="text-base font-black text-brand-dark">Preview instructions</h3>
+                <p class="text-xs text-gray-500 leading-relaxed mt-1">
+                   Choose a target placement, fill required contextual scopes, and run preview side-by-side audit.
+                </p>
+             </div>
+
+             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
+                  <div class="font-black text-brand-dark uppercase tracking-widest text-[9px] text-gray-400 mb-1">1. Select Target</div>
+                  <div class="text-[11px] text-gray-600 leading-relaxed font-medium">Configure target zone and supply matching category/product parameters on left side.</div>
+                </div>
+                <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
+                  <div class="font-black text-brand-dark uppercase tracking-widest text-[9px] text-gray-400 mb-1">2. Execute Probe</div>
+                  <div class="text-[11px] text-gray-600 leading-relaxed font-medium">Trigger "Run preview" to send real-time payloads to simulation decision logic.</div>
+                </div>
+                <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
+                  <div class="font-black text-brand-dark uppercase tracking-widest text-[9px] text-gray-400 mb-1">3. Compare Results</div>
+                  <div class="text-[11px] text-gray-600 leading-relaxed font-medium">Evaluate scores pre-rule and post-rule, and inspect affected products counts.</div>
+                </div>
+             </div>
          </div>
+
+         <div id="preview-error-box" class="hidden p-5 border border-red-200 bg-red-50 rounded-2xl max-w-2xl mx-auto shadow-sm">
+            <h4 class="text-xs font-black text-red-700 uppercase tracking-widest mb-1 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 bg-red-600 rounded-full inline-block"></span>
+              Preview Fault
+            </h4>
+            <p id="preview-error-msg" class="text-xs text-red-800 leading-relaxed font-medium whitespace-pre-line font-mono"></p>
+         </div>
+
          <RecommendationRulePreviewPanel />
       </div>
     </div>
@@ -85,22 +144,113 @@ if (!token) return Astro.redirect("/admin/login?returnTo=/admin/recommendations/
 </AdminLayout>
 
 <script>
-  const form = document.getElementById('sandbox-form');
+  const form = document.getElementById('preview-form') as HTMLFormElement;
   const token = (document.getElementById('session-token') as HTMLInputElement)?.value;
-  const emptyState = document.getElementById('sandbox-empty-state');
+  const errorBox = document.getElementById('preview-error-box');
+  const errorMsg = document.getElementById('preview-error-msg');
+  const selectPlacement = document.getElementById('s_placement') as HTMLSelectElement;
+  
+  // Context helper DOM pieces
+  const ctxHelper = document.getElementById('ctx-helper');
+  const ctxHelperTxt = document.getElementById('ctx-helper-txt');
+  const badgeProd = document.getElementById('req-badge-prod');
+  const badgeCat = document.getElementById('req-badge-cat');
+  const badgeCart = document.getElementById('req-badge-cart');
+
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  function updateContextHelper() {
+    if (!selectPlacement || !ctxHelper || !ctxHelperTxt) return;
+    const val = selectPlacement.value;
+    
+    // Reset badges
+    badgeProd?.classList.add('hidden');
+    badgeCat?.classList.add('hidden');
+    badgeCart?.classList.add('hidden');
+    
+    ctxHelper.className = 'mt-3 p-3 border rounded-xl text-[10px] leading-relaxed flex items-start gap-2 font-medium transition-all';
+    
+    if (val === 'product_related' || val === 'complete_setup') {
+      ctxHelper.classList.remove('hidden');
+      ctxHelper.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-800');
+      ctxHelperTxt.textContent = 'Requires a valid Anchor Product ID. Rules will be filtered against this designated context product.';
+      badgeProd?.classList.remove('hidden');
+      badgeProd?.classList.add('text-amber-600');
+    } else if (val === 'cart_addon') {
+      ctxHelper.classList.remove('hidden');
+      ctxHelper.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-800');
+      ctxHelperTxt.textContent = 'Requires one or more comma-separated Cart Product IDs to simulate addon rules against current basket state.';
+      badgeCart?.classList.remove('hidden');
+      badgeCart?.classList.add('text-amber-600');
+    } else if (val === 'category_popular') {
+      ctxHelper.classList.remove('hidden');
+      ctxHelper.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-800');
+      ctxHelperTxt.textContent = 'Requires a Category Slug to determine popular products scope targeting.';
+      badgeCat?.classList.remove('hidden');
+      badgeCat?.classList.add('text-amber-600');
+    } else { // home_trending
+      ctxHelper.classList.remove('hidden');
+      ctxHelper.classList.add('bg-blue-50', 'border-blue-100', 'text-blue-700');
+      ctxHelperTxt.textContent = 'Universal global list. Does not require specific context variables to render baseline predictions.';
+    }
+  }
+
+  selectPlacement?.addEventListener('change', updateContextHelper);
+  // Trigger initial update on page render
+  updateContextHelper();
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const submitBtn = form.querySelector('button[type="submit"]')!;
     const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<span>⏳</span> Computing Matrix...';
-    submitBtn.classList.add('opacity-50', 'pointer-events-none');
+    
+    if (errorBox) errorBox.classList.add('hidden');
 
-    const placement = (document.getElementById('s_placement') as HTMLSelectElement).value;
-    const productId = (document.getElementById('s_prod') as HTMLInputElement).value || undefined;
-    const catSlug = (document.getElementById('s_cat') as HTMLInputElement).value || undefined;
-    const rawCart = (document.getElementById('s_cart') as HTMLInputElement).value;
+    const placement = selectPlacement.value;
+    const productIdInput = document.getElementById('s_prod') as HTMLInputElement;
+    const productId = productIdInput?.value.trim() || undefined;
+    const categorySlugInput = document.getElementById('s_cat') as HTMLInputElement;
+    const catSlug = categorySlugInput?.value.trim() || undefined;
+    const cartItemsInput = document.getElementById('s_cart') as HTMLInputElement;
+    const rawCart = cartItemsInput?.value || '';
     const cartProductIds = rawCart ? rawCart.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+
+    // --- VALIDATION GATES ---
+    const errors: string[] = [];
+
+    // 1. Required context checks
+    if ((placement === 'product_related' || placement === 'complete_setup') && !productId) {
+      errors.push(`- Missing Context: Placement "${placement}" requires an active Anchor Product ID.`);
+    }
+    if (placement === 'category_popular' && !catSlug) {
+      errors.push(`- Missing Context: Placement "Category Popular" requires an explicit target Category Slug.`);
+    }
+    if (placement === 'cart_addon' && (!cartProductIds || cartProductIds.length === 0)) {
+      errors.push(`- Missing Context: Placement "Cart Addons" requires at least one active Cart Product ID.`);
+    }
+
+    // 2. UUID Format checks
+    if (productId && !UUID_REGEX.test(productId)) {
+      errors.push(`- Syntax Error: Anchor product ID must be a valid 36-character UUID.`);
+    }
+    if (cartProductIds && cartProductIds.length > 0) {
+      const invalidCarts = cartProductIds.filter(id => !UUID_REGEX.test(id));
+      if (invalidCarts.length > 0) {
+        errors.push(`- Syntax Error: Cart items must contain comma-separated 36-character UUID strings. Found invalid: "${invalidCarts[0]}"`);
+      }
+    }
+
+    if (errors.length > 0) {
+      if (errorBox && errorMsg) {
+        errorMsg.textContent = errors.join('\n');
+        errorBox.classList.remove('hidden');
+        errorBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      return;
+    }
+
+    submitBtn.innerHTML = 'Executing...';
+    submitBtn.classList.add('opacity-60', 'pointer-events-none');
 
     const payload = {
       placement,
@@ -111,28 +261,45 @@ if (!token) return Astro.redirect("/admin/login?returnTo=/admin/recommendations/
     };
 
     try {
-      const apiBase = (document.getElementById('api-base-url') as HTMLInputElement)?.value || 'http://localhost:3000';
-      const r = await fetch(`${apiBase}/admin/recommendations/preview`, {
+      const apiBaseUrl = (document.getElementById('api-base-url') as HTMLInputElement)?.value || 'http://localhost:3000';
+      const r = await fetch(`${apiBaseUrl}/admin/recommendations/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(payload)
       });
       
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        let msg = "";
+        try {
+          const parsed = JSON.parse(txt);
+          msg = parsed.error?.message || "";
+        } catch {
+          msg = txt.slice(0, 120);
+        }
+        throw new Error(`HTTP ${r.status}${msg ? ': ' + msg : ''}`);
+      }
+
       const json = await r.json();
       if (json.success && json.data) {
-         emptyState?.classList.add('hidden');
          if (typeof (window as any).renderRecommendationPreview === 'function') {
            (window as any).renderRecommendationPreview(json.data);
+         } else {
+           throw new Error("Preview visual template component is missing from DOM memory.");
          }
       } else {
-         alert("Sandbox Error: " + (json.error?.message || "API Issue"));
+         const errTxt = json.error?.message || "The API returned an unexpected payload contract.";
+         throw new Error(errTxt);
       }
-    } catch(err) {
-       alert("Network disruption blocking matrix computation.");
+    } catch(err: any) {
+       if (errorBox && errorMsg) {
+         errorMsg.textContent = `Preview could not be processed.\nReason: ${err.message || String(err)}`;
+         errorBox.classList.remove('hidden');
+         errorBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+       }
     } finally {
        submitBtn.innerHTML = originalText;
-       submitBtn.classList.remove('opacity-50', 'pointer-events-none');
+       submitBtn.classList.remove('opacity-60', 'pointer-events-none');
     }
   });
 </script>
-

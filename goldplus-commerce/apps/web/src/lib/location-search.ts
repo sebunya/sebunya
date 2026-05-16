@@ -16,36 +16,31 @@ function titleCase(s: string): string {
 }
 
 /**
- * Maps common data inconsistencies and spelling variants defined by the user auditing constraints.
+ * Global canonical map ensuring unified matching of known variant spellings in dataset.
  */
-const SPELLING_ALIASES: Record<string, string> = {
+const CANONICAL_SPELLING: Record<string, string> = {
   'LUWERO': 'LUWEERO',
-  'LUWEERO': 'LUWERO',
-  'KATAKWI': 'KATAWI',
+  'LUWEERO': 'LUWEERO',
+  'KATAKWI': 'KATAKWI',
   'KATAWI': 'KATAKWI',
-  'NTUNGAMO': 'NTUGAMO',
+  'NTUNGAMO': 'NTUNGAMO',
   'NTUGAMO': 'NTUNGAMO',
-  'NAKAPIRIPIRIT': 'NAKAPIRIPIT',
+  'NAKAPIRIPIRIT': 'NAKAPIRIPIRIT',
   'NAKAPIRIPIT': 'NAKAPIRIPIRIT'
 };
 
 /**
- * Normalizes input to match dataset case conventions.
+ * Standardizes a word into its primary canonical equivalent for identical comparison weight.
  */
-function prepareQuery(raw: string): string {
-  return raw.trim().toUpperCase().replace(/[^\w\s]/g, ''); // clear punctuation
+function toCanonical(word: string): string {
+  return CANONICAL_SPELLING[word] || word;
 }
 
 /**
- * Identifies relevant synonyms to append to the search index.
+ * Normalizes input to match dataset case conventions and strips punctuation.
  */
-function getSynonyms(base: string): string {
-  const words = base.toUpperCase().split(/\s+/);
-  const results: string[] = [];
-  words.forEach(w => {
-    if (SPELLING_ALIASES[w]) results.push(SPELLING_ALIASES[w]);
-  });
-  return results.join(' ');
+function prepareQuery(raw: string): string {
+  return raw.trim().toUpperCase().replace(/[^\w\s]/g, '');
 }
 
 /**
@@ -60,8 +55,7 @@ export function normalizeToSelection(row: UgandaLocationIndexRecord): UgandaLoca
   const secPart = subLabel === parLabel ? disLabel : `${subLabel}, ${disLabel}`;
 
   const rawSearch = `${row.p} ${row.s} ${row.c} ${row.d} ${row.code}`.toUpperCase();
-  const synonyms = getSynonyms(rawSearch);
-  const id = `ug-${row.code}-${row.p.replace(/\s+/g, '')}`;
+  const id = `ug-${row.code}-${row.p.replace(/\s+/g, '')}-${row.s.replace(/\s+/g, '')}-${row.d.replace(/\s+/g, '')}`.toLowerCase();
 
   return {
     id,
@@ -74,7 +68,7 @@ export function normalizeToSelection(row: UgandaLocationIndexRecord): UgandaLoca
     parishWard: parLabel,
     postcode: row.code,
     displayLabel: `${parLabel} · ${secPart} · ${row.code}`,
-    searchText: `${rawSearch} ${synonyms}`.trim(), // Enriched search includes both spellings
+    searchText: rawSearch, // Stored raw without duplicate synonym strings
     source: "canonical_v1"
   };
 }
@@ -83,61 +77,82 @@ export function searchLocations(query: string, dataset: UgandaLocationIndexRecor
   const cleanQuery = prepareQuery(query);
   if (!cleanQuery || cleanQuery.length < 2) return [];
 
-  const isNumeric = /^\d+$/.test(cleanQuery);
+  const queryParts = cleanQuery.split(/\s+/);
+  const canonicalQueryParts = queryParts.map(toCanonical);
+  const canonicalWholeQuery = canonicalQueryParts.join(' ');
   
   const results: RankedSearchResult[] = [];
   
   for (const row of dataset) {
     let score = 0;
     const selection = normalizeToSelection(row);
+    
+    // Fully canonicalized database representations for absolute matching parity
+    const cCode = row.code;
+    const cParish = toCanonical(row.p);
+    const cSub = toCanonical(row.s);
+    const cCounty = toCanonical(row.c);
+    const cDist = toCanonical(row.d);
+    
+    const lookupText = `${cParish} ${cSub} ${cCounty} ${cDist} ${cCode}`;
 
-    // Rule A: Exact Postcode Trigger
-    if (row.code === cleanQuery) {
-      score += 150; // Guaranteed top placement over all text matching
-    } else if (isNumeric && row.code.startsWith(cleanQuery)) {
-      score += 85;
+    // 1. WHOLE QUERY EXACT MATCHES
+    if (cCode === canonicalWholeQuery) {
+      score += 200; // Immediate top priority for exact numeric/string postcodes
+    }
+    if (cParish === canonicalWholeQuery) score += 120; 
+    if (cSub === canonicalWholeQuery) score += 90;
+    if (cCounty === canonicalWholeQuery) score += 70;
+    if (cDist === canonicalWholeQuery) score += 50;
+
+    // 2. COMPONENT WORD MATCHES
+    if (canonicalQueryParts.length > 1) {
+      let matchesAll = true;
+      let matchCount = 0;
+      
+      for (const part of canonicalQueryParts) {
+        let partMatched = false;
+        if (cCode === part) { score += 100; partMatched = true; }
+        if (cParish === part) { score += 60; partMatched = true; }
+        if (cSub === part) { score += 45; partMatched = true; }
+        if (cCounty === part) { score += 35; partMatched = true; }
+        if (cDist === part) { score += 25; partMatched = true; }
+
+        if (partMatched) {
+          matchCount++;
+        } else if (lookupText.includes(part)) {
+          score += 15; // Record contains part of components but no field exact hit
+          matchCount++;
+        } else {
+          matchesAll = false;
+        }
+      }
+
+      // Boost collective intersect score
+      if (matchesAll) score += 40;
+      else if (matchCount > 0) score += 10 * matchCount;
+    } else {
+      // Single word partial query matches
+      const singlePart = canonicalQueryParts[0];
+      if (cCode.startsWith(singlePart)) score += 40;
+      if (cParish.startsWith(singlePart)) score += 30;
+      if (cSub.startsWith(singlePart)) score += 20;
+      if (cDist.startsWith(singlePart)) score += 10;
+      
+      if (cParish.includes(singlePart)) score += 10;
+      if (cSub.includes(singlePart)) score += 5;
+      if (cDist.includes(singlePart)) score += 2;
     }
 
-    // Rule B: Precise scoring metrics from auditing constraints
-    const lookupText = selection.searchText;
-    
-    // Check if query matches canonical fields specifically (supports alternative spellings via searchText cascade)
-    // Parish Exact: 95
-    if (row.p === cleanQuery) score += 95;
-    else if (row.p.startsWith(cleanQuery)) score += 30;
-    else if (row.p.includes(cleanQuery)) score += 10;
-    
-    // Subcounty Exact: 70
-    if (row.s === cleanQuery) score += 70;
-    else if (row.s.includes(cleanQuery)) score += 5;
-    
-    // District Exact: 40
-    if (row.d === cleanQuery) score += 40;
-    else if (row.d.includes(cleanQuery)) score += 2;
-
-    // Catch-all synonym matching boost if specific slots failed but alias matched.
-    // Upgraded from 5 to 35 so misspelled variants rank immediately behind exact text matching.
-    if (score < 20 && lookupText.includes(cleanQuery)) {
-      score += 35; 
+    // Catch-all general search text match if no specific weights hit
+    if (score === 0 && lookupText.includes(canonicalWholeQuery)) {
+      score += 25;
     }
 
-    // Split-word matching boost
-    const queryParts = cleanQuery.split(/\s+/);
-    if (queryParts.length > 1) {
-       // Use dynamic target text that includes ALL variants computed by normalizer
-       const textTarget = selection.searchText;
-       
-       // Check how many individual query terms intersect the record string
-       let matchesCount = 0;
-       for (const part of queryParts) {
-         if (textTarget.includes(part)) {
-            matchesCount++;
-         }
-       }
-       
-       // Partial matching: boost if ANY multiple words hit. Bigger boost if ALL words hit.
-       if (matchesCount === queryParts.length) score += 30; // Perfect intersection
-       else if (matchesCount > 0) score += 10 * matchesCount; 
+    // 3. KAMPALA CAPITAL CITY CLARITY RESOLVER
+    // Boost local Kampala capital city districts immediately over outlying accidental parish overlaps
+    if (canonicalWholeQuery.includes('KAMPALA') && cDist === 'KAMPALA') {
+      score += 60;
     }
 
     if (score > 0) {
@@ -149,8 +164,9 @@ export function searchLocations(query: string, dataset: UgandaLocationIndexRecor
     }
   }
 
-  // Sort purely by weight, resolving collisions by parish name sort alphabetically
+  // Sort absolutely by calculated relevance weight, falling back on alphabetic disambiguation
   return results
     .sort((a, b) => b.score - a.score || a.selection.parishWard.localeCompare(b.selection.parishWard))
     .slice(0, limit);
 }
+

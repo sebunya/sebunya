@@ -4,6 +4,7 @@ import { FakeReport } from '../../../domain/fakeReports/FakeReport';
 import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../../services/validationHelpers';
 
 export interface ReportFakeProductInput {
+  // TODO: migrate this workflow to persist structuredLocation as JSON metadata or dedicated columns.
   locationFound: string;
   productDescription: string;
   reporterEmail: string;

@@ -10,6 +10,7 @@ export interface CheckoutDto {
     name: string;
     email?: string;
     phone: string;
+    // TODO: migrate this workflow to persist structuredLocation as JSON metadata or dedicated columns.
     deliveryArea: string;
     deliveryAddress: string;
   };

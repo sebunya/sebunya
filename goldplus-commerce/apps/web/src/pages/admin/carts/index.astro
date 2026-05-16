@@ -1,80 +1,345 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/carts", 303);
 }
+
+const url = new URL(Astro.request.url);
+const lookupId = url.searchParams.get('id')?.trim() || '';
+const sessionCartId = Astro.cookies.get('goldplus_cart_id')?.value || '';
+
+let lookupResult: any = null;
+let lookupError: string | null = null;
+let apiLive = false;
+
+try {
+  const probe = await fetch(`${apiBase}/governance/admin/stats`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (probe.ok) {
+    apiLive = true;
+  }
+} catch {
+  apiLive = false;
+}
+
+const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+if (lookupId) {
+  if (!uuidRegex.test(lookupId)) {
+    lookupError = 'Format Violation: Cart IDs must be 36-character UUID strings.';
+  } else if (!apiLive) {
+    lookupError = 'Connectivity Alert: The commerce API backend is offline and cannot process lookups.';
+  } else {
+    try {
+      const res = await fetch(`${apiBase}/commerce/carts/${lookupId}`, {
+        headers: { 
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        if (json && json.success) {
+          lookupResult = json.data;
+        } else {
+          lookupError = json?.error?.message || 'Unexpected schema returned from backend query.';
+        }
+      } else {
+        const errJson = await res.json().catch(() => null);
+        lookupError = errJson?.error?.message || `Connection error: Server responded with ${res.status}.`;
+      }
+    } catch {
+      apiLive = false;
+      lookupError = 'Connectivity Alert: The active commerce API backend is currently unreachable.';
+    }
+  }
+}
+
+const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
 ---
 
 <AdminLayout 
-  title="Carts & Sessions" 
-  description="Inspect active customer baskets, tracking IDs and storage persistence."
+  title="Cart diagnostics" 
+  description="Look up active customer shopping carts by ID."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
-    <div class="mb-8 border-b border-gray-200 pb-6">
-      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Active Cart Persistence</h2>
-      <p class="text-sm text-gray-500 mt-1 max-w-3xl">
-        Monitor server-hydrated shopping baskets across active sessions. Baskets are stored relationally and bound to customer device cookies to ensure zero item loss during return transitions.
-      </p>
+    <div class="mb-8 border-b border-gray-200 pb-6 flex flex-col md:flex-row justify-between md:items-center gap-4">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Cart diagnostics</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+          Paste a cart ID to inspect active cart items and session status.
+        </p>
+      </div>
+      <div class="flex items-center gap-2 text-[10px] font-black tracking-widest uppercase border border-gray-200 bg-white px-3 py-1 rounded-lg shadow-xs text-gray-500 select-all">
+        COOKIE: goldplus_cart_id
+      </div>
     </div>
 
     {/* Mechanical Statistics Info Cards */}
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-      <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden">
-        <div class="absolute top-0 right-0 w-20 h-20 bg-brand-green/5 rounded-bl-full"></div>
-        <p class="text-[10px] font-black text-brand-green uppercase tracking-widest">Persistence Target</p>
-        <h4 class="text-2xl font-black text-brand-dark mt-2">POSTGRESQL</h4>
-        <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">Relationally stored inside `commerce.carts` and `commerce.cart_items` tables rather than volatile LocalStorage.</p>
+      <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden flex flex-col justify-between">
+        <div>
+          <p class="text-[10px] font-black text-brand-green uppercase tracking-widest">Where to find Cart IDs</p>
+          <p class="text-xs text-gray-500 mt-2 leading-relaxed">
+            Retrieve from customer session cookies (<span class="font-mono bg-gray-100 px-1 rounded">goldplus_cart_id</span>), database auditing logs, or active Redis sessions.
+          </p>
+        </div>
       </div>
 
       <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden">
-        <div class="absolute top-0 right-0 w-20 h-20 bg-blue-50 rounded-bl-full"></div>
-        <p class="text-[10px] font-black text-blue-500 uppercase tracking-widest">Binding Lifespan</p>
-        <h4 class="text-2xl font-black text-brand-dark mt-2">30 DAYS</h4>
-        <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">Tracked via secure `goldplus_cart_id` session identifier stored locally on client web requests.</p>
+        <p class="text-[10px] font-black text-blue-500 uppercase tracking-widest">Expiration</p>
+        <h4 class="text-2xl font-black text-brand-dark mt-2">90 Days</h4>
+        <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">Guest carts are kept for 90 days so customers can return and continue shopping.</p>
       </div>
 
       <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden">
-        <div class="absolute top-0 right-0 w-20 h-20 bg-brand-gold/5 rounded-bl-full"></div>
-        <p class="text-[10px] font-black text-brand-gold uppercase tracking-widest">Status Check</p>
-        <h4 class="text-2xl font-black text-brand-green mt-2 uppercase flex items-center gap-2">
-          Operational
-          <span class="inline-block w-2.5 h-2.5 bg-brand-green rounded-full animate-pulse"></span>
+        <p class="text-[10px] font-black text-brand-gold uppercase tracking-widest">API connection</p>
+        <h4 class={`text-2xl font-black mt-2 uppercase flex items-center gap-2 ${apiLive ? 'text-brand-green' : 'text-red-600'}`}>
+          {apiLive ? 'Active' : 'Offline'}
+          <span class={`inline-block w-2.5 h-2.5 rounded-full ${apiLive ? 'bg-brand-green animate-pulse' : 'bg-red-500'}`}></span>
         </h4>
-        <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">Hydration endpoints verified in [GetCartByIdUseCase](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/apps/api/src/application/use-cases/commerce/GetCartByIdUseCase.ts).</p>
+        <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
+          {apiLive ? "Direct real-time connection verified." : "The commerce API is unreachable."}
+        </p>
       </div>
     </div>
 
-    {/* Honest Empty List / Action Area */}
-    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
-      <div class="px-6 py-6 border-b border-gray-100 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Active Live Baskets</h3>
-          <p class="text-[10px] text-gray-500 mt-0.5">Requires global listing index API to render active shopping streams.</p>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="text-[8px] border border-yellow-200 bg-yellow-50 text-yellow-700 font-black px-2 py-0.5 rounded uppercase tracking-widest">Needs Index API</span>
-        </div>
-      </div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
       
-      <div class="p-16 text-center flex flex-col items-center max-w-lg mx-auto">
-        <div class="w-16 h-16 bg-gray-100 text-gray-400 flex items-center justify-center rounded-full text-2xl mb-4">
-          🛒
-        </div>
-        <h4 class="font-black text-brand-dark text-base">Cart Listing Not Yet Exposed</h4>
-        <p class="text-xs text-gray-500 mt-2 leading-relaxed">
-          Individual cart retrieval endpoints (`GET /commerce/carts/:id`) are actively hydrating checkout steps, but a backend admin listing query has not been scheduled.
-        </p>
-        <div class="mt-6 flex gap-3">
-          <a href="/" target="_blank" class="bg-brand-dark hover:bg-black text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors">
-            Verify Frontend &rarr;
-          </a>
+      {/* CART ID LOOKUP INPUT PANEL */}
+      <div class="lg:col-span-1 space-y-6">
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Look up cart</h3>
+          </div>
+          <div class="p-6">
+            
+            {/* Current Session Cart Finder */}
+            <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+              <span class="text-[9px] uppercase font-black text-blue-600 tracking-wider block mb-1">Browser Session</span>
+              {sessionCartId ? (
+                <div class="space-y-2">
+                  <div class="text-[10px] font-mono font-bold text-blue-800 break-all">{sessionCartId}</div>
+                  <a 
+                    href={`/admin/carts?id=${sessionCartId}`}
+                    class="inline-block w-full text-center bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black py-1.5 rounded-lg transition-colors"
+                  >
+                    Use Active Session Cart
+                  </a>
+                </div>
+              ) : (
+                <p class="text-[10px] text-blue-500 italic font-medium">No cart ID found for this browser session.</p>
+              )}
+            </div>
+
+            <form method="GET" class="space-y-4" id="cart-lookup-form">
+              <div>
+                <label for="id" class="block text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2 flex justify-between items-center">
+                  <span>Cart UUID</span>
+                  <span class="text-red-500 font-bold">* Required</span>
+                </label>
+                <input 
+                  type="text" 
+                  name="id" 
+                  id="id"
+                  required
+                  value={lookupId}
+                  placeholder="e.g. a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+                  class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-mono font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold transition-colors"
+                />
+                <p class="text-[9px] text-red-500 hidden font-bold mt-1" id="input-error-msg">Format: must be a 36-char UUID string.</p>
+              </div>
+              <button 
+                type="submit" 
+                class="w-full bg-brand-dark hover:bg-black text-white text-xs font-black py-3.5 rounded-xl transition-colors tracking-wide shadow-sm flex items-center justify-center gap-2"
+              >
+                Look up cart
+              </button>
+            </form>
+            {lookupId && (
+              <div class="mt-4 text-center">
+                <a href="/admin/carts" class="text-[10px] font-bold text-gray-400 hover:text-brand-dark underline">Clear Console Output</a>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* RESULTS OUTPUT PANEL */}
+      <div class="lg:col-span-2">
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden min-h-[250px] flex flex-col">
+          
+          <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+            <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Cart details</h3>
+            {lookupResult && (
+              <span class="text-[9px] bg-brand-green/10 text-brand-green border border-brand-green/20 font-black px-2 py-0.5 rounded uppercase">Success</span>
+            )}
+          </div>
+
+          <div class="flex-1 p-6 flex flex-col">
+            {!lookupId && !lookupError && (
+              <div class="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto py-10 space-y-4">
+                <div class="bg-gray-50 border border-gray-100 p-4 rounded-2xl">
+                  <h4 class="font-black text-brand-dark text-sm mb-2 uppercase tracking-wider">Ready for Diagnostics</h4>
+                  <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                    Submit a valid cart UUID using the left panel to fetch real-time server diagnostics, including:
+                  </p>
+                  <ul class="text-[10px] text-gray-400 list-disc list-inside mt-2 text-left space-y-1 max-w-xs mx-auto font-medium">
+                    <li>Number of active cart items</li>
+                    <li>Individual product names & quantities</li>
+                    <li>Calculated subtotal and unit prices</li>
+                  </ul>
+                </div>
+                <p class="text-[10px] text-gray-400 italic">No diagnostic queries have been performed yet.</p>
+              </div>
+            )}
+
+            {lookupError && (
+              <div class="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto py-8 text-red-600">
+                <h4 class="font-black text-sm uppercase tracking-wider">Error looking up cart</h4>
+                <p class="text-xs mt-2 font-medium text-red-700 leading-relaxed bg-red-50 border border-red-100 px-4 py-3 rounded-xl w-full">
+                  {lookupError}
+                </p>
+              </div>
+            )}
+
+            {lookupResult && (
+              <div class="space-y-6">
+                
+                {/* Master Card */}
+                {/* Expanded Metadata Grid */}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="bg-gray-50 border border-gray-100 rounded-2xl p-5">
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Cart Identification</p>
+                    <div class="space-y-2">
+                      <div>
+                        <span class="text-[8px] font-bold text-gray-400 uppercase">UUID</span>
+                        <h5 class="text-[11px] font-mono font-bold text-brand-dark break-all">{lookupResult.id}</h5>
+                      </div>
+                      <div>
+                        <span class="text-[8px] font-bold text-gray-400 uppercase">Bound Session ID</span>
+                        <h5 class="text-[11px] font-mono font-bold text-brand-dark break-all">{lookupResult.sessionId || 'No linked session'}</h5>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="bg-gray-50 border border-gray-100 rounded-2xl p-5 flex flex-col justify-between">
+                    <div class="flex justify-between items-start">
+                      <div>
+                        <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Subtotal (UGX)</p>
+                        <p class="text-lg font-black text-brand-dark mt-0.5">{formatter.format(lookupResult.subtotalUgx || 0)}</p>
+                      </div>
+                      <span class="px-2 py-0.5 bg-brand-gold/10 text-brand-gold border border-brand-gold/20 font-black text-[8px] uppercase rounded">Active Status</span>
+                    </div>
+                    <div class="border-t border-gray-200/50 pt-2 mt-2 flex justify-between items-center text-[9px] text-gray-400 font-medium">
+                      <span>Retention: 90-day lifespan</span>
+                      <span class="font-mono text-[8px]">Device Tracking</span>
+                    </div>
+                  </div>
+
+                  <div class="bg-gray-50 border border-gray-100 rounded-2xl p-5 grid grid-cols-2 gap-4 md:col-span-2">
+                    <div>
+                      <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Record Created</span>
+                      <span class="text-xs text-gray-500 font-medium italic">Not tracked yet</span>
+                    </div>
+                    <div>
+                      <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Last Activity</span>
+                      <span class="text-xs text-gray-500 font-medium italic">Not tracked yet</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Table */}
+                {lookupResult.items && lookupResult.items.length > 0 ? (
+                  <div>
+                    <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Cart items</p>
+                    <div class="border border-gray-100 rounded-xl overflow-hidden">
+                      <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr class="bg-gray-50 font-black uppercase text-[9px] text-gray-400 border-b border-gray-100">
+                            <th class="px-4 py-3">Product Reference</th>
+                            <th class="px-4 py-3 text-center">Qty</th>
+                            <th class="px-4 py-3 text-right">Unit Price</th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-50">
+                          {lookupResult.items.map((it: any) => (
+                            <tr>
+                              <td class="px-4 py-3">
+                                <div class="font-bold text-brand-dark">{it.name}</div>
+                                <div class="text-[9px] text-gray-400 mt-0.5 flex gap-2">
+                                  <span>/{it.slug}</span>
+                                  <span class="bg-gray-100 border border-gray-200 text-gray-500 px-1 rounded inline-block text-[8px] uppercase tracking-wide font-bold">{it.categoryName || 'Power'}</span>
+                                </div>
+                              </td>
+                              <td class="px-4 py-3 text-center font-black font-mono text-gray-700">{it.quantity}</td>
+                              <td class="px-4 py-3 text-right font-bold text-brand-dark">{formatter.format(it.unitPriceUgx)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div class="mt-4 flex justify-end">
+                      <a href="/admin/products" class="text-[10px] font-black text-brand-dark bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors uppercase tracking-wide flex items-center gap-1">
+                        Products &rarr;
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div class="flex-1 flex flex-col items-center justify-center text-center py-8 border border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
+                    <h5 class="font-bold text-brand-dark text-sm">Cart is empty</h5>
+                    <p class="text-xs text-gray-400 mt-1 leading-relaxed max-w-xs">
+                      This cart has no items in it.
+                    </p>
+                  </div>
+                )}
+
+              </div>
+            )}
+
+          </div>
+
+        </div>
+      </div>
+
     </div>
 
   </div>
 </AdminLayout>
+
+<script>
+  const form = document.getElementById('cart-lookup-form');
+  const input = document.getElementById('id') as HTMLInputElement;
+  const error = document.getElementById('input-error-msg');
+  
+  const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+  form?.addEventListener('submit', (e) => {
+    const val = input.value.trim();
+    if (!val) {
+      e.preventDefault();
+      alert("Cart ID cannot be empty.");
+      return;
+    }
+    if (!uuidRegex.test(val)) {
+      e.preventDefault();
+      error?.classList.remove('hidden');
+      input.classList.add('border-red-300', 'focus:border-red-500');
+    } else {
+      error?.classList.add('hidden');
+    }
+  });
+
+  input?.addEventListener('input', () => {
+    error?.classList.add('hidden');
+    input.classList.remove('border-red-300', 'focus:border-red-500');
+  });
+</script>
+

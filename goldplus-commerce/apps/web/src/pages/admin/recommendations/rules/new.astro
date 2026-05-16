@@ -3,6 +3,7 @@ import AdminLayout from "../../../../layouts/AdminLayout.astro";
 import FormField from "../../../../components/FormField.astro";
 import FormFeedback from "../../../../components/FormFeedback.astro";
 import RecommendationRulePreviewPanel from "../../../../components/recommendations/RecommendationRulePreviewPanel.astro";
+import InfoTooltip from "../../../../components/admin/InfoTooltip.astro";
 
 import { createRecommendationRule } from "../../../../lib/admin-recommendations";
 import { readSessionToken } from "../../../../lib/session";
@@ -63,18 +64,18 @@ if (Astro.request.method === 'POST') {
 ---
 
 <AdminLayout 
-  title="New Rule" 
-  description="Add catalog decision overrides for recommendation scoring."
+  title="Create rule" 
+  description="Establish a new recommendation rule."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">New Decision Rule</h2>
-        <p class="text-sm text-gray-500 mt-1">Establish dynamic overrides on base scoring algorithms.</p>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Create rule</h2>
+        <p class="text-sm text-gray-500 mt-1">Establish a new recommendation rule.</p>
       </div>
       <a href="/admin/recommendations/rules" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
-        &larr; Rules List
+        &larr; View rules
       </a>
     </div>
 
@@ -95,12 +96,17 @@ if (Astro.request.method === 'POST') {
           <div class="p-6 space-y-6">
             {/* Basic Meta */}
             <div class="space-y-4">
-              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">1. Basic Context</h3>
-              <FormField id="r_name" name="name" label="Rule Name" required placeholder="e.g. Summer iPhone 15 Boost" helperText="Internal business identification name." />
+              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">Rule details</h3>
+              <FormField id="r_name" name="name" label="Rule Name" required placeholder="e.g. Summer iPhone Boost" helperText="Internal name to help you recognize this rule later.">
+                <div slot="label" class="flex items-center gap-1.5">
+                  <span>Rule Name</span>
+                  <InfoTooltip text="An internal label to help identify what this rule does." align="left" />
+                </div>
+              </FormField>
               
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Target Placement</label>
+                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Placement</label>
                   <select name="placement" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none focus:border-brand-green">
                     <option value="home_trending">Home Trending</option>
                     <option value="product_related">Product Related</option>
@@ -110,12 +116,15 @@ if (Astro.request.method === 'POST') {
                   </select>
                 </div>
                 <div>
-                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Rule Type</label>
+                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-2">
+                    Rule Type
+                    <InfoTooltip text="Action this rule takes: Boost score, Pin position, or Suppress from results." align="left" />
+                  </label>
                   <select id="type-selector" name="type" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-black text-blue-700 outline-none focus:border-brand-green">
-                    <option value="BOOST">📈 Boost Scored List</option>
-                    <option value="PIN">📌 Pin to Absolute Position</option>
-                    <option value="SUPPRESS">🚫 Suppress / Remove</option>
-                    <option value="CAMPAIGN">🎯 Scheduled Campaign</option>
+                    <option value="BOOST">Boost scored list</option>
+                    <option value="PIN">Pin to absolute position</option>
+                    <option value="SUPPRESS">Suppress / Remove</option>
+                    <option value="CAMPAIGN">Scheduled campaign</option>
                   </select>
                 </div>
               </div>
@@ -123,18 +132,26 @@ if (Astro.request.method === 'POST') {
 
             {/* Logic & Action Configuration */}
             <div class="space-y-4">
-              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">2. Target & Actions</h3>
+              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">Placement and target</h3>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Target Scope</label>
+                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-2">
+                    Target scope
+                    <InfoTooltip text="The level of product coverage this rule should apply to." align="left" />
+                  </label>
                   <select name="targetType" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none focus:border-brand-green">
-                    <option value="GLOBAL">Entire Inventory (Global)</option>
-                    <option value="PRODUCT">Specific Product ID</option>
-                    <option value="CATEGORY">Specific Category UUID</option>
-                    <option value="BRAND">Specific Brand Name</option>
+                    <option value="GLOBAL">Entire inventory (Global)</option>
+                    <option value="PRODUCT">Specific product</option>
+                    <option value="CATEGORY">Specific category</option>
+                    <option value="BRAND">Specific brand</option>
                   </select>
                 </div>
-                <FormField id="r_target_val" name="targetValue" label="Target Identifier (Optional)" placeholder="Product SKU / ID" helperText="Leave empty for Global scope." />
+                <FormField id="r_target_val" name="targetValue" label="Target identifier" placeholder="Product SKU / ID" helperText="Specify the ID or SKU if applying to a specific item.">
+                  <div slot="label" class="flex items-center gap-1.5">
+                    <span>Target identifier</span>
+                    <InfoTooltip text="Enter the exact ID, SKU, or slug depending on target scope selection." align="left" />
+                  </div>
+                </FormField>
               </div>
 
               {/* Conditional Action Fields */}
@@ -142,27 +159,28 @@ if (Astro.request.method === 'POST') {
                 
                 {/* Action: BOOST */}
                 <div class="action-variant" data-type="BOOST">
-                  <FormField id="b_score" name="boostScore" type="number" label="Score Multiplier / Weight" defaultValue="50" helperText="Added directly to normal product score." />
+                  <FormField id="b_score" name="boostScore" type="number" label="Score adjustment" defaultValue="50" helperText="Amount added directly to the product score." />
                 </div>
 
                 {/* Action: PIN */}
                 <div class="hidden action-variant" data-type="PIN">
-                   <FormField id="p_pos" name="pinPosition" type="number" label="Fix into Slot Position" defaultValue="1" helperText="1 forces this result into the exact first slot." />
-                   <p class="text-[10px] font-bold text-amber-700 mt-3 bg-amber-50 p-2 rounded-lg border border-amber-100">⚠️ Warning: Requires 'PRODUCT' target type specifically.</p>
+                   <FormField id="p_pos" name="pinPosition" type="number" label="Fix into position" defaultValue="1" helperText="Forces this item into the specified slot (e.g. 1 for the first slot)." />
+                   <p class="text-[10px] font-bold text-amber-700 mt-3 bg-amber-50 p-2 rounded-lg border border-amber-100">Note: Pin requires a Specific product target.</p>
                 </div>
 
                 {/* Action: SUPPRESS */}
                 <div class="hidden action-variant" data-type="SUPPRESS">
-                   <div class="text-xs font-bold text-red-700 flex items-center gap-2">
-                     <span>⛔ Target will be strictly eliminated from visible outputs.</span>
+                   <div class="text-xs font-bold text-red-700 space-y-2">
+                     <div>This rule will remove the product from the recommendations completely.</div>
+                     <div class="text-[10px] text-red-500 font-bold bg-red-50/50 p-2 rounded-lg border border-red-100">Note: Ensure a proper Target scope and Identifier are set. Leave blank or choose GLOBAL carefully as it may suppress everything.</div>
                    </div>
                 </div>
 
                 {/* Action: CAMPAIGN */}
                 <div class="hidden action-variant" data-type="CAMPAIGN">
                    <div class="grid grid-cols-2 gap-4">
-                     <FormField id="c_score" name="campBoostScore" type="number" label="Campaign Boost" defaultValue="100" />
-                     <FormField id="c_lbl" name="campaignLabel" label="Campaign Tag" placeholder="Black Friday 2026" />
+                     <FormField id="c_score" name="campBoostScore" type="number" label="Campaign boost" defaultValue="100" />
+                     <FormField id="c_lbl" name="campaignLabel" label="Campaign tag" placeholder="Black Friday Campaign" />
                    </div>
                 </div>
               </div>
@@ -170,24 +188,29 @@ if (Astro.request.method === 'POST') {
 
             {/* Schedule */}
             <div class="space-y-4">
-               <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">3. Timing & Context</h3>
+               <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">Schedule and priority</h3>
                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField id="r_pri" name="priority" type="number" label="Priority Rank" defaultValue="100" helperText="Lower runs first." />
-                  <FormField id="r_start" name="startsAt" type="text" label="Start (Optional)" placeholder="YYYY-MM-DD" />
-                  <FormField id="r_end" name="endsAt" type="text" label="End (Optional)" placeholder="YYYY-MM-DD" />
+                  <FormField id="r_pri" name="priority" type="number" label="Priority" defaultValue="100" helperText="Lower numbers run first (e.g. 10 runs before 100).">
+                    <div slot="label" class="flex items-center gap-1.5">
+                      <span>Priority</span>
+                      <InfoTooltip text="Priority level. Lower numbers run first (e.g. 10 runs before 100)." align="left" />
+                    </div>
+                  </FormField>
+                  <FormField id="r_start" name="startsAt" type="date" label="Start date" placeholder="YYYY-MM-DD" helperText="Leave blank to start immediately." />
+                  <FormField id="r_end" name="endsAt" type="date" label="End date" placeholder="YYYY-MM-DD" helperText="Leave blank if the rule should keep running." />
                </div>
             </div>
           </div>
 
           <div class="p-6 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-end items-center gap-3">
             <button type="button" id="btn-trigger-preview" class="w-full sm:w-auto bg-white border border-gray-200 text-brand-dark px-5 py-2.5 rounded-xl font-bold hover:bg-gray-100 shadow-sm text-xs transition-colors">
-              🔍 Instant Preview
+              Preview
             </button>
             <button type="submit" name="_submit_action" value="save_draft" class="w-full sm:w-auto bg-gray-200 text-gray-700 px-5 py-2.5 rounded-xl font-bold hover:bg-gray-300 text-xs transition-colors">
-              Save Draft
+              Save draft
             </button>
             <button type="submit" name="_submit_action" value="save_activate" class="w-full sm:w-auto bg-brand-green text-white px-5 py-2.5 rounded-xl font-black hover:bg-emerald-600 text-xs shadow-sm transition-colors">
-              🚀 Save & Activate
+              Save and activate
             </button>
           </div>
           <input type="hidden" id="session-token" value={token} />
@@ -198,10 +221,43 @@ if (Astro.request.method === 'POST') {
       {/* Preview Right */}
       <div class="lg:col-span-5">
          <div class="sticky top-8 space-y-4">
-            <div id="preview-empty-hint" class="bg-gray-50 border border-gray-200 border-dashed rounded-2xl p-12 text-center flex flex-col items-center justify-center">
-               <span class="text-3xl mb-3 grayscale opacity-50">🔭</span>
-               <p class="text-xs text-brand-dark font-black">Simulation Container</p>
-               <p class="text-[10px] text-gray-400 mt-1 max-w-[200px] leading-relaxed">Modify properties and trigger 'Instant Preview' to inspect results.</p>
+            <div id="rule-summary-panel" class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden sticky top-8">
+               <div class="px-5 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                  <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Rule summary</h3>
+                  <span class="text-[9px] font-bold bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded uppercase">Draft</span>
+               </div>
+               <div class="p-5 space-y-4">
+                  <div class="flex justify-between text-xs border-b border-gray-50 pb-2.5">
+                     <span class="font-bold text-gray-400 uppercase tracking-wider text-[10px]">Placement</span>
+                     <span id="sum-placement" class="font-black text-brand-dark font-mono text-[11px]">-</span>
+                  </div>
+                  <div class="flex justify-between text-xs border-b border-gray-50 pb-2.5">
+                     <span class="font-bold text-gray-400 uppercase tracking-wider text-[10px]">Type</span>
+                     <span id="sum-type" class="font-black text-blue-600 font-mono text-[11px]">-</span>
+                  </div>
+                  <div class="flex justify-between text-xs border-b border-gray-50 pb-2.5">
+                     <span class="font-bold text-gray-400 uppercase tracking-wider text-[10px]">Target</span>
+                     <span id="sum-target" class="font-black text-brand-dark font-mono text-[11px]">-</span>
+                  </div>
+                  <div class="flex justify-between text-xs border-b border-gray-50 pb-2.5">
+                     <span class="font-bold text-gray-400 uppercase tracking-wider text-[10px]">Priority</span>
+                     <span id="sum-priority" class="font-black text-brand-dark text-[11px]">-</span>
+                  </div>
+                  <div class="flex justify-between text-xs">
+                     <span class="font-bold text-gray-400 uppercase tracking-wider text-[10px]">Dates</span>
+                     <span id="sum-dates" class="font-bold text-gray-500 text-[11px]">-</span>
+                  </div>
+                  
+                  <div id="sum-notices" class="space-y-2 mt-4 pt-4 border-t border-gray-100">
+                     <!-- Validation notes generated live by JS -->
+                  </div>
+
+                  <div class="bg-blue-50/50 border border-blue-100 rounded-xl p-4 mt-4 flex items-start gap-3">
+                     <p class="text-[10px] text-blue-700 font-medium leading-relaxed">
+                        This rule is currently a draft and is not yet visible to customers.
+                     </p>
+                  </div>
+               </div>
             </div>
             <RecommendationRulePreviewPanel />
          </div>
@@ -211,10 +267,85 @@ if (Astro.request.method === 'POST') {
 </AdminLayout>
 
 <script>
-  // Client-Side View Variant Switcher
+  const form = document.getElementById('rule-main-form') as HTMLFormElement;
   const typeSel = document.getElementById('type-selector') as HTMLSelectElement;
   const variants = document.querySelectorAll('.action-variant');
-  
+  const sumPanel = document.getElementById('rule-summary-panel');
+
+  // Live Summary Populators
+  const sumPlacement = document.getElementById('sum-placement')!;
+  const sumType = document.getElementById('sum-type')!;
+  const sumTarget = document.getElementById('sum-target')!;
+  const sumPriority = document.getElementById('sum-priority')!;
+  const sumDates = document.getElementById('sum-dates')!;
+  const sumNotices = document.getElementById('sum-notices')!;
+
+  function updateSummary() {
+    if (!form) return;
+    const fd = new FormData(form);
+
+    const placement = fd.get('placement') as string;
+    const type = fd.get('type') as string;
+    const targetType = fd.get('targetType') as string;
+    const targetValue = fd.get('targetValue') as string;
+    const priority = parseInt(fd.get('priority') as string || '100', 10);
+    const startsAt = fd.get('startsAt') as string;
+    const endsAt = fd.get('endsAt') as string;
+
+    // Update basic labels
+    sumPlacement.textContent = placement.toUpperCase().replace('_', ' ');
+    sumType.textContent = type;
+    
+    let scopeText = targetType;
+    if (targetValue) {
+      scopeText += ` (${targetValue})`;
+    }
+    sumTarget.textContent = scopeText;
+    sumPriority.textContent = priority.toString();
+
+    let boundsText = "Perpetual run";
+    if (startsAt && endsAt) boundsText = `${startsAt} to ${endsAt}`;
+    else if (startsAt) boundsText = `Starts ${startsAt}`;
+    else if (endsAt) boundsText = `Until ${endsAt}`;
+    sumDates.textContent = boundsText;
+
+    // Generate Warnings / Notices
+    let noticesHtml = '';
+    
+    if (targetType === 'GLOBAL') {
+      noticesHtml += `<div class="flex items-start gap-2 bg-amber-50 border border-amber-100 text-amber-800 p-2 rounded-lg text-[9px] font-bold">
+        <span>Applies to all products.</span>
+      </div>`;
+    }
+
+    if (!endsAt) {
+      noticesHtml += `<div class="flex items-start gap-2 bg-blue-50 border border-blue-100 text-blue-700 p-2 rounded-lg text-[9px] font-bold">
+        <span>No end date set.</span>
+      </div>`;
+    }
+
+    if (priority < 50) {
+      noticesHtml += `<div class="flex items-start gap-2 bg-purple-50 border border-purple-100 text-purple-700 p-2 rounded-lg text-[9px] font-bold">
+        <span><strong>High priority:</strong> This rule takes priority over standard configurations.</span>
+      </div>`;
+    }
+
+    if (type === 'PIN' && targetType !== 'PRODUCT') {
+      noticesHtml += `<div class="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 p-2 rounded-lg text-[9px] font-bold">
+        <span><strong>Incorrect target:</strong> Pinning rules require a Specific product target.</span>
+      </div>`;
+    }
+
+    if (startsAt && endsAt && new Date(startsAt) > new Date(endsAt)) {
+      noticesHtml += `<div class="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 p-2 rounded-lg text-[9px] font-bold">
+        <span><strong>Invalid window:</strong> End date cannot be before the start date.</span>
+      </div>`;
+    }
+
+    sumNotices.innerHTML = noticesHtml || `<div class="text-[9px] text-gray-400 italic text-center py-1">Ready to preview or save.</div>`;
+  }
+
+  // Wire up interactive UI switcher & update trigger
   typeSel?.addEventListener('change', () => {
     const val = typeSel.value;
     variants.forEach(v => {
@@ -224,22 +355,72 @@ if (Astro.request.method === 'POST') {
         v.classList.add('hidden');
       }
     });
+    updateSummary();
   });
+
+  // Validations before submitting or previewing
+  function validateInputs(): string[] {
+    const errors: string[] = [];
+    const nameInput = document.getElementById('r_name') as HTMLInputElement;
+    const typeInput = document.getElementById('type-selector') as HTMLSelectElement;
+    const targetTypeSelect = document.getElementsByName('targetType')[0] as HTMLSelectElement;
+    const targetValInput = document.getElementById('r_target_val') as HTMLInputElement;
+    const startInput = document.getElementById('r_start') as HTMLInputElement;
+    const endInput = document.getElementById('r_end') as HTMLInputElement;
+
+    if (!nameInput.value.trim()) {
+      errors.push("Rule name is required.");
+    }
+    if (typeInput.value === 'PIN' && targetTypeSelect.value !== 'PRODUCT') {
+      errors.push("Pin rule type requires Target Scope to be 'Specific product'.");
+    }
+    if (targetTypeSelect.value !== 'GLOBAL' && !targetValInput.value.trim()) {
+      errors.push(`Target identifier is required when Target scope is ${targetTypeSelect.value}.`);
+    }
+    if (startInput.value && endInput.value) {
+      if (new Date(startInput.value) > new Date(endInput.value)) {
+        errors.push("End date cannot be before the start date.");
+      }
+    }
+    return errors;
+  }
+
+  // Block invalid form submit
+  form?.addEventListener('submit', (e) => {
+    const errors = validateInputs();
+    if (errors.length > 0) {
+      e.preventDefault();
+      alert("Please correct the following problems:\n- " + errors.join("\n- "));
+    }
+  });
+
+  // Bind inputs for real-time reactive sync
+  form?.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', updateSummary);
+    el.addEventListener('change', updateSummary);
+  });
+
+  // Run initial load synchronization
+  updateSummary();
 
   // Async Preview Connector
   const btnPreview = document.getElementById('btn-trigger-preview');
-  const emptyHint = document.getElementById('preview-empty-hint');
   const token = (document.getElementById('session-token') as HTMLInputElement)?.value;
 
   btnPreview?.addEventListener('click', async () => {
-    btnPreview.textContent = "🔄 Computing...";
+    const clientErrors = validateInputs();
+    if (clientErrors.length > 0) {
+      alert("Cannot preview due to validation errors:\n- " + clientErrors.join("\n- "));
+      return;
+    }
+
+    btnPreview.textContent = "Loading...";
     btnPreview.classList.add('opacity-50', 'pointer-events-none');
 
-    const form = document.getElementById('rule-main-form') as HTMLFormElement;
     const fd = new FormData(form);
-
     const type = fd.get('type') as string;
     const action: any = { type };
+    
     if (type === 'BOOST') action.boostScore = parseFloat(fd.get('boostScore') as string || '0');
     if (type === 'SUPPRESS') action.suppress = true;
     if (type === 'PIN') action.pinPosition = parseInt(fd.get('pinPosition') as string || '1', 10);
@@ -275,7 +456,7 @@ if (Astro.request.method === 'POST') {
       const json = await r.json();
       
       if (json.success && json.data) {
-        emptyHint?.classList.add('hidden');
+        sumPanel?.classList.add('hidden');
         if (typeof (window as any).renderRecommendationPreview === 'function') {
           (window as any).renderRecommendationPreview(json.data);
         }
@@ -285,9 +466,8 @@ if (Astro.request.method === 'POST') {
     } catch (err) {
        alert("Connectivity error blocking preview simulation.");
     } finally {
-      btnPreview.textContent = "🔍 Instant Preview";
+      btnPreview.textContent = "Preview";
       btnPreview.classList.remove('opacity-50', 'pointer-events-none');
     }
   });
 </script>
-

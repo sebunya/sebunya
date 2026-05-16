@@ -1,98 +1,263 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
+import InfoTooltip from "../../../components/admin/InfoTooltip.astro";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/merchandising", 303);
 }
 
-const modules = [
+const sections = [
   {
-    name: "Homepage Highlights",
-    status: "Live (Seeded)",
-    desc: "Two high-prominence, product-led promotional grids supporting Hero CTAs.",
-    details: "Managed deterministically in [seed.ts](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/scripts/seed.ts) and hydrated server-side."
+    id: "hero",
+    name: "Hero banner",
+    status: "Active",
+    statusColor: "text-green-700 bg-green-50 border-green-100",
+    source: "Storefront theme / Static",
+    maxItems: "1",
+    dedupe: "None",
+    editable: "No",
+    actionLabel: "Deployment Config",
+    actionLink: "/admin/settings"
   },
   {
-    name: "Featured Catalog Grid",
-    status: "Live (API)",
-    desc: "Standard top-page priority listings.",
-    details: "Automatically aggregates verified, active products from core database."
+    id: "pickup",
+    name: "Pick Up Where You Left Off",
+    status: "Session-driven",
+    statusColor: "text-blue-700 bg-blue-50 border-blue-100",
+    source: "Local customer history",
+    maxItems: "4",
+    dedupe: "Exclude current product",
+    editable: "No",
+    actionLabel: "Verify Storefront",
+    actionLink: "/"
   },
   {
-    name: "Trending Now Placement",
-    status: "Live (Dynamic)",
-    desc: "Deduped feed generated via automated user engagement triggers.",
-    details: "Strictly managed via cross-section allocation algorithm preventing duplication."
+    id: "promo",
+    name: "Promo / Campaign Cards",
+    status: "Rule-driven",
+    statusColor: "text-purple-700 bg-purple-50 border-purple-100",
+    source: "Campaign scheduling API",
+    maxItems: "2",
+    dedupe: "Manual priority stack",
+    editable: "Yes",
+    actionLabel: "Manage Rules",
+    actionLink: "/admin/recommendations/rules?type=CAMPAIGN"
+  },
+  {
+    id: "picks",
+    name: "Today's Picks",
+    status: "Rule-driven",
+    statusColor: "text-purple-700 bg-purple-50 border-purple-100",
+    source: "Complete setup placement",
+    maxItems: "6",
+    dedupe: "Suppress 'Featured' items",
+    editable: "Yes",
+    actionLabel: "Manage Rules",
+    actionLink: "/admin/recommendations/rules?placement=complete_setup"
+  },
+  {
+    id: "categories",
+    name: "Shop by Category",
+    status: "Active",
+    statusColor: "text-green-700 bg-green-50 border-green-100",
+    source: "Product Database schema",
+    maxItems: "8",
+    dedupe: "Alpha distinct",
+    editable: "No",
+    actionLabel: "View Catalog",
+    actionLink: "/admin/products"
+  },
+  {
+    id: "featured",
+    name: "Featured",
+    status: "Active",
+    statusColor: "text-green-700 bg-green-50 border-green-100",
+    source: "Database ('isFeatured' flag)",
+    maxItems: "6",
+    dedupe: "None",
+    editable: "Yes",
+    actionLabel: "View Products",
+    actionLink: "/admin/products?visible=true"
+  },
+  {
+    id: "trending",
+    name: "Trending Now",
+    status: "Rule-driven",
+    statusColor: "text-purple-700 bg-purple-50 border-purple-100",
+    source: "Home trending placement",
+    maxItems: "4",
+    dedupe: "Trending Max 4 enforced",
+    editable: "Yes",
+    actionLabel: "Manage Rules",
+    actionLink: "/admin/recommendations/rules?placement=home_trending"
+  },
+  {
+    id: "footer",
+    name: "Footer links / bottom slots",
+    status: "Active",
+    statusColor: "text-green-700 bg-green-50 border-green-100",
+    source: "Layout core template",
+    maxItems: "Unlimited",
+    dedupe: "None",
+    editable: "No",
+    actionLabel: "Deployment Settings",
+    actionLink: "/admin/settings"
   }
+];
+
+const rules = [
+  { name: "Trending Max 4 Constraint", desc: "Limits Trending rails to 4 units to match responsive storefront styling." },
+  { name: "Cross-Rail Deduplication", desc: "Hides items already showcased in today's picks from standard carousel views." }
 ];
 ---
 
 <AdminLayout 
-  title="Merchandising Control" 
-  description="Examine promotional surfaces, homepage highlights and flash sale readiness."
+  title="Homepage merchandising" 
+  description="Review homepage sections, product sources and where each section is controlled."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
     <div class="mb-8 border-b border-gray-200 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Front-Facing Merchandising</h2>
-        <p class="text-sm text-gray-500 mt-1 max-w-2xl">
-          Oversee active marketing and catalog spotlights embedded throughout public user viewport templates.
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Homepage merchandising</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+          Review homepage sections, product sources and where each section is controlled.
         </p>
       </div>
-      <a href="/" target="_blank" class="bg-brand-dark hover:bg-black text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shadow-sm text-center">
-        Launch Public Preview &rarr;
-      </a>
+      <div class="flex gap-2">
+        <a href="/" target="_blank" class="bg-brand-dark hover:bg-black text-white text-xs font-black px-4 py-2 rounded-xl transition-colors shadow-sm uppercase tracking-wider">
+          Storefront &rarr;
+        </a>
+      </div>
     </div>
 
-    {/* Technical Spotlight Overview */}
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
       
-      <div class="lg:col-span-2 space-y-6">
+      {/* LEFT: PRIMARY DASHBOARD MATRIX */}
+      <div class="lg:col-span-9 space-y-8">
+        
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-          <div class="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-            <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Active Surfaces</h3>
-            <span class="text-[9px] bg-brand-green/10 text-brand-green font-black px-2 py-0.5 rounded uppercase border border-brand-green/20">3 Configured</span>
+          <div class="p-5 bg-gray-50 border-b border-gray-100 flex justify-between items-center flex-wrap gap-3">
+            <div>
+              <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark flex items-center gap-2">
+                Homepage slots status
+                <InfoTooltip text="Inventory of structural page sections detailing exactly what controls their behavior." align="left" />
+              </h3>
+            </div>
           </div>
-          <div class="divide-y divide-gray-100">
-            {modules.map(m => (
-              <div class="p-6 hover:bg-gray-50/50 transition-colors flex justify-between gap-4 items-start">
-                <div class="space-y-1">
-                  <h4 class="font-black text-sm text-brand-dark">{m.name}</h4>
-                  <p class="text-xs text-gray-500 leading-relaxed max-w-md">{m.desc}</p>
-                  <p class="text-[10px] text-gray-400 font-mono pt-1 italic">{m.details}</p>
-                </div>
-                <span class="bg-gray-100 text-gray-600 border border-gray-200 text-[8px] font-black px-2 py-0.5 rounded-full tracking-wide whitespace-nowrap">
-                  {m.status}
-                </span>
-              </div>
-            ))}
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs font-medium">
+              <thead>
+                <tr class="bg-gray-50/50 border-b border-gray-100 text-[9px] uppercase font-black text-gray-400 tracking-wider">
+                  <th class="p-4 pl-6">Homepage Section</th>
+                  <th class="p-4 text-center">Status</th>
+                  <th class="p-4">Product Source</th>
+                  <th class="p-4 text-center">Max Items</th>
+                  <th class="p-4">Deduplication Rule</th>
+                  <th class="p-4 text-center">Editable Now?</th>
+                  <th class="p-4 text-right pr-6">Related Action</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-50 text-gray-600">
+                {sections.map(s => (
+                  <tr class="hover:bg-gray-50/30 transition-colors">
+                    <td class="p-4 pl-6 font-black text-brand-dark text-sm">{s.name}</td>
+                    <td class="p-4 text-center">
+                      <span class={`inline-block px-2 py-0.5 rounded-full font-black text-[8px] border uppercase tracking-wider ${s.statusColor}`}>
+                        {s.status}
+                      </span>
+                    </td>
+                    <td class="p-4 text-[11px]">{s.source}</td>
+                    <td class="p-4 text-center font-mono font-bold text-brand-dark">{s.maxItems}</td>
+                    <td class="p-4 text-[10px] italic text-gray-400">{s.dedupe}</td>
+                    <td class="p-4 text-center">
+                      <span class={`font-black text-[10px] uppercase ${s.editable === 'Yes' ? 'text-brand-dark' : 'text-gray-300'}`}>
+                        {s.editable}
+                      </span>
+                    </td>
+                    <td class="p-4 text-right pr-6">
+                      <a href={s.actionLink} class="inline-block font-black uppercase tracking-wider text-[9px] bg-white border border-gray-200 text-gray-500 hover:text-brand-dark hover:border-gray-400 px-2 py-1 rounded-lg shadow-xs transition-all">
+                        {s.actionLabel}
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="p-5 bg-gray-50/50 border-t border-gray-100 text-xs text-gray-500 leading-relaxed">
+             <p class="font-bold text-brand-dark mb-1 flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
+                Disclaimer:
+             </p>
+             <p>Live-editing of slot structure layouts is not available yet. This matrix displays the truthful mechanical source of all 8 major rails and enables linking directly to active recommendation criteria or product flags where edits are supported.</p>
           </div>
         </div>
+
+        {/* GLOBAL RE-RANKING CONSTRAINTS */}
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+           <div class="p-5 bg-gray-50 border-b border-gray-100">
+             <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark flex items-center gap-2">
+                Enforced global constraints
+                <InfoTooltip text="Dynamic background code guards running universal cleanup before home sections serve." align="left" />
+             </h3>
+           </div>
+           <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+             {rules.map(r => (
+               <div class="border border-gray-100 bg-gray-50/30 rounded-xl p-4 flex items-start gap-3 text-xs">
+                  <span class="w-1.5 h-1.5 bg-green-500 rounded-full flex-shrink-0 mt-1.5"></span>
+                  <div>
+                     <h5 class="font-bold text-brand-dark uppercase text-[10px] tracking-wide mb-1">{r.name}</h5>
+                     <p class="text-gray-500 leading-relaxed font-medium">{r.desc}</p>
+                  </div>
+               </div>
+             ))}
+           </div>
+        </div>
+
       </div>
 
-      <div class="space-y-6">
-        {/* Future Feature Readiness */}
-        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6" id="campaigns">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-xs font-black uppercase tracking-widest text-gray-400">Surfaces Coming Soon</h3>
-            <span class="text-[8px] bg-gray-100 text-gray-400 font-bold px-1.5 py-0.5 rounded uppercase">Roadmap</span>
-          </div>
-          
-          <div class="space-y-4 mt-4">
-            <div class="opacity-70 border-l-2 border-gray-200 pl-3">
-              <h4 class="text-xs font-black text-brand-dark">Flash Sales / Timed Offers</h4>
-              <p class="text-[10px] text-gray-500 mt-0.5">Supports global timestamp triggers and real price markdown validations.</p>
-            </div>
-            
-            <div class="opacity-70 border-l-2 border-gray-200 pl-3" id="flash">
-              <h4 class="text-xs font-black text-brand-dark">Promotional Banners</h4>
-              <p class="text-[10px] text-gray-500 mt-0.5">Admin-editable image surfaces with schedule parameters and UTM links.</p>
-            </div>
-          </div>
+      {/* RIGHT: QUICK SHORTCUTS */}
+      <div class="lg:col-span-3 space-y-6">
+        
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+           <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-3">Direct Shortcuts</h3>
+           <div class="space-y-2.5">
+             <a href="/admin/products?visible=true" class="block p-3 border border-gray-100 hover:border-brand-gold rounded-xl hover:bg-gray-50 transition-all text-xs">
+                <div class="flex justify-between font-bold text-brand-dark mb-0.5">
+                   <span>Products Manager</span>
+                   <span>&rarr;</span>
+                </div>
+                <p class="text-[10px] text-gray-400">Toggle featured tags or active inventory visibility.</p>
+             </a>
+             <a href="/admin/recommendations/rules" class="block p-3 border border-gray-100 hover:border-brand-gold rounded-xl hover:bg-gray-50 transition-all text-xs">
+                <div class="flex justify-between font-bold text-brand-dark mb-0.5">
+                   <span>Recommendation Rules</span>
+                   <span>&rarr;</span>
+                </div>
+                <p class="text-[10px] text-gray-400">Configure Boosting, Pinning, or Suppressing.</p>
+             </a>
+             <a href="/admin/recommendations/preview" class="block p-3 border border-gray-100 hover:border-brand-gold rounded-xl hover:bg-gray-50 transition-all text-xs">
+                <div class="flex justify-between font-bold text-brand-dark mb-0.5">
+                    <span>Rule Preview</span>
+                   <span>&rarr;</span>
+                </div>
+                 <p class="text-[10px] text-gray-400">Test placement outcomes before activating rules.</p>
+             </a>
+           </div>
         </div>
+
+        <div class="bg-brand-dark text-white rounded-2xl shadow-md p-6 relative overflow-hidden">
+           <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-gold mb-2 relative z-10">Deduplication Flow</h3>
+           <p class="text-xs text-gray-300 leading-relaxed relative z-10">
+              To maintain diverse shelves, the system runs infinite-loop deduplication preventing duplicated catalog cards from appearing twice in immediate viewport succession.
+           </p>
+        </div>
+
       </div>
 
     </div>

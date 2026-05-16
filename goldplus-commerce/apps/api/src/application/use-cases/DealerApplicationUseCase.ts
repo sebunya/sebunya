@@ -11,6 +11,7 @@ export interface DealerApplicationDto {
   email: string;
   phone: string;
   tinNumber: string;
+  // TODO: migrate this workflow to persist structuredLocation as JSON metadata or dedicated columns.
   location: string;
 }
 

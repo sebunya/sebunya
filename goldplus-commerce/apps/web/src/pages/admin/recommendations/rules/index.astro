@@ -3,6 +3,7 @@ import AdminLayout from "../../../../layouts/AdminLayout.astro";
 import EmptyState from "../../../../components/EmptyState.astro";
 import Notice from "../../../../components/Notice.astro";
 import RuleStatusBadge from "../../../../components/recommendations/RuleStatusBadge.astro";
+import InfoTooltip from "../../../../components/admin/InfoTooltip.astro";
 
 import { listRecommendationRules } from "../../../../lib/admin-recommendations";
 import { readSessionToken } from "../../../../lib/session";
@@ -22,23 +23,50 @@ const query = {
 
 const res = await listRecommendationRules(token, query);
 const error = !res.ok ? res.message : null;
-const data = res.ok ? res.data : { rules: [], total: 0 };
+const data = res.ok ? res.data : ({ rules: [], total: 0 });
+
+const hasActiveFilters = !!(query.placement || query.status || query.type || query.search);
+
+function formatSchedule(starts?: string | null, ends?: string | null) {
+  if (!starts && !ends) return 'No end date set';
+  const parseD = (s: string) => {
+     try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return 'Invalid'; }
+  };
+  if (starts && ends) return `${parseD(starts)} – ${parseD(ends)}`;
+  if (starts) return `From ${parseD(starts)}`;
+  return `Until ${parseD(ends)}`;
+}
+
+function formatTarget(type: string, value?: string | null) {
+  if (type === 'GLOBAL') return 'Applies to all products';
+  if (type === 'PRODUCT') return `Prod ID: ${value ? value.slice(0,8) + '…' : '—'}`;
+  if (type === 'CATEGORY') return `Category: ${value || '—'}`;
+  return `${type}: ${value || '—'}`;
+}
+
+const placementLabels: any = {
+  'product_related': 'Product Related',
+  'cart_addon': 'Cart Addons',
+  'home_trending': 'Home Trending',
+  'complete_setup': 'Complete Setup',
+  'category_popular': 'Category Popular'
+};
 ---
 
 <AdminLayout 
-  title="Recommendation Rules" 
-  description="Operate deterministic catalog boosts, pins and suppressions."
+  title="Recommendation rules" 
+  description="Audit, configure and manage promotional boosting, pinning and suppressions."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Rules Engine</h2>
-        <p class="text-sm text-gray-500 mt-1">Manage overrides and overrides of base scoring pipelines.</p>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Recommendation rules</h2>
+        <p class="text-sm text-gray-500 mt-1">Audit, configure and manage promotional boosting, pinning and suppressions.</p>
       </div>
       <div>
-        <a href="/admin/recommendations/rules/new" class="bg-brand-dark text-white px-5 py-2 rounded-xl font-bold hover:bg-black transition-colors shadow-sm flex items-center gap-2 text-sm">
-          <span>➕</span> Create Rule
+        <a href="/admin/recommendations/rules/new" class="bg-brand-dark text-white px-5 py-2.5 rounded-xl font-black hover:bg-black transition-colors shadow-sm flex items-center gap-2 text-xs uppercase tracking-wider">
+          Create rule
         </a>
       </div>
     </div>
@@ -47,10 +75,10 @@ const data = res.ok ? res.data : { rules: [], total: 0 };
     <div class="bg-white border border-gray-200 rounded-2xl p-5 mb-8 shadow-sm flex flex-col md:flex-row items-center gap-4">
       <form method="GET" class="flex-grow grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
         <div>
-          <input type="text" name="search" value={query.search || ''} placeholder="Search rule name..." class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none focus:border-brand-green" />
+          <input type="text" name="search" value={query.search || ''} placeholder="Search rule name..." class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
         </div>
         <div>
-          <select name="placement" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark">
+          <select name="placement" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none">
             <option value="">Any Placement Zone</option>
             <option value="product_related" selected={query.placement === 'product_related'}>Product Related (PDP)</option>
             <option value="cart_addon" selected={query.placement === 'cart_addon'}>Cart Addons</option>
@@ -60,7 +88,7 @@ const data = res.ok ? res.data : { rules: [], total: 0 };
           </select>
         </div>
         <div>
-          <select name="type" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark">
+          <select name="type" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none">
             <option value="">Any Rule Type</option>
             <option value="BOOST" selected={query.type === 'BOOST'}>Boost</option>
             <option value="PIN" selected={query.type === 'PIN'}>Pin</option>
@@ -69,72 +97,121 @@ const data = res.ok ? res.data : { rules: [], total: 0 };
           </select>
         </div>
         <div class="flex gap-2">
-          <select name="status" class="flex-grow px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark">
+          <select name="status" class="flex-grow px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none">
             <option value="">Any Status</option>
             <option value="ACTIVE" selected={query.status === 'ACTIVE'}>Active</option>
             <option value="DRAFT" selected={query.status === 'DRAFT'}>Draft</option>
             <option value="PAUSED" selected={query.status === 'PAUSED'}>Paused</option>
           </select>
-          <button type="submit" class="bg-brand-dark text-white px-4 rounded-xl font-bold text-xs hover:bg-black transition-colors">Filter</button>
+          <button type="submit" class="bg-brand-dark text-white px-4 rounded-xl font-black text-xs hover:bg-black transition-colors shadow-xs uppercase">Filter</button>
         </div>
       </form>
-      {(query.placement || query.search || query.type || query.status) && (
-        <a href="/admin/recommendations/rules" class="text-xs font-black text-gray-400 hover:text-red-600 transition-colors">Clear</a>
+      {hasActiveFilters && (
+        <a href="/admin/recommendations/rules" class="text-xs font-black text-gray-400 hover:text-brand-dark transition-colors underline">Clear</a>
       )}
     </div>
 
     {error && <Notice kind="not-configured" title="API Error" message={error} />}
 
     {!error && data.rules.length === 0 ? (
-      <EmptyState 
-        title="No Rules Found" 
-        message="No merchandising rules match current filters. Create a new rule to override default engine sorting." 
-      />
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-12 text-center flex flex-col items-center justify-center">
+        <h3 class="text-lg font-black text-brand-dark mb-2">
+          {hasActiveFilters ? 'No Matching Rules Found' : 'No rules yet'}
+        </h3>
+        <p class="text-xs text-gray-500 max-w-md leading-relaxed mb-8">
+          {hasActiveFilters 
+            ? 'Your current filters are too restrictive. Clear your search or filters to see all rules.' 
+            : 'Start with one simple rule, such as boosting a featured product on the homepage.'}
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-left max-w-3xl w-full bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-8">
+          <div>
+            <h4 class="text-[10px] font-black uppercase tracking-widest text-blue-600">Boost</h4>
+            <p class="text-[10px] text-gray-500 mt-1 leading-relaxed">Raises matching products in a recommendation list. It does not make hidden products eligible.</p>
+          </div>
+          <div>
+            <h4 class="text-[10px] font-black uppercase tracking-widest text-amber-600">Pin</h4>
+            <p class="text-[10px] text-gray-500 mt-1 leading-relaxed">Places a product in a preferred position if it is already eligible.</p>
+          </div>
+          <div>
+            <h4 class="text-[10px] font-black uppercase tracking-widest text-red-600">Suppress</h4>
+            <p class="text-[10px] text-gray-500 mt-1 leading-relaxed">Removes matching products from a recommendation list.</p>
+          </div>
+        </div>
+
+        <div class="flex gap-3">
+          {hasActiveFilters ? (
+            <a href="/admin/recommendations/rules" class="bg-brand-dark text-white px-5 py-2.5 rounded-xl text-xs font-black shadow-sm hover:bg-black transition-colors uppercase">
+              Clear Filters
+            </a>
+          ) : (
+            <a href="/admin/recommendations/rules/new" class="bg-brand-dark text-white px-5 py-2.5 rounded-xl text-xs font-black shadow-sm hover:bg-black transition-colors uppercase">
+              Create first rule
+            </a>
+          )}
+          <a href="/admin/recommendations/preview" class="bg-white border border-gray-200 text-gray-600 hover:text-brand-dark px-5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-colors">
+            Preview recommendations
+          </a>
+        </div>
+      </div>
     ) : !error ? (
-      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-12">
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
               <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
-                <th class="p-6">Rule Description</th>
-                <th class="p-6">Placement Target</th>
-                <th class="p-6">Type & Priority</th>
-                <th class="p-6 text-center">Active Status</th>
-                <th class="p-6 text-right">Modification</th>
+                <th class="p-5 pl-6">Rule & Type</th>
+                <th class="p-5">Placement</th>
+                <th class="p-5">Target Scope</th>
+                <th class="p-5 text-center">Priority</th>
+                <th class="p-5 text-center">Schedule</th>
+                <th class="p-5 text-center">Status</th>
+                <th class="p-5 text-right pr-6">Actions</th>
               </tr>
             </thead>
-            <tbody class="text-xs divide-y divide-gray-50">
+            <tbody class="text-xs divide-y divide-gray-50 font-medium text-gray-600">
               {data.rules.map((rule) => (
-                <tr class="hover:bg-gray-50 transition-colors">
-                  <td class="p-6">
-                    <div class="font-bold text-brand-dark text-sm">{rule.name}</div>
-                    <div class="text-[10px] text-gray-400 mt-1 flex items-center gap-2">
-                      <span class="uppercase font-mono text-[9px] bg-gray-100 border border-gray-200 px-1.5 rounded">{rule.targetType}</span>
-                      {rule.targetValue && <span class="truncate max-w-[150px]">{rule.targetValue}</span>}
-                    </div>
+                <tr class="hover:bg-gray-50/30 transition-colors">
+                  <td class="p-5 pl-6">
+                    <div class="font-black text-brand-dark text-sm">{rule.name}</div>
+                    <span class={`inline-block px-1.5 py-0.5 mt-1.5 rounded font-black text-[8px] border uppercase tracking-wider ${
+                      rule.type === 'SUPPRESS' ? 'bg-red-50 text-red-700 border-red-100' : 
+                      rule.type === 'PIN' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 
+                      'bg-blue-50 text-blue-700 border-blue-100'
+                    }`}>
+                      {rule.type}
+                    </span>
                   </td>
-                  <td class="p-6 font-mono text-gray-500 font-medium">
-                    {rule.placement}
+                  <td class="p-5 font-semibold text-brand-dark">
+                    {placementLabels[rule.placement] || rule.placement}
                   </td>
-                  <td class="p-6">
-                    <div class="flex items-center gap-2">
-                      <span class={`inline-block px-2 py-0.5 rounded font-black text-[9px] border uppercase tracking-wide ${
-                        rule.type === 'SUPPRESS' ? 'bg-red-50 text-red-700 border-red-100' : 
-                        rule.type === 'PIN' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 
-                        'bg-blue-50 text-blue-700 border-blue-100'
-                      }`}>
-                        {rule.type}
-                      </span>
-                      <span class="text-[10px] text-gray-400 font-bold">PRI: {rule.priority}</span>
-                    </div>
+                  <td class="p-5 font-mono text-[10px] text-gray-500">
+                    {formatTarget(rule.targetType, rule.targetValue)}
                   </td>
-                  <td class="p-6 text-center">
+                  <td class="p-5 text-center font-black text-brand-dark font-mono">
+                    {rule.priority}
+                  </td>
+                  <td class="p-5 text-center text-[10px] text-gray-400 font-bold">
+                    {formatSchedule(rule.startsAt, rule.endsAt)}
+                  </td>
+                  <td class="p-5 text-center">
                     <RuleStatusBadge status={rule.status} />
                   </td>
-                  <td class="p-6 text-right">
-                    <a href={`/admin/recommendations/rules/${rule.id}`} class="inline-block text-xs font-bold text-gray-500 hover:text-brand-dark border border-gray-200 hover:border-gray-400 px-3 py-1.5 rounded-lg transition-all bg-white">
-                      Manage &rarr;
-                    </a>
+                  <td class="p-5 text-right pr-6">
+                    <div class="flex items-center justify-end gap-2">
+                      <a 
+                        href={`/admin/recommendations/preview?placement=${rule.placement}${rule.targetType === 'PRODUCT' && rule.targetValue ? '&productId=' + rule.targetValue : ''}`} 
+                        class="text-gray-500 hover:text-brand-dark border border-gray-200 px-2 py-1 rounded text-[10px] font-bold bg-white"
+                      >
+                        Preview
+                      </a>
+                      <a 
+                        href={`/admin/recommendations/rules/${rule.id}`} 
+                        class="text-brand-dark hover:bg-gray-100 border border-gray-200 font-bold text-[10px] px-2.5 py-1 rounded bg-white shadow-xs"
+                      >
+                        Edit
+                      </a>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -146,4 +223,3 @@ const data = res.ok ? res.data : { rules: [], total: 0 };
 
   </div>
 </AdminLayout>
-
