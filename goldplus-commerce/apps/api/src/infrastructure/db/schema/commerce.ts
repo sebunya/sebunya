@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, integer, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { products } from './products';
 import { users } from './identity';
@@ -7,7 +7,11 @@ export const carts = pgTable('carts', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id'),
   sessionId: varchar('session_id', { length: 255 }),
-});
+  anonymousId: varchar('anonymous_id', { length: 160 }),
+}, (table) => ({
+  sessionIdx: index('carts_session_idx').on(table.sessionId),
+  anonymousIdx: index('carts_anonymous_idx').on(table.anonymousId),
+}));
 
 export const cartItems = pgTable('cart_items', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -33,7 +37,21 @@ export const orders = pgTable('orders', {
   totalAmount: integer('total_amount').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+
+  // Pass 13A: Stitching context
+  anonymousId: varchar('anonymous_id', { length: 160 }),
+  browserId: varchar('browser_id', { length: 160 }),
+  sessionId: varchar('session_id', { length: 160 }),
+  cartId: uuid('cart_id'),
+  attributionId: uuid('attribution_id'),
+}, (table) => ({
+  orderNumberIdx: index('orders_number_idx').on(table.orderNumber),
+  anonymousIdx: index('orders_anonymous_idx').on(table.anonymousId),
+  browserIdx: index('orders_browser_idx').on(table.browserId),
+  sessionIdx: index('orders_session_idx').on(table.sessionId),
+  cartIdx: index('orders_cart_idx').on(table.cartId),
+  attributionIdx: index('orders_attribution_idx').on(table.attributionId),
+}));
 
 export const orderItems = pgTable('order_items', {
   id: uuid('id').defaultRandom().primaryKey(),

@@ -10,21 +10,63 @@ import { db } from "../client";
 
 export class DrizzleRecommendationEventRepository implements IRecommendationEventRepository {
   async save(event: RecommendationEvent): Promise<void> {
-    await db.insert(recommendationEvents).values({
+    await db.insert(recommendationEvents).values([{
       id: event.id,
       eventType: event.eventType,
       anonymousId: event.anonymousId,
-      customerId: event.customerId,
+      browserId: event.browserId,
       sessionId: event.sessionId,
+      cartId: event.cartId,
+      customerId: event.customerId,
+      leadId: event.leadId,
+      
+      // Attribution
+      ruleId: event.ruleId,
+      attributionId: event.attributionId,
+      impressionId: event.impressionId,
+      railRenderId: event.railRenderId,
+      reasonCode: event.reasonCode,
+      appliedRuleIds: event.appliedRuleIds,
+
+      // Context
       productId: event.productId,
       categoryId: event.categoryId,
       searchQuery: event.searchQuery,
       placement: event.placement,
       recommendationProductId: event.recommendationProductId,
+      sourceProductId: event.sourceProductId,
       source: event.source,
+      pagePath: event.pagePath,
+      referrer: event.referrer,
+
+      // Flatten UTM
+      utmSource: event.utm?.source,
+      utmMedium: event.utm?.medium,
+      utmCampaign: event.utm?.campaign,
+      utmContent: event.utm?.content,
+      utmTerm: event.utm?.term,
+
+      // Flatten Device
+      deviceType: event.device?.deviceType,
+      browserFamily: event.device?.browserFamily,
+      osFamily: event.device?.osFamily,
+      screenWidth: event.device?.screenWidth,
+      screenHeight: event.device?.screenHeight,
+      viewportWidth: event.device?.viewportWidth,
+      viewportHeight: event.device?.viewportHeight,
+      language: event.device?.language,
+      timezone: event.device?.timezone,
+
+      // Flatten Location
+      locationSource: event.location?.locationSource,
+      district: event.location?.district,
+      town: event.location?.town,
+      gpsGeohash: event.location?.gpsGeohash,
+      gpsAccuracyMeters: event.location?.gpsAccuracyMeters,
+
       metadata: event.metadata,
       createdAt: event.createdAt,
-    });
+    }]);
   }
 
   async existsRecentSimilarEvent(query: RecentEventQuery): Promise<boolean> {

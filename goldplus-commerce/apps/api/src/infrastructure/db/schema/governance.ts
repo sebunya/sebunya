@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, text, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, text, jsonb, index } from 'drizzle-orm/pg-core';
 
 export const dealerApplications = pgTable('dealer_applications', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -14,7 +14,18 @@ export const dealerApplications = pgTable('dealer_applications', {
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+
+  // Pass 13A: Stitching context
+  anonymousId: varchar('anonymous_id', { length: 160 }),
+  browserId: varchar('browser_id', { length: 160 }),
+  sessionId: varchar('session_id', { length: 160 }),
+  attributionId: uuid('attribution_id'),
+}, (table) => ({
+  anonymousIdx: index('dealer_applications_anonymous_idx').on(table.anonymousId),
+  browserIdx: index('dealer_applications_browser_idx').on(table.browserId),
+  sessionIdx: index('dealer_applications_session_idx').on(table.sessionId),
+  attributionIdx: index('dealer_applications_attribution_idx').on(table.attributionId),
+}));
 
 export const quoteRequests = pgTable('quote_requests', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -26,7 +37,20 @@ export const quoteRequests = pgTable('quote_requests', {
   message: text('message'),
   status: varchar('status', { length: 50 }).default('new').notNull(), // new, quoted, lost, won
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-});
+
+  // Pass 13A: Stitching context
+  anonymousId: varchar('anonymous_id', { length: 160 }),
+  browserId: varchar('browser_id', { length: 160 }),
+  sessionId: varchar('session_id', { length: 160 }),
+  cartId: uuid('cart_id'),
+  attributionId: uuid('attribution_id'),
+}, (table) => ({
+  anonymousIdx: index('quote_requests_anonymous_idx').on(table.anonymousId),
+  browserIdx: index('quote_requests_browser_idx').on(table.browserId),
+  sessionIdx: index('quote_requests_session_idx').on(table.sessionId),
+  cartIdx: index('quote_requests_cart_idx').on(table.cartId),
+  attributionIdx: index('quote_requests_attribution_idx').on(table.attributionId),
+}));
 
 export const supportIssues = pgTable('support_issues', {
   id: uuid('id').defaultRandom().primaryKey(),

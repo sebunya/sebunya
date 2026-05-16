@@ -3,6 +3,7 @@ import type {
   RecommendationItemDto,
   RecommendationResponseDto,
 } from "@goldplus/shared";
+import crypto from 'crypto';
 import type {
   IProductRecommendationReader,
   RecommendationProductRecord,
@@ -14,7 +15,6 @@ import { RecommendationFallbackService } from "./RecommendationFallbackService";
 import { RecommendationEligibilityService } from "./RecommendationEligibilityService";
 import { RecommendationDeduplicationService } from "./RecommendationDeduplicationService";
 import { RecommendationDiversityService } from "./RecommendationDiversityService";
-import type { ApplyRecommendationRulesResult } from "./RecommendationRuleApplicationResult";
 import { RecommendationRuleApplicationService } from "./RecommendationRuleApplicationService";
 import type { RecommendationCandidate } from "../../domain/recommendations/RecommendationTypes";
 
@@ -42,12 +42,11 @@ export class GetRecommendationsUseCase {
 
   async execute(input: GetRecommendationsInput): Promise<RecommendationResponseDto> {
     const limit = input.limit ?? DEFAULT_LIMITS[input.placement];
+    const railRenderId = crypto.randomUUID();
 
     let candidates = await this.generateV1ScoredCandidates(input, limit);
 
-    // ---- V2 Rule Application (if enabled) ----
-
-    // ---- V2 Rule Application (if enabled) ----
+    // ---- V2 Rule Application ----
     const v2Enabled = (() => {
       const env = process.env.NODE_ENV ?? 'development';
       if (['development', 'test', 'local'].includes(env)) {
@@ -55,6 +54,7 @@ export class GetRecommendationsUseCase {
       }
       return process.env.RECOMMENDATION_V2_RULES_ENABLED === 'true';
     })();
+
     if (v2Enabled) {
       try {
         const ruleResult = await this.ruleApplication.apply({
@@ -68,10 +68,8 @@ export class GetRecommendationsUseCase {
           candidates,
         });
         candidates = ruleResult.candidates;
-        // (Applied rule IDs / warnings are not part of the external DTO but could be logged)
       } catch (e) {
         // Fail‑closed: keep original V1 candidates
-        // Optionally log the error via existing logger if available
       }
     }
 
@@ -116,17 +114,12 @@ export class GetRecommendationsUseCase {
 
     return {
       placement: input.placement,
-      items: candidates.map((candidate) => this.toDto(candidate)),
+      items: candidates.map((candidate) => this.toDto(candidate, railRenderId)),
       generatedAt: new Date().toISOString(),
       strategy: "rule_based_v1",
     };
   }
 
-  /**
-   * Generates scored V1 candidates exactly as the pipeline would, 
-   * before any rule-based merchandising modifications.
-   * Used by runtime execute() and isolated Preview API.
-   */
   public async generateV1ScoredCandidates(input: GetRecommendationsInput, limit: number): Promise<RecommendationCandidate[]> {
     const contextProduct = input.productId
       ? await this.products.findProductById(input.productId)
@@ -227,7 +220,7 @@ export class GetRecommendationsUseCase {
     }));
   }
 
-  private toDto(candidate: RecommendationCandidate): RecommendationItemDto {
+  private toDto(candidate: RecommendationCandidate, railRenderId: string): RecommendationItemDto {
     return {
       productId: candidate.productId,
       slug: candidate.slug,
@@ -238,6 +231,13 @@ export class GetRecommendationsUseCase {
       score: candidate.score,
       reasonCodes: candidate.reasonCodes,
       displayReason: candidate.displayReason,
+      
+      // Pass 13A: Attribution
+      attributionId: crypto.randomUUID(),
+      ruleId: candidate.ruleId,
+      appliedRuleIds: candidate.appliedRuleIds,
+      reasonCode: candidate.reasonCodes?.[0], // Simplified mapping for Pass 13A
+      railRenderId: railRenderId,
     };
   }
 }

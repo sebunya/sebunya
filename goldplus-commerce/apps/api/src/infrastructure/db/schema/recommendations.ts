@@ -39,6 +39,49 @@ export const recommendationEvents = pgTable(
 
     source: varchar("source", { length: 160 }),
 
+    // Pass 13A: Attribution and Identity
+    ruleId: uuid("rule_id").references(() => recommendationRules.id, {
+      onDelete: "set null",
+    }),
+    attributionId: uuid("attribution_id"),
+    cartId: uuid("cart_id"),
+    browserId: varchar("browser_id", { length: 160 }),
+    leadId: uuid("lead_id"),
+    impressionId: uuid("impression_id"),
+    railRenderId: uuid("rail_render_id"),
+    reasonCode: varchar("reason_code", { length: 80 }),
+    appliedRuleIds: jsonb("applied_rule_ids").$type<string[]>(),
+
+    // Pass 13A: Context and Channel
+    sourceProductId: uuid("source_product_id").references(() => products.id, {
+      onDelete: "set null",
+    }),
+    pagePath: varchar("page_path", { length: 255 }),
+    referrer: varchar("referrer", { length: 500 }),
+    utmSource: varchar("utm_source", { length: 100 }),
+    utmMedium: varchar("utm_medium", { length: 100 }),
+    utmCampaign: varchar("utm_campaign", { length: 150 }),
+    utmContent: varchar("utm_content", { length: 150 }),
+    utmTerm: varchar("utm_term", { length: 150 }),
+
+    // Pass 13A: Device and Browser
+    deviceType: varchar("device_type", { length: 50 }),
+    browserFamily: varchar("browser_family", { length: 80 }),
+    osFamily: varchar("os_family", { length: 80 }),
+    screenWidth: integer("screen_width"),
+    screenHeight: integer("screen_height"),
+    viewportWidth: integer("viewport_width"),
+    viewportHeight: integer("viewport_height"),
+    language: varchar("language", { length: 30 }),
+    timezone: varchar("timezone", { length: 80 }),
+
+    // Pass 13A: Location context
+    locationSource: varchar("location_source", { length: 50 }),
+    district: varchar("district", { length: 120 }),
+    town: varchar("town", { length: 120 }),
+    gpsGeohash: varchar("gps_geohash", { length: 16 }),
+    gpsAccuracyMeters: integer("gps_accuracy_meters"),
+
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
 
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -66,6 +109,14 @@ export const recommendationEvents = pgTable(
     recommendationProductCreatedAtIdx: index(
       "recommendation_events_recommendation_product_created_at_idx",
     ).on(table.recommendationProductId, table.createdAt),
+    ruleIdx: index("recommendation_events_rule_idx").on(table.ruleId),
+    attributionIdx: index("recommendation_events_attribution_idx").on(table.attributionId),
+    cartIdx: index("recommendation_events_cart_idx").on(table.cartId),
+    browserIdx: index("recommendation_events_browser_idx").on(table.browserId),
+    leadIdx: index("recommendation_events_lead_idx").on(table.leadId),
+    impressionIdx: index("recommendation_events_impression_idx").on(table.impressionId),
+    railRenderIdx: index("recommendation_events_rail_render_idx").on(table.railRenderId),
+    utmSourceIdx: index("recommendation_events_utm_source_idx").on(table.utmSource),
   }),
 );
 
@@ -132,6 +183,6 @@ export const recommendationRuleAuditLogs = pgTable(
     ruleIdIdx: index("recommendation_rule_audit_logs_rule_id_idx").on(table.ruleId),
     actionIdx: index("recommendation_rule_audit_logs_action_idx").on(table.action),
     performedByIdx: index("recommendation_rule_audit_logs_performed_by_idx").on(table.performedBy),
-    performedAtIdx: index("recommendation_rule_audit_logs_performed_at_idx").on(table.performedAt),
+    createdAtIdx: index("recommendation_rule_audit_logs_performed_at_idx").on(table.performedAt),
   })
 );

@@ -89,6 +89,10 @@ export class RecommendationRuleApplicationService {
         const pos = rule.action?.pinPosition ?? 1;
         const insertIdx = Math.min(pos - 1, candidates.length);
         candidates.splice(insertIdx, 0, candidate);
+        
+        candidate.ruleId = rule.id;
+        candidate.appliedRuleIds = [...(candidate.appliedRuleIds ?? []), rule.id];
+        
         pinnedProductIds.push(candidate.productId);
         appliedRuleIds.push(rule.id);
       }
@@ -105,6 +109,10 @@ export class RecommendationRuleApplicationService {
         if (matches(rule, cand)) {
           // Apply boost only if candidate is still eligible (checked later)
           cand.score += boostScore;
+          
+          cand.ruleId = rule.id;
+          cand.appliedRuleIds = [...(cand.appliedRuleIds ?? []), rule.id];
+          
           // Ensure reason code present – add MERCHANDISING_BOOST if not already there
           if (!cand.reasonCodes.includes("MERCHANDISING_BOOST")) {
             cand.reasonCodes.push("MERCHANDISING_BOOST");

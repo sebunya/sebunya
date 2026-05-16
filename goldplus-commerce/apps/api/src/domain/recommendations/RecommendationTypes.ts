@@ -77,6 +77,10 @@ export interface RecommendationCandidate {
   displayReason?: string;
   compatibilityConfidence?: CompatibilityConfidence;
   fallbackUsed?: boolean;
+  
+  // Pass 13A: Attribution support
+  ruleId?: string;
+  appliedRuleIds?: string[];
 }
 
 export interface RecommendationContext {

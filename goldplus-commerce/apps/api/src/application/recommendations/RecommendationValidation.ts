@@ -14,6 +14,7 @@ export const RECOMMENDATION_PLACEMENTS: readonly RecommendationPlacement[] = [
 ] as const;
 
 export const RECOMMENDATION_EVENT_TYPES: readonly RecommendationEventType[] = [
+  "PAGE_VIEW",
   "PRODUCT_VIEWED",
   "CATEGORY_VIEWED",
   "PRODUCT_SEARCHED",
@@ -22,6 +23,20 @@ export const RECOMMENDATION_EVENT_TYPES: readonly RecommendationEventType[] = [
   "PRODUCT_PURCHASED",
   "RECOMMENDATION_VIEWED",
   "RECOMMENDATION_CLICKED",
+  "CART_ADD",
+  "CART_REMOVE",
+  "CART_QUANTITY_CHANGE",
+  "CHECKOUT_STARTED",
+  "QUOTE_STARTED",
+  "QUOTE_SUBMITTED",
+  "SUPPORT_STARTED",
+  "SUPPORT_SUBMITTED",
+  "DEALER_APPLICATION_STARTED",
+  "DEALER_APPLICATION_SUBMITTED",
+  "CUSTOMER_IDENTIFIED",
+  "LOCATION_PERMISSION_GRANTED",
+  "LOCATION_CAPTURED",
+  "LOCATION_PERMISSION_DENIED",
 ] as const;
 
 const PII_KEYS = new Set([
@@ -36,6 +51,16 @@ const PII_KEYS = new Set([
   "taxId",
   "payment",
   "card",
+  "cardNumber",
+  "cvv",
+  "pin",
+  "password",
+  "nationalId",
+  "nin",
+  "passport",
+  "medical",
+  "diagnosis",
+  "biometric",
   "ip",
   "ipAddress",
   "deviceFingerprint",
@@ -47,6 +72,11 @@ export function isRecommendationPlacement(value: unknown): value is Recommendati
 
 export function isRecommendationEventType(value: unknown): value is RecommendationEventType {
   return typeof value === "string" && RECOMMENDATION_EVENT_TYPES.includes(value as RecommendationEventType);
+}
+
+function isValidUuid(uuid: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
 }
 
 export function validateMetadata(metadata: unknown): Record<string, unknown> {
@@ -65,12 +95,13 @@ export function validateMetadata(metadata: unknown): Record<string, unknown> {
   const normaliseKey = (k: string) => k.toLowerCase().replace(/[-_\s]/g, "");
   const normalizedPii = new Set(Array.from(PII_KEYS).map(normaliseKey));
 
-  function checkRecursively(val: unknown, path: string) {
+  function checkRecursively(val: unknown, path: string, depth: number) {
     if (val === null || typeof val !== "object") return;
 
     if (Array.isArray(val)) {
+      if (depth > 2) throw new Error("metadata is too deep.");
       for (let i = 0; i < val.length; i++) {
-        checkRecursively(val[i], `${path}[${i}]`);
+        checkRecursively(val[i], `${path}[${i}]`, depth + 1);
       }
       return;
     }
@@ -81,11 +112,12 @@ export function validateMetadata(metadata: unknown): Record<string, unknown> {
       if (normalizedPii.has(norm)) {
         throw new Error(`metadata contains disallowed key: ${key}`);
       }
-      checkRecursively(obj[key], `${path}.${key}`);
+      if (depth > 2) throw new Error("metadata is too deep.");
+      checkRecursively(obj[key], `${path}.${key}`, depth + 1);
     }
   }
 
-  checkRecursively(record, "root");
+  checkRecursively(record, "root", 0);
 
   return record;
 }
@@ -113,6 +145,29 @@ export function validateTrackRecommendationEventInput(
 
   if (body.anonymousId && !/^anon_[a-zA-Z0-9_-]{12,}$/.test(body.anonymousId)) {
     throw new Error("Invalid anonymousId format.");
+  }
+
+  // UUID fields validation
+  const uuidFields: (keyof TrackRecommendationEventInput)[] = [
+    "cartId",
+    "customerId",
+    "leadId",
+    "attributionId",
+    "impressionId",
+    "railRenderId",
+    "ruleId",
+    "productId",
+    "recommendationProductId",
+    "sourceProductId",
+  ];
+
+  for (const field of uuidFields) {
+    const value = body[field];
+    if (typeof value === "string" && value.length > 0) {
+      if (!isValidUuid(value)) {
+        throw new Error(`Invalid UUID format for field: ${field}`);
+      }
+    }
   }
 
   if (body.searchQuery && body.searchQuery.length > 300) {

@@ -9,6 +9,7 @@ export class TrackRecommendationEventUseCase {
   async execute(input: unknown): Promise<{ success: true; skipped?: boolean }> {
     const valid = validateTrackRecommendationEventInput(input);
 
+    // Skip logic for duplicate events
     if (valid.eventType === "PRODUCT_VIEWED" && valid.productId) {
       const exists = await this.events.existsRecentSimilarEvent({
         eventType: "PRODUCT_VIEWED",
@@ -32,7 +33,7 @@ export class TrackRecommendationEventUseCase {
       if (exists) return { success: true, skipped: true };
     }
 
-    const event = RecommendationEvent.create(valid as TrackRecommendationEventInput);
+    const event = RecommendationEvent.create(valid);
     await this.events.save(event);
 
     return { success: true };

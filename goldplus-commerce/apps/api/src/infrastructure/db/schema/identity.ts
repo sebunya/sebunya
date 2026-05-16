@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, boolean, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, primaryKey, integer, index } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -40,3 +40,34 @@ export const rolePermissions = pgTable(
   }),
 );
 
+export const identityLinks = pgTable(
+  "identity_links",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    anonymousId: varchar("anonymous_id", { length: 160 }),
+    browserId: varchar("browser_id", { length: 160 }),
+    sessionId: varchar("session_id", { length: 160 }),
+    cartId: uuid("cart_id"),
+    leadId: uuid("lead_id"),
+    customerId: uuid("customer_id"),
+    emailHash: varchar("email_hash", { length: 64 }),
+    phoneHash: varchar("phone_hash", { length: 64 }),
+    linkType: varchar("link_type", { length: 50 }).notNull(),
+    linkConfidence: integer("link_confidence").notNull().default(0),
+    sourceEventId: uuid("source_event_id"),
+    firstLinkedAt: timestamp("first_linked_at", { withTimezone: true }).defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    anonymousIdx: index("identity_links_anonymous_idx").on(table.anonymousId),
+    browserIdx: index("identity_links_browser_idx").on(table.browserId),
+    sessionIdx: index("identity_links_session_idx").on(table.sessionId),
+    cartIdx: index("identity_links_cart_idx").on(table.cartId),
+    leadIdx: index("identity_links_lead_idx").on(table.leadId),
+    customerIdx: index("identity_links_customer_idx").on(table.customerId),
+    emailHashIdx: index("identity_links_email_hash_idx").on(table.emailHash),
+    phoneHashIdx: index("identity_links_phone_hash_idx").on(table.phoneHash),
+  })
+);
