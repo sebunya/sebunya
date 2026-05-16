@@ -21,9 +21,9 @@ export class TrackRecommendationEventUseCase {
       if (exists) return { success: true, skipped: true };
     }
 
-    if (valid.eventType === "RECOMMENDATION_VIEWED" && valid.recommendationProductId) {
+    if ((valid.eventType === "RECOMMENDATION_VIEWED" || valid.eventType === "RECOMMENDATION_IMPRESSION") && valid.recommendationProductId) {
       const exists = await this.events.existsRecentSimilarEvent({
-        eventType: "RECOMMENDATION_VIEWED",
+        eventType: valid.eventType,
         anonymousId: valid.anonymousId,
         customerId: valid.customerId,
         recommendationProductId: valid.recommendationProductId,

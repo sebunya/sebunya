@@ -218,7 +218,7 @@ const canonical = Astro.url.toString();
 </BaseLayout>
 
 <script>
-  import { trackProductView, saveRecentlyViewedLocal } from '../../lib/recommendations';
+  import { trackProductView, saveRecentlyViewedLocal, getAndClearClickAttribution, trackRecommendationEvent } from '../../lib/recommendations';
 
   document.addEventListener('DOMContentLoaded', () => {
     const root = document.querySelector('[data-product-tracking]');
@@ -242,6 +242,31 @@ const canonical = Astro.url.toString();
         imageUrl: image || undefined,
         price: priceRaw ? Number(priceRaw) : undefined,
         currency: 'UGX'
+      });
+    }
+
+    const form = document.querySelector('form[action="/cart"]');
+    if (form && id) {
+      form.addEventListener('submit', () => {
+        const attribution = getAndClearClickAttribution(id);
+        if (attribution) {
+          trackRecommendationEvent({
+            eventType: "RECOMMENDATION_ADD_TO_CART",
+            recommendationProductId: id,
+            placement: attribution.placement,
+            attributionId: attribution.attributionId,
+            railRenderId: attribution.railRenderId,
+            ruleId: attribution.ruleId,
+            reasonCode: attribution.reasonCode,
+            source: "product_page",
+          }).catch(() => {});
+        } else {
+          trackRecommendationEvent({
+            eventType: "PRODUCT_ADDED_TO_CART",
+            productId: id,
+            source: "product_page",
+          }).catch(() => {});
+        }
       });
     }
   });

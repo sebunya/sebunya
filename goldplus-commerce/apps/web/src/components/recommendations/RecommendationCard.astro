@@ -28,6 +28,10 @@ const productType = lowerName.includes("charger") ? "Charger"
     data-recommendation-click
     data-placement={placement}
     data-product-id={item.productId}
+    data-attribution-id={item.attributionId}
+    data-rail-render-id={item.railRenderId}
+    data-rule-id={item.ruleId}
+    data-reason-code={item.reasonCode}
   >
     {/* Render small rationale tag if exists */}
     {item.displayReason && (

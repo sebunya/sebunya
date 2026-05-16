@@ -48,30 +48,35 @@ const productIdsString = items.map((item) => item.productId).join(",");
   import {
     trackRecommendationClick,
     trackRecommendationImpression,
+    persistClickAttribution
   } from "../../lib/recommendations";
 
   // Wait for DOM interactive so dynamic features register
   document.addEventListener("DOMContentLoaded", () => {
-    const rails = document.querySelectorAll("[data-recommendation-rail]");
+    const cards = document.querySelectorAll("[data-recommendation-click]");
 
-    const seenRails = new WeakSet<Element>();
+    const seenCards = new WeakSet<Element>();
 
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (!entry.isIntersecting || seenRails.has(entry.target)) continue;
+          if (!entry.isIntersecting || seenCards.has(entry.target)) continue;
 
           // Commit seen so it won't fire duplication streams on re-scroll.
-          seenRails.add(entry.target);
+          seenCards.add(entry.target);
 
-          const placement = entry.target.getAttribute("data-placement");
-          const rawIds = entry.target.getAttribute("data-product-ids");
-          const productIds = rawIds ? rawIds.split(",").filter(Boolean) : [];
+          const target = entry.target;
+          const placement = target.getAttribute("data-placement");
+          const productId = target.getAttribute("data-product-id");
 
-          if (placement && productIds.length > 0) {
+          if (placement && productId) {
             trackRecommendationImpression({
               placement: placement as any,
-              productIds,
+              productId,
+              attributionId: target.getAttribute("data-attribution-id") || undefined,
+              railRenderId: target.getAttribute("data-rail-render-id") || undefined,
+              ruleId: target.getAttribute("data-rule-id") || undefined,
+              reasonCode: target.getAttribute("data-reason-code") || undefined,
               source: "recommendation_rail",
             });
           }
@@ -80,7 +85,7 @@ const productIdsString = items.map((item) => item.productId).join(",");
       { threshold: 0.30 },
     );
 
-    rails.forEach((rail) => observer.observe(rail));
+    cards.forEach((card) => observer.observe(card));
 
     // Event delegation approach for robust monitoring
     document.addEventListener("click", (event) => {
@@ -92,11 +97,30 @@ const productIdsString = items.map((item) => item.productId).join(",");
 
       const placement = target.getAttribute("data-placement");
       const productId = target.getAttribute("data-product-id");
+      const attributionId = target.getAttribute("data-attribution-id");
+      const railRenderId = target.getAttribute("data-rail-render-id");
+      const ruleId = target.getAttribute("data-rule-id");
+      const reasonCode = target.getAttribute("data-reason-code");
 
       if (placement && productId) {
+        if (attributionId) {
+          persistClickAttribution({
+            attributionId,
+            railRenderId: railRenderId || undefined,
+            placement,
+            ruleId: ruleId || undefined,
+            reasonCode: reasonCode || undefined,
+            productId,
+          });
+        }
+
         trackRecommendationClick({
           placement: placement as any,
           productId,
+          attributionId: attributionId || undefined,
+          railRenderId: railRenderId || undefined,
+          ruleId: ruleId || undefined,
+          reasonCode: reasonCode || undefined,
           source: "recommendation_card",
         });
       }

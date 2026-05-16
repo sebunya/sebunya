@@ -77,9 +77,19 @@ const {
 
         const priceSizeClass = (typeof item.price === 'number' && item.price > 0) ? 'text-sm' : 'text-[11px] text-brand-mutedGrey font-bold';
 
+        const attributionId = "loc_" + Math.random().toString(36).substring(2, 11);
+        const railRenderId = "loc_rail_" + Date.now();
+
         return `
           <li class="group list-none h-full">
-            <a href="/products/${item.slug}" class="flex flex-col h-full border border-brand-borderGrey rounded-2xl p-3 sm:p-4 hover:border-brand-primary hover:shadow-lg transition-all bg-white outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30">
+            <a href="/products/${item.slug}" 
+               data-recommendation-click 
+               data-placement="recently_viewed" 
+               data-product-id="${item.productId}" 
+               data-attribution-id="${attributionId}"
+               data-rail-render-id="${railRenderId}"
+               data-reason-code="RECENTLY_VIEWED"
+               class="flex flex-col h-full border border-brand-borderGrey rounded-2xl p-3 sm:p-4 hover:border-brand-primary hover:shadow-lg transition-all bg-white outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30">
               <div class="aspect-square bg-brand-softGrey rounded-xl overflow-hidden mb-3 relative">
                  ${img}
               </div>
