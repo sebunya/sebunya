@@ -25,6 +25,8 @@ import { DrizzleRecommendationRuleAuditRepository } from './db/repositories/Driz
 import { DrizzleRecommendationRuleRepository } from './db/repositories/DrizzleRecommendationRuleRepository';
 import { RecommendationRuleConflictService } from '../application/recommendations/RecommendationRuleConflictService';
 import { RecommendationRuleApplicationService } from '../application/recommendations/RecommendationRuleApplicationService';
+import { DrizzleRecommendationAnalyticsRepository } from './db/repositories/DrizzleRecommendationAnalyticsRepository';
+import { RecommendationAnalyticsService } from '../application/recommendations/RecommendationAnalyticsService';
 
 import { DrizzleProductRecommendationReader } from './db/repositories/DrizzleProductRecommendationReader';
 import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
@@ -85,6 +87,7 @@ export class Registry {
   public readonly recommendationRuleRepo = new DrizzleRecommendationRuleRepository();
   public readonly recommendationRuleAuditRepo = new DrizzleRecommendationRuleAuditRepository();
   public readonly productRecommendationReader = new DrizzleProductRecommendationReader();
+  public readonly recommendationAnalyticsRepo = new DrizzleRecommendationAnalyticsRepository();
 
   // Storage
   private readonly productImageStorage = new LocalProductImageStorage(
@@ -118,6 +121,7 @@ export class Registry {
   private readonly recommendationEligibility = new RecommendationEligibilityService();
   public readonly recommendationDedupe = new RecommendationDeduplicationService();
   public readonly recommendationDiversity = new RecommendationDiversityService();
+  public readonly recommendationAnalyticsService = new RecommendationAnalyticsService(this.recommendationAnalyticsRepo);
 
 
   // Security Services

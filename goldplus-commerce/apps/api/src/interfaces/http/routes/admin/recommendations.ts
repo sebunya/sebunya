@@ -204,4 +204,33 @@ routes.post("/preview", async (c) => {
   return c.json({ success: true, data: result.data });
 });
 
+// 9. ANALYTICS
+routes.get("/analytics", async (c) => {
+  const registry = Registry.getInstance();
+  const service = registry.recommendationAnalyticsService;
+
+  const query = {
+    startDate: c.req.query("startDate"),
+    endDate: c.req.query("endDate"),
+    placement: c.req.query("placement") as any,
+    ruleId: c.req.query("ruleId"),
+    productId: c.req.query("productId"),
+    eventType: c.req.query("eventType") as any,
+  };
+
+  try {
+    const result = await service.getAnalytics(query);
+    const res: ApiResponse<typeof result> = { success: true, data: result };
+    return c.json(res);
+  } catch (err: any) {
+    return c.json({ 
+      success: false, 
+      error: { 
+        code: "ANALYTICS_QUERY_FAILED", 
+        message: err.message || "Failed to fetch analytics." 
+      } 
+    }, 400);
+  }
+});
+
 export default routes;

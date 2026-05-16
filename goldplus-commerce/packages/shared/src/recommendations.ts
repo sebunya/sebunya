@@ -154,3 +154,112 @@ export interface GetRecommendationsInput {
   anonymousId?: string;
   limit?: number;
 }
+
+export type AnalyticsTrackingStatus = "healthy" | "quiet" | "no_data";
+
+export interface UnavailableMetric {
+  metric: string;
+  reason: string;
+}
+
+export interface AnalyticsDateRange {
+  startDate: string;
+  endDate: string;
+  timezone: "UTC";
+}
+
+export interface RecommendationAnalyticsQuery {
+  startDate?: string;
+  endDate?: string;
+  placement?: RecommendationPlacement;
+  ruleId?: string;
+  productId?: string;
+  eventType?: RecommendationEventType;
+}
+
+export interface RecommendationAnalyticsResponse {
+  range: AnalyticsDateRange;
+  filters: {
+    placement?: string;
+    ruleId?: string;
+    productId?: string;
+    eventType?: string;
+  };
+  summary: {
+    totalEvents: number;
+    impressions: number;
+    clicks: number;
+    addToCart: number;
+    ctr: number | null;
+    addToCartRate: number | null;
+    clickToCartRate: number | null;
+    attributedEvents: number;
+    unattributedEvents: number;
+    organicEvents: number;
+    ruleAssistedEvents: number;
+    uniqueAnonymousVisitors: number;
+    uniqueBrowserVisitors: number;
+    uniqueCarts: number;
+  };
+  placementPerformance: Array<{
+    placement: string;
+    impressions: number;
+    clicks: number;
+    addToCart: number;
+    ctr: number | null;
+    addToCartRate: number | null;
+    clickToCartRate: number | null;
+    attributedEventShare: number | null;
+    organicEventShare: number | null;
+    ruleAssistedEventShare: number | null;
+  }>;
+  rulePerformance: Array<{
+    ruleId: string | null;
+    label: string;
+    impressions: number;
+    clicks: number;
+    addToCart: number;
+    ctr: number | null;
+    addToCartRate: number | null;
+    placementsTouched: string[];
+    productsTouched: number;
+    reasonCodes: string[];
+  }>;
+  productPerformance: Array<{
+    productId: string;
+    productName?: string;
+    sku?: string;
+    impressions: number;
+    clicks: number;
+    addToCart: number;
+    ctr: number | null;
+    addToCartRate: number | null;
+    placements: string[];
+    ruleAssistedCount: number;
+    organicCount: number;
+  }>;
+  eventHealth: {
+    totalEvents: number;
+    eventsByType: Record<string, number>;
+    missingAttributionId: number;
+    missingPlacement: number;
+    missingProductId: number;
+    missingAnonymousId: number;
+    latestEventAt: string | null;
+    trackingStatus: AnalyticsTrackingStatus;
+    dataQualityWarnings: string[];
+  };
+  identityHealth: {
+    eventsWithAnonymousId: number;
+    eventsWithBrowserId: number;
+    eventsWithCartId: number;
+    eventsWithLeadId: number;
+    eventsWithCustomerId: number;
+    identityLinks: number;
+    anonymousToLeadLinks: number;
+    anonymousToCustomerLinks: number;
+    identityLinkRate: number | null;
+  };
+  unavailableMetrics: UnavailableMetric[];
+}
+
