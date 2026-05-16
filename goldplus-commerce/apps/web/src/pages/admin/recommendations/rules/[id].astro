@@ -15,7 +15,8 @@ const { id } = Astro.params;
 const token = readSessionToken(Astro.request);
 if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/recommendations/rules/${id}`, 303);
 
-let feedback: { status: 'success' | 'error', message: string } | null = null;
+let feedback: { status: 'success' | 'error', message: string, details?: string[] } | null = null;
+let pendingEdits: any = null;
 
 // Process Mutation Post handlers
 if (Astro.request.method === 'POST') {
@@ -24,17 +25,18 @@ if (Astro.request.method === 'POST') {
 
   if (actionVerb === 'update_rule') {
     const type = String(form.get('type'));
+    const starts = String(form.get('startsAt') || '');
+    const ends = String(form.get('endsAt') || '');
+
     const payload: any = {
       name: String(form.get('name')),
       placement: String(form.get('placement')),
       targetType: String(form.get('targetType')),
       targetValue: String(form.get('targetValue') || ''),
       priority: parseInt(String(form.get('priority')), 10),
+      startsAt: starts ? (isNaN(new Date(starts).getTime()) ? starts : new Date(starts).toISOString()) : null,
+      endsAt: ends ? (isNaN(new Date(ends).getTime()) ? ends : new Date(ends).toISOString()) : null,
     };
-    const starts = String(form.get('startsAt') || '');
-    const ends = String(form.get('endsAt') || '');
-    payload.startsAt = starts ? new Date(starts).toISOString() : null;
-    payload.endsAt = ends ? new Date(ends).toISOString() : null;
 
     const action: any = { type };
     if (type === 'BOOST') action.boostScore = parseFloat(String(form.get('boostScore') || '0'));
@@ -47,7 +49,21 @@ if (Astro.request.method === 'POST') {
     payload.action = action;
 
     const res = await updateRecommendationRule(token, id!, payload);
-    feedback = res.ok ? { status: 'success', message: 'Rule definition modified successfully.' } : { status: 'error', message: res.message };
+    if (res.ok) {
+      feedback = { status: 'success', message: 'Rule definition modified successfully.' };
+    } else {
+      feedback = { 
+        status: 'error', 
+        message: res.message, 
+        details: Array.isArray(res.details) ? res.details : undefined 
+      };
+      pendingEdits = {
+        ...payload,
+        id: id!,
+        startsAt: starts,
+        endsAt: ends,
+      };
+    }
   } else if (actionVerb === 'set_status') {
     const status = String(form.get('status')) as any;
     const res = await changeRecommendationRuleStatus(token, id!, status);
@@ -62,7 +78,15 @@ if (Astro.request.method === 'POST') {
 const ruleRes = await getRecommendationRule(token, id!);
 const auditRes = await getRecommendationRuleAuditLog(token, id!);
 
-const rule = ruleRes.ok ? ruleRes.data : null;
+let rule = ruleRes.ok ? ruleRes.data : null;
+if (rule && pendingEdits) {
+  rule = {
+    ...rule,
+    ...pendingEdits,
+    startsAt: pendingEdits.startsAt,
+    endsAt: pendingEdits.endsAt,
+  };
+}
 const auditLogs = auditRes.ok ? auditRes.data.items : [];
 
 const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
@@ -99,7 +123,15 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
         
         {/* PRIMARY CONFIGURATION LEFT */}
         <div class="lg:col-span-8 space-y-6">
-           {feedback && <FormFeedback status={feedback.status} message={feedback.message} />}
+            {feedback && <FormFeedback status={feedback.status} message={feedback.message} />}
+            {feedback?.details && (
+              <div class="bg-red-50 p-4 rounded-xl text-red-800 text-xs border border-red-100 -mt-4">
+                <p class="font-bold mb-1">Validation Failures:</p>
+                <ul class="list-disc list-inside">
+                  {feedback.details.map(d => <li>{d}</li>)}
+                </ul>
+              </div>
+            )}
            
            {rule.status === 'ARCHIVED' && (
              <div class="bg-red-50 border border-red-100 p-4 rounded-xl text-red-800 text-xs font-bold flex items-center gap-3">
@@ -290,7 +322,7 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
     }
     if (startInput && endInput && startInput.value && endInput.value) {
       if (new Date(startInput.value) > new Date(endInput.value)) {
-        errors.push("End date cannot be before the start date.");
+        errors.push("This rule cannot end before it starts.");
       }
     }
     return errors;

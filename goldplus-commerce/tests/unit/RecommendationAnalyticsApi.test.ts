@@ -49,6 +49,6 @@ describe("Recommendation Analytics API", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.success).toBe(false);
-    expect(body.error.code).toBe("ANALYTICS_QUERY_FAILED");
+    expect(body.error.code).toBe("INVALID_DATE_RANGE");
   });
 });

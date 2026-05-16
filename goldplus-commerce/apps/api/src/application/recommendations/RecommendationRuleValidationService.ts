@@ -4,6 +4,7 @@ import type {
   RecommendationRuleStatus,
   RecommendationRuleTargetType,
 } from "../../domain/recommendations/RecommendationRuleTypes";
+import { validateOptionalDateRange } from "@goldplus/shared";
 const VALID_PLACEMENTS = [
   "product_related",
   "complete_setup",
@@ -60,9 +61,21 @@ export class RecommendationRuleValidationService {
       }
     }
 
-    if (rule.startsAt && rule.endsAt) {
-      if (new Date(rule.startsAt) >= new Date(rule.endsAt)) {
-        errors.push("Start date must occur before End date.");
+    const dateValidation = validateOptionalDateRange({
+      start: rule.startsAt,
+      end: rule.endsAt,
+      mode: "datetime",
+    });
+
+    if (!dateValidation.ok) {
+      if (dateValidation.errorCode === "END_BEFORE_START") {
+        errors.push("This rule cannot end before it starts.");
+      } else if (dateValidation.errorCode === "INVALID_START_DATE") {
+        errors.push("Enter a valid start date.");
+      } else if (dateValidation.errorCode === "INVALID_END_DATE") {
+        errors.push("Enter a valid end date.");
+      } else {
+        errors.push(dateValidation.message || "Invalid date range.");
       }
     }
 

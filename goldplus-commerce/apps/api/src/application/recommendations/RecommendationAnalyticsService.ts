@@ -4,6 +4,7 @@ import type {
   AnalyticsTrackingStatus,
   UnavailableMetric
 } from "@goldplus/shared";
+import { validateOptionalDateRange } from "@goldplus/shared";
 import type { IRecommendationAnalyticsRepository } from "../ports/IRecommendationAnalyticsRepository";
 
 export class RecommendationAnalyticsService {
@@ -87,18 +88,42 @@ export class RecommendationAnalyticsService {
   }
 
   private parseDateRange(query: RecommendationAnalyticsQuery): { startDate: Date; endDate: Date } {
-    const end = query.endDate ? new Date(query.endDate) : new Date();
-    const start = query.startDate ? new Date(query.startDate) : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const rawStart = query.startDate === "" ? null : (query.startDate ?? null);
+    const rawEnd = query.endDate === "" ? null : (query.endDate ?? null);
 
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    if (rawStart === null && rawEnd === null) {
+      const end = new Date();
+      const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return { startDate: start, endDate: end };
+    }
+
+    const validation = validateOptionalDateRange({
+      start: rawStart,
+      end: rawEnd,
+      mode: "date",
+      allowSameDay: true,
+    });
+
+    if (!validation.ok) {
+      if (validation.errorCode === "END_BEFORE_START") {
+        throw new Error("startDate must be before endDate.");
+      }
       throw new Error("Invalid date format.");
     }
 
-    if (start > end) {
-      throw new Error("startDate must be before endDate.");
+    let start = validation.start;
+    let end = validation.end;
+
+    if (start && !end) {
+      end = new Date();
+      if (start > end) {
+        throw new Error("startDate must be before endDate.");
+      }
+    } else if (end && !start) {
+      start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    return { startDate: start, endDate: end };
+    return { startDate: start!, endDate: end! };
   }
 
   private ratio(numerator: number, denominator: number): number | null {

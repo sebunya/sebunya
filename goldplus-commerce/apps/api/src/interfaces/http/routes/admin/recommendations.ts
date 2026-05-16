@@ -223,6 +223,24 @@ routes.get("/analytics", async (c) => {
     const res: ApiResponse<typeof result> = { success: true, data: result };
     return c.json(res);
   } catch (err: any) {
+    if (err.message === "startDate must be before endDate.") {
+      return c.json({
+        success: false,
+        error: {
+          code: "END_BEFORE_START",
+          message: "End date cannot be earlier than start date."
+        }
+      }, 400);
+    }
+    if (err.message === "Invalid date format.") {
+      return c.json({
+        success: false,
+        error: {
+          code: "INVALID_DATE_RANGE",
+          message: "Invalid date format."
+        }
+      }, 400);
+    }
     return c.json({ 
       success: false, 
       error: { 

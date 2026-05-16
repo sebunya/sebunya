@@ -110,20 +110,22 @@ const placements = [
     </div>
 
     {!isApiLive ? (
-      <div class="bg-red-50 border border-red-200 rounded-2xl p-12 text-center">
+      <div class="bg-red-50 border border-red-200 rounded-2xl p-12 text-center text-red-700">
         <h3 class="text-lg font-black text-red-700">
-          {(res as any).message?.toLowerCase().includes("date") ? "Invalid Filter Settings" : "Analytics Service Offline"}
+          {((res as any).code === "END_BEFORE_START" || (res as any).code === "INVALID_DATE_RANGE" || (res as any).message?.toLowerCase().includes("date")) ? "Invalid Filter Settings" : "Analytics Service Offline"}
         </h3>
         <p class="text-sm text-red-600 mt-2 max-w-md mx-auto">
-          {(res as any).message?.toLowerCase().includes("date")
-            ? `There was an issue with your filters: ${(res as any).message}. Please adjust the start/end dates and try again.`
+          {((res as any).code === "END_BEFORE_START" || (res as any).code === "INVALID_DATE_RANGE" || (res as any).message?.toLowerCase().includes("date"))
+            ? ((res as any).code === "END_BEFORE_START" 
+                ? "There was an issue with your filters: end date cannot be earlier than start date."
+                : `There was an issue with your filters: ${(res as any).message?.toLowerCase() || "invalid date format."}`)
             : "We are unable to reach the commerce intelligence system. This usually means the API is temporarily down or there is a connectivity issue."}
         </p>
         <div class="mt-6">
-          {(res as any).message?.toLowerCase().includes("date") ? (
-            <a href="/admin/recommendations/analytics" class="inline-block bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-xs">Reset Date Filter</a>
+          {((res as any).code === "END_BEFORE_START" || (res as any).code === "INVALID_DATE_RANGE" || (res as any).message?.toLowerCase().includes("date")) ? (
+            <a href="/admin/recommendations/analytics" class="inline-block bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-red-800 transition-colors">Reset Date Filter</a>
           ) : (
-            <button onclick="window.location.reload()" class="bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-xs">Retry Connection</button>
+            <button onclick="window.location.reload()" class="bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-red-800 transition-colors">Retry Connection</button>
           )}
         </div>
       </div>

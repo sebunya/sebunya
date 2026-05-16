@@ -72,7 +72,7 @@ describe('RecommendationRuleValidationService', () => {
         action: { type: 'BOOST', boostScore: 10 },
       })
     );
-    expect(errors).toContain('Start date must occur before End date.');
+    expect(errors).toContain('This rule cannot end before it starts.');
   });
 
   it('rejects boostScore outside range', () => {
