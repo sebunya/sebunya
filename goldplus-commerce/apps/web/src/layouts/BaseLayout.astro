@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import Header from '../components/Header.astro';
 
 interface Props {
   title: string;
@@ -50,40 +51,7 @@ const canonical = canonicalUrl ?? Astro.url.toString();
   <body class="bg-brand-softGrey text-brand-charcoal flex flex-col min-h-screen font-sans selection:bg-brand-primary selection:text-brand-charcoal">
 
     {/* Header */}
-    <header class="bg-brand-charcoal text-white sticky top-0 z-50 shadow-[0_2px_10px_rgba(0,0,0,0.1)]">
-      <div class="container mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
-
-        <a href="/" class="flex items-center gap-2 group outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded">
-          <span class="text-2xl font-black tracking-tighter text-white transition-colors group-hover:text-brand-primary">
-            Gold<span class="text-brand-primary">Plus</span>
-          </span>
-        </a>
-
-        <nav class="hidden md:flex items-center gap-8 font-medium" aria-label="Primary">
-          <a href="/shop" class="text-sm tracking-wide hover:text-brand-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Shop</a>
-          <a href="/verification" class="text-sm tracking-wide hover:text-brand-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Verify</a>
-          <a href="/support" class="text-sm tracking-wide hover:text-brand-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Support</a>
-          <a href="/account" class="text-sm tracking-wide hover:text-brand-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Account</a>
-        </nav>
-
-        <div class="flex items-center gap-4">
-          <a href="/cart" class="text-sm font-semibold hover:text-brand-primary transition-colors flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-2 py-1">
-            <span class="hidden sm:inline">Cart</span>
-            <span class="bg-brand-primary text-brand-charcoal text-xs px-2 py-0.5 rounded-full font-bold">0</span>
-          </a>
-        </div>
-      </div>
-
-      {/* Mobile nav */}
-      <div class="md:hidden border-t border-gray-800 bg-brand-charcoal overflow-x-auto no-scrollbar" aria-label="Mobile primary">
-        <div class="flex px-4 py-3 gap-6 text-sm font-medium whitespace-nowrap">
-          <a href="/shop" class="hover:text-brand-primary">Shop products</a>
-          <a href="/verification" class="hover:text-brand-primary">Verify product</a>
-          <a href="/support" class="hover:text-brand-primary">Support centre</a>
-          <a href="/account" class="hover:text-brand-primary">Account</a>
-        </div>
-      </div>
-    </header>
+    <Header />
 
     <main class="flex-grow flex flex-col">
       <slot />
