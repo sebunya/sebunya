@@ -9,7 +9,7 @@ if (sessionId) {
   try {
     const res = await fetch(`${apiBase}/commerce/carts/${encodeURIComponent(sessionId)}`, {
       headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(2000),
+      signal: AbortSignal.timeout(1500), // Quick, safe fallback timeout
     });
     if (res.ok) {
       const json = await res.json();
@@ -18,32 +18,57 @@ if (sessionId) {
       }
     }
   } catch (err) {
-    // Fail-safe default to 0
+    // Graceful error fail-safe, leaves count at 0 without blocking render
     cartItemCount = 0;
   }
 }
 
-// Binds active search query term if page is under shop
+// Binds active search query term from URL safely
 const q = Astro.url.searchParams.get('q') || '';
 ---
 
-<header class="bg-black text-white sticky top-0 z-50 border-b border-gray-900 shadow-lg selection:bg-brand-primary selection:text-black">
-  <!-- Desktop Upper Layer -->
-  <div class="hidden md:block bg-black/95 backdrop-blur-md border-b border-gray-900/60 py-4">
-    <div class="container mx-auto px-4 lg:px-8 flex items-center justify-between gap-8">
-      <!-- Logo -->
-      <a href="/" class="flex items-center gap-3 group outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded-lg transition-transform hover:scale-[1.01] flex-shrink-0">
-        <span class="text-2xl font-black tracking-tighter text-white">
-          Gold<span class="text-brand-primary transition-colors duration-300 group-hover:text-white">Plus</span>
-        </span>
-        <span class="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-gray-900 border border-gray-800 text-gray-400">
-          <span class="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse"></span>
-          UG Authentic
-        </span>
-      </a>
+<header class="bg-white text-gray-900 border-b border-gray-100 sticky top-0 z-50 shadow-sm selection:bg-brand-primary selection:text-gray-900">
+  <!-- Desktop / Tablet Navbar (Single-Row Slim Design) -->
+  <div class="hidden md:block py-3.5 px-4 lg:px-8 max-w-7xl mx-auto">
+    <div class="flex items-center justify-between gap-6">
+      
+      <!-- Brand & Trust Badge -->
+      <div class="flex items-center gap-4 flex-shrink-0">
+        <a href="/" class="flex items-center gap-2.5 group outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded-lg transition-transform hover:scale-[1.01]">
+          <span class="text-xl font-black tracking-tight text-gray-950">
+            Gold<span class="text-brand-primary group-hover:text-gray-950 transition-colors duration-300">Plus</span>
+          </span>
+        </a>
+        <div class="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-gray-50 border border-gray-100 text-gray-500">
+          <span class="w-1.5 h-1.5 rounded-full bg-brand-primary"></span>
+          Verified
+        </div>
+      </div>
 
-      <!-- Premium Product Search Bar -->
-      <form action="/shop" method="GET" class="flex-grow max-w-2xl relative group">
+      <!-- Navigation Links -->
+      <nav class="flex items-center gap-6 font-semibold text-sm text-gray-600 flex-shrink-0" aria-label="Primary Desktop">
+        <!-- Shop Dropdown Trigger -->
+        <div class="relative inline-block">
+          <button
+            type="button"
+            id="desktop-shop-btn"
+            aria-expanded="false"
+            aria-controls="desktop-shop-panel"
+            class="flex items-center gap-1 hover:text-gray-950 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded px-1"
+          >
+            Shop
+            <svg class="w-3 h-3 text-gray-400 transition-transform duration-300" id="desktop-shop-arrow" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+        </div>
+
+        <a href="/verification" class="hover:text-gray-950 transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Verify Original</a>
+        <a href="/support" class="hover:text-gray-950 transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Support</a>
+      </nav>
+
+      <!-- Center Product Search Bar -->
+      <form action="/shop" method="GET" class="flex-grow max-w-md relative group">
         <div class="relative w-full">
           <input
             type="search"
@@ -51,150 +76,133 @@ const q = Astro.url.searchParams.get('q') || '';
             value={q}
             placeholder="Search chargers, earbuds, power banks..."
             aria-label="Product Search"
-            class="w-full pl-11 pr-12 py-3 bg-gray-950 border border-gray-800/80 rounded-xl focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all duration-300 outline-none text-sm placeholder-gray-500 text-gray-200"
+            class="w-full pl-10 pr-20 py-2 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200/80 rounded-xl focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all duration-300 outline-none text-xs placeholder-gray-400 text-gray-800"
           />
-          <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-brand-primary transition-colors duration-300">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-primary transition-colors duration-300">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
             </svg>
           </span>
-          <button type="submit" class="absolute right-3 top-1/2 -translate-y-1/2 px-2.5 py-1 text-xs font-black uppercase tracking-widest text-brand-primary hover:text-white transition-colors duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded">
-            GO
+          <button type="submit" class="absolute right-2.5 top-1/2 -translate-y-1/2 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-950 transition-colors duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded">
+            Search
           </button>
         </div>
       </form>
 
-      <!-- Account and Cart -->
-      <div class="flex items-center gap-5 flex-shrink-0">
-        <a href="/account" class="text-sm font-semibold text-gray-300 hover:text-brand-primary transition-colors py-1.5 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded-lg">
+      <!-- Actions Layer -->
+      <div class="flex items-center gap-4 flex-shrink-0">
+        <a href="/account" class="text-xs font-bold text-gray-600 hover:text-gray-950 transition-colors py-1.5 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded-lg">
           Account
         </a>
-        <div class="h-4 w-px bg-gray-800"></div>
-        <a href="/cart" class="group flex items-center gap-3 px-4 py-2 bg-gray-950 hover:bg-gray-900 border border-gray-800/60 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
-          <span class="text-sm font-bold text-gray-200 group-hover:text-brand-primary transition-colors">Cart</span>
-          <span class="bg-brand-primary text-black text-xs font-extrabold px-2.5 py-0.5 rounded-full transition-transform duration-300 group-hover:scale-110">
+        <div class="h-3 w-px bg-gray-200"></div>
+        <a href="/cart" class="group flex items-center gap-2.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100/80 border border-gray-100 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
+          <span class="text-xs font-bold text-gray-700 group-hover:text-gray-950 transition-colors">Cart</span>
+          <span class="bg-brand-primary text-gray-950 text-[10px] font-black px-2 py-0.5 rounded-full transition-transform duration-300 group-hover:scale-110">
             {cartItemCount}
           </span>
         </a>
       </div>
+
     </div>
   </div>
 
-  <!-- Desktop Lower Navigation & Mega Menu -->
-  <div class="hidden md:block bg-black py-2.5 border-t border-gray-900/40">
-    <div class="container mx-auto px-4 lg:px-8 flex items-center justify-between">
-      <nav class="flex items-center gap-8 font-medium" aria-label="Primary Desktop">
-        <!-- Shop Dropdown / Mega Menu Group -->
-        <div class="relative group py-2">
-          <button class="flex items-center gap-1.5 text-sm tracking-wide text-gray-300 hover:text-brand-primary font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded px-1">
-            Shop
-            <svg class="w-3 h-3 text-gray-500 transition-transform duration-300 group-hover:rotate-180" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path>
-            </svg>
-          </button>
+  <!-- Desktop Dropdown Discovery Panel (Closed by default, sits below header cleanly) -->
+  <div
+    id="desktop-shop-panel"
+    class="hidden absolute left-0 right-0 top-full bg-white border-b border-gray-100 shadow-xl transition-all duration-300 z-50"
+  >
+    <div class="max-w-7xl mx-auto px-8 py-8 grid grid-cols-4 gap-8">
+      
+      <!-- Power & Sound Column -->
+      <div class="space-y-4">
+        <h3 class="text-xs font-black text-brand-primary uppercase tracking-widest border-b border-gray-50 pb-2">Power & Sound</h3>
+        <ul class="space-y-3 text-xs">
+          <li>
+            <a href="/shop?q=charger" class="text-gray-700 hover:text-gray-950 font-semibold block transition-colors">
+              Power Devices
+              <span class="block text-[10px] text-gray-400 font-normal mt-0.5">Fast chargers, adapters, bricks & cables</span>
+            </a>
+          </li>
+          <li>
+            <a href="/shop?q=earbuds" class="text-gray-700 hover:text-gray-950 font-semibold block transition-colors">
+              Sound Devices
+              <span class="block text-[10px] text-gray-400 font-normal mt-0.5">Authentic wireless earbuds & bluetooth speakers</span>
+            </a>
+          </li>
+        </ul>
+      </div>
 
-          <!-- Dropdown Mega Menu Panel -->
-          <div class="absolute left-0 top-full mt-1.5 w-[560px] bg-black border border-gray-900 rounded-2xl shadow-2xl p-6 opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto transition-all duration-300 z-50">
-            <div class="grid grid-cols-2 gap-8">
-              <!-- Left Column: Primary Categories -->
-              <div class="space-y-6">
-                <div>
-                  <h3 class="text-xs font-black text-brand-primary uppercase tracking-widest mb-3">Power & Sound</h3>
-                  <ul class="space-y-2.5 text-sm">
-                    <li>
-                      <a href="/shop?category=power" class="text-gray-300 hover:text-white font-medium block transition-colors">
-                        Power Devices
-                        <span class="block text-[10px] text-gray-500 font-normal">Adapters, wall bricks & charging cables</span>
-                      </a>
-                    </li>
-                    <li>
-                      <a href="/shop?category=sound" class="text-gray-300 hover:text-white font-medium block transition-colors">
-                        Sound Devices
-                        <span class="block text-[10px] text-gray-500 font-normal">Wireless earbuds & portable speakers</span>
-                      </a>
-                    </li>
-                  </ul>
-                </div>
-                <div>
-                  <h3 class="text-xs font-black text-brand-primary uppercase tracking-widest mb-3">Storage & Car</h3>
-                  <ul class="space-y-2.5 text-sm">
-                    <li>
-                      <a href="/shop?category=storage" class="text-gray-300 hover:text-white font-medium block transition-colors">
-                        Storage Devices
-                        <span class="block text-[10px] text-gray-500 font-normal">Flash drives, micro SD cards & external SSDs</span>
-                      </a>
-                    </li>
-                    <li>
-                      <a href="/shop?category=car" class="text-gray-300 hover:text-white font-medium block transition-colors">
-                        Car Accessories
-                        <span class="block text-[10px] text-gray-500 font-normal">Dash mounts & vehicle outlet chargers</span>
-                      </a>
-                    </li>
-                  </ul>
-                </div>
-              </div>
+      <!-- Storage & Car Column -->
+      <div class="space-y-4">
+        <h3 class="text-xs font-black text-brand-primary uppercase tracking-widest border-b border-gray-50 pb-2">Storage & Car</h3>
+        <ul class="space-y-3 text-xs">
+          <li>
+            <a href="/shop?q=flash" class="text-gray-700 hover:text-gray-950 font-semibold block transition-colors">
+              Storage Devices
+              <span class="block text-[10px] text-gray-400 font-normal mt-0.5">High-speed flash drives, micro SDs & SSDs</span>
+            </a>
+          </li>
+          <li>
+            <a href="/shop?q=mount" class="text-gray-700 hover:text-gray-950 font-semibold block transition-colors">
+              Car Accessories
+              <span class="block text-[10px] text-gray-400 font-normal mt-0.5">Dashboard phone mounts & car outlet chargers</span>
+            </a>
+          </li>
+        </ul>
+      </div>
 
-              <!-- Right Column: Workspace & Protection -->
-              <div class="space-y-6 flex flex-col justify-between">
-                <div>
-                  <h3 class="text-xs font-black text-brand-primary uppercase tracking-widest mb-3">Workspace Accessories</h3>
-                  <ul class="space-y-2.5 text-sm">
-                    <li>
-                      <a href="/shop" class="text-gray-300 hover:text-white font-medium block transition-colors">
-                        Computer Accessories
-                        <span class="block text-[10px] text-gray-500 font-normal">Keyboards, webcams, docks & laptop stands</span>
-                      </a>
-                    </li>
-                    <li>
-                      <a href="/shop" class="text-gray-300 hover:text-white font-medium block transition-colors">
-                        Protection & Portability
-                        <span class="block text-[10px] text-gray-500 font-normal">Cases, organizers & anti-glare screen filters</span>
-                      </a>
-                    </li>
-                  </ul>
-                </div>
-                <div class="bg-gray-950 p-4 rounded-xl border border-gray-900/60 mt-4">
-                  <p class="text-xs text-gray-400 leading-relaxed mb-3">All electronic essentials are rigorously tested for Uganda conditions.</p>
-                  <a href="/shop" class="inline-flex items-center gap-1 text-xs font-black text-brand-primary hover:text-white uppercase tracking-widest transition-colors">
-                    View All Products
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path>
-                    </svg>
-                  </a>
-                </div>
-              </div>
-            </div>
+      <!-- Computer Accessories Column -->
+      <div class="space-y-4">
+        <h3 class="text-xs font-black text-brand-primary uppercase tracking-widest border-b border-gray-50 pb-2">Computer Accessories</h3>
+        <ul class="space-y-2.5 text-xs text-gray-600 font-medium">
+          <li>Input & Navigation <span class="text-[9px] text-gray-400 font-normal">(Keyboards, mice, webcams)</span></li>
+          <li>Connectivity & Expansion <span class="text-[9px] text-gray-400 font-normal">(USB Hubs, adapters, dongles)</span></li>
+          <li>Workspace & Ergonomics <span class="text-[9px] text-gray-400 font-normal">(Laptop stands, monitor arms)</span></li>
+          <li>Protection & Portability <span class="text-[9px] text-gray-400 font-normal">(Sleeves, bags, tech organisers)</span></li>
+          <li>Cooling & Maintenance <span class="text-[9px] text-gray-400 font-normal">(Active cooling fans, cleaning kits)</span></li>
+        </ul>
+      </div>
+
+      <!-- Discovery & B2B Column -->
+      <div class="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex flex-col justify-between">
+        <div>
+          <h4 class="text-xs font-black text-gray-900 uppercase tracking-wider mb-2">Wholesale & B2B</h4>
+          <p class="text-[10px] text-gray-500 leading-relaxed">Expand your store catalogue or procure certified authentic assets in Uganda.</p>
+          <div class="mt-3.5 space-y-2">
+            <a href="/dealers/apply" class="block text-[11px] font-bold text-gray-700 hover:text-brand-primary transition-colors">Become a Dealer →</a>
+            <a href="/quote-request" class="block text-[11px] font-bold text-gray-700 hover:text-brand-primary transition-colors">Request a Bulk Quote →</a>
           </div>
         </div>
+        <div class="border-t border-gray-200/60 pt-4 mt-4 flex items-center justify-between">
+          <a href="/shop" class="inline-flex items-center gap-1 text-[11px] font-black text-brand-primary hover:text-gray-950 uppercase tracking-widest transition-colors">
+            View All Products
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path>
+            </svg>
+          </a>
+        </div>
+      </div>
 
-        <a href="/verification" class="text-sm font-semibold tracking-wide text-gray-300 hover:text-brand-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Verify Authenticity</a>
-        <a href="/support" class="text-sm font-semibold tracking-wide text-gray-300 hover:text-brand-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Support Center</a>
-        <a href="/dealers/apply" class="text-sm font-semibold tracking-wide text-gray-300 hover:text-brand-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">Become a Dealer</a>
-      </nav>
-
-      <!-- Quick B2B Call to Action -->
-      <a href="/quote-request" class="text-xs font-black uppercase tracking-widest text-brand-primary hover:text-white transition-colors py-1 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded px-1">
-        Request a Bulk Quote
-      </a>
     </div>
   </div>
 
-  <!-- Mobile Header (Visible under md) -->
-  <div class="md:hidden flex items-center justify-between px-4 py-3 bg-black">
+  <!-- Mobile Header Banner (Visible under md) -->
+  <div class="md:hidden flex items-center justify-between px-4 py-3 bg-white">
     <!-- Brand -->
     <a href="/" class="flex items-center gap-2 group outline-none">
-      <span class="text-xl font-black tracking-tighter text-white">
+      <span class="text-lg font-black tracking-tight text-gray-950">
         Gold<span class="text-brand-primary">Plus</span>
       </span>
     </a>
 
-    <!-- Right Side Trigger -->
-    <div class="flex items-center gap-3.5">
-      <a href="/cart" class="relative group flex items-center justify-center w-10 h-10 bg-gray-950 border border-gray-900 rounded-xl outline-none">
-        <svg class="w-4 h-4 text-gray-300 group-hover:text-brand-primary transition-colors" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+    <!-- Right Side Actions -->
+    <div class="flex items-center gap-3">
+      <!-- Cart -->
+      <a href="/cart" class="relative flex items-center justify-center w-9 h-9 bg-gray-50 border border-gray-100 rounded-xl outline-none">
+        <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
         </svg>
-        <span class="absolute -top-1.5 -right-1.5 bg-brand-primary text-black text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center">
+        <span class="absolute -top-1 -right-1 bg-brand-primary text-gray-950 text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center">
           {cartItemCount}
         </span>
       </a>
@@ -206,22 +214,22 @@ const q = Astro.url.searchParams.get('q') || '';
         aria-expanded="false"
         aria-controls="mobile-menu-drawer"
         aria-label="Toggle Navigation Drawer"
-        class="flex items-center justify-center w-10 h-10 bg-gray-950 hover:bg-gray-900 border border-gray-900 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"
+        class="flex items-center justify-center w-9 h-9 bg-gray-50 border border-gray-100 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"
       >
-        <svg id="hamburger-icon" class="w-5 h-5 text-gray-300 transition-transform duration-300" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <svg id="hamburger-icon" class="w-4.5 h-4.5 text-gray-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
         </svg>
-        <svg id="close-icon" class="hidden w-5 h-5 text-gray-300 transition-transform duration-300" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <svg id="close-icon" class="hidden w-4.5 h-4.5 text-gray-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
         </svg>
       </button>
     </div>
   </div>
 
-  <!-- Mobile Drawer / Dropdown Panel -->
+  <!-- Mobile Dropdown Drawer Panel -->
   <div
     id="mobile-menu-drawer"
-    class="hidden md:hidden border-t border-gray-900 bg-black/98 backdrop-blur-md transition-all duration-300"
+    class="hidden md:hidden border-t border-gray-100 bg-white"
   >
     <div class="px-4 py-5 space-y-6">
       <!-- Mobile Search Form -->
@@ -232,10 +240,10 @@ const q = Astro.url.searchParams.get('q') || '';
           value={q}
           placeholder="Search chargers, earbuds..."
           aria-label="Mobile Product Search"
-          class="w-full pl-10 pr-4 py-3 bg-gray-950 border border-gray-900 rounded-xl focus:border-brand-primary outline-none text-sm placeholder-gray-500 text-gray-200"
+          class="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:border-brand-primary outline-none text-xs placeholder-gray-400 text-gray-850"
         />
-        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
           </svg>
         </span>
@@ -243,50 +251,99 @@ const q = Astro.url.searchParams.get('q') || '';
 
       <!-- Category Links Group -->
       <div>
-        <h3 class="text-[10px] font-black text-brand-primary uppercase tracking-widest mb-3">Product Catalog</h3>
-        <div class="grid grid-cols-2 gap-3 text-sm">
-          <a href="/shop?category=power" class="flex items-center px-3.5 py-3 bg-gray-950 border border-gray-900/60 rounded-xl text-gray-300 font-semibold hover:text-white transition-colors">
+        <h3 class="text-[10px] font-black text-brand-primary uppercase tracking-widest mb-3">Product Categories</h3>
+        <div class="grid grid-cols-2 gap-2.5 text-xs">
+          <a href="/shop?q=charger" class="px-3.5 py-3 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block">
             Power Devices
           </a>
-          <a href="/shop?category=sound" class="flex items-center px-3.5 py-3 bg-gray-950 border border-gray-900/60 rounded-xl text-gray-300 font-semibold hover:text-white transition-colors">
+          <a href="/shop?q=earbuds" class="px-3.5 py-3 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block">
             Sound Devices
           </a>
-          <a href="/shop?category=storage" class="flex items-center px-3.5 py-3 bg-gray-950 border border-gray-900/60 rounded-xl text-gray-300 font-semibold hover:text-white transition-colors">
+          <a href="/shop?q=flash" class="px-3.5 py-3 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block">
             Storage Devices
           </a>
-          <a href="/shop?category=car" class="flex items-center px-3.5 py-3 bg-gray-950 border border-gray-900/60 rounded-xl text-gray-300 font-semibold hover:text-white transition-colors">
+          <a href="/shop?q=mount" class="px-3.5 py-3 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block">
             Car Accessories
           </a>
-          <a href="/shop" class="col-span-2 flex items-center justify-center px-3.5 py-3 bg-gray-950 border border-gray-900 text-brand-primary font-black uppercase tracking-widest rounded-xl hover:text-white transition-colors text-xs">
+          <a href="/shop" class="col-span-2 text-center py-2.5 bg-gray-50 border border-gray-100 text-brand-primary font-black uppercase tracking-widest rounded-xl text-[10px]">
             View All Products
           </a>
         </div>
       </div>
 
       <!-- General Navigation Links -->
-      <div class="space-y-4 pt-4 border-t border-gray-900/60 text-sm">
-        <a href="/verification" class="block font-semibold text-gray-300 hover:text-brand-primary transition-colors">
-          Verify Authenticity
+      <div class="space-y-4 pt-4 border-t border-gray-100 text-xs font-semibold text-gray-700">
+        <a href="/verification" class="block hover:text-brand-primary transition-colors">
+          Verify Original Product
         </a>
-        <a href="/support" class="block font-semibold text-gray-300 hover:text-brand-primary transition-colors">
+        <a href="/support" class="block hover:text-brand-primary transition-colors">
           Support Center
         </a>
-        <a href="/dealers/apply" class="block font-semibold text-gray-300 hover:text-brand-primary transition-colors">
-          Become a Dealer
-        </a>
-        <a href="/account" class="block font-semibold text-gray-300 hover:text-brand-primary transition-colors">
+        <a href="/account" class="block hover:text-brand-primary transition-colors">
           Account Profile
         </a>
-        <a href="/quote-request" class="block font-bold text-brand-primary hover:text-white transition-colors">
-          Request bulk Quote
-        </a>
+        <div class="border-t border-gray-100 pt-4 flex gap-4 text-[10px] font-black uppercase tracking-widest">
+          <a href="/dealers/apply" class="text-gray-500 hover:text-brand-primary block">Become a Dealer</a>
+          <a href="/quote-request" class="text-gray-500 hover:text-brand-primary block">Request Quote</a>
+        </div>
       </div>
     </div>
   </div>
 </header>
 
 <script>
-  // Mobile drawer interaction script
+  // Desktop panel interactions
+  const shopBtn = document.getElementById('desktop-shop-btn');
+  const shopPanel = document.getElementById('desktop-shop-panel');
+  const shopArrow = document.getElementById('desktop-shop-arrow');
+
+  if (shopBtn && shopPanel && shopArrow) {
+    const openMenu = () => {
+      shopBtn.setAttribute('aria-expanded', 'true');
+      shopPanel.classList.remove('hidden');
+      shopArrow.classList.add('rotate-180');
+    };
+
+    const closeMenu = () => {
+      shopBtn.setAttribute('aria-expanded', 'false');
+      shopPanel.classList.add('hidden');
+      shopArrow.classList.remove('rotate-180');
+    };
+
+    shopBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isExpanded = shopBtn.getAttribute('aria-expanded') === 'true';
+      if (isExpanded) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    });
+
+    // Close on clicks outside the header component
+    document.addEventListener('click', (e) => {
+      if (shopBtn.getAttribute('aria-expanded') === 'true' && !shopPanel.contains(e.target as Node) && e.target !== shopBtn) {
+        closeMenu();
+      }
+    });
+
+    // Close on clicking any link inside the panel
+    shopPanel.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        closeMenu();
+      });
+    });
+
+    // Keyboard support: Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && shopBtn.getAttribute('aria-expanded') === 'true') {
+        closeMenu();
+        shopBtn.focus();
+      }
+    });
+  }
+
+  // Mobile drawer interactions
   const toggleBtn = document.getElementById('mobile-menu-toggle');
   const drawer = document.getElementById('mobile-menu-drawer');
   const hamburgerIcon = document.getElementById('hamburger-icon');
@@ -308,7 +365,7 @@ const q = Astro.url.searchParams.get('q') || '';
       }
     });
 
-    // Close mobile menu on clicking any navigation link
+    // Close mobile drawer on any category/nav click
     drawer.querySelectorAll('a').forEach(link => {
       link.addEventListener('click', () => {
         toggleBtn.setAttribute('aria-expanded', 'false');
@@ -318,7 +375,7 @@ const q = Astro.url.searchParams.get('q') || '';
       });
     });
 
-    // Keyboard support: Close on Escape key press
+    // Close mobile menu on Escape key press
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && toggleBtn.getAttribute('aria-expanded') === 'true') {
         toggleBtn.setAttribute('aria-expanded', 'false');
