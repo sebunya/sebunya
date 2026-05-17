@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CreateRecommendationRuleUseCase } from '../../apps/api/src/application/recommendations/CreateRecommendationRuleUseCase';
+import { CreateRecommendationRuleUseCase, parseOptionalDate } from '../../apps/api/src/application/recommendations/CreateRecommendationRuleUseCase';
 import { UpdateRecommendationRuleUseCase } from '../../apps/api/src/application/recommendations/UpdateRecommendationRuleUseCase';
 import { ListRecommendationRulesUseCase } from '../../apps/api/src/application/recommendations/ListRecommendationRulesUseCase';
 import { ChangeRecommendationRuleStatusUseCase } from '../../apps/api/src/application/recommendations/ChangeRecommendationRuleStatusUseCase';
@@ -15,6 +15,37 @@ describe('Recommendation Admin Use Cases', () => {
   let mockAudit: any;
   const validator = new RecommendationRuleValidationService();
   const conflictService = new RecommendationRuleConflictService();
+
+  describe('parseOptionalDate utility', () => {
+    it('returns Date for ISO datetime string', () => {
+      const parsed = parseOptionalDate('2026-06-01T00:00:00.000Z');
+      expect(parsed).toBeInstanceOf(Date);
+      expect(parsed?.toISOString()).toBe('2026-06-01T00:00:00.000Z');
+    });
+
+    it('returns Date for simple YYYY-MM-DD string', () => {
+      const parsed = parseOptionalDate('2026-06-01');
+      expect(parsed).toBeInstanceOf(Date);
+      expect(parsed?.toISOString().startsWith('2026-06-01')).toBe(true);
+    });
+
+    it('returns undefined for undefined or "undefined"', () => {
+      expect(parseOptionalDate(undefined)).toBeUndefined();
+      expect(parseOptionalDate('undefined')).toBeUndefined();
+    });
+
+    it('returns null for null, "null", or empty string', () => {
+      expect(parseOptionalDate(null)).toBeNull();
+      expect(parseOptionalDate('null')).toBeNull();
+      expect(parseOptionalDate('')).toBeNull();
+    });
+
+    it('returns same Date object if Date passed', () => {
+      const d = new Date('2026-06-01T12:00:00Z');
+      expect(parseOptionalDate(d)).toEqual(d);
+    });
+  });
+
 
   beforeEach(() => {
     mockRepo = {

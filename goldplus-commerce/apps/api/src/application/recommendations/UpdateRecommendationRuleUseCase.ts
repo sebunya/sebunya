@@ -3,6 +3,7 @@ import type { IRecommendationRuleAuditRepository } from "../ports/IRecommendatio
 import type { RecommendationRule } from "../../domain/recommendations/RecommendationRuleTypes";
 import { RecommendationRuleValidationService } from "./RecommendationRuleValidationService";
 import { RecommendationRuleConflictService } from "./RecommendationRuleConflictService";
+import { parseOptionalDate } from "./CreateRecommendationRuleUseCase";
 
 export interface UpdateRecommendationRuleInput {
   id: string;
@@ -37,12 +38,14 @@ export class UpdateRecommendationRuleUseCase {
     const merged: RecommendationRule = {
       ...existing,
       ...updates,
+      startsAt: updates.startsAt !== undefined ? parseOptionalDate(updates.startsAt) : existing.startsAt,
+      endsAt: updates.endsAt !== undefined ? parseOptionalDate(updates.endsAt) : existing.endsAt,
       // Protect metadata fields
       id: existing.id,
       createdAt: existing.createdAt,
       updatedAt: new Date(),
       updatedBy: performedBy,
-    };
+    } as any;
 
     const errors = this.validator.validate(merged);
     if (errors.length > 0) {

@@ -4,6 +4,13 @@ import type { RecommendationRule } from "../../domain/recommendations/Recommenda
 import { RecommendationRuleValidationService } from "./RecommendationRuleValidationService";
 import { RecommendationRuleConflictService } from "./RecommendationRuleConflictService";
 
+export function parseOptionalDate(val: any): Date | null | undefined {
+  if (val === undefined || val === "undefined") return undefined;
+  if (val === null || val === "null" || val === "") return null;
+  const parsed = new Date(val);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export interface CreateRecommendationRuleInput {
   rule: Partial<RecommendationRule>;
   performedBy?: string;
@@ -34,6 +41,8 @@ export class CreateRecommendationRuleUseCase {
     // Safe cast since it passed validation for essential creation
     const pendingRule = {
       ...rule,
+      startsAt: parseOptionalDate(rule.startsAt),
+      endsAt: parseOptionalDate(rule.endsAt),
       createdBy: performedBy,
       updatedBy: performedBy,
     } as RecommendationRule;
@@ -73,3 +82,4 @@ export class CreateRecommendationRuleUseCase {
     return { ok: true, rule: createdRule };
   }
 }
+
