@@ -9,6 +9,8 @@ services:
     rootDir: apps/api
     buildCommand: pnpm install --frozen-lockfile && pnpm build
     startCommand: node dist/interfaces/http/server.js
+    customDomains:
+      - staging-api.shopgoldplus.com
     envVars:
       - key: NODE_ENV
         value: production
@@ -25,7 +27,11 @@ services:
       - key: AIRTEL_WEBHOOK_SECRET
         generateValue: true
       - key: PUBLIC_API_BASE_URL
-        sync: false # Must be updated to match the final deployed API service URL
+        value: https://staging-api.shopgoldplus.com
+      - key: CORS_ORIGIN
+        value: https://staging.shopgoldplus.com
+      - key: COOKIE_SECURE
+        value: "true"
       - key: BOOTSTRAP_ADMIN_EMAIL
         value: robsebunya@gmail.com
       - key: BOOTSTRAP_ADMIN_PASSWORD
@@ -43,13 +49,13 @@ services:
     rootDir: apps/web
     buildCommand: pnpm install --frozen-lockfile && pnpm build
     startCommand: pnpm start
+    customDomains:
+      - staging.shopgoldplus.com
     envVars:
       - key: NODE_ENV
         value: production
       - key: PUBLIC_API_BASE_URL
-        fromService:
-          name: goldplus-api-staging
-          property: host
+        value: https://staging-api.shopgoldplus.com
 
 # ---------------------------------------------------------------------------
 # 3. Cloud-Managed Postgres Database
