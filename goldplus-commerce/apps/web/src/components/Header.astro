@@ -154,12 +154,19 @@ const q = Astro.url.searchParams.get('q') || '';
       <!-- Computer Accessories Column -->
       <div class="space-y-4">
         <h3 class="text-xs font-black text-brand-primary uppercase tracking-widest border-b border-gray-50 pb-2">Computer Accessories</h3>
-        <ul class="space-y-2.5 text-xs text-gray-600 font-medium">
-          <li>Input & Navigation <span class="text-[9px] text-gray-400 font-normal">(Keyboards, mice, webcams)</span></li>
-          <li>Connectivity & Expansion <span class="text-[9px] text-gray-400 font-normal">(USB Hubs, adapters, dongles)</span></li>
-          <li>Workspace & Ergonomics <span class="text-[9px] text-gray-400 font-normal">(Laptop stands, monitor arms)</span></li>
-          <li>Protection & Portability <span class="text-[9px] text-gray-400 font-normal">(Sleeves, bags, tech organisers)</span></li>
-          <li>Cooling & Maintenance <span class="text-[9px] text-gray-400 font-normal">(Active cooling fans, cleaning kits)</span></li>
+        <ul class="space-y-3 text-xs">
+          <li>
+            <a href="/shop" class="text-gray-700 hover:text-gray-950 font-semibold block transition-colors">
+              Input & Navigation
+              <span class="block text-[10px] text-gray-400 font-normal mt-0.5">Mice for work, gaming and everyday control</span>
+            </a>
+          </li>
+          <li>
+            <a href="/shop" class="text-gray-700 hover:text-gray-950 font-semibold block transition-colors">
+              Sound Cards
+              <span class="block text-[10px] text-gray-400 font-normal mt-0.5">Computer sound cards and audio output accessories</span>
+            </a>
+          </li>
         </ul>
       </div>
 
@@ -264,6 +271,12 @@ const q = Astro.url.searchParams.get('q') || '';
           </a>
           <a href="/shop?q=mount" class="px-3.5 py-3 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block">
             Car Accessories
+          </a>
+          <a href="/shop" class="px-3.5 py-3 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block">
+            Mice
+          </a>
+          <a href="/shop" class="px-3.5 py-3 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block">
+            Sound Cards
           </a>
           <a href="/shop" class="col-span-2 text-center py-2.5 bg-gray-50 border border-gray-100 text-brand-primary font-black uppercase tracking-widest rounded-xl text-[10px]">
             View All Products
