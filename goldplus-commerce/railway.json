@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "watchPatterns": ["apps/api/**", "packages/shared/**", "package.json", "pnpm-workspace.yaml"]
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "startCommand": "node apps/api/dist/interfaces/http/server.js",
+    "restartPolicyType": "ON_FAILURE",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 120
+  }
+}

@@ -1,0 +1,60 @@
+services:
+  # ---------------------------------------------------------------------------
+  # 1. Hono Backend API Service
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: goldplus-api-staging
+    env: node
+    plan: starter
+    rootDir: apps/api
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: node dist/interfaces/http/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: goldplus-db-staging
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: IDENTITY_HASH_PEPPER
+        generateValue: true
+      - key: MTN_WEBHOOK_SECRET
+        generateValue: true
+      - key: AIRTEL_WEBHOOK_SECRET
+        generateValue: true
+      - key: PUBLIC_API_BASE_URL
+        sync: false # Must be updated to match the final deployed API service URL
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        value: robsebunya@gmail.com
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        value: Goldplus2026!
+      - key: BOOTSTRAP_ADMIN_PHONE
+        value: "+256705004545"
+
+  # ---------------------------------------------------------------------------
+  # 2. Astro Storefront Console Service
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: goldplus-web-staging
+    env: node
+    plan: starter
+    rootDir: apps/web
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PUBLIC_API_BASE_URL
+        fromService:
+          name: goldplus-api-staging
+          property: host
+
+# ---------------------------------------------------------------------------
+# 3. Cloud-Managed Postgres Database
+# ---------------------------------------------------------------------------
+databases:
+  - name: goldplus-db-staging
+    plan: starter
+    postgresMajorVersion: 15
