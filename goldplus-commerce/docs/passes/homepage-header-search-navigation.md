@@ -1,15 +1,15 @@
 # GoldPlus Storefront Header, Search, and Category Navigation Runbook
 
-This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R4 Category-First Header Simplification and Final Navigation Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
+This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R5 Premium Header Recovery, Category Navigation Rollback, and Products/Search Utility Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
 
 ---
 
 ## 1. Baseline State Lock
 
-* **Verified Commit Hash**: `21310d3`
-* **Verified Git Tag**: `homepage-header-taxonomy-r3`
+* **Verified Commit Hash**: `0b0b3c9`
+* **Verified Git Tag**: `homepage-header-category-nav-r4`
 * **Branch**: `phase-1-functional-depth`
-* **Working Tree State**: 100% clean baseline verified prior to R4 modifications.
+* **Working Tree State**: 100% clean baseline verified prior to R5 modifications.
 
 ---
 
@@ -36,62 +36,64 @@ The following critical files containing homepage personalization, first-time-use
 
 ---
 
-## 4. Why Shop was Removed (H1A-R4)
+## 4. Why Category-First Header Navigation Was Rolled Back (H1A-R5)
 
-To reduce cognitive load and simplify scan patterns, we replaced the generic, operational "Shop" dropdown menu with a category-first commerce navigation model. Customers think in terms of product categories rather than generic labels. This change allows users to view the entire primary product catalog directly on the first level.
+The category-first desktop header from H1A-R4 (`Power | Sound | Storage | Car | PC`) made the primary storefront navigation feel visually weak, overly thin, and commercially unfinished. It resembled a secondary filter bar rather than a premium global header. Exposing a partial and abstract taxonomy too early also created confusion and interpretation risks (e.g., "Car" vs "PC"). Therefore, we rolled back the top-level categories, deferring taxonomy filtering to the shop page where it belongs.
 
 ---
 
-## 5. Why Category-First Navigation was Chosen
+## 5. Why Products/Search Utility Header Was Chosen
 
-A category-first model enables immediate discovery:
-* Eliminates the need to open dropdown menus to know what products are sold.
-* Improves accessibility through direct navigability.
-* Creates a highly premium, product-led shopping utility.
+Instead of a complex, distracting menu hierarchy, the R5 pass implements a clean, balanced **Products / Search utility header**. It isolates primary commerce behaviours into three distinct, high-impact desktop areas:
+* **Logo** on the left.
+* **Products** link in the middle, routing directly to `/shop`.
+* **Integrated Search bar** next to it, handling high-intent search queries natively.
+* **Account and Cart** on the far right.
+
+This delivers a calm, visually premium layout that fits the system's current product catalog maturity.
 
 ---
 
 ## 6. Items Removed from Header
 
-* **Shop Nav Link & Icon**: Pruned to streamline primary desktop items.
-* **Shop Dropdown Panel**: Completely removed the heavy mega-menu DOM structure and associated Javascript listeners.
-* **Verified / GoldPlus Verified logo badge**: Pruned to clean up wordmark styling (trust is handled natively in the homepage hero banner instead).
-* **Verify Original & Support Links**: Moved out of primary desktop layout to prioritize transaction-driving high-frequency commerce categories (the underlying routes `/verification` and `/support` remain active, and hero authenticity CTAs are 100% active).
+* **Top-Level Category Links**: Removed `Power`, `Sound`, `Storage`, `Car`, and `PC` from visible desktop navbar.
+* **Redundant Shop Dropdown Panels & Mega-Menu DOM**: Remained completely disabled and pruned from codebase.
+* **Verified Wordmark trust badge**: Pruned to streamline logo area (trust is established in the primary homepage hero instead).
+* **Verify Original & Support Links**: Removed from desktop header middle navigation to prioritize transactional high-frequency shopping categories.
 
 ---
 
 ## 7. Final Desktop Header Structure
 
 * **Left**: GoldPlus brand logo link.
-* **Middle navigation**: Direct category links (Power, Sound, Storage, Car, PC) with explicit title descriptors and accessible labels.
-* **Center/Right**: Slim search bar with placeholder "Search chargers, earbuds, power banks...".
-* **Right**: Account profile and cart status (Cart count badge dynamically bound).
+* **Middle**: Direct Products nav link (`title="Browse all GoldPlus products"`) routing to `/shop`.
+* **Center/Right**: Beautifully integrated product search bar with placeholder "Search chargers, earbuds, power banks...".
+* **Right**: Account profile and Cart status (Cart badge dynamically bound).
 
 ---
 
-## 8. Final Mobile Header & Menu Structure
+## 8. Final Mobile Header Structure
 
-* **Mobile Row**: GoldPlus logo, Cart badge, Hamburger toggle button.
-* **Mobile Drawer**: Slide-down menu containing a dedicated search form, high-contrast category links (Power, Sound, Storage, Car, PC Accessories), View All Products shortcut, and low-profile Account and Cart footer profile items.
-
----
-
-## 9. Category Link Strategy
-
-Every link in the header has been truthfully assigned to return a populated, active catalog state:
-* **Power**: `/shop?q=charger` (returns active fast chargers and power banks).
-* **Sound**: `/shop?q=earbuds` (returns active earbuds and speakers).
-* **Storage**: `/shop?q=flash` (returns active flash drives).
-* **Car**: `/shop?q=mount` (returns active car mounts).
-* **PC (Decision)**: As computer mice and sound card database entries are pending integration, the "PC" link is routed conservatively to `/shop` fallback to avoid triggering broken "No matching items found" pages. Once inventory is populated during H1B, this will seamlessly map to queries.
+* **Mobile row**: GoldPlus brand logo, Cart status button, Hamburger drawer button.
+* **Mobile menu drawer**: Slide-down menu containing mobile search form, direct Products browse button, and low-profile Account and Cart navigation footers.
 
 ---
 
-## 10. Search & Core Elements Integrity
+## 9. Search & Core Elements Integrity
 
 * **Search Action**: GET form submissions to `/shop?q=term` remain fully active and responsive.
 * **Personalisation Integrity**: 100% isolated and unaffected.
-* **Wholesale/B2B**: High-emphasis wholesale CTAs have been removed to focus entirely on standard consumer retail experience.
+* **Hero Elements**: "Guaranteed Authenticity" banner and "Verify product" CTA buttons remain completely operational in the hero area.
+* **Active Routes**: The underlying routes `/verification` and `/support` remain active and were **not** deleted.
+
+---
+
+## 10. Product Categories Deferred to H1B
+
+The product category taxonomy is officially deferred to the Shop page experience. During H1B, we will implement:
+* Dynamic shop page filters.
+* Category chips and a mobile filter drawer.
+* Real search result states.
 
 ---
 
