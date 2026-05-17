@@ -28,39 +28,22 @@ const q = Astro.url.searchParams.get('q') || '';
 ---
 
 <header class="bg-white text-gray-900 border-b border-gray-100 sticky top-0 z-50 shadow-sm selection:bg-brand-primary selection:text-gray-900">
-  <!-- Desktop / Tablet Navbar (Single-Row Premium Slim Design with Products Caret) -->
-  <div class="relative hidden md:block py-3.5 px-4 lg:px-8 max-w-7xl mx-auto">
-    <div class="flex items-center justify-between gap-6">
+  <!-- Desktop / Tablet Navbar (Two-Row Premium Layout) -->
+  <div class="hidden md:block">
+    <!-- Top Utility Row: 60px -->
+    <div class="py-3 px-4 lg:px-8 max-w-7xl mx-auto flex items-center justify-between gap-6">
       
       <!-- Brand Logo -->
       <div class="flex items-center flex-shrink-0">
-        <a href="/" class="flex items-center gap-2.5 group outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded-lg transition-transform hover:scale-[1.01]">
+        <a href="/" class="flex items-center gap-2 group outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded-lg transition-transform hover:scale-[1.01]">
           <span class="text-xl font-black tracking-tight text-gray-950">
             Gold<span class="text-brand-primary group-hover:text-gray-950 transition-colors duration-300">Plus</span>
           </span>
         </a>
       </div>
 
-      <!-- Navigation Links -->
-      <nav class="flex items-center gap-6 font-semibold text-sm text-gray-650 flex-shrink-0" aria-label="Primary Desktop">
-        <div class="relative inline-block">
-          <button
-            type="button"
-            id="desktop-products-btn"
-            aria-expanded="false"
-            aria-controls="desktop-products-panel"
-            class="flex items-center gap-1 hover:text-gray-950 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded px-1.5 py-0.5"
-          >
-            Products
-            <svg class="w-3.5 h-3.5 text-gray-400 transition-transform duration-300" id="desktop-products-arrow" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path>
-            </svg>
-          </button>
-        </div>
-      </nav>
-
-      <!-- Center Product Search Bar -->
-      <form action="/shop" method="GET" class="flex-grow max-w-md relative group">
+      <!-- Integrated Center Search Bar -->
+      <form action="/shop" method="GET" class="flex-grow max-w-xl relative group mx-auto">
         <div class="relative w-full">
           <input
             type="search"
@@ -68,176 +51,212 @@ const q = Astro.url.searchParams.get('q') || '';
             value={q}
             placeholder="Search chargers, earbuds, power banks..."
             aria-label="Product Search"
-            class="w-full pl-10 pr-20 py-2 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200/80 rounded-xl focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all duration-300 outline-none text-xs placeholder-gray-400 text-gray-805"
+            class="w-full pl-10 pr-20 py-2.5 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200/80 rounded-xl focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all duration-300 outline-none text-xs placeholder-gray-400 text-gray-800"
           />
           <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-primary transition-colors duration-300">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
             </svg>
           </span>
-          <button type="submit" class="absolute right-2.5 top-1/2 -translate-y-1/2 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-gray-450 hover:text-gray-950 transition-colors duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded">
+          <button type="submit" class="absolute right-2.5 top-1/2 -translate-y-1/2 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-950 transition-colors duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded">
             Search
           </button>
         </div>
       </form>
 
       <!-- Actions Layer -->
-      <div class="flex items-center gap-4 flex-shrink-0">
-        <a href="/account" class="text-xs font-bold text-gray-605 hover:text-gray-950 transition-colors py-1.5 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded-lg">
+      <div class="flex items-center gap-5 flex-shrink-0">
+        <a href="/account" class="text-xs font-bold text-gray-600 hover:text-gray-950 transition-colors py-1.5 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded-lg">
           Account
         </a>
         <div class="h-3 w-px bg-gray-200"></div>
-        <a href="/cart" class="group flex items-center gap-2.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100/80 border border-gray-100 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
-          <span class="text-xs font-bold text-gray-700 group-hover:text-gray-950 transition-colors">Cart</span>
+        <a href="/cart" class="group flex items-center gap-2.5 px-3.5 py-1.5 bg-gray-50 hover:bg-gray-100/80 border border-gray-100 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
+          <span class="text-xs font-bold text-gray-705 group-hover:text-gray-950 transition-colors">Cart</span>
           <span class="bg-brand-primary text-gray-950 text-[10px] font-black px-2 py-0.5 rounded-full transition-transform duration-300 group-hover:scale-110">
             {cartItemCount}
           </span>
         </a>
       </div>
-
     </div>
 
-    <!-- Desktop Dropdown Discovery Panel (Closed by default) -->
-    <div
-      id="desktop-products-panel"
-      class="hidden absolute left-1/2 -translate-x-1/2 top-full w-[640px] bg-white border border-gray-100 shadow-2xl rounded-2xl p-6 mt-2 grid grid-cols-2 gap-4 z-50 transform origin-top transition-all duration-200"
-    >
-      <div class="col-span-2 border-b border-gray-50 pb-3 mb-1">
-        <h3 class="text-xs font-black text-brand-primary uppercase tracking-widest">Explore GoldPlus Products</h3>
-        <p class="text-[10px] text-gray-400 mt-0.5 font-medium">Find the right accessory by need, then refine inside the store listing.</p>
-      </div>
+    <!-- Primary Icon Category Rail: 58px -->
+    <div class="border-t border-gray-100 bg-white">
+      <nav class="max-w-4xl mx-auto px-4 py-2 flex items-center justify-center gap-10 text-gray-550" aria-label="Product Categories">
+        <!-- All -->
+        <a
+          href="/shop"
+          title="Browse all GoldPlus products"
+          aria-label="Browse all GoldPlus products"
+          class="group flex flex-col items-center gap-1 pt-1 pb-1.5 border-b-2 border-transparent hover:border-brand-primary hover:text-gray-950 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded px-2"
+        >
+          <svg class="w-5 h-5 text-gray-400 group-hover:text-brand-primary transition-colors duration-300" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+          </svg>
+          <span class="text-[10px] font-bold uppercase tracking-widest transition-colors duration-300">All</span>
+        </a>
 
-      <!-- Power Devices Item -->
-      <a href="/shop?q=charger" class="group flex items-start gap-3.5 p-3 rounded-xl hover:bg-gray-50/60 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
-        <div class="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-500 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors flex-shrink-0">
-          <!-- Bolt Icon -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <!-- Power -->
+        <a
+          href="/shop?q=charger"
+          title="Power devices: chargers, charging cables and power banks"
+          aria-label="Power devices: chargers, charging cables and power banks"
+          class="group flex flex-col items-center gap-1 pt-1 pb-1.5 border-b-2 border-transparent hover:border-brand-primary hover:text-gray-950 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded px-2"
+        >
+          <svg class="w-5 h-5 text-gray-400 group-hover:text-brand-primary transition-colors duration-300" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
           </svg>
-        </div>
-        <div>
-          <h4 class="text-xs font-bold text-gray-805 group-hover:text-brand-primary transition-colors">Power Devices</h4>
-          <p class="text-[10px] text-gray-450 mt-0.5 leading-relaxed">Chargers, cables and power banks</p>
-        </div>
-      </a>
+          <span class="text-[10px] font-bold uppercase tracking-widest transition-colors duration-300">Power</span>
+        </a>
 
-      <!-- Sound Devices Item -->
-      <a href="/shop?q=earbuds" class="group flex items-start gap-3.5 p-3 rounded-xl hover:bg-gray-50/60 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
-        <div class="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-500 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors flex-shrink-0">
-          <!-- Headphones Icon -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <!-- Sound -->
+        <a
+          href="/shop?q=earbuds"
+          title="Sound devices: earbuds and portable speakers"
+          aria-label="Sound devices: earbuds and portable speakers"
+          class="group flex flex-col items-center gap-1 pt-1 pb-1.5 border-b-2 border-transparent hover:border-brand-primary hover:text-gray-950 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded px-2"
+        >
+          <svg class="w-5 h-5 text-gray-400 group-hover:text-brand-primary transition-colors duration-300" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.5a6.5 6.5 0 100-13 6.5 6.5 0 000 13z"></path>
             <path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12a3.5 3.5 0 117 0v3.5a1.5 1.5 0 01-3 0V12"></path>
           </svg>
-        </div>
-        <div>
-          <h4 class="text-xs font-bold text-gray-805 group-hover:text-brand-primary transition-colors">Sound Devices</h4>
-          <p class="text-[10px] text-gray-450 mt-0.5 leading-relaxed">Wireless earbuds and portable speakers</p>
-        </div>
-      </a>
+          <span class="text-[10px] font-bold uppercase tracking-widest transition-colors duration-300">Sound</span>
+        </a>
 
-      <!-- Storage Devices Item -->
-      <a href="/shop?q=flash" class="group flex items-start gap-3.5 p-3 rounded-xl hover:bg-gray-50/60 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
-        <div class="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-500 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors flex-shrink-0">
-          <!-- Memory Card/SD Icon -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <!-- Storage -->
+        <a
+          href="/shop?q=flash"
+          title="Storage devices: flash drives, SD cards and external storage"
+          aria-label="Storage devices: flash drives, SD cards and external storage"
+          class="group flex flex-col items-center gap-1 pt-1 pb-1.5 border-b-2 border-transparent hover:border-brand-primary hover:text-gray-950 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded px-2"
+        >
+          <svg class="w-5 h-5 text-gray-400 group-hover:text-brand-primary transition-colors duration-300" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V9l-6-6H9z"></path>
             <path stroke-linecap="round" stroke-linejoin="round" d="M14 3v6h6M7 9h6M7 13h10M7 17h10"></path>
           </svg>
-        </div>
-        <div>
-          <h4 class="text-xs font-bold text-gray-805 group-hover:text-brand-primary transition-colors">Storage Devices</h4>
-          <p class="text-[10px] text-gray-450 mt-0.5 leading-relaxed">Flash drives, SD cards and external storage</p>
-        </div>
-      </a>
+          <span class="text-[10px] font-bold uppercase tracking-widest transition-colors duration-300">Storage</span>
+        </a>
 
-      <!-- Car Accessories Item -->
-      <a href="/shop?q=mount" class="group flex items-start gap-3.5 p-3 rounded-xl hover:bg-gray-50/60 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
-        <div class="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-500 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors flex-shrink-0">
-          <!-- Dashboard Mount Icon -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <!-- Car -->
+        <a
+          href="/shop?q=mount"
+          title="Car accessories: phone mounts and car chargers"
+          aria-label="Car accessories: phone mounts and car chargers"
+          class="group flex flex-col items-center gap-1 pt-1 pb-1.5 border-b-2 border-transparent hover:border-brand-primary hover:text-gray-950 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded px-2"
+        >
+          <svg class="w-5 h-5 text-gray-400 group-hover:text-brand-primary transition-colors duration-300" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A2 2 0 012.5 15.49V6.51a2 2 0 011.053-1.786L9 2m6 18l5.447-2.724a2 2 0 001.053-1.786V6.51a2 2 0 00-1.053-1.786L15 2M9 2v18m6-18v18m-6-8h6"></path>
           </svg>
-        </div>
-        <div>
-          <h4 class="text-xs font-bold text-gray-805 group-hover:text-brand-primary transition-colors">Car Accessories</h4>
-          <p class="text-[10px] text-gray-450 mt-0.5 leading-relaxed">Phone mounts and car chargers</p>
-        </div>
-      </a>
+          <span class="text-[10px] font-bold uppercase tracking-widest transition-colors duration-300">Car</span>
+        </a>
 
-      <!-- PC Accessories Item -->
-      <a href="/shop" class="group flex items-start gap-3.5 p-3 rounded-xl hover:bg-gray-50/60 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
-        <div class="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-500 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors flex-shrink-0">
-          <!-- Mouse / Navigation Cursor Icon -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <!-- PC -->
+        <a
+          href="/shop"
+          title="PC accessories: mice and sound cards"
+          aria-label="PC accessories: mice and sound cards"
+          class="group flex flex-col items-center gap-1 pt-1 pb-1.5 border-b-2 border-transparent hover:border-brand-primary hover:text-gray-950 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded px-2"
+        >
+          <svg class="w-5 h-5 text-gray-400 group-hover:text-brand-primary transition-colors duration-300" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239a9 9 0 0112.573 12.574"></path>
           </svg>
-        </div>
-        <div>
-          <h4 class="text-xs font-bold text-gray-805 group-hover:text-brand-primary transition-colors">PC Accessories</h4>
-          <p class="text-[10px] text-gray-450 mt-0.5 leading-relaxed">Mice and sound cards</p>
-        </div>
-      </a>
-
-      <!-- View All Products Footer -->
-      <a href="/shop" class="col-span-2 group bg-gray-50 hover:bg-brand-primary/10 border border-gray-100 hover:border-brand-primary/20 p-4.5 rounded-xl transition-all duration-300 flex items-center justify-between outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-brand-primary shadow-sm flex-shrink-0">
-            <!-- Grid Icon -->
-            <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
-            </svg>
-          </div>
-          <div>
-            <h4 class="text-xs font-bold text-gray-805 transition-colors">View All Products</h4>
-            <p class="text-[10px] text-gray-550 mt-0.5 leading-none">Browse the full GoldPlus certified catalog</p>
-          </div>
-        </div>
-        <svg class="w-4 h-4 text-brand-primary transition-transform duration-300 group-hover:translate-x-1" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path>
-        </svg>
-      </a>
+          <span class="text-[10px] font-bold uppercase tracking-widest transition-colors duration-300">PC</span>
+        </a>
+      </nav>
     </div>
-
   </div>
 
   <!-- Mobile Header Banner (Visible under md) -->
-  <div class="md:hidden flex items-center justify-between px-4 py-3 bg-white">
-    <!-- Brand -->
-    <a href="/" class="flex items-center gap-2 group outline-none">
-      <span class="text-lg font-black tracking-tight text-gray-950">
-        Gold<span class="text-brand-primary">Plus</span>
-      </span>
-    </a>
-
-    <!-- Right Side Actions -->
-    <div class="flex items-center gap-3">
-      <!-- Cart -->
-      <a href="/cart" class="relative flex items-center justify-center w-9 h-9 bg-gray-50 border border-gray-100 rounded-xl outline-none">
-        <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
-        </svg>
-        <span class="absolute -top-1 -right-1 bg-brand-primary text-gray-950 text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center">
-          {cartItemCount}
+  <div class="md:hidden">
+    <div class="flex items-center justify-between px-4 py-3 bg-white">
+      <!-- Brand -->
+      <a href="/" class="flex items-center gap-2 group outline-none">
+        <span class="text-lg font-black tracking-tight text-gray-950">
+          Gold<span class="text-brand-primary">Plus</span>
         </span>
       </a>
 
-      <!-- Hamburger Menu Button -->
-      <button
-        type="button"
-        id="mobile-menu-toggle"
-        aria-expanded="false"
-        aria-controls="mobile-menu-drawer"
-        aria-label="Toggle Navigation Drawer"
-        class="flex items-center justify-center w-9 h-9 bg-gray-50 border border-gray-100 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"
-      >
-        <svg id="hamburger-icon" class="w-4.5 h-4.5 text-gray-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+      <!-- Right Side Actions -->
+      <div class="flex items-center gap-3">
+        <!-- Cart -->
+        <a href="/cart" class="relative flex items-center justify-center w-9 h-9 bg-gray-50 border border-gray-100 rounded-xl outline-none">
+          <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
+          </svg>
+          <span class="absolute -top-1 -right-1 bg-brand-primary text-gray-950 text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center">
+            {cartItemCount}
+          </span>
+        </a>
+
+        <!-- Hamburger Menu Button -->
+        <button
+          type="button"
+          id="mobile-menu-toggle"
+          aria-expanded="false"
+          aria-controls="mobile-menu-drawer"
+          aria-label="Toggle Navigation Drawer"
+          class="flex items-center justify-center w-9 h-9 bg-gray-50 border border-gray-100 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"
+        >
+          <svg id="hamburger-icon" class="w-4.5 h-4.5 text-gray-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+          </svg>
+          <svg id="close-icon" class="hidden w-4.5 h-4.5 text-gray-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Horizontal Icon Category Rail -->
+    <div class="flex items-center gap-6 overflow-x-auto scroll-smooth snap-x snap-mandatory px-4 py-2 bg-gray-50/60 border-t border-b border-gray-100 no-scrollbar">
+      <!-- All -->
+      <a href="/shop" class="snap-start flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200/60 rounded-xl text-gray-700 text-xs font-bold flex-shrink-0">
+        <svg class="w-3.5 h-3.5 text-brand-primary" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
         </svg>
-        <svg id="close-icon" class="hidden w-4.5 h-4.5 text-gray-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+        <span>All</span>
+      </a>
+
+      <!-- Power -->
+      <a href="/shop?q=charger" class="snap-start flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200/60 rounded-xl text-gray-700 text-xs font-bold flex-shrink-0">
+        <svg class="w-3.5 h-3.5 text-brand-primary" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
         </svg>
-      </button>
+        <span>Power</span>
+      </a>
+
+      <!-- Sound -->
+      <a href="/shop?q=earbuds" class="snap-start flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200/60 rounded-xl text-gray-700 text-xs font-bold flex-shrink-0">
+        <svg class="w-3.5 h-3.5 text-brand-primary" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.5a6.5 6.5 0 100-13 6.5 6.5 0 000 13z"></path>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12a3.5 3.5 0 117 0v3.5a1.5 1.5 0 01-3 0V12"></path>
+        </svg>
+        <span>Sound</span>
+      </a>
+
+      <!-- Storage -->
+      <a href="/shop?q=flash" class="snap-start flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200/60 rounded-xl text-gray-700 text-xs font-bold flex-shrink-0">
+        <svg class="w-3.5 h-3.5 text-brand-primary" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V9l-6-6H9z"></path>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M14 3v6h6M7 9h6M7 13h10M7 17h10"></path>
+        </svg>
+        <span>Storage</span>
+      </a>
+
+      <!-- Car -->
+      <a href="/shop?q=mount" class="snap-start flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200/60 rounded-xl text-gray-700 text-xs font-bold flex-shrink-0">
+        <svg class="w-3.5 h-3.5 text-brand-primary" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A2 2 0 012.5 15.49V6.51a2 2 0 011.053-1.786L9 2m6 18l5.447-2.724a2 2 0 001.053-1.786V6.51a2 2 0 00-1.053-1.786L15 2M9 2v18m6-18v18m-6-8h6"></path>
+        </svg>
+        <span>Car</span>
+      </a>
+
+      <!-- PC -->
+      <a href="/shop" class="snap-start flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200/60 rounded-xl text-gray-700 text-xs font-bold flex-shrink-0">
+        <svg class="w-3.5 h-3.5 text-brand-primary" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239a9 9 0 0112.573 12.574"></path>
+        </svg>
+        <span>PC</span>
+      </a>
     </div>
   </div>
 
@@ -264,68 +283,16 @@ const q = Astro.url.searchParams.get('q') || '';
         </span>
       </form>
 
-      <!-- Category Links Group -->
+      <!-- Products Navigation Link -->
       <div>
-        <h3 class="text-[10px] font-black text-brand-primary uppercase tracking-widest mb-3">Explore Products</h3>
-        <div class="grid grid-cols-2 gap-2.5 text-xs">
-          <a
-            href="/shop?q=charger"
-            title="Power devices"
-            class="flex items-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block"
-          >
-            <svg class="w-4 h-4 text-brand-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-            </svg>
-            Power
-          </a>
-          <a
-            href="/shop?q=earbuds"
-            title="Sound devices"
-            class="flex items-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block"
-          >
-            <svg class="w-4 h-4 text-brand-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.5a6.5 6.5 0 100-13 6.5 6.5 0 000 13z"></path>
-              <path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12a3.5 3.5 0 117 0v3.5a1.5 1.5 0 01-3 0V12"></path>
-            </svg>
-            Sound
-          </a>
-          <a
-            href="/shop?q=flash"
-            title="Storage devices"
-            class="flex items-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block"
-          >
-            <svg class="w-4 h-4 text-brand-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V9l-6-6H9z"></path>
-            </svg>
-            Storage
-          </a>
-          <a
-            href="/shop?q=mount"
-            title="Car accessories"
-            class="flex items-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block"
-          >
-            <svg class="w-4 h-4 text-brand-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A2 2 0 012.5 15.49V6.51a2 2 0 011.053-1.786L9 2m6 18l5.447-2.724a2 2 0 001.053-1.786V6.51a2 2 0 00-1.053-1.786L15 2M9 2v18m6-18v18m-6-8h6"></path>
-            </svg>
-            Car
-          </a>
-          <a
-            href="/shop"
-            title="PC Accessories"
-            class="col-span-2 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-100/50 rounded-xl text-gray-700 font-bold block"
-          >
-            <svg class="w-4 h-4 text-brand-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239a9 9 0 0112.573 12.574"></path>
-            </svg>
-            PC Accessories
-          </a>
-          <a
-            href="/shop"
-            class="col-span-2 text-center py-2.5 bg-gray-50 border border-gray-100 text-brand-primary font-black uppercase tracking-widest rounded-xl text-[10px]"
-          >
-            View All Products
-          </a>
-        </div>
+        <a
+          href="/shop"
+          title="Browse all GoldPlus products"
+          aria-label="Browse all GoldPlus products"
+          class="w-full text-center py-3 bg-gray-50 hover:bg-gray-100 border border-gray-100 text-brand-primary font-black uppercase tracking-widest rounded-xl text-[11px] block transition-colors duration-300"
+        >
+          View All Products
+        </a>
       </div>
 
       <!-- General Navigation Links -->
@@ -341,58 +308,18 @@ const q = Astro.url.searchParams.get('q') || '';
   </div>
 </header>
 
-<script>
-  // Desktop panel interactions
-  const productsBtn = document.getElementById('desktop-products-btn');
-  const productsPanel = document.getElementById('desktop-products-panel');
-  const productsArrow = document.getElementById('desktop-products-arrow');
-
-  if (productsBtn && productsPanel && productsArrow) {
-    const openMenu = () => {
-      productsBtn.setAttribute('aria-expanded', 'true');
-      productsPanel.classList.remove('hidden');
-      productsArrow.classList.add('rotate-180');
-    };
-
-    const closeMenu = () => {
-      productsBtn.setAttribute('aria-expanded', 'false');
-      productsPanel.classList.add('hidden');
-      productsArrow.classList.remove('rotate-180');
-    };
-
-    productsBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isExpanded = productsBtn.getAttribute('aria-expanded') === 'true';
-      if (isExpanded) {
-        closeMenu();
-      } else {
-        openMenu();
-      }
-    });
-
-    // Close on clicks outside the header component
-    document.addEventListener('click', (e) => {
-      if (productsBtn.getAttribute('aria-expanded') === 'true' && !productsPanel.contains(e.target as Node) && e.target !== productsBtn) {
-        closeMenu();
-      }
-    });
-
-    // Close on clicking any link inside the panel
-    productsPanel.querySelectorAll('a').forEach(link => {
-      link.addEventListener('click', () => {
-        closeMenu();
-      });
-    });
-
-    // Keyboard support: Close on Escape key
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && productsBtn.getAttribute('aria-expanded') === 'true') {
-        closeMenu();
-        productsBtn.focus();
-      }
-    });
+<style>
+  /* Custom scrollbar hiding for horizontal category rail */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+</style>
 
+<script>
   // Mobile drawer interactions
   const toggleBtn = document.getElementById('mobile-menu-toggle');
   const drawer = document.getElementById('mobile-menu-drawer');

@@ -1,15 +1,15 @@
 # GoldPlus Storefront Header, Search, and Category Navigation Runbook
 
-This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R6 Icon-Led Products Menu, Premium Header Discovery, and Final UX Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
+This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R7 Primary Icon Category Rail, Search-Led Header, and Final Customer Navigation Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
 
 ---
 
 ## 1. Baseline State Lock
 
-* **Verified Commit Hash**: `e623e2e`
-* **Verified Git Tag**: `homepage-header-utility-nav-r5`
+* **Verified Commit Hash**: `d82a3e4`
+* **Verified Git Tag**: `homepage-header-products-icons-r6`
 * **Branch**: `phase-1-functional-depth`
-* **Working Tree State**: 100% clean baseline verified prior to R6 modifications.
+* **Working Tree State**: 100% clean baseline verified prior to R7 modifications.
 
 ---
 
@@ -36,60 +36,63 @@ The following critical files containing homepage personalization, first-time-use
 
 ---
 
-## 4. Why R5 Was Not Visually Enough (H1A-R6)
+## 4. Why Iconography Moved to Primary Menu Items (H1A-R7)
 
-While the R5 Products utility header (`GoldPlus | Products | Search | Account | Cart`) resolved the visual weakness and sparse layout of the category-first approach (R4), a plain Products link failed to spark product-led discovery. Customers had no initial emotional or visual cue regarding GoldPlus’s product catalog depth right from the top header level.
-
----
-
-## 5. Why Icon-Led Products Dropdown Was Chosen
-
-Instead of returning to cluttered top-level category rows, the H1A-R6 phase upgrades the Products link into an **icon-led premium discovery menu** (`Products ▾`).
-Inspired by premium Vercel/Notion-style dropdowns, it remains closed by default, expanding on click or keyboard focus. By utilizing simple, elegant line SVGs, off-white rounded icon tiles, and clear category summaries, it guides high-intent browsers instantly while preserving a calm, uncluttered global header aesthetic.
+While H1A-R6 introduced beautiful Notion-style iconography, keeping these assets hidden one click too deep inside a dropdown failed to provide immediate visual cueing. Real customer review showed that visitors recognize visual categories exponentially faster than text menu pathways. Iconography is most powerful when it sits directly on the primary storefront navigation surface. Exposing visual categories directly at the top level increases customer confidence that GoldPlus offers a complete catalog, while significantly reducing search cognitive load.
 
 ---
 
-## 6. Product Menu Items Included
+## 5. Why R6 Products Dropdown Was Not Enough
 
-1. **Power Devices**: Mapped truthfully to `/shop?q=charger` (active power banks and chargers).
-2. **Sound Devices**: Mapped truthfully to `/shop?q=earbuds` (active earbuds).
-3. **Storage Devices**: Mapped truthfully to `/shop?q=flash` (active flash drives).
-4. **Car Accessories**: Mapped truthfully to `/shop?q=mount` (active dashboard mounts).
-5. **PC Accessories**: Mapped safely to `/shop` fallback to prevent blank result pages, until mice and sound card stocks are populated.
-6. **View All Products**: Mapped directly to `/shop` at the dropdown footer.
+The R6 Products dropdown kept category discovery closed by default. For a conversion-led ecommerce storefront, this made product catalog depth invisible to first-time landing visitors. Strategic feedback requested that categories be immediately discoverable, leading to the creation of the primary category rail.
 
 ---
 
-## 7. Iconography & Visual Approach
+## 6. Final Desktop Header Structure
 
-* **Aesthetic**: Vercel/Notion-style layout utilizing custom, lightweight inline SVG icons.
-* **Colors**: Muted slate-gray by default, transitioning to GoldPlus brand-primary green on hover/focus.
-* **Icon Tile**: Compact `36px` to `40px` square container with subtle off-white background and light borders.
-* **Layout**: A clean 2-column card grid centered under the Products trigger.
+* **Top Utility Row**:
+  * **Left**: GoldPlus brand logo link.
+  * **Center**: Integrated wide search bar (`max-w-xl`, GET `/shop?q=term`).
+  * **Right**: Account profile and Shopping Cart badge (bound dynamicSSR Cart item totals).
+* **Primary Category Rail**:
+  * Centered row of All, Power, Sound, Storage, Car, and PC category items.
+  * Designed using Airbnb-style vertical alignment (custom-crafted vector line SVG icon placed above text label).
+  * High-contrast Slate-Gray default state that transitions to GoldPlus brand-primary green on hover/focus/active trigger.
 
 ---
 
-## 8. Link Truthfulness Strategy
+## 7. Final Mobile Header Structure
+
+* **Mobile row**: GoldPlus brand logo, Cart status button, Hamburger drawer button.
+* **Mobile category rail**: Exposes a gorgeous horizontal scrolling category bar (`overflow-x-auto snap-x`) directly on the top screen surface. Allows immediate mobile swipe-based product navigation (`All`, `Power`, `Sound`, `Storage`, `Car`, `PC`) using custom rounded SVG capsules, without requiring menu clicks.
+* **Mobile menu drawer**: Slide-down menu containing mobile search form, View All Products action button, and Account and Cart navigation links.
+
+---
+
+## 8. Primary Icon Category Items Included
+
+1. **All**: Mapped directly to `/shop` (Grid icon).
+2. **Power**: Mapped truthfully to `/shop?q=charger` (Bolt icon).
+3. **Sound**: Mapped truthfully to `/shop?q=earbuds` (Headphones icon).
+4. **Storage**: Mapped truthfully to `/shop?q=flash` (SD Card icon).
+5. **Car**: Mapped truthfully to `/shop?q=mount` (Compass/Mount icon).
+6. **PC**: Mapped safely to `/shop` Catalog fallback (Mouse/Cursor icon).
+
+---
+
+## 9. Iconography Style
+
+* Light line vectors (`w-5 h-5` on desktop) styled directly within `Header.astro`.
+* Consistent strokes and muted gray colors that cleanly shift to high-contrast brand green on user interaction.
+* Integrated `aria-hidden="true"` tags to protect accessibility parsing.
+
+---
+
+## 10. Link Truthfulness Strategy
 
 To guarantee that zero empty result pages are triggered:
 * All active queries (`charger`, `earbuds`, `flash`, `mount`) have been verified in the seed database to return rich product lists.
 * **PC Accessories** is conservatively mapped to the `/shop` Catalog fallback since computer mice/sound card seeds are pending.
-
----
-
-## 9. Final Desktop Header Structure
-
-* **Left**: GoldPlus brand logo link.
-* **Middle**: Direct Products dropdown button with caret rotation (`Products ▾`).
-* **Center/Right**: Beautifully integrated product search bar with placeholder "Search chargers, earbuds, power banks...".
-* **Right**: Account profile and Cart status (Cart badge dynamically bound).
-
----
-
-## 10. Final Mobile Header Structure
-
-* **Mobile row**: GoldPlus brand logo, Cart status button, Hamburger drawer button.
-* **Mobile menu drawer**: Slide-down menu containing mobile search form, rich SVG-supported category navigation links (Power, Sound, Storage, Car, PC Accessories), View All Products shortcut, and low-profile Account and Cart navigation footers.
 
 ---
 
@@ -114,4 +117,4 @@ To guarantee that zero empty result pages are triggered:
 ## 13. Final Status
 
 * **Status**: **COMPLETE**.
-* **Recommendation**: **GO**. The storefront header has successfully reached its ultimate category-first, truthfully aligned, premium state.
+* **Recommendation**: **GO**. The storefront header has successfully reached its ultimate, premium, Airbnb-inspired icon-led category navigation layout.
