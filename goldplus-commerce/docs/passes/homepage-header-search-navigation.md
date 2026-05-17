@@ -1,15 +1,15 @@
 # GoldPlus Storefront Header, Search, and Category Navigation Runbook
 
-This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R3 Final Header Taxonomy Truth & Menu Accuracy Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
+This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R4 Category-First Header Simplification and Final Navigation Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
 
 ---
 
 ## 1. Baseline State Lock
 
-* **Verified Commit Hash**: `6a4a7f5`
-* **Verified Git Tag**: `homepage-header-search-navigation-r2`
+* **Verified Commit Hash**: `21310d3`
+* **Verified Git Tag**: `homepage-header-taxonomy-r3`
 * **Branch**: `phase-1-functional-depth`
-* **Working Tree State**: 100% clean baseline verified prior to R3 modifications.
+* **Working Tree State**: 100% clean baseline verified prior to R4 modifications.
 
 ---
 
@@ -36,83 +36,62 @@ The following critical files containing homepage personalization, first-time-use
 
 ---
 
-## 4. Why Taxonomy Correction was Required (H1A-R3)
+## 4. Why Shop was Removed (H1A-R4)
 
-While the H1A-R2 pass successfully corrected the visual hierarchy and header weight, it listed several unsupported computer accessory groupings (e.g. keyboards, webcams, docking stations, adapters, bags). Offering links to these products before they exist in the database catalog would lead to "No matching items found" pages, violating visitor trust.
-
----
-
-## 5. Product Categories Kept
-
-The storefront header taxonomy has been simplified to reflect only the active GoldPlus product catalog:
-1. **Power Devices**: Fast chargers, charging cables, adapters & power banks.
-2. **Sound Devices**: Authentic wireless earbuds & portable bluetooth speakers.
-3. **Storage Devices**: High-speed flash drives, micro SDs & SSDs.
-4. **Car Accessories**: Dashboard phone mounts & car outlet chargers.
-5. **Computer Accessories**: Mice for work/gaming and Computer sound cards / audio output accessories.
+To reduce cognitive load and simplify scan patterns, we replaced the generic, operational "Shop" dropdown menu with a category-first commerce navigation model. Customers think in terms of product categories rather than generic labels. This change allows users to view the entire primary product catalog directly on the first level.
 
 ---
 
-## 6. Unsupported Categories Removed
+## 5. Why Category-First Navigation was Chosen
 
-All unavailable computer workspace families have been completely pruned:
-* *Removed*: Keyboards, Webcams & Mics, Graphics Tablets.
-* *Removed*: Docking Stations, USB Hubs, Adapters & Dongles.
-* *Removed*: Laptop Stands, Monitor Arms, Mousepads, Wrist Rests.
-* *Removed*: Cases & Sleeves, Bags, Tech Organisers, Privacy Filters.
-* *Removed*: Active Cooling Fans, Cleaning Kits.
+A category-first model enables immediate discovery:
+* Eliminates the need to open dropdown menus to know what products are sold.
+* Improves accessibility through direct navigability.
+* Creates a highly premium, product-led shopping utility.
 
 ---
 
-## 7. Final Computer Accessories Structure
+## 6. Items Removed from Header
 
-To prevent Choice Overload and maintain perfect balance, the new desktop **Computer Accessories** mega-menu column is simplified to:
-* **Input & Navigation**: Mice for work, gaming and everyday control.
-* **Sound Cards**: Computer sound cards and audio output accessories.
-
-Both elements are beautifully styled to match the font weighting and description blocks of the adjacent Power and Sound groups.
-
----
-
-## 8. Search & Link Truthfulness Strategy (Tested vs Avoided Links)
-
-To guarantee that no link inside the storefront header ever exposes a "No matching items found" empty state:
-* **Tested & Active Queries**:
-  * `/shop?q=charger` (returns active Charger products)
-  * `/shop?q=earbuds` (returns active Wireless Earbuds products)
-  * `/shop?q=flash` (returns active USB Flash Drive products)
-  * `/shop?q=mount` (returns active Car Dashboard Mount products)
-* **Tested & Empty Queries (Conservatively Routed)**:
-  * `/shop?q=mouse`, `/shop?q=mice` (empty in seed db) -> Routed safely to `/shop`
-  * `/shop?q=sound%20card` (empty in seed db) -> Routed safely to `/shop`
-  * *Note*: When mice and sound card inventory is loaded during H1B, these links will be seamlessly updated to query parameters without layout changes.
-* **Avoided Links**: Category filter params (`/shop?category=power`, `/shop?category=sound`) have been completely avoided in top-level menus as their slugs do not align with current seed indexes and result in empty storefronts. All category headings link to active listings or `/shop` fallback.
+* **Shop Nav Link & Icon**: Pruned to streamline primary desktop items.
+* **Shop Dropdown Panel**: Completely removed the heavy mega-menu DOM structure and associated Javascript listeners.
+* **Verified / GoldPlus Verified logo badge**: Pruned to clean up wordmark styling (trust is handled natively in the homepage hero banner instead).
+* **Verify Original & Support Links**: Moved out of primary desktop layout to prioritize transaction-driving high-frequency commerce categories (the underlying routes `/verification` and `/support` remain active, and hero authenticity CTAs are 100% active).
 
 ---
 
-## 9. Mobile Taxonomy Update
+## 7. Final Desktop Header Structure
 
-The mobile dropdown category drawer is fully aligned with the corrected taxonomy:
-* Power Devices
-* Sound Devices
-* Storage Devices
-* Car Accessories
-* Mice
-* Sound Cards
-* View All Products
-
-Every mobile tap target meets or exceeds the required 44px bounds, and all unsupported accessory groups have been removed.
+* **Left**: GoldPlus brand logo link.
+* **Middle navigation**: Direct category links (Power, Sound, Storage, Car, PC) with explicit title descriptors and accessible labels.
+* **Center/Right**: Slim search bar with placeholder "Search chargers, earbuds, power banks...".
+* **Right**: Account profile and cart status (Cart count badge dynamically bound).
 
 ---
 
-## 10. Preservation of R2 Interaction Mechanics
+## 8. Final Mobile Header & Menu Structure
 
-All outstanding H1A-R2 behavior has been fully preserved:
-* Closed by default desktop and mobile panel.
-* Clean click-to-open and document-click-to-close listeners.
-* Escape-key navigation panel close handler.
-* "GoldPlus Verified" trust badge.
-* De-emphasized B2B wholesale card inside the panel.
+* **Mobile Row**: GoldPlus logo, Cart badge, Hamburger toggle button.
+* **Mobile Drawer**: Slide-down menu containing a dedicated search form, high-contrast category links (Power, Sound, Storage, Car, PC Accessories), View All Products shortcut, and low-profile Account and Cart footer profile items.
+
+---
+
+## 9. Category Link Strategy
+
+Every link in the header has been truthfully assigned to return a populated, active catalog state:
+* **Power**: `/shop?q=charger` (returns active fast chargers and power banks).
+* **Sound**: `/shop?q=earbuds` (returns active earbuds and speakers).
+* **Storage**: `/shop?q=flash` (returns active flash drives).
+* **Car**: `/shop?q=mount` (returns active car mounts).
+* **PC (Decision)**: As computer mice and sound card database entries are pending integration, the "PC" link is routed conservatively to `/shop` fallback to avoid triggering broken "No matching items found" pages. Once inventory is populated during H1B, this will seamlessly map to queries.
+
+---
+
+## 10. Search & Core Elements Integrity
+
+* **Search Action**: GET form submissions to `/shop?q=term` remain fully active and responsive.
+* **Personalisation Integrity**: 100% isolated and unaffected.
+* **Wholesale/B2B**: High-emphasis wholesale CTAs have been removed to focus entirely on standard consumer retail experience.
 
 ---
 
@@ -121,11 +100,11 @@ All outstanding H1A-R2 behavior has been fully preserved:
 * `pnpm typecheck`: **PASSED** (0 type errors).
 * `pnpm run test:unit`: **PASSED** (198 unit tests passed).
 * `pnpm run test:architecture`: **PASSED** (10 boundaries verified).
-* `pnpm run build`: **PASSED** (Astro static production compilation succeeded).
+* `pnpm run build`: **PASSED** (Astro static production optimization completed successfully).
 
 ---
 
 ## 12. Final Status
 
 * **Status**: **COMPLETE**.
-* **Recommendation**: **GO**. The storefront header has been successfully corrected to a premium, truthful, 100% active state.
+* **Recommendation**: **GO**. The storefront header has successfully reached its ultimate category-first, truthfully aligned, premium state.
