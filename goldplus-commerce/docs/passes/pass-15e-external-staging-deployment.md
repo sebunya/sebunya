@@ -27,12 +27,13 @@ The staging deployment is aligned to use the official custom domains. Generic pr
 ## 3. Real DNS Resolution Audit
 
 We performed live DNS resolution queries using system diagnostic tools:
-* Query: `dig staging.shopgoldplus.com` -> **NXDOMAIN** (Host not found)
-* Query: `dig staging-api.shopgoldplus.com` -> **NXDOMAIN** (Host not found)
+* Query: `dig staging.shopgoldplus.com` -> **NOERROR** (Resolves to Cloudflare Edge IPs: `104.21.8.8`, `172.67.156.153`)
+* Query: `dig staging-api.shopgoldplus.com` -> **NOERROR** (Resolves to Cloudflare Edge IPs: `172.67.156.153`, `104.21.8.8`)
 * Authority Server: `dilbert.ns.cloudflare.com` / `dns.cloudflare.com`
+* Result: **DNS RESOLUTION LIVE & SUCCESSFUL**
 
-### Required CNAME Record Setup:
-To activate these custom domains, the following CNAME records must be registered under Cloudflare nameservers:
+### CNAME Record Setup:
+The CNAME records are successfully added under Cloudflare nameservers:
 
 | Record Name | Type | Target Host (Render / Railway) | Proxy / SSL Mode |
 | :--- | :--- | :--- | :--- |
@@ -43,9 +44,9 @@ To activate these custom domains, the following CNAME records must be registered
 
 ## 4. SSL & HTTPS Status
 
-* **Status**: **PENDING**
-* **Findings**: Because DNS records have not propagated publicly, the hosting platform has not yet completed SSL certificate provisioning for the custom domains. 
-* **SSL Protocol Target**: HTTPS with TLS 1.3, managed via Let's Encrypt or Cloudflare Edge.
+* **Edge SSL**: **ACTIVE** (Cloudflare Edge SSL successfully established over TLS 1.3).
+* **Origin SSL & Reachability**: **PENDING CONNECTION**
+* **Finding**: `curl` checks return `HTTP/2 530` and `error code: 1016` (Origin DNS Error). This indicates that while DNS is successfully delegated to Cloudflare, the hosting platform (Render/Railway) has not yet been configured in its dashboard console to recognize and accept headers for `staging.shopgoldplus.com` and `staging-api.shopgoldplus.com`, or the origin web service has not yet been booted.
 
 ---
 
@@ -63,17 +64,17 @@ The production env-validator `apps/api/src/config/env.ts` is populated with the 
 | `CORS_ORIGIN` | `https://staging.shopgoldplus.com` | Restricts cross-origin administrative calls |
 | `COOKIE_SECURE` | `true` | Enforces HTTPOnly session cookies over HTTPS |
 | `BOOTSTRAP_ADMIN_EMAIL`| robsebunya@gmail.com | Bootstraps initial Owner role |
-| `BOOTSTRAP_ADMIN_PASSWORD`| Cryptographically strong, >= 12 chars | Initial credentials (hashed securely) |
-| `BOOTSTRAP_ADMIN_PHONE`| Uganda format E.164 phone | Initial contact phone |
+| `BOOTSTRAP_ADMIN_PASSWORD`| Cryptographically strong, >= 12 chars | Hashed credentials |
+| `BOOTSTRAP_ADMIN_PHONE`| Uganda format E.164 phone | Contact phone |
 | `MTN_WEBHOOK_SECRET` | Cryptographically random, >= 24 chars | MTN verification HMAC signature |
 | `AIRTEL_WEBHOOK_SECRET`| Cryptographically random, >= 24 chars | Airtel verification HMAC signature |
-| `IDENTITY_HASH_PEPPER`| Cryptographically random, >= 32 chars | Peppers first-party customer PII |
+| `IDENTITY_HASH_PEPPER`| Cryptographically random, >= 32 chars | Peppers customer PII |
 
 ---
 
-## 6. High-Fidelity Simulation Verification Results
+## 6. High-Fidelity Local Simulation Verification Results
 
-To guarantee that the codebase compiles and behaves flawlessly once the DNS records resolve, we executed a local high-fidelity staging simulation on isolated ports (`3000` and `4321`):
+To ensure the codebase compiles and behaves flawlessly, we executed a local staging simulation on isolated ports (`3000` and `4321`):
 
 ### 1. Storefront Navigation Smoke
 * `GET /` -> **200 OK** (Storefront main renders cleanly)
@@ -132,6 +133,8 @@ All Staging Promotion parameters have been verified:
 - [x] **Safe health check route**: Complete, credential-free `/health` verified.
 - [x] **Auth & Cookie security boundaries set**: Lax, HttpOnly, and Secure mappings prepared.
 
-**DNS/SSL Status**: **PENDING OWNER DNS CNAME PROPAGATION**.
+**DNS Status**: **LIVE & ACTIVE** (resolving to Cloudflare edge).
 
-**Staging Readiness Decision**: **NO-GO (Pending DNS Propagation)**. The software release candidate is 100% prepared, configured, and verified. Live deployment requires the owner to create the CNAME records in Cloudflare/Namecheap registrar.
+**Origin Connection Status**: **PENDING OWNER PLATFORM CUSTOM DOMAIN BINDING**.
+
+**Staging Readiness Decision**: **NO-GO (Pending Custom Domain verification in Render/Railway dashboard console)**. The software release candidate is 100% prepared, configured, and verified. Live deployment requires the owner to add the custom domains inside their hosting platform console dashboard.
