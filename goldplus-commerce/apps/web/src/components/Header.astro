@@ -519,9 +519,9 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
     <!-- Mobile Horizontal Icon Category Rail -->
     <!-- Compacted height down to h-[52px] with 20px icons in a horizontal scrolling capsule chip track -->
     <!-- Redesigned with border-transparent / bg-transparent category icon wrappers and border-gray-150/40 pills -->
-    <div class="flex items-center gap-2 overflow-x-auto scroll-smooth snap-x snap-mandatory px-4 py-2 bg-white border-b border-gray-100/80 no-scrollbar h-[52px]">
+    <div class="flex items-center gap-2 overflow-x-auto scroll-smooth snap-x snap-proximity pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] py-2 bg-white border-b border-gray-100/80 no-scrollbar h-[52px] scroll-pl-4 scroll-pr-6">
       <!-- Shop All Segment -->
-      <a href="/shop" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 ${
+      <a href="/shop" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
         isShopAllActive 
           ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
           : 'bg-gray-50/30 border-gray-150/40 text-gray-700 hover:text-gray-950'
@@ -540,7 +540,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </a>
 
       <!-- Power Segment -->
-      <a href="/shop?q=charger" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 ${
+      <a href="/shop?q=charger" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
         isPowerActive 
           ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
           : 'bg-gray-50/30 border-gray-150/40 text-gray-700 hover:text-gray-950'
@@ -560,7 +560,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </a>
 
       <!-- Sound Segment -->
-      <a href="/shop?q=earbuds" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 ${
+      <a href="/shop?q=earbuds" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
         isSoundActive 
           ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
           : 'bg-gray-50/30 border-gray-150/40 text-gray-700 hover:text-gray-950'
@@ -577,7 +577,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </a>
 
       <!-- Storage Segment -->
-      <a href="/shop?q=flash" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 ${
+      <a href="/shop?q=flash" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
         isStorageActive 
           ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
           : 'bg-gray-50/30 border-gray-150/40 text-gray-700 hover:text-gray-950'
@@ -597,7 +597,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </a>
 
       <!-- Car Segment -->
-      <a href="/shop?q=mount" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 ${
+      <a href="/shop?q=mount" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
         isCarActive 
           ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
           : 'bg-gray-50/30 border-gray-150/40 text-gray-700 hover:text-gray-950'
@@ -619,7 +619,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </a>
 
       <!-- PC Segment -->
-      <a href="/shop" class="snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 bg-gray-50/30 border border-gray-150/40 rounded-full text-gray-700 text-[13px] font-semibold flex-shrink-0 transition-all duration-300 hover:text-gray-950">
+      <a href="/shop" class="snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 bg-gray-50/30 border border-gray-150/40 rounded-full text-gray-700 text-[13px] font-semibold flex-shrink-0 transition-all duration-300 hover:text-gray-950 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
         <div class="w-6 h-6 flex items-center justify-center text-slate-500 flex-shrink-0">
           <!-- Lucide Mouse (w-5 h-5) -->
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
@@ -629,6 +629,9 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         </div>
         <span>PC</span>
       </a>
+
+      <!-- Inert, non-focusable end spacer to guarantee right-end scroll breathing room -->
+      <span aria-hidden="true" class="block w-4 flex-shrink-0"></span>
     </div>
   </div>
 
