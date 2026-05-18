@@ -86,8 +86,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <span class="text-[13px] font-semibold transition-colors duration-300">Shop All</span>
           </a>
 
-          <!-- Internal Separator 1 -->
-          <div class="h-6 w-px bg-slate-300/70 self-center mx-1 flex-shrink-0"></div>
+          <!-- Internal Separator 1 (1.5px thickness, slate-400/70, 32px height) -->
+          <div class="h-[32px] w-[1.5px] bg-slate-400/70 self-center mx-1 flex-shrink-0"></div>
 
           <!-- Power Segment -->
           <a
@@ -116,7 +116,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           </a>
 
           <!-- Internal Separator 2 -->
-          <div class="h-6 w-px bg-slate-300/70 self-center mx-1 flex-shrink-0"></div>
+          <div class="h-[32px] w-[1.5px] bg-slate-400/70 self-center mx-1 flex-shrink-0"></div>
 
           <!-- Sound Segment -->
           <a
@@ -142,7 +142,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           </a>
 
           <!-- Internal Separator 3 -->
-          <div class="h-6 w-px bg-slate-300/70 self-center mx-1 flex-shrink-0"></div>
+          <div class="h-[32px] w-[1.5px] bg-slate-400/70 self-center mx-1 flex-shrink-0"></div>
 
           <!-- Storage Segment -->
           <a
@@ -171,7 +171,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           </a>
 
           <!-- Internal Separator 4 -->
-          <div class="h-6 w-px bg-slate-300/70 self-center mx-1 flex-shrink-0"></div>
+          <div class="h-[32px] w-[1.5px] bg-slate-400/70 self-center mx-1 flex-shrink-0"></div>
 
           <!-- Car Segment -->
           <a
@@ -202,7 +202,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           </a>
 
           <!-- Internal Separator 5 -->
-          <div class="h-6 w-px bg-slate-300/70 self-center mx-1 flex-shrink-0"></div>
+          <div class="h-[32px] w-[1.5px] bg-slate-400/70 self-center mx-1 flex-shrink-0"></div>
 
           <!-- PC Segment -->
           <a
@@ -226,8 +226,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         </nav>
       </div>
 
-      <!-- Premium Divider 1: Category Dock to Search (Upgraded Visibility Slate-300, Height h-8) -->
-      <div class="h-8 w-px bg-slate-300 opacity-95 self-center"></div>
+      <!-- Premium Divider 1: Category Dock to Search (Upgraded Visibility Slate-400, 1.5px thickness, 36px height) -->
+      <div class="h-[36px] w-[1.5px] bg-slate-400/80 self-center flex-shrink-0"></div>
 
       <!-- Right Side Search Form (Expanded Width max-w-[420px] xl:max-w-[500px]) -->
       <form action="/shop" method="GET" class="flex-grow max-w-[420px] xl:max-w-[500px] relative group flex items-center h-11">
@@ -238,7 +238,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             value={q}
             placeholder="What are you shopping for?"
             aria-label="Product Search"
-            class="w-full pl-9 pr-20 py-2.5 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200/80 rounded-xl focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all duration-300 outline-none text-xs placeholder-gray-400 text-gray-800 h-11"
+            class="w-full pl-9 pr-20 py-2.5 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200/85 rounded-xl focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all duration-300 outline-none text-xs placeholder-gray-400 text-gray-800 h-11"
           />
           <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-primary transition-colors duration-300">
             <!-- Lucide Search -->
@@ -253,8 +253,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         </div>
       </form>
 
-      <!-- Premium Divider 2: Search to Account (Upgraded Visibility Slate-300, Height h-8) -->
-      <div class="h-8 w-px bg-slate-300 opacity-95 self-center"></div>
+      <!-- Premium Divider 2: Search to Account -->
+      <div class="h-[36px] w-[1.5px] bg-slate-400/80 self-center flex-shrink-0"></div>
 
       <!-- Account Actions -->
       <div class="flex items-center gap-4 flex-shrink-0 h-11">
@@ -262,8 +262,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           Account
         </a>
         
-        <!-- Premium Divider 3: Account to Cart (Upgraded Visibility Slate-300, Height h-8) -->
-        <div class="h-8 w-px bg-slate-300 opacity-95 self-center"></div>
+        <!-- Premium Divider 3: Account to Cart -->
+        <div class="h-[36px] w-[1.5px] bg-slate-400/80 self-center flex-shrink-0"></div>
 
         <!-- Cart Action -->
         <a href="/cart" class="group flex items-center gap-2 px-3 py-1.5 bg-gray-50 hover:bg-gray-100/80 border border-gray-100 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary h-11">
@@ -279,10 +279,10 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
 
   <!-- MEDIUM / TABLET LAYOUT (min-width: 768px and max-width: 1023px) -->
   <!-- Two-Row Architecture: Top row (Logo | Search | Account | Cart) + Bottom row (Unified Segmented Dock) -->
-  <!-- Vertically centered along unified centerline -->
-  <div class="hidden md:block lg:hidden">
+  <!-- Tightened layout with minimal gaps and compact h-10 dock to prevent pushing hero down -->
+  <div class="hidden md:block lg:hidden border-b border-gray-100/50">
     <!-- Top Row -->
-    <div class="py-3 px-6 max-w-7xl mx-auto flex items-center justify-between gap-6 h-12">
+    <div class="py-2.5 px-6 max-w-7xl mx-auto flex items-center justify-between gap-6 h-12">
       
       <!-- Brand Logo -->
       <div class="flex items-center flex-shrink-0">
@@ -292,13 +292,13 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             width="150"
             height="43"
             alt="GoldPlus"
-            class="h-[26px] w-auto object-contain"
+            class="h-[25px] w-auto object-contain"
           />
         </a>
       </div>
 
       <!-- Integrated Search Bar -->
-      <form action="/shop" method="GET" class="flex-grow max-w-md relative group mx-auto flex items-center h-10">
+      <form action="/shop" method="GET" class="flex-grow max-w-md relative group mx-auto flex items-center h-9">
         <div class="relative w-full">
           <input
             type="search"
@@ -306,7 +306,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             value={q}
             placeholder="Search products"
             aria-label="Product Search"
-            class="w-full pl-10 pr-20 py-2.5 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200/80 rounded-xl focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all duration-300 outline-none text-xs placeholder-gray-400 text-gray-800 h-10"
+            class="w-full pl-10 pr-20 py-2 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200/80 rounded-xl focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all duration-300 outline-none text-xs placeholder-gray-400 text-gray-800 h-9"
           />
           <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-primary transition-colors duration-300">
             <!-- Lucide Search -->
@@ -322,12 +322,12 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </form>
 
       <!-- Actions -->
-      <div class="flex items-center gap-5 flex-shrink-0 h-10">
+      <div class="flex items-center gap-4 flex-shrink-0 h-9">
         <a href="/account" class="text-xs font-bold text-gray-600 hover:text-gray-950 transition-colors py-1.5 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded-lg">
           Account
         </a>
-        <div class="h-3 w-px bg-slate-300 opacity-90"></div>
-        <a href="/cart" class="group flex items-center gap-2.5 px-3.5 py-1.5 bg-gray-50 hover:bg-gray-100/80 border border-gray-100 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary h-10">
+        <div class="h-6 w-px bg-slate-300/80"></div>
+        <a href="/cart" class="group flex items-center gap-2 px-3 py-1 bg-gray-50 hover:bg-gray-100/80 border border-gray-100 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary h-9">
           <span class="text-xs font-bold text-gray-705 group-hover:text-gray-950 transition-colors">Cart</span>
           <span class="bg-brand-primary text-gray-950 text-[10px] font-black px-2 py-0.5 rounded-full transition-transform duration-300 group-hover:scale-110">
             {cartItemCount}
@@ -336,26 +336,26 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </div>
     </div>
 
-    <!-- Bottom Row: Centered Segmented Dock -->
-    <div class="border-t border-gray-100 bg-gray-50/50 py-3">
+    <!-- Bottom Row: Centered Compact h-10 Category Dock -->
+    <div class="bg-gray-50/50 py-2 border-t border-gray-100/50">
       <div class="flex items-center justify-center">
-        <nav class="flex items-center bg-white p-1 border border-gray-200/80 rounded-2xl text-xs font-semibold text-gray-700 h-11" aria-label="Medium Categories">
+        <nav class="flex items-center bg-white p-1 border border-gray-200/80 rounded-2xl text-xs font-semibold text-gray-700 h-10" aria-label="Medium Categories">
           <!-- Shop All Segment -->
           <a
             href="/shop"
             title="Browse all GoldPlus products"
             aria-label="Browse all GoldPlus products"
-            class={`group flex items-center gap-2.5 px-3 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-9 ${
+            class={`group flex items-center gap-2 px-2.5 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-8 ${
               isShopAllActive ? 'bg-gray-50 text-gray-950 font-bold' : 'hover:text-gray-950 text-gray-700'
             }`}
           >
-            <div class={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+            <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
               isShopAllActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-650 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide ShoppingBag -->
-              <svg class="w-[22px] h-[22px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <!-- Lucide ShoppingBag (w-5 h-5) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M16 10a4 4 0 0 1-8 0" />
                 <path d="M3.103 6.034h17.794" />
                 <path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z" />
@@ -364,25 +364,25 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <span class="text-[13px] font-semibold transition-colors duration-300">Shop All</span>
           </a>
 
-          <!-- Internal Separator 1 -->
-          <div class="h-6 w-px bg-slate-300/70 self-center mx-1 flex-shrink-0"></div>
+          <!-- Internal Separator 1 (h-5 w-px, bg-slate-300/60) -->
+          <div class="h-5 w-px bg-slate-300/60 self-center mx-1 flex-shrink-0"></div>
 
           <!-- Power Segment -->
           <a
             href="/shop?q=charger"
             title="Power devices: chargers, charging cables and power banks"
             aria-label="Power devices: chargers, charging cables and power banks"
-            class={`group flex items-center gap-2.5 px-3 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-9 ${
+            class={`group flex items-center gap-2 px-2.5 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-8 ${
               isPowerActive ? 'bg-gray-50 text-gray-950 font-bold' : 'hover:text-gray-950 text-gray-700'
             }`}
           >
-            <div class={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+            <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
               isPowerActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-650 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide BatteryCharging -->
-              <svg class="w-[22px] h-[22px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <!-- Lucide BatteryCharging (w-5 h-5) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="m11 7-3 5h4l-3 5" />
                 <path d="M14.856 6H16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.935" />
                 <path d="M22 14v-4" />
@@ -393,24 +393,24 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           </a>
 
           <!-- Internal Separator 2 -->
-          <div class="h-6 w-px bg-slate-300/70 self-center mx-1 flex-shrink-0"></div>
+          <div class="h-5 w-px bg-slate-300/60 self-center mx-1 flex-shrink-0"></div>
 
           <!-- Sound Segment -->
           <a
             href="/shop?q=earbuds"
             title="Sound devices: earbuds and portable speakers"
             aria-label="Sound devices: earbuds and portable speakers"
-            class={`group flex items-center gap-2.5 px-3 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-9 ${
+            class={`group flex items-center gap-2 px-2.5 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-8 ${
               isSoundActive ? 'bg-gray-50 text-gray-950 font-bold' : 'hover:text-gray-950 text-gray-700'
             }`}
           >
-            <div class={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+            <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
               isSoundActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-650 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide Headphones -->
-              <svg class="w-[22px] h-[22px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <!-- Lucide Headphones (w-5 h-5) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
               </svg>
             </div>
@@ -418,24 +418,24 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           </a>
 
           <!-- Internal Separator 3 -->
-          <div class="h-6 w-px bg-slate-300/70 self-center mx-1 flex-shrink-0"></div>
+          <div class="h-5 w-px bg-slate-300/60 self-center mx-1 flex-shrink-0"></div>
 
           <!-- Storage Segment -->
           <a
             href="/shop?q=flash"
             title="Storage devices: flash drives, SD cards and external storage"
             aria-label="Storage devices: flash drives, SD cards and external storage"
-            class={`group flex items-center gap-2.5 px-3 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-9 ${
+            class={`group flex items-center gap-2 px-2.5 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-8 ${
               isStorageActive ? 'bg-gray-50 text-gray-950 font-bold' : 'hover:text-gray-950 text-gray-700'
             }`}
           >
-            <div class={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+            <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
               isStorageActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-650 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide HardDrive -->
-              <svg class="w-[22px] h-[22px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <!-- Lucide HardDrive (w-5 h-5) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M10 16h.01" />
                 <path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
                 <path d="M21.946 12.013H2.054" />
@@ -446,24 +446,24 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           </a>
 
           <!-- Internal Separator 4 -->
-          <div class="h-6 w-px bg-slate-300/70 self-center mx-1 flex-shrink-0"></div>
+          <div class="h-5 w-px bg-slate-300/60 self-center mx-1 flex-shrink-0"></div>
 
           <!-- Car Segment -->
           <a
             href="/shop?q=mount"
             title="Car accessories: phone mounts and car chargers"
             aria-label="Car accessories: phone mounts and car chargers"
-            class={`group flex items-center gap-2.5 px-3 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-9 ${
+            class={`group flex items-center gap-2 px-2.5 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-8 ${
               isCarActive ? 'bg-gray-50 text-gray-950 font-bold' : 'hover:text-gray-950 text-gray-700'
             }`}
           >
-            <div class={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+            <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
               isCarActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-650 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide CarFront -->
-              <svg class="w-[22px] h-[22px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <!-- Lucide CarFront (w-5 h-5) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8" />
                 <path d="M7 14h.01" />
                 <path d="M17 14h.01" />
@@ -476,20 +476,20 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           </a>
 
           <!-- Internal Separator 5 -->
-          <div class="h-6 w-px bg-slate-300/70 self-center mx-1 flex-shrink-0"></div>
+          <div class="h-5 w-px bg-slate-300/60 self-center mx-1 flex-shrink-0"></div>
 
           <!-- PC Segment -->
           <a
             href="/shop"
             title="PC accessories: mice and sound cards"
             aria-label="PC accessories: mice and sound cards"
-            class={`group flex items-center gap-2.5 px-3 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-9 ${
+            class={`group flex items-center gap-2 px-2.5 py-1 hover:bg-gray-50 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-98 h-8 ${
               isPCActive ? 'bg-gray-50 text-gray-950 font-bold' : 'hover:text-gray-950 text-gray-700'
             }`}
           >
-            <div class="w-9 h-9 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors duration-300">
-              <!-- Lucide Mouse -->
-              <svg class="w-[22px] h-[22px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+            <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-650 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors duration-300">
+              <!-- Lucide Mouse (w-5 h-5) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <rect x="5" y="2" width="14" height="20" rx="7" />
                 <path d="M12 6v4" />
               </svg>
@@ -548,22 +548,24 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </div>
     </div>
 
-    <!-- Mobile Horizontal Icon Category Rail (Upgraded to height h-[64px] to prevent clipping of w-10 h-10 tiles) -->
-    <div class="flex items-center gap-3 overflow-x-auto scroll-smooth snap-x snap-mandatory px-4 py-2.5 bg-gray-50/70 border-t border-b border-gray-100 no-scrollbar h-[64px]">
+    <!-- Mobile Horizontal Icon Category Rail -->
+    <!-- Compacted height down to h-[52px] with 20px icons/32px tiles in a horizontal scrolling chip track -->
+    <!-- Keeps horizontal margins breathing cleanly without vertical layout clip -->
+    <div class="flex items-center gap-2 overflow-x-auto scroll-smooth snap-x snap-mandatory px-4 py-2 bg-gray-50/70 border-t border-b border-gray-100 no-scrollbar h-[52px]">
       <!-- Shop All Segment -->
-      <a href="/shop" class={`snap-start flex items-center gap-2 px-3 py-1.5 border rounded-xl text-xs font-bold flex-shrink-0 shadow-sm transition-all duration-300 ${
+      <a href="/shop" class={`snap-start flex items-center gap-2 pl-1 pr-3 py-1 border rounded-xl text-[13px] font-semibold flex-shrink-0 transition-all duration-300 ${
         isShopAllActive 
           ? 'bg-white border-brand-primary/30 text-gray-950' 
-          : 'bg-white border-gray-200/70 text-gray-700'
+          : 'bg-white border-gray-200/50 text-gray-700'
       }`}>
-        <!-- Icon Tile (w-10 h-10) -->
-        <div class={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+        <!-- Compact Icon Tile (w-8 h-8) -->
+        <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
           isShopAllActive 
             ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
             : 'bg-gray-50 border border-gray-100 text-slate-600'
         }`}>
-          <!-- Lucide ShoppingBag (w-6 h-6) -->
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+          <!-- Lucide ShoppingBag (w-5 h-5) -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M16 10a4 4 0 0 1-8 0" />
             <path d="M3.103 6.034h17.794" />
             <path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z" />
@@ -573,19 +575,19 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </a>
 
       <!-- Power Segment -->
-      <a href="/shop?q=charger" class={`snap-start flex items-center gap-2 px-3 py-1.5 border rounded-xl text-xs font-bold flex-shrink-0 shadow-sm transition-all duration-300 ${
+      <a href="/shop?q=charger" class={`snap-start flex items-center gap-2 pl-1 pr-3 py-1 border rounded-xl text-[13px] font-semibold flex-shrink-0 transition-all duration-300 ${
         isPowerActive 
           ? 'bg-white border-brand-primary/30 text-gray-950' 
-          : 'bg-white border-gray-200/70 text-gray-700'
+          : 'bg-white border-gray-200/50 text-gray-700'
       }`}>
-        <!-- Icon Tile -->
-        <div class={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+        <!-- Compact Icon Tile -->
+        <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
           isPowerActive 
             ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
             : 'bg-gray-50 border border-gray-100 text-slate-600'
         }`}>
-          <!-- Lucide BatteryCharging (w-6 h-6) -->
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+          <!-- Lucide BatteryCharging (w-5 h-5) -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
             <path d="m11 7-3 5h4l-3 5" />
             <path d="M14.856 6H16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.935" />
             <path d="M22 14v-4" />
@@ -596,19 +598,19 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </a>
 
       <!-- Sound Segment -->
-      <a href="/shop?q=earbuds" class={`snap-start flex items-center gap-2 px-3 py-1.5 border rounded-xl text-xs font-bold flex-shrink-0 shadow-sm transition-all duration-300 ${
+      <a href="/shop?q=earbuds" class={`snap-start flex items-center gap-2 pl-1 pr-3 py-1 border rounded-xl text-[13px] font-semibold flex-shrink-0 transition-all duration-300 ${
         isSoundActive 
           ? 'bg-white border-brand-primary/30 text-gray-950' 
-          : 'bg-white border-gray-200/70 text-gray-700'
+          : 'bg-white border-gray-200/50 text-gray-700'
       }`}>
-        <!-- Icon Tile -->
-        <div class={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+        <!-- Compact Icon Tile -->
+        <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
           isSoundActive 
             ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
             : 'bg-gray-50 border border-gray-100 text-slate-600'
         }`}>
-          <!-- Lucide Headphones (w-6 h-6) -->
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+          <!-- Lucide Headphones (w-5 h-5) -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
           </svg>
         </div>
@@ -616,19 +618,19 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </a>
 
       <!-- Storage Segment -->
-      <a href="/shop?q=flash" class={`snap-start flex items-center gap-2 px-3 py-1.5 border rounded-xl text-xs font-bold flex-shrink-0 shadow-sm transition-all duration-300 ${
+      <a href="/shop?q=flash" class={`snap-start flex items-center gap-2 pl-1 pr-3 py-1 border rounded-xl text-[13px] font-semibold flex-shrink-0 transition-all duration-300 ${
         isStorageActive 
           ? 'bg-white border-brand-primary/30 text-gray-950' 
-          : 'bg-white border-gray-200/70 text-gray-700'
+          : 'bg-white border-gray-200/50 text-gray-700'
       }`}>
-        <!-- Icon Tile -->
-        <div class={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+        <!-- Compact Icon Tile -->
+        <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
           isStorageActive 
             ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
             : 'bg-gray-50 border border-gray-100 text-slate-600'
         }`}>
-          <!-- Lucide HardDrive (w-6 h-6) -->
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+          <!-- Lucide HardDrive (w-5 h-5) -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M10 16h.01" />
             <path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
             <path d="M21.946 12.013H2.054" />
@@ -639,19 +641,19 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </a>
 
       <!-- Car Segment -->
-      <a href="/shop?q=mount" class={`snap-start flex items-center gap-2 px-3 py-1.5 border rounded-xl text-xs font-bold flex-shrink-0 shadow-sm transition-all duration-300 ${
+      <a href="/shop?q=mount" class={`snap-start flex items-center gap-2 pl-1 pr-3 py-1 border rounded-xl text-[13px] font-semibold flex-shrink-0 transition-all duration-300 ${
         isCarActive 
           ? 'bg-white border-brand-primary/30 text-gray-950' 
-          : 'bg-white border-gray-200/70 text-gray-700'
+          : 'bg-white border-gray-200/50 text-gray-700'
       }`}>
-        <!-- Icon Tile -->
-        <div class={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+        <!-- Compact Icon Tile -->
+        <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
           isCarActive 
             ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
             : 'bg-gray-50 border border-gray-100 text-slate-600'
         }`}>
-          <!-- Lucide CarFront (w-6 h-6) -->
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+          <!-- Lucide CarFront (w-5 h-5) -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
             <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8" />
             <path d="M7 14h.01" />
             <path d="M17 14h.01" />
@@ -664,10 +666,10 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       </a>
 
       <!-- PC Segment -->
-      <a href="/shop" class="snap-start flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200/70 rounded-xl text-gray-700 text-xs font-bold flex-shrink-0 shadow-sm">
-        <div class="w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-600">
-          <!-- Lucide Mouse (w-6 h-6) -->
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+      <a href="/shop" class="snap-start flex items-center gap-2 pl-1 pr-3 py-1 bg-white border border-gray-200/50 rounded-xl text-gray-700 text-[13px] font-semibold flex-shrink-0 transition-all duration-300">
+        <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-655 flex-shrink-0">
+          <!-- Lucide Mouse (w-5 h-5) -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
             <rect x="5" y="2" width="14" height="20" rx="7" />
             <path d="M12 6v4" />
           </svg>
