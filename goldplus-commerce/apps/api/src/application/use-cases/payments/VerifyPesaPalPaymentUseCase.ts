@@ -1,5 +1,5 @@
 import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../ports/IPesaPalPaymentRepository';
-import { PesaPalClient } from '../../../infrastructure/payments/pesapal/PesaPalClient';
+import { IPesaPalClient } from '../../ports/IPesaPalClient';
 
 export interface VerifyPesaPalPaymentInput {
   orderTrackingId: string;
@@ -18,9 +18,9 @@ export interface VerifyPesaPalPaymentOutput {
 
 export class VerifyPesaPalPaymentUseCase {
   private paymentRepo: IPesaPalPaymentRepository;
-  private pesapalClient: PesaPalClient;
+  private pesapalClient: IPesaPalClient;
 
-  constructor(paymentRepo: IPesaPalPaymentRepository, pesapalClient: PesaPalClient) {
+  constructor(paymentRepo: IPesaPalPaymentRepository, pesapalClient: IPesaPalClient) {
     this.paymentRepo = paymentRepo;
     this.pesapalClient = pesapalClient;
   }

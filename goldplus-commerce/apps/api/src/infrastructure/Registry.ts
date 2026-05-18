@@ -34,6 +34,7 @@ import { Hs256TokenSigner } from './security/Hs256TokenSigner';
 
 import { DrizzlePaymentAttemptRepository } from './db/repositories/DrizzlePaymentAttemptRepository';
 import { PesaPalClient } from './payments/pesapal/PesaPalClient';
+import { IPesaPalClient } from '../application/ports/IPesaPalClient';
 import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
 import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
 import { env } from '../config/env';
@@ -95,7 +96,7 @@ export class Registry {
   public readonly productRecommendationReader = new DrizzleProductRecommendationReader();
   public readonly recommendationAnalyticsRepo = new DrizzleRecommendationAnalyticsRepository();
   public readonly pesapalPaymentRepo = new DrizzlePaymentAttemptRepository();
-  public readonly pesapalClient = new PesaPalClient(env);
+  public readonly pesapalClient: IPesaPalClient = new PesaPalClient(env);
 
   // Storage
   private readonly productImageStorage = new LocalProductImageStorage(

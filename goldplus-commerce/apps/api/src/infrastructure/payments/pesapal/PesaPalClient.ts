@@ -1,42 +1,13 @@
 import { Config } from '../../../config/env';
+import {
+  IPesaPalClient,
+  PesaPalBillingAddress,
+  PesaPalSubmitOrderInput,
+  PesaPalSubmitOrderResponse,
+  PesaPalTransactionStatusResponse,
+} from '../../../application/ports/IPesaPalClient';
 
-export interface PesaPalBillingAddress {
-  email_address: string;
-  phone_number: string;
-  first_name: string;
-  last_name: string;
-}
-
-export interface PesaPalSubmitOrderInput {
-  id: string; // Unique merchant reference
-  currency: string;
-  amount: number;
-  description: string;
-  callback_url: string;
-  cancellation_url: string;
-  notification_id: string; // Registered IPN ID
-  billing_address: PesaPalBillingAddress;
-}
-
-export interface PesaPalSubmitOrderResponse {
-  order_tracking_id: string;
-  merchant_reference: string;
-  redirect_url: string;
-}
-
-export interface PesaPalTransactionStatusResponse {
-  order_tracking_id: string;
-  merchant_reference: string;
-  amount: number;
-  currency: string;
-  status_code: number; // 0 = INVALID, 1 = COMPLETED, 2 = FAILED, 3 = REVERSED
-  payment_status_description: string;
-  payment_method?: string;
-  confirmation_code?: string;
-  payment_account?: string;
-}
-
-export class PesaPalClient {
+export class PesaPalClient implements IPesaPalClient {
   private config: Config;
   private cachedToken: string | null = null;
   private tokenExpiresAt: number = 0;

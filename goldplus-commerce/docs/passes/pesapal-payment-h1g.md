@@ -23,7 +23,7 @@ sequenceDiagram
     Browser->>Storefront: Click "Pay with PesaPal"
     Storefront->>API: POST /payments/pesapal/start
     API->>PesaPal: POST /api/Auth/RequestToken
-    PesaPal-->>API: Return Short-Lived JWT Token
+    PesaPal-->>API: Return Short-Lived Bearer Access Token
     API->>PesaPal: POST /api/Transactions/SubmitOrderRequest (Bearer Token)
     PesaPal-->>API: Return OrderTrackingId & Redirect URL
     API-->>Storefront: Return Redirect URL & Merchant Reference

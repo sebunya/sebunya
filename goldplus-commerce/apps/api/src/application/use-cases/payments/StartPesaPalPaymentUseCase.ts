@@ -1,6 +1,6 @@
 import { IPesaPalPaymentRepository } from '../../ports/IPesaPalPaymentRepository';
 import { IOrderRepository } from '../commerce/CheckoutUseCase';
-import { PesaPalClient } from '../../../infrastructure/payments/pesapal/PesaPalClient';
+import { IPesaPalClient } from '../../ports/IPesaPalClient';
 
 export interface StartPesaPalPaymentInput {
   orderId: string;
@@ -15,12 +15,12 @@ export interface StartPesaPalPaymentOutput {
 export class StartPesaPalPaymentUseCase {
   private paymentRepo: IPesaPalPaymentRepository;
   private orderRepo: IOrderRepository;
-  private pesapalClient: PesaPalClient;
+  private pesapalClient: IPesaPalClient;
 
   constructor(
     paymentRepo: IPesaPalPaymentRepository,
     orderRepo: IOrderRepository,
-    pesapalClient: PesaPalClient
+    pesapalClient: IPesaPalClient
   ) {
     this.paymentRepo = paymentRepo;
     this.orderRepo = orderRepo;

@@ -53,12 +53,12 @@ describe('PesaPal Payment Integration Unit Tests', () => {
   // 1. token request success.
   it('should successfully request and retrieve auth token from PesaPal', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({
-      token: 'valid-jwt-token-123',
+      token: 'valid-bearer-token-123',
       expiryDate: new Date(Date.now() + 30 * 60 * 1000).toISOString()
     }), { status: 200 }));
 
     const token = await client.requestToken();
-    expect(token).toBe('valid-jwt-token-123');
+    expect(token).toBe('valid-bearer-token-123');
   });
 
   // 2. token request failure.
@@ -72,7 +72,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
   it('should cache the token in-memory and not leak secrets in serialized client string', () => {
     const serialized = JSON.stringify(client);
     expect(serialized).not.toContain('test-secret');
-    expect(serialized).not.toContain('valid-jwt-token-123');
+    expect(serialized).not.toContain('valid-bearer-token-123');
   });
 
   // 4. SubmitOrderRequest success returns redirect_url.
