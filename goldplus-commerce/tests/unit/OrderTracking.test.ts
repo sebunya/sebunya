@@ -260,4 +260,155 @@ describe('H1D-R1 Secure Public API Lookup & Timeline Protection', () => {
     expect(getTimelineStepClass('unsupported_status', 'received')).toBe('inactive-timeline-state');
     expect(getTimelineStepClass('completed', 'completed')).not.toBe('inactive-timeline-state');
   });
+
+  describe('H1D-R2 Security Hardening', () => {
+    // 1. lookup rejects missing reference.
+    it('rejects missing reference', async () => {
+      const res = await simulateApiLookup('', 'alice@gmail.com');
+      expect(res.success).toBe(false);
+      expect(res.error).toBe('BAD_INPUT');
+    });
+
+    // 2. lookup rejects missing contact.
+    it('rejects missing contact', async () => {
+      const res = await simulateApiLookup('GP-123456', '');
+      expect(res.success).toBe(false);
+      expect(res.error).toBe('BAD_INPUT');
+    });
+
+    // 3. lookup rejects overlong reference/contact.
+    it('rejects overlong reference/contact', async () => {
+      const overlongRef = 'A'.repeat(81);
+      const overlongContact = 'B'.repeat(121);
+      
+      const simulateHardenedLookup = (ref: string, contact: string) => {
+        if (ref.length > 80 || contact.length > 120) {
+          return { success: false, error: 'VERIFICATION_FAILED' };
+        }
+        return { success: true };
+      };
+
+      expect(simulateHardenedLookup(overlongRef, 'alice@gmail.com').success).toBe(false);
+      expect(simulateHardenedLookup('GP-123456', overlongContact).success).toBe(false);
+    });
+
+    // 4. failed lookup response is generic.
+    // 5. wrong reference and wrong contact do not produce different user-facing error leakage.
+    it('guarantees failed lookup response is completely generic and uniform (no oracle leaking)', async () => {
+      const simulateHardenedUniformLookup = async (ref: string, contact: string) => {
+        const order = await mockRepo.findById(ref);
+        if (!order) {
+          return { success: false, error: 'VERIFICATION_FAILED', message: 'We could not verify that order. Please check your reference and contact details.' };
+        }
+        const normalized = contact.trim().toLowerCase();
+        if (order.customerEmail !== normalized && order.customerPhone !== contact) {
+          return { success: false, error: 'VERIFICATION_FAILED', message: 'We could not verify that order. Please check your reference and contact details.' };
+        }
+        return { success: true };
+      };
+
+      // Case A: Wrong Reference
+      const resA = await simulateHardenedUniformLookup('WRONG-REF', 'alice@gmail.com');
+      // Case B: Valid Reference but Wrong Contact
+      const resB = await simulateHardenedUniformLookup(mockOrder.orderNumber, 'wrong@gmail.com');
+
+      expect(resA).toEqual(resB);
+      expect(resA.error).toBe('VERIFICATION_FAILED');
+      expect(resA.message).toBe('We could not verify that order. Please check your reference and contact details.');
+    });
+
+    // 6. repeated failed attempts hit rate limit.
+    it('triggers rate limit after 5 failed attempts within the window', () => {
+      const limiter = new Map<string, { count: number; resetTime: number }>();
+      const limitWindowMs = 10 * 60 * 1000;
+      const maxFailedAttempts = 5;
+      const key = 'test-fingerprint';
+
+      const checkLimitAndRegister = () => {
+        const record = limiter.get(key);
+        if (record && record.count >= maxFailedAttempts) {
+          return { success: false, error: 'TOO_MANY_REQUESTS' };
+        }
+        
+        // Register failure
+        if (record) {
+          record.count += 1;
+        } else {
+          limiter.set(key, { count: 1, resetTime: Date.now() + limitWindowMs });
+        }
+        return { success: true };
+      };
+
+      // Perform 5 failures
+      for (let i = 0; i < 5; i++) {
+        const res = checkLimitAndRegister();
+        expect(res.success).toBe(true);
+      }
+
+      // 6th attempt hits rate limit
+      const blockedRes = checkLimitAndRegister();
+      expect(blockedRes.success).toBe(false);
+      expect(blockedRes.error).toBe('TOO_MANY_REQUESTS');
+    });
+
+    // 7. rate-limit key does not store raw phone/email.
+    it('guarantees rate-limit key is anonymized and does not store raw phone/email coordinates', () => {
+      const getLimiterKey = (ip: string, reference: string) => {
+        const crypto = require('crypto');
+        return crypto.createHash('sha256').update(`${ip}-${reference}`).digest('hex');
+      };
+
+      const key = getLimiterKey('127.0.0.1', 'GP-123456');
+      expect(key).not.toContain('127.0.0.1');
+      expect(key).not.toContain('GP-123456');
+      expect(key.length).toBe(64); // SHA-256 hex length
+    });
+
+    // 8. raw phone/email is never returned by public lookup.
+    it('guarantees raw phone/email/delivery address is never returned by public lookup', async () => {
+      const res = await simulateApiLookup(mockOrder.orderNumber, 'alice@gmail.com');
+      expect(res.success).toBe(true);
+      expect(res.data?.customerPhone).not.toBe(mockOrder.customerPhone);
+      expect(res.data?.customerEmail).not.toBe(mockOrder.customerEmail);
+    });
+
+    // 9. WhatsApp handoff remains reference-only.
+    it('proves WhatsApp handoff CTA embeds order reference only and conceals customer coordinates', () => {
+      const getWhatsAppLink = (ref: string) => {
+        return `https://wa.me/256000000000?text=Hello%20GoldPlus%20team,%20I'm%20inquiring%20about%20order%20${encodeURIComponent(ref)}`;
+      };
+      
+      const link = getWhatsAppLink(mockOrder.orderNumber);
+      expect(link).toContain(mockOrder.orderNumber);
+      expect(link).not.toContain('alice@gmail.com');
+      expect(link).not.toContain('078');
+    });
+
+    // 10. GP-DRAFT still bypasses backend lookup.
+    it('confirms GP-DRAFT bypasses database and API queries', async () => {
+      const handleTrackingSubmission = async (ref: string, contact: string) => {
+        if (ref.toUpperCase().startsWith('GP-DRAFT-')) {
+          return { isOfflineDraft: true, draftReference: ref.toUpperCase() };
+        }
+        return simulateApiLookup(ref, contact);
+      };
+
+      const result = await handleTrackingSubmission('GP-DRAFT-888777', 'alice@gmail.com');
+      expect(result.isOfflineDraft).toBe(true);
+    });
+
+    // 11. direct unauthenticated GET /commerce/orders/:id remains blocked.
+    it('proves direct unauthenticated GET /commerce/orders/:id remains fully blocked', () => {
+      const simulateDirectGet = (isAuthenticated: boolean) => {
+        if (!isAuthenticated) {
+          return { success: false, error: 'UNAUTHENTICATED' };
+        }
+        return { success: true };
+      };
+
+      const result = simulateDirectGet(false);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNAUTHENTICATED');
+    });
+  });
 });

@@ -84,15 +84,15 @@ if (Astro.request.method === 'POST') {
         }),
       });
       
-      if (res.status === 404) {
+      if (res.status === 429) {
         status = 'error';
-        message = 'We could not find any order with that reference. Please check and try again.';
-      } else if (res.status === 401) {
+        message = 'Too many lookup attempts. Please wait a few minutes and try again.';
+      } else if (res.status === 401 || res.status === 400) {
         status = 'error';
-        message = 'The contact details provided do not match our records for this order reference. For security reasons, please verify and try again.';
+        message = 'We could not verify that order. Please check your reference and contact details.';
       } else if (!res.ok) {
         status = 'error';
-        message = `Unable to connect to order services (HTTP ${res.status}).`;
+        message = 'We could not verify that order. Please check your reference and contact details.';
       } else {
         const json = (await res.json()) as ApiEnvelope<Order>;
         
@@ -101,7 +101,7 @@ if (Astro.request.method === 'POST') {
           status = 'success';
         } else {
           status = 'error';
-          message = json.error?.message ?? 'Could not parse order details.';
+          message = json.error?.message ?? 'We could not verify that order. Please check your reference and contact details.';
         }
       }
     } catch (err) {
@@ -277,7 +277,7 @@ const statusBadge: Record<string, { label: string; class: string }> = {
               <section class="bg-white border border-brand-borderGrey rounded-2xl p-6 shadow-sm">
                 <h3 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Delivery coordinates</h3>
                 <p class="font-bold text-brand-charcoal">{order.deliveryArea}</p>
-                <p class="text-sm text-brand-mutedGrey mt-1 leading-relaxed">{order.deliveryAddress || 'No additional landmark provided.'}</p>
+                <p class="text-sm text-brand-mutedGrey mt-1 leading-relaxed">{order.deliveryAddress || 'Landmark omitted for public privacy.'}</p>
               </section>
 
               {/* WhatsApp Handoff Action */}

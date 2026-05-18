@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
 import { customerSessionMiddleware } from '../middleware/customerSession';
+import { createHash } from 'crypto';
 
 const routes = new Hono();
 const registry = Registry.getInstance();
@@ -116,21 +117,113 @@ const maskEmail = (email: string | null | undefined) => {
   return name.slice(0, 1) + '***' + name.slice(-1) + '@' + domain;
 };
 
+interface RateLimitEntry {
+  count: number;
+  resetTime: number;
+}
+
+const failedAttemptsLimiter = new Map<string, RateLimitEntry>();
+
 routes.post('/orders/lookup', async (c) => {
   try {
     const body = await c.req.json();
-    const { reference, contact } = body;
+    const rawRef = body.reference;
+    const rawContact = body.contact;
 
-    if (!reference || !contact) {
-      return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Order reference and contact details are required.' } }, 400);
+    // Strict type safety: reject non-string inputs immediately to prevent malformed payload abuse
+    if (typeof rawRef !== 'string' || typeof rawContact !== 'string') {
+      return c.json({
+        success: false,
+        error: {
+          code: 'VERIFICATION_FAILED',
+          message: 'We could not verify that order. Please check your reference and contact details.'
+        }
+      }, 400);
     }
+
+    const reference = rawRef.trim();
+    const contact = rawContact.trim();
+
+    // Enforce size limits and non-empty checks
+    if (!reference || !contact || reference.length > 80 || contact.length > 120) {
+      return c.json({
+        success: false,
+        error: {
+          code: 'VERIFICATION_FAILED',
+          message: 'We could not verify that order. Please check your reference and contact details.'
+        }
+      }, 400);
+    }
+
+    // Direct block of GP-DRAFT lookups to avoid hitting the database
+    if (reference.toUpperCase().startsWith('GP-DRAFT-')) {
+      return c.json({
+        success: false,
+        error: {
+          code: 'VERIFICATION_FAILED',
+          message: 'We could not verify that order. Please check your reference and contact details.'
+        }
+      }, 400);
+    }
+
+    const ipHeader = c.req.header('x-forwarded-for');
+    const ip = ipHeader ? ipHeader.split(',')[0].trim() : (c.req.header('x-real-ip') || '127.0.0.1');
+
+    // Create safe anonymous fingerprint using SHA-256 (no raw credentials stored in keys)
+    const fingerprint = createHash('sha256')
+      .update(`${ip}-${reference.toUpperCase()}`)
+      .digest('hex');
+
+    const now = Date.now();
+    const limitWindowMs = 10 * 60 * 1000; // 10 minutes
+    const maxFailedAttempts = 5;
+
+    // Self-cleaning Map inline to prevent memory growth
+    for (const [key, val] of failedAttemptsLimiter.entries()) {
+      if (val.resetTime <= now) {
+        failedAttemptsLimiter.delete(key);
+      }
+    }
+
+    // Rate Limiter Enforcement
+    const record = failedAttemptsLimiter.get(fingerprint);
+    if (record && record.resetTime > now) {
+      if (record.count >= maxFailedAttempts) {
+        return c.json({
+          success: false,
+          error: {
+            code: 'TOO_MANY_REQUESTS',
+            message: 'Too many lookup attempts. Please wait a few minutes and try again.'
+          }
+        }, 429);
+      }
+    }
+
+    const registerFailure = () => {
+      const current = failedAttemptsLimiter.get(fingerprint);
+      if (current && current.resetTime > now) {
+        current.count += 1;
+      } else {
+        failedAttemptsLimiter.set(fingerprint, {
+          count: 1,
+          resetTime: now + limitWindowMs,
+        });
+      }
+    };
 
     const order = await registry.getOrderByIdUseCase.execute(reference);
     if (!order) {
-      return c.json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found.' } }, 404);
+      registerFailure();
+      return c.json({
+        success: false,
+        error: {
+          code: 'VERIFICATION_FAILED',
+          message: 'We could not verify that order. Please check your reference and contact details.'
+        }
+      }, 401);
     }
 
-    const normalizedContact = contact.trim().toLowerCase();
+    const normalizedContact = contact.toLowerCase();
     const storedEmail = (order.customerEmail ?? '').trim().toLowerCase();
     const storedPhone = (order.customerPhone ?? '').trim();
 
@@ -139,19 +232,26 @@ routes.post('/orders/lookup', async (c) => {
       (storedPhone && normalizedContact.replace(/\s+/g, '') === storedPhone.replace(/\s+/g, ''));
 
     if (!contactMatch) {
-      return c.json({ success: false, error: { code: 'UNAUTHORIZED', message: 'The contact details provided do not match our records.' } }, 401);
+      registerFailure();
+      return c.json({
+        success: false,
+        error: {
+          code: 'VERIFICATION_FAILED',
+          message: 'We could not verify that order. Please check your reference and contact details.'
+        }
+      }, 401);
     }
 
-    // Mask sensitive contact details at the API layer for public tracking
+    // Clean rate limit tracking on success
+    failedAttemptsLimiter.delete(fingerprint);
+
+    // Minimize public response fields to prevent unnecessary database UUIDs or coordinates from leaking
     const maskedOrder = {
-      id: order.id,
       orderNumber: order.orderNumber,
       customerName: order.customerName,
       customerPhone: maskPhone(order.customerPhone),
       customerEmail: order.customerEmail ? maskEmail(order.customerEmail) : undefined,
       deliveryArea: order.deliveryArea,
-      deliveryAddress: order.deliveryAddress,
-      buyerType: order.buyerType,
       items: order.items,
       subtotalUgx: order.subtotalUgx,
       deliveryFeeUgx: order.deliveryFeeUgx,
@@ -170,7 +270,7 @@ routes.post('/orders/lookup', async (c) => {
     if (err.message.includes('DATABASE_URL') || err.message.includes('relation "orders" does not exist')) {
       return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured yet' } }, 503);
     }
-    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } }, 500);
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
   }
 });
 
