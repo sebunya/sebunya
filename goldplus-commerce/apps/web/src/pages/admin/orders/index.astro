@@ -1,19 +1,25 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
-import { tryFetchAdminList } from "../../../lib/api";
 import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/orders", 303);
 }
 
+const url = new URL(Astro.request.url);
+const search = url.searchParams.get('search')?.trim() || '';
+const statusFilter = url.searchParams.get('status')?.trim() || '';
+const paymentStatusFilter = url.searchParams.get('paymentStatus')?.trim() || '';
+
 const fallbackOrders = [
   {
-    id: "1",
+    id: "fallback-1",
     orderNumber: "GP-FALLBACK-1",
     customerName: "Sample John",
     customerPhone: "0788000000",
+    customerEmail: "john@example.com",
     buyerType: "retail",
     totalUgx: 150000,
     paymentStatus: "unpaid",
@@ -22,14 +28,53 @@ const fallbackOrders = [
   }
 ];
 
-const result = await tryFetchAdminList('/governance/admin/orders', fallbackOrders);
-const orders = result.items;
+let orders = [];
+let isSample = false;
+let apiError = '';
+
+try {
+  const queryParams = new URLSearchParams();
+  if (search) queryParams.set('search', search);
+  if (statusFilter) queryParams.set('status', statusFilter);
+  if (paymentStatusFilter) queryParams.set('paymentStatus', paymentStatusFilter);
+
+  const fetchUrl = `${apiBase}/governance/admin/orders${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+  
+  const res = await fetch(fetchUrl, {
+    headers: { 
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}` 
+    }
+  });
+
+  if (res.ok) {
+    const json = await res.json().catch(() => null);
+    if (json && json.success && Array.isArray(json.data)) {
+      orders = json.data;
+    } else {
+      orders = fallbackOrders;
+      isSample = true;
+      apiError = 'Unexpected schema returned from active API route.';
+    }
+  } else {
+    orders = fallbackOrders;
+    isSample = true;
+    apiError = `API query responded with HTTP ${res.status}.`;
+  }
+} catch {
+  orders = fallbackOrders;
+  isSample = true;
+  apiError = 'Commerce API is currently unreachable.';
+}
+
 const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
 
 function getStatusColor(status: string) {
   switch (status) {
     case 'received': return 'bg-blue-50 text-blue-700 border-blue-100';
+    case 'pending_payment': return 'bg-orange-50 text-orange-700 border-orange-100';
     case 'pending_owner_review': return 'bg-yellow-50 text-yellow-700 border-yellow-100';
+    case 'processing': return 'bg-indigo-50 text-indigo-700 border-indigo-100';
     case 'completed': return 'bg-green-50 text-green-700 border-green-100';
     case 'failed':
     case 'cancelled': return 'bg-red-50 text-red-700 border-red-100';
@@ -39,30 +84,98 @@ function getStatusColor(status: string) {
 ---
 
 <AdminLayout 
-  title="Orders Registry (Read-Only)" 
-  description="Read-only relational query of active buyer records retrieved from database repositories."
+  title="Order Operations Control Tower" 
+  description="Manage logistical workflows, fulfillment transitions, and view read-only payment statuses."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Buyer Order Logs</h2>
-        <p class="text-sm text-gray-500 mt-1">Review the relational history of customer checkout attempts. Mutation and logistical dispatch flows are scheduled for future system phases.</p>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Order Operations Control Tower</h2>
+        <p class="text-sm text-gray-500 mt-1">Search active buyer log directories, filter statuses, and transition order fulfillment stages safely.</p>
       </div>
       <div class="flex items-center gap-2">
         <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
-          RECORDS: {orders.length}
+          RECORDS MATCHED: {orders.length}
         </span>
       </div>
     </div>
 
-    {result.isSample && (
-      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4">
-        
-        <div class="text-xs leading-relaxed"><strong>System note:</strong> {result.reason}</div>
+    {isSample && (
+      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex flex-col gap-1">
+        <div class="text-xs font-black uppercase tracking-wider">Interactive Fallback Mode</div>
+        <div class="text-xs leading-relaxed"><strong>System note:</strong> {apiError} Displaying fallback data.</div>
       </div>
     )}
 
+    {/* Filtering Panel */}
+    <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-8">
+      <form method="GET" class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+        <div class="sm:col-span-2">
+          <label for="search" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Search Query</label>
+          <input 
+            type="text" 
+            name="search" 
+            id="search" 
+            value={search} 
+            placeholder="Order number, customer name, email or phone..."
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold transition-colors"
+          />
+        </div>
+
+        <div>
+          <label for="status" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Fulfillment State</label>
+          <select 
+            name="status" 
+            id="status"
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold transition-colors appearance-none"
+          >
+            <option value="">All Fulfillment Statuses</option>
+            <option value="received" selected={statusFilter === 'received'}>Received</option>
+            <option value="pending_payment" selected={statusFilter === 'pending_payment'}>Pending Payment</option>
+            <option value="pending_owner_review" selected={statusFilter === 'pending_owner_review'}>Pending Owner Review</option>
+            <option value="processing" selected={statusFilter === 'processing'}>Processing</option>
+            <option value="completed" selected={statusFilter === 'completed'}>Completed</option>
+            <option value="cancelled" selected={statusFilter === 'cancelled'}>Cancelled</option>
+            <option value="failed" selected={statusFilter === 'failed'}>Failed</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="paymentStatus" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Payment State</label>
+          <select 
+            name="paymentStatus" 
+            id="paymentStatus"
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold transition-colors appearance-none"
+          >
+            <option value="">All Payment Statuses</option>
+            <option value="unpaid" selected={paymentStatusFilter === 'unpaid'}>Unpaid</option>
+            <option value="pending" selected={paymentStatusFilter === 'pending'}>Pending</option>
+            <option value="paid" selected={paymentStatusFilter === 'paid'}>Paid</option>
+            <option value="failed" selected={paymentStatusFilter === 'failed'}>Failed</option>
+          </select>
+        </div>
+
+        <div class="sm:col-span-4 flex justify-end gap-2 mt-2">
+          {(search || statusFilter || paymentStatusFilter) && (
+            <a 
+              href="/admin/orders" 
+              class="px-4 py-2.5 border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-bold text-gray-500 transition-colors uppercase tracking-wider text-center"
+            >
+              Reset Filters
+            </a>
+          )}
+          <button 
+            type="submit" 
+            class="px-6 py-2.5 bg-brand-dark hover:bg-black text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-sm"
+          >
+            Apply Filters
+          </button>
+        </div>
+      </form>
+    </div>
+
+    {/* Table Display */}
     <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
@@ -72,15 +185,18 @@ function getStatusColor(status: string) {
               <th class="p-6">Submission</th>
               <th class="p-6">Customer / Type</th>
               <th class="p-6 text-right">Value (UGX)</th>
-              <th class="p-6 text-center">Payment</th>
-              <th class="p-6 text-center">Status</th>
+              <th class="p-6 text-center">Payment Status</th>
+              <th class="p-6 text-center">Fulfillment Status</th>
+              <th class="p-6 text-right">Actions</th>
             </tr>
           </thead>
           <tbody class="text-xs divide-y divide-gray-50">
             {orders.map(order => (
               <tr class="hover:bg-gray-50 transition-colors">
                 <td class="p-6 font-mono font-bold text-brand-dark text-sm">
-                  {order.orderNumber || order.id.substring(0,8).toUpperCase()}
+                  <a href={`/admin/orders/${order.id}`} class="hover:underline hover:text-brand-gold transition-colors">
+                    {order.orderNumber || order.id.substring(0,8).toUpperCase()}
+                  </a>
                 </td>
                 <td class="p-6 text-gray-500 font-medium">
                   {new Date(order.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
@@ -101,6 +217,7 @@ function getStatusColor(status: string) {
                   <span class={`inline-block px-2.5 py-1 rounded-lg font-black text-[9px] uppercase tracking-wide border ${
                     order.paymentStatus === 'paid' ? 'bg-green-50 text-green-700 border-green-100' :
                     order.paymentStatus === 'failed' ? 'bg-red-50 text-red-700 border-red-100' :
+                    order.paymentStatus === 'pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
                     'bg-orange-50 text-orange-700 border-orange-100'
                   }`}>
                     {order.paymentStatus}
@@ -111,12 +228,20 @@ function getStatusColor(status: string) {
                     {order.orderStatus.replace(/_/g, ' ')}
                   </span>
                 </td>
+                <td class="p-6 text-right">
+                  <a 
+                    href={`/admin/orders/${order.id}`}
+                    class="inline-block px-3 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 text-brand-dark hover:text-black font-black text-[10px] uppercase rounded-lg transition-colors tracking-wide"
+                  >
+                    Manage &rarr;
+                  </a>
+                </td>
               </tr>
             ))}
             {orders.length === 0 && (
               <tr>
-                <td colspan="6" class="p-20 text-center text-gray-400 italic text-xs leading-relaxed">
-                  Zero active relational records matched incoming log system streams.
+                <td colspan="7" class="p-20 text-center text-gray-400 italic text-xs leading-relaxed">
+                  Zero active orders matched your filtering criteria.
                 </td>
               </tr>
             )}
@@ -126,4 +251,3 @@ function getStatusColor(status: string) {
     </div>
   </div>
 </AdminLayout>
-

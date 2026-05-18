@@ -96,4 +96,12 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
       })
       .where(eq(orders.id, orderId));
   }
+
+  async findAttemptsByOrderId(orderId: string): Promise<RecordedPaymentAttempt[]> {
+    const rows = await db.query.paymentAttempts.findMany({
+      where: eq(paymentAttempts.orderId, orderId),
+    });
+    return rows.map(rowToPaymentAttempt);
+  }
 }
+

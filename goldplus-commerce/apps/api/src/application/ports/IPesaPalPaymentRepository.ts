@@ -42,4 +42,7 @@ export interface IPesaPalPaymentRepository {
     status: 'paid' | 'failed' | 'reversed' | 'unpaid',
     orderStatus?: 'processing' | 'received' | 'pending_payment' | 'cancelled'
   ): Promise<void>;
+
+  findAttemptsByOrderId(orderId: string): Promise<RecordedPaymentAttempt[]>;
 }
+

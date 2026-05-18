@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
 import { Registry } from '../../../infrastructure/Registry';
-import { ApiResponse } from '@goldplus/shared';
+import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { RequestQuoteUseCase } from '../../../application/use-cases/governance/RequestQuoteUseCase';
 import { OpenSupportTicketUseCase } from '../../../application/use-cases/governance/OpenSupportTicketUseCase';
 import { ReportFakeProductUseCase } from '../../../application/use-cases/governance/ReportFakeProductUseCase';
 import { randomUUID } from 'node:crypto';
+import { authMiddleware } from '../middleware/auth';
+import { requirePermissions } from '../middleware/permissions';
 
 const routes = new Hono();
 const registry = Registry.getInstance();
@@ -162,10 +164,33 @@ routes.get('/admin/stats', async (c) => {
 });
 
 // Admin List Routes
-routes.get('/admin/orders', async (c) => {
+routes.get('/admin/orders', authMiddleware, requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   try {
-    const orders = await registry.getOrderListUseCase.execute();
-    return c.json({ success: true, data: orders });
+    let ordersList = await registry.orderRepo.findAll();
+
+    const search = c.req.query('search')?.trim().toLowerCase();
+    const orderStatus = c.req.query('status')?.trim().toLowerCase();
+    const paymentStatus = c.req.query('paymentStatus')?.trim().toLowerCase();
+
+    if (search) {
+      ordersList = ordersList.filter(o => 
+        o.orderNumber.toLowerCase().includes(search) ||
+        o.id.toLowerCase().includes(search) ||
+        o.customerName.toLowerCase().includes(search) ||
+        o.customerPhone.toLowerCase().includes(search) ||
+        (o.customerEmail && o.customerEmail.toLowerCase().includes(search))
+      );
+    }
+
+    if (orderStatus) {
+      ordersList = ordersList.filter(o => o.orderStatus.toLowerCase() === orderStatus);
+    }
+
+    if (paymentStatus) {
+      ordersList = ordersList.filter(o => o.paymentStatus.toLowerCase() === paymentStatus);
+    }
+
+    return c.json({ success: true, data: ordersList });
   } catch (err: any) {
     if (err.message.includes('DATABASE_URL')) {
       return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
@@ -173,6 +198,137 @@ routes.get('/admin/orders', async (c) => {
     throw err;
   }
 });
+
+// Admin Detail Route
+routes.get('/admin/orders/:id', authMiddleware, requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  try {
+    const id = c.req.param('id') as string;
+    const order = await registry.orderRepo.findById(id);
+    if (!order) {
+      return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found.' } }, 404);
+    }
+
+    const attempts = await registry.pesapalPaymentRepo.findAttemptsByOrderId(order.id);
+    const safeAttempts = attempts.map(att => ({
+      id: att.id,
+      merchantReference: att.merchantReference,
+      orderTrackingId: att.orderTrackingId,
+      amount: att.amount,
+      currency: att.currency,
+      status: att.status,
+      redirectUrl: att.redirectUrl,
+      provider: att.provider,
+      ipnReceivedAt: att.ipnReceivedAt,
+      callbackReceivedAt: att.callbackReceivedAt,
+      createdAt: att.createdAt,
+      updatedAt: att.updatedAt,
+    }));
+
+    return c.json({
+      success: true,
+      data: {
+        order,
+        paymentAttempts: safeAttempts,
+      }
+    });
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
+    }
+    throw err;
+  }
+});
+
+// Admin Fulfillment Update Route
+routes.patch('/admin/orders/:id/fulfillment', authMiddleware, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  try {
+    const id = c.req.param('id') as string;
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.status !== 'string') {
+      return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Status must be a string.' } }, 400);
+    }
+
+    const nextStatus = body.status.trim().toLowerCase();
+    const order = await registry.orderRepo.findById(id);
+    if (!order) {
+      return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found.' } }, 404);
+    }
+
+    const currentStatus = order.orderStatus;
+    const allowedStatuses = ['received', 'pending_payment', 'pending_owner_review', 'processing', 'completed', 'cancelled', 'failed'];
+    
+    if (!allowedStatuses.includes(nextStatus)) {
+      return c.json({ success: false, error: { code: 'INVALID_STATUS', message: `Invalid fulfillment status: ${nextStatus}` } }, 400);
+    }
+
+    if (currentStatus === nextStatus) {
+      return c.json({ success: true, message: `Status is already set to ${nextStatus}`, data: order });
+    }
+
+    // Enforce allowed transitions
+    let allowed = false;
+    
+    if (currentStatus === 'received') {
+      if (nextStatus === 'processing' || nextStatus === 'cancelled') allowed = true;
+    } else if (currentStatus === 'pending_payment') {
+      if (nextStatus === 'cancelled') {
+        allowed = true;
+      } else if (nextStatus === 'processing') {
+        if (order.paymentStatus === 'paid') {
+          allowed = true;
+        } else {
+          return c.json({ 
+            success: false, 
+            error: { 
+              code: 'TRANSITION_BLOCKED', 
+              message: 'Cannot process an unpaid order that is pending payment.' 
+            } 
+          }, 400);
+        }
+      }
+    } else if (currentStatus === 'pending_owner_review') {
+      if (nextStatus === 'processing' || nextStatus === 'cancelled') allowed = true;
+    } else if (currentStatus === 'processing') {
+      if (nextStatus === 'completed' || nextStatus === 'cancelled') allowed = true;
+    }
+
+    if (!allowed) {
+      return c.json({ 
+        success: false, 
+        error: { 
+          code: 'TRANSITION_BLOCKED', 
+          message: `Operational transition from '${currentStatus}' to '${nextStatus}' is not allowed.` 
+        } 
+      }, 400);
+    }
+
+    // Mutate state using domain model
+    const updatedOrder = order.transitionStatus(nextStatus as any);
+    await registry.orderRepo.save(updatedOrder);
+
+    // Audit log
+    const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
+    await auditUc.execute({
+      actorId: (c.get('user') as any).id,
+      action: 'ORDER_FULFILLMENT_TRANSITION',
+      entity: 'order',
+      entityId: order.id,
+      newState: { status: nextStatus, previousStatus: currentStatus },
+    });
+
+    return c.json({
+      success: true,
+      message: `Fulfillment status transitioned to ${nextStatus}`,
+      data: updatedOrder,
+    });
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
+    }
+    throw err;
+  }
+});
+
 
 routes.get('/admin/products', async (c) => {
   try {
