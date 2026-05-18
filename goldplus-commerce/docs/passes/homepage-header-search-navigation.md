@@ -1,15 +1,15 @@
 # GoldPlus Storefront Header, Search, and Category Navigation Runbook
 
-This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R9 Unified Segmented Category Dock, Search Polish, and Final Header Craft Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
+This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R10 Recognisable Category Icon System, Uniform Optical Sizing, Category Colour Calibration, and Final Header Craft Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
 
 ---
 
 ## 1. Baseline State Lock
 
-* **Verified Commit Hash**: `6e65faa`
-* **Verified Git Tag**: `homepage-header-iconography-r8`
+* **Verified Commit Hash**: `0d49621`
+* **Verified Git Tag**: `homepage-header-unified-dock-r9`
 * **Branch**: `phase-1-functional-depth`
-* **Working Tree State**: 100% clean baseline verified prior to R9 modifications.
+* **Working Tree State**: 100% clean baseline verified prior to R10 modifications.
 
 ---
 
@@ -36,47 +36,46 @@ The following critical files containing homepage personalization, first-time-use
 
 ---
 
-## 4. Why Separate Chips Became a Unified Dock (H1A-R9)
+## 4. Why R9 Still Needed Icon Recognition Work (H1A-R10)
 
-While H1A-R8 established the correct responsive structures, the visual rendering of separate, floating card chips felt fragmented and resembled mobile-style filter buttons rather than a confident, premium, unified ecommerce navigation control. 
+While R9 established the correct segmented dock layout, its icons:
+* Were too small (`w-4 h-4`) and visually timid.
+* Were entirely grey, making the dock look operational, dry, and lacking brand personality.
+* Looked too similar, failing the critical **label-off recognition test**.
 
-To achieve an Airbnb-inspired visual lock, we **unified the separate chips into a single, cohesive, segmented category dock**:
-* Nestled all categories (`Shop All`, `Power`, `Sound`, `Storage`, `Car`, `PC`) within a shared, premium rounded-2xl control bar (`bg-gray-50/60 p-1 border border-gray-200/80 rounded-2xl`).
-* Introduced elegant vertical dividing lines between the navigation segments to convey structure and commercially confident density.
-* Retained clean Title Case typography (`text-[13px] font-semibold text-gray-700`) and enhanced spacing.
-* Configured inline segments to morph smoothly into pristine white capsules with a micro-scale transition on hover (`hover:bg-white active:scale-98 shadow-sm`), keeping the header feeling fluid, dynamic, and state-of-the-art.
-
----
-
-## 5. Responsive Category Dock Refinement
-
-The unified segmented dock adapts flawlessly to all standard device screens:
-* **Wide Desktop Layout (`min-width: 1024px`)**: Sits centered within the ultra-slim single integrated row layout: `GoldPlus | Segmented Category Dock | Search Bar | Account | Cart`. Preferred header height is locked between 64px and 76px.
-* **Medium/Tablet Layout (`768px - 1023px`)**: Arranged in two spacious rows to prevent wrapping. Top row contains Logo, Search, and Actions. Bottom row houses the centered unified segmented category dock control.
-* **Mobile Layout (`under 768px`)**: Top row streamlined to branding, cart, and drawer toggles. Bottom row displays the horizontal scroll-snapping premium visual category pills with the custom iconography metaphors.
+To establish absolute storefront confidence, H1A-R10 designed a **recognisable, optically uniform monoline icon system**:
+* **Shop All**: 2x2 catalog product grid inside a rounded square, conveying standard catalog search.
+* **Power**: Charging battery outline containing a lightning bolt, immediately signaling chargers/cables/power banks.
+* **Sound**: Compact overhead audio headphones outline with explicit ear cushions, immediately denoting audio devices.
+* **Storage**: A vertical USB flash drive outline, instantly signaling storage/flash memory.
+* **Car**: Silhouette of a consumer vehicle front profile, immediately conveying car accessories.
+* **PC**: Outline of an ergonomic computer mouse, instantly signaling computer accessories.
 
 ---
 
-## 6. Search Copy & Submit Action Polish
+## 5. Colour Calibration & Restraint
 
-* Swapped the generic `"Search products..."` placeholder back to the highly commercial and discoverable: **`"Search chargers, earbuds, power banks..."`**.
-* Replaced the developer-grade `"GO"` button label with a premium, sleek **`"Search"`** submission button, fully integrated with the header rhythm.
+To avoid a loud developer-made rainbow while introducing premium personality, we applied **soft, color-calibrated HSL tiles and colored outlines only**:
+* **Shop All**: Neutral Slate (`text-slate-500 bg-slate-50 border-slate-100`)
+* **Power**: GoldPlus Green (`text-emerald-600 bg-emerald-50 border-emerald-100`)
+* **Sound**: Calm Sky Blue (`text-sky-600 bg-sky-50 border-sky-100`)
+* **Storage**: Muted Amber/Gold (`text-amber-600 bg-amber-50 border-amber-100`)
+* **Car**: Deep Teal (`text-teal-600 bg-teal-50 border-teal-100`)
+* **PC**: Refined Tech Indigo (`text-indigo-600 bg-indigo-50 border-indigo-100`)
 
----
-
-## 7. Confident Iconography Refinement
-
-Default SVG icon colors were darkened from faint grey to medium slate (`text-gray-500`), enhancing visibility and accessibility. Hover and active states transition seamlessly to GoldPlus green.
-* **Shop All**: Refined grid layout.
-* **Power**: Upgraded plug charging icon with bolt.
-* **Sound**: Compact overhead audio headphones outline.
-* **Storage**: Modern micro-SD card vector silhouette.
-* **Car**: Profile outline of a consumer vehicle.
-* **PC**: Outline of an ergonomic computer mouse.
+Labels remain dark grey (`text-gray-700`) by default, and only transitions to high-contrast dark colors on hover. The dock remains perfectly neutral, elegant, and harmonious.
 
 ---
 
-## 8. Link Truthfulness Confirmation
+## 6. Visual Dimension and Spacing Unification
+
+We defined a strict visual weight strategy across all breakpoints:
+* **Desktop**: Inline SVGs are uniform `20px` (`w-5 h-5`) and housed in consistent `32px` (`w-8 h-8`) rounded icon tiles with subtle borders.
+* **Mobile**: Horizontal category rail features robust `36px` (`w-9 h-9`) icon tiles containing the same `20px` custom SVGs, providing a premium, native feel.
+
+---
+
+## 7. Link Truthfulness Confirmation
 
 To guarantee that zero empty result pages are triggered:
 * All active queries (`charger`, `earbuds`, `flash`, `mount`) have been verified in the seed database to return rich product lists.
@@ -84,7 +83,7 @@ To guarantee that zero empty result pages are triggered:
 
 ---
 
-## 9. Search & Core Elements Integrity
+## 8. Search & Core Elements Integrity
 
 * **Search Action**: GET form submissions to `/shop?q=term` remain fully active and responsive.
 * **Personalisation Integrity**: 100% isolated and unaffected.
@@ -93,7 +92,7 @@ To guarantee that zero empty result pages are triggered:
 
 ---
 
-## 10. Quality Gate Results
+## 9. Quality Gate Results
 
 * `pnpm typecheck`: **PASSED** (0 type errors).
 * `pnpm run test:unit`: **PASSED** (198 unit tests passed).
@@ -102,7 +101,7 @@ To guarantee that zero empty result pages are triggered:
 
 ---
 
-## 11. Final Status
+## 10. Final Status
 
 * **Status**: **COMPLETE & LOCKED**.
-* **Recommendation**: **GO**. The storefront header has successfully reached its ultimate, premium, Airbnb-inspired icon-led category navigation layout.
+* **Recommendation**: **GO**. The storefront header has successfully reached its ultimate, premium, color-calibrated category icon recognition system.
