@@ -8,8 +8,9 @@ import { OrderDetailDto, OrderSummaryDto, OrderStatus } from '@goldplus/shared';
 
 export class DrizzleOrderRepository implements ICustomerOrderRepository {
   async findById(id: string): Promise<Order | null> {
+    const isUuid = id.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
     const result = await db.query.orders.findFirst({
-      where: eq(orders.id, id),
+      where: isUuid ? eq(orders.id, id) : eq(orders.orderNumber, id),
       with: {
         items: true,
       },
