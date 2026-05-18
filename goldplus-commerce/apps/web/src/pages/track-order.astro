@@ -72,11 +72,24 @@ if (Astro.request.method === 'POST') {
     status = 'success';
   } else {
     try {
-      const res = await fetch(`${apiBase}/commerce/orders/${encodeURIComponent(orderReference)}`);
+      const res = await fetch(`${apiBase}/commerce/orders/lookup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          reference: orderReference,
+          contact: customerContact,
+        }),
+      });
       
       if (res.status === 404) {
         status = 'error';
         message = 'We could not find any order with that reference. Please check and try again.';
+      } else if (res.status === 401) {
+        status = 'error';
+        message = 'The contact details provided do not match our records for this order reference. For security reasons, please verify and try again.';
       } else if (!res.ok) {
         status = 'error';
         message = `Unable to connect to order services (HTTP ${res.status}).`;
@@ -84,21 +97,8 @@ if (Astro.request.method === 'POST') {
         const json = (await res.json()) as ApiEnvelope<Order>;
         
         if (json.success && json.data) {
-          const matchedOrder = json.data;
-          const storedEmail = (matchedOrder.customerEmail ?? '').trim().toLowerCase();
-          const storedPhone = (matchedOrder.customerPhone ?? '').trim();
-
-          const contactMatch =
-            (storedEmail && customerContact === storedEmail) ||
-            (storedPhone && customerContact.replace(/\s+/g, '') === storedPhone.replace(/\s+/g, ''));
-
-          if (contactMatch) {
-            order = matchedOrder;
-            status = 'success';
-          } else {
-            status = 'error';
-            message = 'The contact details provided do not match our records for this order reference. For security reasons, please verify and try again.';
-          }
+          order = json.data;
+          status = 'success';
         } else {
           status = 'error';
           message = json.error?.message ?? 'Could not parse order details.';

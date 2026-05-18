@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
+import { customerSessionMiddleware } from '../middleware/customerSession';
 
 const routes = new Hono();
 const registry = Registry.getInstance();
@@ -99,9 +100,83 @@ routes.post('/orders/create', async (c) => {
   }
 });
 
-routes.get('/orders/:id', async (c) => {
+const maskPhone = (phone: string | null | undefined) => {
+  if (!phone) return '*****';
+  if (phone.length <= 5) return '*****';
+  return phone.slice(0, 3) + '****' + phone.slice(-3);
+};
+
+const maskEmail = (email: string | null | undefined) => {
+  if (!email) return '*****';
+  const parts = email.split('@');
+  if (parts.length !== 2) return '*****';
+  const name = parts[0];
+  const domain = parts[1];
+  if (name.length <= 2) return '*@' + domain;
+  return name.slice(0, 1) + '***' + name.slice(-1) + '@' + domain;
+};
+
+routes.post('/orders/lookup', async (c) => {
   try {
-    const id = c.req.param('id');
+    const body = await c.req.json();
+    const { reference, contact } = body;
+
+    if (!reference || !contact) {
+      return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Order reference and contact details are required.' } }, 400);
+    }
+
+    const order = await registry.getOrderByIdUseCase.execute(reference);
+    if (!order) {
+      return c.json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found.' } }, 404);
+    }
+
+    const normalizedContact = contact.trim().toLowerCase();
+    const storedEmail = (order.customerEmail ?? '').trim().toLowerCase();
+    const storedPhone = (order.customerPhone ?? '').trim();
+
+    const contactMatch =
+      (storedEmail && normalizedContact === storedEmail) ||
+      (storedPhone && normalizedContact.replace(/\s+/g, '') === storedPhone.replace(/\s+/g, ''));
+
+    if (!contactMatch) {
+      return c.json({ success: false, error: { code: 'UNAUTHORIZED', message: 'The contact details provided do not match our records.' } }, 401);
+    }
+
+    // Mask sensitive contact details at the API layer for public tracking
+    const maskedOrder = {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      customerPhone: maskPhone(order.customerPhone),
+      customerEmail: order.customerEmail ? maskEmail(order.customerEmail) : undefined,
+      deliveryArea: order.deliveryArea,
+      deliveryAddress: order.deliveryAddress,
+      buyerType: order.buyerType,
+      items: order.items,
+      subtotalUgx: order.subtotalUgx,
+      deliveryFeeUgx: order.deliveryFeeUgx,
+      totalUgx: order.totalUgx,
+      paymentStatus: order.paymentStatus,
+      orderStatus: order.orderStatus,
+      createdAt: order.createdAt,
+    };
+
+    const res: ApiResponse<any> = {
+      success: true,
+      data: maskedOrder,
+    };
+    return c.json(res);
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL') || err.message.includes('relation "orders" does not exist')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured yet' } }, 503);
+    }
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } }, 500);
+  }
+});
+
+routes.get('/orders/:id', customerSessionMiddleware, async (c) => {
+  try {
+    const id = c.req.param('id') || '';
     const order = await registry.getOrderByIdUseCase.execute(id);
     
     if (!order) {
