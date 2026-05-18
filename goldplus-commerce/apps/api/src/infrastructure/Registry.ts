@@ -32,6 +32,12 @@ import { DrizzleProductRecommendationReader } from './db/repositories/DrizzlePro
 import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
 
+import { DrizzlePaymentAttemptRepository } from './db/repositories/DrizzlePaymentAttemptRepository';
+import { PesaPalClient } from './payments/pesapal/PesaPalClient';
+import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
+import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
+import { env } from '../config/env';
+
 import { WhatsAppAdapter } from './notifications/whatsapp/WhatsAppAdapter';
 import { ZeptoMailAdapter } from './notifications/zeptomail/ZeptoMailAdapter';
 import { DisabledSmsAdapter } from './notifications/sms/DisabledSmsAdapter';
@@ -88,6 +94,8 @@ export class Registry {
   public readonly recommendationRuleAuditRepo = new DrizzleRecommendationRuleAuditRepository();
   public readonly productRecommendationReader = new DrizzleProductRecommendationReader();
   public readonly recommendationAnalyticsRepo = new DrizzleRecommendationAnalyticsRepository();
+  public readonly pesapalPaymentRepo = new DrizzlePaymentAttemptRepository();
+  public readonly pesapalClient = new PesaPalClient(env);
 
   // Storage
   private readonly productImageStorage = new LocalProductImageStorage(
@@ -176,6 +184,17 @@ export class Registry {
     this.productRecommendationReader,
     this.recommendationSignalExtractor,
     this.recommendationEligibility
+  );
+
+  public readonly startPesaPalPaymentUseCase = new StartPesaPalPaymentUseCase(
+    this.pesapalPaymentRepo,
+    this.orderRepo,
+    this.pesapalClient
+  );
+
+  public readonly verifyPesaPalPaymentUseCase = new VerifyPesaPalPaymentUseCase(
+    this.pesapalPaymentRepo,
+    this.pesapalClient
   );
 
   public static getInstance(): Registry {

@@ -296,4 +296,94 @@ routes.get('/orders/:id', customerSessionMiddleware, async (c) => {
   }
 });
 
+routes.post('/payments/pesapal/start', async (c) => {
+  try {
+    const body = await c.req.json();
+    const orderId = String(body.orderId || '').trim();
+    if (!orderId) {
+      return c.json({ success: false, error: { code: 'INVALID_REQUEST', message: 'Missing orderId parameter.' } }, 400);
+    }
+    const result = await registry.startPesaPalPaymentUseCase.execute({ orderId });
+    return c.json({ success: true, data: result });
+  } catch (err: any) {
+    console.error('[API_ERROR] PesaPal start failed:', err);
+    return c.json({ success: false, error: { code: 'PAYMENT_START_FAILED', message: err.message } }, 400);
+  }
+});
+
+routes.get('/payments/pesapal/callback', async (c) => {
+  const trackingId = c.req.query('OrderTrackingId') || c.req.query('orderTrackingId') || '';
+  const reference = c.req.query('OrderMerchantReference') || c.req.query('orderMerchantReference') || '';
+  
+  const frontendCallbackUrl = process.env.PESAPAL_CALLBACK_URL || 'http://localhost:3000/checkout/pesapal/callback';
+
+  if (!trackingId || !reference) {
+    return c.redirect(`${frontendCallbackUrl}?status=failed&message=Missing+required+parameters`);
+  }
+
+  try {
+    const result = await registry.verifyPesaPalPaymentUseCase.execute({
+      orderTrackingId: trackingId,
+      merchantReference: reference,
+      source: 'callback'
+    });
+    
+    if (result.ok && result.status === 'completed') {
+      return c.redirect(`${frontendCallbackUrl}?status=success&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}`);
+    } else {
+      return c.redirect(`${frontendCallbackUrl}?status=failed&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}&message=${encodeURIComponent(result.message || 'Payment unresolved')}`);
+    }
+  } catch (err: any) {
+    console.error('[API_ERROR] PesaPal callback failed:', err);
+    return c.redirect(`${frontendCallbackUrl}?status=failed&message=${encodeURIComponent(err.message)}`);
+  }
+});
+
+const handleIpn = async (c: any) => {
+  let trackingId = '';
+  let reference = '';
+  let notificationType = '';
+
+  trackingId = c.req.query('OrderTrackingId') || c.req.query('orderTrackingId') || '';
+  reference = c.req.query('OrderMerchantReference') || c.req.query('orderMerchantReference') || '';
+  notificationType = c.req.query('OrderNotificationType') || c.req.query('orderNotificationType') || '';
+
+  if (c.req.method === 'POST') {
+    try {
+      const body = await c.req.json();
+      trackingId = trackingId || body.OrderTrackingId || body.orderTrackingId || '';
+      reference = reference || body.OrderMerchantReference || body.orderMerchantReference || '';
+      notificationType = notificationType || body.OrderNotificationType || body.orderNotificationType || '';
+    } catch {
+      // Ignore body parsing issues
+    }
+  }
+
+  if (!trackingId || !reference) {
+    return c.json({ error: 'Missing required parameters' }, 400);
+  }
+
+  try {
+    await registry.verifyPesaPalPaymentUseCase.execute({
+      orderTrackingId: trackingId,
+      merchantReference: reference,
+      source: 'ipn'
+    });
+
+    return c.json({
+      orderNotificationType: notificationType || 'IPNCHANGE',
+      orderTrackingId: trackingId,
+      orderMerchantReference: reference,
+      status: 200
+    });
+  } catch (err: any) {
+    console.error('[API_ERROR] PesaPal IPN failed:', err);
+    return c.json({ error: 'An internal error occurred.' }, 500);
+  }
+};
+
+routes.post('/payments/pesapal/ipn', handleIpn);
+routes.get('/payments/pesapal/ipn', handleIpn);
+
 export default routes;
+

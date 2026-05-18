@@ -57,6 +57,13 @@
       "when": 1778923048255,
       "tag": "0007_safe_piledriver",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1779129140297,
+      "tag": "0008_slimy_killmonger",
+      "breakpoints": true
     }
   ]
 }

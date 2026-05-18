@@ -1,0 +1,32 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Payment Cancelled">
+  <div class="bg-brand-softGrey py-10 border-b border-brand-borderGrey">
+    <div class="container mx-auto px-4 lg:px-8 text-center">
+      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-brand-charcoal mb-2">Payment Cancelled</h1>
+      <p class="text-brand-mutedGrey max-w-xl mx-auto">
+        Your transaction was not completed. No charges have been made.
+      </p>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 lg:px-8 py-16">
+    <div class="max-w-xl mx-auto bg-white border border-brand-borderGrey rounded-3xl shadow-sm p-8 text-center">
+      <div class="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </div>
+      <h2 class="text-2xl font-black text-brand-charcoal mb-4">Transaction Cancelled</h2>
+      <p class="text-gray-600 mb-8 leading-relaxed">
+        You can return to your cart and complete checkout using a different payment option, or retry when you are ready.
+      </p>
+      <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a href="/cart" class="bg-brand-charcoal text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-all">Return to Cart</a>
+        <a href="/checkout" class="border border-brand-borderGrey text-brand-charcoal px-6 py-3 rounded-xl font-bold hover:bg-brand-softGrey transition-all">Retry Checkout</a>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

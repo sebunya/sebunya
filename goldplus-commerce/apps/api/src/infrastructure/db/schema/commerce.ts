@@ -106,3 +106,23 @@ export const payments = pgTable('payments', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const paymentAttempts = pgTable('payment_attempts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orderId: uuid('order_id').references(() => orders.id).notNull(),
+  merchantReference: varchar('merchant_reference', { length: 255 }).unique().notNull(),
+  orderTrackingId: varchar('order_tracking_id', { length: 255 }),
+  amount: integer('amount').notNull(),
+  currency: varchar('currency', { length: 10 }).default('UGX').notNull(),
+  status: varchar('status', { length: 30 }).default('not_started').notNull(),
+  redirectUrl: varchar('redirect_url', { length: 512 }),
+  provider: varchar('provider', { length: 50 }).default('pesapal').notNull(),
+  ipnReceivedAt: timestamp('ipn_received_at', { withTimezone: true }),
+  callbackReceivedAt: timestamp('callback_received_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  trackingIdx: index('payments_tracking_idx').on(table.orderTrackingId),
+  referenceIdx: index('payments_reference_idx').on(table.merchantReference),
+}));
+
+

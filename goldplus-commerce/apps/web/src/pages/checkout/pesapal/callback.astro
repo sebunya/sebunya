@@ -1,0 +1,74 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+
+const trackingId = Astro.url.searchParams.get('trackingId') || '';
+const reference = Astro.url.searchParams.get('reference') || '';
+const status = Astro.url.searchParams.get('status') || '';
+const message = Astro.url.searchParams.get('message') || '';
+
+const isSuccess = status === 'success';
+---
+
+<BaseLayout title="Payment Verification">
+  <div class="bg-brand-softGrey py-10 border-b border-brand-borderGrey">
+    <div class="container mx-auto px-4 lg:px-8 text-center">
+      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-brand-charcoal mb-2">
+        {isSuccess ? 'Payment Successful' : 'Payment Status Unresolved'}
+      </h1>
+      <p class="text-brand-mutedGrey max-w-xl mx-auto">
+        {isSuccess 
+          ? 'Your transaction has been securely settled and verified with PesaPal.' 
+          : 'We could not complete your payment verification at this moment.'}
+      </p>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 lg:px-8 py-16">
+    <div class="max-w-xl mx-auto bg-white border border-brand-borderGrey rounded-3xl shadow-sm p-8 text-center">
+      {isSuccess ? (
+        <>
+          <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+            </svg>
+          </div>
+          <h2 class="text-2xl font-black text-brand-charcoal mb-4">Thank you for your order!</h2>
+          <div class="bg-brand-softGrey p-4 rounded-xl mb-6 text-sm text-left font-mono text-brand-charcoal space-y-1">
+            <div><span class="font-bold text-gray-500">Tracking Reference:</span> {trackingId}</div>
+            <div><span class="font-bold text-gray-500">Merchant Reference:</span> {reference}</div>
+          </div>
+          <p class="text-gray-600 mb-8 leading-relaxed">
+            Our logistics team is already preparing your package. You can track this order's processing real-time on our support portal.
+          </p>
+          <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="/track-order" class="bg-brand-charcoal text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-all">Track Order</a>
+            <a href="/shop" class="border border-brand-borderGrey text-brand-charcoal px-6 py-3 rounded-xl font-bold hover:bg-brand-softGrey transition-all">Continue Shopping</a>
+          </div>
+        </>
+      ) : (
+        <>
+          <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+          </div>
+          <h2 class="text-2xl font-black text-brand-charcoal mb-4">Payment Verification Failed</h2>
+          
+          {message && (
+            <div class="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl mb-6 text-sm text-left">
+              <strong>Error Reason:</strong> {message}
+            </div>
+          )}
+
+          <p class="text-gray-600 mb-8 leading-relaxed">
+            No funds have been charged from your wallet or card for invalid attempts. You may safely retry checkout using mobile money or cards.
+          </p>
+          <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="/cart" class="bg-brand-charcoal text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-all">Return to Cart</a>
+            <a href="/checkout" class="border border-brand-borderGrey text-brand-charcoal px-6 py-3 rounded-xl font-bold hover:bg-brand-softGrey transition-all">Retry Checkout</a>
+          </div>
+        </>
+      )}
+    </div>
+  </div>
+</BaseLayout>

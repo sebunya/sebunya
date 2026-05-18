@@ -38,6 +38,18 @@ export interface Config {
   mtnWebhookSecret: string;
   airtelWebhookSecret: string;
   identityHashPepper: string;
+  pesapalEnv?: string;
+  pesapalBaseUrl?: string;
+  pesapalConsumerKey?: string;
+  pesapalConsumerSecret?: string;
+  pesapalIpnId?: string;
+  pesapalCurrency?: string;
+  pesapalCountryCode?: string;
+  pesapalBranch?: string;
+  pesapalCallbackUrl?: string;
+  pesapalCancellationUrl?: string;
+  pesapalIpnUrl?: string;
+  pesapalRedirectMode?: string;
 }
 
 const obviousLocalPatterns = [
@@ -67,7 +79,19 @@ export function validateEnv(): Config {
       publicApiBaseUrl: process.env.PUBLIC_API_BASE_URL || 'http://localhost:3000',
       mtnWebhookSecret: process.env.MTN_WEBHOOK_SECRET || 'mtn-webhook-test-secret-value-longer-than-24',
       airtelWebhookSecret: process.env.AIRTEL_WEBHOOK_SECRET || 'airtel-webhook-test-secret-value-longer-than-24',
-      identityHashPepper: process.env.IDENTITY_HASH_PEPPER || 'pepper-test-secret-value-longer-than-32'
+      identityHashPepper: process.env.IDENTITY_HASH_PEPPER || 'pepper-test-secret-value-longer-than-32',
+      pesapalEnv: process.env.PESAPAL_ENV,
+      pesapalBaseUrl: process.env.PESAPAL_BASE_URL,
+      pesapalConsumerKey: process.env.PESAPAL_CONSUMER_KEY,
+      pesapalConsumerSecret: process.env.PESAPAL_CONSUMER_SECRET,
+      pesapalIpnId: process.env.PESAPAL_IPN_ID,
+      pesapalCurrency: process.env.PESAPAL_CURRENCY,
+      pesapalCountryCode: process.env.PESAPAL_COUNTRY_CODE,
+      pesapalBranch: process.env.PESAPAL_BRANCH,
+      pesapalCallbackUrl: process.env.PESAPAL_CALLBACK_URL,
+      pesapalCancellationUrl: process.env.PESAPAL_CANCELLATION_URL,
+      pesapalIpnUrl: process.env.PESAPAL_IPN_URL,
+      pesapalRedirectMode: process.env.PESAPAL_REDIRECT_MODE,
     };
   }
 
@@ -103,6 +127,19 @@ export function validateEnv(): Config {
   const bootstrapAdminPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
   const bootstrapAdminPhone = process.env.BOOTSTRAP_ADMIN_PHONE;
 
+  const pesapalEnv = process.env.PESAPAL_ENV;
+  const pesapalBaseUrl = process.env.PESAPAL_BASE_URL;
+  const pesapalConsumerKey = process.env.PESAPAL_CONSUMER_KEY;
+  const pesapalConsumerSecret = process.env.PESAPAL_CONSUMER_SECRET;
+  const pesapalIpnId = process.env.PESAPAL_IPN_ID;
+  const pesapalCurrency = process.env.PESAPAL_CURRENCY;
+  const pesapalCountryCode = process.env.PESAPAL_COUNTRY_CODE;
+  const pesapalBranch = process.env.PESAPAL_BRANCH;
+  const pesapalCallbackUrl = process.env.PESAPAL_CALLBACK_URL;
+  const pesapalCancellationUrl = process.env.PESAPAL_CANCELLATION_URL;
+  const pesapalIpnUrl = process.env.PESAPAL_IPN_URL;
+  const pesapalRedirectMode = process.env.PESAPAL_REDIRECT_MODE;
+
   if (errors.length > 0) {
     console.error('\n❌ ENVIRONMENT VARIABLE VALIDATION FAILED:');
     errors.forEach(err => console.error(`  - ${err}`));
@@ -121,7 +158,20 @@ export function validateEnv(): Config {
     mtnWebhookSecret,
     airtelWebhookSecret,
     identityHashPepper,
+    pesapalEnv,
+    pesapalBaseUrl,
+    pesapalConsumerKey,
+    pesapalConsumerSecret,
+    pesapalIpnId,
+    pesapalCurrency,
+    pesapalCountryCode,
+    pesapalBranch,
+    pesapalCallbackUrl,
+    pesapalCancellationUrl,
+    pesapalIpnUrl,
+    pesapalRedirectMode,
   };
 }
 
 export const env = validateEnv();
+
