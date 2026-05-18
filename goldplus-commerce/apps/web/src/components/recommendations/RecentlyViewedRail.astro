@@ -1,4 +1,7 @@
 ---
+import { apiBase } from "../../lib/api";
+import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
+
 /**
  * Server-rendered local history is impossible as data lives in client storage.
  * This layout is initially Hidden and un-hides only via script injection if local items exist.
@@ -12,6 +15,19 @@ const {
   title = "Pick Up Where You Left Off",
   subtitle = "Continue with products you viewed or added to cart."
 } = Astro.props;
+
+let validIds: string[] = [];
+try {
+  const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
+  if (res.ok) {
+    const json = await res.json() as ApiResponse<ProductPublicDto[]>;
+    if (json.success) {
+      validIds = json.data.map(p => p.id).filter((id): id is string => typeof id === "string");
+    }
+  }
+} catch {
+  // Graceful fallback
+}
 ---
 
 <section
@@ -19,6 +35,7 @@ const {
   style="display: none;"
   aria-labelledby="recommendation-recently-viewed"
   data-recently-viewed-rail
+  data-valid-ids={JSON.stringify(validIds)}
 >
   <div class="mb-6">
     <h2 id="recommendation-recently-viewed" class="text-2xl font-black tracking-tight text-brand-charcoal">
@@ -46,7 +63,13 @@ const {
       return;
     }
 
-    const items = getRecentlyViewedHistory().slice(0, 4);
+    const validIdsAttr = rail.getAttribute("data-valid-ids");
+    const validIds: string[] = validIdsAttr ? JSON.parse(validIdsAttr) : [];
+
+    const rawHistory = getRecentlyViewedHistory();
+    const items = rawHistory
+      .filter((item) => validIds.length === 0 || validIds.includes(item.productId))
+      .slice(0, 4);
 
     if (items.length === 0) return;
 

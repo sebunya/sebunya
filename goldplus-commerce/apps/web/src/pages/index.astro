@@ -5,6 +5,8 @@ import ProductCard from '../components/ProductCard.astro';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
 import RecentlyViewedRail from '../components/recommendations/RecentlyViewedRail.astro';
+import CartAwareRail from '../components/home/CartAwareRail.astro';
+import CategoryAwareRail from '../components/home/CategoryAwareRail.astro';
 import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
 import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
 
@@ -66,6 +68,11 @@ const usedProductIds = [
       </div>
     </div>
   </section>
+
+  {/* Cart-Aware Continue Journey Banner (Only when active cart items exist) */}
+  <div class="container mx-auto px-4 lg:px-8">
+    <CartAwareRail />
+  </div>
 
   {/* 2. Pick Up Where You Left Off (Returning Visitors Only) */}
   <div id="homepage-recovery-strip" class="container mx-auto px-4 lg:px-8">
@@ -148,6 +155,11 @@ const usedProductIds = [
       )}
     </div>
   </section>
+
+  {/* Category/Search Aware Continuation Rail (Only when user history exists) */}
+  <div class="container mx-auto px-4 lg:px-8">
+    <CategoryAwareRail excludeProductIds={usedProductIds} />
+  </div>
 
   {/* 7. Trending Now (with Cross-Section Deduplication) */}
   <PopularNowRail excludeProductIds={usedProductIds} useContainerWrapper={true} />

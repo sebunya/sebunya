@@ -81,3 +81,24 @@ export function buildHomepageProductAllocation(
     warnings: warnings.length > 0 ? warnings : undefined
   };
 }
+
+import { normalizeProductCategory, CATEGORY_SLUG_TO_NAME } from "./catalog/catalog";
+
+export function getCategoryAwareProducts(
+  allProducts: ProductPublicDto[],
+  categorySlug: string,
+  excludeIds: string[] = []
+): ProductPublicDto[] {
+  const targetCategoryName = CATEGORY_SLUG_TO_NAME[categorySlug.toLowerCase()];
+  if (!targetCategoryName) return [];
+
+  const normalized = allProducts.map(p => normalizeProductCategory(p));
+  const excludedSet = new Set(excludeIds);
+
+  return normalized.filter(p => 
+    p.categoryName === targetCategoryName && 
+    p.id && 
+    !excludedSet.has(p.id)
+  );
+}
+

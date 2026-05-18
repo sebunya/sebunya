@@ -1,0 +1,84 @@
+---
+import { parseLocalCartCookie } from "../../lib/cart";
+
+const localDataCookie = Astro.cookies.get('goldplus_cart_data')?.value;
+const items = parseLocalCartCookie(localDataCookie);
+const initialCount = items.reduce((acc, item) => acc + item.quantity, 0);
+---
+
+<div
+  id="cart-aware-rail"
+  class="my-8 relative overflow-hidden rounded-3xl bg-gradient-to-r from-gray-900 via-gray-850 to-brand-charcoal text-white p-6 sm:p-8 shadow-xl border border-gray-800 transition-all duration-500 hover:shadow-2xl"
+  style={initialCount > 0 ? "display: block;" : "display: none;"}
+  data-cart-item-count={initialCount}
+>
+  <!-- Curated abstract dynamic gradient background element -->
+  <div class="absolute -right-16 -top-16 w-64 h-64 bg-brand-primary/10 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="absolute -left-16 -bottom-16 w-48 h-48 bg-brand-primary/5 rounded-full blur-2xl pointer-events-none"></div>
+
+  <div class="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div class="flex items-start sm:items-center gap-4 sm:gap-5">
+      <div class="flex-shrink-0 w-12 h-12 rounded-2xl bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+        </svg>
+      </div>
+      <div>
+        <h3 class="text-lg sm:text-xl font-black tracking-tight text-white mb-1">
+          Continue your shopping journey
+        </h3>
+        <p class="text-gray-350 text-xs sm:text-sm font-medium leading-relaxed">
+          You have <span class="text-brand-primary font-black font-mono" data-cart-count-label>{initialCount}</span> item{initialCount === 1 ? '' : 's'} waiting in your cart. Let's finish your secure checkout.
+        </p>
+      </div>
+    </div>
+    
+    <div class="flex items-center gap-4">
+      <a
+        href="/cart"
+        class="inline-flex items-center justify-center px-6 py-3 bg-brand-primary text-brand-charcoal hover:bg-brand-primary/95 text-xs font-black uppercase tracking-widest rounded-2xl transition-all duration-300 shadow-lg shadow-brand-primary/10 hover:shadow-brand-primary/20 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+      >
+        View your cart
+        <svg class="w-4 h-4 ml-2 transition-transform duration-300" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+        </svg>
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+  import { parseLocalCartCookie } from "../../lib/cart";
+
+  function getCookie(name: string): string | undefined {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop()?.split(';').shift();
+    return undefined;
+  }
+
+  function syncCartState() {
+    const el = document.getElementById("cart-aware-rail");
+    const countLabel = document.querySelector("[data-cart-count-label]");
+    if (!el || !countLabel) return;
+
+    try {
+      const cookieVal = getCookie("goldplus_cart_data");
+      const items = parseLocalCartCookie(cookieVal);
+      const totalCount = items.reduce((acc, item) => acc + item.quantity, 0);
+
+      if (totalCount > 0) {
+        countLabel.textContent = String(totalCount);
+        el.style.display = "block";
+      } else {
+        el.style.display = "none";
+      }
+    } catch {
+      // Safe fallback
+    }
+  }
+
+  // Sync on page load and window focus to handle client navigation/updates
+  document.addEventListener("DOMContentLoaded", syncCartState);
+  window.addEventListener("focus", syncCartState);
+</script>

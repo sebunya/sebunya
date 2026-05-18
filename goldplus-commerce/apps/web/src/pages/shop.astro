@@ -369,4 +369,27 @@ const sortedProducts = sortProducts(filteredProducts, sort);
       </main>
     </div>
   </div>
+
+  <script define:vars={{ category, q }}>
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        if (category && category !== 'all') {
+          window.localStorage.setItem('goldplus_last_category', JSON.stringify({
+            value: category,
+            timestamp: Date.now()
+          }));
+        }
+        if (q && q.trim()) {
+          // Santize and slice query to keep it safe and compact
+          const cleanQuery = q.trim().substring(0, 100);
+          window.localStorage.setItem('goldplus_last_search', JSON.stringify({
+            value: cleanQuery,
+            timestamp: Date.now()
+          }));
+        }
+      }
+    } catch (e) {
+      // Safe boundary check
+    }
+  </script>
 </BaseLayout>
