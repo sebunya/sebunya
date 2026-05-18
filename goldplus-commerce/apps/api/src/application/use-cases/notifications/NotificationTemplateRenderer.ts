@@ -10,6 +10,16 @@ export type NotificationTemplateKey =
   | 'ORDER_FULFILLMENT_COMPLETED';
 
 export class NotificationTemplateRenderer {
+  private escapeHtml(str: string | null | undefined): string {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   private formatUgx(amount: number): string {
     return new Intl.NumberFormat('en-UG', {
       style: 'currency',
@@ -31,53 +41,53 @@ export class NotificationTemplateRenderer {
       case 'ORDER_RECEIVED_UNPAID':
         title = 'GoldPlus - Order Received';
         headline = 'Order Received & Awaiting Payment';
-        statusMessage = `Thank you for your order. We have successfully received order number <strong>${order.orderNumber}</strong>. Please proceed with payment via your Mobile Money checkout screen or follow PesaPal payment links to complete your purchase.`;
+        statusMessage = `Thank you for your order. We have successfully received order number <strong>${this.escapeHtml(order.orderNumber)}</strong>. Please proceed with payment via your Mobile Money checkout screen or follow PesaPal payment links to complete your purchase.`;
         break;
       case 'ORDER_PAYMENT_PENDING':
         title = 'GoldPlus - Payment Pending';
         headline = 'Payment Verification Pending';
-        statusMessage = `We have recorded a pending payment attempt for order <strong>${order.orderNumber}</strong>. Our systems are currently verifying transaction status. No further action is required.`;
+        statusMessage = `We have recorded a pending payment attempt for order <strong>${this.escapeHtml(order.orderNumber)}</strong>. Our systems are currently verifying transaction status. No further action is required.`;
         break;
       case 'ORDER_PAYMENT_SUCCESS':
         title = 'GoldPlus - Order Confirmed';
         headline = 'Payment Confirmed & Order Processing';
-        statusMessage = `Excellent news! Payment of <strong>${formattedTotal}</strong> has been successfully verified. Your order <strong>${order.orderNumber}</strong> is now officially confirmed and transitioning to hardware dispatch logistics.`;
+        statusMessage = `Excellent news! Payment of <strong>${this.escapeHtml(formattedTotal)}</strong> has been successfully verified. Your order <strong>${this.escapeHtml(order.orderNumber)}</strong> is now officially confirmed and transitioning to hardware dispatch logistics.`;
         isSuccessBanner = true;
         break;
       case 'ORDER_PAYMENT_FAILED':
         title = 'GoldPlus - Payment Failed';
         headline = 'Payment Attempt Unsuccessful';
-        statusMessage = `We could not verify payment for order <strong>${order.orderNumber}</strong>. Please check your Mobile Money network or click checkout again to retry.`;
+        statusMessage = `We could not verify payment for order <strong>${this.escapeHtml(order.orderNumber)}</strong>. Please check your Mobile Money network or click checkout again to retry.`;
         break;
       case 'ORDER_PAYMENT_CANCELLED':
         title = 'GoldPlus - Checkout Cancelled';
         headline = 'Payment Attempt Cancelled';
-        statusMessage = `The payment checkout flow for order <strong>${order.orderNumber}</strong> was cancelled. You can retry checkout anytime from your order tracking screen.`;
+        statusMessage = `The payment checkout flow for order <strong>${this.escapeHtml(order.orderNumber)}</strong> was cancelled. You can retry checkout anytime from your order tracking screen.`;
         break;
       case 'ORDER_FULFILLMENT_PROCESSING':
         title = 'GoldPlus - Order in Processing';
         headline = 'Logistics & Packaging in Progress';
-        statusMessage = `Your order <strong>${order.orderNumber}</strong> is currently being packaged and optimized for transport in Kampala. You will be notified as soon as it is shipped.`;
+        statusMessage = `Your order <strong>${this.escapeHtml(order.orderNumber)}</strong> is currently being packaged and optimized for transport in Kampala. You will be notified as soon as it is shipped.`;
         break;
       case 'ORDER_FULFILLMENT_COMPLETED':
         title = 'GoldPlus - Delivery Completed';
         headline = 'Delivery Confirmed & Settled';
-        statusMessage = `Congratulations! Order <strong>${order.orderNumber}</strong> has been delivered successfully. Thank you for choosing GoldPlus.`;
+        statusMessage = `Congratulations! Order <strong>${this.escapeHtml(order.orderNumber)}</strong> has been delivered successfully. Thank you for choosing GoldPlus.`;
         isSuccessBanner = true;
         break;
       default:
-        statusMessage = `Order number ${order.orderNumber} status has updated to: ${order.orderStatus}.`;
+        statusMessage = `Order number ${this.escapeHtml(order.orderNumber)} status has updated to: ${this.escapeHtml(order.orderStatus)}.`;
     }
 
     const itemsHtml = (order.items || [])
       .map(
         (item: any) => `
       <tr>
-        <td style="padding: 12px; font-weight: bold; color: #111827; border-bottom: 1px solid #f3f4f6;">${item.productName || item.name}</td>
-        <td style="padding: 12px; text-align: center; font-family: monospace; color: #6b7280; border-bottom: 1px solid #f3f4f6;">${item.sku || 'N/A'}</td>
+        <td style="padding: 12px; font-weight: bold; color: #111827; border-bottom: 1px solid #f3f4f6;">${this.escapeHtml(item.productName || item.name)}</td>
+        <td style="padding: 12px; text-align: center; font-family: monospace; color: #6b7280; border-bottom: 1px solid #f3f4f6;">${this.escapeHtml(item.sku || 'N/A')}</td>
         <td style="padding: 12px; text-align: center; font-weight: bold; color: #374151; border-bottom: 1px solid #f3f4f6;">${item.quantity}</td>
-        <td style="padding: 12px; text-align: right; color: #4b5563; border-bottom: 1px solid #f3f4f6;">${this.formatUgx(item.unitPrice || item.price)}</td>
-        <td style="padding: 12px; text-align: right; font-weight: 800; color: #111827; border-bottom: 1px solid #f3f4f6;">${this.formatUgx((item.unitPrice || item.price) * item.quantity)}</td>
+        <td style="padding: 12px; text-align: right; color: #4b5563; border-bottom: 1px solid #f3f4f6;">${this.escapeHtml(this.formatUgx(item.unitPrice || item.price))}</td>
+        <td style="padding: 12px; text-align: right; font-weight: 800; color: #111827; border-bottom: 1px solid #f3f4f6;">${this.escapeHtml(this.formatUgx((item.unitPrice || item.price) * item.quantity))}</td>
       </tr>`
       )
       .join('');
@@ -86,7 +96,7 @@ export class NotificationTemplateRenderer {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${title}</title>
+  <title>${this.escapeHtml(title)}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
   <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f9fafb; padding: 40px 0;">
@@ -104,32 +114,32 @@ export class NotificationTemplateRenderer {
           <!-- Status Headline Banner -->
           <tr>
             <td style="background-color: ${isSuccessBanner ? '#ecfdf5' : '#fef3c7'}; padding: 20px 32px; border-bottom: 1px solid ${isSuccessBanner ? '#d1fae5' : '#fde68a'};">
-              <h2 style="margin: 0; font-size: 16px; font-weight: 900; color: ${isSuccessBanner ? '#065f46' : '#92400e'}; letter-spacing: -0.01em;">${headline}</h2>
+              <h2 style="margin: 0; font-size: 16px; font-weight: 900; color: ${isSuccessBanner ? '#065f46' : '#92400e'}; letter-spacing: -0.01em;">${this.escapeHtml(headline)}</h2>
             </td>
           </tr>
 
           <!-- Message Body -->
           <tr>
             <td style="padding: 32px 32px 24px 32px; font-size: 14px; line-height: 1.6; color: #374151;">
-              <p style="margin: 0 0 20px 0;">Dear ${order.customerName || 'Customer'},</p>
+              <p style="margin: 0 0 20px 0;">Dear ${this.escapeHtml(order.customerName || 'Customer')},</p>
               <p style="margin: 0 0 20px 0;">${statusMessage}</p>
               <div style="background-color: #f3f4f6; border-radius: 12px; padding: 16px; margin: 24px 0;">
                 <table width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size: 12px;">
                   <tr>
                     <td style="padding: 4px 0; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Order Reference</td>
-                    <td style="padding: 4px 0; text-align: right; font-weight: bold; color: #111827; font-family: monospace;">${order.orderNumber}</td>
+                    <td style="padding: 4px 0; text-align: right; font-weight: bold; color: #111827; font-family: monospace;">${this.escapeHtml(order.orderNumber)}</td>
                   </tr>
                   <tr>
                     <td style="padding: 4px 0; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Date Placed</td>
-                    <td style="padding: 4px 0; text-align: right; color: #111827;">${dateStr}</td>
+                    <td style="padding: 4px 0; text-align: right; color: #111827;">${this.escapeHtml(dateStr)}</td>
                   </tr>
                   <tr>
                     <td style="padding: 4px 0; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Fulfillment Status</td>
-                    <td style="padding: 4px 0; text-align: right; font-weight: 800; color: #f59e0b; text-transform: uppercase;">${order.orderStatus.replace(/_/g, ' ')}</td>
+                    <td style="padding: 4px 0; text-align: right; font-weight: 800; color: #f59e0b; text-transform: uppercase;">${this.escapeHtml(order.orderStatus.replace(/_/g, ' '))}</td>
                   </tr>
                   <tr>
                     <td style="padding: 4px 0; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Payment Status</td>
-                    <td style="padding: 4px 0; text-align: right; font-weight: 800; color: ${order.paymentStatus === 'paid' ? '#10b981' : '#f59e0b'}; text-transform: uppercase;">${order.paymentStatus}</td>
+                    <td style="padding: 4px 0; text-align: right; font-weight: 800; color: ${order.paymentStatus === 'paid' ? '#10b981' : '#f59e0b'}; text-transform: uppercase;">${this.escapeHtml(order.paymentStatus)}</td>
                   </tr>
                 </table>
               </div>
@@ -162,7 +172,7 @@ export class NotificationTemplateRenderer {
               <table align="right" width="240" border="0" cellspacing="0" cellpadding="0" style="font-size: 13px;">
                 <tr>
                   <td style="padding: 6px 0; color: #6b7280;">Subtotal</td>
-                  <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #111827;">${formattedTotal}</td>
+                  <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #111827;">${this.escapeHtml(formattedTotal)}</td>
                 </tr>
                 <tr>
                   <td style="padding: 6px 0; color: #6b7280;">Delivery Zone Fee</td>
@@ -170,7 +180,7 @@ export class NotificationTemplateRenderer {
                 </tr>
                 <tr style="border-top: 1px solid #e5e7eb;">
                   <td style="padding: 12px 0 0 0; font-size: 14px; font-weight: 900; color: #111827;">Grand Total</td>
-                  <td style="padding: 12px 0 0 0; font-size: 16px; font-weight: 900; color: #111827; text-align: right;">${formattedTotal}</td>
+                  <td style="padding: 12px 0 0 0; font-size: 16px; font-weight: 900; color: #111827; text-align: right;">${this.escapeHtml(formattedTotal)}</td>
                 </tr>
               </table>
             </td>

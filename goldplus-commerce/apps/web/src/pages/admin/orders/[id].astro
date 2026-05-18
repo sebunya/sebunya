@@ -119,43 +119,53 @@ try {
 }
 
 // Fallback generator for zero-outage display
+function escapeHtml(str: string | null | undefined): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
 
 if (!previewData.emailHtml) {
   const formattedTotal = formatter.format(order.totalUgx);
   const itemsHtml = (order.items || []).map((item: any) => `
     <tr>
-      <td style="padding: 12px; font-weight: bold; color: #111827; border-bottom: 1px solid #f3f4f6;">${item.productName}</td>
-      <td style="padding: 12px; text-align: center; color: #6b7280; border-bottom: 1px solid #f3f4f6;">${item.sku || 'N/A'}</td>
+      <td style="padding: 12px; font-weight: bold; color: #111827; border-bottom: 1px solid #f3f4f6;">${escapeHtml(item.productName)}</td>
+      <td style="padding: 12px; text-align: center; color: #6b7280; border-bottom: 1px solid #f3f4f6;">${escapeHtml(item.sku || 'N/A')}</td>
       <td style="padding: 12px; text-align: center; font-weight: bold; color: #374151; border-bottom: 1px solid #f3f4f6;">${item.quantity}</td>
-      <td style="padding: 12px; text-align: right; color: #4b5563; border-bottom: 1px solid #f3f4f6;">${formatter.format(item.unitPrice)}</td>
-      <td style="padding: 12px; text-align: right; font-weight: 800; color: #111827; border-bottom: 1px solid #f3f4f6;">${formatter.format(item.unitPrice * item.quantity)}</td>
+      <td style="padding: 12px; text-align: right; color: #4b5563; border-bottom: 1px solid #f3f4f6;">${escapeHtml(formatter.format(item.unitPrice))}</td>
+      <td style="padding: 12px; text-align: right; font-weight: 800; color: #111827; border-bottom: 1px solid #f3f4f6;">${escapeHtml(formatter.format(item.unitPrice * item.quantity))}</td>
     </tr>
   `).join('');
 
   let fallbackTitle = 'Order Received & Awaiting Payment';
-  let fallbackMsg = `Thank you for your order. We have successfully received order number <strong>${order.orderNumber}</strong>. Please proceed with payment via your Mobile Money checkout screen or follow PesaPal payment links to complete your purchase.`;
+  let fallbackMsg = `Thank you for your order. We have successfully received order number <strong>${escapeHtml(order.orderNumber)}</strong>. Please proceed with payment via your Mobile Money checkout screen or follow PesaPal payment links to complete your purchase.`;
   let isSuccessColor = false;
 
   if (previewData.template === 'ORDER_PAYMENT_PENDING') {
     fallbackTitle = 'Payment Verification Pending';
-    fallbackMsg = `We have recorded a pending payment attempt for order <strong>${order.orderNumber}</strong>. Our systems are currently verifying transaction status. No further action is required.`;
+    fallbackMsg = `We have recorded a pending payment attempt for order <strong>${escapeHtml(order.orderNumber)}</strong>. Our systems are currently verifying transaction status. No further action is required.`;
   } else if (previewData.template === 'ORDER_PAYMENT_SUCCESS') {
     fallbackTitle = 'Payment Confirmed & Order Processing';
-    fallbackMsg = `Excellent news! Payment of <strong>${formattedTotal}</strong> has been successfully verified. Your order <strong>${order.orderNumber}</strong> is now officially confirmed and transitioning to hardware dispatch logistics.`;
+    fallbackMsg = `Excellent news! Payment of <strong>${escapeHtml(formattedTotal)}</strong> has been successfully verified. Your order <strong>${escapeHtml(order.orderNumber)}</strong> is now officially confirmed and transitioning to hardware dispatch logistics.`;
     isSuccessColor = true;
   } else if (previewData.template === 'ORDER_PAYMENT_FAILED') {
     fallbackTitle = 'Payment Attempt Unsuccessful';
-    fallbackMsg = `We could not verify payment for order <strong>${order.orderNumber}</strong>. Please check your Mobile Money network or click checkout again to retry.`;
+    fallbackMsg = `We could not verify payment for order <strong>${escapeHtml(order.orderNumber)}</strong>. Please check your Mobile Money network or click checkout again to retry.`;
   } else if (previewData.template === 'ORDER_PAYMENT_CANCELLED') {
     fallbackTitle = 'Payment Attempt Cancelled';
-    fallbackMsg = `The payment checkout flow for order <strong>${order.orderNumber}</strong> was cancelled. You can retry checkout anytime from your order tracking screen.`;
+    fallbackMsg = `The payment checkout flow for order <strong>${escapeHtml(order.orderNumber)}</strong> was cancelled. You can retry checkout anytime from your order tracking screen.`;
   } else if (previewData.template === 'ORDER_FULFILLMENT_PROCESSING') {
     fallbackTitle = 'Logistics & Packaging in Progress';
-    fallbackMsg = `Your order <strong>${order.orderNumber}</strong> is currently being packaged and optimized for transport in Kampala. You will be notified as soon as it is shipped.`;
+    fallbackMsg = `Your order <strong>${escapeHtml(order.orderNumber)}</strong> is currently being packaged and optimized for transport in Kampala. You will be notified as soon as it is shipped.`;
   } else if (previewData.template === 'ORDER_FULFILLMENT_COMPLETED') {
     fallbackTitle = 'Delivery Confirmed & Settled';
-    fallbackMsg = `Congratulations! Order <strong>${order.orderNumber}</strong> has been delivered successfully. Thank you for choosing GoldPlus.`;
+    fallbackMsg = `Congratulations! Order <strong>${escapeHtml(order.orderNumber)}</strong> has been delivered successfully. Thank you for choosing GoldPlus.`;
     isSuccessColor = true;
   }
 
@@ -173,12 +183,12 @@ if (!previewData.emailHtml) {
           </tr>
           <tr>
             <td style="background-color: ${isSuccessColor ? '#ecfdf5' : '#fef3c7'}; padding: 16px 24px; border-bottom: 1px solid ${isSuccessColor ? '#d1fae5' : '#fde68a'};">
-              <h2 style="margin: 0; font-size: 14px; font-weight: 900; color: ${isSuccessColor ? '#065f46' : '#92400e'};">${fallbackTitle}</h2>
+              <h2 style="margin: 0; font-size: 14px; font-weight: 900; color: ${isSuccessColor ? '#065f46' : '#92400e'};">${escapeHtml(fallbackTitle)}</h2>
             </td>
           </tr>
           <tr>
             <td style="padding: 24px; font-size: 13px; line-height: 1.6; color: #374151;">
-              <p>Dear ${order.customerName},</p>
+              <p>Dear ${escapeHtml(order.customerName)},</p>
               <p>${fallbackMsg}</p>
             </td>
           </tr>
@@ -200,7 +210,7 @@ if (!previewData.emailHtml) {
           </tr>
           <tr>
             <td style="padding: 0 24px 24px 24px; text-align: right; font-weight: 900; font-size: 14px;">
-              Grand Total: ${formattedTotal}
+              Grand Total: ${escapeHtml(formattedTotal)}
             </td>
           </tr>
         </table>
@@ -503,6 +513,7 @@ if (currentStatus === 'received') {
                   id="email-iframe" 
                   class="w-full h-full border-0 bg-white" 
                   srcdoc={previewData.emailHtml}
+                  sandbox="allow-same-origin"
                 ></iframe>
               </div>
               <div class="flex justify-between items-center text-[10px] font-medium text-gray-400">
