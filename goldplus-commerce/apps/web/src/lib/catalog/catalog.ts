@@ -155,16 +155,16 @@ export function normalizeProductCategory(product: ProductPublicDto): ProductPubl
     inferredCategory = 'Sound Devices';
   } else {
     // Check keyword patterns for category inference on general/other categories
-    const isStorage = nameLower.includes('flash') || nameLower.includes('drive') || nameLower.includes('usb') || nameLower.includes('sd card') || nameLower.includes('microsd');
-    const isCar = nameLower.includes('car') || nameLower.includes('mount') || nameLower.includes('vehicle');
-    const isPc = nameLower.includes('mouse') || nameLower.includes('mice') || nameLower.includes('sound card') || nameLower.includes('audio card');
+    const isStorage = /\b(flash|drive|usb|sd|storage|microsd)\b/i.test(product.name);
+    const isCar = /\b(car|mount|vehicle)\b/i.test(product.name);
+    const isPc = /\b(mouse|mice|sound card|audio card)\b/i.test(product.name);
 
-    if (isStorage) {
-      inferredCategory = 'Storage Devices';
+    if (isPc) {
+      inferredCategory = 'PC Accessories';
     } else if (isCar) {
       inferredCategory = 'Car Accessories';
-    } else if (isPc) {
-      inferredCategory = 'PC Accessories';
+    } else if (isStorage) {
+      inferredCategory = 'Storage Devices';
     }
   }
 
