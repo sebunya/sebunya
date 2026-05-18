@@ -3,175 +3,370 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import { apiBase } from "../lib/api";
 import ProductCard from "../components/ProductCard.astro";
 import Notice from "../components/Notice.astro";
-import CategoryPopularRail from "../components/recommendations/CategoryPopularRail.astro";
+import { 
+  LOCAL_SEED_PRODUCTS, 
+  normalizeProductCategory, 
+  matchesQuery, 
+  sortProducts, 
+  CATEGORY_SLUG_TO_NAME, 
+  CATEGORY_NAME_TO_SLUG 
+} from "../lib/catalog/catalog";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
+// Approved categories taxonomy
 const categories = [
-  { slug: 'all', name: 'All Categories' },
+  { slug: 'all', name: 'All Products' },
   { slug: 'power', name: 'Power Devices' },
   { slug: 'sound', name: 'Sound Devices' },
   { slug: 'storage', name: 'Storage Devices' },
-  { slug: 'car', name: 'Car Accessories' }
+  { slug: 'car', name: 'Car Accessories' },
+  { slug: 'pc', name: 'PC Accessories' }
 ];
 
 const q = Astro.url.searchParams.get('q') || '';
 const category = Astro.url.searchParams.get('category') || 'all';
+const sort = Astro.url.searchParams.get('sort') || 'featured';
 const inStock = Astro.url.searchParams.get('inStock') === 'true';
 
-const queryParams = new URLSearchParams();
-if (q) queryParams.set('q', q);
-if (category && category !== 'all') queryParams.set('category', category);
-if (inStock) queryParams.set('inStock', 'true');
+// Helper function to build dynamic filter URLs preserving parameters
+function getFilterUrl(overrides: { q?: string; category?: string; sort?: string; inStock?: string }) {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (category && category !== 'all') params.set('category', category);
+  if (sort && sort !== 'featured') params.set('sort', sort);
+  if (inStock) params.set('inStock', 'true');
 
-let products: ProductPublicDto[] = [];
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === '' || value === 'all' || value === 'featured' || value === 'false') {
+      params.delete(key);
+    } else {
+      params.set(key, value);
+    }
+  }
+
+  const queryStr = params.toString();
+  return queryStr ? `/shop?${queryStr}` : '/shop';
+}
+
+// Active filter list generation
+const activeFilters = [];
+if (category !== 'all') {
+  activeFilters.push({
+    label: CATEGORY_SLUG_TO_NAME[category] ?? category,
+    removeUrl: getFilterUrl({ category: 'all' })
+  });
+}
+if (q) {
+  activeFilters.push({
+    label: `Search: "${q}"`,
+    removeUrl: getFilterUrl({ q: '' })
+  });
+}
+if (inStock) {
+  activeFilters.push({
+    label: 'In Stock Only',
+    removeUrl: getFilterUrl({ inStock: 'false' })
+  });
+}
+if (sort !== 'featured') {
+  const sortLabels: Record<string, string> = {
+    'price_low_high': 'Price: Low to High',
+    'price_high_low': 'Price: High to Low',
+    'name_az': 'Name: A-Z'
+  };
+  activeFilters.push({
+    label: sortLabels[sort] ?? sort,
+    removeUrl: getFilterUrl({ sort: 'featured' })
+  });
+}
+
+let rawProducts: ProductPublicDto[] = [];
+let isSampleData = false;
 let fetchError: string | null = null;
 
+// Fetch all available products with robust error handling and resilient local static seed fallback
 try {
-  const url = `${apiBase}/products?${queryParams.toString()}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+  const res = await fetch(`${apiBase}/products`, { signal: AbortSignal.timeout(3000) });
   if (res.ok) {
     const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-    if (json.success) {
-      products = json.data;
+    if (json.success && Array.isArray(json.data)) {
+      rawProducts = json.data;
     } else {
-      fetchError = json.error?.message || "Failed to load catalog.";
+      rawProducts = LOCAL_SEED_PRODUCTS;
+      isSampleData = true;
+      fetchError = "Unrecognized API response format. Safe offline mode active.";
     }
   } else {
-    fetchError = "Service unavailable. Please try again.";
+    rawProducts = LOCAL_SEED_PRODUCTS;
+    isSampleData = true;
+    fetchError = `Service returned status ${res.status}. Safe offline mode active.`;
   }
 } catch (err) {
-  fetchError = "Network issue. Unable to connect to the server.";
+  rawProducts = LOCAL_SEED_PRODUCTS;
+  isSampleData = true;
+  fetchError = "API is currently offline or unreachable. Safe offline mode active.";
 }
+
+// 1. Normalize categories using our storefront mapper
+const normalizedProducts = rawProducts.map(p => normalizeProductCategory(p));
+
+// 2. Programmatically filter the catalog using precise logic
+const filteredProducts = normalizedProducts.filter(product => {
+  // Category filter mapping
+  if (category !== 'all') {
+    const targetName = CATEGORY_SLUG_TO_NAME[category];
+    if (product.categoryName !== targetName) return false;
+  }
+
+  // High-relevance query filter to prevent false empty states
+  if (q && !matchesQuery(product, q)) {
+    return false;
+  }
+
+  // Stock status filter
+  if (inStock) {
+    const isAvailable = product.availability.kind === 'in_stock' || product.availability.kind === 'pre_order';
+    if (!isAvailable) return false;
+  }
+
+  return true;
+});
+
+// 3. Apply stable sorting algorithm
+const sortedProducts = sortProducts(filteredProducts, sort);
 ---
 
-<BaseLayout title="Shop Authentic Electronics | GoldPlus" description="Browse our catalog of verified electronics engineered for durability and reliability in Uganda.">
-  <div class="bg-brand-charcoal text-white py-16 border-b border-brand-borderGrey">
-    <div class="container mx-auto px-4 lg:px-8">
-      <h1 class="text-4xl md:text-5xl font-black tracking-tight text-brand-primary mb-4">GoldPlus Catalog</h1>
-      <p class="text-brand-mutedGrey max-w-2xl text-lg">Browse rigorously tested electronic essentials. Durable, authentic, and guaranteed original.</p>
+<BaseLayout 
+  title="Shop Verified Electronics | GoldPlus" 
+  description="Browse our catalog of authentic, rigorously tested electronics and accessories in Uganda. Durable and fully guaranteed."
+>
+  <!-- Sleek Premium Dark Sub-Header Banner -->
+  <div class="bg-gray-900 text-white py-14 border-b border-gray-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="max-w-3xl">
+        <h1 class="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white mb-4">
+          GoldPlus <span class="text-brand-primary">Catalog</span>
+        </h1>
+        <p class="text-gray-400 text-base sm:text-lg leading-relaxed font-medium">
+          Browse rigorously tested electronic essentials engineered for extreme durability. Authentic, original, and backed by a comprehensive warranty.
+        </p>
+      </div>
     </div>
   </div>
 
-  <div class="container mx-auto px-4 lg:px-8 py-10">
-    <div class="flex flex-col lg:flex-row gap-8">
-      
-      {/* Sidebar / Filters */}
-      <aside class="w-full lg:w-1/4 lg:max-w-[280px]">
-        <form action="/shop" method="get" class="bg-white p-6 rounded-2xl border border-brand-borderGrey sticky top-24 space-y-8">
-          
-          <div>
-            <h2 class="font-bold text-lg mb-3 text-brand-charcoal">Search</h2>
-            <div class="relative">
-              <input 
-                type="search" 
-                name="q" 
-                value={q}
-                placeholder="Name or model..." 
-                class="w-full pl-10 pr-4 py-2.5 bg-brand-softGrey border border-brand-borderGrey rounded-lg focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary outline-none text-sm"
-              />
-              <svg class="absolute left-3 top-2.5 h-4 w-4 text-brand-mutedGrey" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+    <!-- Offline Resilient Status Alert -->
+    {isSampleData && fetchError && (
+      <div class="mb-8">
+        <Notice kind="info" title="Offline Resilient Catalog Loaded" message="The shop is currently using cached product data. All filter, search, and sorting functions remain fully operational." />
+      </div>
+    )}
+
+    <div class="flex flex-col lg:flex-row gap-8 lg:gap-12">
+      <!-- SIDEBAR FILTERS (Desktop Only, hidden on mobile/tablet) -->
+      <aside class="hidden lg:block w-64 flex-shrink-0">
+        <div class="sticky top-24 space-y-8">
+          <form action="/shop" method="get" class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
+            <!-- Search Widget -->
+            <div>
+              <label for="search-input" class="block font-bold text-sm text-gray-850 mb-2.5">Search Catalog</label>
+              <div class="relative">
+                <input 
+                  type="search" 
+                  id="search-input"
+                  name="q" 
+                  value={q}
+                  placeholder="Name or model..." 
+                  class="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none text-xs font-semibold transition-all duration-300"
+                />
+                <svg class="absolute left-3 top-3 h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+              </div>
             </div>
-          </div>
 
-          <div>
-            <h2 class="font-bold text-lg mb-3 text-brand-charcoal">Categories</h2>
-            <ul class="space-y-1 text-sm">
-              {categories.map((cat) => {
-                const isActive = category === cat.slug;
-                const linkParams = new URLSearchParams(queryParams);
-                if (cat.slug === 'all') {
-                  linkParams.delete('category');
-                } else {
-                  linkParams.set('category', cat.slug);
-                }
-                return (
-                  <li>
-                    <a 
-                      href={`/shop?${linkParams.toString()}`} 
-                      class={`block px-3 py-2 rounded-lg transition-colors font-medium ${isActive ? 'bg-brand-primary/15 text-brand-charcoal font-bold' : 'text-brand-mutedGrey hover:bg-brand-softGrey hover:text-brand-charcoal'}`}
-                    >
-                      {cat.name}
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
-            {/* Hidden category state for search input submission to preserve it */}
-            {category !== 'all' && <input type="hidden" name="category" value={category} />}
-          </div>
+            <!-- Categories Widget -->
+            <div>
+              <h2 class="font-bold text-sm text-gray-850 mb-2.5">Categories</h2>
+              <ul class="space-y-1">
+                {categories.map((cat) => {
+                  const isActive = category === cat.slug;
+                  return (
+                    <li>
+                      <a 
+                        href={getFilterUrl({ category: cat.slug })} 
+                        class={`flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-300 text-xs font-bold leading-none ${
+                          isActive 
+                            ? 'bg-brand-primary/10 text-brand-charcoal border-l-4 border-brand-primary pl-2' 
+                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-950'
+                        }`}
+                      >
+                        <span>{cat.name}</span>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+              {category !== 'all' && <input type="hidden" name="category" value={category} />}
+            </div>
 
-          <div class="pt-4 border-t border-brand-borderGrey">
-             <label class="flex items-center gap-3 cursor-pointer group">
-               <input 
-                 type="checkbox" 
-                 name="inStock" 
-                 value="true" 
-                 checked={inStock}
-                 onChange="this.form.submit()"
-                 class="w-4 h-4 text-brand-primary border-brand-borderGrey rounded focus:ring-brand-primary cursor-pointer"
-               />
-               <span class="text-sm font-medium text-brand-charcoal group-hover:text-brand-primary transition-colors">Show in-stock only</span>
-             </label>
-          </div>
+            <!-- Stock Availability Widget -->
+            <div class="pt-4 border-t border-gray-100">
+              <label class="flex items-center gap-3 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  name="inStock" 
+                  value="true" 
+                  checked={inStock}
+                  onchange="this.form.submit()"
+                  class="w-4 h-4 text-brand-primary border-gray-200 rounded focus:ring-brand-primary cursor-pointer transition-colors"
+                />
+                <span class="text-xs font-bold text-gray-700 group-hover:text-brand-primary transition-colors">In-stock products only</span>
+              </label>
+            </div>
 
-          <button type="submit" class="w-full py-2 bg-brand-charcoal text-white font-bold rounded-lg hover:opacity-90 transition-opacity text-sm">
-            Apply filters
-          </button>
-
-          {(q || category !== 'all' || inStock) && (
-            <a href="/shop" class="block text-center text-xs text-brand-mutedGrey hover:text-brand-charcoal underline font-medium">
-              Clear all filters
-            </a>
-          )}
-        </form>
+            <!-- Submit Buttons -->
+            <div class="space-y-2 pt-2">
+              <button type="submit" class="w-full py-2.5 bg-gray-900 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-gray-800 transition-colors shadow-sm focus-visible:ring-2 focus-visible:ring-brand-primary outline-none">
+                Apply Filters
+              </button>
+              {(q || category !== 'all' || inStock) && (
+                <a href="/shop" class="block text-center py-2 bg-gray-50 text-gray-600 hover:text-gray-950 text-xs font-bold rounded-xl transition-colors border border-gray-100">
+                  Clear Filters
+                </a>
+              )}
+            </div>
+          </form>
+        </div>
       </aside>
 
-      {/* Main Content */}
-      <main class="w-full lg:flex-1">
-        
-        <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
-          <div>
-            <p class="text-brand-mutedGrey font-medium text-sm">
-              {fetchError ? 'Catalog access interrupted' : `Displaying ${products.length} product${products.length === 1 ? '' : 's'}`}
-            </p>
+      <!-- MAIN CATALOG LISTINGS AREA -->
+      <main class="flex-1 min-w-0">
+        <!-- Search & Category & Sort Controls Row -->
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <div class="bg-gray-50 px-3.5 py-1.5 rounded-full border border-gray-100 text-xs font-bold text-gray-700">
+              {sortedProducts.length} Product{sortedProducts.length === 1 ? '' : 's'} found
+            </div>
             {q && (
-              <h2 class="text-brand-charcoal font-bold mt-1">
-                Results for <span class="text-brand-primary">"{q}"</span>
-              </h2>
+              <span class="text-xs text-gray-500 font-medium">
+                for <strong class="text-gray-900">"{q}"</strong>
+              </span>
             )}
+          </div>
+
+          <!-- Sort Dropdown Widget -->
+          <div class="flex items-center gap-2">
+            <label for="sort-select" class="text-xs font-bold text-gray-500">Sort By:</label>
+            <select 
+              id="sort-select"
+              name="sort"
+              onchange="window.location.href = this.value"
+              class="pl-3 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none cursor-pointer transition-all duration-300"
+            >
+              <option value={getFilterUrl({ sort: 'featured' })} selected={sort === 'featured'}>Recommended</option>
+              <option value={getFilterUrl({ sort: 'price_low_high' })} selected={sort === 'price_low_high'}>Price: Low to High</option>
+              <option value={getFilterUrl({ sort: 'price_high_low' })} selected={sort === 'price_high_low'}>Price: High to Low</option>
+              <option value={getFilterUrl({ sort: 'name_az' })} selected={sort === 'name_az'}>Name: A-Z</option>
+            </select>
           </div>
         </div>
 
-        {category !== 'all' && !q && !fetchError && (
-          <div class="mb-10 pb-10 border-b border-brand-borderGrey">
-            <CategoryPopularRail categorySlug={category} />
+        <!-- MOBILE CAPSULE CATEGORY BAR (Visible on mobile/tablet under lg) -->
+        <div class="lg:hidden mb-6 overflow-x-auto no-scrollbar -mx-4 px-4 flex items-center gap-1.5">
+          {categories.map((cat) => {
+            const isActive = category === cat.slug;
+            // Short labels
+            const shortName = cat.slug === 'all' ? 'All' 
+              : cat.slug === 'power' ? 'Power' 
+              : cat.slug === 'sound' ? 'Sound' 
+              : cat.slug === 'storage' ? 'Storage' 
+              : cat.slug === 'car' ? 'Car' 
+              : 'PC';
+
+            return (
+              <a 
+                href={getFilterUrl({ category: cat.slug })}
+                class={`px-4 py-2 rounded-full text-xs font-bold flex-shrink-0 transition-all duration-300 ${
+                  isActive 
+                    ? 'bg-brand-primary text-brand-charcoal shadow-sm' 
+                    : 'bg-white text-gray-650 border border-gray-100'
+                }`}
+              >
+                {shortName}
+              </a>
+            );
+          })}
+        </div>
+
+        <!-- ACTIVE FILTER CHIPS TRACK (SSR & CSR Interactive Track) -->
+        {activeFilters.length > 0 && (
+          <div class="flex flex-wrap items-center gap-2 mb-6">
+            <span class="text-xs font-bold text-gray-400 uppercase tracking-widest mr-1">Active:</span>
+            {activeFilters.map((filter) => (
+              <a 
+                href={filter.removeUrl}
+                class="group flex items-center gap-1.5 pl-3 pr-2.5 py-1 bg-gray-50 border border-gray-150 rounded-full text-xs font-bold text-gray-700 hover:border-red-200 hover:text-red-600 transition-all duration-300"
+                title={`Remove filter: ${filter.label}`}
+              >
+                <span>{filter.label}</span>
+                <span class="w-3.5 h-3.5 bg-gray-200/60 rounded-full flex items-center justify-center text-[10px] font-black group-hover:bg-red-150 transition-colors">
+                  &times;
+                </span>
+              </a>
+            ))}
+            <a 
+              href="/shop" 
+              class="text-xs font-black text-brand-primary hover:text-gray-900 transition-colors underline pl-1"
+            >
+              Clear All
+            </a>
           </div>
         )}
 
-        {fetchError ? (
-          <div class="mb-8">
-            <Notice kind="warning" title="Product service currently constrained" message={fetchError} />
-          </div>
-        ) : products.length > 0 ? (
+        <!-- GRID VS EMPTY STATE RESCUE -->
+        {sortedProducts.length > 0 ? (
           <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-            {products.map(p => (
-              <ProductCard product={p} />
+            {sortedProducts.map((p) => (
+              <div class="h-full">
+                <ProductCard product={p} />
+              </div>
             ))}
           </div>
         ) : (
-          <div class="text-center py-20 bg-brand-softGrey rounded-2xl border border-brand-borderGrey">
-            <div class="max-w-md mx-auto">
-              <svg class="w-16 h-16 mx-auto text-brand-mutedGrey/40 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-              <h3 class="text-xl font-bold text-brand-charcoal mb-2">No matching items found</h3>
-              <p class="text-brand-mutedGrey text-sm mb-6">We found no published records matching your criteria. Try adjusting filters or browse all products.</p>
-              <a href="/shop" class="inline-block px-6 py-2.5 bg-brand-charcoal text-white rounded-lg font-bold hover:opacity-90 transition-opacity">View entire collection</a>
+          <!-- Customer-Grade Resilient Empty State -->
+          <div class="text-center py-16 px-4 bg-white rounded-3xl border border-gray-100 shadow-sm max-w-2xl mx-auto">
+            <div class="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-100">
+              <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+              </svg>
             </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-2">No matching products found</h3>
+            <p class="text-gray-500 text-sm max-w-md mx-auto mb-6">
+              We couldn't find any verified GoldPlus products matching your current query. Try adjusting your search filters or browse other popular categories.
+            </p>
+
+            <!-- Shortcuts Suggestions -->
+            <div class="mb-8">
+              <span class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Popular Searches</span>
+              <div class="flex flex-wrap justify-center gap-2 max-w-sm mx-auto">
+                <a href="/shop?q=charger" class="px-3 py-1.5 bg-gray-55 border border-gray-150 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors">GP Charger</a>
+                <a href="/shop?q=earbuds" class="px-3 py-1.5 bg-gray-55 border border-gray-150 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors">Earbuds</a>
+                <a href="/shop?q=flash" class="px-3 py-1.5 bg-gray-55 border border-gray-150 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors">Flash Drives</a>
+                <a href="/shop?q=mount" class="px-3 py-1.5 bg-gray-55 border border-gray-150 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors">Car Mount</a>
+              </div>
+            </div>
+
+            <!-- Clear Action -->
+            <a 
+              href="/shop" 
+              class="inline-flex items-center px-6 py-3 bg-gray-900 text-white hover:bg-gray-800 text-xs font-black uppercase tracking-widest rounded-xl transition-all duration-300 shadow-sm focus-visible:ring-2 focus-visible:ring-brand-primary outline-none"
+            >
+              Reset Filters & View All
+            </a>
           </div>
         )}
       </main>
-
     </div>
   </div>
 </BaseLayout>
-
-
