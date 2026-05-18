@@ -6,35 +6,52 @@ import { apiBase } from '../../lib/api';
 import type { ProductPublicDto, ApiEnvelope } from '@goldplus/shared';
 import CompleteSetupRail from '../../components/recommendations/CompleteSetupRail.astro';
 import RelatedProductsRail from '../../components/recommendations/RelatedProductsRail.astro';
+import { LOCAL_SEED_PRODUCTS, normalizeProductCategory } from '../../lib/catalog/catalog';
 
 const { slug } = Astro.params;
 
 let product: ProductPublicDto | null = null;
 let fetchError: string | null = null;
+let isOfflineFallback = false;
 
 try {
   const res = await fetch(`${apiBase}/products/${encodeURIComponent(slug ?? '')}`, {
     headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(3000)
   });
-  if (res.status === 404) {
-    return Astro.redirect('/404', 404);
-  }
-  if (!res.ok) {
-    fetchError = `API responded with HTTP ${res.status}.`;
-  } else {
+  if (res.ok) {
     const json = (await res.json()) as ApiEnvelope<ProductPublicDto>;
     if (json.success && json.data) {
-      product = json.data;
+      product = normalizeProductCategory(json.data);
     } else {
       fetchError = json.error?.message ?? 'Unexpected API response.';
     }
+  } else if (res.status === 404) {
+    // Try to find it in the local seed list
+    const found = LOCAL_SEED_PRODUCTS.find(p => p.slug === slug);
+    if (found) {
+      product = normalizeProductCategory(found);
+      isOfflineFallback = true;
+    } else {
+      return Astro.redirect('/404', 404);
+    }
+  } else {
+    fetchError = `API responded with HTTP ${res.status}.`;
   }
 } catch {
   fetchError = 'Cannot reach the product service right now.';
 }
 
-if (!product && !fetchError) {
-  return Astro.redirect('/404', 404);
+if (!product) {
+  // If we couldn't fetch from API, try finding in local fallback
+  const found = LOCAL_SEED_PRODUCTS.find(p => p.slug === slug);
+  if (found) {
+    product = normalizeProductCategory(found);
+    isOfflineFallback = true;
+    fetchError = null; // Clear fetchError to display the fallback product details
+  } else {
+    return Astro.redirect('/404', 404);
+  }
 }
 
 const formatUgx = (amount: number): string =>
@@ -169,8 +186,12 @@ const canonical = Astro.url.toString();
           </div>
 
           <form method="POST" action="/cart" class="flex flex-col sm:flex-row gap-4 mb-8">
+            <input type="hidden" name="action" value="add" />
             <input type="hidden" name="productId" value={product.id} />
             <input type="hidden" name="slug" value={product.slug} />
+            <input type="hidden" name="name" value={product.name} />
+            <input type="hidden" name="categoryName" value={product.categoryName} />
+            <input type="hidden" name="priceUgx" value={product.retailPriceUgx ?? 0} />
             <button
               type="submit"
               disabled={!canBuy}

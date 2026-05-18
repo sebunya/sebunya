@@ -7,6 +7,7 @@ import { readCartSessionId } from '../lib/cart-session';
 import type { ApiEnvelope } from '@goldplus/shared';
 import CartAddonRail from '../components/recommendations/CartAddonRail.astro';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
+import { LOCAL_SEED_PRODUCTS } from '../lib/catalog/catalog';
 
 import crypto from 'node:crypto';
 
@@ -28,45 +29,125 @@ interface CartResponse {
 let sessionId = readCartSessionId(Astro.request);
 let isNewSession = false;
 
-// Handle Add-to-Cart and cart update POST form submissions
+// Handle Add, Update, and Remove POST submissions
 if (Astro.request.method === 'POST') {
   try {
     const formData = await Astro.request.formData();
+    const action = formData.get('action')?.toString() || 'add';
     const productId = formData.get('productId')?.toString();
-    
+    const slug = formData.get('slug')?.toString() || '';
+    const name = formData.get('name')?.toString() || '';
+    const categoryName = formData.get('categoryName')?.toString() || '';
+    const priceUgx = Number(formData.get('priceUgx') || 0);
+
     if (productId) {
       if (!sessionId) {
         sessionId = crypto.randomUUID();
         isNewSession = true;
       }
-      
-      // Post addition directly to the core backend API
-      const apiRes = await fetch(`${apiBase}/commerce/cart/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cartId: sessionId,
-          item: {
+
+      // 1. Load active fallback items from cookie
+      let localItems: CartItem[] = [];
+      const localDataCookie = Astro.cookies.get('goldplus_cart_data')?.value;
+      if (localDataCookie) {
+        try {
+          localItems = JSON.parse(localDataCookie) as CartItem[];
+        } catch {}
+      }
+
+      // 2. Perform cart actions
+      if (action === 'add') {
+        const existing = localItems.find(i => i.productId === productId);
+        if (existing) {
+          existing.quantity += 1;
+        } else {
+          localItems.push({
             productId,
-            quantity: 1
-          }
-        })
+            slug,
+            name,
+            categoryName: categoryName || null,
+            quantity: 1,
+            unitPriceUgx: priceUgx
+          });
+        }
+
+        try {
+          await fetch(`${apiBase}/commerce/cart/add`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cartId: sessionId,
+              item: { productId, quantity: 1 }
+            }),
+            signal: AbortSignal.timeout(2000)
+          });
+        } catch (err) {
+          console.warn('[CART_OFFLINE] Using client fallback for Add to Cart:', err);
+        }
+
+      } else if (action === 'update') {
+        const qty = Number(formData.get('quantity') || 1);
+        const validatedQty = qty < 1 ? 1 : qty;
+        
+        const existing = localItems.find(i => i.productId === productId);
+        if (existing) {
+          existing.quantity = validatedQty;
+        }
+
+        try {
+          await fetch(`${apiBase}/commerce/cart/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cartId: sessionId,
+              productId,
+              quantity: validatedQty
+            }),
+            signal: AbortSignal.timeout(2000)
+          });
+        } catch (err) {
+          console.warn('[CART_OFFLINE] Using client fallback for Update Quantity:', err);
+        }
+
+      } else if (action === 'remove') {
+        localItems = localItems.filter(i => i.productId !== productId);
+
+        try {
+          await fetch(`${apiBase}/commerce/cart/remove`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cartId: sessionId,
+              productId
+            }),
+            signal: AbortSignal.timeout(2000)
+          });
+        } catch (err) {
+          console.warn('[CART_OFFLINE] Using client fallback for Remove Item:', err);
+        }
+      }
+
+      // 3. Save synchronized list to cookie
+      Astro.cookies.set('goldplus_cart_data', JSON.stringify(localItems), {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 365, // 1 year
+        sameSite: 'lax',
+        httpOnly: false
       });
 
-      if (isNewSession && apiRes.ok) {
+      if (isNewSession) {
         Astro.cookies.set('goldplus_cart_id', sessionId, {
           path: '/',
-          maxAge: 60 * 60 * 24 * 365, // 1 year
+          maxAge: 60 * 60 * 24 * 365,
           sameSite: 'lax',
           httpOnly: false
         });
       }
-      
-      // Perform standard PRG (Post-Redirect-Get) to prevent resubmission on page refresh
+
       return Astro.redirect('/cart', 303);
     }
   } catch (err) {
-    console.error('[CART_POST_ERROR] Failed to add item to cart:', err);
+    console.error('[CART_POST_ERROR] Failed to handle cart post:', err);
   }
 }
 
@@ -77,23 +158,35 @@ if (sessionId) {
   try {
     const res = await fetch(`${apiBase}/commerce/carts/${encodeURIComponent(sessionId)}`, {
       headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(2000)
     });
-    if (!res.ok && res.status !== 404) {
-      fetchError = `Failed to load cart (HTTP ${res.status})`;
-    } else if (res.ok) {
+    if (res.ok) {
       const json = (await res.json()) as ApiEnvelope<CartResponse>;
       if (json.success && json.data) {
         cart = json.data;
       }
+    } else if (res.status !== 404) {
+      fetchError = `Failed to load cart (HTTP ${res.status})`;
     }
   } catch {
     fetchError = 'Cannot reach the commerce service right now.';
   }
 }
 
-const items: CartItem[] = cart?.items ?? [];
+// Fallback to local cookie state if API failed or returned empty while cookie has items!
+let items: CartItem[] = cart?.items ?? [];
+if (items.length === 0) {
+  const localDataCookie = Astro.cookies.get('goldplus_cart_data')?.value;
+  if (localDataCookie) {
+    try {
+      items = JSON.parse(localDataCookie) as CartItem[];
+      fetchError = null; // Clear fetchError since we successfully recovered from fallback!
+    } catch {}
+  }
+}
+
 const cartProductIds = items.map(i => i.productId);
-const subtotal = cart?.subtotalUgx ?? 0;
+const subtotal = items.reduce((acc, item) => acc + (item.unitPriceUgx * item.quantity), 0);
 
 const formatUgx = (n: number): string =>
   new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
@@ -128,29 +221,91 @@ const formatUgx = (n: number): string =>
         <div class="w-full lg:w-2/3">
           <div class="bg-white rounded-2xl border border-brand-borderGrey overflow-hidden shadow-sm">
             <ul class="divide-y divide-brand-borderGrey" aria-label="Cart items">
-              {items.map((item) => (
-                <li class="p-5 md:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
-                  <div class="w-20 h-20 bg-brand-softGrey rounded-lg flex-shrink-0 flex items-center justify-center text-[10px] text-brand-mutedGrey font-bold border border-brand-borderGrey uppercase text-center p-2">
-                    No image
-                  </div>
-                  <div class="flex-grow min-w-0">
-                    {item.categoryName && (
-                      <p class="text-xs font-bold text-brand-primary uppercase tracking-widest mb-1">{item.categoryName}</p>
+              {items.map((item) => {
+                // Recover matching local product image
+                const localProd = LOCAL_SEED_PRODUCTS.find(p => p.id === item.productId || p.slug === item.slug);
+                const imageUrl = localProd?.primaryImageUrl ?? null;
+                
+                return (
+                  <li class="p-5 md:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+                    {imageUrl ? (
+                      <img 
+                        src={imageUrl} 
+                        alt={item.name} 
+                        class="w-20 h-20 object-cover bg-brand-softGrey rounded-lg flex-shrink-0 border border-brand-borderGrey"
+                      />
+                    ) : (
+                      <div class="w-20 h-20 bg-brand-softGrey rounded-lg flex-shrink-0 flex items-center justify-center text-[10px] text-brand-mutedGrey font-bold border border-brand-borderGrey uppercase text-center p-2">
+                        No image
+                      </div>
                     )}
-                    <a href={`/products/${item.slug}`} class="font-bold text-brand-charcoal hover:underline">{item.name}</a>
-                    <p class="text-sm text-brand-mutedGrey mt-1">Qty: {item.quantity} × {formatUgx(item.unitPriceUgx)}</p>
-                  </div>
-                  <p class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(item.unitPriceUgx * item.quantity)}</p>
-                </li>
-              ))}
+                    
+                    <div class="flex-grow min-w-0">
+                      {item.categoryName && (
+                        <p class="text-xs font-bold text-brand-primary uppercase tracking-widest mb-1">{item.categoryName}</p>
+                      )}
+                      <a href={`/products/${item.slug}`} class="font-bold text-brand-charcoal hover:underline">{item.name}</a>
+                      <p class="text-sm text-brand-mutedGrey mt-1">{formatUgx(item.unitPriceUgx)} each</p>
+                    </div>
+                    
+                    {/* Quantity Selector controls */}
+                    <div class="flex items-center gap-3">
+                      <form method="POST" action="/cart" class="flex items-center gap-2">
+                        <input type="hidden" name="action" value="update" />
+                        <input type="hidden" name="productId" value={item.productId} />
+                        
+                        <button 
+                          type="submit" 
+                          name="quantity" 
+                          value={item.quantity - 1} 
+                          aria-label="Decrease quantity"
+                          class="w-8 h-8 rounded-full border border-brand-borderGrey flex items-center justify-center font-bold text-brand-charcoal hover:bg-brand-softGrey transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"
+                        >
+                          -
+                        </button>
+                        
+                        <span class="w-8 text-center font-bold text-brand-charcoal text-sm" aria-label={`Quantity: ${item.quantity}`}>
+                          {item.quantity}
+                        </span>
+                        
+                        <button 
+                          type="submit" 
+                          name="quantity" 
+                          value={item.quantity + 1} 
+                          aria-label="Increase quantity"
+                          class="w-8 h-8 rounded-full border border-brand-borderGrey flex items-center justify-center font-bold text-brand-charcoal hover:bg-brand-softGrey transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"
+                        >
+                          +
+                        </button>
+                      </form>
+                      
+                      <form method="POST" action="/cart" class="ml-auto sm:ml-0">
+                        <input type="hidden" name="action" value="remove" />
+                        <input type="hidden" name="productId" value={item.productId} />
+                        <button 
+                          type="submit" 
+                          aria-label={`Remove ${item.name} from cart`}
+                          class="p-2 text-brand-mutedGrey hover:text-brand-error transition-colors rounded-lg hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-brand-error outline-none"
+                        >
+                          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </form>
+                    </div>
+
+                    <p class="font-bold text-brand-charcoal whitespace-nowrap text-right min-w-[80px]">{formatUgx(item.unitPriceUgx * item.quantity)}</p>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </div>
 
         <aside class="w-full lg:w-1/3">
-          <div class="bg-white rounded-2xl border border-brand-borderGrey p-6 sticky top-24">
+          <div class="bg-white rounded-2xl border border-brand-borderGrey p-6 sticky top-24 shadow-sm">
             <h2 class="text-lg font-bold text-brand-charcoal mb-4">Summary</h2>
-            <dl class="space-y-2 text-sm">
+            <dl class="space-y-3 text-sm">
               <div class="flex items-center justify-between">
                 <dt class="text-brand-mutedGrey">Subtotal</dt>
                 <dd class="font-bold text-brand-charcoal">{formatUgx(subtotal)}</dd>
@@ -161,17 +316,17 @@ const formatUgx = (n: number): string =>
               </div>
               <div class="flex items-center justify-between pt-3 border-t border-brand-borderGrey">
                 <dt class="font-bold text-brand-charcoal">Total</dt>
-                <dd class="font-black text-brand-charcoal">{formatUgx(subtotal)}</dd>
+                <dd class="font-black text-brand-charcoal text-lg">{formatUgx(subtotal)}</dd>
               </div>
             </dl>
 
             <a
               href="/checkout"
-              class="block w-full text-center mt-6 px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none"
+              class="block w-full text-center mt-6 px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none transition-all shadow-sm"
             >
               Continue to checkout
             </a>
-            <a href="/shop" class="block text-center mt-3 text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">
+            <a href="/shop" class="block text-center mt-3 text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal transition-colors">
               Continue shopping
             </a>
           </div>
@@ -187,4 +342,3 @@ const formatUgx = (n: number): string =>
     )}
   </div>
 </BaseLayout>
-

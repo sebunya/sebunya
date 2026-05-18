@@ -16,6 +16,36 @@ routes.post('/cart/add', async (c) => {
   return c.json(res);
 });
 
+routes.post('/cart/update', async (c) => {
+  const body = await c.req.json();
+  const { cartId, productId, quantity } = body;
+  const cart = await registry.cartRepo.findById(cartId);
+  if (cart) {
+    const updated = cart.updateQuantity(productId, quantity);
+    await registry.cartRepo.save(updated);
+  }
+  const res: ApiResponse<{ status: string }> = {
+    success: true,
+    data: { status: 'item_updated' },
+  };
+  return c.json(res);
+});
+
+routes.post('/cart/remove', async (c) => {
+  const body = await c.req.json();
+  const { cartId, productId } = body;
+  const cart = await registry.cartRepo.findById(cartId);
+  if (cart) {
+    const updated = cart.removeItem(productId);
+    await registry.cartRepo.save(updated);
+  }
+  const res: ApiResponse<{ status: string }> = {
+    success: true,
+    data: { status: 'item_removed' },
+  };
+  return c.json(res);
+});
+
 routes.get('/carts/:id', async (c) => {
   try {
     const id = c.req.param('id');
