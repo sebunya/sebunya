@@ -74,10 +74,10 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
               isShopAllActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide ShoppingBag -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <!-- Lucide ShoppingBag (stroke-width 2.2) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M16 10a4 4 0 0 1-8 0" />
                 <path d="M3.103 6.034h17.794" />
                 <path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z" />
@@ -99,15 +99,14 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
               isPowerActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide PlugZap -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" />
-                <path d="m2 22 3-3" />
-                <path d="M7.5 13.5 10 11" />
-                <path d="M10.5 16.5 13 14" />
-                <path d="m18 3-4 4h6l-4 4" />
+              <!-- Lucide BatteryCharging (stroke-width 2.2) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m11 7-3 5h4l-3 5" />
+                <path d="M14.856 6H16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.935" />
+                <path d="M22 14v-4" />
+                <path d="M5.14 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2.936" />
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Power</span>
@@ -126,14 +125,11 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
               isSoundActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide Speaker -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <rect width="16" height="20" x="4" y="2" rx="2" />
-                <path d="M12 6h.01" />
-                <circle cx="12" cy="14" r="4" />
-                <path d="M12 14h.01" />
+              <!-- Lucide Headphones (stroke-width 2.2) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Sound</span>
@@ -152,17 +148,14 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
               isStorageActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide Usb -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="10" cy="7" r="1" />
-                <circle cx="4" cy="20" r="1" />
-                <path d="M4.7 19.3 19 5" />
-                <path d="m21 3-3 1 2 2Z" />
-                <path d="M9.26 7.68 5 12l2 5" />
-                <path d="m10 14 5 2 3.5-3.5" />
-                <path d="m18 12 1-1 1 1-1 1Z" />
+              <!-- Lucide HardDrive (stroke-width 2.2) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M10 16h.01" />
+                <path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                <path d="M21.946 12.013H2.054" />
+                <path d="M6 16h.01" />
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Storage</span>
@@ -181,10 +174,10 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
               isCarActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide CarFront -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <!-- Lucide CarFront (stroke-width 2.2) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8" />
                 <path d="M7 14h.01" />
                 <path d="M17 14h.01" />
@@ -206,9 +199,9 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             }`}
           >
             <!-- Icon Tile -->
-            <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors duration-300 flex-shrink-0">
-              <!-- Lucide Mouse -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+            <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors duration-300 flex-shrink-0">
+              <!-- Lucide Mouse (stroke-width 2.2) -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <rect x="5" y="2" width="14" height="20" rx="7" />
                 <path d="M12 6v4" />
               </svg>
@@ -218,8 +211,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         </nav>
       </div>
 
-      <!-- Premium Divider 1: Category Dock to Search -->
-      <div class="h-6 w-px bg-gray-200 opacity-60 self-center"></div>
+      <!-- Premium Divider 1: Category Dock to Search (Upgraded Visibility Slate-300) -->
+      <div class="h-7 w-px bg-slate-300 opacity-90 self-center"></div>
 
       <!-- Right Side Search Form (Expanded Width max-w-[420px] xl:max-w-[500px]) -->
       <form action="/shop" method="GET" class="flex-grow max-w-[420px] xl:max-w-[500px] relative group flex items-center h-10">
@@ -245,8 +238,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         </div>
       </form>
 
-      <!-- Premium Divider 2: Search to Account -->
-      <div class="h-6 w-px bg-gray-200 opacity-60 self-center"></div>
+      <!-- Premium Divider 2: Search to Account (Upgraded Visibility Slate-300) -->
+      <div class="h-7 w-px bg-slate-300 opacity-90 self-center"></div>
 
       <!-- Account Actions -->
       <div class="flex items-center gap-4 flex-shrink-0 h-10">
@@ -254,8 +247,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           Account
         </a>
         
-        <!-- Premium Divider 3: Account to Cart -->
-        <div class="h-6 w-px bg-gray-200 opacity-60 self-center"></div>
+        <!-- Premium Divider 3: Account to Cart (Upgraded Visibility Slate-300) -->
+        <div class="h-7 w-px bg-slate-300 opacity-90 self-center"></div>
 
         <!-- Cart Action -->
         <a href="/cart" class="group flex items-center gap-2 px-3 py-1.5 bg-gray-50 hover:bg-gray-100/80 border border-gray-100 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary h-10">
@@ -318,7 +311,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         <a href="/account" class="text-xs font-bold text-gray-600 hover:text-gray-950 transition-colors py-1.5 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded-lg">
           Account
         </a>
-        <div class="h-3 w-px bg-gray-200"></div>
+        <div class="h-3 w-px bg-slate-300 opacity-90"></div>
         <a href="/cart" class="group flex items-center gap-2.5 px-3.5 py-1.5 bg-gray-50 hover:bg-gray-100/80 border border-gray-100 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary h-10">
           <span class="text-xs font-bold text-gray-705 group-hover:text-gray-950 transition-colors">Cart</span>
           <span class="bg-brand-primary text-gray-950 text-[10px] font-black px-2 py-0.5 rounded-full transition-transform duration-300 group-hover:scale-110">
@@ -344,10 +337,10 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
               isShopAllActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
               <!-- Lucide ShoppingBag -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M16 10a4 4 0 0 1-8 0" />
                 <path d="M3.103 6.034h17.794" />
                 <path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z" />
@@ -368,15 +361,14 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
               isPowerActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide PlugZap -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" />
-                <path d="m2 22 3-3" />
-                <path d="M7.5 13.5 10 11" />
-                <path d="M10.5 16.5 13 14" />
-                <path d="m18 3-4 4h6l-4 4" />
+              <!-- Lucide BatteryCharging -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m11 7-3 5h4l-3 5" />
+                <path d="M14.856 6H16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.935" />
+                <path d="M22 14v-4" />
+                <path d="M5.14 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2.936" />
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Power</span>
@@ -394,14 +386,11 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
               isSoundActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide Speaker -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <rect width="16" height="20" x="4" y="2" rx="2" />
-                <path d="M12 6h.01" />
-                <circle cx="12" cy="14" r="4" />
-                <path d="M12 14h.01" />
+              <!-- Lucide Headphones -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Sound</span>
@@ -419,17 +408,14 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
               isStorageActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
-              <!-- Lucide Usb -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="10" cy="7" r="1" />
-                <circle cx="4" cy="20" r="1" />
-                <path d="M4.7 19.3 19 5" />
-                <path d="m21 3-3 1 2 2Z" />
-                <path d="M9.26 7.68 5 12l2 5" />
-                <path d="m10 14 5 2 3.5-3.5" />
-                <path d="m18 12 1-1 1 1-1 1Z" />
+              <!-- Lucide HardDrive -->
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M10 16h.01" />
+                <path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                <path d="M21.946 12.013H2.054" />
+                <path d="M6 16h.01" />
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Storage</span>
@@ -447,10 +433,10 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <div class={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-300 ${
               isCarActive 
                 ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-                : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                : 'bg-gray-50 border border-gray-100 text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
               <!-- Lucide CarFront -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8" />
                 <path d="M7 14h.01" />
                 <path d="M17 14h.01" />
@@ -471,9 +457,9 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
               isPCActive ? 'bg-gray-50 text-gray-950 font-bold' : 'hover:text-gray-950 text-gray-700'
             }`}
           >
-            <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors duration-300">
+            <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-600 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors duration-300">
               <!-- Lucide Mouse -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                 <rect x="5" y="2" width="14" height="20" rx="7" />
                 <path d="M12 6v4" />
               </svg>
@@ -543,10 +529,10 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         <div class={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors duration-300 ${
           isShopAllActive 
             ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-            : 'bg-gray-50 border border-gray-100 text-slate-500'
+            : 'bg-gray-50 border border-gray-100 text-slate-600'
         }`}>
           <!-- Lucide ShoppingBag -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M16 10a4 4 0 0 1-8 0" />
             <path d="M3.103 6.034h17.794" />
             <path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z" />
@@ -564,15 +550,14 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         <div class={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors duration-300 ${
           isPowerActive 
             ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-            : 'bg-gray-50 border border-gray-100 text-slate-500'
+            : 'bg-gray-50 border border-gray-100 text-slate-600'
         }`}>
-          <!-- Lucide PlugZap -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" />
-            <path d="m2 22 3-3" />
-            <path d="M7.5 13.5 10 11" />
-            <path d="M10.5 16.5 13 14" />
-            <path d="m18 3-4 4h6l-4 4" />
+          <!-- Lucide BatteryCharging -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m11 7-3 5h4l-3 5" />
+            <path d="M14.856 6H16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.935" />
+            <path d="M22 14v-4" />
+            <path d="M5.14 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2.936" />
           </svg>
         </div>
         <span>Power</span>
@@ -587,14 +572,11 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         <div class={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors duration-300 ${
           isSoundActive 
             ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-            : 'bg-gray-50 border border-gray-100 text-slate-500'
+            : 'bg-gray-50 border border-gray-100 text-slate-600'
         }`}>
-          <!-- Lucide Speaker -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <rect width="16" height="20" x="4" y="2" rx="2" />
-            <path d="M12 6h.01" />
-            <circle cx="12" cy="14" r="4" />
-            <path d="M12 14h.01" />
+          <!-- Lucide Headphones -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
           </svg>
         </div>
         <span>Sound</span>
@@ -609,17 +591,14 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         <div class={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors duration-300 ${
           isStorageActive 
             ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-            : 'bg-gray-50 border border-gray-100 text-slate-500'
+            : 'bg-gray-50 border border-gray-100 text-slate-600'
         }`}>
-          <!-- Lucide Usb -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="10" cy="7" r="1" />
-            <circle cx="4" cy="20" r="1" />
-            <path d="M4.7 19.3 19 5" />
-            <path d="m21 3-3 1 2 2Z" />
-            <path d="M9.26 7.68 5 12l2 5" />
-            <path d="m10 14 5 2 3.5-3.5" />
-            <path d="m18 12 1-1 1 1-1 1Z" />
+          <!-- Lucide HardDrive -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M10 16h.01" />
+            <path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+            <path d="M21.946 12.013H2.054" />
+            <path d="M6 16h.01" />
           </svg>
         </div>
         <span>Storage</span>
@@ -634,10 +613,10 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         <div class={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors duration-300 ${
           isCarActive 
             ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
-            : 'bg-gray-50 border border-gray-100 text-slate-500'
+            : 'bg-gray-50 border border-gray-100 text-slate-600'
         }`}>
           <!-- Lucide CarFront -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
             <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8" />
             <path d="M7 14h.01" />
             <path d="M17 14h.01" />
@@ -651,9 +630,9 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
 
       <!-- PC Segment -->
       <a href="/shop" class="snap-start flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200/70 rounded-xl text-gray-700 text-xs font-bold flex-shrink-0 shadow-sm">
-        <div class="w-9 h-9 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-500">
+        <div class="w-9 h-9 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-600">
           <!-- Lucide Mouse -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
             <rect x="5" y="2" width="14" height="20" rx="7" />
             <path d="M12 6v4" />
           </svg>
