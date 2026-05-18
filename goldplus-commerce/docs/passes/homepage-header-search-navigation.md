@@ -1,15 +1,15 @@
 # GoldPlus Storefront Header, Search, and Category Navigation Runbook
 
-This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R8 Premium Category Dock, Iconography Redesign, and Final Header Craft Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
+This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R9 Unified Segmented Category Dock, Search Polish, and Final Header Craft Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
 
 ---
 
 ## 1. Baseline State Lock
 
-* **Verified Commit Hash**: `cd8be29`
+* **Verified Commit Hash**: `6e65faa`
 * **Verified Git Tag**: `homepage-header-iconography-r8`
 * **Branch**: `phase-1-functional-depth`
-* **Working Tree State**: 100% clean baseline verified prior to R8 responsive modifications.
+* **Working Tree State**: 100% clean baseline verified prior to R9 modifications.
 
 ---
 
@@ -36,58 +36,47 @@ The following critical files containing homepage personalization, first-time-use
 
 ---
 
-## 4. Why R8 Responsive Structure Was Chosen
+## 4. Why Separate Chips Became a Unified Dock (H1A-R9)
 
-To provide an elite, award-winning visual craft that adapts with precision across all screen sizes, a robust responsive layout system was established in H1A-R8:
-* **Wide desktop (min-width: 1024px)**: Single-row ultra-slim elegant architecture. Fits branding, tactile category dock links, compact inline search, and primary account/cart actions on a single horizontal row without wrapping.
-* **Medium/tablet (768px - 1023px)**: Two-row spacious layout. Top row houses logo, central search bar, and primary actions. Bottom row centers the soft, premium category dock cards.
-* **Mobile (under 768px)**: Streamlined mobile banner housing brand, cart, and hamburger menu drawer, sitting directly above a responsive horizontal scroll visual category rail.
+While H1A-R8 established the correct responsive structures, the visual rendering of separate, floating card chips felt fragmented and resembled mobile-style filter buttons rather than a confident, premium, unified ecommerce navigation control. 
 
----
-
-## 5. Why R7 Iconography Was Not Accepted
-
-While structurally correct, H1A-R7 suffered from developer-grade visual design. Icons were faint, floated loosely without tactile boundaries, and used generic lightning bolt, arrow, and document vectors. The labels were rendered in harsh all-uppercase text, resembling a technical system control bar rather than a premium, customer-grade consumer electronics storefront.
+To achieve an Airbnb-inspired visual lock, we **unified the separate chips into a single, cohesive, segmented category dock**:
+* Nestled all categories (`Shop All`, `Power`, `Sound`, `Storage`, `Car`, `PC`) within a shared, premium rounded-2xl control bar (`bg-gray-50/60 p-1 border border-gray-200/80 rounded-2xl`).
+* Introduced elegant vertical dividing lines between the navigation segments to convey structure and commercially confident density.
+* Retained clean Title Case typography (`text-[13px] font-semibold text-gray-700`) and enhanced spacing.
+* Configured inline segments to morph smoothly into pristine white capsules with a micro-scale transition on hover (`hover:bg-white active:scale-98 shadow-sm`), keeping the header feeling fluid, dynamic, and state-of-the-art.
 
 ---
 
-## 6. Final Iconography Decisions
+## 5. Responsive Category Dock Refinement
 
-Every category item was upgraded to elegant, recognisable, high-fidelity custom line vector SVGs:
-* **Shop All**: Refined 4-card catalog grid (communicates all products cleanly).
-* **Power**: Refined plug charging icon (strong charging/cable metaphor).
-* **Sound**: Compact overhead audio headphones (reads instantly as personal sound/audio).
-* **Storage**: Custom micro-SD card outline (strong, modern flash storage metaphor).
-* **Car**: Silhouette of a consumer vehicle front profile (clearly maps car accessories).
-* **PC**: Outline of an ergonomic computer mouse (represents mice and sound cards truthfully).
+The unified segmented dock adapts flawlessly to all standard device screens:
+* **Wide Desktop Layout (`min-width: 1024px`)**: Sits centered within the ultra-slim single integrated row layout: `GoldPlus | Segmented Category Dock | Search Bar | Account | Cart`. Preferred header height is locked between 64px and 76px.
+* **Medium/Tablet Layout (`768px - 1023px`)**: Arranged in two spacious rows to prevent wrapping. Top row contains Logo, Search, and Actions. Bottom row houses the centered unified segmented category dock control.
+* **Mobile Layout (`under 768px`)**: Top row streamlined to branding, cart, and drawer toggles. Bottom row displays the horizontal scroll-snapping premium visual category pills with the custom iconography metaphors.
 
 ---
 
-## 7. Desktop Category Dock Refinement
+## 6. Search Copy & Submit Action Polish
 
-The loose, floating category row was completely redesigned into a **tactile, compact premium dock**:
-* Sits centered within a soft `bg-gray-50/50` dock row on medium layout and integrates directly into the top row on wide layout.
-* Each navigation category is structured as a compact white card chip (`bg-white border border-gray-200/50 hover:border-brand-primary/20 shadow-sm rounded-xl px-2.5 py-1.5`).
-* Custom SVGs are housed within a dedicated internal container tile (`w-6.5 h-6.5 bg-white border border-gray-100 rounded-lg flex items-center justify-center`).
-* Interactivity features smooth micro-animations: container borders, SVGs, and labels transition to GoldPlus green on hover/focus, with a subtle active-click scale effect (`active:scale-95`).
+* Swapped the generic `"Search products..."` placeholder back to the highly commercial and discoverable: **`"Search chargers, earbuds, power banks..."`**.
+* Replaced the developer-grade `"GO"` button label with a premium, sleek **`"Search"`** submission button, fully integrated with the header rhythm.
 
 ---
 
-## 8. Mobile Rail Refinement
+## 7. Confident Iconography Refinement
 
-* Maintained horizontal swipe-snap capabilities.
-* Exposes the new high-fidelity custom SVG icons directly inside white mobile capsules (`shadow-sm border rounded-xl`), giving landing mobile visitors immediate discovery indicators.
-
----
-
-## 9. Typography Changes
-
-* Swapped the harsh uppercase labels for elegant **Title Case labels** (e.g. `Shop All`, `Power`, `Sound`, `Storage`, `Car`, `PC`).
-* Font sizes were corrected to `text-xs font-semibold text-gray-700` (and `text-[11px]` on wide desktop single-row layout), establishing a premium, commercially confident typography scale.
+Default SVG icon colors were darkened from faint grey to medium slate (`text-gray-500`), enhancing visibility and accessibility. Hover and active states transition seamlessly to GoldPlus green.
+* **Shop All**: Refined grid layout.
+* **Power**: Upgraded plug charging icon with bolt.
+* **Sound**: Compact overhead audio headphones outline.
+* **Storage**: Modern micro-SD card vector silhouette.
+* **Car**: Profile outline of a consumer vehicle.
+* **PC**: Outline of an ergonomic computer mouse.
 
 ---
 
-## 10. Link Truthfulness Confirmation
+## 8. Link Truthfulness Confirmation
 
 To guarantee that zero empty result pages are triggered:
 * All active queries (`charger`, `earbuds`, `flash`, `mount`) have been verified in the seed database to return rich product lists.
@@ -95,7 +84,7 @@ To guarantee that zero empty result pages are triggered:
 
 ---
 
-## 11. Search & Core Elements Integrity
+## 9. Search & Core Elements Integrity
 
 * **Search Action**: GET form submissions to `/shop?q=term` remain fully active and responsive.
 * **Personalisation Integrity**: 100% isolated and unaffected.
@@ -104,7 +93,7 @@ To guarantee that zero empty result pages are triggered:
 
 ---
 
-## 12. Quality Gate Results
+## 10. Quality Gate Results
 
 * `pnpm typecheck`: **PASSED** (0 type errors).
 * `pnpm run test:unit`: **PASSED** (198 unit tests passed).
@@ -113,7 +102,7 @@ To guarantee that zero empty result pages are triggered:
 
 ---
 
-## 13. Final Status
+## 11. Final Status
 
 * **Status**: **COMPLETE & LOCKED**.
 * **Recommendation**: **GO**. The storefront header has successfully reached its ultimate, premium, Airbnb-inspired icon-led category navigation layout.
