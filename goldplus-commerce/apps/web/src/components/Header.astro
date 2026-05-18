@@ -88,6 +88,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <span class="text-[13px] font-semibold transition-colors duration-300">Shop All</span>
           </a>
 
+          <div class="h-4 w-px bg-slate-300/40 self-center flex-shrink-0" aria-hidden="true"></div>
+
           <!-- Power Segment -->
           <a
             href="/shop?q=charger"
@@ -114,6 +116,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <span class="text-[13px] font-semibold transition-colors duration-300">Power</span>
           </a>
 
+          <div class="h-4 w-px bg-slate-300/40 self-center flex-shrink-0" aria-hidden="true"></div>
+
           <!-- Sound Segment -->
           <a
             href="/shop?q=earbuds"
@@ -136,6 +140,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Sound</span>
           </a>
+
+          <div class="h-4 w-px bg-slate-300/40 self-center flex-shrink-0" aria-hidden="true"></div>
 
           <!-- Storage Segment -->
           <a
@@ -162,6 +168,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Storage</span>
           </a>
+
+          <div class="h-4 w-px bg-slate-300/40 self-center flex-shrink-0" aria-hidden="true"></div>
 
           <!-- Car Segment -->
           <a
@@ -190,6 +198,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Car</span>
           </a>
+
+          <div class="h-4 w-px bg-slate-300/40 self-center flex-shrink-0" aria-hidden="true"></div>
 
           <!-- PC Segment -->
           <a
@@ -349,6 +359,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <span class="text-[13px] font-semibold transition-colors duration-300">Shop All</span>
           </a>
 
+          <div class="h-3.5 w-px bg-slate-300/35 self-center flex-shrink-0" aria-hidden="true"></div>
+
           <!-- Power Segment -->
           <a
             href="/shop?q=charger"
@@ -374,6 +386,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             <span class="text-[13px] font-semibold transition-colors duration-300">Power</span>
           </a>
 
+          <div class="h-3.5 w-px bg-slate-300/35 self-center flex-shrink-0" aria-hidden="true"></div>
+
           <!-- Sound Segment -->
           <a
             href="/shop?q=earbuds"
@@ -395,6 +409,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Sound</span>
           </a>
+
+          <div class="h-3.5 w-px bg-slate-300/35 self-center flex-shrink-0" aria-hidden="true"></div>
 
           <!-- Storage Segment -->
           <a
@@ -420,6 +436,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Storage</span>
           </a>
+
+          <div class="h-3.5 w-px bg-slate-300/35 self-center flex-shrink-0" aria-hidden="true"></div>
 
           <!-- Car Segment -->
           <a
@@ -447,6 +465,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Car</span>
           </a>
+
+          <div class="h-3.5 w-px bg-slate-300/35 self-center flex-shrink-0" aria-hidden="true"></div>
 
           <!-- PC Segment -->
           <a
@@ -519,119 +539,126 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
     <!-- Mobile Horizontal Icon Category Rail -->
     <!-- Compacted height down to h-[52px] with 20px icons in a horizontal scrolling capsule chip track -->
     <!-- Redesigned with border-transparent / bg-transparent category icon wrappers and border-gray-150/40 pills -->
-    <div class="flex items-center gap-2 overflow-x-auto scroll-smooth snap-x snap-proximity pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] py-2 bg-white border-b border-gray-100/80 no-scrollbar h-[52px] scroll-pl-4 scroll-pr-6">
-      <!-- Shop All Segment -->
-      <a href="/shop" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
-        isShopAllActive 
-          ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
-          : 'bg-gray-50/30 border-gray-150/40 text-gray-700 hover:text-gray-950'
-      }`}>
-        <div class={`w-6 h-6 flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
-          isShopAllActive ? 'text-brand-primary' : 'text-slate-500'
+    <!-- Mobile Horizontal Icon Category Rail -->
+    <!-- Compacted height down to h-[46px] with 18px icons in a slim horizontal scrolling capsule chip track -->
+    <!-- Redesigned with border-transparent / bg-transparent category icon wrappers and border-gray-200/50 pills -->
+    <div class="relative w-full">
+      <div class="flex items-center gap-1.5 overflow-x-auto scroll-smooth pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] py-1.5 bg-white border-b border-gray-100/80 no-scrollbar h-[46px] scroll-pl-4 scroll-pr-6">
+        <!-- Shop All Segment -->
+        <a href="/shop" class={`flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 border border-gray-200/50 rounded-full text-xs font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
+          isShopAllActive 
+            ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
+            : 'bg-gray-50/20 text-gray-700 hover:text-gray-950'
         }`}>
-          <!-- Lucide ShoppingBag (w-5 h-5) -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M16 10a4 4 0 0 1-8 0" />
-            <path d="M3.103 6.034h17.794" />
-            <path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z" />
-          </svg>
-        </div>
-        <span>Shop All</span>
-      </a>
+          <div class={`w-5 h-5 flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
+            isShopAllActive ? 'text-brand-primary' : 'text-slate-500'
+          }`}>
+            <!-- Lucide ShoppingBag (w-[18px] h-[18px]) -->
+            <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M16 10a4 4 0 0 1-8 0" />
+              <path d="M3.103 6.034h17.794" />
+              <path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z" />
+            </svg>
+          </div>
+          <span>Shop All</span>
+        </a>
 
-      <!-- Power Segment -->
-      <a href="/shop?q=charger" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
-        isPowerActive 
-          ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
-          : 'bg-gray-50/30 border-gray-150/40 text-gray-700 hover:text-gray-950'
-      }`}>
-        <div class={`w-6 h-6 flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
-          isPowerActive ? 'text-brand-primary' : 'text-slate-500'
+        <!-- Power Segment -->
+        <a href="/shop?q=charger" class={`flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 border border-gray-200/50 rounded-full text-xs font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
+          isPowerActive 
+            ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
+            : 'bg-gray-50/20 text-gray-700 hover:text-gray-950'
         }`}>
-          <!-- Lucide BatteryCharging (w-5 h-5) -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m11 7-3 5h4l-3 5" />
-            <path d="M14.856 6H16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.935" />
-            <path d="M22 14v-4" />
-            <path d="M5.14 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2.936" />
-          </svg>
-        </div>
-        <span>Power</span>
-      </a>
+          <div class={`w-5 h-5 flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
+            isPowerActive ? 'text-brand-primary' : 'text-slate-500'
+          }`}>
+            <!-- Lucide BatteryCharging (w-[18px] h-[18px]) -->
+            <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m11 7-3 5h4l-3 5" />
+              <path d="M14.856 6H16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.935" />
+              <path d="M22 14v-4" />
+              <path d="M5.14 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2.936" />
+            </svg>
+          </div>
+          <span>Power</span>
+        </a>
 
-      <!-- Sound Segment -->
-      <a href="/shop?q=earbuds" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
-        isSoundActive 
-          ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
-          : 'bg-gray-50/30 border-gray-150/40 text-gray-700 hover:text-gray-950'
-      }`}>
-        <div class={`w-6 h-6 flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
-          isSoundActive ? 'text-brand-primary' : 'text-slate-500'
+        <!-- Sound Segment -->
+        <a href="/shop?q=earbuds" class={`flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 border border-gray-200/50 rounded-full text-xs font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
+          isSoundActive 
+            ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
+            : 'bg-gray-50/20 text-gray-700 hover:text-gray-950'
         }`}>
-          <!-- Lucide Headphones (w-5 h-5) -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
-          </svg>
-        </div>
-        <span>Sound</span>
-      </a>
+          <div class={`w-5 h-5 flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
+            isSoundActive ? 'text-brand-primary' : 'text-slate-500'
+          }`}>
+            <!-- Lucide Headphones (w-[18px] h-[18px]) -->
+            <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
+            </svg>
+          </div>
+          <span>Sound</span>
+        </a>
 
-      <!-- Storage Segment -->
-      <a href="/shop?q=flash" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
-        isStorageActive 
-          ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
-          : 'bg-gray-50/30 border-gray-150/40 text-gray-700 hover:text-gray-950'
-      }`}>
-        <div class={`w-6 h-6 flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
-          isStorageActive ? 'text-brand-primary' : 'text-slate-500'
+        <!-- Storage Segment -->
+        <a href="/shop?q=flash" class={`flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 border border-gray-200/50 rounded-full text-xs font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
+          isStorageActive 
+            ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
+            : 'bg-gray-50/20 text-gray-700 hover:text-gray-950'
         }`}>
-          <!-- Lucide HardDrive (w-5 h-5) -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M10 16h.01" />
-            <path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-            <path d="M21.946 12.013H2.054" />
-            <path d="M6 16h.01" />
-          </svg>
-        </div>
-        <span>Storage</span>
-      </a>
+          <div class={`w-5 h-5 flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
+            isStorageActive ? 'text-brand-primary' : 'text-slate-500'
+          }`}>
+            <!-- Lucide HardDrive (w-[18px] h-[18px]) -->
+            <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 16h.01" />
+              <path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+              <path d="M21.946 12.013H2.054" />
+              <path d="M6 16h.01" />
+            </svg>
+          </div>
+          <span>Storage</span>
+        </a>
 
-      <!-- Car Segment -->
-      <a href="/shop?q=mount" class={`snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 border rounded-full text-[13px] font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
-        isCarActive 
-          ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
-          : 'bg-gray-50/30 border-gray-150/40 text-gray-700 hover:text-gray-950'
-      }`}>
-        <div class={`w-6 h-6 flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
-          isCarActive ? 'text-brand-primary' : 'text-slate-500'
+        <!-- Car Segment -->
+        <a href="/shop?q=mount" class={`flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 border border-gray-200/50 rounded-full text-xs font-semibold flex-shrink-0 transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary ${
+          isCarActive 
+            ? 'bg-brand-primary/5 border-brand-primary/20 text-brand-primary font-bold' 
+            : 'bg-gray-50/20 text-gray-700 hover:text-gray-950'
         }`}>
-          <!-- Lucide CarFront (w-5 h-5) -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8" />
-            <path d="M7 14h.01" />
-            <path d="M17 14h.01" />
-            <rect width="18" height="8" x="3" y="10" rx="2" />
-            <path d="M5 18v2" />
-            <path d="M19 18v2" />
-          </svg>
-        </div>
-        <span>Car</span>
-      </a>
+          <div class={`w-5 h-5 flex items-center justify-center transition-colors duration-300 flex-shrink-0 ${
+            isCarActive ? 'text-brand-primary' : 'text-slate-500'
+          }`}>
+            <!-- Lucide CarFront (w-[18px] h-[18px]) -->
+            <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8" />
+              <path d="M7 14h.01" />
+              <path d="M17 14h.01" />
+              <rect width="18" height="8" x="3" y="10" rx="2" />
+              <path d="M5 18v2" />
+              <path d="M19 18v2" />
+            </svg>
+          </div>
+          <span>Car</span>
+        </a>
 
-      <!-- PC Segment -->
-      <a href="/shop" class="snap-start flex items-center gap-2 pl-1.5 pr-3 py-1 bg-gray-50/30 border border-gray-150/40 rounded-full text-gray-700 text-[13px] font-semibold flex-shrink-0 transition-all duration-300 hover:text-gray-950 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
-        <div class="w-6 h-6 flex items-center justify-center text-slate-500 flex-shrink-0">
-          <!-- Lucide Mouse (w-5 h-5) -->
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="5" y="2" width="14" height="20" rx="7" />
-            <path d="M12 6v4" />
-          </svg>
-        </div>
-        <span>PC</span>
-      </a>
+        <!-- PC Segment -->
+        <a href="/shop" class="flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 bg-gray-50/20 border border-gray-200/50 rounded-full text-gray-700 text-xs font-semibold flex-shrink-0 transition-all duration-300 hover:text-gray-950 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
+          <div class="w-5 h-5 flex items-center justify-center text-slate-500 flex-shrink-0">
+            <!-- Lucide Mouse (w-[18px] h-[18px]) -->
+            <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="5" y="2" width="14" height="20" rx="7" />
+              <path d="M12 6v4" />
+            </svg>
+          </div>
+          <span>PC</span>
+        </a>
 
-      <!-- Inert, non-focusable end spacer to guarantee right-end scroll breathing room -->
-      <span aria-hidden="true" class="block w-4 flex-shrink-0"></span>
+        <!-- Inert, non-focusable end spacer to guarantee right-end scroll breathing room -->
+        <span aria-hidden="true" class="block w-4 flex-shrink-0"></span>
+      </div>
+      <!-- Subtle right fade overlay (24px wide matching max padding bounds) -->
+      <div class="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-white to-transparent pointer-events-none z-10" aria-hidden="true"></div>
     </div>
   </div>
 
