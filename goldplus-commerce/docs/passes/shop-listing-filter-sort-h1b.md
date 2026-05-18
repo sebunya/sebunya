@@ -58,8 +58,12 @@ A product matches query `q` if:
 
 ### B. Unit Test Execution
 - **Command**: `pnpm run test:unit`
-- **Result**: `Exit Code: 0` (All 198 unit tests passed cleanly).
+- **Result**: `Exit Code: 0` (All 211 unit tests passed cleanly, including 13 new comprehensive storefront catalog tests).
 
-### C. Production Build Compilation
+### C. Regex Specifity Repair
+- **Observation**: Substring check `'car'` collided with word `'card'` inside `'MicroSD Card 128G'`. Additionally, `'usb'` in sound cards collided with storage devices.
+- **Solution**: Refactored the normalizer keyword mapper to check for specific word boundaries (`/\b(flash|drive|usb|sd|storage|microsd)\b/i`, `/\b(car|mount|vehicle)\b/i`, etc.) and prioritized specific accessory checks over general categories. All tests are now fully verified and green.
+
+### D. Production Build Compilation
 - **Command**: `pnpm build`
 - **Result**: `Exit Code: 0` (All Astro entrypoints, server assets, and server entrypoints compiled successfully).
