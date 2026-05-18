@@ -42,6 +42,7 @@ import { env } from '../config/env';
 import { WhatsAppAdapter } from './notifications/whatsapp/WhatsAppAdapter';
 import { ZeptoMailAdapter } from './notifications/zeptomail/ZeptoMailAdapter';
 import { DisabledSmsAdapter } from './notifications/sms/DisabledSmsAdapter';
+import { PahappaCommsSmsAdapter } from './notifications/sms/PahappaCommsSmsAdapter';
 import { DefaultNotificationRouter } from './notifications/NotificationRouter';
 
 import { ProductSignalExtractor } from '../application/recommendations/ProductSignalExtractor';
@@ -112,7 +113,9 @@ export class Registry {
   // Infrastructure Adapters
   public readonly whatsappAdapter = new WhatsAppAdapter();
   public readonly zeptoMailAdapter = new ZeptoMailAdapter();
-  public readonly smsAdapter = new DisabledSmsAdapter();
+  public readonly smsAdapter = process.env.SMS_PROVIDER === 'pahappa_comms'
+    ? new PahappaCommsSmsAdapter()
+    : new DisabledSmsAdapter();
 
   // Services & Routers
   public readonly notificationRouter = new DefaultNotificationRouter(

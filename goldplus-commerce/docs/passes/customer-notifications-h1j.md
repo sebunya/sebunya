@@ -252,3 +252,35 @@ sequenceDiagram
 Proceed with **GoldPlus Pass H1J-P2-P1A — SMS Provider Secure Credential Intake, Dry-Run Dispatch, Health Check, and Internal Test Send Gate**. The execution will commence only after the user confirms the designated SMS provider name and API details.
 
 ---
+
+## 8. GoldPlus Pass H1J-P2-P1A — SMS Provider Secure Integration
+
+This section documents the integration, normalization, balance verification, and dry-run safety gates successfully verified for the **Pahappa Comms / EgoSMS** SMS provider.
+
+### 8.1 SMS Provider Selection & Direct HTTP JSON API
+*   **Selected Provider:** Pahappa Comms / EgoSMS.
+*   **API Specification:**
+    *   Base URL: `https://comms.egosms.co/api/v1/json/`
+    *   Authentication: Credentials loaded dynamically from environment variables (`SMS_USERNAME`, `SMS_API_KEY`) and POSTed in the JSON request body under `userdata`.
+    *   Send method: JSON POST calling `method: "SendSms"`.
+    *   Balance check method: JSON POST calling `method: "Balance"`.
+*   **Decoupled SDK Decision:** Avoided third-party library dependencies (such as the SDK). Realized directly over fetch API to ensure light, modular, sandboxed, and test-mockable adapters.
+
+### 8.2 Global Safety & Controlled Internal Testing
+*   **No Customer Leakage:** SMS dispatch processes check global safety configs. Real gateway requests remain blocked by default unless `NOTIFICATIONS_DRY_RUN=false` and `NOTIFICATIONS_LIVE_SEND_ENABLED=true` and `NOTIFICATIONS_SMS_ENABLED=true`.
+*   **Allowlist Filters:** If `NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS` is configured, only allowed numbers normalized under Ugandan prefix standards (`256...`) can proceed to send. Any other destination maps gracefully to simulated dry-run log blocks.
+*   **Uganda-First Normalization:**
+    *   `0700111222` -> `256700111222`
+    *   `+256700111222` -> `256700111222`
+    *   `256700111222` -> `256700111222`
+    *   Invalid lengths, countries, or formatting structures return `INVALID_RECIPIENT` safely.
+*   **Anti-Leakage Logging:** Phone numbers are securely masked in logs (e.g. `25670******22`). Credentials and keys are never printed, leaked, or exposed inside application responses.
+
+### 8.3 Diagnostics & Balance Check Plan
+*   **Actionable Health Check:** The `getBalance()` method pings EgoSMS `Balance` endpoint, returning standard `'PASS' | 'FAIL' | 'NOT_CONFIGURED'` states along with numeric balances. Credentials are never leaked in error objects.
+
+### 8.4 Automated & Manual Testing Results
+*   **Unit Tests (`SmsProvider.test.ts`):** 13 comprehensive unit tests validating dry-runs, Uganda-first phone normalization, allowed test lists, invalid phone rejection, response status code mappings (`OK` -> `SENT`, `Failed` -> `PROVIDER_ERROR`), timeouts, and balance queries.
+*   *No blocking risks remain for this phase.*
+
+---
