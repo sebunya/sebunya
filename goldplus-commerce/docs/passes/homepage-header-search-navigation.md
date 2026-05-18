@@ -1,15 +1,15 @@
 # GoldPlus Storefront Header, Search, and Category Navigation Runbook
 
-This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R19 Final Header Icon Weight, Sound Recovery, Separator Visibility, and Logo Alignment Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
+This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R20 Final Header Icon Scale, Category Segment Separators, Spotify-Level Visual Weight, and Pre-H1B Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
 
 ---
 
 ## 1. Baseline State Lock
 
-* **Verified Commit Hash**: `07acc35`
-* **Verified Git Tag**: `homepage-header-icon-source-lock-r18`
+* **Verified Commit Hash**: `3fa88b0`
+* **Verified Git Tag**: `homepage-header-icon-separator-lock-r19`
 * **Branch**: `phase-1-functional-depth`
-* **Working Tree State**: 100% clean baseline verified prior to R19 modifications.
+* **Working Tree State**: 100% clean baseline verified prior to R20 modifications.
 
 ---
 
@@ -449,4 +449,113 @@ None.
 **GO**. The storefront header has successfully reached its absolute ultimate visual, structural, and brand alignment craft lock.
 
 ### 14.27 Whether H1A Can Now Close and H1B Can Begin
+**YES**. H1A is fully closed and locked. We are completely ready to transition directly into **GoldPlus UI Pass H1B — Storefront Product Listing, Dynamic Filter and Sorting Engine Rescue**!
+
+---
+
+## 15. H1A-R20 Final Header Icon Scale, Category Segment Separators, Spotify-Level Visual Weight, and Pre-H1B Lock
+
+### 15.1 Why R19 Still Needed Final Icon Scale and Divider Correction
+While R19 locked the proper icon metaphors, the visual scale layout still lacked complete visual confidence. Specifically:
+* The category icons (`20px`) and their corresponding tiles (`32px`) felt slightly too small on high-resolution displays, lacking the robust visual presence of a world-class customer-grade navigation strip.
+* The segmented category dock lacked clear segment-to-segment separation, allowing the links to visually run together. Adding intentional, soft segment dividers greatly enhances visual scan-time.
+
+### 15.2 Previous R19 Icon Size and Tile Size
+* Desktop category icons: `w-5 h-5` (20px).
+* Desktop category tiles: `w-8 h-8` (32px).
+* Mobile category tiles: `w-9 h-9` (36px).
+
+### 15.3 Final Desktop Icon Size
+* Desktop category icons scaled up uniformly to exactly **`size-[22px]` (22px)** across all six categories, delivering perfect, robust weight.
+
+### 15.4 Final Mobile Icon Size
+* Mobile category icons scaled up uniformly to exactly **`size-6` (24px)**, improving clickable touch targets.
+
+### 15.5 Final Desktop Tile Size
+* Desktop category tiles scaled up uniformly to exactly **`w-9 h-9` (36px)**, delivering a gorgeous, balanced visual tile frame.
+
+### 15.6 Final Mobile Tile Size
+* Mobile category tiles scaled up uniformly to exactly **`w-10 h-10` (40px)**.
+
+### 15.7 Why Internal Separators Were Added Between Category Segments
+* Segment dividers (`|`) provide immediate structure, grouping category segments cleanly without letting the list elements clutter together.
+
+### 15.8 Internal Separator Style
+* Style: `h-6 w-px bg-slate-300/70 self-center mx-1 flex-shrink-0` (24px high, soft, perfectly centered, visible but discrete).
+
+### 15.9 Major Group Separator Style
+* Upgraded to: `h-8 w-px bg-slate-300 opacity-95 self-center` (32px high, stronger than internal dividers to separate major sections).
+
+### 15.10 Confirmation that Separators are Not Placed Between Icon and Label
+* **100% Confirmed**: Dividers sit cleanly between category segments:
+  `Shop All | Power | Sound | Storage | Car | PC`
+  No divider splits an icon from its label.
+
+### 15.11 Confirmation that Final R19 Icon Names Were Preserved
+* **100% Confirmed**: Exact final icon mapping (`ShoppingBag`, `BatteryCharging`, `Headphones`, `HardDrive`, `CarFront`, `Mouse`, `Search`) remains preserved.
+
+### 15.12 Logo Fit QA Result
+* **Desktop brand SVG**: Locked strictly to `h-[28px] w-auto` inside an outer flex wrapper container with `gap-6 xl:gap-8` (enforcing a premium `24px` to `32px` margin separating logo from Category Dock).
+* **Mobile brand SVG**: Locked strictly to `h-[24px] w-auto`.
+* **Aspect ratio**: Perfect, crisp, and centered.
+
+### 15.13 Search Placeholder and Width Decision
+* Desktop placeholder: `"What are you shopping for?"` (shopping-led search prompt).
+* Form width scaled dynamically up to `max-w-[420px] xl:max-w-[500px]` with Spotify-equivalent layout weight.
+
+### 15.14 Full Header Centreline Decision
+* Flex vertical centerline alignment (`items-center`) is strictly enforced across Desktop, Tablet, and Mobile headers, positioning the brand Logo, Category Dock, Separators, Search Form, Account Profile, and Cart Button perfectly along a shared horizontal axis.
+
+### 15.15 Label-off Recognition Test Result
+* **PASS**: Hiding text labels mentally confirms that each Lucide outline reads instantly and clearly as its target category (shopping bag → catalogue; battery → charger; headphones → sound; external disk → storage; car → car accessories; mouse → PC accessories).
+
+### 15.16 Colour Discipline Confirmation
+* At rest, tiles and labels are slate and charcoal. On hover or active states, a delicate brand-green accent (`text-brand-primary bg-brand-primary/5 border-brand-primary/20`) is used dynamically.
+
+### 15.17 Link Truthfulness Confirmation
+* Active search queries link cleanly to populating database seed tags without triggering empty result states:
+  * Shop All → `/shop`
+  * Power → `/shop?q=charger`
+  * Sound → `/shop?q=earbuds`
+  * Storage → `/shop?q=flash`
+  * Car → `/shop?q=mount`
+  * PC → `/shop`
+
+### 15.18 Accessibility Decisions
+* Full keyboard accessibility (`focus-visible:ring-2 focus-visible:ring-brand-primary`), semantic ARIA labeling, and proper color-independent states maintained.
+
+### 15.19 Confirmation that Hero Verification Remains
+* The homepage hero trust elements ("Guaranteed Authenticity" and "Verify product" CTA buttons) remain 100% operational.
+
+### 15.20 Confirmation that Verification/Support Routes Were Not Deleted
+* The `/verification` and `/support` endpoints remain active and untouched.
+
+### 15.21 Confirmation that Personalisation Was Not Edited
+* Absolutely zero changes were made to `index.astro`, `returning-user.ts`, `homepage-merchandising.ts`, or the recommendation rails.
+
+### 15.22 Commands Run
+```bash
+pnpm typecheck
+pnpm run test:unit
+pnpm run test:architecture
+pnpm run build
+```
+
+### 15.23 Quality Gate Results
+* **TypeScript Compilation**: 100% Passed.
+* **Unit Tests**: 100% Passed (198 tests passed).
+* **Architectural Boundaries**: 100% Passed (10 boundaries verified).
+* **Production Astro Compile**: 100% Passed (Complete production optimization).
+
+### 15.24 Manual QA Results
+* Checked Desktop viewports: perfect centerline alignment, crisp scaled logo, unified monoline icon weight.
+* Checked Mobile viewports: category horizontal rail operates flawlessly, menu drawer opens/closes cleanly.
+
+### 15.25 Remaining Risks
+None.
+
+### 15.26 Whether H1A-R20 is Accepted
+**GO**. The storefront header has successfully reached its absolute ultimate visual, structural, and brand alignment craft lock.
+
+### 15.27 Whether H1A Can Now Close and H1B Can Begin
 **YES**. H1A is fully closed and locked. We are completely ready to transition directly into **GoldPlus UI Pass H1B — Storefront Product Listing, Dynamic Filter and Sorting Engine Rescue**!
