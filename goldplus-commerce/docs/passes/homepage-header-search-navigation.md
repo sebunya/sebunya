@@ -1,15 +1,15 @@
 # GoldPlus Storefront Header, Search, and Category Navigation Runbook
 
-This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R11 Premium Unified Icon System, Brand-Green Accent Discipline, and Final Header Visual Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
+This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R15 Final Header Brand, Search, Separator, and Universal Icon Family Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
 
 ---
 
 ## 1. Baseline State Lock
 
-* **Verified Commit Hash**: `ad01923`
-* **Verified Git Tag**: `homepage-header-icon-recognition-r10`
+* **Verified Commit Hash**: `cac9932`
+* **Verified Git Tag**: `homepage-header-icon-system-r11`
 * **Branch**: `phase-1-functional-depth`
-* **Working Tree State**: 100% clean baseline verified prior to R11 modifications.
+* **Working Tree State**: 100% clean baseline verified prior to R15 modifications.
 
 ---
 
@@ -36,24 +36,43 @@ The following critical files containing homepage personalization, first-time-use
 
 ---
 
-## 4. Why R10 Multi-Colour Icons Were Reduced (H1A-R11)
+## 4. Why R14 Still Needed Final Consolidation (H1A-R15)
 
-While R10 successfully resolved individual icon recognition, the multi-color styling:
-* Created a mild playful rainbow effect.
-* Competed with the premium GoldPlus green brand system.
-* Made each category feel like a separate app badge, hurting visual unity.
+While previous iterations improved visual segments, the header still lacked final premium polish:
+* The GoldPlus brand logo was rendered as styled text, failing to represent the actual company branding.
+* The search prompt lacked dynamic customer-grade phrasing.
+* Icons belonged to separate visual families instead of one unified monoline family.
+* Spacing lacked structural dividers, causing elements to visually bleed.
 
-To achieve an ultimate customer-grade visual lock, H1A-R11 established a **disciplined brand-green accented monoline system**:
-* **Shop All**: 2x2 grid monoline outline, representing directory search.
-* **Power**: Battery with lightning bolt, representing chargers, cables, and power banks.
-* **Sound**: Headphones, denoting audio devices.
-* **Storage**: USB flash drive, denoting storage devices.
-* **Car**: Silhouette front profile of a consumer car, denoting car mounts/chargers.
-* **PC**: Ergonomic computer mouse, representing computer accessories.
+To achieve an ultimate release lock, H1A-R15 established a **final surgical visual lock**:
+* **Logo copy and serve**: High-definition, crisp SVG assets (`goldplus-logo-header-desktop-150x43.svg` and `goldplus-logo-header-mobile-120x34.svg`) copied to `apps/web/public/` and rendered natively with exact layout bounds.
+* **Unified Monoline Icon Family**: Restructured all 6 icons to follow a strict 24x24 viewBox, stroke-width `2` outline design with matching rounded linecaps and linejoins.
 
 ---
 
-## 5. Pure Brand-Green Accent Discipline
+## 5. Universal Monoline Icon Metaphors Chosen
+
+* **Shop All**: A premium monoline shopping bag outline enclosing a discrete 2x2 product catalog grid, immediately evoking a complete storefront inventory search.
+* **Power**: Wall charger adapter outline with vertical prongs and an internal power lightning bolt, immediately denoting chargers and power banks.
+* **Sound**: Compact headband headphones outline with custom cup geometry.
+* **Storage**: USB flash drive outline with metallic port outline and loop circle.
+* **Car**: Silhouette profile front view passenger vehicle outline.
+* **PC**: Ergonomic computer mouse outline with scroll wheel.
+
+---
+
+## 6. Structural Separators and Search Prompt
+
+* **Spotify-Style Vertical Separators**: Vertically-aligned, soft `h-6 w-px bg-gray-200 opacity-60` dividers added between:
+  * Category Dock & Search Form
+  * Search Form & Account Link
+  * Account Link & Cart Button
+* **No Internal Dock Separators**: Removed internal separators inside the segmented category dock container to achieve a clean, capsule segmented control aesthetic.
+* **Natural Search Prompt**: Search form expanded to `max-w-[420px] xl:max-w-[500px]` with natural placeholder `"What are you shopping for?"`.
+
+---
+
+## 7. Pure Brand-Green Accent Discipline
 
 * **At Rest (Default)**:
   * Icon color: Slate/charcoal (`text-slate-500`)
@@ -66,16 +85,7 @@ To achieve an ultimate customer-grade visual lock, H1A-R11 established a **disci
 
 ---
 
-## 6. Spacing and Search Width Improvements
-
-* **Search breathing room**: Expanded the desktop search form width to `max-w-[260px] xl:max-w-[360px]` to completely eliminate placeholder truncation.
-* **Responsive placeholders**:
-  * Wide Desktop: `"Search chargers, earbuds, power banks..."`
-  * Tablet/Mobile: `"Search products..."`
-
----
-
-## 7. Link Truthfulness Confirmation
+## 8. Link Truthfulness Confirmation
 
 To guarantee that zero empty result pages are triggered:
 * All active queries (`charger`, `earbuds`, `flash`, `mount`) have been verified in the seed database to return rich product lists.
@@ -83,7 +93,7 @@ To guarantee that zero empty result pages are triggered:
 
 ---
 
-## 8. Search & Core Elements Integrity
+## 9. Search & Core Elements Integrity
 
 * **Search Action**: GET form submissions to `/shop?q=term` remain fully active and responsive.
 * **Personalisation Integrity**: 100% isolated and unaffected.
@@ -92,7 +102,7 @@ To guarantee that zero empty result pages are triggered:
 
 ---
 
-## 9. Quality Gate Results
+## 10. Quality Gate Results
 
 * `pnpm typecheck`: **PASSED** (0 type errors).
 * `pnpm run test:unit`: **PASSED** (198 unit tests passed).
@@ -101,7 +111,7 @@ To guarantee that zero empty result pages are triggered:
 
 ---
 
-## 10. Final Status
+## 11. Final Status
 
 * **Status**: **COMPLETE & LOCKED**.
 * **Recommendation**: **GO**. The storefront header has successfully reached its ultimate, premium, brand-accented category navigation layout.

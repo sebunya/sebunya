@@ -39,16 +39,20 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
 <header class="bg-white text-gray-900 border-b border-gray-100 sticky top-0 z-50 shadow-sm selection:bg-brand-primary selection:text-gray-900">
   
   <!-- WIDE DESKTOP LAYOUT (min-width: 1024px) -->
-  <!-- Single-Row Elegant Architecture: GoldPlus | Unified Segmented Dock | Search | Account | Cart -->
+  <!-- Single-Row Elegant Architecture: Logo | Unified Segmented Dock | Separator | Search | Separator | Account | Separator | Cart -->
   <div class="hidden lg:block py-3 px-4 xl:px-8 max-w-[1600px] mx-auto">
     <div class="flex items-center justify-between gap-4">
       
       <!-- Brand Logo -->
       <div class="flex items-center flex-shrink-0">
-        <a href="/" class="flex items-center gap-2 group outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded-lg transition-all duration-300">
-          <span class="text-xl font-black tracking-tight text-gray-950">
-            Gold<span class="text-brand-primary group-hover:text-gray-950 transition-colors duration-300">Plus</span>
-          </span>
+        <a href="/" class="flex items-center group outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded-lg transition-all duration-300">
+          <img
+            src="/goldplus-logo-header-desktop-150x43.svg"
+            width="150"
+            height="43"
+            alt="GoldPlus"
+            class="h-8 w-auto object-contain"
+          />
         </a>
       </div>
 
@@ -69,19 +73,18 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
               ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
               : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
           }`}>
-            <!-- 2x2 grid monoline icon -->
+            <!-- Shopping Bag with internal 2x2 grid monoline icon -->
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
-              <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-              <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
-              <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+              <path d="M6 8V6a6 6 0 0 1 12 0v2"></path>
+              <rect x="3" y="8" width="18" height="13" rx="2"></rect>
+              <line x1="9" y1="12" x2="9" y2="12.01"></line>
+              <line x1="15" y1="12" x2="15" y2="12.01"></line>
+              <line x1="9" y1="17" x2="9" y2="17.01"></line>
+              <line x1="15" y1="17" x2="15" y2="17.01"></line>
             </svg>
           </div>
           <span class="text-[13px] font-semibold transition-colors duration-300">Shop All</span>
         </a>
-
-        <!-- Divider line -->
-        <div class="h-4 w-px bg-gray-200"></div>
 
         <!-- Power Segment -->
         <a
@@ -98,17 +101,15 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
               ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
               : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
           }`}>
-            <!-- Battery with charge bolt monoline icon -->
+            <!-- Wall plug charger adapter with prongs and charge bolt monoline icon -->
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="2" y="6" width="16" height="12" rx="2"></rect>
-              <path d="M22 10v4M10 9l-2 3h4l-2 3"></path>
+              <rect x="5" y="8" width="14" height="11" rx="2"></rect>
+              <path d="M9 8V4M15 8V4M12 19v2"></path>
+              <path d="M11 11h2l-1.5 3h2" stroke-linejoin="bevel"></path>
             </svg>
           </div>
           <span class="text-[13px] font-semibold transition-colors duration-300">Power</span>
         </a>
-
-        <!-- Divider line -->
-        <div class="h-4 w-px bg-gray-200"></div>
 
         <!-- Sound Segment -->
         <a
@@ -125,17 +126,16 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
               ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
               : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
           }`}>
-            <!-- Modern monoline headphones outline icon -->
+            <!-- Headphones monoline icon -->
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 18v-6c0-4.97 4.03-9 9-9s9 4.03 9 9v6"></path>
-              <path d="M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3v5zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3v5z"></path>
+              <path d="M3 14c0-4.97 4.03-9 9-9s9 4.03 9 9"></path>
+              <rect x="2" y="13" width="3" height="6" rx="1.5"></rect>
+              <rect x="19" y="13" width="3" height="6" rx="1.5"></rect>
+              <path d="M3.5 13v-1M20.5 13v-1"></path>
             </svg>
           </div>
           <span class="text-[13px] font-semibold transition-colors duration-300">Sound</span>
         </a>
-
-        <!-- Divider line -->
-        <div class="h-4 w-px bg-gray-200"></div>
 
         <!-- Storage Segment -->
         <a
@@ -152,18 +152,15 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
               ? 'bg-brand-primary/5 border border-brand-primary/30 text-brand-primary' 
               : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
           }`}>
-            <!-- Monoline USB flash drive icon -->
+            <!-- USB flash drive monoline icon -->
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="6" y="8" width="12" height="11" rx="2"></rect>
-              <rect x="9" y="3" width="6" height="5"></rect>
-              <path d="M11 5h2"></path>
+              <rect x="9" y="3" width="6" height="5" rx="1"></rect>
+              <rect x="5" y="8" width="14" height="13" rx="2"></rect>
+              <circle cx="12" cy="17" r="1.5"></circle>
             </svg>
           </div>
           <span class="text-[13px] font-semibold transition-colors duration-300">Storage</span>
         </a>
-
-        <!-- Divider line -->
-        <div class="h-4 w-px bg-gray-200"></div>
 
         <!-- Car Segment -->
         <a
@@ -182,19 +179,15 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           }`}>
             <!-- Front profile car monoline icon -->
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M7 10l1.3-4.1a1 1 0 011-.9h5.4a1 1 0 011 .9L17 10"></path>
-              <rect x="3" y="10" width="18" height="6" rx="2.5"></rect>
-              <circle cx="6.5" cy="13" r="0.5" fill="currentColor"></circle>
-              <circle cx="17.5" cy="13" r="0.5" fill="currentColor"></circle>
-              <rect x="5" y="16" width="2" height="3" rx="0.5"></rect>
-              <rect x="17" y="16" width="2" height="3" rx="0.5"></rect>
+              <path d="M6 9l1.5-4h9l1.5 4"></path>
+              <rect x="3" y="9" width="18" height="7" rx="2"></rect>
+              <circle cx="6" cy="12.5" r="1"></circle>
+              <circle cx="18" cy="12.5" r="1"></circle>
+              <path d="M5 16v2M19 16v2"></path>
             </svg>
           </div>
           <span class="text-[13px] font-semibold transition-colors duration-300">Car</span>
         </a>
-
-        <!-- Divider line -->
-        <div class="h-4 w-px bg-gray-200"></div>
 
         <!-- PC Segment -->
         <a
@@ -209,22 +202,25 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors duration-300 flex-shrink-0">
             <!-- Ergonomic computer mouse monoline icon -->
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="7" y="3" width="10" height="18" rx="5"></rect>
-              <path d="M12 6v4M7 11h10"></path>
+              <rect x="6" y="3" width="12" height="18" rx="6"></rect>
+              <path d="M12 6v4M6 10h12"></path>
             </svg>
           </div>
           <span class="text-[13px] font-semibold transition-colors duration-300">PC</span>
         </a>
       </nav>
 
-      <!-- Right Side Search Form -->
-      <form action="/shop" method="GET" class="flex-grow max-w-[260px] xl:max-w-[360px] relative group flex items-center">
+      <!-- Premium Divider 1: Category Dock to Search -->
+      <div class="h-6 w-px bg-gray-200 opacity-60 self-center"></div>
+
+      <!-- Right Side Search Form (Expanded Width max-w-[420px] xl:max-w-[500px]) -->
+      <form action="/shop" method="GET" class="flex-grow max-w-[420px] xl:max-w-[500px] relative group flex items-center">
         <div class="relative w-full">
           <input
             type="search"
             name="q"
             value={q}
-            placeholder="Search chargers, earbuds, power banks..."
+            placeholder="What are you shopping for?"
             aria-label="Product Search"
             class="w-full pl-9 pr-20 py-2.5 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200/80 rounded-xl focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all duration-300 outline-none text-xs placeholder-gray-400 text-gray-800"
           />
@@ -239,12 +235,19 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
         </div>
       </form>
 
-      <!-- Account & Cart Actions -->
+      <!-- Premium Divider 2: Search to Account -->
+      <div class="h-6 w-px bg-gray-200 opacity-60 self-center"></div>
+
+      <!-- Account Actions -->
       <div class="flex items-center gap-4 flex-shrink-0">
         <a href="/account" class="text-xs font-bold text-gray-650 hover:text-gray-950 transition-colors py-1.5 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none rounded-lg">
           Account
         </a>
-        <div class="h-3 w-px bg-gray-200"></div>
+        
+        <!-- Premium Divider 3: Account to Cart -->
+        <div class="h-6 w-px bg-gray-200 opacity-60 self-center"></div>
+
+        <!-- Cart Action -->
         <a href="/cart" class="group flex items-center gap-2 px-3 py-1.5 bg-gray-50 hover:bg-gray-100/80 border border-gray-100 rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
           <span class="text-xs font-bold text-gray-705 group-hover:text-gray-950 transition-colors">Cart</span>
           <span class="bg-brand-primary text-gray-950 text-[10px] font-black px-2 py-0.5 rounded-full transition-transform duration-300 group-hover:scale-110">
@@ -257,17 +260,21 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
   </div>
 
   <!-- MEDIUM / TABLET LAYOUT (min-width: 768px and max-width: 1023px) -->
-  <!-- Two-Row Architecture: Top row (GoldPlus | Search | Account | Cart) + Bottom row (Unified Segmented Dock) -->
+  <!-- Two-Row Architecture: Top row (Logo | Search | Account | Cart) + Bottom row (Unified Segmented Dock) -->
   <div class="hidden md:block lg:hidden">
     <!-- Top Row -->
     <div class="py-3 px-6 max-w-7xl mx-auto flex items-center justify-between gap-6">
       
       <!-- Brand Logo -->
       <div class="flex items-center flex-shrink-0">
-        <a href="/" class="flex items-center gap-2 group outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded-lg transition-all duration-300">
-          <span class="text-xl font-black tracking-tight text-gray-950">
-            Gold<span class="text-brand-primary group-hover:text-gray-950 transition-colors duration-300">Plus</span>
-          </span>
+        <a href="/" class="flex items-center group outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded-lg transition-all duration-300">
+          <img
+            src="/goldplus-logo-header-desktop-150x43.svg"
+            width="150"
+            height="43"
+            alt="GoldPlus"
+            class="h-8 w-auto object-contain"
+          />
         </a>
       </div>
 
@@ -278,7 +285,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             type="search"
             name="q"
             value={q}
-            placeholder="Search products..."
+            placeholder="Search products"
             aria-label="Product Search"
             class="w-full pl-10 pr-20 py-2.5 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200/80 rounded-xl focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all duration-300 outline-none text-xs placeholder-gray-400 text-gray-800"
           />
@@ -327,17 +334,16 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
                 : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
-                <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-                <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
-                <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+                <path d="M6 8V6a6 6 0 0 1 12 0v2"></path>
+                <rect x="3" y="8" width="18" height="13" rx="2"></rect>
+                <line x1="9" y1="12" x2="9" y2="12.01"></line>
+                <line x1="15" y1="12" x2="15" y2="12.01"></line>
+                <line x1="9" y1="17" x2="9" y2="17.01"></line>
+                <line x1="15" y1="17" x2="15" y2="17.01"></line>
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Shop All</span>
           </a>
-
-          <!-- Divider line -->
-          <div class="h-4 w-px bg-gray-200"></div>
 
           <!-- Power Segment -->
           <a
@@ -354,15 +360,13 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
                 : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="2" y="6" width="16" height="12" rx="2"></rect>
-                <path d="M22 10v4M10 9l-2 3h4l-2 3"></path>
+                <rect x="5" y="8" width="14" height="11" rx="2"></rect>
+                <path d="M9 8V4M15 8V4M12 19v2"></path>
+                <path d="M11 11h2l-1.5 3h2" stroke-linejoin="bevel"></path>
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Power</span>
           </a>
-
-          <!-- Divider line -->
-          <div class="h-4 w-px bg-gray-200"></div>
 
           <!-- Sound Segment -->
           <a
@@ -379,15 +383,14 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
                 : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M3 18v-6c0-4.97 4.03-9 9-9s9 4.03 9 9v6"></path>
-                <path d="M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3v5zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3v5z"></path>
+                <path d="M3 14c0-4.97 4.03-9 9-9s9 4.03 9 9"></path>
+                <rect x="2" y="13" width="3" height="6" rx="1.5"></rect>
+                <rect x="19" y="13" width="3" height="6" rx="1.5"></rect>
+                <path d="M3.5 13v-1M20.5 13v-1"></path>
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Sound</span>
           </a>
-
-          <!-- Divider line -->
-          <div class="h-4 w-px bg-gray-200"></div>
 
           <!-- Storage Segment -->
           <a
@@ -404,16 +407,13 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
                 : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="6" y="8" width="12" height="11" rx="2"></rect>
-                <rect x="9" y="3" width="6" height="5"></rect>
-                <path d="M11 5h2"></path>
+                <rect x="9" y="3" width="6" height="5" rx="1"></rect>
+                <rect x="5" y="8" width="14" height="13" rx="2"></rect>
+                <circle cx="12" cy="17" r="1.5"></circle>
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Storage</span>
           </a>
-
-          <!-- Divider line -->
-          <div class="h-4 w-px bg-gray-200"></div>
 
           <!-- Car Segment -->
           <a
@@ -430,19 +430,15 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
                 : 'bg-gray-50 border border-gray-100 text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
             }`}>
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M7 10l1.3-4.1a1 1 0 011-.9h5.4a1 1 0 011 .9L17 10"></path>
-                <rect x="3" y="10" width="18" height="6" rx="2.5"></rect>
-                <circle cx="6.5" cy="13" r="0.5" fill="currentColor"></circle>
-                <circle cx="17.5" cy="13" r="0.5" fill="currentColor"></circle>
-                <rect x="5" y="16" width="2" height="3" rx="0.5"></rect>
-                <rect x="17" y="16" width="2" height="3" rx="0.5"></rect>
+                <path d="M6 9l1.5-4h9l1.5 4"></path>
+                <rect x="3" y="9" width="18" height="7" rx="2"></rect>
+                <circle cx="6" cy="12.5" r="1"></circle>
+                <circle cx="18" cy="12.5" r="1"></circle>
+                <path d="M5 16v2M19 16v2"></path>
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">Car</span>
           </a>
-
-          <!-- Divider line -->
-          <div class="h-4 w-px bg-gray-200"></div>
 
           <!-- PC Segment -->
           <a
@@ -455,8 +451,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           >
             <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-500 group-hover:bg-brand-primary/5 group-hover:border-brand-primary/20 group-hover:text-brand-primary transition-colors duration-300">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="7" y="3" width="10" height="18" rx="5"></rect>
-                <path d="M12 6v4M7 11h10"></path>
+                <rect x="6" y="3" width="12" height="18" rx="6"></rect>
+                <path d="M12 6v4M6 10h12"></path>
               </svg>
             </div>
             <span class="text-[13px] font-semibold transition-colors duration-300">PC</span>
@@ -467,14 +463,18 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
   </div>
 
   <!-- MOBILE LAYOUT (under 768px) -->
-  <!-- Mobile Header Banner: GoldPlus | Cart | Menu -->
+  <!-- Mobile Header Banner: Logo | Cart | Menu -->
   <div class="md:hidden">
     <div class="flex items-center justify-between px-4 py-3 bg-white">
       <!-- Brand Logo -->
       <a href="/" class="flex items-center gap-2 group outline-none">
-        <span class="text-lg font-black tracking-tight text-gray-950">
-          Gold<span class="text-brand-primary">Plus</span>
-        </span>
+        <img
+          src="/goldplus-logo-header-mobile-120x34.svg"
+          width="120"
+          height="34"
+          alt="GoldPlus"
+          class="h-[30px] w-auto object-contain"
+        />
       </a>
 
       <!-- Right Side Actions: Cart | Menu -->
@@ -522,10 +522,12 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             : 'bg-gray-50 border border-gray-100 text-slate-500'
         }`}>
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
-            <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-            <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
-            <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+            <path d="M6 8V6a6 6 0 0 1 12 0v2"></path>
+            <rect x="3" y="8" width="18" height="13" rx="2"></rect>
+            <line x1="9" y1="12" x2="9" y2="12.01"></line>
+            <line x1="15" y1="12" x2="15" y2="12.01"></line>
+            <line x1="9" y1="17" x2="9" y2="17.01"></line>
+            <line x1="15" y1="17" x2="15" y2="17.01"></line>
           </svg>
         </div>
         <span>Shop All</span>
@@ -543,8 +545,9 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             : 'bg-gray-50 border border-gray-100 text-slate-500'
         }`}>
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="2" y="6" width="16" height="12" rx="2"></rect>
-            <path d="M22 10v4M10 9l-2 3h4l-2 3"></path>
+            <rect x="5" y="8" width="14" height="11" rx="2"></rect>
+            <path d="M9 8V4M15 8V4M12 19v2"></path>
+            <path d="M11 11h2l-1.5 3h2" stroke-linejoin="bevel"></path>
           </svg>
         </div>
         <span>Power</span>
@@ -562,8 +565,10 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             : 'bg-gray-50 border border-gray-100 text-slate-500'
         }`}>
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M3 18v-6c0-4.97 4.03-9 9-9s9 4.03 9 9v6"></path>
-            <path d="M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3v5zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3v5z"></path>
+            <path d="M3 14c0-4.97 4.03-9 9-9s9 4.03 9 9"></path>
+            <rect x="2" y="13" width="3" height="6" rx="1.5"></rect>
+            <rect x="19" y="13" width="3" height="6" rx="1.5"></rect>
+            <path d="M3.5 13v-1M20.5 13v-1"></path>
           </svg>
         </div>
         <span>Sound</span>
@@ -581,9 +586,9 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             : 'bg-gray-50 border border-gray-100 text-slate-500'
         }`}>
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="6" y="8" width="12" height="11" rx="2"></rect>
-            <rect x="9" y="3" width="6" height="5"></rect>
-            <path d="M11 5h2"></path>
+            <rect x="9" y="3" width="6" height="5" rx="1"></rect>
+            <rect x="5" y="8" width="14" height="13" rx="2"></rect>
+            <circle cx="12" cy="17" r="1.5"></circle>
           </svg>
         </div>
         <span>Storage</span>
@@ -601,12 +606,11 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
             : 'bg-gray-50 border border-gray-100 text-slate-500'
         }`}>
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M7 10l1.3-4.1a1 1 0 011-.9h5.4a1 1 0 011 .9L17 10"></path>
-            <rect x="3" y="10" width="18" height="6" rx="2.5"></rect>
-            <circle cx="6.5" cy="13" r="0.5" fill="currentColor"></circle>
-            <circle cx="17.5" cy="13" r="0.5" fill="currentColor"></circle>
-            <rect x="5" y="16" width="2" height="3" rx="0.5"></rect>
-            <rect x="17" y="16" width="2" height="3" rx="0.5"></rect>
+            <path d="M6 9l1.5-4h9l1.5 4"></path>
+            <rect x="3" y="9" width="18" height="7" rx="2"></rect>
+            <circle cx="6" cy="12.5" r="1"></circle>
+            <circle cx="18" cy="12.5" r="1"></circle>
+            <path d="M5 16v2M19 16v2"></path>
           </svg>
         </div>
         <span>Car</span>
@@ -616,8 +620,8 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
       <a href="/shop" class="snap-start flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200/70 rounded-xl text-gray-700 text-xs font-bold flex-shrink-0 shadow-sm">
         <div class="w-9 h-9 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-slate-500">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="7" y="3" width="10" height="18" rx="5"></rect>
-            <path d="M12 6v4M7 11h10"></path>
+            <rect x="6" y="3" width="12" height="18" rx="6"></rect>
+            <path d="M12 6v4M6 10h12"></path>
           </svg>
         </div>
         <span>PC</span>
@@ -637,7 +641,7 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           type="search"
           name="q"
           value={q}
-          placeholder="Search products..."
+          placeholder="Search products"
           aria-label="Mobile Product Search"
           class="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:border-brand-primary outline-none text-xs placeholder-gray-400 text-gray-850"
         />
