@@ -38,3 +38,25 @@ export function addOrUpdateCartItem(cart: CartItem[], newItem: CartItem): CartIt
   
   return updatedCart;
 }
+
+export function removeCartItem(cart: CartItem[], productId: string): CartItem[] {
+  return cart.filter(item => item.productId !== productId);
+}
+
+export function parseLocalCartCookie(cookieValue: string | undefined): CartItem[] {
+  if (!cookieValue) return [];
+  try {
+    const parsed = JSON.parse(cookieValue);
+    if (Array.isArray(parsed)) {
+      return parsed.map(item => ({
+        productId: String(item.productId || ''),
+        sku: String(item.sku || ''),
+        name: String(item.name || ''),
+        priceUgx: Number(item.priceUgx || item.unitPriceUgx || 0),
+        quantity: validateQuantity(Number(item.quantity || 1)),
+        category: item.category ? String(item.category) : undefined
+      }));
+    }
+  } catch {}
+  return [];
+}

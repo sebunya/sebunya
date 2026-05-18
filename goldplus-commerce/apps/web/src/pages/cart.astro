@@ -8,6 +8,7 @@ import type { ApiEnvelope } from '@goldplus/shared';
 import CartAddonRail from '../components/recommendations/CartAddonRail.astro';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
 import { LOCAL_SEED_PRODUCTS } from '../lib/catalog/catalog';
+import { parseLocalCartCookie } from '../lib/cart';
 
 import crypto from 'node:crypto';
 
@@ -47,13 +48,8 @@ if (Astro.request.method === 'POST') {
       }
 
       // 1. Load active fallback items from cookie
-      let localItems: CartItem[] = [];
       const localDataCookie = Astro.cookies.get('goldplus_cart_data')?.value;
-      if (localDataCookie) {
-        try {
-          localItems = JSON.parse(localDataCookie) as CartItem[];
-        } catch {}
-      }
+      let localItems = parseLocalCartCookie(localDataCookie) as any[];
 
       // 2. Perform cart actions
       if (action === 'add') {
@@ -177,11 +173,9 @@ if (sessionId) {
 let items: CartItem[] = cart?.items ?? [];
 if (items.length === 0) {
   const localDataCookie = Astro.cookies.get('goldplus_cart_data')?.value;
-  if (localDataCookie) {
-    try {
-      items = JSON.parse(localDataCookie) as CartItem[];
-      fetchError = null; // Clear fetchError since we successfully recovered from fallback!
-    } catch {}
+  items = parseLocalCartCookie(localDataCookie) as any[];
+  if (items.length > 0) {
+    fetchError = null; // Clear fetchError since we successfully recovered from fallback!
   }
 }
 

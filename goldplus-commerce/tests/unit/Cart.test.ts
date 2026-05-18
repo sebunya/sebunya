@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateLineTotal, calculateSubtotal, validateQuantity, addOrUpdateCartItem, type CartItem } from '../../apps/web/src/lib/cart';
+import { calculateLineTotal, calculateSubtotal, validateQuantity, addOrUpdateCartItem, removeCartItem, parseLocalCartCookie, type CartItem } from '../../apps/web/src/lib/cart';
 
 describe('Cart Business Logic', () => {
   const sampleItem: CartItem = {
@@ -49,5 +49,30 @@ describe('Cart Business Logic', () => {
     const newCart = addOrUpdateCartItem(cart, { ...sampleItem, quantity: 3 });
     expect(newCart.length).toBe(1);
     expect(newCart[0].quantity).toBe(5); // 2 + 3
+  });
+
+  it('removes only the target item', () => {
+    const cart: CartItem[] = [
+      sampleItem,
+      { ...sampleItem, productId: 'prod_2', name: 'Other Item' }
+    ];
+    const updated = removeCartItem(cart, 'prod_1');
+    expect(updated.length).toBe(1);
+    expect(updated[0].productId).toBe('prod_2');
+  });
+
+  it('safely handles malformed cookie strings', () => {
+    expect(parseLocalCartCookie(undefined)).toEqual([]);
+    expect(parseLocalCartCookie('')).toEqual([]);
+    expect(parseLocalCartCookie('not-json')).toEqual([]);
+    expect(parseLocalCartCookie('{}')).toEqual([]); // Not an array
+
+    const validJson = JSON.stringify([
+      { productId: 'p1', name: 'Item 1', priceUgx: 5000, quantity: 2 }
+    ]);
+    const parsed = parseLocalCartCookie(validJson);
+    expect(parsed.length).toBe(1);
+    expect(parsed[0].productId).toBe('p1');
+    expect(parsed[0].quantity).toBe(2);
   });
 });

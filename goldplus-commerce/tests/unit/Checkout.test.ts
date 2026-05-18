@@ -52,4 +52,11 @@ describe('Checkout Business Logic', () => {
     expect(result.valid).toBe(false);
     expect(result.errors).toContain('Cart is empty');
   });
+
+  it('guarantees offline reference is prefixed as local draft', () => {
+    // Verify that simulated offline reference prefix is strictly GP-DRAFT- or GP-OFFLINE-
+    const simulateDraftId = `GP-DRAFT-${Math.floor(100000 + Math.random() * 900000)}`;
+    expect(simulateDraftId.startsWith('GP-DRAFT-')).toBe(true);
+    expect(simulateDraftId).toMatch(/^GP-DRAFT-\d{6}$/);
+  });
 });

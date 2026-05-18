@@ -7,6 +7,7 @@ import UgandaLocationPicker from '../components/UgandaLocationPicker.astro';
 import { apiBase, postJson } from '../lib/api';
 import { readCartSessionId } from '../lib/cart-session';
 import { prepareCheckoutPayload, validateCheckoutPayload } from '../lib/checkout';
+import { parseLocalCartCookie } from '../lib/cart';
 import type { ApiEnvelope } from '@goldplus/shared';
 
 interface CartItem {
@@ -46,16 +47,14 @@ try {
 // Fallback to local cookie state if API failed or returned empty!
 if (!cart || cart.items.length === 0) {
   const localDataCookie = Astro.cookies.get('goldplus_cart_data')?.value;
-  if (localDataCookie) {
-    try {
-      const items = JSON.parse(localDataCookie) as CartItem[];
-      const subtotalUgx = items.reduce((acc, item) => acc + (item.unitPriceUgx * item.quantity), 0);
-      cart = {
-        id: sessionId,
-        items,
-        subtotalUgx
-      };
-    } catch {}
+  const items = parseLocalCartCookie(localDataCookie) as any[];
+  if (items.length > 0) {
+    const subtotalUgx = items.reduce((acc, item) => acc + ((item.unitPriceUgx || item.priceUgx) * item.quantity), 0);
+    cart = {
+      id: sessionId,
+      items,
+      subtotalUgx
+    };
   }
 }
 
@@ -69,6 +68,7 @@ let message: string | undefined;
 let reference: string | undefined;
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
+let isOfflineDraft = false;
 
 // Handle Form Submission (RESTORED FEATURE)
 if (Astro.request.method === 'POST') {
@@ -95,6 +95,7 @@ if (Astro.request.method === 'POST') {
      const payload = prepareCheckoutPayload(formData, normalizedItems as any);
      
      let res;
+     let serverError = false;
      try {
         res = await postJson('/commerce/orders/create', {
            customerDetails: payload.customerDetails,
@@ -102,14 +103,11 @@ if (Astro.request.method === 'POST') {
            items: payload.items
         });
      } catch (err) {
-        console.warn('[ORDER_OFFLINE] Simulating order receipt locally:', err);
-        res = {
-           ok: true,
-           data: { orderNumber: `GP-OFFLINE-${Math.floor(100000 + Math.random() * 900000)}` }
-        };
+        console.warn('[ORDER_OFFLINE] Server checkout failed/offline:', err);
+        serverError = true;
      }
 
-     if (res.ok) {
+     if (!serverError && res && res.ok) {
         status = 'received';
         message = 'Order successfully created for review. Our logistics team will contact you with final pricing.';
         reference = res.data?.orderNumber || res.data?.id;
@@ -117,8 +115,20 @@ if (Astro.request.method === 'POST') {
         // Successfully submitted, clear browser cart cookie contents
         Astro.cookies.delete('goldplus_cart_data', { path: '/' });
      } else {
-        status = 'error';
-        message = res.message || 'Failed to create order. Service temporarily unavailable.';
+        const allowDraft = String(formData.get('allowOfflineDraft') || '') === 'true';
+        if (allowDraft) {
+           status = 'received';
+           isOfflineDraft = true;
+           reference = `GP-DRAFT-${Math.floor(100000 + Math.random() * 900000)}`;
+           message = 'Offline draft saved on this device. Order was not submitted to the server.';
+           
+           // Clear browser cart cookie contents only when explicitly choosing a local draft
+           Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+        } else {
+           status = 'error';
+           message = res?.message || 'Failed to submit order. The checkout service is temporarily offline. You may retry, or check "Save as offline draft on this device" below to proceed in local demonstration mode.';
+           // Preserve the cart cookie on failure so items are not lost!
+        }
      }
   } else {
      status = 'error';
@@ -141,14 +151,30 @@ const formatUgx = (n: number): string =>
   <div class="container mx-auto px-4 lg:px-8 py-10">
     
     {status === 'received' ? (
-      <div class="max-w-2xl mx-auto text-center py-16 bg-white border border-green-100 rounded-3xl shadow-sm">
-         <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-           <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
-         </div>
-         <h2 class="text-3xl font-black text-brand-charcoal mb-2">Order Received</h2>
-         <p class="text-gray-600 text-lg mb-6">Reference: <strong class="font-mono bg-gray-100 px-2 py-0.5 rounded text-brand-charcoal">{reference}</strong></p>
-         <p class="text-gray-600 max-w-md mx-auto mb-10 leading-relaxed">Our distribution center will evaluate transit routing and contact you soon to confirm final delivery logistics.</p>
-         <a href="/products" class="bg-brand-charcoal text-white px-8 py-3 rounded-xl font-bold hover:bg-black transition-all">Continue shopping</a>
+      <div class="max-w-2xl mx-auto text-center py-16 bg-white border border-brand-borderGrey rounded-3xl shadow-sm px-6">
+         {isOfflineDraft ? (
+           <>
+             <div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
+               <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+             </div>
+             <h2 class="text-3xl font-black text-brand-charcoal mb-2">Offline Draft Saved</h2>
+             <p class="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full inline-block mb-6 uppercase tracking-wider">Local Demo Mode Only</p>
+             <p class="text-gray-600 text-lg mb-6">Local Draft Reference: <strong class="font-mono bg-gray-100 px-2 py-0.5 rounded text-brand-charcoal">{reference}</strong></p>
+             <p class="text-amber-800 font-semibold max-w-md mx-auto mb-10 leading-relaxed bg-amber-50 border border-amber-200 p-4 rounded-xl text-sm text-left">
+               Notice: The server is currently offline. This order has <strong>not</strong> been submitted to the GoldPlus distribution team. Please screenshot this reference page or retry when connection is restored.
+             </p>
+           </>
+         ) : (
+           <>
+             <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+               <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+             </div>
+             <h2 class="text-3xl font-black text-brand-charcoal mb-2">Order Received</h2>
+             <p class="text-gray-600 text-lg mb-6">Reference: <strong class="font-mono bg-gray-100 px-2 py-0.5 rounded text-brand-charcoal">{reference}</strong></p>
+             <p class="text-gray-600 max-w-md mx-auto mb-10 leading-relaxed">Our distribution center will evaluate transit routing and contact you soon to confirm final delivery logistics.</p>
+           </>
+         )}
+         <a href="/shop" class="inline-block bg-brand-charcoal text-white px-8 py-3 rounded-xl font-bold hover:bg-black transition-all">Continue shopping</a>
       </div>
     ) : (
       <div class="flex flex-col lg:flex-row gap-10">
@@ -194,6 +220,16 @@ const formatUgx = (n: number): string =>
               </h2>
               <Notice kind="not-configured" title="Offline settlement required" message="Live mobile money checkout is configured only for administrator testing. Final invoice must be approved manually by sales agents." />
             </div>
+
+            {status === 'error' && (
+              <div class="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-sm flex items-start gap-3">
+                <input type="checkbox" id="allowOfflineDraft" name="allowOfflineDraft" value="true" class="mt-1 rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4" />
+                <div>
+                  <label for="allowOfflineDraft" class="font-bold cursor-pointer select-none">Save as offline draft on this device</label>
+                  <p class="text-xs text-amber-700 mt-1">If the checkout service is unreachable, checking this lets you complete the transaction flow as a local demonstration. The draft reference will be stored on your device and labeled explicitly.</p>
+                </div>
+              </div>
+            )}
 
             <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <button
