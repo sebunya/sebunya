@@ -39,4 +39,18 @@ routes.get('/', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) 
   return c.json(response);
 });
 
+routes.get('/health-check', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const sms = await (registry.smsAdapter as any).getBalance();
+  const email = await (registry.zeptoMailAdapter as any).getBalance();
+
+  return c.json({
+    success: true,
+    data: {
+      sms,
+      email,
+    }
+  });
+});
+
 export default routes;

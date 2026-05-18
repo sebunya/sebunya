@@ -12,4 +12,11 @@ export class DisabledSmsAdapter implements INotificationProvider {
       providerMessage: 'SMS Channel is explicitly disabled in Phase 1 business logic.',
     };
   }
+
+  async getBalance(): Promise<{ status: 'NOT_CONFIGURED'; message: string }> {
+    return {
+      status: 'NOT_CONFIGURED',
+      message: 'SMS Channel is disabled.',
+    };
+  }
 }

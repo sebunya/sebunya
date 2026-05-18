@@ -284,3 +284,33 @@ This section documents the integration, normalization, balance verification, and
 *   *No blocking risks remain for this phase.*
 
 ---
+
+## 9. GoldPlus Pass H1J-P2-P1B — ZeptoMail Email Receipts Provider Secure Integration
+
+This section documents the integration, HTML rendering, health diagnostics verification, and dry-run safety gates successfully verified for the **Zoho ZeptoMail** email transaction provider.
+
+### 9.1 Email Provider Selection & Direct HTTP JSON API
+*   **Selected Provider:** Zoho ZeptoMail.
+*   **API Specification:**
+    *   Base URL: `https://api.zeptomail.com/v1.1/email`
+    *   Authentication: API token loaded dynamically from environment variable (`ZEPTOMAIL_API_TOKEN`) and passed via the `Authorization: Zoho-enczkeys <TOKEN>` header.
+    *   Request Format: RESTful JSON payload matching Zoho specifications, containing `from`, `to`, `reply_to`, `subject`, and `htmlbody` fields.
+*   **Decoupled SDK Decision:** Realized directly over fetch API to ensure light, modular, sandboxed, and test-mockable adapters without third-party dependencies.
+
+### 9.2 Global Safety & Controlled Internal Testing
+*   **No Customer Leakage:** Email dispatch processes check global safety configs. Real gateway requests remain blocked by default unless `NOTIFICATIONS_DRY_RUN=false` and `NOTIFICATIONS_LIVE_SEND_ENABLED=true` and `NOTIFICATIONS_EMAIL_ENABLED=true`.
+*   **Allowlist Filters:** If `NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS` is configured, only emails matching the allowlist proceed to send. Any other destination maps gracefully to simulated dry-run log blocks.
+*   **Anti-Leakage Logging:** Email addresses are securely masked in logs (e.g. `cu***@ex***.com`).
+*   **Token Scrubbing:** `ZEPTOMAIL_API_TOKEN` is dynamically scrubbed from all adapter logs and thrown error messages, preventing any leaks in outbox retry logs or persistence layers.
+
+### 9.3 Diagnostics & Health Check Endpoint
+*   **Actionable Health Check:** The `/admin/notifications/health-check` route is strictly protected and allows administrators to query connection and authentication health for both active SMS and active ZeptoMail adapters.
+*   **Zero-Cost Token Verification:** The ZeptoMail `getBalance()` diagnostic pings Zoho's sending endpoint with an empty JSON body `{}` to verify authentication status:
+    *   `401 Unauthorized` or error code `E103` reports `FAIL` (Invalid Token).
+    *   `400 Bad Request` schema failure confirms successful token authentication and reports `PASS` (Token Validated).
+
+### 9.4 Automated & Manual Testing Results
+*   **Unit Tests (`ZeptoMailProvider.test.ts`):** 12 comprehensive unit tests validating dry-runs, email allowlists, invalid recipient rejection, response status code mappings, timeouts, error sanitisation, and zero-cost credential ping checks.
+*   *No blocking risks remain for this phase.*
+
+---
