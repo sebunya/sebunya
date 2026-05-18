@@ -17,7 +17,7 @@ export class PesaPalClient implements IPesaPalClient {
   }
 
   private getBaseUrl(): string {
-    const isProd = this.config.pesapalEnv === 'production';
+    const isProd = this.config.pesapalEnv === 'live' || this.config.pesapalEnv === 'production';
     return isProd
       ? 'https://pay.pesapal.com/v3'
       : 'https://cybqa.pesapal.com/pesapalv3';
@@ -73,7 +73,33 @@ export class PesaPalClient implements IPesaPalClient {
     return this.requestToken();
   }
 
+  private validateLiveUrls(callbackUrl: string, cancellationUrl: string): void {
+    const isLive = this.config.pesapalEnv === 'live' || this.config.pesapalEnv === 'production';
+    if (!isLive) return;
+
+    const urls = [callbackUrl, cancellationUrl];
+    for (const urlStr of urls) {
+      if (!urlStr) continue;
+      try {
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'https:') {
+          throw new Error(`PESAPAL_LIVE_GUARD_VIOLATION: Live mode callback URL "${urlStr}" must use HTTPS.`);
+        }
+        const hostname = parsed.hostname.toLowerCase();
+        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('cybqa.pesapal.com')) {
+          throw new Error(`PESAPAL_LIVE_GUARD_VIOLATION: Live mode callback URL "${urlStr}" cannot point to localhost or staging environments.`);
+        }
+      } catch (err: any) {
+        if (err.message.includes('PESAPAL_LIVE_GUARD_VIOLATION')) {
+          throw err;
+        }
+        throw new Error(`PESAPAL_INVALID_URL: Failed to parse callback URL "${urlStr}". Details: ${err.message}`);
+      }
+    }
+  }
+
   public async submitOrderRequest(input: PesaPalSubmitOrderInput): Promise<PesaPalSubmitOrderResponse> {
+    this.validateLiveUrls(input.callback_url, input.cancellation_url);
     const token = await this.getToken();
     const url = `${this.getBaseUrl()}/api/Transactions/SubmitOrderRequest`;
 

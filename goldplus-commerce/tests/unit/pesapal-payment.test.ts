@@ -383,4 +383,81 @@ describe('PesaPal Payment Integration Unit Tests', () => {
   it('should ensure recommendation rails are untouched by this execution context', () => {
     expect(true).toBe(true);
   });
+
+  // 23. Live environment URL validation guards.
+  it('should allow localhost URLs in sandbox mode', async () => {
+    const sandboxClient = new PesaPalClient({
+      ...config,
+      pesapalEnv: 'sandbox'
+    });
+    vi.spyOn(sandboxClient, 'getToken').mockResolvedValue('valid-token');
+    vi.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      order_tracking_id: 'track-123',
+      merchant_reference: 'ref-123',
+      redirect_url: 'https://pay.pesapal.com/checkout?id=123'
+    }), { status: 200 }));
+
+    const res = await sandboxClient.submitOrderRequest({
+      id: 'ref-123',
+      currency: 'UGX',
+      amount: 50000,
+      description: 'Test',
+      callback_url: 'http://localhost/callback',
+      cancellation_url: 'http://localhost/cancelled',
+      notification_id: 'ipn-id',
+      billing_address: {
+        email_address: 'john@example.com',
+        phone_number: '0770000000',
+        first_name: 'John',
+        last_name: 'Doe'
+      }
+    });
+    expect(res.order_tracking_id).toBe('track-123');
+  });
+
+  it('should strictly reject non-HTTPS URLs in live mode', async () => {
+    const liveClient = new PesaPalClient({
+      ...config,
+      pesapalEnv: 'live'
+    });
+
+    await expect(liveClient.submitOrderRequest({
+      id: 'ref-123',
+      currency: 'UGX',
+      amount: 50000,
+      description: 'Test',
+      callback_url: 'http://my-production-domain.com/callback',
+      cancellation_url: 'https://my-production-domain.com/cancelled',
+      notification_id: 'ipn-id',
+      billing_address: {
+        email_address: 'john@example.com',
+        phone_number: '0770000000',
+        first_name: 'John',
+        last_name: 'Doe'
+      }
+    })).rejects.toThrow('PESAPAL_LIVE_GUARD_VIOLATION: Live mode callback URL');
+  });
+
+  it('should strictly reject localhost or staging URLs in live mode', async () => {
+    const liveClient = new PesaPalClient({
+      ...config,
+      pesapalEnv: 'live'
+    });
+
+    await expect(liveClient.submitOrderRequest({
+      id: 'ref-123',
+      currency: 'UGX',
+      amount: 50000,
+      description: 'Test',
+      callback_url: 'https://localhost/callback',
+      cancellation_url: 'https://my-production-domain.com/cancelled',
+      notification_id: 'ipn-id',
+      billing_address: {
+        email_address: 'john@example.com',
+        phone_number: '0770000000',
+        first_name: 'John',
+        last_name: 'Doe'
+      }
+    })).rejects.toThrow('PESAPAL_LIVE_GUARD_VIOLATION: Live mode callback URL');
+  });
 });

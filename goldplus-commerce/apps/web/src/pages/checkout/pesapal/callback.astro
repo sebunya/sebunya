@@ -7,6 +7,11 @@ const status = Astro.url.searchParams.get('status') || '';
 const message = Astro.url.searchParams.get('message') || '';
 
 const isSuccess = status === 'success';
+
+if (isSuccess) {
+  // Delete storefront cart data cookie on verified successful checkout completion
+  Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+}
 ---
 
 <BaseLayout title="Payment Verification">

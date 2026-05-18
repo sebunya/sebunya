@@ -93,6 +93,7 @@ if (Astro.request.method === 'POST') {
      // Map priceUgx field since interface varies slightly between cart api and checkout lib
      const normalizedItems = cart.items.map(i => ({ ...i, priceUgx: i.priceUgx || i.unitPriceUgx }));
      const payload = prepareCheckoutPayload(formData, normalizedItems as any);
+     const paymentMethod = String(formData.get('paymentMethod') || 'offline').trim();
      
      let res;
      let serverError = false;
@@ -108,12 +109,31 @@ if (Astro.request.method === 'POST') {
      }
 
      if (!serverError && res && res.ok) {
-        status = 'received';
-        message = 'Order successfully created for review. Our logistics team will contact you with final pricing.';
-        reference = res.data?.orderNumber || res.data?.id;
+        const orderId = res.data?.id;
         
-        // Successfully submitted, clear browser cart cookie contents
-        Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+        if (paymentMethod === 'pesapal' && orderId) {
+           try {
+              const payRes = await postJson('/commerce/payments/pesapal/start', { orderId });
+              if (payRes && payRes.ok && payRes.data?.redirectUrl) {
+                 return Astro.redirect(payRes.data.redirectUrl, 303);
+              } else {
+                 status = 'error';
+                 message = payRes?.message || 'We successfully created your order, but we could not connect to PesaPal secure payment at this moment. Please try again.';
+                 reference = res.data?.orderNumber || orderId;
+              }
+           } catch (payErr: any) {
+              status = 'error';
+              message = `Secure connection to PesaPal failed: ${payErr.message}. Your order was placed successfully, but is unpaid.`;
+              reference = res.data?.orderNumber || orderId;
+           }
+        } else {
+           status = 'received';
+           message = 'Order successfully created for review. Our logistics team will contact you with final pricing.';
+           reference = res.data?.orderNumber || orderId;
+           
+           // Successfully submitted, clear browser cart cookie contents
+           Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+        }
      } else {
         const allowDraft = String(formData.get('allowOfflineDraft') || '') === 'true';
         if (allowDraft) {
@@ -213,12 +233,27 @@ const formatUgx = (n: number): string =>
               </div>
             </div>
 
-            <div class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm">
-              <h2 class="text-lg md:text-xl font-bold text-brand-charcoal mb-4 flex items-center gap-2">
+             <div class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm">
+              <h2 class="text-lg md:text-xl font-bold text-brand-charcoal mb-6 flex items-center gap-2">
                 <span aria-hidden="true" class="w-8 h-8 rounded-full bg-brand-charcoal text-white flex items-center justify-center text-sm font-black">2</span>
                 Payment method
               </h2>
-              <Notice kind="not-configured" title="Offline settlement required" message="Live mobile money checkout is configured only for administrator testing. Final invoice must be approved manually by sales agents." />
+              <div class="space-y-4">
+                <label class="flex items-start gap-3 p-4 border border-brand-borderGrey rounded-xl hover:border-brand-primary cursor-pointer select-none">
+                  <input type="radio" name="paymentMethod" value="offline" checked class="mt-1 w-4 h-4 text-brand-charcoal border-brand-borderGrey focus:ring-brand-primary" />
+                  <div>
+                    <span class="font-bold text-brand-charcoal text-sm">Cash / Manual Invoice</span>
+                    <p class="text-xs text-brand-mutedGrey mt-1">Submit your order now, and our sales agents will manually verify delivery details and issue a final invoice.</p>
+                  </div>
+                </label>
+                <label class="flex items-start gap-3 p-4 border border-brand-borderGrey rounded-xl hover:border-brand-primary cursor-pointer select-none">
+                  <input type="radio" name="paymentMethod" value="pesapal" class="mt-1 w-4 h-4 text-brand-charcoal border-brand-borderGrey focus:ring-brand-primary" />
+                  <div>
+                    <span class="font-bold text-brand-charcoal text-sm">Mobile Money & Card via PesaPal</span>
+                    <p class="text-xs text-brand-mutedGrey mt-1">Pay securely with MTN Mobile Money, Airtel Money, or credit/debit cards instantly via secure PesaPal redirection.</p>
+                  </div>
+                </label>
+              </div>
             </div>
 
             {status === 'error' && (
