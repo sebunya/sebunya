@@ -1,15 +1,15 @@
 # GoldPlus Storefront Header, Search, and Category Navigation Runbook
 
-This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R10 Recognisable Category Icon System, Uniform Optical Sizing, Category Colour Calibration, and Final Header Craft Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
+This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R11 Premium Unified Icon System, Brand-Green Accent Discipline, and Final Header Visual Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
 
 ---
 
 ## 1. Baseline State Lock
 
-* **Verified Commit Hash**: `0d49621`
-* **Verified Git Tag**: `homepage-header-unified-dock-r9`
+* **Verified Commit Hash**: `ad01923`
+* **Verified Git Tag**: `homepage-header-icon-recognition-r10`
 * **Branch**: `phase-1-functional-depth`
-* **Working Tree State**: 100% clean baseline verified prior to R10 modifications.
+* **Working Tree State**: 100% clean baseline verified prior to R11 modifications.
 
 ---
 
@@ -36,42 +36,42 @@ The following critical files containing homepage personalization, first-time-use
 
 ---
 
-## 4. Why R9 Still Needed Icon Recognition Work (H1A-R10)
+## 4. Why R10 Multi-Colour Icons Were Reduced (H1A-R11)
 
-While R9 established the correct segmented dock layout, its icons:
-* Were too small (`w-4 h-4`) and visually timid.
-* Were entirely grey, making the dock look operational, dry, and lacking brand personality.
-* Looked too similar, failing the critical **label-off recognition test**.
+While R10 successfully resolved individual icon recognition, the multi-color styling:
+* Created a mild playful rainbow effect.
+* Competed with the premium GoldPlus green brand system.
+* Made each category feel like a separate app badge, hurting visual unity.
 
-To establish absolute storefront confidence, H1A-R10 designed a **recognisable, optically uniform monoline icon system**:
-* **Shop All**: 2x2 catalog product grid inside a rounded square, conveying standard catalog search.
-* **Power**: Charging battery outline containing a lightning bolt, immediately signaling chargers/cables/power banks.
-* **Sound**: Compact overhead audio headphones outline with explicit ear cushions, immediately denoting audio devices.
-* **Storage**: A vertical USB flash drive outline, instantly signaling storage/flash memory.
-* **Car**: Silhouette of a consumer vehicle front profile, immediately conveying car accessories.
-* **PC**: Outline of an ergonomic computer mouse, instantly signaling computer accessories.
-
----
-
-## 5. Colour Calibration & Restraint
-
-To avoid a loud developer-made rainbow while introducing premium personality, we applied **soft, color-calibrated HSL tiles and colored outlines only**:
-* **Shop All**: Neutral Slate (`text-slate-500 bg-slate-50 border-slate-100`)
-* **Power**: GoldPlus Green (`text-emerald-600 bg-emerald-50 border-emerald-100`)
-* **Sound**: Calm Sky Blue (`text-sky-600 bg-sky-50 border-sky-100`)
-* **Storage**: Muted Amber/Gold (`text-amber-600 bg-amber-50 border-amber-100`)
-* **Car**: Deep Teal (`text-teal-600 bg-teal-50 border-teal-100`)
-* **PC**: Refined Tech Indigo (`text-indigo-600 bg-indigo-50 border-indigo-100`)
-
-Labels remain dark grey (`text-gray-700`) by default, and only transitions to high-contrast dark colors on hover. The dock remains perfectly neutral, elegant, and harmonious.
+To achieve an ultimate customer-grade visual lock, H1A-R11 established a **disciplined brand-green accented monoline system**:
+* **Shop All**: 2x2 grid monoline outline, representing directory search.
+* **Power**: Battery with lightning bolt, representing chargers, cables, and power banks.
+* **Sound**: Headphones, denoting audio devices.
+* **Storage**: USB flash drive, denoting storage devices.
+* **Car**: Silhouette front profile of a consumer car, denoting car mounts/chargers.
+* **PC**: Ergonomic computer mouse, representing computer accessories.
 
 ---
 
-## 6. Visual Dimension and Spacing Unification
+## 5. Pure Brand-Green Accent Discipline
 
-We defined a strict visual weight strategy across all breakpoints:
-* **Desktop**: Inline SVGs are uniform `20px` (`w-5 h-5`) and housed in consistent `32px` (`w-8 h-8`) rounded icon tiles with subtle borders.
-* **Mobile**: Horizontal category rail features robust `36px` (`w-9 h-9`) icon tiles containing the same `20px` custom SVGs, providing a premium, native feel.
+* **At Rest (Default)**:
+  * Icon color: Slate/charcoal (`text-slate-500`)
+  * Icon tile: Neutral soft grey (`bg-gray-50 border-gray-100`)
+  * Label: Neutral dark slate (`text-gray-700`)
+* **Hover / Focus / Active State**:
+  * Icon color transitions cleanly to **GoldPlus Green** (`text-brand-primary`).
+  * Icon tile border morphs to a delicate green border (`border-brand-primary/20`) with a soft green tint background (`bg-brand-primary/5`).
+  * Label shifts high-contrast dark (`text-gray-950 font-bold`).
+
+---
+
+## 6. Spacing and Search Width Improvements
+
+* **Search breathing room**: Expanded the desktop search form width to `max-w-[260px] xl:max-w-[360px]` to completely eliminate placeholder truncation.
+* **Responsive placeholders**:
+  * Wide Desktop: `"Search chargers, earbuds, power banks..."`
+  * Tablet/Mobile: `"Search products..."`
 
 ---
 
@@ -104,4 +104,4 @@ To guarantee that zero empty result pages are triggered:
 ## 10. Final Status
 
 * **Status**: **COMPLETE & LOCKED**.
-* **Recommendation**: **GO**. The storefront header has successfully reached its ultimate, premium, color-calibrated category icon recognition system.
+* **Recommendation**: **GO**. The storefront header has successfully reached its ultimate, premium, brand-accented category navigation layout.
