@@ -925,7 +925,7 @@ While R23 successfully resolved the mobile category rail's end-clipping problem 
 To keep the category dock clean while introducing structural rhythm, we added vertical micro-separators:
 - **Width**: `1px` only
 - **Height**: `16px` (`h-4`)
-- **Color**: Extremely subtle, semitransparent slate (`bg-slate-300/40`)
+- **Color**: Extremely subtle, solid neutral slate (`bg-slate-200`)
 - **Placement**: Centered vertically between the category link anchors.
 This introduces a high-end segment hierarchy without crowding or spreadsheet-like clutter.
 
@@ -933,7 +933,7 @@ This introduces a high-end segment hierarchy without crowding or spreadsheet-lik
 Using the same design philosophy, the tablet nav was updated to include slightly shorter micro-separators:
 - **Width**: `1px`
 - **Height**: `14px` (`h-3.5`)
-- **Color**: Extremely light slate (`bg-slate-300/35`)
+- **Color**: Extremely light neutral slate (`bg-slate-200`)
 This keeps the centered capsule layout absolutely clean and well-balanced on medium viewports.
 
 ### 19.4 Mobile No-Separator Decision
