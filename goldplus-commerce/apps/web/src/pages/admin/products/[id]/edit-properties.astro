@@ -1,0 +1,305 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import FormField from '../../../../components/FormField.astro';
+import FormFeedback from '../../../../components/FormFeedback.astro';
+import { apiBase } from '../../../../lib/api';
+import { readSessionToken } from '../../../../lib/session';
+const { id } = Astro.params;
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}/edit-properties`, 303);
+}
+
+let status: 'success' | 'error' | null = null;
+let message: string | undefined;
+
+async function authedJson<T>(path: string, init?: RequestInit): Promise<{ status: number; data: T | null; error?: string }> {
+  const res = await fetch(`${apiBase}${path}`, {
+    ...(init ?? {}),
+    headers: { 
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...(init?.headers as any ?? {}), 
+      Authorization: `Bearer ${token}` 
+    },
+  });
+  const json = await res.json().catch(() => null);
+  return { status: res.status, data: json?.success ? (json.data as T) : null, error: json?.error?.message };
+}
+
+// Fetch raw product properties from admin API
+const prodRes = await authedJson<any>(`/admin/products/${encodeURIComponent(id ?? '')}`);
+const product = prodRes.data;
+if (!product) {
+  return Astro.redirect('/admin/products', 303);
+}
+
+// Fetch categories from backend
+const catsRes = await authedJson<any[]>('/admin/products/categories');
+const categories = catsRes.data ?? [];
+const matchingCat = categories.find((c: any) => c.name === product.category) || categories[0];
+const productCategoryId = matchingCat?.id || '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const name = String(form.get('name') ?? '').trim();
+  const sku = String(form.get('sku') ?? '').trim().toUpperCase();
+  const modelNumber = String(form.get('modelNumber') ?? '').trim();
+  const slug = String(form.get('slug') ?? '').trim().toLowerCase();
+  const categoryId = String(form.get('categoryId') ?? '').trim();
+  const subcategory = String(form.get('subcategory') ?? '').trim() || undefined;
+  const shortDescription = String(form.get('shortDescription') ?? '').trim();
+  const longDescription = String(form.get('longDescription') ?? '').trim();
+  const priceUgx = Number(form.get('priceUgx') ?? 0);
+  const stockStatus = String(form.get('stockStatus') ?? 'in_stock');
+  const stockQuantity = Number(form.get('stockQuantity') ?? 0);
+  const imageUrl = String(form.get('imageUrl') ?? '').trim() || undefined;
+  const active = form.get('active') === 'on' || form.get('active') === 'true';
+  const approvalStatus = String(form.get('approvalStatus') ?? 'draft');
+
+  const res = await authedJson(`/admin/products/${encodeURIComponent(id ?? '')}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      name, sku, modelNumber, slug, categoryId, subcategory,
+      shortDescription, longDescription, priceUgx, stockStatus,
+      stockQuantity, imageUrl, active, approvalStatus
+    }),
+  });
+
+  if (res.status >= 200 && res.status < 300) {
+    return Astro.redirect(`/admin/products/${encodeURIComponent(id ?? '')}`, 303);
+  } else {
+    status = 'error';
+    message = res.error ?? `Failed to save product properties (HTTP ${res.status}).`;
+  }
+}
+---
+
+<AdminLayout title={`Edit Properties - ${product.name}`}>
+  <div class="container mx-auto px-6 lg:px-8 max-w-4xl">
+    <div class="flex items-center gap-4 mb-8">
+      <a href={`/admin/products/${product.id}`} class="p-2 hover:bg-gray-100 rounded-xl transition-colors border border-gray-200 bg-white shadow-xs">
+        &larr;
+      </a>
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Edit Properties</h2>
+        <p class="text-sm text-gray-500 mt-1">Modify core catalog information and business rules for: <span class="font-bold text-brand-green">{product.name}</span></p>
+      </div>
+    </div>
+
+    {status && <div class="mb-6"><FormFeedback kind={status} message={message} /></div>}
+
+    <form method="POST" class="space-y-6">
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6">
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400 border-b border-gray-100 pb-3">Core Information</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <FormField
+            id="name"
+            name="name"
+            label="Product Name"
+            defaultValue={product.name}
+            placeholder="e.g. GoldPlus Heavy Duty Charger"
+            required
+          />
+          <FormField
+            id="slug"
+            name="slug"
+            label="Product Slug"
+            defaultValue={product.slug}
+            placeholder="e.g. goldplus-heavy-duty-charger"
+            required
+            helperText="Auto-generated URL identifier. Hyphens and alphanumeric characters only."
+          />
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <FormField
+            id="sku"
+            name="sku"
+            label="SKU Code"
+            defaultValue={product.sku}
+            placeholder="e.g. GP-CHG-H1"
+            required
+            helperText="Unique stock-keeping identifier."
+          />
+          <FormField
+            id="modelNumber"
+            name="modelNumber"
+            label="Model Number"
+            defaultValue={product.modelNumber}
+            placeholder="e.g. GP-MODEL-01"
+            required
+          />
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label for="categoryId" class="block text-sm font-bold text-brand-dark mb-2 flex items-center gap-1">
+              Category <span class="text-red-600 ml-1">*</span>
+            </label>
+            <select
+              id="categoryId"
+              name="categoryId"
+              required
+              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-colors text-sm font-semibold"
+            >
+              {categories.map((cat: any) => (
+                <option value={cat.id} selected={cat.id === productCategoryId}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+          <FormField
+            id="subcategory"
+            name="subcategory"
+            label="Subcategory"
+            defaultValue={product.subcategory}
+            placeholder="e.g. Travel Adapters"
+          />
+        </div>
+      </div>
+
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6">
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400 border-b border-gray-100 pb-3">Pricing & Inventory</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <FormField
+            id="priceUgx"
+            name="priceUgx"
+            label="Retail Price (UGX)"
+            type="number"
+            defaultValue={String(product.priceUgx)}
+            placeholder="50000"
+            required
+          />
+          <div>
+            <label for="stockStatus" class="block text-sm font-bold text-brand-dark mb-2">
+              Stock Status
+            </label>
+            <select
+              id="stockStatus"
+              name="stockStatus"
+              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-colors text-sm font-semibold"
+            >
+              <option value="in_stock" selected={product.stockStatus === 'in_stock'}>In Stock</option>
+              <option value="low_stock" selected={product.stockStatus === 'low_stock'}>Low Stock</option>
+              <option value="out_of_stock" selected={product.stockStatus === 'out_of_stock'}>Out of Stock</option>
+              <option value="pre_order" selected={product.stockStatus === 'pre_order'}>Pre-Order</option>
+            </select>
+          </div>
+          <FormField
+            id="stockQuantity"
+            name="stockQuantity"
+            label="Stock Quantity"
+            type="number"
+            defaultValue={String(product.stockQuantity)}
+            required
+          />
+        </div>
+
+        <FormField
+          id="imageUrl"
+          name="imageUrl"
+          label="Authoritative Image URL"
+          defaultValue={product.imageUrl}
+          placeholder="https://images.unsplash.com/..."
+          helperText="External CDN or direct product visual asset link."
+        />
+      </div>
+
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6">
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400 border-b border-gray-100 pb-3">Descriptions</h3>
+
+        <FormField
+          id="shortDescription"
+          name="shortDescription"
+          label="Short Editorial Description"
+          defaultValue={product.shortDescription}
+          placeholder="Brief snippet highlighting main feature points..."
+          required
+        />
+
+        <FormField
+          id="longDescription"
+          name="longDescription"
+          label="Detailed Technical Description"
+          type="textarea"
+          rows={5}
+          defaultValue={product.longDescription}
+          placeholder="Full product review, engineering highlights, and certifications..."
+          required
+        />
+      </div>
+
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6">
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400 border-b border-gray-100 pb-3">Status & Governance</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label for="approvalStatus" class="block text-sm font-bold text-brand-dark mb-2">
+              Approval Status
+            </label>
+            <select
+              id="approvalStatus"
+              name="approvalStatus"
+              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-colors text-sm font-semibold"
+            >
+              <option value="draft" selected={product.approvalStatus === 'draft'}>Draft (Under Review)</option>
+              <option value="approved" selected={product.approvalStatus === 'approved'}>Approved (Safe to Publish)</option>
+              <option value="rejected" selected={product.approvalStatus === 'rejected'}>Rejected (Flagged)</option>
+            </select>
+            <p class="text-xs text-gray-500 mt-1">Products must be marked 'Approved' to be visible on public storefront listing pages.</p>
+          </div>
+
+          <div class="flex flex-col justify-center">
+            <label class="flex items-center gap-3 select-none cursor-pointer">
+              <input
+                id="active"
+                name="active"
+                type="checkbox"
+                checked={product.active}
+                class="w-5 h-5 accent-brand-green rounded border-gray-300 focus:ring-brand-green"
+              />
+              <div>
+                <span class="text-sm font-bold text-brand-dark block">Active & Enabled</span>
+                <span class="text-xs text-gray-500">Makes the item immediately queryable on endpoints.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-4 mt-6">
+        <a
+          href={`/admin/products/${product.id}`}
+          class="bg-white border border-gray-300 hover:bg-gray-50 text-brand-dark font-black text-xs px-6 py-3.5 rounded-xl uppercase tracking-wider transition-colors"
+        >
+          Cancel
+        </a>
+        <button
+          type="submit"
+          class="bg-brand-dark hover:bg-black text-white font-black text-xs px-8 py-3.5 rounded-xl uppercase tracking-wider transition-colors shadow-sm"
+        >
+          Save Properties
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <script is:inline>
+    // Client-side auto slug generator from name input
+    const nameInput = document.getElementById('name');
+    const slugInput = document.getElementById('slug');
+
+    if (nameInput && slugInput) {
+      nameInput.addEventListener('input', () => {
+        const value = nameInput.value;
+        const slugified = value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '');
+        slugInput.value = slugified;
+      });
+    }
+  </script>
+</AdminLayout>

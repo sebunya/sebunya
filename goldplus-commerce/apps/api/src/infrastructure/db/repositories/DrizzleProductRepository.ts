@@ -347,5 +347,50 @@ export class DrizzleProductRepository implements IProductRepository {
       };
     });
   }
+
+  async getCategories(): Promise<Array<{ id: string; name: string; slug: string; isOther: boolean }>> {
+    return await db.query.categories.findMany();
+  }
+
+  async checkCategoryExists(categoryId: string): Promise<boolean> {
+    const cat = await db.query.categories.findFirst({ where: eq(categories.id, categoryId) });
+    return !!cat;
+  }
+
+  async checkSkuExists(sku: string, excludeId?: string): Promise<boolean> {
+    const rows = await db.select().from(products).where(eq(products.sku, sku));
+    if (excludeId) {
+      return rows.some(r => r.id !== excludeId);
+    }
+    return rows.length > 0;
+  }
+
+  async checkSlugExists(slug: string, excludeId?: string): Promise<boolean> {
+    const rows = await db.select().from(products).where(eq(products.slug, slug));
+    if (excludeId) {
+      return rows.some(r => r.id !== excludeId);
+    }
+    return rows.length > 0;
+  }
+
+  async createProduct(product: ProductEntity, categoryId: string): Promise<void> {
+    await this.save(product);
+    await db.update(products).set({ categoryId }).where(eq(products.id, product.id));
+    await db.insert(productPrices).values({
+      productId: product.id,
+      retailPrice: product.priceUgx,
+    });
+  }
+
+  async updateProductProperties(product: ProductEntity, categoryId: string): Promise<void> {
+    await this.save(product);
+    await db.update(products).set({ categoryId }).where(eq(products.id, product.id));
+    const priceRow = await db.query.productPrices.findFirst({ where: eq(productPrices.productId, product.id) });
+    if (priceRow) {
+      await db.update(productPrices).set({ retailPrice: product.priceUgx }).where(eq(productPrices.productId, product.id));
+    } else {
+      await db.insert(productPrices).values({ productId: product.id, retailPrice: product.priceUgx });
+    }
+  }
 }
 

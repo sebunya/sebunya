@@ -198,4 +198,261 @@ routes.post('/attributes', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), asy
   return c.json(res, 201);
 });
 
+import { ProductEntity } from '../../../../domain/products/ProductEntity';
+import { randomUUID } from 'node:crypto';
+
+// Get all categories
+routes.get('/categories', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) => {
+  try {
+    const registry = Registry.getInstance();
+    const cats = await registry.productRepo.getCategories();
+    return c.json({ success: true, data: cats });
+  } catch (err: any) {
+    return c.json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } }, 500);
+  }
+});
+
+// Get raw product details for administration editing
+routes.get('/:id', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) => {
+  const productId = c.req.param('id') ?? '';
+  const registry = Registry.getInstance();
+  const product = await registry.productRepo.findById(productId);
+  if (!product) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Product not found.' } }, 404);
+  }
+  return c.json({ success: true, data: product });
+});
+
+// Create product
+routes.post('/', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) {
+    return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Body must be JSON.' } }, 400);
+  }
+
+  const name = String(body.name ?? '').trim();
+  const sku = String(body.sku ?? '').trim().toUpperCase();
+  const modelNumber = String(body.modelNumber ?? '').trim();
+  const slug = String(body.slug ?? '').trim().toLowerCase();
+  const categoryId = String(body.categoryId ?? '').trim();
+  const subcategory = body.subcategory ? String(body.subcategory).trim() : undefined;
+  const shortDescription = String(body.shortDescription ?? '').trim();
+  const longDescription = String(body.longDescription ?? '').trim();
+  const priceUgx = Number(body.priceUgx ?? 0);
+  const compareAtPriceUgx = body.compareAtPriceUgx ? Number(body.compareAtPriceUgx) : undefined;
+  const stockStatus = String(body.stockStatus ?? 'in_stock');
+  const imageUrl = body.imageUrl ? String(body.imageUrl).trim() : undefined;
+  const active = body.active !== false;
+  const approvalStatus = String(body.approvalStatus ?? 'draft');
+  const stockQuantity = Number(body.stockQuantity ?? 0);
+
+  // Validation
+  if (name.length < 2 || name.length > 255) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Product name must be between 2 and 255 characters.' } }, 400);
+  }
+  if (!sku) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'SKU is required.' } }, 400);
+  }
+  if (!modelNumber) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Model number is required.' } }, 400);
+  }
+  if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Slug must be a unique, URL-safe string.' } }, 400);
+  }
+  if (priceUgx < 0 || !Number.isInteger(priceUgx)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Price must be a positive integer.' } }, 400);
+  }
+  if (stockQuantity < 0 || !Number.isInteger(stockQuantity)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Stock quantity must be a non-negative integer.' } }, 400);
+  }
+  if (!['in_stock', 'low_stock', 'out_of_stock', 'pre_order'].includes(stockStatus)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid stock status.' } }, 400);
+  }
+  if (!['draft', 'approved', 'rejected'].includes(approvalStatus)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid approval status.' } }, 400);
+  }
+
+  try {
+    const registry = Registry.getInstance();
+    
+    const categoriesList = await registry.productRepo.getCategories();
+    const cat = categoriesList.find((c: any) => c.id === categoryId);
+    if (!cat) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Selected category does not exist.' } }, 400);
+    }
+
+    const skuExists = await registry.productRepo.checkSkuExists(sku);
+    if (skuExists) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'SKU code is already registered.' } }, 400);
+    }
+
+    const slugExists = await registry.productRepo.checkSlugExists(slug);
+    if (slugExists) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Product slug is already in use.' } }, 400);
+    }
+
+    const productId = randomUUID();
+
+    const productEntity = new ProductEntity(
+      productId,
+      sku,
+      modelNumber,
+      name,
+      slug,
+      cat.name,
+      subcategory,
+      shortDescription,
+      longDescription,
+      priceUgx,
+      compareAtPriceUgx,
+      stockStatus as any,
+      imageUrl,
+      [],
+      '1 Year',
+      true,
+      active,
+      approvalStatus as any,
+      stockStatus === 'pre_order',
+      priceUgx > 0,
+      !!imageUrl,
+      stockQuantity,
+      {}
+    );
+
+    // Save entity through repository orchestration
+    await registry.productRepo.createProduct(productEntity, categoryId);
+
+    const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
+    await auditUc.execute({
+      actorId: (c.get('user') as any).id,
+      action: 'PRODUCT_CREATED',
+      entity: 'product',
+      entityId: productId,
+      newState: { name, sku, slug, priceUgx, stockQuantity },
+    });
+
+    return c.json({ success: true, data: { id: productId } }, 201);
+  } catch (err: any) {
+    return c.json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } }, 500);
+  }
+});
+
+// Update product properties
+routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
+  const productId = c.req.param('id') ?? '';
+  const body = await c.req.json().catch(() => null);
+  if (!body) {
+    return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Body must be JSON.' } }, 400);
+  }
+
+  const registry = Registry.getInstance();
+  const existingProduct = await registry.productRepo.findById(productId);
+  if (!existingProduct) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Product not found.' } }, 404);
+  }
+
+  const name = String(body.name ?? '').trim();
+  const sku = String(body.sku ?? '').trim().toUpperCase();
+  const modelNumber = String(body.modelNumber ?? '').trim();
+  const slug = String(body.slug ?? '').trim().toLowerCase();
+  const categoryId = String(body.categoryId ?? '').trim();
+  const subcategory = body.subcategory ? String(body.subcategory).trim() : undefined;
+  const shortDescription = String(body.shortDescription ?? '').trim();
+  const longDescription = String(body.longDescription ?? '').trim();
+  const priceUgx = Number(body.priceUgx ?? 0);
+  const compareAtPriceUgx = body.compareAtPriceUgx ? Number(body.compareAtPriceUgx) : undefined;
+  const stockStatus = String(body.stockStatus ?? 'in_stock');
+  const imageUrl = body.imageUrl ? String(body.imageUrl).trim() : undefined;
+  const active = body.active !== false;
+  const approvalStatus = String(body.approvalStatus ?? 'draft');
+  const stockQuantity = Number(body.stockQuantity ?? 0);
+
+  // Validation
+  if (name.length < 2 || name.length > 255) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Product name must be between 2 and 255 characters.' } }, 400);
+  }
+  if (!sku) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'SKU is required.' } }, 400);
+  }
+  if (!modelNumber) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Model number is required.' } }, 400);
+  }
+  if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Slug must be a unique, URL-safe string.' } }, 400);
+  }
+  if (priceUgx < 0 || !Number.isInteger(priceUgx)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Price must be a positive integer.' } }, 400);
+  }
+  if (stockQuantity < 0 || !Number.isInteger(stockQuantity)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Stock quantity must be a non-negative integer.' } }, 400);
+  }
+  if (!['in_stock', 'low_stock', 'out_of_stock', 'pre_order'].includes(stockStatus)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid stock status.' } }, 400);
+  }
+  if (!['draft', 'approved', 'rejected'].includes(approvalStatus)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid approval status.' } }, 400);
+  }
+
+  try {
+    const categoriesList = await registry.productRepo.getCategories();
+    const cat = categoriesList.find((c: any) => c.id === categoryId);
+    if (!cat) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Selected category does not exist.' } }, 400);
+    }
+
+    const skuExists = await registry.productRepo.checkSkuExists(sku, productId);
+    if (skuExists) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'SKU code is already registered.' } }, 400);
+    }
+
+    const slugExists = await registry.productRepo.checkSlugExists(slug, productId);
+    if (slugExists) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Product slug is already in use.' } }, 400);
+    }
+
+    const productEntity = new ProductEntity(
+      productId,
+      sku,
+      modelNumber,
+      name,
+      slug,
+      cat.name,
+      subcategory,
+      shortDescription,
+      longDescription,
+      priceUgx,
+      compareAtPriceUgx,
+      stockStatus as any,
+      imageUrl || existingProduct.imageUrl,
+      existingProduct.features,
+      existingProduct.warrantyPeriod,
+      existingProduct.verificationEligible,
+      active,
+      approvalStatus as any,
+      stockStatus === 'pre_order',
+      priceUgx > 0,
+      !!(imageUrl || existingProduct.imageUrl),
+      stockQuantity,
+      existingProduct.specifications
+    );
+
+    // Save entity through repository orchestration
+    await registry.productRepo.updateProductProperties(productEntity, categoryId);
+
+    const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
+    await auditUc.execute({
+      actorId: (c.get('user') as any).id,
+      action: 'PRODUCT_UPDATED',
+      entity: 'product',
+      entityId: productId,
+      newState: { name, sku, slug, priceUgx, stockQuantity },
+    });
+
+    return c.json({ success: true, message: 'Product properties saved.' });
+  } catch (err: any) {
+    return c.json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } }, 500);
+  }
+});
+
 export default routes;
+
