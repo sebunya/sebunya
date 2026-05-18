@@ -314,3 +314,55 @@ This section documents the integration, HTML rendering, health diagnostics verif
 *   *No blocking risks remain for this phase.*
 
 ---
+
+## 10. GoldPlus Pass H1J-P2-P1A-R1 — SMS Credential Intake & Preflight Diagnostics
+
+This section documents the preflight validation, secure credential presence audit, and Zoho ZeptoMail release isolation freeze performed for the **Pahappa Comms / EgoSMS** SMS integration.
+
+### 10.1 SMS Credential Intake & Presence Audit
+*   **Intake Status:** SMS provider credentials entered securely inside local `.env` files.
+*   **Presence Validation Result:** **PASSED**. A programmatic preflight check validated that all 12 necessary gateway parameters are fully populated:
+    *   `SMS_PROVIDER`: PRESENT
+    *   `SMS_BASE_URL`: PRESENT
+    *   `SMS_USERNAME`: PRESENT
+    *   `SMS_API_KEY`: PRESENT
+    *   `SMS_SENDER_ID`: PRESENT
+    *   `SMS_DEFAULT_COUNTRY_CODE`: PRESENT
+    *   `SMS_PRIORITY`: PRESENT
+    *   `SMS_TIMEOUT_MS`: PRESENT
+    *   `NOTIFICATIONS_SMS_ENABLED`: PRESENT (Set to `false` for safety)
+    *   `NOTIFICATIONS_DRY_RUN`: PRESENT (Set to `true` for safety)
+    *   `NOTIFICATIONS_LIVE_SEND_ENABLED`: PRESENT (Set to `false` for safety)
+    *   `NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS`: PRESENT (Set to test-recipients only)
+
+### 10.2 Safety Flags & Isolation Compliance
+*   **Global Safety States Checked:**
+    *   `NOTIFICATIONS_SMS_ENABLED` is `false` (blocks any automatic client alerts).
+    *   `NOTIFICATIONS_DRY_RUN` is `true` (forces adapters to loop locally).
+    *   `NOTIFICATIONS_LIVE_SEND_ENABLED` is `false` (disables all production-grade outbound gateway dispatches).
+*   **PII & Key Safety:** Confirm no credentials or raw configuration files have been exposed to shell trace streams or tracked by version control index tables.
+
+### 10.3 Live Balance Health Check Result
+*   **Diagnostics Result:** **PASSED**. A secure balance ping was sent to Pahappa EgoSMS REST endpoints via the programmatic query method `Balance`.
+*   **Response Telemetry:**
+    *   **Balance health check:** PASS
+    *   **Provider Status:** OK (Status `OK` successfully mapped)
+    *   **Balance Received:** YES (Numeric credit balance returned without error)
+
+### 10.4 ZeptoMail Email Isolation Audit
+*   **Credential Status:** No ZeptoMail API secrets or Zoho tokens were requested, entered, or inspected.
+*   **Email Sending State:** **FROZEN** (all global safety parameters disable transactional email adapters globally, guaranteeing absolute isolation).
+
+### 10.5 Internal SMS Gate Result
+*   **Test Dispatch Status:** **COMPLETED & VERIFIED**. A single live test message was approved by the administrator and dispatched successfully to the allowlisted test number `25670******45`.
+*   **Response Telemetry:**
+    *   **Dispatch status:** SENT
+    *   **Provider code:** `8a80********0155`
+    *   **Provider message:** "Successfully Sent!"
+*   **Content Sent:** "GoldPlus internal SMS test. No customer action required."
+*   **ZeptoMail Isolation Compliance:** ZeptoMail remained completely frozen during this live test execution.
+
+### 10.6 Recommended Next Phase
+Proceed with **GoldPlus Pass H1J-P2-P1B-R1 — ZeptoMail Email Receipts Provider Secure Credential Intake, Preflight Diagnostics, and Health Checks** to safely activate Zoho ZeptoMail email services under similar secure, dry-run-first isolation models.
+
+---

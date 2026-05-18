@@ -261,4 +261,39 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
     // Ensure raw process environment secret is NOT leaked in raw error details.
     expect(res.providerMessage).not.toContain('test_key');
   });
+
+  test('14. Network timeout maps to FAILED and scrubs token', async () => {
+    const mockAbortError = new Error('The operation was aborted.');
+    mockAbortError.name = 'AbortError';
+    vi.mocked(fetch).mockRejectedValue(mockAbortError);
+
+    const res = await adapter.dispatch({
+      recipient: '0772123456',
+      template: 'test-template',
+      data: { message: 'Hello' },
+    });
+
+    expect(res.status).toBe('FAILED');
+    expect(res.providerCode).toBe('PROVIDER_ERROR');
+    expect(res.providerMessage).toContain('timed out');
+  });
+
+  test('15. Empty custom message falls back to template key safely', async () => {
+    const mockJsonPromise = Promise.resolve({ Status: 'OK', Message: 'Successfully Sent!' });
+    const mockFetchPromise = Promise.resolve({
+      ok: true,
+      json: () => mockJsonPromise,
+    });
+    vi.mocked(fetch).mockImplementation(() => mockFetchPromise);
+
+    await adapter.dispatch({
+      recipient: '0772123456',
+      template: 'ORDER_PAYMENT_SUCCESS',
+      data: { message: '' }, // empty message
+    });
+
+    const [, calledInit] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const parsedBody = JSON.parse(calledInit.body as string);
+    expect(parsedBody.msgdata[0].message).toBe('ORDER_PAYMENT_SUCCESS');
+  });
 });
