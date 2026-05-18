@@ -92,7 +92,141 @@ try {
   apiError = 'Commerce API is currently unreachable.';
 }
 
+// Fetch dynamic notification preview
+let previewData = {
+  template: Astro.url.searchParams.get('template') || '',
+  emailHtml: '',
+  whatsappText: ''
+};
+
+try {
+  const selectedTemplate = previewData.template;
+  const previewRes = await fetch(`${apiBase}/governance/admin/orders/${id}/communication-preview${selectedTemplate ? `?template=${selectedTemplate}` : ''}`, {
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (previewRes.ok) {
+    const json = await previewRes.json().catch(() => null);
+    if (json && json.success) {
+      previewData = json.data;
+    }
+  }
+} catch {
+  // Graceful fallback
+}
+
+// Fallback generator for zero-outage display
 const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+
+if (!previewData.emailHtml) {
+  const formattedTotal = formatter.format(order.totalUgx);
+  const itemsHtml = (order.items || []).map((item: any) => `
+    <tr>
+      <td style="padding: 12px; font-weight: bold; color: #111827; border-bottom: 1px solid #f3f4f6;">${item.productName}</td>
+      <td style="padding: 12px; text-align: center; color: #6b7280; border-bottom: 1px solid #f3f4f6;">${item.sku || 'N/A'}</td>
+      <td style="padding: 12px; text-align: center; font-weight: bold; color: #374151; border-bottom: 1px solid #f3f4f6;">${item.quantity}</td>
+      <td style="padding: 12px; text-align: right; color: #4b5563; border-bottom: 1px solid #f3f4f6;">${formatter.format(item.unitPrice)}</td>
+      <td style="padding: 12px; text-align: right; font-weight: 800; color: #111827; border-bottom: 1px solid #f3f4f6;">${formatter.format(item.unitPrice * item.quantity)}</td>
+    </tr>
+  `).join('');
+
+  let fallbackTitle = 'Order Received & Awaiting Payment';
+  let fallbackMsg = `Thank you for your order. We have successfully received order number <strong>${order.orderNumber}</strong>. Please proceed with payment via your Mobile Money checkout screen or follow PesaPal payment links to complete your purchase.`;
+  let isSuccessColor = false;
+
+  if (previewData.template === 'ORDER_PAYMENT_PENDING') {
+    fallbackTitle = 'Payment Verification Pending';
+    fallbackMsg = `We have recorded a pending payment attempt for order <strong>${order.orderNumber}</strong>. Our systems are currently verifying transaction status. No further action is required.`;
+  } else if (previewData.template === 'ORDER_PAYMENT_SUCCESS') {
+    fallbackTitle = 'Payment Confirmed & Order Processing';
+    fallbackMsg = `Excellent news! Payment of <strong>${formattedTotal}</strong> has been successfully verified. Your order <strong>${order.orderNumber}</strong> is now officially confirmed and transitioning to hardware dispatch logistics.`;
+    isSuccessColor = true;
+  } else if (previewData.template === 'ORDER_PAYMENT_FAILED') {
+    fallbackTitle = 'Payment Attempt Unsuccessful';
+    fallbackMsg = `We could not verify payment for order <strong>${order.orderNumber}</strong>. Please check your Mobile Money network or click checkout again to retry.`;
+  } else if (previewData.template === 'ORDER_PAYMENT_CANCELLED') {
+    fallbackTitle = 'Payment Attempt Cancelled';
+    fallbackMsg = `The payment checkout flow for order <strong>${order.orderNumber}</strong> was cancelled. You can retry checkout anytime from your order tracking screen.`;
+  } else if (previewData.template === 'ORDER_FULFILLMENT_PROCESSING') {
+    fallbackTitle = 'Logistics & Packaging in Progress';
+    fallbackMsg = `Your order <strong>${order.orderNumber}</strong> is currently being packaged and optimized for transport in Kampala. You will be notified as soon as it is shipped.`;
+  } else if (previewData.template === 'ORDER_FULFILLMENT_COMPLETED') {
+    fallbackTitle = 'Delivery Confirmed & Settled';
+    fallbackMsg = `Congratulations! Order <strong>${order.orderNumber}</strong> has been delivered successfully. Thank you for choosing GoldPlus.`;
+    isSuccessColor = true;
+  }
+
+  previewData.emailHtml = `<!DOCTYPE html>
+<html>
+<body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: sans-serif;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f9fafb; padding: 20px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" border="0" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <tr>
+            <td style="background-color: #111827; padding: 24px; text-align: center;">
+              <h1 style="margin: 0; font-size: 20px; font-weight: 900; color: #f59e0b; text-transform: uppercase;">GoldPlus</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: ${isSuccessColor ? '#ecfdf5' : '#fef3c7'}; padding: 16px 24px; border-bottom: 1px solid ${isSuccessColor ? '#d1fae5' : '#fde68a'};">
+              <h2 style="margin: 0; font-size: 14px; font-weight: 900; color: ${isSuccessColor ? '#065f46' : '#92400e'};">${fallbackTitle}</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 24px; font-size: 13px; line-height: 1.6; color: #374151;">
+              <p>Dear ${order.customerName},</p>
+              <p>${fallbackMsg}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 20px 24px;">
+              <table width="100%" border="0" style="font-size: 12px; border-collapse: collapse;">
+                <thead>
+                  <tr style="background-color: #f9fafb; font-weight: bold; color: #9ca3af; border-bottom: 2px solid #e5e7eb;">
+                    <th style="padding: 8px; text-align: left;">Product</th>
+                    <th style="padding: 8px; text-align: center;">SKU</th>
+                    <th style="padding: 8px; text-align: center;">Qty</th>
+                    <th style="padding: 8px; text-align: right;">Unit Price</th>
+                    <th style="padding: 8px; text-align: right;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>${itemsHtml}</tbody>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 24px 24px; text-align: right; font-weight: 900; font-size: 14px;">
+              Grand Total: ${formattedTotal}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+if (!previewData.whatsappText) {
+  let fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nWe have received your order! Placed status is currently *Awaiting Payment*.\n\nTotal Amount: *${formatter.format(order.totalUgx || 0)}*\n\nTo complete your checkout securely, please review your Mobile Money window or use our tracking URL: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
+  
+  if (previewData.template === 'ORDER_PAYMENT_PENDING') {
+    fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour Mobile Money checkout has been initiated and is *Pending verification*.\n\nOnce verified by PesaPal networks, our transport teams in Kampala will package your hardware.\n\nTrack status live: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
+  } else if (previewData.template === 'ORDER_PAYMENT_SUCCESS') {
+    fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nExcellent news! Your payment has been *Successfully Verified*.\n\nFulfillment is in progress, and logistics coordinates are actively being routed.\n\nTrack delivery live: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
+  } else if (previewData.template === 'ORDER_FULFILLMENT_PROCESSING') {
+    fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour order fulfillment status has been updated to *In Processing*.\n\nTrack status live: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
+  } else if (previewData.template === 'ORDER_FULFILLMENT_COMPLETED') {
+    fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour order has been *Delivered and Settled* successfully.\n\nThank you for choosing GoldPlus solar hardware!`;
+  }
+  
+  previewData.whatsappText = fallbackWaText;
+}
+
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -309,6 +443,162 @@ if (currentStatus === 'received') {
                 No active PesaPal transactional records associated with this order.
               </div>
             )}
+          </div>
+        </div>
+
+        <!-- Customer Communication Preview Workspace (Tabbed) -->
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mt-8">
+          <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
+            <div>
+              <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Customer Communication Hub</h3>
+              <p class="text-[9px] text-gray-400 mt-0.5">Real-time preview of transactional receipts and WhatsApp message builders.</p>
+            </div>
+            
+            <!-- Template Toggle Select -->
+            <div>
+              <form method="GET" class="flex items-center gap-2">
+                <label for="template" class="text-[8px] font-black uppercase tracking-wider text-gray-400">Template:</label>
+                <select 
+                  name="template" 
+                  id="template-select" 
+                  onchange="this.form.submit()"
+                  class="bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-[10px] font-black text-brand-dark outline-none focus:border-brand-gold"
+                >
+                  <option value="ORDER_RECEIVED_UNPAID" selected={previewData.template === 'ORDER_RECEIVED_UNPAID' || previewData.template === ''}>Received & Unpaid</option>
+                  <option value="ORDER_PAYMENT_PENDING" selected={previewData.template === 'ORDER_PAYMENT_PENDING'}>Payment Pending</option>
+                  <option value="ORDER_PAYMENT_SUCCESS" selected={previewData.template === 'ORDER_PAYMENT_SUCCESS'}>Payment Success</option>
+                  <option value="ORDER_PAYMENT_FAILED" selected={previewData.template === 'ORDER_PAYMENT_FAILED'}>Payment Failed</option>
+                  <option value="ORDER_PAYMENT_CANCELLED" selected={previewData.template === 'ORDER_PAYMENT_CANCELLED'}>Payment Cancelled</option>
+                  <option value="ORDER_FULFILLMENT_PROCESSING" selected={previewData.template === 'ORDER_FULFILLMENT_PROCESSING'}>Logistics In Progress</option>
+                  <option value="ORDER_FULFILLMENT_COMPLETED" selected={previewData.template === 'ORDER_FULFILLMENT_COMPLETED'}>Logistics Completed</option>
+                </select>
+              </form>
+            </div>
+          </div>
+          
+          <div class="p-6">
+            
+            <!-- Tabs Controls -->
+            <div class="flex border-b border-gray-200 mb-6">
+              <button 
+                id="btn-tab-email" 
+                class="px-4 py-2 text-xs font-black border-b-2 border-brand-gold text-brand-dark focus:outline-none transition-all duration-200"
+                onclick="switchTab('email')"
+              >
+                HTML Email Receipt
+              </button>
+              <button 
+                id="btn-tab-whatsapp" 
+                class="px-4 py-2 text-xs font-black border-b-2 border-transparent text-gray-400 hover:text-brand-dark focus:outline-none transition-all duration-200"
+                onclick="switchTab('whatsapp')"
+              >
+                WhatsApp Handoff
+              </button>
+            </div>
+
+            <!-- TAB 1: HTML Email Preview -->
+            <div id="tab-panel-email" class="block space-y-4">
+              <div class="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden relative shadow-inner" style="height: 380px;">
+                <iframe 
+                  id="email-iframe" 
+                  class="w-full h-full border-0 bg-white" 
+                  srcdoc={previewData.emailHtml}
+                ></iframe>
+              </div>
+              <div class="flex justify-between items-center text-[10px] font-medium text-gray-400">
+                <span>Transactional HTML Receipt (Auto-Generated per Order Status)</span>
+                <span class="text-green-500 font-bold">✓ Responsive & Mobile Optimized</span>
+              </div>
+            </div>
+
+            <!-- TAB 2: WhatsApp Handoff Preview -->
+            <div id="tab-panel-whatsapp" class="hidden space-y-4">
+              <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <textarea 
+                  id="whatsapp-text" 
+                  readonly 
+                  rows="6" 
+                  class="w-full bg-transparent border-0 text-xs font-medium text-gray-700 outline-none resize-none leading-relaxed font-mono"
+                >{previewData.whatsappText}</textarea>
+              </div>
+              
+              <div class="flex flex-col sm:flex-row gap-3">
+                <button 
+                  id="btn-copy-wa" 
+                  class="flex-1 bg-gray-100 hover:bg-gray-200 text-brand-dark text-xs font-black py-3 rounded-xl transition-all flex items-center justify-center gap-2 border border-gray-200"
+                  onclick="copyWhatsAppText()"
+                >
+                  <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 002 2h2a2 2 0 002-2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                  Copy Template Text
+                </button>
+                <a 
+                  href={`https://wa.me/256000000000?text=${encodeURIComponent(previewData.whatsappText)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs font-black py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-center"
+                >
+                  <svg class="w-4 h-4 text-green-300" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.262 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.754-1.458L0 24zM6.59 5.86c-.22-.492-.452-.503-.66-.512-.17-.008-.364-.007-.56-.007-.195 0-.514.073-.783.366-.268.293-1.026 1.002-1.026 2.441 0 1.439 1.047 2.829 1.193 3.023.147.195 2.059 3.145 4.988 4.41.698.302 1.242.482 1.668.618.7.223 1.34.191 1.844.116.563-.083 1.732-.708 1.977-1.393.243-.684.243-1.27.17-1.393-.073-.122-.268-.195-.561-.341-.293-.146-1.732-.853-2.001-.951-.269-.098-.464-.147-.66.146-.195.293-.757.951-.928 1.147-.171.195-.342.22-.635.073-.293-.146-1.238-.457-2.36-1.457-.872-.777-1.46-1.738-1.631-2.03-.171-.293-.018-.452.129-.597.132-.131.293-.342.44-.512.146-.17.195-.293.293-.488.097-.195.048-.366-.024-.512-.072-.147-.66-1.59-.904-2.18z"></path></svg>
+                  Initiate Secure WhatsApp Chat
+                </a>
+              </div>
+
+              <div class="bg-amber-50 border border-amber-100 rounded-xl p-3 text-[10px] text-amber-900 leading-relaxed">
+                <strong>WhatsApp Handoff Rule:</strong> Pre-filled text consists strictly of order reference status updates. Sensitive buyer PII (such as emails, delivery landmarks, or full home addresses) is strictly excluded to prevent transport-layer exposure.
+              </div>
+            </div>
+
+            <!-- Client Script for UI Controls -->
+            <script is:inline>
+              function switchTab(activeTab) {
+                const btnEmail = document.getElementById('btn-tab-email');
+                const btnWa = document.getElementById('btn-tab-whatsapp');
+                const panelEmail = document.getElementById('tab-panel-email');
+                const panelWa = document.getElementById('tab-panel-whatsapp');
+                
+                if (activeTab === 'email') {
+                  btnEmail.classList.add('border-brand-gold', 'text-brand-dark');
+                  btnEmail.classList.remove('border-transparent', 'text-gray-400');
+                  
+                  btnWa.classList.add('border-transparent', 'text-gray-400');
+                  btnWa.classList.remove('border-brand-gold', 'text-brand-dark');
+                  
+                  panelEmail.classList.remove('hidden');
+                  panelEmail.classList.add('block');
+                  
+                  panelWa.classList.add('hidden');
+                  panelWa.classList.remove('block');
+                } else {
+                  btnWa.classList.add('border-brand-gold', 'text-brand-dark');
+                  btnWa.classList.remove('border-transparent', 'text-gray-400');
+                  
+                  btnEmail.classList.add('border-transparent', 'text-gray-400');
+                  btnEmail.classList.remove('border-brand-gold', 'text-brand-dark');
+                  
+                  panelWa.classList.remove('hidden');
+                  panelWa.classList.add('block');
+                  
+                  panelEmail.classList.add('hidden');
+                  panelEmail.classList.remove('block');
+                }
+              }
+
+              function copyWhatsAppText() {
+                const textarea = document.getElementById('whatsapp-text');
+                textarea.select();
+                document.execCommand('copy');
+                
+                const btn = document.getElementById('btn-copy-wa');
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = `
+                  <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                  Copied Successfully!
+                `;
+                setTimeout(() => {
+                  btn.innerHTML = originalHtml;
+                }, 2000);
+              }
+            </script>
+
           </div>
         </div>
 

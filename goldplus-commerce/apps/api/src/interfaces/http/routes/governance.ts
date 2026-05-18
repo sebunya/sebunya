@@ -8,6 +8,8 @@ import { ReportFakeProductUseCase } from '../../../application/use-cases/governa
 import { randomUUID } from 'node:crypto';
 import { authMiddleware } from '../middleware/auth';
 import { requirePermissions } from '../middleware/permissions';
+import { NotificationTemplateRenderer } from '../../../application/use-cases/notifications/NotificationTemplateRenderer';
+
 
 const routes = new Hono();
 const registry = Registry.getInstance();
@@ -239,7 +241,57 @@ routes.get('/admin/orders/:id', authMiddleware, requirePermissions([PERMISSIONS.
   }
 });
 
+// Admin Communication Preview Route
+routes.get('/admin/orders/:id/communication-preview', authMiddleware, requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  try {
+    const id = c.req.param('id') as string;
+    const order = await registry.orderRepo.findById(id);
+    if (!order) {
+      return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found.' } }, 404);
+    }
+
+    const template = c.req.query('template') as any;
+
+    let computedTemplate = 'ORDER_RECEIVED_UNPAID';
+    if (order.orderStatus === 'pending_payment') {
+      computedTemplate = 'ORDER_PAYMENT_PENDING';
+    } else if (order.paymentStatus === 'paid') {
+      if (order.orderStatus === 'processing') {
+        computedTemplate = 'ORDER_PAYMENT_SUCCESS';
+      } else if (order.orderStatus === 'completed') {
+        computedTemplate = 'ORDER_FULFILLMENT_COMPLETED';
+      }
+    } else if (order.orderStatus === 'cancelled') {
+      computedTemplate = 'ORDER_PAYMENT_CANCELLED';
+    } else if (order.orderStatus === 'failed') {
+      computedTemplate = 'ORDER_PAYMENT_FAILED';
+    } else if (order.orderStatus === 'processing') {
+      computedTemplate = 'ORDER_FULFILLMENT_PROCESSING';
+    }
+
+    const targetTemplate = template || computedTemplate;
+    const renderer = new NotificationTemplateRenderer();
+    const emailHtml = renderer.renderEmail(targetTemplate as any, order);
+    const whatsappText = renderer.renderWhatsApp(order);
+
+    return c.json({
+      success: true,
+      data: {
+        template: targetTemplate,
+        emailHtml,
+        whatsappText,
+      }
+    });
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
+    }
+    throw err;
+  }
+});
+
 // Admin Fulfillment Update Route
+
 routes.patch('/admin/orders/:id/fulfillment', authMiddleware, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   try {
     const id = c.req.param('id') as string;
