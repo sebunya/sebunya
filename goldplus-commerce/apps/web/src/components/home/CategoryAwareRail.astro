@@ -43,10 +43,10 @@ const serializedProducts = normalized.map(p => ({
 >
   <div class="mb-6">
     <h2 id="recommendation-category-aware" class="text-2xl font-black tracking-tight text-brand-charcoal" data-category-title>
-      More from this category
+      People exploring similar products also viewed
     </h2>
     <p class="text-brand-mutedGrey text-sm mt-1 font-medium" data-category-subtitle>
-      Recommended based on your visit.
+      More verified picks from the category you were browsing.
     </p>
   </div>
 
@@ -110,8 +110,8 @@ const serializedProducts = normalized.map(p => ({
       const catName = CATEGORY_SLUG_TO_LABEL[catSlug.toLowerCase()] || catSlug;
 
       matchedProducts = products.filter(p => p.categoryName === catName && !excludedSet.has(p.productId));
-      titleText = `More from ${catName}`;
-      subtitleText = `Recommended based on your recent interest in ${catName.toLowerCase()}.`;
+      titleText = "People exploring similar products also viewed";
+      subtitleText = "More verified picks from the category you were browsing.";
       reasonCode = "LAST_CATEGORY";
     } else if (lastSearch) {
       const query = lastSearch.value.toLowerCase().trim();
@@ -120,8 +120,8 @@ const serializedProducts = normalized.map(p => ({
         !excludedSet.has(p.productId) &&
         (p.name.toLowerCase().includes(query) || p.categoryName.toLowerCase().includes(query))
       );
-      titleText = `Recommended for your visit`;
-      subtitleText = `Products matching your search for "${lastSearch.value}".`;
+      titleText = "People exploring similar products also viewed";
+      subtitleText = `More verified picks matching your search for "${lastSearch.value}".`;
       reasonCode = "LAST_SEARCH";
     }
 
