@@ -1,15 +1,15 @@
 # GoldPlus Storefront Header, Search, and Category Navigation Runbook
 
-This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R21 Mobile Header Rail Correction, Darker Separator Lock, Tablet Rhythm, and Desktop Preservation** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
+This document certifies the successful completion and approval of the **GoldPlus UI Micro-Pass H1A — Logic-Free Header, Menu, Search, and Category Navigation Rescue** and its corresponding **R22 Header Visual Declutter, Category Dock Calmness, Separator Restraint, and Final H1A Acceptance Lock** phase. It details the structural updates, product search bar wiring, full-taxonomy shop menu layout, and strict regression protection checks.
 
 ---
 
 ## 1. Baseline State Lock
 
-* **Verified Commit Hash**: `3fa88b0`
-* **Verified Git Tag**: `homepage-header-icon-separator-lock-r19`
+* **Verified Commit Hash**: `073e473`
+* **Verified Git Tag**: `homepage-header-mobile-rail-separators-r21`
 * **Branch**: `phase-1-functional-depth`
-* **Working Tree State**: 100% clean baseline verified prior to R20 modifications.
+* **Working Tree State**: 100% clean baseline verified prior to R22 modifications.
 
 ---
 
@@ -676,4 +676,112 @@ None.
 **GO**. The storefront header has successfully reached its absolute ultimate visual, structural, and brand alignment craft lock.
 
 ### 16.26 Whether H1A Can Now Close and H1B Can Begin
+**YES**. H1A is fully closed and locked. We are completely ready to transition directly into **GoldPlus UI Pass H1B — Storefront Product Listing, Dynamic Filter and Sorting Engine Rescue**!
+
+---
+
+## 17. H1A-R22 Header Visual Declutter, Category Dock Calmness, Separator Restraint, and Final H1A Acceptance Lock
+
+### 17.1 Why R21 Still Felt Crowded
+While R21 solved mobile scaling and aligned dividers, the layout still carried significant cognitive load when viewed at 100% zoom.
+* **Double Container Outlines ("Containers-in-Containers")**: Individual categories featured bordered backgrounds (`bg-gray-50 border border-gray-100`) enclosing the icon, nested inside active segment wrappers (`bg-white border-gray-200/20 shadow-sm`), which were further nested inside the main Category Dock wrapper (`bg-gray-50/60 border border-gray-200/80`). This nested stack created a busy "buttons inside a button" feeling.
+* **Spreadsheet Divider Clutter**: Dark `1.5px bg-slate-400` separators placed between *every single* category link segmented the dock too rigidly. It felt like a physical toolbar grid rather than a premium commerce navigation bar.
+* **Major Divider Noise**: Tall `36px` and thick `1.5px` dividers chopped the header into sharp fragments, dominating the visual line instead of quietly supporting layout structure.
+
+### 17.2 What Visible Elements Were Softened or Removed
+* **Removed Individual Icon Tile Boxes background/border**: Completely removed background colors, borders, and shadows from the square icon tiles on Desktop, Tablet, and Mobile.
+* **Removed Category Segment Internal Separators**: Completely removed the segment dividers (`|`) inside the desktop/tablet segmented docks.
+* **Soften Major Group Separators**: Slashed structural dividers back to a standard **`1px` width (`w-px`)** and **`h-6` (24px) height**, styled in a supportive, soft slate-200 color (`bg-slate-200/80`).
+* **Optimized Category Dock Wrapper**: Dock wrappers styled to low-contrast capsule pill designs using `rounded-full` boundaries and subtle background opacities.
+
+### 17.3 Desktop Decluttering Decision
+Desktop was fully cleaned and decluttered to feel spacious, premium, and calm:
+* Icons float cleanly and directly before text labels with a `gap-2` rhythm.
+* Hovering/focusing softly tints the entire link segment capsule (`hover:bg-gray-100/50` or `hover:bg-white`) rather than just highlighting an icon tile, making the experience dynamic yet calm.
+* Active segments are marked with a quiet white shadow border capsule (`bg-white text-gray-950 shadow-sm`).
+
+### 17.4 Icon Tile Simplification Decision
+* **Transparent Default**: Category icon tiles are set to transparent background and borders. The monoline outline SVGs float cleanly.
+* **Monoline weight**: Desktop icons are preserved at `22px` for visual confidence, while tablet/mobile category icons are preserved at compact `20px` scales.
+
+### 17.5 Internal Separator Reduction Decision
+* **100% Removed**: Internal segment separators are completely deleted. Spacing, padding, and soft rounded link states are used as the primary division mechanism.
+
+### 17.6 Major Separator Restraint Decision
+* Major structural separators are restrained to standard thin `1px` lines of `24px` height using soft, low-contrast colors: `h-6 w-px bg-slate-200`.
+
+### 17.7 Final Desktop Category Dock Treatment
+* Outer wrapper uses a rounded capsule pill contour: `bg-gray-50/50 border-gray-200/50 rounded-full h-10 px-1.5`.
+
+### 17.8 Final Mobile Rail Treatment
+* The mobile horizontal scrolling Category Rail uses a compact **`h-[52px]`** layout with soft, border-transparent category pills. The chips use extremely subtle capsule outlines (`border-gray-150/40 bg-gray-50/30 rounded-full`) and float icons directly in front of the text labels, maintaining perfect swipeable functionality with zero visual card clutter.
+
+### 17.9 Final Tablet Treatment
+* Tablet category dock matches the desktop decluttered capsule layout at `h-9` compact height, using transparent icon tiles and completely removing internal segment separators.
+
+### 17.10 Search Hierarchy Decision
+* Input borders at rest use clean neutral grey (`border-gray-200/60`). Active focus green outline borders are isolated strictly to focused states:
+  `focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10`.
+* This enables Search and Cart to sit clearly as the primary commerce utilities on the page.
+
+### 17.11 Confirmation that Final Icon Names Were Preserved
+* **100% Confirmed**: The exact Lucide outline icons selected in R19 remain preserved:
+  * **Shop All**: `ShoppingBag`
+  * **Power**: `BatteryCharging`
+  * **Sound**: `Headphones`
+  * **Storage**: `HardDrive`
+  * **Car**: `CarFront`
+  * **PC**: `Mouse`
+  * **Search**: `Search`
+
+### 17.12 Logo Fit QA Result
+* **Desktop brand SVG**: Locked strictly to `h-[27px] w-auto` visually centering with desktop row components.
+* **Mobile brand SVG**: Locked strictly to `h-[24px] w-auto` fitting perfectly in the top mobile header row.
+
+### 17.13 Link Truthfulness Confirmation
+* Active queries link cleanly to populating tags:
+  * Shop All → `/shop`
+  * Power → `/shop?q=charger`
+  * Sound → `/shop?q=earbuds`
+  * Storage → `/shop?q=flash`
+  * Car → `/shop?q=mount`
+  * PC → `/shop`
+
+### 17.14 Accessibility Decisions
+* Full keyboard accessibility (`focus-visible:ring-2 focus-visible:ring-brand-primary`), semantic ARIA labeling, and proper color-independent states maintained.
+
+### 17.15 Confirmation that Hero Verification Remains
+* The homepage hero trust elements ("Guaranteed Authenticity" banner and "Verify product" CTA buttons) remain completely operational.
+
+### 17.16 Confirmation that Verification/Support Routes Were Not Deleted
+* The `/verification` and `/support` endpoints remain active and untouched.
+
+### 17.17 Confirmation that Personalisation Was Not Edited
+* Absolutely zero changes were made to `index.astro`, `returning-user.ts`, `homepage-merchandising.ts`, or the recommendation rails.
+
+### 17.18 Commands Run
+```bash
+pnpm typecheck
+pnpm run test:unit
+pnpm run test:architecture
+pnpm run build
+```
+
+### 17.19 Quality Gate Results
+* **TypeScript Compilation**: 100% Passed.
+* **Unit Tests**: 100% Passed (198 tests passed).
+* **Architectural Boundaries**: 100% Passed (10 boundaries verified).
+* **Production Astro Compile**: 100% Passed.
+
+### 17.20 Manual QA Results
+* Checked Desktop viewports: perfect centerline alignment, crisp scaled logo, unified monoline icon weight.
+* Checked Mobile viewports: category horizontal rail operates flawlessly, menu drawer opens/closes cleanly.
+
+### 17.21 Remaining Risks
+None.
+
+### 17.22 Whether H1A-R22 is Accepted
+**GO**. The storefront header has successfully reached its absolute ultimate visual, structural, and brand alignment craft lock.
+
+### 17.23 Whether H1A Can Now Close and H1B Can Begin
 **YES**. H1A is fully closed and locked. We are completely ready to transition directly into **GoldPlus UI Pass H1B — Storefront Product Listing, Dynamic Filter and Sorting Engine Rescue**!
