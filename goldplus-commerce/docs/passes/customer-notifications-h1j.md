@@ -644,6 +644,68 @@ Static support phone number placeholders (`256700000000` and `256000000000`) wer
 *   **No Customer PII Exposed:** Pre-filled text templates strictly omit customer phone numbers, emails, home addresses, or delivery landmarks.
 
 ### 16.5 Recommended Next Pass
-Proceed with WhatsApp Cloud API Credential Intake and Dry-Run Adapter (`H1J-P2-P1C-B`).
+Proceed with WhatsApp Cloud API Readiness Decision Gate (`H1J-P2-P1C-B-P0`).
+
+---
+
+## 17. GoldPlus Pass H1J-P2-P1C-B-P0 — WhatsApp Cloud API Readiness Decision Gate
+
+This section documents the readiness analysis, Meta setup parameters, credential placeholders, dry-run adapter design, template governance rules, and the final decision path selection.
+
+### 17.1 Current WhatsApp API Readiness
+As of Pass H1J-P2-P1C-A-R1, the repository is fully prepared for either (a) stubbed/dry-run WhatsApp API integration, or (b) customer notification trigger orchestration utilizing SMS, ZeptoMail, and standard WhatsApp support handoffs. The `WhatsAppAdapter` remains completely stubbed, ensuring zero external network calls or risk of credentials leakage.
+
+### 17.2 Meta Setup Requirements
+To establish a direct Meta WhatsApp Cloud API connection, the following non-secret settings must be confirmed by the system owner:
+1.  **Provider Selection:** Determine if we connect directly to Meta Graph API or via a Business Solution Provider (BSP) such as Twilio.
+2.  **WhatsApp Business Account ID:** Required to manage message template scopes.
+3.  **Phone Number ID:** Used in API route requests (`/v20.0/<PHONE_NUMBER_ID>/messages`).
+4.  **Verification Status:** Sending number must be active and registered under a verified Meta Business Account.
+5.  **Approved Message Templates:** Required for transactional outbound sending. Under Meta policies, any free-text template is disallowed; messages must strictly match registered and pre-approved template structures.
+6.  **Webhook Domain & Verification Token:** Required to configure status webhook callbacks (sent, delivered, read, failed).
+
+### 17.3 Credential Placeholders
+The `.env.example` file has been updated to include full placeholders for the future WhatsApp Cloud adapter integration:
+*   `WHATSAPP_PROVIDER=meta_cloud`
+*   `WHATSAPP_API_BASE_URL=https://graph.facebook.com`
+*   `WHATSAPP_API_VERSION=v20.0`
+*   `WHATSAPP_ACCESS_TOKEN=`
+*   `WHATSAPP_PHONE_NUMBER_ID=`
+*   `WHATSAPP_BUSINESS_ACCOUNT_ID=`
+*   `WHATSAPP_DEFAULT_COUNTRY_CODE=UG`
+*   `WHATSAPP_WEBHOOK_VERIFY_TOKEN=`
+*   `WHATSAPP_APP_SECRET=`
+*   `NOTIFICATIONS_WHATSAPP_ENABLED=false`
+
+Public variables remain strictly separated to avoid leakage:
+*   `WHATSAPP_SUPPORT_NUMBER` and `PUBLIC_WHATSAPP_SUPPORT_NUMBER`
+*   `WHATSAPP_SUPPORT_LABEL` and `PUBLIC_WHATSAPP_SUPPORT_LABEL`
+
+### 17.4 Dry-Run Adapter Design
+The future `WhatsAppAdapter` implementation will follow these design patterns:
+1.  **State Verification:** Check for required variables (`WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`). Return `NOT_CONFIGURED` if missing.
+2.  **Dry-Run Hook:** If `NOTIFICATIONS_DRY_RUN=true` or `NOTIFICATIONS_LIVE_SEND_ENABLED=false`, log payload structure details and return `DRY_RUN_SUCCESS`. Never issue external HTTP calls.
+3.  **PII Sanitization:** The logger must mask recipient phone numbers (e.g., `+256705xxxxxx`) and never print secrets or access tokens in standard application outputs.
+4.  **Test Allowlist Guards:** Under non-production testing, block dispatches to any number not listed in `NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS`.
+
+### 17.5 Transactional Template Governance
+To ensure compliance with Meta policies and customer privacy standards, the templates are designed as follows:
+*   **Order Received (Pending Payment):** Pre-approved template structure referencing the public order number (e.g., `GP-XXXX`) and grand total only.
+*   **Payment Success (Preparing Order):** Notifies customer that payment has been successfully recorded. Includes order number.
+*   **Payment Failed:** Notifies client of checkout issues and guides them back to the payment retry page.
+*   **Privacy Rule:** Templates strictly exclude buyer emails, phone numbers, delivery coordinates, or raw provider IDs.
+
+### 17.6 Decision Gate Recommendation
+Based on the current Meta Business integration status, we recommend:
+*   **Path A (Pause WhatsApp Cloud API Outbound):** Proceed next with **GoldPlus Pass H1J-P3-P0 — Customer Notification Trigger Orchestration Planning for SMS, ZeptoMail, and WhatsApp Handoff**. This routes core transactional alerts through SMS (Pahappa) and email (ZeptoMail) while using the polished front-end support buttons for direct WhatsApp handoffs.
+*   **Path B (Proceed with WhatsApp API):** If Meta tokens, business account IDs, and verified sender phones are fully active and available, proceed with **GoldPlus Pass H1J-P2-P1C-B — WhatsApp Cloud API Credential Placeholder and Dry-Run Adapter**.
+
+### 17.7 Safety Controls and No-API Lock
+*   **No Live WhatsApp Sends:** No WhatsApp message dispatch or API request was initiated.
+*   **No Credentials Saved:** No live Meta access tokens or secrets were written or configured.
+*   **No Customer PII Exposed:** Pre-filled templates strictly omit customer phone numbers, emails, home addresses, or delivery landmarks.
+
+### 17.8 Recommended Next Pass
+Proceed with GoldPlus Pass H1J-P3-P0 — Customer Notification Trigger Orchestration Planning for SMS, ZeptoMail, and WhatsApp Handoff.
 
 
