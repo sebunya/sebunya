@@ -19,7 +19,7 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
     orderStatus: 'received',
     createdAt: new Date().toISOString(),
     items: [
-      { name: 'Premium Solar Battery 100Ah <img src=x>', sku: 'GP-SKU-BATT', quantity: 1, price: 250000 }
+      { name: 'GoldPlus Fast Charger <img src=x>', sku: 'GP-CHARGER-SAMPLE', quantity: 1, price: 150000 }
     ]
   };
 
@@ -88,7 +88,7 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
       
       // Verification: Should contain escaped representations
       expect(html).toContain('Amina Nakato &lt;script&gt;alert(&quot;hack&quot;)&lt;/script&gt;');
-      expect(html).toContain('Premium Solar Battery 100Ah &lt;img src=x&gt;');
+      expect(html).toContain('GoldPlus Fast Charger &lt;img src=x&gt;');
       
       // Verification: Raw script and img brackets MUST not exist
       expect(html).not.toContain('<script>');
@@ -108,7 +108,7 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
     it('should include Uganda support hotline and order reference inside support footer card', () => {
       templates.forEach(tpl => {
         const html = renderer.renderEmail(tpl, mockOrder);
-        expect(html).toContain('wa.me/256705004545');
+        expect(html).toContain('wa.me/256700000000');
         expect(html).toContain('GP-202605-A1B2');
       });
     });
@@ -141,6 +141,82 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
       
       expect(waText).toContain('Successfully Verified');
       expect(waText).toContain('Fulfillment is in progress');
+    });
+  });
+
+  describe('Brand Safety & Strict Copy Validation Rules', () => {
+    const templates: Array<'ORDER_RECEIVED_UNPAID' | 'ORDER_PAYMENT_PENDING' | 'ORDER_PAYMENT_SUCCESS' | 'ORDER_PAYMENT_FAILED' | 'ORDER_PAYMENT_CANCELLED' | 'ORDER_FULFILLMENT_PROCESSING' | 'ORDER_FULFILLMENT_COMPLETED'> = [
+      'ORDER_RECEIVED_UNPAID',
+      'ORDER_PAYMENT_PENDING',
+      'ORDER_PAYMENT_SUCCESS',
+      'ORDER_PAYMENT_FAILED',
+      'ORDER_PAYMENT_CANCELLED',
+      'ORDER_FULFILLMENT_PROCESSING',
+      'ORDER_FULFILLMENT_COMPLETED'
+    ];
+
+    it('should not contain any solar or hardware commerce references in any templates', () => {
+      templates.forEach(tpl => {
+        const html = renderer.renderEmail(tpl, mockOrder);
+        const text = renderer.renderTextBody(tpl, mockOrder);
+        const wa = renderer.renderWhatsApp(mockOrder);
+
+        expect(html.toLowerCase()).not.toContain('solar');
+        expect(text.toLowerCase()).not.toContain('solar');
+        expect(wa.toLowerCase()).not.toContain('solar');
+
+        expect(html.toLowerCase()).not.toContain('hardware commerce');
+        expect(text.toLowerCase()).not.toContain('hardware commerce');
+        expect(wa.toLowerCase()).not.toContain('hardware commerce');
+      });
+    });
+
+    it('should enforce Official GoldPlus Online Store or approved copy positioning', () => {
+      templates.forEach(tpl => {
+        const html = renderer.renderEmail(tpl, mockOrder);
+        expect(html).toContain('Official GoldPlus Online Store');
+      });
+    });
+
+    it('should format all currency as UGX and never use USh', () => {
+      templates.forEach(tpl => {
+        const html = renderer.renderEmail(tpl, mockOrder);
+        const text = renderer.renderTextBody(tpl, mockOrder);
+
+        // Uses UGX format
+        expect(html).toContain('UGX');
+        expect(text).toContain('UGX');
+
+        // Absolutely no USh
+        expect(html).not.toContain('USh');
+        expect(text).not.toContain('USh');
+      });
+    });
+
+    it('should enforce state-truthful messaging across templates', () => {
+      // Unpaid order received template
+      const unpaidHtml = renderer.renderEmail('ORDER_RECEIVED_UNPAID', mockOrder);
+      expect(unpaidHtml).toContain('Payment is still pending');
+      expect(unpaidHtml).not.toContain('Payment verified');
+      expect(unpaidHtml).toContain('>unpaid<');
+
+      // Paid order success template
+      const paidOrder = { ...mockOrder, paymentStatus: 'paid', orderStatus: 'processing' };
+      const successHtml = renderer.renderEmail('ORDER_PAYMENT_SUCCESS', paidOrder);
+      expect(successHtml).toContain('Payment verified');
+      expect(successHtml).toContain('>paid<');
+
+      // Cancelled template
+      const cancelledOrder = { ...mockOrder, orderStatus: 'cancelled' };
+      const cancelledHtml = renderer.renderEmail('ORDER_PAYMENT_CANCELLED', cancelledOrder);
+      expect(cancelledHtml).toContain('Checkout cancelled');
+      expect(cancelledHtml).not.toContain('failed');
+
+      // Failed template
+      const failedOrder = { ...mockOrder, orderStatus: 'failed' };
+      const failedHtml = renderer.renderEmail('ORDER_PAYMENT_FAILED', failedOrder);
+      expect(failedHtml).toContain('Payment was not completed');
+      expect(failedHtml).not.toContain('cancelled');
     });
   });
 });

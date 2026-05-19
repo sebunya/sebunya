@@ -167,7 +167,7 @@ export class ZeptoMailAdapter implements INotificationProvider {
       'FAKE_REPORT_ALERT': 'GoldPlus - Counterfeit Product Alert',
     };
 
-    let subject = templateSubjectMap[payload.template] || 'GoldPlus Solar Notification';
+    let subject = templateSubjectMap[payload.template] || 'GoldPlus Notification';
     let htmlContent = '';
     let textContent = '';
 

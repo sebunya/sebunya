@@ -26,11 +26,11 @@ export class NotificationTemplateRenderer {
   }
 
   private formatUgx(amount: number): string {
-    return new Intl.NumberFormat('en-UG', {
-      style: 'currency',
-      currency: 'UGX',
+    const formatted = new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
+    return `UGX ${formatted}`;
   }
 
   /**
@@ -63,7 +63,7 @@ export class NotificationTemplateRenderer {
   public getPreheader(template: NotificationTemplateKey): string {
     switch (template) {
       case 'ORDER_RECEIVED_UNPAID':
-        return 'Your order is saved. Complete payment to move it forward.';
+        return 'Complete payment to move your order forward.';
       case 'ORDER_PAYMENT_PENDING':
         return 'We are waiting for payment confirmation.';
       case 'ORDER_PAYMENT_SUCCESS':
@@ -112,19 +112,19 @@ export class NotificationTemplateRenderer {
     const escapedRef = this.escapeHtml(orderNumber);
     switch (template) {
       case 'ORDER_RECEIVED_UNPAID':
-        return `Thank you for your order. We have successfully recorded order number <strong>${escapedRef}</strong>. Please complete your Mobile Money checkout sequence to initiate secure logistical fulfillment.`;
+        return `Thank you for your order. We have saved order <strong>${escapedRef}</strong>. Complete payment when ready so our team can prepare it.`;
       case 'ORDER_PAYMENT_PENDING':
-        return `We have received a payment alert for order number <strong>${escapedRef}</strong>. Our systems are verifying the transaction status with our PesaPal network. We will update you as soon as confirmation arrives.`;
+        return `We have received your payment attempt for order <strong>${escapedRef}</strong> and are checking its status. You can track the order anytime.`;
       case 'ORDER_PAYMENT_SUCCESS':
-        return `Excellent news! Payment of <strong>${this.escapeHtml(formattedTotal)}</strong> has been successfully verified. Your order <strong>${escapedRef}</strong> is officially confirmed. Our Kampala fulfillment team is preparing your hardware items.`;
+        return `Your payment has been verified. Our team will now prepare your GoldPlus order <strong>${escapedRef}</strong>.`;
       case 'ORDER_PAYMENT_FAILED':
-        return `Your payment attempt for order <strong>${escapedRef}</strong> could not be completed. You can safely retry checkout using your custom tracking link or contact our customer desk for MM guidance.`;
+        return `Your payment did not go through. You can retry checkout or contact support for help.`;
       case 'ORDER_PAYMENT_CANCELLED':
-        return `The checkout process for order <strong>${escapedRef}</strong> was cancelled. Your order remains saved as unpaid. You can easily complete payment by returning to checkout.`;
+        return `Your checkout was cancelled before payment was completed. You can return to checkout when ready.`;
       case 'ORDER_FULFILLMENT_PROCESSING':
-        return `Our logistics dispatch team is actively packing and preparing items for order <strong>${escapedRef}</strong> in our central Kampala warehouse. We are coordinating shipping to your delivery area.`;
+        return `Our team is preparing your GoldPlus order <strong>${escapedRef}</strong>. You can track it anytime.`;
       case 'ORDER_FULFILLMENT_COMPLETED':
-        return `Congratulations! Your solar hardware order <strong>${escapedRef}</strong> has been successfully delivered and settled. Thank you for partnering with GoldPlus.`;
+        return `Your GoldPlus order <strong>${escapedRef}</strong> has been completed. Contact support if you need help.`;
       default:
         return `Your order number ${escapedRef} has transitioned to a new fulfillment stage.`;
     }
@@ -150,7 +150,7 @@ export class NotificationTemplateRenderer {
     <tr>
       <td style="background-color: #0A0A0A; padding: 32px 24px; text-align: center; border-bottom: 3px solid #96cc06;">
         <h1 style="margin: 0; font-family: sans-serif; font-size: 26px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.03em; text-transform: uppercase;">GoldPlus</h1>
-        <p style="margin: 4px 0 0 0; font-family: sans-serif; font-size: 10px; font-weight: 800; color: #9CA3AF; letter-spacing: 0.1em; text-transform: uppercase;">Premium Solar &amp; Hardware Commerce</p>
+        <p style="margin: 4px 0 0 0; font-family: sans-serif; font-size: 10px; font-weight: 800; color: #9CA3AF; letter-spacing: 0.1em; text-transform: uppercase;">Official GoldPlus Online Store</p>
       </td>
     </tr>`;
   }
@@ -358,7 +358,7 @@ export class NotificationTemplateRenderer {
   private renderSupportBlock(orderNumber: string): string {
     const escapedRef = this.escapeHtml(orderNumber);
     const waText = encodeURIComponent(`Hello GoldPlus, I'm inquiring about order ${orderNumber}`);
-    const waUrl = `https://wa.me/256705004545?text=${waText}`;
+    const waUrl = `https://wa.me/256700000000?text=${waText}`;
 
     return `
     <!-- Technical & Operational support banner -->
@@ -500,7 +500,7 @@ ${trackUrl}
 
 === NEED SUPPORT? ===
 WhatsApp Support:
-https://wa.me/256705004545?text=${encodeURIComponent(`Hello GoldPlus, I'm inquiring about order ${order.orderNumber}`)}
+https://wa.me/256700000000?text=${encodeURIComponent(`Hello GoldPlus, I'm inquiring about order ${order.orderNumber}`)}
 
 GoldPlus Online Store
 Kampala, Uganda
@@ -528,7 +528,7 @@ Kampala, Uganda
       return (
         baseText +
         `Your Mobile Money checkout has been initiated and is *Pending verification*.\n\n` +
-        `Once verified by PesaPal networks, our transport teams in Kampala will package your hardware.\n\n` +
+        `Once verified, our team will prepare your GoldPlus order.\n\n` +
         `Track status live: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`
       );
     } else if (paymentStatus === 'paid') {
@@ -543,7 +543,7 @@ Kampala, Uganda
         return (
           baseText +
           `Your order has been *Delivered and Settled* successfully.\n\n` +
-          `Thank you for choosing GoldPlus solar hardware!`
+          `Thank you for choosing GoldPlus Online Store!`
         );
       }
     } else if (status === 'cancelled') {

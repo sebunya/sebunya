@@ -59,7 +59,7 @@ const fallbackOrder = {
   orderStatus: "received",
   createdAt: new Date().toISOString(),
   items: [
-    { sku: "GP-SKU-1", productName: "Premium Solar Battery 100Ah", quantity: 1, unitPrice: 150000 }
+    { sku: "GP-CHARGER-SAMPLE", productName: "GoldPlus Fast Charger", quantity: 1, unitPrice: 150000 }
   ]
 };
 
@@ -202,7 +202,7 @@ if (!previewData.emailHtml) {
           <tr>
             <td style="background-color: #0A0A0A; padding: 24px 16px; text-align: center; border-bottom: 3px solid #96cc06;">
               <h1 style="margin: 0; font-size: 22px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.03em; text-transform: uppercase;">GoldPlus</h1>
-              <p style="margin: 4px 0 0 0; font-size: 9px; font-weight: 800; color: #9CA3AF; letter-spacing: 0.1em; text-transform: uppercase;">Premium Solar &amp; Hardware Commerce</p>
+              <p style="margin: 4px 0 0 0; font-size: 9px; font-weight: 800; color: #9CA3AF; letter-spacing: 0.1em; text-transform: uppercase;">Official GoldPlus Online Store</p>
             </td>
           </tr>
           
@@ -344,13 +344,13 @@ if (!previewData.whatsappText) {
   let fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nWe have received your order! Placed status is currently *Awaiting Payment*.\n\nTotal Amount: *${formatter.format(order.totalUgx || 0)}*\n\nTo complete your checkout securely, please review your Mobile Money window or use our tracking URL: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
   
   if (previewData.template === 'ORDER_PAYMENT_PENDING') {
-    fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour Mobile Money checkout has been initiated and is *Pending verification*.\n\nOnce verified by PesaPal networks, our transport teams in Kampala will package your hardware.\n\nTrack status live: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
+    fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour Mobile Money checkout has been initiated and is *Pending verification*.\n\nOnce verified, our team will prepare your GoldPlus order.\n\nTrack status live: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
   } else if (previewData.template === 'ORDER_PAYMENT_SUCCESS') {
     fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nExcellent news! Your payment has been *Successfully Verified*.\n\nFulfillment is in progress, and logistics coordinates are actively being routed.\n\nTrack delivery live: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
   } else if (previewData.template === 'ORDER_FULFILLMENT_PROCESSING') {
     fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour order fulfillment status has been updated to *In Processing*.\n\nTrack status live: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
   } else if (previewData.template === 'ORDER_FULFILLMENT_COMPLETED') {
-    fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour order has been *Delivered and Settled* successfully.\n\nThank you for choosing GoldPlus solar hardware!`;
+    fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour order has been *Delivered and Settled* successfully.\n\nThank you for choosing GoldPlus Online Store!`;
   }
   
   previewData.whatsappText = fallbackWaText;

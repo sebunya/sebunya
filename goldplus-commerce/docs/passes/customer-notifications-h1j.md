@@ -479,4 +479,59 @@ Verified that the following modules were **never** altered or accessed (except f
 ### 12.11 Recommended Next Pass
 Proceed to Phase `H1J-P2-P1C` (WhatsApp template verification and business profile planning setup).
 
+---
+
+## 13. GoldPlus Pass H1J-P2-P1B-R3 — ZeptoMail Production Brand Copy Rescue
+
+This section details the brand-accurate copy alignment, Uganda currency standardization, mock sample data cleanup, test suite expansion, and quality gate checks completed for **GoldPlus Pass H1J-P2-P1B-R3**.
+
+### 13.1 Why R3 Was Needed
+The previous iteration included erroneous references to "solar", "solar products", "solar hardware", and "solar hardware commerce". As GoldPlus is an electronics and mobile accessories brand, these references risked causing significant customer confusion and trust issues. This pass executes a comprehensive brand language audit to align all transactional communications with approved brand parameters.
+
+### 13.2 Brand Language and Copy Alignment
+*   **Approved Brand Positioning:** Cleaned and replaced all references to "solar" or "hardware commerce" with brand-accurate text: "Official GoldPlus Online Store", "Premium Electronics & Accessories", or "GoldPlus Online Store".
+*   **Standardized Copy Guide:** Standardized subject lines, preheaders, headlines, and main bodies across all templates to enforce clear transactional status:
+    *   `ORDER_RECEIVED_UNPAID`: Subject: *We received your GoldPlus order* | Preheader: *Complete payment to move your order forward.* | Headline: *Order received. Payment is still pending.* | Body: *Thank you for your order. We have saved order GP-SAMPLE-001. Complete payment when ready so our team can prepare it.* | CTA: *Complete payment*
+    *   `ORDER_PAYMENT_PENDING`: Subject: *Your GoldPlus payment is being checked* | Preheader: *We are waiting for payment confirmation.* | Headline: *Payment pending verification.* | Body: *We have received your payment attempt and are checking its status. You can track the order anytime.* | CTA: *Track order*
+    *   `ORDER_PAYMENT_SUCCESS`: Subject: *Payment received for your GoldPlus order* | Preheader: *Your payment has been verified.* | Headline: *Payment verified. We’ll prepare your order.* | Body: *Your payment has been verified. Our team will now prepare your GoldPlus order.* | CTA: *Track order*
+    *   `ORDER_PAYMENT_FAILED`: Subject: *Your GoldPlus payment did not go through* | Preheader: *You can retry payment or contact support.* | Headline: *Payment was not completed.* | Body: *Your payment did not go through. You can retry checkout or contact support for help.* | CTA: *Retry payment*
+    *   `ORDER_PAYMENT_CANCELLED`: Subject: *Your GoldPlus checkout was cancelled* | Preheader: *Your order has not been paid.* | Headline: *Checkout cancelled. Your order has not been paid.* | Body: *Your checkout was cancelled before payment was completed. You can return to checkout when ready.* | CTA: *Return to checkout*
+    *   `ORDER_FULFILLMENT_PROCESSING`: Subject: *Your GoldPlus order is being prepared* | Preheader: *We are preparing your items.* | Headline: *Your order is being prepared.* | Body: *Our team is preparing your GoldPlus order. You can track it anytime.* | CTA: *Track order*
+    *   `ORDER_FULFILLMENT_COMPLETED`: Subject: *Your GoldPlus order is complete* | Preheader: *Your order has been completed.* | Headline: *Your order is complete.* | Body: *Your GoldPlus order has been completed. Contact support if you need help.* | CTA: *View order*
+*   **Currency Standardization:** Standardized UGX output formatting to strictly display `UGX 150,000` rather than `USh` or lowercase equivalents.
+
+### 13.3 Preview Gallery & Mock Sample Data Cleanup
+Offline-safe HTML previews were generated under `docs/previews/notifications/` containing exclusively clean mock customer parameters:
+*   **Mock Name:** Robert Sample (never using real names/emails)
+*   **Mock Contacts:** `customer@example.com` and `256700000000` (replacing testing phones like `256705004545`)
+*   **Mock Delivery:** `Sample delivery address, Kampala` (replacing `Plot 45, Jinja Road`)
+*   **Mock Product SKU:** `GoldPlus Fast Charger` / `GP-CHARGER-SAMPLE`
+*   **Preview Gallery Dashboard:** [index.html](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/docs/previews/notifications/index.html)
+*   **Order Received Unpaid Preview:** [email-order-received-unpaid.html](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/docs/previews/notifications/email-order-received-unpaid.html)
+*   **Payment Success Preview:** [email-order-payment-success.html](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/docs/previews/notifications/email-order-payment-success.html)
+*   **Payment Failed Preview:** [email-order-payment-failed.html](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/docs/previews/notifications/email-order-payment-failed.html)
+*   **Payment Cancelled Preview:** [email-order-payment-cancelled.html](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/docs/previews/notifications/email-order-payment-cancelled.html)
+
+### 13.4 No-Customer-Email Confirmation
+Real transactional sends are frozen by default:
+*   `NOTIFICATIONS_EMAIL_ENABLED=false`
+*   `NOTIFICATIONS_LIVE_SEND_ENABLED=false`
+*   `NOTIFICATIONS_DRY_RUN=true`
+
+### 13.5 Test Suite Integration
+*   Added 4 new test blocks validating `Brand Safety & Strict Copy Validation Rules`:
+    1.  Verifies no "solar", "solar products", "solar hardware", or "hardware commerce" terms reside inside generated templates or WhatsApp bodies.
+    2.  Verifies "Official GoldPlus Online Store" positioning is correctly integrated.
+    3.  Verifies currency output formatting strictly uses `UGX` and never `USh`.
+    4.  Verifies payment success copy only displays for paid statuses, and uncompleted payments never display success messages.
+
+### 13.6 Quality Gate Verification
+*   **Type Safety:** Clean `tsc --noEmit` check across all subprojects.
+*   **Unit Tests:** 43 unit test files (326 tests) passed successfully.
+*   **Architecture Bounds:** Boundary safety rules passed with zero violations.
+*   **Build Integrity:** Entire monorepo builds successfully.
+
+### 13.7 Next Recommended Pass
+Proceed with WhatsApp Template Integration and Verification (`H1J-P2-P1C`).
+
 
