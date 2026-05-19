@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GoldPlus Transactional Email Preview Gallery</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #F5F7F2;
+      color: #0A0A0A;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: #FFFFFF;
+      border: 1px solid #E5E7EB;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    .header {
+      border-bottom: 3px solid #96cc06;
+      padding-bottom: 24px;
+      margin-bottom: 32px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+    }
+    .header p {
+      margin: 8px 0 0 0;
+      font-size: 14px;
+      color: #6B7280;
+    }
+    .badge-container {
+      margin-bottom: 24px;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      border-radius: 4px;
+      margin-right: 8px;
+      letter-spacing: 0.05em;
+    }
+    .badge-info {
+      background-color: #EFF6FF;
+      color: #1D4ED8;
+      border: 1px solid #DBEAFE;
+    }
+    .badge-alert {
+      background-color: #FEF3C7;
+      color: #D97706;
+      border: 1px solid #FDE68A;
+    }
+    .gallery-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 32px 0;
+    }
+    .gallery-item {
+      border: 1px solid #E5E7EB;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      padding: 20px;
+      transition: all 0.2s ease;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .gallery-item:hover {
+      border-color: #96cc06;
+      background-color: #FDFDFD;
+    }
+    .item-meta h2 {
+      margin: 0 0 4px 0;
+      font-size: 16px;
+      font-weight: 800;
+    }
+    .item-meta p {
+      margin: 0;
+      font-size: 12px;
+      color: #6B7280;
+    }
+    .btn-view {
+      display: inline-block;
+      background-color: #0A0A0A;
+      color: #FFFFFF;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 10px 18px;
+      border-radius: 6px;
+      transition: background-color 0.2s ease;
+    }
+    .btn-view:hover {
+      background-color: #96cc06;
+      color: #0A0A0A;
+    }
+    .footer {
+      font-size: 11px;
+      color: #9CA3AF;
+      text-align: center;
+      border-top: 1px solid #E5E7EB;
+      padding-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>GoldPlus Previews</h1>
+      <p>Official Transactional Email Layout Gallery Dashboard</p>
+    </div>
+    
+    <div class="badge-container">
+      <span class="badge badge-info">Local preview only. No email has been sent.</span>
+      <span class="badge badge-alert">Using fake sample data only</span>
+    </div>
+    
+    <ul class="gallery-list">
+      <li class="gallery-item">
+        <div class="item-meta">
+          <h2>Order received, payment pending</h2>
+          <p>Sent immediately after unpaid order creation (received / unpaid status)</p>
+        </div>
+        <a class="btn-view" href="./email-order-received-unpaid.html" target="_blank">View Preview &rarr;</a>
+      </li>
+      
+      <li class="gallery-item">
+        <div class="item-meta">
+          <h2>Payment received</h2>
+          <p>Sent after payment verification is confirmed (processing / paid status)</p>
+        </div>
+        <a class="btn-view" href="./email-order-payment-success.html" target="_blank">View Preview &rarr;</a>
+      </li>
+      
+      <li class="gallery-item">
+        <div class="item-meta">
+          <h2>Payment failed</h2>
+          <p>Sent when payment attempt fails (received / failed status)</p>
+        </div>
+        <a class="btn-view" href="./email-order-payment-failed.html" target="_blank">View Preview &rarr;</a>
+      </li>
+      
+      <li class="gallery-item">
+        <div class="item-meta">
+          <h2>Checkout cancelled</h2>
+          <p>Sent if user cancels checkout session explicitly (received / cancelled status)</p>
+        </div>
+        <a class="btn-view" href="./email-order-payment-cancelled.html" target="_blank">View Preview &rarr;</a>
+      </li>
+    </ul>
+    
+    <div class="footer">
+      &copy; 2026 GoldPlus Solar E-commerce. Kampala, Uganda. All Rights Reserved.
+    </div>
+  </div>
+</body>
+</html>
