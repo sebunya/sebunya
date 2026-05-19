@@ -63,6 +63,47 @@ export async function postJson(path: string, body: unknown): Promise<FormPostRes
   }
 }
 
+export interface FrontendTimelineItem {
+  id: string;
+  type: 'attempt' | 'outbox';
+  channel: string;
+  recipient: string;
+  template: string;
+  status: string;
+  timestamp: string;
+  providerCode: string | null;
+  providerMessage: string | null;
+  idempotencyKey: string | null;
+  dryRunOnly: boolean;
+  previewOnly: boolean;
+  noSendGuarantee: boolean;
+  suppressedReason: string | null;
+}
+
+export async function getOrderNotificationTimeline(
+  orderId: string,
+  token: string
+): Promise<AdminListResult<FrontendTimelineItem>> {
+  try {
+    const res = await fetch(`${API_BASE}/admin/notifications/order/${orderId}/timeline`, {
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!res.ok) {
+      return { items: [], isSample: true, reason: `Timeline query failed (HTTP ${res.status})` };
+    }
+    const json = (await res.json().catch(() => null)) as ApiEnvelope<FrontendTimelineItem[]> | null;
+    if (!json || !json.success || !Array.isArray(json.data)) {
+      return { items: [], isSample: true, reason: 'Timeline query returned unexpected response structure' };
+    }
+    return { items: json.data, isSample: false };
+  } catch {
+    return { items: [], isSample: true, reason: 'Notifications API is unreachable' };
+  }
+}
+
 export const apiBase = API_BASE;
 
 export const whatsappSupportNumber = (import.meta.env.PUBLIC_WHATSAPP_SUPPORT_NUMBER as string | undefined) ?? (import.meta.env.WHATSAPP_SUPPORT_NUMBER as string | undefined) ?? '256705004545';

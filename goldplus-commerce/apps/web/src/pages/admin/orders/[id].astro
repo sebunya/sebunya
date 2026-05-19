@@ -1,7 +1,9 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
-import { apiBase, whatsappSupportNumber } from "../../../lib/api";
+import { apiBase, whatsappSupportNumber, getOrderNotificationTimeline } from "../../../lib/api";
+import NotificationChannelPanel from "../../../components/admin/NotificationChannelPanel.astro";
+import NotificationTimeline from "../../../components/admin/NotificationTimeline.astro";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -116,6 +118,17 @@ try {
   }
 } catch {
   // Graceful fallback
+}
+
+// Fetch actual outbox events and attempts for this order
+let timelineItems: any[] = [];
+try {
+  if (id) {
+    const timelineRes = await getOrderNotificationTimeline(id, token);
+    timelineItems = timelineRes.items;
+  }
+} catch {
+  // Graceful fallback to empty
 }
 
 // Fallback generator for zero-outage display
@@ -767,6 +780,14 @@ if (currentStatus === 'received') {
 
           </div>
         </div>
+
+        <!-- Notification Channel Status Panels -->
+        <div class="mt-8">
+          <NotificationChannelPanel items={timelineItems} />
+        </div>
+
+        <!-- Chronological Audit Timeline Log -->
+        <NotificationTimeline items={timelineItems} />
 
       </div>
 

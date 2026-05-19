@@ -1008,3 +1008,29 @@ To bridge these gaps, we propose integrating two dedicated read-only sections:
 
 ### 22.6 Recommended Next Pass
 Proceed with the execution of **GoldPlus Pass H1J-P3-P2-B — Admin Notification Interfaces and Read-Only Timeline UI** implementation.
+
+---
+
+## 23. GoldPlus Pass H1J-P3-P2-B — Admin Notification Interfaces and Read-Only Timeline UI
+
+This section documents the execution, final component architecture, safety gate verifications, and release locks for Pass H1J-P3-P2-B.
+
+### 23.1 Component Architecture & Layout
+*   **API client Helper:** Created `getOrderNotificationTimeline` in `apps/web/src/lib/api.ts` which performs a fetch call to the backend Hono GET timeline endpoint. Handles fetch errors gracefully with safe fallback sample representation.
+*   **Channel Status Panel:** Implemented `apps/web/src/components/admin/NotificationChannelPanel.astro` displaying three columns for Email (ZeptoMail), SMS (Pahappa/EgoSMS), and WhatsApp (wa.me Manual). Displayed provider readiness details, latest status codes, and distinct warning boxes stating "Customer send disabled" or "API sending disabled" to prevent any security misunderstanding.
+*   **Chronological Timeline:** Implemented `apps/web/src/components/admin/NotificationTimeline.astro` listing all outbox events and dispatch attempts. Shows status tags, template names, masked recipient addresses, dry-run mode tags, no-send guarantees, and sanitized provider messages in a beautiful container.
+*   **Dashboard Integration:** Imported and mounted both components inside the order detail dashboard (`apps/web/src/pages/admin/orders/[id].astro`).
+
+### 23.2 Complete Safety Lock & Isolation
+*   **No Send Buttons:** Checked both new components and order dashboard pages; zero submit, send, queue, or resend buttons exist. All information is strictly read-only.
+*   **No Mutating API Hooks:** There are no mutating endpoints, database queries, or write calls mapped in any of the newly created files.
+*   **PII & Secrets Isolation:** Verified all recipient strings in panels and timelines are masked by the Hono API prior to frontend page load. All Bearer tokens, secrets, or API keys are scrubbed.
+
+### 23.3 Quality Gates & Verifications
+*   **TypeScript Check:** Ran `pnpm typecheck` successfully with no errors across the workspace.
+*   **Unit Tests:** Implemented mock unit tests `tests/unit/FrontendApiNotifications.test.ts` for testing timeline queries. All 366 tests passed successfully.
+*   **Architecture boundaries:** All 10 architecture boundary tests passed successfully.
+*   **Production Build:** Clean production build successfully bundled the Astro web assets and Hono api bundle.
+
+### 23.4 Next Recommended Pass
+Proceed with Pass H1J-P3-P3 (Customer Notification Outbox Hook Automation) under pure dry-run safety locks.

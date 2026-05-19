@@ -1,0 +1,192 @@
+---
+import type { FrontendTimelineItem } from "../../lib/api";
+
+interface Props {
+  items: FrontendTimelineItem[];
+}
+
+const { items } = Astro.props;
+
+// Filter latest items per channel
+const emailItems = items.filter(i => i.channel.toLowerCase() === 'email');
+const latestEmail = emailItems.length > 0 ? emailItems[emailItems.length - 1] : null;
+
+const smsItems = items.filter(i => i.channel.toLowerCase() === 'sms');
+const latestSms = smsItems.length > 0 ? smsItems[smsItems.length - 1] : null;
+
+const whatsappSupportNumber = '256705004545';
+---
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+  <!-- EMAIL PANEL -->
+  <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-300">
+    <div class="px-6 py-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <div class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></div>
+        <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Email Panel</h3>
+      </div>
+      <span class="bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wide">
+        Dry-Run Mode
+      </span>
+    </div>
+    
+    <div class="p-6 flex-1 space-y-4">
+      <div>
+        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Gateway Provider</span>
+        <span class="text-xs font-black text-brand-dark">ZeptoMail (Official HTML Gateway)</span>
+      </div>
+
+      <div>
+        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Dispatch State</span>
+        <span class={`inline-block px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border ${
+          latestEmail ? (
+            latestEmail.status === 'sent' ? 'bg-green-50 text-green-700 border-green-100' :
+            latestEmail.status === 'dry_run' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+            latestEmail.status === 'failed' ? 'bg-red-50 text-red-700 border-red-100' :
+            'bg-gray-50 text-gray-700 border-gray-100'
+          ) : 'bg-gray-50 text-gray-400 border-gray-100'
+        }`}>
+          {latestEmail ? latestEmail.status.replace(/_/g, ' ') : 'No attempts enqueued'}
+        </span>
+      </div>
+
+      {latestEmail && (
+        <div class="space-y-3 pt-2 border-t border-gray-100">
+          <div>
+            <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Masked Recipient</span>
+            <span class="text-xs font-mono font-bold text-brand-dark">{latestEmail.recipient}</span>
+          </div>
+          <div>
+            <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Template Selected</span>
+            <span class="text-xs font-mono font-bold text-brand-dark">{latestEmail.template}</span>
+          </div>
+          {latestEmail.providerMessage && (
+            <div>
+              <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Provider Response</span>
+              <span class="text-[10px] font-mono text-gray-500 block bg-gray-50 border border-gray-100 rounded-lg p-2 leading-relaxed max-h-20 overflow-y-auto break-all">
+                {latestEmail.providerMessage}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+
+    <div class="px-6 py-4 bg-amber-50/50 border-t border-amber-100 text-[10px] text-amber-800 leading-relaxed font-semibold">
+      <div class="flex items-center gap-1.5 font-bold mb-1">
+        <svg class="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m0 0v2m0-2h2m-2 0H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        Customer Send Disabled
+      </div>
+      ZeptoMail is live-gated. Backend triggers write exclusively to local audit history and dry-run outboxes. No live mail is sent.
+    </div>
+  </div>
+
+  <!-- SMS PANEL -->
+  <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-300">
+    <div class="px-6 py-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <div class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></div>
+        <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">SMS Panel</h3>
+      </div>
+      <span class="bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wide">
+        Dry-Run Mode
+      </span>
+    </div>
+    
+    <div class="p-6 flex-1 space-y-4">
+      <div>
+        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Gateway Provider</span>
+        <span class="text-xs font-black text-brand-dark">Pahappa / EgoSMS (Text Gateway)</span>
+      </div>
+
+      <div>
+        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Dispatch State</span>
+        <span class={`inline-block px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border ${
+          latestSms ? (
+            latestSms.status === 'sent' ? 'bg-green-50 text-green-700 border-green-100' :
+            latestSms.status === 'dry_run' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+            latestSms.status === 'failed' ? 'bg-red-50 text-red-700 border-red-100' :
+            'bg-gray-50 text-gray-700 border-gray-100'
+          ) : 'bg-gray-50 text-gray-400 border-gray-100'
+        }`}>
+          {latestSms ? latestSms.status.replace(/_/g, ' ') : 'No attempts enqueued'}
+        </span>
+      </div>
+
+      {latestSms && (
+        <div class="space-y-3 pt-2 border-t border-gray-100">
+          <div>
+            <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Masked Recipient</span>
+            <span class="text-xs font-mono font-bold text-brand-dark">{latestSms.recipient}</span>
+          </div>
+          <div>
+            <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Template Selected</span>
+            <span class="text-xs font-mono font-bold text-brand-dark">{latestSms.template}</span>
+          </div>
+          {latestSms.providerMessage && (
+            <div>
+              <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Provider Response</span>
+              <span class="text-[10px] font-mono text-gray-500 block bg-gray-50 border border-gray-100 rounded-lg p-2 leading-relaxed max-h-20 overflow-y-auto break-all">
+                {latestSms.providerMessage}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+
+    <div class="px-6 py-4 bg-amber-50/50 border-t border-amber-100 text-[10px] text-amber-800 leading-relaxed font-semibold">
+      <div class="flex items-center gap-1.5 font-bold mb-1">
+        <svg class="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m0 0v2m0-2h2m-2 0H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        Customer Send Disabled
+      </div>
+      SMS is live-gated. Recipient numbers are verified against a local developer allowlist. No real-world carrier SMS is sent.
+    </div>
+  </div>
+
+  <!-- WHATSAPP PANEL -->
+  <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-300">
+    <div class="px-6 py-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <div class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
+        <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">WhatsApp Panel</h3>
+      </div>
+      <span class="bg-green-50 text-green-700 border border-green-200 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wide">
+        Handoff Only
+      </span>
+    </div>
+    
+    <div class="p-6 flex-1 space-y-4">
+      <div>
+        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Integration Mode</span>
+        <span class="text-xs font-black text-brand-dark">Manual Client-Side Handoff (wa.me)</span>
+      </div>
+
+      <div>
+        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">WhatsApp Cloud API</span>
+        <span class="inline-block px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border bg-yellow-50 text-yellow-700 border-yellow-100">
+          Paused / Stubbed
+        </span>
+      </div>
+
+      <div class="space-y-3 pt-2 border-t border-gray-100">
+        <div>
+          <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Support Desk Number</span>
+          <span class="text-xs font-mono font-bold text-brand-dark">+{whatsappSupportNumber}</span>
+        </div>
+        <div>
+          <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Handoff Validation</span>
+          <span class="text-xs font-semibold text-green-600">✓ Config-Driven Link Safe</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="px-6 py-4 bg-yellow-50/50 border-t border-yellow-100 text-[10px] text-yellow-800 leading-relaxed font-semibold">
+      <div class="flex items-center gap-1.5 font-bold mb-1">
+        <svg class="w-3.5 h-3.5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+        API Sending Disabled
+      </div>
+      WhatsApp Cloud API client is stubbed. No backend API calls are enabled. All customer messaging relies on manual support handoff links.
+    </div>
+  </div>
+</div>
