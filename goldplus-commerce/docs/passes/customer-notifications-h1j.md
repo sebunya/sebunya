@@ -968,3 +968,43 @@ This section documents the execution, schema upgrades, read-model implementation
 ### 21.5 Remaining Risks & Recommendation
 *   **Remaining Risks:** No blocking risks remain for outbox idempotency read-model implementation.
 *   **Recommended Next Pass:** Proceed with Customer Notification Outbox Hook Automation (`H1J-P3-P3`) under dry-run verification rules.
+
+---
+
+## 22. GoldPlus Pass H1J-P3-P2-B-P0 — Admin Notification Interface Gap Audit & Planning
+
+This section documents the planning, UI design blueprint, gap analysis, and safety lockouts established for Pass H1J-P3-P2-B-P0.
+
+### 22.1 Current Admin UI Gap Analysis
+*   **Order-Level Timeline:** The order details dashboard (`apps/web/src/pages/admin/orders/[id].astro`) features static Astro template previews and support handoff generators, but is missing an active integration showing the actual history of planned and attempted database outbox records.
+*   **Dedicated Channels Panel:** There are no dedicated Email, SMS, and WhatsApp status Panels displaying actual masked recipient coordinates, sanitized provider return messages, template definitions, and channel-level dry-run flags.
+*   **System Controls Visibility:** The admin lacks real-time visibility into active database configurations and provider readiness states (such as active SMS balances or ZeptoMail key validity).
+
+### 22.2 Read-Only UI Design Blueprint
+To bridge these gaps, we propose integrating two dedicated read-only sections:
+1.  **Notification Overview & Channel Panel:**
+    *   **Email Panel (ZeptoMail):** Readiness status, latest attempts, masked recipient (`lo****@domain.com`), template name, and "Customer send disabled" notice.
+    *   **SMS Panel (Pahappa/EgoSMS):** Readiness status, latest attempts, masked recipient (`25670*****45`), template name, and "Customer send disabled" notice.
+    *   **WhatsApp Panel:** Handoff state showing wa.me pre-filled message, WhatsApp Cloud API status ("Paused/Stubbed"), and "API send disabled" notice.
+2.  **Notification Timeline:**
+    *   A chronological list of all outbox events and attempts.
+    *   Shows planned events, target channels, template names, status (`pending`, `claimed`, `sent`, `failed`, `suppressed`, `dry_run`, `skipped`), attempt counts, masked recipients, sanitized provider messages, and execution timestamps.
+
+### 22.3 Safety Constraints & Decoupling
+*   **GET Only / Read-Only:** All UI widgets will query the Hono backend timeline endpoint via HTTP `GET` only.
+*   **No Send Actions:** No send, resend, retry, or process buttons will be built.
+*   **No Mutating Hooks:** Frontend components will have no capabilities to stage new outbox rows, trigger queues, or invoke external provider endpoints.
+*   **PII & Token Isolation:** Real recipient emails/phones are masked in the API responses before reaching frontend rendering. Secrets are scrubbed.
+
+### 22.4 Proposed Implementation Files
+*   **`apps/web/src/lib/api.ts`**: Add `getOrderNotificationTimeline` API client helper.
+*   **`apps/web/src/components/admin/NotificationTimeline.astro`**: [NEW] Timeline renderer component.
+*   **`apps/web/src/components/admin/NotificationChannelPanel.astro`**: [NEW] Panel renderer for ZeptoMail/EgoSMS/WhatsApp.
+*   **`apps/web/src/pages/admin/orders/[id].astro`**: Mount the new UI components.
+
+### 22.5 Verification & Test Plan
+*   **Unit/Component Tests:** Test that components render correctly with empty timelines, correctly mask data, do not expose send buttons, and properly display all safety labels ("Customer send disabled", "Dry-run mode").
+*   **Quality Gates:** Verify typecheck, Vitest units, boundary checks, and production builds execute with zero errors.
+
+### 22.6 Recommended Next Pass
+Proceed with the execution of **GoldPlus Pass H1J-P3-P2-B — Admin Notification Interfaces and Read-Only Timeline UI** implementation.
