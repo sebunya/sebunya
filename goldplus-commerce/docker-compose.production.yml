@@ -1,0 +1,104 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_prod_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: always
+    depends_on:
+      - postgres
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - COOKIE_SECURE=${COOKIE_SECURE}
+      - IDENTITY_HASH_PEPPER=${IDENTITY_HASH_PEPPER}
+      - MTN_WEBHOOK_SECRET=${MTN_WEBHOOK_SECRET}
+      - AIRTEL_WEBHOOK_SECRET=${AIRTEL_WEBHOOK_SECRET}
+      - BOOTSTRAP_ADMIN_EMAIL=${BOOTSTRAP_ADMIN_EMAIL}
+      - BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD}
+      - BOOTSTRAP_ADMIN_PHONE=${BOOTSTRAP_ADMIN_PHONE}
+      - PESAPAL_ENV=${PESAPAL_ENV}
+      - PESAPAL_BASE_URL=${PESAPAL_BASE_URL}
+      - PESAPAL_CONSUMER_KEY=${PESAPAL_CONSUMER_KEY}
+      - PESAPAL_CONSUMER_SECRET=${PESAPAL_CONSUMER_SECRET}
+      - PESAPAL_CURRENCY=${PESAPAL_CURRENCY}
+      - PESAPAL_COUNTRY_CODE=${PESAPAL_COUNTRY_CODE}
+      - PESAPAL_BRANCH=${PESAPAL_BRANCH}
+      - PESAPAL_REDIRECT_MODE=${PESAPAL_REDIRECT_MODE}
+      - PESAPAL_CALLBACK_URL=${PESAPAL_CALLBACK_URL}
+      - PESAPAL_CANCELLATION_URL=${PESAPAL_CANCELLATION_URL}
+      - PESAPAL_IPN_URL=${PESAPAL_IPN_URL}
+      - SMS_PROVIDER=${SMS_PROVIDER}
+      - SMS_BASE_URL=${SMS_BASE_URL}
+      - SMS_USERNAME=${SMS_USERNAME}
+      - SMS_API_KEY=${SMS_API_KEY}
+      - SMS_SENDER_ID=${SMS_SENDER_ID}
+      - SMS_DEFAULT_COUNTRY_CODE=${SMS_DEFAULT_COUNTRY_CODE}
+      - SMS_PRIORITY=${SMS_PRIORITY}
+      - SMS_TIMEOUT_MS=${SMS_TIMEOUT_MS}
+      - NOTIFICATIONS_SMS_ENABLED=${NOTIFICATIONS_SMS_ENABLED}
+      - NOTIFICATIONS_DRY_RUN=${NOTIFICATIONS_DRY_RUN}
+      - NOTIFICATIONS_LIVE_SEND_ENABLED=${NOTIFICATIONS_LIVE_SEND_ENABLED}
+      - NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS=${NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS}
+      - ZEPTOMAIL_BASE_URL=${ZEPTOMAIL_BASE_URL}
+      - ZEPTOMAIL_API_TOKEN=${ZEPTOMAIL_API_TOKEN}
+      - ZEPTOMAIL_FROM_ADDRESS=${ZEPTOMAIL_FROM_ADDRESS}
+      - ZEPTOMAIL_FROM_NAME=${ZEPTOMAIL_FROM_NAME}
+      - ZEPTOMAIL_REPLY_TO=${ZEPTOMAIL_REPLY_TO}
+      - ZEPTOMAIL_TIMEOUT_MS=${ZEPTOMAIL_TIMEOUT_MS}
+      - NOTIFICATIONS_EMAIL_ENABLED=${NOTIFICATIONS_EMAIL_ENABLED}
+      - ZEPTOMAIL_API_BASE_URL=${ZEPTOMAIL_API_BASE_URL}
+      - NOTIFICATIONS_PROVIDER_TIMEOUT_MS=${NOTIFICATIONS_PROVIDER_TIMEOUT_MS}
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL}
+    restart: always
+    depends_on:
+      - api
+    ports:
+      - "4321:4321"
+    environment:
+      - NODE_ENV=production
+      - PORT=4321
+      - HOST=0.0.0.0
+      - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL}
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+
+volumes:
+  pg_prod_data:
+  caddy_data:
+  caddy_config:

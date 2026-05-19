@@ -407,6 +407,42 @@ routes.get('/admin/payments', async (c) => {
   }
 });
 
+routes.get('/admin/quotes', async (c) => {
+  try {
+    const quotes = await registry.quoteRepo.findAll();
+    return c.json({ success: true, data: quotes });
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
+    }
+    throw err;
+  }
+});
+
+routes.get('/admin/support', async (c) => {
+  try {
+    const support = await registry.supportRepo.findAll();
+    return c.json({ success: true, data: support });
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
+    }
+    throw err;
+  }
+});
+
+routes.get('/admin/dealers', async (c) => {
+  try {
+    const dealers = await registry.dealerRepo.findAll();
+    return c.json({ success: true, data: dealers });
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
+    }
+    throw err;
+  }
+});
+
 export default routes;
 
 
