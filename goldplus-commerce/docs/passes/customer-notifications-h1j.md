@@ -565,4 +565,41 @@ No blocking risks remain for the internal ZeptoMail test email gate.
 ### 14.4 Recommended Next Pass
 Proceed with WhatsApp Template Integration and Verification (`H1J-P2-P1C`).
 
+---
+
+## 15. GoldPlus Pass H1J-P2-P1C-P0 — WhatsApp Cloud API Readiness Audit
+
+This section documents the planning baseline, template governance, credential requirements, safety defaults, and recommended milestones for the WhatsApp Cloud API integration.
+
+### 15.1 Current WhatsApp Architecture & Adapter Status
+*   **Adapter State:** `WhatsAppAdapter.ts` is fully stubbed. It performs mock checks on token existence and returns `NOT_CONFIGURED` / `PROVIDER_NOT_WIRED`. No external HTTP dispatches exist.
+*   **Routing Status:** `DefaultNotificationRouter.ts` routes payment operational alerts to `opsWhatsapp` but does not route customer transactional state events.
+*   **Render Status:** `NotificationTemplateRenderer.ts` contains a fully functional, brand-accurate `renderWhatsApp` method mapped to the Uganda currency formatting standard (`UGX`).
+*   **Handoff Links:** The email headers and bodies generate privacy-safe `wa.me` links containing only the order reference code.
+
+### 15.2 Planned Safety Model Defaults
+To enforce zero accidental customer message dispatches during coding and sandbox verification, the following parameters are established as standard defaults:
+*   `NOTIFICATIONS_WHATSAPP_ENABLED=false`
+*   `NOTIFICATIONS_DRY_RUN=true`
+*   `NOTIFICATIONS_LIVE_SEND_ENABLED=false`
+*   `NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS=`
+
+### 15.3 Provider Details and Templates Required
+*   **Direct Meta Cloud API Integration:** Planned around direct REST integration with `https://graph.facebook.com`.
+*   **Credentials Needed:** `WHATSAPP_API_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`.
+*   **Template Candidates:** Order received (payment pending), payment verified, fulfillment in progress, delivery completed, and payment failed.
+*   **Template Rules:** Shorter message bodies, zero customer PII (addresses, emails, or raw database IDs), and strict customer opt-in governance.
+
+### 15.4 Recommended Implementation Milestones
+*   **H1J-P2-P1C-A:** WhatsApp Handoff Link Polish and Admin Preview Dashboard Alignment (no API credentials, no live sends).
+*   **H1J-P2-P1C-B:** WhatsApp Cloud API Credential Intake and Dry-Run Adapter (dry-run, allowlist checks, presence validation).
+*   **H1J-P2-P1C-C:** One Controlled Internal WhatsApp Test Send (live test to allowlisted developer device only).
+*   **H1J-P2-P1C-D:** Webhook Delivery Status Processing (deferred).
+
+### 15.5 Remaining Risks
+No blocking risks remain for WhatsApp readiness planning.
+
+### 15.6 Recommended Next Pass
+Proceed with WhatsApp Handoff Link Polish and Admin Preview Alignment (`H1J-P2-P1C-A`).
+
 
