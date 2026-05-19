@@ -1,5 +1,3 @@
-import { Order } from '../../../domain/commerce/Order';
-
 export type NotificationTemplateKey =
   | 'ORDER_RECEIVED_UNPAID'
   | 'ORDER_PAYMENT_PENDING'
@@ -8,6 +6,13 @@ export type NotificationTemplateKey =
   | 'ORDER_PAYMENT_CANCELLED'
   | 'ORDER_FULFILLMENT_PROCESSING'
   | 'ORDER_FULFILLMENT_COMPLETED';
+
+export interface EmailRenderResult {
+  subject: string;
+  preheader: string;
+  htmlbody: string;
+  textbody: string;
+}
 
 export class NotificationTemplateRenderer {
   private escapeHtml(str: string | null | undefined): string {
@@ -28,171 +33,414 @@ export class NotificationTemplateRenderer {
     }).format(amount);
   }
 
-  public renderEmail(template: NotificationTemplateKey, order: any): string {
-    const formattedTotal = this.formatUgx(order.totalUgx || order.subtotalUgx || 0);
-    const dateStr = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB');
+  /**
+   * Safe subject line mapping according to template type
+   */
+  public getSubject(template: NotificationTemplateKey): string {
+    switch (template) {
+      case 'ORDER_RECEIVED_UNPAID':
+        return 'We received your GoldPlus order';
+      case 'ORDER_PAYMENT_PENDING':
+        return 'Your GoldPlus payment is being checked';
+      case 'ORDER_PAYMENT_SUCCESS':
+        return 'Payment received for your GoldPlus order';
+      case 'ORDER_PAYMENT_FAILED':
+        return 'Your GoldPlus payment did not go through';
+      case 'ORDER_PAYMENT_CANCELLED':
+        return 'Your GoldPlus checkout was cancelled';
+      case 'ORDER_FULFILLMENT_PROCESSING':
+        return 'Your GoldPlus order is being prepared';
+      case 'ORDER_FULFILLMENT_COMPLETED':
+        return 'Your GoldPlus order is complete';
+      default:
+        return 'GoldPlus Transaction Update';
+    }
+  }
 
-    let title = 'Order Notification';
-    let headline = 'Order Update';
-    let statusMessage = '';
-    let isSuccessBanner = false;
+  /**
+   * Safe preheader text mapping according to template type
+   */
+  public getPreheader(template: NotificationTemplateKey): string {
+    switch (template) {
+      case 'ORDER_RECEIVED_UNPAID':
+        return 'Your order is saved. Complete payment to move it forward.';
+      case 'ORDER_PAYMENT_PENDING':
+        return 'We are waiting for payment confirmation.';
+      case 'ORDER_PAYMENT_SUCCESS':
+        return 'Your payment has been verified.';
+      case 'ORDER_PAYMENT_FAILED':
+        return 'You can retry payment or contact support.';
+      case 'ORDER_PAYMENT_CANCELLED':
+        return 'Your order has not been paid.';
+      case 'ORDER_FULFILLMENT_PROCESSING':
+        return 'We are preparing your items.';
+      case 'ORDER_FULFILLMENT_COMPLETED':
+        return 'Your order has been completed.';
+      default:
+        return 'Important update regarding your recent transaction.';
+    }
+  }
+
+  /**
+   * Safe headline text mapping according to template type
+   */
+  private getHeadline(template: NotificationTemplateKey): string {
+    switch (template) {
+      case 'ORDER_RECEIVED_UNPAID':
+        return 'Order received. Payment is still pending.';
+      case 'ORDER_PAYMENT_PENDING':
+        return 'Payment pending verification.';
+      case 'ORDER_PAYMENT_SUCCESS':
+        return 'Payment verified. We’ll prepare your order.';
+      case 'ORDER_PAYMENT_FAILED':
+        return 'Payment was not completed.';
+      case 'ORDER_PAYMENT_CANCELLED':
+        return 'Checkout cancelled. Your order has not been paid.';
+      case 'ORDER_FULFILLMENT_PROCESSING':
+        return 'Your order is being prepared.';
+      case 'ORDER_FULFILLMENT_COMPLETED':
+        return 'Your order is complete.';
+      default:
+        return 'Order Status Updated';
+    }
+  }
+
+  /**
+   * Safe long status message mapping according to template type
+   */
+  private getStatusMessage(template: NotificationTemplateKey, orderNumber: string, formattedTotal: string): string {
+    const escapedRef = this.escapeHtml(orderNumber);
+    switch (template) {
+      case 'ORDER_RECEIVED_UNPAID':
+        return `Thank you for your order. We have successfully recorded order number <strong>${escapedRef}</strong>. Please complete your Mobile Money checkout sequence to initiate secure logistical fulfillment.`;
+      case 'ORDER_PAYMENT_PENDING':
+        return `We have received a payment alert for order number <strong>${escapedRef}</strong>. Our systems are verifying the transaction status with our PesaPal network. We will update you as soon as confirmation arrives.`;
+      case 'ORDER_PAYMENT_SUCCESS':
+        return `Excellent news! Payment of <strong>${this.escapeHtml(formattedTotal)}</strong> has been successfully verified. Your order <strong>${escapedRef}</strong> is officially confirmed. Our Kampala fulfillment team is preparing your hardware items.`;
+      case 'ORDER_PAYMENT_FAILED':
+        return `Your payment attempt for order <strong>${escapedRef}</strong> could not be completed. You can safely retry checkout using your custom tracking link or contact our customer desk for MM guidance.`;
+      case 'ORDER_PAYMENT_CANCELLED':
+        return `The checkout process for order <strong>${escapedRef}</strong> was cancelled. Your order remains saved as unpaid. You can easily complete payment by returning to checkout.`;
+      case 'ORDER_FULFILLMENT_PROCESSING':
+        return `Our logistics dispatch team is actively packing and preparing items for order <strong>${escapedRef}</strong> in our central Kampala warehouse. We are coordinating shipping to your delivery area.`;
+      case 'ORDER_FULFILLMENT_COMPLETED':
+        return `Congratulations! Your solar hardware order <strong>${escapedRef}</strong> has been successfully delivered and settled. Thank you for partnering with GoldPlus.`;
+      default:
+        return `Your order number ${escapedRef} has transitioned to a new fulfillment stage.`;
+    }
+  }
+
+  /**
+   * Renders the hidden HTML preheader element
+   */
+  private renderPreheader(preheader: string): string {
+    return `<!--[if !mso]><!-->
+    <div style="display: none; max-height: 0px; overflow: hidden; font-size: 1px; color: #ffffff; line-height: 1px; font-family: sans-serif;">
+      ${this.escapeHtml(preheader)}
+    </div>
+    <!--<![endif]-->`;
+  }
+
+  /**
+   * Renders the safe email header block
+   */
+  private renderEmailHeader(): string {
+    return `
+    <!-- Header Logo Banner -->
+    <tr>
+      <td style="background-color: #0A0A0A; padding: 32px 24px; text-align: center; border-bottom: 3px solid #96cc06;">
+        <h1 style="margin: 0; font-family: sans-serif; font-size: 26px; font-weight: 900; color: #FFFFFF; letter-spacing: -0.03em; text-transform: uppercase;">GoldPlus</h1>
+        <p style="margin: 4px 0 0 0; font-family: sans-serif; font-size: 10px; font-weight: 800; color: #9CA3AF; letter-spacing: 0.1em; text-transform: uppercase;">Premium Solar &amp; Hardware Commerce</p>
+      </td>
+    </tr>`;
+  }
+
+  /**
+   * Renders the status banner block
+   */
+  private renderStatusBlock(headline: string, message: string, isSuccess: boolean, customerName?: string): string {
+    const bannerBg = isSuccess ? '#F3FBF2' : '#FCFAF2';
+    const borderBg = isSuccess ? '#E1F3DF' : '#F7F3E1';
+    const fontColor = isSuccess ? '#2B6A25' : '#8A6D1C';
+    
+    const escapedName = this.escapeHtml(customerName || 'Customer');
+    const greetingHtml = `<p style="margin: 0 0 12px 0; font-family: sans-serif; font-size: 14px; font-weight: bold; color: #0A0A0A;">Dear ${escapedName},</p>`;
+
+    return `
+    <!-- Status headline and contextual text -->
+    <tr>
+      <td style="padding: 32px 32px 20px 32px; background-color: #FFFFFF;">
+        <div style="background-color: ${bannerBg}; border: 1px solid ${borderBg}; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
+          <h2 style="margin: 0 0 4px 0; font-family: sans-serif; font-size: 15px; font-weight: 800; color: ${fontColor}; letter-spacing: -0.01em;">${this.escapeHtml(headline)}</h2>
+        </div>
+        ${greetingHtml}
+        <p style="margin: 0; font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #374151;">${message}</p>
+      </td>
+    </tr>`;
+  }
+
+  /**
+   * Renders the order parameters outline
+   */
+  private renderOrderSummary(order: any, formattedTotal: string, dateStr: string): string {
+    const escapedRef = this.escapeHtml(order.orderNumber);
+    const escapedArea = this.escapeHtml(order.deliveryArea || 'N/A');
+    const escapedStatus = this.escapeHtml(order.orderStatus.replace(/_/g, ' '));
+    const escapedPayment = this.escapeHtml(order.paymentStatus);
+
+    const isPaid = order.paymentStatus === 'paid';
+    const payColor = isPaid ? '#22C55E' : '#EAB308';
+
+    return `
+    <!-- Order summary parameters metadata box -->
+    <tr>
+      <td style="padding: 0 32px 24px 32px; background-color: #FFFFFF;">
+        <div style="background-color: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 18px;">
+          <table width="100%" border="0" cellspacing="0" cellpadding="0" style="font-family: sans-serif; font-size: 12px; line-height: 1.5; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 4px 0; color: #6B7280; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; width: 45%;">Order Reference</td>
+              <td style="padding: 4px 0; text-align: right; font-weight: bold; color: #0A0A0A; font-family: monospace;">${escapedRef}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #6B7280; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Date Placed</td>
+              <td style="padding: 4px 0; text-align: right; color: #374151;">${this.escapeHtml(dateStr)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #6B7280; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Fulfillment Status</td>
+              <td style="padding: 4px 0; text-align: right; font-weight: bold; color: #0A0A0A; text-transform: uppercase;">${escapedStatus}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #6B7280; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Payment Status</td>
+              <td style="padding: 4px 0; text-align: right; font-weight: bold; color: ${payColor}; text-transform: uppercase;">${escapedPayment}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #6B7280; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Delivery Destination</td>
+              <td style="padding: 4px 0; text-align: right; color: #374151;">${escapedArea}</td>
+            </tr>
+          </table>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  /**
+   * Renders the itemized product line-items table
+   */
+  private renderLineItemsTable(items: any[]): string {
+    const rows = (items || [])
+      .map((item: any) => {
+        const name = this.escapeHtml(item.productName || item.name);
+        const sku = this.escapeHtml(item.sku || 'N/A');
+        const qty = item.quantity;
+        const price = item.unitPrice || item.price || 0;
+        const total = price * qty;
+
+        return `
+        <tr>
+          <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: bold; color: #0A0A0A; border-bottom: 1px solid #E5E7EB; text-align: left;">
+            ${name}
+            <div style="font-size: 10px; font-weight: normal; color: #6B7280; margin-top: 2px;">SKU: ${sku}</div>
+          </td>
+          <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: bold; color: #374151; border-bottom: 1px solid #E5E7EB; text-align: center;">${qty}</td>
+          <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; color: #4B5563; border-bottom: 1px solid #E5E7EB; text-align: right;">${this.escapeHtml(this.formatUgx(price))}</td>
+          <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: 800; color: #0A0A0A; border-bottom: 1px solid #E5E7EB; text-align: right;">${this.escapeHtml(this.formatUgx(total))}</td>
+        </tr>`;
+      })
+      .join('');
+
+    return `
+    <!-- Line Items Table Section -->
+    <tr>
+      <td style="padding: 0 32px 16px 32px; background-color: #FFFFFF;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="border-collapse: collapse; border-top: 1px solid #E5E7EB;">
+          <thead>
+            <tr style="background-color: #F9FAFB;">
+              <th style="padding: 10px 8px; font-family: sans-serif; font-size: 10px; font-weight: bold; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #E5E7EB; text-align: left;">Product</th>
+              <th style="padding: 10px 8px; font-family: sans-serif; font-size: 10px; font-weight: bold; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #E5E7EB; text-align: center; width: 10%;">Qty</th>
+              <th style="padding: 10px 8px; font-family: sans-serif; font-size: 10px; font-weight: bold; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #E5E7EB; text-align: right; width: 25%;">Price</th>
+              <th style="padding: 10px 8px; font-family: sans-serif; font-size: 10px; font-weight: bold; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #E5E7EB; text-align: right; width: 25%;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </td>
+    </tr>`;
+  }
+
+  /**
+   * Renders the itemized total calculations card
+   */
+  private renderTotalBlock(formattedTotal: string): string {
+    return `
+    <!-- Totals calculation block -->
+    <tr>
+      <td style="padding: 0 32px 32px 32px; background-color: #FFFFFF;">
+        <table align="right" width="260" border="0" cellspacing="0" cellpadding="0" style="font-family: sans-serif; font-size: 13px; line-height: 1.5; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 4px 0; color: #6B7280; text-align: left;">Subtotal</td>
+            <td style="padding: 4px 0; font-weight: bold; color: #0A0A0A; text-align: right;">${this.escapeHtml(formattedTotal)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; color: #6B7280; text-align: left;">Delivery Zone Fee</td>
+            <td style="padding: 4px 0; font-style: italic; color: #9CA3AF; text-align: right;">Calculated post-zone</td>
+          </tr>
+          <tr style="border-top: 1px solid #E5E7EB;">
+            <td style="padding: 12px 0 0 0; font-size: 14px; font-weight: bold; color: #0A0A0A; text-align: left;">Grand Total</td>
+            <td style="padding: 12px 0 0 0; font-size: 16px; font-weight: 900; color: #0A0A0A; text-align: right;">${this.escapeHtml(formattedTotal)}</td>
+          </tr>
+        </table>
+        <div style="clear: both;"></div>
+      </td>
+    </tr>`;
+  }
+
+  /**
+   * Renders the transactional button and safe text-url fallback underneath
+   */
+  private renderPrimaryCta(template: NotificationTemplateKey, orderNumber: string): string {
+    const trackUrl = `https://shopgoldplus.com/track-order?ref=${encodeURIComponent(orderNumber)}`;
+    let ctaLabel = 'Track Order';
 
     switch (template) {
       case 'ORDER_RECEIVED_UNPAID':
-        title = 'GoldPlus - Order Received';
-        headline = 'Order Received & Awaiting Payment';
-        statusMessage = `Thank you for your order. We have successfully received order number <strong>${this.escapeHtml(order.orderNumber)}</strong>. Please proceed with payment via your Mobile Money checkout screen or follow PesaPal payment links to complete your purchase.`;
+        ctaLabel = 'Complete Payment';
         break;
       case 'ORDER_PAYMENT_PENDING':
-        title = 'GoldPlus - Payment Pending';
-        headline = 'Payment Verification Pending';
-        statusMessage = `We have recorded a pending payment attempt for order <strong>${this.escapeHtml(order.orderNumber)}</strong>. Our systems are currently verifying transaction status. No further action is required.`;
-        break;
       case 'ORDER_PAYMENT_SUCCESS':
-        title = 'GoldPlus - Order Confirmed';
-        headline = 'Payment Confirmed & Order Processing';
-        statusMessage = `Excellent news! Payment of <strong>${this.escapeHtml(formattedTotal)}</strong> has been successfully verified. Your order <strong>${this.escapeHtml(order.orderNumber)}</strong> is now officially confirmed and transitioning to hardware dispatch logistics.`;
-        isSuccessBanner = true;
+      case 'ORDER_FULFILLMENT_PROCESSING':
+        ctaLabel = 'Track Order';
         break;
       case 'ORDER_PAYMENT_FAILED':
-        title = 'GoldPlus - Payment Failed';
-        headline = 'Payment Attempt Unsuccessful';
-        statusMessage = `We could not verify payment for order <strong>${this.escapeHtml(order.orderNumber)}</strong>. Please check your Mobile Money network or click checkout again to retry.`;
+        ctaLabel = 'Retry Payment';
         break;
       case 'ORDER_PAYMENT_CANCELLED':
-        title = 'GoldPlus - Checkout Cancelled';
-        headline = 'Payment Attempt Cancelled';
-        statusMessage = `The payment checkout flow for order <strong>${this.escapeHtml(order.orderNumber)}</strong> was cancelled. You can retry checkout anytime from your order tracking screen.`;
-        break;
-      case 'ORDER_FULFILLMENT_PROCESSING':
-        title = 'GoldPlus - Order in Processing';
-        headline = 'Logistics & Packaging in Progress';
-        statusMessage = `Your order <strong>${this.escapeHtml(order.orderNumber)}</strong> is currently being packaged and optimized for transport in Kampala. You will be notified as soon as it is shipped.`;
+        ctaLabel = 'Return to Checkout';
         break;
       case 'ORDER_FULFILLMENT_COMPLETED':
-        title = 'GoldPlus - Delivery Completed';
-        headline = 'Delivery Confirmed & Settled';
-        statusMessage = `Congratulations! Order <strong>${this.escapeHtml(order.orderNumber)}</strong> has been delivered successfully. Thank you for choosing GoldPlus.`;
-        isSuccessBanner = true;
+        ctaLabel = 'View Order';
         break;
-      default:
-        statusMessage = `Order number ${this.escapeHtml(order.orderNumber)} status has updated to: ${this.escapeHtml(order.orderStatus)}.`;
     }
 
-    const itemsHtml = (order.items || [])
-      .map(
-        (item: any) => `
-      <tr>
-        <td style="padding: 12px; font-weight: bold; color: #111827; border-bottom: 1px solid #f3f4f6;">${this.escapeHtml(item.productName || item.name)}</td>
-        <td style="padding: 12px; text-align: center; font-family: monospace; color: #6b7280; border-bottom: 1px solid #f3f4f6;">${this.escapeHtml(item.sku || 'N/A')}</td>
-        <td style="padding: 12px; text-align: center; font-weight: bold; color: #374151; border-bottom: 1px solid #f3f4f6;">${item.quantity}</td>
-        <td style="padding: 12px; text-align: right; color: #4b5563; border-bottom: 1px solid #f3f4f6;">${this.escapeHtml(this.formatUgx(item.unitPrice || item.price))}</td>
-        <td style="padding: 12px; text-align: right; font-weight: 800; color: #111827; border-bottom: 1px solid #f3f4f6;">${this.escapeHtml(this.formatUgx((item.unitPrice || item.price) * item.quantity))}</td>
-      </tr>`
-      )
-      .join('');
+    return `
+    <!-- CTA Button and raw link backup -->
+    <tr>
+      <td style="padding: 0 32px 32px 32px; background-color: #FFFFFF; text-align: center;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0">
+          <tr>
+            <td align="center">
+              <table border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center" style="background-color: #96cc06; border-radius: 6px;">
+                    <a href="${trackUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; font-family: sans-serif; font-size: 13px; font-weight: 900; color: #0A0A0A; text-decoration: none; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid #96cc06; border-radius: 6px;">
+                      ${this.escapeHtml(ctaLabel)}
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-top: 16px; font-family: sans-serif; font-size: 10px; color: #9CA3AF; line-height: 1.4;">
+              If the button does not work, copy and paste this URL into your browser:<br>
+              <a href="${trackUrl}" target="_blank" style="color: #96cc06; text-decoration: none; font-weight: bold; word-break: break-all;">${this.escapeHtml(trackUrl)}</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`;
+  }
+
+  /**
+   * Renders the support panel and WhatsApp handoff
+   */
+  private renderSupportBlock(orderNumber: string): string {
+    const escapedRef = this.escapeHtml(orderNumber);
+    const waText = encodeURIComponent(`Hello GoldPlus, I'm inquiring about order ${orderNumber}`);
+    const waUrl = `https://wa.me/256705004545?text=${waText}`;
+
+    return `
+    <!-- Technical & Operational support banner -->
+    <tr>
+      <td style="padding: 24px 32px; background-color: #FCFAF2; border-top: 1px solid #F7F3E1; text-align: center;">
+        <h3 style="margin: 0 0 6px 0; font-family: sans-serif; font-size: 13px; font-weight: 800; color: #8A6D1C; text-transform: uppercase; letter-spacing: 0.05em;">Need help with your order?</h3>
+        <p style="margin: 0; font-family: sans-serif; font-size: 12px; line-height: 1.5; color: #5C4B18;">
+          Connect directly with our central desk for payment or logistical guidance.<br>
+          <a href="${waUrl}" target="_blank" style="display: inline-block; margin-top: 8px; color: #0A0A0A; text-decoration: none; font-weight: 900; background-color: #96cc06; padding: 6px 14px; border-radius: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em;">
+            WhatsApp Support &rarr;
+          </a>
+        </p>
+      </td>
+    </tr>`;
+  }
+
+  /**
+   * Renders the billing note and footer legal limits
+   */
+  private renderEmailFooter(): string {
+    return `
+    <!-- Transaction disclaimer footer -->
+    <tr>
+      <td style="background-color: #0A0A0A; padding: 32px 24px; text-align: center; border-top: 1px solid #1A1A1A;">
+        <p style="margin: 0 0 12px 0; font-family: sans-serif; font-size: 11px; line-height: 1.6; color: #9CA3AF;">
+          This email is an automated billing transaction notification regarding your active customer account on the GoldPlus E-commerce network. Unsubscribe links are not legally applicable as this message does not consist of promotional content.
+        </p>
+        <p style="margin: 0; font-family: sans-serif; font-size: 10px; font-weight: bold; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em;">
+          &copy; ${new Date().getFullYear()} GoldPlus Online Store. Kampala, Uganda.
+        </p>
+      </td>
+    </tr>`;
+  }
+
+  /**
+   * Complete high-fidelity HTML email receipt composition
+   */
+  public renderEmail(template: NotificationTemplateKey, order: any): string {
+    const formattedTotal = this.formatUgx(order.totalUgx || order.subtotalUgx || 0);
+    const dateStr = order.createdAt
+      ? new Date(order.createdAt).toLocaleDateString('en-GB')
+      : new Date().toLocaleDateString('en-GB');
+
+    const subject = this.getSubject(template);
+    const preheader = this.getPreheader(template);
+    const headline = this.getHeadline(template);
+    const message = this.getStatusMessage(template, order.orderNumber, formattedTotal);
+
+    const isSuccess = ['ORDER_PAYMENT_SUCCESS', 'ORDER_FULFILLMENT_COMPLETED'].includes(template);
+
+    const preheaderHtml = this.renderPreheader(preheader);
+    const headerHtml = this.renderEmailHeader();
+    const statusHtml = this.renderStatusBlock(headline, message, isSuccess, order.customerName);
+    const summaryHtml = this.renderOrderSummary(order, formattedTotal, dateStr);
+    const itemsHtml = this.renderLineItemsTable(order.items || []);
+    const totalsHtml = this.renderTotalBlock(formattedTotal);
+    const ctaHtml = this.renderPrimaryCta(template, order.orderNumber);
+    const supportHtml = this.renderSupportBlock(order.orderNumber);
+    const footerHtml = this.renderEmailFooter();
 
     return `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>${this.escapeHtml(title)}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${this.escapeHtml(subject)}</title>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
-  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f9fafb; padding: 40px 0;">
+<body style="margin: 0; padding: 0; background-color: #F5F7F2; -webkit-font-smoothing: antialiased; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%;">
+  ${preheaderHtml}
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #F5F7F2; padding: 40px 16px;">
     <tr>
       <td align="center">
-        <table width="600" border="0" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-          <!-- Header Banner -->
-          <tr>
-            <td style="background-color: #111827; padding: 32px; text-align: center;">
-              <h1 style="margin: 0; font-size: 24px; font-weight: 900; color: #f59e0b; letter-spacing: -0.025em; text-transform: uppercase;">GoldPlus</h1>
-              <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: bold; color: #9ca3af; letter-spacing: 0.05em; text-transform: uppercase;">Premium Solar & Hardware Commerce</p>
-            </td>
-          </tr>
-          
-          <!-- Status Headline Banner -->
-          <tr>
-            <td style="background-color: ${isSuccessBanner ? '#ecfdf5' : '#fef3c7'}; padding: 20px 32px; border-bottom: 1px solid ${isSuccessBanner ? '#d1fae5' : '#fde68a'};">
-              <h2 style="margin: 0; font-size: 16px; font-weight: 900; color: ${isSuccessBanner ? '#065f46' : '#92400e'}; letter-spacing: -0.01em;">${this.escapeHtml(headline)}</h2>
-            </td>
-          </tr>
-
-          <!-- Message Body -->
-          <tr>
-            <td style="padding: 32px 32px 24px 32px; font-size: 14px; line-height: 1.6; color: #374151;">
-              <p style="margin: 0 0 20px 0;">Dear ${this.escapeHtml(order.customerName || 'Customer')},</p>
-              <p style="margin: 0 0 20px 0;">${statusMessage}</p>
-              <div style="background-color: #f3f4f6; border-radius: 12px; padding: 16px; margin: 24px 0;">
-                <table width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size: 12px;">
-                  <tr>
-                    <td style="padding: 4px 0; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Order Reference</td>
-                    <td style="padding: 4px 0; text-align: right; font-weight: bold; color: #111827; font-family: monospace;">${this.escapeHtml(order.orderNumber)}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 4px 0; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Date Placed</td>
-                    <td style="padding: 4px 0; text-align: right; color: #111827;">${this.escapeHtml(dateStr)}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 4px 0; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Fulfillment Status</td>
-                    <td style="padding: 4px 0; text-align: right; font-weight: 800; color: #f59e0b; text-transform: uppercase;">${this.escapeHtml(order.orderStatus.replace(/_/g, ' '))}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 4px 0; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Payment Status</td>
-                    <td style="padding: 4px 0; text-align: right; font-weight: 800; color: ${order.paymentStatus === 'paid' ? '#10b981' : '#f59e0b'}; text-transform: uppercase;">${this.escapeHtml(order.paymentStatus)}</td>
-                  </tr>
-                </table>
-              </div>
-            </td>
-          </tr>
-
-          <!-- Items Table -->
-          <tr>
-            <td style="padding: 0 32px 24px 32px;">
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size: 13px; border-collapse: collapse;">
-                <thead>
-                  <tr style="background-color: #f9fafb; font-weight: bold; text-transform: uppercase; font-size: 10px; color: #9ca3af; letter-spacing: 0.05em; border-bottom: 2px solid #e5e7eb;">
-                    <th style="padding: 8px 12px; text-align: left;">Product</th>
-                    <th style="padding: 8px 12px; text-align: center;">SKU</th>
-                    <th style="padding: 8px 12px; text-align: center;">Qty</th>
-                    <th style="padding: 8px 12px; text-align: right;">Unit Price</th>
-                    <th style="padding: 8px 12px; text-align: right;">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${itemsHtml}
-                </tbody>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Total Summary -->
-          <tr>
-            <td style="padding: 0 32px 32px 32px;">
-              <table align="right" width="240" border="0" cellspacing="0" cellpadding="0" style="font-size: 13px;">
-                <tr>
-                  <td style="padding: 6px 0; color: #6b7280;">Subtotal</td>
-                  <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #111827;">${this.escapeHtml(formattedTotal)}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 0; color: #6b7280;">Delivery Zone Fee</td>
-                  <td style="padding: 6px 0; text-align: right; font-style: italic; color: #9ca3af;">Calculated post-zone</td>
-                </tr>
-                <tr style="border-top: 1px solid #e5e7eb;">
-                  <td style="padding: 12px 0 0 0; font-size: 14px; font-weight: 900; color: #111827;">Grand Total</td>
-                  <td style="padding: 12px 0 0 0; font-size: 16px; font-weight: 900; color: #111827; text-align: right;">${this.escapeHtml(formattedTotal)}</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Support & Footer -->
-          <tr>
-            <td style="background-color: #f9fafb; padding: 32px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ca3af;">
-              <p style="margin: 0 0 12px 0; line-height: 1.5;">This email is an automated transactional notification regarding your active order on GoldPlus. Real-time encryption secures your personal data and delivery destination details.</p>
-              <p style="margin: 0; font-weight: bold; color: #6b7280;">Need instant support? Inquire directly via <a href="https://wa.me/256000000000?text=Hello%20GoldPlus,%20I'm%20inquiring%20about%20order%20${encodeURIComponent(order.orderNumber)}" style="color: #f59e0b; text-decoration: none; font-weight: 900;">WhatsApp Support</a>.</p>
-            </td>
-          </tr>
+        <!-- Main centered container card -->
+        <table width="600" border="0" cellspacing="0" cellpadding="0" style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; max-width: 600px; width: 100%;">
+          ${headerHtml}
+          ${statusHtml}
+          ${summaryHtml}
+          ${itemsHtml}
+          ${totalsHtml}
+          ${ctaHtml}
+          ${supportHtml}
+          ${footerHtml}
         </table>
       </td>
     </tr>
@@ -201,6 +449,67 @@ export class NotificationTemplateRenderer {
 </html>`;
   }
 
+  /**
+   * Renders the plain-text fallback representation
+   */
+  public renderTextBody(template: NotificationTemplateKey, order: any): string {
+    const formattedTotal = this.formatUgx(order.totalUgx || order.subtotalUgx || 0);
+    const dateStr = order.createdAt
+      ? new Date(order.createdAt).toLocaleDateString('en-GB')
+      : new Date().toLocaleDateString('en-GB');
+
+    const subject = this.getSubject(template);
+    const headline = this.getHeadline(template);
+    const message = this.getStatusMessage(template, order.orderNumber, formattedTotal)
+      .replace(/<strong[^>]*>/g, '')
+      .replace(/<\/strong>/g, '')
+      .replace(/<a[^>]*>/g, '')
+      .replace(/<\/a>/g, '');
+
+    const trackUrl = `https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
+
+    let itemsText = '';
+    if (order.items && order.items.length > 0) {
+      itemsText = 'Purchased Items:\n' + order.items.map((item: any) => {
+        const name = item.productName || item.name;
+        const sku = item.sku || 'N/A';
+        const qty = item.quantity;
+        const price = this.formatUgx(item.unitPrice || item.price || 0);
+        const subtotal = this.formatUgx((item.unitPrice || item.price || 0) * qty);
+        return `- ${name} (${sku}) x${qty} @ ${price} (Total: ${subtotal})`;
+      }).join('\n') + '\n\n';
+    }
+
+    return `Dear ${order.customerName || 'Customer'},
+
+--- ${headline.toUpperCase()} ---
+
+${message}
+
+=== ORDER SUMMARY ===
+Order Reference: ${order.orderNumber}
+Date Placed: ${dateStr}
+Fulfillment Status: ${order.orderStatus.replace(/_/g, ' ').toUpperCase()}
+Payment Status: ${order.paymentStatus.toUpperCase()}
+Delivery Destination: ${order.deliveryArea || 'N/A'}
+Grand Total: ${formattedTotal}
+
+${itemsText}=== ACTION REQUIRED ===
+Track your delivery live:
+${trackUrl}
+
+=== NEED SUPPORT? ===
+WhatsApp Support:
+https://wa.me/256705004545?text=${encodeURIComponent(`Hello GoldPlus, I'm inquiring about order ${order.orderNumber}`)}
+
+GoldPlus Online Store
+Kampala, Uganda
+(This is an automated transaction message regarding order ${order.orderNumber})`;
+  }
+
+  /**
+   * Pre-existing WhatsApp build route
+   */
   public renderWhatsApp(order: any): string {
     const status = order.orderStatus;
     const paymentStatus = order.paymentStatus;

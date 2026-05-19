@@ -169,6 +169,7 @@ export class ZeptoMailAdapter implements INotificationProvider {
 
     let subject = templateSubjectMap[payload.template] || 'GoldPlus Solar Notification';
     let htmlContent = '';
+    let textContent = '';
 
     const isOrderTemplate = [
       'ORDER_RECEIVED_UNPAID',
@@ -182,16 +183,24 @@ export class ZeptoMailAdapter implements INotificationProvider {
 
     if (isOrderTemplate) {
       const orderModel = payload.data?.order || payload.data || {};
+      subject = this.renderer.getSubject(payload.template as any);
       htmlContent = this.renderer.renderEmail(payload.template as any, orderModel);
+      textContent = this.renderer.renderTextBody(payload.template as any, orderModel);
     } else if (payload.template === 'PAYMENT_SUCCESS' || payload.template === 'PAYMENT_FAILED') {
       // Map outbox routed events to corresponding order-template styles
       const mappedTemplate = payload.template === 'PAYMENT_SUCCESS' ? 'ORDER_PAYMENT_SUCCESS' : 'ORDER_PAYMENT_FAILED';
       const orderModel = payload.data?.order || payload.data || {};
+      subject = this.renderer.getSubject(mappedTemplate);
       htmlContent = this.renderer.renderEmail(mappedTemplate, orderModel);
+      textContent = this.renderer.renderTextBody(mappedTemplate, orderModel);
     } else {
       // Operations alerts, dealer app, quote request alerts
       const message = String(payload.data?.message || `A system event regarding ${payload.relatedEntity} occurred.`);
       htmlContent = this.renderGenericEmail(subject, message, payload.data || {});
+      textContent = `${subject}\n\n${message}\n\n${Object.entries(payload.data || {})
+        .filter(([k]) => k !== 'message')
+        .map(([k, v]) => `${k}: ${String(v)}`)
+        .join('\n')}`;
     }
 
     // 6. Dry-Run Gate Check
@@ -236,6 +245,10 @@ export class ZeptoMailAdapter implements INotificationProvider {
         ],
         subject: subject,
         htmlbody: htmlContent,
+        textbody: textContent,
+        track_clicks: false,
+        track_opens: false,
+        client_reference: payload.relatedEntityId || undefined,
       };
 
       const controller = new AbortController();

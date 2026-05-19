@@ -142,9 +142,13 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
     expect(parsedBody.from.address).toBe('receipts@shopgoldplus.com');
     expect(parsedBody.to[0].email_address.address).toBe('customer@example.com');
     expect(parsedBody.reply_to[0].address).toBe('support@shopgoldplus.com');
-    expect(parsedBody.subject).toBe('GoldPlus - Order Confirmed');
+    expect(parsedBody.subject).toBe('Payment received for your GoldPlus order');
     expect(parsedBody.htmlbody).toContain('Alice');
     expect(parsedBody.htmlbody).toContain('GP-1001');
+    expect(parsedBody.textbody).toContain('Alice');
+    expect(parsedBody.textbody).toContain('GP-1001');
+    expect(parsedBody.track_clicks).toBe(false);
+    expect(parsedBody.track_opens).toBe(false);
   });
 
   test('7. Successful API dispatch maps to SENT', async () => {
