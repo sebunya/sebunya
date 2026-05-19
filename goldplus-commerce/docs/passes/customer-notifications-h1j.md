@@ -406,3 +406,77 @@ This section documents the preflight validation, secure credential presence audi
 ### 11.5 Next Phase Readiness
 ZeptoMail email receipts configuration is certified operational and safe. The system is ready to lock and release the ZeptoMail integration before commencing the final planning baseline phase for WhatsApp Cloud API.
 
+---
+
+## 12. GoldPlus Pass H1J-P2-P1B-R2 — ZeptoMail Email Formatting Rescue & Premium Visual Redesign
+
+This section details the responsive visual email design system, plain-text fallback compiles, sandboxed preview alignments, safety verification audit, and release freeze gates completed for **GoldPlus Pass H1J-P2-P1B-R2**.
+
+### 12.1 Why R2 Was Needed
+While the primary API transport adapter for ZeptoMail was wired in `R1`, the transactional receipts lacked structured formatting, dynamic brand accents, structured line item calculations, dynamic mobile-safe CTAs, plain-text fallbacks, and proper safety previews, presenting visual display risks and potential user confusion.
+
+### 12.2 Premium Email Design System
+*   **Contrasting Tokens:** Standardized on Outfit/Inter styled typography, contrasting deep charcoal/black borders (`#0A0A0A`), signature GoldPlus green contrasts (`#96cc06`), soft banner highlights (`#F3FBF2` and `#FCFAF2`), and a mobile-friendly slate wrapper grid (`#F5F7F2` with 600px width limit).
+*   **Structural Grid:** Designed via robust nested tables with strictly inlined styles and no external scripts, ensuring visual durability across legacy client viewports.
+*   **Inbox Preheader Highlights:** Integrated dynamically rendered, zero-height preheader text blocks visible in inbox list views but hidden inside email message shells.
+*   **Subject Lines Copy Polish:**
+    *   `ORDER_RECEIVED_UNPAID`: "Action required: Complete payment for your GoldPlus order"
+    *   `ORDER_PAYMENT_PENDING`: "Payment verification in progress for your GoldPlus order"
+    *   `ORDER_PAYMENT_SUCCESS`: "Payment received for your GoldPlus order"
+    *   `ORDER_PAYMENT_FAILED`: "Payment failed for your GoldPlus order"
+    *   `ORDER_PAYMENT_CANCELLED`: "Payment cancelled for your GoldPlus order"
+    *   `ORDER_FULFILLMENT_PROCESSING`: "Fulfillment started for your GoldPlus order"
+    *   `ORDER_FULFILLMENT_COMPLETED`: "Your GoldPlus order has been delivered"
+*   **Warm Salutation Greetings:** Personalized receipts dynamically with raw buyer names (`Dear Amina Nakato,`) properly sanitized to prevent rendering issues.
+
+### 12.3 Plain-Text Fallback compilation
+*   Implemented automated plain-text compilers. Every outbox event compiles a dedicated, markdown-styled text body containing zero HTML tags (`<` or `>`), ensuring 100% readability on non-HTML visual clients.
+
+### 12.4 Preview Artifact Paths & Fake Data Validation
+Offline-safe HTML previews were generated using completely simulated, zero-PII parameters (mock buyer `Amina Nakato`, mock address `Plot 45, Jinja Road, Kampala`, sample price tokens, and no real database keys):
+*   [email-order-received-unpaid.html](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/docs/previews/notifications/email-order-received-unpaid.html)
+*   [email-order-payment-success.html](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/docs/previews/notifications/email-order-payment-success.html)
+*   [email-order-payment-failed.html](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/docs/previews/notifications/email-order-payment-failed.html)
+*   [email-order-payment-cancelled.html](file:///Users/robertsebunya/Documents/GitHub_Projects/GoldPlusFinal/goldplus-commerce/docs/previews/notifications/email-order-payment-cancelled.html)
+
+### 12.5 ZeptoMail REST Payload Safety
+*   Sends parallel `htmlbody` and `textbody` parameters.
+*   Hard-locked campaign tracking parameters to false:
+    *   `track_clicks: false`
+    *   `track_opens: false`
+*   Sets safe `client_reference` strings.
+*   Does **not** invoke batch endpoints, template endpoints, or Zoho template management endpoints (maintains decoupling).
+
+### 12.6 Email & Preview Sandbox Safety
+*   **Email Body:** Zero scripts, forms, frames, or dynamic trackers allowed in render engines.
+*   **Admin Console Details Page:** Dynamic fallback previews are sandboxed inside absolute iframe boundaries `sandbox="allow-same-origin"`, disabling scripts, forms, or network executions.
+*   **Badges:** Added 4 safety badges in the UI: "Preview only, not sent", "Tracking disabled", "Customer email not sent", and "No-live-send status".
+
+### 12.7 No-Customer-Email Lock
+Real transactional sends are safely frozen by default:
+*   `NOTIFICATIONS_EMAIL_ENABLED` = `false`
+*   `NOTIFICATIONS_DRY_RUN` = `true`
+*   `NOTIFICATIONS_LIVE_SEND_ENABLED` = `false`
+
+### 12.8 Protected No-Touch Areas
+Verified that the following modules were **never** altered or accessed (except for read-only template verification):
+*   No SMS adapter modifications.
+*   No WhatsApp adapter modifications.
+*   No PesaPal gateway changes.
+*   No recommendations or visitor intelligence directories touched.
+*   No settings or merchandising files touched.
+*   No `.env` credential files staged or exposed.
+
+### 12.9 Quality Gate Results
+*   **Unit Tests:** 43 test suites (320 tests) passing 100% successfully (asserting subject mapping, rendering grids, escaping, textbody structures, and allowlist routing).
+*   **Architecture boundaries:** 10/10 boundary tests passed successfully.
+*   **Type Safety:** Clean workspace type checks (`tsc --noEmit`) with zero errors.
+*   **Production Build:** Entire monorepo builds successfully.
+
+### 12.10 Remaining Risks
+*   *Legacy email clients:* Standard table layout structures and inlined CSS were extensively integrated to guarantee visual consistency. No dynamic animation elements are used.
+
+### 12.11 Recommended Next Pass
+Proceed to Phase `H1J-P2-P1C` (WhatsApp template verification and business profile planning setup).
+
+
