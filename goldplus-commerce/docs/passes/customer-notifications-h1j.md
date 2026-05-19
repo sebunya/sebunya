@@ -534,4 +534,35 @@ Real transactional sends are frozen by default:
 ### 13.7 Next Recommended Pass
 Proceed with WhatsApp Template Integration and Verification (`H1J-P2-P1C`).
 
+---
+
+## 14. GoldPlus Pass H1J-P2-P1B-R3-T1 — ZeptoMail Redesigned Email Verification
+
+This section documents the live verification results and closure parameters for **GoldPlus Pass H1J-P2-P1B-R3-T1**.
+
+### 14.1 Test Send Parameters & Verification Results
+Exactly one controlled, live internal test email was dispatched and successfully validated:
+*   **Total Attempted:** 1
+*   **Total Sent:** 1
+*   **Recipient Address:** `ro********@gm***.com` (masked to protect PII)
+*   **Template Used:** `ORDER_PAYMENT_SUCCESS`
+*   **Subject Line:** `GoldPlus internal redesigned email test`
+*   **Provider Endpoint:** ZeptoMail REST API (`api.zeptomail.com`)
+*   **Provider Result Code:** `SENT_OK`
+*   **Provider Message:** `Email successfully sent via ZeptoMail.`
+*   **User Review:** The user successfully received the email and approved the visual layout, formatting, typography, UGX currency alignment, and brand-accurate copy.
+
+### 14.2 Safety Controls and Isolation
+*   **No Customer Emails Sent:** Verified that no customer coordinates received notifications during this test.
+*   **No Bulk/Campaign Sends:** Confirming that no promotional or bulk campaigns were triggered.
+*   **No Production Triggers Active:** Customer notification pipelines remain dry-run by default (`NOTIFICATIONS_EMAIL_ENABLED=false`, `NOTIFICATIONS_LIVE_SEND_ENABLED=false`).
+*   **No Credentials Exposed:** The temporary sender harness was successfully removed without printing or logging raw secrets.
+*   **Protected Subsystems:** SMS, WhatsApp, and PesaPal gateways remained completely untouched.
+
+### 14.3 Remaining Risks
+No blocking risks remain for the internal ZeptoMail test email gate.
+
+### 14.4 Recommended Next Pass
+Proceed with WhatsApp Template Integration and Verification (`H1J-P2-P1C`).
+
 
