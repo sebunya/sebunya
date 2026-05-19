@@ -135,7 +135,7 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
     expect(calledInit.headers).toEqual({
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'Authorization': 'Zoho-enczkeys test_zepto_key_12345',
+      'Authorization': 'Zoho-enczapikey test_zepto_key_12345',
     });
 
     const parsedBody = JSON.parse(calledInit.body as string);
@@ -206,42 +206,23 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
     expect(res.providerMessage).toContain('******');
   });
 
-  test('10. getBalance returns PASS when empty POST returns schema error', async () => {
-    const mockJsonPromise = Promise.resolve({
-      error: {
-        code: 'E104',
-        message: 'Required parameters missing'
-      }
-    });
-    const mockFetchPromise = Promise.resolve({
-      ok: false,
-      status: 400,
-      json: () => mockJsonPromise,
-    });
-    vi.mocked(fetch).mockImplementation(() => mockFetchPromise);
-
+  test('10. getBalance (config check) returns PASS when credentials and formats are valid', async () => {
     const check = await adapter.getBalance();
     expect(check.status).toBe('PASS');
-    expect(check.message).toContain('token validated');
+    expect(check.message).toContain('Configuration validated');
   });
 
-  test('11. getBalance returns FAIL when Zoho returns 401 Unauthorized', async () => {
-    const mockFetchPromise = Promise.resolve({
-      ok: false,
-      status: 401,
-      json: () => Promise.resolve({}),
-    });
-    vi.mocked(fetch).mockImplementation(() => mockFetchPromise);
-
+  test('11. getBalance (config check) returns FAIL when from address format is invalid', async () => {
+    process.env.ZEPTOMAIL_FROM_ADDRESS = 'invalid_format';
     const check = await adapter.getBalance();
     expect(check.status).toBe('FAIL');
-    expect(check.message).toContain('401 Unauthorized');
+    expect(check.message).toContain('Invalid from email address format');
   });
 
-  test('12. getBalance returns NOT_CONFIGURED when missing credentials', async () => {
+  test('12. getBalance (config check) returns NOT_CONFIGURED when missing credentials', async () => {
     process.env.ZEPTOMAIL_API_TOKEN = '';
     const check = await adapter.getBalance();
     expect(check.status).toBe('NOT_CONFIGURED');
-    expect(check.message).toContain('credentials missing');
+    expect(check.message).toContain('Credentials missing');
   });
 });

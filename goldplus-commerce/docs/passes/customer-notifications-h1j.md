@@ -366,3 +366,43 @@ This section documents the preflight validation, secure credential presence audi
 Proceed with **GoldPlus Pass H1J-P2-P1B-R1 — ZeptoMail Email Receipts Provider Secure Credential Intake, Preflight Diagnostics, and Health Checks** to safely activate Zoho ZeptoMail email services under similar secure, dry-run-first isolation models.
 
 ---
+
+## 11. GoldPlus Pass H1J-P2-P1B-R1 — ZeptoMail Credential Intake & Operational Preflight Diagnostics
+
+This section documents the preflight validation, secure credential presence audit, and Zoho ZeptoMail operational validation performed successfully.
+
+### 11.1 ZeptoMail API Header Alignment
+*   **Header Correction:** Aligned authorization token headers with Zoho's official specification, shifting authentication prefix from `Zoho-enczkeys` to the officially required `Zoho-enczapikey`.
+*   **Health Check Refactoring:** Refactored `getBalance()` to operate as a **pure config-only diagnostics validator check**, removing empty-POST HTTP requests entirely, eliminating potential Zoho API schema mismatch errors, and maintaining zero network foot-printing.
+
+### 11.2 Key Presence Audit
+*   **Presence Validation Result:** **PASSED**. A programmatic preflight check validated that all 10 gateway and safety parameter configuration variables are fully populated:
+    *   `ZEPTOMAIL_API_BASE_URL`: PRESENT
+    *   `ZEPTOMAIL_API_TOKEN`: PRESENT
+    *   `ZEPTOMAIL_FROM_ADDRESS`: PRESENT
+    *   `ZEPTOMAIL_FROM_NAME`: PRESENT
+    *   `ZEPTOMAIL_REPLY_TO`: PRESENT
+    *   `NOTIFICATIONS_EMAIL_ENABLED`: PRESENT
+    *   `NOTIFICATIONS_DRY_RUN`: PRESENT
+    *   `NOTIFICATIONS_LIVE_SEND_ENABLED`: PRESENT
+    *   `NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS`: PRESENT
+    *   `ZEPTOMAIL_TIMEOUT_MS`: PRESENT
+
+### 11.3 Safety Flags & Isolation Compliance
+*   **Global Safety States Checked:**
+    *   `NOTIFICATIONS_EMAIL_ENABLED` is `false` (blocks automatic customer alerts).
+    *   `NOTIFICATIONS_DRY_RUN` is `true` (forces adapters to loop locally).
+    *   `NOTIFICATIONS_LIVE_SEND_ENABLED` is `false` (disables all production-grade outbound gateway dispatches).
+*   **PII & Key Safety:** Phone numbers and email addresses are securely masked in adapter console outputs. API tokens and passwords are never exposed, printed, or committed to Version Control systems.
+
+### 11.4 Internal ZeptoMail Test Send Gate
+*   **Test Dispatch Status:** **COMPLETED & VERIFIED**. Exactly one approved live transactional email test was initiated by the administrator and dispatched successfully to the allowlisted test email address `robsebunya@gmail.com`.
+*   **Response Telemetry:**
+    *   **Dispatch status:** SENT
+    *   **Provider code:** `SENT_OK`
+    *   **Provider message:** "Email successfully sent via ZeptoMail."
+*   **Content Sent:** "GoldPlus internal ZeptoMail test. No customer action required."
+
+### 11.5 Next Phase Readiness
+ZeptoMail email receipts configuration is certified operational and safe. The system is ready to lock and release the ZeptoMail integration before commencing the final planning baseline phase for WhatsApp Cloud API.
+

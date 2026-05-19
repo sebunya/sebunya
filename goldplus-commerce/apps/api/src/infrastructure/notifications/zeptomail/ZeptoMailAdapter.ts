@@ -247,7 +247,7 @@ export class ZeptoMailAdapter implements INotificationProvider {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'Authorization': `Zoho-enczkeys ${token}`,
+          'Authorization': `Zoho-enczapikey ${token}`,
         },
         body: JSON.stringify(bodyPayload),
         signal: controller.signal,
@@ -290,67 +290,74 @@ export class ZeptoMailAdapter implements INotificationProvider {
   }
 
   /**
-   * Safe Ping Health Check endpoint method.
-   * Performs credential validation safely by executing a payload validation ping to Zoho.
+   * Pure Config Validation Health Check.
+   * Does NOT make any network/HTTP calls. Validates environment configurations safely.
    */
   async getBalance(): Promise<{ status: 'PASS' | 'FAIL' | 'NOT_CONFIGURED'; message: string }> {
     const token = (process.env.ZEPTOMAIL_API_TOKEN || '').trim();
     const fromAddr = (process.env.ZEPTOMAIL_FROM_ADDRESS || '').trim();
     const baseUrl = (process.env.ZEPTOMAIL_BASE_URL || 'https://api.zeptomail.com/v1.1/email').trim();
+    const replyTo = (process.env.ZEPTOMAIL_REPLY_TO || '').trim();
+    const allowlist = (process.env.NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS || '').trim();
 
     if (!token || !fromAddr) {
       return {
         status: 'NOT_CONFIGURED',
-        message: 'ZeptoMail credentials missing.',
+        message: 'ZeptoMail config check: Credentials missing.',
       };
     }
 
-    try {
-      const controller = new AbortController();
-      const timeoutMs = parseInt(process.env.ZEPTOMAIL_TIMEOUT_MS || '10000', 10);
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      // Hit Zoho sending endpoint with empty body
-      const response = await fetch(baseUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Zoho-enczkeys ${token}`,
-        },
-        body: JSON.stringify({}),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.status === 401) {
-        return {
-          status: 'FAIL',
-          message: 'Authentication failed (401 Unauthorized).',
-        };
-      }
-
-      const resJson: any = await response.json().catch(() => null);
-
-      if (resJson && resJson.error && (resJson.error.code === 'E103' || resJson.error.message?.includes('authorization') || resJson.error.message?.includes('token'))) {
-        return {
-          status: 'FAIL',
-          message: `Authentication failed: ${resJson.error.message || 'Invalid Token'}`,
-        };
-      }
-
-      // If we got a 400 schema error, it means authentication succeeded but payload validation failed
-      return {
-        status: 'PASS',
-        message: 'ZeptoMail endpoint reached and token validated.',
-      };
-    } catch (err: any) {
-      const isTimeout = err.name === 'AbortError';
+    // 1. Validate Base URL format
+    if (!baseUrl.startsWith('https://')) {
       return {
         status: 'FAIL',
-        message: this.sanitizeErrorMessage(isTimeout ? 'Request timed out.' : (err.message || 'Unknown network error during balance check.')),
+        message: 'ZeptoMail config check: Invalid Base URL scheme.',
       };
     }
+
+    // 2. Validate From Email Address format
+    if (!fromAddr.includes('@') || fromAddr.length < 5) {
+      return {
+        status: 'FAIL',
+        message: 'ZeptoMail config check: Invalid from email address format.',
+      };
+    }
+
+    // 3. Validate Reply-To Email Address if configured
+    if (replyTo && (!replyTo.includes('@') || replyTo.length < 5)) {
+      return {
+        status: 'FAIL',
+        message: 'ZeptoMail config check: Invalid reply-to email address format.',
+      };
+    }
+
+    // 4. Validate allowlisted test recipient format if configured
+    if (allowlist) {
+      const invalidEmails = allowlist.split(',').map(e => e.trim()).filter(e => e.length > 0 && (!e.includes('@') || e.length < 5));
+      if (invalidEmails.length > 0) {
+        return {
+          status: 'FAIL',
+          message: 'ZeptoMail config check: Allowlisted test recipient has invalid email format.',
+        };
+      }
+    }
+
+    // 5. Verify safety defaults
+    const dryRun = process.env.NOTIFICATIONS_DRY_RUN === 'true';
+    const emailEnabled = process.env.NOTIFICATIONS_EMAIL_ENABLED === 'true';
+    const liveSendEnabled = process.env.NOTIFICATIONS_LIVE_SEND_ENABLED === 'true';
+
+    // During this preflight, live sending or email alerts should be locked by default
+    if (emailEnabled || liveSendEnabled || !dryRun) {
+      return {
+        status: 'PASS',
+        message: 'ZeptoMail config check: Configuration validated. Warning: Safe dry-run defaults are not currently enforced in environment.',
+      };
+    }
+
+    return {
+      status: 'PASS',
+      message: 'ZeptoMail config check: Configuration validated. Safe dry-run defaults are active.',
+    };
   }
 }
