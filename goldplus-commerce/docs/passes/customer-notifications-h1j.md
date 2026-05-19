@@ -910,4 +910,31 @@ This section documents the execution of Pass H1J-P3-P1, including the implementa
 ### 19.4 Recommended Next Pass
 Proceed with Outbox Idempotency and Admin Notification Timeline Implementation (`H1J-P3-P2`).
 
+## 20. GoldPlus Pass H1J-P3-P2-P0 — Outbox Idempotency and Admin Notification Timeline Planning
+
+This section documents the planning, analysis, and safety lockouts established for Pass H1J-P3-P2-P0.
+
+### 20.1 Existing Persistence and Dispatch Risk Audit
+*   **Outbox Events Table:** Has columns `id`, `eventType`, `payload`, `isProcessed`, `createdAt`, `processedAt`, `attemptCount`, `lastError`, `nextAttemptAt`. It currently lacks columns for `idempotencyKey`, `channel`, `template`, `status`, and dry-run flags.
+*   **Notification Attempts Table:** Has columns `id`, `channel`, `recipient`, `template`, `status`, `providerCode`, `providerMessage`, `relatedEntity`, `relatedEntityId`, `attemptedAt`. It records sensitive customer emails and phones directly, which requires timeline masking.
+*   **Existing Dispatch Safety:** The `DefaultNotificationRouter` only routes event types to `opsEmail` and `opsWhatsapp` administrative alerts. No customer-facing routing rules exist. Thus, no live customer-facing dispatch path is currently active.
+
+### 20.2 Outbox Idempotency Design
+*   **Fields to Add to outbox_events:** `idempotencyKey` (with a unique index to prevent double inserts), `channel`, `template`, `status`, `relatedEntity`, `relatedEntityId`, `dryRunOnly`, `previewOnly`, and `noSendGuarantee`.
+*   **Key Format:** Uses the colon-delimited format from P3-P1: `orderId:eventType:channel:templateName:paymentStatus:orderStatus:statusVersion` to ensure zero PII leaks.
+*   **State Machine Statuses:** `pending`, `claimed`, `sent`, `failed`, `suppressed`, `dry_run`, `skipped`, `preview_only`.
+
+### 20.3 Admin Timeline and Masking Model
+*   **Timeline Content:** Displays planned notification events, eligible/blocked channels, masked idempotency keys, and attempt logs.
+*   **Masking Logic:** Email will be masked as `ro****@domain.com` (masking middle characters before `@`). Phone will be masked as `25670******45` (masking middle characters, leaving country code and last 2 digits).
+*   **Deferred Actions:** Manual resend, retry-queue actions, and active send triggers remain blocked.
+
+### 20.4 Dry-run and Live-send Governance
+*   All channels default to `dryRunOnly: true` and `previewOnly: true`.
+*   `NOTIFICATIONS_DRY_RUN=true` environment flag blocks live adapter requests.
+*   Processable customer-facing outbox entries remain deferred.
+
+### 20.5 Recommended Next Pass
+Proceed with Schema and Idempotency Implementation (`H1J-P3-P2-A`).
+
 
