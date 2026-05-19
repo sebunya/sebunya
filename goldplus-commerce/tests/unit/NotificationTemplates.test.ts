@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { NotificationTemplateRenderer } from '../../apps/api/src/application/use-cases/notifications/NotificationTemplateRenderer';
 
 describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () => {
@@ -108,7 +108,7 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
     it('should include Uganda support hotline and order reference inside support footer card', () => {
       templates.forEach(tpl => {
         const html = renderer.renderEmail(tpl, mockOrder);
-        expect(html).toContain('wa.me/256700000000');
+        expect(html).toContain('wa.me/256705004545');
         expect(html).toContain('GP-202605-A1B2');
       });
     });
@@ -217,6 +217,67 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
       const failedHtml = renderer.renderEmail('ORDER_PAYMENT_FAILED', failedOrder);
       expect(failedHtml).toContain('Payment was not completed');
       expect(failedHtml).not.toContain('cancelled');
+    });
+  });
+
+  describe('WhatsApp Support Handoff Configuration Rules', () => {
+    const originalEnvNumber = process.env.WHATSAPP_SUPPORT_NUMBER;
+    const originalEnvLabel = process.env.WHATSAPP_SUPPORT_LABEL;
+
+    afterEach(() => {
+      process.env.WHATSAPP_SUPPORT_NUMBER = originalEnvNumber;
+      process.env.WHATSAPP_SUPPORT_LABEL = originalEnvLabel;
+    });
+
+    it('should build correct WhatsApp support handoff URL and label using defaults', () => {
+      delete process.env.WHATSAPP_SUPPORT_NUMBER;
+      delete process.env.WHATSAPP_SUPPORT_LABEL;
+      const handoff = renderer.buildWhatsAppHandoff('GP-123');
+      expect(handoff).toEqual({
+        url: 'https://wa.me/256705004545?text=Hello%20GoldPlus%2C%20I%20need%20help%20with%20order%20GP-123',
+        label: 'GoldPlus Support'
+      });
+    });
+
+    it('should dynamically adapt to customized environment variables', () => {
+      process.env.WHATSAPP_SUPPORT_NUMBER = '256777888999';
+      process.env.WHATSAPP_SUPPORT_LABEL = 'GoldPlus Live Chat';
+      const handoff = renderer.buildWhatsAppHandoff('GP-123');
+      expect(handoff).toEqual({
+        url: 'https://wa.me/256777888999?text=Hello%20GoldPlus%2C%20I%20need%20help%20with%20order%20GP-123',
+        label: 'GoldPlus Live Chat'
+      });
+    });
+
+    it('should return null (not configured state) when explicitly disabled via empty string or none', () => {
+      process.env.WHATSAPP_SUPPORT_NUMBER = '';
+      expect(renderer.buildWhatsAppHandoff('GP-123')).toBeNull();
+
+      process.env.WHATSAPP_SUPPORT_NUMBER = 'none';
+      expect(renderer.buildWhatsAppHandoff('GP-123')).toBeNull();
+    });
+
+    it('should isolate WhatsApp message and exclude sensitive customer PII', () => {
+      const handoff = renderer.buildWhatsAppHandoff('GP-123', 'Amina Nakato');
+      // The handoff message is strictly order-focused
+      expect(handoff?.url).toContain('GP-123');
+      expect(handoff?.url).not.toContain('Amina');
+      expect(handoff?.url).not.toContain('Nakato');
+    });
+
+    it('should fallback to standard contact text when disabled in HTML email templates', () => {
+      process.env.WHATSAPP_SUPPORT_NUMBER = 'none';
+      const html = renderer.renderEmail('ORDER_RECEIVED_UNPAID', mockOrder);
+      expect(html).toContain('Contact GoldPlus Support');
+      expect(html).not.toContain('Chat with GoldPlus Support');
+      expect(html).not.toContain('wa.me/');
+    });
+
+    it('should fallback to standard text message in plain text bodies when disabled', () => {
+      process.env.WHATSAPP_SUPPORT_NUMBER = 'none';
+      const text = renderer.renderTextBody('ORDER_RECEIVED_UNPAID', mockOrder);
+      expect(text).toContain('WhatsApp support: not configured.');
+      expect(text).not.toContain('wa.me/');
     });
   });
 });

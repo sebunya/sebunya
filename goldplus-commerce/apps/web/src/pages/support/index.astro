@@ -1,5 +1,5 @@
----
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import { whatsappSupportNumber } from "../../lib/api";
 ---
 
 <BaseLayout title="Customer Support - GoldPlus">
@@ -37,7 +37,7 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
         </div>
         <h2 class="text-2xl font-bold text-brand-dark mb-3">WhatsApp Support</h2>
         <p class="text-gray-600 mb-6 text-sm">Quick questions? Chat with our team directly on WhatsApp for instant assistance.</p>
-        <a href="https://wa.me/256000000000" class="text-brand-dark font-bold hover:underline">Chat with us &rarr;</a>
+        <a href={`https://wa.me/${whatsappSupportNumber}`} class="text-brand-dark font-bold hover:underline">Chat with us &rarr;</a>
       </div>
 
     </div>

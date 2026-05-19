@@ -602,4 +602,48 @@ No blocking risks remain for WhatsApp readiness planning.
 ### 15.6 Recommended Next Pass
 Proceed with WhatsApp Handoff Link Polish and Admin Preview Alignment (`H1J-P2-P1C-A`).
 
+---
+
+## 16. GoldPlus Pass H1J-P2-P1C-A — WhatsApp Handoff Link Polish and Admin Preview Dashboard Alignment
+
+This section documents the execution details, config model, verification results, and safety controls for **GoldPlus Pass H1J-P2-P1C-A**.
+
+### 16.1 Rationale
+Static support phone number placeholders (`256700000000` and `256000000000`) were rescued and replaced with a robust, config-driven support number model. Pre-filled message templates were standardized to protect customer privacy by excluding sensitive PII. The admin order dashboard was aligned to show status-dependent previews, configuration status, and safety details without triggering live dispatches.
+
+### 16.2 Implemented Changes
+*   **Environment Configuration:** Added `WHATSAPP_SUPPORT_NUMBER=256705004545` and `WHATSAPP_SUPPORT_LABEL="GoldPlus Support"` to `.env.example`.
+*   **Template Renderer Customization:** Updated `NotificationTemplateRenderer.ts` to implement a new `buildWhatsAppHandoff` helper:
+    *   Targets the configured support number and label.
+    *   Excludes customer name or contact coordinates to enforce PII isolation.
+    *   Supports explicitly disabling the handoff module by setting the support number to an empty string `""` or `"none"`.
+    *   Falls back gracefully to standard contact text or email in HTML/text bodies if disabled.
+*   **Storefront & Public Pages:** Aligned `support/index.astro` and `track-order.astro` to dynamically reference `whatsappSupportNumber` and render safe pre-filled order inquiry links.
+*   **Admin Dashboard:** Updated the order page (`apps/web/src/pages/admin/orders/[id].astro`) to include:
+    *   A structured layout displaying configuration state, safe URL, and system dispatch mode.
+    *   Clear notices confirming that dispatches are preview-only and no live API actions are configured.
+*   **Previews Regenerated:** Generated HTML preview files under `docs/previews/notifications/` with a modified index dashboard specifying:
+    *   `Local preview only`
+    *   `Fake customer sample data`
+    *   `No WhatsApp message sent`
+    *   `WhatsApp handoff link only`
+
+### 16.3 Unit Test Coverage & Verification Results
+*   Integrated 6 new unit tests inside `tests/unit/NotificationTemplates.test.ts` verifying:
+    *   Default handoff URL structure.
+    *   Custom environment variables override.
+    *   Explicit disabling using empty string or `"none"`.
+    *   PII exclusion safety.
+    *   Standard text footer fallback inside HTML templates.
+    *   Plain-text email body fallback.
+*   **Results:** All 21 tests in `NotificationTemplates.test.ts` and all 340 tests across 45 suites in the entire repository passed successfully with exit code 0.
+
+### 16.4 Safety Controls and No-API Lock
+*   **No Live WhatsApp Sends:** No WhatsApp message dispatch or API request was initiated.
+*   **No Credentials Saved:** No live Meta access tokens or secrets were written or configured.
+*   **No Customer PII Exposed:** Pre-filled text templates strictly omit customer phone numbers, emails, home addresses, or delivery landmarks.
+
+### 16.5 Recommended Next Pass
+Proceed with WhatsApp Cloud API Credential Intake and Dry-Run Adapter (`H1J-P2-P1C-B`).
+
 

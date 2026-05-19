@@ -3,7 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
 import Notice from '../components/Notice.astro';
-import { apiBase, type ApiEnvelope } from '../lib/api';
+import { apiBase, whatsappSupportNumber, type ApiEnvelope } from '../lib/api';
 
 interface OrderItem {
   productId: string;
@@ -282,7 +282,7 @@ const statusBadge: Record<string, { label: string; class: string }> = {
 
               {/* WhatsApp Handoff Action */}
               <a
-                href={`https://wa.me/256000000000?text=Hello%20GoldPlus%20team,%20I'm%20inquiring%20about%20order%20${encodeURIComponent(order.orderNumber)}`}
+                href={`https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(`Hello GoldPlus, I need help with order ${order.orderNumber}`)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 class="w-full bg-brand-charcoal hover:bg-black text-white py-4 px-6 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm text-center"
@@ -331,7 +331,7 @@ const statusBadge: Record<string, { label: string; class: string }> = {
           <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
             <a href="/track-order" class="w-full sm:w-auto inline-block border border-brand-borderGrey hover:bg-gray-50 text-brand-charcoal px-8 py-3 rounded-xl font-bold transition-all">Look up another reference</a>
             <a
-              href={`https://wa.me/256000000000?text=Hello%20GoldPlus,%20I'm%20submitting%20an%20offline%20draft%20reference%20${encodeURIComponent(draftReference ?? '')}`}
+              href={`https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(`Hello GoldPlus, I need help with order ${draftReference ?? ''}`)}`}
               target="_blank"
               rel="noopener noreferrer"
               class="w-full sm:w-auto inline-block bg-brand-charcoal text-white px-8 py-3 rounded-xl font-bold hover:bg-black transition-all"

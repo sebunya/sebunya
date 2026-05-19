@@ -35,6 +35,8 @@ export interface Config {
   bootstrapAdminEmail?: string;
   bootstrapAdminPassword?: string;
   bootstrapAdminPhone?: string;
+  whatsappSupportNumber?: string;
+  whatsappSupportLabel?: string;
   mtnWebhookSecret: string;
   airtelWebhookSecret: string;
   identityHashPepper: string;
@@ -87,6 +89,8 @@ export function validateEnv(): Config {
       pesapalIpnId: process.env.PESAPAL_IPN_ID,
       pesapalCurrency: process.env.PESAPAL_CURRENCY,
       pesapalCountryCode: process.env.PESAPAL_COUNTRY_CODE,
+      whatsappSupportNumber: process.env.WHATSAPP_SUPPORT_NUMBER || '256705004545',
+      whatsappSupportLabel: process.env.WHATSAPP_SUPPORT_LABEL || 'GoldPlus Support',
       pesapalBranch: process.env.PESAPAL_BRANCH,
       pesapalCallbackUrl: process.env.PESAPAL_CALLBACK_URL,
       pesapalCancellationUrl: process.env.PESAPAL_CANCELLATION_URL,
@@ -126,6 +130,8 @@ export function validateEnv(): Config {
   const bootstrapAdminEmail = process.env.BOOTSTRAP_ADMIN_EMAIL;
   const bootstrapAdminPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
   const bootstrapAdminPhone = process.env.BOOTSTRAP_ADMIN_PHONE;
+  const whatsappSupportNumber = process.env.WHATSAPP_SUPPORT_NUMBER;
+  const whatsappSupportLabel = process.env.WHATSAPP_SUPPORT_LABEL;
 
   const pesapalEnv = process.env.PESAPAL_ENV;
   const pesapalBaseUrl = process.env.PESAPAL_BASE_URL;
@@ -158,6 +164,8 @@ export function validateEnv(): Config {
     mtnWebhookSecret,
     airtelWebhookSecret,
     identityHashPepper,
+    whatsappSupportNumber,
+    whatsappSupportLabel,
     pesapalEnv,
     pesapalBaseUrl,
     pesapalConsumerKey,

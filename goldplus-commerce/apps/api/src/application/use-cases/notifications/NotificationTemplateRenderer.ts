@@ -353,23 +353,60 @@ export class NotificationTemplateRenderer {
   }
 
   /**
+   * Safe Link Builder for WhatsApp Support Handoff
+   */
+  public buildWhatsAppHandoff(orderNumber: string, customerName?: string): { url: string; label: string } | null {
+    const envVal = process.env.WHATSAPP_SUPPORT_NUMBER;
+    if (envVal !== undefined && (envVal.trim() === '' || envVal.trim().toLowerCase() === 'none')) {
+      return null;
+    }
+
+    const supportNumber = (envVal || '256705004545').trim();
+    const supportLabel = (process.env.WHATSAPP_SUPPORT_LABEL || 'GoldPlus Support').trim();
+
+    const message = `Hello GoldPlus, I need help with order ${orderNumber}`;
+    const url = `https://wa.me/${supportNumber}?text=${encodeURIComponent(message)}`;
+
+    return {
+      url,
+      label: supportLabel,
+    };
+  }
+
+  /**
    * Renders the support panel and WhatsApp handoff
    */
   private renderSupportBlock(orderNumber: string): string {
-    const escapedRef = this.escapeHtml(orderNumber);
-    const waText = encodeURIComponent(`Hello GoldPlus, I'm inquiring about order ${orderNumber}`);
-    const waUrl = `https://wa.me/256700000000?text=${waText}`;
+    const handoff = this.buildWhatsAppHandoff(orderNumber);
+    const replyTo = (process.env.ZEPTOMAIL_REPLY_TO || '').trim();
 
-    return `
+    if (handoff) {
+      return `
     <!-- Technical & Operational support banner -->
     <tr>
       <td style="padding: 24px 32px; background-color: #FCFAF2; border-top: 1px solid #F7F3E1; text-align: center;">
         <h3 style="margin: 0 0 6px 0; font-family: sans-serif; font-size: 13px; font-weight: 800; color: #8A6D1C; text-transform: uppercase; letter-spacing: 0.05em;">Need help with your order?</h3>
         <p style="margin: 0; font-family: sans-serif; font-size: 12px; line-height: 1.5; color: #5C4B18;">
           Connect directly with our central desk for payment or logistical guidance.<br>
-          <a href="${waUrl}" target="_blank" style="display: inline-block; margin-top: 8px; color: #0A0A0A; text-decoration: none; font-weight: 900; background-color: #96cc06; padding: 6px 14px; border-radius: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em;">
-            WhatsApp Support &rarr;
+          <a href="${handoff.url}" target="_blank" style="display: inline-block; margin-top: 8px; color: #0A0A0A; text-decoration: none; font-weight: 900; background-color: #96cc06; padding: 6px 14px; border-radius: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em;">
+            Chat with GoldPlus Support &rarr;
           </a>
+        </p>
+      </td>
+    </tr>`;
+    }
+
+    const supportContactMsg = replyTo 
+      ? `Reach our support desk at <a href="mailto:${replyTo}" style="color: #8A6D1C; font-weight: bold; text-decoration: underline;">${replyTo}</a> for payment or logistical guidance.`
+      : `Contact GoldPlus Support via your dashboard or order tracking page for logistical guidance.`;
+
+    return `
+    <!-- Technical & Operational support banner -->
+    <tr>
+      <td style="padding: 24px 32px; background-color: #FCFAF2; border-top: 1px solid #F7F3E1; text-align: center;">
+        <h3 style="margin: 0 0 6px 0; font-family: sans-serif; font-size: 13px; font-weight: 800; color: #8A6D1C; text-transform: uppercase; letter-spacing: 0.05em;">Contact GoldPlus Support</h3>
+        <p style="margin: 0; font-family: sans-serif; font-size: 12px; line-height: 1.5; color: #5C4B18;">
+          ${supportContactMsg}
         </p>
       </td>
     </tr>`;
@@ -498,9 +535,9 @@ ${itemsText}=== ACTION REQUIRED ===
 Track your delivery live:
 ${trackUrl}
 
-=== NEED SUPPORT? ===
-WhatsApp Support:
-https://wa.me/256700000000?text=${encodeURIComponent(`Hello GoldPlus, I'm inquiring about order ${order.orderNumber}`)}
+${this.buildWhatsAppHandoff(order.orderNumber)
+  ? `=== NEED SUPPORT? ===\nWhatsApp Support:\n${this.buildWhatsAppHandoff(order.orderNumber)?.url}`
+  : `=== NEED SUPPORT? ===\nWhatsApp support: not configured.`}
 
 GoldPlus Online Store
 Kampala, Uganda
