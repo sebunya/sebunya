@@ -65,5 +65,5 @@ export async function postJson(path: string, body: unknown): Promise<FormPostRes
 
 export const apiBase = API_BASE;
 
-export const whatsappSupportNumber = (import.meta.env.PUBLIC_WHATSAPP_SUPPORT_NUMBER as string | undefined) ?? '256705004545';
-export const whatsappSupportLabel = (import.meta.env.PUBLIC_WHATSAPP_SUPPORT_LABEL as string | undefined) ?? 'GoldPlus Support';
+export const whatsappSupportNumber = (import.meta.env.PUBLIC_WHATSAPP_SUPPORT_NUMBER as string | undefined) ?? (import.meta.env.WHATSAPP_SUPPORT_NUMBER as string | undefined) ?? '256705004545';
+export const whatsappSupportLabel = (import.meta.env.PUBLIC_WHATSAPP_SUPPORT_LABEL as string | undefined) ?? (import.meta.env.WHATSAPP_SUPPORT_LABEL as string | undefined) ?? 'GoldPlus Support';
