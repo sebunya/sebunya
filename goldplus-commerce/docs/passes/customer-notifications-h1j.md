@@ -876,4 +876,38 @@ No live customer notification dispatches are permitted until:
 ### 18.11 Recommended Next Pass
 Proceed with Customer Notification Trigger Orchestration Event Registry Implementation (`H1J-P3-P1`).
 
+---
+
+## 19. GoldPlus Pass H1J-P3-P1 — Pure Notification Event Registry and Planning Engine
+
+This section documents the execution of Pass H1J-P3-P1, including the implementation of the registry, truthfulness policy, idempotency key builder, channel eligibility policy, and dry-run planning use case.
+
+### 19.1 Summary of Registry and Planning Files Added
+*   **Registry:** `apps/api/src/application/use-cases/notifications/NotificationEventRegistry.ts`
+    *   Defines rules for `ORDER_RECEIVED_UNPAID`, `PAYMENT_PENDING_VERIFICATION`, `PAYMENT_SUCCESS`, `PAYMENT_FAILED`, `ORDER_CANCELLED`, `ORDER_PROCESSING`, `ORDER_FULFILLED`, and `SUPPORT_HANDOFF`.
+    *   Sets all backend-driven rules to `dryRunOnly: true`.
+*   **Truthfulness Policy:** `apps/api/src/application/use-cases/notifications/NotificationTruthfulnessPolicy.ts`
+    *   Ensures notification event states strictly align with order and payment database states.
+*   **Idempotency Key Builder:** `apps/api/src/application/use-cases/notifications/NotificationIdempotency.ts`
+    *   Builds deterministic keys like `orderId:eventType:channel:templateName:paymentStatus:orderStatus:statusVersion`.
+*   **Channel Eligibility Policy:** `apps/api/src/application/use-cases/notifications/NotificationChannelEligibility.ts`
+    *   Validates coordinate formats and blocks/defers deferred channels (e.g. WhatsApp API).
+*   **Planning Use Case:** `apps/api/src/application/use-cases/notifications/PlanNotificationEventUseCase.ts`
+    *   Integrates all of the above to produce dry-run plan summaries without performing database writes, outbox insertions, or provider calls.
+
+### 19.2 Lock and Safety Verification
+*   **No Outbox Record Inserts:** Checked and confirmed. Zero rows are inserted into `outbox_events` during execution.
+*   **No Attempt Log Writes:** Checked and confirmed. Zero records are added to `notification_attempts`.
+*   **No Outbox Dispatch Invocation:** Checked and confirmed. `ProcessOutboxBatchUseCase` is never called.
+*   **No Provider API Calls:** Checked and confirmed. No SMS, ZeptoMail, or WhatsApp API endpoints were queried.
+*   **No Customer Sends:** Checked and confirmed. 0 customer notifications were sent.
+*   **No Order/Payment/Admin Hooks:** No trigger hooks were added to checkout or payment webhooks.
+
+### 19.3 Automated Testing Results
+*   Added 5 unit test suites covering the registry, truthfulness, channel eligibility, idempotency keys, and planner execution.
+*   All 360 unit tests passed successfully.
+
+### 19.4 Recommended Next Pass
+Proceed with Outbox Idempotency and Admin Notification Timeline Implementation (`H1J-P3-P2`).
+
 
