@@ -706,6 +706,174 @@ Based on the current Meta Business integration status, we recommend:
 *   **No Customer PII Exposed:** Pre-filled templates strictly omit customer phone numbers, emails, home addresses, or delivery landmarks.
 
 ### 17.8 Recommended Next Pass
-Proceed with GoldPlus Pass H1J-P3-P0 — Customer Notification Trigger Orchestration Planning for SMS, ZeptoMail, and WhatsApp Handoff.
+Proceed with Customer Notification Trigger Orchestration Audit, Event Mapping, Idempotency Design, and Admin Governance (`H1J-P3-P0`).
+
+---
+
+## 18. GoldPlus Pass H1J-P3-P0 — Customer Notification Trigger Orchestration Planning
+
+This section documents the trigger orchestration design, event mapping, channel eligibility, data truthfulness policies, outbox idempotency strategy, admin governance plan, rollout phases, risk mitigation, and customer activation policies.
+
+### 18.1 Current Provider Readiness Summary
+*   **SMS:** Implemented, operationally tested, and locked under `customer-notifications-sms-h1j-p2-p1a-r2`. One internal dry-run test was successfully received.
+*   **ZeptoMail:** Implemented, operationally tested, and locked under `customer-notifications-email-h1j-p2-p1b-r3-t1`. One internal HTML test receipt was successfully received and approved.
+*   **WhatsApp Support Handoff:** Config-driven and locked under `customer-notifications-whatsapp-h1j-p2-p1c-a-r1`.
+*   **WhatsApp Cloud API:** Paused/stubbed under `customer-notifications-whatsapp-h1j-p2-p1c-b-p0`. Zero credentials stored, zero API dispatches active.
+
+### 18.2 Current Architecture Audit Result
+*   **Existing Notification Outbox Model:** Table `outbox_events` exists in `system.ts` with schema fields `id`, `eventType`, `payload`, `isProcessed`, `createdAt`, `processedAt`, `attemptCount`, `lastError`, `nextAttemptAt`.
+*   **Existing Notification Attempt Model:** Table `notification_attempts` exists in `phase11.ts` with schema fields `id`, `channel`, `recipient`, `template`, `status`, `providerCode`, `providerMessage`, `relatedEntity`, `relatedEntityId`, `attemptedAt`.
+*   **Existing Dispatch Processor Behavior:** `ProcessOutboxBatchUseCase.ts` claims events from the outbox table, calls target adapters via the `router.route()` channel routing map, logs attempts via `RecordNotificationAttemptUseCase`, and manages retry backoffs.
+*   **Existing Admin Preview Behavior:** `/governance/admin/orders/:id/communication-preview` dynamically renders preview bodies. The Astro admin order detail view matches templates and presents mock previews without initiating live API connections.
+*   **Current Dry-Run/Live-Send Controls:** Managed via `.env` flags (`NOTIFICATIONS_DRY_RUN`, `NOTIFICATIONS_LIVE_SEND_ENABLED`, `NOTIFICATIONS_SMS_ENABLED`, `NOTIFICATIONS_EMAIL_ENABLED`, `NOTIFICATIONS_WHATSAPP_ENABLED`).
+*   **Order/Payment/Fulfilment Event Hooks:**
+    *   **Payment Events:** Trigger outbox writes under `DrizzlePaymentRepository.ts` during webhook execution (`PAYMENT_SUCCESS` and `PAYMENT_FAILED`).
+    *   **Order Events:** Created inside `DrizzleOrderRepository.ts` but do not currently trigger outbox events.
+    *   **Fulfilment/Status Changes:** Triggered via PATCH requests to `/governance/admin/orders/:id/fulfillment` which transitions status to `processing`, `completed`, or others.
+*   **Automatic Customer Triggers:** 0 customer triggers are active. Only operations (OPS) alert targets are routed to administrators.
+*   **Duplicate-Prevention:** Currently relies on payment webhook idempotency in the DB, but lacks channel-level outbox deduplication guards.
+*   **Schema Necessary Changes Later:** No table migrations are required in the immediate plan; the current `outbox_events` and `notification_attempts` models are sufficient.
+*   **Live Sends Reachability:** Completely unreachable for customers. The outbox dispatcher is wired to mock/stub adapters unless explicit env overrides are supplied.
+
+### 18.3 Event-to-Notification Map
+Proposed mapping to orchestrate transactional alerts safely:
+
+1.  **Event:** `ORDER_RECEIVED_UNPAID`
+    *   *Trigger Source:* Checkout submission flow.
+    *   *Truth Condition:* Order created, status is `pending_payment`, paymentStatus is `unpaid`.
+    *   *Template Name:* `ORDER_RECEIVED_UNPAID`
+    *   *Eligible Channels:* Email (ZeptoMail), SMS (Short receipt summary only).
+    *   *Disabled Channels:* WhatsApp Cloud API (Deferred).
+    *   *Required Fields:* `customerEmail` (for email), `customerPhone` (for SMS).
+    *   *Idempotency Key:* `<orderId>_order_received_unpaid`
+    *   *Retry Policy:* 3 attempts, exponential backoff (starting at 60s).
+    *   *Suppression Rules:* Suppress if order is already paid, cancelled, or if a payment attempt is in progress.
+    *   *Approval:* Automated outbox creation on order creation.
+
+2.  **Event:** `PAYMENT_PENDING_VERIFICATION`
+    *   *Trigger Source:* Payment webhook notification (PesaPal IPN).
+    *   *Truth Condition:* Payment is received but status is pending verification (mobile money callback).
+    *   *Template Name:* `PAYMENT_PENDING`
+    *   *Eligible Channels:* Email.
+    *   *Disabled Channels:* SMS, WhatsApp.
+    *   *Required Fields:* `customerEmail`.
+    *   *Idempotency Key:* `<orderId>_payment_pending`
+    *   *Retry Policy:* 3 attempts.
+    *   *Suppression Rules:* Suppress if status transitions to paid or failed before the outbox ticker runs.
+    *   *Approval:* Automated.
+
+3.  **Event:** `PAYMENT_SUCCESS`
+    *   *Trigger Source:* Verified payment webhook callback.
+    *   *Truth Condition:* Payment status in DB is `paid`, order status is `processing`.
+    *   *Template Name:* `ORDER_PAYMENT_SUCCESS`
+    *   *Eligible Channels:* Email (ZeptoMail), SMS.
+    *   *Disabled Channels:* WhatsApp Cloud API.
+    *   *Required Fields:* `customerEmail`, `customerPhone`.
+    *   *Idempotency Key:* `<orderId>_payment_success`
+    *   *Retry Policy:* 5 attempts.
+    *   *Suppression Rules:* Suppress if already sent.
+    *   *Approval:* Automated.
+
+4.  **Event:** `PAYMENT_FAILED`
+    *   *Trigger Source:* Webhook callback or manual check.
+    *   *Truth Condition:* PaymentStatus in DB is `failed`.
+    *   *Template Name:* `ORDER_PAYMENT_FAILED`
+    *   *Eligible Channels:* Email, SMS.
+    *   *Required Fields:* `customerEmail`, `customerPhone`.
+    *   *Idempotency Key:* `<orderId>_payment_failed`
+    *   *Retry Policy:* 3 attempts.
+    *   *Suppression Rules:* Suppress if a subsequent payment succeeds.
+    *   *Approval:* Automated.
+
+5.  **Event:** `ORDER_CANCELLED`
+    *   *Trigger Source:* Admin manual cancel action.
+    *   *Truth Condition:* Order status transitioned to `cancelled`.
+    *   *Template Name:* `ORDER_PAYMENT_CANCELLED`
+    *   *Eligible Channels:* Email.
+    *   *Required Fields:* `customerEmail`.
+    *   *Idempotency Key:* `<orderId>_order_cancelled`
+    *   *Retry Policy:* 3 attempts.
+    *   *Suppression Rules:* None.
+    *   *Approval:* Automated.
+
+6.  **Event:** `ORDER_PROCESSING`
+    *   *Trigger Source:* Admin transitions order status to processing/preparing.
+    *   *Truth Condition:* Order status is `processing`.
+    *   *Template Name:* `ORDER_PROCESSING`
+    *   *Eligible Channels:* Email.
+    *   *Required Fields:* `customerEmail`.
+    *   *Idempotency Key:* `<orderId>_order_processing`
+    *   *Retry Policy:* 3 attempts.
+    *   *Suppression Rules:* Suppress if order is already completed/fulfilled.
+    *   *Approval:* Automated.
+
+7.  **Event:** `ORDER_FULFILLED`
+    *   *Trigger Source:* Admin marks order completed/delivered.
+    *   *Truth Condition:* Order status is `completed`.
+    *   *Template Name:* `ORDER_COMPLETED`
+    *   *Eligible Channels:* Email, SMS.
+    *   *Required Fields:* `customerEmail`, `customerPhone`.
+    *   *Idempotency Key:* `<orderId>_order_completed`
+    *   *Retry Policy:* 3 attempts.
+    *   *Suppression Rules:* None.
+    *   *Approval:* Automated.
+
+8.  **Event:** `SUPPORT_HANDOFF`
+    *   *Trigger Source:* Customer interaction with help link.
+    *   *Truth Condition:* User clicks handoff button.
+    *   *Template Name:* `SUPPORT_HANDOFF`
+    *   *Eligible Channels:* WhatsApp Support Handoff Link (Client-side URL).
+    *   *Disabled Channels:* SMS, Email, WhatsApp Cloud API.
+    *   *Required Fields:* Public support number (`256705004545`).
+    *   *Idempotency Key:* Not applicable (client-side click).
+    *   *Retry Policy:* None.
+    *   *Suppression Rules:* None.
+    *   *Approval:* Instant.
+
+### 18.4 Channel Eligibility Rules
+*   **SMS:** Transactional text receipts only (e.g. order ref, amount UGX, payment status). Max length 140 chars. Zero PII. Active only if `NOTIFICATIONS_SMS_ENABLED=true` and recipient matches testing allowlist.
+*   **ZeptoMail:** Full HTML receipts only. Active only if `NOTIFICATIONS_EMAIL_ENABLED=true` and recipient matches testing allowlist.
+*   **WhatsApp Handoff:** Restricted to client-side links containing `256705004545` and order ref. No backend sending.
+*   **WhatsApp Cloud API:** Paused/locked.
+
+### 18.5 Truthfulness Rules
+*   **Verification Gate:** Never enqueue `ORDER_PAYMENT_SUCCESS` unless `paymentStatus === 'paid'`.
+*   **Status Isolation:** Never enqueue `ORDER_COMPLETED` unless order status is marked `completed`.
+*   **PII Filtering:** Outbox payloads and dispatch payloads are audited to ensure they contain zero customer emails, delivery addresses, coordinates, or API secrets.
+
+### 18.6 Outbox Orchestration & Idempotency Design
+*   **Idempotency Key Formula:** `orderId + "_" + eventType + "_" + channel + "_" + statusVersion`
+*   **Uniqueness Enforcement:** A unique index constraint or transaction-level check on this key will prevent duplicate creation of outbox rows.
+*   **Sanitization:** Attempt logs are parsed to replace passwords or token substrings with masked placeholders before writing to `notification_attempts`.
+*   **Dry-run Hook:** Under `NOTIFICATIONS_DRY_RUN=true`, the outbox processor logs the payload and marks the outbox event as processed without hitting external network gateways.
+
+### 18.7 Admin Governance Plan
+The admin orders dashboard will contain:
+1.  **Notification Timeline:** Read-only historical log of all notification attempts linked to the current order ID.
+2.  **State Flags:** High-visibility indicators showing system configurations (`DRY_RUN=true`, `LIVE_SEND=false`).
+3.  **Allowlist Controls:** A warning indicator showing if the recipient is blocked from receiving messages due to non-allowlisted testing status.
+4.  **Resend Protection:** Customer resend buttons remain entirely disabled/hidden to prevent accidental spamming during integration phases.
+
+### 18.8 Rollout Phase Plan
+*   **Pass H1J-P3-P0 (Current):** Orchestration and Event mapping audit/planning.
+*   **Pass H1J-P3-P1:** Event registry implementation and routing hooks wired under dry-run only.
+*   **Pass H1J-P3-P2:** Unique idempotency key database enforcement and timeline logging.
+*   **Pass H1J-P3-P3:** Internal allowlisted test-send automation execution.
+*   **Pass H1J-P3-P4:** Controlled, phased live-trigger activations per event/channel.
+*   **Pass H1J-P3-P5:** Opt-out registry implementation and reporting.
+
+### 18.9 Risk and Rollback Model
+*   **Accidental Send Risk:** Mitigated by `NOTIFICATIONS_LIVE_SEND_ENABLED=false` defaulting to true dry-run.
+*   **State Race Conditions:** Mitigated by double-checking DB entity state within the transactional unit of work immediately before routing.
+*   **Emergency Rollback Action:** Disable all outbound traffic by changing the environment flag `NOTIFICATIONS_LIVE_SEND_ENABLED=false` and stopping the `OutboxTicker` processor interval.
+
+### 18.10 Customer Activation Policy
+No live customer notification dispatches are permitted until:
+1.  Outbox registry and idempotency validation suites pass successfully.
+2.  Allowlist filters are verified on staging.
+3.  Admin dashboard previews match the actual rendered HTML emails.
+
+### 18.11 Recommended Next Pass
+Proceed with Customer Notification Trigger Orchestration Event Registry Implementation (`H1J-P3-P1`).
 
 
