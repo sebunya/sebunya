@@ -12,6 +12,16 @@ function rowToPersisted(row: typeof outboxEvents.$inferSelect): PersistedOutboxE
     isProcessed: row.isProcessed,
     createdAt: row.createdAt,
     nextAttemptAt: row.nextAttemptAt,
+    idempotencyKey: row.idempotencyKey,
+    channel: row.channel,
+    template: row.template,
+    status: row.status,
+    relatedEntity: row.relatedEntity,
+    relatedEntityId: row.relatedEntityId,
+    dryRunOnly: row.dryRunOnly,
+    previewOnly: row.previewOnly,
+    noSendGuarantee: row.noSendGuarantee,
+    suppressedReason: row.suppressedReason,
   };
 }
 
@@ -54,5 +64,20 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         attemptCount: sql`${outboxEvents.attemptCount} + 1`,
       })
       .where(eq(outboxEvents.id, eventId));
+  }
+
+  async findByRelatedEntity(entity: string, entityId: string): Promise<PersistedOutboxEvent[]> {
+    const rows = await db
+      .select()
+      .from(outboxEvents)
+      .where(
+        and(
+          eq(outboxEvents.relatedEntity, entity),
+          eq(outboxEvents.relatedEntityId, entityId)
+        )
+      )
+      .orderBy(asc(outboxEvents.createdAt));
+
+    return rows.map(rowToPersisted);
   }
 }

@@ -64,6 +64,13 @@
       "when": 1779129140297,
       "tag": "0008_slimy_killmonger",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1779184215072,
+      "tag": "0009_spooky_shockwave",
+      "breakpoints": true
     }
   ]
 }

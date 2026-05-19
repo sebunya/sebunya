@@ -23,6 +23,16 @@ export const outboxEvents = pgTable('outbox_events', {
   attemptCount: integer('attempt_count').default(0).notNull(),
   lastError: text('last_error'),
   nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).defaultNow().notNull(),
+  idempotencyKey: varchar('idempotency_key', { length: 255 }).unique(),
+  channel: varchar('channel', { length: 50 }),
+  template: varchar('template', { length: 100 }),
+  status: varchar('status', { length: 30 }).default('pending').notNull(),
+  relatedEntity: varchar('related_entity', { length: 50 }),
+  relatedEntityId: uuid('related_entity_id'),
+  dryRunOnly: boolean('dry_run_only').default(true).notNull(),
+  previewOnly: boolean('preview_only').default(false).notNull(),
+  noSendGuarantee: boolean('no_send_guarantee').default(false).notNull(),
+  suppressedReason: text('suppressed_reason'),
 });
 
 export const verificationCodes = pgTable('verification_codes', {

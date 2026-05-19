@@ -934,7 +934,37 @@ This section documents the planning, analysis, and safety lockouts established f
 *   `NOTIFICATIONS_DRY_RUN=true` environment flag blocks live adapter requests.
 *   Processable customer-facing outbox entries remain deferred.
 
-### 20.5 Recommended Next Pass
-Proceed with Schema and Idempotency Implementation (`H1J-P3-P2-A`).
+### 20.5 Proceed with Schema and Idempotency Implementation (`H1J-P3-P2-A`).
 
+---
 
+## 21. GoldPlus Pass H1J-P3-P2-A — Schema and Idempotency Implementation
+
+This section documents the execution, schema upgrades, read-model implementation, masking/sanitisation rules, and quality verification for **GoldPlus Pass H1J-P3-P2-A**.
+
+### 21.1 Schema Upgrade & Migration
+*   **Schema Fields Added:** Added `idempotencyKey` (with a unique constraint), `channel`, `template`, `status`, `relatedEntity`, `relatedEntityId`, `dryRunOnly`, `previewOnly`, `noSendGuarantee`, and `suppressedReason` columns to the `outbox_events` table in `system.ts`.
+*   **Migration File:** Generated auto-migration `0009_spooky_shockwave.sql` under `apps/api/src/infrastructure/db/migrations/`.
+*   **Local Migration Result:** Successfully ran `pnpm db:migrate` locally. The migration is strictly additive and backward-compatible with existing database rows.
+
+### 21.2 Read-Only Timeline & Route
+*   **Timeline Use Case:** Created `ListOrderNotificationsUseCase` which queries both the outbox events table and notification attempts table by related order entity and orders them chronologically (oldest first).
+*   **Timeline Admin Route:** Added the read-only timeline endpoint `GET /admin/notifications/order/:orderId/timeline`.
+*   **Masking and Sanitisation:**
+    *   **Recipient Masking:** Masked email recipients to the `lo****@domain.com` format and phone recipients to the `25670*****45` format.
+    *   **Credential Scrubbing:** Automatically scrubbed authorization headers, bearer tokens, and API keys from raw provider error messages in logs and lists.
+
+### 21.3 Global Safety & Trigger Isolation
+*   **No Customer Sends:** Confirmed 0 customer notifications were sent.
+*   **No Provider API Calls:** Confirmed no gateway integrations or external calls were made to EgoSMS/SMS or ZeptoMail.
+*   **No Customer Outbox Inserts:** Confirmed no new outbox records were created or processed.
+*   **Queue Execution Blocked:** `ProcessOutboxBatchUseCase` was not run or modified.
+
+### 21.4 Quality Verification & Testing
+*   **Unit Tests:** Implemented unit tests for the use case (`ListOrderNotificationsUseCase.test.ts`) and route integration (`ListOrderNotificationsRoute.test.ts`), validating proper sorting, PII masking, token scrubbing, and permission validation.
+*   **Test suite results:** All 363 unit tests and 10 architecture boundary tests passed successfully.
+*   **Build check:** Clean production build completed successfully.
+
+### 21.5 Remaining Risks & Recommendation
+*   **Remaining Risks:** No blocking risks remain for outbox idempotency read-model implementation.
+*   **Recommended Next Pass:** Proceed with Customer Notification Outbox Hook Automation (`H1J-P3-P3`) under dry-run verification rules.

@@ -66,6 +66,7 @@ import { ListAdminUsersUseCase } from '../application/use-cases/admin/ListAdminU
 import { ListAdminRolesUseCase } from '../application/use-cases/admin/ListAdminRolesUseCase';
 import { RecordNotificationAttemptUseCase } from '../application/use-cases/notifications/RecordNotificationAttemptUseCase';
 import { ListRecentNotificationsUseCase } from '../application/use-cases/notifications/ListRecentNotificationsUseCase';
+import { ListOrderNotificationsUseCase } from '../application/use-cases/notifications/ListOrderNotificationsUseCase';
 import { ProcessOutboxBatchUseCase } from '../application/use-cases/outbox/ProcessOutboxBatchUseCase';
 import { UploadProductImagesUseCase } from '../application/use-cases/products/UploadProductImagesUseCase';
 import { TrackRecommendationEventUseCase } from '../application/recommendations/TrackRecommendationEventUseCase';
@@ -153,6 +154,7 @@ export class Registry {
   public readonly listAdminRolesUseCase = new ListAdminRolesUseCase(this.adminRoleReadRepo);
   public readonly recordNotificationAttemptUseCase = new RecordNotificationAttemptUseCase(this.notificationAttemptRepo);
   public readonly listRecentNotificationsUseCase = new ListRecentNotificationsUseCase(this.notificationAttemptRepo);
+  public readonly listOrderNotificationsUseCase = new ListOrderNotificationsUseCase(this.outboxRepo, this.notificationAttemptRepo);
   public readonly uploadProductImagesUseCase = new UploadProductImagesUseCase(this.productImageStorage, this.productImageRepo);
   public readonly processOutboxBatchUseCase = new ProcessOutboxBatchUseCase(
     this.outboxRepo,
