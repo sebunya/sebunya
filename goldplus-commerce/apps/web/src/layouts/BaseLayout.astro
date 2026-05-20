@@ -18,8 +18,6 @@ const {
   canonicalUrl,
 } = Astro.props;
 
-const canonical = canonicalUrl ?? Astro.url.toString();
-
 const footerSocialLinks = [
   {
     key: "instagram",
@@ -57,7 +55,7 @@ const footerSocialLinks = [
     key: "tiktok",
     label: "Follow GoldPlus on TikTok",
     href: "https://tiktok.com/@shopgoldplus",
-    iconPath: "M12.525.02c1.31 0 2.593.284 3.766.82-.124.8-.466 1.545-1.002 2.164-.815-.55-1.724-.84-2.689-.84V6.99c2.316 0 4.195 1.88 4.195 4.196a4.17 4.17 0 0 1-1.229 2.967 4.172 4.172 0 0 1-2.966 1.229c-2.316 0-4.195-1.88-4.195-4.196V0h4.195zm-4.195 6.99v4.196c0 .762.308 1.493.856 2.03.548.537 1.29.827 2.06.827.772 0 1.513-.29 2.062-.827a2.88 2.88 0 0 0 .856-2.03V6.99c-.477.106-.96.16-1.444.16H8.33z",
+    iconPath: "M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .8.11v-3.5a6.93 6.93 0 0 0-1.39-.14 6.34 6.34 0 0 0-6.38 6.38 6.35 6.35 0 0 0 11.23 4.1 6.27 6.27 0 0 0 1.83-4.52V8.82a9.18 9.18 0 0 0 3.77 1.4v-3.53z",
     type: "social",
     enabled: true
   },
@@ -73,7 +71,7 @@ const footerSocialLinks = [
     key: "threads",
     label: "Follow GoldPlus on Threads",
     href: "https://threads.net/@shopgoldplus",
-    iconPath: "M12.5 0C5.6 0 0 5.6 0 12.5S5.6 25 12.5 25h.4c3.4 0 6.4-1.3 8.7-3.6l-2-2c-1.8 1.8-4.2 2.8-6.7 2.8h-.4c-5.3 0-9.7-4.4-9.7-9.7S7.2 2.8 12.5 2.8c4.3 0 8 2.5 9.7 6.4.5 1.1.8 2.3.8 3.5v.3c0 .8-.7 1.5-1.5 1.5s-1.5-.7-1.5-1.5v-3.7c0-2.6-2.1-4.8-4.8-4.8s-4.8 2.1-4.8 4.8 2.1 4.8 4.8 4.8c1.3 0 2.5-.5 3.4-1.4.5.8 1.4 1.4 2.4 1.4 2.5 0 4.5-2 4.5-4.5v-.3c0-2-.5-3.9-1.5-5.6C18.6 3.2 15.7 1 12.5 1zm0 15.3c-1.5 0-2.8-1.3-2.8-2.8s1.3-2.8 2.8-2.8 2.8 1.3 2.8 2.8-1.3 2.8-2.8 2.8z",
+    iconPath: "M12.5 0h-.232C5.518 0 0 5.518 0 12.268v.232c0 6.75 5.518 12.268 12.268 12.268h.232c6.75 0 12.268-5.518 12.268-12.268v-.232C24.768 5.518 19.25 0 12.5 0zm0 18.25c-3.452 0-6.25-2.798-6.25-6.25s2.798-6.25 6.25-6.25 6.25 2.798 6.25 6.25-2.798 6.25-6.25 6.25zm4.848-6.25c0-2.678-2.17-4.848-4.848-4.848s-4.848 2.17-4.848 4.848 2.17 4.848 4.848 4.848c1.359 0 2.593-.56 3.483-1.46l-1.295-1.295c-.562.535-1.314.855-2.188.855-1.782 0-3.228-1.446-3.228-3.228S9.9 9.043 11.682 9.043c.969 0 1.848.428 2.451 1.109l-1.396 1.396c-.279-.27-.648-.436-1.055-.436-.856 0-1.55.694-1.55 1.55s.694 1.55 1.55 1.55c.421 0 .802-.167 1.085-.438l1.378 1.378c-.596.61-1.42 1.01-2.463 1.01-1.782 0-3.228-1.446-3.228-3.228s1.446-3.228 3.228-3.228c2.678 0 4.848 2.17 4.848 4.848v.29c0 .74-.6 1.34-1.34 1.34s-1.34-.6-1.34-1.34v-3.75h-1.5v3.75c0 1.568 1.272 2.84 2.84 2.84s2.84-1.272 2.84-2.84v-.29c0-3.487-2.833-6.32-6.32-6.32S6.18 8.763 6.18 12.25s2.833 6.32 6.32 6.32c1.745 0 3.328-.707 4.475-1.854l-1.272-1.272c-.81.81-1.929 1.31-3.203 1.31-2.678 0-4.848-2.17-4.848-4.848z",
     type: "social",
     enabled: true
   },
@@ -81,27 +79,21 @@ const footerSocialLinks = [
     key: "pinterest",
     label: "Follow GoldPlus on Pinterest",
     href: "https://pinterest.com/shopgoldplus",
-    iconPath: "M12 0C5.37 0 0 5.37 0 12c0 5.08 3.16 9.42 7.63 11.16-.1-.95-.19-2.4.04-3.44.21-.92 1.37-5.83 1.37-5.83s-.35-.7-.35-1.74c0-1.63.95-2.85 2.13-2.85 1.01 0 1.49.75 1.49 1.66 0 1.01-.65 2.53-.98 3.93-.28 1.17.58 2.13 1.73 2.13 2.08 0 3.67-2.19 3.67-5.35 0-2.8-2.01-4.75-4.87-4.75-3.32 0-5.27 2.49-5.27 5.06 0 1 .39 2.08.88 2.68.1.12.11.22.08.34-.1.4-.3.12-.34-.17-.46-1.92.68-3.44 2.13-3.44 1.74 0 3.07 1.42 3.07 3.49 0 3.06-2.19 5.25-5.25 5.25-1.07 0-2.08-.55-2.42-1.21l-.66 2.51c-.24.92-.88 2.07-1.31 2.78C9.53 23.6 10.74 24 12 24c6.63 0 12-5.37 12-12S18.63 0 12 0z",
+    iconPath: "M7.34 22.5c-.17-.98-.24-2.11.04-3.08l1.41-5.96s-.36-.72-.36-1.78c0-1.67.97-2.92 2.18-2.92 1.03 0 1.53.77 1.53 1.7 0 1.03-.66 2.58-1 4.02-.28 1.2.6 2.18 1.77 2.18 2.12 0 3.75-2.24 3.75-5.48 0-2.86-2.06-4.86-5-4.86-3.41 0-5.41 2.56-5.41 5.2 0 1.03.4 2.14.9 2.76.1.12.11.23.08.35-.1.4-.33 1.34-.37 1.52-.05.23-.19.31-.44.19C4.33 15.68 3 12.98 3 10.02c0-4.88 3.55-9.37 10.23-9.37 5.37 0 9.54 3.82 9.54 8.94 0 5.34-3.37 9.64-8.04 9.64-1.57 0-3.04-.82-3.55-1.78l-1 3.79c-.36 1.37-.99 2.76-1.53 3.65a12 12 0 0 1-.81-2.19z",
     type: "social",
-    enabled: true
-  },
-  {
-    key: "whatsapp-channel",
-    label: "Follow GoldPlus on WhatsApp Channel",
-    href: "https://whatsapp.com/channel/0029VbByb56KmCPSiisvMs44",
-    iconPath: "M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.262 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.754-1.458L0 24zM6.59 5.86c-.22-.492-.452-.503-.66-.512-.17-.008-.364-.007-.56-.007-.195 0-.514.073-.783.366-.268.293-1.026 1.002-1.026 2.441 0 1.439 1.047 2.829 1.193 3.023.147.195 2.059 3.145 4.988 4.41.698.302 1.242.482 1.668.618.7.223 1.34.191 1.844.116.563-.083 1.732-.708 1.977-1.393.243-.684.243-1.27.17-1.393-.073-.122-.268-.195-.561-.341-.293-.146-1.732-.853-2.001-.951-.269-.098-.464-.147-.66.146-.195.293-.757.951-.928 1.147-.171.195-.342.22-.635.073-.293-.146-1.238-.457-2.36-1.457-.872-.777-1.46-1.738-1.631-2.03-.171-.293-.018-.452.129-.597.132-.131.293-.342.44-.512.146-.17.195-.293.293-.488.097-.195.048-.366-.024-.512-.072-.147-.66-1.59-.904-2.18z",
-    type: "community",
     enabled: true
   },
   {
     key: "whatsapp-chat",
     label: "Chat with GoldPlus on WhatsApp",
     href: "https://wa.me/256705004545",
-    iconPath: "M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.262 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.754-1.458L0 24zM6.59 5.86c-.22-.492-.452-.503-.66-.512-.17-.008-.364-.007-.56-.007-.195 0-.514.073-.783.366-.268.293-1.026 1.002-1.026 2.441 0 1.439 1.047 2.829 1.193 3.023.147.195 2.059 3.145 4.988 4.41.698.302 1.242.482 1.668.618.7.223 1.34.191 1.844.116.563-.083 1.732-.708 1.977-1.393.243-.684.243-1.27.17-1.393-.073-.122-.268-.195-.561-.341-.293-.146-1.732-.853-2.001-.951-.269-.098-.464-.147-.66.146-.195.293-.757.951-.928 1.147-.171.195-.342.22-.635.073-.293-.146-1.238-.457-2.36-1.457-.872-.777-1.46-1.738-1.631-2.03-.171-.293-.018-.452.129-.597.132-.131.293-.342.44-.512.146-.17.195-.293.293-.488.097-.195.048-.366-.024-.512-.072-.147-.66-1.59-.904-2.18z",
+    iconPath: "M12.004 2c-5.518 0-9.996 4.477-9.996 9.995 0 1.764.459 3.49 1.332 5.003L2.008 22l5.127-1.345a9.948 9.948 0 0 0 4.866 1.267c5.518 0 9.996-4.477 9.996-9.995 0-5.518-4.477-9.995-9.996-9.995zm6.81 14.168c-.274.773-1.393 1.433-2.228 1.571-.568.094-1.312.167-3.796-.86-3.176-1.313-5.228-4.545-5.387-4.757-.158-.212-1.282-1.705-1.282-3.25 0-1.547.81-2.308 1.099-2.61.29-.302.633-.378.843-.378.21 0 .421.001.604.009.191.009.447-.074.698.53.259.62.884 2.148.96 2.308.077.16.128.346.022.558-.105.213-.158.347-.317.531-.158.184-.332.41-.474.55-.158.156-.324.327-.14.646.184.318.82 1.349 1.762 2.189.942.84 2.052 1.378 2.368 1.536.316.158.501.134.686-.077.184-.213.804-.937 1.015-1.258.21-.321.421-.268.712-.162.29.106 1.846.87 2.162 1.028.316.158.528.236.607.37.079.135.079.776-.195 1.549z",
     type: "contact",
     enabled: true
   }
 ];
+
+const canonical = canonicalUrl ?? Astro.url.toString();
 ---
 
 <!doctype html>
@@ -189,9 +181,9 @@ const footerSocialLinks = [
 
       {/* Row 2 — MAIN FOOTER COLUMNS */}
       <div class="container mx-auto px-4 lg:px-8 py-16 md:py-20">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-10 lg:gap-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-10 lg:gap-16">
           {/* Column 1 — Brand / Contact */}
-          <div class="sm:col-span-2 lg:col-span-1">
+          <div>
             <span class="text-2xl font-black tracking-tighter text-white block mb-4">
               Gold<span class="text-brand-primary">Plus</span>
             </span>
@@ -208,18 +200,7 @@ const footerSocialLinks = [
             </a>
           </div>
 
-          {/* Column 2 — Shop */}
-          <div>
-            <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Shop</h4>
-            <ul class="space-y-3.5 text-xs">
-              <li><a href="/" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Home</a></li>
-              <li><a href="/shop" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">All Products</a></li>
-              <li><a href="/shop?category=power" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Power Devices</a></li>
-              <li><a href="/shop?category=sound" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Sound Devices</a></li>
-            </ul>
-          </div>
-
-          {/* Column 3 — Buying */}
+          {/* Column 2 — Buying */}
           <div>
             <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Buying</h4>
             <ul class="space-y-3.5 text-xs">
@@ -230,7 +211,7 @@ const footerSocialLinks = [
             </ul>
           </div>
 
-          {/* Column 4 — Customer Service */}
+          {/* Column 3 — Customer Service */}
           <div>
             <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Customer Service</h4>
             <ul class="space-y-3.5 text-xs">
@@ -245,15 +226,6 @@ const footerSocialLinks = [
                   Report Counterfeit
                 </a>
               </li>
-            </ul>
-          </div>
-
-          {/* Column 5 — Business / Account */}
-          <div>
-            <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Business</h4>
-            <ul class="space-y-3.5 text-xs">
-              <li><a href="/dealers/apply" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Become a Dealer</a></li>
-              <li><a href="/login" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Login</a></li>
             </ul>
           </div>
         </div>
@@ -291,8 +263,8 @@ const footerSocialLinks = [
               rel="noopener noreferrer"
               class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4 inline-flex items-center gap-1"
             >
-              <span>Website design by</span>
-              <span class="font-semibold text-brand-primary">TenX Africa</span>
+              <span>Built by</span>
+              <span class="font-semibold text-brand-primary">Ten-X Africa</span>
             </a>
           </div>
         </div>
