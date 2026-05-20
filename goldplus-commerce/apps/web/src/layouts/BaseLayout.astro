@@ -135,73 +135,30 @@ const canonical = canonicalUrl ?? Astro.url.toString();
     </main>
 
     <footer class="bg-[#0A0A0A] text-slate-400 border-t border-zinc-800/50 mt-auto">
-      {/* Row 1 — NEWSLETTER + WHATSAPP CHANNEL ENGAGEMENT BAND */}
-      <div class="border-b border-zinc-800/60 py-12">
-        <div class="container mx-auto px-4 lg:px-8">
-          <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
-            {/* Newsletter signup teaser */}
-            <div class="max-w-md w-full">
-              <div class="flex items-center gap-2 mb-2">
-                <h3 class="text-white text-base font-black tracking-tight">Stay ahead of the fakes.</h3>
-                <span class="inline-flex items-center text-[9px] font-bold text-brand-primary uppercase tracking-widest bg-brand-primary/10 px-2 py-0.5 rounded border border-brand-primary/15">
-                  Coming Soon
-                </span>
-              </div>
-              <p class="text-xs text-slate-400 leading-relaxed mb-4">
-                New arrivals, verification tips and dealer news — straight to your inbox.
-              </p>
-              <div class="inline-flex items-center gap-2 bg-zinc-900/60 border border-zinc-800/80 rounded-full px-4 py-2.5 text-xs text-slate-500 font-semibold">
-                <svg class="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                Email updates opening soon
-              </div>
-            </div>
-
-            {/* WhatsApp Channel CTA */}
-            <div class="max-w-md w-full lg:text-right lg:ml-auto">
-              <h3 class="text-white text-base font-black tracking-tight mb-2">Follow GoldPlus on WhatsApp.</h3>
-              <p class="text-xs text-slate-400 mb-4 leading-relaxed">
-                Get product drops, verification tips and dealer updates direct to your community feed.
-              </p>
-              <div class="flex lg:justify-end">
-                <a
-                  href="https://whatsapp.com/channel/0029VbByb56KmCPSiisvMs44"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Follow GoldPlus on WhatsApp Channel"
-                  class="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-primary text-gray-950 rounded-full font-bold text-xs tracking-wider uppercase transition-all hover:scale-[1.015] active:scale-95 hover:shadow-lg hover:shadow-brand-primary/20"
-                >
-                  <svg class="w-4 h-4 text-gray-950" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.262 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.754-1.458L0 24zM6.59 5.86c-.22-.492-.452-.503-.66-.512-.17-.008-.364-.007-.56-.007-.195 0-.514.073-.783.366-.268.293-1.026 1.002-1.026 2.441 0 1.439 1.047 2.829 1.193 3.023.147.195 2.059 3.145 4.988 4.41.698.302 1.242.482 1.668.618.7.223 1.34.191 1.844.116.563-.083 1.732-.708 1.977-1.393.243-.684.243-1.27.17-1.393-.073-.122-.268-.195-.561-.341-.293-.146-1.732-.853-2.001-.951-.269-.098-.464-.147-.66.146-.195.293-.757.951-.928 1.147-.171.195-.342.22-.635.073-.293-.146-1.238-.457-2.36-1.457-.872-.777-1.46-1.738-1.631-2.03-.171-.293-.018-.452.129-.597.132-.131.293-.342.44-.512.146-.17.195-.293.293-.488.097-.195.048-.366-.024-.512-.072-.147-.66-1.59-.904-2.18z"></path></svg>
-                  Follow our WhatsApp Channel
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Row 2 — MAIN FOOTER COLUMNS */}
       <div class="container mx-auto px-4 lg:px-8 py-16 md:py-20">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-10 lg:gap-16">
-          {/* Column 1 — Brand / Contact */}
-          <div>
-            <span class="text-2xl font-black tracking-tighter text-white block mb-4">
-              Gold<span class="text-brand-primary">Plus</span>
-            </span>
-            <p class="text-xs text-slate-400 leading-relaxed mb-6">
-              Verified original electronics for Uganda — power, sound, storage and car accessories you can check before you trust.
+        
+        {/* TOP GRID */}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-8">
+          
+          {/* Column 1: Newsletter */}
+          <div class="flex flex-col lg:col-span-1 order-1">
+            <div class="flex items-center gap-2 mb-2">
+              <h3 class="text-white text-base font-black tracking-tight">Stay ahead of the fakes.</h3>
+              <span class="inline-flex items-center text-[9px] font-bold text-brand-primary uppercase tracking-widest bg-brand-primary/10 px-2 py-0.5 rounded border border-brand-primary/15">
+                Coming Soon
+              </span>
+            </div>
+            <p class="text-xs text-slate-400 leading-relaxed mb-4">
+              New arrivals, verification tips and dealer news — straight to your inbox.
             </p>
-            <a
-              href={`https://wa.me/${whatsappSupportNumber}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center gap-2 bg-brand-primary text-gray-950 px-4.5 py-2.5 rounded-full font-bold text-xs tracking-wider uppercase transition-all hover:scale-[1.015] active:scale-95 hover:shadow-lg hover:shadow-brand-primary/20"
-            >
-              Chat on WhatsApp
-            </a>
+            <div class="inline-flex items-center gap-2 bg-zinc-900/60 border border-zinc-800/80 rounded-full px-4 py-2.5 text-xs text-slate-500 font-semibold w-fit">
+              <svg class="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+              Email updates opening soon
+            </div>
           </div>
 
-          {/* Column 2 — Buying */}
-          <div>
+          {/* Column 2: Buying */}
+          <div class="flex flex-col lg:col-span-1 order-3 lg:order-2">
             <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Buying</h4>
             <ul class="space-y-3.5 text-xs">
               <li><a href="/cart" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Cart</a></li>
@@ -211,8 +168,8 @@ const canonical = canonicalUrl ?? Astro.url.toString();
             </ul>
           </div>
 
-          {/* Column 3 — Customer Service */}
-          <div>
+          {/* Column 3: Customer Service */}
+          <div class="flex flex-col lg:col-span-1 order-4 lg:order-3">
             <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Customer Service</h4>
             <ul class="space-y-3.5 text-xs">
               <li><a href="/verification" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Product Verification</a></li>
@@ -221,17 +178,35 @@ const canonical = canonicalUrl ?? Astro.url.toString();
               <li>
                 <a
                   href="/support/fake"
-                  class="text-red-400 hover:text-red-300 font-bold transition-colors inline-block hover:underline decoration-red-400/45 underline-offset-4"
+                  class="text-red-400 hover:text-red-300 transition-colors inline-block hover:underline decoration-red-400/45 underline-offset-4"
                 >
                   Report Counterfeit
                 </a>
               </li>
             </ul>
           </div>
-        </div>
 
-        {/* Row 3 — SOCIAL, CONTACT & COMMUNITY ICON ROW */}
-        <div class="border-t border-zinc-800/50 mt-12 pt-8 flex flex-wrap items-center justify-start gap-3">
+          {/* Column 4: WhatsApp Channel CTA */}
+          <div class="flex flex-col lg:col-span-1 order-2 lg:order-4 lg:items-end lg:text-right">
+            <h3 class="text-white text-base font-black tracking-tight mb-2">Follow GoldPlus on WhatsApp.</h3>
+            <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+              Get product drops, verification tips and dealer updates direct to your community feed.
+            </p>
+            <a
+              href="https://whatsapp.com/channel/0029VbByb56KmCPSiisvMs44"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Follow GoldPlus on WhatsApp Channel"
+              class="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-primary text-gray-950 rounded-full font-bold text-xs tracking-wider uppercase transition-all hover:scale-[1.015] active:scale-95 hover:shadow-lg hover:shadow-brand-primary/20 w-fit"
+            >
+              <svg class="w-4 h-4 text-gray-950" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.262 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.754-1.458L0 24zM6.59 5.86c-.22-.492-.452-.503-.66-.512-.17-.008-.364-.007-.56-.007-.195 0-.514.073-.783.366-.268.293-1.026 1.002-1.026 2.441 0 1.439 1.047 2.829 1.193 3.023.147.195 2.059 3.145 4.988 4.41.698.302 1.242.482 1.668.618.7.223 1.34.191 1.844.116.563-.083 1.732-.708 1.977-1.393.243-.684.243-1.27.17-1.393-.073-.122-.268-.195-.561-.341-.293-.146-1.732-.853-2.001-.951-.269-.098-.464-.147-.66.146-.195.293-.757.951-.928 1.147-.171.195-.342.22-.635.073-.293-.146-1.238-.457-2.36-1.457-.872-.777-1.46-1.738-1.631-2.03-.171-.293-.018-.452.129-.597.132-.131.293-.342.44-.512.146-.17.195-.293.293-.488.097-.195.048-.366-.024-.512-.072-.147-.66-1.59-.904-2.18z"></path></svg>
+              Follow our WhatsApp Channel
+            </a>
+          </div>
+        </div>
+        
+        {/* SOCIAL, CONTACT & COMMUNITY ICON ROW */}
+        <div class="border-t border-zinc-800/50 mt-16 pt-8 flex flex-wrap items-center justify-start gap-3">
           {footerSocialLinks.filter(link => link.enabled).map((link) => (
             <a
               href={link.href}
@@ -251,10 +226,18 @@ const canonical = canonicalUrl ?? Astro.url.toString();
           </span>
         </div>
 
-        {/* Row 4 — LEGAL BAR */}
-        <div class="border-t border-zinc-900 mt-10 pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <p>&copy; {new Date().getFullYear()} GoldPlus. All rights reserved.</p>
-          <div class="flex flex-wrap items-center gap-x-6 gap-y-2 justify-center md:justify-end">
+        {/* LOWER BRAND & LEGAL ROW */}
+        <div class="border-t border-zinc-900 mt-10 pt-10 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-8 text-xs text-slate-500">
+          <div class="max-w-sm">
+            <span class="text-2xl font-black tracking-tighter text-white block mb-3">
+              Gold<span class="text-brand-primary">Plus</span>
+            </span>
+            <p class="mb-5 leading-relaxed">
+              Verified original electronics for Uganda — power, sound, storage and car accessories you can check before you trust.
+            </p>
+            <p>&copy; {new Date().getFullYear()} GoldPlus. All rights reserved.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-3 justify-start md:justify-end">
             <a href="/privacy" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Privacy Policy</a>
             <a href="/terms" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Terms of Service</a>
             <a
