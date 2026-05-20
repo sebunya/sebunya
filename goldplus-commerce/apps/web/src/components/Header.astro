@@ -665,20 +665,20 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
   <!-- Mobile Dropdown Drawer Panel -->
   <div
     id="mobile-menu-drawer"
-    class="hidden md:hidden border-t border-gray-100 bg-white"
+    class="hidden md:hidden border-t border-brand-borderGrey bg-white shadow-inner"
   >
-    <div class="px-4 py-5 space-y-6">
+    <div class="px-4 py-6 space-y-6">
       <!-- Mobile Search Form -->
       <form action="/shop" method="GET" class="relative">
         <input
           type="search"
           name="q"
           value={q}
-          placeholder="Search products"
+          placeholder="Search products..."
           aria-label="Mobile Product Search"
-          class="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-full focus:border-brand-primary outline-none text-xs placeholder-gray-400 text-gray-850"
+          class="w-full pl-10 pr-4 py-3 bg-brand-softGrey border border-brand-borderGrey rounded-full focus:bg-white focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 outline-none text-xs font-medium placeholder-gray-450 text-brand-charcoal transition-all duration-300"
         />
-        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-mutedGrey">
           <!-- Lucide Search -->
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.34-4.34" />
@@ -693,19 +693,33 @@ const isPCActive = false; // PC fallback is neutral to avoid overlap with Shop A
           href="/shop"
           title="Browse all GoldPlus products"
           aria-label="Browse all GoldPlus products"
-          class="w-full text-center py-3 bg-gray-50 hover:bg-gray-100 border border-gray-100 text-brand-primary font-black uppercase tracking-widest rounded-full text-[11px] block transition-colors duration-300"
+          class="w-full text-center py-3.5 bg-brand-primary hover:bg-brand-primary/95 text-brand-charcoal font-black uppercase tracking-widest rounded-full text-xs block transition-all duration-300 shadow-md shadow-brand-primary/10"
         >
           Shop All Products
         </a>
       </div>
 
       <!-- General Navigation Links -->
-      <div class="space-y-4 pt-4 border-t border-gray-100 text-xs font-semibold text-gray-700">
-        <a href="/account" class="block hover:text-brand-primary transition-colors">
-          Account Profile
+      <div class="grid grid-cols-1 gap-2 pt-4 border-t border-brand-borderGrey text-sm font-bold text-brand-charcoal">
+        <a href="/account" class="flex items-center justify-between px-4 py-3.5 bg-brand-softGrey hover:bg-white hover:border-brand-charcoal border border-brand-borderGrey rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
+          <span>Account Profile</span>
+          <span class="text-brand-mutedGrey">&rarr;</span>
         </a>
-        <a href="/cart" class="block hover:text-brand-primary transition-colors">
-          Shopping Cart
+        <a href="/cart" class="flex items-center justify-between px-4 py-3.5 bg-brand-softGrey hover:bg-white hover:border-brand-charcoal border border-brand-borderGrey rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
+          <span>Shopping Cart</span>
+          <span class="text-brand-mutedGrey">&rarr;</span>
+        </a>
+        <a href="/verification" class="flex items-center justify-between px-4 py-3.5 bg-brand-softGrey hover:bg-white hover:border-brand-charcoal border border-brand-borderGrey rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
+          <span>Verify Authenticity</span>
+          <span class="text-brand-mutedGrey">&rarr;</span>
+        </a>
+        <a href="/support" class="flex items-center justify-between px-4 py-3.5 bg-brand-softGrey hover:bg-white hover:border-brand-charcoal border border-brand-borderGrey rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
+          <span>Support Hub</span>
+          <span class="text-brand-mutedGrey">&rarr;</span>
+        </a>
+        <a href="/dealers/apply" class="flex items-center justify-between px-4 py-3.5 bg-brand-softGrey hover:bg-white hover:border-brand-charcoal border border-brand-borderGrey rounded-xl transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
+          <span>Become a Dealer</span>
+          <span class="text-brand-mutedGrey">&rarr;</span>
         </a>
       </div>
     </div>

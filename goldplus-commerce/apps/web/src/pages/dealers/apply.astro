@@ -58,73 +58,103 @@ if (Astro.request.method === 'POST') {
 }
 ---
 
-<BaseLayout title="Apply to be a GoldPlus Dealer">
-  <div class="bg-brand-dark text-white py-16 border-b border-gray-800">
+<BaseLayout title="Apply to be a GoldPlus Dealer | GoldPlus">
+  <div class="bg-brand-charcoal text-white py-16 border-b border-brand-borderGrey">
     <div class="container mx-auto px-4 lg:px-8 text-center">
-      <span class="inline-block py-1 px-3 rounded-full bg-brand-green/15 text-brand-green text-xs font-bold tracking-widest uppercase mb-4">
+      <span class="inline-flex items-center gap-1.5 py-1 px-3.5 rounded-full bg-brand-primary/15 text-brand-primary text-xs font-bold tracking-widest uppercase mb-4 border border-brand-primary/10">
         Authorised dealership
       </span>
       <h1 class="text-3xl md:text-5xl font-black tracking-tight mb-4">Become a GoldPlus dealer</h1>
-      <p class="text-gray-300 max-w-2xl mx-auto text-lg leading-relaxed">
+      <p class="text-gray-300 max-w-2xl mx-auto text-base md:text-lg leading-relaxed font-medium">
         Partner with a trusted electronics brand. Verified stock, marketing support and protected pricing.
       </p>
     </div>
   </div>
 
   <div class="container mx-auto px-4 lg:px-8 py-16">
-    <div class="max-w-3xl mx-auto">
-      <FormFeedback status={status} message={message} reference={reference} />
-
-      <div class="bg-white p-8 md:p-10 rounded-2xl border border-gray-200 shadow-xl">
-        <h2 class="text-xl md:text-2xl font-bold text-brand-dark mb-6 pb-4 border-b border-gray-100">Application form</h2>
-
-        <form method="POST" action="/dealers/apply" novalidate id="dealerForm" class="space-y-6">
-          <FormField id="businessName" name="businessName" label="Business legal name" required defaultValue={values.businessName} autocomplete="organization" errorMessage={errors.businessName} />
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FormField id="contactName" name="contactName" label="Contact person" required defaultValue={values.contactName} autocomplete="name" errorMessage={errors.contactName} />
-            <FormField id="tinNumber" name="tinNumber" label="TIN number (URA)" required defaultValue={values.tinNumber} placeholder="100XXXXXXXX" errorMessage={errors.tinNumber} />
-            <FormField id="email" name="email" label="Business email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
-            <FormField id="phone" name="phone" label="Business phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="+2567..." errorMessage={errors.phone} />
-          </div>
-          <div class="bg-gray-50 p-5 rounded-xl border border-gray-200 mb-6 space-y-4">
-            <UgandaLocationPicker 
-              name="locationJson" 
-              label="Business location" 
-              helperText="Search the parish, ward, town, or district where your business is located."
-              required={true} 
-              defaultValue={values.locationJson} 
-              errorMessage={errors.locationJson} 
-            />
-            <FormField 
-               id="shopDetails" 
-               name="shopDetails" 
-               label="Additional address details" 
-               placeholder="Shop, mall, road, building, trading centre, or nearby landmark"
-               defaultValue={values.shopDetails}
-            />
-          </div>
-
-          <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
-            <h3 class="font-bold text-brand-dark mb-2 text-sm">Dealer commitment</h3>
-            <p class="text-xs text-gray-600 leading-relaxed mb-3">
-              By applying, you commit to selling only original GoldPlus products and observing recommended pricing and service standards.
-            </p>
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" name="agree" required class="w-5 h-5 rounded border-gray-300 text-brand-green focus:ring-brand-green" />
-              <span class="text-sm font-bold text-gray-700">I agree to the GoldPlus dealer terms</span>
-            </label>
-            {errors.agree && <p class="text-xs text-red-600 mt-1 font-bold">{errors.agree}</p>}
-          </div>
-
-          <button type="submit" id="submitBtn" class="w-full bg-brand-green text-white py-4 rounded-xl font-bold text-lg hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-green/30 outline-none transition-all">
-            Submit application
-          </button>
-        </form>
+    <div class="max-w-3xl mx-auto grid grid-cols-1 gap-10">
+      
+      <!-- Partnership Credibility Copy Box -->
+      <div class="bg-brand-softGrey border border-brand-borderGrey rounded-3xl p-8 grid grid-cols-1 md:grid-cols-3 gap-6 shadow-sm">
+        <div class="space-y-2">
+          <h3 class="font-bold text-brand-charcoal text-sm">✓ Originality Verified</h3>
+          <p class="text-xs text-brand-mutedGrey leading-relaxed font-medium">Every product we distribute comes directly from our certified production, backed by anti-counterfeiting tracking.</p>
+        </div>
+        <div class="space-y-2">
+          <h3 class="font-bold text-brand-charcoal text-sm">✓ Marketing Support</h3>
+          <p class="text-xs text-brand-mutedGrey leading-relaxed font-medium">Get point-of-sale branding, customer referrals in your region, and access to promotional merchandise assets.</p>
+        </div>
+        <div class="space-y-2">
+          <h3 class="font-bold text-brand-charcoal text-sm">✓ Dynamic Pricing</h3>
+          <p class="text-xs text-brand-mutedGrey leading-relaxed font-medium">Unlock volume-based wholesale discounts, price protection policies, and guaranteed margins.</p>
+        </div>
       </div>
 
-      <p class="text-xs text-gray-500 text-center mt-6 leading-relaxed max-w-md mx-auto">
-        A dealer success team member will get in touch to finalize setup once the application passes initial operational review.
-      </p>
+      <div>
+        <FormFeedback status={status} message={message} reference={reference} />
+
+        <div class="bg-white p-8 md:p-10 rounded-3xl border border-brand-borderGrey shadow-xl">
+          <h2 class="text-xl md:text-2xl font-bold text-brand-charcoal mb-8 pb-4 border-b border-brand-borderGrey">Application form</h2>
+
+          <form method="POST" action="/dealers/apply" novalidate id="dealerForm" class="space-y-8">
+            <fieldset class="space-y-5">
+              <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Business details</legend>
+              <FormField id="businessName" name="businessName" label="Business legal name" required defaultValue={values.businessName} autocomplete="organization" errorMessage={errors.businessName} />
+              <FormField id="tinNumber" name="tinNumber" label="TIN number (URA)" required defaultValue={values.tinNumber} placeholder="100XXXXXXXX" errorMessage={errors.tinNumber} />
+            </fieldset>
+
+            <fieldset class="space-y-5 pt-4 border-t border-brand-borderGrey">
+              <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Contact details</legend>
+              <FormField id="contactName" name="contactName" label="Contact person" required defaultValue={values.contactName} autocomplete="name" errorMessage={errors.contactName} />
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField id="email" name="email" label="Business email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
+                <FormField id="phone" name="phone" label="Business phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="+2567..." errorMessage={errors.phone} />
+              </div>
+            </fieldset>
+
+            <fieldset class="space-y-5 pt-4 border-t border-brand-borderGrey">
+              <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Business location</legend>
+              <div class="bg-brand-softGrey p-6 rounded-2xl border border-brand-borderGrey space-y-4">
+                <UgandaLocationPicker 
+                  name="locationJson" 
+                  label="Business location" 
+                  helperText="Search the parish, ward, town, or district where your business is located."
+                  required={true} 
+                  defaultValue={values.locationJson} 
+                  errorMessage={errors.locationJson} 
+                />
+                <FormField 
+                   id="shopDetails" 
+                   name="shopDetails" 
+                   label="Additional address details" 
+                   placeholder="Shop, mall, road, building, trading centre, or nearby landmark"
+                   defaultValue={values.shopDetails}
+                />
+              </div>
+            </fieldset>
+
+            <div class="bg-brand-softGrey p-6 rounded-2xl border border-brand-borderGrey">
+              <h3 class="font-bold text-brand-charcoal mb-2 text-sm">Dealer commitment</h3>
+              <p class="text-xs text-brand-mutedGrey leading-relaxed mb-4 font-medium">
+                By applying, you commit to selling only original GoldPlus products and observing recommended pricing and service standards.
+              </p>
+              <label class="flex items-center gap-3 cursor-pointer group select-none">
+                <input type="checkbox" name="agree" required class="w-5 h-5 rounded border-brand-borderGrey text-brand-primary focus:ring-brand-primary cursor-pointer" />
+                <span class="text-sm font-bold text-brand-charcoal group-hover:text-brand-primary transition-colors">I agree to the GoldPlus dealer terms</span>
+              </label>
+              {errors.agree && <p class="text-xs text-brand-error mt-2 font-bold">{errors.agree}</p>}
+            </div>
+
+            <button type="submit" id="submitBtn" class="w-full bg-brand-primary text-brand-charcoal py-4 rounded-xl font-bold text-base hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none transition-all shadow-md shadow-brand-primary/10">
+              Submit application
+            </button>
+          </form>
+        </div>
+
+        <p class="text-xs text-brand-mutedGrey text-center mt-2 leading-relaxed max-w-md mx-auto font-medium">
+          A dealer success team member will get in touch to finalize setup once the application passes initial operational review.
+        </p>
+      </div>
     </div>
   </div>
 </BaseLayout>

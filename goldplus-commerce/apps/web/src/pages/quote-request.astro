@@ -18,6 +18,12 @@ let errors: Record<string, string> = {};
 const kindParam = Astro.url.searchParams.get('kind');
 const initialKind = kindParam === 'wholesale' || kindParam === 'corporate' ? kindParam : 'retail';
 
+// Pre-fill productName from URL search params on initial render
+const productNameParam = Astro.url.searchParams.get('productName');
+if (Astro.request.method === 'GET' && productNameParam) {
+  values.productName = productNameParam;
+}
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   
@@ -81,47 +87,64 @@ const buyerOptions = [
 const checkedKind = values.kind || initialKind;
 ---
 
-<BaseLayout title="Request a quote">
-  <div class="bg-gray-50 py-12 border-b border-gray-200">
+<BaseLayout title="Request a quote | GoldPlus">
+  <div class="bg-brand-charcoal text-white py-16 border-b border-brand-borderGrey">
     <div class="container mx-auto px-4 lg:px-8">
-      <h1 class="text-3xl md:text-4xl font-black tracking-tight text-brand-dark mb-2">Request a quote</h1>
-      <p class="text-gray-600 max-w-2xl text-base md:text-lg leading-relaxed">
+      <h1 class="text-3xl md:text-5xl font-black tracking-tight text-white mb-4">Request a quote</h1>
+      <p class="text-gray-300 max-w-2xl text-base md:text-lg leading-relaxed font-medium">
         Tell us what you need. Our sales team prepares pricing and lead times for retail bulk, wholesale and corporate orders.
       </p>
     </div>
   </div>
 
-  <div class="container mx-auto px-4 lg:px-8 py-10">
+  <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-2xl mx-auto space-y-6">
       <FormFeedback status={status} message={message} reference={reference} />
       <Notice kind="info" message="Pricing for volume orders is calculated dynamically based on current inventory and routing. Submit this form and a sales agent will prepare a non-binding estimate for you." />
 
-      <div class="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
-        <form method="POST" action="/quote-request" novalidate id="quoteForm" class="space-y-6">
+      <div class="bg-white p-8 md:p-10 rounded-3xl border border-brand-borderGrey shadow-xl">
+        <form method="POST" action="/quote-request" novalidate id="quoteForm" class="space-y-8">
 
-          <fieldset class="border border-gray-200 rounded-xl p-4">
-            <legend class="text-xs font-bold uppercase tracking-widest text-gray-500 px-2">Buyer type</legend>
-            <div class="grid grid-cols-3 gap-2 mt-2">
-              {buyerOptions.map((opt) => (
-                <label class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-gray-200 cursor-pointer text-sm font-bold hover:border-brand-green transition-colors">
-                  <input type="radio" name="kind" value={opt.v} checked={checkedKind === opt.v} class="text-brand-green focus:ring-brand-green" />
-                  <span>{opt.l}</span>
-                </label>
-              ))}
+          <fieldset class="space-y-3">
+            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Buyer type</legend>
+            <div class="grid grid-cols-3 gap-3" id="buyerTypeSelector">
+              {buyerOptions.map((opt) => {
+                const isSelected = checkedKind === opt.v;
+                return (
+                  <label class={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border cursor-pointer text-xs font-bold transition-all duration-300 select-none ${
+                    isSelected 
+                      ? 'bg-brand-charcoal text-white border-brand-charcoal shadow-sm' 
+                      : 'bg-brand-softGrey text-brand-mutedGrey border-brand-borderGrey hover:bg-white hover:text-brand-charcoal'
+                  }`}>
+                    <input type="radio" name="kind" value={opt.v} checked={isSelected} class="sr-only" />
+                    <span>{opt.l}</span>
+                  </label>
+                );
+              })}
             </div>
           </fieldset>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <fieldset class="space-y-5 pt-4 border-t border-brand-borderGrey">
+            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Your Details</legend>
             <FormField id="customerName" name="customerName" label="Your name" required defaultValue={values.customerName} autocomplete="name" errorMessage={errors.customerName} />
-            <FormField id="email" name="email" label="Email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
-            <FormField id="phone" name="phone" label="Phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="+2567..." errorMessage={errors.phone} />
-            <FormField id="quantity" name="quantity" label="Quantity needed" required defaultValue={values.quantity} placeholder="e.g. 50 units" errorMessage={errors.quantity} />
-            <div class="md:col-span-2">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField id="email" name="email" label="Email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
+              <FormField id="phone" name="phone" label="Phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="+2567..." errorMessage={errors.phone} />
+            </div>
+          </fieldset>
+
+          <fieldset class="space-y-5 pt-4 border-t border-brand-borderGrey">
+            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Request Details</legend>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField id="productName" name="productName" label="Product or category" required defaultValue={values.productName} placeholder="e.g. Fast chargers, USB-C cables" errorMessage={errors.productName} />
+              <FormField id="quantity" name="quantity" label="Quantity needed" required defaultValue={values.quantity} placeholder="e.g. 50 units" errorMessage={errors.quantity} />
+            </div>
+            
             <div class="space-y-4">
               <UgandaLocationPicker 
                 name="locationJson" 
-                label="Service location" 
-                helperText="Search the parish, ward, town, or district where support or delivery is needed."
+                label="Delivery location" 
+                helperText="Search the parish, ward, town, or district where delivery is needed."
                 required 
                 defaultValue={values.locationJson} 
                 errorMessage={errors.locationJson} 
@@ -134,12 +157,11 @@ const checkedKind = values.kind || initialKind;
                 defaultValue={values.deliveryAddress}
               />
             </div>
-            </div>
-          </div>
-          <FormField id="productName" name="productName" label="Product or category" required defaultValue={values.productName} placeholder="e.g. Fast chargers, USB-C cables" errorMessage={errors.productName} />
-          <FormField id="message" name="message" label="Notes for sales" type="textarea" rows={4} defaultValue={values.message} placeholder="Anything we should know? Delivery deadlines, special needs, packaging…" />
 
-          <button type="submit" id="submitBtn" class="w-full bg-brand-green text-white py-4 rounded-xl font-bold text-lg hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-green/30 outline-none transition-all">
+            <FormField id="message" name="message" label="Notes for sales" type="textarea" rows={4} defaultValue={values.message} placeholder="Anything we should know? Delivery deadlines, special needs, packaging…" />
+          </fieldset>
+
+          <button type="submit" id="submitBtn" class="w-full bg-brand-primary text-brand-charcoal py-4 rounded-xl font-bold text-base hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none transition-all shadow-md shadow-brand-primary/10">
             Request quote
           </button>
         </form>
@@ -153,6 +175,22 @@ const checkedKind = values.kind || initialKind;
 
   const form = document.getElementById('quoteForm') as HTMLFormElement;
   const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement;
+
+  // Visual selector update
+  const labels = document.querySelectorAll('#buyerTypeSelector label');
+  labels.forEach(label => {
+    const radio = label.querySelector('input[type="radio"]') as HTMLInputElement;
+    radio?.addEventListener('change', () => {
+      labels.forEach(l => {
+        l.classList.remove('bg-brand-charcoal', 'text-white', 'border-brand-charcoal', 'shadow-sm');
+        l.classList.add('bg-brand-softGrey', 'text-brand-mutedGrey', 'border-brand-borderGrey');
+      });
+      if (radio.checked) {
+        label.classList.remove('bg-brand-softGrey', 'text-brand-mutedGrey', 'border-brand-borderGrey');
+        label.classList.add('bg-brand-charcoal', 'text-white', 'border-brand-charcoal', 'shadow-sm');
+      }
+    });
+  });
 
   if (form) {
     form.addEventListener('submit', (e) => {

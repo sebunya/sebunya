@@ -92,50 +92,55 @@ if (Astro.request.method === 'POST') {
 ---
 
 <BaseLayout title="Report a technical issue">
-  <div class="container mx-auto px-4 lg:px-8 py-12">
+  <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-2xl mx-auto">
-      <h1 class="text-2xl md:text-3xl font-black text-brand-dark mb-2">Report a technical issue</h1>
-      <p class="text-gray-600 mb-8 leading-relaxed">
+      <h1 class="text-3xl font-black text-brand-charcoal mb-3">Report a technical issue</h1>
+      <p class="text-brand-mutedGrey mb-8 leading-relaxed font-medium">
         Describe what's happening so our technical team can help you. The more detail, the faster we can resolve it.
       </p>
 
       <FormFeedback status={status} message={message} reference={reference} />
 
       <form method="POST" action="/support/issue" novalidate id="supportForm" class="space-y-6">
-        <div class="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm space-y-5">
-          <FormField 
-            id="subject" 
-            name="subject" 
-            label="Issue subject" 
-            required 
-            defaultValue={values.subject} 
-            placeholder="e.g. Charger not fast charging" 
-            errorMessage={errors.subject}
-          />
+        <div class="bg-white p-8 md:p-10 rounded-3xl border border-brand-borderGrey shadow-xl space-y-6">
           
-          <FormField 
-            id="productModel" 
-            name="productModel" 
-            label="Product model (if known)" 
-            defaultValue={values.productModel} 
-            placeholder="e.g. GP-CH-01" 
-            helperText="If your product packaging shows a model number, include it here." 
-            errorMessage={errors.productModel}
-          />
+          <fieldset class="space-y-5">
+            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Product & Issue Details</legend>
+            <FormField 
+              id="subject" 
+              name="subject" 
+              label="Issue subject" 
+              required 
+              defaultValue={values.subject} 
+              placeholder="e.g. Charger not fast charging" 
+              errorMessage={errors.subject}
+            />
+            
+            <FormField 
+              id="productModel" 
+              name="productModel" 
+              label="Product model (if known)" 
+              defaultValue={values.productModel} 
+              placeholder="e.g. GP-CH-01" 
+              helperText="If your product packaging shows a model number, include it here." 
+              errorMessage={errors.productModel}
+            />
 
-          <FormField 
-            id="description" 
-            name="description" 
-            label="Description of the problem" 
-            type="textarea" 
-            rows={5} 
-            required 
-            defaultValue={values.description} 
-            placeholder="When did it start? What did you try?" 
-            errorMessage={errors.description}
-          />
+            <FormField 
+              id="description" 
+              name="description" 
+              label="Description of the problem" 
+              type="textarea" 
+              rows={5} 
+              required 
+              defaultValue={values.description} 
+              placeholder="When did it start? What did you try?" 
+              errorMessage={errors.description}
+            />
+          </fieldset>
 
-          <div class="space-y-4">
+          <fieldset class="space-y-4 pt-4 border-t border-brand-borderGrey">
+            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Location Context (Optional)</legend>
             <UgandaLocationPicker 
                name="locationJson" 
                label="Location related to this issue" 
@@ -144,7 +149,6 @@ if (Astro.request.method === 'POST') {
                defaultValue={values.locationJson} 
                errorMessage={errors.locationJson} 
             />
-            {/* Instruction says Support Ticket includes 'Road, building...' additional details optionally */}
             <FormField 
                id="locationDetails" 
                name="locationDetails" 
@@ -152,39 +156,42 @@ if (Astro.request.method === 'POST') {
                placeholder="Road, building, shop, branch, or nearby landmark"
                defaultValue={values.locationDetails}
             />
-          </div>
+          </fieldset>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
-             <FormField 
-               id="email" 
-               name="email" 
-               label="Email address" 
-               type="email"
-               required 
-               defaultValue={values.email} 
-               autocomplete="email"
-               errorMessage={errors.email}
-             />
-             <FormField 
-               id="phone" 
-               name="phone" 
-               label="Phone number" 
-               type="tel"
-               required 
-               defaultValue={values.phone} 
-               autocomplete="tel"
-               placeholder="+2567..."
-               errorMessage={errors.phone}
-             />
-          </div>
-          <p class="text-xs text-gray-500">We use these only to follow up about your support request.</p>
+          <fieldset class="pt-4 border-t border-brand-borderGrey">
+             <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4">Your Contact Details</legend>
+             <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <FormField 
+                  id="email" 
+                  name="email" 
+                  label="Email address" 
+                  type="email"
+                  required 
+                  defaultValue={values.email} 
+                  autocomplete="email"
+                  errorMessage={errors.email}
+                />
+                <FormField 
+                  id="phone" 
+                  name="phone" 
+                  label="Phone number" 
+                  type="tel"
+                  required 
+                  defaultValue={values.phone} 
+                  autocomplete="tel"
+                  placeholder="+2567..."
+                  errorMessage={errors.phone}
+                />
+             </div>
+             <p class="text-xs text-brand-mutedGrey mt-3 font-medium">We use these only to follow up about your support request.</p>
+          </fieldset>
         </div>
 
         <div class="flex items-center gap-4">
-          <button type="submit" id="submitBtn" class="bg-brand-green text-white px-8 py-3 rounded-xl font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-green/30 outline-none transition-all">
+          <button type="submit" id="submitBtn" class="bg-brand-primary text-brand-charcoal px-8 py-3.5 rounded-xl font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none transition-all text-sm shadow-md shadow-brand-primary/10">
             Submit issue
           </button>
-          <a href="/support" class="text-sm font-bold text-gray-500 hover:text-brand-dark transition-colors">Cancel</a>
+          <a href="/support" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal transition-colors">Cancel</a>
         </div>
       </form>
     </div>
