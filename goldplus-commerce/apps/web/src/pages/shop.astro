@@ -12,6 +12,8 @@ import {
   CATEGORY_NAME_TO_SLUG 
 } from "../lib/catalog/catalog";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
+import CategoryPopularRail from "../components/recommendations/CategoryPopularRail.astro";
+
 
 // Approved categories taxonomy
 const categories = [
@@ -298,6 +300,12 @@ const sortedProducts = sortProducts(filteredProducts, sort);
             );
           })}
         </div>
+
+        {category !== 'all' && !q && (
+          <div class="mb-10 pb-10 border-b border-brand-borderGrey">
+            <CategoryPopularRail categorySlug={category} />
+          </div>
+        )}
 
         <!-- ACTIVE FILTER CHIPS TRACK (SSR & CSR Interactive Track) -->
         {activeFilters.length > 0 && (

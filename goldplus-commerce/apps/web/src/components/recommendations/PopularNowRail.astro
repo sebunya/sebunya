@@ -1,7 +1,10 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations, shouldRenderRail } from "../../lib/recommendation-display";
+import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+import { LOCAL_SEED_PRODUCTS } from "../../lib/catalog/catalog";
+import { apiBase } from "../../lib/api";
+import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
 interface Props {
   excludeProductIds?: string[];
@@ -21,10 +24,40 @@ const displayItems = filterDisplayableRecommendations(response.items, {
   limit: 4,
 });
 
-const render = shouldRenderRail(displayItems, 2);
+let finalItems = displayItems;
+
+if (finalItems.length === 0) {
+  let allProducts: ProductPublicDto[] = [];
+  try {
+    const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const json = await res.json() as ApiResponse<ProductPublicDto[]>;
+      if (json.success && json.data) {
+        allProducts = json.data;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  if (allProducts.length === 0) {
+    allProducts = LOCAL_SEED_PRODUCTS;
+  }
+  
+  const eligible = allProducts.filter(p => !excludeProductIds.includes(p.id));
+  
+  finalItems = eligible.slice(0, 4).map(p => ({
+    productId: p.id,
+    slug: p.slug,
+    name: p.name,
+    imageUrl: p.primaryImageUrl ?? undefined,
+    price: p.retailPriceUgx ?? undefined,
+    score: 0.5,
+    reasonCode: "TRENDING_FALLBACK",
+  }));
+}
 ---
 
-{render && (
+{finalItems.length > 0 && (
   useContainerWrapper ? (
     <section class="bg-brand-softGrey py-16 border-t border-brand-borderGrey">
       <div class="container mx-auto px-4 lg:px-8">
@@ -32,7 +65,7 @@ const render = shouldRenderRail(displayItems, 2);
           title="Top Sellers Right Now"
           subtitle="Customer favourites based on real GoldPlus orders."
           placement="home_trending"
-          items={displayItems}
+          items={finalItems}
         />
       </div>
     </section>
@@ -41,7 +74,7 @@ const render = shouldRenderRail(displayItems, 2);
       title="Top Sellers Right Now"
       subtitle="Customer favourites based on real GoldPlus orders."
       placement="home_trending"
-      items={displayItems}
+      items={finalItems}
     />
   )
 )}

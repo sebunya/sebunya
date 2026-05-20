@@ -1,7 +1,10 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations, shouldRenderRail } from "../../lib/recommendation-display";
+import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+import { LOCAL_SEED_PRODUCTS } from "../../lib/catalog/catalog";
+import { apiBase } from "../../lib/api";
+import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
 interface Props {
   productId: string;
@@ -20,14 +23,51 @@ const displayItems = filterDisplayableRecommendations(response.items, {
   limit: 4,
 });
 
-const render = shouldRenderRail(displayItems, 1);
+let finalItems = displayItems;
+
+if (finalItems.length === 0) {
+  let allProducts: ProductPublicDto[] = [];
+  try {
+    const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const json = await res.json() as ApiResponse<ProductPublicDto[]>;
+      if (json.success && json.data) {
+        allProducts = json.data;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  if (allProducts.length === 0) {
+    allProducts = LOCAL_SEED_PRODUCTS;
+  }
+  
+  // Find current product to get its category name
+  const currentProduct = allProducts.find(p => p.id === productId);
+  const currentCategory = currentProduct?.categoryName;
+
+  const eligible = allProducts.filter(p => p.id !== productId);
+  const sameCategory = eligible.filter(p => p.categoryName === currentCategory);
+  const otherCategory = eligible.filter(p => p.categoryName !== currentCategory);
+  const sorted = [...sameCategory, ...otherCategory];
+  
+  finalItems = sorted.slice(0, 4).map(p => ({
+    productId: p.id,
+    slug: p.slug,
+    name: p.name,
+    imageUrl: p.primaryImageUrl ?? undefined,
+    price: p.retailPriceUgx ?? undefined,
+    score: 0.5,
+    reasonCode: "RELATED_FALLBACK",
+  }));
+}
 ---
 
-{render && (
+{finalItems.length > 0 && (
   <RecommendationRail
-    title="You may also need"
+    title="Related Products"
     subtitle="Useful extras and alternatives for this product."
     placement="product_related"
-    items={displayItems}
+    items={finalItems}
   />
 )}

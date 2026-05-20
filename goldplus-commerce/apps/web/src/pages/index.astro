@@ -9,6 +9,7 @@ import CartAwareRail from '../components/home/CartAwareRail.astro';
 import CategoryAwareRail from '../components/home/CategoryAwareRail.astro';
 import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
 import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
+import { LOCAL_SEED_PRODUCTS } from '../lib/catalog/catalog';
 
 let allProducts: ProductPublicDto[] = [];
 let hasApiError = false;
@@ -18,14 +19,17 @@ try {
   const res = await fetch(`${apiBase}/products?limit=12`, { signal: AbortSignal.timeout(3000) });
   if (res.ok) {
     const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-    if (json.success) {
+    if (json.success && json.data && json.data.length > 0) {
       allProducts = json.data;
     }
-  } else {
-    hasApiError = true;
   }
 } catch {
-  hasApiError = true;
+  // Graceful fallback
+}
+
+if (allProducts.length === 0) {
+  allProducts = LOCAL_SEED_PRODUCTS;
+  hasApiError = false;
 }
 
 // Execute cross-section deduplication and building of allocations

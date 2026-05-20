@@ -6,6 +6,7 @@ import { apiBase } from '../../lib/api';
 import type { ProductPublicDto, ApiEnvelope } from '@goldplus/shared';
 import CompleteSetupRail from '../../components/recommendations/CompleteSetupRail.astro';
 import RelatedProductsRail from '../../components/recommendations/RelatedProductsRail.astro';
+import RecentlyViewedRail from '../../components/recommendations/RecentlyViewedRail.astro';
 import { LOCAL_SEED_PRODUCTS, normalizeProductCategory } from '../../lib/catalog/catalog';
 
 const { slug } = Astro.params;
@@ -52,6 +53,50 @@ if (!product) {
   } else {
     return Astro.redirect('/404', 404);
   }
+}
+
+// Fallback products for PDP "You May Also Like" rail
+let pdpFallbackProducts: Array<{
+  productId: string;
+  slug: string;
+  name: string;
+  imageUrl?: string;
+  price?: number;
+}> = [];
+
+try {
+  let allProducts: ProductPublicDto[] = [];
+  const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
+  if (res.ok) {
+    const json = await res.json() as ApiResponse<ProductPublicDto[]>;
+    if (json.success && json.data) {
+      allProducts = json.data;
+    }
+  }
+  if (allProducts.length === 0) {
+    allProducts = LOCAL_SEED_PRODUCTS;
+  }
+  pdpFallbackProducts = allProducts
+    .filter(p => p.id !== product.id)
+    .slice(0, 4)
+    .map(p => ({
+      productId: p.id,
+      slug: p.slug,
+      name: p.name,
+      imageUrl: p.primaryImageUrl ?? undefined,
+      price: p.retailPriceUgx ?? undefined,
+    }));
+} catch {
+  pdpFallbackProducts = LOCAL_SEED_PRODUCTS
+    .filter(p => p.id !== product.id)
+    .slice(0, 4)
+    .map(p => ({
+      productId: p.id,
+      slug: p.slug,
+      name: p.name,
+      imageUrl: p.primaryImageUrl ?? undefined,
+      price: p.retailPriceUgx ?? undefined,
+    }));
 }
 
 const formatUgx = (amount: number): string =>
@@ -232,6 +277,14 @@ const canonical = Astro.url.toString();
         </div>
         <div class="border-t border-brand-borderGrey pt-12">
           <RelatedProductsRail productId={product.id} />
+        </div>
+        <div class="border-t border-brand-borderGrey pt-12">
+          <RecentlyViewedRail 
+            title="You May Also Like" 
+            subtitle="Products you recently viewed or might be interested in." 
+            alwaysRender={true} 
+            fallbackProducts={pdpFallbackProducts} 
+          />
         </div>
       </div>
     )}

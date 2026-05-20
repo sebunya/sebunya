@@ -1,7 +1,10 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations, shouldRenderRail } from "../../lib/recommendation-display";
+import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+import { LOCAL_SEED_PRODUCTS, CATEGORY_SLUG_TO_NAME } from "../../lib/catalog/catalog";
+import { apiBase } from "../../lib/api";
+import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
 interface Props {
   categoryId?: string;
@@ -21,14 +24,51 @@ const displayItems = filterDisplayableRecommendations(response.items, {
   limit: 4,
 });
 
-const render = shouldRenderRail(displayItems, 2);
+let finalItems = displayItems;
+
+if (finalItems.length === 0) {
+  let allProducts: ProductPublicDto[] = [];
+  try {
+    const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const json = await res.json() as ApiResponse<ProductPublicDto[]>;
+      if (json.success && json.data) {
+        allProducts = json.data;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  if (allProducts.length === 0) {
+    allProducts = LOCAL_SEED_PRODUCTS;
+  }
+  
+  // Find category name from slug
+  const targetCategory = categorySlug ? CATEGORY_SLUG_TO_NAME[categorySlug] : undefined;
+  
+  // Filter products by category slug/name if present
+  let filtered = allProducts;
+  if (targetCategory) {
+    filtered = allProducts.filter(p => p.categoryName === targetCategory);
+  }
+  
+  finalItems = filtered.slice(0, 4).map(p => ({
+    productId: p.id,
+    slug: p.slug,
+    name: p.name,
+    imageUrl: p.primaryImageUrl ?? undefined,
+    price: p.retailPriceUgx ?? undefined,
+    score: 0.5,
+    reasonCode: "CATEGORY_FALLBACK",
+  }));
+}
 ---
 
-{render && (
+{finalItems.length > 0 && (
   <RecommendationRail
-    title="Top picks in this category"
+    title="Popular in this category"
     subtitle="Customer favourites from this product family."
     placement="category_popular"
-    items={displayItems}
+    items={finalItems}
   />
 )}
