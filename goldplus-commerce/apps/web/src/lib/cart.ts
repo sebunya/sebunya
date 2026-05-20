@@ -57,6 +57,8 @@ export function parseLocalCartCookie(cookieValue: string | undefined): CartItem[
         category: item.category ? String(item.category) : undefined
       }));
     }
-  } catch {}
+  } catch {
+    // Ignore invalid JSON parsing errors
+  }
   return [];
 }
