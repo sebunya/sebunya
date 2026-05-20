@@ -7,7 +7,7 @@ export const dealerApplications = pgTable('dealer_applications', {
   email: varchar('email', { length: 255 }).notNull(),
   phone: varchar('phone', { length: 50 }).notNull(),
   tinNumber: varchar('tin_number', { length: 50 }).notNull(),
-  location: varchar('location', { length: 255 }).notNull(),
+  location: varchar('location', { length: 512 }).notNull(),
 
   experience: text('experience'),
   status: varchar('status', { length: 50 }).default('pending').notNull(), // pending, under_review, approved, rejected
