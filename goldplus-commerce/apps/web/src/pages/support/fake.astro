@@ -66,11 +66,11 @@ if (Astro.request.method === 'POST') {
 <BaseLayout title="Report counterfeit product | GoldPlus">
   <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-2xl mx-auto">
-      <div class="bg-red-50 border border-red-150 rounded-3xl p-6 md:p-8 mb-8 flex gap-5 items-start shadow-sm">
-        <div aria-hidden="true" class="w-12 h-12 bg-red-100 text-brand-error rounded-2xl flex items-center justify-center flex-shrink-0 font-black text-xl border border-red-200">!</div>
+      <div class="bg-red-50/45 border border-red-200/60 rounded-2xl p-6 md:p-8 mb-8 flex gap-5 items-start shadow-xs">
+        <div aria-hidden="true" class="w-12 h-12 bg-red-100 text-red-650 rounded-xl flex items-center justify-center flex-shrink-0 font-black text-xl border border-red-200/70 shadow-xs">!</div>
         <div>
-          <h1 class="text-xl md:text-2xl font-black text-brand-error mb-1">Report a counterfeit product</h1>
-          <p class="text-red-750 text-sm leading-relaxed font-medium">
+          <h1 class="text-lg md:text-xl font-black text-red-650 mb-1">Report a counterfeit product</h1>
+          <p class="text-red-500/90 text-sm leading-relaxed font-medium">
             Your report helps us eliminate fake electronics in Uganda. We investigate every submission and refer serious cases to the relevant authorities.
           </p>
         </div>
@@ -79,10 +79,10 @@ if (Astro.request.method === 'POST') {
       <FormFeedback status={status} message={message} reference={reference} />
 
       <form method="POST" action="/support/fake" novalidate id="fakeForm" class="space-y-6">
-        <div class="bg-white p-8 md:p-10 rounded-3xl border border-brand-borderGrey shadow-xl space-y-6">
+        <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
           
           <fieldset class="space-y-5">
-            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Discovery Location</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Discovery Location</legend>
             <UgandaLocationPicker 
                name="locationJson" 
                label="Where did you find the product?" 
@@ -90,7 +90,7 @@ if (Astro.request.method === 'POST') {
                required={false} 
                defaultValue={values.locationJson} 
                errorMessage={errors.locationJson} 
-            />
+             />
             <FormField 
                id="locationFound" 
                name="locationFound" 
@@ -102,8 +102,8 @@ if (Astro.request.method === 'POST') {
             />
           </fieldset>
           
-          <fieldset class="space-y-5 pt-4 border-t border-brand-borderGrey">
-            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Product Information</legend>
+          <fieldset class="space-y-5 pt-4 border-t border-slate-100">
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Product Information</legend>
             <FormField 
               id="productDescription" 
               name="productDescription" 
@@ -125,8 +125,8 @@ if (Astro.request.method === 'POST') {
             />
           </fieldset>
           
-          <fieldset class="pt-4 border-t border-brand-borderGrey">
-             <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4">Your Contact Details</legend>
+          <fieldset class="pt-4 border-t border-slate-100">
+             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Your Contact Details</legend>
              <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <FormField 
                   id="reporterEmail" 
@@ -150,15 +150,15 @@ if (Astro.request.method === 'POST') {
                   errorMessage={errors.reporterPhone}
                 />
              </div>
-             <p class="text-xs text-brand-mutedGrey mt-3 font-medium">We may contact you to verify details. Your report protects buyers.</p>
+             <p class="text-xs text-slate-400 mt-3 font-medium">We may contact you to verify details. Your report protects buyers.</p>
           </fieldset>
         </div>
 
         <div class="flex items-center gap-4">
-          <button type="submit" id="submitBtn" class="bg-brand-error text-white px-8 py-3.5 rounded-xl font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-error/30 outline-none transition-all text-sm shadow-md shadow-brand-error/10">
+          <button type="submit" id="submitBtn" class="bg-red-600 text-white px-8 py-2.5 rounded-full font-bold hover:bg-red-750 transition-all text-xs tracking-wider uppercase shadow-xs cursor-pointer active:scale-98">
             Submit report
           </button>
-          <a href="/support" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal transition-colors">Cancel</a>
+          <a href="/support" class="text-xs font-bold text-slate-400 hover:text-gray-900 transition-colors hover:underline">Cancel</a>
         </div>
       </form>
     </div>

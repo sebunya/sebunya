@@ -94,18 +94,18 @@ if (Astro.request.method === 'POST') {
 <BaseLayout title="Report a technical issue">
   <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-2xl mx-auto">
-      <h1 class="text-3xl font-black text-brand-charcoal mb-3">Report a technical issue</h1>
-      <p class="text-brand-mutedGrey mb-8 leading-relaxed font-medium">
+      <h1 class="text-2xl sm:text-3xl font-black text-gray-900 mb-2">Report a technical issue</h1>
+      <p class="text-slate-500 mb-8 leading-relaxed font-medium text-sm sm:text-base">
         Describe what's happening so our technical team can help you. The more detail, the faster we can resolve it.
       </p>
 
       <FormFeedback status={status} message={message} reference={reference} />
 
       <form method="POST" action="/support/issue" novalidate id="supportForm" class="space-y-6">
-        <div class="bg-white p-8 md:p-10 rounded-3xl border border-brand-borderGrey shadow-xl space-y-6">
+        <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
           
           <fieldset class="space-y-5">
-            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Product & Issue Details</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Product & Issue Details</legend>
             <FormField 
               id="subject" 
               name="subject" 
@@ -139,8 +139,8 @@ if (Astro.request.method === 'POST') {
             />
           </fieldset>
 
-          <fieldset class="space-y-4 pt-4 border-t border-brand-borderGrey">
-            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Location Context (Optional)</legend>
+          <fieldset class="space-y-4 pt-4 border-t border-slate-100">
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Location Context (Optional)</legend>
             <UgandaLocationPicker 
                name="locationJson" 
                label="Location related to this issue" 
@@ -158,8 +158,8 @@ if (Astro.request.method === 'POST') {
             />
           </fieldset>
 
-          <fieldset class="pt-4 border-t border-brand-borderGrey">
-             <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4">Your Contact Details</legend>
+          <fieldset class="pt-4 border-t border-slate-100">
+             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Your Contact Details</legend>
              <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <FormField 
                   id="email" 
@@ -183,15 +183,15 @@ if (Astro.request.method === 'POST') {
                   errorMessage={errors.phone}
                 />
              </div>
-             <p class="text-xs text-brand-mutedGrey mt-3 font-medium">We use these only to follow up about your support request.</p>
+             <p class="text-xs text-slate-400 mt-3 font-medium">We use these only to follow up about your support request.</p>
           </fieldset>
         </div>
 
         <div class="flex items-center gap-4">
-          <button type="submit" id="submitBtn" class="bg-brand-primary text-brand-charcoal px-8 py-3.5 rounded-xl font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none transition-all text-sm shadow-md shadow-brand-primary/10">
+          <button type="submit" id="submitBtn" class="bg-brand-primary text-gray-955 px-8 py-2.5 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 transition-all text-xs tracking-wider uppercase shadow-xs cursor-pointer active:scale-98">
             Submit issue
           </button>
-          <a href="/support" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal transition-colors">Cancel</a>
+          <a href="/support" class="text-xs font-bold text-slate-400 hover:text-gray-900 transition-colors hover:underline">Cancel</a>
         </div>
       </form>
     </div>

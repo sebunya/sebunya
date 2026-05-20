@@ -188,7 +188,7 @@ const formatUgx = (n: number): string =>
 
 <BaseLayout title="Your cart">
   <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
-    <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal mb-8 tracking-tight">Your cart</h1>
+    <h1 class="text-2xl md:text-3xl font-black text-gray-900 mb-8 tracking-tight">Your cart</h1>
 
     {fetchError && (
       <div class="mb-6">
@@ -202,19 +202,19 @@ const formatUgx = (n: number): string =>
           title="Your cart is empty"
           message="Browse the shop and add a product to get started. Cart contents persist for this device."
         >
-          <a href="/shop" class="inline-block px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none">
+          <a href="/shop" class="inline-block px-6 py-2.5 bg-brand-primary text-gray-955 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 active:scale-95 transition-all text-sm outline-none">
             Start shopping
           </a>
         </EmptyState>
-        <div class="mt-16 pt-8 border-t border-brand-borderGrey">
+        <div class="mt-16 pt-8 border-t border-slate-100">
           <PopularNowRail />
         </div>
       </>
     ) : (
       <div class="flex flex-col lg:flex-row gap-10">
         <div class="w-full lg:w-2/3">
-          <div class="bg-white rounded-2xl border border-brand-borderGrey overflow-hidden shadow-sm">
-            <ul class="divide-y divide-brand-borderGrey" aria-label="Cart items">
+          <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
+            <ul class="divide-y divide-slate-100" aria-label="Cart items">
               {items.map((item) => {
                 // Recover matching local product image
                 const localProd = LOCAL_SEED_PRODUCTS.find(p => p.id === item.productId || p.slug === item.slug);
@@ -226,20 +226,20 @@ const formatUgx = (n: number): string =>
                       <img 
                         src={imageUrl} 
                         alt={item.name} 
-                        class="w-20 h-20 object-cover bg-brand-softGrey rounded-lg flex-shrink-0 border border-brand-borderGrey"
+                        class="w-20 h-20 object-cover bg-slate-50 rounded-xl flex-shrink-0 border border-slate-200/60 p-1"
                       />
                     ) : (
-                      <div class="w-20 h-20 bg-brand-softGrey rounded-lg flex-shrink-0 flex items-center justify-center text-[10px] text-brand-mutedGrey font-bold border border-brand-borderGrey uppercase text-center p-2">
+                      <div class="w-20 h-20 bg-slate-50 rounded-xl flex-shrink-0 flex items-center justify-center text-[10px] text-slate-400 font-bold border border-slate-200/60 uppercase text-center p-2">
                         No image
                       </div>
                     )}
                     
                     <div class="flex-grow min-w-0">
                       {item.categoryName && (
-                        <p class="text-xs font-bold text-brand-primary uppercase tracking-widest mb-1">{item.categoryName}</p>
+                        <p class="text-[10px] font-bold text-brand-primary uppercase tracking-wider mb-1">{item.categoryName}</p>
                       )}
-                      <a href={`/products/${item.slug}`} class="font-bold text-brand-charcoal hover:underline">{item.name}</a>
-                      <p class="text-sm text-brand-mutedGrey mt-1">{formatUgx(item.unitPriceUgx)} each</p>
+                      <a href={`/products/${item.slug}`} class="font-bold text-gray-900 hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-2">{item.name}</a>
+                      <p class="text-xs text-slate-500 mt-1">{formatUgx(item.unitPriceUgx)} each</p>
                     </div>
                     
                     {/* Quantity Selector controls */}
@@ -253,12 +253,12 @@ const formatUgx = (n: number): string =>
                           name="quantity" 
                           value={item.quantity - 1} 
                           aria-label="Decrease quantity"
-                          class="w-8 h-8 rounded-full border border-brand-borderGrey flex items-center justify-center font-bold text-brand-charcoal hover:bg-brand-softGrey transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"
+                          class="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 transition-colors outline-none cursor-pointer"
                         >
                           -
                         </button>
                         
-                        <span class="w-8 text-center font-bold text-brand-charcoal text-sm" aria-label={`Quantity: ${item.quantity}`}>
+                        <span class="w-8 text-center font-bold text-gray-900 text-sm" aria-label={`Quantity: ${item.quantity}`}>
                           {item.quantity}
                         </span>
                         
@@ -267,7 +267,7 @@ const formatUgx = (n: number): string =>
                           name="quantity" 
                           value={item.quantity + 1} 
                           aria-label="Increase quantity"
-                          class="w-8 h-8 rounded-full border border-brand-borderGrey flex items-center justify-center font-bold text-brand-charcoal hover:bg-brand-softGrey transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"
+                          class="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 transition-colors outline-none cursor-pointer"
                         >
                           +
                         </button>
@@ -279,7 +279,7 @@ const formatUgx = (n: number): string =>
                         <button 
                           type="submit" 
                           aria-label={`Remove ${item.name} from cart`}
-                          class="p-2 text-brand-mutedGrey hover:text-brand-error transition-colors rounded-lg hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-brand-error outline-none"
+                          class="p-2 text-slate-400 hover:text-red-600 transition-colors rounded-full hover:bg-red-50/50 outline-none cursor-pointer"
                         >
                           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -288,7 +288,7 @@ const formatUgx = (n: number): string =>
                       </form>
                     </div>
 
-                    <p class="font-bold text-brand-charcoal whitespace-nowrap text-right min-w-[80px]">{formatUgx(item.unitPriceUgx * item.quantity)}</p>
+                    <p class="font-bold text-gray-900 whitespace-nowrap text-right min-w-[80px] text-sm md:text-base">{formatUgx(item.unitPriceUgx * item.quantity)}</p>
                   </li>
                 );
               })}
@@ -297,30 +297,30 @@ const formatUgx = (n: number): string =>
         </div>
 
         <aside class="w-full lg:w-1/3">
-          <div class="bg-white rounded-2xl border border-brand-borderGrey p-6 sticky top-24 shadow-sm">
-            <h2 class="text-lg font-bold text-brand-charcoal mb-4">Summary</h2>
+          <div class="bg-white rounded-2xl border border-slate-200/80 p-6 sticky top-24 shadow-xs">
+            <h2 class="text-lg font-bold text-gray-900 mb-4">Summary</h2>
             <dl class="space-y-3 text-sm">
               <div class="flex items-center justify-between">
-                <dt class="text-brand-mutedGrey">Subtotal</dt>
-                <dd class="font-bold text-brand-charcoal">{formatUgx(subtotal)}</dd>
+                <dt class="text-slate-550">Subtotal</dt>
+                <dd class="font-bold text-gray-900">{formatUgx(subtotal)}</dd>
               </div>
               <div class="flex items-center justify-between">
-                <dt class="text-brand-mutedGrey">Delivery</dt>
-                <dd class="text-brand-mutedGrey italic">Calculated at checkout</dd>
+                <dt class="text-slate-550">Delivery</dt>
+                <dd class="text-slate-400 italic">Calculated at checkout</dd>
               </div>
-              <div class="flex items-center justify-between pt-3 border-t border-brand-borderGrey">
-                <dt class="font-bold text-brand-charcoal">Total</dt>
-                <dd class="font-black text-brand-charcoal text-lg">{formatUgx(subtotal)}</dd>
+              <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+                <dt class="font-bold text-gray-900">Total</dt>
+                <dd class="font-black text-gray-900 text-lg">{formatUgx(subtotal)}</dd>
               </div>
             </dl>
 
             <a
               href="/checkout"
-              class="block w-full text-center mt-6 px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none transition-all shadow-sm"
+              class="block w-full text-center mt-6 px-6 py-2.5 bg-brand-primary text-gray-950 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/25 outline-none transition-all shadow-sm cursor-pointer hover:scale-[1.01] active:scale-[0.98] text-sm"
             >
               Continue to checkout
             </a>
-            <a href="/shop" class="block text-center mt-3 text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal transition-colors">
+            <a href="/shop" class="block text-center mt-3 text-xs font-bold text-slate-400 hover:text-gray-900 transition-colors hover:underline">
               Continue shopping
             </a>
           </div>
@@ -330,7 +330,7 @@ const formatUgx = (n: number): string =>
 
     {/* Smart Upsell Area */}
     {items.length > 0 && (
-      <div class="mt-16 pt-8 border-t border-brand-borderGrey">
+      <div class="mt-16 pt-8 border-t border-slate-100">
         <CartAddonRail cartProductIds={cartProductIds} />
       </div>
     )}

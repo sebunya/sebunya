@@ -88,33 +88,33 @@ const checkedKind = values.kind || initialKind;
 ---
 
 <BaseLayout title="Request a quote | GoldPlus">
-  <div class="bg-brand-charcoal text-white py-16 border-b border-brand-borderGrey">
+  <div class="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 text-white py-14 border-b border-slate-950">
     <div class="container mx-auto px-4 lg:px-8">
-      <h1 class="text-3xl md:text-5xl font-black tracking-tight text-white mb-4">Request a quote</h1>
-      <p class="text-gray-300 max-w-2xl text-base md:text-lg leading-relaxed font-medium">
+      <h1 class="text-3xl md:text-4xl font-black tracking-tight text-white mb-4">Request a quote</h1>
+      <p class="text-slate-400 max-w-2xl text-sm sm:text-base leading-relaxed font-medium">
         Tell us what you need. Our sales team prepares pricing and lead times for retail bulk, wholesale and corporate orders.
       </p>
     </div>
   </div>
 
-  <div class="container mx-auto px-4 lg:px-8 py-16">
+  <div class="container mx-auto px-4 lg:px-8 py-14">
     <div class="max-w-2xl mx-auto space-y-6">
       <FormFeedback status={status} message={message} reference={reference} />
       <Notice kind="info" message="Pricing for volume orders is calculated dynamically based on current inventory and routing. Submit this form and a sales agent will prepare a non-binding estimate for you." />
 
-      <div class="bg-white p-8 md:p-10 rounded-3xl border border-brand-borderGrey shadow-xl">
+      <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs">
         <form method="POST" action="/quote-request" novalidate id="quoteForm" class="space-y-8">
 
           <fieldset class="space-y-3">
-            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Buyer type</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Buyer type</legend>
             <div class="grid grid-cols-3 gap-3" id="buyerTypeSelector">
               {buyerOptions.map((opt) => {
                 const isSelected = checkedKind === opt.v;
                 return (
                   <label class={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border cursor-pointer text-xs font-bold transition-all duration-300 select-none ${
                     isSelected 
-                      ? 'bg-brand-charcoal text-white border-brand-charcoal shadow-sm' 
-                      : 'bg-brand-softGrey text-brand-mutedGrey border-brand-borderGrey hover:bg-white hover:text-brand-charcoal'
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-sm' 
+                      : 'bg-slate-50 text-slate-500 border-slate-200/70 hover:bg-white hover:text-slate-900 hover:border-slate-350'
                   }`}>
                     <input type="radio" name="kind" value={opt.v} checked={isSelected} class="sr-only" />
                     <span>{opt.l}</span>
@@ -124,8 +124,8 @@ const checkedKind = values.kind || initialKind;
             </div>
           </fieldset>
 
-          <fieldset class="space-y-5 pt-4 border-t border-brand-borderGrey">
-            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Your Details</legend>
+          <fieldset class="space-y-5 pt-4 border-t border-slate-100">
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Your Details</legend>
             <FormField id="customerName" name="customerName" label="Your name" required defaultValue={values.customerName} autocomplete="name" errorMessage={errors.customerName} />
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField id="email" name="email" label="Email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
@@ -133,8 +133,8 @@ const checkedKind = values.kind || initialKind;
             </div>
           </fieldset>
 
-          <fieldset class="space-y-5 pt-4 border-t border-brand-borderGrey">
-            <legend class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">Request Details</legend>
+          <fieldset class="space-y-5 pt-4 border-t border-slate-100">
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Request Details</legend>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField id="productName" name="productName" label="Product or category" required defaultValue={values.productName} placeholder="e.g. Fast chargers, USB-C cables" errorMessage={errors.productName} />
               <FormField id="quantity" name="quantity" label="Quantity needed" required defaultValue={values.quantity} placeholder="e.g. 50 units" errorMessage={errors.quantity} />
@@ -161,7 +161,7 @@ const checkedKind = values.kind || initialKind;
             <FormField id="message" name="message" label="Notes for sales" type="textarea" rows={4} defaultValue={values.message} placeholder="Anything we should know? Delivery deadlines, special needs, packaging…" />
           </fieldset>
 
-          <button type="submit" id="submitBtn" class="w-full bg-brand-primary text-brand-charcoal py-4 rounded-xl font-bold text-base hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none transition-all shadow-md shadow-brand-primary/10">
+          <button type="submit" id="submitBtn" class="w-full bg-brand-primary text-gray-955 py-3 rounded-full font-bold text-sm tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985]">
             Request quote
           </button>
         </form>
@@ -182,12 +182,12 @@ const checkedKind = values.kind || initialKind;
     const radio = label.querySelector('input[type="radio"]') as HTMLInputElement;
     radio?.addEventListener('change', () => {
       labels.forEach(l => {
-        l.classList.remove('bg-brand-charcoal', 'text-white', 'border-brand-charcoal', 'shadow-sm');
-        l.classList.add('bg-brand-softGrey', 'text-brand-mutedGrey', 'border-brand-borderGrey');
+        l.classList.remove('bg-slate-900', 'text-white', 'border-slate-900', 'shadow-sm');
+        l.classList.add('bg-slate-50', 'text-slate-500', 'border-slate-200/70');
       });
       if (radio.checked) {
-        label.classList.remove('bg-brand-softGrey', 'text-brand-mutedGrey', 'border-brand-borderGrey');
-        label.classList.add('bg-brand-charcoal', 'text-white', 'border-brand-charcoal', 'shadow-sm');
+        label.classList.remove('bg-slate-50', 'text-slate-500', 'border-slate-200/70');
+        label.classList.add('bg-slate-900', 'text-white', 'border-slate-900', 'shadow-sm');
       }
     });
   });

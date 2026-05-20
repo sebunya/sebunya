@@ -124,10 +124,10 @@ const statusBadge: Record<string, { label: string; class: string }> = {
 ---
 
 <BaseLayout title="Track Your Order - GoldPlus">
-  <div class="bg-brand-softGrey py-10 border-b border-brand-borderGrey">
+  <div class="bg-gradient-to-b from-slate-50 to-white py-10 border-b border-slate-100">
     <div class="container mx-auto px-4 lg:px-8">
-      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-brand-charcoal mb-2">Track your order</h1>
-      <p class="text-brand-mutedGrey max-w-xl">Enter your order reference and contact details below to check delivery status and checkout details.</p>
+      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-gray-900 mb-2">Track your order</h1>
+      <p class="text-slate-500 max-w-xl text-sm">Enter your order reference and contact details below to check delivery status and checkout details.</p>
     </div>
   </div>
 
@@ -139,7 +139,7 @@ const statusBadge: Record<string, { label: string; class: string }> = {
         <div class="max-w-md mx-auto">
           <FormFeedback status={status} message={message} />
           
-          <form method="POST" action="/track-order" novalidate class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm space-y-5 mt-4">
+          <form method="POST" action="/track-order" novalidate class="bg-white p-8 rounded-2xl border border-slate-200/80 shadow-xs space-y-5 mt-4">
             <FormField 
               id="orderReference" 
               name="orderReference" 
@@ -160,12 +160,12 @@ const statusBadge: Record<string, { label: string; class: string }> = {
             
             <button
               type="submit"
-              class="w-full bg-brand-primary text-brand-charcoal py-3 rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none"
+              class="w-full bg-brand-primary text-gray-955 py-2.5 rounded-full font-bold text-xs tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985]"
             >
               Verify & Find Order
             </button>
             
-            <p class="text-xs text-brand-mutedGrey text-center leading-relaxed">
+            <p class="text-xs text-slate-400 text-center leading-relaxed">
               We value your privacy. Real-time verification protects order details and delivery coordinates.
             </p>
           </form>
@@ -175,11 +175,11 @@ const statusBadge: Record<string, { label: string; class: string }> = {
       {/* RENDER SUCCESS STATE: Real Order Detail */}
       {order && (
         <div class="space-y-6">
-          <div class="flex items-center justify-between pb-6 border-b border-brand-borderGrey">
+          <div class="flex items-center justify-between pb-6 border-b border-slate-200/60">
             <div>
-              <a href="/track-order" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal mb-3 inline-block">&larr; Look up another order</a>
-              <h2 class="text-3xl font-black text-brand-charcoal tracking-tight">{order.orderNumber}</h2>
-              <p class="text-xs text-brand-mutedGrey mt-1">Placed {new Date(order.createdAt).toLocaleDateString('en-GB')} at {new Date(order.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
+              <a href="/track-order" class="text-xs font-bold text-slate-400 hover:text-gray-900 mb-3 inline-block transition-colors hover:underline">&larr; Look up another order</a>
+              <h2 class="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">{order.orderNumber}</h2>
+              <p class="text-xs text-slate-450 mt-1.5 font-medium font-medium">Placed {new Date(order.createdAt).toLocaleDateString('en-GB')} at {new Date(order.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
             </div>
             
             <div class="text-right">
@@ -190,11 +190,11 @@ const statusBadge: Record<string, { label: string; class: string }> = {
           </div>
 
           {/* Visual Order Progress Timeline */}
-          <div class="bg-white border border-brand-borderGrey rounded-2xl p-6 md:p-8">
-            <h3 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-6">Delivery status progress</h3>
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-6 md:p-8 shadow-xs">
+            <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6">Delivery status progress</h3>
             
             <div class="relative flex flex-col md:flex-row justify-between gap-6 md:gap-0">
-              <div class="absolute top-1/2 left-0 w-full h-0.5 bg-gray-100 -translate-y-1/2 hidden md:block" aria-hidden="true"></div>
+              <div class="absolute top-1/2 left-0 w-full h-[1px] bg-slate-100 -translate-y-1/2 hidden md:block" aria-hidden="true"></div>
               
               {/* Timeline Steps */}
               {['received', 'processing', 'completed'].map((step, idx) => {
@@ -212,15 +212,15 @@ const statusBadge: Record<string, { label: string; class: string }> = {
                 return (
                   <div class="relative flex items-center md:flex-col gap-4 md:gap-2 z-10 md:w-1/3 text-left md:text-center">
                     <div class={`w-10 h-10 rounded-full flex items-center justify-center border font-bold text-sm transition-all duration-300 ${
-                      isCurrent ? 'bg-brand-primary border-brand-primary text-brand-charcoal scale-110 shadow-sm' :
-                      isPast ? 'bg-green-50 border-green-300 text-green-700' :
-                      'bg-white border-gray-200 text-gray-400'
+                      isCurrent ? 'bg-brand-primary border-brand-primary text-gray-955 scale-110 shadow-sm' :
+                      isPast ? 'bg-emerald-50 border-emerald-250 text-emerald-700 shadow-xs' :
+                      'bg-white border-gray-250 text-gray-400'
                     }`}>
                       {isPast ? '✓' : idx + 1}
                     </div>
                     <div>
-                      <p class={`font-bold text-sm ${isCurrent ? 'text-brand-charcoal' : 'text-brand-mutedGrey'}`}>{labels[step]}</p>
-                      <p class="text-xs text-brand-mutedGrey mt-0.5">
+                      <p class={`font-bold text-sm ${isCurrent ? 'text-gray-900' : 'text-slate-500'}`}>{labels[step]}</p>
+                      <p class="text-xs text-slate-400 mt-1 font-medium font-medium">
                         {step === 'received' && 'Awaiting zone logistics'}
                         {step === 'processing' && 'Fulfilling hardware'}
                         {step === 'completed' && 'Settled successfully'}
@@ -235,49 +235,49 @@ const statusBadge: Record<string, { label: string; class: string }> = {
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
             {/* Items Summary list */}
-            <div class="bg-white border border-brand-borderGrey rounded-2xl overflow-hidden lg:col-span-2 shadow-sm">
-              <h3 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey px-6 pt-6 mb-3">Order items</h3>
-              <ul class="divide-y divide-brand-borderGrey" aria-label="Items ordered">
+            <div class="bg-white border border-slate-200/80 rounded-2xl overflow-hidden lg:col-span-2 shadow-xs">
+              <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400 px-6 pt-6 mb-2">Order items</h3>
+              <ul class="divide-y divide-slate-100" aria-label="Items ordered">
                 {order.items.map((item) => (
                   <li class="p-6 flex items-start gap-4">
                     <div class="flex-grow min-w-0">
-                      <p class="font-bold text-brand-charcoal">{item.name}</p>
-                      <p class="text-xs text-brand-mutedGrey mt-1">SKU: {item.sku}</p>
-                      <p class="text-sm text-brand-mutedGrey mt-1">Qty {item.quantity} × {formatUgx(item.price)}</p>
+                      <p class="font-bold text-gray-900">{item.name}</p>
+                      <p class="text-xs text-slate-450 mt-1">SKU: {item.sku}</p>
+                      <p class="text-sm text-slate-450 mt-1">Qty {item.quantity} × {formatUgx(item.price)}</p>
                     </div>
-                    <p class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(item.price * item.quantity)}</p>
+                    <p class="font-bold text-gray-900 whitespace-nowrap text-sm">{formatUgx(item.price * item.quantity)}</p>
                   </li>
                 ))}
               </ul>
-              <div class="bg-brand-softGrey border-t border-brand-borderGrey p-6 space-y-2 text-sm">
-                <div class="flex justify-between text-brand-mutedGrey">
+              <div class="bg-slate-50 border-t border-slate-100 p-6 space-y-2.5 text-sm">
+                <div class="flex justify-between text-slate-500 font-medium">
                   <span>Subtotal</span>
-                  <span class="font-bold text-brand-charcoal">{formatUgx(order.subtotalUgx)}</span>
+                  <span class="font-bold text-gray-900">{formatUgx(order.subtotalUgx)}</span>
                 </div>
-                <div class="flex justify-between text-brand-mutedGrey">
+                <div class="flex justify-between text-slate-500 font-medium">
                   <span>Delivery fee</span>
-                  <span class="font-bold text-brand-charcoal">{order.deliveryFeeUgx === 0 ? 'Calculated post-zone' : formatUgx(order.deliveryFeeUgx)}</span>
+                  <span class="font-bold text-gray-900">{order.deliveryFeeUgx === 0 ? 'Calculated post-zone' : formatUgx(order.deliveryFeeUgx)}</span>
                 </div>
-                <div class="flex justify-between text-brand-charcoal text-base font-bold pt-3 border-t border-brand-borderGrey">
+                <div class="flex justify-between text-gray-900 text-sm font-bold pt-3 border-t border-slate-150">
                   <span>Grand total</span>
-                  <span class="text-lg font-black">{formatUgx(order.totalUgx)}</span>
+                  <span class="text-lg font-black text-gray-900">{formatUgx(order.totalUgx)}</span>
                 </div>
               </div>
             </div>
 
             {/* Delivery & Customer Info */}
             <div class="space-y-6 lg:col-span-1">
-              <section class="bg-white border border-brand-borderGrey rounded-2xl p-6 shadow-sm">
-                <h3 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Customer contact</h3>
-                <p class="font-bold text-brand-charcoal break-all">{order.customerName}</p>
-                <p class="text-sm text-brand-mutedGrey mt-1 break-all">{maskPhone(order.customerPhone)}</p>
-                {order.customerEmail && <p class="text-sm text-brand-mutedGrey mt-0.5 break-all">{maskEmail(order.customerEmail)}</p>}
+              <section class="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
+                <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2.5">Customer contact</h3>
+                <p class="font-bold text-gray-900 break-all">{order.customerName}</p>
+                <p class="text-xs text-slate-500 mt-1 break-all font-medium font-medium">{maskPhone(order.customerPhone)}</p>
+                {order.customerEmail && <p class="text-xs text-slate-500 mt-1 break-all font-medium font-medium">{maskEmail(order.customerEmail)}</p>}
               </section>
 
-              <section class="bg-white border border-brand-borderGrey rounded-2xl p-6 shadow-sm">
-                <h3 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Delivery coordinates</h3>
-                <p class="font-bold text-brand-charcoal">{order.deliveryArea}</p>
-                <p class="text-sm text-brand-mutedGrey mt-1 leading-relaxed">{order.deliveryAddress || 'Landmark omitted for public privacy.'}</p>
+              <section class="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
+                <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2.5">Delivery coordinates</h3>
+                <p class="font-bold text-gray-900">{order.deliveryArea}</p>
+                <p class="text-xs text-slate-500 mt-1.5 leading-relaxed font-medium font-medium">{order.deliveryAddress || 'Landmark omitted for public privacy.'}</p>
               </section>
 
               {/* WhatsApp Handoff Action */}
@@ -285,7 +285,7 @@ const statusBadge: Record<string, { label: string; class: string }> = {
                 href={`https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(`Hello GoldPlus, I need help with order ${order.orderNumber}`)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                class="w-full bg-brand-charcoal hover:bg-black text-white py-4 px-6 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm text-center"
+                class="w-full bg-slate-900 hover:bg-slate-950 text-white py-3 px-6 rounded-full font-bold flex items-center justify-center gap-2 shadow-xs text-center text-xs tracking-wider uppercase transition-all hover:scale-[1.005] active:scale-[0.985]"
               >
                 <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.262 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.754-1.458L0 24zM6.59 5.86c-.22-.492-.452-.503-.66-.512-.17-.008-.364-.007-.56-.007-.195 0-.514.073-.783.366-.268.293-1.026 1.002-1.026 2.441 0 1.439 1.047 2.829 1.193 3.023.147.195 2.059 3.145 4.988 4.41.698.302 1.242.482 1.668.618.7.223 1.34.191 1.844.116.563-.083 1.732-.708 1.977-1.393.243-.684.243-1.27.17-1.393-.073-.122-.268-.195-.561-.341-.293-.146-1.732-.853-2.001-.951-.269-.098-.464-.147-.66.146-.195.293-.757.951-.928 1.147-.171.195-.342.22-.635.073-.293-.146-1.238-.457-2.36-1.457-.872-.777-1.46-1.738-1.631-2.03-.171-.293-.018-.452.129-.597.132-.131.293-.342.44-.512.146-.17.195-.293.293-.488.097-.195.048-.366-.024-.512-.072-.147-.66-1.59-.904-2.18z"></path></svg>
                 Chat with Agent on WhatsApp
@@ -294,8 +294,8 @@ const statusBadge: Record<string, { label: string; class: string }> = {
           </div>
 
           {/* Customer Trust Copy */}
-          <div class="bg-amber-50 border border-amber-100 rounded-2xl p-6 text-sm text-amber-900 leading-relaxed shadow-sm">
-            <h4 class="font-bold text-base text-amber-950 mb-2">What happens next?</h4>
+          <div class="bg-amber-50/50 border border-amber-200/60 rounded-2xl p-6 text-xs text-amber-700 leading-relaxed shadow-xs">
+            <h4 class="font-black text-sm text-amber-850 mb-2">What happens next?</h4>
             <p class="mb-3">
               1. **Order Audit**: Our logistics coordinators in Kampala review this submission to confirm product availability and calculate the optimized route delivery fee.
             </p>
@@ -311,30 +311,30 @@ const statusBadge: Record<string, { label: string; class: string }> = {
 
       {/* RENDER SUCCESS STATE: Local Demo Draft */}
       {isOfflineDraft && (
-        <div class="max-w-2xl mx-auto text-center py-12 bg-white border border-brand-borderGrey rounded-3xl shadow-sm px-6">
-          <div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
+        <div class="max-w-2xl mx-auto text-center py-12 bg-white border border-slate-200/80 rounded-2xl shadow-xs px-6">
+          <div class="w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6 border border-amber-100 shadow-xs">
             <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
           </div>
-          <h2 class="text-3xl font-black text-brand-charcoal mb-2">Offline Draft Saved</h2>
-          <p class="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full inline-block mb-6 uppercase tracking-wider">Local Demo Mode Only</p>
-          <p class="text-gray-600 text-lg mb-6">Local Draft Reference: <strong class="font-mono bg-gray-100 px-2 py-0.5 rounded text-brand-charcoal">{draftReference}</strong></p>
+          <h2 class="text-2xl font-black text-gray-900 mb-2">Offline Draft Saved</h2>
+          <p class="text-[10px] font-black text-amber-800 bg-amber-50 border border-amber-200/60 px-3 py-1 rounded-full inline-block mb-6 uppercase tracking-wider">Local Demo Mode Only</p>
+          <p class="text-slate-550 text-base mb-6">Local Draft Reference: <strong class="font-mono bg-slate-50 px-2 py-0.5 rounded text-gray-900 border border-slate-200/40">{draftReference}</strong></p>
           
-          <div class="text-left bg-amber-50 border border-amber-200 p-6 rounded-2xl mb-8 space-y-4">
-            <p class="text-amber-900 text-sm font-semibold leading-relaxed">
+          <div class="text-left bg-amber-50/50 border border-amber-200/60 p-6 rounded-xl mb-8 space-y-3.5 text-xs shadow-xs text-amber-750">
+            <p class="font-semibold leading-relaxed">
               Notice: The server was offline when this draft was recorded. This draft has <strong>not</strong> been submitted to the GoldPlus distribution team.
             </p>
-            <p class="text-amber-800 text-xs leading-relaxed">
+            <p class="leading-relaxed">
               If this was done during a local demonstration, you can continue exploring the catalog or choose to retry checkout once the local Hono API server has been fully configured and turned online.
             </p>
           </div>
 
           <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a href="/track-order" class="w-full sm:w-auto inline-block border border-brand-borderGrey hover:bg-gray-50 text-brand-charcoal px-8 py-3 rounded-xl font-bold transition-all">Look up another reference</a>
+            <a href="/track-order" class="w-full sm:w-auto inline-block border border-slate-250 hover:bg-slate-50 text-slate-700 px-8 py-2.5 rounded-full font-bold transition-all text-xs tracking-wider uppercase hover:scale-[1.005] active:scale-[0.985] shadow-xs">Look up another reference</a>
             <a
               href={`https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(`Hello GoldPlus, I need help with order ${draftReference ?? ''}`)}`}
               target="_blank"
               rel="noopener noreferrer"
-              class="w-full sm:w-auto inline-block bg-brand-charcoal text-white px-8 py-3 rounded-xl font-bold hover:bg-black transition-all"
+              class="w-full sm:w-auto inline-block bg-slate-900 text-white px-8 py-2.5 rounded-full font-bold hover:bg-slate-950 transition-all text-xs tracking-wider uppercase hover:scale-[1.005] active:scale-[0.985] shadow-xs"
             >
               Contact Agent via WhatsApp
             </a>

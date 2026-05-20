@@ -57,48 +57,48 @@ const canonical = canonicalUrl ?? Astro.url.toString();
       <slot />
     </main>
 
-    <footer class="bg-white border-t border-brand-borderGrey mt-auto">
-      <div class="container mx-auto px-4 lg:px-8 py-12 md:py-16">
+    <footer class="bg-white border-t border-slate-100 mt-auto">
+      <div class="container mx-auto px-4 lg:px-8 py-12 md:py-14">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           <div>
-            <span class="text-2xl font-black tracking-tighter text-brand-charcoal block mb-4">
+            <span class="text-2xl font-black tracking-tighter text-gray-900 block mb-4">
               Gold<span class="text-brand-primary">Plus</span>
             </span>
-            <p class="text-sm text-brand-mutedGrey leading-relaxed max-w-xs">
+            <p class="text-[13px] text-slate-500 leading-relaxed max-w-xs">
               Engineered for reliability. Premium electronics for the Ugandan lifestyle, with guaranteed authenticity.
             </p>
           </div>
 
           <div>
-            <h3 class="font-bold text-sm uppercase tracking-wider mb-4 text-brand-charcoal">Shop</h3>
-            <ul class="space-y-3 text-sm text-brand-mutedGrey">
-              <li><a href="/shop" class="hover:text-brand-primary transition-colors">All products</a></li>
-              <li><a href="/shop?category=power" class="hover:text-brand-primary transition-colors">Power devices</a></li>
-              <li><a href="/shop?category=sound" class="hover:text-brand-primary transition-colors">Sound devices</a></li>
+            <h3 class="font-bold text-xs uppercase tracking-wider mb-4 text-gray-950">Shop</h3>
+            <ul class="space-y-2.5 text-[13px] text-slate-500">
+              <li><a href="/shop" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">All products</a></li>
+              <li><a href="/shop?category=power" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Power devices</a></li>
+              <li><a href="/shop?category=sound" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Sound devices</a></li>
             </ul>
           </div>
 
           <div>
-            <h3 class="font-bold text-sm uppercase tracking-wider mb-4 text-brand-charcoal">Customer service</h3>
-            <ul class="space-y-3 text-sm text-brand-mutedGrey">
-              <li><a href="/verification" class="hover:text-brand-primary transition-colors">Product verification</a></li>
-              <li><a href="/support" class="hover:text-brand-primary transition-colors">Contact support</a></li>
+            <h3 class="font-bold text-xs uppercase tracking-wider mb-4 text-gray-950">Customer service</h3>
+            <ul class="space-y-2.5 text-[13px] text-slate-500">
+              <li><a href="/verification" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Product verification</a></li>
+              <li><a href="/support" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Contact support</a></li>
             </ul>
           </div>
 
           <div>
-            <h3 class="font-bold text-sm uppercase tracking-wider mb-4 text-brand-charcoal">Business</h3>
-            <ul class="space-y-3 text-sm text-brand-mutedGrey">
-              <li><a href="/dealers/apply" class="hover:text-brand-primary transition-colors">Become a dealer</a></li>
-              <li><a href="/quote-request" class="hover:text-brand-primary transition-colors">Request a quote</a></li>
+            <h3 class="font-bold text-xs uppercase tracking-wider mb-4 text-gray-950">Business</h3>
+            <ul class="space-y-2.5 text-[13px] text-slate-500">
+              <li><a href="/dealers/apply" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Become a dealer</a></li>
+              <li><a href="/quote-request" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Request a quote</a></li>
             </ul>
           </div>
         </div>
-        <div class="border-t border-brand-borderGrey mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-brand-mutedGrey">
+        <div class="border-t border-slate-100 mt-10 pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-400">
           <p>&copy; {new Date().getFullYear()} GoldPlus. All rights reserved.</p>
-          <div class="flex gap-4">
-            <a href="/privacy" class="hover:text-brand-charcoal">Privacy</a>
-            <a href="/terms" class="hover:text-brand-charcoal">Terms</a>
+          <div class="flex gap-6">
+            <a href="/privacy" class="hover:text-gray-900 transition-colors">Privacy</a>
+            <a href="/terms" class="hover:text-gray-900 transition-colors">Terms</a>
           </div>
         </div>
       </div>

@@ -1,9 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    @apply font-sans bg-gray-50 text-brand-dark antialiased;
+    @apply font-sans bg-brand-softGrey text-brand-charcoal antialiased selection:bg-brand-primary selection:text-brand-charcoal;
+  }
+
+  /* Premium focused states */
+  input:focus, select:focus, textarea:focus {
+    @apply outline-none ring-4 ring-brand-primary/10 border-brand-primary transition-all duration-300;
+  }
+
+  /* Custom hide scrollbar utility */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
   }
 }

@@ -143,20 +143,20 @@ const sortedProducts = sortProducts(filteredProducts, sort);
   description="Browse our catalog of authentic, rigorously tested electronics and accessories in Uganda. Durable and fully guaranteed."
 >
   <!-- Sleek Premium Dark Sub-Header Banner -->
-  <div class="bg-gray-900 text-white py-14 border-b border-gray-800">
+  <div class="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 text-white py-12 border-b border-slate-950">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="max-w-3xl">
-        <h1 class="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white mb-4">
+        <h1 class="text-3xl sm:text-4xl font-black tracking-tight text-white mb-3">
           GoldPlus <span class="text-brand-primary">Catalog</span>
         </h1>
-        <p class="text-gray-400 text-base sm:text-lg leading-relaxed font-medium">
+        <p class="text-slate-400 text-sm sm:text-base leading-relaxed font-medium">
           Browse rigorously tested electronic essentials engineered for extreme durability. Authentic, original, and backed by a comprehensive warranty.
         </p>
       </div>
     </div>
   </div>
 
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
     <!-- Offline Resilient Status Alert -->
     {isSampleData && fetchError && (
       <div class="mb-8">
@@ -168,10 +168,10 @@ const sortedProducts = sortProducts(filteredProducts, sort);
       <!-- SIDEBAR FILTERS (Desktop Only, hidden on mobile/tablet) -->
       <aside class="hidden lg:block w-64 flex-shrink-0">
         <div class="sticky top-24 space-y-8">
-          <form action="/shop" method="get" class="bg-white p-6 rounded-3xl border border-brand-borderGrey shadow-sm space-y-6">
+          <form action="/shop" method="get" class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
             <!-- Search Widget -->
             <div>
-              <label for="search-input" class="block font-bold text-xs text-brand-charcoal mb-2.5 uppercase tracking-wider">Search Catalog</label>
+              <label for="search-input" class="block font-bold text-xs text-gray-900 mb-2 uppercase tracking-wider">Search Catalog</label>
               <div class="relative">
                 <input 
                   type="search" 
@@ -179,9 +179,9 @@ const sortedProducts = sortProducts(filteredProducts, sort);
                   name="q" 
                   value={q}
                   placeholder="Name or model..." 
-                  class="w-full pl-9 pr-4 py-3 bg-brand-softGrey border border-brand-borderGrey rounded-xl focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none text-xs font-semibold transition-all duration-300"
+                  class="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold transition-all duration-300"
                 />
-                <svg class="absolute left-3 top-3.5 h-3.5 w-3.5 text-brand-mutedGrey" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <svg class="absolute left-3 top-3 h-3.5 w-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
               </div>
@@ -189,18 +189,18 @@ const sortedProducts = sortProducts(filteredProducts, sort);
 
             <!-- Categories Widget -->
             <div>
-              <h2 class="font-bold text-xs text-brand-charcoal mb-2.5 uppercase tracking-wider">Categories</h2>
-              <ul class="space-y-1.5">
+              <h2 class="font-bold text-xs text-gray-900 mb-2 uppercase tracking-wider">Categories</h2>
+              <ul class="space-y-1">
                 {categories.map((cat) => {
                   const isActive = category === cat.slug;
                   return (
                     <li>
                       <a 
                         href={getFilterUrl({ category: cat.slug })} 
-                        class={`flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-350 text-xs font-bold ${
+                        class={`flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-300 text-xs font-bold ${
                           isActive 
-                            ? 'bg-brand-primary/15 text-brand-charcoal border-l-4 border-brand-primary pl-3' 
-                            : 'text-brand-mutedGrey hover:bg-brand-softGrey hover:text-brand-charcoal'
+                            ? 'bg-slate-100/70 text-gray-900 border-l-4 border-brand-primary pl-2.5' 
+                            : 'text-slate-500 hover:bg-slate-50 hover:text-gray-900'
                         }`}
                       >
                         <span>{cat.name}</span>
@@ -213,7 +213,7 @@ const sortedProducts = sortProducts(filteredProducts, sort);
             </div>
 
             <!-- Stock Availability Widget -->
-            <div class="pt-4 border-t border-brand-borderGrey">
+            <div class="pt-4 border-t border-slate-100">
               <label class="flex items-center gap-3 cursor-pointer group select-none">
                 <input 
                   type="checkbox" 
@@ -221,19 +221,19 @@ const sortedProducts = sortProducts(filteredProducts, sort);
                   value="true" 
                   checked={inStock}
                   onchange="this.form.submit()"
-                  class="w-4.5 h-4.5 text-brand-primary border-brand-borderGrey rounded focus:ring-brand-primary cursor-pointer transition-colors"
+                  class="w-4 h-4 text-brand-primary border-slate-200 rounded focus:ring-brand-primary cursor-pointer transition-colors"
                 />
-                <span class="text-xs font-bold text-brand-charcoal group-hover:text-brand-primary transition-colors">In-stock products only</span>
+                <span class="text-xs font-bold text-gray-800 group-hover:text-brand-primary transition-colors">In-stock products only</span>
               </label>
             </div>
 
             <!-- Submit Buttons -->
             <div class="space-y-2 pt-2">
-              <button type="submit" class="w-full py-3 bg-brand-charcoal text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-brand-primary hover:text-brand-charcoal transition-all shadow-sm focus-visible:ring-2 focus-visible:ring-brand-primary outline-none">
+              <button type="submit" class="w-full py-2.5 bg-gray-950 text-white text-xs font-bold uppercase tracking-wider rounded-full hover:bg-brand-primary hover:text-gray-950 transition-all shadow-xs active:scale-[0.98] cursor-pointer outline-none">
                 Apply Filters
               </button>
               {(q || category !== 'all' || inStock) && (
-                <a href="/shop" class="block text-center py-2.5 bg-brand-softGrey text-brand-mutedGrey hover:text-brand-charcoal text-xs font-bold rounded-xl transition-colors border border-brand-borderGrey">
+                <a href="/shop" class="block text-center py-2 bg-slate-50 text-slate-500 hover:text-gray-900 text-xs font-bold rounded-full transition-colors border border-slate-200/60">
                   Clear Filters
                 </a>
               )}
@@ -245,26 +245,26 @@ const sortedProducts = sortProducts(filteredProducts, sort);
       <!-- MAIN CATALOG LISTINGS AREA -->
       <main class="flex-1 min-w-0">
         <!-- Search & Category & Sort Controls Row -->
-        <div class="bg-white p-4 sm:p-5 rounded-3xl border border-brand-borderGrey shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div class="flex items-center gap-3">
-            <div class="bg-brand-softGrey px-3.5 py-1.5 rounded-full border border-brand-borderGrey text-xs font-bold text-brand-charcoal">
+            <div class="bg-slate-50 px-3.5 py-1.5 rounded-full border border-slate-100 text-xs font-bold text-slate-755">
               {sortedProducts.length} Product{sortedProducts.length === 1 ? '' : 's'} found
             </div>
             {q && (
-              <span class="text-xs text-brand-mutedGrey font-medium">
-                for <strong class="text-brand-charcoal">"{q}"</strong>
+              <span class="text-xs text-slate-500 font-medium">
+                for <strong class="text-gray-900">"{q}"</strong>
               </span>
             )}
           </div>
 
           <!-- Sort Dropdown Widget -->
           <div class="flex items-center gap-2">
-            <label for="sort-select" class="text-xs font-bold text-brand-mutedGrey">Sort By:</label>
+            <label for="sort-select" class="text-xs font-bold text-slate-500">Sort By:</label>
             <select 
               id="sort-select"
               name="sort"
               onchange="window.location.href = this.value"
-              class="pl-3 pr-8 py-2 bg-brand-softGrey border border-brand-borderGrey rounded-xl text-xs font-bold text-brand-charcoal focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none cursor-pointer transition-all duration-300 shadow-sm"
+              class="pl-3 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-gray-850 outline-none cursor-pointer transition-all duration-300 shadow-xs"
             >
               <option value={getFilterUrl({ sort: 'featured' })} selected={sort === 'featured'}>Recommended</option>
               <option value={getFilterUrl({ sort: 'price_low_high' })} selected={sort === 'price_low_high'}>Price: Low to High</option>
@@ -289,10 +289,10 @@ const sortedProducts = sortProducts(filteredProducts, sort);
             return (
               <a 
                 href={getFilterUrl({ category: cat.slug })}
-                class={`px-4 py-2.5 rounded-full text-xs font-bold flex-shrink-0 transition-all duration-300 border ${
+                class={`px-4 py-2 rounded-full text-xs font-bold flex-shrink-0 transition-all duration-300 border ${
                   isActive 
-                    ? 'bg-brand-primary border-brand-primary text-brand-charcoal shadow-sm' 
-                    : 'bg-white border-brand-borderGrey text-brand-mutedGrey'
+                    ? 'bg-brand-primary border-brand-primary text-gray-950 shadow-xs' 
+                    : 'bg-white border-slate-200 text-slate-500 hover:text-gray-900'
                 }`}
               >
                 {shortName}
@@ -302,7 +302,7 @@ const sortedProducts = sortProducts(filteredProducts, sort);
         </div>
 
         {category !== 'all' && !q && (
-          <div class="mb-10 pb-10 border-b border-brand-borderGrey">
+          <div class="mb-10 pb-10 border-b border-slate-100">
             <CategoryPopularRail categorySlug={category} />
           </div>
         )}
@@ -310,22 +310,22 @@ const sortedProducts = sortProducts(filteredProducts, sort);
         <!-- ACTIVE FILTER CHIPS TRACK (SSR & CSR Interactive Track) -->
         {activeFilters.length > 0 && (
           <div class="flex flex-wrap items-center gap-2 mb-6">
-            <span class="text-[10px] font-bold text-brand-mutedGrey uppercase tracking-widest mr-1">Active:</span>
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mr-1">Active:</span>
             {activeFilters.map((filter) => (
               <a 
                 href={filter.removeUrl}
-                class="group flex items-center gap-1.5 pl-3 pr-2.5 py-1 bg-brand-softGrey border border-brand-borderGrey rounded-full text-xs font-bold text-brand-charcoal hover:border-brand-error hover:text-brand-error transition-all duration-300"
+                class="group flex items-center gap-1.5 pl-3 pr-2 py-0.5 bg-slate-50 border border-slate-200 rounded-full text-xs font-semibold text-slate-700 hover:border-red-400 hover:text-red-600 transition-all duration-350"
                 title={`Remove filter: ${filter.label}`}
               >
                 <span>{filter.label}</span>
-                <span class="w-3.5 h-3.5 bg-brand-borderGrey rounded-full flex items-center justify-center text-[10px] font-black group-hover:bg-red-50 transition-colors">
+                <span class="w-3.5 h-3.5 bg-slate-200 rounded-full flex items-center justify-center text-[10px] font-black group-hover:bg-red-50 transition-colors">
                   &times;
                 </span>
               </a>
             ))}
             <a 
               href="/shop" 
-              class="text-xs font-black text-brand-primary hover:text-brand-charcoal transition-colors underline pl-1"
+              class="text-xs font-black text-brand-primary hover:text-gray-900 transition-colors underline pl-1"
             >
               Clear All
             </a>
@@ -343,32 +343,32 @@ const sortedProducts = sortProducts(filteredProducts, sort);
           </div>
         ) : (
           <!-- Customer-Grade Resilient Empty State -->
-          <div class="text-center py-16 px-6 bg-white rounded-3xl border border-brand-borderGrey shadow-sm max-w-2xl mx-auto">
-            <div class="w-16 h-16 bg-brand-softGrey rounded-full flex items-center justify-center mx-auto mb-4 border border-brand-borderGrey text-brand-mutedGrey">
-              <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <div class="text-center py-16 px-6 bg-white rounded-2xl border border-slate-200/80 shadow-xs max-w-2xl mx-auto">
+            <div class="w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100 text-slate-400">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
               </svg>
             </div>
-            <h3 class="text-xl font-bold text-brand-charcoal mb-2">No matching products found</h3>
-            <p class="text-brand-mutedGrey text-sm max-w-md mx-auto mb-6 leading-relaxed">
+            <h3 class="text-lg font-bold text-gray-900 mb-2">No matching products found</h3>
+            <p class="text-slate-500 text-sm max-w-md mx-auto mb-6 leading-relaxed">
               We couldn't find any verified GoldPlus products matching your current query. Try adjusting your search filters or browse other popular categories.
             </p>
 
             <!-- Shortcuts Suggestions -->
             <div class="mb-8">
-              <span class="block text-[10px] font-black text-brand-mutedGrey uppercase tracking-widest mb-3">Popular Searches</span>
+              <span class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Popular Searches</span>
               <div class="flex flex-wrap justify-center gap-2 max-w-sm mx-auto">
-                <a href="/shop?q=charger" class="px-3.5 py-2 bg-brand-softGrey border border-brand-borderGrey rounded-xl text-xs font-bold text-brand-charcoal hover:bg-brand-primary hover:border-brand-primary transition-all">GP Charger</a>
-                <a href="/shop?q=earbuds" class="px-3.5 py-2 bg-brand-softGrey border border-brand-borderGrey rounded-xl text-xs font-bold text-brand-charcoal hover:bg-brand-primary hover:border-brand-primary transition-all">Earbuds</a>
-                <a href="/shop?q=flash" class="px-3.5 py-2 bg-brand-softGrey border border-brand-borderGrey rounded-xl text-xs font-bold text-brand-charcoal hover:bg-brand-primary hover:border-brand-primary transition-all">Flash Drives</a>
-                <a href="/shop?q=mount" class="px-3.5 py-2 bg-brand-softGrey border border-brand-borderGrey rounded-xl text-xs font-bold text-brand-charcoal hover:bg-brand-primary hover:border-brand-primary transition-all">Car Mount</a>
+                <a href="/shop?q=charger" class="px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-brand-primary hover:border-brand-primary transition-all">GP Charger</a>
+                <a href="/shop?q=earbuds" class="px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-brand-primary hover:border-brand-primary transition-all">Earbuds</a>
+                <a href="/shop?q=flash" class="px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-brand-primary hover:border-brand-primary transition-all">Flash Drives</a>
+                <a href="/shop?q=mount" class="px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-brand-primary hover:border-brand-primary transition-all">Car Mount</a>
               </div>
             </div>
 
             <!-- Clear Action -->
             <a 
               href="/shop" 
-              class="inline-flex items-center px-6 py-3 bg-brand-charcoal text-white hover:bg-brand-primary hover:text-brand-charcoal text-xs font-black uppercase tracking-widest rounded-xl transition-all duration-300 shadow-sm focus-visible:ring-2 focus-visible:ring-brand-primary outline-none"
+              class="inline-flex items-center px-6 py-2.5 bg-gray-950 text-white hover:bg-brand-primary hover:text-gray-950 text-xs font-bold uppercase tracking-wider rounded-full transition-all duration-300 shadow-xs active:scale-[0.98]"
             >
               Reset Filters & View All
             </a>

@@ -50,23 +50,23 @@ const usedProductIds = [
 <BaseLayout title="Premium electronics — Uganda">
 
   {/* 1. Hero */}
-  <section class="bg-brand-softGrey flex-grow flex flex-col justify-center items-center text-center px-4 py-20 lg:py-32 border-b border-brand-borderGrey">
+  <section class="bg-gradient-to-b from-white to-slate-50 flex-grow flex flex-col justify-center items-center text-center px-4 py-20 lg:py-28 border-b border-slate-100">
     <div class="max-w-3xl mx-auto">
-      <span class="inline-block py-1 px-3 rounded-full bg-brand-primary/15 text-brand-charcoal text-sm font-bold tracking-wide uppercase mb-6">
+      <span class="inline-block py-1.5 px-3.5 rounded-full bg-brand-primary/15 text-gray-900 text-xs font-black tracking-wider uppercase mb-6 border border-brand-primary/20">
         Guaranteed authenticity
       </span>
-      <h1 class="text-5xl md:text-6xl lg:text-7xl font-black tracking-tight text-brand-charcoal mb-6 leading-tight">
+      <h1 class="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight text-gray-900 mb-6 leading-tight">
         Power your lifestyle with <span class="text-brand-primary">GoldPlus</span>
       </h1>
-      <p class="text-lg md:text-xl text-brand-mutedGrey mb-10 max-w-2xl mx-auto leading-relaxed">
+      <p class="text-base md:text-lg text-slate-500 mb-8 max-w-2xl mx-auto leading-relaxed">
         Engineered for the Ugandan market. Durable, reliable, verified original electronics. Power, sound, storage and car accessories.
       </p>
-
+ 
       <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="/shop" class="w-full sm:w-auto bg-brand-primary text-brand-charcoal px-8 py-4 rounded-lg font-bold hover:opacity-90 transition-opacity focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none text-lg">
+        <a href="/shop" class="w-full sm:w-auto bg-brand-primary text-gray-950 px-8 py-3.5 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/25 transition-all hover:scale-[1.01] active:scale-95 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none text-[15px]">
           Shop all products
         </a>
-        <a href="/verification" class="w-full sm:w-auto bg-white text-brand-charcoal border-2 border-brand-borderGrey px-8 py-4 rounded-lg font-bold hover:border-brand-charcoal transition-colors focus-visible:ring-4 focus-visible:ring-brand-charcoal/10 outline-none text-lg">
+        <a href="/verification" class="w-full sm:w-auto bg-white text-gray-800 border border-slate-200 px-8 py-3.5 rounded-full font-bold hover:bg-slate-50 transition-all hover:scale-[1.01] active:scale-95 focus-visible:ring-4 focus-visible:ring-slate-200/50 outline-none text-[15px] shadow-xs">
           Verify product
         </a>
       </div>
@@ -84,20 +84,35 @@ const usedProductIds = [
   </div>
 
   {/* 3. Trust strip (New Visitors Only, hidden client-side if returning) */}
-  <section id="homepage-trust-strip" class="bg-white py-12 border-b border-brand-borderGrey">
+  <section id="homepage-trust-strip" class="bg-white py-10 border-b border-slate-100">
     <div class="container mx-auto px-4 lg:px-8">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-        <div>
-          <h3 class="font-bold text-lg text-brand-charcoal mb-2">Originality verified</h3>
-          <p class="text-brand-mutedGrey text-sm">Every product includes a verification code. Check it online instantly.</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center md:text-left">
+        <div class="flex flex-col md:flex-row items-center md:items-start gap-4 p-2">
+          <div class="p-3 rounded-full bg-slate-50 border border-slate-100 text-brand-charcoal shrink-0">
+            <svg class="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm text-gray-900 mb-1">Originality Verified</h3>
+            <p class="text-slate-500 text-[13px] leading-relaxed">Every product includes a verification code. Check it online instantly.</p>
+          </div>
         </div>
-        <div>
-          <h3 class="font-bold text-lg text-brand-charcoal mb-2">No fake claims</h3>
-          <p class="text-brand-mutedGrey text-sm">If a spec isn't verified, we tell you it's missing. Honest specifications.</p>
+        <div class="flex flex-col md:flex-row items-center md:items-start gap-4 p-2">
+          <div class="p-3 rounded-full bg-slate-50 border border-slate-100 text-brand-charcoal shrink-0">
+            <svg class="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm text-gray-900 mb-1">No Fake Claims</h3>
+            <p class="text-slate-500 text-[13px] leading-relaxed">If a spec isn't verified, we tell you it's missing. Honest specifications.</p>
+          </div>
         </div>
-        <div>
-          <h3 class="font-bold text-lg text-brand-charcoal mb-2">Direct support</h3>
-          <p class="text-brand-mutedGrey text-sm">Report issues or fake products directly to our Ugandan team.</p>
+        <div class="flex flex-col md:flex-row items-center md:items-start gap-4 p-2">
+          <div class="p-3 rounded-full bg-slate-50 border border-slate-100 text-brand-charcoal shrink-0">
+            <svg class="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm text-gray-900 mb-1">Direct Support</h3>
+            <p class="text-slate-500 text-[13px] leading-relaxed">Report issues or fake products directly to our Ugandan team.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -107,9 +122,9 @@ const usedProductIds = [
   <HomeCommerceHighlights promoProduct={promoProduct} todaysPickProduct={todaysPickProduct} />
 
   {/* 5. Shop by Category */}
-  <section class="bg-brand-softGrey py-16">
+  <section class="bg-slate-50 py-14 border-b border-slate-100/65">
     <div class="container mx-auto px-4 lg:px-8">
-      <h2 class="text-3xl font-black tracking-tight text-brand-charcoal mb-8 text-center">Shop by category</h2>
+      <h2 class="text-2xl font-black tracking-tight text-gray-900 mb-8 text-center">Shop by category</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { name: 'Power devices', desc: 'Chargers, banks', slug: 'power' },
@@ -118,13 +133,13 @@ const usedProductIds = [
           { name: 'Car accessories', desc: 'Mounts, chargers', slug: 'car' },
         ].map((cat) => (
           <a href={`/shop?category=${cat.slug}`} class="block group focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none rounded-2xl">
-            <div class="bg-white border border-brand-borderGrey aspect-[4/3] rounded-2xl p-6 flex flex-col justify-end relative overflow-hidden transition-all hover:border-brand-primary hover:shadow-lg">
-              <div class="absolute inset-0 flex items-center justify-center text-gray-300 font-medium" aria-hidden="true">
+            <div class="bg-white border border-slate-200/85 aspect-[4/3] rounded-2xl p-6 flex flex-col justify-end relative overflow-hidden transition-all hover:border-brand-primary hover:shadow-lg hover:shadow-slate-100/60">
+              <div class="absolute inset-0 flex items-center justify-center text-slate-200 font-medium" aria-hidden="true">
                 <svg class="w-10 h-10 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
               </div>
-              <div class="relative z-10 bg-white/90 p-3 rounded-lg backdrop-blur-sm">
-                <h3 class="text-xl font-bold text-brand-charcoal mb-1">{cat.name}</h3>
-                <p class="text-sm text-brand-mutedGrey font-medium group-hover:text-brand-primary transition-colors">{cat.desc}</p>
+              <div class="relative z-10 bg-white/95 p-3.5 rounded-xl border border-slate-100/80 shadow-xs">
+                <h3 class="text-base font-bold text-gray-950 mb-0.5">{cat.name}</h3>
+                <p class="text-xs text-slate-500 font-medium group-hover:text-brand-primary transition-colors">{cat.desc}</p>
               </div>
             </div>
           </a>
@@ -134,17 +149,17 @@ const usedProductIds = [
   </section>
 
   {/* 6. Featured products */}
-  <section class="bg-white py-16 border-t border-brand-borderGrey">
+  <section class="bg-white py-14 border-b border-slate-100">
     <div class="container mx-auto px-4 lg:px-8">
       <div class="flex items-center justify-between mb-8">
-        <h2 class="text-3xl font-black tracking-tight text-brand-charcoal">Featured products</h2>
-        <a href="/shop" class="text-brand-primary font-bold hover:opacity-80">View all &rarr;</a>
+        <h2 class="text-2xl font-black tracking-tight text-gray-900">Featured products</h2>
+        <a href="/shop" class="text-sm font-bold text-gray-800 hover:text-brand-primary transition-colors flex items-center gap-1">View all &rarr;</a>
       </div>
 
       {hasApiError ? (
-        <div class="p-8 text-center bg-brand-softGrey border border-brand-borderGrey rounded-2xl">
-           <p class="text-brand-mutedGrey">Featured items are currently loading slowly. Explore the full collection below.</p>
-           <a href="/shop" class="inline-block mt-4 text-brand-charcoal font-bold underline">Browse Catalog</a>
+        <div class="p-8 text-center bg-slate-50 border border-slate-200/80 rounded-2xl">
+           <p class="text-slate-500 text-sm">Featured items are currently loading slowly. Explore the full collection below.</p>
+           <a href="/shop" class="inline-block mt-4 text-gray-900 font-bold underline">Browse Catalog</a>
         </div>
       ) : featuredProducts.length > 0 ? (
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -153,8 +168,8 @@ const usedProductIds = [
           ))}
         </div>
       ) : (
-        <div class="p-8 text-center bg-brand-softGrey border border-brand-borderGrey rounded-2xl">
-          <p class="text-brand-mutedGrey">No featured items highlighted right now.</p>
+        <div class="p-8 text-center bg-slate-50 border border-slate-200/80 rounded-2xl">
+          <p class="text-slate-500 text-sm">No featured items highlighted right now.</p>
         </div>
       )}
     </div>
@@ -169,23 +184,35 @@ const usedProductIds = [
   <PopularNowRail excludeProductIds={usedProductIds} useContainerWrapper={true} />
 
   {/* 8. Business pathways */}
-  <section class="bg-brand-charcoal text-white py-16">
+  <section class="bg-slate-950 text-white py-14 border-t border-slate-900">
     <div class="container mx-auto px-4 lg:px-8">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div class="border border-gray-700 p-8 rounded-2xl">
-          <h3 class="text-2xl font-bold text-brand-primary mb-4">Retail customers</h3>
-          <p class="text-gray-300 mb-6 leading-relaxed">Shop our verified products directly, and verify authenticity instantly.</p>
-          <a href="/shop" class="inline-block px-6 py-2 bg-brand-primary text-brand-charcoal font-bold rounded-lg hover:opacity-90">Start shopping</a>
+        <div class="border border-slate-800/80 bg-slate-900/30 p-8 rounded-2xl hover:border-slate-700 transition-all duration-300 flex flex-col justify-between h-full">
+          <div>
+            <h3 class="text-xl font-bold text-brand-primary mb-3">Retail Customers</h3>
+            <p class="text-slate-400 text-sm mb-6 leading-relaxed">Shop our verified products directly, and verify authenticity instantly.</p>
+          </div>
+          <div>
+            <a href="/shop" class="inline-block px-6 py-2 bg-brand-primary text-slate-950 font-bold rounded-full hover:shadow-lg hover:shadow-brand-primary/20 hover:scale-[1.01] active:scale-95 transition-all text-xs">Start shopping</a>
+          </div>
         </div>
-        <div class="border border-gray-700 p-8 rounded-2xl">
-          <h3 class="text-2xl font-bold text-brand-primary mb-4">Dealers</h3>
-          <p class="text-gray-300 mb-6 leading-relaxed">Apply to become an authorised GoldPlus dealer in Uganda.</p>
-          <a href="/dealers/apply" class="inline-block px-6 py-2 bg-transparent border border-white font-bold rounded-lg hover:bg-gray-800">Apply now</a>
+        <div class="border border-slate-800/80 bg-slate-900/30 p-8 rounded-2xl hover:border-slate-700 transition-all duration-300 flex flex-col justify-between h-full">
+          <div>
+            <h3 class="text-xl font-bold text-brand-primary mb-3">Dealers</h3>
+            <p class="text-slate-400 text-sm mb-6 leading-relaxed">Apply to become an authorised GoldPlus dealer in Uganda.</p>
+          </div>
+          <div>
+            <a href="/dealers/apply" class="inline-block px-6 py-2 bg-transparent border border-slate-700 hover:border-slate-500 text-slate-200 font-bold rounded-full hover:bg-white/5 active:scale-95 transition-all text-xs">Apply now</a>
+          </div>
         </div>
-        <div class="border border-gray-700 p-8 rounded-2xl">
-          <h3 class="text-2xl font-bold text-brand-primary mb-4">Corporate buyers</h3>
-          <p class="text-gray-300 mb-6 leading-relaxed">Request wholesale quotes for corporate electronics deployment.</p>
-          <a href="/quote-request?kind=corporate" class="inline-block px-6 py-2 bg-transparent border border-white font-bold rounded-lg hover:bg-gray-800">Request quote</a>
+        <div class="border border-slate-800/80 bg-slate-900/30 p-8 rounded-2xl hover:border-slate-700 transition-all duration-300 flex flex-col justify-between h-full">
+          <div>
+            <h3 class="text-xl font-bold text-brand-primary mb-3">Corporate Buyers</h3>
+            <p class="text-slate-400 text-sm mb-6 leading-relaxed">Request wholesale quotes for corporate electronics deployment.</p>
+          </div>
+          <div>
+            <a href="/quote-request?kind=corporate" class="inline-block px-6 py-2 bg-transparent border border-slate-700 hover:border-slate-500 text-slate-200 font-bold rounded-full hover:bg-white/5 active:scale-95 transition-all text-xs">Request quote</a>
+          </div>
         </div>
       </div>
     </div>
