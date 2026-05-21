@@ -123,7 +123,7 @@ if (Astro.request.method === 'POST') {
               }
            } catch (payErr: any) {
               status = 'error';
-              message = `Secure connection to PesaPal failed: ${payErr.message}. Your order was placed successfully, but is unpaid.`;
+              message = `Payment could not start. Please try again or contact GoldPlus support. Your order was placed successfully, but is unpaid.`;
               reference = res.data?.orderNumber || orderId;
            }
         } else {
