@@ -212,6 +212,160 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-slim-power-bank-gp-04.webp', alt: 'GoldPlus Slim Power Bank' }],
     attributeValues: []
+  },
+  {
+    id: 'chg-01-gp-101',
+    slug: 'goldplus-dual-colour-wall-charger-gp-101',
+    name: 'GoldPlus Dual-Colour Wall Charger',
+    categoryName: 'Power Devices',
+    sku: 'GP-101',
+    modelNumber: 'GP-101',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-charger-gp-101.webp',
+    verifiedSpecs: {
+      portConfiguration: 'Confirm from packaging / official product sheet',
+      outputRating: 'Confirm from packaging / official product sheet',
+      plugType: 'Confirm from packaging / official product sheet',
+      cableIncluded: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-charger-gp-101.webp', alt: 'GoldPlus Dual-Colour Wall Charger' }],
+    attributeValues: []
+  },
+  {
+    id: 'chg-02-gp-103',
+    slug: 'goldplus-dual-usb-wall-charger-gp-103',
+    name: 'GoldPlus Dual USB Wall Charger',
+    categoryName: 'Power Devices',
+    sku: 'GP-103',
+    modelNumber: 'GP-103',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-dual-usb-wall-charger-gp-103.webp',
+    verifiedSpecs: {
+      portConfiguration: 'Dual USB ports visible; confirm exact type from packaging',
+      outputRating: 'Confirm from packaging / official product sheet',
+      plugType: 'Confirm from packaging / official product sheet',
+      cableIncluded: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-dual-usb-wall-charger-gp-103.webp', alt: 'GoldPlus Dual USB Wall Charger' }],
+    attributeValues: []
+  },
+  {
+    id: 'chg-03-gp-104',
+    slug: 'goldplus-usb-c-charger-kit-gp-104',
+    name: 'GoldPlus USB-C Charger Kit',
+    categoryName: 'Power Devices',
+    sku: 'GP-104',
+    modelNumber: 'GP-104',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-usb-c-charger-kit-gp-104.webp',
+    verifiedSpecs: {
+      cableIncluded: 'USB-C cable visible; confirm exact cable type from packaging',
+      outputRating: 'Confirm from packaging / official product sheet',
+      portType: 'Confirm from packaging / official product sheet',
+      plugType: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-usb-c-charger-kit-gp-104.webp', alt: 'GoldPlus USB-C Charger Kit' }],
+    attributeValues: []
+  },
+  {
+    id: 'chg-04-gp-105',
+    slug: 'goldplus-50w-pd-charger-kit-gp-105',
+    name: 'GoldPlus 50W PD Charger Kit',
+    categoryName: 'Power Devices',
+    sku: 'GP-105',
+    modelNumber: 'GP-105',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-50w-pd-charger-kit-gp-105.webp',
+    verifiedSpecs: {
+      visibleMarking: '50W / PD-style marking visible; confirm technical meaning from packaging',
+      cableIncluded: 'USB-C cable visible; confirm exact cable type from packaging',
+      outputRating: 'Confirm from packaging / official product sheet',
+      portConfiguration: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-50w-pd-charger-kit-gp-105.webp', alt: 'GoldPlus 50W PD Charger Kit' }],
+    attributeValues: []
+  },
+  {
+    id: 'chg-05-gp-106',
+    slug: 'goldplus-compact-usb-wall-charger-gp-106',
+    name: 'GoldPlus Compact USB Wall Charger',
+    categoryName: 'Power Devices',
+    sku: 'GP-106',
+    modelNumber: 'GP-106',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-compact-usb-wall-charger-gp-106.webp',
+    verifiedSpecs: {
+      portType: 'Confirm from packaging / official product sheet',
+      outputRating: 'Confirm from packaging / official product sheet',
+      plugType: 'Confirm from packaging / official product sheet',
+      cableIncluded: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-compact-usb-wall-charger-gp-106.webp', alt: 'GoldPlus Compact USB Wall Charger' }],
+    attributeValues: []
+  },
+  {
+    id: 'chg-06-gp-107',
+    slug: 'goldplus-50w-pps-charger-kit-gp-107',
+    name: 'GoldPlus 50W PPS Charger Kit',
+    categoryName: 'Power Devices',
+    sku: 'GP-107',
+    modelNumber: 'GP-107',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-50w-pps-charger-kit-gp-107.webp',
+    verifiedSpecs: {
+      visibleMarking: '50W PPS visible; confirm technical meaning from packaging',
+      cableIncluded: 'USB-C cable visible; confirm exact cable type from packaging',
+      outputRating: 'Confirm from packaging / official product sheet',
+      portConfiguration: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-50w-pps-charger-kit-gp-107.webp', alt: 'GoldPlus 50W PPS Charger Kit' }],
+    attributeValues: []
+  },
+  {
+    id: 'chg-07-gp-108',
+    slug: 'goldplus-super-fast-charger-kit-gp-108',
+    name: 'GoldPlus Super Fast Charger Kit',
+    categoryName: 'Power Devices',
+    sku: 'GP-108',
+    modelNumber: 'GP-108',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-super-fast-charger-kit-gp-108.webp',
+    verifiedSpecs: {
+      visibleMarking: 'Super Fast Charging and multi-output markings visible; confirm technical meaning from packaging',
+      cableIncluded: 'Braided USB-C cable visible; confirm exact cable type from packaging',
+      outputRating: 'Confirm from packaging / official product sheet',
+      portConfiguration: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-super-fast-charger-kit-gp-108.webp', alt: 'GoldPlus Super Fast Charger Kit' }],
+    attributeValues: []
   }
 ];
 
