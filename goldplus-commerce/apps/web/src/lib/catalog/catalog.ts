@@ -5,19 +5,24 @@ import type { ProductPublicDto } from '@goldplus/shared';
  */
 export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
   {
-    id: '68001def-f81c-46e3-903e-c3b51e34e8b1',
-    slug: 'generic-fast-charger',
-    name: 'Generic Fast Charger',
+    id: 'b1f8e123-1a2b-4c3d-8e5f-1a2b3c4d5e6f',
+    slug: 'goldplus-built-in-cable-power-bank-gp-pd-w3',
+    name: 'GoldPlus Built-In Cable Power Bank',
     categoryName: 'Power Devices',
-    sku: 'PWR-CHG-001',
-    modelNumber: 'GP-FC-20W',
-    retailPriceUgx: 50000,
-    availability: { kind: 'in_stock', quantity: 50 },
+    sku: 'GP-PD-W3',
+    modelNumber: 'GP-PD-W3',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
     hasImage: true,
-    primaryImageUrl: 'https://images.unsplash.com/photo-1600003263720-95b45a4035d5?auto=format&fit=crop&q=80&w=600',
-    verifiedSpecs: { wattage: '20W' },
-    hasMissingSpecs: false,
-    images: [{ url: 'https://images.unsplash.com/photo-1600003263720-95b45a4035d5?auto=format&fit=crop&q=80&w=600', alt: 'Generic Fast Charger Plug' }],
+    primaryImageUrl: '/products/goldplus-built-in-cable-power-bank-gp-pd-w3.webp',
+    verifiedSpecs: {
+      capacity: 'Confirm from packaging / official product sheet',
+      inputOutputRatings: 'Confirm from packaging / official product sheet',
+      connectorTypes: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-built-in-cable-power-bank-gp-pd-w3.webp', alt: 'GoldPlus Built-In Cable Power Bank' }],
     attributeValues: []
   },
   {
@@ -37,35 +42,68 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     attributeValues: []
   },
   {
-    id: '9a7f612b-68e9-47d5-b9ea-442bc7690a02',
-    slug: 'reinforced-usb-c-cable',
-    name: 'Reinforced USB-C Cable',
+    id: 'c2d9f345-2b3c-4d5e-9f0a-2b3c4d5e6f7a',
+    slug: 'goldplus-100w-portable-power-station-gp-09',
+    name: 'GoldPlus 100W Portable Power Station',
     categoryName: 'Power Devices',
-    sku: 'PWR-CBL-002',
-    modelNumber: 'GP-UC-2M',
-    retailPriceUgx: 25000,
-    availability: { kind: 'in_stock', quantity: 200 },
+    sku: 'GP-09',
+    modelNumber: 'GP-09',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
     hasImage: true,
-    primaryImageUrl: 'https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?auto=format&fit=crop&q=80&w=600',
-    verifiedSpecs: { length: '2 Meters' },
-    hasMissingSpecs: false,
-    images: [{ url: 'https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?auto=format&fit=crop&q=80&w=600', alt: 'Reinforced USB-C Cable' }],
+    primaryImageUrl: '/products/goldplus-100w-portable-power-station-gp-09.webp',
+    verifiedSpecs: {
+      visibleMarking: '100W, confirm technical meaning from packaging',
+      capacity: 'Confirm from packaging / official product sheet',
+      acDcUsbOutput: 'Confirm from packaging / official product sheet',
+      inputRating: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-100w-portable-power-station-gp-09.webp', alt: 'GoldPlus 100W Portable Power Station' }],
     attributeValues: []
   },
   {
-    id: 'bc1901fa-cfde-49ad-9ccf-818724bbdc6d',
-    slug: 'heavy-duty-power-bank',
-    name: 'Heavy Duty Power Bank',
+    id: 'd3e0a456-3c4d-5e6f-0a1b-3c4d5e6f7a8b',
+    slug: 'goldplus-digital-display-power-bank-gp-p07',
+    name: 'GoldPlus Digital Display Power Bank',
     categoryName: 'Power Devices',
-    sku: 'PWR-PBK-003',
-    modelNumber: 'GP-PB-20K',
-    retailPriceUgx: 120000,
-    availability: { kind: 'in_stock', quantity: 30 },
+    sku: 'GP-P07',
+    modelNumber: 'GP-P07',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
     hasImage: true,
-    primaryImageUrl: 'https://images.unsplash.com/photo-1609081219090-a6d81d3085bf?auto=format&fit=crop&q=80&w=600',
-    verifiedSpecs: { capacity: '20,000 mAh' },
-    hasMissingSpecs: false,
-    images: [{ url: 'https://images.unsplash.com/photo-1609081219090-a6d81d3085bf?auto=format&fit=crop&q=80&w=600', alt: 'Heavy Duty Power Bank' }],
+    primaryImageUrl: '/products/goldplus-digital-display-power-bank-gp-p07.webp',
+    verifiedSpecs: {
+      capacity: 'Confirm from packaging / official product sheet',
+      inputOutputRatings: 'Confirm from packaging / official product sheet',
+      portTypes: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-digital-display-power-bank-gp-p07.webp', alt: 'GoldPlus Digital Display Power Bank' }],
+    attributeValues: []
+  },
+  {
+    id: 'e4f1b567-4d5e-6f7a-1b2c-4d5e6f7a8b9c',
+    slug: 'goldplus-magnetic-power-bank-gp-03',
+    name: 'GoldPlus Magnetic Power Bank',
+    categoryName: 'Power Devices',
+    sku: 'GP-03',
+    modelNumber: 'GP-03',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-magnetic-power-bank-gp-03.webp',
+    verifiedSpecs: {
+      capacity: 'Confirm from packaging / official product sheet',
+      wirelessChargingSupport: 'Confirm from packaging / official product sheet',
+      magneticCompatibility: 'Confirm from packaging / official product sheet',
+      inputOutputRatings: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-magnetic-power-bank-gp-03.webp', alt: 'GoldPlus Magnetic Power Bank' }],
     attributeValues: []
   },
   {
@@ -117,6 +155,28 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     attributeValues: []
   },
   {
+    id: 'f5a2c678-5e6f-7a8b-2c3d-5e6f7a8b9c0d',
+    slug: 'goldplus-power-bank-with-handle-gp-x03',
+    name: 'GoldPlus Power Bank with Handle',
+    categoryName: 'Power Devices',
+    sku: 'GP-X03',
+    modelNumber: 'GP-X03',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-power-bank-with-handle-gp-x03.webp',
+    verifiedSpecs: {
+      visibleMarking: '100W, confirm technical meaning from packaging',
+      capacity: 'Confirm from packaging / official product sheet',
+      inputOutputRatings: 'Confirm from packaging / official product sheet',
+      ledLightFeature: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-power-bank-with-handle-gp-x03.webp', alt: 'GoldPlus Power Bank with Handle' }],
+    attributeValues: []
+  },
+  {
     id: '8d1fbc20-a7c8-4122-8b0e-89aa39c654b2',
     slug: 'portable-audio-headset',
     name: 'Portable Audio Headset',
@@ -130,6 +190,27 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     verifiedSpecs: {},
     hasMissingSpecs: false,
     images: [{ url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=600', alt: 'Portable Audio Headset' }],
+    attributeValues: []
+  },
+  {
+    id: 'a6b3d789-6f7a-8b9c-3d4e-6f7a8b9c0d1e',
+    slug: 'goldplus-slim-power-bank-gp-04',
+    name: 'GoldPlus Slim Power Bank',
+    categoryName: 'Power Devices',
+    sku: 'GP-04',
+    modelNumber: 'GP-04',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-slim-power-bank-gp-04.webp',
+    verifiedSpecs: {
+      capacity: 'Confirm from packaging / official product sheet',
+      portTypes: 'Confirm from packaging / official product sheet',
+      inputOutputRatings: 'Confirm from packaging / official product sheet',
+      warranty: 'Confirm from GoldPlus policy'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-slim-power-bank-gp-04.webp', alt: 'GoldPlus Slim Power Bank' }],
     attributeValues: []
   }
 ];
