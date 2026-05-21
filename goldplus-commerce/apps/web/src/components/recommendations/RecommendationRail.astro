@@ -10,9 +10,10 @@ interface Props {
   placement: RecommendationPlacement;
   items: RecommendationItemDto[];
   subtitle?: string;
+  variant?: "default" | "cart-compact";
 }
 
-const { title, placement, items, subtitle } = Astro.props;
+const { title, placement, items, subtitle, variant = "default" } = Astro.props;
 
 if (!items || items.length === 0) {
   return null;
@@ -39,7 +40,7 @@ const productIdsString = items.map((item) => item.productId).join(",");
 
   <ul class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
     {items.map((item) => (
-      <RecommendationCard item={item} placement={placement} />
+      <RecommendationCard item={item} placement={placement} variant={variant} />
     ))}
   </ul>
 </section>

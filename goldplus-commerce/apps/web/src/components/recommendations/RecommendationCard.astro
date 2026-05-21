@@ -4,9 +4,10 @@ import type { RecommendationItemDto, RecommendationPlacement } from "@goldplus/s
 interface Props {
   item: RecommendationItemDto;
   placement: RecommendationPlacement;
+  variant?: "default" | "cart-compact";
 }
 
-const { item, placement } = Astro.props;
+const { item, placement, variant = "default" } = Astro.props;
 
 const formattedPrice = (typeof item.price === "number" && item.price > 0)
   ? `USh ${item.price.toLocaleString("en-UG")}`
@@ -24,7 +25,9 @@ const productType = lowerName.includes("charger") ? "Charger"
 <li class="group list-none h-full">
   <a
     href={`/products/${item.slug}`}
-    class="flex flex-col h-full border border-slate-200/80 rounded-2xl p-4 hover:border-brand-primary hover:shadow-lg transition-all duration-300 bg-white relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+    class={variant === "cart-compact" 
+      ? "flex flex-col h-full border border-slate-200/80 rounded-2xl p-4 hover:border-brand-primary hover:shadow-lg transition-all duration-300 bg-white relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+      : "flex flex-col h-full border border-brand-borderGrey rounded-3xl p-5 hover:border-brand-primary hover:shadow-xl transition-all duration-300 bg-white relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"}
     data-recommendation-click
     data-placement={placement}
     data-product-id={item.productId}
@@ -42,7 +45,9 @@ const productType = lowerName.includes("charger") ? "Charger"
       </div>
     )}
 
-    <div class="aspect-square bg-slate-50 rounded-xl overflow-hidden mb-3 relative border border-slate-100">
+    <div class={variant === "cart-compact" 
+      ? "aspect-square bg-slate-50 rounded-xl overflow-hidden mb-3 relative border border-slate-100"
+      : "aspect-square bg-brand-softGrey rounded-2xl overflow-hidden mb-4 relative border border-brand-borderGrey/50"}>
       {item.imageUrl ? (
         <img
           src={item.imageUrl}
@@ -60,17 +65,29 @@ const productType = lowerName.includes("charger") ? "Charger"
     </div>
 
     <div class="flex flex-col flex-grow">
-      <h3 class="text-sm font-bold text-gray-900 leading-tight mb-1.5 group-hover:text-brand-primary transition-colors line-clamp-1">
+      <h3 class={variant === "cart-compact"
+        ? "text-sm font-bold text-gray-900 leading-tight mb-1.5 group-hover:text-brand-primary transition-colors line-clamp-1"
+        : "text-base font-bold text-brand-charcoal leading-tight mb-2 group-hover:text-brand-primary transition-colors line-clamp-2 min-h-[2.5rem]"}>
         {item.name}
       </h3>
 
-      <div class="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-        <span class={`font-black tracking-tight ${typeof item.price === 'number' && item.price > 0 ? 'text-sm text-brand-primary' : 'text-[10px] text-slate-400 font-bold uppercase'}`}>
+      <div class={variant === "cart-compact"
+        ? "mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-2"
+        : "mt-auto pt-4 border-t border-brand-borderGrey flex items-center justify-between gap-3"}>
+        <span class={variant === "cart-compact"
+          ? `font-black tracking-tight ${typeof item.price === 'number' && item.price > 0 ? 'text-sm text-brand-primary' : 'text-[10px] text-slate-400 font-bold uppercase'}`
+          : `font-black tracking-tight ${typeof item.price === 'number' && item.price > 0 ? 'text-lg text-brand-charcoal' : 'text-xs text-brand-mutedGrey font-bold'}`}>
           {formattedPrice}
         </span>
-        <span class="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 bg-slate-50 text-gray-900 group-hover:bg-brand-charcoal group-hover:text-white border border-slate-200 group-hover:border-transparent flex-shrink-0">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-        </span>
+        {variant === "cart-compact" ? (
+          <span class="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 bg-slate-50 text-gray-900 group-hover:bg-brand-charcoal group-hover:text-white border border-slate-200 group-hover:border-transparent flex-shrink-0">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          </span>
+        ) : (
+          <span class="px-4 py-2 rounded-xl font-bold text-xs transition-all duration-300 bg-brand-softGrey text-brand-charcoal group-hover:bg-brand-charcoal group-hover:text-white">
+            View
+          </span>
+        )}
       </div>
     </div>
   </a>
