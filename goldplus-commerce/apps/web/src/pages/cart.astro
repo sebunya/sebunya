@@ -198,14 +198,16 @@ const formatUgx = (n: number): string =>
 
     {items.length === 0 ? (
       <>
-        <EmptyState
-          title="Your cart is empty"
-          message="Browse the shop and add a product to get started. Cart contents persist for this device."
-        >
-          <a href="/shop" class="inline-block px-6 py-2.5 bg-brand-primary text-gray-955 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 active:scale-95 transition-all text-sm outline-none">
-            Start shopping
-          </a>
-        </EmptyState>
+        <div class="py-8">
+          <EmptyState
+            title="Your cart is empty"
+            message="Browse the shop and add a product to get started."
+          >
+            <a href="/shop" class="inline-flex items-center justify-center min-w-[200px] h-12 px-6 bg-brand-charcoal text-white rounded-full font-bold hover:bg-black transition-colors text-sm outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30">
+              Shop all products
+            </a>
+          </EmptyState>
+        </div>
         <div class="mt-16 pt-8 border-t border-slate-100">
           <PopularNowRail />
         </div>
@@ -222,24 +224,26 @@ const formatUgx = (n: number): string =>
                 
                 return (
                   <li class="p-5 md:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
-                    {imageUrl ? (
-                      <img 
-                        src={imageUrl} 
-                        alt={item.name} 
-                        class="w-20 h-20 object-cover bg-slate-50 rounded-xl flex-shrink-0 border border-slate-200/60 p-1"
-                      />
-                    ) : (
-                      <div class="w-20 h-20 bg-slate-50 rounded-xl flex-shrink-0 flex items-center justify-center text-[10px] text-slate-400 font-bold border border-slate-200/60 uppercase text-center p-2">
-                        No image
-                      </div>
-                    )}
-                    
-                    <div class="flex-grow min-w-0">
-                      {item.categoryName && (
-                        <p class="text-[10px] font-bold text-brand-primary uppercase tracking-wider mb-1">{item.categoryName}</p>
+                    <a href={`/products/${item.slug}`} class="flex-shrink-0 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 rounded-2xl block">
+                      {imageUrl ? (
+                        <img 
+                          src={imageUrl} 
+                          alt={item.name} 
+                          class="w-24 h-24 object-cover bg-slate-50/50 rounded-2xl border border-slate-200/60 p-1 hover:border-brand-primary transition-colors"
+                        />
+                      ) : (
+                        <div class="w-24 h-24 bg-slate-50 rounded-2xl flex items-center justify-center text-[10px] text-slate-400 font-bold border border-slate-200/60 uppercase text-center p-2 hover:border-brand-primary transition-colors">
+                          No image
+                        </div>
                       )}
-                      <a href={`/products/${item.slug}`} class="font-bold text-gray-900 hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-2">{item.name}</a>
-                      <p class="text-xs text-slate-500 mt-1">{formatUgx(item.unitPriceUgx)} each</p>
+                    </a>
+                    
+                    <div class="flex-grow min-w-0 flex flex-col justify-center">
+                      {item.categoryName && (
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.categoryName}</p>
+                      )}
+                      <a href={`/products/${item.slug}`} class="font-bold text-gray-900 hover:text-brand-primary transition-colors line-clamp-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50 rounded leading-snug">{item.name}</a>
+                      <p class="text-sm font-bold text-brand-primary mt-1.5">{formatUgx(item.unitPriceUgx)} <span class="text-xs font-normal text-slate-400 ml-1">each</span></p>
                     </div>
                     
                     {/* Quantity Selector controls */}
@@ -252,13 +256,14 @@ const formatUgx = (n: number): string =>
                           type="submit" 
                           name="quantity" 
                           value={item.quantity - 1} 
-                          aria-label="Decrease quantity"
-                          class="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 transition-colors outline-none cursor-pointer"
+                          aria-label={`Decrease quantity of ${item.name}`}
+                          class="w-11 h-11 sm:w-9 sm:h-9 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 hover:border-slate-300 transition-colors outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={item.quantity <= 1}
                         >
-                          -
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/></svg>
                         </button>
                         
-                        <span class="w-8 text-center font-bold text-gray-900 text-sm" aria-label={`Quantity: ${item.quantity}`}>
+                        <span class="w-8 text-center font-bold text-gray-900 text-base" aria-label={`Quantity: ${item.quantity}`}>
                           {item.quantity}
                         </span>
                         
@@ -266,10 +271,10 @@ const formatUgx = (n: number): string =>
                           type="submit" 
                           name="quantity" 
                           value={item.quantity + 1} 
-                          aria-label="Increase quantity"
-                          class="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 transition-colors outline-none cursor-pointer"
+                          aria-label={`Increase quantity of ${item.name}`}
+                          class="w-11 h-11 sm:w-9 sm:h-9 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 hover:border-slate-300 transition-colors outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 active:scale-95 cursor-pointer"
                         >
-                          +
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                         </button>
                       </form>
                       
@@ -279,9 +284,9 @@ const formatUgx = (n: number): string =>
                         <button 
                           type="submit" 
                           aria-label={`Remove ${item.name} from cart`}
-                          class="p-2 text-slate-400 hover:text-red-600 transition-colors rounded-full hover:bg-red-50/50 outline-none cursor-pointer"
+                          class="p-2.5 sm:p-2 text-slate-400 hover:text-red-500 transition-colors rounded-full hover:bg-red-50 outline-none focus-visible:ring-4 focus-visible:ring-red-500/30 cursor-pointer"
                         >
-                          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <svg class="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
@@ -297,32 +302,53 @@ const formatUgx = (n: number): string =>
         </div>
 
         <aside class="w-full lg:w-1/3">
-          <div class="bg-white rounded-2xl border border-slate-200/80 p-6 sticky top-24 shadow-xs">
-            <h2 class="text-lg font-bold text-gray-900 mb-4">Summary</h2>
-            <dl class="space-y-3 text-sm">
+          <div class="bg-white rounded-3xl border border-slate-200/60 p-6 sm:p-8 sticky top-24 shadow-lg shadow-slate-100/50">
+            <h2 class="text-xl font-black tracking-tight text-gray-900 mb-6">Summary</h2>
+            <dl class="space-y-4 text-sm mb-8">
               <div class="flex items-center justify-between">
-                <dt class="text-slate-550">Subtotal</dt>
+                <dt class="text-slate-500 font-medium">Subtotal</dt>
                 <dd class="font-bold text-gray-900">{formatUgx(subtotal)}</dd>
               </div>
               <div class="flex items-center justify-between">
-                <dt class="text-slate-550">Delivery</dt>
+                <dt class="text-slate-500 font-medium">Delivery</dt>
                 <dd class="text-slate-400 italic">Calculated at checkout</dd>
               </div>
-              <div class="flex items-center justify-between pt-3 border-t border-slate-100">
-                <dt class="font-bold text-gray-900">Total</dt>
-                <dd class="font-black text-gray-900 text-lg">{formatUgx(subtotal)}</dd>
+              <div class="flex items-center justify-between pt-4 border-t border-slate-100">
+                <dt class="font-black text-gray-900 text-base">Total</dt>
+                <dd class="font-black text-brand-primary text-xl tracking-tight">{formatUgx(subtotal)}</dd>
               </div>
             </dl>
 
             <a
               href="/checkout"
-              class="block w-full text-center mt-6 px-6 py-2.5 bg-brand-primary text-gray-950 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/25 outline-none transition-all shadow-sm cursor-pointer hover:scale-[1.01] active:scale-[0.98] text-sm"
+              class="flex items-center justify-center w-full h-14 px-6 bg-brand-charcoal text-white rounded-full font-bold hover:bg-black outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 transition-all shadow-md active:scale-95 text-base cursor-pointer"
             >
               Continue to checkout
             </a>
-            <a href="/shop" class="block text-center mt-3 text-xs font-bold text-slate-400 hover:text-gray-900 transition-colors hover:underline">
+            <a 
+              href="/shop" 
+              class="flex items-center justify-center w-full h-12 mt-3 text-sm font-bold text-slate-500 hover:text-gray-900 hover:bg-slate-50 rounded-full transition-colors outline-none focus-visible:ring-4 focus-visible:ring-slate-200 cursor-pointer"
+            >
               Continue shopping
             </a>
+            
+            {/* Compact Trust Strip */}
+            <div class="mt-8 pt-6 border-t border-slate-100/80">
+              <ul class="space-y-4">
+                <li class="flex items-center gap-3 text-sm text-slate-600 font-medium">
+                  <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-brand-charcoal flex-shrink-0">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  </div>
+                  Original GoldPlus products
+                </li>
+                <li class="flex items-center gap-3 text-sm text-slate-600 font-medium">
+                  <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-brand-charcoal flex-shrink-0">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                  </div>
+                  Support available on WhatsApp
+                </li>
+              </ul>
+            </div>
           </div>
         </aside>
       </div>
