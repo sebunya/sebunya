@@ -110,7 +110,11 @@ try {
 }
 
 // 1. Normalize categories using our storefront mapper
-const normalizedProducts = rawProducts.map(p => normalizeProductCategory(p));
+let normalizedProducts = rawProducts.map(p => normalizeProductCategory(p));
+
+// OPTION B: Filter out stale API power products and prefer canonical web catalogue
+normalizedProducts = normalizedProducts.filter(p => p.categoryName !== 'Power Devices');
+normalizedProducts.push(...LOCAL_SEED_PRODUCTS.filter(p => p.categoryName === 'Power Devices').map(p => normalizeProductCategory(p)));
 
 // 2. Programmatically filter the catalog using precise logic
 const filteredProducts = normalizedProducts.filter(product => {

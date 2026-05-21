@@ -20,9 +20,13 @@ const response = await getRecommendations({
   limit: 12,
 });
 
-const displayItems = filterDisplayableRecommendations(response.items, {
+let displayItems = filterDisplayableRecommendations(response.items, {
   limit: 4,
 });
+
+if (categorySlug === 'power') {
+  displayItems = displayItems.filter(item => LOCAL_SEED_PRODUCTS.some(p => p.id === item.productId));
+}
 
 let finalItems = displayItems;
 
@@ -46,6 +50,10 @@ if (finalItems.length === 0) {
   // Find category name from slug
   const targetCategory = categorySlug ? CATEGORY_SLUG_TO_NAME[categorySlug] : undefined;
   
+  if (targetCategory === 'Power Devices') {
+    allProducts = LOCAL_SEED_PRODUCTS;
+  }
+
   // Filter products by category slug/name if present
   let filtered = allProducts;
   if (targetCategory) {
