@@ -118,12 +118,12 @@ if (Astro.request.method === 'POST') {
                  return Astro.redirect(payRes.data.redirectUrl, 303);
               } else {
                  status = 'error';
-                 message = payRes?.message || 'We successfully created your order, but we could not connect to PesaPal secure payment at this moment. Please try again.';
+                 message = payRes?.message || 'We could not start payment. Please try again or contact support.';
                  reference = res.data?.orderNumber || orderId;
               }
            } catch (payErr: any) {
               status = 'error';
-              message = `Payment could not start. Please try again or contact GoldPlus support. Your order was placed successfully, but is unpaid.`;
+              message = `We could not start payment. Please try again or contact support.`;
               reference = res.data?.orderNumber || orderId;
            }
         } else {
@@ -269,9 +269,11 @@ const formatUgx = (n: number): string =>
             <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <button
                 type="submit"
+                id="submitBtn"
+                onclick="this.innerText = 'Starting secure payment…'; this.classList.add('opacity-80', 'cursor-not-allowed')"
                 class="bg-brand-primary text-gray-955 px-8 py-2.5 rounded-full font-bold text-sm tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985] shadow-sm"
               >
-                Lock Location & Place Order
+                Pay Online
               </button>
               <p class="text-xs text-slate-400 italic max-w-xs">Location verification safeguards delivery times.</p>
             </div>
