@@ -140,21 +140,61 @@ const filteredProducts = normalizedProducts.filter(product => {
 
 // 3. Apply stable sorting algorithm
 const sortedProducts = sortProducts(filteredProducts, sort);
+
+const seoTitles: Record<string, string> = {
+  all: "Shop Verified Electronics | GoldPlus",
+  power: "GoldPlus Power Devices | Chargers & Power Banks",
+  storage: "GoldPlus Storage | USB Flash Drives & Memory Cards",
+  pc: "GoldPlus PC Accessories | USB Mouse & USB Sound Card",
+  sound: "GoldPlus Sound | Wireless Earbuds & Everyday Audio"
+};
+
+const seoDescriptions: Record<string, string> = {
+  all: "Browse our catalog of authentic, rigorously tested electronics and accessories in Uganda. Durable and fully guaranteed.",
+  storage: "Shop GoldPlus storage accessories including USB flash drives and memory cards for everyday files, photos, music and compatible devices.",
+  pc: "Shop GoldPlus PC accessories for everyday computer use, including USB mouse and USB sound card options for work, study, music and audio setups.",
+  sound: "Shop GoldPlus wireless earbuds and sound accessories for music, calls, videos, travel and everyday listening."
+};
+
+const heroHeadlines: Record<string, string> = {
+  all: "GoldPlus Catalog",
+  power: "Fast Charging, Made Simple",
+  storage: "Storage that keeps life moving.",
+  pc: "PC accessories for everyday work.",
+  sound: "Sound for everyday listening."
+};
+
+const heroSubheadlines: Record<string, string> = {
+  all: "Browse rigorously tested electronic essentials engineered for extreme durability. Authentic, original, and backed by a comprehensive warranty.",
+  power: "From compact everyday adapters to high-output PD and PPS chargers, GoldPlus gives you dependable charging for the devices you use every day.",
+  storage: "GoldPlus storage devices help you carry files, music, photos and everyday data with simple, reliable options for phones, laptops and digital work.",
+  pc: "GoldPlus PC accessories make daily computer use easier, from simple navigation to practical audio connectivity for creators and everyday users.",
+  sound: "GoldPlus sound devices are made for music, calls, videos and daily listening, with simple wireless options for work, travel and everyday life."
+};
+
+const currentSeoTitle = seoTitles[category] || seoTitles.all;
+const currentSeoDescription = seoDescriptions[category] || seoDescriptions.all;
+const currentHeroHeadline = heroHeadlines[category] || heroHeadlines.all;
+const currentHeroSubheadline = heroSubheadlines[category] || heroSubheadlines.all;
 ---
 
 <BaseLayout 
-  title="Shop Verified Electronics | GoldPlus" 
-  description="Browse our catalog of authentic, rigorously tested electronics and accessories in Uganda. Durable and fully guaranteed."
+  title={currentSeoTitle}
+  description={currentSeoDescription}
 >
   <!-- Sleek Premium Dark Sub-Header Banner -->
   <div class="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 text-white py-12 border-b border-slate-950">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="max-w-3xl">
         <h1 class="text-3xl sm:text-4xl font-black tracking-tight text-white mb-3">
-          GoldPlus <span class="text-brand-primary">Catalog</span>
+          {category === 'all' ? (
+            <Fragment>GoldPlus <span class="text-brand-primary">Catalog</span></Fragment>
+          ) : (
+            currentHeroHeadline
+          )}
         </h1>
         <p class="text-slate-400 text-sm sm:text-base leading-relaxed font-medium">
-          Browse rigorously tested electronic essentials engineered for extreme durability. Authentic, original, and backed by a comprehensive warranty.
+          {currentHeroSubheadline}
         </p>
       </div>
     </div>

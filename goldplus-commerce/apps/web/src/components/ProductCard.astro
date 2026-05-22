@@ -20,7 +20,10 @@ const productType = lowerName.includes("charger") ? "Charger"
   : lowerName.includes("drive") || lowerName.includes("sd") || lowerName.includes("storage") ? "Storage"
   : "Accessory";
 
-const availabilityLabel = (() => {
+const badgeAttr = product.attributeValues?.find(a => a.name === 'Badge')?.value;
+const shortDescAttr = product.attributeValues?.find(a => a.name === 'CardShortDescription')?.value;
+
+const availabilityLabel = badgeAttr ? badgeAttr : (() => {
   switch(product.availability.kind) {
     case 'in_stock': return 'In Stock';
     case 'pre_order': return 'Pre-Order';
@@ -30,6 +33,7 @@ const availabilityLabel = (() => {
 })();
 
 const availabilityBadgeClass = (() => {
+  if (badgeAttr) return 'bg-brand-primary/15 text-brand-charcoal border-brand-primary/20';
   switch(product.availability.kind) {
     case 'in_stock': return 'bg-brand-primary/15 text-brand-charcoal border-brand-primary/20';
     case 'pre_order': return 'bg-blue-50/80 text-blue-700 border-blue-150';
@@ -83,6 +87,13 @@ const availabilityBadgeClass = (() => {
         {product.name}
       </a>
     </h3>
+
+    {/* Card Short Description */}
+    {shortDescAttr && (
+      <p class="text-[12px] text-slate-500 mb-3 line-clamp-2 leading-relaxed">
+        {shortDescAttr}
+      </p>
+    )}
     
     {/* Conditional SKU Tag */}
     <div class="mb-4">

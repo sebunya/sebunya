@@ -26,22 +26,6 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     attributeValues: []
   },
   {
-    id: '27b396dd-55c1-4181-9772-aec1bf4a3dcf',
-    slug: 'wireless-earbuds',
-    name: 'Wireless Earbuds',
-    categoryName: 'Sound Devices',
-    sku: 'SND-EP-001',
-    modelNumber: 'GP-WE-X1',
-    retailPriceUgx: 80000,
-    availability: { kind: 'in_stock', quantity: 100 },
-    hasImage: true,
-    primaryImageUrl: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&q=80&w=600',
-    verifiedSpecs: {},
-    hasMissingSpecs: false,
-    images: [{ url: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&q=80&w=600', alt: 'Wireless Earbuds with Charging Case' }],
-    attributeValues: []
-  },
-  {
     id: 'c2d9f345-2b3c-4d5e-9f0a-2b3c4d5e6f7a',
     slug: 'goldplus-100w-portable-power-station-gp-09',
     name: 'GoldPlus 100W Portable Power Station',
@@ -107,54 +91,6 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     attributeValues: []
   },
   {
-    id: 'fa7e1a81-c640-4283-bd52-a5d4429ef1e1',
-    slug: 'bluetooth-rugged-speaker',
-    name: 'Bluetooth Rugged Speaker',
-    categoryName: 'Sound Devices',
-    sku: 'SND-SPK-004',
-    modelNumber: 'GP-BS-05',
-    retailPriceUgx: 150000,
-    availability: { kind: 'in_stock', quantity: 45 },
-    hasImage: true,
-    primaryImageUrl: 'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?auto=format&fit=crop&q=80&w=600',
-    verifiedSpecs: {},
-    hasMissingSpecs: false,
-    images: [{ url: 'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?auto=format&fit=crop&q=80&w=600', alt: 'Bluetooth Rugged Speaker' }],
-    attributeValues: []
-  },
-  {
-    id: 'ca8f3d1b-467f-41d1-a461-78a89dc9c201',
-    slug: 'car-dashboard-mount',
-    name: 'Car Dashboard Mount',
-    categoryName: 'Other',
-    sku: 'ACC-MT-005',
-    modelNumber: 'GP-CM-HD',
-    retailPriceUgx: 35000,
-    availability: { kind: 'in_stock', quantity: 120 },
-    hasImage: true,
-    primaryImageUrl: 'https://images.unsplash.com/photo-1586105251261-72a756497a11?auto=format&fit=crop&q=80&w=600',
-    verifiedSpecs: {},
-    hasMissingSpecs: false,
-    images: [{ url: 'https://images.unsplash.com/photo-1586105251261-72a756497a11?auto=format&fit=crop&q=80&w=600', alt: 'Car Dashboard Mount' }],
-    attributeValues: []
-  },
-  {
-    id: '7a1e42b9-e278-4b49-af1f-c19bbddcae3a',
-    slug: 'usb-3-flash-drive-128gb',
-    name: 'USB 3.0 Flash Drive 128GB',
-    categoryName: 'Other',
-    sku: 'STR-FL-006',
-    modelNumber: 'GP-FD-128G',
-    retailPriceUgx: 60000,
-    availability: { kind: 'in_stock', quantity: 80 },
-    hasImage: true,
-    primaryImageUrl: 'https://images.unsplash.com/photo-1618424181497-157f25b6ddd5?auto=format&fit=crop&q=80&w=600',
-    verifiedSpecs: { storage: '128GB' },
-    hasMissingSpecs: false,
-    images: [{ url: 'https://images.unsplash.com/photo-1618424181497-157f25b6ddd5?auto=format&fit=crop&q=80&w=600', alt: 'USB 3.0 Flash Drive' }],
-    attributeValues: []
-  },
-  {
     id: 'f5a2c678-5e6f-7a8b-2c3d-5e6f7a8b9c0d',
     slug: 'goldplus-power-bank-with-handle-gp-x03',
     name: 'GoldPlus Power Bank with Handle',
@@ -174,22 +110,6 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     },
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-power-bank-with-handle-gp-x03.webp', alt: 'GoldPlus Power Bank with Handle' }],
-    attributeValues: []
-  },
-  {
-    id: '8d1fbc20-a7c8-4122-8b0e-89aa39c654b2',
-    slug: 'portable-audio-headset',
-    name: 'Portable Audio Headset',
-    categoryName: 'Sound Devices',
-    sku: 'SND-HD-007',
-    modelNumber: 'GP-PH-02',
-    retailPriceUgx: 110000,
-    availability: { kind: 'in_stock', quantity: 25 },
-    hasImage: true,
-    primaryImageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=600',
-    verifiedSpecs: {},
-    hasMissingSpecs: false,
-    images: [{ url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=600', alt: 'Portable Audio Headset' }],
     attributeValues: []
   },
   {
@@ -214,9 +134,215 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     attributeValues: []
   },
   {
+    id: 'str-01-gp-usb-16',
+    slug: 'goldplus-16gb-usb-flash-drive',
+    name: 'GoldPlus 16GB USB Flash Drive',
+    categoryName: 'Storage Devices',
+    sku: 'Needs Business Confirmation',
+    modelNumber: 'Needs Business Confirmation',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-16gb-usb-flash-drive.webp',
+    verifiedSpecs: {
+      capacity: '16GB',
+      connector: 'USB-A, based on image',
+      finish: 'Metal-style finish, based on image'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-16gb-usb-flash-drive.webp', alt: 'GoldPlus 16GB USB Flash Drive' }],
+    attributeValues: [
+      { name: 'Badge', value: '16GB Storage' },
+      { name: 'CardShortDescription', value: 'Compact USB storage for everyday files, photos and documents.' }
+    ]
+  },
+  {
+    id: 'str-02-gp-sd-32',
+    slug: 'goldplus-32gb-memory-card',
+    name: 'GoldPlus 32GB Memory Card',
+    categoryName: 'Storage Devices',
+    sku: 'Needs Business Confirmation',
+    modelNumber: 'Needs Business Confirmation',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-32gb-memory-card.webp',
+    verifiedSpecs: {
+      capacity: '32GB',
+      productType: 'Memory Card / microSD Card'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-32gb-memory-card.webp', alt: 'GoldPlus 32GB Memory Card' }],
+    attributeValues: [
+      { name: 'Badge', value: '32GB Storage' },
+      { name: 'CardShortDescription', value: 'Compact memory card storage for phones, cameras and compatible devices.' }
+    ]
+  },
+  {
+    id: 'pc-01-gp-mouse',
+    slug: 'goldplus-usb-mouse',
+    name: 'GoldPlus USB Mouse',
+    categoryName: 'PC Accessories',
+    sku: 'Needs Business Confirmation',
+    modelNumber: 'Needs Business Confirmation',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-usb-mouse.webp',
+    verifiedSpecs: {
+      connection: 'USB',
+      colour: 'Confirm from image/catalogue',
+      dpi: 'Confirm before publishing'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-usb-mouse.webp', alt: 'GoldPlus USB Mouse' }],
+    attributeValues: [
+      { name: 'Badge', value: 'USB Mouse' },
+      { name: 'CardShortDescription', value: 'Smooth everyday control for laptops, desktops and workstations.' }
+    ]
+  },
+  {
+    id: 'pc-02-gp-soundcard',
+    slug: 'goldplus-usb-sound-card',
+    name: 'GoldPlus USB Sound Card',
+    categoryName: 'PC Accessories',
+    sku: 'Needs Business Confirmation',
+    modelNumber: 'Needs Business Confirmation',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-usb-sound-card.webp',
+    verifiedSpecs: {
+      connection: 'USB-A, based on image',
+      controls: 'Visible buttons/indicators, based on image',
+      useCase: 'DJs, music producers and computer audio setups'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-usb-sound-card.webp', alt: 'GoldPlus USB Sound Card' }],
+    attributeValues: [
+      { name: 'Badge', value: 'USB Audio' },
+      { name: 'CardShortDescription', value: 'USB audio support for DJs, music producers and computer audio setups.' }
+    ]
+  },
+  {
+    id: 'snd-01-gp-001',
+    slug: 'goldplus-wireless-earbuds-gp-001',
+    name: 'GoldPlus Wireless Earbuds GP-001',
+    categoryName: 'Sound Devices',
+    sku: 'Needs Business Confirmation',
+    modelNumber: 'GP-001',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-wireless-earbuds-gp-001.webp',
+    verifiedSpecs: {
+      chargingCase: 'Yes, based on image',
+      colour: 'Confirm from image/catalogue',
+      bluetoothVersion: 'Confirm before publishing'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-wireless-earbuds-gp-001.webp', alt: 'GoldPlus Wireless Earbuds GP-001' }],
+    attributeValues: [
+      { name: 'Badge', value: 'Wireless Sound' },
+      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.' }
+    ]
+  },
+  {
+    id: 'snd-02-gp-002',
+    slug: 'goldplus-wireless-earbuds-gp-002',
+    name: 'GoldPlus Wireless Earbuds GP-002',
+    categoryName: 'Sound Devices',
+    sku: 'Needs Business Confirmation',
+    modelNumber: 'GP-002',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-wireless-earbuds-gp-002.webp',
+    verifiedSpecs: {
+      chargingCase: 'Yes, based on image',
+      colour: 'Confirm from image/catalogue',
+      bluetoothVersion: 'Confirm before publishing'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-wireless-earbuds-gp-002.webp', alt: 'GoldPlus Wireless Earbuds GP-002' }],
+    attributeValues: [
+      { name: 'Badge', value: 'Everyday Audio' },
+      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.' }
+    ]
+  },
+  {
+    id: 'snd-03-gp-003',
+    slug: 'goldplus-wireless-earbuds-gp-003',
+    name: 'GoldPlus Wireless Earbuds GP-003',
+    categoryName: 'Sound Devices',
+    sku: 'Needs Business Confirmation',
+    modelNumber: 'GP-003',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-wireless-earbuds-gp-003.webp',
+    verifiedSpecs: {
+      chargingCase: 'Yes, based on image',
+      colour: 'Confirm from image/catalogue',
+      bluetoothVersion: 'Confirm before publishing'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-wireless-earbuds-gp-003.webp', alt: 'GoldPlus Wireless Earbuds GP-003' }],
+    attributeValues: [
+      { name: 'Badge', value: 'TWS Earbuds' },
+      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.' }
+    ]
+  },
+  {
+    id: 'snd-04-gp-004',
+    slug: 'goldplus-wireless-earbuds-gp-004',
+    name: 'GoldPlus Wireless Earbuds GP-004',
+    categoryName: 'Sound Devices',
+    sku: 'Needs Business Confirmation',
+    modelNumber: 'GP-004',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-wireless-earbuds-gp-004.webp',
+    verifiedSpecs: {
+      chargingCase: 'Yes, based on image',
+      colour: 'Confirm from image/catalogue',
+      bluetoothVersion: 'Confirm before publishing'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-wireless-earbuds-gp-004.webp', alt: 'GoldPlus Wireless Earbuds GP-004' }],
+    attributeValues: [
+      { name: 'Badge', value: 'Compact Case' },
+      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.' }
+    ]
+  },
+  {
+    id: 'snd-05-gp-007',
+    slug: 'goldplus-wireless-earbuds-gp-007',
+    name: 'GoldPlus Wireless Earbuds GP-007',
+    categoryName: 'Sound Devices',
+    sku: 'Needs Business Confirmation',
+    modelNumber: 'GP-007',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-wireless-earbuds-gp-007.webp',
+    verifiedSpecs: {
+      chargingCase: 'Yes, based on image',
+      colour: 'Confirm from image/catalogue',
+      bluetoothVersion: 'Confirm before publishing'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-wireless-earbuds-gp-007.webp', alt: 'GoldPlus Wireless Earbuds GP-007' }],
+    attributeValues: [
+      { name: 'Badge', value: 'Wireless Sound' },
+      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.' }
+    ]
+  },
+  {
     id: 'chg-01-gp-101',
-    slug: 'goldplus-dual-colour-wall-charger-gp-101',
-    name: 'GoldPlus Dual-Colour Wall Charger',
+    slug: 'goldplus-usb-wall-charger',
+    name: 'GoldPlus USB Wall Charger',
     categoryName: 'Power Devices',
     sku: 'GP-101',
     modelNumber: 'GP-101',
@@ -232,13 +358,16 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
       warranty: 'Confirm from GoldPlus policy'
     },
     hasMissingSpecs: true,
-    images: [{ url: '/products/goldplus-charger-gp-101.webp', alt: 'GoldPlus Dual-Colour Wall Charger' }],
-    attributeValues: []
+    images: [{ url: '/products/goldplus-charger-gp-101.webp', alt: 'GoldPlus USB Wall Charger' }],
+    attributeValues: [
+      { name: 'Badge', value: 'USB Charging' },
+      { name: 'CardShortDescription', value: 'Reliable plug-in charging for everyday USB devices.' }
+    ]
   },
   {
     id: 'chg-02-gp-103',
-    slug: 'goldplus-dual-usb-wall-charger-gp-103',
-    name: 'GoldPlus Dual USB Wall Charger',
+    slug: 'goldplus-dual-usb-charger',
+    name: 'GoldPlus Dual USB Charger',
     categoryName: 'Power Devices',
     sku: 'GP-103',
     modelNumber: 'GP-103',
@@ -254,13 +383,16 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
       warranty: 'Confirm from GoldPlus policy'
     },
     hasMissingSpecs: true,
-    images: [{ url: '/products/goldplus-dual-usb-wall-charger-gp-103.webp', alt: 'GoldPlus Dual USB Wall Charger' }],
-    attributeValues: []
+    images: [{ url: '/products/goldplus-dual-usb-wall-charger-gp-103.webp', alt: 'GoldPlus Dual USB Charger' }],
+    attributeValues: [
+      { name: 'Badge', value: 'Dual USB' },
+      { name: 'CardShortDescription', value: 'Simple two-port charging for everyday devices.' }
+    ]
   },
   {
     id: 'chg-03-gp-104',
-    slug: 'goldplus-usb-c-charger-kit-gp-104',
-    name: 'GoldPlus USB-C Charger Kit',
+    slug: 'goldplus-usb-c-charger-set',
+    name: 'GoldPlus USB-C Charger Set',
     categoryName: 'Power Devices',
     sku: 'GP-104',
     modelNumber: 'GP-104',
@@ -276,13 +408,16 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
       warranty: 'Confirm from GoldPlus policy'
     },
     hasMissingSpecs: true,
-    images: [{ url: '/products/goldplus-usb-c-charger-kit-gp-104.webp', alt: 'GoldPlus USB-C Charger Kit' }],
-    attributeValues: []
+    images: [{ url: '/products/goldplus-usb-c-charger-kit-gp-104.webp', alt: 'GoldPlus USB-C Charger Set' }],
+    attributeValues: [
+      { name: 'Badge', value: 'Cable Included' },
+      { name: 'CardShortDescription', value: 'Wall charger and USB-C cable for easy daily charging.' }
+    ]
   },
   {
     id: 'chg-04-gp-105',
-    slug: 'goldplus-50w-pd-charger-kit-gp-105',
-    name: 'GoldPlus 50W PD Charger Kit',
+    slug: 'goldplus-50w-metal-charger',
+    name: 'GoldPlus 50W Metal Charger',
     categoryName: 'Power Devices',
     sku: 'GP-105',
     modelNumber: 'GP-105',
@@ -298,13 +433,16 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
       warranty: 'Confirm from GoldPlus policy'
     },
     hasMissingSpecs: true,
-    images: [{ url: '/products/goldplus-50w-pd-charger-kit-gp-105.webp', alt: 'GoldPlus 50W PD Charger Kit' }],
-    attributeValues: []
+    images: [{ url: '/products/goldplus-50w-pd-charger-kit-gp-105.webp', alt: 'GoldPlus 50W Metal Charger' }],
+    attributeValues: [
+      { name: 'Badge', value: '50W Fast Charge' },
+      { name: 'CardShortDescription', value: 'Premium high-speed charging with USB-C PD and USB output.' }
+    ]
   },
   {
     id: 'chg-05-gp-106',
-    slug: 'goldplus-compact-usb-wall-charger-gp-106',
-    name: 'GoldPlus Compact USB Wall Charger',
+    slug: 'goldplus-compact-charger',
+    name: 'GoldPlus Compact Charger',
     categoryName: 'Power Devices',
     sku: 'GP-106',
     modelNumber: 'GP-106',
@@ -320,13 +458,16 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
       warranty: 'Confirm from GoldPlus policy'
     },
     hasMissingSpecs: true,
-    images: [{ url: '/products/goldplus-compact-usb-wall-charger-gp-106.webp', alt: 'GoldPlus Compact USB Wall Charger' }],
-    attributeValues: []
+    images: [{ url: '/products/goldplus-compact-usb-wall-charger-gp-106.webp', alt: 'GoldPlus Compact Charger' }],
+    attributeValues: [
+      { name: 'Badge', value: 'Everyday Charge' },
+      { name: 'CardShortDescription', value: 'Compact everyday charging for phones and accessories.' }
+    ]
   },
   {
     id: 'chg-06-gp-107',
-    slug: 'goldplus-50w-pps-charger-kit-gp-107',
-    name: 'GoldPlus 50W PPS Charger Kit',
+    slug: 'goldplus-50w-pps-charger',
+    name: 'GoldPlus 50W PPS Charger',
     categoryName: 'Power Devices',
     sku: 'GP-107',
     modelNumber: 'GP-107',
@@ -342,13 +483,16 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
       warranty: 'Confirm from GoldPlus policy'
     },
     hasMissingSpecs: true,
-    images: [{ url: '/products/goldplus-50w-pps-charger-kit-gp-107.webp', alt: 'GoldPlus 50W PPS Charger Kit' }],
-    attributeValues: []
+    images: [{ url: '/products/goldplus-50w-pps-charger-kit-gp-107.webp', alt: 'GoldPlus 50W PPS Charger' }],
+    attributeValues: [
+      { name: 'Badge', value: '50W PPS' },
+      { name: 'CardShortDescription', value: 'High-speed PD and PPS charging for compatible devices.' }
+    ]
   },
   {
     id: 'chg-07-gp-108',
-    slug: 'goldplus-super-fast-charger-kit-gp-108',
-    name: 'GoldPlus Super Fast Charger Kit',
+    slug: 'goldplus-pd-fast-charger',
+    name: 'GoldPlus PD Fast Charger',
     categoryName: 'Power Devices',
     sku: 'GP-108',
     modelNumber: 'GP-108',
@@ -364,8 +508,11 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
       warranty: 'Confirm from GoldPlus policy'
     },
     hasMissingSpecs: true,
-    images: [{ url: '/products/goldplus-super-fast-charger-kit-gp-108.webp', alt: 'GoldPlus Super Fast Charger Kit' }],
-    attributeValues: []
+    images: [{ url: '/products/goldplus-super-fast-charger-kit-gp-108.webp', alt: 'GoldPlus PD Fast Charger' }],
+    attributeValues: [
+      { name: 'Badge', value: 'PD Charging' },
+      { name: 'CardShortDescription', value: 'Fast dual-port charging with USB-C and USB output.' }
+    ]
   }
 ];
 
