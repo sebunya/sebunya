@@ -733,3 +733,36 @@ export function sortProducts(products: ProductPublicDto[], sortKey: string): Pro
       return list.sort((a, b) => a.id.localeCompare(b.id));
   }
 }
+
+/**
+ * 6. Filters out stale/legacy products from the API/DB results and merges with the canonical LOCAL_SEED_PRODUCTS.
+ */
+export const STALE_SLUGS = new Set([
+  'generic-fast-charger',
+  'wireless-earbuds',
+  'reinforced-usb-c-cable',
+  'heavy-duty-power-bank',
+  'bluetooth-rugged-speaker',
+  'car-dashboard-mount',
+  'usb-3-flash-drive-128gb',
+  'portable-audio-headset'
+]);
+
+export function getCleanCatalog(apiProducts: ProductPublicDto[]): ProductPublicDto[] {
+  // Filter out any stale products from the API array
+  const cleanApi = (apiProducts || []).filter(p => p && p.slug && !STALE_SLUGS.has(p.slug));
+
+  // Build a merged array starting with all canonical LOCAL_SEED_PRODUCTS
+  const merged = [...LOCAL_SEED_PRODUCTS];
+
+  // Append any non-stale API products if they don't already exist in LOCAL_SEED_PRODUCTS
+  for (const apiProd of cleanApi) {
+    if (!merged.some(p => p.slug === apiProd.slug)) {
+      merged.push(apiProd);
+    }
+  }
+
+  // Ensure all category metadata is normalized correctly
+  return merged.map(p => normalizeProductCategory(p));
+}
+

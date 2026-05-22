@@ -2,7 +2,7 @@
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
 import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
-import { LOCAL_SEED_PRODUCTS, CATEGORY_SLUG_TO_NAME } from "../../lib/catalog/catalog";
+import { LOCAL_SEED_PRODUCTS, CATEGORY_SLUG_TO_NAME, getCleanCatalog } from "../../lib/catalog/catalog";
 import { apiBase } from "../../lib/api";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
@@ -43,16 +43,10 @@ if (finalItems.length === 0) {
   } catch {
     // ignore
   }
-  if (allProducts.length === 0) {
-    allProducts = LOCAL_SEED_PRODUCTS;
-  }
+  allProducts = getCleanCatalog(allProducts);
   
   // Find category name from slug
   const targetCategory = categorySlug ? CATEGORY_SLUG_TO_NAME[categorySlug] : undefined;
-  
-  if (targetCategory === 'Power Devices') {
-    allProducts = LOCAL_SEED_PRODUCTS;
-  }
 
   // Filter products by category slug/name if present
   let filtered = allProducts;

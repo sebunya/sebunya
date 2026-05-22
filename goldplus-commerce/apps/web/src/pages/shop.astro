@@ -9,7 +9,8 @@ import {
   matchesQuery, 
   sortProducts, 
   CATEGORY_SLUG_TO_NAME, 
-  CATEGORY_NAME_TO_SLUG 
+  CATEGORY_NAME_TO_SLUG,
+  getCleanCatalog
 } from "../lib/catalog/catalog";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 import CategoryPopularRail from "../components/recommendations/CategoryPopularRail.astro";
@@ -29,7 +30,6 @@ const q = Astro.url.searchParams.get('q') || '';
 const category = Astro.url.searchParams.get('category') || 'all';
 const sort = Astro.url.searchParams.get('sort') || 'featured';
 const inStock = Astro.url.searchParams.get('inStock') === 'true';
-
 // Helper function to build dynamic filter URLs preserving parameters
 function getFilterUrl(overrides: { q?: string; category?: string; sort?: string; inStock?: string }) {
   const params = new URLSearchParams();
@@ -37,6 +37,11 @@ function getFilterUrl(overrides: { q?: string; category?: string; sort?: string;
   if (category && category !== 'all') params.set('category', category);
   if (sort && sort !== 'featured') params.set('sort', sort);
   if (inStock) params.set('inStock', 'true');
+
+  // If we are overriding/switching categories, clear the search term (unless a new search term is also in overrides)
+  if ('category' in overrides && !('q' in overrides)) {
+    params.delete('q');
+  }
 
   for (const [key, value] of Object.entries(overrides)) {
     if (value === '' || value === 'all' || value === 'featured' || value === 'false') {
@@ -49,7 +54,6 @@ function getFilterUrl(overrides: { q?: string; category?: string; sort?: string;
   const queryStr = params.toString();
   return queryStr ? `/shop?${queryStr}` : '/shop';
 }
-
 // Active filter list generation
 const activeFilters = [];
 if (category !== 'all') {
@@ -109,12 +113,8 @@ try {
   fetchError = "API is currently offline or unreachable. Safe offline mode active.";
 }
 
-// 1. Normalize categories using our storefront mapper
-let normalizedProducts = rawProducts.map(p => normalizeProductCategory(p));
-
-// OPTION B: Filter out stale API power products and prefer canonical web catalogue
-normalizedProducts = normalizedProducts.filter(p => p.categoryName !== 'Power Devices');
-normalizedProducts.push(...LOCAL_SEED_PRODUCTS.filter(p => p.categoryName === 'Power Devices').map(p => normalizeProductCategory(p)));
+// 1. Clean the catalog to remove stale API products and merge/use LOCAL_SEED_PRODUCTS
+let normalizedProducts = getCleanCatalog(rawProducts);
 
 // 2. Programmatically filter the catalog using precise logic
 const filteredProducts = normalizedProducts.filter(product => {

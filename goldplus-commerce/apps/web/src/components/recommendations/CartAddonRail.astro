@@ -2,7 +2,7 @@
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
 import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
-import { LOCAL_SEED_PRODUCTS } from "../../lib/catalog/catalog";
+import { LOCAL_SEED_PRODUCTS, getCleanCatalog } from "../../lib/catalog/catalog";
 import { apiBase } from "../../lib/api";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
@@ -38,9 +38,7 @@ if (finalItems.length === 0) {
   } catch {
     // ignore
   }
-  if (allProducts.length === 0) {
-    allProducts = LOCAL_SEED_PRODUCTS;
-  }
+  allProducts = getCleanCatalog(allProducts);
   
   // Exclude cart products
   const eligible = allProducts.filter(p => !cartProductIds.includes(p.id));

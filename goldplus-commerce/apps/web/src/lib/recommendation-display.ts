@@ -1,4 +1,5 @@
 import type { ProductPublicDto } from "@goldplus/shared";
+import { STALE_SLUGS } from "./catalog/catalog";
 
 export interface RecommendationItem {
   productId: string;
@@ -34,6 +35,9 @@ export function isDisplayableRecommendation(
   const id = item.id || item.productId;
   const slug = item.slug;
   if (!id || !slug) return false;
+
+  // Filter out any stale slugs from recommendations
+  if (STALE_SLUGS.has(slug)) return false;
 
   // Requires a valid name
   if (!item.name || typeof item.name !== 'string' || item.name.trim().length === 0) return false;

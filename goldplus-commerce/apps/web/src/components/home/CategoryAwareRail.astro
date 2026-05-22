@@ -1,6 +1,6 @@
 ---
 import { apiBase } from "../../lib/api";
-import { normalizeProductCategory } from "../../lib/catalog/catalog";
+import { getCleanCatalog } from "../../lib/catalog/catalog";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
 interface Props {
@@ -22,7 +22,7 @@ try {
   // Safe fallback
 }
 
-const normalized = allProducts.map(p => normalizeProductCategory(p));
+const normalized = getCleanCatalog(allProducts);
 const serializedProducts = normalized.map(p => ({
   productId: p.id,
   slug: p.slug,

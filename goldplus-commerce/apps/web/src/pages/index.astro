@@ -9,28 +9,25 @@ import CartAwareRail from '../components/home/CartAwareRail.astro';
 import CategoryAwareRail from '../components/home/CategoryAwareRail.astro';
 import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
 import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
-import { LOCAL_SEED_PRODUCTS } from '../lib/catalog/catalog';
+import { LOCAL_SEED_PRODUCTS, getCleanCatalog } from '../lib/catalog/catalog';
 
-let allProducts: ProductPublicDto[] = [];
+let rawProducts: ProductPublicDto[] = [];
 let hasApiError = false;
 
 try {
   // Fetch higher depth limit to satisfy full homepage allocation without duplicates
-  const res = await fetch(`${apiBase}/products?limit=12`, { signal: AbortSignal.timeout(3000) });
+  const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
   if (res.ok) {
     const json = await res.json() as ApiResponse<ProductPublicDto[]>;
     if (json.success && json.data && json.data.length > 0) {
-      allProducts = json.data;
+      rawProducts = json.data;
     }
   }
 } catch {
   // Graceful fallback
 }
 
-if (allProducts.length === 0) {
-  allProducts = LOCAL_SEED_PRODUCTS;
-  hasApiError = false;
-}
+const allProducts = getCleanCatalog(rawProducts);
 
 // Execute cross-section deduplication and building of allocations
 const allocation = buildHomepageProductAllocation(allProducts);
