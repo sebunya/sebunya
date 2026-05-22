@@ -141,6 +141,14 @@ const whyYoullLikeIt = (() => {
       "Easy to carry through the day"
     ];
   }
+  if (product?.categoryName === 'Car Accessories') {
+    return [
+      "Everyday car charging",
+      "Two USB ports",
+      "Compact for travel",
+      "Clean GoldPlus design"
+    ];
+  }
   return [];
 })();
 
@@ -160,6 +168,10 @@ const pdpDescriptions: Record<string, { intro: string; description: string }> = 
   'goldplus-usb-sound-card': {
     intro: 'USB sound card support for computer audio setups.',
     description: 'The GoldPlus USB Sound Card is made for users who need a simple external audio connection for laptops, desktops and music setups. It is useful for DJs, music producers, editors and everyday users who need practical USB audio input or output support.\n\nIts compact USB design makes it easy to carry and connect when working with audio, music playback, recording support or computer sound troubleshooting.'
+  },
+  'goldplus-dual-usb-car-charger-gp-ca03': {
+    intro: 'Dual USB charging for everyday use in the car.',
+    description: 'The GoldPlus Dual USB Car Charger gives you a simple way to charge compatible phones and everyday devices while you are on the move. With two USB ports in one compact car adapter, it is useful for commutes, road trips, work travel and daily driving.\n\nIts black-and-white GoldPlus design keeps the setup clean, practical and easy to use inside your vehicle.'
   }
 };
 

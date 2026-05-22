@@ -513,6 +513,31 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
       { name: 'Badge', value: 'PD Charging' },
       { name: 'CardShortDescription', value: 'Fast dual-port charging with USB-C and USB output.' }
     ]
+  },
+  {
+    id: 'car-01-gp-ca03',
+    slug: 'goldplus-dual-usb-car-charger-gp-ca03',
+    name: 'GoldPlus Dual USB Car Charger',
+    categoryName: 'Car Accessories',
+    sku: null,
+    modelNumber: 'GP-CA03',
+    retailPriceUgx: null,
+    availability: { kind: 'unknown' },
+    hasImage: true,
+    primaryImageUrl: '/products/goldplus-dual-usb-car-charger-gp-ca03.webp',
+    verifiedSpecs: {
+      ports: '2 USB-A ports, based on image',
+      colour: 'Black / White, based on image',
+      powerInput: 'Confirm before publishing',
+      outputWattage: 'Confirm before publishing',
+      fastCharging: 'Confirm before publishing'
+    },
+    hasMissingSpecs: true,
+    images: [{ url: '/products/goldplus-dual-usb-car-charger-gp-ca03.webp', alt: 'GoldPlus Dual USB Car Charger' }],
+    attributeValues: [
+      { name: 'Badge', value: 'Dual USB' },
+      { name: 'CardShortDescription', value: 'Two-port USB charging for phones and devices on the road.' }
+    ]
   }
 ];
 
