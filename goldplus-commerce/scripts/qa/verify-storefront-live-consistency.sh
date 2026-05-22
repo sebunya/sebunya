@@ -43,40 +43,32 @@ verify_http_200 "${TARGET_URL}/shop?category=storage" "Storage Category" || ALL_
 verify_http_200 "${TARGET_URL}/shop?category=car" "Car Category" || ALL_PASS=false
 verify_http_200 "${TARGET_URL}/shop?category=pc" "PC Category" || ALL_PASS=false
 
-# 2. Check that Stale Slugs are completely absent from recommendations and categories
-# We'll fetch the shop categories and check for the presence of stale slugs or names
-STALE_PRODUCTS=(
-  "Generic Fast Charger"
-  "generic-fast-charger"
-  "Wireless Earbuds"
-  "wireless-earbuds"
-  "Reinforced USB-C Cable"
-  "reinforced-usb-c-cable"
-  "Heavy Duty Power Bank"
-  "heavy-duty-power-bank"
-  "Bluetooth Rugged Speaker"
-  "bluetooth-rugged-speaker"
-  "Car Dashboard Mount"
-  "car-dashboard-mount"
-  "USB 3 Flash Drive 128GB"
-  "usb-3-flash-drive-128gb"
-  "Portable Audio Headset"
-  "portable-audio-headset"
+# 2. Check that Stale Product PDP Links are completely absent from categories and recommendations
+# By checking the URL paths /products/stale-slug, we avoid substring false positives (e.g. "wireless-earbuds" matching "goldplus-wireless-earbuds-airpod")
+STALE_PRODUCT_PATHS=(
+  "/products/generic-fast-charger"
+  "/products/wireless-earbuds"
+  "/products/reinforced-usb-c-cable"
+  "/products/heavy-duty-power-bank"
+  "/products/bluetooth-rugged-speaker"
+  "/products/car-dashboard-mount"
+  "/products/usb-3-flash-drive-128gb"
+  "/products/portable-audio-headset"
 )
 
-# Helper to check absence of stale products in category pages
+# Helper to check absence of stale product links in pages
 check_absence_of_stale() {
   local category="$1"
   local url="${TARGET_URL}/shop?category=${category}&verify=$(date +%s)"
-  echo "Checking absence of stale items on /shop?category=${category}:"
+  echo "Checking absence of stale product links on /shop?category=${category}:"
   curl -L -s -o "${LOCAL_TMP_HTML}" --max-time 15 "${url}"
-  for pattern in "${STALE_PRODUCTS[@]}"; do
+  for path in "${STALE_PRODUCT_PATHS[@]}"; do
     local matches
-    matches=$(grep -i -o "${pattern}" "${LOCAL_TMP_HTML}" | wc -l || true)
+    matches=$(grep -F -o "${path}" "${LOCAL_TMP_HTML}" | wc -l || true)
     if [ "${matches}" -eq 0 ]; then
-      echo "  - [PASS] ${pattern} (0 matches)"
+      echo "  - [PASS] Link to ${path} (0 matches)"
     else
-      echo "  - [FAIL] ${pattern} found (${matches} matches)"
+      echo "  - [FAIL] Link to ${path} found (${matches} matches)"
       ALL_PASS=false
     fi
   done
@@ -93,7 +85,6 @@ echo "Checking search & category isolation state in /shop?q=earbuds:"
 curl -L -s -o "${LOCAL_TMP_HTML}" --max-time 15 "${TARGET_URL}/shop?q=earbuds"
 
 # In the header, category segment links should NOT carry "?q=earbuds"
-# Let's search the HTML for category links with q=earbuds
 # E.g. href="/shop?category=storage" or href="/shop?category=car" should not have &q=earbuds or q=earbuds&
 BAD_HEADER_LINKS=$(grep -E 'href="[^"]*category=[^"]*q=earbuds' "${LOCAL_TMP_HTML}" | wc -l || true)
 if [ "${BAD_HEADER_LINKS}" -eq 0 ]; then
