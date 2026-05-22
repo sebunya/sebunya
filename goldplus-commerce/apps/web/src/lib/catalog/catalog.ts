@@ -12,7 +12,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-PD-W3',
     modelNumber: 'GP-PD-W3',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-built-in-cable-power-bank-gp-pd-w3.webp',
     verifiedSpecs: {
@@ -33,7 +33,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-09',
     modelNumber: 'GP-09',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-100w-portable-power-station-gp-09.webp',
     verifiedSpecs: {
@@ -55,7 +55,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-P07',
     modelNumber: 'GP-P07',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-digital-display-power-bank-gp-p07.webp',
     verifiedSpecs: {
@@ -76,7 +76,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-03',
     modelNumber: 'GP-03',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-magnetic-power-bank-gp-03.webp',
     verifiedSpecs: {
@@ -98,7 +98,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-X03',
     modelNumber: 'GP-X03',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-power-bank-with-handle-gp-x03.webp',
     verifiedSpecs: {
@@ -120,7 +120,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-04',
     modelNumber: 'GP-04',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-slim-power-bank-gp-04.webp',
     verifiedSpecs: {
@@ -141,7 +141,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'Needs Business Confirmation',
     modelNumber: 'Needs Business Confirmation',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-16gb-usb-flash-drive.webp',
     verifiedSpecs: {
@@ -164,7 +164,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'Needs Business Confirmation',
     modelNumber: 'Needs Business Confirmation',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-32gb-memory-card.webp',
     verifiedSpecs: {
@@ -186,7 +186,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'Needs Business Confirmation',
     modelNumber: 'Needs Business Confirmation',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-usb-mouse.webp',
     verifiedSpecs: {
@@ -209,7 +209,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'Needs Business Confirmation',
     modelNumber: 'Needs Business Confirmation',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-usb-sound-card.webp',
     verifiedSpecs: {
@@ -232,7 +232,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'Needs Business Confirmation',
     modelNumber: 'GP-001',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-wireless-earbuds-gp-001.webp',
     verifiedSpecs: {
@@ -255,7 +255,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'Needs Business Confirmation',
     modelNumber: 'GP-002',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-wireless-earbuds-gp-002.webp',
     verifiedSpecs: {
@@ -278,7 +278,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'Needs Business Confirmation',
     modelNumber: 'GP-003',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-wireless-earbuds-gp-003.webp',
     verifiedSpecs: {
@@ -301,7 +301,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'Needs Business Confirmation',
     modelNumber: 'GP-004',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-wireless-earbuds-gp-004.webp',
     verifiedSpecs: {
@@ -324,7 +324,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'Needs Business Confirmation',
     modelNumber: 'GP-007',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-wireless-earbuds-gp-007.webp',
     verifiedSpecs: {
@@ -347,7 +347,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-101',
     modelNumber: 'GP-101',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-charger-gp-101.webp',
     verifiedSpecs: {
@@ -372,7 +372,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-103',
     modelNumber: 'GP-103',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-dual-usb-wall-charger-gp-103.webp',
     verifiedSpecs: {
@@ -397,7 +397,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-104',
     modelNumber: 'GP-104',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-usb-c-charger-kit-gp-104.webp',
     verifiedSpecs: {
@@ -422,7 +422,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-105',
     modelNumber: 'GP-105',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-50w-pd-charger-kit-gp-105.webp',
     verifiedSpecs: {
@@ -447,7 +447,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-106',
     modelNumber: 'GP-106',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-compact-usb-wall-charger-gp-106.webp',
     verifiedSpecs: {
@@ -472,7 +472,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-107',
     modelNumber: 'GP-107',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-50w-pps-charger-kit-gp-107.webp',
     verifiedSpecs: {
@@ -497,7 +497,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: 'GP-108',
     modelNumber: 'GP-108',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-super-fast-charger-kit-gp-108.webp',
     verifiedSpecs: {
@@ -522,7 +522,7 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     sku: null,
     modelNumber: 'GP-CA03',
     retailPriceUgx: 18000,
-    availability: { kind: 'unknown' },
+    availability: { kind: 'in_stock', quantity: 100 },
     hasImage: true,
     primaryImageUrl: '/products/goldplus-dual-usb-car-charger-gp-ca03.webp',
     verifiedSpecs: {
