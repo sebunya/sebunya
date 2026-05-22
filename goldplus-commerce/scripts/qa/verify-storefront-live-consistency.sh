@@ -80,6 +80,58 @@ check_absence_of_stale "pc"
 check_absence_of_stale "sound"
 check_absence_of_stale "power"
 
+# Helper to check absence of stale product links on homepage
+check_absence_of_stale_homepage() {
+  local url="${TARGET_URL}/?verify=$(date +%s)"
+  echo "Checking absence of stale product links on homepage /:"
+  curl -L -s -o "${LOCAL_TMP_HTML}" --max-time 15 "${url}"
+  for path in "${STALE_PRODUCT_PATHS[@]}"; do
+    local matches
+    matches=$(grep -F -o "${path}" "${LOCAL_TMP_HTML}" | wc -l || true)
+    if [ "${matches}" -eq 0 ]; then
+      echo "  - [PASS] Link to ${path} (0 matches)"
+    else
+      echo "  - [FAIL] Link to ${path} found on homepage (${matches} matches)"
+      ALL_PASS=false
+    fi
+  done
+}
+
+check_absence_of_stale_homepage
+
+# Helper to verify absence of internal review placeholders
+check_absence_of_internal_placeholders() {
+  local path="$1"
+  local description="$2"
+  local url="${TARGET_URL}${path}?verify=$(date +%s)"
+  echo "Checking absence of internal placeholders on ${description} (${path}):"
+  curl -L -s -o "${LOCAL_TMP_HTML}" --max-time 15 "${url}"
+  
+  local PLACEHOLDERS=(
+    "pending review"
+    "Needs Business Confirmation"
+    "Confirm before publishing"
+    "Identifier pending review"
+    "Owner review required"
+  )
+  for ph in "${PLACEHOLDERS[@]}"; do
+    local matches
+    matches=$(grep -i -o "${ph}" "${LOCAL_TMP_HTML}" | wc -l || true)
+    if [ "${matches}" -eq 0 ]; then
+      echo "  - [PASS] '${ph}' is absent"
+    else
+      echo "  - [FAIL] '${ph}' found (${matches} occurrences)"
+      ALL_PASS=false
+    fi
+  done
+}
+
+check_absence_of_internal_placeholders "/" "Homepage"
+check_absence_of_internal_placeholders "/shop" "Shop Catalogue"
+check_absence_of_internal_placeholders "/products/goldplus-built-in-cable-power-bank-gp-pd-w3" "Power Bank PDP"
+check_absence_of_internal_placeholders "/products/goldplus-16gb-usb-flash-drive" "Flash Drive PDP"
+
+
 # 3. Check search and category isolation state in the HTML (Header links & category filter links)
 echo "Checking search & category isolation state in /shop?q=earbuds:"
 curl -L -s -o "${LOCAL_TMP_HTML}" --max-time 15 "${TARGET_URL}/shop?q=earbuds"

@@ -7,7 +7,7 @@ import type { ProductPublicDto, ApiEnvelope } from '@goldplus/shared';
 import CompleteSetupRail from '../../components/recommendations/CompleteSetupRail.astro';
 import RelatedProductsRail from '../../components/recommendations/RelatedProductsRail.astro';
 import RecentlyViewedRail from '../../components/recommendations/RecentlyViewedRail.astro';
-import { LOCAL_SEED_PRODUCTS, normalizeProductCategory } from '../../lib/catalog/catalog';
+import { LOCAL_SEED_PRODUCTS, normalizeProductCategory, getCleanCatalog } from '../../lib/catalog/catalog';
 
 const { slug } = Astro.params;
 
@@ -55,6 +55,9 @@ if (!product) {
   }
 }
 
+const hasValidSku = product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending');
+const verifiedAttributes = product.attributeValues.filter((v) => v.isVerified && v.name !== 'Badge' && v.name !== 'CardShortDescription');
+
 // Fallback products for PDP "You May Also Like" rail
 let pdpFallbackProducts: Array<{
   productId: string;
@@ -76,6 +79,7 @@ try {
   if (allProducts.length === 0) {
     allProducts = LOCAL_SEED_PRODUCTS;
   }
+  allProducts = getCleanCatalog(allProducts);
   pdpFallbackProducts = allProducts
     .filter(p => p.id !== product.id)
     .slice(0, 4)
@@ -259,7 +263,7 @@ const canonical = Astro.url.toString();
               </span>
             </div>
 
-            {product.modelNumber && (
+            {product.modelNumber && product.modelNumber !== 'Needs Business Confirmation' && !product.modelNumber.toLowerCase().includes('pending') && (
               <p class="text-[10px] text-slate-500 font-mono bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200/70 inline-block">Model: {product.modelNumber}</p>
             )}
           </div>
@@ -285,36 +289,29 @@ const canonical = Astro.url.toString();
             </div>
           )}
 
-          {product.hasMissingSpecs && (
-            <div class="mb-6">
-              <Notice kind="owner-review" title="Some details are pending review" message="Some specifications for this product have not yet been verified by an admin. We do not invent claims." />
-            </div>
-          )}
+
 
           <div class="border border-slate-200/80 rounded-xl overflow-hidden mb-6 bg-white shadow-xs">
             <table class="w-full text-sm text-left">
               <caption class="sr-only">Specifications for {product.name}</caption>
               <tbody>
-                {product.sku && (
+                {hasValidSku && (
                   <tr class="border-b border-slate-100">
                     <th scope="row" class="px-5 py-3.5 bg-slate-50/60 font-bold text-gray-800 w-1/3 text-[10px] uppercase tracking-wider">SKU</th>
                     <td class="px-5 py-3.5 text-slate-700 font-mono text-sm">{product.sku}</td>
                   </tr>
                 )}
-                {product.attributeValues.map((v) => (
+                {verifiedAttributes.map((v) => (
                   <tr class="border-b border-slate-100 last:border-b-0">
                     <th scope="row" class="px-5 py-3.5 bg-slate-50/60 font-bold text-gray-800 w-1/3 text-[10px] uppercase tracking-wider">{v.name}</th>
                     <td class="px-5 py-3.5 text-slate-700 text-sm flex items-center gap-2">
                       <span>{v.value}{v.unit ? ` ${v.unit}` : ''}</span>
-                      {!v.isVerified && (
-                        <span class="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200/60 text-[9px] font-bold uppercase tracking-wider shadow-xs">Pending review</span>
-                      )}
                     </td>
                   </tr>
                 ))}
-                {product.attributeValues.length === 0 && !product.sku && (
+                {!hasValidSku && verifiedAttributes.length === 0 && (
                   <tr>
-                    <td class="px-5 py-6 text-slate-450 italic text-center text-sm" colspan="2">No specifications published yet. Owner review required.</td>
+                    <td class="px-5 py-6 text-slate-450 italic text-center text-sm" colspan="2">No specifications published yet.</td>
                   </tr>
                 )}
               </tbody>

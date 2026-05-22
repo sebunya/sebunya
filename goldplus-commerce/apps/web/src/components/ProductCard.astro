@@ -96,17 +96,13 @@ const availabilityBadgeClass = (() => {
     )}
     
     {/* Conditional SKU Tag */}
-    <div class="mb-4">
-      {product.sku ? (
+    {product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending') && (
+      <div class="mb-4">
         <span class="text-[9px] text-slate-500 font-mono bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100/80 inline-block">
           SKU: {product.sku}
         </span>
-      ) : (
-        <span class="text-[9px] text-red-600 bg-red-50/50 px-2 py-0.5 rounded-md border border-red-100/60 inline-block font-semibold">
-          Identifier pending review
-        </span>
-      )}
-    </div>
+      </div>
+    )}
 
     <div class="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
       <p class={`font-black tracking-tight ${(typeof product.retailPriceUgx === 'number' && product.retailPriceUgx > 0) ? 'text-base text-gray-900' : 'text-xs text-slate-500 font-bold'}`}>
