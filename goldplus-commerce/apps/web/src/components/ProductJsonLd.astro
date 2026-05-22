@@ -23,10 +23,17 @@ const node: Record<string, unknown> = {
   url,
 };
 
-if (product.sku) node.sku = product.sku;
-if (product.modelNumber) node.mpn = product.modelNumber;
+const hasValidSku = product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending');
+const hasValidMpn = product.modelNumber && product.modelNumber !== 'Needs Business Confirmation' && !product.modelNumber.toLowerCase().includes('pending');
 
-const specEntries = Object.entries(product.verifiedSpecs);
+if (hasValidSku) node.sku = product.sku;
+if (hasValidMpn) node.mpn = product.modelNumber;
+
+const specEntries = Object.entries(product.verifiedSpecs).filter(([_, v]) => {
+  if (typeof v !== 'string') return true;
+  const valLower = v.toLowerCase();
+  return !valLower.includes('confirm') && !valLower.includes('based on') && !valLower.includes('pending');
+});
 if (specEntries.length > 0) {
   node.description = specEntries.map(([k, v]) => `${k}: ${v}`).join('; ');
 }
