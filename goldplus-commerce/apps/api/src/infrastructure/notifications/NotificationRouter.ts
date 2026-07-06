@@ -79,6 +79,25 @@ export class DefaultNotificationRouter implements INotificationRouter {
         }
         break;
 
+      case 'USER_REGISTERED': {
+        // Welcome email goes to the customer, not ops.
+        const customerEmail = String(payload.email || '').trim();
+        if (customerEmail) {
+          targets.push({
+            channel: 'email',
+            provider: this.emailProvider,
+            payload: {
+              recipient: customerEmail,
+              template: 'WELCOME',
+              data: { email: customerEmail },
+              relatedEntity: 'user',
+              relatedEntityId,
+            },
+          });
+        }
+        break;
+      }
+
       case 'FAKE_PRODUCT_REPORTED':
         if (opsEmail) {
           targets.push({

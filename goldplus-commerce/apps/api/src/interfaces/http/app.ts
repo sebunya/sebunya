@@ -15,7 +15,10 @@ import adminProductsRoutes from './routes/admin/products';
 import adminNotificationsRoutes from './routes/admin/notifications';
 import adminExperimentsRoutes from './routes/admin/experiments';
 import adminAnalyticsRoutes from './routes/admin/analytics';
+import adminCmsRoutes from './routes/admin/cms';
+import adminDashboardRoutes from './routes/admin/dashboard';
 import eventsRoutes from './routes/events';
+import contentRoutes from './routes/content';
 
 
 // Define typed variables for the Hono context
@@ -51,7 +54,10 @@ app.route('/admin/products', adminProductsRoutes);
 app.route('/admin/notifications', adminNotificationsRoutes);
 app.route('/admin/experiments', adminExperimentsRoutes);
 app.route('/admin/analytics', adminAnalyticsRoutes);
+app.route('/admin/cms', adminCmsRoutes);
+app.route('/admin/dashboard', adminDashboardRoutes);
 app.route('/events', eventsRoutes);
+app.route('/content', contentRoutes);
 
 
 // Health Check

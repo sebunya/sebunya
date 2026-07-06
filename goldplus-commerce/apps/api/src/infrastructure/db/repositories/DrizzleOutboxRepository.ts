@@ -2,6 +2,7 @@ import { eq, lte, and, asc, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { outboxEvents } from '../schema/system';
 import { IOutboxRepository, PersistedOutboxEvent } from '../../../application/ports/IOutboxRepository';
+import { IOutboxWriter } from '../../../application/ports/IOutboxWriter';
 
 function rowToPersisted(row: typeof outboxEvents.$inferSelect): PersistedOutboxEvent {
   return {
@@ -15,7 +16,11 @@ function rowToPersisted(row: typeof outboxEvents.$inferSelect): PersistedOutboxE
   };
 }
 
-export class DrizzleOutboxRepository implements IOutboxRepository {
+export class DrizzleOutboxRepository implements IOutboxRepository, IOutboxWriter {
+  async append(eventType: string, payload: Record<string, unknown>): Promise<void> {
+    await db.insert(outboxEvents).values({ eventType, payload });
+  }
+
   async claimDueBatch(now: Date, limit: number): Promise<PersistedOutboxEvent[]> {
     // Use explicit SELECT to enable FOR UPDATE SKIP LOCKED concurrency safe claiming
     const rows = await db

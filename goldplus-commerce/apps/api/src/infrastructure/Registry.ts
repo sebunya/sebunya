@@ -20,6 +20,11 @@ import { DrizzleOutboxRepository } from './db/repositories/DrizzleOutboxReposito
 import { DrizzleActivityEventRepository } from './db/repositories/DrizzleActivityEventRepository';
 import { DrizzleExperimentRepository } from './db/repositories/DrizzleExperimentRepository';
 import { DrizzleLoyaltyLedgerRepository, DrizzleLoyaltyOrderLookup } from './db/repositories/DrizzleLoyaltyLedgerRepository';
+import { DrizzleCmsPageRepository } from './db/repositories/DrizzleCmsPageRepository';
+import { DrizzleUserIdentityRepository } from './db/repositories/DrizzleUserIdentityRepository';
+import { DrizzleUserAdminRepository } from './db/repositories/DrizzleUserAdminRepository';
+import { DrizzleDashboardReadRepository } from './db/repositories/DrizzleDashboardReadRepository';
+import { GoogleOAuthAdapter } from './auth/GoogleOAuthAdapter';
 import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
 
@@ -50,6 +55,25 @@ import {
 } from '../application/use-cases/experimentation/ManageExperimentsUseCases';
 import { AwardOrderLoyaltyPointsUseCase } from '../application/use-cases/loyalty/AwardOrderLoyaltyPointsUseCase';
 import { GetLoyaltySummaryUseCase } from '../application/use-cases/loyalty/GetLoyaltySummaryUseCase';
+import {
+  CreateCmsPageUseCase,
+  UpdateCmsPageUseCase,
+  ChangeCmsPageStatusUseCase,
+  ListCmsPagesUseCase,
+  ListCmsPageRevisionsUseCase,
+  RevertCmsPageUseCase,
+} from '../application/use-cases/cms/ManageCmsPagesUseCases';
+import { GetPublishedCmsPageUseCase } from '../application/use-cases/cms/GetPublishedCmsPageUseCase';
+import { ListPublishedCmsSlugsUseCase } from '../application/use-cases/cms/ListPublishedCmsSlugsUseCase';
+import { RegisterUserUseCase } from '../application/use-cases/identity/RegisterUserUseCase';
+import { ChangePasswordUseCase } from '../application/use-cases/identity/ChangePasswordUseCase';
+import { SocialLoginUseCase } from '../application/use-cases/identity/SocialLoginUseCase';
+import {
+  SetUserActiveUseCase,
+  AssignUserRoleUseCase,
+  RemoveUserRoleUseCase,
+} from '../application/use-cases/admin/ManageUserAccountUseCases';
+import { GetAdminDashboardUseCase } from '../application/use-cases/admin/GetAdminDashboardUseCase';
 
 export class Registry {
   private static _instance: Registry;
@@ -78,11 +102,16 @@ export class Registry {
   public readonly experimentRepo = new DrizzleExperimentRepository();
   public readonly loyaltyLedgerRepo = new DrizzleLoyaltyLedgerRepository();
   public readonly loyaltyOrderLookup = new DrizzleLoyaltyOrderLookup();
+  public readonly cmsPageRepo = new DrizzleCmsPageRepository();
+  public readonly userIdentityRepo = new DrizzleUserIdentityRepository();
+  public readonly userAdminRepo = new DrizzleUserAdminRepository();
+  public readonly dashboardReadRepo = new DrizzleDashboardReadRepository();
 
   // Infrastructure Adapters
   public readonly whatsappAdapter = new WhatsAppAdapter();
   public readonly zeptoMailAdapter = new ZeptoMailAdapter();
   public readonly smsAdapter = new DisabledSmsAdapter();
+  public readonly googleOAuthAdapter = new GoogleOAuthAdapter();
 
   // Services & Routers
   public readonly notificationRouter = new DefaultNotificationRouter(
@@ -127,6 +156,40 @@ export class Registry {
     this.loyaltyOrderLookup
   );
   public readonly getLoyaltySummaryUseCase = new GetLoyaltySummaryUseCase(this.loyaltyLedgerRepo);
+  public readonly createCmsPageUseCase = new CreateCmsPageUseCase(this.cmsPageRepo);
+  public readonly updateCmsPageUseCase = new UpdateCmsPageUseCase(this.cmsPageRepo);
+  public readonly changeCmsPageStatusUseCase = new ChangeCmsPageStatusUseCase(this.cmsPageRepo);
+  public readonly listCmsPagesUseCase = new ListCmsPagesUseCase(this.cmsPageRepo);
+  public readonly listCmsPageRevisionsUseCase = new ListCmsPageRevisionsUseCase(this.cmsPageRepo);
+  public readonly revertCmsPageUseCase = new RevertCmsPageUseCase(this.cmsPageRepo);
+  public readonly getPublishedCmsPageUseCase = new GetPublishedCmsPageUseCase(this.cmsPageRepo);
+  public readonly listPublishedCmsSlugsUseCase = new ListPublishedCmsSlugsUseCase(this.cmsPageRepo);
+  public readonly registerUserUseCase = new RegisterUserUseCase(
+    this.userRepo,
+    this.passwordHasher,
+    this.tokenSigner,
+    this.outboxRepo
+  );
+  public readonly changePasswordUseCase = new ChangePasswordUseCase(
+    this.userRepo,
+    this.userAdminRepo,
+    this.passwordHasher
+  );
+  public readonly googleSocialLoginUseCase = new SocialLoginUseCase(
+    this.googleOAuthAdapter,
+    this.userRepo,
+    this.userIdentityRepo,
+    this.passwordHasher,
+    this.tokenSigner,
+    this.outboxRepo
+  );
+  public readonly setUserActiveUseCase = new SetUserActiveUseCase(this.userAdminRepo);
+  public readonly assignUserRoleUseCase = new AssignUserRoleUseCase(this.userAdminRepo);
+  public readonly removeUserRoleUseCase = new RemoveUserRoleUseCase(this.userAdminRepo);
+  public readonly getAdminDashboardUseCase = new GetAdminDashboardUseCase(
+    this.dashboardReadRepo,
+    this.activityEventRepo
+  );
 
   public static getInstance(): Registry {
     if (!Registry._instance) {

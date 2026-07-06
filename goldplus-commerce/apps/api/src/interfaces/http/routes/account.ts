@@ -4,6 +4,7 @@ import { Registry } from '../../../infrastructure/Registry';
 import { ListMyOrdersUseCase, GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
 import { ListMyAddressesUseCase, AddAddressUseCase } from '../../../application/use-cases/addresses/AddressUseCases';
 import { GetLoyaltySummaryUseCase } from '../../../application/use-cases/loyalty/GetLoyaltySummaryUseCase';
+import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { ApiResponse, MeDto, OrderSummaryDto, OrderDetailDto, AddressDto } from '@goldplus/shared';
 
 const routes = new Hono<{ Variables: { userId: string; userEmail: string } }>();
@@ -43,6 +44,86 @@ routes.get('/orders/:id', async (c) => {
     return c.json(res, 404);
   }
   const res: ApiResponse<OrderDetailDto> = { success: true, data: result.order };
+  return c.json(res);
+});
+
+routes.post('/password', async (c) => {
+  const userId = c.get('userId') as string;
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } };
+    return c.json(res, 400);
+  }
+
+  const registry = Registry.getInstance();
+  const result = await registry.changePasswordUseCase.execute({
+    userId,
+    currentPassword: String(body.currentPassword ?? ''),
+    newPassword: String(body.newPassword ?? ''),
+  });
+
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' ? 404 : result.code === 'WRONG_PASSWORD' ? 403 : 400;
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, status);
+  }
+
+  const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
+  await auditUc.execute({
+    actorId: userId,
+    action: 'PASSWORD_CHANGED',
+    entity: 'user',
+    entityId: userId,
+  });
+
+  const res: ApiResponse<{ status: string }> = { success: true, data: { status: 'password_changed' } };
+  return c.json(res);
+});
+
+routes.get('/identities', async (c) => {
+  const userId = c.get('userId') as string;
+  const identities = await Registry.getInstance().userIdentityRepo.listForUser(userId);
+  const data = identities.map((i) => ({ provider: i.provider, email: i.email, linkedAt: i.createdAt.toISOString() }));
+  const res: ApiResponse<typeof data> = { success: true, data };
+  return c.json(res);
+});
+
+routes.delete('/identities/:provider', async (c) => {
+  const userId = c.get('userId') as string;
+  const provider = c.req.param('provider');
+  const registry = Registry.getInstance();
+
+  // Never let a user strip their only sign-in method: block unlinking the
+  // last social identity unless the account also has a usable password.
+  const user = await registry.userRepo.findById(userId);
+  const identities = await registry.userIdentityRepo.listForUser(userId);
+  const hasPassword = !!user && user.passwordHash.length > 0;
+  if (identities.length <= 1 && !hasPassword) {
+    const res: ApiResponse<never> = {
+      success: false,
+      error: { code: 'LAST_LOGIN_METHOD', message: 'Set a password before removing your only sign-in method.' },
+    };
+    return c.json(res, 409);
+  }
+
+  const removed = await registry.userIdentityRepo.unlink(userId, provider);
+  if (!removed) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'No linked account for that provider.' } };
+    return c.json(res, 404);
+  }
+
+  const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
+  await auditUc.execute({
+    actorId: userId,
+    action: 'SOCIAL_IDENTITY_UNLINKED',
+    entity: 'user',
+    entityId: userId,
+    newState: { provider },
+  });
+
+  const res: ApiResponse<{ status: string }> = { success: true, data: { status: 'unlinked' } };
   return c.json(res);
 });
 

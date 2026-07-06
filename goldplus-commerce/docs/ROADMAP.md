@@ -51,6 +51,25 @@ left so each next pass has a clear, buildable slice. Ordering favours
     `activity_events`, anonymisation job, documented access policy; the data
     dictionary lives in `docs/first-party-data.md` and must stay current.
 
+## Pass 2 shipped (admin / CMS / user management / social login)
+
+Delivered: CMS (versioned pages, scheduling, SEO, `/p/<slug>`), customer signup
++ welcome email, self-service password change, admin user activate/deactivate +
+role assignment with self-lockout guards, Google social login (OAuth 2.0 code
+flow) with account linking, and the admin dashboard metrics endpoint.
+
+### Follow-ups opened by pass 2
+
+- **CMS**: WYSIWYG editor + media/asset library (image/video uploads); content
+  taxonomy (categories/tags); admin Astro screens for the CMS API.
+- **Auth**: forgot-password / reset email flow, email verification, and two-factor
+  authentication (the register/login use cases are structured to accept these).
+- **Social**: Facebook and Apple providers (implement `ISocialIdentityProvider`;
+  the login use case needs no change). Profile field editing (name/preferences).
+- **Admin**: dashboard UI page over `/admin/dashboard`; bulk product import/export;
+  promotions/coupons module; order refund/exchange workflow.
+- **Privacy**: data-subject export/erasure endpoints (GDPR/CCPA), retention job.
+
 ## Standing constraints (AGENTS.md)
 
 Every item above must respect: hexagonal architecture (mutations via use

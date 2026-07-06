@@ -1,0 +1,75 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { apiBase } from '../../lib/api';
+import { renderMarkdown } from '../../lib/markdown';
+
+const { slug } = Astro.params;
+
+type PublishedPage = {
+  slug: string;
+  title: string;
+  body: string;
+  excerpt: string | null;
+  metaTitle: string | null;
+  metaDescription: string | null;
+  updatedAt: string;
+};
+
+let page: PublishedPage | null = null;
+let unreachable = false;
+
+try {
+  const res = await fetch(`${apiBase}/content/pages/${encodeURIComponent(slug ?? '')}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (res.ok) {
+    const json = (await res.json()) as { success?: boolean; data?: PublishedPage };
+    if (json.success && json.data) page = json.data;
+  } else if (res.status !== 404) {
+    unreachable = true;
+  }
+} catch {
+  unreachable = true;
+}
+
+if (!page && !unreachable) {
+  Astro.response.status = 404;
+}
+
+const bodyHtml = page ? renderMarkdown(page.body) : '';
+const metaTitle = page?.metaTitle ?? page?.title ?? 'Content';
+const metaDescription = page?.metaDescription ?? page?.excerpt ?? undefined;
+---
+
+<BaseLayout title={metaTitle} description={metaDescription}>
+  {page ? (
+    <article class="container mx-auto px-4 lg:px-8 py-12 max-w-3xl">
+      <h1 class="text-3xl md:text-4xl font-black tracking-tight text-brand-dark mb-6">{page.title}</h1>
+      <div class="cms-content prose max-w-none text-gray-700 leading-relaxed" set:html={bodyHtml} />
+      <p class="text-xs text-gray-400 mt-10">Last updated {new Date(page.updatedAt).toLocaleDateString()}</p>
+    </article>
+  ) : (
+    <div class="container mx-auto px-4 lg:px-8 py-20 text-center max-w-xl">
+      <h1 class="text-3xl font-black text-brand-dark mb-4">{unreachable ? 'Content temporarily unavailable' : 'Page not found'}</h1>
+      <p class="text-gray-600 mb-8">
+        {unreachable
+          ? 'We could not load this page right now. Please try again shortly.'
+          : 'The page you are looking for does not exist or is no longer published.'}
+      </p>
+      <a href="/" class="text-brand-green font-bold hover:underline">Return home &rarr;</a>
+    </div>
+  )}
+</BaseLayout>
+
+<style>
+  .cms-content :global(h2) { font-size: 1.5rem; font-weight: 700; margin: 1.5rem 0 0.75rem; color: #1a1a1a; }
+  .cms-content :global(h3) { font-size: 1.25rem; font-weight: 700; margin: 1.25rem 0 0.5rem; color: #1a1a1a; }
+  .cms-content :global(h4) { font-size: 1.1rem; font-weight: 600; margin: 1rem 0 0.5rem; color: #1a1a1a; }
+  .cms-content :global(p) { margin: 0.75rem 0; }
+  .cms-content :global(ul) { list-style: disc; margin: 0.75rem 0 0.75rem 1.5rem; }
+  .cms-content :global(ol) { list-style: decimal; margin: 0.75rem 0 0.75rem 1.5rem; }
+  .cms-content :global(li) { margin: 0.25rem 0; }
+  .cms-content :global(a) { color: #047857; text-decoration: underline; }
+  .cms-content :global(blockquote) { border-left: 3px solid #d1d5db; padding-left: 1rem; color: #4b5563; margin: 1rem 0; font-style: italic; }
+  .cms-content :global(code) { background: #f3f4f6; padding: 0.1rem 0.3rem; border-radius: 0.25rem; font-size: 0.9em; }
+</style>

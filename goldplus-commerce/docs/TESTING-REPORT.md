@@ -52,8 +52,61 @@ outbox processing, product images/attributes.
 
 ## Not covered (requires a live environment)
 
-- End-to-end database round-trips for the three new tables (repositories follow
-  the same Drizzle patterns as the 19 existing ones; migration applies cleanly
-  by construction from `drizzle-kit generate`).
-- A real ZeptoMail send (needs live credentials); the HTTP contract is tested
-  against the documented API shape.
+- End-to-end database round-trips for the new tables (repositories follow the same
+  Drizzle patterns as the existing ones; migrations apply cleanly by construction
+  from `drizzle-kit generate`).
+- A real ZeptoMail send or a real Google OAuth exchange (need live credentials);
+  both HTTP contracts are tested against their documented API shapes with injected fetch.
+
+---
+
+# Pass 2 — Admin, CMS, User Management, Social Login (2026-07-06)
+
+## After changes
+
+| Check                        | Result |
+|------------------------------|--------|
+| `pnpm typecheck`             | ✅ pass |
+| `pnpm test`                  | ✅ 170/170 tests, 28 files |
+| `pnpm build` (api + web)     | ✅ pass |
+| Architecture tests           | ✅ pass (domain purity, layer boundaries, admin auth + audit rules) |
+| Drizzle migration generated  | ✅ `0006_romantic_randall_flagg.sql` (cms_pages, cms_page_revisions, user_identities) |
+
+## What shipped
+
+- **CMS** (`docs/cms.md`): versioned pages, scheduled publish/expire, SEO fields,
+  audited admin API, public `/content/*` API + `/p/<slug>` web page + sitemap.
+- **User management** (`docs/user-management.md`): `POST /auth/register` with
+  password policy + welcome email, `POST /account/password`, admin
+  activate/deactivate + role assign/remove with self-lockout guards.
+- **Google social login** (`docs/social-login.md`): OAuth 2.0 code flow with
+  state-cookie CSRF, link/sign-in/register resolution, verified-email guard,
+  account identity list/unlink.
+- **Admin dashboard** (`docs/admin-dashboard.md`): `GET /admin/dashboard`
+  aggregating commerce, engagement, and system-health metrics.
+
+## New test files (32 new tests; 138 → 170)
+
+- `tests/unit/CmsPage.test.ts` — content validation, status lifecycle, visibility
+  windows, versioning, revert-as-new-version, publish-window guards.
+- `tests/unit/Markdown.test.ts` — safe-subset rendering, HTML-injection and
+  `javascript:` URL protection.
+- `tests/unit/UserManagement.test.ts` — password policy, registration (welcome
+  enqueue, duplicate/weak rejection, unconfigured signer), password change, admin
+  self-lockout / self-role-change / role-validation guards.
+- `tests/unit/SocialLogin.test.ts` — all three account-resolution paths,
+  unverified-email and disabled-account refusals, NOT_CONFIGURED propagation, and
+  the GoogleOAuthAdapter (unconfigured, success, provider-rejection) via injected fetch.
+- `tests/unit/AdminDashboard.test.ts` — aggregation shape and window clamping.
+
+## Bugs / issues found this pass
+
+- None in existing code. Google/CMS param handling surfaced a strict-mode typing
+  gap (`c.req.param` is `string | undefined`); routes coerce explicitly.
+
+## Deployment notes
+
+- Run the new migration (`pnpm db:migrate`) before deploying.
+- Assign the new permissions (`content.manage`, `dashboard.read`) to admin roles.
+- Set `GOOGLE_OAUTH_*` to enable social login; otherwise those endpoints return
+  `503 NOT_CONFIGURED` by design.

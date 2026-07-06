@@ -109,6 +109,17 @@ export function renderEmail(template: string, data: Record<string, unknown>): Re
         ),
       };
 
+    case 'WELCOME':
+      return {
+        subject: 'Welcome to GoldPlus',
+        htmlBody: layout(
+          'Welcome to GoldPlus',
+          `<p style="font-size:14px;line-height:1.6;">Your GoldPlus account is ready.</p>
+           <p style="font-size:14px;line-height:1.6;">You can browse the shop, track your orders, and earn loyalty points on every paid order — 1 point for every 1,000 UGX.</p>
+           <p style="font-size:14px;line-height:1.6;">If you did not create this account, please contact support immediately.</p>`,
+        ),
+      };
+
     case 'FAKE_REPORT_ALERT':
       return {
         subject: 'GoldPlus — counterfeit product report',
