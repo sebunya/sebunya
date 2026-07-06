@@ -36,6 +36,13 @@
       "when": 1778511682783,
       "tag": "0004_glorious_lionheart",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1783328754063,
+      "tag": "0005_stale_firelord",
+      "breakpoints": true
     }
   ]
 }

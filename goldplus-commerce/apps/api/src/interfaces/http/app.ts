@@ -13,6 +13,9 @@ import adminUsersRoutes from './routes/admin/users';
 import adminRolesRoutes from './routes/admin/roles';
 import adminProductsRoutes from './routes/admin/products';
 import adminNotificationsRoutes from './routes/admin/notifications';
+import adminExperimentsRoutes from './routes/admin/experiments';
+import adminAnalyticsRoutes from './routes/admin/analytics';
+import eventsRoutes from './routes/events';
 
 
 // Define typed variables for the Hono context
@@ -26,6 +29,14 @@ const app = new Hono<{ Variables: Variables }>();
 app.use('*', cors());
 app.use('*', logger());
 
+// Request ID Middleware — must be registered before routes so every
+// handler and error response carries a requestId.
+app.use('*', async (c, next) => {
+  const reqId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+  c.set('requestId', reqId);
+  await next();
+});
+
 // Routes
 app.route('/auth', authRoutes);
 app.route('/products', productRoutes);
@@ -38,17 +49,10 @@ app.route('/admin/users', adminUsersRoutes);
 app.route('/admin/roles', adminRolesRoutes);
 app.route('/admin/products', adminProductsRoutes);
 app.route('/admin/notifications', adminNotificationsRoutes);
+app.route('/admin/experiments', adminExperimentsRoutes);
+app.route('/admin/analytics', adminAnalyticsRoutes);
+app.route('/events', eventsRoutes);
 
-
-
-
-
-// Request ID Middleware
-app.use('*', async (c, next) => {
-  const reqId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
-  c.set('requestId', reqId);
-  await next();
-});
 
 // Health Check
 app.get('/health', (c) => {

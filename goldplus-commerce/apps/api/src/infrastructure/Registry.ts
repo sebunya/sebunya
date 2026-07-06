@@ -17,6 +17,9 @@ import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductI
 import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
 import { DrizzleNotificationAttemptRepository } from './db/repositories/DrizzleNotificationAttemptRepository';
 import { DrizzleOutboxRepository } from './db/repositories/DrizzleOutboxRepository';
+import { DrizzleActivityEventRepository } from './db/repositories/DrizzleActivityEventRepository';
+import { DrizzleExperimentRepository } from './db/repositories/DrizzleExperimentRepository';
+import { DrizzleLoyaltyLedgerRepository, DrizzleLoyaltyOrderLookup } from './db/repositories/DrizzleLoyaltyLedgerRepository';
 import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
 
@@ -37,6 +40,16 @@ import { ListAdminRolesUseCase } from '../application/use-cases/admin/ListAdminR
 import { RecordNotificationAttemptUseCase } from '../application/use-cases/notifications/RecordNotificationAttemptUseCase';
 import { ListRecentNotificationsUseCase } from '../application/use-cases/notifications/ListRecentNotificationsUseCase';
 import { ProcessOutboxBatchUseCase } from '../application/use-cases/outbox/ProcessOutboxBatchUseCase';
+import { RecordActivityEventUseCase } from '../application/use-cases/engagement/RecordActivityEventUseCase';
+import { GetEngagementSummaryUseCase } from '../application/use-cases/engagement/GetEngagementSummaryUseCase';
+import { GetExperimentAssignmentUseCase } from '../application/use-cases/experimentation/GetExperimentAssignmentUseCase';
+import {
+  CreateExperimentUseCase,
+  ListExperimentsUseCase,
+  UpdateExperimentStatusUseCase,
+} from '../application/use-cases/experimentation/ManageExperimentsUseCases';
+import { AwardOrderLoyaltyPointsUseCase } from '../application/use-cases/loyalty/AwardOrderLoyaltyPointsUseCase';
+import { GetLoyaltySummaryUseCase } from '../application/use-cases/loyalty/GetLoyaltySummaryUseCase';
 
 export class Registry {
   private static _instance: Registry;
@@ -61,6 +74,10 @@ export class Registry {
   public readonly attributeRepo = new DrizzleAttributeRepository();
   public readonly notificationAttemptRepo = new DrizzleNotificationAttemptRepository();
   public readonly outboxRepo = new DrizzleOutboxRepository();
+  public readonly activityEventRepo = new DrizzleActivityEventRepository();
+  public readonly experimentRepo = new DrizzleExperimentRepository();
+  public readonly loyaltyLedgerRepo = new DrizzleLoyaltyLedgerRepository();
+  public readonly loyaltyOrderLookup = new DrizzleLoyaltyOrderLookup();
 
   // Infrastructure Adapters
   public readonly whatsappAdapter = new WhatsAppAdapter();
@@ -96,6 +113,20 @@ export class Registry {
     this.notificationRouter,
     this.recordNotificationAttemptUseCase
   );
+  public readonly recordActivityEventUseCase = new RecordActivityEventUseCase(this.activityEventRepo);
+  public readonly getEngagementSummaryUseCase = new GetEngagementSummaryUseCase(this.activityEventRepo);
+  public readonly getExperimentAssignmentUseCase = new GetExperimentAssignmentUseCase(
+    this.experimentRepo,
+    this.activityEventRepo
+  );
+  public readonly createExperimentUseCase = new CreateExperimentUseCase(this.experimentRepo);
+  public readonly listExperimentsUseCase = new ListExperimentsUseCase(this.experimentRepo);
+  public readonly updateExperimentStatusUseCase = new UpdateExperimentStatusUseCase(this.experimentRepo);
+  public readonly awardOrderLoyaltyPointsUseCase = new AwardOrderLoyaltyPointsUseCase(
+    this.loyaltyLedgerRepo,
+    this.loyaltyOrderLookup
+  );
+  public readonly getLoyaltySummaryUseCase = new GetLoyaltySummaryUseCase(this.loyaltyLedgerRepo);
 
   public static getInstance(): Registry {
     if (!Registry._instance) {

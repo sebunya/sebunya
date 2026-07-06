@@ -3,6 +3,7 @@ import { customerSessionMiddleware } from '../middleware/customerSession';
 import { Registry } from '../../../infrastructure/Registry';
 import { ListMyOrdersUseCase, GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
 import { ListMyAddressesUseCase, AddAddressUseCase } from '../../../application/use-cases/addresses/AddressUseCases';
+import { GetLoyaltySummaryUseCase } from '../../../application/use-cases/loyalty/GetLoyaltySummaryUseCase';
 import { ApiResponse, MeDto, OrderSummaryDto, OrderDetailDto, AddressDto } from '@goldplus/shared';
 
 const routes = new Hono<{ Variables: { userId: string; userEmail: string } }>();
@@ -42,6 +43,14 @@ routes.get('/orders/:id', async (c) => {
     return c.json(res, 404);
   }
   const res: ApiResponse<OrderDetailDto> = { success: true, data: result.order };
+  return c.json(res);
+});
+
+routes.get('/loyalty', async (c) => {
+  const userId = c.get('userId') as string;
+  const uc = new GetLoyaltySummaryUseCase(Registry.getInstance().loyaltyLedgerRepo);
+  const data = await uc.execute(userId);
+  const res: ApiResponse<typeof data> = { success: true, data };
   return c.json(res);
 });
 

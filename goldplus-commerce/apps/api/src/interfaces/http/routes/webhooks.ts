@@ -79,6 +79,20 @@ routes.post('/payment/:provider', async (c) => {
       return c.json(res, statusCode);
     }
 
+    // Successful first-time payments earn loyalty points. The award use
+    // case is idempotent per order, and a loyalty failure must never
+    // reject an otherwise valid payment webhook.
+    if (result.payment.status === 'SUCCESS' && !result.replay) {
+      try {
+        await Registry.getInstance().awardOrderLoyaltyPointsUseCase.execute({ orderId: result.payment.orderId });
+      } catch (loyaltyErr) {
+        console.error(
+          `[LOYALTY] Failed to award points for order ${result.payment.orderId}:`,
+          loyaltyErr instanceof Error ? loyaltyErr.message : loyaltyErr
+        );
+      }
+    }
+
     const res: ApiResponse<{
       paymentId: string;
       orderId: string;
