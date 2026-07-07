@@ -2,8 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+ * Cross-browser + feature-phone hardening.
+ * These sit in @layer base so utilities still override where intended.
+ * ------------------------------------------------------------------------- */
 @layer base {
+  :root {
+    /* Render in light UI so browsers with a forced dark mode don't invert
+       our palette unexpectedly. */
+    color-scheme: light;
+  }
+
+  html {
+    /* Stop iOS/older mobile browsers inflating text on orientation change. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     @apply font-sans bg-gray-50 text-brand-dark antialiased;
+    /* Kill the grey tap flash on touch devices for a native feel. */
+    -webkit-tap-highlight-color: transparent;
+    /* Keep long unbroken strings (order numbers, emails) from overflowing
+       narrow feature-phone screens. */
+    overflow-wrap: break-word;
+  }
+
+  /* Responsive media by default — never overflow the viewport. */
+  img,
+  svg,
+  video {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Give tappable controls a comfortable target and snappier taps. */
+  a,
+  button,
+  [role='button'],
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+}
+
+/* Respect users (and low-power feature phones) that ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -37,6 +37,21 @@ export const GET: APIRoute = async ({ site }) => {
     // Fall through with static-only sitemap. Never throw — empty sitemap is worse than partial.
   }
 
+  // Published CMS pages contribute their public /p/<slug> URLs.
+  try {
+    const res = await fetch(`${apiBase}/content/sitemap`, { headers: { Accept: 'application/json' } });
+    if (res.ok) {
+      const json = (await res.json()) as { success?: boolean; data?: Array<{ slug?: string }> };
+      if (json.success && Array.isArray(json.data)) {
+        for (const p of json.data) {
+          if (p.slug) urls.push(`/p/${p.slug}`);
+        }
+      }
+    }
+  } catch {
+    // Static + product sitemap still valid without CMS pages.
+  }
+
   const now = new Date().toISOString();
   const body =
     `<?xml version="1.0" encoding="UTF-8"?>\n` +

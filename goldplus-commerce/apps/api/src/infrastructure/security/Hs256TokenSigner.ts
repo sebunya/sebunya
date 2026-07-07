@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { ITokenSigner, VerifiedToken } from '../../application/ports/ITokenSigner';
+import { ITokenSigner, VerifiedToken, TokenScope } from '../../application/ports/ITokenSigner';
 
 function base64UrlEncode(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -13,6 +13,7 @@ function base64UrlDecode(s: string): Buffer {
 interface JwtPayload {
   sub: string;
   email: string;
+  scope?: TokenScope;
   iat: number;
   exp: number;
 }
@@ -28,7 +29,7 @@ export class Hs256TokenSigner implements ITokenSigner {
     return this.secret !== null;
   }
 
-  async sign(payload: { subject: string; email: string; ttlSeconds: number }): Promise<string> {
+  async sign(payload: { subject: string; email: string; ttlSeconds: number; scope?: TokenScope }): Promise<string> {
     if (!this.secret) {
       throw new Error('JWT_SECRET is not configured (minimum 32 characters).');
     }
@@ -36,6 +37,7 @@ export class Hs256TokenSigner implements ITokenSigner {
     const body: JwtPayload = {
       sub: payload.subject,
       email: payload.email,
+      scope: payload.scope ?? 'session',
       iat: now,
       exp: now + payload.ttlSeconds,
     };
@@ -76,9 +78,13 @@ export class Hs256TokenSigner implements ITokenSigner {
     if (typeof payload.sub !== 'string' || !payload.sub) return null;
     if (typeof payload.email !== 'string' || !payload.email) return null;
 
+    // Tokens issued before scopes existed default to full sessions.
+    const scope: TokenScope = payload.scope === '2fa_pending' ? '2fa_pending' : 'session';
+
     return {
       subject: payload.sub,
       email: payload.email,
+      scope,
       expiresAt: new Date(payload.exp * 1000),
     };
   }

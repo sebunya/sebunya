@@ -17,12 +17,26 @@ import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductI
 import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
 import { DrizzleNotificationAttemptRepository } from './db/repositories/DrizzleNotificationAttemptRepository';
 import { DrizzleOutboxRepository } from './db/repositories/DrizzleOutboxRepository';
+import { DrizzleActivityEventRepository } from './db/repositories/DrizzleActivityEventRepository';
+import { DrizzleExperimentRepository } from './db/repositories/DrizzleExperimentRepository';
+import { DrizzleLoyaltyLedgerRepository, DrizzleLoyaltyOrderLookup } from './db/repositories/DrizzleLoyaltyLedgerRepository';
+import { DrizzleCmsPageRepository } from './db/repositories/DrizzleCmsPageRepository';
+import { DrizzleUserIdentityRepository } from './db/repositories/DrizzleUserIdentityRepository';
+import { DrizzleUserAdminRepository } from './db/repositories/DrizzleUserAdminRepository';
+import { DrizzleDashboardReadRepository } from './db/repositories/DrizzleDashboardReadRepository';
+import { DrizzleRecommendationReadRepository } from './db/repositories/DrizzleRecommendationReadRepository';
+import { GoogleOAuthAdapter } from './auth/GoogleOAuthAdapter';
+import { OtpHasher } from './security/OtpHasher';
+import { DrizzleTwoFactorRepository } from './db/repositories/DrizzleTwoFactorRepository';
+import { DrizzleOtpChallengeRepository } from './db/repositories/DrizzleOtpChallengeRepository';
+import { DrizzleAuthAttemptRepository } from './db/repositories/DrizzleAuthAttemptRepository';
+import { DrizzleOrderRiskRepository } from './db/repositories/DrizzleOrderRiskRepository';
 import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
 
 import { WhatsAppAdapter } from './notifications/whatsapp/WhatsAppAdapter';
 import { ZeptoMailAdapter } from './notifications/zeptomail/ZeptoMailAdapter';
-import { DisabledSmsAdapter } from './notifications/sms/DisabledSmsAdapter';
+import { GenericHttpSmsAdapter } from './notifications/sms/GenericHttpSmsAdapter';
 import { DefaultNotificationRouter } from './notifications/NotificationRouter';
 
 import { AddToCartUseCase } from '../application/use-cases/commerce/AddToCartUseCase';
@@ -37,6 +51,52 @@ import { ListAdminRolesUseCase } from '../application/use-cases/admin/ListAdminR
 import { RecordNotificationAttemptUseCase } from '../application/use-cases/notifications/RecordNotificationAttemptUseCase';
 import { ListRecentNotificationsUseCase } from '../application/use-cases/notifications/ListRecentNotificationsUseCase';
 import { ProcessOutboxBatchUseCase } from '../application/use-cases/outbox/ProcessOutboxBatchUseCase';
+import { RecordActivityEventUseCase } from '../application/use-cases/engagement/RecordActivityEventUseCase';
+import { GetEngagementSummaryUseCase } from '../application/use-cases/engagement/GetEngagementSummaryUseCase';
+import { GetExperimentAssignmentUseCase } from '../application/use-cases/experimentation/GetExperimentAssignmentUseCase';
+import {
+  CreateExperimentUseCase,
+  ListExperimentsUseCase,
+  UpdateExperimentStatusUseCase,
+} from '../application/use-cases/experimentation/ManageExperimentsUseCases';
+import { AwardOrderLoyaltyPointsUseCase } from '../application/use-cases/loyalty/AwardOrderLoyaltyPointsUseCase';
+import { GetLoyaltySummaryUseCase } from '../application/use-cases/loyalty/GetLoyaltySummaryUseCase';
+import {
+  CreateCmsPageUseCase,
+  UpdateCmsPageUseCase,
+  ChangeCmsPageStatusUseCase,
+  ListCmsPagesUseCase,
+  ListCmsPageRevisionsUseCase,
+  RevertCmsPageUseCase,
+} from '../application/use-cases/cms/ManageCmsPagesUseCases';
+import { GetPublishedCmsPageUseCase } from '../application/use-cases/cms/GetPublishedCmsPageUseCase';
+import { ListPublishedCmsSlugsUseCase } from '../application/use-cases/cms/ListPublishedCmsSlugsUseCase';
+import { RegisterUserUseCase } from '../application/use-cases/identity/RegisterUserUseCase';
+import { ChangePasswordUseCase } from '../application/use-cases/identity/ChangePasswordUseCase';
+import { SocialLoginUseCase } from '../application/use-cases/identity/SocialLoginUseCase';
+import {
+  SetUserActiveUseCase,
+  AssignUserRoleUseCase,
+  RemoveUserRoleUseCase,
+} from '../application/use-cases/admin/ManageUserAccountUseCases';
+import { GetAdminDashboardUseCase } from '../application/use-cases/admin/GetAdminDashboardUseCase';
+import { GetProductRecommendationsUseCase } from '../application/use-cases/recommendation/GetProductRecommendationsUseCase';
+import { GetPersonalizedRecommendationsUseCase } from '../application/use-cases/recommendation/GetPersonalizedRecommendationsUseCase';
+import { GetTrendingProductsUseCase } from '../application/use-cases/recommendation/GetTrendingProductsUseCase';
+import {
+  GetTwoFactorStatusUseCase,
+  EnrollTotpUseCase,
+  ConfirmTotpUseCase,
+  VerifyTotpOrBackupUseCase,
+  DisableTwoFactorUseCase,
+} from '../application/use-cases/security/TwoFactorUseCases';
+import {
+  StartOtpChallengeUseCase,
+  VerifyOtpChallengeUseCase,
+  EnableOtpTwoFactorUseCase,
+} from '../application/use-cases/security/OtpChallengeUseCases';
+import { LoginSecurityUseCase } from '../application/use-cases/security/LoginSecurityUseCase';
+import { AssessOrderRiskUseCase } from '../application/use-cases/security/AssessOrderRiskUseCase';
 
 export class Registry {
   private static _instance: Registry;
@@ -61,11 +121,26 @@ export class Registry {
   public readonly attributeRepo = new DrizzleAttributeRepository();
   public readonly notificationAttemptRepo = new DrizzleNotificationAttemptRepository();
   public readonly outboxRepo = new DrizzleOutboxRepository();
+  public readonly activityEventRepo = new DrizzleActivityEventRepository();
+  public readonly experimentRepo = new DrizzleExperimentRepository();
+  public readonly loyaltyLedgerRepo = new DrizzleLoyaltyLedgerRepository();
+  public readonly loyaltyOrderLookup = new DrizzleLoyaltyOrderLookup();
+  public readonly cmsPageRepo = new DrizzleCmsPageRepository();
+  public readonly userIdentityRepo = new DrizzleUserIdentityRepository();
+  public readonly userAdminRepo = new DrizzleUserAdminRepository();
+  public readonly dashboardReadRepo = new DrizzleDashboardReadRepository();
+  public readonly recommendationReadRepo = new DrizzleRecommendationReadRepository();
+  public readonly twoFactorRepo = new DrizzleTwoFactorRepository();
+  public readonly otpChallengeRepo = new DrizzleOtpChallengeRepository();
+  public readonly authAttemptRepo = new DrizzleAuthAttemptRepository();
+  public readonly orderRiskRepo = new DrizzleOrderRiskRepository();
 
   // Infrastructure Adapters
   public readonly whatsappAdapter = new WhatsAppAdapter();
   public readonly zeptoMailAdapter = new ZeptoMailAdapter();
-  public readonly smsAdapter = new DisabledSmsAdapter();
+  public readonly smsAdapter = new GenericHttpSmsAdapter();
+  public readonly googleOAuthAdapter = new GoogleOAuthAdapter();
+  public readonly otpHasher = new OtpHasher();
 
   // Services & Routers
   public readonly notificationRouter = new DefaultNotificationRouter(
@@ -96,6 +171,83 @@ export class Registry {
     this.notificationRouter,
     this.recordNotificationAttemptUseCase
   );
+  public readonly recordActivityEventUseCase = new RecordActivityEventUseCase(this.activityEventRepo);
+  public readonly getEngagementSummaryUseCase = new GetEngagementSummaryUseCase(this.activityEventRepo);
+  public readonly getExperimentAssignmentUseCase = new GetExperimentAssignmentUseCase(
+    this.experimentRepo,
+    this.activityEventRepo
+  );
+  public readonly createExperimentUseCase = new CreateExperimentUseCase(this.experimentRepo);
+  public readonly listExperimentsUseCase = new ListExperimentsUseCase(this.experimentRepo);
+  public readonly updateExperimentStatusUseCase = new UpdateExperimentStatusUseCase(this.experimentRepo);
+  public readonly awardOrderLoyaltyPointsUseCase = new AwardOrderLoyaltyPointsUseCase(
+    this.loyaltyLedgerRepo,
+    this.loyaltyOrderLookup
+  );
+  public readonly getLoyaltySummaryUseCase = new GetLoyaltySummaryUseCase(this.loyaltyLedgerRepo);
+  public readonly createCmsPageUseCase = new CreateCmsPageUseCase(this.cmsPageRepo);
+  public readonly updateCmsPageUseCase = new UpdateCmsPageUseCase(this.cmsPageRepo);
+  public readonly changeCmsPageStatusUseCase = new ChangeCmsPageStatusUseCase(this.cmsPageRepo);
+  public readonly listCmsPagesUseCase = new ListCmsPagesUseCase(this.cmsPageRepo);
+  public readonly listCmsPageRevisionsUseCase = new ListCmsPageRevisionsUseCase(this.cmsPageRepo);
+  public readonly revertCmsPageUseCase = new RevertCmsPageUseCase(this.cmsPageRepo);
+  public readonly getPublishedCmsPageUseCase = new GetPublishedCmsPageUseCase(this.cmsPageRepo);
+  public readonly listPublishedCmsSlugsUseCase = new ListPublishedCmsSlugsUseCase(this.cmsPageRepo);
+  public readonly registerUserUseCase = new RegisterUserUseCase(
+    this.userRepo,
+    this.passwordHasher,
+    this.tokenSigner,
+    this.outboxRepo
+  );
+  public readonly changePasswordUseCase = new ChangePasswordUseCase(
+    this.userRepo,
+    this.userAdminRepo,
+    this.passwordHasher
+  );
+  public readonly googleSocialLoginUseCase = new SocialLoginUseCase(
+    this.googleOAuthAdapter,
+    this.userRepo,
+    this.userIdentityRepo,
+    this.passwordHasher,
+    this.tokenSigner,
+    this.outboxRepo
+  );
+  public readonly setUserActiveUseCase = new SetUserActiveUseCase(this.userAdminRepo);
+  public readonly assignUserRoleUseCase = new AssignUserRoleUseCase(this.userAdminRepo);
+  public readonly removeUserRoleUseCase = new RemoveUserRoleUseCase(this.userAdminRepo);
+  public readonly getAdminDashboardUseCase = new GetAdminDashboardUseCase(
+    this.dashboardReadRepo,
+    this.activityEventRepo
+  );
+  public readonly getProductRecommendationsUseCase = new GetProductRecommendationsUseCase(
+    this.recommendationReadRepo,
+    this.productRepo
+  );
+  public readonly getPersonalizedRecommendationsUseCase = new GetPersonalizedRecommendationsUseCase(
+    this.recommendationReadRepo,
+    this.productRepo
+  );
+  public readonly getTrendingProductsUseCase = new GetTrendingProductsUseCase(
+    this.recommendationReadRepo,
+    this.productRepo
+  );
+
+  // Two-factor authentication
+  public readonly getTwoFactorStatusUseCase = new GetTwoFactorStatusUseCase(this.twoFactorRepo);
+  public readonly enrollTotpUseCase = new EnrollTotpUseCase(this.twoFactorRepo, this.userRepo);
+  public readonly confirmTotpUseCase = new ConfirmTotpUseCase(this.twoFactorRepo, this.otpHasher);
+  public readonly verifyTotpOrBackupUseCase = new VerifyTotpOrBackupUseCase(this.twoFactorRepo, this.otpHasher);
+  public readonly disableTwoFactorUseCase = new DisableTwoFactorUseCase(this.twoFactorRepo, this.verifyTotpOrBackupUseCase);
+  public readonly startOtpChallengeUseCase = new StartOtpChallengeUseCase(
+    this.otpChallengeRepo,
+    this.otpHasher,
+    this.smsAdapter,
+    this.zeptoMailAdapter
+  );
+  public readonly verifyOtpChallengeUseCase = new VerifyOtpChallengeUseCase(this.otpChallengeRepo, this.otpHasher);
+  public readonly enableOtpTwoFactorUseCase = new EnableOtpTwoFactorUseCase(this.twoFactorRepo, this.otpHasher);
+  public readonly loginSecurityUseCase = new LoginSecurityUseCase(this.authAttemptRepo);
+  public readonly assessOrderRiskUseCase = new AssessOrderRiskUseCase(this.orderRiskRepo);
 
   public static getInstance(): Registry {
     if (!Registry._instance) {

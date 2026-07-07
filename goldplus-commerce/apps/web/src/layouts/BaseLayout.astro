@@ -16,15 +16,34 @@ const {
 } = Astro.props;
 
 const canonical = canonicalUrl ?? Astro.url.toString();
+const apiBase = (import.meta.env.PUBLIC_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
+
+// Warm up the connection to the API origin (used by the client tracker and
+// the social-login links) when it is a separate host.
+let apiOrigin: string | null = null;
+try {
+  const o = new URL(apiBase).origin;
+  if (o !== new URL(canonical).origin) apiOrigin = o;
+} catch {
+  apiOrigin = null;
+}
 ---
 
 <!doctype html>
 <html lang="en-UG">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
     <meta name="description" content={description} />
     <title>{title} | GoldPlus Uganda</title>
+
+    {apiOrigin && (
+      <>
+        <link rel="preconnect" href={apiOrigin} crossorigin />
+        <link rel="dns-prefetch" href={apiOrigin} />
+      </>
+    )}
 
     {/* Open Graph */}
     <meta property="og:type" content="website" />
@@ -135,6 +154,9 @@ const canonical = canonicalUrl ?? Astro.url.toString();
         </div>
       </div>
     </footer>
+
+    {/* First-party analytics: our own API, no third-party trackers. Honours Do Not Track. */}
+    <script src="/js/gp-track.js" data-api-base={apiBase} defer is:inline></script>
 
     <script>
       if ('serviceWorker' in navigator) {

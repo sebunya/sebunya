@@ -42,11 +42,14 @@ const availabilityBadgeClass = (() => {
   <div class="relative mb-4">
     <a href={`/products/${product.slug}`} class="block aspect-square bg-brand-softGrey rounded-xl overflow-hidden relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30">
       {product.primaryImageUrl ? (
-        <img 
-          src={product.primaryImageUrl} 
-          alt={`Photo of ${product.name}`} 
+        <img
+          src={product.primaryImageUrl}
+          alt={`Photo of ${product.name}`}
           class="object-cover w-full h-full transition-transform group-hover:scale-105"
+          width="600"
+          height="600"
           loading="lazy"
+          decoding="async"
         />
       ) : (
         <div class="absolute inset-0 flex flex-col items-center justify-center text-brand-mutedGrey bg-brand-softGrey p-4 text-center">

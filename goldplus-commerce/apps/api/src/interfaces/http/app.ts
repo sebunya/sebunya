@@ -13,6 +13,16 @@ import adminUsersRoutes from './routes/admin/users';
 import adminRolesRoutes from './routes/admin/roles';
 import adminProductsRoutes from './routes/admin/products';
 import adminNotificationsRoutes from './routes/admin/notifications';
+import adminExperimentsRoutes from './routes/admin/experiments';
+import adminAnalyticsRoutes from './routes/admin/analytics';
+import adminCmsRoutes from './routes/admin/cms';
+import adminDashboardRoutes from './routes/admin/dashboard';
+import eventsRoutes from './routes/events';
+import contentRoutes from './routes/content';
+import recommendationRoutes from './routes/recommendations';
+import twoFactorRoutes from './routes/twoFactor';
+import { securityHeaders } from './middleware/securityHeaders';
+import { rateLimit } from './middleware/rateLimit';
 
 
 // Define typed variables for the Hono context
@@ -23,8 +33,23 @@ type Variables = {
 const app = new Hono<{ Variables: Variables }>();
 
 // Global Middleware
+app.use('*', securityHeaders);
 app.use('*', cors());
 app.use('*', logger());
+
+// Rate limits on sensitive surfaces (brute force / flooding protection).
+// Applied before the route groups below so they cover every sub-path.
+app.use('/auth/*', rateLimit({ limit: 20, windowSeconds: 300 }, { name: 'auth' }));
+app.use('/webhooks/*', rateLimit({ limit: 120, windowSeconds: 60 }, { name: 'webhooks' }));
+app.use('/events/*', rateLimit({ limit: 240, windowSeconds: 60 }, { name: 'events' }));
+
+// Request ID Middleware — must be registered before routes so every
+// handler and error response carries a requestId.
+app.use('*', async (c, next) => {
+  const reqId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+  c.set('requestId', reqId);
+  await next();
+});
 
 // Routes
 app.route('/auth', authRoutes);
@@ -38,17 +63,15 @@ app.route('/admin/users', adminUsersRoutes);
 app.route('/admin/roles', adminRolesRoutes);
 app.route('/admin/products', adminProductsRoutes);
 app.route('/admin/notifications', adminNotificationsRoutes);
+app.route('/admin/experiments', adminExperimentsRoutes);
+app.route('/admin/analytics', adminAnalyticsRoutes);
+app.route('/admin/cms', adminCmsRoutes);
+app.route('/admin/dashboard', adminDashboardRoutes);
+app.route('/events', eventsRoutes);
+app.route('/content', contentRoutes);
+app.route('/recommendations', recommendationRoutes);
+app.route('/auth/2fa', twoFactorRoutes);
 
-
-
-
-
-// Request ID Middleware
-app.use('*', async (c, next) => {
-  const reqId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
-  c.set('requestId', reqId);
-  await next();
-});
 
 // Health Check
 app.get('/health', (c) => {

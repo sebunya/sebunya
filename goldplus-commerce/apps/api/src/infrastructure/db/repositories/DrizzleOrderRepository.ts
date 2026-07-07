@@ -2,9 +2,9 @@ import { db } from '../client';
 import { orders, orderItems } from '../schema/commerce';
 import { products } from '../schema/products';
 import { and, eq, desc } from 'drizzle-orm';
-import { Order, OrderStatus as DomainOrderStatus, PaymentStatus, BuyerType } from '../../../domain/commerce/Order';
+import { Order, OrderStatus as DomainOrderStatus, PaymentStatus as DomainPaymentStatus, BuyerType } from '../../../domain/commerce/Order';
 import { ICustomerOrderRepository } from '../../../application/ports/ICustomerOrderRepository';
-import { OrderDetailDto, OrderSummaryDto, OrderStatus } from '@goldplus/shared';
+import { OrderDetailDto, OrderSummaryDto, OrderStatus, PaymentStatus } from '@goldplus/shared';
 
 export class DrizzleOrderRepository implements ICustomerOrderRepository {
   async findById(id: string): Promise<Order | null> {
@@ -36,7 +36,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository {
       result.subtotalAmount,
       result.deliveryFee,
       result.totalAmount,
-      result.paymentStatus as PaymentStatus,
+      result.paymentStatus as DomainPaymentStatus,
       result.status as DomainOrderStatus,
       result.createdAt,
       result.updatedAt
@@ -70,7 +70,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository {
       result.subtotalAmount,
       result.deliveryFee,
       result.totalAmount,
-      result.paymentStatus as PaymentStatus,
+      result.paymentStatus as DomainPaymentStatus,
       result.status as DomainOrderStatus,
       result.createdAt,
       result.updatedAt
@@ -131,6 +131,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository {
       id: row.id,
       orderNumber: row.orderNumber,
       status: row.status as OrderStatus,
+      paymentStatus: row.paymentStatus as PaymentStatus,
       totalAmountUgx: row.totalAmount,
       itemCount: (row as any).items?.length ?? 0,
       createdAt: row.createdAt.toISOString(),
@@ -154,6 +155,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository {
       id: row.id,
       orderNumber: row.orderNumber,
       status: row.status as OrderStatus,
+      paymentStatus: row.paymentStatus as PaymentStatus,
       totalAmountUgx: row.totalAmount,
       createdAt: row.createdAt.toISOString(),
       items: ((row as any).items ?? []).map((i: any) => {

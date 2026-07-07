@@ -26,6 +26,9 @@ export const PERMISSIONS = {
   REPORTS_READ: 'reports.read',
   SETTINGS_MANAGE: 'settings.manage',
   NOTIFICATIONS_READ: 'notifications.read',
+  EXPERIMENTS_MANAGE: 'experiments.manage',
+  CONTENT_MANAGE: 'content.manage',
+  DASHBOARD_READ: 'dashboard.read',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
