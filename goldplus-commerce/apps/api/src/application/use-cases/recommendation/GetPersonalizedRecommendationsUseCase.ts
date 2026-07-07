@@ -10,6 +10,7 @@ import {
   PersonalizationSource,
   ScoredProduct,
 } from '../../../domain/recommendation/Recommendation';
+import { RecommendationReasonCode } from '../../../domain/recommendation/RecommendationTypes';
 
 const MAX_ANCHORS = 12;
 const SIMILAR_PER_ANCHOR = 20;
@@ -19,6 +20,24 @@ const MAX_PER_CATEGORY = 3;
 export interface PersonalizedRecommendation {
   product: ProductPublicDto;
   reason: string | null;
+  reasonCode: RecommendationReasonCode;
+}
+
+export interface PersonalizedConsent {
+  personalization: boolean;
+}
+
+/** Derives a structured reason code from the (controlled) reason text. */
+function reasonCodeFor(reason: string | null | undefined): RecommendationReasonCode {
+  const t = (reason ?? '').toLowerCase();
+  if (t.startsWith('because you bought')) return 'because_purchased';
+  if (t.startsWith('because you added')) return 'because_carted';
+  if (t.startsWith('because you viewed')) return 'because_viewed';
+  if (t.startsWith('based on items you bought')) return 'because_purchased';
+  if (t.startsWith('based on items you added')) return 'because_carted';
+  if (t.startsWith('based on items you viewed')) return 'because_viewed';
+  if (t.startsWith('trending')) return 'trending_now';
+  return 'fallback_popular';
 }
 
 /**
@@ -33,8 +52,27 @@ export class GetPersonalizedRecommendationsUseCase {
     private readonly products: IProductRepository
   ) {}
 
-  async execute(input: { identity: RecommendationIdentity; limit?: number }): Promise<PersonalizedRecommendation[]> {
+  async execute(input: {
+    identity: RecommendationIdentity;
+    limit?: number;
+    consent?: PersonalizedConsent;
+  }): Promise<PersonalizedRecommendation[]> {
     const limit = Math.max(1, Math.min(input.limit ?? 12, 30));
+
+    const hasIdentity = !!(input.identity.userId || input.identity.visitorId);
+    const personalizationAllowed = (input.consent?.personalization ?? true) && hasIdentity;
+
+    // No consent or no identity -> non-personalised popular products only.
+    if (!personalizationAllowed) {
+      const popular = await this.recs.getBestSellingProducts({ sinceDays: 90, limit: POOL_LIMIT });
+      const trending = await this.recs.getTrendingProducts({ sinceDays: 14, limit: POOL_LIMIT });
+      const merged = blendWithFallback(
+        popular.map((p) => ({ productId: p.productId, score: p.score, reason: 'Popular right now' })),
+        trending.map((p) => ({ productId: p.productId, score: p.score, reason: 'Trending now' })),
+        { limit: POOL_LIMIT }
+      );
+      return this.resolve(merged, limit, new Set());
+    }
 
     const [interactions, purchasedIds] = await Promise.all([
       this.recs.getRecentInteractions(input.identity, MAX_ANCHORS),
@@ -99,7 +137,8 @@ export class GetPersonalizedRecommendationsUseCase {
       .map((s) => {
         const product = dtoById.get(s.productId);
         if (!product) return null;
-        return { product, reason: reasonById.get(s.productId) ?? null };
+        const reason = reasonById.get(s.productId) ?? null;
+        return { product, reason, reasonCode: reasonCodeFor(reason) };
       })
       .filter((x): x is PersonalizedRecommendation => x !== null);
   }
