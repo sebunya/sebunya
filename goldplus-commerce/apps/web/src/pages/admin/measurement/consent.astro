@@ -1,0 +1,318 @@
+---
+// apps/web/src/pages/admin/measurement/consent.astro
+// MEASUREMENT CONTROL TOWER — Consent Audit Trail
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Consent Audit Trail · Measurement" activeSection="measurement">
+  <div class="audit-page">
+    <div class="page-header">
+      <div class="page-header-left">
+        <a href="/admin/measurement" class="back-link">← Measurement Tower</a>
+        <h1>Consent Audit Trail</h1>
+        <p class="page-desc">GDPR Article 7(1) compliant, immutable record of all consent decisions across GoldPlus identities.</p>
+      </div>
+      <div class="page-header-right">
+        <div class="filter-bar">
+          <select id="filter-grant-type" class="filter-select">
+            <option value="">All grant types</option>
+            <option value="explicit">Explicit</option>
+            <option value="withdrawn">Withdrawn</option>
+            <option value="expired">Expired</option>
+          </select>
+          <button id="load-btn" class="btn-primary">Load Records</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary Strip -->
+    <div class="summary-strip" id="summary-strip">
+      <div class="summary-item">
+        <span class="summary-val" id="sum-total">—</span>
+        <span class="summary-label">Total records</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-val" id="sum-grants">—</span>
+        <span class="summary-label">Grants</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-val" id="sum-withdrawals">—</span>
+        <span class="summary-label">Withdrawals</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-val" id="sum-surfaces">—</span>
+        <span class="summary-label">Surfaces</span>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-card">
+      <div class="table-toolbar">
+        <span class="table-title">Consent Records (last 200)</span>
+        <span class="table-loading" id="table-loading">Loading…</span>
+      </div>
+      <div class="table-scroll">
+        <table class="audit-table" id="audit-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Identity</th>
+              <th>Grant Type</th>
+              <th>Analytics</th>
+              <th>Advertising</th>
+              <th>Personalization</th>
+              <th>Surface</th>
+              <th>Notice</th>
+              <th>Withdrawal</th>
+            </tr>
+          </thead>
+          <tbody id="audit-tbody">
+            <tr><td colspan="9" class="table-empty">Loading records…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</AdminLayout>
+
+<style>
+  .audit-page {
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  .page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.8125rem;
+    color: #6366f1;
+    text-decoration: none;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+  }
+  .back-link:hover { text-decoration: underline; }
+  .page-header h1 {
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 0.25rem;
+  }
+  .page-desc { font-size: 0.8125rem; color: #64748b; margin: 0; max-width: 520px; }
+  .filter-bar {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+  }
+  .filter-select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+  }
+  .btn-primary {
+    padding: 0.5rem 1rem;
+    background: #6366f1;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-primary:hover { background: #4f46e5; }
+
+  .summary-strip {
+    display: flex;
+    gap: 1.5rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .summary-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .summary-val {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1e293b;
+    font-variant-numeric: tabular-nums;
+  }
+  .summary-label { font-size: 0.75rem; color: #94a3b8; font-weight: 500; }
+
+  .table-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .table-title { font-size: 0.9375rem; font-weight: 600; color: #1e293b; }
+  .table-loading { font-size: 0.8125rem; color: #94a3b8; }
+  .table-scroll { overflow-x: auto; }
+  .audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .audit-table th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
+  }
+  .audit-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    color: #374151;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .audit-table tr:last-child td { border-bottom: none; }
+  .audit-table tr:hover td { background: #fafafa; }
+  .table-empty {
+    text-align: center;
+    color: #94a3b8;
+    padding: 2rem;
+    font-size: 0.875rem;
+  }
+  .badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+  }
+  .badge-explicit    { background: #f0fdf4; color: #16a34a; }
+  .badge-withdrawn   { background: #fef2f2; color: #dc2626; }
+  .badge-expired     { background: #f1f5f9; color: #64748b; }
+  .badge-implicit    { background: #eff6ff; color: #2563eb; }
+  .badge-unknown     { background: #f1f5f9; color: #94a3b8; }
+  .consent-yes { color: #16a34a; font-weight: 600; }
+  .consent-no  { color: #dc2626; }
+  .id-mono {
+    font-family: monospace;
+    font-size: 0.6875rem;
+    color: #64748b;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+</style>
+
+<script>
+  declare const __GP_API_BASE__: string;
+  const API_BASE = typeof __GP_API_BASE__ !== 'undefined'
+    ? __GP_API_BASE__
+    : (window as any).__GP_API_BASE__ || '';
+
+  function authHeader() {
+    const t = localStorage.getItem('gp_auth_token');
+    return t ? { 'Authorization': `Bearer ${t}` } : {};
+  }
+
+  function grantBadge(grantType: string): string {
+    const map: Record<string, string> = {
+      explicit: 'badge-explicit',
+      withdrawn: 'badge-withdrawn',
+      expired: 'badge-expired',
+      implicit: 'badge-implicit',
+      unknown: 'badge-unknown',
+    };
+    return `<span class="badge ${map[grantType] ?? 'badge-unknown'}">${grantType}</span>`;
+  }
+
+  function consent(val: boolean): string {
+    return val
+      ? `<span class="consent-yes">✓</span>`
+      : `<span class="consent-no">✗</span>`;
+  }
+
+  async function loadRecords() {
+    const loadingEl = document.getElementById('table-loading');
+    const tbody = document.getElementById('audit-tbody');
+    if (loadingEl) loadingEl.textContent = 'Loading…';
+
+    try {
+      const res = await fetch(`${API_BASE}/admin/measurement/consent-audit?limit=200`, {
+        headers: authHeader(),
+      });
+      const json = await res.json();
+
+      if (!json.success) throw new Error('API error');
+
+      const records: any[] = json.data;
+      const grants = records.filter(r => !r.isWithdrawal).length;
+      const withdrawals = records.filter(r => r.isWithdrawal).length;
+      const surfaces = new Set(records.map(r => r.captureSurface)).size;
+
+      (document.getElementById('sum-total') as HTMLElement).textContent = records.length.toLocaleString();
+      (document.getElementById('sum-grants') as HTMLElement).textContent = grants.toLocaleString();
+      (document.getElementById('sum-withdrawals') as HTMLElement).textContent = withdrawals.toLocaleString();
+      (document.getElementById('sum-surfaces') as HTMLElement).textContent = surfaces.toString();
+
+      if (!tbody) return;
+
+      if (records.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="table-empty">No consent records found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = records.map(r => {
+        const purposes = r.purposes ?? {};
+        const time = new Date(r.createdAt).toLocaleString();
+        const identity = r.userId
+          ? `<div class="id-mono" title="${r.userId}">user: ${r.userId.slice(0,8)}…</div>`
+          : `<div class="id-mono" title="${r.fpClientId}">fp: ${r.fpClientId?.slice(0,12) ?? '—'}…</div>`;
+        return `<tr>
+          <td>${time}</td>
+          <td>${identity}</td>
+          <td>${grantBadge(r.grantType)}</td>
+          <td>${consent(purposes.analytics)}</td>
+          <td>${consent(purposes.advertising)}</td>
+          <td>${consent(purposes.personalization)}</td>
+          <td>${r.captureSurface}</td>
+          <td>${r.noticeVersion}</td>
+          <td>${r.isWithdrawal ? `<span class="badge badge-withdrawn">yes</span>` : '—'}</td>
+        </tr>`;
+      }).join('');
+
+      if (loadingEl) loadingEl.textContent = `${records.length} records`;
+    } catch (err) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="table-empty">Failed to load records. Are you logged in as admin?</td></tr>`;
+      if (loadingEl) loadingEl.textContent = 'Error';
+      console.error('[ConsentAudit] Error:', err);
+    }
+  }
+
+  document.getElementById('load-btn')?.addEventListener('click', loadRecords);
+  loadRecords();
+</script>

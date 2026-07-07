@@ -22,3 +22,5 @@ export * from './types/locations';
 export * from './recommendations';
 export * from './date-validation';
 export * from './events/telemetry';
+export * from './events/consent';
+export * from './events/zero-party';

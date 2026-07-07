@@ -1,7 +1,7 @@
 export interface NavItem {
   label: string;
   href: string;
-  group: 'Dashboard' | 'Commerce' | 'Recommendations' | 'Merchandising' | 'System' | 'Other';
+  group: 'Dashboard' | 'Commerce' | 'Recommendations' | 'Merchandising' | 'Measurement' | 'System' | 'Other';
   status: 'working' | 'read_only' | 'diagnostic' | 'hidden';
   description: string;
   reason?: string;
@@ -101,6 +101,34 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     reason: 'Diagnostic tools.'
   },
   {
+    label: 'Measurement Tower',
+    href: '/admin/measurement',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Measurement Control Tower — consent governance, sGTM routing, attribution intelligence.'
+  },
+  {
+    label: 'Consent Audit',
+    href: '/admin/measurement/consent',
+    group: 'Measurement',
+    status: 'working',
+    description: 'GDPR Article 7(1) consent audit trail — all grant and withdrawal decisions.'
+  },
+  {
+    label: 'Attribution',
+    href: '/admin/measurement/attribution',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Multi-touch attribution analysis and match quality monitoring.'
+  },
+  {
+    label: 'Dead Letter Queue',
+    href: '/admin/measurement/dlq',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Manage and replay failed conversion dispatch events.'
+  },
+  {
     label: 'Access',
     href: '/admin/governance',
     group: 'System',
@@ -176,6 +204,10 @@ export const ADMIN_NAVIGATION: NavGroup[] = [
   {
     title: 'Merchandising',
     items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Merchandising' && item.status !== 'hidden')
+  },
+  {
+    title: 'Measurement',
+    items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Measurement' && item.status !== 'hidden')
   },
   {
     title: 'System',

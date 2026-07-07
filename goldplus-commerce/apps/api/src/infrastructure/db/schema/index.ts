@@ -8,3 +8,6 @@ export * from './governance';
 export * from './recommendations';
 export * from './phase11';
 export * from './telemetry';
+export * from './consent';
+export * from './measurement';
+

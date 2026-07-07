@@ -1,0 +1,433 @@
+---
+// apps/web/src/pages/admin/measurement/attribution.astro
+// MEASUREMENT CONTROL TOWER — Attribution Intelligence
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Attribution Intelligence · Measurement" activeSection="measurement">
+  <div class="attr-page">
+    <div class="page-header">
+      <div>
+        <a href="/admin/measurement" class="back-link">← Measurement Tower</a>
+        <h1>Attribution Intelligence</h1>
+        <p class="page-desc">Multi-touch attribution analysis and match quality monitoring across all conversion events.</p>
+      </div>
+    </div>
+
+    <!-- Time-Window Selector -->
+    <div class="time-selector">
+      <button class="time-btn active" data-days="7">7 days</button>
+      <button class="time-btn" data-days="14">14 days</button>
+      <button class="time-btn" data-days="30">30 days</button>
+      <button class="time-btn" data-days="90">90 days</button>
+    </div>
+
+    <!-- Match Quality KPIs -->
+    <div class="kpi-row">
+      <div class="kpi-box">
+        <div class="kpi-icon">🎯</div>
+        <div class="kpi-info">
+          <div class="kpi-val" id="avg-score">—</div>
+          <div class="kpi-lbl">Average Match Quality</div>
+        </div>
+        <div class="kpi-bar-wrap">
+          <div class="kpi-progress-track">
+            <div class="kpi-progress-fill" id="avg-score-bar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="kpi-box kpi-warn">
+        <div class="kpi-icon">⚠️</div>
+        <div class="kpi-info">
+          <div class="kpi-val" id="below-40-pct">—</div>
+          <div class="kpi-lbl">Events Below 40% Threshold</div>
+        </div>
+      </div>
+      <div class="kpi-box kpi-good">
+        <div class="kpi-icon">✨</div>
+        <div class="kpi-info">
+          <div class="kpi-val" id="above-80-pct">—</div>
+          <div class="kpi-lbl">Excellent Match Events ≥80%</div>
+        </div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-icon">📊</div>
+        <div class="kpi-info">
+          <div class="kpi-val" id="total-events">—</div>
+          <div class="kpi-lbl">Total Tracked Events</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Signal Coverage Breakdown -->
+    <div class="section-panel">
+      <div class="section-header">
+        <h2>Signal Coverage Guide</h2>
+        <p class="section-desc">Identity signals available for user-graph matching at each destination.</p>
+      </div>
+      <div class="signal-grid">
+        <div class="signal-card signal-high">
+          <div class="signal-name">📧 Hashed Email</div>
+          <div class="signal-score">+25 pts</div>
+          <div class="signal-desc">SHA-256 normalized email — highest match signal for Meta, Google, TikTok</div>
+        </div>
+        <div class="signal-card signal-high">
+          <div class="signal-name">📱 Hashed Phone</div>
+          <div class="signal-score">+20 pts</div>
+          <div class="signal-desc">SHA-256 E.164 phone — mobile match signal especially for TikTok</div>
+        </div>
+        <div class="signal-card signal-medium">
+          <div class="signal-name">🍪 Meta FBP/FBC</div>
+          <div class="signal-score">+24 pts</div>
+          <div class="signal-desc">_fbp browser cookie + _fbc click cookie — critical for Meta CAPI</div>
+        </div>
+        <div class="signal-card signal-medium">
+          <div class="signal-name">🔗 GCLID</div>
+          <div class="signal-score">+10 pts</div>
+          <div class="signal-desc">Google click ID — essential for Google Ads enhanced conversions</div>
+        </div>
+        <div class="signal-card signal-low">
+          <div class="signal-name">🌐 IP Address</div>
+          <div class="signal-score">+8 pts</div>
+          <div class="signal-desc">Server-captured IP — fallback signal for CAPI matching</div>
+        </div>
+        <div class="signal-card signal-low">
+          <div class="signal-name">🖥️ User Agent</div>
+          <div class="signal-score">+5 pts</div>
+          <div class="signal-desc">Browser UA string — device fingerprint signal</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Order Lookup -->
+    <div class="section-panel">
+      <div class="section-header">
+        <h2>Attribution Report by Order</h2>
+        <p class="section-desc">Look up the full attribution journey for a specific order ID.</p>
+      </div>
+      <div class="order-lookup">
+        <input
+          type="text"
+          id="order-id-input"
+          class="order-input"
+          placeholder="Enter Order UUID…"
+          autocomplete="off"
+        />
+        <button id="lookup-btn" class="btn-primary">Look Up</button>
+      </div>
+      <div id="attribution-result" class="attribution-result attribution-empty">
+        Enter an order ID above to view its attribution report.
+      </div>
+    </div>
+  </div>
+</AdminLayout>
+
+<style>
+  .attr-page {
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  .page-header {
+    margin-bottom: 1.25rem;
+  }
+  .back-link { display: inline-block; font-size: 0.8125rem; color: #6366f1; text-decoration: none; margin-bottom: 0.5rem; }
+  .back-link:hover { text-decoration: underline; }
+  .page-header h1 { font-size: 1.375rem; font-weight: 700; color: #0f172a; margin: 0 0 0.25rem; }
+  .page-desc { font-size: 0.8125rem; color: #64748b; margin: 0; }
+
+  .time-selector {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .time-btn {
+    padding: 0.375rem 0.875rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .time-btn:hover, .time-btn.active {
+    background: #6366f1;
+    border-color: #6366f1;
+    color: white;
+  }
+
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .kpi-box {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+  .kpi-box.kpi-warn { border-color: #fecaca; background: #fff9f9; }
+  .kpi-box.kpi-good { border-color: #bbf7d0; background: #f9fffc; }
+  .kpi-icon { font-size: 1.375rem; }
+  .kpi-val { font-size: 2rem; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; }
+  .kpi-lbl { font-size: 0.75rem; color: #64748b; font-weight: 500; }
+  .kpi-bar-wrap { margin-top: 0.25rem; }
+  .kpi-progress-track {
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .kpi-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #6366f1, #8b5cf6);
+    border-radius: 999px;
+    transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
+  }
+
+  .section-panel {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .section-header { margin-bottom: 1.25rem; }
+  .section-header h2 { font-size: 1rem; font-weight: 600; color: #0f172a; margin: 0 0 0.25rem; }
+  .section-desc { font-size: 0.8125rem; color: #64748b; margin: 0; }
+
+  .signal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.875rem;
+  }
+  .signal-card {
+    padding: 1rem;
+    border-radius: 10px;
+    border: 1px solid;
+  }
+  .signal-card.signal-high   { border-color: #a5b4fc; background: #f5f3ff; }
+  .signal-card.signal-medium { border-color: #6ee7b7; background: #f0fdf9; }
+  .signal-card.signal-low    { border-color: #fcd34d; background: #fffbeb; }
+  .signal-name { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin-bottom: 0.25rem; }
+  .signal-score { font-size: 0.75rem; font-weight: 700; color: #6366f1; margin-bottom: 0.375rem; }
+  .signal-desc { font-size: 0.75rem; color: #64748b; line-height: 1.4; }
+
+  .order-lookup {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+  .order-input {
+    flex: 1;
+    min-width: 260px;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-family: monospace;
+    color: #1e293b;
+  }
+  .order-input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+  .btn-primary {
+    padding: 0.625rem 1.125rem;
+    background: #6366f1;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-primary:hover { background: #4f46e5; }
+
+  .attribution-result { font-size: 0.875rem; }
+  .attribution-empty { color: #94a3b8; padding: 1rem 0; }
+  .attribution-loading { color: #6366f1; padding: 1rem 0; }
+  .attribution-error { color: #dc2626; padding: 1rem 0; }
+
+  .attr-report {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .attr-report-header {
+    padding: 0.875rem 1rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .attr-report-title { font-weight: 600; color: #0f172a; }
+  .attr-score {
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 700;
+  }
+  .score-high { background: #f0fdf4; color: #16a34a; }
+  .score-med  { background: #fffbeb; color: #d97706; }
+  .score-low  { background: #fef2f2; color: #dc2626; }
+  .attr-tp-list { padding: 0; }
+  .attr-tp {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.75rem;
+    align-items: center;
+  }
+  .attr-tp:last-child { border-bottom: none; }
+  .tp-event {
+    padding: 0.2rem 0.6rem;
+    background: #ede9fe;
+    color: #5b21b6;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: monospace;
+    white-space: nowrap;
+  }
+  .tp-time { font-size: 0.75rem; color: #94a3b8; }
+  .tp-score-pill {
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+  }
+</style>
+
+<script>
+  declare const __GP_API_BASE__: string;
+  const API_BASE = typeof __GP_API_BASE__ !== 'undefined'
+    ? __GP_API_BASE__
+    : (window as any).__GP_API_BASE__ || '';
+
+  function authHeader() {
+    const t = localStorage.getItem('gp_auth_token');
+    return t ? { 'Authorization': `Bearer ${t}` } : {};
+  }
+
+  let currentDays = 7;
+
+  async function loadMatchQuality(days: number) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/measurement/match-quality?days=${days}`, { headers: authHeader() });
+      const json = await res.json();
+      if (!json.success) return;
+      const d = json.data;
+
+      (document.getElementById('avg-score') as HTMLElement).textContent = `${d.avgScore.toFixed(1)}%`;
+      (document.getElementById('below-40-pct') as HTMLElement).textContent = `${d.below40Pct}%`;
+      (document.getElementById('above-80-pct') as HTMLElement).textContent = `${d.above80Pct}%`;
+      (document.getElementById('total-events') as HTMLElement).textContent = d.totalEvents.toLocaleString();
+      const bar = document.getElementById('avg-score-bar') as HTMLElement | null;
+      if (bar) bar.style.width = `${d.avgScore}%`;
+    } catch (err) {
+      console.error('[Attribution] Load error:', err);
+    }
+  }
+
+  function scoreClass(score: number) {
+    if (score >= 70) return 'score-high';
+    if (score >= 40) return 'score-med';
+    return 'score-low';
+  }
+
+  function tpScoreClass(score: number) {
+    if (score >= 70) return 'background:#f0fdf4;color:#16a34a';
+    if (score >= 40) return 'background:#fffbeb;color:#d97706';
+    return 'background:#fef2f2;color:#dc2626';
+  }
+
+  async function lookupOrder() {
+    const orderId = (document.getElementById('order-id-input') as HTMLInputElement).value.trim();
+    const resultEl = document.getElementById('attribution-result')!;
+    if (!orderId) {
+      resultEl.className = 'attribution-result attribution-error';
+      resultEl.textContent = 'Please enter an order ID.';
+      return;
+    }
+
+    resultEl.className = 'attribution-result attribution-loading';
+    resultEl.textContent = 'Loading attribution data…';
+
+    try {
+      const res = await fetch(`${API_BASE}/admin/measurement/attribution/${orderId}`, { headers: authHeader() });
+      const json = await res.json();
+
+      if (!json.success) {
+        resultEl.className = 'attribution-result attribution-error';
+        resultEl.textContent = json.error === 'NOT_FOUND'
+          ? 'No attribution data found for this order.'
+          : `Error: ${json.error}`;
+        return;
+      }
+
+      const r = json.data;
+      const avgScore = r.matchQualityAvg.toFixed(1);
+
+      resultEl.className = 'attribution-result';
+      resultEl.innerHTML = `
+        <div class="attr-report">
+          <div class="attr-report-header">
+            <div>
+              <span class="attr-report-title">Order ${orderId.slice(0, 8)}…</span>
+              <span style="font-size:0.75rem;color:#64748b;margin-left:0.5rem">${r.touchpoints.length} touchpoints · ${r.hasAdvertisingConsent ? '✓ Advertising consent' : '✗ No ad consent'}</span>
+            </div>
+            <span class="attr-score ${scoreClass(r.matchQualityAvg)}">Avg Match ${avgScore}%</span>
+          </div>
+          <div class="attr-tp-list">
+            ${r.touchpoints.map((tp: any) => `
+              <div class="attr-tp">
+                <div>
+                  <span class="tp-event">${tp.eventName}</span>
+                  <div class="tp-time">${new Date(tp.eventTime).toLocaleString()}</div>
+                </div>
+                <div style="font-size:0.75rem;color:#64748b;">
+                  Routed: ${tp.routedDestinations.join(', ') || '—'}
+                  ${tp.blockedDestinations.length ? `· Blocked: ${tp.blockedDestinations.join(', ')}` : ''}
+                </div>
+                <span class="tp-score-pill" style="${tpScoreClass(tp.matchScore)}">${tp.matchScore.toFixed(0)}%</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    } catch (err) {
+      resultEl.className = 'attribution-result attribution-error';
+      resultEl.textContent = 'Failed to load attribution data.';
+      console.error('[Attribution] Lookup error:', err);
+    }
+  }
+
+  // Time window buttons
+  document.querySelectorAll('.time-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+      (e.currentTarget as HTMLElement).classList.add('active');
+      currentDays = parseInt((e.currentTarget as HTMLElement).dataset.days!);
+      loadMatchQuality(currentDays);
+    });
+  });
+
+  document.getElementById('lookup-btn')?.addEventListener('click', lookupOrder);
+  document.getElementById('order-id-input')?.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') lookupOrder();
+  });
+
+  loadMatchQuality(currentDays);
+</script>

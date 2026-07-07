@@ -25,6 +25,9 @@ import recommendationRoutes from './routes/recommendations';
 import telemetryRoutes from './routes/telemetry';
 import healthRoutes from './routes/health';
 import metricsRoutes from './routes/metrics';
+import consentRoutes from './routes/consent';
+import measurementRoutes from './routes/measurement';
+import adminMeasurementRoutes from './routes/admin/measurement';
 import { maintenanceMode } from './middleware/maintenance';
 import { deploymentService } from '../../infrastructure/deployment/DeploymentService';
 
@@ -128,6 +131,9 @@ app.route('/recommendations', recommendationRoutes);
 app.route('/telemetry', telemetryRoutes);
 app.route('/health', healthRoutes);
 app.route('/metrics', metricsRoutes);
+app.route('/consent', consentRoutes);
+app.route('/measurement', measurementRoutes);
+app.route('/admin/measurement', adminMeasurementRoutes);
 
 // Health check route mounted via route registration
 

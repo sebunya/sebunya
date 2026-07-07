@@ -1,0 +1,322 @@
+---
+// apps/web/src/pages/admin/measurement/dlq.astro
+// MEASUREMENT CONTROL TOWER — Dead Letter Queue Management
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Dead Letter Queue · Measurement" activeSection="measurement">
+  <div class="dlq-page">
+    <div class="page-header">
+      <div>
+        <a href="/admin/measurement" class="back-link">← Measurement Tower</a>
+        <h1>Dead Letter Queue</h1>
+        <p class="page-desc">Events that failed all 5 retry attempts. Replay them to re-enqueue for dispatch via the outbox.</p>
+      </div>
+      <button id="refresh-btn" class="btn-secondary">↻ Refresh</button>
+    </div>
+
+    <!-- Alert banner -->
+    <div id="dlq-alert" class="dlq-alert dlq-alert-hidden"></div>
+
+    <!-- Stats -->
+    <div class="dlq-stats">
+      <div class="stat-card">
+        <div class="stat-val" id="stat-unresolved">—</div>
+        <div class="stat-label">Unresolved</div>
+      </div>
+      <div class="stat-card stat-ok">
+        <div class="stat-val" id="stat-event-types">—</div>
+        <div class="stat-label">Event types</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="stat-oldest">—</div>
+        <div class="stat-label">Oldest entry</div>
+      </div>
+    </div>
+
+    <!-- DLQ Table -->
+    <div class="table-card">
+      <div class="table-toolbar">
+        <span class="table-title">Unresolved DLQ Entries</span>
+        <span class="table-meta" id="table-meta">—</span>
+      </div>
+      <div class="table-scroll">
+        <table class="dlq-table">
+          <thead>
+            <tr>
+              <th>Failed At</th>
+              <th>Event Name</th>
+              <th>Event ID</th>
+              <th>Attempts</th>
+              <th>Reason</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="dlq-tbody">
+            <tr><td colspan="6" class="table-empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</AdminLayout>
+
+<style>
+  .dlq-page {
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  .page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .back-link {
+    display: inline-block;
+    font-size: 0.8125rem;
+    color: #6366f1;
+    text-decoration: none;
+    margin-bottom: 0.5rem;
+  }
+  .back-link:hover { text-decoration: underline; }
+  .page-header h1 { font-size: 1.375rem; font-weight: 700; color: #0f172a; margin: 0 0 0.25rem; }
+  .page-desc { font-size: 0.8125rem; color: #64748b; margin: 0; }
+  .btn-secondary {
+    padding: 0.5rem 1rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #475569;
+    cursor: pointer;
+    white-space: nowrap;
+    align-self: flex-start;
+  }
+  .btn-secondary:hover { background: #f8fafc; }
+
+  .dlq-alert {
+    padding: 0.875rem 1rem;
+    border-radius: 10px;
+    margin-bottom: 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .dlq-alert-hidden { display: none; }
+  .dlq-alert-success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+  .dlq-alert-error   { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+  .dlq-stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    min-width: 140px;
+  }
+  .stat-card.stat-ok { border-color: #bbf7d0; background: #f0fdf4; }
+  .stat-val { font-size: 1.75rem; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; }
+  .stat-label { font-size: 0.75rem; color: #64748b; margin-top: 0.125rem; }
+
+  .table-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .table-title { font-size: 0.9375rem; font-weight: 600; color: #1e293b; }
+  .table-meta  { font-size: 0.8125rem; color: #94a3b8; }
+  .table-scroll { overflow-x: auto; }
+  .dlq-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .dlq-table th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
+  }
+  .dlq-table td {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    color: #374151;
+    vertical-align: middle;
+  }
+  .dlq-table tr:last-child td { border-bottom: none; }
+  .dlq-table tr:hover td { background: #fafafa; }
+  .table-empty { text-align: center; color: #94a3b8; padding: 2.5rem; }
+  .event-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    background: #ede9fe;
+    color: #5b21b6;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: monospace;
+  }
+  .event-id-mono {
+    font-family: monospace;
+    font-size: 0.6875rem;
+    color: #94a3b8;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+  }
+  .attempts-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    background: #fef2f2;
+    color: #dc2626;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+  }
+  .reason-text {
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #64748b;
+    font-size: 0.75rem;
+  }
+  .btn-replay {
+    padding: 0.375rem 0.75rem;
+    background: #6366f1;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .btn-replay:hover { background: #4f46e5; }
+  .btn-replay:disabled { background: #c7d2fe; cursor: not-allowed; }
+</style>
+
+<script>
+  declare const __GP_API_BASE__: string;
+  const API_BASE = typeof __GP_API_BASE__ !== 'undefined'
+    ? __GP_API_BASE__
+    : (window as any).__GP_API_BASE__ || '';
+
+  function authHeader() {
+    const t = localStorage.getItem('gp_auth_token');
+    return t ? { 'Authorization': `Bearer ${t}` } : {};
+  }
+
+  function showAlert(msg: string, type: 'success' | 'error') {
+    const el = document.getElementById('dlq-alert')!;
+    el.textContent = msg;
+    el.className = `dlq-alert dlq-alert-${type}`;
+    setTimeout(() => { el.className = 'dlq-alert dlq-alert-hidden'; }, 5000);
+  }
+
+  async function replayEntry(id: string, btn: HTMLButtonElement) {
+    btn.disabled = true;
+    btn.textContent = 'Replaying…';
+    try {
+      const res = await fetch(`${API_BASE}/admin/measurement/dlq/${id}/replay`, {
+        method: 'POST',
+        headers: authHeader(),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showAlert('Event re-enqueued for dispatch successfully.', 'success');
+        btn.closest('tr')?.remove();
+      } else {
+        throw new Error(json.error);
+      }
+    } catch (err: any) {
+      showAlert(`Replay failed: ${err.message}`, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Replay';
+    }
+  }
+
+  async function loadDlq() {
+    const tbody = document.getElementById('dlq-tbody');
+    const meta  = document.getElementById('table-meta');
+    if (meta) meta.textContent = 'Loading…';
+
+    try {
+      const res  = await fetch(`${API_BASE}/admin/measurement/dlq`, { headers: authHeader() });
+      const json = await res.json();
+
+      if (!json.success) throw new Error('API error');
+      const rows: any[] = json.data;
+
+      (document.getElementById('stat-unresolved') as HTMLElement).textContent = rows.length.toString();
+      const eventTypes = new Set(rows.map(r => r.eventName)).size;
+      (document.getElementById('stat-event-types') as HTMLElement).textContent = eventTypes.toString();
+
+      if (rows.length > 0) {
+        const oldest = new Date(rows[rows.length - 1].failedAt);
+        const hoursAgo = Math.round((Date.now() - oldest.getTime()) / 3_600_000);
+        (document.getElementById('stat-oldest') as HTMLElement).textContent = `${hoursAgo}h ago`;
+      } else {
+        (document.getElementById('stat-oldest') as HTMLElement).textContent = 'None';
+      }
+
+      if (!tbody) return;
+
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="table-empty">🎉 No unresolved DLQ entries — measurement pipeline is healthy.</td></tr>`;
+        if (meta) meta.textContent = '0 entries';
+        return;
+      }
+
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${new Date(r.failedAt).toLocaleString()}</td>
+          <td><span class="event-badge">${r.eventName}</span></td>
+          <td><span class="event-id-mono" title="${r.eventId}">${r.eventId.slice(0, 16)}…</span></td>
+          <td><span class="attempts-badge">${r.totalAttempts}x</span></td>
+          <td><div class="reason-text" title="${r.failedReason}">${r.failedReason}</div></td>
+          <td><button class="btn-replay" data-id="${r.id}">Replay</button></td>
+        </tr>
+      `).join('');
+
+      if (meta) meta.textContent = `${rows.length} entries`;
+
+      // Attach replay handlers
+      tbody.querySelectorAll('.btn-replay').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = (e.currentTarget as HTMLButtonElement).dataset.id!;
+          replayEntry(id, e.currentTarget as HTMLButtonElement);
+        });
+      });
+    } catch (err) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="table-empty">Error loading DLQ. Check your session.</td></tr>`;
+      if (meta) meta.textContent = 'Error';
+      console.error('[DLQ] Error:', err);
+    }
+  }
+
+  document.getElementById('refresh-btn')?.addEventListener('click', loadDlq);
+  loadDlq();
+</script>

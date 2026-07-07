@@ -1,0 +1,657 @@
+---
+// apps/web/src/pages/admin/measurement/index.astro
+// MEASUREMENT CONTROL TOWER — Main Dashboard
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Measurement Control Tower" activeSection="measurement">
+  <div class="mct-dashboard">
+    <!-- Header -->
+    <div class="mct-header">
+      <div class="mct-header-left">
+        <div class="mct-header-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+          </svg>
+        </div>
+        <div>
+          <h1>Measurement Control Tower</h1>
+          <p class="mct-subtitle">Enterprise measurement governance · Server-side GTM · Consent routing · Attribution intelligence</p>
+        </div>
+      </div>
+      <div class="mct-header-actions">
+        <span id="last-refreshed" class="mct-last-refreshed">Loading…</span>
+        <button id="refresh-btn" class="btn-refresh">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+            <path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z" clip-rule="evenodd" />
+          </svg>
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="mct-status-bar" id="status-bar">
+      <div class="status-pill status-loading" id="status-pill">
+        <span class="status-dot"></span>
+        <span id="status-text">Fetching system status…</span>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+      <!-- Match Quality -->
+      <div class="kpi-card kpi-primary">
+        <div class="kpi-card-header">
+          <span class="kpi-label">Avg Match Quality</span>
+          <span class="kpi-badge kpi-badge-7d">7d</span>
+        </div>
+        <div class="kpi-value" id="kpi-match-quality">—</div>
+        <div class="kpi-subtext" id="kpi-match-sub">Loading…</div>
+        <div class="kpi-trend" id="kpi-match-trend"></div>
+      </div>
+
+      <!-- DLQ -->
+      <div class="kpi-card kpi-danger" id="kpi-dlq-card">
+        <div class="kpi-card-header">
+          <span class="kpi-label">Dead Letter Queue</span>
+          <a href="/admin/measurement/dlq" class="kpi-link">View all →</a>
+        </div>
+        <div class="kpi-value" id="kpi-dlq">—</div>
+        <div class="kpi-subtext">Unresolved events awaiting replay</div>
+      </div>
+
+      <!-- Consent Rate — Advertising -->
+      <div class="kpi-card kpi-info">
+        <div class="kpi-card-header">
+          <span class="kpi-label">Advertising Consent</span>
+          <a href="/admin/measurement/consent" class="kpi-link">Audit →</a>
+        </div>
+        <div class="kpi-value" id="kpi-ad-consent">—</div>
+        <div class="kpi-subtext" id="kpi-ad-consent-sub">Loading…</div>
+      </div>
+
+      <!-- Pending Outbox -->
+      <div class="kpi-card kpi-neutral">
+        <div class="kpi-card-header">
+          <span class="kpi-label">Pending Dispatch</span>
+        </div>
+        <div class="kpi-value" id="kpi-pending">—</div>
+        <div class="kpi-subtext">Telemetry events in outbox queue</div>
+      </div>
+    </div>
+
+    <!-- Match Quality Breakdown -->
+    <div class="panel-grid">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Match Quality Distribution</h2>
+          <div class="panel-meta">Score 0–100 · Based on enriched identity signals</div>
+        </div>
+        <div class="match-bars" id="match-bars">
+          <div class="match-bar-row">
+            <span class="match-label excellent">Excellent (≥80)</span>
+            <div class="match-bar-track"><div class="match-bar-fill excellent" id="bar-excellent" style="width:0%"></div></div>
+            <span class="match-pct" id="pct-excellent">—</span>
+          </div>
+          <div class="match-bar-row">
+            <span class="match-label good">Good (60–79)</span>
+            <div class="match-bar-track"><div class="match-bar-fill good" id="bar-good" style="width:0%"></div></div>
+            <span class="match-pct" id="pct-good">—</span>
+          </div>
+          <div class="match-bar-row">
+            <span class="match-label fair">Fair (40–59)</span>
+            <div class="match-bar-track"><div class="match-bar-fill fair" id="bar-fair" style="width:0%"></div></div>
+            <span class="match-pct" id="pct-fair">—</span>
+          </div>
+          <div class="match-bar-row">
+            <span class="match-label poor">Poor (&lt;40)</span>
+            <div class="match-bar-track"><div class="match-bar-fill poor" id="bar-poor" style="width:0%"></div></div>
+            <span class="match-pct" id="pct-poor">—</span>
+          </div>
+        </div>
+        <div class="panel-footer">
+          <a href="/admin/measurement/attribution" class="panel-link">Full attribution analysis →</a>
+        </div>
+      </div>
+
+      <!-- Consent Breakdown -->
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Consent Breakdown</h2>
+          <div class="panel-meta">Across all known identities</div>
+        </div>
+        <div class="consent-breakdown" id="consent-breakdown">
+          <div class="consent-row">
+            <div class="consent-purpose-info">
+              <span class="consent-dot analytics"></span>
+              <span class="consent-purpose-name">Analytics (GA4)</span>
+            </div>
+            <div class="consent-meter">
+              <div class="consent-meter-fill analytics" id="meter-analytics" style="width:0%"></div>
+            </div>
+            <span class="consent-pct" id="pct-analytics">—</span>
+          </div>
+          <div class="consent-row">
+            <div class="consent-purpose-info">
+              <span class="consent-dot advertising"></span>
+              <span class="consent-purpose-name">Advertising (CAPIs)</span>
+            </div>
+            <div class="consent-meter">
+              <div class="consent-meter-fill advertising" id="meter-advertising" style="width:0%"></div>
+            </div>
+            <span class="consent-pct" id="pct-advertising">—</span>
+          </div>
+          <div class="consent-row">
+            <div class="consent-purpose-info">
+              <span class="consent-dot personalization"></span>
+              <span class="consent-purpose-name">Personalization</span>
+            </div>
+            <div class="consent-meter">
+              <div class="consent-meter-fill personalization" id="meter-personalization" style="width:0%"></div>
+            </div>
+            <span class="consent-pct" id="pct-personalization">—</span>
+          </div>
+          <div class="consent-row">
+            <div class="consent-purpose-info">
+              <span class="consent-dot essential"></span>
+              <span class="consent-purpose-name">Essential (always)</span>
+            </div>
+            <div class="consent-meter">
+              <div class="consent-meter-fill essential" style="width:100%"></div>
+            </div>
+            <span class="consent-pct">100%</span>
+          </div>
+        </div>
+        <div class="panel-footer">
+          <span class="consent-total" id="consent-total">— identities tracked</span>
+          <a href="/admin/measurement/consent" class="panel-link">View audit trail →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Navigation -->
+    <div class="quick-nav-grid">
+      <a href="/admin/measurement/consent" class="quick-nav-card">
+        <div class="quick-nav-icon">🛡️</div>
+        <div class="quick-nav-label">Consent Audit Trail</div>
+        <div class="quick-nav-desc">GDPR-compliant record of all consent decisions</div>
+      </a>
+      <a href="/admin/measurement/attribution" class="quick-nav-card">
+        <div class="quick-nav-icon">📊</div>
+        <div class="quick-nav-label">Attribution Analysis</div>
+        <div class="quick-nav-desc">Multi-touch attribution and match quality insights</div>
+      </a>
+      <a href="/admin/measurement/dlq" class="quick-nav-card">
+        <div class="quick-nav-icon">⚠️</div>
+        <div class="quick-nav-label">Dead Letter Queue</div>
+        <div class="quick-nav-desc">Replay failed conversion events</div>
+      </a>
+      <a href="/admin/system" class="quick-nav-card">
+        <div class="quick-nav-icon">⚙️</div>
+        <div class="quick-nav-label">System Health</div>
+        <div class="quick-nav-desc">Outbox, queue, and infrastructure status</div>
+      </a>
+    </div>
+  </div>
+</AdminLayout>
+
+<style>
+  .mct-dashboard {
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Header */
+  .mct-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .mct-header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .mct-header-icon {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  }
+  .mct-header-icon svg { width: 24px; height: 24px; }
+  .mct-header h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+  }
+  .mct-subtitle {
+    font-size: 0.8125rem;
+    color: #64748b;
+    margin: 0.25rem 0 0;
+  }
+  .mct-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .mct-last-refreshed {
+    font-size: 0.75rem;
+    color: #94a3b8;
+  }
+  .btn-refresh {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.875rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-refresh:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #334155;
+  }
+
+  /* Status Bar */
+  .mct-status-bar {
+    margin-bottom: 1.5rem;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.875rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+  .status-pill.status-loading { background: #f1f5f9; color: #64748b; }
+  .status-pill.status-ok      { background: #f0fdf4; color: #16a34a; }
+  .status-pill.status-warn    { background: #fffbeb; color: #d97706; }
+  .status-pill.status-error   { background: #fef2f2; color: #dc2626; }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse-dot 2s infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+
+  /* KPI Grid */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .kpi-card {
+    background: white;
+    border-radius: 16px;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: box-shadow 0.2s;
+  }
+  .kpi-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .kpi-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+  .kpi-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+  }
+  .kpi-badge {
+    font-size: 0.6875rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-weight: 500;
+  }
+  .kpi-link {
+    font-size: 0.75rem;
+    color: #6366f1;
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .kpi-link:hover { text-decoration: underline; }
+  .kpi-value {
+    font-size: 2.25rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1;
+    margin-bottom: 0.375rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-subtext {
+    font-size: 0.8125rem;
+    color: #64748b;
+  }
+  .kpi-primary .kpi-value { color: #6366f1; }
+  .kpi-danger  .kpi-value { color: #ef4444; }
+  .kpi-info    .kpi-value { color: #0ea5e9; }
+  .kpi-neutral .kpi-value { color: #64748b; }
+
+  /* Panels */
+  .panel-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 900px) {
+    .panel-grid { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #e2e8f0;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .panel-header {
+    margin-bottom: 1.25rem;
+  }
+  .panel-header h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0 0 0.25rem;
+  }
+  .panel-meta {
+    font-size: 0.75rem;
+    color: #94a3b8;
+  }
+  .panel-footer {
+    margin-top: 1.25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8125rem;
+  }
+  .panel-link {
+    color: #6366f1;
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .panel-link:hover { text-decoration: underline; }
+
+  /* Match Quality Bars */
+  .match-bars { display: flex; flex-direction: column; gap: 0.875rem; }
+  .match-bar-row {
+    display: grid;
+    grid-template-columns: 120px 1fr 48px;
+    gap: 0.75rem;
+    align-items: center;
+  }
+  .match-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .match-label.excellent { color: #16a34a; }
+  .match-label.good      { color: #0ea5e9; }
+  .match-label.fair      { color: #d97706; }
+  .match-label.poor      { color: #ef4444; }
+  .match-bar-track {
+    height: 8px;
+    background: #f1f5f9;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .match-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .match-bar-fill.excellent { background: #22c55e; }
+  .match-bar-fill.good      { background: #38bdf8; }
+  .match-bar-fill.fair      { background: #fbbf24; }
+  .match-bar-fill.poor      { background: #f87171; }
+  .match-pct {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    text-align: right;
+  }
+
+  /* Consent Breakdown */
+  .consent-breakdown { display: flex; flex-direction: column; gap: 1rem; }
+  .consent-row {
+    display: grid;
+    grid-template-columns: 180px 1fr 48px;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .consent-purpose-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .consent-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .consent-dot.analytics       { background: #6366f1; }
+  .consent-dot.advertising     { background: #f59e0b; }
+  .consent-dot.personalization { background: #10b981; }
+  .consent-dot.essential       { background: #64748b; }
+  .consent-purpose-name {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #374151;
+  }
+  .consent-meter {
+    height: 8px;
+    background: #f1f5f9;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .consent-meter-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .consent-meter-fill.analytics       { background: #6366f1; }
+  .consent-meter-fill.advertising     { background: #f59e0b; }
+  .consent-meter-fill.personalization { background: #10b981; }
+  .consent-meter-fill.essential       { background: #94a3b8; }
+  .consent-pct {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    text-align: right;
+  }
+  .consent-total {
+    font-size: 0.8125rem;
+    color: #94a3b8;
+  }
+
+  /* Quick Nav */
+  .quick-nav-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+  .quick-nav-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.25rem;
+    text-decoration: none;
+    transition: all 0.15s;
+    display: block;
+  }
+  .quick-nav-card:hover {
+    border-color: #a5b4fc;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+    transform: translateY(-2px);
+  }
+  .quick-nav-icon { font-size: 1.5rem; margin-bottom: 0.625rem; }
+  .quick-nav-label {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 0.25rem;
+  }
+  .quick-nav-desc {
+    font-size: 0.8125rem;
+    color: #64748b;
+    line-height: 1.4;
+  }
+</style>
+
+<script>
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Measurement Control Tower Dashboard — Data Loader
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  declare const __GP_API_BASE__: string;
+  const API_BASE = typeof __GP_API_BASE__ !== 'undefined'
+    ? __GP_API_BASE__
+    : (window as any).__GP_API_BASE__ || '';
+
+  function getAuthHeader(): Record<string, string> {
+    const token = localStorage.getItem('gp_auth_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  }
+
+  async function loadDashboard() {
+    const refreshedEl = document.getElementById('last-refreshed');
+    const statusPill  = document.getElementById('status-pill');
+    const statusText  = document.getElementById('status-text');
+
+    if (refreshedEl) refreshedEl.textContent = `Refreshing…`;
+
+    try {
+      const [overviewRes, matchRes] = await Promise.all([
+        fetch(`${API_BASE}/admin/measurement/overview`, { headers: getAuthHeader() }),
+        fetch(`${API_BASE}/admin/measurement/match-quality?days=7`, { headers: getAuthHeader() }),
+      ]);
+
+      const [overview, matchQuality] = await Promise.all([
+        overviewRes.json(),
+        matchRes.json(),
+      ]);
+
+      if (!overview.success) throw new Error('Overview API failed');
+
+      const d = overview.data;
+
+      // Match Quality KPI
+      const mq = d.matchQuality;
+      setEl('kpi-match-quality', `${mq.avgScore.toFixed(0)}%`);
+      setEl('kpi-match-sub', `${mq.below40Pct}% below threshold · ${mq.totalEvents.toLocaleString()} events`);
+
+      // DLQ
+      const dlqCount = d.dlq.unresolvedCount;
+      setEl('kpi-dlq', dlqCount.toLocaleString());
+      const dlqCard = document.getElementById('kpi-dlq-card');
+      if (dlqCard) dlqCard.style.borderColor = dlqCount > 0 ? '#fca5a5' : '#e2e8f0';
+
+      // Consent
+      setEl('kpi-ad-consent', `${d.consent.advertisingGrantedPct}%`);
+      setEl('kpi-ad-consent-sub', `${d.consent.totalIdentities.toLocaleString()} identities tracked`);
+
+      // Pending
+      setEl('kpi-pending', (d.outbox.pendingTelemetryEvents || 0).toLocaleString());
+
+      // Consent breakdown meters
+      animateMeter('meter-analytics',       d.consent.analyticsGrantedPct);
+      animateMeter('meter-advertising',     d.consent.advertisingGrantedPct);
+      animateMeter('meter-personalization', d.consent.personalizationGrantedPct);
+      setEl('pct-analytics',       `${d.consent.analyticsGrantedPct}%`);
+      setEl('pct-advertising',     `${d.consent.advertisingGrantedPct}%`);
+      setEl('pct-personalization', `${d.consent.personalizationGrantedPct}%`);
+      setEl('consent-total',       `${d.consent.totalIdentities.toLocaleString()} identities tracked`);
+
+      // Match bars (approximated from summary)
+      const above80 = mq.above80Pct ?? 0;
+      const below40 = mq.below40Pct ?? 0;
+      const good    = Math.max(0, Math.min(100, 100 - above80 - below40 - 15));
+      const fair    = Math.max(0, 100 - above80 - good - below40);
+      animateBar('bar-excellent', above80);
+      animateBar('bar-good',      good);
+      animateBar('bar-fair',      fair);
+      animateBar('bar-poor',      below40);
+      setEl('pct-excellent', `${above80}%`);
+      setEl('pct-good',      `${good}%`);
+      setEl('pct-fair',      `${fair}%`);
+      setEl('pct-poor',      `${below40}%`);
+
+      // Status
+      const allOk = dlqCount === 0 && d.outbox.pendingTelemetryEvents < 50 && mq.avgScore >= 40;
+      if (statusPill && statusText) {
+        statusPill.className = `status-pill ${allOk ? 'status-ok' : dlqCount > 5 ? 'status-error' : 'status-warn'}`;
+        statusText.textContent = allOk
+          ? 'All measurement systems operational'
+          : dlqCount > 5
+          ? `${dlqCount} unresolved DLQ entries — action required`
+          : `Measurement system degraded — match quality low`;
+      }
+
+      if (refreshedEl) {
+        refreshedEl.textContent = `Last refreshed: ${new Date().toLocaleTimeString()}`;
+      }
+    } catch (err) {
+      if (statusPill && statusText) {
+        statusPill.className = 'status-pill status-error';
+        statusText.textContent = 'Unable to load dashboard — API unreachable';
+      }
+      if (refreshedEl) refreshedEl.textContent = 'Failed to refresh';
+      console.error('[MCT Dashboard] Load error:', err);
+    }
+  }
+
+  function setEl(id: string, text: string) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function animateMeter(id: string, pct: number) {
+    const el = document.getElementById(id) as HTMLElement | null;
+    if (el) el.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+  }
+
+  function animateBar(id: string, pct: number) {
+    const el = document.getElementById(id) as HTMLElement | null;
+    if (el) el.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+  }
+
+  // Refresh button
+  document.getElementById('refresh-btn')?.addEventListener('click', loadDashboard);
+
+  // Auto-refresh every 60 seconds
+  loadDashboard();
+  setInterval(loadDashboard, 60_000);
+</script>
