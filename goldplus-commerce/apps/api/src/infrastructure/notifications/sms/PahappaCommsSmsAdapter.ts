@@ -4,6 +4,7 @@ import {
   NotificationDispatchResult,
   NotificationStatus,
 } from '../../../application/ports/INotificationProvider';
+import { resilientFetch } from '../../http/HttpClient';
 
 export class PahappaCommsSmsAdapter implements INotificationProvider {
   /**
@@ -13,7 +14,7 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
    * - 256700111222 -> 256700111222
    */
   public normalizeUgandanNumber(phone: string): string | null {
-    const clean = phone.replace(/[\s\-\(\)\+]/g, '');
+    const clean = phone.replace(/[\s\-()+]/g, '');
     if (!/^\d+$/.test(clean)) return null;
 
     if (clean.startsWith('0') && clean.length === 10) {
@@ -145,20 +146,16 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
         ],
       };
 
-      const controller = new AbortController();
-      const timeoutMs = parseInt(process.env.SMS_TIMEOUT_MS || '10000', 10);
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      const response = await fetch(baseUrl, {
+      const timeoutMs = parseInt(process.env.SMS_TIMEOUT_MS || '3000', 10);
+      const response = await resilientFetch(baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
-        signal: controller.signal,
+        breakerName: 'egosms',
+        timeoutMs,
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         return {
@@ -218,20 +215,16 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
         },
       };
 
-      const controller = new AbortController();
-      const timeoutMs = parseInt(process.env.SMS_TIMEOUT_MS || '10000', 10);
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      const response = await fetch(baseUrl, {
+      const timeoutMs = parseInt(process.env.SMS_TIMEOUT_MS || '3000', 10);
+      const response = await resilientFetch(baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
-        signal: controller.signal,
+        breakerName: 'egosms',
+        timeoutMs,
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         return {

@@ -38,6 +38,10 @@ import { IPesaPalClient } from '../application/ports/IPesaPalClient';
 import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
 import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
 import { env } from '../config/env';
+import { DrizzleSystemHealthRepository } from './db/repositories/DrizzleSystemHealthRepository';
+import { CheckSystemHealthUseCase } from '../application/use-cases/system/CheckSystemHealthUseCase';
+import { SyntheticMonitor } from './scheduler/SyntheticMonitor';
+import { RecommendationMaterializer } from './scheduler/RecommendationMaterializer';
 
 import { WhatsAppAdapter } from './notifications/whatsapp/WhatsAppAdapter';
 import { ZeptoMailAdapter } from './notifications/zeptomail/ZeptoMailAdapter';
@@ -99,6 +103,7 @@ export class Registry {
   public readonly recommendationAnalyticsRepo = new DrizzleRecommendationAnalyticsRepository();
   public readonly pesapalPaymentRepo = new DrizzlePaymentAttemptRepository();
   public readonly pesapalClient: IPesaPalClient = new PesaPalClient(env);
+  public readonly systemHealthRepo = new DrizzleSystemHealthRepository();
 
   // Storage
   private readonly productImageStorage = new LocalProductImageStorage(
@@ -202,6 +207,13 @@ export class Registry {
     this.pesapalPaymentRepo,
     this.pesapalClient
   );
+
+  public readonly checkSystemHealthUseCase = new CheckSystemHealthUseCase(
+    this.systemHealthRepo
+  );
+
+  public readonly syntheticMonitor = new SyntheticMonitor();
+  public readonly recommendationMaterializer = new RecommendationMaterializer();
 
   public static getInstance(): Registry {
     if (!Registry._instance) {

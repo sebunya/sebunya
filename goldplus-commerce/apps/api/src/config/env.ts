@@ -52,6 +52,8 @@ export interface Config {
   pesapalCancellationUrl?: string;
   pesapalIpnUrl?: string;
   pesapalRedirectMode?: string;
+  // Telemetry — sGTM internal dispatch URL (Docker internal network)
+  metricsInternalUrl: string;
 }
 
 const obviousLocalPatterns = [
@@ -96,6 +98,7 @@ export function validateEnv(): Config {
       pesapalCancellationUrl: process.env.PESAPAL_CANCELLATION_URL,
       pesapalIpnUrl: process.env.PESAPAL_IPN_URL,
       pesapalRedirectMode: process.env.PESAPAL_REDIRECT_MODE,
+      metricsInternalUrl: process.env.METRICS_INTERNAL_URL || 'http://localhost:8080',
     };
   }
 
@@ -178,6 +181,7 @@ export function validateEnv(): Config {
     pesapalCancellationUrl,
     pesapalIpnUrl,
     pesapalRedirectMode,
+    metricsInternalUrl: process.env.METRICS_INTERNAL_URL || 'http://sgtm-production:8080',
   };
 }
 

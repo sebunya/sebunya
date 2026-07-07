@@ -186,3 +186,17 @@ export const recommendationRuleAuditLogs = pgTable(
     createdAtIdx: index("recommendation_rule_audit_logs_performed_at_idx").on(table.performedAt),
   })
 );
+
+export const recommendationMaterializedCache = pgTable(
+  "recommendation_materialized_cache",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    placement: varchar("placement", { length: 80 }).notNull(),
+    contextKey: varchar("context_key", { length: 255 }).notNull(),
+    items: jsonb("items").$type<any[]>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    placementContextIdx: index("rec_cache_placement_context_idx").on(table.placement, table.contextKey),
+  })
+);

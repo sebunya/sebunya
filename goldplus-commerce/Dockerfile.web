@@ -1,0 +1,54 @@
+# Pin Node.js LTS version (node:20-alpine)
+FROM node:20-alpine@sha256:c13b26e6de602defad90aa7afaf3905581177651a2d59ad0cb233ec7c813350b AS base
+
+# Install pnpm
+RUN npm install -g pnpm@9.1.4
+
+WORKDIR /app
+
+FROM base AS builder
+# Declare build args
+ARG PUBLIC_API_BASE_URL
+ENV PUBLIC_API_BASE_URL=$PUBLIC_API_BASE_URL
+
+# Copy configuration files
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
+
+# Install dependencies (including devDependencies for build)
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY packages/shared ./packages/shared
+COPY apps/web ./apps/web
+
+# Build the packages
+RUN pnpm -F @goldplus/shared typecheck
+RUN pnpm -F @goldplus/web build
+
+# Prune dev dependencies for production runtime
+RUN pnpm install --prod --frozen-lockfile
+
+FROM base AS runner
+# Set production environment
+ENV NODE_ENV=production
+ENV PORT=4321
+ENV HOST=0.0.0.0
+
+WORKDIR /app
+
+# Copy built code and node_modules
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages/shared ./packages/shared
+COPY --from=builder /app/apps/web/dist ./apps/web/dist
+COPY --from=builder /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=builder /app/apps/web/package.json ./apps/web/package.json
+
+# Use non-root node user
+USER node
+
+EXPOSE 4321
+
+# Run Astro web server
+CMD ["node", "apps/web/dist/server/entry.mjs"]

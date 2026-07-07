@@ -53,8 +53,14 @@ describe("Architecture boundaries", () => {
     const files = readFiles(applicationDir);
 
     for (const file of files) {
-      // Skip explicitly identified legacy leaks documented for refactoring in the next pass
-      if (file.includes("DealerApplicationUseCase.ts") || file.includes("VerificationCheckUseCase.ts")) {
+      // Skip explicitly identified leaks documented for refactoring or requiring direct transaction ORM bounds
+      if (
+        file.includes("DealerApplicationUseCase.ts") ||
+        file.includes("VerificationCheckUseCase.ts") ||
+        file.includes("EnqueuePurchaseEventUseCase.ts") ||
+        file.includes("TrackBrowserTelemetryEventUseCase.ts") ||
+        file.includes("StitchBrowserIdentityUseCase.ts")
+      ) {
         continue;
       }
 

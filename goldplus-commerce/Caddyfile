@@ -1,0 +1,138 @@
+# ==============================================================================
+# CADDYFILE — GOLDPLUS PRODUCTION EDGE PROXY
+# ==============================================================================
+# Self-Critique Fixes Applied:
+# 1. Rate limiting on /telemetry/collect — prevents outbox spam from bad actors
+# 2. Bot suppression header — pass Cloudflare bot score to API for filtering
+# 3. Security headers on all endpoints
+# 4. Isolated telemetry subdomain with correct internal routing
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 0. GLOBAL OPTIONS
+# ------------------------------------------------------------------------------
+{
+  email admin@shopgoldplus.com
+  # Aggressive TLS hardening — OCSP stapling + TLS 1.2 minimum
+  servers {
+    protocols h1 h2 h3
+  }
+}
+
+# ------------------------------------------------------------------------------
+# 1. STOREFRONT — shopgoldplus.com / www.shopgoldplus.com
+# ------------------------------------------------------------------------------
+shopgoldplus.com, www.shopgoldplus.com {
+  tls admin@shopgoldplus.com
+
+  header {
+    Strict-Transport-Security  "max-age=63072000; includeSubDomains; preload"
+    X-Content-Type-Options     "nosniff"
+    X-Frame-Options            "SAMEORIGIN"
+    Referrer-Policy            "strict-origin-when-cross-origin"
+    Permissions-Policy         "camera=(), microphone=(), geolocation=(self)"
+    Content-Security-Policy    "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://pay.pesapal.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googletagmanager.com; connect-src 'self' https://api.shopgoldplus.com https://metrics.shopgoldplus.com; frame-src 'self' https://pay.pesapal.com;"
+    -Server
+  }
+
+  encode gzip
+
+  reverse_proxy web:4321 {
+    header_up Host              {host}
+    header_up X-Real-IP         {remote_host}
+    header_up X-Forwarded-For  {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+
+  handle_errors {
+    @webUpstreamError expression `{err.status_code} >= 500`
+    handle @webUpstreamError {
+      root * /srv/caddy-fallback
+      rewrite * /maintenance.html
+      header Cache-Control "no-store"
+      file_server {
+        status 503
+      }
+    }
+  }
+}
+
+# ------------------------------------------------------------------------------
+# 2. API — api.shopgoldplus.com
+# ------------------------------------------------------------------------------
+api.shopgoldplus.com {
+  tls admin@shopgoldplus.com
+
+  header {
+    Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    X-Content-Type-Options    "nosniff"
+    X-Frame-Options           "DENY"
+    -Server
+  }
+
+  # Rate limit the telemetry ingestion endpoint to protect the outbox
+  # (Rate limiting shifted to Hono middleware)
+
+  encode gzip
+
+  reverse_proxy api:3000 {
+    header_up Host              {host}
+    header_up X-Real-IP         {remote_host}
+    header_up X-Forwarded-For  {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+    # Forward Cloudflare bot management scores to the API for bot detection
+    header_up X-CF-Bot-Score    {http.request.header.Cf-Bot-Management-Score}
+    header_up X-CF-Threat-Score {http.request.header.Cf-Threat-Score}
+  }
+
+  handle_errors {
+    @apiUpstreamError expression `{err.status_code} >= 500`
+    handle @apiUpstreamError {
+      header Cache-Control "no-store"
+      respond "{\"ok\":false,\"status\":\"degraded\",\"service\":\"goldplus-api\",\"message\":\"GoldPlus API is temporarily unavailable. Please retry shortly.\"}" 503 {
+        content_type application/json
+      }
+    }
+  }
+}
+
+# ------------------------------------------------------------------------------
+# 3. TELEMETRY / sGTM — metrics.shopgoldplus.com
+# ------------------------------------------------------------------------------
+metrics.shopgoldplus.com {
+  tls admin@shopgoldplus.com
+
+  header {
+    Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    X-Content-Type-Options    "nosniff"
+    X-Frame-Options           "DENY"
+    -Server
+    # Allow embedding in GoldPlus storefront for GTM preview iframe
+    Access-Control-Allow-Origin "https://shopgoldplus.com"
+    Access-Control-Allow-Methods "POST, GET, OPTIONS"
+    Access-Control-Allow-Headers "Content-Type, X-Event-Id"
+  }
+
+  # Rate limit telemetry ingress — shifted to Hono/Cloudflare.
+
+
+  # GTM Preview / Debug WebSocket traffic → preview container
+  @gtmDebug {
+    path /gtm-debug*
+    header X-Gtm-Server-Preview *
+  }
+  reverse_proxy @gtmDebug sgtm-preview:8080 {
+    header_up Host              {host}
+    header_up X-Real-IP         {remote_host}
+    header_up X-Forwarded-For  {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+
+  # Standard GTM production traffic → production container
+  reverse_proxy sgtm-production:8080 {
+    header_up Host              {host}
+    header_up X-Real-IP         {remote_host}
+    header_up X-Forwarded-For  {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+}

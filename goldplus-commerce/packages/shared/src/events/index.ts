@@ -43,3 +43,4 @@ export const DOMAIN_EVENTS = {
 } as const;
 
 export type DomainEvent = typeof DOMAIN_EVENTS[keyof typeof DOMAIN_EVENTS];
+export * from './telemetry';

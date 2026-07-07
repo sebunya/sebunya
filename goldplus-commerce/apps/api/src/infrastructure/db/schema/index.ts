@@ -1,10 +1,10 @@
 export * from './identity';
-export * from './products';
+export * from './addresses';
 export * from './commerce';
 export * from './advertising';
 export * from './system';
+export * from './products';
 export * from './governance';
-export * from './addresses';
-export * from './phase11';
 export * from './recommendations';
-
+export * from './phase11';
+export * from './telemetry';

@@ -436,7 +436,6 @@ const currentHeroSubheadline = heroSubheadlines[category] || heroSubheadlines.al
           }));
         }
         if (q && q.trim()) {
-          // Santize and slice query to keep it safe and compact
           const cleanQuery = q.trim().substring(0, 100);
           window.localStorage.setItem('goldplus_last_search', JSON.stringify({
             value: cleanQuery,
@@ -445,7 +444,43 @@ const currentHeroSubheadline = heroSubheadlines[category] || heroSubheadlines.al
         }
       }
     } catch (e) {
-      // Safe boundary check
+      // Safe boundary
     }
+  </script>
+
+  <script>
+    import { track, captureClickIdsServerSide } from '../lib/telemetry';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Persist any ad click IDs from URL — critical for attribution
+      captureClickIdsServerSide();
+
+      // Collect product items rendered on this page for view_item_list
+      const cards = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-product-id]')
+      );
+      if (cards.length === 0) return;
+
+      const items = cards.map((el, idx) => ({
+        item_id:        el.dataset.productId   ?? '',
+        item_name:      el.dataset.productName ?? '',
+        price:          Number(el.dataset.productPrice ?? '0') || undefined,
+        item_category:  el.dataset.productCategory ?? undefined,
+        item_brand:     'GoldPlus',
+        index:          idx,
+      }));
+
+      // GA4 view_item_list — fires once per page with all visible products
+      const listId   = `shop_${document.querySelector('[data-category]')?.getAttribute('data-category') ?? 'all'}`;
+      const listName = document.title;
+
+      track('view_item_list', {
+        ecommerce: { items },
+        recommendation_context: {
+          item_list_id:   listId,
+          item_list_name: listName,
+        },
+      });
+    });
   </script>
 </BaseLayout>

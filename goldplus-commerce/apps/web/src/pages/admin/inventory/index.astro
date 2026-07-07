@@ -9,7 +9,7 @@ if (!token) {
 }
 
 // Fetch authentic system data to render real inventory status
-const result = await tryFetchAdminList<any>('/governance/admin/products', []);
+const result = await tryFetchAdminList<any>('/governance/admin/products', [], undefined, token);
 const products = result.items;
 ---
 

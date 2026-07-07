@@ -385,6 +385,7 @@ const canonical = Astro.url.toString();
         data-product-name={product.name}
         data-product-image={product.primaryImageUrl ?? ''}
         data-product-price={product.retailPriceUgx ?? ''}
+        data-product-category={product.categoryName ?? ''}
       >
         <div class="border-t border-slate-100 pt-10">
           <CompleteSetupRail productId={product.id} />
@@ -406,53 +407,105 @@ const canonical = Astro.url.toString();
 </BaseLayout>
 
 <script>
-  import { trackProductView, saveRecentlyViewedLocal, getAndClearClickAttribution, trackRecommendationEvent } from '../../lib/recommendations';
+  import {
+    trackProductView,
+    saveRecentlyViewedLocal,
+    getAndClearClickAttribution,
+    trackRecommendationEvent,
+  } from '../../lib/recommendations';
+
+  import {
+    track,
+    captureClickIdsServerSide,
+    getFpClientId,
+  } from '../../lib/telemetry';
 
   document.addEventListener('DOMContentLoaded', () => {
     const root = document.querySelector('[data-product-tracking]');
     if (!root) return;
 
-    const id = root.getAttribute('data-product-id');
-    const slug = root.getAttribute('data-product-slug');
-    const name = root.getAttribute('data-product-name');
-    const image = root.getAttribute('data-product-image');
-    const priceRaw = root.getAttribute('data-product-price');
+    const id       = root.getAttribute('data-product-id') ?? '';
+    const slug     = root.getAttribute('data-product-slug') ?? '';
+    const name     = root.getAttribute('data-product-name') ?? '';
+    const image    = root.getAttribute('data-product-image') ?? '';
+    const priceRaw = root.getAttribute('data-product-price') ?? '';
+    const categoryName = root.getAttribute('data-product-category') ?? '';
+    const price    = priceRaw ? Number(priceRaw) : undefined;
 
-    if (id && slug && name) {
-      // Fire back analytics
+    // ── 1. Capture any click IDs from URL and persist them server-side ────────
+    // This is the critical attribution step — if a user arrives via a Google/
+    // Meta/TikTok ad and converts 3 days later, this persists the gclid/ttclid
+    // so the purchase event can be enriched with it.
+    captureClickIdsServerSide();
+
+    if (id && name) {
+      // ── 2. GA4-compatible view_item event ──────────────────────────────────
+      track('view_item', {
+        ecommerce: {
+          value:    price,
+          currency: 'UGX',
+          items: [{
+            item_id:       id,
+            item_name:     name,
+            price:         price,
+            quantity:      1,
+            item_category: categoryName || undefined,
+            item_brand:    'GoldPlus',
+          }],
+        },
+      });
+
+      // ── 3. Existing recommendation tracking ───────────────────────────────
       trackProductView(id).catch(() => {});
 
-      // Update local history cache
       saveRecentlyViewedLocal({
         productId: id,
         slug,
         name,
-        imageUrl: image || undefined,
-        price: priceRaw ? Number(priceRaw) : undefined,
-        currency: 'UGX'
+        imageUrl:  image || undefined,
+        price,
+        currency:  'UGX',
       });
     }
 
-    const form = document.querySelector('form[action="/cart"]');
+    // ── 4. Add-to-Cart telemetry + recommendation attribution ────────────────
+    const form = document.querySelector<HTMLFormElement>('form[action="/cart"]');
     if (form && id) {
       form.addEventListener('submit', () => {
+        // GA4-compatible add_to_cart event (fires before page navigation)
+        track('add_to_cart', {
+          ecommerce: {
+            value:    price,
+            currency: 'UGX',
+            items: [{
+              item_id:       id,
+              item_name:     name,
+              price:         price,
+              quantity:      1,
+              item_category: categoryName || undefined,
+              item_brand:    'GoldPlus',
+            }],
+          },
+        });
+
+        // Existing recommendation attribution
         const attribution = getAndClearClickAttribution(id);
         if (attribution) {
           trackRecommendationEvent({
-            eventType: "RECOMMENDATION_ADD_TO_CART",
+            eventType:               'RECOMMENDATION_ADD_TO_CART',
             recommendationProductId: id,
-            placement: attribution.placement,
-            attributionId: attribution.attributionId,
-            railRenderId: attribution.railRenderId,
-            ruleId: attribution.ruleId,
-            reasonCode: attribution.reasonCode,
-            source: "product_page",
+            placement:               attribution.placement,
+            attributionId:           attribution.attributionId,
+            railRenderId:            attribution.railRenderId,
+            ruleId:                  attribution.ruleId,
+            reasonCode:              attribution.reasonCode,
+            source:                  'product_page',
           }).catch(() => {});
         } else {
           trackRecommendationEvent({
-            eventType: "PRODUCT_ADDED_TO_CART",
+            eventType: 'PRODUCT_ADDED_TO_CART',
             productId: id,
-            source: "product_page",
+            source:    'product_page',
           }).catch(() => {});
         }
       });

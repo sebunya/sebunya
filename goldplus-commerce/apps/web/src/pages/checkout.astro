@@ -313,4 +313,58 @@ const formatUgx = (n: number): string =>
       </div>
     )}
   </div>
+
+  {/* Embed cart data for client-side telemetry — no sensitive data, prices are public */}
+  <div
+    id="checkout-telemetry-data"
+    data-subtotal={cart.subtotalUgx}
+    data-items={JSON.stringify(cart.items.map(i => ({
+      item_id:   i.productId,
+      item_name: i.name,
+      price:     i.unitPriceUgx || i.priceUgx,
+      quantity:  i.quantity,
+      item_brand: 'GoldPlus',
+    })))}
+    aria-hidden="true"
+    style="display:none"
+  ></div>
 </BaseLayout>
+
+<script>
+  import { track, captureClickIdsServerSide } from '../lib/telemetry';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const dataEl  = document.getElementById('checkout-telemetry-data');
+    if (!dataEl) return;
+
+    const subtotal = Number(dataEl.dataset.subtotal ?? '0');
+    let items: any[] = [];
+    try { items = JSON.parse(dataEl.dataset.items ?? '[]'); } catch { /* ignore */ }
+
+    // Persist click IDs — critical for attributing this checkout session
+    captureClickIdsServerSide();
+
+    // ── begin_checkout — fires when user reaches the checkout page ────────────
+    track('begin_checkout', {
+      ecommerce: { value: subtotal, currency: 'UGX', items },
+    });
+
+    // ── add_payment_info — fires when user submits the checkout form ──────────
+    const form = document.querySelector<HTMLFormElement>('form[action="/checkout"]');
+    form?.addEventListener('submit', () => {
+      const paymentMethod = (
+        form.querySelector<HTMLInputElement>('input[name="paymentMethod"]:checked')?.value ?? 'unknown'
+      );
+      track('add_payment_info', {
+        ecommerce: {
+          value:    subtotal,
+          currency: 'UGX',
+          items,
+          // Map payment method to GA4 coupon field (closest equivalent)
+          // sGTM tag can extract this for payment type segmentation
+          coupon: paymentMethod,
+        },
+      });
+    });
+  });
+</script>

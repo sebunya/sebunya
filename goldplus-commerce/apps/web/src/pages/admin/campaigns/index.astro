@@ -15,6 +15,7 @@ const result = await tryFetchAdminList<SampleCampaign>(
   '/governance/admin/campaigns',
   SAMPLE_CAMPAIGNS,
   'Marketing analytics data currently restricted to safe samples.',
+  token,
 );
 
 const statusToBadge: Record<SampleCampaign['status'], { variant: 'pending' | 'info' | 'success' | 'neutral'; label: string }> = {
@@ -91,4 +92,3 @@ const statusToBadge: Record<SampleCampaign['status'], { variant: 'pending' | 'in
     )}
   </div>
 </AdminLayout>
-

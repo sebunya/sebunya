@@ -34,8 +34,8 @@ function maskRecipient(recipient: string | null | undefined, channel: string): s
 function scrubMessage(message: string | null | undefined): string | null {
   if (!message) return null;
   return message
-    .replace(/bearer\s+[a-z0-9\-_\.]+/gi, 'Bearer [REDACTED]')
-    .replace(/(api_key|apikey|secret|password|token)=\s*[a-z0-9\-_\.]+/gi, '$1=[REDACTED]');
+    .replace(/bearer\s+[a-z0-9\-_.]+/gi, 'Bearer [REDACTED]')
+    .replace(/(api_key|apikey|secret|password|token)=\s*[a-z0-9\-_.]+/gi, '$1=[REDACTED]');
 }
 
 routes.get('/', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {

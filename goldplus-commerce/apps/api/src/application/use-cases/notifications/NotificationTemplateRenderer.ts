@@ -551,8 +551,8 @@ Kampala, Uganda
     const status = order.orderStatus;
     const paymentStatus = order.paymentStatus;
 
-    let greeting = `Hello ${order.customerName || 'Customer'}`;
-    let baseText = `${greeting}, regarding your GoldPlus order *${order.orderNumber}*:\n\n`;
+    const greeting = `Hello ${order.customerName || 'Customer'}`;
+    const baseText = `${greeting}, regarding your GoldPlus order *${order.orderNumber}*:\n\n`;
 
     if (status === 'received' && paymentStatus === 'unpaid') {
       return (

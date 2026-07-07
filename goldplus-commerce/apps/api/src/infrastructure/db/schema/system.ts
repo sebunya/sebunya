@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, boolean, jsonb, text, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, jsonb, text, integer, index } from 'drizzle-orm/pg-core';
 
 import { products } from './products';
 
@@ -33,7 +33,15 @@ export const outboxEvents = pgTable('outbox_events', {
   previewOnly: boolean('preview_only').default(false).notNull(),
   noSendGuarantee: boolean('no_send_guarantee').default(false).notNull(),
   suppressedReason: text('suppressed_reason'),
-});
+}, (table) => ({
+  eventTypeProcessedNextAttemptIdx: index('outbox_events_event_type_processed_next_attempt_idx').on(
+    table.eventType,
+    table.isProcessed,
+    table.nextAttemptAt
+  ),
+  isProcessedIdx: index('outbox_events_is_processed_idx').on(table.isProcessed),
+  nextAttemptIdx: index('outbox_events_next_attempt_at_idx').on(table.nextAttemptAt),
+}));
 
 export const verificationCodes = pgTable('verification_codes', {
   id: uuid('id').defaultRandom().primaryKey(),

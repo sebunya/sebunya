@@ -21,3 +21,4 @@ export * from './permissions';
 export * from './types/locations';
 export * from './recommendations';
 export * from './date-validation';
+export * from './events/telemetry';

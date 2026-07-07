@@ -76,7 +76,8 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
           })
           .where(eq(orders.id, input.orderId));
 
-        await tx.insert(outboxEvents).values({
+        let outboxId: string | null = null;
+        const [outboxRow] = await tx.insert(outboxEvents).values({
           eventType: input.outcome === 'SUCCESS' ? DOMAIN_EVENTS.PAYMENT_SUCCESS : DOMAIN_EVENTS.PAYMENT_FAILED,
           payload: {
             paymentId: row.id,
@@ -86,12 +87,26 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
             amount: input.amount,
             idempotencyKey: input.idempotencyKey,
           },
-        });
+        }).returning({ id: outboxEvents.id });
 
-        return row;
+        if (outboxRow) {
+          outboxId = outboxRow.id;
+        }
+
+        return { row, outboxId };
       });
 
-      return rowToPayment(inserted);
+      if (inserted.outboxId) {
+        const { QueueService, QUEUES } = await import('../../queues/QueueService');
+        await QueueService.getInstance().enqueue(
+          QUEUES.EMAIL_JOBS,
+          `payment-notification:${inserted.outboxId}`,
+          { outboxId: inserted.outboxId },
+          inserted.outboxId
+        ).catch(err => console.error('[PaymentRepository] Failed to enqueue payment email job:', err));
+      }
+
+      return rowToPayment(inserted.row);
     } catch (err) {
       // Race condition: a concurrent webhook beat us to the UNIQUE insert.
       // Re-read the existing row and return it — replay semantics.

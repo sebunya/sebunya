@@ -6,6 +6,7 @@ import type {
 import { db } from "../client";
 import { products, categories, productPrices } from "../schema/products";
 import { productImages } from "../schema/phase11";
+import { recommendationMaterializedCache } from "../schema/recommendations";
 
 export class DrizzleProductRecommendationReader implements IProductRecommendationReader {
   async findProductById(productId: string): Promise<RecommendationProductRecord | null> {
@@ -154,5 +155,41 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       modelNumber: product.modelNumber,
       createdAt: product.createdAt,
     };
+  }
+
+  async findCachedRecommendations(placement: string, contextKey: string): Promise<any[] | null> {
+    const row = await db.query.recommendationMaterializedCache.findFirst({
+      where: and(
+        eq(recommendationMaterializedCache.placement, placement),
+        eq(recommendationMaterializedCache.contextKey, contextKey)
+      )
+    });
+    return row ? row.items : null;
+  }
+
+  async saveCachedRecommendations(placement: string, contextKey: string, items: any[]): Promise<void> {
+    const existing = await db.query.recommendationMaterializedCache.findFirst({
+      where: and(
+        eq(recommendationMaterializedCache.placement, placement),
+        eq(recommendationMaterializedCache.contextKey, contextKey)
+      )
+    });
+
+    if (existing) {
+      await db
+        .update(recommendationMaterializedCache)
+        .set({
+          items,
+          updatedAt: new Date()
+        })
+        .where(eq(recommendationMaterializedCache.id, existing.id));
+    } else {
+      await db.insert(recommendationMaterializedCache).values({
+        placement,
+        contextKey,
+        items,
+        updatedAt: new Date()
+      });
+    }
   }
 }

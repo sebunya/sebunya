@@ -1,7 +1,12 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
+import { rateLimiter } from './middleware/rateLimiter';
+import { logger as pinoLogger } from 'hono-pino';
 import { ApiResponse } from '@goldplus/shared';
+import { logger } from '../../infrastructure/logging/logger';
+import * as Sentry from '@sentry/node';
+import { traceLocalStorage } from '../../infrastructure/observability/TraceContext';
+import { randomUUID } from 'node:crypto';
 import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import commerceRoutes from './routes/commerce';
@@ -14,7 +19,14 @@ import adminRolesRoutes from './routes/admin/roles';
 import adminProductsRoutes from './routes/admin/products';
 import adminNotificationsRoutes from './routes/admin/notifications';
 import adminRecommendationsRoutes from './routes/admin/recommendations';
+import adminQueuesRoutes from './routes/admin/queues';
+import adminDeploymentRoutes from './routes/admin/deployment';
 import recommendationRoutes from './routes/recommendations';
+import telemetryRoutes from './routes/telemetry';
+import healthRoutes from './routes/health';
+import metricsRoutes from './routes/metrics';
+import { maintenanceMode } from './middleware/maintenance';
+import { deploymentService } from '../../infrastructure/deployment/DeploymentService';
 
 
 // Define typed variables for the Hono context
@@ -24,9 +36,78 @@ type Variables = {
 
 const app = new Hono<{ Variables: Variables }>();
 
+function createRequestId(): string {
+  return randomUUID ? randomUUID() : Math.random().toString(36).substring(2, 15);
+}
+
 // Global Middleware
 app.use('*', cors());
-app.use('*', logger());
+
+// Request ID & Tracing Context Middleware
+app.use('*', async (c, next) => {
+  let reqId = c.req.header('x-correlation-id') || c.req.header('x-request-id') || c.get('requestId');
+  if (!reqId) {
+    reqId = createRequestId();
+  }
+
+  c.set('requestId', reqId);
+  c.header('X-Correlation-Id', reqId);
+  c.header('X-Request-Id', reqId);
+
+  const userId = c.req.header('x-user-id') || undefined;
+
+  return traceLocalStorage.run({ traceId: reqId, userId }, async () => {
+    await next();
+  });
+});
+
+// Use Pino for structured request logging
+app.use('*', pinoLogger({
+  pino: logger,
+  http: {
+    reqId: () => createRequestId(),
+  },
+}));
+
+app.use('/telemetry/collect', rateLimiter({ limit: 100, windowMs: 1000 }));
+app.use('*', rateLimiter({ limit: 1000, windowMs: 60 * 1000 }));
+app.use('*', maintenanceMode);
+
+// Shadow Traffic Middleware
+app.use('*', async (c, next) => {
+  const shadowRatio = deploymentService.getShadowTrafficRatio();
+  if (shadowRatio > 0 && c.req.header('X-Shadow-Request') !== 'true') {
+    const method = c.req.method.toUpperCase();
+    const isExempted =
+      c.req.path.startsWith('/health') ||
+      c.req.path.startsWith('/metrics') ||
+      c.req.path.includes('/admin/deployment') ||
+      c.req.path.includes('/admin/queues');
+
+    if (!isExempted) {
+      try {
+        const bodyStr = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
+          ? await c.req.raw.clone().text()
+          : null;
+
+        const headers: Record<string, string> = {};
+        c.req.raw.headers.forEach((value, key) => {
+          headers[key] = value;
+        });
+
+        deploymentService.mirrorTrafficIfSelected(
+          c.req.url,
+          c.req.method,
+          headers,
+          bodyStr
+        );
+      } catch (err) {
+        logger.debug({ err }, '[ShadowTraffic] Failed to clone request for mirroring');
+      }
+    }
+  }
+  await next();
+});
 
 // Routes
 app.route('/auth', authRoutes);
@@ -41,31 +122,19 @@ app.route('/admin/roles', adminRolesRoutes);
 app.route('/admin/products', adminProductsRoutes);
 app.route('/admin/notifications', adminNotificationsRoutes);
 app.route('/admin/recommendations', adminRecommendationsRoutes);
+app.route('/admin/queues', adminQueuesRoutes);
+app.route('/admin/deployment', adminDeploymentRoutes);
 app.route('/recommendations', recommendationRoutes);
+app.route('/telemetry', telemetryRoutes);
+app.route('/health', healthRoutes);
+app.route('/metrics', metricsRoutes);
 
-
-
-
-
-// Request ID Middleware
-app.use('*', async (c, next) => {
-  const reqId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
-  c.set('requestId', reqId);
-  await next();
-});
-
-// Health Check
-app.get('/health', (c) => {
-  const res: ApiResponse<{ status: string; timestamp: string }> = {
-    success: true,
-    data: { status: 'ok', timestamp: new Date().toISOString() },
-  };
-  return c.json(res);
-});
+// Health check route mounted via route registration
 
 // Error Handling
 app.onError((err, c) => {
-  console.error(`[ERROR] ${err.message}`);
+  logger.error({ err }, `[ERROR] ${err.message}`);
+  Sentry.captureException(err);
   
   // Detect database connection issues to deliver typed fallback requirement
   const isDbError = err.message?.includes('ECONNREFUSED') || err.message?.includes('DATABASE_URL') || !process.env.DATABASE_URL;

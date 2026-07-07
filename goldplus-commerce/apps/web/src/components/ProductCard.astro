@@ -42,7 +42,13 @@ const availabilityBadgeClass = (() => {
 })();
 ---
 
-<article class="group flex flex-col h-full border border-slate-200/80 rounded-2xl p-5 hover:border-brand-primary hover:shadow-lg hover:shadow-slate-100 transition-all duration-300 bg-white">
+<article
+  class="group flex flex-col h-full border border-slate-200/80 rounded-2xl p-5 hover:border-brand-primary hover:shadow-lg hover:shadow-slate-100 transition-all duration-300 bg-white"
+  data-product-id={product.id}
+  data-product-name={product.name}
+  data-product-price={product.retailPriceUgx ?? ''}
+  data-product-category={product.categoryName ?? ''}
+>
   
   {/* Product Image & Status Badge */}
   <div class="relative mb-4">

@@ -15,10 +15,16 @@ export async function tryFetchAdminList<T>(
   path: string,
   fallback: T[],
   reasonPrefix = 'Sample data shown until the GET endpoint is wired.',
+  token?: string | null,
 ): Promise<AdminListResult<T>> {
   try {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
     const res = await fetch(`${API_BASE}${path}`, {
-      headers: { Accept: 'application/json' },
+      headers,
     });
     if (!res.ok) {
       return { items: fallback, isSample: true, reason: `${reasonPrefix} (API ${res.status})` };

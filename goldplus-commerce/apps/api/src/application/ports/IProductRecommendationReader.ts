@@ -33,4 +33,8 @@ export interface IProductRecommendationReader {
   findProductById(productId: string): Promise<RecommendationProductRecord | null>;
 
   findProductsByIds(productIds: string[]): Promise<RecommendationProductRecord[]>;
+
+  findCachedRecommendations(placement: string, contextKey: string): Promise<any[] | null>;
+
+  saveCachedRecommendations(placement: string, contextKey: string, items: any[]): Promise<void>;
 }

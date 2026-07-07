@@ -5,6 +5,7 @@ import {
   NotificationStatus,
 } from '../../../application/ports/INotificationProvider';
 import { NotificationTemplateRenderer } from '../../../application/use-cases/notifications/NotificationTemplateRenderer';
+import { resilientFetch } from '../../http/HttpClient';
 
 export class ZeptoMailAdapter implements INotificationProvider {
   private readonly renderer = new NotificationTemplateRenderer();
@@ -251,11 +252,8 @@ export class ZeptoMailAdapter implements INotificationProvider {
         client_reference: payload.relatedEntityId || undefined,
       };
 
-      const controller = new AbortController();
-      const timeoutMs = parseInt(process.env.ZEPTOMAIL_TIMEOUT_MS || '10000', 10);
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      const response = await fetch(baseUrl, {
+      const timeoutMs = parseInt(process.env.ZEPTOMAIL_TIMEOUT_MS || '3000', 10);
+      const response = await resilientFetch(baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -263,10 +261,9 @@ export class ZeptoMailAdapter implements INotificationProvider {
           'Authorization': `Zoho-enczapikey ${token}`,
         },
         body: JSON.stringify(bodyPayload),
-        signal: controller.signal,
+        breakerName: 'zeptomail',
+        timeoutMs,
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         return {

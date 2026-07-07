@@ -25,7 +25,7 @@ const fallbackProducts = [
 ];
 
 // Call central governance endpoint which lists all products
-const result = await tryFetchAdminList('/governance/admin/products', fallbackProducts);
+const result = await tryFetchAdminList('/governance/admin/products', fallbackProducts, undefined, token);
 const products = result.items || [];
 
 // 1. Extract unique values for contextual filter selections

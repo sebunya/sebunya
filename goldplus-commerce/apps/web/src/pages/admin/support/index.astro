@@ -16,6 +16,7 @@ const result = await tryFetchAdminList<SampleSupportTicket>(
   '/governance/admin/support',
   SAMPLE_SUPPORT_TICKETS,
   'Sample support tickets shown until /governance/admin/support is wired.',
+  token,
 );
 
 const statusBadge: Record<SampleSupportTicket['status'], 'pending' | 'warning' | 'success' | 'neutral'> = {
@@ -123,4 +124,3 @@ const typeLabel: Record<SampleSupportTicket['type'], string> = {
     )}
   </div>
 </AdminLayout>
-

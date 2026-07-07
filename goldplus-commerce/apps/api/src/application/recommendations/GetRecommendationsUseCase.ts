@@ -44,7 +44,52 @@ export class GetRecommendationsUseCase {
     const limit = input.limit ?? DEFAULT_LIMITS[input.placement];
     const railRenderId = crypto.randomUUID();
 
-    let candidates = await this.generateV1ScoredCandidates(input, limit);
+    let candidates: RecommendationCandidate[] | null = null;
+    const cacheKey = input.productId || input.categoryId || 'global';
+
+    try {
+      const cachedItems = await this.products.findCachedRecommendations(input.placement, cacheKey);
+      if (cachedItems && cachedItems.length > 0) {
+        const mapped = cachedItems.map((item: any) => ({
+          productId: item.productId,
+          slug: item.slug,
+          name: item.name,
+          imageUrl: item.imageUrl,
+          price: item.price,
+          currency: item.currency,
+          categoryId: item.categoryId,
+          categorySlug: item.categorySlug,
+          createdAt: item.createdAt ? new Date(item.createdAt) : undefined,
+          sortPriority: item.sortPriority,
+          stockQuantity: item.stockQuantity,
+          signals: item.signals || {},
+          score: item.score || 0,
+          reasonCodes: item.reasonCodes || [],
+          ruleId: item.ruleId,
+          appliedRuleIds: item.appliedRuleIds,
+          displayReason: item.displayReason,
+        }));
+
+        const filtered = this.eligibility.filter(mapped, {
+          placement: input.placement,
+          contextProductId: input.productId,
+          categoryId: input.categoryId,
+          categorySlug: input.categorySlug,
+          cartProductIds: input.cartProductIds,
+          requireImage: true,
+        });
+
+        if (filtered.length > 0) {
+          candidates = filtered;
+        }
+      }
+    } catch (err) {
+      // Fail-closed: fall back to live generation
+    }
+
+    if (!candidates) {
+      candidates = await this.generateV1ScoredCandidates(input, limit);
+    }
 
     // ---- V2 Rule Application ----
     const v2Enabled = (() => {

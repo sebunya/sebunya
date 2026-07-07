@@ -152,8 +152,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-16gb-usb-flash-drive.webp', alt: 'GoldPlus 16GB USB Flash Drive' }],
     attributeValues: [
-      { name: 'Badge', value: '16GB Storage' },
-      { name: 'CardShortDescription', value: 'Compact USB storage for everyday files, photos and documents.' }
+      { name: 'Badge', value: '16GB Storage', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Compact USB storage for everyday files, photos and documents.', unit: null, isVerified: true }
     ]
   },
   {
@@ -174,8 +174,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-32gb-memory-card.webp', alt: 'GoldPlus 32GB Memory Card' }],
     attributeValues: [
-      { name: 'Badge', value: '32GB Storage' },
-      { name: 'CardShortDescription', value: 'Compact memory card storage for phones, cameras and compatible devices.' }
+      { name: 'Badge', value: '32GB Storage', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Compact memory card storage for phones, cameras and compatible devices.', unit: null, isVerified: true }
     ]
   },
   {
@@ -197,8 +197,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-usb-mouse.webp', alt: 'GoldPlus USB Mouse' }],
     attributeValues: [
-      { name: 'Badge', value: 'USB Mouse' },
-      { name: 'CardShortDescription', value: 'Smooth everyday control for laptops, desktops and workstations.' }
+      { name: 'Badge', value: 'USB Mouse', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Smooth everyday control for laptops, desktops and workstations.', unit: null, isVerified: true }
     ]
   },
   {
@@ -220,8 +220,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-usb-sound-card.webp', alt: 'GoldPlus USB Sound Card' }],
     attributeValues: [
-      { name: 'Badge', value: 'USB Audio' },
-      { name: 'CardShortDescription', value: 'USB audio support for DJs, music producers and computer audio setups.' }
+      { name: 'Badge', value: 'USB Audio', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'USB audio support for DJs, music producers and computer audio setups.', unit: null, isVerified: true }
     ]
   },
   {
@@ -243,8 +243,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-wireless-earbuds-gp-001.webp', alt: 'GoldPlus Wireless Earbuds GP-001' }],
     attributeValues: [
-      { name: 'Badge', value: 'Wireless Sound' },
-      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.' }
+      { name: 'Badge', value: 'Wireless Sound', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.', unit: null, isVerified: true }
     ]
   },
   {
@@ -266,8 +266,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-wireless-earbuds-gp-002.webp', alt: 'GoldPlus Wireless Earbuds GP-002' }],
     attributeValues: [
-      { name: 'Badge', value: 'Everyday Audio' },
-      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.' }
+      { name: 'Badge', value: 'Everyday Audio', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.', unit: null, isVerified: true }
     ]
   },
   {
@@ -289,8 +289,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-wireless-earbuds-gp-003.webp', alt: 'GoldPlus Wireless Earbuds GP-003' }],
     attributeValues: [
-      { name: 'Badge', value: 'TWS Earbuds' },
-      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.' }
+      { name: 'Badge', value: 'TWS Earbuds', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.', unit: null, isVerified: true }
     ]
   },
   {
@@ -312,8 +312,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-wireless-earbuds-gp-004.webp', alt: 'GoldPlus Wireless Earbuds GP-004' }],
     attributeValues: [
-      { name: 'Badge', value: 'Compact Case' },
-      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.' }
+      { name: 'Badge', value: 'Compact Case', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.', unit: null, isVerified: true }
     ]
   },
   {
@@ -335,8 +335,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-wireless-earbuds-gp-007.webp', alt: 'GoldPlus Wireless Earbuds GP-007' }],
     attributeValues: [
-      { name: 'Badge', value: 'Wireless Sound' },
-      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.' }
+      { name: 'Badge', value: 'Wireless Sound', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Wireless earbuds for music, calls and everyday listening.', unit: null, isVerified: true }
     ]
   },
   {
@@ -360,8 +360,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-charger-gp-101.webp', alt: 'GoldPlus USB Wall Charger' }],
     attributeValues: [
-      { name: 'Badge', value: 'USB Charging' },
-      { name: 'CardShortDescription', value: 'Reliable plug-in charging for everyday USB devices.' }
+      { name: 'Badge', value: 'USB Charging', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Reliable plug-in charging for everyday USB devices.', unit: null, isVerified: true }
     ]
   },
   {
@@ -385,8 +385,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-dual-usb-wall-charger-gp-103.webp', alt: 'GoldPlus Dual USB Charger' }],
     attributeValues: [
-      { name: 'Badge', value: 'Dual USB' },
-      { name: 'CardShortDescription', value: 'Simple two-port charging for everyday devices.' }
+      { name: 'Badge', value: 'Dual USB', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Simple two-port charging for everyday devices.', unit: null, isVerified: true }
     ]
   },
   {
@@ -410,8 +410,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-usb-c-charger-kit-gp-104.webp', alt: 'GoldPlus USB-C Charger Set' }],
     attributeValues: [
-      { name: 'Badge', value: 'Cable Included' },
-      { name: 'CardShortDescription', value: 'Wall charger and USB-C cable for easy daily charging.' }
+      { name: 'Badge', value: 'Cable Included', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Wall charger and USB-C cable for easy daily charging.', unit: null, isVerified: true }
     ]
   },
   {
@@ -435,8 +435,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-50w-pd-charger-kit-gp-105.webp', alt: 'GoldPlus 50W Metal Charger' }],
     attributeValues: [
-      { name: 'Badge', value: '50W Fast Charge' },
-      { name: 'CardShortDescription', value: 'Premium high-speed charging with USB-C PD and USB output.' }
+      { name: 'Badge', value: '50W Fast Charge', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Premium high-speed charging with USB-C PD and USB output.', unit: null, isVerified: true }
     ]
   },
   {
@@ -460,8 +460,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-compact-usb-wall-charger-gp-106.webp', alt: 'GoldPlus Compact Charger' }],
     attributeValues: [
-      { name: 'Badge', value: 'Everyday Charge' },
-      { name: 'CardShortDescription', value: 'Compact everyday charging for phones and accessories.' }
+      { name: 'Badge', value: 'Everyday Charge', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Compact everyday charging for phones and accessories.', unit: null, isVerified: true }
     ]
   },
   {
@@ -485,8 +485,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-50w-pps-charger-kit-gp-107.webp', alt: 'GoldPlus 50W PPS Charger' }],
     attributeValues: [
-      { name: 'Badge', value: '50W PPS' },
-      { name: 'CardShortDescription', value: 'High-speed PD and PPS charging for compatible devices.' }
+      { name: 'Badge', value: '50W PPS', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'High-speed PD and PPS charging for compatible devices.', unit: null, isVerified: true }
     ]
   },
   {
@@ -510,8 +510,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-super-fast-charger-kit-gp-108.webp', alt: 'GoldPlus PD Fast Charger' }],
     attributeValues: [
-      { name: 'Badge', value: 'PD Charging' },
-      { name: 'CardShortDescription', value: 'Fast dual-port charging with USB-C and USB output.' }
+      { name: 'Badge', value: 'PD Charging', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Fast dual-port charging with USB-C and USB output.', unit: null, isVerified: true }
     ]
   },
   {
@@ -535,8 +535,8 @@ export const LOCAL_SEED_PRODUCTS: ProductPublicDto[] = [
     hasMissingSpecs: true,
     images: [{ url: '/products/goldplus-dual-usb-car-charger-gp-ca03.webp', alt: 'GoldPlus Dual USB Car Charger' }],
     attributeValues: [
-      { name: 'Badge', value: 'Dual USB' },
-      { name: 'CardShortDescription', value: 'Two-port USB charging for phones and devices on the road.' }
+      { name: 'Badge', value: 'Dual USB', unit: null, isVerified: true },
+      { name: 'CardShortDescription', value: 'Two-port USB charging for phones and devices on the road.', unit: null, isVerified: true }
     ]
   }
 ];

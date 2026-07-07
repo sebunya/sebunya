@@ -247,8 +247,7 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
   });
 
   test('13. API key/password is never included in returned error or masking leaks', async () => {
-    const mockFetchPromise = Promise.reject(new Error('Sensitive details username=test_user password=test_key'));
-    vi.mocked(fetch).mockImplementation(() => mockFetchPromise);
+    vi.mocked(fetch).mockRejectedValue(new Error('Sensitive details username=test_user password=test_key'));
 
     const res = await adapter.dispatch({
       recipient: '0772123456',

@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Registry } from '../../../infrastructure/Registry';
 import { RecordPaymentWebhookUseCase } from '../../../application/use-cases/payments/RecordPaymentWebhookUseCase';
+import { enqueuePurchaseEvent } from '../../../application/use-cases/telemetry/EnqueuePurchaseEventUseCase';
 import { ApiResponse } from '@goldplus/shared';
+import { logger } from '../../../infrastructure/logging/logger';
 
 const routes = new Hono();
 
@@ -98,6 +100,30 @@ routes.post('/payment/:provider', async (c) => {
         warning: secretConfigured ? undefined : 'Not configured: webhook signature secret missing for this provider.',
       },
     };
+
+    // ─── Enqueue server-side purchase event on first confirmed SUCCESS ────────
+    if (result.payment.status === 'SUCCESS' && !result.replay) {
+      enqueuePurchaseEvent({
+        orderId: result.payment.orderId,
+        transactionId: result.payment.providerReference || result.payment.id,
+        value: Number(parsed.amount) || 0,
+        currency: 'UGX',
+        // Attempt to extract client context forwarded by the provider webhook
+        ipAddress: c.req.header('x-real-ip') || c.req.header('cf-connecting-ip'),
+        traceId: c.req.header('x-request-id'),
+      }).then(async (outboxId) => {
+        if (outboxId) {
+          const { QueueService, QUEUES } = await import('../../../infrastructure/queues/QueueService');
+          await QueueService.getInstance().enqueue(
+            QUEUES.TELEMETRY_DISPATCH,
+            `purchase-dispatch:${result.payment.orderId}`,
+            { outboxId },
+            outboxId
+          );
+        }
+      }).catch(err => logger.error({ err, orderId: result.payment.orderId }, '[Webhook] Failed to enqueue purchase telemetry event'));
+    }
+
     return c.json(res, 200);
 
   } catch (err) {

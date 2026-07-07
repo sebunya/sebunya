@@ -143,8 +143,10 @@ routes.post('/verification/check', async (c) => {
   return c.json(res);
 });
 
-// ---------- Admin dashboard stats (unchanged) ----------
-routes.get('/admin/stats', async (c) => {
+routes.use('/admin/*', authMiddleware);
+
+// ---------- Admin dashboard stats ----------
+routes.get('/admin/stats', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const [productCount, dealerCount, auditCount, supportCount] = await Promise.all([
     registry.productRepo.findAll(), 
     registry.dealerRepo.findAll(),
@@ -166,7 +168,7 @@ routes.get('/admin/stats', async (c) => {
 });
 
 // Admin List Routes
-routes.get('/admin/orders', authMiddleware, requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+routes.get('/admin/orders', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   try {
     let ordersList = await registry.orderRepo.findAll();
 
@@ -202,7 +204,7 @@ routes.get('/admin/orders', authMiddleware, requirePermissions([PERMISSIONS.ORDE
 });
 
 // Admin Detail Route
-routes.get('/admin/orders/:id', authMiddleware, requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+routes.get('/admin/orders/:id', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   try {
     const id = c.req.param('id') as string;
     const order = await registry.orderRepo.findById(id);
@@ -242,7 +244,7 @@ routes.get('/admin/orders/:id', authMiddleware, requirePermissions([PERMISSIONS.
 });
 
 // Admin Communication Preview Route
-routes.get('/admin/orders/:id/communication-preview', authMiddleware, requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+routes.get('/admin/orders/:id/communication-preview', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   try {
     const id = c.req.param('id') as string;
     const order = await registry.orderRepo.findById(id);
@@ -292,7 +294,7 @@ routes.get('/admin/orders/:id/communication-preview', authMiddleware, requirePer
 
 // Admin Fulfillment Update Route
 
-routes.patch('/admin/orders/:id/fulfillment', authMiddleware, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.patch('/admin/orders/:id/fulfillment', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   try {
     const id = c.req.param('id') as string;
     const body = await c.req.json().catch(() => null);
@@ -382,7 +384,7 @@ routes.patch('/admin/orders/:id/fulfillment', authMiddleware, requirePermissions
 });
 
 
-routes.get('/admin/products', async (c) => {
+routes.get('/admin/products', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) => {
   try {
     // Admin view fetches all products regardless of active state
     const products = await registry.productRepo.findAll();
@@ -395,7 +397,7 @@ routes.get('/admin/products', async (c) => {
   }
 });
 
-routes.get('/admin/payments', async (c) => {
+routes.get('/admin/payments', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
   try {
     const payments = await registry.paymentRepo.findAll();
     return c.json({ success: true, data: payments });
@@ -407,7 +409,7 @@ routes.get('/admin/payments', async (c) => {
   }
 });
 
-routes.get('/admin/quotes', async (c) => {
+routes.get('/admin/quotes', requirePermissions([PERMISSIONS.QUOTES_MANAGE]), async (c) => {
   try {
     const quotes = await registry.quoteRepo.findAll();
     return c.json({ success: true, data: quotes });
@@ -419,7 +421,7 @@ routes.get('/admin/quotes', async (c) => {
   }
 });
 
-routes.get('/admin/support', async (c) => {
+routes.get('/admin/support', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   try {
     const support = await registry.supportRepo.findAll();
     return c.json({ success: true, data: support });
@@ -431,7 +433,7 @@ routes.get('/admin/support', async (c) => {
   }
 });
 
-routes.get('/admin/dealers', async (c) => {
+routes.get('/admin/dealers', requirePermissions([PERMISSIONS.DEALER_READ_PRIVATE]), async (c) => {
   try {
     const dealers = await registry.dealerRepo.findAll();
     return c.json({ success: true, data: dealers });
@@ -444,5 +446,4 @@ routes.get('/admin/dealers', async (c) => {
 });
 
 export default routes;
-
 

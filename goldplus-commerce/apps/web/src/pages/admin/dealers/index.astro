@@ -15,7 +15,7 @@ const fallbackDealers = [
 ];
 
 // Attempt authentic fetching
-const result = await tryFetchAdminList('/governance/admin/dealers', fallbackDealers);
+const result = await tryFetchAdminList('/governance/admin/dealers', fallbackDealers, undefined, token);
 const dealers = result.items;
 ---
 
@@ -84,4 +84,3 @@ const dealers = result.items;
     </div>
   </div>
 </AdminLayout>
-

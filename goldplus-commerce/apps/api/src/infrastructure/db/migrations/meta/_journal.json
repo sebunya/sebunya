@@ -71,6 +71,27 @@
       "when": 1779184215072,
       "tag": "0009_spooky_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1779935064781,
+      "tag": "0010_living_clint_barton",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1779991695098,
+      "tag": "0011_light_shatterstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1779992610816,
+      "tag": "0012_harsh_maverick",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>GoldPlus is temporarily unavailable</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111111;
+        --muted: #5f6570;
+        --line: #d9dde3;
+        --gold: #b38a1f;
+        --gold-soft: #f6efe0;
+        --paper: #ffffff;
+        --wash: #f7f8fa;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: var(--wash);
+        color: var(--ink);
+        font-family: Arial, Helvetica, sans-serif;
+        line-height: 1.5;
+      }
+
+      main {
+        width: min(92vw, 620px);
+        padding: 40px;
+        background: var(--paper);
+        border: 1px solid var(--line);
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 28px;
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .mark {
+        width: 30px;
+        height: 30px;
+        display: inline-grid;
+        place-items: center;
+        background: var(--gold-soft);
+        border: 1px solid rgba(179, 138, 31, 0.45);
+        color: var(--gold);
+        font-weight: 900;
+      }
+
+      h1 {
+        margin: 0 0 14px;
+        font-size: clamp(28px, 5vw, 42px);
+        line-height: 1.12;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      .status {
+        margin-top: 26px;
+        padding-top: 18px;
+        border-top: 1px solid var(--line);
+        font-size: 13px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main aria-labelledby="title">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">G+</span>
+        <span>GoldPlus</span>
+      </div>
+      <h1 id="title">GoldPlus is temporarily unavailable.</h1>
+      <p>We are restoring service. Please retry shortly.</p>
+      <p class="status">Service status: degraded</p>
+    </main>
+  </body>
+</html>

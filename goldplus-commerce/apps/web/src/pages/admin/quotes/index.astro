@@ -17,6 +17,7 @@ const result = await tryFetchAdminList<SampleQuote>(
   '/governance/admin/quotes',
   SAMPLE_QUOTES,
   'Sample quote requests shown until /governance/admin/quotes is wired.',
+  token,
 );
 
 const statusToBadge: Record<SampleQuote['status'], { variant: 'pending' | 'info' | 'success' | 'neutral'; label: string }> = {
@@ -105,4 +106,3 @@ const statusToBadge: Record<SampleQuote['status'], { variant: 'pending' | 'info'
     )}
   </div>
 </AdminLayout>
-

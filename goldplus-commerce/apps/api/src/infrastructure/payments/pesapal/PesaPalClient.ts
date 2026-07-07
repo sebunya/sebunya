@@ -1,4 +1,5 @@
 import { Config } from '../../../config/env';
+import { resilientFetch } from '../../http/HttpClient';
 import {
   IPesaPalClient,
   PesaPalBillingAddress,
@@ -33,7 +34,7 @@ export class PesaPalClient implements IPesaPalClient {
 
     const url = `${this.getBaseUrl()}/api/Auth/RequestToken`;
     
-    const response = await fetch(url, {
+    const response = await resilientFetch(url, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -43,6 +44,8 @@ export class PesaPalClient implements IPesaPalClient {
         consumer_key: consumerKey,
         consumer_secret: consumerSecret,
       }),
+      breakerName: 'pesapal',
+      timeoutMs: 3000,
     });
 
     if (!response.ok) {
@@ -121,7 +124,7 @@ export class PesaPalClient implements IPesaPalClient {
       },
     };
 
-    const response = await fetch(url, {
+    const response = await resilientFetch(url, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -129,6 +132,8 @@ export class PesaPalClient implements IPesaPalClient {
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(bodyPayload),
+      breakerName: 'pesapal',
+      timeoutMs: 3000,
     });
 
     if (!response.ok) {
@@ -148,12 +153,14 @@ export class PesaPalClient implements IPesaPalClient {
     const token = await this.getToken();
     const url = `${this.getBaseUrl()}/api/Transactions/GetTransactionStatus?orderTrackingId=${encodeURIComponent(orderTrackingId)}`;
 
-    const response = await fetch(url, {
+    const response = await resilientFetch(url, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
+      breakerName: 'pesapal',
+      timeoutMs: 3000,
     });
 
     if (!response.ok) {
