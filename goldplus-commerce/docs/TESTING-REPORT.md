@@ -109,4 +109,45 @@ outbox processing, product images/attributes.
 - Run the new migration (`pnpm db:migrate`) before deploying.
 - Assign the new permissions (`content.manage`, `dashboard.read`) to admin roles.
 - Set `GOOGLE_OAUTH_*` to enable social login; otherwise those endpoints return
-  `503 NOT_CONFIGURED` by design.
+  `503 NOT_CONFIGURED` by design. `GOOGLE_OAUTH_REDIRECT_URI` must point at the
+  **web** callback (`/auth/google/callback`).
+
+---
+
+# Pass 2.1 — Bug fixes & UI wiring (2026-07-07)
+
+Surfaced the pass-1/pass-2 features that had no user-facing UI, and fixed two
+real bugs found while wiring them.
+
+## Bugs fixed
+
+1. **Broken Google OAuth browser flow.** The original callback returned raw JSON
+   to the browser and set its CSRF state cookie on the API origin, which the
+   separate web origin cannot read — the flow could never complete end-to-end.
+   Reworked so the **web app** owns the redirect + CSRF state (cookie on its own
+   origin) and the API exposes only `GET /auth/google/url` and
+   `POST /auth/google/exchange`; the access token never reaches the browser.
+2. **Social-login lockout risk.** The `/account/identities/:provider` unlink
+   guard checked `passwordHash.length > 0`, which is always true (social accounts
+   get a random placeholder hash), so it never fired — a Google-only user could
+   remove their sole login and be locked out. Now conservatively refuses to remove
+   the last connected identity.
+
+## UI wired (features that previously had no front-end)
+
+- **Registration page** (`/register`) — the login page previously said signup was
+  unavailable despite `POST /auth/register` existing. Now links to it.
+- **"Continue with Google"** button on both login and register, with friendly
+  `?social=<reason>` error handling on the login page.
+- **Loyalty** card on the account page (balance, tier, recent points) — the API
+  and earning shipped in pass 1 but were never displayed.
+- **Change-password** form and **connected-accounts** (list + disconnect) on the
+  account page.
+
+## Verification
+
+| Check          | Result |
+|----------------|--------|
+| `pnpm typecheck` | ✅ pass |
+| `pnpm test`      | ✅ 170/170 |
+| `pnpm build`     | ✅ pass (new `/register`, `/auth/google`, `/auth/google/callback`, `/p/[slug]` routes build) |

@@ -2,6 +2,8 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import EmptyState from '../../components/EmptyState.astro';
 import Notice from '../../components/Notice.astro';
+import FormField from '../../components/FormField.astro';
+import FormFeedback from '../../components/FormFeedback.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, clearSessionCookie } from '../../lib/session';
 import type { MeDto, OrderSummaryDto, AddressDto, ApiResponse } from '@goldplus/shared';
@@ -11,21 +13,72 @@ if (!token) {
   return Astro.redirect('/login?returnTo=/account', 303);
 }
 
-async function authedFetch<T>(path: string): Promise<{ status: number; data: T | null }> {
+type LoyaltySummary = {
+  balance: number;
+  lifetimeEarned: number;
+  tier: string;
+  recent: Array<{ id: string; orderId: string | null; points: number; reason: string; createdAt: string }>;
+};
+type LinkedIdentity = { provider: string; email: string | null; linkedAt: string };
+
+let formStatus: 'success' | 'error' | null = null;
+let formMessage: string | undefined;
+
+async function authedJson(path: string, init?: RequestInit): Promise<{ status: number; json: any }> {
   try {
-    const res = await fetch(`${apiBase}${path}`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) return { status: res.status, data: null };
-    const json = (await res.json()) as ApiResponse<T>;
-    return { status: res.status, data: json.success ? (json.data ?? null) : null };
-  } catch (err) {
-    return { status: 500, data: null };
+    const res = await fetch(`${apiBase}${path}`, {
+      ...init,
+      headers: { Authorization: `Bearer ${token}`, ...(init?.headers ?? {}) },
+    });
+    const json = await res.json().catch(() => null);
+    return { status: res.status, json };
+  } catch {
+    return { status: 500, json: null };
   }
 }
 
-const [me, orders, addresses] = await Promise.all([
+// ---- Mutations (password change / unlink social account) ----
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+
+  if (intent === 'change_password') {
+    const currentPassword = String(form.get('currentPassword') ?? '');
+    const newPassword = String(form.get('newPassword') ?? '');
+    const { status, json } = await authedJson('/account/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    if (status === 401) {
+      Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+      return Astro.redirect('/login?returnTo=/account', 303);
+    }
+    formStatus = json?.success ? 'success' : 'error';
+    formMessage = json?.success ? 'Your password has been updated.' : json?.error?.message ?? 'Could not change password.';
+  } else if (intent === 'unlink') {
+    const provider = String(form.get('provider') ?? '');
+    const { status, json } = await authedJson(`/account/identities/${encodeURIComponent(provider)}`, { method: 'DELETE' });
+    if (status === 401) {
+      Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+      return Astro.redirect('/login?returnTo=/account', 303);
+    }
+    formStatus = json?.success ? 'success' : 'error';
+    formMessage = json?.success ? `Disconnected ${provider}.` : json?.error?.message ?? 'Could not disconnect that account.';
+  }
+}
+
+async function authedFetch<T>(path: string): Promise<{ status: number; data: T | null }> {
+  const { status, json } = await authedJson(path);
+  return { status, data: json?.success ? (json.data ?? null) : null };
+}
+
+const [me, orders, addresses, loyalty, identities] = await Promise.all([
   authedFetch<MeDto>('/account/me'),
   authedFetch<OrderSummaryDto[]>('/account/orders'),
   authedFetch<AddressDto[]>('/account/addresses'),
+  authedFetch<LoyaltySummary>('/account/loyalty'),
+  authedFetch<LinkedIdentity[]>('/account/identities'),
 ]);
 
 if (me.status === 401 || orders.status === 401 || addresses.status === 401) {
@@ -36,9 +89,13 @@ if (me.status === 401 || orders.status === 401 || addresses.status === 401) {
 const user = me.data;
 const orderList = orders.data ?? [];
 const addressList = addresses.data ?? [];
+const loyaltyData = loyalty.data;
+const identityList = identities.data ?? [];
 
 const formatUgx = (n: number) =>
   new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
+
+const tierLabel: Record<string, string> = { MEMBER: 'Member', SILVER: 'Silver', GOLD: 'Gold' };
 
 const statusBadge: Record<string, string> = {
   PENDING_PAYMENT: 'bg-orange-50 text-orange-700 border-orange-200',
@@ -49,6 +106,7 @@ const statusBadge: Record<string, string> = {
   DELIVERED: 'bg-green-50 text-green-700 border-green-200',
   CANCELLED: 'bg-gray-100 text-gray-700 border-gray-200',
 };
+const providerLabel: Record<string, string> = { google: 'Google', facebook: 'Facebook', apple: 'Apple' };
 ---
 
 <BaseLayout title="My account">
@@ -58,10 +116,16 @@ const statusBadge: Record<string, string> = {
       <a href="/logout" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">Sign out &rarr;</a>
     </div>
 
+    {formMessage && (
+      <div class="mb-6">
+        <FormFeedback status={formStatus} message={formMessage} />
+      </div>
+    )}
+
     {!user ? (
       <Notice kind="not-configured" title="Account details unavailable" message="We could not load your account from the API." />
     ) : (
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <section class="bg-white border border-brand-borderGrey rounded-2xl p-6 lg:col-span-1">
           <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Profile</h2>
           <p class="font-bold text-brand-charcoal break-all">{user.email}</p>
@@ -92,6 +156,68 @@ const statusBadge: Record<string, string> = {
         </section>
       </div>
     )}
+
+    {loyaltyData && (
+      <section class="bg-gradient-to-br from-brand-charcoal to-gray-800 text-white rounded-2xl p-6 mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div>
+            <h2 class="text-xs font-bold uppercase tracking-widest text-white/60 mb-2">Loyalty</h2>
+            <p class="text-4xl font-black">{loyaltyData.balance.toLocaleString()} <span class="text-lg font-bold text-brand-primary">points</span></p>
+            <p class="text-sm text-white/70 mt-1">
+              {tierLabel[loyaltyData.tier] ?? loyaltyData.tier} tier · {loyaltyData.lifetimeEarned.toLocaleString()} earned all-time
+            </p>
+          </div>
+          <p class="text-xs text-white/50 max-w-[16rem]">Earn 1 point for every 1,000 UGX paid. Points post once an order is paid.</p>
+        </div>
+        {loyaltyData.recent.length > 0 && (
+          <ul class="mt-5 pt-5 border-t border-white/10 space-y-2">
+            {loyaltyData.recent.slice(0, 5).map((e) => (
+              <li class="flex items-center justify-between text-sm">
+                <span class="text-white/70">{new Date(e.createdAt).toLocaleDateString('en-GB')} · {e.reason.replace(/_/g, ' ').toLowerCase()}</span>
+                <span class={`font-bold ${e.points >= 0 ? 'text-brand-primary' : 'text-red-300'}`}>{e.points >= 0 ? '+' : ''}{e.points.toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    )}
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+        <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4">Change password</h2>
+        <form method="POST" action="/account" class="space-y-4">
+          <input type="hidden" name="intent" value="change_password" />
+          <FormField id="currentPassword" name="currentPassword" label="Current password" type="password" required autocomplete="current-password" />
+          <FormField id="newPassword" name="newPassword" label="New password" type="password" required autocomplete="new-password" helperText="At least 8 characters, including a letter and a number." />
+          <button type="submit" class="w-full bg-brand-charcoal text-white py-3 rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-charcoal/20 outline-none">
+            Update password
+          </button>
+        </form>
+      </section>
+
+      <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+        <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4">Connected accounts</h2>
+        {identityList.length === 0 ? (
+          <EmptyState title="No connected accounts" message="Link a social account from the sign-in page for one-tap access." />
+        ) : (
+          <ul class="space-y-3">
+            {identityList.map((i) => (
+              <li class="flex items-center justify-between border border-brand-borderGrey rounded-xl px-4 py-3">
+                <div class="min-w-0">
+                  <p class="font-bold text-brand-charcoal">{providerLabel[i.provider] ?? i.provider}</p>
+                  {i.email && <p class="text-xs text-brand-mutedGrey truncate">{i.email}</p>}
+                </div>
+                <form method="POST" action="/account">
+                  <input type="hidden" name="intent" value="unlink" />
+                  <input type="hidden" name="provider" value={i.provider} />
+                  <button type="submit" class="text-sm font-bold text-red-600 hover:text-red-700 focus-visible:ring-2 focus-visible:ring-red-200 outline-none rounded px-2 py-1">Disconnect</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
 
     <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
       <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Delivery addresses</h2>

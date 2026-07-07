@@ -10,24 +10,31 @@ later by implementing the same port — no changes to the login use case.
 |------------------------------|----------|-------|
 | `GOOGLE_OAUTH_CLIENT_ID`     | yes      | From the Google Cloud console OAuth client. |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | yes      | Same client. |
-| `GOOGLE_OAUTH_REDIRECT_URI`  | yes      | Must exactly match the console entry and point at `/auth/google/callback`. |
+| `GOOGLE_OAUTH_REDIRECT_URI`  | yes      | Must exactly match the console entry and point at the **web** callback, e.g. `https://<web-host>/auth/google/callback`. |
 
-**No fake integrations**: with any credential missing, `/auth/google/*` returns
-`503 NOT_CONFIGURED` and nothing is attempted.
+**No fake integrations**: with any credential missing, the API `/auth/google/url`
+endpoint returns `503 NOT_CONFIGURED` and nothing is attempted.
 
 ## Flow
 
+The **web app** owns the browser-facing redirect and CSRF state (its session
+cookie lives on the web origin); the **API** only builds the authorization URL
+and performs the secret code→token exchange, so no access token or provider
+secret ever reaches the browser.
+
 ```
-GET /auth/google/start      -> 302 redirect to Google, sets HttpOnly state cookie (CSRF)
-GET /auth/google/callback   -> validates state, exchanges code, returns session token
+Web  GET /auth/google            -> mints CSRF state (HttpOnly cookie on web origin),
+                                     asks API GET /auth/google/url?state=, 303 to Google
+Web  GET /auth/google/callback   -> validates state cookie, POSTs code to
+                                     API POST /auth/google/exchange, sets session, 303 /account
+API  GET  /auth/google/url        -> { url } for the given state (503 NOT_CONFIGURED if unset)
+API  POST /auth/google/exchange   -> { code } -> session token + resolution outcome
 ```
 
-1. `start` mints a random `state`, stores it in an HttpOnly, SameSite=Lax cookie,
-   and redirects to Google's consent screen.
-2. `callback` rejects any `state` mismatch (`BAD_STATE`, CSRF protection), exchanges
-   the code for an access token, and reads the OpenID `userinfo` profile. The token
-   is fetched directly from Google over TLS, so no local signature verification is
-   needed.
+The API exchanges the code for an access token and reads the OpenID `userinfo`
+profile directly from Google over TLS, so no local signature verification is
+needed. OAuth failures bounce back to `/login?social=<reason>` with a friendly
+message.
 
 ## Account resolution (`SocialLoginUseCase`)
 

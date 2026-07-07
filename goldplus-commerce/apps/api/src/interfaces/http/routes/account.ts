@@ -95,15 +95,19 @@ routes.delete('/identities/:provider', async (c) => {
   const provider = c.req.param('provider');
   const registry = Registry.getInstance();
 
-  // Never let a user strip their only sign-in method: block unlinking the
-  // last social identity unless the account also has a usable password.
-  const user = await registry.userRepo.findById(userId);
+  // Prevent lockout: an account created via social login has no usable
+  // password (only a random placeholder hash), and password reset is not
+  // yet available. Since we cannot distinguish a usable password from that
+  // placeholder, conservatively refuse to remove the *last* connected
+  // identity. Accounts with another linked identity can always unlink one.
   const identities = await registry.userIdentityRepo.listForUser(userId);
-  const hasPassword = !!user && user.passwordHash.length > 0;
-  if (identities.length <= 1 && !hasPassword) {
+  if (identities.some((i) => i.provider === provider) && identities.length <= 1) {
     const res: ApiResponse<never> = {
       success: false,
-      error: { code: 'LAST_LOGIN_METHOD', message: 'Set a password before removing your only sign-in method.' },
+      error: {
+        code: 'LAST_LOGIN_METHOD',
+        message: 'This is your only connected sign-in method, so it cannot be disconnected. Contact support if you need to change it.',
+      },
     };
     return c.json(res, 409);
   }

@@ -8,47 +8,31 @@ import { sessionCookieValue } from '../lib/session';
 
 let status: 'success' | 'error' | null = null;
 let message: string | undefined;
-let values: { email?: string } = {};
+let values: { email?: string; phone?: string } = {};
 let notConfigured = false;
-
-// Surface an error bounced back from the Google OAuth flow (?social=...).
-const socialError = Astro.url.searchParams.get('social');
-if (socialError) {
-  const socialMessages: Record<string, string> = {
-    not_configured: 'Google sign-in is not configured on this site yet.',
-    unavailable: 'Google sign-in is temporarily unavailable. Please try again shortly.',
-    declined: 'Google sign-in was cancelled.',
-    bad_state: 'Your sign-in session expired. Please try again.',
-    missing_code: 'Google did not return an authorization code. Please try again.',
-    failed: 'We could not complete Google sign-in. Please try again or use email and password.',
-  };
-  status = 'error';
-  message = socialMessages[socialError] ?? 'Google sign-in did not complete. Please try again.';
-}
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const email = String(form.get('email') ?? '').trim();
   const password = String(form.get('password') ?? '');
-  values = { email };
+  const phone = String(form.get('phone') ?? '').trim();
+  values = { email, phone };
 
   if (!email || !password) {
     status = 'error';
     message = 'Email and password are required.';
   } else {
     try {
-      const res = await fetch(`${apiBase}/auth/login`, {
+      const res = await fetch(`${apiBase}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, phone: phone || null }),
       });
       const json: any = await res.json().catch(() => null);
 
       if (res.ok && json?.success && json.data?.token) {
         Astro.response.headers.set('Set-Cookie', sessionCookieValue(json.data.token));
-        const returnTo = Astro.url.searchParams.get('returnTo');
-        const safe = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/account';
-        return Astro.redirect(safe, 303);
+        return Astro.redirect('/account', 303);
       }
 
       if (json?.error?.code === 'AUTH_NOT_CONFIGURED') {
@@ -56,25 +40,25 @@ if (Astro.request.method === 'POST') {
         message = json.error.message;
       } else {
         status = 'error';
-        message = json?.error?.message ?? `Login failed (HTTP ${res.status}).`;
+        message = json?.error?.message ?? `Registration failed (HTTP ${res.status}).`;
       }
     } catch {
       status = 'error';
-      message = 'Cannot reach the authentication service right now. Please try again shortly.';
+      message = 'Cannot reach the registration service right now. Please try again shortly.';
     }
   }
 }
 ---
 
-<BaseLayout title="Sign in" description="Sign in to your GoldPlus account.">
+<BaseLayout title="Create account" description="Create your GoldPlus account.">
   <div class="container mx-auto px-4 lg:px-8 py-12 md:py-20">
     <div class="max-w-md mx-auto">
-      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal mb-2 tracking-tight">Sign in</h1>
-      <p class="text-brand-mutedGrey mb-6 text-sm leading-relaxed">Access your orders, addresses and account.</p>
+      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal mb-2 tracking-tight">Create your account</h1>
+      <p class="text-brand-mutedGrey mb-6 text-sm leading-relaxed">Track orders, save addresses, and earn loyalty points on every purchase.</p>
 
       {notConfigured && (
         <div class="mb-6">
-          <Notice kind="not-configured" title="Sign-in not configured" message={message} />
+          <Notice kind="not-configured" title="Registration not configured" message={message} />
         </div>
       )}
       {!notConfigured && <FormFeedback status={status} message={message} />}
@@ -93,17 +77,18 @@ if (Astro.request.method === 'POST') {
         <span class="h-px bg-brand-borderGrey flex-1"></span>
       </div>
 
-      <form method="POST" action="/login" novalidate class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm space-y-5">
+      <form method="POST" action="/register" novalidate class="bg-white p-6 md:p-8 rounded-2xl border border-brand-borderGrey shadow-sm space-y-5">
         <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" defaultValue={values.email} />
-        <FormField id="password" name="password" label="Password" type="password" required autocomplete="current-password" />
+        <FormField id="phone" name="phone" label="Phone (optional)" type="tel" autocomplete="tel" defaultValue={values.phone} helperText="9–15 digits, e.g. +256700000000." />
+        <FormField id="password" name="password" label="Password" type="password" required autocomplete="new-password" helperText="At least 8 characters, including a letter and a number." />
         <button
           type="submit"
           class="w-full bg-brand-primary text-brand-charcoal py-3 rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none"
         >
-          Sign in
+          Create account
         </button>
         <p class="text-xs text-brand-mutedGrey text-center">
-          Don't have an account? <a href="/register" class="font-bold text-brand-charcoal hover:underline">Create one</a>
+          Already have an account? <a href="/login" class="font-bold text-brand-charcoal hover:underline">Sign in</a>
         </p>
       </form>
     </div>

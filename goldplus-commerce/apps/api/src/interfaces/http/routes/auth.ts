@@ -1,6 +1,4 @@
 import { Hono } from 'hono';
-import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { randomBytes } from 'node:crypto';
 import { Registry } from '../../../infrastructure/Registry';
 import { AuthenticateUserUseCase } from '../../../application/use-cases/identity/AuthenticateUserUseCase';
 import { ApiResponse } from '@goldplus/shared';
@@ -8,8 +6,6 @@ import { ApiResponse } from '@goldplus/shared';
 import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
 
 const routes = new Hono();
-
-const OAUTH_STATE_COOKIE = 'gp_oauth_state';
 
 routes.post('/register', async (c) => {
   let body: any;
@@ -42,8 +38,13 @@ routes.post('/register', async (c) => {
 });
 
 // ---- Google social login (OAuth 2.0 authorization code flow) ----
+//
+// The browser-facing parts (redirect to Google, CSRF state cookie) live in
+// the web app, which owns the user session cookie. The API only builds the
+// authorization URL and performs the secret code->token exchange, so no
+// access token or provider secret ever crosses into the browser.
 
-routes.get('/google/start', (c) => {
+routes.get('/google/url', (c) => {
   const adapter = Registry.getInstance().googleOAuthAdapter;
   if (!adapter.isConfigured()) {
     const res: ApiResponse<never> = {
@@ -53,37 +54,30 @@ routes.get('/google/start', (c) => {
     return c.json(res, 503);
   }
 
-  // CSRF: mint a random state, store it in an HttpOnly cookie, and echo
-  // it in the provider URL. The callback rejects any mismatch.
-  const state = randomBytes(16).toString('hex');
-  setCookie(c, OAUTH_STATE_COOKIE, state, {
-    path: '/',
-    httpOnly: true,
-    sameSite: 'Lax',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 600,
-  });
-
-  const url = adapter.getAuthorizationUrl(state)!;
-  return c.redirect(url, 302);
-});
-
-routes.get('/google/callback', async (c) => {
-  const registry = Registry.getInstance();
-  const code = c.req.query('code');
-  const state = c.req.query('state');
-  const savedState = getCookie(c, OAUTH_STATE_COOKIE);
-  deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/' });
-
-  if (!code) {
-    const res: ApiResponse<never> = { success: false, error: { code: 'MISSING_CODE', message: 'Authorization code missing.' } };
+  const state = (c.req.query('state') ?? '').trim();
+  if (!state) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'MISSING_STATE', message: 'state query param is required.' } };
     return c.json(res, 400);
   }
-  if (!state || !savedState || state !== savedState) {
-    const res: ApiResponse<never> = {
-      success: false,
-      error: { code: 'BAD_STATE', message: 'OAuth state mismatch; possible CSRF. Please retry sign-in.' },
-    };
+
+  const url = adapter.getAuthorizationUrl(state)!;
+  const res: ApiResponse<{ url: string }> = { success: true, data: { url } };
+  return c.json(res);
+});
+
+routes.post('/google/exchange', async (c) => {
+  const registry = Registry.getInstance();
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } };
+    return c.json(res, 400);
+  }
+
+  const code = String(body.code ?? '').trim();
+  if (!code) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'MISSING_CODE', message: 'Authorization code missing.' } };
     return c.json(res, 400);
   }
 
