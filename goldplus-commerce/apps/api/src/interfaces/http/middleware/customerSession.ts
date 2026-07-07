@@ -18,6 +18,9 @@ export const customerSessionMiddleware = async (c: Context<{ Variables: { userId
 
   const verified = await Registry.getInstance().tokenSigner.verify(token);
   if (!verified) return fail();
+  // A 2FA-pending token is not a session — it may only be used to complete
+  // the second factor, never to reach account resources.
+  if (verified.scope !== 'session') return fail();
 
   c.set('userId', verified.subject);
   c.set('userEmail', verified.email);

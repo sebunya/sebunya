@@ -19,6 +19,23 @@ routes.post('/cart/add', async (c) => {
 routes.post('/orders/create', async (c) => {
   try {
     const body = await c.req.json();
+
+    // Fraud/velocity guard — block only blatant automation by delivery phone.
+    const phone = String(body?.customerDetails?.phone ?? '');
+    const risk = await registry.assessOrderRiskUseCase.execute({ phone });
+    if (risk.decision === 'deny') {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: 'ORDER_RISK_BLOCKED',
+            message: 'We could not place this order automatically. Please contact support to complete your purchase.',
+          },
+        },
+        429
+      );
+    }
+
     const order = await registry.checkoutUseCase.execute({
       customerDetails: body.customerDetails,
       buyerType: body.buyerType,

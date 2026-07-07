@@ -24,13 +24,19 @@ import { DrizzleCmsPageRepository } from './db/repositories/DrizzleCmsPageReposi
 import { DrizzleUserIdentityRepository } from './db/repositories/DrizzleUserIdentityRepository';
 import { DrizzleUserAdminRepository } from './db/repositories/DrizzleUserAdminRepository';
 import { DrizzleDashboardReadRepository } from './db/repositories/DrizzleDashboardReadRepository';
+import { DrizzleRecommendationReadRepository } from './db/repositories/DrizzleRecommendationReadRepository';
 import { GoogleOAuthAdapter } from './auth/GoogleOAuthAdapter';
+import { OtpHasher } from './security/OtpHasher';
+import { DrizzleTwoFactorRepository } from './db/repositories/DrizzleTwoFactorRepository';
+import { DrizzleOtpChallengeRepository } from './db/repositories/DrizzleOtpChallengeRepository';
+import { DrizzleAuthAttemptRepository } from './db/repositories/DrizzleAuthAttemptRepository';
+import { DrizzleOrderRiskRepository } from './db/repositories/DrizzleOrderRiskRepository';
 import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
 
 import { WhatsAppAdapter } from './notifications/whatsapp/WhatsAppAdapter';
 import { ZeptoMailAdapter } from './notifications/zeptomail/ZeptoMailAdapter';
-import { DisabledSmsAdapter } from './notifications/sms/DisabledSmsAdapter';
+import { GenericHttpSmsAdapter } from './notifications/sms/GenericHttpSmsAdapter';
 import { DefaultNotificationRouter } from './notifications/NotificationRouter';
 
 import { AddToCartUseCase } from '../application/use-cases/commerce/AddToCartUseCase';
@@ -74,6 +80,23 @@ import {
   RemoveUserRoleUseCase,
 } from '../application/use-cases/admin/ManageUserAccountUseCases';
 import { GetAdminDashboardUseCase } from '../application/use-cases/admin/GetAdminDashboardUseCase';
+import { GetProductRecommendationsUseCase } from '../application/use-cases/recommendation/GetProductRecommendationsUseCase';
+import { GetPersonalizedRecommendationsUseCase } from '../application/use-cases/recommendation/GetPersonalizedRecommendationsUseCase';
+import { GetTrendingProductsUseCase } from '../application/use-cases/recommendation/GetTrendingProductsUseCase';
+import {
+  GetTwoFactorStatusUseCase,
+  EnrollTotpUseCase,
+  ConfirmTotpUseCase,
+  VerifyTotpOrBackupUseCase,
+  DisableTwoFactorUseCase,
+} from '../application/use-cases/security/TwoFactorUseCases';
+import {
+  StartOtpChallengeUseCase,
+  VerifyOtpChallengeUseCase,
+  EnableOtpTwoFactorUseCase,
+} from '../application/use-cases/security/OtpChallengeUseCases';
+import { LoginSecurityUseCase } from '../application/use-cases/security/LoginSecurityUseCase';
+import { AssessOrderRiskUseCase } from '../application/use-cases/security/AssessOrderRiskUseCase';
 
 export class Registry {
   private static _instance: Registry;
@@ -106,12 +129,18 @@ export class Registry {
   public readonly userIdentityRepo = new DrizzleUserIdentityRepository();
   public readonly userAdminRepo = new DrizzleUserAdminRepository();
   public readonly dashboardReadRepo = new DrizzleDashboardReadRepository();
+  public readonly recommendationReadRepo = new DrizzleRecommendationReadRepository();
+  public readonly twoFactorRepo = new DrizzleTwoFactorRepository();
+  public readonly otpChallengeRepo = new DrizzleOtpChallengeRepository();
+  public readonly authAttemptRepo = new DrizzleAuthAttemptRepository();
+  public readonly orderRiskRepo = new DrizzleOrderRiskRepository();
 
   // Infrastructure Adapters
   public readonly whatsappAdapter = new WhatsAppAdapter();
   public readonly zeptoMailAdapter = new ZeptoMailAdapter();
-  public readonly smsAdapter = new DisabledSmsAdapter();
+  public readonly smsAdapter = new GenericHttpSmsAdapter();
   public readonly googleOAuthAdapter = new GoogleOAuthAdapter();
+  public readonly otpHasher = new OtpHasher();
 
   // Services & Routers
   public readonly notificationRouter = new DefaultNotificationRouter(
@@ -190,6 +219,35 @@ export class Registry {
     this.dashboardReadRepo,
     this.activityEventRepo
   );
+  public readonly getProductRecommendationsUseCase = new GetProductRecommendationsUseCase(
+    this.recommendationReadRepo,
+    this.productRepo
+  );
+  public readonly getPersonalizedRecommendationsUseCase = new GetPersonalizedRecommendationsUseCase(
+    this.recommendationReadRepo,
+    this.productRepo
+  );
+  public readonly getTrendingProductsUseCase = new GetTrendingProductsUseCase(
+    this.recommendationReadRepo,
+    this.productRepo
+  );
+
+  // Two-factor authentication
+  public readonly getTwoFactorStatusUseCase = new GetTwoFactorStatusUseCase(this.twoFactorRepo);
+  public readonly enrollTotpUseCase = new EnrollTotpUseCase(this.twoFactorRepo, this.userRepo);
+  public readonly confirmTotpUseCase = new ConfirmTotpUseCase(this.twoFactorRepo, this.otpHasher);
+  public readonly verifyTotpOrBackupUseCase = new VerifyTotpOrBackupUseCase(this.twoFactorRepo, this.otpHasher);
+  public readonly disableTwoFactorUseCase = new DisableTwoFactorUseCase(this.twoFactorRepo, this.verifyTotpOrBackupUseCase);
+  public readonly startOtpChallengeUseCase = new StartOtpChallengeUseCase(
+    this.otpChallengeRepo,
+    this.otpHasher,
+    this.smsAdapter,
+    this.zeptoMailAdapter
+  );
+  public readonly verifyOtpChallengeUseCase = new VerifyOtpChallengeUseCase(this.otpChallengeRepo, this.otpHasher);
+  public readonly enableOtpTwoFactorUseCase = new EnableOtpTwoFactorUseCase(this.twoFactorRepo, this.otpHasher);
+  public readonly loginSecurityUseCase = new LoginSecurityUseCase(this.authAttemptRepo);
+  public readonly assessOrderRiskUseCase = new AssessOrderRiskUseCase(this.orderRiskRepo);
 
   public static getInstance(): Registry {
     if (!Registry._instance) {

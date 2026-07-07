@@ -109,6 +109,19 @@ export function renderEmail(template: string, data: Record<string, unknown>): Re
         ),
       };
 
+    case 'OTP': {
+      const otp = escapeHtml(data.otp ?? '');
+      return {
+        subject: 'GoldPlus verification code',
+        htmlBody: layout(
+          'Your verification code',
+          `<p style="font-size:14px;line-height:1.6;">Use this code to continue. It expires in 5 minutes.</p>
+           <p style="font-size:30px;font-weight:bold;letter-spacing:6px;margin:16px 0;color:#1c1917;">${otp}</p>
+           <p style="font-size:13px;line-height:1.6;color:#78716c;">If you didn't request this, you can safely ignore this email — but consider changing your password if you receive codes you didn't ask for. Never share this code with anyone, including GoldPlus staff.</p>`,
+        ),
+      };
+    }
+
     case 'WELCOME':
       return {
         subject: 'Welcome to GoldPlus',

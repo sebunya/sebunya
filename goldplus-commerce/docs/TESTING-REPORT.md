@@ -151,3 +151,45 @@ real bugs found while wiring them.
 | `pnpm typecheck` | ✅ pass |
 | `pnpm test`      | ✅ 170/170 |
 | `pnpm build`     | ✅ pass (new `/register`, `/auth/google`, `/auth/google/callback`, `/p/[slug]` routes build) |
+
+---
+
+# Pass 3 — Recommendations, 2FA, security & fraud (2026-07-07)
+
+## Verification
+
+| Check          | Result |
+|----------------|--------|
+| `pnpm typecheck` | ✅ pass |
+| `pnpm test`      | ✅ 212/212 tests, 32 files |
+| `pnpm build`     | ✅ pass |
+| Architecture tests | ✅ pass (domain purity, boundaries, admin auth/audit) |
+| Migration        | ✅ `0007_sour_mysterio.sql` (user_two_factor, otp_challenges, auth_attempts) |
+
+## What shipped
+
+- **Recommendation & personalisation engine** (`docs/recommendations.md`):
+  normalised item-to-item collaborative filtering, personalised "for you",
+  trending; public routes resolving to public product DTOs.
+- **Two-factor auth** (`docs/security-2fa-fraud.md`): TOTP (RFC-verified),
+  SMS + email OTP, backup codes, login step-up via a `2fa_pending`-scoped token.
+- **SMS module rework**: real pluggable HTTP gateway (NOT_CONFIGURED when unset).
+- **Security hardening**: per-IP rate limits, security headers, account lockout.
+- **Fraud/risk controls**: login + order risk scoring; checkout velocity guard.
+
+## New test files (37 new tests; 175 → 212)
+
+- `tests/unit/Recommendation.test.ts` — scoring normalisation, personalisation
+  weighting, diversity, exclusions, cold-start.
+- `tests/unit/TwoFactor.test.ts` — TOTP vs RFC 4226 vectors, base32, OTP state
+  machine, masking, backup codes.
+- `tests/unit/SecurityControls.test.ts` — rate limiting, login throttle, login &
+  order risk scoring.
+
+## Deployment notes
+
+- Run migration `0007` before deploying.
+- Optional env: `SMS_API_URL/KEY/SENDER_ID` (SMS OTP), `OTP_PEPPER`. Without
+  them, SMS/OTP report NOT_CONFIGURED and TOTP still works fully.
+- Recommendations improve as first-party events accumulate; they cold-start from
+  trending, so they're safe to ship on day one.

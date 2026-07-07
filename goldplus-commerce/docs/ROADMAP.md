@@ -70,6 +70,24 @@ flow) with account linking, and the admin dashboard metrics endpoint.
   promotions/coupons module; order refund/exchange workflow.
 - **Privacy**: data-subject export/erasure endpoints (GDPR/CCPA), retention job.
 
+## Pass 3 shipped (recommendations, 2FA, security, fraud)
+
+Delivered: normalised item-to-item recommendation engine + personalisation +
+trending; two-factor auth (TOTP + SMS/email OTP + backup codes) with a
+`2fa_pending` login step-up; reworked pluggable SMS gateway; per-IP rate limits,
+security headers, and account lockout; login + order-velocity fraud scoring.
+
+### Follow-ups opened by pass 3
+
+- **Recommendations**: precomputed nightly similarity tables for scale;
+  content/embedding similarity for brand-new products; "recently viewed" strip;
+  web UI strips on product/home/cart pages consuming the new endpoints.
+- **2FA/security**: encrypt TOTP secrets at rest; Redis-backed distributed rate
+  limiting; device fingerprinting for the "known device" signal; WebAuthn/passkeys;
+  admin surface for reviewing `auth_attempts` and high-risk events.
+- **Fraud**: richer order-risk signals (address/geo, payment mismatch), a manual
+  review queue, and configurable thresholds.
+
 ## Standing constraints (AGENTS.md)
 
 Every item above must respect: hexagonal architecture (mutations via use

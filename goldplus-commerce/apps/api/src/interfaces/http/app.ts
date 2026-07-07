@@ -19,6 +19,10 @@ import adminCmsRoutes from './routes/admin/cms';
 import adminDashboardRoutes from './routes/admin/dashboard';
 import eventsRoutes from './routes/events';
 import contentRoutes from './routes/content';
+import recommendationRoutes from './routes/recommendations';
+import twoFactorRoutes from './routes/twoFactor';
+import { securityHeaders } from './middleware/securityHeaders';
+import { rateLimit } from './middleware/rateLimit';
 
 
 // Define typed variables for the Hono context
@@ -29,8 +33,15 @@ type Variables = {
 const app = new Hono<{ Variables: Variables }>();
 
 // Global Middleware
+app.use('*', securityHeaders);
 app.use('*', cors());
 app.use('*', logger());
+
+// Rate limits on sensitive surfaces (brute force / flooding protection).
+// Applied before the route groups below so they cover every sub-path.
+app.use('/auth/*', rateLimit({ limit: 20, windowSeconds: 300 }, { name: 'auth' }));
+app.use('/webhooks/*', rateLimit({ limit: 120, windowSeconds: 60 }, { name: 'webhooks' }));
+app.use('/events/*', rateLimit({ limit: 240, windowSeconds: 60 }, { name: 'events' }));
 
 // Request ID Middleware — must be registered before routes so every
 // handler and error response carries a requestId.
@@ -58,6 +69,8 @@ app.route('/admin/cms', adminCmsRoutes);
 app.route('/admin/dashboard', adminDashboardRoutes);
 app.route('/events', eventsRoutes);
 app.route('/content', contentRoutes);
+app.route('/recommendations', recommendationRoutes);
+app.route('/auth/2fa', twoFactorRoutes);
 
 
 // Health Check

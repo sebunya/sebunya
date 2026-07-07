@@ -122,13 +122,29 @@ routes.post('/login', async (c) => {
   }
 
   const registry = Registry.getInstance();
+  const email = String(body.email ?? '');
+  const ipAddress =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || null;
+
+  // Brute-force guard: hard-lock accounts with too many recent failures.
+  const gate = await registry.loginSecurityUseCase.assess({ email, ipAddress });
+  if (gate.locked) {
+    await registry.loginSecurityUseCase.record({ email, userId: null, ipAddress, outcome: 'LOCKED', riskScore: gate.risk.score });
+    c.header('Retry-After', String(gate.retryAfterSeconds));
+    const res: ApiResponse<never> = {
+      success: false,
+      error: { code: 'ACCOUNT_LOCKED', message: 'Too many failed sign-in attempts. Please wait a few minutes and try again.' },
+    };
+    return c.json(res, 429);
+  }
+
   const uc = new AuthenticateUserUseCase(registry.userRepo, registry.passwordHasher, registry.tokenSigner);
-  const result = await uc.execute({
-    email: String(body.email ?? ''),
-    password: String(body.password ?? ''),
-  });
+  const result = await uc.execute({ email, password: String(body.password ?? '') });
 
   if (!result.ok) {
+    if (result.code === 'INVALID_CREDENTIALS' || result.code === 'ACCOUNT_DISABLED') {
+      await registry.loginSecurityUseCase.record({ email, userId: null, ipAddress, outcome: 'BAD_CREDENTIALS', riskScore: gate.risk.score });
+    }
     const statusCode =
       result.code === 'BAD_INPUT' ? 400 :
       result.code === 'AUTH_NOT_CONFIGURED' ? 503 :
@@ -136,6 +152,25 @@ routes.post('/login', async (c) => {
       401;
     const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
     return c.json(res, statusCode);
+  }
+
+  await registry.loginSecurityUseCase.record({ email, userId: result.user.id, ipAddress, outcome: 'SUCCESS', riskScore: gate.risk.score });
+
+  // If the account has 2FA enabled, don't hand out a full session yet.
+  // Issue a short-lived 2fa_pending token that only /auth/2fa/login accepts.
+  const twoFactor = await registry.getTwoFactorStatusUseCase.execute(result.user.id);
+  if (twoFactor.enabled) {
+    const pendingToken = await registry.tokenSigner.sign({
+      subject: result.user.id,
+      email: result.user.email,
+      ttlSeconds: 300,
+      scope: '2fa_pending',
+    });
+    const res: ApiResponse<{ twoFactorRequired: true; method: string; pendingToken: string }> = {
+      success: true,
+      data: { twoFactorRequired: true, method: twoFactor.method, pendingToken },
+    };
+    return c.json(res);
   }
 
   const res: ApiResponse<{
