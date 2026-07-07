@@ -6,7 +6,8 @@ import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, clearSessionCookie } from '../../lib/session';
-import type { MeDto, OrderSummaryDto, AddressDto, ApiResponse } from '@goldplus/shared';
+import { toneClasses } from '../../lib/status';
+import { orderStatusMeta, type MeDto, type OrderSummaryDto, type AddressDto, type ApiResponse } from '@goldplus/shared';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -96,16 +97,6 @@ const formatUgx = (n: number) =>
   new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
 
 const tierLabel: Record<string, string> = { MEMBER: 'Member', SILVER: 'Silver', GOLD: 'Gold' };
-
-const statusBadge: Record<string, string> = {
-  PENDING_PAYMENT: 'bg-orange-50 text-orange-700 border-orange-200',
-  PAID: 'bg-green-50 text-green-700 border-green-200',
-  PAYMENT_FAILED: 'bg-red-50 text-red-700 border-red-200',
-  PROCESSING: 'bg-blue-50 text-blue-700 border-blue-200',
-  SHIPPED: 'bg-blue-50 text-blue-700 border-blue-200',
-  DELIVERED: 'bg-green-50 text-green-700 border-green-200',
-  CANCELLED: 'bg-gray-100 text-gray-700 border-gray-200',
-};
 const providerLabel: Record<string, string> = { google: 'Google', facebook: 'Facebook', apple: 'Apple' };
 ---
 
@@ -146,7 +137,7 @@ const providerLabel: Record<string, string> = { google: 'Google', facebook: 'Fac
                     <p class="text-xs text-brand-mutedGrey mt-1">{new Date(o.createdAt).toLocaleDateString('en-GB')} · {o.itemCount} item{o.itemCount === 1 ? '' : 's'}</p>
                   </div>
                   <div class="flex items-center gap-3">
-                    <span class={`inline-flex items-center px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${statusBadge[o.status] ?? statusBadge.CANCELLED}`}>{o.status.replace(/_/g, ' ')}</span>
+                    <span class={`inline-flex items-center px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${toneClasses(orderStatusMeta(o.status).tone)}`}>{orderStatusMeta(o.status).label}</span>
                     <span class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(o.totalAmountUgx)}</span>
                   </div>
                 </li>

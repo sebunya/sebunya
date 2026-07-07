@@ -3,7 +3,8 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, clearSessionCookie } from '../../lib/session';
-import type { OrderDetailDto, ApiResponse } from '@goldplus/shared';
+import { toneClasses } from '../../lib/status';
+import { orderStatusMeta, paymentStatusMeta, isAwaitingPayment, type OrderDetailDto, type ApiResponse } from '@goldplus/shared';
 
 const { id } = Astro.params;
 const token = readSessionToken(Astro.request);
@@ -39,15 +40,6 @@ try {
 const formatUgx = (n: number) =>
   new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
 
-const statusBadge: Record<string, string> = {
-  PENDING_PAYMENT: 'bg-orange-50 text-orange-700 border-orange-200',
-  PAID: 'bg-green-50 text-green-700 border-green-200',
-  PAYMENT_FAILED: 'bg-red-50 text-red-700 border-red-200',
-  PROCESSING: 'bg-blue-50 text-blue-700 border-blue-200',
-  SHIPPED: 'bg-blue-50 text-blue-700 border-blue-200',
-  DELIVERED: 'bg-green-50 text-green-700 border-green-200',
-  CANCELLED: 'bg-gray-100 text-gray-700 border-gray-200',
-};
 ---
 
 <BaseLayout title={order ? `Order ${order.orderNumber}` : 'Order'}>
@@ -77,9 +69,14 @@ const statusBadge: Record<string, string> = {
                     <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">{order.orderNumber}</h1>
                     <p class="text-sm text-brand-mutedGrey mt-1">Placed {new Date(order.createdAt).toLocaleString('en-GB')}</p>
                 </div>
-                <span class={`inline-flex items-center px-3 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${statusBadge[order.status] ?? statusBadge.CANCELLED}`}>
-                    {order.status.replace(/_/g, ' ')}
-                </span>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class={`inline-flex items-center px-3 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${toneClasses(orderStatusMeta(order.status).tone)}`}>
+                      {orderStatusMeta(order.status).label}
+                  </span>
+                  <span class={`inline-flex items-center px-3 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${toneClasses(paymentStatusMeta(order.paymentStatus).tone)}`}>
+                      {paymentStatusMeta(order.paymentStatus).label}
+                  </span>
+                </div>
                 </div>
 
                 <div class="bg-white border border-brand-borderGrey rounded-2xl overflow-hidden mb-6">
@@ -104,7 +101,7 @@ const statusBadge: Record<string, string> = {
                 </div>
                 </div>
 
-                {order.status === 'PENDING_PAYMENT' && (
+                {isAwaitingPayment(order.paymentStatus) && (
                 <Notice kind="not-configured" title="Payment pending" message="Live customer-initiated payment is not yet configured. Our operations team will contact you to confirm the order via WhatsApp or phone." />
                 )}
 
