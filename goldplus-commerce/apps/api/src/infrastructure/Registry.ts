@@ -133,6 +133,13 @@ import { PostHogMeasurementMapper } from './measurement/destinations/PostHogMeas
 
 import { DrizzlePaymentMeasurementRepository } from './measurement/DrizzlePaymentMeasurementRepository';
 import { DrizzlePaymentAttributionRepository } from './measurement/DrizzlePaymentAttributionRepository';
+import { GetCustomerPreferenceCentreUseCase } from '../application/use-cases/preferences/GetCustomerPreferenceCentreUseCase';
+import { UpdateCustomerPreferenceCentreUseCase } from '../application/use-cases/preferences/UpdateCustomerPreferenceCentreUseCase';
+import { RecordPreferenceConsentChangeUseCase } from '../application/use-cases/preferences/RecordPreferenceConsentChangeUseCase';
+import { GetPreferenceAuditTrailUseCase } from '../application/use-cases/preferences/GetPreferenceAuditTrailUseCase';
+import { DrizzleCustomerPreferenceRepository } from './preferences/DrizzleCustomerPreferenceRepository';
+import { DrizzlePreferenceAuditRepository } from './preferences/DrizzlePreferenceAuditRepository';
+import { MeasurementPreferencePublisher } from './preferences/MeasurementPreferencePublisher';
 import { BullMqPurchaseMeasurementQueue } from './measurement/BullMqPurchaseMeasurementQueue';
 import { PesapalMeasurementMapper } from './measurement/PesapalMeasurementMapper';
 import { PaymentMeasurementRedactor } from './measurement/PaymentMeasurementRedactor';
@@ -378,6 +385,29 @@ export class Registry {
   public readonly getPaymentMeasurementReconciliationUseCase = new GetPaymentMeasurementReconciliationUseCase(this.paymentMeasurementRepo);
   public readonly listPaymentMeasurementReconciliationsUseCase = new ListPaymentMeasurementReconciliationsUseCase(this.paymentMeasurementRepo);
   public readonly retryPaymentMeasurementReconciliationUseCase = new RetryPaymentMeasurementReconciliationUseCase(this.paymentMeasurementRepo, this.purchaseMeasurementQueue);
+
+  // Preference dependencies
+  public readonly customerPreferenceRepo = new DrizzleCustomerPreferenceRepository();
+  public readonly preferenceAuditRepo = new DrizzlePreferenceAuditRepository();
+  public readonly preferencePublisher = new MeasurementPreferencePublisher(this.purchaseMeasurementQueue);
+
+  public readonly recordPreferenceConsentChangeUseCase = new RecordPreferenceConsentChangeUseCase(
+    this.consentService
+  );
+  public readonly getCustomerPreferenceCentreUseCase = new GetCustomerPreferenceCentreUseCase(
+    this.customerPreferenceRepo,
+    this.consentService
+  );
+  public readonly updateCustomerPreferenceCentreUseCase = new UpdateCustomerPreferenceCentreUseCase(
+    this.customerPreferenceRepo,
+    this.preferenceAuditRepo,
+    this.preferencePublisher,
+    this.recordPreferenceConsentChangeUseCase
+  );
+  public readonly getPreferenceAuditTrailUseCase = new GetPreferenceAuditTrailUseCase(
+    this.preferenceAuditRepo,
+    this.consentService
+  );
 
   public static getInstance(): Registry {
     if (!Registry._instance) {

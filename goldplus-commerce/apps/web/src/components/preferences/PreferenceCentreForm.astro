@@ -1,0 +1,99 @@
+---
+import ConsentToggle from './ConsentToggle.astro';
+
+interface Props {
+  preferences: any;
+}
+const { preferences } = Astro.props;
+---
+
+<form method="POST" class="max-w-2xl">
+  <div class="mb-10">
+    <h2 class="text-lg font-black text-brand-charcoal mb-4 tracking-tight">Privacy & Consent</h2>
+    <p class="text-sm text-brand-mutedGrey mb-6">Manage how we use your data. Essential cookies are required for the site to function properly.</p>
+    
+    <ConsentToggle 
+      id="consent_essential" 
+      name="consent.essential" 
+      label="Essential Operations" 
+      description="Required for checkout, security, and basic functionality. Cannot be disabled." 
+      checked={true} 
+      required={true} 
+    />
+    <ConsentToggle 
+      id="consent_analytics" 
+      name="consent.analytics" 
+      label="Measurement & Analytics" 
+      description="Help us improve by allowing anonymous usage tracking." 
+      checked={preferences.consent?.analytics || false} 
+    />
+    <ConsentToggle 
+      id="consent_advertising" 
+      name="consent.advertising" 
+      label="Advertising & Paid Social" 
+      description="Allow us to measure the effectiveness of our marketing campaigns on social platforms." 
+      checked={preferences.consent?.advertising || false} 
+    />
+    <ConsentToggle 
+      id="consent_personalization" 
+      name="consent.personalization" 
+      label="Personalization" 
+      description="Get product recommendations tailored to your shopping behavior." 
+      checked={preferences.consent?.personalization || false} 
+    />
+  </div>
+
+  <div class="mb-10">
+    <h2 class="text-lg font-black text-brand-charcoal mb-4 tracking-tight">Communication Channels</h2>
+    <p class="text-sm text-brand-mutedGrey mb-6">How would you like us to contact you?</p>
+
+    <ConsentToggle 
+      id="channel_email" 
+      name="channels.email" 
+      label="Email Updates" 
+      description="Receive receipts, shipping updates, and occasional offers via email." 
+      checked={preferences.channels?.email || false} 
+    />
+    <ConsentToggle 
+      id="channel_sms" 
+      name="channels.sms" 
+      label="SMS Messages" 
+      description="Get instant alerts for deliveries and critical order updates." 
+      checked={preferences.channels?.sms || false} 
+    />
+    <ConsentToggle 
+      id="channel_whatsapp" 
+      name="channels.whatsapp" 
+      label="WhatsApp" 
+      description="Chat with support and receive rich media updates via WhatsApp." 
+      checked={preferences.channels?.whatsapp || false} 
+    />
+  </div>
+
+  <div class="mb-10">
+    <h2 class="text-lg font-black text-brand-charcoal mb-4 tracking-tight">Product Interests</h2>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+      {['Laptops', 'Phones', 'Accessories', 'Gaming', 'Audio', 'Home Office'].map(topic => {
+        const id = `interest_${topic.toLowerCase().replace(' ', '_')}`;
+        return (
+          <label class="flex items-center gap-2 p-3 border border-brand-borderGrey rounded-xl hover:bg-gray-50 cursor-pointer">
+            <input 
+              type="checkbox" 
+              name={`interests.${topic.toLowerCase().replace(' ', '_')}`} 
+              value="true"
+              checked={preferences.interests?.[topic.toLowerCase().replace(' ', '_')] || false}
+              class="text-brand-primary focus:ring-brand-primary" 
+            />
+            <span class="text-sm font-bold text-brand-charcoal">{topic}</span>
+          </label>
+        );
+      })}
+    </div>
+  </div>
+
+  <div class="border-t border-brand-borderGrey pt-6 flex justify-end">
+    <button type="submit" class="bg-brand-charcoal text-white font-bold px-6 py-3 rounded-xl hover:bg-black transition-colors">
+      Save Preferences
+    </button>
+  </div>
+</form>

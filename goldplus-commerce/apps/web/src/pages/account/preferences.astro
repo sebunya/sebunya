@@ -1,0 +1,107 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PreferenceCentreForm from '../../components/preferences/PreferenceCentreForm.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken, clearSessionCookie } from '../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/login?returnTo=/account/preferences', 303);
+}
+
+let saveSuccess = false;
+let saveError = '';
+
+if (Astro.request.method === 'POST') {
+  try {
+    const data = await Astro.request.formData();
+    
+    // Convert flat formData into nested payload
+    const payload = {
+      channels: {
+        email: data.get('channels.email') === 'true',
+        sms: data.get('channels.sms') === 'true',
+        whatsapp: data.get('channels.whatsapp') === 'true',
+      },
+      consent: {
+        analytics: data.get('consent.analytics') === 'true',
+        advertising: data.get('consent.advertising') === 'true',
+        personalization: data.get('consent.personalization') === 'true',
+      },
+      interests: {} as Record<string, boolean>
+    };
+
+    // Extract dynamic interests
+    for (const [key, value] of data.entries()) {
+      if (key.startsWith('interests.')) {
+        const topic = key.replace('interests.', '');
+        payload.interests[topic] = value === 'true';
+      }
+    }
+
+    const res = await fetch(`${apiBase}/account/preferences`, {
+      method: 'PUT',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      saveSuccess = true;
+    } else {
+      saveError = 'Failed to save preferences. Please try again.';
+    }
+  } catch (err) {
+    saveError = 'A network error occurred while saving.';
+  }
+}
+
+// Fetch current preferences
+let preferences = {};
+try {
+  const res = await fetch(`${apiBase}/account/preferences`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (res.status === 401) {
+    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    return Astro.redirect('/login?returnTo=/account/preferences', 303);
+  }
+  if (res.ok) {
+    const json = await res.json();
+    if (json.success) {
+      preferences = json.data;
+    }
+  }
+} catch (err) {
+  // Graceful fallback
+}
+---
+
+<BaseLayout title="My Preferences">
+  <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-8 pb-6 border-b border-brand-borderGrey">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">Preferences & Privacy</h1>
+        <p class="text-brand-mutedGrey mt-2">Control your data, communications, and shopping experience.</p>
+      </div>
+      <a href="/account" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">&larr; Back to Account</a>
+    </div>
+
+    {saveSuccess && (
+      <div class="bg-green-50 border border-green-200 text-green-800 rounded-xl p-4 mb-8 font-bold flex items-center gap-3">
+        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        Your preferences have been securely saved and audited.
+      </div>
+    )}
+
+    {saveError && (
+      <div class="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 mb-8 font-bold">
+        {saveError}
+      </div>
+    )}
+
+    <PreferenceCentreForm preferences={preferences} />
+  </div>
+</BaseLayout>

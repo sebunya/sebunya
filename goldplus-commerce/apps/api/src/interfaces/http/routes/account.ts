@@ -80,4 +80,41 @@ routes.post('/addresses', async (c) => {
   return c.json(res, 201);
 });
 
+routes.get('/preferences', async (c) => {
+  const userId = c.get('userId') as string;
+  const uc = Registry.getInstance().getCustomerPreferenceCentreUseCase;
+  const data = await uc.execute(userId);
+  const res: ApiResponse<any> = { success: true, data };
+  return c.json(res);
+});
+
+routes.put('/preferences', async (c) => {
+  const userId = c.get('userId') as string;
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } };
+    return c.json(res, 400);
+  }
+  
+  const uc = Registry.getInstance().updateCustomerPreferenceCentreUseCase;
+  const data = await uc.execute({
+    userId,
+    ...body,
+    ipAddress: c.req.header('x-forwarded-for') || '127.0.0.1',
+    userAgent: c.req.header('user-agent') || 'unknown'
+  });
+  const res: ApiResponse<any> = { success: true, data };
+  return c.json(res);
+});
+
+routes.get('/preferences/audit', async (c) => {
+  const userId = c.get('userId') as string;
+  const uc = Registry.getInstance().getPreferenceAuditTrailUseCase;
+  const data = await uc.execute(userId);
+  const res: ApiResponse<any> = { success: true, data };
+  return c.json(res);
+});
+
 export default routes;

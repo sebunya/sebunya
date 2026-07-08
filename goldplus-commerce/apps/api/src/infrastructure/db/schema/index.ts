@@ -2,6 +2,7 @@ export * from './identity';
 export * from './addresses';
 export * from './commerce';
 export * from './advertising';
+export * from './preferences';
 export * from './system';
 export * from './products';
 export * from './governance';
