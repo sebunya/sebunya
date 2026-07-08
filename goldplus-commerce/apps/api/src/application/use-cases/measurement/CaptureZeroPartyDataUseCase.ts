@@ -1,7 +1,6 @@
-import { db } from '../../../infrastructure/db/client';
-import { zeroPartySignals } from '../../../infrastructure/db/schema/measurement';
-import { consentService } from './ConsentService';
-import { logger } from '../../../infrastructure/logging/logger';
+import type { ConsentService } from './ConsentService';
+import type { ZeroPartyDataRepository } from '../../ports/measurement/ZeroPartyDataRepository';
+import type { MeasurementLogger } from '../../ports/measurement/MeasurementLogger';
 import type { ZeroPartySignal } from '@goldplus/shared';
 import * as client from 'prom-client';
 
@@ -24,22 +23,28 @@ try {
  * This ensures commerce functionality is never broken by consent denial.
  */
 export class CaptureZeroPartyDataUseCase {
+  constructor(
+    private readonly zpdRepo: ZeroPartyDataRepository,
+    private readonly logger: MeasurementLogger,
+    private readonly consentService: ConsentService
+  ) {}
+
   async execute(
     signal: ZeroPartySignal,
     ipAddress?: string,
     userAgent?: string,
   ): Promise<{ captured: boolean; id?: string }> {
     // Consent check — personalization purpose required
-    const consentCheck = await consentService.checkDestinationPermission(
+    const consentCheck = await this.consentService.checkDestinationPermission(
       'ga4', // GA4 uses 'analytics' purpose — ZPD needs 'personalization'
       signal.fp_client_id,
       signal.user_id,
     );
 
     // Actually check personalization directly
-    const state = await consentService.getCurrentState(signal.fp_client_id, signal.user_id);
+    const state = await this.consentService.getCurrentState(signal.fp_client_id, signal.user_id);
     if (!state.personalization) {
-      logger.debug({
+      this.logger.warn({
         fpClientId:  signal.fp_client_id,
         signalType:  signal.signal_type,
       }, '[ZeroPartyData] Personalization consent denied — signal dropped');
@@ -52,29 +57,19 @@ export class CaptureZeroPartyDataUseCase {
       : new Date();
 
     try {
-      const [inserted] = await db.insert(zeroPartySignals).values({
-        fpClientId:      signal.fp_client_id,
-        userId:          signal.user_id,
-        sessionId:       signal.session_id,
-        signalType:      signal.signal_type,
-        payload:         signal.payload as any,
-        pageLocation:    signal.page_location,
-        productId:       signal.product_id,
-        sourceComponent: signal.source_component,
-        capturedAt,
-      }).returning({ id: zeroPartySignals.id });
+      const { id } = await this.zpdRepo.insertSignal(signal, capturedAt);
 
       zeroPartySignalCounter.inc({ signal_type: signal.signal_type, outcome: 'captured' });
 
-      logger.info({
-        id:         inserted.id,
+      this.logger.info({
+        id,
         fpClientId: signal.fp_client_id,
         signalType: signal.signal_type,
       }, '[ZeroPartyData] Signal captured');
 
-      return { captured: true, id: inserted.id };
+      return { captured: true, id };
     } catch (err) {
-      logger.error({ err, signalType: signal.signal_type }, '[ZeroPartyData] Failed to insert signal');
+      this.logger.error({ err, signalType: signal.signal_type }, '[ZeroPartyData] Failed to insert signal');
       zeroPartySignalCounter.inc({ signal_type: signal.signal_type, outcome: 'error' });
       throw err;
     }

@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
 import { ZeroPartySignalSchema } from '@goldplus/shared';
-import { CaptureZeroPartyDataUseCase } from '../../../application/use-cases/measurement/CaptureZeroPartyDataUseCase';
-import { attributionService } from '../../../application/use-cases/measurement/AttributionService';
-import { conversionRouter } from '../../../infrastructure/measurement/ConversionRouter';
+import { Registry } from '../../../infrastructure/Registry';
 import { logger } from '../../../infrastructure/logging/logger';
 
+const registry = Registry.getInstance();
 const routes = new Hono();
-const captureZeroPartyUseCase = new CaptureZeroPartyDataUseCase();
+const captureZeroPartyUseCase = registry.captureZeroPartyDataUseCase;
+const attributionService = registry.attributionService;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /measurement/zero-party — capture a zero-party signal

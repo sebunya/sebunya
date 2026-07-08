@@ -54,6 +54,21 @@ export interface Config {
   pesapalRedirectMode?: string;
   // Telemetry — sGTM internal dispatch URL (Docker internal network)
   metricsInternalUrl: string;
+  // MCT Phase 2 Optional Integrations
+  gtmAccountId?: string;
+  gtmWebContainerId?: string;
+  gtmServerContainerId?: string;
+  gtmApiClientId?: string;
+  gtmApiClientSecret?: string;
+  gtmApiRefreshToken?: string;
+  ga4MeasurementId?: string;
+  ga4ApiSecret?: string;
+  googleAdsConversionId?: string;
+  metaPixelId?: string;
+  metaAccessToken?: string;
+  tiktokPixelId?: string;
+  tiktokAccessToken?: string;
+  posthogProjectApiKey?: string;
 }
 
 const obviousLocalPatterns = [
@@ -182,6 +197,20 @@ export function validateEnv(): Config {
     pesapalIpnUrl,
     pesapalRedirectMode,
     metricsInternalUrl: process.env.METRICS_INTERNAL_URL || 'http://sgtm-production:8080',
+    gtmAccountId: process.env.GTM_ACCOUNT_ID,
+    gtmWebContainerId: process.env.GTM_WEB_CONTAINER_ID,
+    gtmServerContainerId: process.env.GTM_SERVER_CONTAINER_ID,
+    gtmApiClientId: process.env.GTM_API_CLIENT_ID,
+    gtmApiClientSecret: process.env.GTM_API_CLIENT_SECRET,
+    gtmApiRefreshToken: process.env.GTM_API_REFRESH_TOKEN,
+    ga4MeasurementId: process.env.GA4_MEASUREMENT_ID,
+    ga4ApiSecret: process.env.GA4_API_SECRET,
+    googleAdsConversionId: process.env.GOOGLE_ADS_CONVERSION_ID,
+    metaPixelId: process.env.META_PIXEL_ID,
+    metaAccessToken: process.env.META_ACCESS_TOKEN,
+    tiktokPixelId: process.env.TIKTOK_PIXEL_ID,
+    tiktokAccessToken: process.env.TIKTOK_ACCESS_TOKEN,
+    posthogProjectApiKey: process.env.POSTHOG_PROJECT_API_KEY,
   };
 }
 

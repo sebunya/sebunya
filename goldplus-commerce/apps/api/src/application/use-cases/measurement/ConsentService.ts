@@ -1,7 +1,8 @@
-import { db } from '../../../infrastructure/db/client';
-import { consentRecords, consentCurrentState } from '../../../infrastructure/db/schema/consent';
-import { eq, desc, and } from 'drizzle-orm';
-import { logger } from '../../../infrastructure/logging/logger';
+import {
+  CONSENT_PURPOSES,
+  DESTINATION_PURPOSE_MAP,
+  ConsentStateSchema,
+} from '@goldplus/shared';
 import type {
   ConsentSignal,
   ConsentState,
@@ -10,12 +11,9 @@ import type {
   MeasurementDestination,
   ConsentWithdrawal,
 } from '@goldplus/shared';
-import {
-  CONSENT_PURPOSES,
-  DESTINATION_PURPOSE_MAP,
-  ConsentStateSchema,
-} from '@goldplus/shared';
 import * as client from 'prom-client';
+import type { MeasurementLogger } from '../../ports/measurement/MeasurementLogger';
+import type { ConsentRepository } from '../../ports/measurement/ConsentRepository';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prometheus Metrics
@@ -45,15 +43,15 @@ const registerSafe = (m: client.Metric) => {
 [consentGrantCounter, consentWithdrawalCounter, consentCheckCounter].forEach(registerSafe);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Consent TTL — how long an explicit grant is valid (GDPR: max 13 months)
-// ─────────────────────────────────────────────────────────────────────────────
-const CONSENT_TTL_DAYS = 395; // ~13 months
-
-// ─────────────────────────────────────────────────────────────────────────────
 // ConsentService
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class ConsentService {
+  constructor(
+    private readonly consentRepo: ConsentRepository,
+    private readonly logger: MeasurementLogger
+  ) {}
+
   /**
    * Record an incoming consent signal and update the current state.
    * This is the write path — called from POST /consent/signal.
@@ -68,57 +66,10 @@ export class ConsentService {
       essential: true,
     };
 
-    const capturedAt = signal.consent_at
-      ? new Date(signal.consent_at * 1000)
-      : new Date();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 180); // 180 days
 
-    // 1. Append to immutable audit log
-    const [inserted] = await db.insert(consentRecords).values({
-      fpClientId:      signal.fp_client_id,
-      userId:          signal.user_id,
-      purposes,
-      grantType:       signal.grant_type,
-      captureSurface:  signal.capture_surface,
-      noticeVersion:   signal.notice_version,
-      consentLanguage: signal.consent_language,
-      ipAddress:       ipAddress,
-      userAgent:       userAgent,
-      isWithdrawal:    false,
-      capturedAt,
-    }).returning({ id: consentRecords.id });
-
-    // 2. Upsert the current state (fast-read path)
-    const expiresAt = signal.grant_type === 'explicit'
-      ? new Date(Date.now() + CONSENT_TTL_DAYS * 86_400_000)
-      : null;
-
-    const key = signal.user_id
-      ? { userId: signal.user_id }
-      : { fpClientId: signal.fp_client_id };
-
-    await db.insert(consentCurrentState).values({
-      ...key,
-      analyticsGranted:       purposes.analytics,
-      advertisingGranted:     purposes.advertising,
-      personalizationGranted: purposes.personalization,
-      lastGrantType:          signal.grant_type,
-      lastNoticeVersion:      signal.notice_version,
-      lastConsentRecordId:    inserted.id,
-      updatedAt:              new Date(),
-      expiresAt,
-    }).onConflictDoUpdate({
-      target: signal.user_id ? consentCurrentState.userId : consentCurrentState.fpClientId,
-      set: {
-        analyticsGranted:       purposes.analytics,
-        advertisingGranted:     purposes.advertising,
-        personalizationGranted: purposes.personalization,
-        lastGrantType:          signal.grant_type,
-        lastNoticeVersion:      signal.notice_version,
-        lastConsentRecordId:    inserted.id,
-        updatedAt:              new Date(),
-        expiresAt,
-      },
-    });
+    const { recordId } = await this.consentRepo.recordSignal(signal, purposes, expiresAt, ipAddress, userAgent);
 
     // 3. Track metrics
     for (const purpose of CONSENT_PURPOSES) {
@@ -133,15 +84,15 @@ export class ConsentService {
       }
     }
 
-    logger.info({
-      recordId: inserted.id,
+    this.logger.info({
+      recordId,
       fpClientId: signal.fp_client_id,
       userId: signal.user_id,
       purposes,
       grantType: signal.grant_type,
     }, '[ConsentService] Consent signal recorded');
 
-    return { recordId: inserted.id, state: purposes };
+    return { recordId, state: purposes };
   }
 
   /**
@@ -164,54 +115,19 @@ export class ConsentService {
       personalization: withdrawal.purposes.includes('personalization') ? false : current.personalization,
     };
 
-    const [inserted] = await db.insert(consentRecords).values({
-      fpClientId:      withdrawal.fp_client_id,
-      userId:          withdrawal.user_id,
-      purposes:        updatedPurposes,
-      grantType:       'withdrawn',
-      captureSurface:  'privacy_settings',
-      noticeVersion:   'v1.0',
-      consentLanguage: 'en',
-      ipAddress,
-      userAgent,
-      isWithdrawal:    true,
-      withdrawnPurposes: withdrawal.purposes,
-      capturedAt:      new Date(),
-    }).returning({ id: consentRecords.id });
-
-    // Update current state
-    await db.insert(consentCurrentState).values({
-      ...key,
-      analyticsGranted:       updatedPurposes.analytics,
-      advertisingGranted:     updatedPurposes.advertising,
-      personalizationGranted: updatedPurposes.personalization,
-      lastGrantType:          'withdrawn',
-      lastNoticeVersion:      'v1.0',
-      lastConsentRecordId:    inserted.id,
-      updatedAt:              new Date(),
-    }).onConflictDoUpdate({
-      target: withdrawal.user_id ? consentCurrentState.userId : consentCurrentState.fpClientId,
-      set: {
-        analyticsGranted:       updatedPurposes.analytics,
-        advertisingGranted:     updatedPurposes.advertising,
-        personalizationGranted: updatedPurposes.personalization,
-        lastGrantType:          'withdrawn',
-        lastConsentRecordId:    inserted.id,
-        updatedAt:              new Date(),
-      },
-    });
+    const { recordId } = await this.consentRepo.recordWithdrawal(withdrawal, updatedPurposes, ipAddress, userAgent);
 
     // Track metrics
     for (const purpose of withdrawal.purposes) {
       consentWithdrawalCounter.inc({ purpose });
     }
 
-    logger.info({
-      recordId: inserted.id,
+    this.logger.info({
+      recordId,
       purposes: withdrawal.purposes,
     }, '[ConsentService] Consent withdrawal recorded');
 
-    return { recordId: inserted.id };
+    return { recordId };
   }
 
   /**
@@ -220,19 +136,7 @@ export class ConsentService {
    */
   async getCurrentState(fpClientId?: string, userId?: string): Promise<ConsentState> {
     try {
-      let row = null;
-
-      if (userId) {
-        [row] = await db.select().from(consentCurrentState)
-          .where(eq(consentCurrentState.userId, userId))
-          .limit(1);
-      }
-
-      if (!row && fpClientId) {
-        [row] = await db.select().from(consentCurrentState)
-          .where(eq(consentCurrentState.fpClientId, fpClientId))
-          .limit(1);
-      }
+      const { row } = await this.consentRepo.getCurrentState(fpClientId, userId);
 
       if (!row) {
         // No consent record — default to all denied (privacy-safe)
@@ -246,7 +150,7 @@ export class ConsentService {
 
       // Check expiry
       if (row.expiresAt && row.expiresAt < new Date()) {
-        logger.info({ fpClientId, userId }, '[ConsentService] Consent expired — treating as denied');
+        this.logger.info({ fpClientId, userId }, '[ConsentService] Consent expired — treating as denied');
         return ConsentStateSchema.parse({
           essential: true,
           analytics: false,
@@ -262,7 +166,7 @@ export class ConsentService {
         personalization: row.personalizationGranted,
       });
     } catch (err) {
-      logger.error({ err, fpClientId, userId }, '[ConsentService] Failed to read consent state — defaulting to denied');
+      this.logger.error({ err, fpClientId, userId }, '[ConsentService] Failed to read consent state — defaulting to denied');
       return ConsentStateSchema.parse({
         essential: true, analytics: false, advertising: false, personalization: false,
       });
@@ -297,18 +201,7 @@ export class ConsentService {
   /**
    * Get the full consent audit trail for an identity (for GDPR SAR).
    */
-  async getAuditTrail(fpClientId?: string, userId?: string, limit = 50): Promise<typeof consentRecords.$inferSelect[]> {
-    const conditions = [];
-    if (userId)     conditions.push(eq(consentRecords.userId, userId));
-    if (fpClientId) conditions.push(eq(consentRecords.fpClientId, fpClientId));
-
-    if (conditions.length === 0) return [];
-
-    return db.select().from(consentRecords)
-      .where(conditions.length === 1 ? conditions[0] : and(...conditions))
-      .orderBy(desc(consentRecords.createdAt))
-      .limit(limit);
+  async getAuditTrail(fpClientId?: string, userId?: string, limit = 50) {
+    return await this.consentRepo.getAuditTrail(fpClientId, userId, limit);
   }
 }
-
-export const consentService = new ConsentService();

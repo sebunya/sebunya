@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { ConsentSignalSchema, ConsentWithdrawalSchema } from '@goldplus/shared';
-import { consentService } from '../../../application/use-cases/measurement/ConsentService';
+import { Registry } from '../../../infrastructure/Registry';
 import { logger } from '../../../infrastructure/logging/logger';
 
 const routes = new Hono();
+const registry = Registry.getInstance();
+const consentService = registry.consentService;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /consent/signal — record a consent decision from the browser

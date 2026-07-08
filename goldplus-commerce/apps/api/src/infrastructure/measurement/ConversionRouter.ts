@@ -1,5 +1,5 @@
 import { logger } from '../logging/logger';
-import { consentService } from '../../application/use-cases/measurement/ConsentService';
+import { Registry } from '../Registry';
 import { db } from '../db/client';
 import { attributionTouchpoints } from '../db/schema/measurement';
 import { outboxEvents } from '../db/schema/system';
@@ -96,7 +96,7 @@ export class ConversionRouter {
     await Promise.all(
       MEASUREMENT_DESTINATIONS.map(async (destination) => {
         try {
-          const result = await consentService.checkDestinationPermission(
+          const result = await Registry.getInstance().consentService.checkDestinationPermission(
             destination, fpClientId, userId,
           );
 

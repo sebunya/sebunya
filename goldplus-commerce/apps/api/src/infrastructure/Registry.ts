@@ -77,6 +77,23 @@ import { TrackRecommendationEventUseCase } from '../application/recommendations/
 import { GetRecommendationsUseCase } from '../application/recommendations/GetRecommendationsUseCase';
 import { GetRecentlyViewedUseCase } from '../application/recommendations/GetRecentlyViewedUseCase';
 
+import { DrizzleMeasurementAdminRepository } from './measurement/DrizzleMeasurementAdminRepository';
+import { DrizzleDlqRepository } from './measurement/DrizzleDlqRepository';
+import { DrizzleAttributionRepository } from './measurement/DrizzleAttributionRepository';
+import { DrizzleConsentReadRepository } from './measurement/DrizzleConsentReadRepository';
+import { PinoMeasurementLogger } from './measurement/PinoMeasurementLogger';
+import { DrizzleZeroPartyDataRepository } from './measurement/DrizzleZeroPartyDataRepository';
+import { DrizzleConsentRepository } from './measurement/DrizzleConsentRepository';
+
+import { GetMeasurementOverviewUseCase } from '../application/use-cases/measurement/GetMeasurementOverviewUseCase';
+import { ListMeasurementDlqUseCase } from '../application/use-cases/measurement/ListMeasurementDlqUseCase';
+import { ReplayMeasurementDlqUseCase } from '../application/use-cases/measurement/ReplayMeasurementDlqUseCase';
+import { ListConsentAuditUseCase } from '../application/use-cases/measurement/ListConsentAuditUseCase';
+import { GetMatchQualitySummaryUseCase } from '../application/use-cases/measurement/GetMatchQualitySummaryUseCase';
+import { AttributionService } from '../application/use-cases/measurement/AttributionService';
+import { CaptureZeroPartyDataUseCase } from '../application/use-cases/measurement/CaptureZeroPartyDataUseCase';
+import { ConsentService } from '../application/use-cases/measurement/ConsentService';
+
 export class Registry {
   private static _instance: Registry;
   
@@ -115,6 +132,14 @@ export class Registry {
   public readonly attributeRepo = new DrizzleAttributeRepository();
   public readonly notificationAttemptRepo = new DrizzleNotificationAttemptRepository();
   public readonly outboxRepo = new DrizzleOutboxRepository();
+
+  public readonly measurementAdminRepo = new DrizzleMeasurementAdminRepository();
+  public readonly dlqRepo = new DrizzleDlqRepository();
+  public readonly attributionRepo = new DrizzleAttributionRepository();
+  public readonly consentReadRepo = new DrizzleConsentReadRepository();
+  public readonly consentRepo = new DrizzleConsentRepository();
+  public readonly zpdRepo = new DrizzleZeroPartyDataRepository();
+  public readonly measurementLogger = new PinoMeasurementLogger();
 
   // Infrastructure Adapters
   public readonly whatsappAdapter = new WhatsAppAdapter();
@@ -214,6 +239,25 @@ export class Registry {
 
   public readonly syntheticMonitor = new SyntheticMonitor();
   public readonly recommendationMaterializer = new RecommendationMaterializer();
+
+  // Measurement Use Cases
+  public readonly getMeasurementOverviewUseCase = new GetMeasurementOverviewUseCase(
+    this.measurementAdminRepo,
+    this.dlqRepo,
+    this.attributionRepo
+  );
+  public readonly listMeasurementDlqUseCase = new ListMeasurementDlqUseCase(this.dlqRepo);
+  public readonly replayMeasurementDlqUseCase = new ReplayMeasurementDlqUseCase(
+    this.dlqRepo,
+    this.measurementAdminRepo,
+    this.measurementLogger,
+    this.auditRepo
+  );
+  public readonly listConsentAuditUseCase = new ListConsentAuditUseCase(this.consentReadRepo);
+  public readonly getMatchQualitySummaryUseCase = new GetMatchQualitySummaryUseCase(this.attributionRepo);
+  public readonly attributionService = new AttributionService(this.attributionRepo, this.measurementLogger);
+  public readonly consentService = new ConsentService(this.consentRepo, this.measurementLogger);
+  public readonly captureZeroPartyDataUseCase = new CaptureZeroPartyDataUseCase(this.zpdRepo, this.measurementLogger, this.consentService);
 
   public static getInstance(): Registry {
     if (!Registry._instance) {
