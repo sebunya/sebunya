@@ -211,6 +211,12 @@ export function validateEnv(): Config {
     tiktokPixelId: process.env.TIKTOK_PIXEL_ID,
     tiktokAccessToken: process.env.TIKTOK_ACCESS_TOKEN,
     posthogProjectApiKey: process.env.POSTHOG_PROJECT_API_KEY,
+    measurement: {
+      dryRun: process.env.MEASUREMENT_DRY_RUN !== 'false',
+      liveDestinationsEnabled: process.env.MEASUREMENT_LIVE_DESTINATIONS_ENABLED === 'true',
+      paidSocialQueueEnabled: process.env.PAID_SOCIAL_QUEUE_ENABLED === 'true',
+      qaAllowNetwork: process.env.MEASUREMENT_QA_ALLOW_NETWORK === 'true',
+    }
   };
 }
 

@@ -22,7 +22,12 @@
     "db:migrate": "pnpm -F @goldplus/api db:migrate",
     "db:studio": "pnpm -F @goldplus/api db:studio",
     "seed": "tsx scripts/seed.ts",
-    "verify": "tsx scripts/verify-build.ts"
+    "verify": "tsx scripts/verify-build.ts",
+    "measurement:gtm:plan": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-plan.ts",
+    "measurement:gtm:validate": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-validate.ts",
+    "measurement:gtm:diff": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-diff.ts",
+    "measurement:gtm:create-workspace": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-create-workspace.ts",
+    "measurement:gtm:create-version-draft": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-create-version-draft.ts"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",
