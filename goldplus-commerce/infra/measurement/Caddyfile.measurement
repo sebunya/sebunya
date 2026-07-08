@@ -1,0 +1,53 @@
+{
+    admin off
+}
+
+{$MEASUREMENT_PUBLIC_ORIGIN} {
+    tls {$CADDY_EMAIL}
+
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Content-Security-Policy "default-src 'none'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; connect-src 'self' https://www.google-analytics.com; img-src 'self' https://www.google-analytics.com; frame-ancestors 'none';"
+    }
+
+    # Only proxy specific measurement paths
+    @measurement {
+        path /metrics/*
+        path /g/collect
+        path /collect
+        path /gtm/*
+        path /healthz
+    }
+
+    # Route preview requests to the preview server based on X-Gtm-Server-Preview header
+    @preview_header {
+        header X-Gtm-Server-Preview *
+    }
+
+    handle @measurement {
+        handle @preview_header {
+            reverse_proxy {$GTM_PREVIEW_HOST} {
+                header_up Host {host}
+                header_up X-Real-IP {remote}
+                header_up X-Forwarded-For {remote}
+                header_up X-Forwarded-Proto {scheme}
+            }
+        }
+        
+        # Fallback to production server
+        reverse_proxy {$GTM_SERVER_HOST} {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Block everything else (return 404 or 403)
+    handle {
+        respond "Not Found" 404
+    }
+}

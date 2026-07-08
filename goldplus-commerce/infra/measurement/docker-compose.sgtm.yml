@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  caddy-measurement-proxy:
+    image: caddy:2.7-alpine
+    container_name: caddy-measurement-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - MEASUREMENT_PUBLIC_ORIGIN=${MEASUREMENT_PUBLIC_ORIGIN}
+      - GTM_SERVER_HOST=${GTM_SERVER_HOST}
+      - GTM_PREVIEW_HOST=${GTM_PREVIEW_HOST}
+      - CADDY_EMAIL=${CADDY_EMAIL}
+    volumes:
+      - ./Caddyfile.measurement:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - sgtm-network
+
+  sgtm-production:
+    image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
+    container_name: sgtm-production
+    restart: always
+    environment:
+      - CONTAINER_CONFIG=${GTM_SERVER_CONTAINER_CONFIG}
+      - RUN_AS_PREVIEW_SERVER=false
+    networks:
+      - sgtm-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  sgtm-preview:
+    image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
+    container_name: sgtm-preview
+    restart: always
+    environment:
+      - CONTAINER_CONFIG=${GTM_PREVIEW_SERVER_CONTAINER_CONFIG}
+      - RUN_AS_PREVIEW_SERVER=true
+    networks:
+      - sgtm-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  sgtm-network:
+    driver: bridge
