@@ -12,3 +12,4 @@ export * from './telemetry';
 export * from './consent';
 export * from './measurement';
 export * from './measurement-advanced';
+export * from './product_finder';

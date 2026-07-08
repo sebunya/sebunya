@@ -1,0 +1,240 @@
+---
+// Shell manages the client-side state of the finder questions
+---
+
+<div id="product-finder-shell" class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+  <!-- Progress -->
+  <div id="pf-progress" class="mb-6">
+    <div class="flex justify-between text-sm text-gray-500 mb-2">
+      <span id="pf-step-text">Step 1 of 4</span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-2">
+      <div id="pf-progress-bar" class="bg-[#96cc06] h-2 rounded-full transition-all" style="width: 25%"></div>
+    </div>
+  </div>
+
+  <!-- Questions Container -->
+  <div id="pf-questions"></div>
+
+  <!-- Results Container -->
+  <div id="pf-results" class="hidden"></div>
+
+  <!-- Actions -->
+  <div id="pf-actions" class="mt-8 flex justify-between">
+    <button id="pf-back" class="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50 hidden">Back</button>
+    <button id="pf-next" class="px-6 py-2 bg-[#96cc06] text-white rounded font-medium ml-auto">Next</button>
+    <button id="pf-submit" class="px-6 py-2 bg-[#96cc06] text-white rounded font-medium ml-auto hidden">See Recommendations</button>
+  </div>
+
+  <!-- Trust Note -->
+  <div class="mt-8 pt-4 border-t border-gray-100 text-xs text-gray-500 text-center">
+    <p>Your answers help us recommend better products. We will not use them for advertising unless you have allowed advertising consent.</p>
+  </div>
+</div>
+
+<script>
+  // Simple client-side orchestrator for the wizard
+  const questions = [
+    {
+      id: 'category',
+      title: 'What are you shopping for?',
+      options: ['Power', 'Storage', 'Phone battery', 'Personal audio', 'Accessories', 'Not sure yet']
+    },
+    {
+      id: 'problem',
+      title: 'What problem are you trying to solve?',
+      options: ['My phone dies quickly', 'I need fast charging', 'I need backup power for travel', 'I need a reliable charger', 'I need something for school or office', 'I need more phone storage', 'I need storage for photos and videos', 'My battery drains quickly', 'I need earphones', 'I need a speaker', 'I need everyday phone accessories']
+    },
+    {
+      id: 'priority',
+      title: 'What matters most?',
+      options: ['Best value', 'Long-lasting', 'Fast performance', 'Warranty confidence', 'Portability', 'Premium feel']
+    },
+    {
+      id: 'budget',
+      title: 'Budget range',
+      options: ['Budget-friendly', 'Mid-range', 'Premium', 'Not sure']
+    }
+  ];
+
+  let currentStep = 0;
+  let sessionId = '';
+  const answers: Record<string, string> = {};
+
+  const qContainer = document.getElementById('pf-questions');
+  const rContainer = document.getElementById('pf-results');
+  const btnNext = document.getElementById('pf-next');
+  const btnBack = document.getElementById('pf-back');
+  const btnSubmit = document.getElementById('pf-submit');
+  const stepText = document.getElementById('pf-step-text');
+  const progressBar = document.getElementById('pf-progress-bar');
+  const actionsContainer = document.getElementById('pf-actions');
+
+  async function startSession() {
+    try {
+      const res = await fetch('http://localhost:3000/product-finder/sessions', { method: 'POST' });
+      const data = await res.json();
+      sessionId = data.sessionId;
+    } catch (err) {
+      console.error('Failed to start session');
+    }
+  }
+
+  function renderQuestion() {
+    if (!qContainer) return;
+    const q = questions[currentStep];
+    
+    let html = `<h2 class="text-xl font-medium text-gray-900 mb-4">${q.title}</h2><div class="space-y-3">`;
+    
+    q.options.forEach(opt => {
+      const isSelected = answers[q.id] === opt;
+      html += `
+        <label class="flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${isSelected ? 'border-[#96cc06] bg-green-50' : 'border-gray-200 hover:border-gray-300'}">
+          <input type="radio" name="${q.id}" value="${opt}" class="w-4 h-4 text-[#96cc06] border-gray-300 focus:ring-[#96cc06]" ${isSelected ? 'checked' : ''} onchange="window.pfSelect('${q.id}', '${opt}')">
+          <span class="ml-3 text-gray-700">${opt}</span>
+        </label>
+      `;
+    });
+    html += '</div>';
+    qContainer.innerHTML = html;
+
+    // Update progress
+    if (stepText) stepText.textContent = `Step ${currentStep + 1} of ${questions.length}`;
+    if (progressBar) progressBar.style.width = `${((currentStep + 1) / questions.length) * 100}%`;
+
+    // Update buttons
+    if (btnBack) btnBack.classList.toggle('hidden', currentStep === 0);
+    
+    if (currentStep === questions.length - 1) {
+      btnNext?.classList.add('hidden');
+      btnSubmit?.classList.remove('hidden');
+    } else {
+      btnNext?.classList.remove('hidden');
+      btnSubmit?.classList.add('hidden');
+    }
+  }
+
+  // Expose to window for the inline onclick handlers
+  (window as any).pfSelect = (qId: string, val: string) => {
+    answers[qId] = val;
+    renderQuestion();
+  };
+
+  async function saveAnswer(qId: string, val: string) {
+    if (!sessionId) return;
+    await fetch(`http://localhost:3000/product-finder/sessions/${sessionId}/answers`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stepId: qId, answer: val })
+    });
+  }
+
+  btnNext?.addEventListener('click', async () => {
+    const q = questions[currentStep];
+    if (answers[q.id]) {
+      await saveAnswer(q.id, answers[q.id]);
+      currentStep++;
+      renderQuestion();
+    } else {
+      alert('Please select an option');
+    }
+  });
+
+  btnBack?.addEventListener('click', () => {
+    if (currentStep > 0) {
+      currentStep--;
+      renderQuestion();
+    }
+  });
+
+  btnSubmit?.addEventListener('click', async () => {
+    const q = questions[currentStep];
+    if (!answers[q.id]) {
+      alert('Please select an option');
+      return;
+    }
+    
+    // Save last answer
+    await saveAnswer(q.id, answers[q.id]);
+
+    // Complete session
+    if (btnSubmit) btnSubmit.textContent = 'Finding matches...';
+    try {
+      const res = await fetch(`http://localhost:3000/product-finder/sessions/${sessionId}/complete`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      renderResults(data);
+    } catch (err) {
+      console.error(err);
+      if (btnSubmit) btnSubmit.textContent = 'See Recommendations';
+    }
+  });
+
+  function renderResults(data: any) {
+    if (qContainer) qContainer.classList.add('hidden');
+    if (actionsContainer) actionsContainer.classList.add('hidden');
+    if (document.getElementById('pf-progress')) document.getElementById('pf-progress')?.classList.add('hidden');
+    if (rContainer) {
+      rContainer.classList.remove('hidden');
+
+      if (data.status === 'NO_EXACT_MATCH') {
+        const fallbacks = data.recommendations.map((r: any) => r.category).join(', ');
+        rContainer.innerHTML = `
+          <h2 class="text-2xl font-bold text-gray-900 mb-4">No exact match found</h2>
+          <p class="text-gray-600 mb-6">We could not find an exact match, but these categories are the best place to start: <strong class="text-gray-900">${fallbacks}</strong></p>
+          <a href="/products" class="inline-block bg-[#96cc06] text-white px-6 py-3 rounded font-medium">Browse All Products</a>
+        `;
+        return;
+      }
+
+      let html = `<h2 class="text-2xl font-bold text-gray-900 mb-6">Your GoldPlus matches</h2><div class="space-y-6">`;
+      data.recommendations.forEach((rec: any) => {
+        html += `
+          <div class="border border-gray-200 rounded-lg p-6 flex flex-col md:flex-row gap-6">
+            <div class="w-full md:w-1/3 bg-gray-50 rounded p-4 flex items-center justify-center">
+               <img src="${rec.imageUrl}" alt="${rec.name}" class="max-h-48 object-contain" />
+            </div>
+            <div class="flex-1">
+               <div class="text-sm text-[#96cc06] font-medium mb-1">${rec.category}</div>
+               <h3 class="text-xl font-bold text-gray-900 mb-2">${rec.name}</h3>
+               <div class="text-lg font-medium text-gray-900 mb-4">UGX ${rec.price.toLocaleString()}</div>
+               
+               <div class="bg-blue-50 border border-blue-100 rounded p-3 mb-6">
+                 <p class="text-sm text-blue-800 font-medium mb-1">Why we recommend this:</p>
+                 <ul class="text-sm text-blue-700 list-disc list-inside">
+                   ${rec.reasons.map((r: string) => `<li>${r}</li>`).join('')}
+                 </ul>
+               </div>
+
+               <div class="flex flex-wrap gap-3">
+                 <a href="${rec.productUrl}" onclick="window.pfAction('recommendation_clicked', '${rec.productId}')" class="px-5 py-2 bg-gray-900 text-white rounded font-medium hover:bg-gray-800">${rec.primaryCta}</a>
+                 <button onclick="window.pfAction('add_to_cart_intent', '${rec.productId}')" class="px-5 py-2 border border-gray-300 text-gray-700 rounded font-medium hover:bg-gray-50">${rec.secondaryCta}</button>
+                 <button onclick="window.pfAction('whatsapp_intent', '${rec.productId}')" class="px-5 py-2 text-[#96cc06] font-medium hover:underline flex items-center">
+                    Ask GoldPlus on WhatsApp
+                 </button>
+               </div>
+            </div>
+          </div>
+        `;
+      });
+      html += '</div>';
+      rContainer.innerHTML = html;
+    }
+  }
+
+  (window as any).pfAction = async (action: string, productId: string) => {
+    if (!sessionId) return;
+    await fetch(`http://localhost:3000/product-finder/sessions/${sessionId}/actions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, productId })
+    });
+    if (action === 'add_to_cart_intent') alert('Added to cart!');
+    if (action === 'whatsapp_intent') alert('Opening WhatsApp...');
+  };
+
+  // Init
+  startSession();
+  renderQuestion();
+</script>

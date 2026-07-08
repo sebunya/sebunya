@@ -141,6 +141,7 @@ import { DrizzleCustomerPreferenceRepository } from './preferences/DrizzleCustom
 import { DrizzlePreferenceAuditRepository } from './preferences/DrizzlePreferenceAuditRepository';
 import { MeasurementPreferencePublisher } from './preferences/MeasurementPreferencePublisher';
 import { BullMqPurchaseMeasurementQueue } from './measurement/BullMqPurchaseMeasurementQueue';
+import { BullMqGenericMeasurementQueue } from './measurement/BullMqGenericMeasurementQueue';
 import { PesapalMeasurementMapper } from './measurement/PesapalMeasurementMapper';
 import { PaymentMeasurementRedactor } from './measurement/PaymentMeasurementRedactor';
 
@@ -152,6 +153,17 @@ import { ListPaymentMeasurementReconciliationsUseCase } from '../application/use
 import { RetryPaymentMeasurementReconciliationUseCase } from '../application/use-cases/measurement/RetryPaymentMeasurementReconciliationUseCase';
 import { ConsentAwareMeasurementPolicy } from '../application/services/measurement/ConsentAwareMeasurementPolicy';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
+
+import { DrizzleProductFinderRepository } from './product-finder/DrizzleProductFinderRepository';
+import { DrizzleProductFinderCatalogRepository } from './product-finder/DrizzleProductFinderCatalogRepository';
+import { MeasurementProductFinderPublisher } from './product-finder/MeasurementProductFinderPublisher';
+import { PreferenceProductFinderUpdater } from './product-finder/PreferenceProductFinderUpdater';
+import { ProductFinderRedactor } from './product-finder/ProductFinderRedactor';
+import { StartProductFinderUseCase } from '../application/use-cases/product-finder/StartProductFinderUseCase';
+import { AnswerProductFinderStepUseCase } from '../application/use-cases/product-finder/AnswerProductFinderStepUseCase';
+import { CompleteProductFinderUseCase } from '../application/use-cases/product-finder/CompleteProductFinderUseCase';
+import { GetProductFinderRecommendationsUseCase } from '../application/use-cases/product-finder/GetProductFinderRecommendationsUseCase';
+import { RecordProductFinderActionUseCase } from '../application/use-cases/product-finder/RecordProductFinderActionUseCase';
 
 export class Registry {
   private static _instance: Registry;
@@ -217,6 +229,7 @@ export class Registry {
   public readonly paymentAttributionRepo = new DrizzlePaymentAttributionRepository();
   // using the same BullMQ adapter for now, or just setting queue to null for fallback
   public readonly purchaseMeasurementQueue = new BullMqPurchaseMeasurementQueue(null, this.measurementLogger);
+  public readonly genericMeasurementQueue = new BullMqGenericMeasurementQueue(null, this.measurementLogger);
   public readonly paymentMeasurementRedactor = new PaymentMeasurementRedactor();
   public readonly pesapalMeasurementMapper = new PesapalMeasurementMapper(this.paymentMeasurementRedactor);
 
@@ -407,6 +420,40 @@ export class Registry {
   public readonly getPreferenceAuditTrailUseCase = new GetPreferenceAuditTrailUseCase(
     this.preferenceAuditRepo,
     this.consentService
+  );
+
+  // Product Finder Dependencies
+  public readonly productFinderRepo = new DrizzleProductFinderRepository();
+  public readonly productFinderCatalogRepo = new DrizzleProductFinderCatalogRepository();
+  public readonly productFinderRedactor = new ProductFinderRedactor();
+  public readonly productFinderPublisher = new MeasurementProductFinderPublisher(
+    this.genericMeasurementQueue,
+    this.productFinderRedactor
+  );
+  public readonly productFinderPreferenceUpdater = new PreferenceProductFinderUpdater(
+    this.updateCustomerPreferenceCentreUseCase
+  );
+
+  public readonly startProductFinderUseCase = new StartProductFinderUseCase(
+    this.productFinderRepo,
+    this.productFinderPublisher
+  );
+  public readonly answerProductFinderStepUseCase = new AnswerProductFinderStepUseCase(
+    this.productFinderRepo,
+    this.productFinderPublisher
+  );
+  public readonly completeProductFinderUseCase = new CompleteProductFinderUseCase(
+    this.productFinderRepo,
+    this.productFinderCatalogRepo,
+    this.productFinderPublisher,
+    this.productFinderPreferenceUpdater
+  );
+  public readonly getProductFinderRecommendationsUseCase = new GetProductFinderRecommendationsUseCase(
+    this.productFinderRepo
+  );
+  public readonly recordProductFinderActionUseCase = new RecordProductFinderActionUseCase(
+    this.productFinderRepo,
+    this.productFinderPublisher
   );
 
   public static getInstance(): Registry {
