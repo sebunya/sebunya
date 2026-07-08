@@ -95,12 +95,30 @@ import { CaptureZeroPartyDataUseCase } from '../application/use-cases/measuremen
 import { ConsentService } from '../application/use-cases/measurement/ConsentService';
 
 import { GoogleTagManagerRepository } from './measurement/GoogleTagManagerRepository';
-import { InMemoryGtmPlanRepository } from './measurement/InMemoryGtmPlanRepository';
+import { DrizzleGtmPlanRepository } from './measurement/DrizzleGtmPlanRepository';
+import { GtmPlanBuilder } from '../application/services/measurement/GtmPlanBuilder';
+import { GtmDiffService } from '../application/services/measurement/GtmDiffService';
 import { PlanGtmMeasurementChangesUseCase } from '../application/use-cases/measurement/PlanGtmMeasurementChangesUseCase';
+import { ValidateGtmMeasurementPlanUseCase } from '../application/use-cases/measurement/ValidateGtmMeasurementPlanUseCase';
+import { CreateGtmWorkspaceUseCase } from '../application/use-cases/measurement/CreateGtmWorkspaceUseCase';
+import { CreateGtmVersionDraftUseCase } from '../application/use-cases/measurement/CreateGtmVersionDraftUseCase';
+import { ListGtmSyncLogsUseCase } from '../application/use-cases/measurement/ListGtmSyncLogsUseCase';
 import { ListGtmWorkspacesUseCase } from '../application/use-cases/measurement/ListGtmWorkspacesUseCase';
 
 import { DrizzlePaidSocialDestinationRepository } from './measurement/DrizzlePaidSocialDestinationRepository';
+import { DrizzlePaidSocialDeliveryRepository } from './measurement/DrizzlePaidSocialDeliveryRepository';
+import { EnvPaidSocialCredentialStatusRepository } from './measurement/EnvPaidSocialCredentialStatusRepository';
 import { RoutePaidSocialEventUseCase } from '../application/use-cases/measurement/RoutePaidSocialEventUseCase';
+import { PreparePaidSocialPayloadUseCase } from '../application/use-cases/measurement/PreparePaidSocialPayloadUseCase';
+import { DeliverPaidSocialEventUseCase } from '../application/use-cases/measurement/DeliverPaidSocialEventUseCase';
+import { BlockMeasurementEventUseCase } from '../application/use-cases/measurement/BlockMeasurementEventUseCase';
+import { ListPaidSocialDestinationsUseCase } from '../application/use-cases/measurement/ListPaidSocialDestinationsUseCase';
+import { GetPaidSocialDeliveryHealthUseCase } from '../application/use-cases/measurement/GetPaidSocialDeliveryHealthUseCase';
+import { RetryPaidSocialDeliveryUseCase } from '../application/use-cases/measurement/RetryPaidSocialDeliveryUseCase';
+import { UpdatePaidSocialDestinationUseCase } from '../application/use-cases/measurement/UpdatePaidSocialDestinationUseCase';
+import { Sha256MeasurementHashingService } from '../application/services/measurement/Sha256MeasurementHashingService';
+import { PaidSocialPayloadMapper } from '../application/services/measurement/PaidSocialPayloadMapper';
+import { PaidSocialPayloadRedactor } from '../application/services/measurement/PaidSocialPayloadRedactor';
 import { BullMQMeasurementQueueAdapter } from './measurement/BullMQMeasurementQueueAdapter';
 
 export class Registry {
@@ -151,9 +169,16 @@ export class Registry {
   public readonly measurementLogger = new PinoMeasurementLogger();
 
   public readonly gtmRepo = new GoogleTagManagerRepository();
-  public readonly gtmPlanRepo = new InMemoryGtmPlanRepository();
+  public readonly gtmPlanRepo = new DrizzleGtmPlanRepository();
+  public readonly gtmPlanBuilder = new GtmPlanBuilder();
+  public readonly gtmDiffService = new GtmDiffService();
   public readonly paidSocialDestinationRepo = new DrizzlePaidSocialDestinationRepository();
+  public readonly paidSocialDeliveryRepo = new DrizzlePaidSocialDeliveryRepository();
+  public readonly paidSocialCredentialRepo = new EnvPaidSocialCredentialStatusRepository();
   public readonly measurementQueuePort = new BullMQMeasurementQueueAdapter();
+  public readonly hashingService = new Sha256MeasurementHashingService();
+  public readonly payloadMapper = new PaidSocialPayloadMapper(this.hashingService);
+  public readonly payloadRedactor = new PaidSocialPayloadRedactor();
 
   // Infrastructure Adapters
   public readonly whatsappAdapter = new WhatsAppAdapter();
@@ -273,8 +298,12 @@ export class Registry {
   public readonly consentService = new ConsentService(this.consentRepo, this.measurementLogger);
   public readonly captureZeroPartyDataUseCase = new CaptureZeroPartyDataUseCase(this.zpdRepo, this.measurementLogger, this.consentService);
 
-  public readonly planGtmMeasurementChangesUseCase = new PlanGtmMeasurementChangesUseCase(this.gtmPlanRepo);
+  public readonly planGtmMeasurementChangesUseCase = new PlanGtmMeasurementChangesUseCase(this.gtmRepo, this.gtmPlanRepo, this.gtmPlanBuilder);
   public readonly listGtmWorkspacesUseCase = new ListGtmWorkspacesUseCase(this.gtmRepo);
+  public readonly validateGtmMeasurementPlanUseCase = new ValidateGtmMeasurementPlanUseCase(this.gtmRepo, this.gtmPlanBuilder, this.gtmDiffService);
+  public readonly createGtmWorkspaceUseCase = new CreateGtmWorkspaceUseCase(this.gtmRepo);
+  public readonly createGtmVersionDraftUseCase = new CreateGtmVersionDraftUseCase(this.gtmRepo);
+  public readonly listGtmSyncLogsUseCase = new ListGtmSyncLogsUseCase(this.gtmPlanRepo);
 
   public readonly routePaidSocialEventUseCase = new RoutePaidSocialEventUseCase(
     this.paidSocialDestinationRepo,
@@ -282,6 +311,14 @@ export class Registry {
     this.consentService,
     this.measurementLogger
   );
+  
+  public readonly preparePaidSocialPayloadUseCase = new PreparePaidSocialPayloadUseCase(this.payloadMapper, this.payloadRedactor);
+  public readonly deliverPaidSocialEventUseCase = new DeliverPaidSocialEventUseCase(this.measurementQueuePort);
+  public readonly blockMeasurementEventUseCase = new BlockMeasurementEventUseCase(this.paidSocialDeliveryRepo);
+  public readonly listPaidSocialDestinationsUseCase = new ListPaidSocialDestinationsUseCase(this.paidSocialDestinationRepo);
+  public readonly getPaidSocialDeliveryHealthUseCase = new GetPaidSocialDeliveryHealthUseCase(this.paidSocialDeliveryRepo);
+  public readonly retryPaidSocialDeliveryUseCase = new RetryPaidSocialDeliveryUseCase(this.paidSocialDeliveryRepo);
+  public readonly updatePaidSocialDestinationUseCase = new UpdatePaidSocialDestinationUseCase(this.paidSocialDestinationRepo);
 
   public static getInstance(): Registry {
     if (!Registry._instance) {

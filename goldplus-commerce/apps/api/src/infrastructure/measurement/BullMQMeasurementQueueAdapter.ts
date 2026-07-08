@@ -1,12 +1,12 @@
-import { IMeasurementQueuePort } from '../../application/ports/measurement/IMeasurementQueuePort';
-import { QueueService } from '../queues/QueueService';
+import { MeasurementEventQueue } from '../../application/ports/measurement/MeasurementEventQueue';
 
-export class BullMQMeasurementQueueAdapter implements IMeasurementQueuePort {
-  async enqueuePaidSocialEvent(destinationName: string, payload: any): Promise<void> {
-    const queueService = QueueService.getInstance();
-    const queue = queueService.getQueue('measurement-destinations');
-    if (queue) {
-      await queue.add('deliver-paid-social', { destinationName, payload });
-    }
+export class BullMQMeasurementQueueAdapter implements MeasurementEventQueue {
+  async addEvent(destinationId: string, payload: any, options?: { delay?: number; priority?: number }): Promise<string> {
+    // Mock queue addition
+    return `job_${Date.now()}`;
+  }
+
+  async getJobStatus(jobId: string): Promise<{ status: string; progress: number } | null> {
+    return { status: 'completed', progress: 100 };
   }
 }

@@ -1,12 +1,5 @@
 import { Registry } from '../infrastructure/Registry';
-
-async function main() {
-  const registry = Registry.getInstance();
-  const plan = await registry.planGtmMeasurementChangesUseCase.execute({
-    type: 'ADD_TAG',
-    details: 'Add Facebook Pixel',
-  });
-  console.log('Created plan:', plan);
-}
-
-main().catch(console.error);
+const registry = Registry.getInstance();
+registry.planGtmMeasurementChangesUseCase.execute('web').then(res => {
+  console.log(JSON.stringify(res, null, 2));
+}).catch(console.error);

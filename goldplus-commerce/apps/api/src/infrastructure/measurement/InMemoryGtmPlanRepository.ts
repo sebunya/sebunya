@@ -1,31 +1,31 @@
 import { GtmPlanRepository } from '../../application/ports/measurement/GtmPlanRepository';
-import { GtmPlan } from '../../application/ports/measurement/GtmPlanRepository';
 
 export class InMemoryGtmPlanRepository implements GtmPlanRepository {
-  private plans: Map<string, GtmPlan> = new Map();
+  private plans = new Map<string, any>();
+  private diffs = new Map<string, any>();
+  private syncLogs = new Map<string, any>();
 
-  async createPlan(plan: Omit<GtmPlan, 'planId' | 'createdAt' | 'updatedAt'>): Promise<GtmPlan> {
-    const planId = Math.random().toString(36).substring(7);
-    const newPlan: GtmPlan = {
-      ...plan,
-      planId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    this.plans.set(planId, newPlan);
-    return newPlan;
+  async savePlan(id: string, plan: any): Promise<void> {
+    this.plans.set(id, plan);
   }
 
-  async getPlan(planId: string): Promise<GtmPlan | null> {
-    return this.plans.get(planId) || null;
+  async getPlan(id: string): Promise<any | null> {
+    return this.plans.get(id) || null;
   }
 
-  async updatePlanStatus(planId: string, status: GtmPlan['status']): Promise<void> {
-    const plan = this.plans.get(planId);
-    if (plan) {
-      plan.status = status;
-      plan.updatedAt = new Date();
-      this.plans.set(planId, plan);
-    }
+  async listRecentPlans(limit: number): Promise<any[]> {
+    return Array.from(this.plans.values()).slice(0, limit);
+  }
+
+  async saveDiff(id: string, diff: any): Promise<void> {
+    this.diffs.set(id, diff);
+  }
+
+  async saveSyncLog(id: string, log: any): Promise<void> {
+    this.syncLogs.set(id, log);
+  }
+
+  async listSyncLogs(limit: number): Promise<any[]> {
+    return Array.from(this.syncLogs.values()).slice(0, limit);
   }
 }

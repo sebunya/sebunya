@@ -1,8 +1,5 @@
 import { Registry } from '../infrastructure/Registry';
-
-async function main() {
-  // Diff mock script
-  console.log('Diffing GTM workspace against production: No changes.');
-}
-
-main().catch(console.error);
+const registry = Registry.getInstance();
+registry.validateGtmMeasurementPlanUseCase.execute('mock-container', 'web').then(res => {
+  console.log(JSON.stringify(res, null, 2));
+}).catch(console.error);

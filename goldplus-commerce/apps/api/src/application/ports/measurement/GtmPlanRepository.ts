@@ -1,13 +1,8 @@
-export interface GtmPlan {
-  planId: string;
-  status: 'DRAFT' | 'VALIDATED' | 'APPLIED' | 'FAILED';
-  changes: any;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface GtmPlanRepository {
-  createPlan(plan: Omit<GtmPlan, 'planId' | 'createdAt' | 'updatedAt'>): Promise<GtmPlan>;
-  getPlan(planId: string): Promise<GtmPlan | null>;
-  updatePlanStatus(planId: string, status: GtmPlan['status']): Promise<void>;
+  savePlan(id: string, plan: any): Promise<void>;
+  getPlan(id: string): Promise<any | null>;
+  listRecentPlans(limit: number): Promise<any[]>;
+  saveDiff(id: string, diff: any): Promise<void>;
+  saveSyncLog(id: string, log: any): Promise<void>;
+  listSyncLogs(limit: number): Promise<any[]>;
 }

@@ -1,9 +1,5 @@
 import { Registry } from '../infrastructure/Registry';
-
-async function main() {
-  const registry = Registry.getInstance();
-  const workspace = await registry.gtmRepo.createWorkspace('accounts/1/containers/1', 'New Workspace');
-  console.log('Created workspace:', workspace);
-}
-
-main().catch(console.error);
+const registry = Registry.getInstance();
+registry.createGtmWorkspaceUseCase.execute('mock-container', 'GoldPlus Measurement').then(res => {
+  console.log(JSON.stringify(res, null, 2));
+}).catch(console.error);

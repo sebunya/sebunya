@@ -1,8 +1,5 @@
 import { Registry } from '../infrastructure/Registry';
-
-async function main() {
-  // Validate mock script
-  console.log('Validated GTM plan successfully.');
-}
-
-main().catch(console.error);
+const registry = Registry.getInstance();
+registry.validateGtmMeasurementPlanUseCase.execute('mock-container', 'web').then(res => {
+  console.log(JSON.stringify(res, null, 2));
+}).catch(console.error);
