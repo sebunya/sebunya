@@ -94,6 +94,11 @@ import { AttributionService } from '../application/use-cases/measurement/Attribu
 import { CaptureZeroPartyDataUseCase } from '../application/use-cases/measurement/CaptureZeroPartyDataUseCase';
 import { ConsentService } from '../application/use-cases/measurement/ConsentService';
 
+import { GoogleTagManagerRepository } from './measurement/GoogleTagManagerRepository';
+import { InMemoryGtmPlanRepository } from './measurement/InMemoryGtmPlanRepository';
+import { PlanGtmMeasurementChangesUseCase } from '../application/use-cases/measurement/PlanGtmMeasurementChangesUseCase';
+import { ListGtmWorkspacesUseCase } from '../application/use-cases/measurement/ListGtmWorkspacesUseCase';
+
 export class Registry {
   private static _instance: Registry;
   
@@ -140,6 +145,9 @@ export class Registry {
   public readonly consentRepo = new DrizzleConsentRepository();
   public readonly zpdRepo = new DrizzleZeroPartyDataRepository();
   public readonly measurementLogger = new PinoMeasurementLogger();
+
+  public readonly gtmRepo = new GoogleTagManagerRepository();
+  public readonly gtmPlanRepo = new InMemoryGtmPlanRepository();
 
   // Infrastructure Adapters
   public readonly whatsappAdapter = new WhatsAppAdapter();
@@ -258,6 +266,9 @@ export class Registry {
   public readonly attributionService = new AttributionService(this.attributionRepo, this.measurementLogger);
   public readonly consentService = new ConsentService(this.consentRepo, this.measurementLogger);
   public readonly captureZeroPartyDataUseCase = new CaptureZeroPartyDataUseCase(this.zpdRepo, this.measurementLogger, this.consentService);
+
+  public readonly planGtmMeasurementChangesUseCase = new PlanGtmMeasurementChangesUseCase(this.gtmPlanRepo);
+  public readonly listGtmWorkspacesUseCase = new ListGtmWorkspacesUseCase(this.gtmRepo);
 
   public static getInstance(): Registry {
     if (!Registry._instance) {

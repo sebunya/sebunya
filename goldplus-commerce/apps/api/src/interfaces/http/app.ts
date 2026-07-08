@@ -28,6 +28,7 @@ import metricsRoutes from './routes/metrics';
 import consentRoutes from './routes/consent';
 import measurementRoutes from './routes/measurement';
 import adminMeasurementRoutes from './routes/admin/measurement';
+import { measurementGtmRoutes } from './routes/admin/measurement-gtm';
 import { maintenanceMode } from './middleware/maintenance';
 import { deploymentService } from '../../infrastructure/deployment/DeploymentService';
 
@@ -134,6 +135,7 @@ app.route('/metrics', metricsRoutes);
 app.route('/consent', consentRoutes);
 app.route('/measurement', measurementRoutes);
 app.route('/admin/measurement', adminMeasurementRoutes);
+app.route('/admin/measurement/gtm', measurementGtmRoutes);
 
 // Health check route mounted via route registration
 
