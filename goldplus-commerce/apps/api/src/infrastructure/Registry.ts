@@ -99,6 +99,10 @@ import { InMemoryGtmPlanRepository } from './measurement/InMemoryGtmPlanReposito
 import { PlanGtmMeasurementChangesUseCase } from '../application/use-cases/measurement/PlanGtmMeasurementChangesUseCase';
 import { ListGtmWorkspacesUseCase } from '../application/use-cases/measurement/ListGtmWorkspacesUseCase';
 
+import { DrizzlePaidSocialDestinationRepository } from './measurement/DrizzlePaidSocialDestinationRepository';
+import { RoutePaidSocialEventUseCase } from '../application/use-cases/measurement/RoutePaidSocialEventUseCase';
+import { BullMQMeasurementQueueAdapter } from './measurement/BullMQMeasurementQueueAdapter';
+
 export class Registry {
   private static _instance: Registry;
   
@@ -148,6 +152,8 @@ export class Registry {
 
   public readonly gtmRepo = new GoogleTagManagerRepository();
   public readonly gtmPlanRepo = new InMemoryGtmPlanRepository();
+  public readonly paidSocialDestinationRepo = new DrizzlePaidSocialDestinationRepository();
+  public readonly measurementQueuePort = new BullMQMeasurementQueueAdapter();
 
   // Infrastructure Adapters
   public readonly whatsappAdapter = new WhatsAppAdapter();
@@ -269,6 +275,13 @@ export class Registry {
 
   public readonly planGtmMeasurementChangesUseCase = new PlanGtmMeasurementChangesUseCase(this.gtmPlanRepo);
   public readonly listGtmWorkspacesUseCase = new ListGtmWorkspacesUseCase(this.gtmRepo);
+
+  public readonly routePaidSocialEventUseCase = new RoutePaidSocialEventUseCase(
+    this.paidSocialDestinationRepo,
+    this.measurementQueuePort,
+    this.consentService,
+    this.measurementLogger
+  );
 
   public static getInstance(): Registry {
     if (!Registry._instance) {
