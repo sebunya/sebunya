@@ -121,6 +121,16 @@ import { PaidSocialPayloadMapper } from '../application/services/measurement/Pai
 import { PaidSocialPayloadRedactor } from '../application/services/measurement/PaidSocialPayloadRedactor';
 import { BullMQMeasurementQueueAdapter } from './measurement/BullMQMeasurementQueueAdapter';
 
+import { PaidSocialDestinationMapperRegistry } from './measurement/destinations/PaidSocialDestinationMapperRegistry';
+import { MetaCapiMapper } from './measurement/destinations/MetaCapiMapper';
+import { TikTokEventsMapper } from './measurement/destinations/TikTokEventsMapper';
+import { XConversionMapper } from './measurement/destinations/XConversionMapper';
+import { LinkedInConversionMapper } from './measurement/destinations/LinkedInConversionMapper';
+import { PinterestConversionMapper } from './measurement/destinations/PinterestConversionMapper';
+import { SnapchatConversionMapper } from './measurement/destinations/SnapchatConversionMapper';
+import { GoogleAdsMeasurementMapper } from './measurement/destinations/GoogleAdsMeasurementMapper';
+import { PostHogMeasurementMapper } from './measurement/destinations/PostHogMeasurementMapper';
+
 export class Registry {
   private static _instance: Registry;
   
@@ -312,7 +322,18 @@ export class Registry {
     this.measurementLogger
   );
   
-  public readonly preparePaidSocialPayloadUseCase = new PreparePaidSocialPayloadUseCase(this.payloadMapper, this.payloadRedactor);
+  public readonly paidSocialDestinationMapperRegistry = new PaidSocialDestinationMapperRegistry([
+    new MetaCapiMapper(this.hashingService),
+    new TikTokEventsMapper(this.hashingService),
+    new XConversionMapper(this.hashingService),
+    new LinkedInConversionMapper(this.hashingService),
+    new PinterestConversionMapper(this.hashingService),
+    new SnapchatConversionMapper(this.hashingService),
+    new GoogleAdsMeasurementMapper(this.hashingService),
+    new PostHogMeasurementMapper(this.hashingService),
+  ]);
+
+  public readonly preparePaidSocialPayloadUseCase = new PreparePaidSocialPayloadUseCase(this.paidSocialDestinationMapperRegistry);
   public readonly deliverPaidSocialEventUseCase = new DeliverPaidSocialEventUseCase(this.measurementQueuePort);
   public readonly blockMeasurementEventUseCase = new BlockMeasurementEventUseCase(this.paidSocialDeliveryRepo);
   public readonly listPaidSocialDestinationsUseCase = new ListPaidSocialDestinationsUseCase(this.paidSocialDestinationRepo);

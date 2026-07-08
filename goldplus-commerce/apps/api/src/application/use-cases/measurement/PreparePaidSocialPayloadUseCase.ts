@@ -1,14 +1,24 @@
-import { PaidSocialPayloadMapper } from '../../services/measurement/PaidSocialPayloadMapper';
-import { PaidSocialPayloadRedactor } from '../../services/measurement/PaidSocialPayloadRedactor';
+import { IPaidSocialDestinationMapperRegistry, DestinationMapperResult } from '../../ports/measurement/PaidSocialDestinationMapper';
 
 export class PreparePaidSocialPayloadUseCase {
   constructor(
-    private readonly mapper: PaidSocialPayloadMapper,
-    private readonly redactor: PaidSocialPayloadRedactor
+    private readonly mapperRegistry: IPaidSocialDestinationMapperRegistry
   ) {}
 
-  execute(eventName: string, rawPayload: any, platform: string): any {
-    const mapped = this.mapper.map(eventName, rawPayload, platform);
-    return this.redactor.redactPii(mapped);
+  execute(destinationKey: string, eventName: string, eventId: string, rawPayload: any): DestinationMapperResult {
+    const mapper = this.mapperRegistry.getMapper(destinationKey);
+    
+    if (!mapper) {
+      return {
+        success: false,
+        status: 'VALIDATION_FAILED', // Since destination is not supported
+        destination: destinationKey,
+        eventName,
+        eventId,
+        errors: [`No mapper found for destination ${destinationKey}`]
+      };
+    }
+
+    return mapper.mapEvent(eventName, eventId, rawPayload);
   }
 }
