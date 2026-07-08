@@ -131,6 +131,21 @@ import { SnapchatConversionMapper } from './measurement/destinations/SnapchatCon
 import { GoogleAdsMeasurementMapper } from './measurement/destinations/GoogleAdsMeasurementMapper';
 import { PostHogMeasurementMapper } from './measurement/destinations/PostHogMeasurementMapper';
 
+import { DrizzlePaymentMeasurementRepository } from './measurement/DrizzlePaymentMeasurementRepository';
+import { DrizzlePaymentAttributionRepository } from './measurement/DrizzlePaymentAttributionRepository';
+import { BullMqPurchaseMeasurementQueue } from './measurement/BullMqPurchaseMeasurementQueue';
+import { PesapalMeasurementMapper } from './measurement/PesapalMeasurementMapper';
+import { PaymentMeasurementRedactor } from './measurement/PaymentMeasurementRedactor';
+
+import { CapturePurchaseMeasurementUseCase } from '../application/use-cases/measurement/CapturePurchaseMeasurementUseCase';
+import { LinkPaymentToAttributionTouchpointsUseCase } from '../application/use-cases/measurement/LinkPaymentToAttributionTouchpointsUseCase';
+import { ReconcilePesapalOrderMeasurementUseCase } from '../application/use-cases/measurement/ReconcilePesapalOrderMeasurementUseCase';
+import { GetPaymentMeasurementReconciliationUseCase } from '../application/use-cases/measurement/GetPaymentMeasurementReconciliationUseCase';
+import { ListPaymentMeasurementReconciliationsUseCase } from '../application/use-cases/measurement/ListPaymentMeasurementReconciliationsUseCase';
+import { RetryPaymentMeasurementReconciliationUseCase } from '../application/use-cases/measurement/RetryPaymentMeasurementReconciliationUseCase';
+import { ConsentAwareMeasurementPolicy } from '../application/services/measurement/ConsentAwareMeasurementPolicy';
+import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
+
 export class Registry {
   private static _instance: Registry;
   
@@ -144,6 +159,7 @@ export class Registry {
   public readonly quoteRepo = new DrizzleQuoteRepository();
   public readonly verificationRepo = new DrizzleVerificationRepository();
   public readonly auditRepo = new DrizzleAuditRepository();
+  public readonly createAuditLogUseCase = new CreateAuditLogUseCase(this.auditRepo);
   public readonly paymentRepo = new DrizzlePaymentRepository();
   public readonly userRepo = new DrizzleUserRepository();
   public readonly addressRepo = new DrizzleAddressRepository();
@@ -189,6 +205,13 @@ export class Registry {
   public readonly hashingService = new Sha256MeasurementHashingService();
   public readonly payloadMapper = new PaidSocialPayloadMapper(this.hashingService);
   public readonly payloadRedactor = new PaidSocialPayloadRedactor();
+  
+  public readonly paymentMeasurementRepo = new DrizzlePaymentMeasurementRepository();
+  public readonly paymentAttributionRepo = new DrizzlePaymentAttributionRepository();
+  // using the same BullMQ adapter for now, or just setting queue to null for fallback
+  public readonly purchaseMeasurementQueue = new BullMqPurchaseMeasurementQueue(null, this.measurementLogger);
+  public readonly paymentMeasurementRedactor = new PaymentMeasurementRedactor();
+  public readonly pesapalMeasurementMapper = new PesapalMeasurementMapper(this.paymentMeasurementRedactor);
 
   // Infrastructure Adapters
   public readonly whatsappAdapter = new WhatsAppAdapter();
@@ -306,6 +329,7 @@ export class Registry {
   public readonly getMatchQualitySummaryUseCase = new GetMatchQualitySummaryUseCase(this.attributionRepo);
   public readonly attributionService = new AttributionService(this.attributionRepo, this.measurementLogger);
   public readonly consentService = new ConsentService(this.consentRepo, this.measurementLogger);
+  public readonly consentAwareMeasurementPolicy = new ConsentAwareMeasurementPolicy(this.consentService);
   public readonly captureZeroPartyDataUseCase = new CaptureZeroPartyDataUseCase(this.zpdRepo, this.measurementLogger, this.consentService);
 
   public readonly planGtmMeasurementChangesUseCase = new PlanGtmMeasurementChangesUseCase(this.gtmRepo, this.gtmPlanRepo, this.gtmPlanBuilder);
@@ -340,6 +364,20 @@ export class Registry {
   public readonly getPaidSocialDeliveryHealthUseCase = new GetPaidSocialDeliveryHealthUseCase(this.paidSocialDeliveryRepo);
   public readonly retryPaidSocialDeliveryUseCase = new RetryPaidSocialDeliveryUseCase(this.paidSocialDeliveryRepo);
   public readonly updatePaidSocialDestinationUseCase = new UpdatePaidSocialDestinationUseCase(this.paidSocialDestinationRepo);
+
+  public readonly capturePurchaseMeasurementUseCase = new CapturePurchaseMeasurementUseCase(this.paymentMeasurementRepo, this.hashingService);
+  public readonly linkPaymentToAttributionTouchpointsUseCase = new LinkPaymentToAttributionTouchpointsUseCase(this.paymentAttributionRepo);
+  public readonly reconcilePesapalOrderMeasurementUseCase = new ReconcilePesapalOrderMeasurementUseCase(
+    this.paymentMeasurementRepo,
+    this.capturePurchaseMeasurementUseCase,
+    this.linkPaymentToAttributionTouchpointsUseCase,
+    this.purchaseMeasurementQueue,
+    this.consentAwareMeasurementPolicy,
+    this.measurementLogger
+  );
+  public readonly getPaymentMeasurementReconciliationUseCase = new GetPaymentMeasurementReconciliationUseCase(this.paymentMeasurementRepo);
+  public readonly listPaymentMeasurementReconciliationsUseCase = new ListPaymentMeasurementReconciliationsUseCase(this.paymentMeasurementRepo);
+  public readonly retryPaymentMeasurementReconciliationUseCase = new RetryPaymentMeasurementReconciliationUseCase(this.paymentMeasurementRepo, this.purchaseMeasurementQueue);
 
   public static getInstance(): Registry {
     if (!Registry._instance) {

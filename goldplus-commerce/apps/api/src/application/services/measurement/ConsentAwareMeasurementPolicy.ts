@@ -1,4 +1,4 @@
-import { ConsentService } from '../../application/use-cases/measurement/ConsentService';
+import { ConsentService } from '../../use-cases/measurement/ConsentService';
 
 export class ConsentAwareMeasurementPolicy {
   constructor(private readonly consentService: ConsentService) {}

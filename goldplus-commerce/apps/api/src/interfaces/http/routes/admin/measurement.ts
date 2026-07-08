@@ -126,4 +126,8 @@ routes.get('/attribution/:orderId', requirePermissions([PERMISSIONS.ORDERS_READ]
   }
 });
 
+import measurementPaymentsRoutes from './measurement-payments';
+
+routes.route('/payments', measurementPaymentsRoutes);
+
 export default routes;

@@ -327,6 +327,40 @@ routes.get('/payments/pesapal/callback', async (c) => {
       merchantReference: reference,
       source: 'callback'
     });
+
+    if (result.ok && result.status === 'completed') {
+      try {
+        const order = await registry.orderRepo.findById(result.orderId);
+        const mappedInput = registry.pesapalMeasurementMapper.map({
+          verifiedPayment: result,
+          trackingId,
+          reference,
+          customerEmail: order?.customerEmail,
+          customerPhone: order?.customerPhone,
+        });
+        await registry.reconcilePesapalOrderMeasurementUseCase.execute(mappedInput);
+      } catch (err: any) {
+        console.error('[API_ERROR] Measurement reconciliation failed in callback:', err.message);
+        try {
+          await registry.paymentMeasurementRepo.createReconciliation({
+            orderId: result.orderId || 'UNKNOWN',
+            paymentReference: reference,
+            pesapalTrackingId: trackingId,
+            status: 'FAILED',
+            amount: 0,
+            currency: 'UGX'
+          });
+        } catch (subErr: any) {
+          registry.measurementLogger.error({
+            error: err.message,
+            subError: subErr.message,
+            orderId: result.orderId,
+            trackingId,
+            reference
+          }, 'CRITICAL: Unable to record FAILED reconciliation in callback.');
+        }
+      }
+    }
     
     if (result.ok && result.status === 'completed') {
       return c.redirect(`${frontendCallbackUrl}?status=success&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}`);
@@ -364,11 +398,45 @@ const handleIpn = async (c: any) => {
   }
 
   try {
-    await registry.verifyPesaPalPaymentUseCase.execute({
+    const result = await registry.verifyPesaPalPaymentUseCase.execute({
       orderTrackingId: trackingId,
       merchantReference: reference,
       source: 'ipn'
     });
+
+    if (result.ok && result.status === 'completed') {
+      try {
+        const order = await registry.orderRepo.findById(result.orderId);
+        const mappedInput = registry.pesapalMeasurementMapper.map({
+          verifiedPayment: result,
+          trackingId,
+          reference,
+          customerEmail: order?.customerEmail,
+          customerPhone: order?.customerPhone,
+        });
+        await registry.reconcilePesapalOrderMeasurementUseCase.execute(mappedInput);
+      } catch (err: any) {
+        console.error('[API_ERROR] Measurement reconciliation failed in IPN:', err.message);
+        try {
+          await registry.paymentMeasurementRepo.createReconciliation({
+            orderId: result.orderId || 'UNKNOWN',
+            paymentReference: reference,
+            pesapalTrackingId: trackingId,
+            status: 'FAILED',
+            amount: 0,
+            currency: 'UGX'
+          });
+        } catch (subErr: any) {
+          registry.measurementLogger.error({
+            error: err.message,
+            subError: subErr.message,
+            orderId: result.orderId,
+            trackingId,
+            reference
+          }, 'CRITICAL: Unable to record FAILED reconciliation in IPN.');
+        }
+      }
+    }
 
     return c.json({
       orderNotificationType: notificationType || 'IPNCHANGE',

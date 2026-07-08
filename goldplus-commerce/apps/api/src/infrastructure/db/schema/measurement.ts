@@ -6,6 +6,7 @@ import {
   jsonb,
   text,
   index,
+  uniqueIndex,
   integer,
   real,
 } from 'drizzle-orm/pg-core';
@@ -91,4 +92,39 @@ export const attributionTouchpoints = pgTable('attribution_touchpoints', {
   orderIdx:      index('attribution_order_idx').on(table.orderId),
   eventNameIdx:  index('attribution_event_name_idx').on(table.eventName),
   eventTimeIdx:  index('attribution_event_time_idx').on(table.eventTime),
+}));
+
+/**
+ * MEASUREMENT CONTROL TOWER — PAYMENT RECONCILIATIONS
+ */
+export const paymentMeasurementReconciliations = pgTable('payment_measurement_reconciliations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orderId: varchar('order_id', { length: 255 }).notNull(),
+  paymentReference: varchar('payment_reference', { length: 255 }),
+  pesapalTrackingId: varchar('pesapal_tracking_id', { length: 255 }),
+  status: varchar('status', { length: 50 }).notNull(),
+  amount: real('amount'),
+  currency: varchar('currency', { length: 10 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  orderIdIdx: uniqueIndex('pmr_order_idx').on(t.orderId),
+  paymentRefIdx: index('pmr_payment_ref_idx').on(t.paymentReference),
+  pesapalIdx: uniqueIndex('pmr_pesapal_idx').on(t.pesapalTrackingId),
+}));
+
+/**
+ * MEASUREMENT CONTROL TOWER — PURCHASE MEASUREMENT EVENTS
+ */
+export const purchaseMeasurementEvents = pgTable('purchase_measurement_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orderId: varchar('order_id', { length: 255 }).notNull(),
+  paymentReference: varchar('payment_reference', { length: 255 }),
+  eventId: varchar('event_id', { length: 255 }).notNull().unique(),
+  idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull().unique(),
+  payloadSummary: jsonb('payload_summary').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  orderIdIdx: index('pme_order_idx').on(t.orderId),
+  idempotencyIdx: index('pme_idempotency_idx').on(t.idempotencyKey),
 }));

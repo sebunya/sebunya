@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ConsentAwareMeasurementPolicy } from '../../apps/api/src/infrastructure/measurement/ConsentAwareMeasurementPolicy';
+import { ConsentAwareMeasurementPolicy } from '../../apps/api/src/application/services/measurement/ConsentAwareMeasurementPolicy';
 import { ConsentService } from '../../apps/api/src/application/use-cases/measurement/ConsentService';
 
 describe('ConsentAwareMeasurementPolicy', () => {
