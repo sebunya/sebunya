@@ -63,7 +63,12 @@ export class BuildControlledActivationRunbookUseCase {
 
     const runbook = await this.runbookBuilder.buildRunbook(candidate.id, canaryPlan, incidentPlan);
 
-    await this.auditRepository.recordAuditEvent({ action: "ACTION", safePayload: "payload", actorAdminId: "admin", activationRequestId: "req" });
+    await this.auditRepository.recordAuditEvent({
+      action: 'CANARY_RUNBOOK_BUILT',
+      safePayload: JSON.stringify({ candidateId: candidate.id }),
+      actorAdminId: command.adminId,
+      activationRequestId: candidate.activationRequestId,
+    });
 
     return runbook;
   }

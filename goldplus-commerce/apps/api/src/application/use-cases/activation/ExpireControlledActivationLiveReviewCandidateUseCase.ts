@@ -30,6 +30,11 @@ export class ExpireControlledActivationLiveReviewCandidateUseCase {
 
     await this.liveReviewRepository.updateCandidateStatus(command.candidateId, 'EXPIRED');
 
-    await this.auditRepository.recordAuditEvent({ action: "ACTION", safePayload: "payload", actorAdminId: "admin", activationRequestId: "req" });
+    await this.auditRepository.recordAuditEvent({
+      action: 'LIVE_REVIEW_CANDIDATE_EXPIRED',
+      safePayload: JSON.stringify({ candidateId: command.candidateId, reason: command.expiryReason }),
+      actorAdminId: command.adminId,
+      activationRequestId: candidate.activationRequestId,
+    });
   }
 }

@@ -54,6 +54,11 @@ export class RecordControlledActivationOperatorAcknowledgementUseCase {
 
     await this.checklistRepository.updateChecklist(checklist);
 
-    await this.auditRepository.recordAuditEvent({ action: "ACTION", safePayload: "payload", actorAdminId: "admin", activationRequestId: "req" });
+    await this.auditRepository.recordAuditEvent({
+      action: 'OPERATOR_CHECKLIST_ACKNOWLEDGED',
+      safePayload: JSON.stringify({ checklistId: command.checklistId, candidateId: command.candidateId }),
+      actorAdminId: command.adminId,
+      activationRequestId: candidate.activationRequestId,
+    });
   }
 }

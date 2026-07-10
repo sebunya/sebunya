@@ -79,8 +79,9 @@ router.post(
     try {
       const planId = await createExecutionPlanUseCase.execute(command);
       return c.json({ success: true, executionPlanId: planId });
-    } catch (error: any) {
-      return c.json({ success: false, error: error.message }, 400);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return c.json({ success: false, error: msg }, 400);
     }
   }
 );
@@ -99,8 +100,9 @@ router.post(
     try {
       const dryRunId = await runDryRunUseCase.execute(data);
       return c.json({ success: true, dryRunId });
-    } catch (error: any) {
-      return c.json({ success: false, error: error.message }, 400);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return c.json({ success: false, error: msg }, 400);
     }
   }
 );
@@ -119,8 +121,9 @@ router.post(
     try {
       const previews = await generatePreviewsUseCase.execute(dryRunId, data.activationRequestId);
       return c.json({ success: true, previews });
-    } catch (error: any) {
-      return c.json({ success: false, error: error.message }, 400);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return c.json({ success: false, error: msg }, 400);
     }
   }
 );
@@ -140,8 +143,9 @@ router.post(
     try {
       const result = await validateCanaryPlanUseCase.execute(data);
       return c.json(result);
-    } catch (error: any) {
-      return c.json({ success: false, error: error.message }, 400);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return c.json({ success: false, error: msg }, 400);
     }
   }
 );
@@ -160,8 +164,9 @@ router.post(
     try {
       const evidencePack = await buildEvidencePackUseCase.execute(dryRunId, data.activationRequestId);
       return c.json({ success: true, evidencePack });
-    } catch (error: any) {
-      return c.json({ success: false, error: error.message }, 400);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return c.json({ success: false, error: msg }, 400);
     }
   }
 );
@@ -180,8 +185,9 @@ router.post(
     try {
       await markReadyUseCase.execute({ adminId: data.adminId, executionPlanId });
       return c.json({ success: true });
-    } catch (error: any) {
-      return c.json({ success: false, error: error.message }, 400);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return c.json({ success: false, error: msg }, 400);
     }
   }
 );
@@ -205,8 +211,9 @@ router.post(
         reason: data.reason
       });
       return c.json({ success: true });
-    } catch (error: any) {
-      return c.json({ success: false, error: error.message }, 400);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return c.json({ success: false, error: msg }, 400);
     }
   }
 );

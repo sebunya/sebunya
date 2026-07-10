@@ -80,7 +80,12 @@ export class CreateControlledActivationLiveReviewCandidateUseCase {
 
     await this.liveReviewRepository.createCandidate(candidate);
 
-    await this.auditRepository.recordAuditEvent({ action: "ACTION", safePayload: "payload", actorAdminId: "admin", activationRequestId: "req" });
+    await this.auditRepository.recordAuditEvent({
+      action: 'LIVE_REVIEW_CANDIDATE_CREATED',
+      safePayload: JSON.stringify({ candidateId: candidate.id, dryRunId: command.dryRunId, evidencePackId: command.evidencePackId }),
+      actorAdminId: command.adminId,
+      activationRequestId: command.activationRequestId,
+    });
 
     return candidate;
   }

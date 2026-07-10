@@ -36,6 +36,11 @@ export class CancelControlledActivationLiveReviewCandidateUseCase {
 
     await this.liveReviewRepository.updateCandidateStatus(command.candidateId, 'CANCELLED');
 
-    await this.auditRepository.recordAuditEvent({ action: "ACTION", safePayload: "payload", actorAdminId: "admin", activationRequestId: "req" });
+    await this.auditRepository.recordAuditEvent({
+      action: 'LIVE_REVIEW_CANDIDATE_CANCELLED',
+      safePayload: JSON.stringify({ candidateId: command.candidateId, reason: command.cancellationReason }),
+      actorAdminId: command.adminId,
+      activationRequestId: candidate.activationRequestId,
+    });
   }
 }
