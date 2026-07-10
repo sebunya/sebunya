@@ -1,3 +1,4 @@
+import { ControlledActivationExecutionPlanRepository } from '../../ports/activation/ControlledActivationExecutionPlanRepository.js';
 import { randomUUID } from 'crypto';
 import { ControlledActivationLiveReviewRepository, LiveReadinessCheck } from '../../ports/activation/ControlledActivationLiveReviewRepository';
 import { ControlledActivationDryRunRepository } from '../../ports/activation/ControlledActivationDryRunRepository';
@@ -19,7 +20,7 @@ export class RunControlledActivationLiveReadinessChecksUseCase {
     private accessPolicy: ControlledActivationAccessPolicy,
     private auditRepository: ControlledActivationAuditRepository,
     private liveReadinessChecker: ControlledActivationLiveReadinessChecker,
-    private executionPlanRepository: any,
+    private executionPlanRepository: ControlledActivationExecutionPlanRepository,
     private evidencePackBuilder: BuildControlledActivationEvidencePackUseCase,
     private canaryPlanner: ControlledActivationCanaryPlanner
   ) {}

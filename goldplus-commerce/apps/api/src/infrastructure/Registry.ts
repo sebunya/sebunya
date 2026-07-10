@@ -613,8 +613,8 @@ export class Registry {
   public readonly acknowledgeActivationBlockerUseCase = new AcknowledgeActivationBlockerUseCase(this.controlledActivationAccessPolicy, this.controlledActivationReadinessChecker, this.controlledActivationAuditRepo);
 
   // Controlled Activation Dry Run (Phase 3 Slice 2)
-  public readonly controlledActivationExecutionPlanRepo = new DrizzleControlledActivationExecutionPlanRepository(db as any);
-  public readonly controlledActivationDryRunRepo = new DrizzleControlledActivationDryRunRepository(db as any);
+  public readonly controlledActivationExecutionPlanRepo = new DrizzleControlledActivationExecutionPlanRepository();
+  public readonly controlledActivationDryRunRepo = new DrizzleControlledActivationDryRunRepository();
   public readonly controlledActivationPayloadPreviewer = new DefaultControlledActivationPayloadPreviewer();
   public readonly controlledActivationEvidencePackBuilder = new DefaultControlledActivationEvidencePackBuilder();
   public readonly controlledActivationCanaryPlanner = new DefaultControlledActivationCanaryPlanner();

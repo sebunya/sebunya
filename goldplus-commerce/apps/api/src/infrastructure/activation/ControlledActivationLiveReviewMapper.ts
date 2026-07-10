@@ -1,7 +1,8 @@
+import * as schema from '../db/schema/index.js';
 import { LiveReviewCandidate, LiveReadinessCheck, LiveReviewCandidateStatus, LiveReadinessStatus } from '../../application/ports/activation/ControlledActivationLiveReviewRepository';
 
 export class ControlledActivationLiveReviewMapper {
-  static toCandidateDomain(raw: any): LiveReviewCandidate {
+  static toCandidateDomain(raw: typeof schema.controlledActivationLiveReviewCandidates.$inferSelect): LiveReviewCandidate {
     return {
       id: raw.id,
       activationRequestId: raw.activationRequestId,
@@ -22,13 +23,13 @@ export class ControlledActivationLiveReviewMapper {
     };
   }
 
-  static toReadinessCheckDomain(raw: any): LiveReadinessCheck {
+  static toReadinessCheckDomain(raw: typeof schema.controlledActivationLiveReadinessChecks.$inferSelect): LiveReadinessCheck {
     return {
       id: raw.id,
       candidateId: raw.candidateId,
       gateId: raw.gateId,
       status: raw.status as LiveReadinessStatus,
-      severity: raw.severity,
+      severity: raw.severity as 'CRITICAL' | 'WARNING' | 'INFO',
       evidenceSummary: raw.evidenceSummary,
       blockerReason: raw.blockerReason || undefined,
       checkedAt: raw.checkedAt,

@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { db } from '../db/client.js';
 import * as schema from '../db/schema/index.js';
 import {
   ActivationExecutionPlan,
@@ -9,11 +9,10 @@ import {
 import { ControlledActivationDryRunMapper } from './ControlledActivationDryRunMapper.js';
 
 export class DrizzleControlledActivationExecutionPlanRepository implements ControlledActivationExecutionPlanRepository {
-  constructor(private db: NodePgDatabase<typeof schema>) {}
-
+  
   async createExecutionPlan(plan: Omit<ActivationExecutionPlan, 'createdAt' | 'updatedAt'>): Promise<ActivationExecutionPlan> {
     const now = new Date();
-    await this.db.insert(schema.controlledActivationExecutionPlans).values({
+    await db.insert(schema.controlledActivationExecutionPlans).values({
       id: plan.id,
       activationRequestId: plan.activationRequestId,
       createdByAdminId: plan.createdByAdminId,
@@ -36,7 +35,7 @@ export class DrizzleControlledActivationExecutionPlanRepository implements Contr
   }
 
   async getExecutionPlan(id: string): Promise<ActivationExecutionPlan | null> {
-    const rows = await this.db
+    const rows = await db
       .select()
       .from(schema.controlledActivationExecutionPlans)
       .where(eq(schema.controlledActivationExecutionPlans.id, id))
@@ -47,7 +46,7 @@ export class DrizzleControlledActivationExecutionPlanRepository implements Contr
   }
 
   async updateExecutionPlanStatus(id: string, status: ExecutionPlanStatus): Promise<ActivationExecutionPlan> {
-    await this.db
+    await db
       .update(schema.controlledActivationExecutionPlans)
       .set({ status, updatedAt: new Date() })
       .where(eq(schema.controlledActivationExecutionPlans.id, id));
@@ -58,7 +57,7 @@ export class DrizzleControlledActivationExecutionPlanRepository implements Contr
   }
 
   async getExecutionPlanForRequest(activationRequestId: string): Promise<ActivationExecutionPlan | null> {
-    const rows = await this.db
+    const rows = await db
       .select()
       .from(schema.controlledActivationExecutionPlans)
       .where(eq(schema.controlledActivationExecutionPlans.activationRequestId, activationRequestId))

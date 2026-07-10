@@ -1,3 +1,4 @@
+import { ChecklistItem } from '../../application/ports/activation/ControlledActivationOperatorChecklistRepository.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { controlledActivationOperatorChecklists } from '../db/schema/activation-live-review';
@@ -44,7 +45,7 @@ export class DrizzleControlledActivationOperatorChecklistRepository implements C
       candidateId: r.candidateId,
       operatorAdminId: r.operatorAdminId,
       checklistStatus: r.checklistStatus as ChecklistStatus,
-      items: r.items as any,
+      items: r.items as unknown as ChecklistItem[],
       acknowledgedAt: r.acknowledgedAt || undefined,
     };
   }

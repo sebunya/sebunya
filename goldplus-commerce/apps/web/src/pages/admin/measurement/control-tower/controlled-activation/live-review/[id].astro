@@ -153,7 +153,7 @@ const { candidate, checklist, runbook, approvals, incidentPlan } = details;
             <h3 class="text-lg font-bold text-slate-800 mb-4">Stakeholder Approvals</h3>
             {approvals && approvals.length > 0 ? (
               <div class="space-y-3">
-                {approvals.map((approval: any) => (
+                {approvals.map((approval: StakeholderLiveApproval) => (
                   <div class="text-sm p-3 border border-slate-100 bg-slate-50 rounded-sm">
                       <div class="flex justify-between items-center mb-1">
                         <span class={`font-medium ${approval.approvalStatus === 'APPROVED' ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -191,8 +191,7 @@ const { candidate, checklist, runbook, approvals, incidentPlan } = details;
     }
     
     // API base URL
-    // @ts-ignore
-    const API_BASE = window.__GP_API_BASE__ || 'http://localhost:3000';
+        const API_BASE = window.__GP_API_BASE__ || 'http://localhost:3000';
 
     if (runChecksBtn) {
       runChecksBtn.addEventListener('click', async () => {

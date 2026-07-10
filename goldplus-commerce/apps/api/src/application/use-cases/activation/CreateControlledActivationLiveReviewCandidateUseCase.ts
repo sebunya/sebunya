@@ -58,9 +58,6 @@ export class CreateControlledActivationLiveReviewCandidateUseCase {
     if (!executionPlan) {
       throw new Error(`Execution plan ${command.executionPlanId} not found.`);
     }
-    if ('PASS' !== 'PASS') {
-      throw new Error(`Cannot create live review candidate without a PASSing release readiness status. (Current: ${'PASS'})`);
-    }
 
     const candidate: LiveReviewCandidate = {
       id: randomUUID(),

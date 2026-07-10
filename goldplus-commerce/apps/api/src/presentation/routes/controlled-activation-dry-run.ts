@@ -20,8 +20,8 @@ import { BuildControlledActivationEvidencePackUseCase } from '../../application/
 import { MarkActivationReadyForLiveReviewUseCase } from '../../application/use-cases/activation/MarkActivationReadyForLiveReviewUseCase.js';
 import { CancelControlledActivationDryRunUseCase } from '../../application/use-cases/activation/CancelControlledActivationDryRunUseCase.js';
 
-const executionPlanRepo = new DrizzleControlledActivationExecutionPlanRepository(db as any);
-const dryRunRepo = new DrizzleControlledActivationDryRunRepository(db as any);
+const executionPlanRepo = new DrizzleControlledActivationExecutionPlanRepository();
+const dryRunRepo = new DrizzleControlledActivationDryRunRepository();
 const payloadPreviewer = new DefaultControlledActivationPayloadPreviewer();
 const canaryPlanner = new DefaultControlledActivationCanaryPlanner();
 const evidencePackBuilder = new DefaultControlledActivationEvidencePackBuilder();

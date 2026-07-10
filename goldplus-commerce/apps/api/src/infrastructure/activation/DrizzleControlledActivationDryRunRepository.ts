@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { db } from '../db/client.js';
 import * as schema from '../db/schema/index.js';
 import {
   ActivationDryRun,
@@ -8,11 +8,10 @@ import {
 import { ControlledActivationDryRunMapper } from './ControlledActivationDryRunMapper.js';
 
 export class DrizzleControlledActivationDryRunRepository implements ControlledActivationDryRunRepository {
-  constructor(private db: NodePgDatabase<typeof schema>) {}
-
+  
   async createDryRun(dryRun: Omit<ActivationDryRun, 'startedAt'>): Promise<ActivationDryRun> {
     const startedAt = new Date();
-    await this.db.insert(schema.controlledActivationDryRuns).values({
+    await db.insert(schema.controlledActivationDryRuns).values({
       id: dryRun.id,
       executionPlanId: dryRun.executionPlanId,
       activationRequestId: dryRun.activationRequestId,
@@ -33,7 +32,7 @@ export class DrizzleControlledActivationDryRunRepository implements ControlledAc
   }
 
   async getDryRun(id: string): Promise<ActivationDryRun | null> {
-    const rows = await this.db
+    const rows = await db
       .select()
       .from(schema.controlledActivationDryRuns)
       .where(eq(schema.controlledActivationDryRuns.id, id))
@@ -53,7 +52,7 @@ export class DrizzleControlledActivationDryRunRepository implements ControlledAc
     if (updates.redactedEvidenceRef !== undefined) updateData.redactedEvidenceRef = updates.redactedEvidenceRef;
 
     if (Object.keys(updateData).length > 0) {
-      await this.db
+      await db
         .update(schema.controlledActivationDryRuns)
         .set(updateData)
         .where(eq(schema.controlledActivationDryRuns.id, id));
@@ -65,7 +64,7 @@ export class DrizzleControlledActivationDryRunRepository implements ControlledAc
   }
 
   async getDryRunsForPlan(executionPlanId: string): Promise<ActivationDryRun[]> {
-    const rows = await this.db
+    const rows = await db
       .select()
       .from(schema.controlledActivationDryRuns)
       .where(eq(schema.controlledActivationDryRuns.executionPlanId, executionPlanId));

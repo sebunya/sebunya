@@ -25,7 +25,7 @@ export class DrizzleControlledActivationStakeholderLiveApprovalRepository implem
       .where(eq(controlledActivationStakeholderLiveApprovals.candidateId, candidateId))
       .orderBy(controlledActivationStakeholderLiveApprovals.approvedAt);
 
-    return records.map((r: any) => ({
+    return records.map((r: typeof controlledActivationStakeholderLiveApprovals.$inferSelect) => ({
       id: r.id,
       candidateId: r.candidateId,
       approverAdminId: r.approverAdminId,

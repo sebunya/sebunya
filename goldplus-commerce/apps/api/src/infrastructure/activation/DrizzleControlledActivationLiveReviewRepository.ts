@@ -1,3 +1,4 @@
+import * as schema from '../db/schema/index.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { 
@@ -55,7 +56,7 @@ export class DrizzleControlledActivationLiveReviewRepository implements Controll
       .from(controlledActivationLiveReviewCandidates)
       .orderBy(controlledActivationLiveReviewCandidates.createdAt);
 
-    return records.map((r: any) => ControlledActivationLiveReviewMapper.toCandidateDomain(r));
+    return records.map((r: typeof schema.controlledActivationLiveReviewCandidates.$inferSelect) => ControlledActivationLiveReviewMapper.toCandidateDomain(r));
   }
 
   async saveReadinessChecks(checks: LiveReadinessCheck[]): Promise<void> {
@@ -82,6 +83,6 @@ export class DrizzleControlledActivationLiveReviewRepository implements Controll
       .from(controlledActivationLiveReadinessChecks)
       .where(eq(controlledActivationLiveReadinessChecks.candidateId, candidateId));
 
-    return records.map((r: any) => ControlledActivationLiveReviewMapper.toReadinessCheckDomain(r));
+    return records.map((r: typeof schema.controlledActivationLiveReadinessChecks.$inferSelect) => ControlledActivationLiveReviewMapper.toReadinessCheckDomain(r));
   }
 }
