@@ -177,6 +177,18 @@ import { ListMeasurementControlTowerWarningsUseCase } from '../application/use-c
 import { ListRecentMeasurementEventsUseCase } from '../application/use-cases/admin/ListRecentMeasurementEventsUseCase';
 import { RecordMeasurementControlTowerViewUseCase } from '../application/use-cases/admin/RecordMeasurementControlTowerViewUseCase';
 
+import { DrizzleReleaseReadinessRepository } from './release/DrizzleReleaseReadinessRepository';
+import { DrizzleReleaseReadinessAuditRepository } from './release/DrizzleReleaseReadinessAuditRepository';
+import { DefaultReleaseReadinessAccessPolicy } from './release/DefaultReleaseReadinessAccessPolicy';
+import { DefaultReleaseEvidenceRedactor } from './release/DefaultReleaseEvidenceRedactor';
+import { SafeReleaseReadinessCheckRunner } from './release/SafeReleaseReadinessCheckRunner';
+import { GetReleaseReadinessSummaryUseCase } from '../application/use-cases/release/GetReleaseReadinessSummaryUseCase';
+import { RunReleaseReadinessChecksUseCase } from '../application/use-cases/release/RunReleaseReadinessChecksUseCase';
+import { GetReleaseReadinessRunUseCase } from '../application/use-cases/release/GetReleaseReadinessRunUseCase';
+import { ListReleaseReadinessRunsUseCase } from '../application/use-cases/release/ListReleaseReadinessRunsUseCase';
+import { RecordReleaseDecisionUseCase } from '../application/use-cases/release/RecordReleaseDecisionUseCase';
+import { AcknowledgeReleaseGateUseCase } from '../application/use-cases/release/AcknowledgeReleaseGateUseCase';
+
 export class Registry {
   private static _instance: Registry;
   
@@ -496,6 +508,43 @@ export class Registry {
   public readonly recordMeasurementControlTowerViewUseCase = new RecordMeasurementControlTowerViewUseCase(
     this.measurementControlTowerAuditRepo,
     this.measurementControlTowerAccessPolicy
+  );
+
+  // Release Readiness Dependencies
+  public readonly releaseReadinessRepo = new DrizzleReleaseReadinessRepository();
+  public readonly releaseReadinessAuditRepo = new DrizzleReleaseReadinessAuditRepository();
+  public readonly releaseReadinessAccessPolicy = new DefaultReleaseReadinessAccessPolicy();
+  public readonly releaseEvidenceRedactor = new DefaultReleaseEvidenceRedactor();
+  public readonly releaseReadinessCheckRunner = new SafeReleaseReadinessCheckRunner(this.releaseEvidenceRedactor);
+
+  public readonly getReleaseReadinessSummaryUseCase = new GetReleaseReadinessSummaryUseCase(
+    this.releaseReadinessRepo,
+    this.releaseReadinessAccessPolicy,
+    this.releaseReadinessAuditRepo
+  );
+  public readonly runReleaseReadinessChecksUseCase = new RunReleaseReadinessChecksUseCase(
+    this.releaseReadinessRepo,
+    this.releaseReadinessCheckRunner,
+    this.releaseReadinessAccessPolicy,
+    this.releaseReadinessAuditRepo
+  );
+  public readonly getReleaseReadinessRunUseCase = new GetReleaseReadinessRunUseCase(
+    this.releaseReadinessRepo,
+    this.releaseReadinessAccessPolicy
+  );
+  public readonly listReleaseReadinessRunsUseCase = new ListReleaseReadinessRunsUseCase(
+    this.releaseReadinessRepo,
+    this.releaseReadinessAccessPolicy
+  );
+  public readonly recordReleaseDecisionUseCase = new RecordReleaseDecisionUseCase(
+    this.releaseReadinessRepo,
+    this.releaseReadinessAccessPolicy,
+    this.releaseReadinessAuditRepo
+  );
+  public readonly acknowledgeReleaseGateUseCase = new AcknowledgeReleaseGateUseCase(
+    this.releaseReadinessRepo,
+    this.releaseReadinessAccessPolicy,
+    this.releaseReadinessAuditRepo
   );
 
   public static getInstance(): Registry {

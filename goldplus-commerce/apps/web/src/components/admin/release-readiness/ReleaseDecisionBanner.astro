@@ -1,0 +1,29 @@
+---
+const { decision, run } = Astro.props;
+
+let colorClass = 'bg-gray-100 border-gray-200 text-gray-800';
+let title = 'Not Ready For Release';
+
+if (!run) {
+  title = 'No Run Found';
+} else if (decision?.status === 'APPROVED_FOR_CONTROLLED_ACTIVATION') {
+  colorClass = 'bg-green-100 border-green-200 text-green-800';
+  title = 'APPROVED FOR CONTROLLED ACTIVATION';
+} else if (run.status === 'FAIL') {
+  colorClass = 'bg-red-100 border-red-200 text-red-800';
+  title = 'BLOCKED: Critical failures detected';
+} else if (run.status === 'WARN') {
+  colorClass = 'bg-yellow-100 border-yellow-200 text-yellow-800';
+  title = 'WARNING: Non-critical issues detected';
+} else if (run.status === 'PASS') {
+  colorClass = 'bg-blue-100 border-blue-200 text-blue-800';
+  title = 'READY: All safe checks passed';
+}
+---
+
+<div class={`p-4 rounded-lg border ${colorClass}`}>
+  <h2 class="font-bold text-lg">{title}</h2>
+  <p class="text-sm mt-1">
+    {decision?.notes || 'Pending formal governance sign-off.'}
+  </p>
+</div>

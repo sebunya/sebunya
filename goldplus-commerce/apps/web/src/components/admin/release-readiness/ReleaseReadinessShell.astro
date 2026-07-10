@@ -1,0 +1,64 @@
+---
+import ReleaseSafetyNote from './ReleaseSafetyNote.astro';
+import ReleaseDecisionBanner from './ReleaseDecisionBanner.astro';
+import ReleaseRiskRegister from './ReleaseRiskRegister.astro';
+
+// Mock data to demonstrate the UI (in real life fetched from the summary endpoint)
+const summary = {
+  latestRun: {
+    id: 'run-123',
+    status: 'WARN',
+    startedAt: new Date().toISOString(),
+  },
+  decision: null,
+  gates: [
+    {
+      id: 'g-1',
+      gateId: 'CODE:TYPECHECK',
+      category: 'CODE',
+      name: 'TypeScript Typecheck',
+      status: 'PASS',
+      severity: 'CRITICAL',
+      evidence: { stdout: 'Found 0 errors.' }
+    },
+    {
+      id: 'g-2',
+      gateId: 'TEST:ARCHITECTURE',
+      category: 'TEST',
+      name: 'Architecture Boundary Tests',
+      status: 'PASS',
+      severity: 'CRITICAL',
+      evidence: { stdout: 'All tests passed.' }
+    },
+    {
+      id: 'g-3',
+      gateId: 'MEASUREMENT:GTM',
+      category: 'MEASUREMENT',
+      name: 'GTM Tag Dry-Run Validation',
+      status: 'WARN',
+      severity: 'HIGH',
+      evidence: { warnings: ['Duplicate tag found in dry-run'] }
+    }
+  ]
+};
+---
+
+<div class="flex flex-col gap-6 w-full max-w-7xl mx-auto p-6">
+  <div class="flex justify-between items-center">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Release Readiness & QA Governance</h1>
+      <p class="text-sm text-gray-500">Slice 9 Control Plane</p>
+    </div>
+    <div>
+      <button class="px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700 font-medium">
+        Run Safe Checks
+      </button>
+    </div>
+  </div>
+
+  <ReleaseSafetyNote />
+
+  <ReleaseDecisionBanner decision={summary.decision} run={summary.latestRun} />
+
+  <ReleaseRiskRegister gates={summary.gates} />
+</div>

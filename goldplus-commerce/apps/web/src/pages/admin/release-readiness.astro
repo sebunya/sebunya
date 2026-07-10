@@ -1,0 +1,13 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import ReleaseReadinessShell from '../../components/admin/release-readiness/ReleaseReadinessShell.astro';
+
+// In a real app, we would fetch data from the API or a loader
+// For now we just pass a token or dummy data flag to the shell
+
+const title = 'Release Readiness - Measurement Control Tower';
+---
+
+<AdminLayout title={title}>
+  <ReleaseReadinessShell />
+</AdminLayout>

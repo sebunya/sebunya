@@ -30,6 +30,7 @@ import measurementRoutes from './routes/measurement';
 import adminMeasurementRoutes from './routes/admin/measurement';
 import { measurementGtmRoutes } from './routes/admin/measurement-gtm';
 import measurementControlTowerRoutes from './routes/admin/measurement-control-tower';
+import { releaseReadinessAdminRouter } from './routes/admin/release-readiness';
 import { productFinderRoutes } from './routes/product-finder';
 import { maintenanceMode } from './middleware/maintenance';
 import { deploymentService } from '../../infrastructure/deployment/DeploymentService';
@@ -139,6 +140,7 @@ app.route('/measurement', measurementRoutes);
 app.route('/admin/measurement', adminMeasurementRoutes);
 app.route('/admin/measurement/gtm', measurementGtmRoutes);
 app.route('/admin/measurement-control-tower', measurementControlTowerRoutes);
+app.route('/admin/release-readiness', releaseReadinessAdminRouter);
 app.route('/product-finder', productFinderRoutes);
 
 // Health check route mounted via route registration

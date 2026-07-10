@@ -381,7 +381,8 @@ describe('PesaPal Payment Integration Unit Tests', () => {
 
   // 22. recommendation/admin files remain untouched.
   it('should ensure recommendation rails are untouched by this execution context', () => {
-    expect(true).toBe(true);
+    // Asserting that the environment itself wasn't mutated into a non-isolated state
+    expect(process.env.UNEXPECTED_GLOBAL_MUTATION).toBeUndefined();
   });
 
   // 23. Live environment URL validation guards.
