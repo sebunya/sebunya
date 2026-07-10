@@ -1,0 +1,24 @@
+---
+import ExecutionPlanPanel from './ExecutionPlanPanel.astro';
+import DryRunControlPanel from './DryRunControlPanel.astro';
+import PayloadPreviewPanel from './PayloadPreviewPanel.astro';
+import EvidencePackPanel from './EvidencePackPanel.astro';
+---
+<div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
+  <div class="bg-indigo-50 border-l-4 border-indigo-400 p-4 mb-6">
+    <div class="flex">
+      <div class="ml-3">
+        <p class="text-sm text-indigo-700">
+          <strong>DRY-RUN ENVIRONMENT:</strong> Live activation is blocked. All payloads generated here are strictly for review and will not be dispatched to external systems.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <ExecutionPlanPanel />
+    <DryRunControlPanel />
+    <PayloadPreviewPanel />
+    <EvidencePackPanel />
+  </div>
+</div>

@@ -34,6 +34,7 @@ import { releaseReadinessAdminRouter } from './routes/admin/release-readiness';
 import { productFinderRoutes } from './routes/product-finder';
 import { maintenanceMode } from './middleware/maintenance';
 import { deploymentService } from '../../infrastructure/deployment/DeploymentService';
+import { controlledActivationDryRunRouter } from '../../presentation/routes/controlled-activation-dry-run.js';
 
 
 // Define typed variables for the Hono context
@@ -141,6 +142,7 @@ app.route('/admin/measurement', adminMeasurementRoutes);
 app.route('/admin/measurement/gtm', measurementGtmRoutes);
 app.route('/admin/measurement-control-tower', measurementControlTowerRoutes);
 app.route('/admin/release-readiness', releaseReadinessAdminRouter);
+app.route('/admin/controlled-activation-dry-run', controlledActivationDryRunRouter);
 app.route('/product-finder', productFinderRoutes);
 
 // Health check route mounted via route registration

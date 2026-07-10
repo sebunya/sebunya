@@ -16,3 +16,4 @@ export * from './product_finder';
 export * from './measurement_control_tower';
 export * from './release_readiness';
 export * from './activation';
+export * from './activation-dry-run';

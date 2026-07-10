@@ -141,6 +141,13 @@
       "when": 1783664917142,
       "tag": "0019_red_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1783697390562,
+      "tag": "0020_stiff_random",
+      "breakpoints": true
     }
   ]
 }
