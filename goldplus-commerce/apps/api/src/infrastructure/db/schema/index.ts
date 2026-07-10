@@ -17,3 +17,4 @@ export * from './measurement_control_tower';
 export * from './release_readiness';
 export * from './activation';
 export * from './activation-dry-run';
+export * from './activation-live-review';

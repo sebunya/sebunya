@@ -1,3 +1,4 @@
+import { db } from './db/client';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
@@ -205,6 +206,34 @@ import { RecordControlledActivationApprovalUseCase } from '../application/use-ca
 import { RejectControlledActivationRequestUseCase } from '../application/use-cases/activation/RejectControlledActivationRequestUseCase';
 import { CancelControlledActivationRequestUseCase } from '../application/use-cases/activation/CancelControlledActivationRequestUseCase';
 import { AcknowledgeActivationBlockerUseCase } from '../application/use-cases/activation/AcknowledgeActivationBlockerUseCase';
+
+import { DrizzleControlledActivationExecutionPlanRepository } from './activation/DrizzleControlledActivationExecutionPlanRepository';
+import { DrizzleControlledActivationDryRunRepository } from './activation/DrizzleControlledActivationDryRunRepository';
+import { DefaultControlledActivationPayloadPreviewer } from './activation/DefaultControlledActivationPayloadPreviewer';
+import { DefaultControlledActivationEvidencePackBuilder } from './activation/DefaultControlledActivationEvidencePackBuilder';
+import { DefaultControlledActivationCanaryPlanner } from './activation/DefaultControlledActivationCanaryPlanner';
+import { CreateControlledActivationExecutionPlanUseCase } from '../application/use-cases/activation/CreateControlledActivationExecutionPlanUseCase';
+import { RunControlledActivationDryRunUseCase } from '../application/use-cases/activation/RunControlledActivationDryRunUseCase';
+import { CancelControlledActivationDryRunUseCase } from '../application/use-cases/activation/CancelControlledActivationDryRunUseCase';
+import { GenerateDestinationPayloadPreviewsUseCase } from '../application/use-cases/activation/GenerateDestinationPayloadPreviewsUseCase';
+import { BuildControlledActivationEvidencePackUseCase } from '../application/use-cases/activation/BuildControlledActivationEvidencePackUseCase';
+import { ValidateControlledActivationCanaryPlanUseCase } from '../application/use-cases/activation/ValidateControlledActivationCanaryPlanUseCase';
+
+import { DrizzleControlledActivationLiveReviewRepository } from './activation/DrizzleControlledActivationLiveReviewRepository';
+import { DrizzleControlledActivationOperatorChecklistRepository } from './activation/DrizzleControlledActivationOperatorChecklistRepository';
+import { DrizzleControlledActivationStakeholderLiveApprovalRepository } from './activation/DrizzleControlledActivationStakeholderLiveApprovalRepository';
+import { DrizzleControlledActivationIncidentPlanRepository } from './activation/DrizzleControlledActivationIncidentPlanRepository';
+import { DefaultControlledActivationLiveReadinessChecker } from './activation/DefaultControlledActivationLiveReadinessChecker';
+import { DefaultControlledActivationRunbookBuilder } from './activation/DefaultControlledActivationRunbookBuilder';
+import { CreateControlledActivationLiveReviewCandidateUseCase } from '../application/use-cases/activation/CreateControlledActivationLiveReviewCandidateUseCase';
+import { RunControlledActivationLiveReadinessChecksUseCase } from '../application/use-cases/activation/RunControlledActivationLiveReadinessChecksUseCase';
+import { BuildControlledActivationRunbookUseCase } from '../application/use-cases/activation/BuildControlledActivationRunbookUseCase';
+import { RecordControlledActivationStakeholderLiveApprovalUseCase } from '../application/use-cases/activation/RecordControlledActivationStakeholderLiveApprovalUseCase';
+import { RecordControlledActivationOperatorAcknowledgementUseCase } from '../application/use-cases/activation/RecordControlledActivationOperatorAcknowledgementUseCase';
+import { CancelControlledActivationLiveReviewCandidateUseCase } from '../application/use-cases/activation/CancelControlledActivationLiveReviewCandidateUseCase';
+import { ExpireControlledActivationLiveReviewCandidateUseCase } from '../application/use-cases/activation/ExpireControlledActivationLiveReviewCandidateUseCase';
+import { GetControlledActivationLiveReviewCandidateUseCase } from '../application/use-cases/activation/GetControlledActivationLiveReviewCandidateUseCase';
+import { ListControlledActivationLiveReviewCandidatesUseCase } from '../application/use-cases/activation/ListControlledActivationLiveReviewCandidatesUseCase';
 
 export class Registry {
   private static _instance: Registry;
@@ -582,6 +611,38 @@ export class Registry {
   public readonly rejectControlledActivationRequestUseCase = new RejectControlledActivationRequestUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy, this.activationStakeholderApprovalRepo);
   public readonly cancelControlledActivationRequestUseCase = new CancelControlledActivationRequestUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy);
   public readonly acknowledgeActivationBlockerUseCase = new AcknowledgeActivationBlockerUseCase(this.controlledActivationAccessPolicy, this.controlledActivationReadinessChecker, this.controlledActivationAuditRepo);
+
+  // Controlled Activation Dry Run (Phase 3 Slice 2)
+  public readonly controlledActivationExecutionPlanRepo = new DrizzleControlledActivationExecutionPlanRepository(db as any);
+  public readonly controlledActivationDryRunRepo = new DrizzleControlledActivationDryRunRepository(db as any);
+  public readonly controlledActivationPayloadPreviewer = new DefaultControlledActivationPayloadPreviewer();
+  public readonly controlledActivationEvidencePackBuilder = new DefaultControlledActivationEvidencePackBuilder();
+  public readonly controlledActivationCanaryPlanner = new DefaultControlledActivationCanaryPlanner();
+
+  public readonly createControlledActivationExecutionPlanUseCase = new CreateControlledActivationExecutionPlanUseCase(this.controlledActivationExecutionPlanRepo, this.controlledActivationRepo, this.controlledActivationReadinessChecker, this.controlledActivationAccessPolicy, this.controlledActivationAuditRepo);
+  public readonly runControlledActivationDryRunUseCase = new RunControlledActivationDryRunUseCase(this.controlledActivationDryRunRepo, this.controlledActivationExecutionPlanRepo, this.controlledActivationAccessPolicy, this.controlledActivationAuditRepo, this.controlledActivationPayloadPreviewer);
+  public readonly cancelControlledActivationDryRunUseCase = new CancelControlledActivationDryRunUseCase(this.controlledActivationDryRunRepo, this.controlledActivationExecutionPlanRepo, this.controlledActivationAuditRepo);
+  public readonly generateDestinationPayloadPreviewsUseCase = new GenerateDestinationPayloadPreviewsUseCase(this.controlledActivationPayloadPreviewer);
+  public readonly buildControlledActivationEvidencePackUseCase = new BuildControlledActivationEvidencePackUseCase(this.controlledActivationEvidencePackBuilder, this.controlledActivationDryRunRepo);
+  public readonly validateControlledActivationCanaryPlanUseCase = new ValidateControlledActivationCanaryPlanUseCase(this.controlledActivationCanaryPlanner);
+
+  // Controlled Activation Live Review (Phase 3 Slice 3)
+  public readonly controlledActivationLiveReviewRepo = new DrizzleControlledActivationLiveReviewRepository();
+  public readonly controlledActivationOperatorChecklistRepo = new DrizzleControlledActivationOperatorChecklistRepository();
+  public readonly controlledActivationLiveApprovalRepo = new DrizzleControlledActivationStakeholderLiveApprovalRepository();
+  public readonly controlledActivationIncidentPlanRepo = new DrizzleControlledActivationIncidentPlanRepository();
+  public readonly controlledActivationLiveReadinessChecker = new DefaultControlledActivationLiveReadinessChecker();
+  public readonly controlledActivationRunbookBuilder = new DefaultControlledActivationRunbookBuilder();
+
+  public readonly createControlledActivationLiveReviewCandidateUseCase = new CreateControlledActivationLiveReviewCandidateUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationDryRunRepo, this.controlledActivationExecutionPlanRepo, this.controlledActivationAccessPolicy, this.controlledActivationAuditRepo);
+  public readonly runControlledActivationLiveReadinessChecksUseCase = new RunControlledActivationLiveReadinessChecksUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationDryRunRepo, this.controlledActivationAccessPolicy, this.controlledActivationAuditRepo, this.controlledActivationLiveReadinessChecker, this.controlledActivationExecutionPlanRepo, this.buildControlledActivationEvidencePackUseCase, this.controlledActivationCanaryPlanner);
+  public readonly buildControlledActivationRunbookUseCase = new BuildControlledActivationRunbookUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationAccessPolicy, this.controlledActivationAuditRepo, this.controlledActivationRunbookBuilder, this.controlledActivationCanaryPlanner, this.controlledActivationExecutionPlanRepo, this.controlledActivationIncidentPlanRepo);
+  public readonly recordControlledActivationStakeholderLiveApprovalUseCase = new RecordControlledActivationStakeholderLiveApprovalUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationLiveApprovalRepo, this.controlledActivationAccessPolicy, this.controlledActivationAuditRepo);
+  public readonly recordControlledActivationOperatorAcknowledgementUseCase = new RecordControlledActivationOperatorAcknowledgementUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationOperatorChecklistRepo, this.controlledActivationAccessPolicy, this.controlledActivationAuditRepo);
+  public readonly cancelControlledActivationLiveReviewCandidateUseCase = new CancelControlledActivationLiveReviewCandidateUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationAccessPolicy, this.controlledActivationAuditRepo);
+  public readonly expireControlledActivationLiveReviewCandidateUseCase = new ExpireControlledActivationLiveReviewCandidateUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationAuditRepo);
+  public readonly getControlledActivationLiveReviewCandidateUseCase = new GetControlledActivationLiveReviewCandidateUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationOperatorChecklistRepo, this.controlledActivationRunbookBuilder, this.controlledActivationLiveApprovalRepo, this.controlledActivationIncidentPlanRepo, this.controlledActivationAccessPolicy);
+  public readonly listControlledActivationLiveReviewCandidatesUseCase = new ListControlledActivationLiveReviewCandidatesUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationAccessPolicy);
 
   public static getInstance(): Registry {
     if (!Registry._instance) {

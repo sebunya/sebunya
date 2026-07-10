@@ -1,0 +1,44 @@
+---
+import AdminLayout from '../../../../../../layouts/AdminLayout.astro';
+import LiveReviewCandidateList from '../../../../../../components/admin/controlled-activation-live-review/LiveReviewCandidateList.astro';
+import { apiFetch } from '../../../../../../utils/api-fetch';
+
+const adminId = Astro.cookies.get('adminId')?.value || 'admin-123';
+let candidates = [];
+let error = null;
+
+try {
+  const response = await apiFetch('/admin/controlled-activation-live-review/live-review-candidates', {
+    headers: {
+      'x-user-id': adminId
+    }
+  });
+  
+  if (response.ok) {
+    candidates = await response.json();
+  } else {
+    error = "Failed to load live review candidates.";
+  }
+} catch (e) {
+  error = e instanceof Error ? e.message : 'Unknown error';
+}
+---
+
+<AdminLayout title="Live Review Candidates | Controlled Activation | Control Tower">
+  <div class="px-4 sm:px-6 lg:px-8 py-8 w-full max-w-9xl mx-auto">
+    <div class="sm:flex sm:justify-between sm:items-center mb-8">
+      <div class="mb-4 sm:mb-0">
+        <h1 class="text-2xl md:text-3xl text-slate-800 font-bold">Live Review Candidates</h1>
+        <p class="text-slate-500 text-sm mt-1">Review candidates pending approval for future controlled activation.</p>
+      </div>
+    </div>
+
+    {error ? (
+      <div class="bg-red-50 text-red-600 p-4 rounded-sm border border-red-200">
+        {error}
+      </div>
+    ) : (
+      <LiveReviewCandidateList candidates={candidates} />
+    )}
+  </div>
+</AdminLayout>

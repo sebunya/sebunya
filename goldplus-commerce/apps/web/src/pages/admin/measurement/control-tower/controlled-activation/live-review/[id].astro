@@ -1,0 +1,268 @@
+---
+import { format } from 'date-fns';
+import { apiFetch } from '../../../../../../utils/api-fetch';
+import AdminLayout from '../../../../../../layouts/AdminLayout.astro';
+
+const { id } = Astro.params;
+const adminId = Astro.cookies.get('adminId')?.value || 'admin-123';
+
+let details = null;
+let error = null;
+
+try {
+  const response = await apiFetch(`/admin/controlled-activation-live-review/live-review-candidates/${id}`, {
+    headers: {
+      'x-user-id': adminId
+    }
+  });
+  
+  if (response.ok) {
+    details = await response.json();
+  } else {
+    error = "Failed to load candidate details.";
+  }
+} catch (e) {
+  error = e instanceof Error ? e.message : 'Unknown error';
+}
+
+if (!details) {
+  return Astro.redirect('/admin/measurement/control-tower/controlled-activation/live-review');
+}
+
+const { candidate, checklist, runbook, approvals, incidentPlan } = details;
+---
+
+<AdminLayout title={`Live Review Candidate | Controlled Activation | Control Tower`}>
+  <div class="px-4 sm:px-6 lg:px-8 py-8 w-full max-w-9xl mx-auto">
+    <div class="mb-6">
+      <a href="/admin/measurement/control-tower/controlled-activation/live-review" class="text-sm font-medium text-blue-500 hover:text-blue-600">&larr; Back to Candidates</a>
+    </div>
+
+    {error ? (
+      <div class="bg-red-50 text-red-600 p-4 rounded-sm border border-red-200">
+        {error}
+      </div>
+    ) : (
+      <div class="space-y-6">
+        {/* Header section */}
+        <div class="bg-white p-6 shadow-sm rounded-sm border border-slate-200 flex justify-between items-start">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">Candidate {candidate.id.split('-')[0]}</h2>
+            <div class="mt-2 text-sm text-slate-500 space-y-1">
+              <p><span class="font-medium text-slate-700">Status:</span> {candidate.status}</p>
+              <p><span class="font-medium text-slate-700">Environment:</span> {candidate.environment}</p>
+              <p><span class="font-medium text-slate-700">Created At:</span> {format(new Date(candidate.createdAt), 'PPpp')}</p>
+            </div>
+          </div>
+          <div class="flex gap-2" id="action-buttons" data-candidate-id={candidate.id}>
+            {candidate.status === 'DRAFT' && (
+              <button
+                  id="btn-run-checks"
+                  class="btn bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-sm disabled:opacity-50"
+                >
+                Run Readiness Checks
+              </button>
+            )}
+            {candidate.status === 'READY_FOR_REVIEW' && !runbook && (
+              <button
+                  id="btn-build-runbook"
+                  class="btn bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-sm disabled:opacity-50"
+                >
+                Build Runbook
+              </button>
+            )}
+            {candidate.status === 'READY_FOR_REVIEW' && runbook && (
+              <>
+                <button
+                  id="btn-approve"
+                  class="btn bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-sm disabled:opacity-50"
+                >
+                  Approve
+                </button>
+                <button
+                  id="btn-reject"
+                  class="btn bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-sm disabled:opacity-50"
+                >
+                  Reject
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Runbook Section */}
+          <div class="bg-white p-6 shadow-sm rounded-sm border border-slate-200">
+            <h3 class="text-lg font-bold text-slate-800 mb-4">Runbook</h3>
+            {runbook ? (
+              <div class="space-y-4 text-sm">
+                <div>
+                  <p class="font-medium text-slate-700">Scope:</p>
+                  <p class="text-slate-600 bg-slate-50 p-2 rounded">{runbook.canaryScopeSummary}</p>
+                </div>
+                <div>
+                  <p class="font-medium text-slate-700">Success Criteria:</p>
+                  <p class="text-slate-600 bg-emerald-50 p-2 rounded">{runbook.successCriteria}</p>
+                </div>
+                <div>
+                  <p class="font-medium text-slate-700">Failure Criteria:</p>
+                  <p class="text-slate-600 bg-red-50 p-2 rounded">{runbook.failureCriteria}</p>
+                </div>
+                <div>
+                  <p class="font-medium text-slate-700">Monitoring Cadence:</p>
+                  <p class="text-slate-600">{runbook.monitoringCadence}</p>
+                </div>
+              </div>
+            ) : (
+              <p class="text-sm text-slate-500 italic">No runbook generated yet.</p>
+            )}
+          </div>
+
+          {/* Incident Plan Section */}
+          <div class="bg-white p-6 shadow-sm rounded-sm border border-slate-200">
+            <h3 class="text-lg font-bold text-slate-800 mb-4">Incident Plan</h3>
+            {incidentPlan ? (
+              <div class="space-y-4 text-sm">
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <p class="font-medium text-slate-700">Incident Owner:</p>
+                    <p class="text-slate-600">{incidentPlan.incidentOwner}</p>
+                  </div>
+                  <div>
+                    <p class="font-medium text-slate-700">Rollback Owner:</p>
+                    <p class="text-slate-600">{incidentPlan.rollbackOwner}</p>
+                  </div>
+                </div>
+                <div>
+                  <p class="font-medium text-slate-700">Escalation Path:</p>
+                  <p class="text-slate-600 bg-slate-50 p-2 rounded">{incidentPlan.escalationPath}</p>
+                </div>
+                <div>
+                  <p class="font-medium text-slate-700">Rollback Criteria:</p>
+                  <p class="text-slate-600 bg-orange-50 p-2 rounded">{incidentPlan.rollbackCriteria}</p>
+                </div>
+              </div>
+            ) : (
+              <p class="text-sm text-slate-500 italic">No incident plan available.</p>
+            )}
+          </div>
+        </div>
+        
+        {/* Approvals Section */}
+        <div class="bg-white p-6 shadow-sm rounded-sm border border-slate-200">
+            <h3 class="text-lg font-bold text-slate-800 mb-4">Stakeholder Approvals</h3>
+            {approvals && approvals.length > 0 ? (
+              <div class="space-y-3">
+                {approvals.map((approval: any) => (
+                  <div class="text-sm p-3 border border-slate-100 bg-slate-50 rounded-sm">
+                      <div class="flex justify-between items-center mb-1">
+                        <span class={`font-medium ${approval.approvalStatus === 'APPROVED' ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {approval.approvalStatus}
+                        </span>
+                        <span class="text-slate-500 text-xs">{format(new Date(approval.approvedAt), 'PPpp')}</span>
+                      </div>
+                      <p class="text-slate-600">{approval.approvalNote}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p class="text-sm text-slate-500 italic">No stakeholder approvals yet.</p>
+            )}
+        </div>
+      </div>
+    )}
+  </div>
+</AdminLayout>
+
+<script>
+  // Setup interactive actions
+  const container = document.getElementById('action-buttons');
+  if (container) {
+    const candidateId = container.dataset.candidateId;
+    const runChecksBtn = document.getElementById('btn-run-checks') as HTMLButtonElement;
+    const buildRunbookBtn = document.getElementById('btn-build-runbook') as HTMLButtonElement;
+    const approveBtn = document.getElementById('btn-approve') as HTMLButtonElement;
+    const rejectBtn = document.getElementById('btn-reject') as HTMLButtonElement;
+
+    // Helper to extract JWT cookie (or mock)
+    function getAdminId() {
+      const match = document.cookie.match(/(^| )adminId=([^;]+)/);
+      return match ? match[2] : 'admin-123';
+    }
+    
+    // API base URL
+    // @ts-ignore
+    const API_BASE = window.__GP_API_BASE__ || 'http://localhost:3000';
+
+    if (runChecksBtn) {
+      runChecksBtn.addEventListener('click', async () => {
+        runChecksBtn.disabled = true;
+        runChecksBtn.textContent = 'Running...';
+        try {
+          await fetch(`${API_BASE}/admin/controlled-activation-live-review/live-review-candidates/${candidateId}/checks`, {
+            method: 'POST',
+            headers: { 'x-user-id': getAdminId() }
+          });
+          window.location.reload();
+        } catch (e) {
+          console.error(e);
+          runChecksBtn.disabled = false;
+          runChecksBtn.textContent = 'Run Readiness Checks';
+        }
+      });
+    }
+
+    if (buildRunbookBtn) {
+      buildRunbookBtn.addEventListener('click', async () => {
+        buildRunbookBtn.disabled = true;
+        buildRunbookBtn.textContent = 'Building...';
+        try {
+          await fetch(`${API_BASE}/admin/controlled-activation-live-review/live-review-candidates/${candidateId}/runbook`, {
+            method: 'POST',
+            headers: { 'x-user-id': getAdminId() }
+          });
+          window.location.reload();
+        } catch (e) {
+          console.error(e);
+          buildRunbookBtn.disabled = false;
+          buildRunbookBtn.textContent = 'Build Runbook';
+        }
+      });
+    }
+
+    const handleApproval = async (status: 'APPROVED' | 'REJECTED', btn: HTMLButtonElement) => {
+      const note = prompt(`Enter ${status === 'APPROVED' ? 'approval' : 'rejection'} note (optional):`);
+      if (note === null) return;
+      
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'Saving...';
+      
+      try {
+        await fetch(`${API_BASE}/admin/controlled-activation-live-review/live-review-candidates/${candidateId}/stakeholder-approval`, {
+          method: 'POST',
+          headers: { 
+            'x-user-id': getAdminId(),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            approvalStatus: status,
+            approvalNote: note || `${status} via Admin UI`
+          })
+        });
+        window.location.reload();
+      } catch (e) {
+        console.error(e);
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    };
+
+    if (approveBtn) {
+      approveBtn.addEventListener('click', () => handleApproval('APPROVED', approveBtn));
+    }
+    if (rejectBtn) {
+      rejectBtn.addEventListener('click', () => handleApproval('REJECTED', rejectBtn));
+    }
+  }
+</script>

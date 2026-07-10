@@ -1,0 +1,81 @@
+---
+import { format } from 'date-fns';
+
+interface Candidate {
+  id: string;
+  activationRequestId: string;
+  status: string;
+  environment: string;
+  createdAt: string;
+}
+
+interface Props {
+  candidates: Candidate[];
+}
+
+const { candidates } = Astro.props;
+
+const getStatusBadge = (status: string) => {
+  switch (status) {
+    case 'APPROVED_FOR_FUTURE_CONTROLLED_ACTIVATION':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'READY_FOR_REVIEW':
+      return 'bg-blue-100 text-blue-800';
+    case 'DRAFT':
+      return 'bg-slate-100 text-slate-800';
+    case 'BLOCKED':
+      return 'bg-red-100 text-red-800';
+    case 'CANCELLED':
+      return 'bg-slate-100 text-slate-600';
+    default:
+      return 'bg-slate-100 text-slate-800';
+  }
+};
+---
+
+<div class="bg-white shadow-sm rounded-sm border border-slate-200">
+  <div class="overflow-x-auto">
+    <table class="table-auto w-full">
+      <thead class="text-xs font-semibold uppercase text-slate-500 bg-slate-50 border-b border-slate-200">
+        <tr>
+          <th class="px-4 py-3 whitespace-nowrap text-left"><div class="font-semibold text-left">Candidate ID</div></th>
+          <th class="px-4 py-3 whitespace-nowrap text-left"><div class="font-semibold text-left">Request ID</div></th>
+          <th class="px-4 py-3 whitespace-nowrap text-left"><div class="font-semibold text-left">Environment</div></th>
+          <th class="px-4 py-3 whitespace-nowrap text-left"><div class="font-semibold text-left">Status</div></th>
+          <th class="px-4 py-3 whitespace-nowrap text-left"><div class="font-semibold text-left">Created At</div></th>
+          <th class="px-4 py-3 whitespace-nowrap text-center"><div class="font-semibold">Actions</div></th>
+        </tr>
+      </thead>
+      <tbody class="text-sm divide-y divide-slate-200">
+        {candidates.map((candidate) => (
+          <tr class="hover:bg-slate-50">
+            <td class="px-4 py-3 whitespace-nowrap text-slate-800 font-mono text-xs">{candidate.id}</td>
+            <td class="px-4 py-3 whitespace-nowrap text-slate-800 font-mono text-xs">{candidate.activationRequestId}</td>
+            <td class="px-4 py-3 whitespace-nowrap text-slate-800">{candidate.environment}</td>
+            <td class="px-4 py-3 whitespace-nowrap">
+              <span class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(candidate.status)}`}>
+                {candidate.status === 'APPROVED_FOR_FUTURE_CONTROLLED_ACTIVATION' ? 'Approved' : candidate.status.replace(/_/g, ' ')}
+              </span>
+            </td>
+            <td class="px-4 py-3 whitespace-nowrap text-slate-500">{format(new Date(candidate.createdAt), 'MMM d, yyyy HH:mm')}</td>
+            <td class="px-4 py-3 whitespace-nowrap text-center">
+              <a 
+                href={`/admin/measurement/control-tower/controlled-activation/live-review/${candidate.id}`}
+                class="text-blue-500 hover:text-blue-600 font-medium text-sm"
+              >
+                View Details
+              </a>
+            </td>
+          </tr>
+        ))}
+        {candidates.length === 0 && (
+          <tr>
+            <td colspan="6" class="px-4 py-8 text-center text-slate-500">
+              No live review candidates found.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+</div>
