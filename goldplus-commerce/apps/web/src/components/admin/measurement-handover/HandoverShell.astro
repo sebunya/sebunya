@@ -1,0 +1,37 @@
+---
+import RunbookCard from './RunbookCard.astro';
+import UatCommandCard from './UatCommandCard.astro';
+import SafetyPrinciplesPanel from './SafetyPrinciplesPanel.astro';
+---
+
+<div class="space-y-6">
+  <SafetyPrinciplesPanel />
+  
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="space-y-4">
+      <h3 class="text-lg font-medium text-gray-900">Operational Runbooks</h3>
+      <RunbookCard title="Phase 2 Closeout" doc="PHASE_2_CLOSEOUT.md" />
+      <RunbookCard title="Operational Handover" doc="OPERATIONAL_HANDOVER.md" />
+      <RunbookCard title="Release Readiness" doc="RELEASE_READINESS_RUNBOOK.md" />
+      <RunbookCard title="GTM Safe Operations" doc="GTM_SAFE_OPERATIONS_RUNBOOK.md" />
+      <RunbookCard title="Consent & Privacy" doc="CONSENT_AND_PRIVACY_RUNBOOK.md" />
+      <RunbookCard title="PesaPal Reconciliation" doc="PESAPAL_RECONCILIATION_RUNBOOK.md" />
+    </div>
+
+    <div class="space-y-4">
+      <h3 class="text-lg font-medium text-gray-900">UAT & Verification</h3>
+      <UatCommandCard 
+        title="Run End-to-End UAT" 
+        command="pnpm vitest run tests/uat/measurement-control-tower/" 
+      />
+      <UatCommandCard 
+        title="Architecture Boundaries" 
+        command="pnpm vitest run tests/architecture/boundaries.test.ts" 
+      />
+      <UatCommandCard 
+        title="GTM Smoke Diff" 
+        command="pnpm measurement:gtm:diff" 
+      />
+    </div>
+  </div>
+</div>

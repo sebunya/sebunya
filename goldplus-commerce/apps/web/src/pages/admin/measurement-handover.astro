@@ -1,0 +1,17 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import AdminPageHeader from '../../components/AdminPageHeader.astro';
+import HandoverShell from '../../components/admin/measurement-handover/HandoverShell.astro';
+
+// No dynamic metric generation, purely static read-only instructions
+---
+
+<AdminLayout title="Phase 2 Operational Handover">
+  <AdminPageHeader 
+    title="Phase 2 Operational Handover" 
+    description="Measurement Control Tower phase closeout instructions and runbooks." 
+  />
+  <div class="px-4 sm:px-6 lg:px-8 mt-6">
+    <HandoverShell />
+  </div>
+</AdminLayout>
