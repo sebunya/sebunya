@@ -1,0 +1,14 @@
+---
+export interface Props {
+  data: any;
+}
+const { data } = Astro.props;
+---
+<div class="bg-white p-6 rounded border border-slate-200">
+  <h2 class="text-lg font-bold mb-4">Product Finder Intelligence</h2>
+  <ul class="space-y-2 text-sm text-slate-600">
+    <li class="flex justify-between"><span>Started:</span> <strong>{data.finderSessionsStarted}</strong></li>
+    <li class="flex justify-between"><span>Completed:</span> <strong>{data.finderSessionsCompleted}</strong></li>
+    <li class="flex justify-between"><span>No Match:</span> <strong>{data.noMatchSessions}</strong></li>
+  </ul>
+</div>

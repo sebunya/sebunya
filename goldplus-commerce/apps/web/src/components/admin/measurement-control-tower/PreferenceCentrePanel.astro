@@ -1,0 +1,13 @@
+---
+export interface Props {
+  data: any;
+}
+const { data } = Astro.props;
+---
+<div class="bg-white p-6 rounded border border-slate-200">
+  <h2 class="text-lg font-bold mb-4">Preference Centre Activity</h2>
+  <ul class="space-y-2 text-sm text-slate-600">
+    <li class="flex justify-between"><span>Preferences Updated:</span> <strong>{data.preferencesUpdated}</strong></li>
+    <li class="flex justify-between"><span>WhatsApp Opt-ins:</span> <strong>{data.whatsappOptIns}</strong></li>
+  </ul>
+</div>

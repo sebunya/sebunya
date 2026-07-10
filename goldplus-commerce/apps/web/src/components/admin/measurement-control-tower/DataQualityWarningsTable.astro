@@ -1,0 +1,35 @@
+---
+import StatusBadge from './StatusBadge.astro';
+export interface Props {
+  warnings: any[];
+}
+const { warnings } = Astro.props;
+---
+{warnings.length === 0 ? (
+  <div class="p-4 bg-green-50 text-green-800 rounded border border-green-200">No data quality warnings.</div>
+) : (
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white border border-slate-200 text-sm">
+      <thead class="bg-slate-50 text-slate-500 uppercase">
+        <tr>
+          <th class="px-4 py-2 text-left">Time</th>
+          <th class="px-4 py-2 text-left">Severity</th>
+          <th class="px-4 py-2 text-left">Area</th>
+          <th class="px-4 py-2 text-left">Issue</th>
+          <th class="px-4 py-2 text-left">Reference ID</th>
+        </tr>
+      </thead>
+      <tbody>
+        {warnings.map((w: any) => (
+          <tr class="border-t border-slate-200">
+            <td class="px-4 py-2">{new Date(w.timestamp).toLocaleString()}</td>
+            <td class="px-4 py-2"><StatusBadge status={w.severity === 'CRITICAL' ? 'FAILED' : 'WARNING'} label={w.severity} /></td>
+            <td class="px-4 py-2">{w.area}</td>
+            <td class="px-4 py-2">{w.issue}</td>
+            <td class="px-4 py-2 font-mono text-xs">{w.safeReferenceId}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}

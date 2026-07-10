@@ -13,3 +13,4 @@ export * from './consent';
 export * from './measurement';
 export * from './measurement-advanced';
 export * from './product_finder';
+export * from './measurement_control_tower';

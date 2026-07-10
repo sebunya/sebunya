@@ -1,0 +1,32 @@
+---
+import StatusBadge from './StatusBadge.astro';
+export interface Props {
+  data: any;
+}
+const { data } = Astro.props;
+---
+<div class="bg-white p-6 rounded border border-slate-200">
+  <h2 class="text-lg font-bold mb-4">Paid Social Readiness</h2>
+  <ul class="space-y-2 text-sm text-slate-600 mb-4">
+    <li class="flex justify-between"><span>Eligible for Routing:</span> <strong>{data.eventsEligibleForRouting}</strong></li>
+    <li class="flex justify-between"><span>Dry Run Events:</span> <strong>{data.dryRunRoutedEvents}</strong></li>
+  </ul>
+  <div class="grid grid-cols-2 gap-2 text-xs">
+    <div class="flex justify-between items-center bg-slate-50 p-2 rounded">
+      <span>Meta</span>
+      <StatusBadge status={data.metaReadiness} />
+    </div>
+    <div class="flex justify-between items-center bg-slate-50 p-2 rounded">
+      <span>Google Ads</span>
+      <StatusBadge status={data.googleAdsReadiness} />
+    </div>
+    <div class="flex justify-between items-center bg-slate-50 p-2 rounded">
+      <span>TikTok</span>
+      <StatusBadge status={data.tiktokReadiness} />
+    </div>
+    <div class="flex justify-between items-center bg-slate-50 p-2 rounded">
+      <span>PostHog</span>
+      <StatusBadge status={data.postHogReadiness} />
+    </div>
+  </div>
+</div>

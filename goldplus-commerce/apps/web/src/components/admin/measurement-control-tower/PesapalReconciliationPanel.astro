@@ -1,0 +1,14 @@
+---
+export interface Props {
+  data: any;
+}
+const { data } = Astro.props;
+---
+<div class="bg-white p-6 rounded border border-slate-200">
+  <h2 class="text-lg font-bold mb-4">PesaPal Reconciliation</h2>
+  <ul class="space-y-2 text-sm text-slate-600">
+    <li class="flex justify-between"><span>Verified Conversions:</span> <strong>{data.verifiedPurchaseConversions}</strong></li>
+    <li class="flex justify-between"><span>Pending Reconciliations:</span> <strong>{data.pendingReconciliations}</strong></li>
+    <li class="flex justify-between text-red-600"><span>Failed:</span> <strong>{data.failedReconciliations}</strong></li>
+  </ul>
+</div>

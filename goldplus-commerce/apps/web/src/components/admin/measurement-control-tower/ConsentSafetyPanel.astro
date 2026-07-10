@@ -1,0 +1,14 @@
+---
+export interface Props {
+  data: any;
+}
+const { data } = Astro.props;
+---
+<div class="bg-white p-6 rounded border border-slate-200">
+  <h2 class="text-lg font-bold mb-4">Consent Safety</h2>
+  <ul class="space-y-2 text-sm text-slate-600">
+    <li class="flex justify-between"><span>Ads Consent Granted:</span> <strong>{data.advertisingConsentGranted}</strong></li>
+    <li class="flex justify-between"><span>Ads Consent Withdrawn:</span> <strong>{data.advertisingConsentWithdrawn}</strong></li>
+    <li class="flex justify-between"><span>Events Blocked (Opt-out):</span> <strong>{data.eventsBlockedByAdvertisingOptOut}</strong></li>
+  </ul>
+</div>

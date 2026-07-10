@@ -1,0 +1,14 @@
+---
+import StatusBadge from './StatusBadge.astro';
+export interface Props {
+  data: any;
+}
+const { data } = Astro.props;
+---
+<div class="bg-white p-6 rounded border border-slate-200">
+  <h2 class="text-lg font-bold mb-4">GTM Automation</h2>
+  <ul class="space-y-2 text-sm text-slate-600">
+    <li class="flex justify-between items-center"><span>Credentials:</span> <StatusBadge status={data.gtmCredentialsStatus} /></li>
+    <li class="flex justify-between items-center"><span>Publish Status:</span> <StatusBadge status={data.publishStatus} /></li>
+  </ul>
+</div>

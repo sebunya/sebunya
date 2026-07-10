@@ -165,6 +165,18 @@ import { CompleteProductFinderUseCase } from '../application/use-cases/product-f
 import { GetProductFinderRecommendationsUseCase } from '../application/use-cases/product-finder/GetProductFinderRecommendationsUseCase';
 import { RecordProductFinderActionUseCase } from '../application/use-cases/product-finder/RecordProductFinderActionUseCase';
 
+import { DrizzleMeasurementControlTowerRepository } from './admin/DrizzleMeasurementControlTowerRepository';
+import { DrizzleMeasurementControlTowerAuditRepository } from './admin/DrizzleMeasurementControlTowerAuditRepository';
+import { DefaultMeasurementControlTowerAccessPolicy } from './admin/DefaultMeasurementControlTowerAccessPolicy';
+import { MeasurementControlTowerRedactor } from './admin/MeasurementControlTowerRedactor';
+import { MeasurementControlTowerMapper } from './admin/MeasurementControlTowerMapper';
+
+import { GetMeasurementControlTowerSummaryUseCase } from '../application/use-cases/admin/GetMeasurementControlTowerSummaryUseCase';
+import { GetMeasurementControlTowerSectionUseCase } from '../application/use-cases/admin/GetMeasurementControlTowerSectionUseCase';
+import { ListMeasurementControlTowerWarningsUseCase } from '../application/use-cases/admin/ListMeasurementControlTowerWarningsUseCase';
+import { ListRecentMeasurementEventsUseCase } from '../application/use-cases/admin/ListRecentMeasurementEventsUseCase';
+import { RecordMeasurementControlTowerViewUseCase } from '../application/use-cases/admin/RecordMeasurementControlTowerViewUseCase';
+
 export class Registry {
   private static _instance: Registry;
   
@@ -454,6 +466,36 @@ export class Registry {
   public readonly recordProductFinderActionUseCase = new RecordProductFinderActionUseCase(
     this.productFinderRepo,
     this.productFinderPublisher
+  );
+
+  // Measurement Control Tower Dependencies
+  public readonly measurementControlTowerRepo = new DrizzleMeasurementControlTowerRepository();
+  public readonly measurementControlTowerAuditRepo = new DrizzleMeasurementControlTowerAuditRepository();
+  public readonly measurementControlTowerAccessPolicy = new DefaultMeasurementControlTowerAccessPolicy();
+  public readonly measurementControlTowerRedactor = new MeasurementControlTowerRedactor();
+  public readonly measurementControlTowerMapper = new MeasurementControlTowerMapper();
+
+  public readonly getMeasurementControlTowerSummaryUseCase = new GetMeasurementControlTowerSummaryUseCase(
+    this.measurementControlTowerRepo,
+    this.measurementControlTowerAccessPolicy
+  );
+  public readonly getMeasurementControlTowerSectionUseCase = new GetMeasurementControlTowerSectionUseCase(
+    this.measurementControlTowerRepo,
+    this.measurementControlTowerAccessPolicy
+  );
+  public readonly listMeasurementControlTowerWarningsUseCase = new ListMeasurementControlTowerWarningsUseCase(
+    this.measurementControlTowerRepo,
+    this.measurementControlTowerAccessPolicy,
+    this.measurementControlTowerRedactor
+  );
+  public readonly listRecentMeasurementEventsUseCase = new ListRecentMeasurementEventsUseCase(
+    this.measurementControlTowerRepo,
+    this.measurementControlTowerAccessPolicy,
+    this.measurementControlTowerRedactor
+  );
+  public readonly recordMeasurementControlTowerViewUseCase = new RecordMeasurementControlTowerViewUseCase(
+    this.measurementControlTowerAuditRepo,
+    this.measurementControlTowerAccessPolicy
   );
 
   public static getInstance(): Registry {
