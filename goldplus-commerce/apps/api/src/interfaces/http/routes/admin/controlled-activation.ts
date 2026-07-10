@@ -59,16 +59,20 @@ controlledActivationRoutes.post('/requests', requirePermissions([PERMISSIONS.SET
 controlledActivationRoutes.get('/requests/:requestId', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const user = c.get('user');
   if (!user?.id) return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'Missing admin identity' } }, 401);
-  const request = await registry.getControlledActivationRequestUseCase.execute(user.id, c.req.param('requestId'));
+  const requestId = c.req.param('requestId');
+  if (!requestId) return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Missing requestId' } }, 400);
+  const request = await registry.getControlledActivationRequestUseCase.execute(user.id, requestId);
   return c.json(registry.controlledActivationMapper.toPublicDto(request));
 });
 
 controlledActivationRoutes.post('/requests/:requestId/checks', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const user = c.get('user');
   if (!user?.id) return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'Missing admin identity' } }, 401);
+  const requestId = c.req.param('requestId');
+  if (!requestId) return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Missing requestId' } }, 400);
   const gates = await registry.runControlledActivationReadinessChecksUseCase.execute({
     adminId: user.id,
-    activationRequestId: c.req.param('requestId')
+    activationRequestId: requestId
   });
   return c.json(gates);
 });
@@ -78,10 +82,12 @@ controlledActivationRoutes.post('/requests/:requestId/approve', requirePermissio
 })), async (c) => {
   const user = c.get('user');
   if (!user?.id) return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'Missing admin identity' } }, 401);
+  const requestId = c.req.param('requestId');
+  if (!requestId) return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Missing requestId' } }, 400);
   const body = c.req.valid('json');
   await registry.recordControlledActivationApprovalUseCase.execute({
     adminId: user.id,
-    activationRequestId: c.req.param('requestId'),
+    activationRequestId: requestId,
     approvalNote: body.approvalNote
   });
   return c.json({ success: true });
@@ -92,10 +98,12 @@ controlledActivationRoutes.post('/requests/:requestId/reject', requirePermission
 })), async (c) => {
   const user = c.get('user');
   if (!user?.id) return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'Missing admin identity' } }, 401);
+  const requestId = c.req.param('requestId');
+  if (!requestId) return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Missing requestId' } }, 400);
   const body = c.req.valid('json');
   await registry.rejectControlledActivationRequestUseCase.execute({
     adminId: user.id,
-    activationRequestId: c.req.param('requestId'),
+    activationRequestId: requestId,
     reason: body.reason
   });
   return c.json({ success: true });
@@ -106,10 +114,12 @@ controlledActivationRoutes.post('/requests/:requestId/cancel', requirePermission
 })), async (c) => {
   const user = c.get('user');
   if (!user?.id) return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'Missing admin identity' } }, 401);
+  const requestId = c.req.param('requestId');
+  if (!requestId) return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Missing requestId' } }, 400);
   const body = c.req.valid('json');
   await registry.cancelControlledActivationRequestUseCase.execute({
     adminId: user.id,
-    activationRequestId: c.req.param('requestId'),
+    activationRequestId: requestId,
     reason: body.reason
   });
   return c.json({ success: true });
@@ -120,11 +130,15 @@ controlledActivationRoutes.post('/requests/:requestId/blockers/:gateId/acknowled
 })), async (c) => {
   const user = c.get('user');
   if (!user?.id) return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'Missing admin identity' } }, 401);
+  const requestId = c.req.param('requestId');
+  if (!requestId) return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Missing requestId' } }, 400);
+  const gateId = c.req.param('gateId');
+  if (!gateId) return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Missing gateId' } }, 400);
   const body = c.req.valid('json');
   await registry.acknowledgeActivationBlockerUseCase.execute({
     adminId: user.id,
-    activationRequestId: c.req.param('requestId'),
-    gateId: c.req.param('gateId'),
+    activationRequestId: requestId,
+    gateId: gateId,
     reason: body.reason
   });
   return c.json({ success: true });

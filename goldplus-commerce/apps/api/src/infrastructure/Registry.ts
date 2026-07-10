@@ -192,8 +192,10 @@ import { AcknowledgeReleaseGateUseCase } from '../application/use-cases/release/
 import { DrizzleControlledActivationRepository } from './activation/DrizzleControlledActivationRepository';
 import { DrizzleControlledActivationAuditRepository } from './activation/DrizzleControlledActivationAuditRepository';
 import { DefaultControlledActivationAccessPolicy } from './activation/DefaultControlledActivationAccessPolicy';
-import { SafeControlledActivationReadinessChecker } from './activation/SafeControlledActivationReadinessChecker';
-import { ControlledActivationMapper } from './activation/ControlledActivationMapper';
+import { SafeControlledActivationReadinessChecker } from './activation/SafeControlledActivationReadinessChecker.js';
+import { ControlledActivationMapper } from './activation/ControlledActivationMapper.js';
+import { DrizzleActivationStakeholderApprovalRepository } from './activation/DrizzleActivationStakeholderApprovalRepository.js';
+import { DefaultActivationEvidenceRedactor } from './activation/DefaultActivationEvidenceRedactor.js';
 import { CreateControlledActivationRequestUseCase } from '../application/use-cases/activation/CreateControlledActivationRequestUseCase';
 import { GetControlledActivationRequestUseCase } from '../application/use-cases/activation/GetControlledActivationRequestUseCase';
 import { GetControlledActivationSummaryUseCase } from '../application/use-cases/activation/GetControlledActivationSummaryUseCase';
@@ -565,19 +567,21 @@ export class Registry {
   // Controlled Activation
   public readonly controlledActivationRepo = new DrizzleControlledActivationRepository();
   public readonly controlledActivationAuditRepo = new DrizzleControlledActivationAuditRepository();
+  public readonly activationStakeholderApprovalRepo = new DrizzleActivationStakeholderApprovalRepository();
   public readonly controlledActivationAccessPolicy = new DefaultControlledActivationAccessPolicy(this.adminRoleReadRepo);
   public readonly controlledActivationReadinessChecker = new SafeControlledActivationReadinessChecker(this.releaseReadinessRepo);
-  public readonly controlledActivationMapper = new ControlledActivationMapper();
+  public readonly activationEvidenceRedactor = new DefaultActivationEvidenceRedactor();
+  public readonly controlledActivationMapper = new ControlledActivationMapper(this.activationEvidenceRedactor);
 
   public readonly createControlledActivationRequestUseCase = new CreateControlledActivationRequestUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy);
   public readonly getControlledActivationRequestUseCase = new GetControlledActivationRequestUseCase(this.controlledActivationRepo, this.controlledActivationAccessPolicy);
   public readonly getControlledActivationSummaryUseCase = new GetControlledActivationSummaryUseCase(this.controlledActivationRepo, this.controlledActivationAccessPolicy);
   public readonly listControlledActivationRequestsUseCase = new ListControlledActivationRequestsUseCase(this.controlledActivationRepo, this.controlledActivationAccessPolicy);
   public readonly runControlledActivationReadinessChecksUseCase = new RunControlledActivationReadinessChecksUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy, this.controlledActivationReadinessChecker);
-  public readonly recordControlledActivationApprovalUseCase = new RecordControlledActivationApprovalUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy, this.controlledActivationReadinessChecker);
-  public readonly rejectControlledActivationRequestUseCase = new RejectControlledActivationRequestUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy);
+  public readonly recordControlledActivationApprovalUseCase = new RecordControlledActivationApprovalUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy, this.controlledActivationReadinessChecker, this.activationStakeholderApprovalRepo);
+  public readonly rejectControlledActivationRequestUseCase = new RejectControlledActivationRequestUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy, this.activationStakeholderApprovalRepo);
   public readonly cancelControlledActivationRequestUseCase = new CancelControlledActivationRequestUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy);
-  public readonly acknowledgeActivationBlockerUseCase = new AcknowledgeActivationBlockerUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy, this.controlledActivationReadinessChecker);
+  public readonly acknowledgeActivationBlockerUseCase = new AcknowledgeActivationBlockerUseCase(this.controlledActivationAccessPolicy, this.controlledActivationReadinessChecker, this.controlledActivationAuditRepo);
 
   public static getInstance(): Registry {
     if (!Registry._instance) {
