@@ -1,0 +1,14 @@
+---
+import ActivationSafetyNotice from './ActivationSafetyNotice.astro';
+import ActivationRequestForm from './ActivationRequestForm.astro';
+import ActivationGatePanel from './ActivationGatePanel.astro';
+import ActivationDecisionBanner from './ActivationDecisionBanner.astro';
+---
+<div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
+  <ActivationSafetyNotice />
+  <ActivationDecisionBanner />
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <ActivationRequestForm />
+    <ActivationGatePanel />
+  </div>
+</div>

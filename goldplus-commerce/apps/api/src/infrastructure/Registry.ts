@@ -189,6 +189,21 @@ import { ListReleaseReadinessRunsUseCase } from '../application/use-cases/releas
 import { RecordReleaseDecisionUseCase } from '../application/use-cases/release/RecordReleaseDecisionUseCase';
 import { AcknowledgeReleaseGateUseCase } from '../application/use-cases/release/AcknowledgeReleaseGateUseCase';
 
+import { DrizzleControlledActivationRepository } from './activation/DrizzleControlledActivationRepository';
+import { DrizzleControlledActivationAuditRepository } from './activation/DrizzleControlledActivationAuditRepository';
+import { DefaultControlledActivationAccessPolicy } from './activation/DefaultControlledActivationAccessPolicy';
+import { SafeControlledActivationReadinessChecker } from './activation/SafeControlledActivationReadinessChecker';
+import { ControlledActivationMapper } from './activation/ControlledActivationMapper';
+import { CreateControlledActivationRequestUseCase } from '../application/use-cases/activation/CreateControlledActivationRequestUseCase';
+import { GetControlledActivationRequestUseCase } from '../application/use-cases/activation/GetControlledActivationRequestUseCase';
+import { GetControlledActivationSummaryUseCase } from '../application/use-cases/activation/GetControlledActivationSummaryUseCase';
+import { ListControlledActivationRequestsUseCase } from '../application/use-cases/activation/ListControlledActivationRequestsUseCase';
+import { RunControlledActivationReadinessChecksUseCase } from '../application/use-cases/activation/RunControlledActivationReadinessChecksUseCase';
+import { RecordControlledActivationApprovalUseCase } from '../application/use-cases/activation/RecordControlledActivationApprovalUseCase';
+import { RejectControlledActivationRequestUseCase } from '../application/use-cases/activation/RejectControlledActivationRequestUseCase';
+import { CancelControlledActivationRequestUseCase } from '../application/use-cases/activation/CancelControlledActivationRequestUseCase';
+import { AcknowledgeActivationBlockerUseCase } from '../application/use-cases/activation/AcknowledgeActivationBlockerUseCase';
+
 export class Registry {
   private static _instance: Registry;
   
@@ -547,6 +562,23 @@ export class Registry {
     this.releaseReadinessAuditRepo
   );
 
+  // Controlled Activation
+  public readonly controlledActivationRepo = new DrizzleControlledActivationRepository();
+  public readonly controlledActivationAuditRepo = new DrizzleControlledActivationAuditRepository();
+  public readonly controlledActivationAccessPolicy = new DefaultControlledActivationAccessPolicy(this.adminRoleReadRepo);
+  public readonly controlledActivationReadinessChecker = new SafeControlledActivationReadinessChecker(this.releaseReadinessRepo);
+  public readonly controlledActivationMapper = new ControlledActivationMapper();
+
+  public readonly createControlledActivationRequestUseCase = new CreateControlledActivationRequestUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy);
+  public readonly getControlledActivationRequestUseCase = new GetControlledActivationRequestUseCase(this.controlledActivationRepo, this.controlledActivationAccessPolicy);
+  public readonly getControlledActivationSummaryUseCase = new GetControlledActivationSummaryUseCase(this.controlledActivationRepo, this.controlledActivationAccessPolicy);
+  public readonly listControlledActivationRequestsUseCase = new ListControlledActivationRequestsUseCase(this.controlledActivationRepo, this.controlledActivationAccessPolicy);
+  public readonly runControlledActivationReadinessChecksUseCase = new RunControlledActivationReadinessChecksUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy, this.controlledActivationReadinessChecker);
+  public readonly recordControlledActivationApprovalUseCase = new RecordControlledActivationApprovalUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy, this.controlledActivationReadinessChecker);
+  public readonly rejectControlledActivationRequestUseCase = new RejectControlledActivationRequestUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy);
+  public readonly cancelControlledActivationRequestUseCase = new CancelControlledActivationRequestUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy);
+  public readonly acknowledgeActivationBlockerUseCase = new AcknowledgeActivationBlockerUseCase(this.controlledActivationRepo, this.controlledActivationAuditRepo, this.controlledActivationAccessPolicy, this.controlledActivationReadinessChecker);
+
   public static getInstance(): Registry {
     if (!Registry._instance) {
       Registry._instance = new Registry();
@@ -554,3 +586,4 @@ export class Registry {
     return Registry._instance;
   }
 }
+
