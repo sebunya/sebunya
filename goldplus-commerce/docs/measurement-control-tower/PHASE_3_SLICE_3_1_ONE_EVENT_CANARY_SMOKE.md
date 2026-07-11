@@ -2,8 +2,9 @@
 
 ## Provider Selection Decision
 - **Selected Provider**: PostHog
-- **Decision Status**: BLOCKED
-- **Reason**: No safe server-side capture transport class or HTTP client method exists in the current codebase for PostHog or any other measurement provider. The existing mappers only format payload structures but do not execute outbound requests.
+- **Decision Status**: resolved in Slice 3.2
+- **Reason**: The safe server-side capture transport for PostHog is implemented. Outbound transport is code-ready but runtime-blocked if env variables are not configured in the host environment.
+
 
 ## Missing Transport Integration Details
 - **Missing Class**: `PostHogHttpClient` or `PostHogTransport` implementing HTTP requests.

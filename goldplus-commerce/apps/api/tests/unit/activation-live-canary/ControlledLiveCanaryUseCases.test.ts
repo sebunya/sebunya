@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CreateControlledLiveCanaryUseCase } from '../../../src/application/use-cases/activation/CreateControlledLiveCanaryUseCase.js';
 import { EvaluateControlledLiveCanaryEligibilityUseCase } from '../../../src/application/use-cases/activation/EvaluateControlledLiveCanaryEligibilityUseCase.js';
 import { StartControlledLiveCanaryUseCase } from '../../../src/application/use-cases/activation/StartControlledLiveCanaryUseCase.js';
@@ -16,13 +16,15 @@ import { ControlledLiveCanaryAuditRepository } from '../../../src/application/po
 import { ControlledLiveCanaryEvidenceBuilder } from '../../../src/application/ports/activation/ControlledLiveCanaryEvidenceBuilder.js';
 
 describe('Controlled Live Canary Use Cases', () => {
+  const originalEnv = process.env;
+
   const dummyCanary = {
     id: 'canary-123',
     dryRunId: 'dry-123',
     activationRequestId: 'req-123',
-    status: 'DRAFT' as const,
-    canaryCap: 10,
-    destinationAllowlist: ['meta'],
+    status: 'READY_FOR_CANARY' as const,
+    canaryCap: 1,
+    destinationAllowlist: ['posthog'],
     rollbackPlan: 'disable-flag',
     monitoringOwner: 'sre-team',
     createdAt: new Date(),
@@ -58,7 +60,7 @@ describe('Controlled Live Canary Use Cases', () => {
   const mockTransport = {
     sendCanary: async () => ({
       id: 'attempt-123',
-      status: 'NOT_CONFIGURED',
+      status: 'ACCEPTED',
       redactedPayloadSummary: 'payload',
       redactedResponseSummary: 'response',
       attemptedAt: new Date()
@@ -84,6 +86,18 @@ describe('Controlled Live Canary Use Cases', () => {
     })
   } as unknown as ControlledLiveCanaryEvidenceBuilder;
 
+  beforeEach(() => {
+    process.env = {
+      ...originalEnv,
+      POSTHOG_HOST: 'test.posthog.com',
+      POSTHOG_PROJECT_API_KEY: 'test-key'
+    };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
   it('cannot create canary if user is unauthorized', async () => {
     const unauthorizedPolicy = {
       canRunActivationReadinessChecks: async () => false
@@ -93,8 +107,8 @@ describe('Controlled Live Canary Use Cases', () => {
     await expect(useCase.execute({
       dryRunId: 'dry-123',
       activationRequestId: 'req-123',
-      canaryCap: 10,
-      destinationAllowlist: ['meta'],
+      canaryCap: 1,
+      destinationAllowlist: ['posthog'],
       rollbackPlan: 'disable-flag',
       monitoringOwner: 'sre-team',
       createdByAdminId: 'admin-1'
@@ -114,8 +128,8 @@ describe('Controlled Live Canary Use Cases', () => {
     await expect(useCase.execute({
       dryRunId: 'dry-123',
       activationRequestId: 'req-123',
-      canaryCap: 10,
-      destinationAllowlist: ['meta'],
+      canaryCap: 1,
+      destinationAllowlist: ['posthog'],
       rollbackPlan: 'disable-flag',
       monitoringOwner: 'sre-team',
       createdByAdminId: 'admin-1'
@@ -169,6 +183,39 @@ describe('Controlled Live Canary Use Cases', () => {
     } as unknown as ControlledLiveCanaryKillSwitch;
 
     const useCase = new EvaluateControlledLiveCanaryEligibilityUseCase(mockCanaryRepo, mockDryRunRepo, triggeredKillSwitch);
+    const result = await useCase.execute({ canaryId: 'canary-123' });
+    expect(result.eligible).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+  });
+
+  it('evaluates eligibility and status is NOT_CONFIGURED if provider credentials missing', async () => {
+    process.env.POSTHOG_HOST = '';
+    const useCase = new EvaluateControlledLiveCanaryEligibilityUseCase(mockCanaryRepo, mockDryRunRepo, mockKillSwitch);
+    const result = await useCase.execute({ canaryId: 'canary-123' });
+    expect(result.eligible).toBe(false);
+    expect(result.status).toBe('NOT_CONFIGURED');
+  });
+
+  it('evaluates eligibility and blocks if canary cap is not exactly 1', async () => {
+    const multiCapCanaryRepo = {
+      getCanary: async () => ({ ...dummyCanary, canaryCap: 5 }),
+      updateCanary: async () => ({})
+    } as unknown as ControlledLiveCanaryRepository;
+
+    const useCase = new EvaluateControlledLiveCanaryEligibilityUseCase(multiCapCanaryRepo, mockDryRunRepo, mockKillSwitch);
+    const result = await useCase.execute({ canaryId: 'canary-123' });
+    expect(result.eligible).toBe(false);
+    expect(result.status).toBe('BLOCKED');
+  });
+
+  it('evaluates eligibility and blocks if destination allowlist has more than one provider', async () => {
+    const multiDestCanaryRepo = {
+      getCanary: async () => ({ ...dummyCanary, destinationAllowlist: ['posthog', 'meta'] }),
+      updateCanary: async () => ({})
+    } as unknown as ControlledLiveCanaryRepository;
+
+
+    const useCase = new EvaluateControlledLiveCanaryEligibilityUseCase(multiDestCanaryRepo, mockDryRunRepo, mockKillSwitch);
     const result = await useCase.execute({ canaryId: 'canary-123' });
     expect(result.eligible).toBe(false);
     expect(result.status).toBe('BLOCKED');

@@ -12,5 +12,6 @@ This slice implements the first controlled live canary activation capability for
 
 ## Restrictions
 - Unrestricted broad live launch is blocked by default.
-- Real provider transport returns `NOT_CONFIGURED` or `BLOCKED` if missing safe configuration.
+- Real provider transport supports PostHog capture. It returns `NOT_CONFIGURED` if environment variables are missing.
 - No GTM publishing or manual purchase conversions permitted in this phase.
+
