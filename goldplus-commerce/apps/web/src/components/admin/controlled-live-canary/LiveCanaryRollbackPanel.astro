@@ -1,0 +1,25 @@
+---
+---
+<div class="bg-white shadow rounded-lg p-6">
+  <h2 class="text-lg font-bold text-gray-900 mb-4">Rollback Control</h2>
+  <div class="space-y-4">
+    <div>
+      <span class="text-sm text-gray-600 font-semibold">Rollback Owner:</span>
+      <span class="text-sm text-gray-900 font-bold ml-1">admin-devops</span>
+    </div>
+    <div>
+      <label for="rollbackReason" class="block text-sm font-medium text-gray-700 mb-1">
+        Specify Rollback Reason:
+      </label>
+      <textarea 
+        id="rollbackReason" 
+        rows="3" 
+        placeholder="e.g. latency spike or verification anomaly"
+        class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+      ></textarea>
+    </div>
+    <button id="rollbackCanaryBtn" class="w-full bg-red-800 text-white py-2 px-4 rounded text-sm hover:bg-red-900 font-medium">
+      Trigger Rollback Canary
+    </button>
+  </div>
+</div>

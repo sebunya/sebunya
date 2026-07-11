@@ -1,0 +1,17 @@
+---
+import LiveCanaryEligibilityPanel from './LiveCanaryEligibilityPanel.astro';
+import LiveCanaryStartPanel from './LiveCanaryStartPanel.astro';
+import LiveCanaryRollbackPanel from './LiveCanaryRollbackPanel.astro';
+import LiveCanaryEvidencePanel from './LiveCanaryEvidencePanel.astro';
+import LiveCanarySafetyNotice from './LiveCanarySafetyNotice.astro';
+---
+<div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
+  <LiveCanarySafetyNotice />
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <LiveCanaryEligibilityPanel />
+    <LiveCanaryStartPanel />
+    <LiveCanaryRollbackPanel />
+    <LiveCanaryEvidencePanel />
+  </div>
+</div>

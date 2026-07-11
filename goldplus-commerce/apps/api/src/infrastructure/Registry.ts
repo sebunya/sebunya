@@ -235,7 +235,24 @@ import { ExpireControlledActivationLiveReviewCandidateUseCase } from '../applica
 import { GetControlledActivationLiveReviewCandidateUseCase } from '../application/use-cases/activation/GetControlledActivationLiveReviewCandidateUseCase';
 import { ListControlledActivationLiveReviewCandidatesUseCase } from '../application/use-cases/activation/ListControlledActivationLiveReviewCandidatesUseCase';
 
+import { DrizzleControlledLiveCanaryRepository } from './activation/DrizzleControlledLiveCanaryRepository';
+import { DrizzleControlledLiveCanaryAuditRepository } from './activation/DrizzleControlledLiveCanaryAuditRepository';
+import { DefaultControlledLiveCanaryTransport } from './activation/DefaultControlledLiveCanaryTransport';
+import { DefaultControlledLiveCanaryKillSwitch } from './activation/DefaultControlledLiveCanaryKillSwitch';
+import { DefaultControlledLiveCanaryEvidenceBuilder } from './activation/DefaultControlledLiveCanaryEvidenceBuilder';
+
+import { CreateControlledLiveCanaryUseCase } from '../application/use-cases/activation/CreateControlledLiveCanaryUseCase';
+import { EvaluateControlledLiveCanaryEligibilityUseCase } from '../application/use-cases/activation/EvaluateControlledLiveCanaryEligibilityUseCase';
+import { StartControlledLiveCanaryUseCase } from '../application/use-cases/activation/StartControlledLiveCanaryUseCase';
+import { PauseControlledLiveCanaryUseCase } from '../application/use-cases/activation/PauseControlledLiveCanaryUseCase';
+import { RollbackControlledLiveCanaryUseCase } from '../application/use-cases/activation/RollbackControlledLiveCanaryUseCase';
+import { CompleteControlledLiveCanaryUseCase } from '../application/use-cases/activation/CompleteControlledLiveCanaryUseCase';
+import { BuildControlledLiveCanaryEvidencePackUseCase } from '../application/use-cases/activation/BuildControlledLiveCanaryEvidencePackUseCase';
+import { GetControlledLiveCanaryUseCase } from '../application/use-cases/activation/GetControlledLiveCanaryUseCase';
+import { ListControlledLiveCanariesUseCase } from '../application/use-cases/activation/ListControlledLiveCanariesUseCase';
+
 export class Registry {
+
   private static _instance: Registry;
   
   // Repositories
@@ -643,6 +660,24 @@ export class Registry {
   public readonly expireControlledActivationLiveReviewCandidateUseCase = new ExpireControlledActivationLiveReviewCandidateUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationAuditRepo);
   public readonly getControlledActivationLiveReviewCandidateUseCase = new GetControlledActivationLiveReviewCandidateUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationOperatorChecklistRepo, this.controlledActivationRunbookBuilder, this.controlledActivationLiveApprovalRepo, this.controlledActivationIncidentPlanRepo, this.controlledActivationAccessPolicy);
   public readonly listControlledActivationLiveReviewCandidatesUseCase = new ListControlledActivationLiveReviewCandidatesUseCase(this.controlledActivationLiveReviewRepo, this.controlledActivationAccessPolicy);
+
+  // Controlled Live Canary (Phase 3 Slice 3 FAST)
+  public readonly controlledLiveCanaryRepo = new DrizzleControlledLiveCanaryRepository();
+  public readonly controlledLiveCanaryAuditRepo = new DrizzleControlledLiveCanaryAuditRepository();
+  public readonly controlledLiveCanaryTransport = new DefaultControlledLiveCanaryTransport();
+  public readonly controlledLiveCanaryKillSwitch = new DefaultControlledLiveCanaryKillSwitch();
+  public readonly controlledLiveCanaryEvidenceBuilder = new DefaultControlledLiveCanaryEvidenceBuilder();
+
+  public readonly createControlledLiveCanaryUseCase = new CreateControlledLiveCanaryUseCase(this.controlledLiveCanaryRepo, this.controlledActivationDryRunRepo, this.controlledActivationAccessPolicy);
+  public readonly evaluateControlledLiveCanaryEligibilityUseCase = new EvaluateControlledLiveCanaryEligibilityUseCase(this.controlledLiveCanaryRepo, this.controlledActivationDryRunRepo, this.controlledLiveCanaryKillSwitch);
+  public readonly startControlledLiveCanaryUseCase = new StartControlledLiveCanaryUseCase(this.controlledLiveCanaryRepo, this.controlledLiveCanaryTransport, this.controlledLiveCanaryKillSwitch, this.controlledLiveCanaryAuditRepo);
+  public readonly pauseControlledLiveCanaryUseCase = new PauseControlledLiveCanaryUseCase(this.controlledLiveCanaryRepo, this.controlledLiveCanaryAuditRepo);
+  public readonly rollbackControlledLiveCanaryUseCase = new RollbackControlledLiveCanaryUseCase(this.controlledLiveCanaryRepo, this.controlledLiveCanaryAuditRepo);
+  public readonly completeControlledLiveCanaryUseCase = new CompleteControlledLiveCanaryUseCase(this.controlledLiveCanaryRepo, this.controlledLiveCanaryAuditRepo);
+  public readonly buildControlledLiveCanaryEvidencePackUseCase = new BuildControlledLiveCanaryEvidencePackUseCase(this.controlledLiveCanaryRepo, this.controlledLiveCanaryEvidenceBuilder);
+  public readonly getControlledLiveCanaryUseCase = new GetControlledLiveCanaryUseCase(this.controlledLiveCanaryRepo);
+  public readonly listControlledLiveCanariesUseCase = new ListControlledLiveCanariesUseCase(this.controlledLiveCanaryRepo);
+
 
   public static getInstance(): Registry {
     if (!Registry._instance) {
