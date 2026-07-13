@@ -1,58 +1,107 @@
 ---
-import BaseLayout from "../../layouts/BaseLayout.astro";
-import { whatsappSupportNumber } from "../../lib/api";
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { whatsappSupportNumber } from '../../lib/api';
+
+const whatsappSupportUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(
+  'Hello GoldPlus, I need customer support.'
+)}`;
 ---
 
-<BaseLayout title="Customer Support - GoldPlus">
-  <div class="bg-gradient-to-b from-slate-50 to-white py-14 border-b border-slate-100">
-    <div class="container mx-auto px-4 lg:px-8 text-center">
-      <h1 class="text-3xl md:text-4xl font-black tracking-tight text-gray-900 mb-4">How can we help?</h1>
-      <p class="text-slate-500 max-w-2xl mx-auto text-sm sm:text-base leading-relaxed">Our Ugandan support team is dedicated to ensuring you have the best experience with GoldPlus electronics.</p>
-    </div>
-  </div>
-
-  <div class="container mx-auto px-4 lg:px-8 py-14">
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-      
-      <div class="bg-white p-8 rounded-2xl border border-slate-200/80 hover:border-brand-primary hover:shadow-md transition-all duration-300 shadow-xs flex flex-col justify-between">
-        <div>
-          <div class="w-12 h-12 bg-brand-primary/10 text-brand-primary rounded-xl flex items-center justify-center mb-6 border border-brand-primary/15 shadow-xs">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-          </div>
-          <h2 class="text-base font-black text-gray-900 mb-2">Technical Support</h2>
-          <p class="text-xs text-slate-500 mb-6 font-medium leading-relaxed">Need help setting up your charger or troubleshooting a sound device? We're here.</p>
-        </div>
-        <a href="/support/issue" class="text-slate-700 hover:text-brand-primary font-bold text-xs uppercase tracking-wider inline-flex items-center gap-1.5 transition-colors">
-          Report an Issue &rarr;
-        </a>
+<BaseLayout title="Customer support and order help | GoldPlus">
+  <main>
+    <section class="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
+      <div class="container mx-auto px-4 text-center lg:px-8">
+        <p class="mb-3 text-xs font-black uppercase tracking-[0.18em] text-brand-primary">GoldPlus support</p>
+        <h1 class="text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">How can we help?</h1>
+        <p class="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
+          Get help before buying, with an existing order, or with a product concern. Support will verify details against available GoldPlus records.
+        </p>
       </div>
+    </section>
 
-      <div class="bg-red-50/20 p-8 rounded-2xl border border-red-200/60 hover:border-red-400 hover:shadow-md transition-all duration-300 shadow-xs flex flex-col justify-between">
-        <div>
-          <div class="w-12 h-12 bg-red-100 text-red-600 rounded-xl flex items-center justify-center mb-6 border border-red-200/60 shadow-xs">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+    <section aria-labelledby="support-options" class="container mx-auto px-4 py-10 sm:py-14 lg:px-8">
+      <h2 id="support-options" class="sr-only">Support options</h2>
+      <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
+        <article class="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
+          <p class="text-xs font-black uppercase tracking-wider text-brand-primary">Existing orders</p>
+          <h3 class="mt-3 text-xl font-black text-gray-900">Need help with an order?</h3>
+          <p class="mt-3 flex-1 text-sm leading-relaxed text-slate-600">
+            Have your order reference and the contact detail used at checkout ready. We will help verify your order details.
+          </p>
+          <a
+            href="/track-order"
+            aria-label="Open order help guidance"
+            class="mt-6 inline-flex min-h-11 items-center justify-center rounded-full bg-brand-primary px-5 py-3 text-center text-xs font-black uppercase tracking-wider text-gray-950 outline-none transition hover:shadow-md focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2"
+          >
+            Open order help
+          </a>
+        </article>
+
+        <article class="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
+          <p class="text-xs font-black uppercase tracking-wider text-emerald-700">Direct support</p>
+          <h3 class="mt-3 text-xl font-black text-gray-900">Ask on WhatsApp</h3>
+          <p class="mt-3 flex-1 text-sm leading-relaxed text-slate-600">
+            Open a conversation with GoldPlus support. This link does not send a message automatically.
+          </p>
+          <a
+            href={whatsappSupportUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open GoldPlus support on WhatsApp in a new tab"
+            class="mt-6 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-3 text-center text-xs font-black uppercase tracking-wider text-white outline-none transition hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
+          >
+            Open WhatsApp support
+          </a>
+        </article>
+
+        <article class="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
+          <p class="text-xs font-black uppercase tracking-wider text-slate-500">Product concerns</p>
+          <h3 class="mt-3 text-xl font-black text-gray-900">Report a product issue</h3>
+          <p class="mt-3 flex-1 text-sm leading-relaxed text-slate-600">
+            Share a technical concern or report a suspected counterfeit product using the existing support routes.
+          </p>
+          <div class="mt-6 flex flex-col gap-3 sm:flex-row md:flex-col">
+            <a href="/support/issue" class="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-slate-300 px-5 py-3 text-center text-xs font-black uppercase tracking-wider text-slate-800 outline-none transition hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">Report an issue</a>
+            <a href="/support/fake" class="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-slate-300 px-5 py-3 text-center text-xs font-black uppercase tracking-wider text-slate-800 outline-none transition hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">Report counterfeit</a>
           </div>
-          <h2 class="text-base font-black text-red-650 mb-2">Report Counterfeit</h2>
-          <p class="text-xs text-red-550 mb-6 font-medium leading-relaxed">Found a fake GoldPlus product? Report it to protect others and maintain quality standards.</p>
-        </div>
-        <a href="/support/fake" class="text-red-600 hover:text-red-750 font-bold text-xs uppercase tracking-wider inline-flex items-center gap-1.5 transition-colors">
-          Report Fake &rarr;
-        </a>
+        </article>
       </div>
+    </section>
 
-      <div class="bg-white p-8 rounded-2xl border border-slate-200/80 hover:border-slate-800 hover:shadow-md transition-all duration-300 shadow-xs flex flex-col justify-between">
-        <div>
-          <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-6 border border-emerald-100 shadow-xs">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+    <section id="returns-warranty" aria-labelledby="policy-help" class="scroll-mt-24 border-y border-slate-200 bg-slate-50/70">
+      <div class="container mx-auto px-4 py-10 lg:px-8">
+        <div class="mx-auto max-w-4xl">
+          <h2 id="policy-help" class="text-2xl font-black text-gray-900">Returns, warranty and terms</h2>
+          <p class="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600">
+            Warranty and returns depend on the product, order details and the applicable GoldPlus policy. Ask support to confirm what applies before purchase or before returning an item.
+          </p>
+          <nav aria-label="Customer policy help" class="mt-6 flex flex-wrap gap-3">
+            <a href="#returns-warranty" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">Returns help</a>
+            <a href="#returns-warranty" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">Warranty help</a>
+            <a href="#terms-guidance" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">Terms guidance</a>
+            <a href="#privacy-guidance" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">Privacy guidance</a>
+          </nav>
+          <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <article id="terms-guidance" class="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-5">
+              <h3 class="font-black text-gray-900">Terms guidance</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-600">Ask support to confirm the terms that apply to your product and order before you buy, return or request warranty help.</p>
+            </article>
+            <article id="privacy-guidance" class="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-5">
+              <h3 class="font-black text-gray-900">Privacy guidance</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-600">Share only the details needed to identify your order. Never send passwords, payment credentials or one-time codes to support.</p>
+            </article>
           </div>
-          <h2 class="text-base font-black text-gray-900 mb-2">WhatsApp Support</h2>
-          <p class="text-xs text-slate-500 mb-6 font-medium leading-relaxed">Quick questions? Chat with our team directly on WhatsApp for instant assistance.</p>
         </div>
-        <a href={`https://wa.me/${whatsappSupportNumber}`} class="text-slate-700 hover:text-brand-primary font-bold text-xs uppercase tracking-wider inline-flex items-center gap-1.5 transition-colors">
-          Chat with us &rarr;
-        </a>
       </div>
+    </section>
 
-    </div>
-  </div>
+    <section aria-labelledby="support-expectations" class="container mx-auto px-4 py-10 sm:py-14 lg:px-8">
+      <div class="mx-auto max-w-4xl rounded-2xl border border-amber-200 bg-amber-50/60 p-6 sm:p-8">
+        <h2 id="support-expectations" class="text-lg font-black text-amber-950">What support can confirm</h2>
+        <p class="mt-3 text-sm leading-relaxed text-amber-900">
+          Support can help check the information available for your order. Delivery timing and support options depend on your order details, product availability and location. An order reference alone is not proof of payment, confirmation or dispatch.
+        </p>
+      </div>
+    </section>
+  </main>
 </BaseLayout>
