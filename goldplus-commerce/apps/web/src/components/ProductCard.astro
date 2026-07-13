@@ -3,13 +3,16 @@ import type { ProductPublicDto } from '@goldplus/shared';
 
 interface Props {
   product: ProductPublicDto;
+  subcategory?: string;
 }
 
-const { product } = Astro.props;
-const inStock = product.availability.kind === 'in_stock' || product.availability.kind === 'pre_order';
+const { product, subcategory = '' } = Astro.props;
 
-const formattedPrice = (typeof product.retailPriceUgx === "number" && product.retailPriceUgx > 0)
-  ? `USh ${product.retailPriceUgx.toLocaleString("en-UG")}`
+const hasValidPrice = typeof product.retailPriceUgx === 'number'
+  && Number.isFinite(product.retailPriceUgx)
+  && product.retailPriceUgx > 0;
+const formattedPrice = hasValidPrice
+  ? `UGX ${product.retailPriceUgx!.toLocaleString('en-UG')}`
   : "Price on request";
 
 const lowerName = product.name.toLowerCase();
@@ -20,20 +23,18 @@ const productType = lowerName.includes("charger") ? "Charger"
   : lowerName.includes("drive") || lowerName.includes("sd") || lowerName.includes("storage") ? "Storage"
   : "Accessory";
 
-const badgeAttr = product.attributeValues?.find(a => a.name === 'Badge')?.value;
 const shortDescAttr = product.attributeValues?.find(a => a.name === 'CardShortDescription')?.value;
 
-const availabilityLabel = badgeAttr ? badgeAttr : (() => {
+const availabilityLabel = (() => {
   switch(product.availability.kind) {
     case 'in_stock': return 'In Stock';
     case 'pre_order': return 'Pre-Order';
     case 'out_of_stock': return 'Out of Stock';
-    default: return 'Check Availability';
+    default: return 'Confirm availability';
   }
 })();
 
 const availabilityBadgeClass = (() => {
-  if (badgeAttr) return 'bg-brand-primary/15 text-brand-charcoal border-brand-primary/20';
   switch(product.availability.kind) {
     case 'in_stock': return 'bg-brand-primary/15 text-brand-charcoal border-brand-primary/20';
     case 'pre_order': return 'bg-blue-50/80 text-blue-700 border-blue-150';
@@ -48,6 +49,7 @@ const availabilityBadgeClass = (() => {
   data-product-name={product.name}
   data-product-price={product.retailPriceUgx ?? ''}
   data-product-category={product.categoryName ?? ''}
+  aria-label={`${product.name}, ${formattedPrice}, ${availabilityLabel}`}
 >
   
   {/* Product Image & Status Badge */}
@@ -85,7 +87,7 @@ const availabilityBadgeClass = (() => {
   
   <div class="flex flex-col flex-grow">
     {/* Category */}
-    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{product.categoryName}</p>
+    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{product.categoryName}{subcategory ? ` · ${subcategory}` : ''}</p>
     
     {/* Title */}
     <h3 class="text-[15px] font-bold text-gray-900 leading-snug mb-2 group-hover:text-brand-primary transition-colors line-clamp-2 min-h-[2.5rem]">
@@ -111,15 +113,15 @@ const availabilityBadgeClass = (() => {
     )}
 
     <div class="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
-      <p class={`font-black tracking-tight ${(typeof product.retailPriceUgx === 'number' && product.retailPriceUgx > 0) ? 'text-base text-gray-900' : 'text-xs text-slate-500 font-bold'}`}>
+      <p class={`font-black tracking-tight ${hasValidPrice ? 'text-base text-gray-900' : 'text-xs text-slate-500 font-bold'}`}>
         {formattedPrice}
       </p>
       
       <a 
         href={`/products/${product.slug}`}
         class="px-3.5 py-1.5 rounded-full font-bold text-xs transition-all duration-300 outline-none focus:ring-4 focus:ring-brand-primary/20 bg-slate-50 text-gray-700 hover:bg-brand-primary hover:text-gray-950 border border-slate-200/60 shadow-xs active:scale-95"
-        aria-label={`View ${product.name}`}>
-         View Info
+        aria-label={`View product details for ${product.name}`}>
+         View details
       </a>
     </div>
   </div>
