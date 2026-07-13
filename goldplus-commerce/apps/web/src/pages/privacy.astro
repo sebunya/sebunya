@@ -1,0 +1,82 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Privacy policy | GoldPlus">
+  <main id="main-content">
+    <header class="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
+      <div class="container mx-auto max-w-4xl px-4 lg:px-8">
+        <p class="text-xs font-black uppercase tracking-[0.18em] text-brand-primary">Customer policy</p>
+        <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Privacy policy</h1>
+        <p class="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
+          This interim page explains in practical terms how customer information may be used while GoldPlus reviews and updates its formal policy wording.
+        </p>
+      </div>
+    </header>
+
+    <div class="container mx-auto max-w-4xl px-4 py-10 sm:py-14 lg:px-8">
+      <nav aria-label="Privacy sections" class="mb-10 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+        <h2 class="font-black text-gray-900">On this page</h2>
+        <ul class="mt-3 flex flex-wrap gap-x-5 gap-y-3 text-sm font-bold">
+          <li><a class="text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-gray-950 focus-visible:ring-2 focus-visible:ring-brand-primary" href="#information">Information</a></li>
+          <li><a class="text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-gray-950 focus-visible:ring-2 focus-visible:ring-brand-primary" href="#use">How it is used</a></li>
+          <li><a class="text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-gray-950 focus-visible:ring-2 focus-visible:ring-brand-primary" href="#sharing">Service providers</a></li>
+          <li><a class="text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-gray-950 focus-visible:ring-2 focus-visible:ring-brand-primary" href="#choices">Your choices</a></li>
+        </ul>
+      </nav>
+
+      <div class="space-y-10 text-sm leading-relaxed text-slate-700 sm:text-base">
+        <section id="information" aria-labelledby="information-heading" class="scroll-mt-24">
+          <h2 id="information-heading" class="text-xl font-black text-gray-900">Information involved</h2>
+          <p class="mt-3">
+            Information may include contact details, order and delivery details, support messages, product enquiries, and technical information needed to operate and protect the website.
+          </p>
+        </section>
+
+        <section id="use" aria-labelledby="use-heading" class="scroll-mt-24">
+          <h2 id="use-heading" class="text-xl font-black text-gray-900">How information may be used</h2>
+          <p class="mt-3">
+            We use order and contact details to process purchases, provide support and improve the service. Information may also be used to protect customers, investigate problems and maintain reliable website operations.
+          </p>
+        </section>
+
+        <section id="sharing" aria-labelledby="sharing-heading" class="scroll-mt-24">
+          <h2 id="sharing-heading" class="text-xl font-black text-gray-900">Service providers and fulfilment</h2>
+          <p class="mt-3">
+            Information may be handled by service providers where needed to operate the website, process an order, support a customer or arrange fulfilment. The information involved depends on the service and the customer request.
+          </p>
+        </section>
+
+        <section aria-labelledby="security-heading">
+          <h2 id="security-heading" class="text-xl font-black text-gray-900">Protecting your details</h2>
+          <p class="mt-3">
+            GoldPlus uses reasonable operational and technical measures to protect customer information. No online service can promise absolute security. Never send passwords, payment credentials or one-time codes to support.
+          </p>
+        </section>
+
+        <section id="choices" aria-labelledby="choices-heading" class="scroll-mt-24">
+          <h2 id="choices-heading" class="text-xl font-black text-gray-900">Questions and corrections</h2>
+          <p class="mt-3">
+            Contact GoldPlus support if you need help understanding this guidance or correcting contact or order information you previously provided. Support may need to verify the request before discussing customer details.
+          </p>
+        </section>
+
+        <section aria-labelledby="privacy-updates-heading">
+          <h2 id="privacy-updates-heading" class="text-xl font-black text-gray-900">Updates to this guidance</h2>
+          <p class="mt-3">
+            GoldPlus may update this privacy guidance from time to time as services and formal policy wording develop. The version published on this page is the current public guidance.
+          </p>
+        </section>
+      </div>
+
+      <aside aria-labelledby="privacy-help" class="mt-12 rounded-2xl border border-amber-200 bg-amber-50/60 p-6 sm:p-8">
+        <h2 id="privacy-help" class="text-lg font-black text-amber-950">Need privacy or order help?</h2>
+        <p class="mt-2 text-sm leading-relaxed text-amber-900">Use the public support route and share only the information needed for your request.</p>
+        <div class="mt-5 flex flex-col gap-3 sm:flex-row">
+          <a href="/support" class="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-center text-xs font-black uppercase tracking-wider text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2">Contact support</a>
+          <a href="/terms" class="inline-flex min-h-11 items-center justify-center rounded-full border border-amber-300 bg-white px-6 py-3 text-center text-xs font-black uppercase tracking-wider text-amber-950 outline-none hover:border-amber-500 focus-visible:ring-2 focus-visible:ring-brand-primary">Terms of service</a>
+        </div>
+      </aside>
+    </div>
+  </main>
+</BaseLayout>
