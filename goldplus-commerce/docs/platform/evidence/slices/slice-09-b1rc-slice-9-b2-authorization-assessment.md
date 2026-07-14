@@ -12,6 +12,21 @@ Legal: `pending review`. Privacy/data protection: `pending review`. Security: `p
 
 Allowed statuses remain: `approved`, `approved with conditions`, `rejected`, `requires more information`, `not applicable`, and `pending review`.
 
+## Decision evidence summary
+
+No attributable decision evidence was supplied. No named owner, dated decision, completed scope, or explicit business-sponsor authorization exists. Being copied on email is not approval. “Noted” is not approval.
+
+## Decision status rules
+
+- **Approved:** requires an explicit decision, named owner, documented scope, decision date or evidence timestamp, and no remaining conditions.
+- **Approved with conditions:** additionally requires every condition’s severity, owner, due date, design-only impact, future persistence impact, and future provider-enforcement impact.
+- **Rejected:** blocks authorization as `blocked_by_rejection`.
+- **Requires more information:** blocks authorization as `blocked_by_more_information_required`.
+- **Pending review:** blocks authorization as `blocked_by_missing_review`.
+- **Not applicable:** requires a documented reason, sponsor acceptance, and cannot remove accountable legal/privacy/security/provider/data ownership without justification.
+
+The business sponsor must explicitly authorize design-only Slice 9-B2.
+
 ## Conditions summary
 
 No genuine conditions were submitted. Conditional approval cannot be complete unless every condition has an owner and due date, its 9-B2 impact is recorded, and its design-only blocking effect is explicit.
@@ -50,6 +65,8 @@ If a later genuine gate authorizes 9-B2, it may be design-only. It must not impl
 ## Why implementation remains blocked
 
 Runtime implementation remains blocked because no stakeholder boundary decision exists and this slice is evidence-only. Persistence remains blocked because identity and audit prerequisites are neither reviewed nor approved. Provider sends remain blocked because consent, suppression, STOP, identity, template, credential, audit, and dry-run enforcement gates are not approved or activated.
+
+Stakeholder review cannot be skipped because technical gates, distribution, attendance, silence, copied email, or acknowledgement do not establish accountable acceptance of customer, legal, privacy, security, provider, and operating risks.
 
 ## Required outcome
 

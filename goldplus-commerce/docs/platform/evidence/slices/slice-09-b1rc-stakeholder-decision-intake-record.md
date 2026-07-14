@@ -8,6 +8,10 @@
 - No genuine stakeholder decision input was available.
 - Slice 9-B2 remains unauthorized.
 
+## Decision evidence standard
+
+An acceptable decision must identify the decision source, evidence timestamp or decision date, named owner, explicit status, decision scope, and any conditions or blockers. Being copied on email is not approval. “Noted” is not approval. Any conditional approval must state severity, owner, due date, 9-B2 design impact, future persistence impact, future provider enforcement impact, and whether it blocks design-only work. Any attempted implementation approval or red-line waiver must be recorded and rejected in this slice.
+
 Distribution is not approval. Silence is not approval. Attendance is not approval. A conditional approval is incomplete unless every condition has an owner, due date, 9-B2 impact, and explicit statement of whether it blocks design-only work.
 
 ## Allowed statuses
@@ -16,16 +20,16 @@ Distribution is not approval. Silence is not approval. Attendance is not approva
 
 ## Stakeholder decision table
 
-| Stakeholder group | Decision source | Decision date | Decision owner/name | Decision status | Conditions | Blocking questions | Condition owner | Due date | 9-B2 impact | Blocks design-only work | Implementation approval attempted |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Legal | None provided | Not available | Not provided | pending review | Not available | Genuine review required | Not assigned | Not assigned | 9-B2 blocked | Yes | No evidence |
-| Privacy/data protection | None provided | Not available | Not provided | pending review | Not available | Genuine review required | Not assigned | Not assigned | 9-B2 blocked | Yes | No evidence |
-| Security | None provided | Not available | Not provided | pending review | Not available | Genuine review required | Not assigned | Not assigned | 9-B2 blocked | Yes | No evidence |
-| Product | None provided | Not available | Not provided | pending review | Not available | Genuine review required | Not assigned | Not assigned | 9-B2 blocked | Yes | No evidence |
-| Operator/support | None provided | Not available | Not provided | pending review | Not available | Genuine review required | Not assigned | Not assigned | 9-B2 blocked | Yes | No evidence |
-| Provider/channel owner | None provided | Not available | Not provided | pending review | Not available | Genuine review required | Not assigned | Not assigned | 9-B2 blocked | Yes | No evidence |
-| Data owner/analytics | None provided | Not available | Not provided | pending review | Not available | Genuine review required | Not assigned | Not assigned | 9-B2 blocked | Yes | No evidence |
-| Business sponsor | None provided | Not available | Not provided | pending review | Not available | Explicit design-only authorization required | Not assigned | Not assigned | 9-B2 blocked | Yes | No evidence |
+| Stakeholder group | Decision source | Decision date/evidence timestamp | Decision owner/name | Decision status | Decision scope | Conditions/severity | Blocking questions | Condition owner | Due date | 9-B2 design impact | Future persistence impact | Future provider enforcement impact | Blocks design-only work | Implementation approval attempted | Red-line waiver attempted |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Legal | None provided | Not available | Not provided | pending review | None | None | Genuine review required | Not assigned | Not assigned | Blocked | Blocked | Blocked | Yes | No evidence | No evidence |
+| Privacy/data protection | None provided | Not available | Not provided | pending review | None | None | Genuine review required | Not assigned | Not assigned | Blocked | Blocked | Blocked | Yes | No evidence | No evidence |
+| Security | None provided | Not available | Not provided | pending review | None | None | Genuine review required | Not assigned | Not assigned | Blocked | Blocked | Blocked | Yes | No evidence | No evidence |
+| Product | None provided | Not available | Not provided | pending review | None | None | Genuine review required | Not assigned | Not assigned | Blocked | Blocked | Blocked | Yes | No evidence | No evidence |
+| Operator/support | None provided | Not available | Not provided | pending review | None | None | Genuine review required | Not assigned | Not assigned | Blocked | Blocked | Blocked | Yes | No evidence | No evidence |
+| Provider/channel owner | None provided | Not available | Not provided | pending review | None | None | Genuine review required | Not assigned | Not assigned | Blocked | Blocked | Blocked | Yes | No evidence | No evidence |
+| Data owner/analytics | None provided | Not available | Not provided | pending review | None | None | Genuine review required | Not assigned | Not assigned | Blocked | Blocked | Blocked | Yes | No evidence | No evidence |
+| Business sponsor | None provided | Not available | Not provided | pending review | None | None | Explicit design-only authorization required | Not assigned | Not assigned | Blocked | Blocked | Blocked | Yes | No evidence | No evidence |
 
 ## Intake conclusion
 

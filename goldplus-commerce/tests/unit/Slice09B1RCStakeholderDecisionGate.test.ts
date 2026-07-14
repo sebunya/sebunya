@@ -26,6 +26,7 @@ describe("fail-closed intake", () => {
   it("keeps all eight reviews pending", () => expect((intake.match(/pending review/g) || []).length).toBeGreaterThanOrEqual(8));
   it("records the exact baseline", () => expect(intake).toContain("d2889d6fc4e5413bf5cfbccb51af231724204668"));
   it("does not fabricate approval", () => expect(intake).toContain("no status may be elevated"));
+  it("records red-line waiver attempts", () => expect(intake).toContain("red-line waiver attempted"));
 });
 
 describe("authorization assessment", () => {
@@ -35,6 +36,12 @@ describe("authorization assessment", () => {
   it("records the blocked decision", () => expect(assessment).toContain("slice_9_b1rc_blocked_pending_stakeholder_decisions"));
   it("keeps red lines non-waivable", () => expect(assessment).toContain("non-waivable"));
   it("requires sponsor confirmation", () => expect(assessment).toContain("business sponsor has not explicitly confirmed"));
+  ["decision evidence summary", "copied on email is not approval", "noted” is not approval", "stakeholder review cannot be skipped", "business sponsor must explicitly authorize design-only slice 9-b2"].forEach(term => it(`enforces ${term}`, () => expect(assessment).toContain(term)));
+});
+
+describe("strict decision rules", () => {
+  ["approved:", "approved with conditions:", "rejected:", "requires more information:", "pending review:", "not applicable:"].forEach(rule => it(`defines ${rule}`, () => expect(assessment).toContain(rule)));
+  ["named owner", "documented scope", "decision date or evidence timestamp", "severity", "future persistence impact", "future provider-enforcement impact"].forEach(field => it(`requires ${field}`, () => expect(assessment).toContain(field)));
 });
 
 describe("implementation prohibition", () => {
@@ -45,7 +52,7 @@ describe("implementation prohibition", () => {
 describe("artifact scope", () => {
   it("contains only four allowed paths", () => {
     const output = execFileSync("git", ["status", "--short"], { cwd: resolve(root, ".."), encoding: "utf8" });
-    const changed = output.trim().split("\n").filter(Boolean).map(line => line.slice(3));
+    const changed = output.trimEnd().split("\n").filter(Boolean).map(line => line.slice(3));
     const allowed = new Set(Object.values(paths).map(path => `goldplus-commerce/${path}`));
     expect([0, 4]).toContain(changed.length);
     expect(changed.every(path => allowed.has(path))).toBe(true);
@@ -53,4 +60,5 @@ describe("artifact scope", () => {
   ["no runtime", "no deployment", "no genuine stakeholder decision input", "unauthorized"].forEach(term => it(`review states ${term}`, () => expect(review).toContain(term)));
   it("is evidence and tests only", () => expect(review).toContain("evidence and tests only"));
   it("does not create optional input evidence", () => expect(review).toContain("optional stakeholder-decision-input file was not created"));
+  ["changed files", "allowed files", "excluded files", "runtime-change check", "migration-change check", "provider-change check", "checkout/payment-change check", "auth/rbac-change check", "loyalty-ledger-change check", "secret/env check", "deployment check", "final artifact decision"].forEach(check => it(`records ${check}`, () => expect(review).toContain(check)));
 });

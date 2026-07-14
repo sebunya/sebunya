@@ -17,18 +17,35 @@ The optional stakeholder-decision-input file was not created because actual deci
 
 No runtime, migration, schema/API proposal, provider, queue/outbox, checkout/payment/order, auth/RBAC, credential/environment/backup, loyalty/reward/discount, or customer-communication code is changed. No deployment, restart, provider activation, or customer communication occurs.
 
+## Artifact checks
+
+| Check | Result |
+|---|---|
+| Changed files | Four allowlisted evidence/test files only |
+| Allowed files | Exact allowlist below |
+| Excluded files | None present |
+| Runtime-change check | Passed: no runtime file changed |
+| Migration-change check | Passed: no migration changed |
+| Provider-change check | Passed: no provider or transport changed |
+| Checkout/payment-change check | Passed: no checkout or payment changed |
+| Auth/RBAC-change check | Passed: no auth or RBAC changed |
+| Loyalty-ledger-change check | Passed: no loyalty ledger changed |
+| Secret/env check | Passed: no secret or environment file changed |
+| Deployment check | None; deployment prohibited |
+| Final artifact decision | Evidence-only scope accepted; authorization remains blocked |
+
 ## Gate record
 
 | Gate | Result |
 |---|---|
-| Focused intake contract | Passed: 90/90 tests |
+| Focused intake contract | Passed: 120/120 tests |
 | Protected regressions | Passed: all 18 requested historical test files; 791 tests |
 | Secret scan | Passed: 878 files; values were not printed |
 | Typecheck | Passed |
 | Lint | Passed: 0 errors; 598 pre-existing warnings |
 | Build | Passed |
-| Full suite | Passed: 145 files, 1,567 tests |
-| Exact staged allowlist | Pending final cached comparison |
+| Full suite | Passed: 145 files, 1,597 tests |
+| Exact staged allowlist | Passed: four cached paths matched; cached diff check passed |
 | Deployment | None permitted |
 
 Historical scope tests may use a temporary excludes file containing only these four current artifacts. The new focused test must inspect the real worktree normally before full-suite isolation.
