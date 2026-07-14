@@ -1,6 +1,6 @@
 ---
-import { format } from 'date-fns';
 import { apiFetch } from '../../../../../../utils/api-fetch';
+import { formatDisplayDateTime } from '../../../../../../utils/date-format';
 import AdminLayout from '../../../../../../layouts/AdminLayout.astro';
 
 const { id } = Astro.params;
@@ -51,7 +51,7 @@ const { candidate, checklist, runbook, approvals, incidentPlan } = details;
             <div class="mt-2 text-sm text-slate-500 space-y-1">
               <p><span class="font-medium text-slate-700">Status:</span> {candidate.status}</p>
               <p><span class="font-medium text-slate-700">Environment:</span> {candidate.environment}</p>
-              <p><span class="font-medium text-slate-700">Created At:</span> {format(new Date(candidate.createdAt), 'PPpp')}</p>
+              <p><span class="font-medium text-slate-700">Created At:</span> {formatDisplayDateTime(candidate.createdAt)}</p>
             </div>
           </div>
           <div class="flex gap-2" id="action-buttons" data-candidate-id={candidate.id}>
@@ -159,7 +159,7 @@ const { candidate, checklist, runbook, approvals, incidentPlan } = details;
                         <span class={`font-medium ${approval.approvalStatus === 'APPROVED' ? 'text-emerald-600' : 'text-red-600'}`}>
                           {approval.approvalStatus}
                         </span>
-                        <span class="text-slate-500 text-xs">{format(new Date(approval.approvedAt), 'PPpp')}</span>
+                        <span class="text-slate-500 text-xs">{formatDisplayDateTime(approval.approvedAt)}</span>
                       </div>
                       <p class="text-slate-600">{approval.approvalNote}</p>
                   </div>

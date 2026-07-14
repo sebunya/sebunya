@@ -27,7 +27,8 @@
     "measurement:gtm:validate": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-validate.ts",
     "measurement:gtm:diff": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-diff.ts",
     "measurement:gtm:create-workspace": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-create-workspace.ts",
-    "measurement:gtm:create-version-draft": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-create-version-draft.ts"
+    "measurement:gtm:create-version-draft": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-create-version-draft.ts",
+    "security:scan-secrets": "node scripts/security/scan-secrets.mjs"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",

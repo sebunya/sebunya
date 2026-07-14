@@ -1,5 +1,5 @@
 ---
-import { format } from 'date-fns';
+import { formatDisplayDateTime } from '../../../utils/date-format';
 
 interface Candidate {
   id: string;
@@ -57,7 +57,7 @@ const getStatusBadge = (status: string) => {
                 {candidate.status === 'APPROVED_FOR_FUTURE_CONTROLLED_ACTIVATION' ? 'Approved' : candidate.status.replace(/_/g, ' ')}
               </span>
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-slate-500">{format(new Date(candidate.createdAt), 'MMM d, yyyy HH:mm')}</td>
+            <td class="px-4 py-3 whitespace-nowrap text-slate-500">{formatDisplayDateTime(candidate.createdAt)}</td>
             <td class="px-4 py-3 whitespace-nowrap text-center">
               <a 
                 href={`/admin/measurement/control-tower/controlled-activation/live-review/${candidate.id}`}
