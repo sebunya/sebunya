@@ -2,6 +2,12 @@
 // apps/web/src/pages/admin/measurement/dlq.astro
 // MEASUREMENT CONTROL TOWER — Dead Letter Queue Management
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/measurement/dlq', 303);
+}
 ---
 
 <AdminLayout title="Dead Letter Queue · Measurement" activeSection="measurement">

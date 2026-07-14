@@ -2,6 +2,12 @@
 // apps/web/src/pages/admin/measurement/attribution.astro
 // MEASUREMENT CONTROL TOWER — Attribution Intelligence
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/measurement/attribution', 303);
+}
 ---
 
 <AdminLayout title="Attribution Intelligence · Measurement" activeSection="measurement">

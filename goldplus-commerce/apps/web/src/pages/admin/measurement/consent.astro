@@ -2,6 +2,12 @@
 // apps/web/src/pages/admin/measurement/consent.astro
 // MEASUREMENT CONTROL TOWER — Consent Audit Trail
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/measurement/consent', 303);
+}
 ---
 
 <AdminLayout title="Consent Audit Trail · Measurement" activeSection="measurement">
