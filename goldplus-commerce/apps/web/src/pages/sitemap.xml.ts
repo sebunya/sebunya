@@ -10,6 +10,7 @@ const STATIC_PATHS: string[] = [
   '/support',
   '/support/issue',
   '/support/fake',
+  '/loyalty',
   '/dealers/apply',
   '/quote-request',
 ];

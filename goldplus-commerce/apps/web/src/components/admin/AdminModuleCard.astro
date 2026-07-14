@@ -59,6 +59,14 @@ const disabledReasonId = `admin-module-${module.id}-disabled-reason`;
         <p id={disabledReasonId} class="mt-2 text-xs leading-relaxed text-slate-500">
           <strong>Why disabled:</strong> {module.disabledReason}
         </p>
+        {module.previewHref && (
+          <a
+            href={module.previewHref}
+            class="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-800 transition-colors hover:border-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+          >
+            {module.previewLabel ?? "Review read-only preview"}
+          </a>
+        )}
       </div>
     ) : (
       <a

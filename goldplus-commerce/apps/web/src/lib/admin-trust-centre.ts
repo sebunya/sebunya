@@ -21,6 +21,8 @@ export interface AdminTrustModule {
   href?: string;
   actionDisabled?: boolean;
   disabledReason?: string;
+  previewHref?: string;
+  previewLabel?: string;
   nextStep: string;
   accessNote?: string;
   safetyNote?: string;
@@ -104,6 +106,8 @@ export const ADMIN_TRUST_MODULES: readonly AdminTrustModule[] = [
     actionLabel: "Programme not active",
     actionDisabled: true,
     disabledReason: "Requires an approved policy, liability model, support process and launch decision.",
+    previewHref: "/admin/loyalty",
+    previewLabel: "Review read-only foundation",
     nextStep: "Define programme rules and financial liability before building issuance or redemption.",
     safetyNote: "No points, balance, cashback, discount or reward is active.",
   },
