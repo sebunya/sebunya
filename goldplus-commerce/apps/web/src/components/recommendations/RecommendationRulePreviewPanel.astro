@@ -43,6 +43,23 @@
       <span class="px-3 py-1 border rounded-full text-[10px] font-bold bg-gray-50 text-gray-400 border-gray-200">Products pinned: 0</span>
     </div>
   </div>
+
+  <div class="mt-4 p-4 bg-white border border-gray-200 rounded-xl" aria-live="polite">
+    <h4 class="text-[10px] uppercase font-black text-gray-400 mb-3">Storefront integrity preview</h4>
+    <dl id="integrity-preview" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+      <div><dt class="font-bold text-gray-500">Input context</dt><dd data-integrity-input class="mt-1 text-gray-700">Run preview to inspect.</dd></div>
+      <div><dt class="font-bold text-gray-500">Candidates before</dt><dd data-integrity-before class="mt-1 text-gray-700">Not evaluated</dd></div>
+      <div><dt class="font-bold text-gray-500">Products after</dt><dd data-integrity-after class="mt-1 text-gray-700">Not evaluated</dd></div>
+      <div><dt class="font-bold text-gray-500">Selection rule</dt><dd data-integrity-rule class="mt-1 text-gray-700">Not evaluated</dd></div>
+      <div><dt class="font-bold text-gray-500">Current product excluded</dt><dd data-integrity-current class="mt-1 text-gray-700">Not evaluated</dd></div>
+      <div><dt class="font-bold text-gray-500">Duplicates removed</dt><dd data-integrity-deduped class="mt-1 text-gray-700">0</dd></div>
+      <div><dt class="font-bold text-gray-500">Ineligible removed</dt><dd data-integrity-ineligible class="mt-1 text-gray-700">Not reported by preview API</dd></div>
+      <div><dt class="font-bold text-gray-500">Category cap</dt><dd data-integrity-cap class="mt-1 text-gray-700">Not reported by preview API</dd></div>
+      <div><dt class="font-bold text-gray-500">Fallback reason</dt><dd data-integrity-fallback class="mt-1 text-gray-700">Not reported</dd></div>
+      <div><dt class="font-bold text-gray-500">Empty reason</dt><dd data-integrity-empty class="mt-1 text-gray-700">Results not loaded.</dd></div>
+    </dl>
+    <p class="mt-3 text-[10px] leading-relaxed text-gray-500">Read-only preview. No customer data is used. No rule changes are saved here. No product data is modified.</p>
+  </div>
 </div>
 
 <!-- Micro-Templates for dynamic JS rendering -->
@@ -79,6 +96,9 @@
     const afterList = document.getElementById('preview-after-list')!;
     const warnsContainer = document.getElementById('preview-warnings-container')!;
     const metaBadges = document.getElementById('preview-meta-badges')!;
+    const inputProduct = (document.getElementById('s_prod') as HTMLInputElement | null)?.value.trim();
+    const inputCategory = (document.getElementById('s_cat') as HTMLInputElement | null)?.value.trim();
+    const placement = (document.getElementById('s_placement') as HTMLSelectElement | null)?.value || '';
     
     beforeList.innerHTML = '';
     afterList.innerHTML = '';
@@ -150,6 +170,46 @@
       const color = s.count > 0 ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-gray-50 text-gray-400 border-gray-200';
       metaBadges.innerHTML += `<span class="px-3 py-1 border rounded-full text-[10px] font-bold ${color}">${s.label}</span>`;
     });
+
+    const before = Array.isArray(data.before) ? data.before : [];
+    const after = Array.isArray(data.after) ? data.after : [];
+    const seenIds = new Set<string>();
+    const seenSlugs = new Set<string>();
+    let duplicateCount = 0;
+    for (const item of before) {
+      const id = String(item?.productId || '').toLowerCase();
+      const slug = String(item?.slug || '').toLowerCase();
+      if ((id && seenIds.has(id)) || (slug && seenSlugs.has(slug))) duplicateCount += 1;
+      if (id) seenIds.add(id);
+      if (slug) seenSlugs.add(slug);
+    }
+    const currentExcluded = inputProduct
+      ? !after.some((item: any) => item?.productId === inputProduct)
+      : null;
+    const fallbackUsed = after.some((item: any) =>
+      String(item?.reasonCode || '').includes('FALLBACK') ||
+      (Array.isArray(item?.reasonCodes) && item.reasonCodes.includes('FALLBACK_USED'))
+    );
+    const rule = placement === 'product_related' ? 'Same-category where supported'
+      : placement === 'complete_setup' || placement === 'cart_addon' ? 'Related category where supported'
+      : placement === 'category_popular' ? 'Same-category'
+      : 'Eligible catalogue candidates';
+    const setText = (selector: string, value: string) => {
+      const node = document.querySelector(selector);
+      if (node) node.textContent = value;
+    };
+    setText('[data-integrity-input]', inputProduct || inputCategory || 'Catalogue context');
+    setText('[data-integrity-before]', String(before.length));
+    setText('[data-integrity-after]', String(after.length));
+    setText('[data-integrity-rule]', rule);
+    setText('[data-integrity-current]', currentExcluded === null ? 'No current product supplied' : currentExcluded ? 'Yes' : 'No — review required');
+    setText('[data-integrity-deduped]', String(duplicateCount));
+    setText('[data-integrity-ineligible]', 'Not reported by preview API');
+    setText('[data-integrity-cap]', 'Not reported by preview API');
+    setText('[data-integrity-fallback]', fallbackUsed
+      ? 'Existing preview returned a labelled catalogue fallback.'
+      : 'No fallback reason was reported by the preview API.');
+    setText('[data-integrity-empty]', after.length === 0 ? 'No eligible products returned.' : 'Not applicable');
 
     // Highlight Removed Items specifically if any exist that aren't in After
     if (data.suppressedProductIds?.length > 0) {

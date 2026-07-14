@@ -1,16 +1,24 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
-import { LOCAL_SEED_PRODUCTS, getCleanCatalog } from "../../lib/catalog/catalog";
+import {
+  filterDisplayableRecommendations,
+  previewRecommendationRules,
+  productToRecommendationItem,
+  REVIEWED_COMPLEMENTARY_SUBCATEGORIES,
+} from "../../lib/recommendation-display";
+import { getCleanCatalog } from "../../lib/catalog/catalog";
 import { apiBase } from "../../lib/api";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
 interface Props {
   productId: string;
+  productSlug: string;
+  categoryName: string;
+  subcategoryName?: string;
 }
 
-const { productId } = Astro.props;
+const { productId, productSlug, categoryName, subcategoryName = "" } = Astro.props;
 
 const response = await getRecommendations({
   placement: "complete_setup",
@@ -20,6 +28,7 @@ const response = await getRecommendations({
 
 const displayItems = filterDisplayableRecommendations(response.items, {
   currentProductId: productId,
+  currentProductSlug: productSlug,
   limit: 3,
 });
 
@@ -40,29 +49,27 @@ if (finalItems.length === 0) {
   }
   allProducts = getCleanCatalog(allProducts);
   
-  const eligible = allProducts.filter(p => p.id !== productId);
-  // Complete setup: prioritize accessories/power/cables
-  const powerOrAccessory = eligible.filter(p => p.categoryName === 'Power Devices' || p.categoryName === 'Car Accessories');
-  const others = eligible.filter(p => p.categoryName !== 'Power Devices' && p.categoryName !== 'Car Accessories');
-  const sorted = [...powerOrAccessory, ...others];
-  
-  finalItems = sorted.slice(0, 3).map(p => ({
-    productId: p.id,
-    slug: p.slug,
-    name: p.name,
-    imageUrl: p.primaryImageUrl ?? undefined,
-    price: p.retailPriceUgx ?? undefined,
-    score: 0.5,
-    reasonCode: "SETUP_FALLBACK",
-  }));
+  finalItems = previewRecommendationRules(
+    allProducts.map((product) => productToRecommendationItem(product, "CATALOGUE_FALLBACK")),
+    {
+      currentProductId: productId,
+      currentProductSlug: productSlug,
+      currentCategory: categoryName,
+      currentSubcategory: subcategoryName,
+      complementarySubcategories: [...(REVIEWED_COMPLEMENTARY_SUBCATEGORIES[subcategoryName] ?? [])],
+      preferredRule: "complementary_category",
+      maxCount: 3,
+      categoryDominanceCap: 2,
+    },
+  ).selected;
 }
 ---
 
-{finalItems.length > 0 && (
-  <RecommendationRail
-    title="Complete Your Setup"
-    subtitle="Add the essentials that make your device work harder."
+<RecommendationRail
+    title="You may also need"
+    subtitle="Related catalogue families are shown only where the listed product family supports the link. Check product details for fit."
     placement="complete_setup"
     items={finalItems}
+    showEmptyState={true}
+    emptyMessage="No related catalogue products are currently listed."
   />
-)}

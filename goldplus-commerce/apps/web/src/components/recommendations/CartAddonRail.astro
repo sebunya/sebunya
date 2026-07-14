@@ -1,8 +1,8 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
-import { LOCAL_SEED_PRODUCTS, getCleanCatalog } from "../../lib/catalog/catalog";
+import { filterDisplayableRecommendations, previewRecommendationRules, productToRecommendationItem } from "../../lib/recommendation-display";
+import { getCleanCatalog } from "../../lib/catalog/catalog";
 import { apiBase } from "../../lib/api";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
@@ -40,33 +40,22 @@ if (finalItems.length === 0) {
   }
   allProducts = getCleanCatalog(allProducts);
   
-  // Exclude cart products
-  const eligible = allProducts.filter(p => !cartProductIds.includes(p.id));
-  
-  // Cart addons: prioritize low-friction accessories (Power Devices / Car Accessories)
-  const isAddon = (p: ProductPublicDto) => 
-    p.categoryName === 'Power Devices' || p.categoryName === 'Car Accessories';
-  
-  const addons = eligible.filter(isAddon);
-  const others = eligible.filter(p => !isAddon(p));
-  const sorted = [...addons, ...others];
-  
-  finalItems = sorted.slice(0, 4).map(p => ({
-    productId: p.id,
-    slug: p.slug,
-    name: p.name,
-    imageUrl: p.primaryImageUrl ?? undefined,
-    price: p.retailPriceUgx ?? undefined,
-    score: 0.5,
-    reasonCode: "CART_ADDON_FALLBACK",
-  }));
+  finalItems = previewRecommendationRules(
+    allProducts.map((product) => productToRecommendationItem(product, "CATALOGUE_FALLBACK")),
+    {
+      excludeIds: cartProductIds,
+      maxCount: 4,
+      categoryDominanceCap: 2,
+      preferredRule: "catalogue_fallback",
+    },
+  ).selected;
 }
 ---
 
 {finalItems.length > 0 && (
   <RecommendationRail
-    title="Add Before Checkout"
-    subtitle="Add the essentials that make your device work harder."
+    title="You may also need"
+    subtitle="Optional products from the current catalogue. Check product details before adding."
     placement="cart_addon"
     items={finalItems}
     variant="cart-compact"

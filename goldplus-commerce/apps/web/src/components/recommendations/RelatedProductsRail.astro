@@ -1,16 +1,19 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
-import { LOCAL_SEED_PRODUCTS, getCleanCatalog } from "../../lib/catalog/catalog";
+import { filterDisplayableRecommendations, previewRecommendationRules, productToRecommendationItem } from "../../lib/recommendation-display";
+import { getCleanCatalog } from "../../lib/catalog/catalog";
 import { apiBase } from "../../lib/api";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
 interface Props {
   productId: string;
+  productSlug: string;
+  categoryName: string;
+  subcategoryName?: string;
 }
 
-const { productId } = Astro.props;
+const { productId, productSlug, categoryName, subcategoryName = "" } = Astro.props;
 
 const response = await getRecommendations({
   placement: "product_related",
@@ -20,10 +23,14 @@ const response = await getRecommendations({
 
 const displayItems = filterDisplayableRecommendations(response.items, {
   currentProductId: productId,
+  currentProductSlug: productSlug,
+  currentCategory: categoryName,
+  currentSubcategory: subcategoryName,
   limit: 4,
 });
 
 let finalItems = displayItems;
+let selectionRule = "eligible_candidates";
 
 if (finalItems.length === 0) {
   let allProducts: ProductPublicDto[] = [];
@@ -40,32 +47,29 @@ if (finalItems.length === 0) {
   }
   allProducts = getCleanCatalog(allProducts);
   
-  // Find current product to get its category name
-  const currentProduct = allProducts.find(p => p.id === productId);
-  const currentCategory = currentProduct?.categoryName;
-
-  const eligible = allProducts.filter(p => p.id !== productId);
-  const sameCategory = eligible.filter(p => p.categoryName === currentCategory);
-  const otherCategory = eligible.filter(p => p.categoryName !== currentCategory);
-  const sorted = [...sameCategory, ...otherCategory];
-  
-  finalItems = sorted.slice(0, 4).map(p => ({
-    productId: p.id,
-    slug: p.slug,
-    name: p.name,
-    imageUrl: p.primaryImageUrl ?? undefined,
-    price: p.retailPriceUgx ?? undefined,
-    score: 0.5,
-    reasonCode: "RELATED_FALLBACK",
-  }));
+  const preview = previewRecommendationRules(
+    allProducts.map((product) => productToRecommendationItem(product, "RELATED_FALLBACK")),
+    {
+      currentProductId: productId,
+      currentProductSlug: productSlug,
+      currentCategory: categoryName,
+      currentSubcategory: subcategoryName,
+      maxCount: 4,
+      categoryDominanceCap: 2,
+    },
+  );
+  finalItems = preview.selected;
+  selectionRule = preview.selectedRule;
 }
 ---
 
-{finalItems.length > 0 && (
-  <RecommendationRail
-    title="Related Products"
-    subtitle="Useful extras and alternatives for this product."
+<RecommendationRail
+    title={selectionRule === "same_subcategory" || selectionRule === "same_category" ? "Similar products" : "Browse available products"}
+    subtitle={selectionRule === "same_subcategory" || selectionRule === "same_category"
+      ? `More products listed in ${categoryName}.`
+      : "A catalogue fallback based only on currently listed products."}
     placement="product_related"
     items={finalItems}
+    showEmptyState={true}
+    emptyMessage="No similar products are currently listed."
   />
-)}

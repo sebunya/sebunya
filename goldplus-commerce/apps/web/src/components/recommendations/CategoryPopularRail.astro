@@ -1,7 +1,7 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+import { filterDisplayableRecommendations, previewRecommendationRules, productToRecommendationItem } from "../../lib/recommendation-display";
 import { LOCAL_SEED_PRODUCTS, CATEGORY_SLUG_TO_NAME, getCleanCatalog } from "../../lib/catalog/catalog";
 import { apiBase } from "../../lib/api";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
@@ -54,22 +54,17 @@ if (finalItems.length === 0) {
     filtered = allProducts.filter(p => p.categoryName === targetCategory);
   }
   
-  finalItems = filtered.slice(0, 4).map(p => ({
-    productId: p.id,
-    slug: p.slug,
-    name: p.name,
-    imageUrl: p.primaryImageUrl ?? undefined,
-    price: p.retailPriceUgx ?? undefined,
-    score: 0.5,
-    reasonCode: "CATEGORY_FALLBACK",
-  }));
+  finalItems = previewRecommendationRules(
+    filtered.map((product) => productToRecommendationItem(product, "CATEGORY_FALLBACK")),
+    { currentCategory: targetCategory, maxCount: 4, categoryDominanceCap: 4 },
+  ).selected;
 }
 ---
 
 {finalItems.length > 0 && (
   <RecommendationRail
-    title="Popular in this category"
-    subtitle="Customer favourites from this product family."
+    title="More from this category"
+    subtitle="Products currently listed in this product family."
     placement="category_popular"
     items={finalItems}
   />

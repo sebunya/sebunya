@@ -46,10 +46,10 @@ const paramProductId = url.searchParams.get('productId') || '';
                  <InfoTooltip text="The page section where these recommendations will be loaded." align="left" />
                </label>
                <select id="s_placement" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-xs text-brand-dark outline-none focus:border-brand-gold">
-                 <option value="home_trending" selected={paramPlacement === 'home_trending'}>Home Trending</option>
+                 <option value="home_trending" selected={paramPlacement === 'home_trending'}>Homepage catalogue</option>
                  <option value="product_related" selected={paramPlacement === 'product_related'}>Product Related</option>
                  <option value="cart_addon" selected={paramPlacement === 'cart_addon'}>Cart Addons</option>
-                 <option value="category_popular" selected={paramPlacement === 'category_popular'}>Category Popular</option>
+                 <option value="category_popular" selected={paramPlacement === 'category_popular'}>Category products</option>
                  <option value="complete_setup" selected={paramPlacement === 'complete_setup'}>Complete Setup</option>
                </select>
 
@@ -62,7 +62,7 @@ const paramProductId = url.searchParams.get('productId') || '';
              
              <div class="pt-5 border-t border-dashed border-gray-200 space-y-4">
                 <h4 class="text-[10px] uppercase font-black text-gray-400 tracking-wider flex items-center gap-2">
-                  Customer context
+                   Catalogue context
                   <InfoTooltip text="Provide identifiers required by context-dependent rules to isolate exact matching logic." align="left" />
                 </h4>
                 <FormField id="s_prod" name="productId" label="Anchor product ID" value={paramProductId} placeholder="e.g. 00000000-0000-0000-0000-000000000000">
@@ -93,9 +93,9 @@ const paramProductId = url.searchParams.get('productId') || '';
 
         <div class="bg-blue-50 border border-blue-100 p-5 rounded-2xl flex items-start gap-3 shadow-xs">
            <div>
-             <h4 class="text-xs font-bold text-blue-800">Operational preview</h4>
-             <p class="text-[10px] text-blue-700 leading-relaxed mt-1 font-medium">
-               Executes preview routines truthfully using current live relational configuration. This does not persist any configuration changes to storefront viewers.
+              <h4 class="text-xs font-bold text-blue-800">Read-only simulation</h4>
+              <p class="text-[10px] text-blue-700 leading-relaxed mt-1 font-medium">
+                Uses current catalogue and rule configuration without customer data. It does not persist configuration changes or modify storefront products.
              </p>
            </div>
         </div>
@@ -185,13 +185,13 @@ const paramProductId = url.searchParams.get('productId') || '';
     } else if (val === 'category_popular') {
       ctxHelper.classList.remove('hidden');
       ctxHelper.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-800');
-      ctxHelperTxt.textContent = 'Requires a Category Slug to determine popular products scope targeting.';
+      ctxHelperTxt.textContent = 'Requires a Category Slug to inspect products from that catalogue category.';
       badgeCat?.classList.remove('hidden');
       badgeCat?.classList.add('text-amber-600');
     } else { // home_trending
       ctxHelper.classList.remove('hidden');
       ctxHelper.classList.add('bg-blue-50', 'border-blue-100', 'text-blue-700');
-      ctxHelperTxt.textContent = 'Universal global list. Does not require specific context variables to render baseline predictions.';
+      ctxHelperTxt.textContent = 'Catalogue-wide preview. No popularity, trend or personalisation claim is inferred.';
     }
   }
 
@@ -223,7 +223,7 @@ const paramProductId = url.searchParams.get('productId') || '';
       errors.push(`- Missing Context: Placement "${placement}" requires an active Anchor Product ID.`);
     }
     if (placement === 'category_popular' && !catSlug) {
-      errors.push(`- Missing Context: Placement "Category Popular" requires an explicit target Category Slug.`);
+      errors.push(`- Missing Context: Category products requires an explicit target Category Slug.`);
     }
     if (placement === 'cart_addon' && (!cartProductIds || cartProductIds.length === 0)) {
       errors.push(`- Missing Context: Placement "Cart Addons" requires at least one active Cart Product ID.`);

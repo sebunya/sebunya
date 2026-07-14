@@ -1,8 +1,8 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
-import { LOCAL_SEED_PRODUCTS, getCleanCatalog } from "../../lib/catalog/catalog";
+import { filterDisplayableRecommendations, previewRecommendationRules, productToRecommendationItem } from "../../lib/recommendation-display";
+import { getCleanCatalog } from "../../lib/catalog/catalog";
 import { apiBase } from "../../lib/api";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
@@ -43,15 +43,10 @@ if (finalItems.length === 0) {
   
   const eligible = allProducts.filter(p => !excludeProductIds.includes(p.id));
   
-  finalItems = eligible.slice(0, 4).map(p => ({
-    productId: p.id,
-    slug: p.slug,
-    name: p.name,
-    imageUrl: p.primaryImageUrl ?? undefined,
-    price: p.retailPriceUgx ?? undefined,
-    score: 0.5,
-    reasonCode: "TRENDING_FALLBACK",
-  }));
+  finalItems = previewRecommendationRules(
+    eligible.map((product) => productToRecommendationItem(product, "CATALOGUE_FALLBACK")),
+    { maxCount: 4, categoryDominanceCap: 2, preferredRule: "catalogue_fallback" },
+  ).selected;
 }
 ---
 
@@ -60,8 +55,8 @@ if (finalItems.length === 0) {
     <section class="bg-brand-softGrey py-16 border-t border-brand-borderGrey">
       <div class="container mx-auto px-4 lg:px-8">
         <RecommendationRail
-          title="Top Sellers Right Now"
-          subtitle="Customer favourites based on real GoldPlus orders."
+          title="Browse available products"
+          subtitle="A selection from products currently listed in the catalogue."
           placement="home_trending"
           items={finalItems}
         />
@@ -69,8 +64,8 @@ if (finalItems.length === 0) {
     </section>
   ) : (
     <RecommendationRail
-      title="Top Sellers Right Now"
-      subtitle="Customer favourites based on real GoldPlus orders."
+      title="Browse available products"
+      subtitle="A selection from products currently listed in the catalogue."
       placement="home_trending"
       items={finalItems}
     />
