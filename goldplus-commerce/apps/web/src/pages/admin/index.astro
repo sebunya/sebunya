@@ -1,230 +1,113 @@
 ---
 import AdminLayout from "../../layouts/AdminLayout.astro";
+import AdminEmptyState from "../../components/admin/AdminEmptyState.astro";
+import AdminModuleCard from "../../components/admin/AdminModuleCard.astro";
+import AdminReadinessChecklist from "../../components/admin/AdminReadinessChecklist.astro";
+import { ADMIN_READINESS_ITEMS, ADMIN_TRUST_MODULES } from "../../lib/admin-trust-centre";
 import { apiBase } from "../../lib/api";
 import { readSessionToken } from "../../lib/session";
-import { ADMIN_NAVIGATION } from "../../lib/admin-navigation";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin", 303);
 }
 
-// Real-time environment and service status checks
-let apiStatus: 'up' | 'down' = 'down';
-let apiBaseConfigured = !!apiBase;
-let isWebRunning = true; 
-
+let serviceState: "connected" | "unavailable" | "access-denied" = "unavailable";
 try {
-  const res = await fetch(`${apiBase}/governance/admin/stats`, {
-    headers: { 
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${token}`
-    }
+  const response = await fetch(`${apiBase}/governance/admin/stats`, {
+    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(3000),
   });
-  
-  if (res.ok) {
-    apiStatus = 'up';
-  }
+  if (response.ok) serviceState = "connected";
+  else if (response.status === 401 || response.status === 403) serviceState = "access-denied";
 } catch {
-  apiStatus = 'down';
+  serviceState = "unavailable";
 }
-
-const quickActions = [
-  { label: 'Products', href: '/admin/products' },
-  { label: 'Carts', href: '/admin/carts' },
-  { label: 'Recommendation rules', href: '/admin/recommendations/rules' },
-  { label: 'Create rule', href: '/admin/recommendations/rules/new' },
-  { label: 'Preview recommendations', href: '/admin/recommendations/preview' },
-  { label: 'Merchandising', href: '/admin/merchandising' },
-  { label: 'Settings', href: '/admin/settings' },
-  { label: 'System status', href: '/admin/system' },
-];
-
-const secondaryActions = [
-  { label: 'Orders — read-only', href: '/admin/orders' },
-  { label: 'Access and permissions', href: '/admin/governance' },
-];
-
-// Define true constraints & limitations
-const warnings = [
-  { id: 'carts-list', message: 'Cart list view is not available yet. Use cart lookup for now.', severity: 'info' },
-  { id: 'product-edit', message: 'Product editing is not available yet.', severity: 'warning' },
-  { id: 'audit-logs', message: 'Some audit actions are controlled by the API.', severity: 'info' }
-];
 ---
 
-<AdminLayout 
-  title="Control Centre" 
-  description="Manage storefront settings, product rules, and system status."
+<AdminLayout
+  title="Admin Trust Centre"
+  description="Operational status, safe next steps and protected module guidance."
 >
-  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    
-    {/* Top Heading Bar */}
-    <div class="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div>
-        <h2 class="text-2xl md:text-3xl font-black text-brand-dark tracking-tight">
-          GoldPlus Commerce Control Centre
-        </h2>
-        <p class="text-sm text-gray-500 mt-1">
-          Manage products, carts, recommendations, merchandising and system settings.
+  <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8" data-admin-trust-centre>
+    <header class="flex flex-col gap-5 border-b border-slate-200 pb-7 md:flex-row md:items-end md:justify-between">
+      <div class="max-w-3xl">
+        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-brand-primary">Operator workspace</p>
+        <h1 class="mt-2 text-3xl font-black tracking-tight text-brand-dark">GoldPlus Admin Trust Centre</h1>
+        <p class="mt-3 text-sm leading-relaxed text-slate-600">
+          Understand what each module does, its verified release posture, the safest available action and what must happen next.
         </p>
       </div>
-
-      {/* API Reachability Badge */}
-      <div class="flex items-center gap-3 bg-white border border-gray-200 px-4 py-2 rounded-xl shadow-sm">
-        <span class="text-xs font-black text-gray-400 uppercase tracking-widest text-[10px]">API connection</span>
-        <div class="flex items-center gap-1.5">
-          <div class={`w-2.5 h-2.5 rounded-full ${apiStatus === 'up' ? 'bg-brand-green animate-pulse' : 'bg-red-500'}`}></div>
-          <span class="text-xs font-bold text-brand-dark uppercase">
-            {apiStatus === 'up' ? 'Connected' : 'Offline'}
-          </span>
-        </div>
+      <div class={`inline-flex w-fit items-center gap-2 rounded-full border px-4 py-2 text-xs font-black ${
+        serviceState === "connected"
+          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+          : serviceState === "access-denied"
+            ? "border-red-200 bg-red-50 text-red-800"
+            : "border-amber-200 bg-amber-50 text-amber-800"
+      }`} role="status">
+        <span class={`h-2 w-2 rounded-full ${serviceState === "connected" ? "bg-emerald-500" : serviceState === "access-denied" ? "bg-red-500" : "bg-amber-500"}`}></span>
+        {serviceState === "connected" ? "Admin service connected" : serviceState === "access-denied" ? "Access check required" : "Admin service unavailable"}
       </div>
-    </div>
+    </header>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-      <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden transition-all">
-        <div class="absolute top-0 left-0 w-1 h-full bg-brand-dark"></div>
-        <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">API connection</p>
-        <p class="text-lg font-black text-brand-dark mt-2 uppercase truncate">{apiBaseConfigured ? 'CONFIGURED' : 'MISSING'}</p>
-        <p class="text-[10px] text-gray-400 font-mono mt-1 overflow-hidden text-ellipsis">{apiBase || 'No API Base Key'}</p>
+    <section class="mt-7 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm leading-relaxed text-blue-950" aria-labelledby="admin-access-guidance">
+      <h2 id="admin-access-guidance" class="font-black">Access and role guidance</h2>
+      <p class="mt-1">
+        Existing route and API permissions remain authoritative. If a module says you do not have access, ask an owner or admin for the correct role. This trust centre does not grant permissions or expose protected data.
+      </p>
+    </section>
+
+    {serviceState === "access-denied" && (
+      <div class="mt-6">
+        <AdminEmptyState
+          kind="access-denied"
+          title="You do not have access to admin service data"
+          what="The protected admin service rejected this session for the requested summary."
+          why="Your current role may not include the required permission, or the session may need renewal."
+          nextStep="Ask an owner or admin for the correct role. Do not share credentials or tokens."
+          actionHref="/admin/login?returnTo=/admin"
+          actionLabel="Return to secure sign-in"
+        />
       </div>
-      
-      <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden transition-all">
-        <div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-        <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Web Application</p>
-        <p class="text-lg font-black text-brand-green mt-2 uppercase">Active</p>
-        <p class="text-[10px] text-gray-400 font-medium mt-1">Astro web app online</p>
+    )}
+
+    {serviceState === "unavailable" && (
+      <div class="mt-6">
+        <AdminEmptyState
+          kind="error"
+          title="Admin service status could not be loaded"
+          what="The trust centre could not confirm the protected admin API connection."
+          why="The service may be temporarily unavailable; no module is marked live from this failed request."
+          nextStep="Retry safely. If the issue continues, review system health without pasting credentials into chat or logs."
+          actionHref="/admin"
+          actionLabel="Retry status check"
+        />
       </div>
+    )}
 
-      <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden transition-all">
-        <div class="absolute top-0 left-0 w-1 h-full bg-brand-gold"></div>
-        <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Cart Persistence</p>
-        <p class="text-lg font-black text-brand-dark mt-2 uppercase">OPERATIONAL</p>
-        <p class="text-[10px] text-gray-400 font-medium mt-1">Page data loaded</p>
-      </div>
-
-      <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden transition-all">
-        <div class="absolute top-0 left-0 w-1 h-full bg-brand-green"></div>
-        <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Feature status</p>
-        <p class="text-lg font-black text-brand-green mt-2 uppercase">Active</p>
-        <p class="text-[10px] text-gray-400 font-medium mt-1">Recommendation rules active</p>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-      
-      {/* Quick Actions Strip */}
-      <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-        <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Quick actions</h3>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {quickActions.map((act) => (
-            <a 
-              href={act.href} 
-              class="flex flex-col items-center text-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-100 rounded-xl p-3.5 transition-all group"
-            >
-              <span class="text-[11px] font-black text-gray-700 group-hover:text-brand-dark truncate w-full py-2">{act.label}</span>
-            </a>
-          ))}
-        </div>
-        <div class="mt-6 pt-5 border-t border-dashed border-gray-200">
-          <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Administrative panels</h4>
-          <div class="flex flex-wrap gap-3">
-            {secondaryActions.map(act => (
-              <a href={act.href} class="flex items-center gap-2 bg-white border border-gray-200 hover:border-gray-400 rounded-xl px-4 py-2 text-xs font-bold text-gray-600 transition-colors shadow-xs">
-                <span>{act.label}</span>
-              </a>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Useful Operational Warnings / Status Log */}
-      <div class="bg-gray-50 border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col h-full">
-        <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Current limitations</h3>
-        <div class="space-y-3 flex-1 overflow-y-auto">
-          {warnings.map(w => (
-            <div class="flex gap-3 items-start text-xs leading-relaxed">
-              <span class={w.severity === 'warning' ? 'text-yellow-500' : 'text-blue-500'}>•</span>
-              <p class="text-gray-600 font-medium">{w.message}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-    </div>
-
-    {/* Spotlight: Business Rules */}
-    <div class="bg-brand-dark rounded-2xl text-white p-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 mb-8">
-      <div class="max-w-2xl">
-        <div class="flex items-center gap-3 mb-2">
-          <span class="text-[9px] font-black text-brand-primary uppercase tracking-widest bg-brand-primary/10 border border-brand-primary/20 px-2 py-0.5 rounded">Recommendations</span>
-          <span class="bg-brand-green/20 text-brand-green border border-brand-green/30 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">Fixed</span>
-        </div>
-        <h4 class="font-black text-xl tracking-tight text-white">Recommendation rules</h4>
-        <p class="text-xs text-gray-400 mt-2 leading-relaxed">
-          Control product overrides, merchandising boosts, item pinning, and real-time suppression.
+    <section class="mt-10" aria-labelledby="admin-modules-title">
+      <div class="max-w-3xl">
+        <h2 id="admin-modules-title" class="text-2xl font-black tracking-tight text-brand-dark">Operational modules</h2>
+        <p class="mt-2 text-sm leading-relaxed text-slate-600">
+          Statuses describe verified release posture—not traffic, revenue, order volume or provider activity.
         </p>
       </div>
-      <div class="flex gap-3 flex-shrink-0 w-full md:w-auto">
-        <a href="/admin/recommendations/rules" class="bg-gray-800 hover:bg-gray-700 text-center text-xs font-black px-6 py-3 rounded-lg transition-colors text-white">
-          View Rules
-        </a>
-        <a href="/admin/recommendations/preview" class="bg-brand-primary hover:bg-opacity-90 text-center text-xs font-black px-6 py-3 rounded-lg text-brand-charcoal transition-opacity">
-          Preview recommendations
-        </a>
+      <div class="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+        {ADMIN_TRUST_MODULES.map((module) => <AdminModuleCard module={module} />)}
       </div>
+    </section>
+
+    <div class="mt-10">
+      <AdminReadinessChecklist items={ADMIN_READINESS_ITEMS} />
     </div>
 
-    {/* Module Management Directory */}
-    <div class="mb-8">
-      <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Active Module Map</h3>
-      
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {ADMIN_NAVIGATION.map(group => (
-          group.items.filter(item => item.label !== 'Control Centre').map(item => {
-            const isWorking = item.status === 'working';
-            const isReadOnly = item.status === 'read_only';
-            const isDiagnostic = item.status === 'diagnostic';
-            
-            return (
-              <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between group hover:border-gray-300 transition-all">
-                <div>
-                  <div class="flex items-center justify-between mb-2">
-                    <span class="text-[9px] font-black text-gray-400 uppercase tracking-widest">{group.title}</span>
-                    <span class={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider border ${
-                      isWorking
-                        ? 'border-green-200 bg-green-50 text-green-700'
-                        : isReadOnly
-                          ? 'border-blue-200 bg-blue-50 text-blue-700'
-                          : 'border-yellow-200 bg-yellow-50 text-yellow-700'
-                    }`}>
-                      {isWorking ? 'Working' : isReadOnly ? 'Read Only' : 'Diagnostic'}
-                    </span>
-                  </div>
-                  <h4 class="font-black text-base text-brand-dark">{item.label}</h4>
-                  <p class="text-xs text-gray-500 mt-1.5 leading-relaxed line-clamp-2">
-                    {item.description}
-                  </p>
-                  {item.reason && (
-                    <p class="text-[10px] text-gray-400 mt-2 italic leading-relaxed">
-                      {item.reason}
-                    </p>
-                  )}
-                </div>
-
-                <div class="mt-4 flex justify-end">
-                  <a href={item.href} class="text-xs font-bold text-brand-dark border border-gray-200 group-hover:border-brand-dark px-3 py-1.5 rounded-lg transition-colors bg-white">
-                    Access &rarr;
-                  </a>
-                </div>
-              </div>
-            );
-          })
-        ))}
+    <section class="mt-10 rounded-2xl border border-slate-200 bg-slate-900 p-6 text-white" aria-labelledby="safe-operator-states">
+      <h2 id="safe-operator-states" class="text-lg font-black">Safe operator states</h2>
+      <div class="mt-4 grid gap-4 text-sm leading-relaxed md:grid-cols-3">
+        <div><p class="font-black text-brand-primary">No data yet</p><p class="mt-1 text-slate-300">The module is available, but no verified records are present. Follow its next-step guidance.</p></div>
+        <div><p class="font-black text-brand-primary">Protected</p><p class="mt-1 text-slate-300">The module requires existing permissions or approved configuration. This page does not bypass either.</p></div>
+        <div><p class="font-black text-brand-primary">Coming soon</p><p class="mt-1 text-slate-300">The capability is not active. Do not promise outcomes or create customer-facing claims.</p></div>
       </div>
-    </div>
-
+    </section>
   </div>
 </AdminLayout>
-

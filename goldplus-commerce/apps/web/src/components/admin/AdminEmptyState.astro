@@ -1,0 +1,34 @@
+---
+type AdminEmptyStateKind = "loading" | "error" | "no-data" | "access-denied" | "protected";
+
+interface Props {
+  kind: AdminEmptyStateKind;
+  title: string;
+  what: string;
+  why: string;
+  nextStep: string;
+  actionHref?: string;
+  actionLabel?: string;
+}
+
+const { kind, title, what, why, nextStep, actionHref, actionLabel } = Astro.props;
+const toneClass = kind === "error" || kind === "access-denied"
+  ? "border-red-200 bg-red-50 text-red-900"
+  : kind === "loading"
+    ? "border-blue-200 bg-blue-50 text-blue-900"
+    : "border-slate-200 bg-white text-slate-800";
+---
+
+<section class={`rounded-2xl border p-6 ${toneClass}`} role={kind === "error" || kind === "access-denied" ? "alert" : "status"} data-admin-state={kind}>
+  <h3 class="text-base font-black">{title}</h3>
+  <dl class="mt-4 grid gap-3 text-sm leading-relaxed sm:grid-cols-3">
+    <div><dt class="font-black">What this is</dt><dd class="mt-1 opacity-80">{what}</dd></div>
+    <div><dt class="font-black">Why this state appears</dt><dd class="mt-1 opacity-80">{why}</dd></div>
+    <div><dt class="font-black">Next safe step</dt><dd class="mt-1 opacity-80">{nextStep}</dd></div>
+  </dl>
+  {actionHref && actionLabel && (
+    <a href={actionHref} class="mt-5 inline-flex rounded-lg border border-current px-3 py-2 text-xs font-black underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+      {actionLabel}
+    </a>
+  )}
+</section>

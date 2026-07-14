@@ -11,9 +11,15 @@ import PaidSocialReadinessPanel from '../../components/admin/measurement-control
 import GtmAutomationPanel from '../../components/admin/measurement-control-tower/GtmAutomationPanel.astro';
 import DataQualityWarningsTable from '../../components/admin/measurement-control-tower/DataQualityWarningsTable.astro';
 import RecentEventsTable from '../../components/admin/measurement-control-tower/RecentEventsTable.astro';
+import AdminEmptyState from '../../components/admin/AdminEmptyState.astro';
+import { readSessionToken } from '../../lib/session';
 
-// Authentication and RBAC would be handled in middleware or via API fetch
-// We fetch the initial summary on server
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/measurement-control-tower', 303);
+}
+
+// Existing API permissions remain authoritative; this page only improves safe UI states.
 const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 let summaryData = null;
 let errorMsg = '';
@@ -26,18 +32,18 @@ try {
     }
   });
   
-  if (res.status === 403) {
+  if (res.status === 401 || res.status === 403) {
     errorMsg = 'ACCESS_DENIED';
   } else {
     const json = await res.json();
     if (json.success) {
       summaryData = json.data;
     } else {
-      errorMsg = json.error || 'Failed to load summary';
+      errorMsg = 'LOAD_FAILED';
     }
   }
-} catch (e) {
-  errorMsg = 'Internal Error';
+} catch {
+  errorMsg = 'SERVICE_UNAVAILABLE';
 }
 ---
 
@@ -54,17 +60,33 @@ try {
     </div>
 
     {errorMsg === 'ACCESS_DENIED' ? (
-      <div class="p-6 bg-red-50 border border-red-200 rounded text-red-800">
-        You do not have permission to view the Measurement Control Tower.
-      </div>
+      <AdminEmptyState
+        kind="access-denied"
+        title="You do not have access to the Measurement Control Tower"
+        what="This protected module displays consent-safe measurement readiness and redacted operational evidence."
+        why="Your current role does not include the required Measurement Control Tower permission."
+        nextStep="Ask an owner or admin for the correct role. Do not share tokens or provider credentials."
+        actionHref="/admin"
+        actionLabel="Return to Admin Trust Centre"
+      />
     ) : errorMsg ? (
-      <div class="p-6 bg-red-50 border border-red-200 rounded text-red-800">
-        {errorMsg}
-      </div>
+      <AdminEmptyState
+        kind="error"
+        title="Measurement readiness could not be loaded"
+        what="The protected summary request did not return usable readiness data."
+        why="The service may be unavailable or the response may not meet the expected contract. No provider was activated."
+        nextStep="Retry safely, then review system health if the problem continues. Never paste credentials into chat or logs."
+        actionHref="/admin/measurement-control-tower"
+        actionLabel="Retry readiness check"
+      />
     ) : !summaryData ? (
-      <div class="p-6 bg-white border border-slate-200 rounded">
-        Loading...
-      </div>
+      <AdminEmptyState
+        kind="no-data"
+        title="No measurement readiness data yet"
+        what="This module summarizes consent-safe events, reconciliation and controlled-activation readiness."
+        why="No verified summary data was returned for this session."
+        nextStep="Confirm approved configuration through existing protected workflows. Do not activate a provider from this state."
+      />
     ) : (
       <ControlTowerShell>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
