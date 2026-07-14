@@ -1,6 +1,12 @@
 ---
 import Layout from '../../layouts/AdminLayout.astro';
 import ControlledActivationShell from '../../components/admin/controlled-activation/ControlledActivationShell.astro';
+import { readSessionToken } from '../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/controlled-activation', 303);
+}
 ---
 <Layout title="Controlled Activation Governance">
   <ControlledActivationShell />

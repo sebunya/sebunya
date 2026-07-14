@@ -1,6 +1,12 @@
 ---
 import Layout from '../../layouts/AdminLayout.astro';
 import DryRunOrchestratorShell from '../../components/admin/controlled-activation-dry-run/DryRunOrchestratorShell.astro';
+import { readSessionToken } from '../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/controlled-activation-dry-run', 303);
+}
 ---
 <Layout title="Controlled Activation Dry-Run Orchestrator">
   <DryRunOrchestratorShell />

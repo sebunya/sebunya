@@ -1,6 +1,12 @@
 ---
 import Layout from '../../layouts/AdminLayout.astro';
 import ControlledLiveCanaryShell from '../../components/admin/controlled-live-canary/ControlledLiveCanaryShell.astro';
+import { readSessionToken } from '../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/controlled-live-canary', 303);
+}
 ---
 <Layout title="Controlled Live Canary Activation">
   <ControlledLiveCanaryShell />

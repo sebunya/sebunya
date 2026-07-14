@@ -2,6 +2,12 @@
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import AdminPageHeader from '../../components/AdminPageHeader.astro';
 import HandoverShell from '../../components/admin/measurement-handover/HandoverShell.astro';
+import { readSessionToken } from '../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/measurement-handover', 303);
+}
 
 // No dynamic metric generation, purely static read-only instructions
 ---

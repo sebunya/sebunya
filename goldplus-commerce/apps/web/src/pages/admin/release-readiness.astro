@@ -1,6 +1,12 @@
 ---
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import ReleaseReadinessShell from '../../components/admin/release-readiness/ReleaseReadinessShell.astro';
+import { readSessionToken } from '../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/release-readiness', 303);
+}
 
 // In a real app, we would fetch data from the API or a loader
 // For now we just pass a token or dummy data flag to the shell
