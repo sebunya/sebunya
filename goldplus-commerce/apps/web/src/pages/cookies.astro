@@ -1,0 +1,43 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { policyBySlug, POLICY_STATUS_LABEL } from '../lib/legal-policies';
+const policy = policyBySlug('cookies')!;
+---
+
+<BaseLayout title="Cookies & consent | GoldPlus">
+  <main id="main-content">
+    <header class="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
+      <div class="container mx-auto max-w-4xl px-4 lg:px-8">
+        <p class="text-xs font-black uppercase tracking-[0.18em] text-brand-primary">Customer policy</p>
+        <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Cookies & consent</h1>
+        <p class="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">How the GoldPlus website uses first-party cookies and how you stay in control of your choices.</p>
+        <p class="mt-4 inline-flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
+          <span class="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-amber-800">{POLICY_STATUS_LABEL[policy.status]}</span>
+          <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Version {policy.version}</span>
+          <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Effective date: {policy.effectiveDate ?? 'to be confirmed after legal review'}</span>
+        </p>
+      </div>
+    </header>
+
+    <div class="container mx-auto max-w-4xl px-4 py-10 sm:py-14 lg:px-8">
+      <div class="space-y-10 text-sm leading-relaxed text-slate-700 sm:text-base">
+        <section aria-labelledby="cookies-used" class="scroll-mt-24">
+          <h2 id="cookies-used" class="text-xl font-black text-gray-900">Cookies this site uses</h2>
+          <p class="mt-3">GoldPlus uses first-party cookies for essential shopping functions — keeping your cart, remembering a login session, and remembering your consent choices. First-party measurement respects your preference settings.</p>
+        </section>
+        <section aria-labelledby="cookies-control" class="scroll-mt-24">
+          <h2 id="cookies-control" class="text-xl font-black text-gray-900">Controlling your preferences</h2>
+          <p class="mt-3">You can review and change consent and personalisation choices at any time in the <a href="/preferences" class="font-bold underline decoration-slate-300 underline-offset-4">Preference Centre</a>. Browser signals such as Global Privacy Control and Do Not Track are honoured for personalisation.</p>
+        </section>
+        <section aria-labelledby="cookies-contact" class="scroll-mt-24 rounded-2xl border border-slate-200 bg-slate-50 p-6">
+          <h2 id="cookies-contact" class="text-xl font-black text-gray-900">Questions about your data</h2>
+          <p class="mt-3">Support can explain what is stored for your account, and the Preference Centre lets you change choices instantly.</p>
+          <div class="mt-5 flex flex-col gap-3 sm:flex-row">
+            <a href="/support" class="rounded-full bg-slate-950 px-6 py-3 text-center text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Contact support</a>
+            <a href="/track-order" class="rounded-full border border-slate-300 px-6 py-3 text-center text-sm font-bold text-slate-800">Find my order</a>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</BaseLayout>

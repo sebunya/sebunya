@@ -180,16 +180,19 @@
     {
       "id": "12",
       "module": "Legal / warranty / returns",
-      "status": "PARTIAL_VERTICAL",
-      "missing": [
-        "returns",
-        "warranty",
-        "cookie/consent page",
-        "versioning/effective dates",
-        "claims flows",
-        "admin ops"
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "missing": [],
+      "next": "none (legal review external)",
+      "completed": [
+        "policy registry with versioning + review status",
+        "returns/warranty/cookies pages (truthful drafts, support-routed claims)",
+        "privacy/terms version chips",
+        "footer links",
+        "admin/legal registry page"
       ],
-      "next": "content + versioning slice"
+      "blockers": [
+        "BLOCKED_EXTERNAL: formal legal review sets effective dates/versions"
+      ]
     },
     {
       "id": "13",

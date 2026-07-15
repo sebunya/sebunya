@@ -49,7 +49,9 @@ Summary: 0/1/6/10/14 SOURCE_COMPLETE_NOT_DEPLOYED · 2/3/4/5/7/11/12/13 PARTIAL_
   regression-tested; campaigns page reports not-configured truthfully).
 - Slice 8 dormant loyalty ledger: COMPLETE (source-complete, doubly gated,
   migration 0026; commercial activation BLOCKED_EXTERNAL on operator approval).
-- Next: **Slice 12** — legal/warranty/returns content + versioning; then 9, 11, 13. Invariants: browser total
+- Slice 12 legal policy registry + returns/warranty/cookies: COMPLETE (drafts
+  pending legal review — BLOCKED_EXTERNAL for effective dates).
+- Next: **Slice 11** — support admin inbox vertical; then 9, 13, residuals. Invariants: browser total
   never authoritative; redirect never marks paid; duplicate callback/IPN never
   duplicates effects; invalid total never reaches PesaPal.
 
