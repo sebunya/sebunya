@@ -98,4 +98,45 @@ routes.get('/new-arrivals', async (c) => {
   return c.json(res);
 });
 
+// "Complete Your Setup" — compatibility-driven accessories for a product.
+routes.get('/complete-the-set/:id', async (c) => {
+  const data = await Registry.getInstance().getCompleteTheSetUseCase.execute({
+    productId: c.req.param('id'),
+    limit: parseLimit(c.req.query('limit'), 6, 12),
+  });
+  const res: ApiResponse<typeof data> = { success: true, data };
+  return c.json(res);
+});
+
+// First-party recommendation interaction tracking (impression/click/atc/purchase).
+routes.post('/events', async (c) => {
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } } satisfies ApiResponse<never>, 400);
+  }
+  const visitorId = (getCookie(c, VISITOR_COOKIE) || '').trim() || (body.visitorId ? String(body.visitorId) : null);
+  const result = await Registry.getInstance().recordRecommendationEventUseCase.execute({
+    eventType: String(body.eventType ?? '') as any,
+    surface: String(body.surface ?? ''),
+    recommendationId: body.recommendationId ?? null,
+    algorithmVersion: body.algorithmVersion ?? null,
+    productId: body.productId ?? null,
+    anchorProductId: body.anchorProductId ?? null,
+    rank: body.rank != null ? Number(body.rank) : null,
+    score: body.score != null ? Number(body.score) : null,
+    reasonCode: body.reasonCode ?? null,
+    experimentKey: body.experimentKey ?? null,
+    experimentVariant: body.experimentVariant ?? null,
+    visitorId,
+    userId: null, // attributed server-side only; never trusted from the body
+    sessionId: body.sessionId ?? null,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: { recorded: true } });
+});
+
 export default routes;

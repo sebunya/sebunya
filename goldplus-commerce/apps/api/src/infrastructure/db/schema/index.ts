@@ -9,4 +9,5 @@ export * from './phase11';
 export * from './engagement';
 export * from './cms';
 export * from './security';
+export * from './recommendations';
 

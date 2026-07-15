@@ -25,6 +25,10 @@ import { DrizzleUserIdentityRepository } from './db/repositories/DrizzleUserIden
 import { DrizzleUserAdminRepository } from './db/repositories/DrizzleUserAdminRepository';
 import { DrizzleDashboardReadRepository } from './db/repositories/DrizzleDashboardReadRepository';
 import { DrizzleRecommendationReadRepository } from './db/repositories/DrizzleRecommendationReadRepository';
+import { DrizzleMerchandisingRuleRepository } from './db/repositories/DrizzleMerchandisingRuleRepository';
+import { DrizzleCompatibilityRuleRepository } from './db/repositories/DrizzleCompatibilityRuleRepository';
+import { DrizzleRecommendationSurfaceConfigRepository } from './db/repositories/DrizzleRecommendationSurfaceConfigRepository';
+import { DrizzleRecommendationEventRepository } from './db/repositories/DrizzleRecommendationEventRepository';
 import { GoogleOAuthAdapter } from './auth/GoogleOAuthAdapter';
 import { OtpHasher } from './security/OtpHasher';
 import { DrizzleTwoFactorRepository } from './db/repositories/DrizzleTwoFactorRepository';
@@ -83,6 +87,31 @@ import { GetAdminDashboardUseCase } from '../application/use-cases/admin/GetAdmi
 import { GetProductRecommendationsUseCase } from '../application/use-cases/recommendation/GetProductRecommendationsUseCase';
 import { GetPersonalizedRecommendationsUseCase } from '../application/use-cases/recommendation/GetPersonalizedRecommendationsUseCase';
 import { GetTrendingProductsUseCase } from '../application/use-cases/recommendation/GetTrendingProductsUseCase';
+import { GetCompleteTheSetUseCase } from '../application/use-cases/recommendation/GetCompleteTheSetUseCase';
+import {
+  CreateMerchandisingRuleUseCase,
+  UpdateMerchandisingRuleUseCase,
+  ListMerchandisingRulesUseCase,
+  DeleteMerchandisingRuleUseCase,
+} from '../application/use-cases/recommendation/admin/ManageMerchandisingRulesUseCases';
+import {
+  CreateCompatibilityRuleUseCase,
+  UpdateCompatibilityRuleUseCase,
+  ListCompatibilityRulesUseCase,
+  DeleteCompatibilityRuleUseCase,
+} from '../application/use-cases/recommendation/admin/ManageCompatibilityRulesUseCases';
+import {
+  SaveSurfaceConfigDraftUseCase,
+  PublishSurfaceConfigUseCase,
+  RollbackSurfaceConfigUseCase,
+  ListSurfaceConfigsUseCase,
+  ListSurfaceConfigVersionsUseCase,
+} from '../application/use-cases/recommendation/admin/ManageSurfaceConfigUseCases';
+import {
+  RecordRecommendationEventUseCase,
+  GetRecommendationDashboardUseCase,
+} from '../application/use-cases/recommendation/admin/RecommendationAnalyticsUseCases';
+import { PreviewRecommendationsUseCase } from '../application/use-cases/recommendation/admin/PreviewRecommendationsUseCase';
 import {
   GetTwoFactorStatusUseCase,
   EnrollTotpUseCase,
@@ -130,6 +159,10 @@ export class Registry {
   public readonly userAdminRepo = new DrizzleUserAdminRepository();
   public readonly dashboardReadRepo = new DrizzleDashboardReadRepository();
   public readonly recommendationReadRepo = new DrizzleRecommendationReadRepository();
+  public readonly merchandisingRuleRepo = new DrizzleMerchandisingRuleRepository();
+  public readonly compatibilityRuleRepo = new DrizzleCompatibilityRuleRepository();
+  public readonly recSurfaceConfigRepo = new DrizzleRecommendationSurfaceConfigRepository();
+  public readonly recEventRepo = new DrizzleRecommendationEventRepository();
   public readonly twoFactorRepo = new DrizzleTwoFactorRepository();
   public readonly otpChallengeRepo = new DrizzleOtpChallengeRepository();
   public readonly authAttemptRepo = new DrizzleAuthAttemptRepository();
@@ -221,7 +254,34 @@ export class Registry {
   );
   public readonly getProductRecommendationsUseCase = new GetProductRecommendationsUseCase(
     this.recommendationReadRepo,
+    this.productRepo,
+    this.merchandisingRuleRepo,
+    this.recSurfaceConfigRepo
+  );
+  public readonly getCompleteTheSetUseCase = new GetCompleteTheSetUseCase(
+    this.recommendationReadRepo,
+    this.compatibilityRuleRepo,
     this.productRepo
+  );
+  // Admin control room
+  public readonly createMerchandisingRuleUseCase = new CreateMerchandisingRuleUseCase(this.merchandisingRuleRepo, this.productRepo);
+  public readonly updateMerchandisingRuleUseCase = new UpdateMerchandisingRuleUseCase(this.merchandisingRuleRepo, this.productRepo);
+  public readonly listMerchandisingRulesUseCase = new ListMerchandisingRulesUseCase(this.merchandisingRuleRepo);
+  public readonly deleteMerchandisingRuleUseCase = new DeleteMerchandisingRuleUseCase(this.merchandisingRuleRepo);
+  public readonly createCompatibilityRuleUseCase = new CreateCompatibilityRuleUseCase(this.compatibilityRuleRepo);
+  public readonly updateCompatibilityRuleUseCase = new UpdateCompatibilityRuleUseCase(this.compatibilityRuleRepo);
+  public readonly listCompatibilityRulesUseCase = new ListCompatibilityRulesUseCase(this.compatibilityRuleRepo);
+  public readonly deleteCompatibilityRuleUseCase = new DeleteCompatibilityRuleUseCase(this.compatibilityRuleRepo);
+  public readonly saveSurfaceConfigDraftUseCase = new SaveSurfaceConfigDraftUseCase(this.recSurfaceConfigRepo);
+  public readonly publishSurfaceConfigUseCase = new PublishSurfaceConfigUseCase(this.recSurfaceConfigRepo);
+  public readonly rollbackSurfaceConfigUseCase = new RollbackSurfaceConfigUseCase(this.recSurfaceConfigRepo);
+  public readonly listSurfaceConfigsUseCase = new ListSurfaceConfigsUseCase(this.recSurfaceConfigRepo);
+  public readonly listSurfaceConfigVersionsUseCase = new ListSurfaceConfigVersionsUseCase(this.recSurfaceConfigRepo);
+  public readonly recordRecommendationEventUseCase = new RecordRecommendationEventUseCase(this.recEventRepo);
+  public readonly getRecommendationDashboardUseCase = new GetRecommendationDashboardUseCase(this.recEventRepo);
+  public readonly previewRecommendationsUseCase = new PreviewRecommendationsUseCase(
+    this.getProductRecommendationsUseCase,
+    this.getCompleteTheSetUseCase
   );
   public readonly getPersonalizedRecommendationsUseCase = new GetPersonalizedRecommendationsUseCase(
     this.recommendationReadRepo,
