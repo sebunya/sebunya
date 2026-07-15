@@ -73,3 +73,11 @@ Local validation passed: secret scan, typecheck, lint with zero errors, API/web 
 No service was recreated or restarted. Pre/post comparisons proved identical API, web, Caddy, PostgreSQL, and Redis container IDs, running images, start times, and zero restart counts. Storefront, API health, and Preference Centre returned `200`; logged-out admin returned `303`. The read-only database snapshot remained four events, two grants, two withdrawals, and zero duplicate/provider/outbox/notification activity.
 
 Decision: `SLICE_10_D_BR_PRIME_BASE_IMAGE_DIGEST_REPAIRED_BUILD_PROVEN_NOT_DEPLOYED`. The repaired images exist in production Docker cache but are not running. Next recommendation: rerun Slice 10-D DEPLOY ULTIMATE from the repaired remote head with a fresh operator-created approval and rollback image snapshot; recreate API/web only after all deployment gates pass.
+
+Slice 10-D DEPLOY FINAL verified the root-only approval, held a persistent deployment lock, proved the `2321778f..d8ad79ea` gap was evidence-only, created a true dereferenced source archive, captured fresh rollback tags, and confirmed unchanged read-only consent/no-send counters. Production source fast-forwarded cleanly to `d8ad79ea9ce62e1a15dd689145c13a8fb1e073ab`; Compose validation and exact-source API/web image builds passed.
+
+API/web-only recreation then failed its runtime health gate. Both new web replicas became healthy, but both new API replicas exited with Node `ERR_MODULE_NOT_FOUND` for `/app/apps/api/dist/config/env` imported from `dist/interfaces/http/server.js`. No live debugging or source edit was attempted.
+
+The fresh rollback tags restored the pre-deploy API/web images through API/web-only recreation. All four restored replicas are healthy. Caddy, PostgreSQL, and Redis retained their exact IDs, start times, and zero restart counts. Storefront, API health, and Preference Centre returned `200`; the pre/post read-only database snapshot remained four events, two grants, two withdrawals, and zero duplicate/provider/outbox/notification activity.
+
+Decision: `SLICE_10_D_DEPLOY_FINAL_ROLLED_BACK_AFTER_HEALTH_FAILURE`. The control room is not live; after rollback its page and API return `404`. Next work must repair the API ESM/image packaging defect in a separate clean source slice and add an image-start smoke test before another approved deployment attempt.
