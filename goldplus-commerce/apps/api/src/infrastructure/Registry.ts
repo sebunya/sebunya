@@ -40,6 +40,16 @@ import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/St
 import { GetPaymentReconciliationUseCase } from '../application/use-cases/payments/GetPaymentReconciliationUseCase';
 import { DrizzleSearchDemandRepository } from './db/repositories/DrizzleSearchDemandRepository';
 import { DrizzleCompatibilityMappingRepository } from './db/repositories/DrizzleCompatibilityMappingRepository';
+import { DrizzleLoyaltyRepository } from './db/repositories/DrizzleLoyaltyRepository';
+import {
+  LoyaltyProgrammeGate,
+  EarnLoyaltyPointsUseCase,
+  RedeemLoyaltyPointsUseCase,
+  ReverseLoyaltyEntryUseCase,
+  GetLoyaltyHistoryUseCase,
+  GetLoyaltyConfigUseCase,
+  SaveLoyaltyConfigUseCase,
+} from '../application/use-cases/loyalty/LoyaltyUseCases';
 import {
   UpsertCompatibilityMappingUseCase,
   ListCompatibilityMappingsUseCase,
@@ -386,6 +396,14 @@ export class Registry {
   public readonly listCompatibilityMappingsUseCase = new ListCompatibilityMappingsUseCase(this.compatibilityMappingRepo);
   public readonly deleteCompatibilityMappingUseCase = new DeleteCompatibilityMappingUseCase(this.compatibilityMappingRepo);
   public readonly getProductCompatibilityUseCase = new GetProductCompatibilityUseCase(this.compatibilityMappingRepo, this.productRepo);
+  public readonly loyaltyRepo = new DrizzleLoyaltyRepository();
+  public readonly loyaltyGate = new LoyaltyProgrammeGate(this.loyaltyRepo, () => process.env.LOYALTY_PROGRAMME_ENABLED === 'true');
+  public readonly earnLoyaltyPointsUseCase = new EarnLoyaltyPointsUseCase(this.loyaltyRepo, this.loyaltyGate);
+  public readonly redeemLoyaltyPointsUseCase = new RedeemLoyaltyPointsUseCase(this.loyaltyRepo, this.loyaltyGate);
+  public readonly reverseLoyaltyEntryUseCase = new ReverseLoyaltyEntryUseCase(this.loyaltyRepo);
+  public readonly getLoyaltyHistoryUseCase = new GetLoyaltyHistoryUseCase(this.loyaltyRepo, this.loyaltyGate);
+  public readonly getLoyaltyConfigUseCase = new GetLoyaltyConfigUseCase(this.loyaltyRepo);
+  public readonly saveLoyaltyConfigUseCase = new SaveLoyaltyConfigUseCase(this.loyaltyRepo);
   public readonly checkoutUseCase = new CheckoutUseCase(this.orderRepo, this.productRepo, this.deliveryZoneRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);

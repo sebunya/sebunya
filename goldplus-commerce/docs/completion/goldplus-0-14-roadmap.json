@@ -121,12 +121,19 @@
     {
       "id": "8",
       "module": "Loyalty",
-      "status": "STATIC_UI_ONLY",
-      "deliberate": true,
-      "missing": [
-        "feature-gated wallet/ledger/earn-burn/reversal/expiry/idempotency/admin config"
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "missing": [],
+      "next": "none (activation approval-gated)",
+      "completed": [
+        "pure ledger domain (derived balance, expiry, fraud ceiling)",
+        "loyalty tables + migration 0026",
+        "gated use cases (earn/redeem/reverse/history/config)",
+        "admin config API+UI (settings.manage, audited)",
+        "customer /account/loyalty (truthful dormant state)"
       ],
-      "next": "feature-gated vertical; no commercial activation"
+      "blockers": [
+        "BLOCKED_EXTERNAL: commercial activation requires operator approval (LOYALTY_PROGRAMME_ENABLED)"
+      ]
     },
     {
       "id": "9",

@@ -183,6 +183,13 @@
       "when": 1784149992485,
       "tag": "0025_next_supreme_intelligence",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1784150652022,
+      "tag": "0026_strong_psynapse",
+      "breakpoints": true
     }
   ]
 }

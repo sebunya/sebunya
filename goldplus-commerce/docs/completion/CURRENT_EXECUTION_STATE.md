@@ -47,7 +47,9 @@ Summary: 0/1/6/10/14 SOURCE_COMPLETE_NOT_DEPLOYED · 2/3/4/5/7/11/12/13 PARTIAL_
   approval-gated.
 - Slice 7A admin truthful states: COMPLETE (no fabricated SAMPLE records,
   regression-tested; campaigns page reports not-configured truthfully).
-- Next: **Slice 8** — feature-gated loyalty ledger (no commercial activation). Invariants: browser total
+- Slice 8 dormant loyalty ledger: COMPLETE (source-complete, doubly gated,
+  migration 0026; commercial activation BLOCKED_EXTERNAL on operator approval).
+- Next: **Slice 12** — legal/warranty/returns content + versioning; then 9, 11, 13. Invariants: browser total
   never authoritative; redirect never marks paid; duplicate callback/IPN never
   duplicates effects; invalid total never reaches PesaPal.
 

@@ -15,6 +15,38 @@ if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/loyalty", 303);
 }
 
+// Slice 8: real dormant-ledger configuration (preparation only). Customer
+// activation additionally requires the LOYALTY_PROGRAMME_ENABLED env flag.
+import { apiBase } from "../../lib/api";
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+let configNotice: { kind: "success" | "error"; text: string } | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  try {
+    const res = await fetch(`${apiBase}/admin/loyalty/config`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        enabled: String(form.get("enabled") || "") === "on",
+        earnRatePer1000Ugx: Number(String(form.get("earnRatePer1000Ugx") || "").replace(/[,\s]/g, "")),
+        expiryDays: Number(String(form.get("expiryDays") || "").replace(/[,\s]/g, "")),
+      }),
+    });
+    const json = await res.json().catch(() => null);
+    configNotice = json?.success
+      ? { kind: "success", text: "Configuration saved. The programme stays dormant until the operator enables the environment flag." }
+      : { kind: "error", text: json?.error?.message || "Could not save the configuration." };
+  } catch {
+    configNotice = { kind: "error", text: "Loyalty configuration service is unreachable right now." };
+  }
+}
+let ledgerConfig: { enabled: boolean; earnRatePer1000Ugx: number; expiryDays: number; envFlag: boolean; active: boolean } | null = null;
+try {
+  const res = await fetch(`${apiBase}/admin/loyalty/config`, { headers });
+  const json = await res.json().catch(() => null);
+  if (json?.success) ledgerConfig = json.data;
+} catch { /* section shows unavailable state */ }
+
 const levelClass = (value: string) => value === "High"
   ? "border-emerald-200 bg-emerald-50 text-emerald-800"
   : value === "Medium"
@@ -43,6 +75,44 @@ const levelClass = (value: string) => value === "High"
       <p class="mt-2 text-sm leading-relaxed text-amber-900"><strong>Why disabled:</strong> {LOYALTY_ADMIN_PREVIEW.activationBlocker}</p>
       <button type="button" disabled aria-describedby="activation-disabled-reason" class="mt-5 cursor-not-allowed rounded-xl border border-amber-300 bg-amber-100 px-5 py-3 text-xs font-black text-amber-800">Activation unavailable</button>
       <p id="activation-disabled-reason" class="mt-2 text-xs text-amber-800">No toggle, mutation or provider action exists in this foundation.</p>
+    </section>
+
+    <section aria-labelledby="ledger-config" class="mt-7 rounded-2xl border border-slate-200 bg-white p-6">
+      <h2 id="ledger-config" class="text-lg font-black text-brand-dark">Dormant ledger configuration</h2>
+      <p class="mt-2 text-sm leading-relaxed text-slate-600">
+        The loyalty ledger is source-complete and idle. Saving here prepares earn/expiry rules only —
+        customers earn nothing until the operator separately sets <code class="font-mono text-xs">LOYALTY_PROGRAMME_ENABLED=true</code>.
+      </p>
+      {configNotice && (
+        <div class={`mt-4 rounded-xl border px-4 py-3 text-sm font-bold ${configNotice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status">
+          {configNotice.text}
+        </div>
+      )}
+      {ledgerConfig ? (
+        <form method="POST" class="mt-5 grid gap-4 sm:grid-cols-3 items-end">
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-slate-400 tracking-widest">Points per 1,000 UGX</span>
+            <input name="earnRatePer1000Ugx" inputmode="numeric" value={String(ledgerConfig.earnRatePer1000Ugx)} class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          </label>
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-slate-400 tracking-widest">Expiry (days, 0 = never)</span>
+            <input name="expiryDays" inputmode="numeric" value={String(ledgerConfig.expiryDays)} class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          </label>
+          <div class="flex items-center gap-3">
+            <label class="inline-flex items-center gap-2 text-xs font-bold text-slate-600">
+              <input type="checkbox" name="enabled" checked={ledgerConfig.enabled} class="w-4 h-4 rounded border-slate-300" />
+              Config switch
+            </label>
+            <button type="submit" class="rounded-lg bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white hover:opacity-90">Save</button>
+          </div>
+          <p class="sm:col-span-3 text-xs text-slate-500">
+            Programme state: <strong>{ledgerConfig.active ? "ACTIVE" : "DORMANT"}</strong>
+            (env flag {ledgerConfig.envFlag ? "on" : "off"} · config switch {ledgerConfig.enabled ? "on" : "off"}).
+          </p>
+        </form>
+      ) : (
+        <p class="mt-4 text-sm text-slate-500 italic">Configuration is unavailable right now (service unreachable or permission denied).</p>
+      )}
     </section>
 
     <section aria-labelledby="mechanic-statuses" class="mt-10">

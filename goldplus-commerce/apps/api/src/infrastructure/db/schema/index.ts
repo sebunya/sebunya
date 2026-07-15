@@ -22,3 +22,4 @@ export * from './activation-live-review';
 export * from './activation-live-canary';
 export * from './search';
 export * from './compatibility';
+export * from './loyalty';

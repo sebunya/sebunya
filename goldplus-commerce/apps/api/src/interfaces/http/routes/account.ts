@@ -8,6 +8,14 @@ import { ApiResponse, MeDto, OrderSummaryDto, OrderDetailDto, AddressDto } from 
 const routes = new Hono<{ Variables: { userId: string; userEmail: string } }>();
 routes.use('*', customerSessionMiddleware);
 
+// Slice 8: loyalty history — truthful: programmeActive stays false until the
+// operator-approved activation; entries exist only from real orders/adjustments.
+routes.get('/loyalty', async (c) => {
+  const userId = c.get('userId') as string;
+  const data = await Registry.getInstance().getLoyaltyHistoryUseCase.execute({ userId });
+  return c.json({ success: true, data });
+});
+
 routes.get('/me', async (c) => {
   const userId = c.get('userId') as string;
   const user = await Registry.getInstance().userRepo.findById(userId);
