@@ -1,47 +1,34 @@
-# Slice 9-B1RC Slice 9-B2 authorization assessment
+# Slice 9-B1RC Slice 9-B2 authorization assessment — sponsor interim rerun
 
 ## Overall authorization state
 
-`not_authorized` — `blocked_by_missing_review`.
+`authorized_for_design_only_with_conditions`
 
-Decision: `SLICE_9_B1RC_BLOCKED_PENDING_STAKEHOLDER_DECISIONS`.
+Decision: `SLICE_9_B1RC_STAKEHOLDER_DECISION_GATE_COMPLETED_9B2_DESIGN_CONDITIONALLY_AUTHORIZED`.
+
+Slice 9-B2 may proceed as design-only. Slice 9-B2 may not implement anything. This is sponsor-attributed interim authorization, not final specialist approval.
 
 ## Stakeholder status summary
 
-Legal: `pending review`. Privacy/data protection: `pending review`. Security: `pending review`. Product: `pending review`. Operator/support: `pending review`. Provider/channel owner: `pending review`. Data owner/analytics: `pending review`. Business sponsor: `pending review`.
+Legal: `approved with conditions`. Privacy/data protection: `approved with conditions`. Security: `approved with conditions`. Product: `approved with conditions`. Operator/support: `approved with conditions`. Provider/channel owner: `approved with conditions`. Data owner/analytics: `approved with conditions`. Business sponsor: `approved with conditions`.
 
-Allowed statuses remain: `approved`, `approved with conditions`, `rejected`, `requires more information`, `not applicable`, and `pending review`.
+Each specialist-group status is an interim decision by Robert Sebunya as Business Sponsor for design-planning scope only. Legal, privacy, security, operator/support, provider/channel, and data-owner specialists have not given final approval.
 
 ## Decision evidence summary
 
-No attributable decision evidence was supplied. No named owner, dated decision, completed scope, or explicit business-sponsor authorization exists. Being copied on email is not approval. “Noted” is not approval.
+Robert Sebunya, Business Sponsor and accountable product owner, explicitly authorized Slice 9-B2 design proposals on 2026-07-15. The input names the decision and condition owner, records scope and exclusions, supplies milestone due dates and severity, and classifies design-only, future-persistence, and future provider-enforcement impacts.
 
-## Decision status rules
-
-- **Approved:** requires an explicit decision, named owner, documented scope, decision date or evidence timestamp, and no remaining conditions.
-- **Approved with conditions:** additionally requires every condition’s severity, owner, due date, design-only impact, future persistence impact, and future provider-enforcement impact.
-- **Rejected:** blocks authorization as `blocked_by_rejection`.
-- **Requires more information:** blocks authorization as `blocked_by_more_information_required`.
-- **Pending review:** blocks authorization as `blocked_by_missing_review`.
-- **Not applicable:** requires a documented reason, sponsor acceptance, and cannot remove accountable legal/privacy/security/provider/data ownership without justification.
-
-The business sponsor must explicitly authorize design-only Slice 9-B2.
+Silence is not approval. Attendance is not approval. Distribution is not approval. Being copied on email is not approval. “Noted” is not approval.
 
 ## Conditions summary
 
-No genuine conditions were submitted. Conditional approval cannot be complete unless every condition has an owner and due date, its 9-B2 impact is recorded, and its design-only blocking effect is explicit.
+Every group is approved with conditions for design-only planning. Robert Sebunya owns each condition until the appropriate specialist is assigned. All specialist reviews are due before the corresponding implementation, migration, persistence, provider-enforcement, support-mutation, reporting, or customer-communication authorization. These conditions are Critical or High and do not block design proposals; they block later implementation as recorded in the intake.
 
 ## Blockers summary
 
-- All eight required stakeholder reviews are missing.
-- No decision owners or decision dates were provided.
-- No condition/blocker owners or due dates exist.
-- The business sponsor has not explicitly confirmed design-only authorization.
-- Silence is not approval. Attendance is not approval. Distribution is not approval.
+There is no blocker to Slice 9-B2 design proposals. Final specialist review remains a blocking prerequisite for implementation. No persistence, migration, API mutation, provider enforcement, live send, customer communication, or activation is authorized.
 
-## Red-line preservation
-
-These red lines are non-waivable in this assessment:
+## Non-waivable red-line preservation
 
 1. Checkout contact is not marketing consent.
 2. Support conversation is not campaign consent.
@@ -56,18 +43,16 @@ These red lines are non-waivable in this assessment:
 11. No persistence before identity and audit model.
 12. No manual override without audit.
 
-## Design-only boundary
+These red lines are non-waivable in Slice 9-B1RC and Slice 9-B2 design work.
 
-Slice 9-B2 is not authorized, so it may not begin schema proposals, API command proposals, identity-verification design, audit-trail design, copy-versioning design, source-precedence design, legacy migration design, provider-enforcement dry-run design, admin/support workflow design, tests, or rollback planning.
+## Exact Slice 9-B2 design-only boundary
 
-If a later genuine gate authorizes 9-B2, it may be design-only. It must not implement migrations, actual tables, live persistence, API mutations, customer writes, provider sends, provider enforcement, customer communications, loyalty activation, Memory Lane activation, personalisation activation, discounts/coupons, checkout mutation, or auth/RBAC rewrite.
+Slice 9-B2 may produce proposals for consent-persistence schema design, API command design, identity-verification design, audit-trail design, copy versioning, source-precedence implementation design, legacy account-flag migration design, provider-enforcement dry-run design, admin-review workflow design, support-assisted update workflow design, test plans, and rollback plans.
 
-## Why implementation remains blocked
+Slice 9-B2 must not create or implement database migrations, tables, live persistence, API mutation endpoints, customer writes or preference saving, provider sends, provider enforcement, customer communications, checkout/payment changes, auth/RBAC changes, loyalty activation, Memory Lane activation, personalisation, utilisation-aware offers, discounts, or coupons.
 
-Runtime implementation remains blocked because no stakeholder boundary decision exists and this slice is evidence-only. Persistence remains blocked because identity and audit prerequisites are neither reviewed nor approved. Provider sends remain blocked because consent, suppression, STOP, identity, template, credential, audit, and dry-run enforcement gates are not approved or activated.
+Formal specialist approval remains required before any implementation. No persistence is authorized. No provider enforcement is authorized. No WhatsApp, email, or SMS sends are authorized. No customer communications are authorized. No loyalty, Memory Lane, personalisation, utilisation-aware offers, discounts, or coupons are authorized.
 
-Stakeholder review cannot be skipped because technical gates, distribution, attendance, silence, copied email, or acknowledgement do not establish accountable acceptance of customer, legal, privacy, security, provider, and operating risks.
+## Authorization conclusion
 
-## Required outcome
-
-Do not start Slice 9-B2. Conduct genuine stakeholder review, capture attributable decisions, and rerun this intake gate.
+Slice 9-B2 is conditionally authorized for design proposals only. Stop after this Slice 9-B1RC rerun; do not start Slice 9-B2 in this run.

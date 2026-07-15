@@ -1,55 +1,48 @@
-# Slice 9-B1RC artifact review
+# Slice 9-B1RC sponsor interim rerun artifact review
 
-## Scope
+## Scope and baseline
 
-Evidence and tests only at baseline `d2889d6fc4e5413bf5cfbccb51af231724204668`. No genuine stakeholder decision input was found, so the assessment is fail-closed and Slice 9-B2 remains unauthorized.
+Starting baseline: `3acae87c6f1c2adaf5244fea228faf00c6642ec7`. Sponsor-attributed decision evidence, updated intake/assessment, artifact review, and tests only. No runtime or deployment work is allowed.
 
 ## Exact allowlist
 
-1. `docs/platform/evidence/slices/slice-09-b1rc-stakeholder-decision-intake-record.md`
-2. `docs/platform/evidence/slices/slice-09-b1rc-slice-9-b2-authorization-assessment.md`
-3. `docs/platform/evidence/slices/slice-09-b1rc-artifact-review.md`
-4. `tests/unit/Slice09B1RCStakeholderDecisionGate.test.ts`
-
-The optional stakeholder-decision-input file was not created because actual decision evidence was not provided.
-
-## Exclusions
-
-No runtime, migration, schema/API proposal, provider, queue/outbox, checkout/payment/order, auth/RBAC, credential/environment/backup, loyalty/reward/discount, or customer-communication code is changed. No deployment, restart, provider activation, or customer communication occurs.
+1. `docs/platform/evidence/slices/slice-09-b1rc-stakeholder-decision-input.md`
+2. `docs/platform/evidence/slices/slice-09-b1rc-stakeholder-decision-intake-record.md`
+3. `docs/platform/evidence/slices/slice-09-b1rc-slice-9-b2-authorization-assessment.md`
+4. `docs/platform/evidence/slices/slice-09-b1rc-artifact-review.md`
+5. `tests/unit/Slice09B1RCStakeholderDecisionGate.test.ts`
 
 ## Artifact checks
 
 | Check | Result |
 |---|---|
-| Changed files | Four allowlisted evidence/test files only |
-| Allowed files | Exact allowlist below |
+| Changed files | Five allowlisted evidence/test files only |
+| Allowed files | Exact allowlist above |
 | Excluded files | None present |
 | Runtime-change check | Passed: no runtime file changed |
-| Migration-change check | Passed: no migration changed |
-| Provider-change check | Passed: no provider or transport changed |
-| Checkout/payment-change check | Passed: no checkout or payment changed |
-| Auth/RBAC-change check | Passed: no auth or RBAC changed |
-| Loyalty-ledger-change check | Passed: no loyalty ledger changed |
-| Secret/env check | Passed: no secret or environment file changed |
-| Deployment check | None; deployment prohibited |
-| Final artifact decision | Evidence-only scope accepted; authorization remains blocked |
+| Migration-change check | Passed: no migration or schema file changed |
+| Provider-change check | Passed: no provider, transport, queue, or enforcement file changed |
+| Checkout/payment-change check | Passed: no checkout, payment, order, or PesaPal file changed |
+| Auth/RBAC-change check | Passed: no auth or RBAC file changed |
+| Loyalty-ledger-change check | Passed: no loyalty, reward, offer, discount, or coupon file changed |
+| Secret/env check | Passed: no secret, environment, credential, or backup file changed |
+| Deployment check | None; no web/API deployment, restart, provider activation, or communication |
+| Final artifact decision | Evidence/test-only scope accepted; 9-B2 conditionally authorized for design proposals only |
 
 ## Gate record
 
 | Gate | Result |
 |---|---|
-| Focused intake contract | Passed: 120/120 tests |
-| Protected regressions | Passed: all 18 requested historical test files; 791 tests |
-| Secret scan | Passed: 878 files; values were not printed |
+| Focused decision gate | Passed: 164/164 tests |
+| Protected regressions | Passed: all 18 requested historical files; 791/791 tests |
+| Secret scan | Passed: 878 files checked; values were not printed |
 | Typecheck | Passed |
-| Lint | Passed: 0 errors; 619 pre-existing warnings (21 web, 598 API) |
-| Build | Passed |
-| Full suite | Passed: 145 files, 1,597 tests |
-| Exact staged allowlist | Passed: four cached paths matched; cached diff check passed |
-| Deployment | None permitted |
-
-Historical scope tests may use a temporary excludes file containing only these four current artifacts. The new focused test must inspect the real worktree normally before full-suite isolation.
+| Lint | Passed: 0 errors; 619 existing warnings (21 web, 598 API) |
+| Build | Passed; no Sentry release or source-map upload occurred |
+| Full suite | Passed from final clean commit: 145 files, 1,641 tests |
+| Exact allowlist | Passed: five paths and no excluded path |
+| Deployment | None |
 
 ## Rollback
 
-Revert the Slice 9-B1RC evidence/test commits. No runtime, database, provider, or production rollback is needed.
+Revert the sponsor-interim evidence/test commit. No runtime, database, provider, customer-data, or production rollback is required.
