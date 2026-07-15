@@ -8,7 +8,7 @@ if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/pricing", 303);
 }
 
-const result = await tryFetchAdminList<any>('/governance/admin/products', [], undefined, token);
+const result = await tryFetchAdminList<any>('/governance/admin/products', [], 'Live catalogue data is unavailable right now (service unreachable or permission denied). No sample data is shown.', token);
 const products = result.items;
 const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
 ---
@@ -26,10 +26,17 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
           View active retail selling points stored in PostgreSQL. Value modifications require operational approval.
         </p>
       </div>
+
       <div class="flex items-center gap-2">
         <span class="text-[8px] border border-yellow-200 bg-yellow-50 text-yellow-700 font-black px-2.5 py-1 rounded uppercase tracking-widest">Read-Only View</span>
       </div>
     </div>
+
+    {result.isSample && (
+      <div class="bg-amber-50 border border-amber-200 text-amber-800 px-6 py-4 rounded-2xl mb-8 text-xs leading-relaxed" role="status">
+        <strong>System note:</strong> {result.reason}
+      </div>
+    )}
 
     <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-6">
       <table class="w-full text-left border-collapse">

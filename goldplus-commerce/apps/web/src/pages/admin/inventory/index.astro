@@ -9,7 +9,7 @@ if (!token) {
 }
 
 // Fetch authentic system data to render real inventory status
-const result = await tryFetchAdminList<any>('/governance/admin/products', [], undefined, token);
+const result = await tryFetchAdminList<any>('/governance/admin/products', [], 'Live catalogue data is unavailable right now (service unreachable or permission denied). No sample data is shown.', token);
 const products = result.items;
 ---
 
@@ -26,10 +26,17 @@ const products = result.items;
           Audit live item counts extracted directly from the product repository. Updates and adjustments are coming soon.
         </p>
       </div>
+
       <div class="flex items-center gap-2">
         <span class="text-[8px] border border-yellow-200 bg-yellow-50 text-yellow-700 font-black px-2.5 py-1 rounded uppercase tracking-widest">Read-Only View</span>
       </div>
     </div>
+
+    {result.isSample && (
+      <div class="bg-amber-50 border border-amber-200 text-amber-800 px-6 py-4 rounded-2xl mb-8 text-xs leading-relaxed" role="status">
+        <strong>System note:</strong> {result.reason}
+      </div>
+    )}
 
     {/* Statistics */}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">

@@ -45,7 +45,9 @@ Summary: 0/1/6/10/14 SOURCE_COMPLETE_NOT_DEPLOYED · 2/3/4/5/7/11/12/13 PARTIAL_
 - Slice 5 declared compatibility: COMPLETE (see
   docs/platform/evidence/slices/slice-5-declared-compatibility.md); migration 0025
   approval-gated.
-- Next: **Slice 7** — admin depth/readability audit (per-page truthful states). Invariants: browser total
+- Slice 7A admin truthful states: COMPLETE (no fabricated SAMPLE records,
+  regression-tested; campaigns page reports not-configured truthfully).
+- Next: **Slice 8** — feature-gated loyalty ledger (no commercial activation). Invariants: browser total
   never authoritative; redirect never marks paid; duplicate callback/IPN never
   duplicates effects; invalid total never reaches PesaPal.
 

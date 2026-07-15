@@ -6,7 +6,7 @@ import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { tryFetchAdminList } from '../../../lib/api';
 import { readSessionToken } from '../../../lib/session';
-import { SAMPLE_QUOTES, type SampleQuote } from '../../../lib/sample-data';
+import { type SampleQuote } from '../../../lib/sample-data';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -15,8 +15,8 @@ if (!token) {
 
 const result = await tryFetchAdminList<SampleQuote>(
   '/governance/admin/quotes',
-  SAMPLE_QUOTES,
-  'Sample quote requests shown until /governance/admin/quotes is wired.',
+  [],
+  'Live quote data is unavailable right now (service unreachable or permission denied). No sample data is shown.',
   token,
 );
 

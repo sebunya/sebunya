@@ -4,17 +4,19 @@ import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { tryFetchAdminList } from '../../../lib/api';
 import { readSessionToken } from '../../../lib/session';
-import { SAMPLE_CAMPAIGNS, type SampleCampaign } from '../../../lib/sample-data';
+import { type SampleCampaign } from '../../../lib/sample-data';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/campaigns", 303);
 }
 
+// Truthful state: no campaign API exists yet, so this page reports
+// "not configured" instead of rendering fabricated campaign rows.
 const result = await tryFetchAdminList<SampleCampaign>(
   '/governance/admin/campaigns',
-  SAMPLE_CAMPAIGNS,
-  'Marketing analytics data currently restricted to safe samples.',
+  [],
+  'Campaign management is not configured yet. No campaign engine is wired to this console; rows will appear when the campaign API ships.',
   token,
 );
 

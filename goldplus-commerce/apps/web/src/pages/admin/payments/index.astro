@@ -4,7 +4,7 @@ import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { tryFetchAdminList } from '../../../lib/api';
 import { readSessionToken } from '../../../lib/session';
-import { SAMPLE_PAYMENTS, type SamplePayment } from '../../../lib/sample-data';
+import { type SamplePayment } from '../../../lib/sample-data';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -16,7 +16,7 @@ const fallbackPayments: SamplePayment[] = [];
 const result = await tryFetchAdminList<SamplePayment>(
   '/governance/admin/payments',
   fallbackPayments,
-  'Sample payment history shown until transactional GET endpoint is wired.',
+  'Live payment data is unavailable right now (service unreachable or permission denied). No sample data is shown.',
   token,
 );
 

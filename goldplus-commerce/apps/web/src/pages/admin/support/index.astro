@@ -5,7 +5,7 @@ import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { tryFetchAdminList } from '../../../lib/api';
 import { readSessionToken } from '../../../lib/session';
-import { SAMPLE_SUPPORT_TICKETS, type SampleSupportTicket } from '../../../lib/sample-data';
+import { type SampleSupportTicket } from '../../../lib/sample-data';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -14,8 +14,8 @@ if (!token) {
 
 const result = await tryFetchAdminList<SampleSupportTicket>(
   '/governance/admin/support',
-  SAMPLE_SUPPORT_TICKETS,
-  'Sample support tickets shown until /governance/admin/support is wired.',
+  [],
+  'Live support tickets are unavailable right now (service unreachable or permission denied). No sample data is shown.',
   token,
 );
 
