@@ -42,7 +42,7 @@ No runtime, migration, schema/API proposal, provider, queue/outbox, checkout/pay
 | Protected regressions | Passed: all 18 requested historical test files; 791 tests |
 | Secret scan | Passed: 878 files; values were not printed |
 | Typecheck | Passed |
-| Lint | Passed: 0 errors; 598 pre-existing warnings |
+| Lint | Passed: 0 errors; 619 pre-existing warnings (21 web, 598 API) |
 | Build | Passed |
 | Full suite | Passed: 145 files, 1,597 tests |
 | Exact staged allowlist | Passed: four cached paths matched; cached diff check passed |
@@ -52,4 +52,4 @@ Historical scope tests may use a temporary excludes file containing only these f
 
 ## Rollback
 
-Revert the single evidence/test commit. No runtime, database, provider, or production rollback is needed.
+Revert the Slice 9-B1RC evidence/test commits. No runtime, database, provider, or production rollback is needed.
