@@ -42,8 +42,10 @@ Summary: 0/1/6/10/14 SOURCE_COMPLETE_NOT_DEPLOYED · 2/3/4/5/7/11/12/13 PARTIAL_
 - Slice 4 search autocomplete + zero-result demand capture: COMPLETE
   (see docs/platform/evidence/slices/slice-4-search-demand-capture.md). Slice 3
   and 4 now SOURCE_COMPLETE_NOT_DEPLOYED. Migration 0024 approval-gated.
-- Next: **Slice 5** — compatibility boundary decision + extension of
-  CompatibilityRuleService (unknown is not compatible). Invariants: browser total
+- Slice 5 declared compatibility: COMPLETE (see
+  docs/platform/evidence/slices/slice-5-declared-compatibility.md); migration 0025
+  approval-gated.
+- Next: **Slice 7** — admin depth/readability audit (per-page truthful states). Invariants: browser total
   never authoritative; redirect never marks paid; duplicate callback/IPN never
   duplicates effects; invalid total never reaches PesaPal.
 

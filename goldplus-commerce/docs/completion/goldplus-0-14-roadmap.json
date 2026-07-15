@@ -84,14 +84,15 @@
     {
       "id": "5",
       "module": "Compatibility",
-      "status": "PARTIAL_VERTICAL",
-      "missing": [
-        "device/product model",
-        "rule states exact/conditional/incompatible/unknown",
-        "PDP selector",
-        "admin CRUD"
-      ],
-      "next": "boundary decision then extend CompatibilityRuleService"
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "missing": [],
+      "next": "none (deployment approval-gated)",
+      "completed": [
+        "pure domain verdicts + resolveCompatibility (declared beats heuristic; unknown is not compatible)",
+        "product_compatibility_mappings + migration 0025",
+        "admin CRUD (products.write, audited) + admin page",
+        "PDP Verified compatibility section (declared only, no leakage)"
+      ]
     },
     {
       "id": "6",

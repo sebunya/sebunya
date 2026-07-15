@@ -41,7 +41,7 @@ const redirectIndex = (source: string) => source.indexOf('return Astro.redirect'
 
 describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
   it('discovers the complete current admin Astro inventory', () => {
-    expect(adminPages).toHaveLength(53);
+    expect(adminPages).toHaveLength(54);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/audit/index.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -58,7 +58,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(52);
+    expect(protectedPages).toHaveLength(53);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');

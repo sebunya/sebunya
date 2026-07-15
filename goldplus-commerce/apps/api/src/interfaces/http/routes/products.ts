@@ -63,6 +63,14 @@ routes.post('/search-events', async (c) => {
   return c.json(res);
 });
 
+// Slice 5: declared compatibility guidance for a PDP (admin-verified only).
+routes.get('/:slug/compatibility', async (c) => {
+  const registry = Registry.getInstance();
+  const data = await registry.getProductCompatibilityUseCase.execute({ slug: c.req.param('slug') });
+  const res: ApiResponse<typeof data> = { success: true, data };
+  return c.json(res);
+});
+
 routes.get('/:slug', async (c) => {
   const registry = Registry.getInstance();
   const useCase = new GetProductBySlugUseCase(registry.productRepo);

@@ -176,6 +176,13 @@
       "when": 1784149525808,
       "tag": "0024_reflective_ikaris",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1784149992485,
+      "tag": "0025_next_supreme_intelligence",
+      "breakpoints": true
     }
   ]
 }

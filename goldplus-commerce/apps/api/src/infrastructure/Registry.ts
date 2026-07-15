@@ -39,6 +39,13 @@ import { IPesaPalClient } from '../application/ports/IPesaPalClient';
 import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
 import { GetPaymentReconciliationUseCase } from '../application/use-cases/payments/GetPaymentReconciliationUseCase';
 import { DrizzleSearchDemandRepository } from './db/repositories/DrizzleSearchDemandRepository';
+import { DrizzleCompatibilityMappingRepository } from './db/repositories/DrizzleCompatibilityMappingRepository';
+import {
+  UpsertCompatibilityMappingUseCase,
+  ListCompatibilityMappingsUseCase,
+  DeleteCompatibilityMappingUseCase,
+  GetProductCompatibilityUseCase,
+} from '../application/use-cases/products/CompatibilityUseCases';
 import {
   SuggestProductsUseCase,
   RecordSearchEventUseCase,
@@ -374,6 +381,11 @@ export class Registry {
   public readonly recordSearchEventUseCase = new RecordSearchEventUseCase(this.searchDemandRepo);
   public readonly listSearchDemandUseCase = new ListSearchDemandUseCase(this.searchDemandRepo);
   public readonly updateSearchDemandStatusUseCase = new UpdateSearchDemandStatusUseCase(this.searchDemandRepo);
+  public readonly compatibilityMappingRepo = new DrizzleCompatibilityMappingRepository();
+  public readonly upsertCompatibilityMappingUseCase = new UpsertCompatibilityMappingUseCase(this.compatibilityMappingRepo, this.productRepo);
+  public readonly listCompatibilityMappingsUseCase = new ListCompatibilityMappingsUseCase(this.compatibilityMappingRepo);
+  public readonly deleteCompatibilityMappingUseCase = new DeleteCompatibilityMappingUseCase(this.compatibilityMappingRepo);
+  public readonly getProductCompatibilityUseCase = new GetProductCompatibilityUseCase(this.compatibilityMappingRepo, this.productRepo);
   public readonly checkoutUseCase = new CheckoutUseCase(this.orderRepo, this.productRepo, this.deliveryZoneRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);

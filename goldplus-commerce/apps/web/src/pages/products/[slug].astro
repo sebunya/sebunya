@@ -195,6 +195,24 @@ if (product?.categoryName === 'Sound Devices') {
 
 const pdpCopy = product ? pdpDescriptions[product.slug] : null;
 
+// Slice 5: admin-verified compatibility guidance (declared mappings only —
+// unverified pairs are simply absent; unknown is never shown as compatible).
+interface CompatEntry { productId: string; name: string; slug: string; verdict: string; label: string; note: string | null }
+let compatibilityEntries: CompatEntry[] = [];
+if (product) {
+  try {
+    const compatRes = await fetch(`${apiBase}/products/${encodeURIComponent(product.slug)}/compatibility`, { signal: AbortSignal.timeout(2000) });
+    const compatJson = await compatRes.json().catch(() => null);
+    if (compatJson?.success && Array.isArray(compatJson.data)) compatibilityEntries = compatJson.data;
+  } catch { /* section is hidden when unavailable */ }
+}
+const verdictBadge: Record<string, string> = {
+  exact: 'border-green-300 bg-green-50 text-green-800',
+  compatible: 'border-green-200 bg-green-50 text-green-700',
+  conditional: 'border-amber-300 bg-amber-50 text-amber-800',
+  incompatible: 'border-red-300 bg-red-50 text-red-700',
+};
+
 const canBuy = product?.availability.kind === 'in_stock';
 const pageTitle = product ? product.name : 'Product unavailable';
 const description = product
@@ -392,6 +410,23 @@ const canonical = Astro.url.toString();
         data-product-price={product.retailPriceUgx ?? ''}
         data-product-category={product.categoryName ?? ''}
       >
+        {compatibilityEntries.length > 0 && (
+          <div class="border-t border-slate-100 pt-10" aria-labelledby="compat-heading">
+            <h2 id="compat-heading" class="text-xl font-black text-slate-900">Verified compatibility</h2>
+            <p class="mt-1 text-sm text-slate-600">Checked and declared by GoldPlus staff — not guesses.</p>
+            <ul class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {compatibilityEntries.map((entry) => (
+                <li class="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <a href={`/products/${entry.slug}`} class="text-sm font-bold text-slate-900 hover:text-brand-primary">{entry.name}</a>
+                    <span class={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${verdictBadge[entry.verdict] ?? 'border-slate-200 bg-slate-50 text-slate-600'}`}>{entry.label}</span>
+                  </div>
+                  {entry.note && <p class="mt-2 text-xs leading-relaxed text-slate-600">{entry.note}</p>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div class="border-t border-slate-100 pt-10">
           <CompleteSetupRail
             productId={product.id}
