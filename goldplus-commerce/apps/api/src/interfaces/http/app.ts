@@ -39,6 +39,7 @@ import { liveReview } from '../../presentation/routes/controlled-activation-live
 import { controlledLiveCanaryRouter } from '../../presentation/routes/controlled-live-canary.js';
 import consentOperatingRoutes from './routes/consent-operating';
 import adminConsentOperatingRoutes from './routes/admin/consent-operating';
+import adminConsentOperationsRoutes from './routes/admin/consent-operations';
 
 
 
@@ -153,6 +154,7 @@ app.route('/admin/controlled-activation/live-canaries', controlledLiveCanaryRout
 app.route('/product-finder', productFinderRoutes);
 app.route('/account/consent-operating', consentOperatingRoutes);
 app.route('/admin/consent-operating', adminConsentOperatingRoutes);
+app.route('/api/admin/consent/operations', adminConsentOperationsRoutes);
 
 
 // Health check route mounted via route registration

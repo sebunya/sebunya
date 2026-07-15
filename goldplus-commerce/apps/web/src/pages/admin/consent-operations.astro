@@ -1,0 +1,181 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken } from '../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/consent-operations', 303);
+}
+
+interface Summary {
+  status: 'green' | 'amber' | 'red';
+  generatedAt: string;
+  pilot: {
+    state: string;
+    ring: string;
+    publicSavesEnabled: boolean;
+    providerSendsEnabled: boolean;
+    customerCommunicationsEnabled: boolean;
+    incidentControlsEnabled: boolean;
+  };
+  ledger: {
+    totalEvents: number;
+    grants: number;
+    withdrawals: number;
+    providerSuppressions: number;
+    policyBlocks: number;
+    duplicateLifecycleGroups: number;
+    lastEventAt: string | null;
+  };
+  noSend: {
+    providerCallbacks: number;
+    providerUnsubscribes: number;
+    outboxRows: number;
+    notificationAttempts: number;
+    transportCalls: number;
+  };
+  preferenceCentre: {
+    publicSavesEnabled: boolean;
+    currentMode: string;
+    noChangesSavedConfirmed: boolean | null;
+  };
+  incidents: Array<{ severity: 'info' | 'warning' | 'critical'; code: string; message: string; recommendedAction: string }>;
+  actions: { canPause: boolean; canResume: boolean; canForceReadOnly: boolean; canEnableSends: false };
+}
+
+const unavailable: Summary = {
+  status: 'red',
+  generatedAt: new Date().toISOString(),
+  pilot: { state: 'blocked', ring: 'unknown', publicSavesEnabled: false, providerSendsEnabled: false, customerCommunicationsEnabled: false, incidentControlsEnabled: false },
+  ledger: { totalEvents: 0, grants: 0, withdrawals: 0, providerSuppressions: 0, policyBlocks: 0, duplicateLifecycleGroups: 0, lastEventAt: null },
+  noSend: { providerCallbacks: 0, providerUnsubscribes: 0, outboxRows: 0, notificationAttempts: 0, transportCalls: 0 },
+  preferenceCentre: { publicSavesEnabled: false, currentMode: 'unknown', noChangesSavedConfirmed: null },
+  incidents: [{ severity: 'critical', code: 'COUNTER_SOURCE_UNAVAILABLE', message: 'Consent operations counters are unavailable.', recommendedAction: 'Keep all writes and sends disabled; verify API and database health, then escalate.' }],
+  actions: { canPause: false, canResume: false, canForceReadOnly: false, canEnableSends: false },
+};
+
+let summary = unavailable;
+let accessDenied = false;
+try {
+  const response = await fetch(`${apiBase}/api/admin/consent/operations/summary`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  accessDenied = response.status === 401 || response.status === 403;
+  const payload = await response.json();
+  if (payload?.data) summary = payload.data;
+} catch {
+  // Fail-closed summary is rendered without exposing the underlying error.
+}
+
+const statusStyles = {
+  green: 'border-emerald-300 bg-emerald-50 text-emerald-950',
+  amber: 'border-amber-300 bg-amber-50 text-amber-950',
+  red: 'border-red-300 bg-red-50 text-red-950',
+};
+const counters = [
+  ['Consent events', summary.ledger.totalEvents],
+  ['Grants', summary.ledger.grants],
+  ['Withdrawals', summary.ledger.withdrawals],
+  ['Provider suppressions', summary.ledger.providerSuppressions],
+  ['Policy blocks', summary.ledger.policyBlocks],
+  ['Duplicate groups', summary.ledger.duplicateLifecycleGroups],
+] as const;
+const noSendCounters = [
+  ['Provider callbacks', summary.noSend.providerCallbacks],
+  ['Provider unsubscribes', summary.noSend.providerUnsubscribes],
+  ['Outbox rows', summary.noSend.outboxRows],
+  ['Notification attempts', summary.noSend.notificationAttempts],
+  ['Transport calls', summary.noSend.transportCalls],
+] as const;
+const noSendClean = noSendCounters.every(([, value]) => value === 0)
+  && !summary.pilot.providerSendsEnabled
+  && !summary.pilot.customerCommunicationsEnabled;
+const runbook = [
+  ['Red incident', 'Do not resume or expand the pilot. Preserve evidence, force the operational process to read-only, and escalate to privacy, security and the channel owner.'],
+  ['Duplicate lifecycle', 'Freeze consent operations, preserve correlation evidence, and investigate idempotency before any new lifecycle action.'],
+  ['Provider or send anomaly', 'Disable provider, notification and communication gates outside this page; do not retry or run a canary.'],
+  ['Counter source unavailable', 'Treat the state as red. Verify API/database health without exposing secrets or raw identities.'],
+] as const;
+---
+
+<AdminLayout title="Consent Operations Control Room" description="Read-only consent safety monitoring and incident guardrails.">
+  <div class="container mx-auto max-w-7xl px-6 py-8 lg:px-8">
+    <header class="border-b border-slate-200 pb-6">
+      <p class="text-xs font-black uppercase tracking-[0.18em] text-brand-primary">Slice 10-D PRIME · admin only · read-only</p>
+      <h1 class="mt-2 text-3xl font-black text-slate-950">Consent Operations Control Room</h1>
+      <p class="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600">Aggregate operational evidence only. No raw identities, secrets, consent writes, provider calls or customer communications are available from this page.</p>
+    </header>
+
+    {accessDenied ? (
+      <section class="mt-8 rounded-2xl border border-red-300 bg-red-50 p-6 text-red-950">
+        <h2 class="text-xl font-black">Access denied</h2>
+        <p class="mt-2 text-sm">The existing audit-read permission is required. No operational data was disclosed.</p>
+      </section>
+    ) : (
+      <>
+        <section class:list={['mt-8 rounded-2xl border p-6', statusStyles[summary.status]]} aria-labelledby="pilot-state-title">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="pilot-state-title" class="text-xl font-black">1. Pilot State</h2>
+            <span class="rounded-full border border-current px-3 py-1 text-xs font-black uppercase">{summary.status}</span>
+          </div>
+          <div class="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <p><strong>State:</strong> {summary.pilot.state}</p>
+            <p><strong>Ring:</strong> {summary.pilot.ring}</p>
+            <p><strong>No sends enabled:</strong> {String(!summary.pilot.providerSendsEnabled)}</p>
+            <p><strong>Incident controls:</strong> runbook only</p>
+          </div>
+        </section>
+
+        <section class="mt-8" aria-labelledby="ledger-health-title">
+          <h2 id="ledger-health-title" class="text-xl font-black text-slate-950">2. Ledger Health</h2>
+          <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {counters.map(([label, value]) => <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs font-black uppercase text-slate-500">{label}</p><p class="mt-2 text-2xl font-black text-slate-950">{value}</p></article>)}
+          </div>
+          <p class="mt-3 text-xs text-slate-500">Last event: {summary.ledger.lastEventAt ?? 'Unavailable'}. Generated: {summary.generatedAt}.</p>
+        </section>
+
+        <section class:list={['mt-8 rounded-2xl border p-6', noSendClean ? 'border-emerald-200 bg-emerald-50' : 'border-red-300 bg-red-50']} aria-labelledby="no-send-title">
+          <h2 id="no-send-title" class="text-xl font-black text-slate-950">3. No-Send Sentinel</h2>
+          <p class:list={['mt-2 text-sm font-black', noSendClean ? 'text-emerald-900' : 'text-red-950']}>
+            {summary.pilot.providerSendsEnabled ? 'Provider delivery enabled — critical incident' : 'Provider delivery disabled'} · {noSendClean ? 'No sends enabled' : 'Send anomaly detected'} · {summary.pilot.customerCommunicationsEnabled ? 'Customer communications enabled — critical incident' : 'Customer communications disabled'}
+          </p>
+          <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {noSendCounters.map(([label, value]) => <p class="rounded-xl bg-white p-3 text-sm"><strong>{label}</strong><br />{value}</p>)}
+          </div>
+        </section>
+
+        <section class="mt-8 rounded-2xl border border-slate-200 bg-white p-6" aria-labelledby="preference-safety-title">
+          <h2 id="preference-safety-title" class="text-xl font-black text-slate-950">4. Preference Centre Safety</h2>
+          <div class="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+            <p><strong>Mode:</strong> {summary.preferenceCentre.currentMode}</p>
+            <p><strong>Public saves disabled:</strong> {String(!summary.preferenceCentre.publicSavesEnabled)}</p>
+            <p><strong>No changes saved confirmed:</strong> {summary.preferenceCentre.noChangesSavedConfirmed === null ? 'Not asserted for pilot mode' : String(summary.preferenceCentre.noChangesSavedConfirmed)}</p>
+          </div>
+        </section>
+
+        <section class="mt-8" aria-labelledby="incidents-title">
+          <h2 id="incidents-title" class="text-xl font-black text-slate-950">5. Incidents and Recommended Actions</h2>
+          <div class="mt-4 grid gap-4">
+            {summary.incidents.length === 0 ? <p class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">No incidents detected.</p> : summary.incidents.map(item => (
+              <article class:list={['rounded-xl border p-4', item.severity === 'critical' ? 'border-red-300 bg-red-50' : item.severity === 'warning' ? 'border-amber-300 bg-amber-50' : 'border-blue-200 bg-blue-50']}>
+                <p class="text-xs font-black uppercase tracking-wide">{item.severity} · {item.code}</p>
+                <p class="mt-2 text-sm font-semibold">{item.message}</p>
+                <p class="mt-1 text-sm">{item.recommendedAction}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section class="mt-8" aria-labelledby="runbook-title">
+          <h2 id="runbook-title" class="text-xl font-black text-slate-950">6. Operator Runbook</h2>
+          <p class="mt-2 text-sm text-slate-600">Write controls are deliberately deferred because no safe consent-specific operator-state persistence exists. These are instructions, not buttons.</p>
+          <div class="mt-4 grid gap-4 md:grid-cols-2">
+            {runbook.map(([title, detail]) => <article class="rounded-xl border border-slate-200 bg-white p-5"><h3 class="font-black text-slate-950">{title}</h3><p class="mt-2 text-sm leading-relaxed text-slate-600">{detail}</p></article>)}
+          </div>
+          <p class="mt-4 text-xs font-black uppercase tracking-wide text-slate-600">Can pause: false · Can resume: false · Can force read-only: false · Can enable sends: false</p>
+        </section>
+      </>
+    )}
+  </div>
+</AdminLayout>

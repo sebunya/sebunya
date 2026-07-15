@@ -122,6 +122,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Protected consent workflows, suppression intake, dry-runs and no-send readiness.'
   },
   {
+    label: 'Consent Control Room',
+    href: '/admin/consent-operations',
+    group: 'Measurement',
+    status: 'read_only',
+    description: 'Read-only consent incident classification, no-send sentinels and operator runbooks.'
+  },
+  {
     label: 'Attribution',
     href: '/admin/measurement/attribution',
     group: 'Measurement',

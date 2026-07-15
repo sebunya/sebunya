@@ -47,3 +47,13 @@ Post-switch checks passed: storefront `200`, API live health `200`, admin protec
 The production source was not fast-forwarded to the final evidence head because the cumulative delta from `bfa6de6` includes earlier PR2D/PR2E evidence files outside PR2G's narrow reconciliation allowlist. No force or restart was attempted. Decision: `SLICE_10_PR2G_FINAL_SOURCE_SWITCHED_CADDY_RESTARTED`.
 
 The next allowed work is Slice 10-D APEX — Consent Operations Monitoring + Pilot Incident Controls. Preserve the PR2G backup and dirty rollback source until operational sign-off is complete.
+
+Slice 10-D PRIME adds a protected read-only Consent Operations Control Room at `/admin/consent-operations` and a protected aggregate summary API at `GET /api/admin/consent/operations/summary`. Its deterministic classifier fails red on duplicate lifecycle groups, provider/outbox/notification activity, unsafe send/public-save gates, unavailable counters, or requested controls without safe persistence. It exposes no raw identities and no mutation endpoint.
+
+No safe consent-specific operator-state persistence already exists, so pause, resume, force-read-only, and send controls remain deferred and disabled; the operator runbook is the escalation mechanism. Focused tests passed 32/32, the clean-tree full suite passed 157 files / 3,733 tests, and typecheck, lint, build, secret scan, and artifact review passed.
+
+Production remained clean at `bfa6de64228d6cca602c35e8d217d74cad4696c9`. Read-only verification found the unchanged four Slice 10-C events, two grants, two withdrawals, zero duplicate lifecycle groups, zero provider callbacks or unsubscribes, zero outbox rows, and zero notification attempts. No database write, migration, lifecycle, identity, provider, or customer-communication action occurred.
+
+Slice 10-D was not deployed. API/web run from immutable images without application-source bind mounts, while the only authorized Compose command does not build new images; executing it cannot prove this runtime delta would be loaded. Production source and all services were left unchanged. Decision: `SLICE_10_D_PRIME_CONSENT_OPERATIONS_CONTROL_ROOM_READY_NOT_DEPLOYED`.
+
+Next recommendation: schedule a maintenance window with an explicitly approved reproducible API/web image build plus scoped API/web recreation plan. Re-run health, logged-out protection, authenticated admin summary (if a safe harness is available), and the read-only consent/no-send checks after deployment. Do not start provider activation, broad Preference Centre saves, or pilot expansion.
