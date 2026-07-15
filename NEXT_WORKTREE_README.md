@@ -26,4 +26,8 @@ The prepared candidate at `/opt/goldplus/app/goldplus-commerce.clean-10pr2-20260
 
 The live source was not switched and no service was restarted because the required root-only approval file remained absent. Decision: `SLICE_10_PR2C_PRIME_CADDY_REPAIRED_CANDIDATE_READY_APPROVAL_NOT_PROVIDED`.
 
-Next allowed work is the switch/restart path only after the exact approval phrase is captured through the root-only production approval file. Create another fresh preservation pack immediately before switching. Do not start Slice 10-D until the source switch and minimal Caddy restart are completed and verified.
+Slice 10-PR2D ULTIMATE rechecked the prepared candidate at `bfa6de64228d6cca602c35e8d217d74cad4696c9`. Its clean provenance, direct app layout, root symlink safety, Caddy validation with the exact production image, and Compose validation all passed. Production remained healthy and the read-only Slice 10-C ledger remained two grants plus two withdrawals with zero duplicate lifecycle groups, provider callback references, consent/canary outbox rows, or notification attempts.
+
+The required root-only approval file was still absent, so the run stopped at the approval hard gate. No maintenance lock was acquired, no fresh preservation pack was created, no source switch occurred, and no service was restarted. Decision: `SLICE_10_PR2D_ULTIMATE_BLOCKED_BY_RESTART_APPROVAL`.
+
+Next allowed work is to rerun Slice 10-PR2D ULTIMATE only after an operator creates `/root/APPROVE_SLICE_10_PR2_PLANNED_RESTART` with the exact single-line content `APPROVE_SLICE_10_PR2_PLANNED_RESTART` and mode 600. The rerun must acquire the maintenance lock, make a fresh preservation pack immediately before switching, snapshot production, switch the validated source, restart Caddy only, and verify health. Do not start Slice 10-D until that switch and restart complete successfully.
