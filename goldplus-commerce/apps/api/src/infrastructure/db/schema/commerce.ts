@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, integer, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, integer, index, jsonb, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { products } from './products';
 import { users } from './identity';
@@ -44,8 +44,14 @@ export const orders = pgTable('orders', {
   sessionId: varchar('session_id', { length: 160 }),
   cartId: uuid('cart_id'),
   attributionId: uuid('attribution_id'),
+
+  // Slice 3B: structured Uganda delivery location + fee provenance + idempotency
+  deliveryLocation: jsonb('delivery_location'),
+  deliveryFeeConfirmed: boolean('delivery_fee_confirmed').default(false).notNull(),
+  clientOrderKey: varchar('client_order_key', { length: 80 }),
 }, (table) => ({
   orderNumberIdx: index('orders_number_idx').on(table.orderNumber),
+  clientOrderKeyIdx: uniqueIndex('orders_client_order_key_idx').on(table.clientOrderKey),
   anonymousIdx: index('orders_anonymous_idx').on(table.anonymousId),
   browserIdx: index('orders_browser_idx').on(table.browserId),
   sessionIdx: index('orders_session_idx').on(table.sessionId),
@@ -126,3 +132,15 @@ export const paymentAttempts = pgTable('payment_attempts', {
 }));
 
 
+
+// Slice 3B: admin-configured delivery fee zones (per Ugandan district)
+export const deliveryZones = pgTable('delivery_zones', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  district: varchar('district', { length: 100 }).notNull(),
+  feeUgx: integer('fee_ugx').notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  districtIdx: uniqueIndex('delivery_zones_district_idx').on(table.district),
+}));

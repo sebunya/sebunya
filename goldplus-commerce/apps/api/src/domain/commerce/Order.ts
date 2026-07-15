@@ -16,6 +16,19 @@ export interface OrderCustomerDetails {
   phone: string;
   deliveryArea: string;
   deliveryAddress: string;
+  /** Structured Uganda location selection (Slice 3B). Optional for legacy orders. */
+  deliveryLocation?: OrderDeliveryLocation | null;
+}
+
+/** Persisted structured delivery location — a bounded subset of the shared picker selection. */
+export interface OrderDeliveryLocation {
+  district: string;
+  region?: string;
+  countyOrMunicipality?: string;
+  subcountyDivisionTc?: string;
+  parishWard?: string;
+  postcode?: string;
+  displayLabel?: string;
 }
 
 export class Order {
@@ -35,7 +48,10 @@ export class Order {
     public readonly paymentStatus: PaymentStatus,
     public readonly orderStatus: OrderStatus,
     public readonly createdAt: Date,
-    public readonly updatedAt: Date
+    public readonly updatedAt: Date,
+    public readonly deliveryLocation: OrderDeliveryLocation | null = null,
+    /** True only when the fee came from an enabled configured delivery zone. */
+    public readonly deliveryFeeConfirmed: boolean = false
   ) {}
 
   public static create(
@@ -43,7 +59,8 @@ export class Order {
     customer: OrderCustomerDetails,
     buyerType: BuyerType,
     items: OrderItem[],
-    deliveryFeeUgx: number = 0
+    deliveryFeeUgx: number = 0,
+    deliveryFeeConfirmed: boolean = false
   ): Order {
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const total = subtotal + deliveryFeeUgx;
@@ -70,7 +87,9 @@ export class Order {
       'unpaid',
       initialStatus,
       timestamp,
-      timestamp
+      timestamp,
+      customer.deliveryLocation ?? null,
+      deliveryFeeConfirmed
     );
   }
 
@@ -79,7 +98,7 @@ export class Order {
       this.id, this.orderNumber, this.customerName, this.customerPhone, this.customerEmail,
       this.deliveryArea, this.deliveryAddress, this.buyerType, this.items,
       this.subtotalUgx, this.deliveryFeeUgx, this.totalUgx, this.paymentStatus,
-      newStatus, this.createdAt, new Date()
+      newStatus, this.createdAt, new Date(), this.deliveryLocation, this.deliveryFeeConfirmed
     );
   }
 }

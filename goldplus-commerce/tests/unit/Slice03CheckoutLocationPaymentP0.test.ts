@@ -11,7 +11,7 @@ describe('Slice 03 checkout location and payment P0 protected contract', () => {
     const result = validateCheckoutPayload({
       customerDetails: { name: 'Customer', phone: '0700000000', deliveryArea: '', deliveryAddress: '' },
       buyerType: 'retail',
-      items: [{ productId: 'p1', sku: 'SKU', name: 'Product', price: 10_000, quantity: 1 }],
+      items: [{ productId: 'p1', quantity: 1 }],
     });
     expect(result.valid).toBe(false);
     expect(result.errors).toEqual(expect.arrayContaining(['Delivery area is required', 'Delivery address is required']));

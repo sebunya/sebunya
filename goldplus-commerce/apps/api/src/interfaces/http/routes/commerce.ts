@@ -1,8 +1,44 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
 import { customerSessionMiddleware } from '../middleware/customerSession';
 import { createHash } from 'crypto';
+
+// Slice 3B: server-authoritative checkout input. Client prices/sku/names are
+// deliberately absent — only productId + quantity are trusted; extra fields
+// sent by older clients are stripped, never used.
+const checkoutBodySchema = z.object({
+  customerDetails: z.object({
+    name: z.string().trim().min(1).max(255),
+    email: z.string().trim().email().max(255).optional().or(z.literal('').transform(() => undefined)),
+    phone: z.string().trim().min(5).max(20),
+    deliveryArea: z.string().trim().min(1).max(255),
+    deliveryAddress: z.string().trim().min(1).max(255),
+    deliveryLocation: z
+      .object({
+        district: z.string().trim().min(1).max(100),
+        region: z.string().trim().max(100).optional(),
+        countyOrMunicipality: z.string().trim().max(150).optional(),
+        subcountyDivisionTc: z.string().trim().max(150).optional(),
+        parishWard: z.string().trim().max(150).optional(),
+        postcode: z.string().trim().max(20).optional(),
+        displayLabel: z.string().trim().max(255).optional(),
+      })
+      .nullish(),
+  }),
+  buyerType: z.enum(['retail', 'wholesale', 'corporate']),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().uuid(),
+        quantity: z.number().int().min(1).max(99),
+      })
+    )
+    .min(1)
+    .max(50),
+  clientOrderKey: z.string().trim().min(8).max(80).nullish(),
+});
 
 const routes = new Hono();
 const registry = Registry.getInstance();
@@ -81,23 +117,36 @@ routes.get('/carts/:id', async (c) => {
 
 routes.post('/orders/create', async (c) => {
   try {
-    const body = await c.req.json();
-    const order = await registry.checkoutUseCase.execute({
+    const raw = await c.req.json().catch(() => null);
+    const parsed = checkoutBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      const message = first ? `${first.path.join('.') || 'body'}: ${first.message}` : 'Invalid checkout payload.';
+      return c.json({ success: false, error: { code: 'INVALID_CHECKOUT', message } }, 400);
+    }
+    const body = parsed.data;
+    const result = await registry.checkoutUseCase.execute({
       customerDetails: body.customerDetails,
       buyerType: body.buyerType,
       items: body.items,
+      clientOrderKey: body.clientOrderKey ?? null,
     });
-    
+
     const res: ApiResponse<any> = {
       success: true,
-      data: order,
+      data: {
+        ...result.order,
+        deliveryFeeConfirmed: result.deliveryFeeConfirmed,
+        idempotentReplay: result.idempotentReplay,
+      },
     };
     return c.json(res);
   } catch (err: any) {
     if (err.message.includes('DATABASE_URL')) {
       return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Order service is temporarily unavailable (Database is not configured).' } }, 503);
     }
-    return c.json({ success: false, error: { code: 'ORDER_FAILED', message: err.message } }, 400);
+    const known = ['PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE'].find((k) => err.message.startsWith(k));
+    return c.json({ success: false, error: { code: known ?? 'ORDER_FAILED', message: err.message } }, 400);
   }
 });
 

@@ -32,12 +32,15 @@ Summary: 0/1/6/10/14 SOURCE_COMPLETE_NOT_DEPLOYED · 2/3/4/5/7/11/12/13 PARTIAL_
 
 ## Active slice
 
-- 14A ELITE reconciliation: COMPLETE (this commit).
-- Next: **Slice 3 residuals** — Uganda location hierarchy + delivery fee rules +
-  admin payment operations depth, extending `StartCheckoutUseCase` and the existing
-  payment state machine. Invariants: browser total never authoritative; redirect never
-  marks paid; duplicate callback/IPN never duplicates effects; invalid total never
-  reaches PesaPal.
+- 14A ELITE reconciliation: COMPLETE.
+- 3B server-authoritative checkout + Uganda location persistence + delivery fee
+  zones: COMPLETE (see `docs/platform/evidence/slices/slice-3b-server-authoritative-checkout.md`).
+  Repaired pre-existing UNSAFE defect: client-supplied prices were trusted at
+  `/commerce/orders/create`. Migration `0023` awaits approved production execution.
+- Next: **Slice 3 residual** — admin payment operations depth / reconciliation view;
+  then Slice 4 (autocomplete + zero-result demand capture). Invariants: browser total
+  never authoritative; redirect never marks paid; duplicate callback/IPN never
+  duplicates effects; invalid total never reaches PesaPal.
 
 ## Gates last run (this session)
 

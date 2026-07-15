@@ -3,28 +3,214 @@
   "branch": "phase-2-measurement-control-tower-completion",
   "head": "4b4016c",
   "productionHead": "bfa6de6 (evidence-carried, not re-verified this session)",
-  "statuses": ["LIVE_VERIFIED", "SOURCE_COMPLETE_NOT_DEPLOYED", "PARTIAL_VERTICAL", "STATIC_UI_ONLY", "BACKEND_ONLY", "SHELL_OR_PLACEHOLDER", "MISSING", "BLOCKED_EXTERNAL", "UNSAFE_OR_REGRESSED"],
+  "statuses": [
+    "LIVE_VERIFIED",
+    "SOURCE_COMPLETE_NOT_DEPLOYED",
+    "PARTIAL_VERTICAL",
+    "STATIC_UI_ONLY",
+    "BACKEND_ONLY",
+    "SHELL_OR_PLACEHOLDER",
+    "MISSING",
+    "BLOCKED_EXTERNAL",
+    "UNSAFE_OR_REGRESSED"
+  ],
   "slices": [
-    { "id": "0", "module": "Protection & verification", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "missing": ["production re-verification from this environment"], "next": "keep gates green" },
-    { "id": "1", "module": "Owner access / auth", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "missing": ["recovery/lockout depth audit"], "next": "regression tests where weak" },
-    { "id": "2", "module": "Storefront P0", "status": "PARTIAL_VERTICAL", "missing": ["taxonomy coverage check", "newsletter truthful state", "mobile QA matrix"], "next": "targeted residual audit" },
-    { "id": "3", "module": "Checkout / location / payment", "status": "PARTIAL_VERTICAL", "missing": ["Uganda location hierarchy", "delivery fee rules", "admin payment ops depth", "reconciliation view"], "next": "NEXT IMPLEMENTATION SLICE", "preserve": ["PaymentStateMachine", "PaymentIdempotencyService", "PesaPal ports"] },
-    { "id": "4", "module": "Search / autocomplete / zero-result", "status": "PARTIAL_VERTICAL", "missing": ["autocomplete endpoint", "zero-result event capture", "admin demand queue"], "next": "extend ProductSearchService" },
-    { "id": "5", "module": "Compatibility", "status": "PARTIAL_VERTICAL", "missing": ["device/product model", "rule states exact/conditional/incompatible/unknown", "PDP selector", "admin CRUD"], "next": "boundary decision then extend CompatibilityRuleService" },
-    { "id": "6", "module": "Recommendations", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "missing": ["live verification"], "duplicateRisk": "parallel module preserved on claude/goldplus-debug-features-8ku4ns@5201143 — DO NOT PORT", "next": "none (extend-only)" },
-    { "id": "7", "module": "Admin depth", "status": "PARTIAL_VERTICAL", "missing": ["per-page truthful states", "permission-aware action audit"], "next": "page-by-page audit slice" },
-    { "id": "8", "module": "Loyalty", "status": "STATIC_UI_ONLY", "deliberate": true, "missing": ["feature-gated wallet/ledger/earn-burn/reversal/expiry/idempotency/admin config"], "next": "feature-gated vertical; no commercial activation" },
-    { "id": "9", "module": "Customer DNA / NBA / lifecycle", "status": "MISSING", "foundations": ["consent (LIVE)", "preferences", "orders/cart/search signals"], "missing": ["unified profile", "lifecycle", "segments", "deterministic NBA", "suppression"], "next": "design on existing signals; no second profile store" },
-    { "id": "10", "module": "Measurement / control tower", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "blockers": ["BLOCKED_EXTERNAL: 10-D deployment approval"], "next": "await operator-approved image build + scoped recreate" },
-    { "id": "11", "module": "Support / WhatsApp readiness", "status": "PARTIAL_VERTICAL", "missing": ["admin inbox", "assignment", "status/SLA", "order link/timeline", "template registry + approval", "recipient allowlist", "automation rules"], "next": "extend SupportTicket vertical" },
-    { "id": "12", "module": "Legal / warranty / returns", "status": "PARTIAL_VERTICAL", "missing": ["returns", "warranty", "cookie/consent page", "versioning/effective dates", "claims flows", "admin ops"], "next": "content + versioning slice" },
-    { "id": "13", "module": "Perf / accessibility / cross-browser", "status": "PARTIAL_VERTICAL", "missing": ["Lighthouse baseline + budgets", "WCAG 2.2 AA matrix", "3-engine responsive matrix"], "next": "verification matrix slice" },
-    { "id": "14", "module": "Release engineering", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "blockers": ["BLOCKED_EXTERNAL: deployment approval"], "next": "execute on approval" }
+    {
+      "id": "0",
+      "module": "Protection & verification",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "missing": [
+        "production re-verification from this environment"
+      ],
+      "next": "keep gates green"
+    },
+    {
+      "id": "1",
+      "module": "Owner access / auth",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "missing": [
+        "recovery/lockout depth audit"
+      ],
+      "next": "regression tests where weak"
+    },
+    {
+      "id": "2",
+      "module": "Storefront P0",
+      "status": "PARTIAL_VERTICAL",
+      "missing": [
+        "taxonomy coverage check",
+        "newsletter truthful state",
+        "mobile QA matrix"
+      ],
+      "next": "targeted residual audit"
+    },
+    {
+      "id": "3",
+      "module": "Checkout / location / payment",
+      "status": "PARTIAL_VERTICAL",
+      "missing": [
+        "admin payment ops depth",
+        "reconciliation view"
+      ],
+      "next": "admin payment operations residual",
+      "preserve": [
+        "PaymentStateMachine",
+        "PaymentIdempotencyService",
+        "PesaPal ports"
+      ],
+      "completed": [
+        "Slice 3B: server-authoritative totals",
+        "Uganda structured location persistence",
+        "delivery fee zones + admin CRUD (pricing.manage, audited)",
+        "order idempotency (clientOrderKey)",
+        "migration 0023"
+      ]
+    },
+    {
+      "id": "4",
+      "module": "Search / autocomplete / zero-result",
+      "status": "PARTIAL_VERTICAL",
+      "missing": [
+        "autocomplete endpoint",
+        "zero-result event capture",
+        "admin demand queue"
+      ],
+      "next": "extend ProductSearchService"
+    },
+    {
+      "id": "5",
+      "module": "Compatibility",
+      "status": "PARTIAL_VERTICAL",
+      "missing": [
+        "device/product model",
+        "rule states exact/conditional/incompatible/unknown",
+        "PDP selector",
+        "admin CRUD"
+      ],
+      "next": "boundary decision then extend CompatibilityRuleService"
+    },
+    {
+      "id": "6",
+      "module": "Recommendations",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "missing": [
+        "live verification"
+      ],
+      "duplicateRisk": "parallel module preserved on claude/goldplus-debug-features-8ku4ns@5201143 \u2014 DO NOT PORT",
+      "next": "none (extend-only)"
+    },
+    {
+      "id": "7",
+      "module": "Admin depth",
+      "status": "PARTIAL_VERTICAL",
+      "missing": [
+        "per-page truthful states",
+        "permission-aware action audit"
+      ],
+      "next": "page-by-page audit slice"
+    },
+    {
+      "id": "8",
+      "module": "Loyalty",
+      "status": "STATIC_UI_ONLY",
+      "deliberate": true,
+      "missing": [
+        "feature-gated wallet/ledger/earn-burn/reversal/expiry/idempotency/admin config"
+      ],
+      "next": "feature-gated vertical; no commercial activation"
+    },
+    {
+      "id": "9",
+      "module": "Customer DNA / NBA / lifecycle",
+      "status": "MISSING",
+      "foundations": [
+        "consent (LIVE)",
+        "preferences",
+        "orders/cart/search signals"
+      ],
+      "missing": [
+        "unified profile",
+        "lifecycle",
+        "segments",
+        "deterministic NBA",
+        "suppression"
+      ],
+      "next": "design on existing signals; no second profile store"
+    },
+    {
+      "id": "10",
+      "module": "Measurement / control tower",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "blockers": [
+        "BLOCKED_EXTERNAL: 10-D deployment approval"
+      ],
+      "next": "await operator-approved image build + scoped recreate"
+    },
+    {
+      "id": "11",
+      "module": "Support / WhatsApp readiness",
+      "status": "PARTIAL_VERTICAL",
+      "missing": [
+        "admin inbox",
+        "assignment",
+        "status/SLA",
+        "order link/timeline",
+        "template registry + approval",
+        "recipient allowlist",
+        "automation rules"
+      ],
+      "next": "extend SupportTicket vertical"
+    },
+    {
+      "id": "12",
+      "module": "Legal / warranty / returns",
+      "status": "PARTIAL_VERTICAL",
+      "missing": [
+        "returns",
+        "warranty",
+        "cookie/consent page",
+        "versioning/effective dates",
+        "claims flows",
+        "admin ops"
+      ],
+      "next": "content + versioning slice"
+    },
+    {
+      "id": "13",
+      "module": "Perf / accessibility / cross-browser",
+      "status": "PARTIAL_VERTICAL",
+      "missing": [
+        "Lighthouse baseline + budgets",
+        "WCAG 2.2 AA matrix",
+        "3-engine responsive matrix"
+      ],
+      "next": "verification matrix slice"
+    },
+    {
+      "id": "14",
+      "module": "Release engineering",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "blockers": [
+        "BLOCKED_EXTERNAL: deployment approval"
+      ],
+      "next": "execute on approval"
+    }
   ],
   "externalBlockers": [
     "10-D production deployment (operator approval + reproducible image build)",
     "no ssh goldplus-prod from this execution environment (live verification impossible here)",
     "provider/customer delivery activation (flags default false)"
   ],
-  "priorityQueue": ["3", "4", "5", "7", "8", "9", "11", "12", "13", "residuals 0/1/2/6/10/14"]
+  "priorityQueue": [
+    "3",
+    "4",
+    "5",
+    "7",
+    "8",
+    "9",
+    "11",
+    "12",
+    "13",
+    "residuals 0/1/2/6/10/14"
+  ]
 }

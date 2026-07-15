@@ -1,6 +1,6 @@
 import { pgTable, text, timestamp, integer, jsonb } from 'drizzle-orm/pg-core';
-import { controlledActivationRequests } from './activation.js';
-import { controlledActivationDryRuns } from './activation-dry-run.js';
+import { controlledActivationRequests } from './activation';
+import { controlledActivationDryRuns } from './activation-dry-run';
 
 export const controlledLiveCanaries = pgTable('controlled_live_canaries', {
   id: text('id').primaryKey(),

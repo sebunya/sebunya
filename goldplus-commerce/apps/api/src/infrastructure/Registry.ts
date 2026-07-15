@@ -62,6 +62,12 @@ import { RecommendationDiversityService } from '../application/recommendations/R
 import { AddToCartUseCase } from '../application/use-cases/commerce/AddToCartUseCase';
 import { GetCartByIdUseCase } from '../application/use-cases/commerce/GetCartByIdUseCase';
 import { CheckoutUseCase } from '../application/use-cases/commerce/CheckoutUseCase';
+import { DrizzleDeliveryZoneRepository } from './db/repositories/DrizzleDeliveryZoneRepository';
+import {
+  ListDeliveryZonesUseCase,
+  UpsertDeliveryZoneUseCase,
+  DeleteDeliveryZoneUseCase,
+} from '../application/use-cases/commerce/DeliveryZoneAdminUseCases';
 import { VerificationCheckUseCase } from '../application/use-cases/VerificationCheckUseCase';
 import { DealerApplicationUseCase } from '../application/use-cases/DealerApplicationUseCase';
 import { GetProductListUseCase } from '../application/use-cases/commerce/GetProductListUseCase';
@@ -353,7 +359,11 @@ export class Registry {
   // Use Cases
   public readonly addToCartUseCase = new AddToCartUseCase(this.cartRepo);
   public readonly getCartByIdUseCase = new GetCartByIdUseCase(this.cartQueryRepo);
-  public readonly checkoutUseCase = new CheckoutUseCase(this.orderRepo);
+  public readonly deliveryZoneRepo = new DrizzleDeliveryZoneRepository();
+  public readonly checkoutUseCase = new CheckoutUseCase(this.orderRepo, this.productRepo, this.deliveryZoneRepo);
+  public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
+  public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
+  public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly getProductListUseCase = new GetProductListUseCase(this.productRepo);
   public readonly getOrderListUseCase = new GetOrderListUseCase(this.orderRepo);
   public readonly getOrderByIdUseCase = new GetOrderByIdUseCase(this.orderRepo);

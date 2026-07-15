@@ -1,0 +1,156 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/pricing/delivery-zones", 303);
+}
+
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+let notice: { kind: "success" | "error"; text: string } | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") || "save");
+  try {
+    if (intent === "delete") {
+      const id = String(form.get("id") || "");
+      const res = await fetch(`${apiBase}/admin/delivery-zones/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers,
+      });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: "Delivery zone removed." }
+        : { kind: "error", text: json?.error?.message || "Could not remove the zone." };
+    } else {
+      const feeRaw = String(form.get("feeUgx") || "").replace(/[,\s]/g, "");
+      const res = await fetch(`${apiBase}/admin/delivery-zones`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          district: String(form.get("district") || ""),
+          feeUgx: feeRaw === "" ? Number.NaN : Number(feeRaw),
+          enabled: String(form.get("enabled") || "on") === "on",
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: `Saved delivery fee for ${json.data.district}.` }
+        : { kind: "error", text: json?.error?.message || "Could not save the zone." };
+    }
+  } catch {
+    notice = { kind: "error", text: "Delivery zone service is unreachable right now." };
+  }
+}
+
+let zones: Array<{ id: string; district: string; feeUgx: number; enabled: boolean }> = [];
+let loadFailed = false;
+try {
+  const res = await fetch(`${apiBase}/admin/delivery-zones`, { headers });
+  const json = await res.json().catch(() => null);
+  if (json?.success) zones = json.data;
+  else loadFailed = true;
+} catch {
+  loadFailed = true;
+}
+
+const formatter = new Intl.NumberFormat("en-UG", { style: "currency", currency: "UGX", maximumFractionDigits: 0 });
+---
+
+<AdminLayout
+  title="Delivery Zones"
+  description="Configure per-district delivery fees used at checkout."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Delivery Fee Zones</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+        Orders whose delivery district matches an enabled zone get that fee applied automatically
+        at checkout. Districts without a configured zone truthfully show the fee as
+        "confirmed after order" — no fee is invented.
+      </p>
+    </div>
+
+    {notice && (
+      <div class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status">
+        {notice.text}
+      </div>
+    )}
+
+    <form method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8 grid gap-4 md:grid-cols-4 items-end">
+      <input type="hidden" name="intent" value="save" />
+      <label class="block md:col-span-2">
+        <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">District</span>
+        <input name="district" required maxlength="100" placeholder="e.g. Kampala"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+      </label>
+      <label class="block">
+        <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Fee (UGX)</span>
+        <input name="feeUgx" required inputmode="numeric" pattern="[0-9,]*" placeholder="e.g. 10000"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+      </label>
+      <div class="flex items-center gap-3">
+        <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-600">
+          <input type="checkbox" name="enabled" checked class="w-4 h-4 text-brand-primary border-gray-300 rounded" />
+          Enabled
+        </label>
+        <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:opacity-90">
+          Save zone
+        </button>
+      </div>
+    </form>
+
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+      <table class="w-full text-left border-collapse">
+        <thead>
+          <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+            <th class="p-5">District</th>
+            <th class="p-5 text-right">Delivery Fee</th>
+            <th class="p-5 text-center">Status</th>
+            <th class="p-5 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="text-xs">
+          {zones.map((z) => (
+            <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+              <td class="p-5 font-bold text-brand-dark">{z.district}</td>
+              <td class="p-5 text-right font-black text-brand-dark text-sm">{formatter.format(z.feeUgx)}</td>
+              <td class="p-5 text-center">
+                <span class={`text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border ${z.enabled ? "border-green-200 bg-green-50 text-green-700" : "border-gray-200 bg-gray-50 text-gray-500"}`}>
+                  {z.enabled ? "Enabled" : "Disabled"}
+                </span>
+              </td>
+              <td class="p-5 text-right">
+                <form method="POST" class="inline">
+                  <input type="hidden" name="intent" value="delete" />
+                  <input type="hidden" name="id" value={z.id} />
+                  <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-red-600 hover:text-red-800">
+                    Remove
+                  </button>
+                </form>
+              </td>
+            </tr>
+          ))}
+          {zones.length === 0 && !loadFailed && (
+            <tr>
+              <td colspan="4" class="p-12 text-center text-gray-400 italic">
+                No delivery zones configured yet. Checkout will show delivery fees as "confirmed after order".
+              </td>
+            </tr>
+          )}
+          {loadFailed && (
+            <tr>
+              <td colspan="4" class="p-12 text-center text-red-500 italic">
+                Could not load delivery zones (service unavailable or permission denied).
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</AdminLayout>

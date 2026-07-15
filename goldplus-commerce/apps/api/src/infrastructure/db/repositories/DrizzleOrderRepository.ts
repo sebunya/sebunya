@@ -40,8 +40,18 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository {
       result.paymentStatus as PaymentStatus,
       result.status as DomainOrderStatus,
       result.createdAt,
-      result.updatedAt
+      result.updatedAt,
+      (result.deliveryLocation as any) ?? null,
+      result.deliveryFeeConfirmed ?? false
     );
+  }
+
+  async findByClientKey(clientOrderKey: string): Promise<Order | null> {
+    const row = await db.query.orders.findFirst({
+      where: eq(orders.clientOrderKey, clientOrderKey),
+    });
+    if (!row) return null;
+    return this.findById(row.id);
   }
 
   async findAll(): Promise<Order[]> {
@@ -74,11 +84,13 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository {
       result.paymentStatus as PaymentStatus,
       result.status as DomainOrderStatus,
       result.createdAt,
-      result.updatedAt
+      result.updatedAt,
+      (result.deliveryLocation as any) ?? null,
+      result.deliveryFeeConfirmed ?? false
     ));
   }
 
-  async save(order: Order): Promise<void> {
+  async save(order: Order, opts?: { clientOrderKey?: string | null }): Promise<void> {
     await db.transaction(async (tx) => {
       await tx.insert(orders).values({
         id: order.id,
@@ -96,6 +108,9 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository {
         totalAmount: order.totalUgx,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
+        deliveryLocation: order.deliveryLocation ?? null,
+        deliveryFeeConfirmed: order.deliveryFeeConfirmed,
+        clientOrderKey: opts?.clientOrderKey ?? null,
       }).onConflictDoUpdate({
         target: orders.id,
         set: {

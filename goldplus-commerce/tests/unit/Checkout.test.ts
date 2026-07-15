@@ -21,7 +21,10 @@ describe('Checkout Business Logic', () => {
     expect(payload.customerDetails.phone).toBe('0770000000');
     expect(payload.buyerType).toBe('retail');
     expect(payload.items.length).toBe(1);
-    expect(payload.items[0].price).toBe(10000);
+    expect(payload.items[0].quantity).toBe(1);
+    // Slice 3B: prices are server-authoritative — the client payload must not carry them.
+    expect((payload.items[0] as any).price).toBeUndefined();
+    expect((payload.items[0] as any).sku).toBeUndefined();
   });
 
   it('validates a correct payload', () => {
