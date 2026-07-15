@@ -437,7 +437,10 @@ routes.get('/admin/quotes', requirePermissions([PERMISSIONS.QUOTES_MANAGE]), asy
 
 routes.get('/admin/support', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   try {
-    const support = await registry.supportRepo.findAll();
+    // Slice 11: SLA-annotated inbox, overdue first. Shape stays a flat list
+    // of tickets with additive sla/assignedTo fields.
+    const inbox = await registry.getSupportInboxUseCase.execute();
+    const support = inbox.map(({ ticket, sla }) => ({ ...ticket, sla }));
     return c.json({ success: true, data: support });
   } catch (err: any) {
     if (err.message.includes('DATABASE_URL')) {
@@ -445,6 +448,31 @@ routes.get('/admin/support', requirePermissions([PERMISSIONS.REPORTS_READ]), asy
     }
     throw err;
   }
+});
+
+// Slice 11: inbox mutations — status transitions and assignment, audited.
+routes.patch('/admin/support/:id', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) {
+    return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Body must be JSON.' } }, 400);
+  }
+  const result = await registry.updateSupportTicketUseCase.execute({
+    ticketId: String(c.req.param('id') ?? ''),
+    status: body.status !== undefined ? String(body.status) : undefined,
+    assignedTo: body.assignedTo !== undefined ? (body.assignedTo === null ? null : String(body.assignedTo)) : undefined,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } }, result.code === 'NOT_FOUND' ? 404 : 400);
+  }
+  const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
+  await auditUc.execute({
+    actorId: (c.get('user') as any).id,
+    action: 'SUPPORT_TICKET_UPDATED',
+    entity: 'support_ticket',
+    entityId: result.ticket.id,
+    newState: { status: result.ticket.status, assignedTo: result.ticket.assignedTo },
+  });
+  return c.json({ success: true, data: result.ticket });
 });
 
 routes.get('/admin/dealers', requirePermissions([PERMISSIONS.DEALER_READ_PRIVATE]), async (c) => {

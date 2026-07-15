@@ -190,6 +190,13 @@
       "when": 1784150652022,
       "tag": "0026_strong_psynapse",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "5",
+      "when": 1784151210271,
+      "tag": "0027_lethal_triton",
+      "breakpoints": true
     }
   ]
 }

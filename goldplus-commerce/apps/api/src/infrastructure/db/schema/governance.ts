@@ -62,6 +62,10 @@ export const supportIssues = pgTable('support_issues', {
   type: varchar('type', { length: 50 }).notNull(), // issue, fake_report, inquiry
   metadata: jsonb('metadata').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+
+  // Slice 11: inbox operations
+  assignedTo: varchar('assigned_to', { length: 120 }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
 });
 
 

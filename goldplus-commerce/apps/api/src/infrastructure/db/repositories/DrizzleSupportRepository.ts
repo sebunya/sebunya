@@ -41,8 +41,19 @@ export class DrizzleSupportRepository {
       result.priority as any,
       result.type as any,
       result.createdAt,
-      result.metadata as Record<string, any>
+      result.metadata as Record<string, any>,
+      result.assignedTo ?? null,
+      result.updatedAt ?? null
     );
+  }
+
+  async update(id: string, patch: { status?: SupportTicket['status']; assignedTo?: string | null }): Promise<SupportTicket | null> {
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+    if (patch.status !== undefined) set.status = patch.status;
+    if (patch.assignedTo !== undefined) set.assignedTo = patch.assignedTo;
+    const [row] = await db.update(supportIssues).set(set).where(eq(supportIssues.id, id)).returning();
+    if (!row) return null;
+    return this.findById(row.id);
   }
 
   async findAll(): Promise<SupportTicket[]> {
@@ -56,7 +67,9 @@ export class DrizzleSupportRepository {
       r.priority as any,
       r.type as any,
       r.createdAt,
-      r.metadata as Record<string, any>
+      r.metadata as Record<string, any>,
+      r.assignedTo ?? null,
+      r.updatedAt ?? null
     ));
   }
 }

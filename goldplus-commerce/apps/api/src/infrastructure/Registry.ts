@@ -41,6 +41,7 @@ import { GetPaymentReconciliationUseCase } from '../application/use-cases/paymen
 import { DrizzleSearchDemandRepository } from './db/repositories/DrizzleSearchDemandRepository';
 import { DrizzleCompatibilityMappingRepository } from './db/repositories/DrizzleCompatibilityMappingRepository';
 import { DrizzleLoyaltyRepository } from './db/repositories/DrizzleLoyaltyRepository';
+import { GetSupportInboxUseCase, UpdateSupportTicketUseCase } from '../application/use-cases/governance/SupportInboxUseCases';
 import {
   LoyaltyProgrammeGate,
   EarnLoyaltyPointsUseCase,
@@ -404,6 +405,8 @@ export class Registry {
   public readonly getLoyaltyHistoryUseCase = new GetLoyaltyHistoryUseCase(this.loyaltyRepo, this.loyaltyGate);
   public readonly getLoyaltyConfigUseCase = new GetLoyaltyConfigUseCase(this.loyaltyRepo);
   public readonly saveLoyaltyConfigUseCase = new SaveLoyaltyConfigUseCase(this.loyaltyRepo);
+  public readonly getSupportInboxUseCase = new GetSupportInboxUseCase(this.supportRepo);
+  public readonly updateSupportTicketUseCase = new UpdateSupportTicketUseCase(this.supportRepo);
   public readonly checkoutUseCase = new CheckoutUseCase(this.orderRepo, this.productRepo, this.deliveryZoneRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);

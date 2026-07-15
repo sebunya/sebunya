@@ -165,17 +165,19 @@
     {
       "id": "11",
       "module": "Support / WhatsApp readiness",
-      "status": "PARTIAL_VERTICAL",
-      "missing": [
-        "admin inbox",
-        "assignment",
-        "status/SLA",
-        "order link/timeline",
-        "template registry + approval",
-        "recipient allowlist",
-        "automation rules"
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "missing": [],
+      "next": "none (delivery activation external)",
+      "completed": [
+        "status transition rules + reopen",
+        "deterministic SLA targets + overdue-first inbox",
+        "assignment + updatedAt (migration 0027)",
+        "audited PATCH (orders.manage) \u2014 audit log as timeline",
+        "admin inbox UI actions"
       ],
-      "next": "extend SupportTicket vertical"
+      "blockers": [
+        "BLOCKED_EXTERNAL: customer sends/provider activation (flags default false); templates+delivery audit live in notifications module"
+      ]
     },
     {
       "id": "12",

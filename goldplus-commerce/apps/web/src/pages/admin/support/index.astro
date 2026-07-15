@@ -12,7 +12,38 @@ if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/support", 303);
 }
 
-const result = await tryFetchAdminList<SampleSupportTicket>(
+// Slice 11: inbox actions — status transitions and assignment via the audited PATCH.
+import { apiBase } from '../../../lib/api';
+let actionNotice: { kind: 'success' | 'error'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const id = String(form.get('id') || '');
+  const patch: Record<string, unknown> = {};
+  const status = String(form.get('status') || '');
+  const assignedTo = String(form.get('assignedTo') || '').trim();
+  if (status) patch.status = status;
+  if (form.has('assignedTo')) patch.assignedTo = assignedTo || null;
+  try {
+    const res = await fetch(`${apiBase}/governance/admin/support/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const json = await res.json().catch(() => null);
+    actionNotice = json?.success
+      ? { kind: 'success', text: `Ticket updated: ${json.data.status}${json.data.assignedTo ? ` · assigned to ${json.data.assignedTo}` : ''}.` }
+      : { kind: 'error', text: json?.error?.message || 'Could not update the ticket.' };
+  } catch {
+    actionNotice = { kind: 'error', text: 'Support service is unreachable right now.' };
+  }
+}
+
+type InboxTicket = SampleSupportTicket & {
+  assignedTo?: string | null;
+  sla?: { dueAt: string; overdue: boolean; hoursRemaining: number };
+};
+
+const result = await tryFetchAdminList<InboxTicket>(
   '/governance/admin/support',
   [],
   'Live support tickets are unavailable right now (service unreachable or permission denied). No sample data is shown.',
@@ -58,6 +89,12 @@ const typeLabel: Record<SampleSupportTicket['type'], string> = {
       </div>
     </div>
 
+    {actionNotice && (
+      <div class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${actionNotice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`} role="status">
+        {actionNotice.text}
+      </div>
+    )}
+
     {result.isSample && (
       <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4">
         
@@ -81,6 +118,9 @@ const typeLabel: Record<SampleSupportTicket['type'], string> = {
                 <th class="p-6 text-center">Priority</th>
                 <th class="p-6 text-center">State</th>
                 <th class="p-6">Logged</th>
+                <th class="p-6 text-center">SLA</th>
+                <th class="p-6">Assigned</th>
+                <th class="p-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody class="text-xs divide-y divide-gray-50">
@@ -114,6 +154,29 @@ const typeLabel: Record<SampleSupportTicket['type'], string> = {
                   </td>
                   <td class="p-6 text-gray-500 font-medium">
                     {new Date(t.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </td>
+                  <td class="p-6 text-center">
+                    {t.sla ? (
+                      <span class={`inline-block px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide border ${t.sla.overdue ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-100'}`}>
+                        {t.sla.overdue ? 'Overdue' : `${Math.max(t.sla.hoursRemaining, 0)}h left`}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td class="p-6 text-gray-600">{t.assignedTo ?? 'Unassigned'}</td>
+                  <td class="p-6 text-right">
+                    <form method="POST" class="inline-flex items-center gap-2">
+                      <input type="hidden" name="id" value={t.id} />
+                      <label class="sr-only" for={`status-${t.id}`}>Change status</label>
+                      <select id={`status-${t.id}`} name="status" class="rounded-lg border border-gray-300 px-2 py-1.5 text-[10px] font-bold">
+                        <option value="">Keep status</option>
+                        {['open', 'in-progress', 'resolved', 'closed'].filter((st) => st !== t.status).map((st) => (
+                          <option value={st}>{st}</option>
+                        ))}
+                      </select>
+                      <label class="sr-only" for={`assign-${t.id}`}>Assign to</label>
+                      <input id={`assign-${t.id}`} name="assignedTo" value={t.assignedTo ?? ''} placeholder="Assignee" maxlength="120" class="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-[10px]" />
+                      <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-brand-dark hover:text-brand-primary">Save</button>
+                    </form>
                   </td>
                 </tr>
               ))}
