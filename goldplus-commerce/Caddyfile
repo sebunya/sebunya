@@ -89,9 +89,8 @@ api.shopgoldplus.com {
     @apiUpstreamError expression `{err.status_code} >= 500`
     handle @apiUpstreamError {
       header Cache-Control "no-store"
-      respond "{\"ok\":false,\"status\":\"degraded\",\"service\":\"goldplus-api\",\"message\":\"GoldPlus API is temporarily unavailable. Please retry shortly.\"}" 503 {
-        content_type application/json
-      }
+      header Content-Type "application/json"
+      respond "{\"ok\":false,\"status\":\"degraded\",\"service\":\"goldplus-api\",\"message\":\"GoldPlus API is temporarily unavailable. Please retry shortly.\"}" 503
     }
   }
 }

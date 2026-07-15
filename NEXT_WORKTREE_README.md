@@ -20,6 +20,10 @@ Slice 10-PR2 APEX created a fresh verified preservation pack at `/opt/goldplus/b
 
 The live source was not switched and no service was restarted. The required root-only approval file was absent. More importantly, the current live Caddyfile validates but the candidate Caddyfile fails validation because Caddy rejects the `content_type` subdirective in its `respond` block. The candidate Caddyfile also differs from the current live Caddyfile, so a planned restart cannot safely proceed until that clean-remote blocker is repaired and revalidated.
 
-Decision: `SLICE_10_PR2_APEX_BLOCKED_BY_CADDY_OR_COMPOSE_VALIDATION`.
+Slice 10-PR2C PRIME repaired the tracked Caddy compatibility issue without changing domains, routes, upstreams, status, or response body. The unsupported nested `content_type` subdirective was replaced by a standard `header Content-Type "application/json"` directive before the unchanged JSON response. The repaired Caddyfile SHA-256 is `ca560fa5678c336a6cb802bb96b8e9c38d91539b0dfe1f18eaf9d9d99b9f68ba`, exactly matching the currently valid live Caddyfile.
 
-Next allowed work is an ultra-scoped clean-remote Caddy syntax repair followed by full candidate validation and a new explicit root-only restart approval. Do not start Slice 10-D and do not switch the live source until both gates pass.
+The prepared candidate at `/opt/goldplus/app/goldplus-commerce.clean-10pr2-20260715T132508Z` passes direct-root layout and Compose validation. Its repaired Caddyfile validates using the exact production image ID `sha256:86deaf5e3d3408a6ccec08fbb79989783dd26e206ae10bcf78a801dc8c9ab794` and Caddy `v2.11.3`.
+
+The live source was not switched and no service was restarted because the required root-only approval file remained absent. Decision: `SLICE_10_PR2C_PRIME_CADDY_REPAIRED_CANDIDATE_READY_APPROVAL_NOT_PROVIDED`.
+
+Next allowed work is the switch/restart path only after the exact approval phrase is captured through the root-only production approval file. Create another fresh preservation pack immediately before switching. Do not start Slice 10-D until the source switch and minimal Caddy restart are completed and verified.
