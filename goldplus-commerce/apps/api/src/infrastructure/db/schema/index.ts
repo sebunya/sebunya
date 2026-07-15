@@ -10,6 +10,7 @@ export * from './recommendations';
 export * from './phase11';
 export * from './telemetry';
 export * from './consent';
+export * from './consent-foundation';
 export * from './measurement';
 export * from './measurement-advanced';
 export * from './product_finder';
@@ -19,4 +20,3 @@ export * from './activation';
 export * from './activation-dry-run';
 export * from './activation-live-review';
 export * from './activation-live-canary';
-
