@@ -37,6 +37,7 @@ import { DrizzlePaymentAttemptRepository } from './db/repositories/DrizzlePaymen
 import { PesaPalClient } from './payments/pesapal/PesaPalClient';
 import { IPesaPalClient } from '../application/ports/IPesaPalClient';
 import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
+import { GetPaymentReconciliationUseCase } from '../application/use-cases/payments/GetPaymentReconciliationUseCase';
 import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
 import { env } from '../config/env';
 import { DrizzleSystemHealthRepository } from './db/repositories/DrizzleSystemHealthRepository';
@@ -360,6 +361,7 @@ export class Registry {
   public readonly addToCartUseCase = new AddToCartUseCase(this.cartRepo);
   public readonly getCartByIdUseCase = new GetCartByIdUseCase(this.cartQueryRepo);
   public readonly deliveryZoneRepo = new DrizzleDeliveryZoneRepository();
+  public readonly getPaymentReconciliationUseCase = new GetPaymentReconciliationUseCase(this.orderRepo, this.paymentRepo, this.pesapalPaymentRepo);
   public readonly checkoutUseCase = new CheckoutUseCase(this.orderRepo, this.productRepo, this.deliveryZoneRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);

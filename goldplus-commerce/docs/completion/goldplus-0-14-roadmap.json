@@ -49,10 +49,9 @@
       "module": "Checkout / location / payment",
       "status": "PARTIAL_VERTICAL",
       "missing": [
-        "admin payment ops depth",
-        "reconciliation view"
+        "admin payment ops depth (residual audit)"
       ],
-      "next": "admin payment operations residual",
+      "next": "residual audit only; then Slice 4",
       "preserve": [
         "PaymentStateMachine",
         "PaymentIdempotencyService",
@@ -63,7 +62,8 @@
         "Uganda structured location persistence",
         "delivery fee zones + admin CRUD (pricing.manage, audited)",
         "order idempotency (clientOrderKey)",
-        "migration 0023"
+        "migration 0023",
+        "Slice 3C: read-only payment reconciliation view"
       ]
     },
     {

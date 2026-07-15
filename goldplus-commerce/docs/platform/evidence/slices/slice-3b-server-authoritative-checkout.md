@@ -37,3 +37,22 @@ architecture tests: see commit message (run at commit time).
 ## Deployment
 
 Source-only. Production migration `0023` requires operator approval (BLOCKED_EXTERNAL).
+
+---
+
+# Slice 3C addendum — read-only payment reconciliation
+
+Extends the same checkout/payment vertical (same session):
+
+- Pure domain `domain/payments/PaymentReconciliation.ts`: `reconcilePayments` cross-checks
+  order payment status vs recorded webhook payments vs provider attempts. Finding types:
+  `order_paid_without_success_record`, `success_record_order_not_paid`, `amount_mismatch`,
+  `stale_pending_attempt` (>24h, skipped when the order later paid). Deterministic; no
+  mutation, no auto-repair.
+- `GetPaymentReconciliationUseCase` over existing ports (`IPaymentRepository.findAll`,
+  new `IPesaPalPaymentRepository.listRecent`, `orderRepo.findAll`).
+- Route `GET /governance/admin/payments/reconciliation` behind `payments.read`.
+- Admin payments page gains a Reconciliation section with truthful healthy /
+  discrepancy-list / unavailable states.
+- Tests: `Slice03CPaymentReconciliation.test.ts` (6) — healthy, each finding type,
+  paid-order noise suppression, empty inputs.

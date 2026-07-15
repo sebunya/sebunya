@@ -409,6 +409,20 @@ routes.get('/admin/payments', requirePermissions([PERMISSIONS.PAYMENTS_READ]), a
   }
 });
 
+// Slice 3C: read-only reconciliation of order payment status vs payment
+// records vs provider attempts. Never mutates; operators act via runbooks.
+routes.get('/admin/payments/reconciliation', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  try {
+    const report = await registry.getPaymentReconciliationUseCase.execute();
+    return c.json({ success: true, data: report });
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
+    }
+    throw err;
+  }
+});
+
 routes.get('/admin/quotes', requirePermissions([PERMISSIONS.QUOTES_MANAGE]), async (c) => {
   try {
     const quotes = await registry.quoteRepo.findAll();

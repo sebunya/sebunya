@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { db } from '../client';
 import { orders, paymentAttempts } from '../schema/commerce';
 import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../../application/ports/IPesaPalPaymentRepository';
@@ -100,6 +100,14 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
   async findAttemptsByOrderId(orderId: string): Promise<RecordedPaymentAttempt[]> {
     const rows = await db.query.paymentAttempts.findMany({
       where: eq(paymentAttempts.orderId, orderId),
+    });
+    return rows.map(rowToPaymentAttempt);
+  }
+
+  async listRecent(limit: number): Promise<RecordedPaymentAttempt[]> {
+    const rows = await db.query.paymentAttempts.findMany({
+      orderBy: [desc(paymentAttempts.updatedAt)],
+      limit: Math.max(1, Math.min(limit, 1000)),
     });
     return rows.map(rowToPaymentAttempt);
   }

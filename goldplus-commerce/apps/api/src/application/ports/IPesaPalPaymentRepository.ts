@@ -44,5 +44,8 @@ export interface IPesaPalPaymentRepository {
   ): Promise<void>;
 
   findAttemptsByOrderId(orderId: string): Promise<RecordedPaymentAttempt[]>;
+
+  /** Most recent attempts across all orders (Slice 3C reconciliation). */
+  listRecent(limit: number): Promise<RecordedPaymentAttempt[]>;
 }
 

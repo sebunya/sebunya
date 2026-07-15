@@ -27,6 +27,34 @@ const statusToBadge: Record<SamplePayment['status'], { variant: 'pending' | 'inf
 };
 
 const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+
+// Slice 3C: read-only reconciliation report (order status vs payments vs attempts)
+import { apiBase } from '../../../lib/api';
+interface ReconReport {
+  healthy: boolean;
+  checkedOrders: number;
+  checkedPayments: number;
+  checkedAttempts: number;
+  findings: Array<{ type: string; orderId: string; orderNumber: string | null; detail: string }>;
+}
+let recon: ReconReport | null = null;
+let reconUnavailable = false;
+try {
+  const reconRes = await fetch(`${apiBase}/governance/admin/payments/reconciliation`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const reconJson = await reconRes.json().catch(() => null);
+  if (reconJson?.success) recon = reconJson.data;
+  else reconUnavailable = true;
+} catch {
+  reconUnavailable = true;
+}
+const findingLabel: Record<string, string> = {
+  order_paid_without_success_record: 'Order marked paid without a successful payment record',
+  success_record_order_not_paid: 'Successful payment but order not marked paid',
+  amount_mismatch: 'Payment amount differs from order total',
+  stale_pending_attempt: 'Payment attempt pending for more than 24h',
+};
 ---
 
 <AdminLayout 
@@ -41,6 +69,35 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
         <p class="text-sm text-gray-500 mt-1">Monitor real-time webhook ingress records and idempotent capture statuses.</p>
       </div>
     </div>
+
+    <section class="mb-8" aria-labelledby="recon-heading">
+      <h3 id="recon-heading" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Reconciliation</h3>
+      {reconUnavailable && (
+        <div class="bg-gray-50 border border-gray-200 text-gray-600 px-6 py-4 rounded-2xl text-xs">
+          Reconciliation is unavailable right now (service unreachable or permission denied).
+        </div>
+      )}
+      {recon && recon.healthy && (
+        <div class="bg-green-50 border border-green-200 text-green-800 px-6 py-4 rounded-2xl text-xs font-bold">
+          No discrepancies detected across {recon.checkedOrders} orders, {recon.checkedPayments} payment records and {recon.checkedAttempts} recent attempts.
+        </div>
+      )}
+      {recon && !recon.healthy && (
+        <div class="bg-red-50 border border-red-200 rounded-2xl overflow-hidden">
+          <div class="px-6 py-3 text-xs font-black text-red-800 uppercase tracking-widest border-b border-red-100">
+            {recon.findings.length} discrepanc{recon.findings.length === 1 ? 'y' : 'ies'} need review
+          </div>
+          <ul class="divide-y divide-red-100 text-xs">
+            {recon.findings.slice(0, 50).map((f) => (
+              <li class="px-6 py-3">
+                <span class="font-black text-red-700">{findingLabel[f.type] ?? f.type}:</span>
+                <span class="text-red-900 ml-1">{f.detail}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
 
     {result.isSample && (
       <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4">
