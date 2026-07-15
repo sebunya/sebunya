@@ -63,8 +63,15 @@ Summary: 0/1/6/10/14 SOURCE_COMPLETE_NOT_DEPLOYED · 2/3/4/5/7/11/12/13 PARTIAL_
   never authoritative; redirect never marks paid; duplicate callback/IPN never
   duplicates effects; invalid total never reaches PesaPal.
 
-## Gates last run (this session)
+## Gates last run (this session, at 45c0dab)
 
-- `pnpm security:scan-secrets` / `pnpm typecheck` / `pnpm test:architecture` — see
-  Slice 14A commit message for results.
-- Full-suite evidence at head (prior session): 157 files / 3,733 tests pass (10-D PRIME).
+- Secret scan, typecheck, lint (0 errors), build: pass on every slice.
+- Full suite: 170 files / 3,809 tests pass. Architecture: 10/10 pass.
+
+## Programme state
+
+Hard continuation predicate FALSE: all 15 slices are
+SOURCE_COMPLETE_NOT_DEPLOYED; external gates (deployment approval,
+migrations 0023–0027 execution, provider/customer sends, legal review of
+draft policies, loyalty activation, live verification without SSH) are
+recorded per-slice in the roadmap JSON.

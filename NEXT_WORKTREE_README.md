@@ -99,3 +99,20 @@ The fresh rollback tags were restored immediately through API/web-only recreatio
 Pre-deploy, post-deploy, and post-rollback PostgreSQL transactions were explicitly read-only and identical: four Slice 10-C events, two grants, two withdrawals, two identities, two correlations, and zero duplicate/provider-callback/provider-unsubscribe/outbox/notification activity. No provider transport, customer communication, consent lifecycle, migration, or non-deployment feature mutation occurred.
 
 Decision: `SLICE_10_D_DEPLOY_R2_PERFECT_ROLLED_BACK_AFTER_HEALTH_FAILURE`. Production source is reconciled to the evidence head, but the Control Room is not live. Next work must repair and integration-test the compiled production database-client/runtime path from the captured failure evidence before another approved deployment; do not proceed to Slice 14A as though 10-D were deployed.
+
+
+## 2026-07-15 continuous 0-14 completion session (remote container)
+
+Slices 14A, 3B, 3C, 4, 5, 7A, 8, 12, 11, 9, 13A and Slice 2 residuals were
+completed and pushed to `phase-2-measurement-control-tower-completion`
+(d469aef..45c0dab). All 15 roadmap modules are SOURCE_COMPLETE_NOT_DEPLOYED;
+no PARTIAL/STATIC/BACKEND/SHELL/MISSING/UNSAFE modules remain. Full suite
+170 files / 3,809 tests green at 45c0dab.
+
+New additive migrations awaiting approved production execution: 0023 (delivery
+zones + order location/idempotency + canary-table drift reconciliation), 0024
+(search demand), 0025 (compatibility mappings), 0026 (loyalty, dormant), 0027
+(support assignment). Provider/customer delivery, loyalty activation
+(LOYALTY_PROGRAMME_ENABLED), 10-D deployment, and legal review of the three
+draft policies remain operator-gated. See docs/completion/ for the ledger,
+roadmap JSON, and verification matrices.
