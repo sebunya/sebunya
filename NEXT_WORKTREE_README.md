@@ -37,3 +37,13 @@ Slice 10-PR2E EXEC started from the required clean local/remote evidence head `b
 The required root-only approval file was absent. PR2E therefore stopped at the approval hard gate without acquiring the maintenance lock, creating a preservation pack, switching source, or restarting any service. Decision: `SLICE_10_PR2E_EXEC_BLOCKED_BY_RESTART_APPROVAL`.
 
 Next allowed work is to rerun Slice 10-PR2E EXEC only after an operator—not Codex—creates `/root/APPROVE_SLICE_10_PR2_PLANNED_RESTART` with exact single-line content `APPROVE_SLICE_10_PR2_PLANNED_RESTART` and mode 600. Do not start Slice 10-D until the approved switch and Caddy-only restart complete successfully.
+
+Slice 10-PR2G FINAL verified the operator-created root-only approval file with exact one-line content and mode 600. A persistent maintenance lock was acquired. The dirty production source was freshly preserved at `/opt/goldplus/backups/slice-10-pr2g-source-preservation-20260715T142930Z`; the complete source archive SHA-256 is `bb554ea5b477d3afcd8e7f0f14f0878f0dbac327770cd6be9b970fd96362caa0`.
+
+The operational source switched to the clean validated candidate at `bfa6de64228d6cca602c35e8d217d74cad4696c9`. The original dirty source remains intact at `/opt/goldplus/app/goldplus-commerce.dirty-pre-10pr2g-20260715T142952Z`. Caddy alone restarted, retaining its container ID and loading the validated Caddyfile; API, web, PostgreSQL, and Redis retained their exact container IDs and start times.
+
+Post-switch checks passed: storefront `200`, API live health `200`, admin protected redirect `303`, and Preference Centre `200` with no-changes-saved copy. A PostgreSQL `READ ONLY` transaction confirmed the unchanged four-event Slice 10-C ledger, two grants, two withdrawals, zero duplicate lifecycle groups, zero provider callbacks or unsubscribes, zero outbox rows, and zero notification attempts. No provider transport or customer communication occurred.
+
+The production source was not fast-forwarded to the final evidence head because the cumulative delta from `bfa6de6` includes earlier PR2D/PR2E evidence files outside PR2G's narrow reconciliation allowlist. No force or restart was attempted. Decision: `SLICE_10_PR2G_FINAL_SOURCE_SWITCHED_CADDY_RESTARTED`.
+
+The next allowed work is Slice 10-D APEX — Consent Operations Monitoring + Pilot Incident Controls. Preserve the PR2G backup and dirty rollback source until operational sign-off is complete.
