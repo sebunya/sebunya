@@ -7,6 +7,7 @@ import {
   type ConsentPurposeKey,
 } from '../../../application/ports/consent/ConsentOperatingRepository';
 import { customerSessionMiddleware } from '../middleware/customerSession';
+import { authorizePilotPreferenceSave, hashPilotIdentity, parsePilotAllowlist } from '../../../application/services/consent/ConsentPilotRing';
 
 type Variables = { userId: string; userEmail: string };
 const routes = new Hono<{ Variables: Variables }>();
@@ -37,6 +38,7 @@ routes.get('/current', async c => {
   if (!runtime.gates.CONSENT_PERSISTENCE_COMMANDS_ENABLED) {
     return gateDisabled(c, 'CONSENT_PERSISTENCE_COMMANDS_ENABLED');
   }
+
   try {
     const state = await runtime.repository.getLatestConsentState(parseKey(c));
     return c.json({ success: true, data: { status: state ? 'available' : 'not_recorded', state } });
@@ -78,6 +80,27 @@ routes.post('/preferences', async c => {
   if (body.requested_state !== 'granted' && body.requested_state !== 'withdrawn') {
     return c.json({ success: false, data: { status: 'rejected', saved: false, reasons: ['explicit_grant_or_withdrawal_required'] } }, 400);
   }
+
+  const pilotAllowlist = parsePilotAllowlist(process.env.CONSENT_PILOT_ALLOWLIST_HASHES);
+  const identityAllowlisted = pilotAllowlist.some(record => record.identity_hash === hashPilotIdentity(c.get('userId')));
+  const pilotAuthorized = authorizePilotPreferenceSave({
+    pilot_save_enabled: runtime.gates.CONSENT_PREFERENCE_CENTRE_SAVE_ENABLED,
+    identity_ring: identityAllowlisted ? 'ring_1_allowlisted_verified_pilot' : 'ring_2_public_read_only',
+    identity_classification: 'verified_account',
+    identity_verified: true,
+    identity_allowlisted: identityAllowlisted,
+    purpose_key: purpose,
+    channel_key: channel,
+    requested_state: body.requested_state,
+    correlation_id: correlationId,
+    idempotency_key: idempotencyKey,
+    copy_version: String(body.copy_version_id ?? ''),
+    source_surface: 'account_preference_centre_p0',
+    audit_required: true,
+    provider_live_sends: runtime.gates.CONSENT_PROVIDER_LIVE_SENDS_ENABLED,
+    provider_transport_requested: false,
+  });
+  if (!pilotAuthorized.ok) return c.json({ success: false, data: { status: 'rejected', saved: false, reasons: pilotAuthorized.reasons } }, 403);
 
   const commandInput = {
     customer_identity_ref: c.get('userId'),
