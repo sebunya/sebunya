@@ -1,0 +1,141 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/demand", 303);
+}
+
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+const STATUSES = ["open", "reviewing", "sourced", "dismissed"] as const;
+
+let notice: { kind: "success" | "error"; text: string } | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const id = String(form.get("id") || "");
+  const status = String(form.get("status") || "");
+  try {
+    const res = await fetch(`${apiBase}/admin/search-demand/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ status }),
+    });
+    const json = await res.json().catch(() => null);
+    notice = json?.success
+      ? { kind: "success", text: `Marked “${json.data.query}” as ${json.data.status}.` }
+      : { kind: "error", text: json?.error?.message || "Could not update the demand signal." };
+  } catch {
+    notice = { kind: "error", text: "Demand service is unreachable right now." };
+  }
+}
+
+const statusFilter = Astro.url.searchParams.get("status") || "";
+let signals: Array<{
+  id: string;
+  query: string;
+  searchCount: number;
+  zeroResultCount: number;
+  lastResultCount: number;
+  status: string;
+  lastSearchedAt: string;
+}> = [];
+let loadFailed = false;
+try {
+  const url = statusFilter
+    ? `${apiBase}/admin/search-demand?status=${encodeURIComponent(statusFilter)}`
+    : `${apiBase}/admin/search-demand`;
+  const res = await fetch(url, { headers });
+  const json = await res.json().catch(() => null);
+  if (json?.success) signals = json.data;
+  else loadFailed = true;
+} catch {
+  loadFailed = true;
+}
+---
+
+<AdminLayout
+  title="Search Demand"
+  description="Zero-result customer searches — real, aggregated, anonymous demand."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Search Demand Queue</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+        Aggregated shop searches, with zero-result queries surfaced first. Rows are anonymous —
+        contact details only exist when a customer submits a quote request themselves.
+      </p>
+    </div>
+
+    {notice && (
+      <div class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status">
+        {notice.text}
+      </div>
+    )}
+
+    <nav class="mb-6 flex flex-wrap gap-2" aria-label="Filter by status">
+      <a href="/admin/demand" class={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border ${!statusFilter ? "bg-brand-dark text-white border-brand-dark" : "border-gray-300 text-gray-600"}`}>All</a>
+      {STATUSES.map((s) => (
+        <a href={`/admin/demand?status=${s}`} class={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border ${statusFilter === s ? "bg-brand-dark text-white border-brand-dark" : "border-gray-300 text-gray-600"}`}>{s}</a>
+      ))}
+    </nav>
+
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+              <th class="p-5">Query</th>
+              <th class="p-5 text-right">Searches</th>
+              <th class="p-5 text-right">Zero results</th>
+              <th class="p-5 text-center">Status</th>
+              <th class="p-5 text-right">Last searched</th>
+              <th class="p-5 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody class="text-xs">
+            {signals.map((s) => (
+              <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                <td class="p-5 font-bold text-brand-dark">{s.query}</td>
+                <td class="p-5 text-right font-mono">{s.searchCount}</td>
+                <td class={`p-5 text-right font-mono font-black ${s.zeroResultCount > 0 ? "text-red-600" : "text-gray-400"}`}>{s.zeroResultCount}</td>
+                <td class="p-5 text-center">
+                  <span class="text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border border-gray-200 bg-gray-50 text-gray-600">{s.status}</span>
+                </td>
+                <td class="p-5 text-right text-gray-500">{new Date(s.lastSearchedAt).toLocaleDateString("en-UG")}</td>
+                <td class="p-5 text-right">
+                  <form method="POST" class="inline-flex items-center gap-2">
+                    <input type="hidden" name="id" value={s.id} />
+                    <label class="sr-only" for={`status-${s.id}`}>Change status</label>
+                    <select id={`status-${s.id}`} name="status" class="rounded-lg border border-gray-300 px-2 py-1.5 text-[10px] font-bold">
+                      {STATUSES.map((opt) => (
+                        <option value={opt} selected={opt === s.status}>{opt}</option>
+                      ))}
+                    </select>
+                    <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-brand-dark hover:text-brand-primary">Save</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+            {signals.length === 0 && !loadFailed && (
+              <tr>
+                <td colspan="6" class="p-12 text-center text-gray-400 italic">
+                  No search demand recorded yet. Rows appear as customers search the shop.
+                </td>
+              </tr>
+            )}
+            {loadFailed && (
+              <tr>
+                <td colspan="6" class="p-12 text-center text-red-500 italic">
+                  Could not load search demand (service unavailable or permission denied).
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

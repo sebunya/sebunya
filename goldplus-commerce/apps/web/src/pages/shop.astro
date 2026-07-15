@@ -58,6 +58,16 @@ const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts)).filte
 const filteredProducts = filterDiscoveryProducts(availableProducts, { search, category, subcategory });
 const products = sortDiscoveryProducts(filteredProducts, sort);
 const browseFallback = products.length === 0 ? availableProducts.slice(0, 6) : [];
+
+// Slice 4: anonymous search telemetry — query + result count only, no identifiers.
+if (search) {
+  fetch(`${apiBase}/products/search-events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: search, resultCount: filteredProducts.length }),
+    signal: AbortSignal.timeout(1500),
+  }).catch(() => {});
+}
 const hasFilters = Boolean(search || category || subcategory || sort !== 'default');
 const categoryLabel = categoryNameForSlug(category);
 const subcategoryLabel = subcategoryNameForSlug(subcategory);
@@ -91,8 +101,11 @@ const activeFilters = [
           value={search}
           maxlength="100"
           placeholder="Search by product name, category, or model"
+          list="shop-suggest"
+          autocomplete="off"
           class="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/20"
         />
+        <datalist id="shop-suggest"></datalist>
         {category && <input type="hidden" name="category" value={category} />}
         {subcategory && <input type="hidden" name="subcategory" value={subcategory} />}
         <button type="submit" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950 focus-visible:ring-4 focus-visible:ring-brand-primary/30">Search</button>
@@ -158,6 +171,12 @@ const activeFilters = [
         <div class="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
           <a href="/shop" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Reset filters</a>
           <a href="#browse-available-products" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Browse available products</a>
+          {search && (
+            <a href={`/quote-request?requested=${encodeURIComponent(search)}`} class="rounded-full border border-brand-primary bg-brand-primary/10 px-6 py-3 text-sm font-bold text-slate-900 hover:bg-brand-primary hover:text-slate-950">Request this product</a>
+          )}
+          {search && (
+            <a href="/support" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Ask support</a>
+          )}
         </div>
       </section>
     )}
@@ -172,4 +191,34 @@ const activeFilters = [
       </section>
     )}
   </main>
+
+  <script is:inline define:vars={{ apiBase }}>
+    // Slice 4: progressive autocomplete. The form works without JavaScript;
+    // this only fills the datalist with catalogue names on capable browsers.
+    (function () {
+      var input = document.getElementById('shop-search');
+      var list = document.getElementById('shop-suggest');
+      if (!input || !list || !window.fetch) return;
+      var timer = null;
+      input.addEventListener('input', function () {
+        if (timer) clearTimeout(timer);
+        var q = input.value.trim();
+        if (q.length < 2) { list.innerHTML = ''; return; }
+        timer = setTimeout(function () {
+          fetch(apiBase + '/products/suggest?q=' + encodeURIComponent(q))
+            .then(function (r) { return r.json(); })
+            .then(function (body) {
+              if (!body || !body.success || !Array.isArray(body.data)) return;
+              list.innerHTML = '';
+              body.data.forEach(function (item) {
+                var opt = document.createElement('option');
+                opt.value = item.name;
+                list.appendChild(opt);
+              });
+            })
+            .catch(function () {});
+        }, 250);
+      });
+    })();
+  </script>
 </BaseLayout>

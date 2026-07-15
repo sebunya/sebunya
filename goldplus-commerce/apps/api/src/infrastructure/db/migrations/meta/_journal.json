@@ -169,6 +169,13 @@
       "when": 1784139296220,
       "tag": "0023_steady_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1784149525808,
+      "tag": "0024_reflective_ikaris",
+      "breakpoints": true
     }
   ]
 }

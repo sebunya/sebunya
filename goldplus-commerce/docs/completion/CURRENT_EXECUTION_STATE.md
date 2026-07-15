@@ -39,8 +39,11 @@ Summary: 0/1/6/10/14 SOURCE_COMPLETE_NOT_DEPLOYED · 2/3/4/5/7/11/12/13 PARTIAL_
   `/commerce/orders/create`. Migration `0023` awaits approved production execution.
 - 3C read-only payment reconciliation (domain + use case + payments.read route +
   admin payments page section + 6 tests): COMPLETE.
-- Next: **Slice 4** — autocomplete + zero-result demand capture, extending
-  ProductSearchService and CreateLeadUseCase. Invariants: browser total
+- Slice 4 search autocomplete + zero-result demand capture: COMPLETE
+  (see docs/platform/evidence/slices/slice-4-search-demand-capture.md). Slice 3
+  and 4 now SOURCE_COMPLETE_NOT_DEPLOYED. Migration 0024 approval-gated.
+- Next: **Slice 5** — compatibility boundary decision + extension of
+  CompatibilityRuleService (unknown is not compatible). Invariants: browser total
   never authoritative; redirect never marks paid; duplicate callback/IPN never
   duplicates effects; invalid total never reaches PesaPal.
 

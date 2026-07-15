@@ -38,6 +38,13 @@ import { PesaPalClient } from './payments/pesapal/PesaPalClient';
 import { IPesaPalClient } from '../application/ports/IPesaPalClient';
 import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
 import { GetPaymentReconciliationUseCase } from '../application/use-cases/payments/GetPaymentReconciliationUseCase';
+import { DrizzleSearchDemandRepository } from './db/repositories/DrizzleSearchDemandRepository';
+import {
+  SuggestProductsUseCase,
+  RecordSearchEventUseCase,
+  ListSearchDemandUseCase,
+  UpdateSearchDemandStatusUseCase,
+} from '../application/use-cases/products/SearchUseCases';
 import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
 import { env } from '../config/env';
 import { DrizzleSystemHealthRepository } from './db/repositories/DrizzleSystemHealthRepository';
@@ -362,6 +369,11 @@ export class Registry {
   public readonly getCartByIdUseCase = new GetCartByIdUseCase(this.cartQueryRepo);
   public readonly deliveryZoneRepo = new DrizzleDeliveryZoneRepository();
   public readonly getPaymentReconciliationUseCase = new GetPaymentReconciliationUseCase(this.orderRepo, this.paymentRepo, this.pesapalPaymentRepo);
+  public readonly searchDemandRepo = new DrizzleSearchDemandRepository();
+  public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo);
+  public readonly recordSearchEventUseCase = new RecordSearchEventUseCase(this.searchDemandRepo);
+  public readonly listSearchDemandUseCase = new ListSearchDemandUseCase(this.searchDemandRepo);
+  public readonly updateSearchDemandStatusUseCase = new UpdateSearchDemandStatusUseCase(this.searchDemandRepo);
   public readonly checkoutUseCase = new CheckoutUseCase(this.orderRepo, this.productRepo, this.deliveryZoneRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);

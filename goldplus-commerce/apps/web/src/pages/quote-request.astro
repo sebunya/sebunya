@@ -18,8 +18,9 @@ let errors: Record<string, string> = {};
 const kindParam = Astro.url.searchParams.get('kind');
 const initialKind = kindParam === 'wholesale' || kindParam === 'corporate' ? kindParam : 'retail';
 
-// Pre-fill productName from URL search params on initial render
-const productNameParam = Astro.url.searchParams.get('productName');
+// Pre-fill productName from URL search params on initial render.
+// `requested` carries the customer's zero-result shop search (Slice 4).
+const productNameParam = Astro.url.searchParams.get('productName') || Astro.url.searchParams.get('requested');
 if (Astro.request.method === 'GET' && productNameParam) {
   values.productName = productNameParam;
 }

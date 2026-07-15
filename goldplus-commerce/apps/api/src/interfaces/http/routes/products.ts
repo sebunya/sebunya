@@ -35,6 +35,34 @@ routes.get('/', async (c) => {
   return c.json(res);
 });
 
+// Slice 4: public autocomplete. Static path registered before /:slug.
+routes.get('/suggest', async (c) => {
+  const registry = Registry.getInstance();
+  const limitRaw = Number.parseInt(c.req.query('limit') ?? '8', 10);
+  const data = await registry.suggestProductsUseCase.execute({
+    query: c.req.query('q') ?? '',
+    limit: Number.isFinite(limitRaw) ? limitRaw : 8,
+  });
+  const res: ApiResponse<typeof data> = { success: true, data };
+  return c.json(res);
+});
+
+// Slice 4: anonymous search telemetry (query + result count only, no identifiers).
+routes.post('/search-events', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.query !== 'string') {
+    const res: ApiResponse<never> = { success: false, error: { code: 'INVALID_EVENT', message: 'query (string) is required.' } };
+    return c.json(res, 400);
+  }
+  const registry = Registry.getInstance();
+  const data = await registry.recordSearchEventUseCase.execute({
+    query: body.query,
+    resultCount: typeof body.resultCount === 'number' ? body.resultCount : 0,
+  });
+  const res: ApiResponse<typeof data> = { success: true, data };
+  return c.json(res);
+});
+
 routes.get('/:slug', async (c) => {
   const registry = Registry.getInstance();
   const useCase = new GetProductBySlugUseCase(registry.productRepo);

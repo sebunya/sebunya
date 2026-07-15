@@ -47,11 +47,9 @@
     {
       "id": "3",
       "module": "Checkout / location / payment",
-      "status": "PARTIAL_VERTICAL",
-      "missing": [
-        "admin payment ops depth (residual audit)"
-      ],
-      "next": "residual audit only; then Slice 4",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "missing": [],
+      "next": "none (deployment approval-gated)",
       "preserve": [
         "PaymentStateMachine",
         "PaymentIdempotencyService",
@@ -64,18 +62,24 @@
         "order idempotency (clientOrderKey)",
         "migration 0023",
         "Slice 3C: read-only payment reconciliation view"
-      ]
+      ],
+      "note": "admin payment ops = payments page + reconciliation view + fulfillment PATCH (existing); residual audit satisfied by 3C"
     },
     {
       "id": "4",
       "module": "Search / autocomplete / zero-result",
-      "status": "PARTIAL_VERTICAL",
-      "missing": [
-        "autocomplete endpoint",
-        "zero-result event capture",
-        "admin demand queue"
-      ],
-      "next": "extend ProductSearchService"
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "missing": [],
+      "next": "none (deployment approval-gated)",
+      "completed": [
+        "domain normalize/rank (shell completed)",
+        "public suggest endpoint",
+        "anonymous search-event capture",
+        "search_demand_signals + migration 0024",
+        "admin demand queue (reports.read view, leads.assign status, audited)",
+        "shop zero-result CTAs + progressive autocomplete",
+        "quote-request prefill"
+      ]
     },
     {
       "id": "5",
