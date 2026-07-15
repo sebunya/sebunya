@@ -55,7 +55,11 @@ Summary: 0/1/6/10/14 SOURCE_COMPLETE_NOT_DEPLOYED · 2/3/4/5/7/11/12/13 PARTIAL_
   0027): COMPLETE; delivery activation BLOCKED_EXTERNAL.
 - Slice 9 lifecycle/NBA foundation: COMPLETE (deterministic, suppression-first,
   read-only; messaging activation BLOCKED_EXTERNAL).
-- Next: **Slice 13** — perf/accessibility verification matrix; then Slice 2/0/1 residuals. Invariants: browser total
+- Slice 13A a11y/perf static contract + skip link + reduced motion: COMPLETE;
+  live Lighthouse/3-engine/screen-reader rows BLOCKED_EXTERNAL (running stack).
+- Slice 2 residuals closed (taxonomy + newsletter contracts; mobile rows in 13 matrix).
+- Roadmap check: no PARTIAL/STATIC_UI_ONLY/BACKEND_ONLY/SHELL/MISSING/UNSAFE
+  modules remain — all slices SOURCE_COMPLETE_NOT_DEPLOYED or BLOCKED_EXTERNAL. Invariants: browser total
   never authoritative; redirect never marks paid; duplicate callback/IPN never
   duplicates effects; invalid total never reaches PesaPal.
 
