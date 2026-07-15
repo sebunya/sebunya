@@ -10,6 +10,7 @@ import {
   type RedactedTransactionalEmailFailure,
   type TransactionalEmailFailureClassification,
 } from '../../application/services/consent/TransactionalEmailFailureForensics';
+import { parseRateLimitResponse } from '../../application/services/consent/EmailRateLimitRecovery';
 import { resilientFetch } from '../http/HttpClient';
 
 export interface InternalCanaryDeliveryResult {
@@ -31,6 +32,11 @@ export interface InternalCanaryDeliveryResult {
   network_error: boolean;
   timeout: boolean;
   redacted_response_summary: string;
+  retry_after_present: boolean;
+  retry_after_seconds: number | null;
+  retry_after_timestamp: string | null;
+  rate_limit_reset_present: boolean;
+  rate_limit_reset_timestamp: string | null;
 }
 
 interface DiagnosticCapture {
@@ -43,6 +49,11 @@ interface DiagnosticCapture {
   network_error: boolean;
   timeout: boolean;
   redacted_response_summary: string;
+  retry_after_present: boolean;
+  retry_after_seconds: number | null;
+  retry_after_timestamp: string | null;
+  rate_limit_reset_present: boolean;
+  rate_limit_reset_timestamp: string | null;
 }
 
 const NOT_ATTEMPTED: DiagnosticCapture = Object.freeze({
@@ -55,6 +66,11 @@ const NOT_ATTEMPTED: DiagnosticCapture = Object.freeze({
   network_error: false,
   timeout: false,
   redacted_response_summary: 'provider request not attempted',
+  retry_after_present: false,
+  retry_after_seconds: null,
+  retry_after_timestamp: null,
+  rate_limit_reset_present: false,
+  rate_limit_reset_timestamp: null,
 });
 
 function maskEmail(email: string): string {
@@ -119,6 +135,7 @@ export class ZeptoInternalConsentCanaryTransport {
         const failure = classifyTransactionalEmailFailure({ response_status: response.status, provider_code: providerCode });
         return this.result('failed', approved, recipient, null, failure, this.captureFailure(
           response.status, providerCode, failure, true, false, false,
+          parseRateLimitResponse({ status: response.status, headers: response.headers }),
         ));
       }
       const body = await response.json() as {
@@ -132,6 +149,7 @@ export class ZeptoInternalConsentCanaryTransport {
         const failure = classifyTransactionalEmailFailure({ response_status: response.status, provider_code: providerCode });
         return this.result('failed', approved, recipient, null, failure, this.captureFailure(
           response.status, providerCode, failure, true, false, false,
+          parseRateLimitResponse({ status: response.status, headers: response.headers }),
         ));
       }
       const providerReference = body.data?.[0]?.message_id ?? (body.message === 'success' ? 'success' : 'accepted');
@@ -145,6 +163,11 @@ export class ZeptoInternalConsentCanaryTransport {
         network_error: false,
         timeout: false,
         redacted_response_summary: `HTTP ${response.status}; provider accepted one internal diagnostic message`,
+        retry_after_present: false,
+        retry_after_seconds: null,
+        retry_after_timestamp: null,
+        rate_limit_reset_present: false,
+        rate_limit_reset_timestamp: null,
       }));
     } catch (error) {
       const timedOut = error instanceof Error && error.name === 'AbortError';
@@ -189,6 +212,7 @@ export class ZeptoInternalConsentCanaryTransport {
     responseReceived: boolean,
     networkError: boolean,
     timeout: boolean,
+    rateLimit?: ReturnType<typeof parseRateLimitResponse>,
   ): DiagnosticCapture {
     return Object.freeze({
       http_status: httpStatus,
@@ -202,6 +226,11 @@ export class ZeptoInternalConsentCanaryTransport {
       redacted_response_summary: httpStatus === null
         ? `no provider response; category ${failure.classification}`
         : `HTTP ${httpStatus}; category ${failure.classification}`,
+      retry_after_present: rateLimit?.retry_after_present ?? false,
+      retry_after_seconds: rateLimit?.retry_after_seconds ?? null,
+      retry_after_timestamp: rateLimit?.retry_after_timestamp ?? null,
+      rate_limit_reset_present: rateLimit?.rate_limit_reset_present ?? false,
+      rate_limit_reset_timestamp: rateLimit?.rate_limit_reset_timestamp ?? null,
     });
   }
 
