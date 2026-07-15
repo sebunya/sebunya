@@ -138,20 +138,18 @@
     {
       "id": "9",
       "module": "Customer DNA / NBA / lifecycle",
-      "status": "MISSING",
-      "foundations": [
-        "consent (LIVE)",
-        "preferences",
-        "orders/cart/search signals"
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "missing": [],
+      "next": "none (messaging activation external)",
+      "completed": [
+        "deterministic lifecycle stages over real orders (explained)",
+        "suppression-first NBA (unknown consent = no consent)",
+        "consent lookup from canonical customer_consent_states",
+        "reports.read admin API + admin/lifecycle page (no PII, no scores)"
       ],
-      "missing": [
-        "unified profile",
-        "lifecycle",
-        "segments",
-        "deterministic NBA",
-        "suppression"
-      ],
-      "next": "design on existing signals; no second profile store"
+      "blockers": [
+        "BLOCKED_EXTERNAL: lifecycle messaging/channel activation (provider flags off)"
+      ]
     },
     {
       "id": "10",

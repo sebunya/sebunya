@@ -450,6 +450,19 @@ routes.get('/admin/support', requirePermissions([PERMISSIONS.REPORTS_READ]), asy
   }
 });
 
+// Slice 9: deterministic, consent-bound lifecycle segments (read-only, no PII).
+routes.get('/admin/lifecycle', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  try {
+    const report = await registry.getLifecycleSegmentsUseCase.execute();
+    return c.json({ success: true, data: report });
+  } catch (err: any) {
+    if (err.message.includes('DATABASE_URL')) {
+      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
+    }
+    throw err;
+  }
+});
+
 // Slice 11: inbox mutations — status transitions and assignment, audited.
 routes.patch('/admin/support/:id', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);

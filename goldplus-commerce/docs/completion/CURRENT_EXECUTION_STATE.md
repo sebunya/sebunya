@@ -53,7 +53,9 @@ Summary: 0/1/6/10/14 SOURCE_COMPLETE_NOT_DEPLOYED · 2/3/4/5/7/11/12/13 PARTIAL_
   pending legal review — BLOCKED_EXTERNAL for effective dates).
 - Slice 11 support inbox (transitions/SLA/assignment/audited PATCH, migration
   0027): COMPLETE; delivery activation BLOCKED_EXTERNAL.
-- Next: **Slice 9** — consent-bound lifecycle/NBA foundation; then 13 + residuals. Invariants: browser total
+- Slice 9 lifecycle/NBA foundation: COMPLETE (deterministic, suppression-first,
+  read-only; messaging activation BLOCKED_EXTERNAL).
+- Next: **Slice 13** — perf/accessibility verification matrix; then Slice 2/0/1 residuals. Invariants: browser total
   never authoritative; redirect never marks paid; duplicate callback/IPN never
   duplicates effects; invalid total never reaches PesaPal.
 

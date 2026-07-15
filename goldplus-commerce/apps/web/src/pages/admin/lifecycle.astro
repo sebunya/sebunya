@@ -1,0 +1,130 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../lib/session";
+import { apiBase } from "../../lib/api";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/lifecycle", 303);
+}
+
+interface Row {
+  userId: string;
+  ordersCount: number;
+  lastOrderAt: string | null;
+  stage: string;
+  stageExplanation: string;
+  nba: { action: string; suppressed: boolean; explanation: string };
+}
+interface Report {
+  generatedAt: string;
+  totals: Record<string, number>;
+  suppressedCount: number;
+  customers: Row[];
+}
+
+let report: Report | null = null;
+let loadFailed = false;
+try {
+  const res = await fetch(`${apiBase}/governance/admin/lifecycle`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const json = await res.json().catch(() => null);
+  if (json?.success) report = json.data;
+  else loadFailed = true;
+} catch {
+  loadFailed = true;
+}
+
+const STAGES = ["prospect", "new", "active", "at_risk", "dormant"] as const;
+const stageBadge: Record<string, string> = {
+  prospect: "border-slate-200 bg-slate-50 text-slate-600",
+  new: "border-blue-200 bg-blue-50 text-blue-700",
+  active: "border-green-200 bg-green-50 text-green-700",
+  at_risk: "border-amber-300 bg-amber-50 text-amber-800",
+  dormant: "border-red-200 bg-red-50 text-red-700",
+};
+---
+
+<AdminLayout
+  title="Customer Lifecycle"
+  description="Deterministic, consent-bound lifecycle segments and operator review suggestions."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Lifecycle & Next Best Action</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+        Stages derive only from real order history; every row shows its explanation. Actions
+        are operator review suggestions — nothing here sends anything. Customers without
+        explicit personalisation consent are suppressed (unknown counts as no consent).
+        No names, contacts or fabricated scores appear on this page.
+      </p>
+    </div>
+
+    {loadFailed && (
+      <div class="bg-gray-50 border border-gray-200 text-gray-600 px-6 py-4 rounded-2xl text-xs mb-8">
+        Lifecycle data is unavailable right now (service unreachable or permission denied).
+      </div>
+    )}
+
+    {report && (
+      <>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+          {STAGES.map((s) => (
+            <div class={`rounded-2xl border p-4 text-center ${stageBadge[s]}`}>
+              <div class="text-2xl font-black">{report!.totals[s] ?? 0}</div>
+              <div class="text-[10px] font-black uppercase tracking-widest mt-1">{s.replace("_", " ")}</div>
+            </div>
+          ))}
+          <div class="rounded-2xl border border-gray-300 bg-gray-50 text-gray-700 p-4 text-center">
+            <div class="text-2xl font-black">{report.suppressedCount}</div>
+            <div class="text-[10px] font-black uppercase tracking-widest mt-1">Suppressed</div>
+          </div>
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+                  <th class="p-5">Customer</th>
+                  <th class="p-5 text-right">Orders</th>
+                  <th class="p-5">Last order</th>
+                  <th class="p-5 text-center">Stage</th>
+                  <th class="p-5">Suggested review (why)</th>
+                </tr>
+              </thead>
+              <tbody class="text-xs">
+                {report.customers.map((r) => (
+                  <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                    <td class="p-5 font-mono text-[10px] text-gray-500">{r.userId.slice(0, 8)}…</td>
+                    <td class="p-5 text-right font-mono">{r.ordersCount}</td>
+                    <td class="p-5 text-gray-500">{r.lastOrderAt ? new Date(r.lastOrderAt).toLocaleDateString("en-UG") : "—"}</td>
+                    <td class="p-5 text-center">
+                      <span class={`text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border ${stageBadge[r.stage] ?? ""}`} title={r.stageExplanation}>
+                        {r.stage.replace("_", " ")}
+                      </span>
+                    </td>
+                    <td class="p-5">
+                      <div class={`font-bold ${r.nba.suppressed ? "text-gray-400" : "text-brand-dark"}`}>
+                        {r.nba.suppressed ? "Suppressed" : r.nba.action.replaceAll("_", " ")}
+                      </div>
+                      <div class="text-[10px] text-gray-400 mt-0.5">{r.nba.explanation}</div>
+                    </td>
+                  </tr>
+                ))}
+                {report.customers.length === 0 && (
+                  <tr>
+                    <td colspan="5" class="p-12 text-center text-gray-400 italic">
+                      No registered-customer order history yet. Rows appear as signed-in customers place orders.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </>
+    )}
+  </div>
+</AdminLayout>
