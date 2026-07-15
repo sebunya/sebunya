@@ -37,6 +37,8 @@ import { deploymentService } from '../../infrastructure/deployment/DeploymentSer
 import { controlledActivationDryRunRouter } from '../../presentation/routes/controlled-activation-dry-run.js';
 import { liveReview } from '../../presentation/routes/controlled-activation-live-review';
 import { controlledLiveCanaryRouter } from '../../presentation/routes/controlled-live-canary.js';
+import consentOperatingRoutes from './routes/consent-operating';
+import adminConsentOperatingRoutes from './routes/admin/consent-operating';
 
 
 
@@ -149,6 +151,8 @@ app.route('/admin/controlled-activation-dry-run', controlledActivationDryRunRout
 app.route('/admin/controlled-activation-live-review', liveReview);
 app.route('/admin/controlled-activation/live-canaries', controlledLiveCanaryRouter);
 app.route('/product-finder', productFinderRoutes);
+app.route('/account/consent-operating', consentOperatingRoutes);
+app.route('/admin/consent-operating', adminConsentOperatingRoutes);
 
 
 // Health check route mounted via route registration

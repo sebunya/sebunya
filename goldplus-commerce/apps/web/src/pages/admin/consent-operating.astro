@@ -1,0 +1,126 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken } from '../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/consent-operating', 303);
+}
+
+interface Readiness {
+  commands_enabled: boolean;
+  preference_centre_save_enabled: boolean;
+  admin_workflow_enabled: boolean;
+  support_workflow_enabled: boolean;
+  provider_suppression_intake_enabled: boolean;
+  provider_dry_run_enabled: boolean;
+  provider_live_sends_enabled: boolean;
+  legacy_migration_dry_run_enabled: boolean;
+  production_migration_required: boolean;
+  specialist_approvals_pending: boolean;
+  no_send_status: 'pass' | 'fail';
+  live_send_readiness: 'blocked';
+  reasons: string[];
+}
+
+const disabledReadiness: Readiness = {
+  commands_enabled: false,
+  preference_centre_save_enabled: false,
+  admin_workflow_enabled: false,
+  support_workflow_enabled: false,
+  provider_suppression_intake_enabled: false,
+  provider_dry_run_enabled: false,
+  provider_live_sends_enabled: false,
+  legacy_migration_dry_run_enabled: false,
+  production_migration_required: true,
+  specialist_approvals_pending: true,
+  no_send_status: 'pass',
+  live_send_readiness: 'blocked',
+  reasons: ['consent operating API unavailable; fail-closed display used'],
+};
+
+let readiness = disabledReadiness;
+try {
+  const response = await fetch(`${apiBase}/admin/consent-operating/readiness`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.ok) readiness = await response.json();
+} catch {
+  // The dashboard remains fail-closed when the API is unavailable.
+}
+
+const gates = [
+  ['Persistence commands', readiness.commands_enabled],
+  ['Preference Centre save', readiness.preference_centre_save_enabled],
+  ['Admin workflow', readiness.admin_workflow_enabled],
+  ['Support workflow', readiness.support_workflow_enabled],
+  ['Provider suppression intake', readiness.provider_suppression_intake_enabled],
+  ['Provider eligibility dry-run', readiness.provider_dry_run_enabled],
+  ['Legacy migration dry-run', readiness.legacy_migration_dry_run_enabled],
+  ['Provider live sends', readiness.provider_live_sends_enabled],
+] as const;
+
+const workflowCards = [
+  ['Consent overview', 'Purpose, channel and source catalogues remain protected behind the admin workflow gate.'],
+  ['Audit timeline', 'Customer consent events are chronological, redacted by route scope and append-only.'],
+  ['Support request queue', 'Support may record a verified request; it cannot silently create campaign consent.'],
+  ['Conflict resolution', 'Preview is restrictive. Resolution requires an admin reason, idempotency key and audit event.'],
+  ['Provider suppressions', 'Verified STOP and unsubscribe evidence suppresses the affected channel without calling a provider.'],
+  ['Eligibility dry-run', 'Returns ordered reasons only. It has no provider transport and cannot send.'],
+] as const;
+---
+
+<AdminLayout title="Consent Operating Layer P0" description="Protected consent workflow and no-send readiness.">
+  <div class="container mx-auto max-w-7xl px-6 lg:px-8">
+    <header class="mb-8 border-b border-slate-200 pb-6">
+      <p class="text-xs font-black uppercase tracking-wider text-brand-primary">Slice 9-X PRIME · gated P0</p>
+      <h1 class="mt-2 text-3xl font-black text-slate-950">Consent Operating Layer</h1>
+      <p class="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600">
+        Local persistence workflows, audit review, suppression intake and eligibility previews. This dashboard contains no live-send control.
+      </p>
+    </header>
+
+    <section class:list={[
+      'mb-8 rounded-2xl border p-6',
+      readiness.no_send_status === 'pass' ? 'border-emerald-200 bg-emerald-50' : 'border-red-300 bg-red-50',
+    ]}>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-xl font-black text-slate-950">No-send release gate</h2>
+        <span class="rounded-full border border-current px-3 py-1 text-xs font-black uppercase">
+          {readiness.no_send_status === 'pass' ? 'No-send boundary passes' : 'Unsafe configuration'}
+        </span>
+      </div>
+      <p class="mt-3 text-sm text-slate-700">Live-send readiness: <strong>{readiness.live_send_readiness}</strong>. Production migration required: <strong>{String(readiness.production_migration_required)}</strong>.</p>
+      <ul class="mt-4 grid gap-2 text-sm text-slate-700">{readiness.reasons.map(reason => <li>— {reason}</li>)}</ul>
+    </section>
+
+    <section aria-labelledby="gates-title">
+      <h2 id="gates-title" class="text-xl font-black text-slate-950">Feature gates</h2>
+      <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {gates.map(([label, enabled]) => (
+          <article class="rounded-xl border border-slate-200 bg-white p-4">
+            <p class="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
+            <p class:list={['mt-2 font-black', enabled ? 'text-blue-700' : 'text-slate-700']}>{enabled ? 'Enabled for gated environment' : 'Disabled'}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <section class="mt-10" aria-labelledby="workflows-title">
+      <h2 id="workflows-title" class="text-xl font-black text-slate-950">Protected admin and support workflow</h2>
+      <div class="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {workflowCards.map(([title, description]) => (
+          <article class="rounded-2xl border border-slate-200 bg-white p-5">
+            <h3 class="font-black text-slate-950">{title}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-slate-600">{description}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <aside class="mt-10 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm leading-relaxed text-amber-950">
+      Specialist approvals remain pending. Dry-run readiness is not live-send readiness. No provider, queue, email, SMS or WhatsApp transport is reachable from this module.
+    </aside>
+  </div>
+</AdminLayout>

@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PreferenceCentreForm from '../../components/preferences/PreferenceCentreForm.astro';
+import CanonicalConsentForm from '../../components/preferences/CanonicalConsentForm.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, clearSessionCookie } from '../../lib/session';
 
@@ -11,47 +12,81 @@ if (!token) {
 
 let saveSuccess = false;
 let saveError = '';
+const consentOperatingEnabled =
+  import.meta.env.CONSENT_PERSISTENCE_COMMANDS_ENABLED === 'true' &&
+  import.meta.env.CONSENT_PREFERENCE_CENTRE_SAVE_ENABLED === 'true';
 
 if (Astro.request.method === 'POST') {
   try {
     const data = await Astro.request.formData();
-    
-    // Convert flat formData into nested payload
-    const payload = {
-      channels: {
-        email: data.get('channels.email') === 'true',
-        sms: data.get('channels.sms') === 'true',
-        whatsapp: data.get('channels.whatsapp') === 'true',
-      },
-      consent: {
-        analytics: data.get('consent.analytics') === 'true',
-        advertising: data.get('consent.advertising') === 'true',
-        personalization: data.get('consent.personalization') === 'true',
-      },
-      interests: {} as Record<string, boolean>
-    };
+    const formKind = String(data.get('formKind') ?? 'legacy-preferences');
 
-    // Extract dynamic interests
-    for (const [key, value] of data.entries()) {
-      if (key.startsWith('interests.')) {
-        const topic = key.replace('interests.', '');
-        payload.interests[topic] = value === 'true';
+    if (formKind === 'canonical-consent') {
+      if (!consentOperatingEnabled) {
+        saveError = 'This purpose-specific preference was not saved because canonical persistence is not live.';
+      } else {
+        const correlationId = crypto.randomUUID();
+        const res = await fetch(`${apiBase}/account/consent-operating/preferences`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-Correlation-Id': correlationId,
+            'Idempotency-Key': crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            purpose_key: String(data.get('purpose_key') ?? ''),
+            channel_key: String(data.get('channel_key') ?? ''),
+            requested_state: String(data.get('requested_state') ?? ''),
+            copy_version_id: String(data.get('copy_version_id') ?? ''),
+            reason: 'authenticated customer Preference Centre choice',
+          }),
+        });
+        const result = await res.json().catch(() => null);
+        if (res.ok && result?.success === true && result?.data?.saved === true) {
+          saveSuccess = true;
+        } else {
+          saveError = 'Your purpose-specific choice was not saved. No communication setting changed.';
+        }
       }
-    }
-
-    const res = await fetch(`${apiBase}/account/preferences`, {
-      method: 'PUT',
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (res.ok) {
-      saveSuccess = true;
     } else {
-      saveError = 'Failed to save preferences. Please try again.';
+      // Existing broad preferences remain a legacy compatibility surface, not canonical messaging consent.
+      const payload = {
+        channels: {
+          email: data.get('channels.email') === 'true',
+          sms: data.get('channels.sms') === 'true',
+          whatsapp: data.get('channels.whatsapp') === 'true',
+        },
+        consent: {
+          analytics: data.get('consent.analytics') === 'true',
+          advertising: data.get('consent.advertising') === 'true',
+          personalization: data.get('consent.personalization') === 'true',
+        },
+        interests: {} as Record<string, boolean>
+      };
+
+      // Extract dynamic interests
+      for (const [key, value] of data.entries()) {
+        if (key.startsWith('interests.')) {
+          const topic = key.replace('interests.', '');
+          payload.interests[topic] = value === 'true';
+        }
+      }
+
+      const res = await fetch(`${apiBase}/account/preferences`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        saveSuccess = true;
+      } else {
+        saveError = 'Failed to save preferences. Please try again.';
+      }
     }
   } catch (err) {
     saveError = 'A network error occurred while saving.';
@@ -92,7 +127,7 @@ try {
     {saveSuccess && (
       <div class="bg-green-50 border border-green-200 text-green-800 rounded-xl p-4 mb-8 font-bold flex items-center gap-3">
         <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-        Your preferences have been securely saved and audited.
+        Your requested preference was durably saved and audited.
       </div>
     )}
 
@@ -102,6 +137,10 @@ try {
       </div>
     )}
 
+    <CanonicalConsentForm enabled={consentOperatingEnabled} />
+    <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      The controls below are the existing legacy account settings. They are not canonical purpose consent and cannot authorize marketing sends.
+    </div>
     <PreferenceCentreForm preferences={preferences} />
   </div>
 </BaseLayout>

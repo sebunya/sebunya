@@ -115,6 +115,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'GDPR Article 7(1) consent audit trail — all grant and withdrawal decisions.'
   },
   {
+    label: 'Consent Operations',
+    href: '/admin/consent-operating',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Protected consent workflows, suppression intake, dry-runs and no-send readiness.'
+  },
+  {
     label: 'Attribution',
     href: '/admin/measurement/attribution',
     group: 'Measurement',
@@ -214,4 +221,3 @@ export const ADMIN_NAVIGATION: NavGroup[] = [
     items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'System' && item.status !== 'hidden')
   }
 ];
-
