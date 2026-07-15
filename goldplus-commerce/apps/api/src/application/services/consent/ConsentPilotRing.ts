@@ -12,6 +12,21 @@ export interface PilotAllowlistRecord {
   configured_at: string;
 }
 
+export type PilotProvisioningSource = 'synthetic' | 'root_only' | 'admin' | 'chat' | 'public_form' | 'checkout' | 'support' | 'legacy';
+
+export function provisionPilotIdentity(identity: string, source: PilotProvisioningSource, configuredAt = new Date().toISOString()): PilotAllowlistRecord {
+  if (!['synthetic', 'root_only', 'admin'].includes(source)) throw new Error('unsafe_pilot_provisioning_source');
+  const normalized = identity.trim().toLowerCase();
+  if (!normalized) throw new Error('pilot_identity_required');
+  return Object.freeze({
+    identity_hash: hashPilotIdentity(normalized),
+    masked_identity: maskPilotIdentity(normalized),
+    ring: 'ring_1_allowlisted_verified_pilot',
+    source: source === 'synthetic' ? 'synthetic_uat' : 'configured_hash_allowlist',
+    configured_at: configuredAt,
+  });
+}
+
 export interface PilotSaveInput {
   pilot_save_enabled: boolean;
   identity_ring: ConsentPilotRing;
@@ -35,7 +50,7 @@ export interface PilotSaveInput {
 }
 
 export function hashPilotIdentity(identity: string): string {
-  return `identity_${createHash('sha256').update(identity.trim(), 'utf8').digest('hex').slice(0, 24)}`;
+  return `identity_${createHash('sha256').update(identity.trim().toLowerCase(), 'utf8').digest('hex').slice(0, 24)}`;
 }
 
 export function maskPilotIdentity(identity: string): string {
