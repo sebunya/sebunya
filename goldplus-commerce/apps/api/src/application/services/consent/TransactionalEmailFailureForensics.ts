@@ -51,6 +51,13 @@ function classifyCode(value: unknown): TransactionalEmailFailureClassification |
   return hints.find(([pattern]) => pattern.test(normalized))?.[1] ?? null;
 }
 
+export function redactTransactionalEmailProviderCode(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!/^[A-Za-z0-9_.-]{1,64}$/.test(normalized)) return null;
+  return `code_${createHash('sha256').update(normalized, 'utf8').digest('hex').slice(0, 12)}`;
+}
+
 function statusCategory(status: number | null | undefined): RedactedTransactionalEmailFailure['provider_status_category'] {
   if (!status) return 'none';
   if (status >= 400 && status < 500) return 'http_4xx';
@@ -117,3 +124,4 @@ export function assessEmailCanaryRerunReadiness(input: EmailCanaryRerunReadiness
     .map(([key]) => key);
   return Object.freeze({ permitted: blockers.length === 0, blockers: Object.freeze(blockers) });
 }
+import { createHash } from 'node:crypto';

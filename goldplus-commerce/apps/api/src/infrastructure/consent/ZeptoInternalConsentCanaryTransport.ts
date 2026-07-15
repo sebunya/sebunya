@@ -6,7 +6,9 @@ import {
 } from '../../application/services/consent/InternalConsentCanaryGuard';
 import {
   classifyTransactionalEmailFailure,
+  redactTransactionalEmailProviderCode,
   type RedactedTransactionalEmailFailure,
+  type TransactionalEmailFailureClassification,
 } from '../../application/services/consent/TransactionalEmailFailureForensics';
 import { resilientFetch } from '../http/HttpClient';
 
@@ -18,7 +20,42 @@ export interface InternalCanaryDeliveryResult {
   recipient_masked: string;
   broad_live_send_gate_used: false;
   failure: RedactedTransactionalEmailFailure | null;
+  provider_family: 'zeptomail';
+  transport_name: 'zeptomail_internal_email_diagnostic';
+  http_status: number | null;
+  provider_status: 'accepted' | 'failed' | 'not_attempted';
+  provider_error_code: string | null;
+  provider_error_category: TransactionalEmailFailureClassification | null;
+  retryable: boolean | null;
+  response_received: boolean;
+  network_error: boolean;
+  timeout: boolean;
+  redacted_response_summary: string;
 }
+
+interface DiagnosticCapture {
+  http_status: number | null;
+  provider_status: InternalCanaryDeliveryResult['provider_status'];
+  provider_error_code: string | null;
+  provider_error_category: TransactionalEmailFailureClassification | null;
+  retryable: boolean | null;
+  response_received: boolean;
+  network_error: boolean;
+  timeout: boolean;
+  redacted_response_summary: string;
+}
+
+const NOT_ATTEMPTED: DiagnosticCapture = Object.freeze({
+  http_status: null,
+  provider_status: 'not_attempted',
+  provider_error_code: null,
+  provider_error_category: null,
+  retryable: null,
+  response_received: false,
+  network_error: false,
+  timeout: false,
+  redacted_response_summary: 'provider request not attempted',
+});
 
 function maskEmail(email: string): string {
   const [local = '', domain = ''] = email.split('@');
@@ -42,7 +79,7 @@ export class ZeptoInternalConsentCanaryTransport {
       throw new Error('authorization_recipient_mismatch');
     }
     if (process.env.CONSENT_INTERNAL_CANARY_EMAIL_ENABLED !== 'true') {
-      return this.result('disabled', approved, recipient, null, null);
+      return this.result('disabled', approved, recipient, null, null, NOT_ATTEMPTED);
     }
     if (process.env.NOTIFICATIONS_LIVE_SEND_ENABLED === 'true') {
       throw new Error('broad_live_send_gate_must_remain_disabled');
@@ -53,7 +90,7 @@ export class ZeptoInternalConsentCanaryTransport {
     const baseUrl = (process.env.ZEPTOMAIL_BASE_URL ?? 'https://api.zeptomail.com/v1.1/email').trim();
     if (!token || !fromAddress || !baseUrl) {
       return this.result('not_configured', approved, recipient, null,
-        classifyTransactionalEmailFailure({ missing_configuration: true }));
+        classifyTransactionalEmailFailure({ missing_configuration: true }), NOT_ATTEMPTED);
     }
 
     try {
@@ -67,9 +104,9 @@ export class ZeptoInternalConsentCanaryTransport {
         body: JSON.stringify({
           from: { address: fromAddress, name: 'GoldPlus' },
           to: [{ email_address: { address: recipient, name: 'GoldPlus Internal Canary' } }],
-          subject: 'GoldPlus internal consent delivery canary',
-          textbody: 'GoldPlus internal consent delivery canary. No customer action required.',
-          htmlbody: '<p>GoldPlus internal consent delivery canary. No customer action required.</p>',
+          subject: 'GoldPlus internal consent delivery diagnostic canary',
+          textbody: 'GoldPlus internal consent delivery diagnostic canary. No customer action required.',
+          htmlbody: '<p>GoldPlus internal consent delivery diagnostic canary. No customer action required.</p>',
           track_clicks: false,
           track_opens: false,
           client_reference: approved.correlation_id,
@@ -79,19 +116,47 @@ export class ZeptoInternalConsentCanaryTransport {
       });
       if (!response.ok) {
         const providerCode = await this.readProviderCode(response);
-        return this.result('failed', approved, recipient, null,
-          classifyTransactionalEmailFailure({ response_status: response.status, provider_code: providerCode }));
+        const failure = classifyTransactionalEmailFailure({ response_status: response.status, provider_code: providerCode });
+        return this.result('failed', approved, recipient, null, failure, this.captureFailure(
+          response.status, providerCode, failure, true, false, false,
+        ));
       }
-      const body = await response.json() as { data?: Array<{ message_id?: string }>; message?: string };
+      const body = await response.json() as {
+        data?: Array<{ message_id?: string }>;
+        message?: string;
+        error?: { code?: unknown; message?: unknown };
+        status?: string;
+      };
+      if (body.error || body.status === 'failure') {
+        const providerCode = body.error?.code ?? body.error?.message ?? body.status;
+        const failure = classifyTransactionalEmailFailure({ response_status: response.status, provider_code: providerCode });
+        return this.result('failed', approved, recipient, null, failure, this.captureFailure(
+          response.status, providerCode, failure, true, false, false,
+        ));
+      }
       const providerReference = body.data?.[0]?.message_id ?? (body.message === 'success' ? 'success' : 'accepted');
-      return this.result('sent', approved, recipient, providerReference, null);
+      return this.result('sent', approved, recipient, providerReference, null, Object.freeze({
+        http_status: response.status,
+        provider_status: 'accepted',
+        provider_error_code: null,
+        provider_error_category: null,
+        retryable: false,
+        response_received: true,
+        network_error: false,
+        timeout: false,
+        redacted_response_summary: `HTTP ${response.status}; provider accepted one internal diagnostic message`,
+      }));
     } catch (error) {
       const timedOut = error instanceof Error && error.name === 'AbortError';
       const statusMatch = error instanceof Error ? error.message.match(/HTTP error status (\d{3})/) : null;
-      return this.result('failed', approved, recipient, null, classifyTransactionalEmailFailure({
-        response_status: statusMatch ? Number(statusMatch[1]) : null,
+      const httpStatus = statusMatch ? Number(statusMatch[1]) : null;
+      const failure = classifyTransactionalEmailFailure({
+        response_status: httpStatus,
         timed_out: timedOut,
-      }));
+      });
+      return this.result('failed', approved, recipient, null, failure, this.captureFailure(
+        httpStatus, null, failure, httpStatus !== null, !timedOut && httpStatus === null, timedOut,
+      ));
     }
   }
 
@@ -101,6 +166,7 @@ export class ZeptoInternalConsentCanaryTransport {
     recipient: string,
     providerReference: string | null,
     failure: RedactedTransactionalEmailFailure | null,
+    capture: DiagnosticCapture,
   ): InternalCanaryDeliveryResult {
     return Object.freeze({
       status,
@@ -110,6 +176,32 @@ export class ZeptoInternalConsentCanaryTransport {
       recipient_masked: maskEmail(recipient),
       broad_live_send_gate_used: false,
       failure,
+      provider_family: 'zeptomail',
+      transport_name: 'zeptomail_internal_email_diagnostic',
+      ...capture,
+    });
+  }
+
+  private captureFailure(
+    httpStatus: number | null,
+    providerCode: unknown,
+    failure: RedactedTransactionalEmailFailure,
+    responseReceived: boolean,
+    networkError: boolean,
+    timeout: boolean,
+  ): DiagnosticCapture {
+    return Object.freeze({
+      http_status: httpStatus,
+      provider_status: 'failed',
+      provider_error_code: redactTransactionalEmailProviderCode(providerCode),
+      provider_error_category: failure.classification,
+      retryable: failure.retryable === 'yes',
+      response_received: responseReceived,
+      network_error: networkError,
+      timeout,
+      redacted_response_summary: httpStatus === null
+        ? `no provider response; category ${failure.classification}`
+        : `HTTP ${httpStatus}; category ${failure.classification}`,
     });
   }
 

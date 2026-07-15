@@ -258,7 +258,7 @@ describe('email canary transport', () => {
     expect(result.provider_reference_hash).toMatch(/^[a-f0-9]{16}$/);
     expect(JSON.stringify(result)).not.toContain('provider-id-private');
     const requestBody = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
-    expect(requestBody.textbody).toBe('GoldPlus internal consent delivery canary. No customer action required.');
+    expect(requestBody.textbody).toBe('GoldPlus internal consent delivery diagnostic canary. No customer action required.');
     expect(requestBody).not.toHaveProperty('campaign_id');
     expect(requestBody).not.toHaveProperty('newsletter_id');
   });
@@ -305,7 +305,7 @@ describe('artifact and hard-red-line contract', () => {
 
   it('transport source has a fixed internal-only message and no broad-live bypass', () => {
     const source = read(paths.emailTransport);
-    expect(source).toContain('GoldPlus internal consent delivery canary. No customer action required.');
+    expect(source).toContain('GoldPlus internal consent delivery diagnostic canary. No customer action required.');
     expect(source).toContain("process.env.NOTIFICATIONS_LIVE_SEND_ENABLED === 'true'");
     expect(source).toContain('broad_live_send_gate_must_remain_disabled');
   });
