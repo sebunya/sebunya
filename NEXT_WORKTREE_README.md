@@ -16,6 +16,10 @@ Slice 10-PR PRIME preserved the dirty production source at `/opt/goldplus/backup
 
 The live source was not switched. The running Caddy container bind-mounts `/opt/goldplus/app/goldplus-commerce/Caddyfile`, and the validated remote Git root contains the app in a nested `goldplus-commerce/` directory while the current operational path is already the app directory. Both conditions require an explicit maintenance/restart alignment plan. The original 321 dirty entries remain unchanged; the outer production Git root reports one additional authorized untracked entry for the side-by-side candidate.
 
-Decision: `SLICE_10_PR_PRIME_CLEAN_SOURCE_PREPARED_SWITCH_BLOCKED_BY_RUNTIME_COUPLING`.
+Slice 10-PR2 APEX created a fresh verified preservation pack at `/opt/goldplus/backups/slice-10-pr2-source-preservation-20260715T132406Z`; its source archive SHA-256 is `bb554ea5b477d3afcd8e7f0f14f0878f0dbac327770cd6be9b970fd96362caa0`. A corrected direct-layout candidate symlink exists at `/opt/goldplus/app/goldplus-commerce.clean-10pr2-20260715T132508Z`, backed by a clean clone at `6717d877bc0fd2f18d1579fc85647ab6012af7ea`. Candidate Compose validation passes.
 
-Next allowed work is Slice 10-PR2 APEX with explicit maintenance/restart approval and a reviewed path-layout migration plan. Do not start Slice 10-D until the live source path is aligned and verified.
+The live source was not switched and no service was restarted. The required root-only approval file was absent. More importantly, the current live Caddyfile validates but the candidate Caddyfile fails validation because Caddy rejects the `content_type` subdirective in its `respond` block. The candidate Caddyfile also differs from the current live Caddyfile, so a planned restart cannot safely proceed until that clean-remote blocker is repaired and revalidated.
+
+Decision: `SLICE_10_PR2_APEX_BLOCKED_BY_CADDY_OR_COMPOSE_VALIDATION`.
+
+Next allowed work is an ultra-scoped clean-remote Caddy syntax repair followed by full candidate validation and a new explicit root-only restart approval. Do not start Slice 10-D and do not switch the live source until both gates pass.
