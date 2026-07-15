@@ -28,8 +28,8 @@
       "bun-types"
     ],
     "skipLibCheck": true,
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
     "strict": true
   },
   "include": [

@@ -20,11 +20,15 @@ COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 
 # Build the packages
-RUN pnpm -F @goldplus/shared typecheck
+RUN pnpm exec tsc -p packages/shared/tsconfig.json
 RUN pnpm -F @goldplus/api build
 
 # Prune dev dependencies for production runtime
 RUN pnpm install --prod --frozen-lockfile
+
+# The workspace package points at TypeScript for local tooling. Runtime Node must
+# load the compiled CommonJS entrypoint copied into the final image.
+RUN node -e "const fs=require('fs');const p='packages/shared/package.json';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));pkg.main='dist/index.js';fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\\n')"
 
 FROM base AS runner
 # Set production environment
