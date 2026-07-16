@@ -89,6 +89,10 @@ app.use('*', pinoLogger({
 
 app.use('/telemetry/collect', rateLimiter({ limit: 100, windowMs: 1000 }));
 app.use('*', rateLimiter({ limit: 1000, windowMs: 60 * 1000 }));
+// Slice 1B: credential endpoints get a much tighter per-IP budget than the
+// global limiter — brute force is bounded even before the account lockout.
+app.use('/auth/login', rateLimiter({ limit: 10, windowMs: 60 * 1000 }));
+app.use('/auth/admin/login', rateLimiter({ limit: 10, windowMs: 60 * 1000 }));
 app.use('*', maintenanceMode);
 
 // Shadow Traffic Middleware

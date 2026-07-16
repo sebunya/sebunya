@@ -17,17 +17,22 @@ routes.post('/login', async (c) => {
   }
 
   const registry = Registry.getInstance();
-  const uc = new AuthenticateUserUseCase(registry.userRepo, registry.passwordHasher, registry.tokenSigner);
+  const uc = new AuthenticateUserUseCase(registry.userRepo, registry.passwordHasher, registry.tokenSigner, registry.loginAttemptStore);
   const result = await uc.execute({
     email: String(body.email ?? ''),
     password: String(body.password ?? ''),
+    ip: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '',
   });
 
   if (!result.ok) {
+    if (result.code === 'LOCKED' && result.retryAfterSeconds) {
+      c.header('Retry-After', String(result.retryAfterSeconds));
+    }
     const statusCode =
       result.code === 'BAD_INPUT' ? 400 :
       result.code === 'AUTH_NOT_CONFIGURED' ? 503 :
       result.code === 'ACCOUNT_DISABLED' ? 403 :
+      result.code === 'LOCKED' ? 429 :
       401;
     const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
     return c.json(res, statusCode);
@@ -58,19 +63,24 @@ routes.post('/admin/login', async (c) => {
   }
 
   const registry = Registry.getInstance();
-  const authUc = new AuthenticateUserUseCase(registry.userRepo, registry.passwordHasher, registry.tokenSigner);
+  const authUc = new AuthenticateUserUseCase(registry.userRepo, registry.passwordHasher, registry.tokenSigner, registry.loginAttemptStore);
   const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
 
   const result = await authUc.execute({
     email: String(body.email ?? ''),
     password: String(body.password ?? ''),
+    ip: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '',
   });
 
   if (!result.ok) {
+    if (result.code === 'LOCKED' && result.retryAfterSeconds) {
+      c.header('Retry-After', String(result.retryAfterSeconds));
+    }
     const statusCode =
       result.code === 'BAD_INPUT' ? 400 :
       result.code === 'AUTH_NOT_CONFIGURED' ? 503 :
       result.code === 'ACCOUNT_DISABLED' ? 403 :
+      result.code === 'LOCKED' ? 429 :
       401;
     const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
     return c.json(res, statusCode);

@@ -28,10 +28,16 @@
       "id": "1",
       "module": "Owner access / auth",
       "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
-      "missing": [
-        "recovery/lockout depth audit"
+      "missing": [],
+      "next": "none",
+      "completed": [
+        "account-level login lockout (5 failures/15min per email+ip, 429 + Retry-After)",
+        "timing-equalised unknown-email path",
+        "tight 10/min per-IP budget on login endpoints"
       ],
-      "next": "regression tests where weak"
+      "blockers": [
+        "BLOCKED_EXTERNAL: self-serve password recovery needs email delivery (provider flags false); admin-assisted reset exists"
+      ]
     },
     {
       "id": "2",

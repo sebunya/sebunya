@@ -26,9 +26,9 @@ Updated: 2026-07-15 (Slice 14A ELITE reconciliation session)
 ## Slice status snapshot
 
 See `GOLDPLUS_0_14_MASTER_LEDGER.md` and `goldplus-0-14-roadmap.json`.
-Summary: 0/1/6/10/14 SOURCE_COMPLETE_NOT_DEPLOYED · 2/3/4/5/7/11/12/13 PARTIAL_VERTICAL ·
-8 STATIC_UI_ONLY (deliberate) · 9 MISSING (on LIVE consent/preference foundations) ·
-10-D deploy + live verification BLOCKED_EXTERNAL.
+Summary: all 15 slices SOURCE_COMPLETE_NOT_DEPLOYED; per-slice external gates
+(deployment/migrations approval, provider sends, loyalty activation, legal
+review, running-stack matrix rows, SSH live verification) in the roadmap JSON.
 
 ## Active slice
 
@@ -71,7 +71,7 @@ Summary: 0/1/6/10/14 SOURCE_COMPLETE_NOT_DEPLOYED · 2/3/4/5/7/11/12/13 PARTIAL_
 ## Programme state
 
 Hard continuation predicate FALSE: all 15 slices are
-SOURCE_COMPLETE_NOT_DEPLOYED; external gates (deployment approval,
+SOURCE_COMPLETE_NOT_DEPLOYED (Slice 1 residual closed by 1B login lockout); external gates (deployment approval,
 migrations 0023–0027 execution, provider/customer sends, legal review of
 draft policies, loyalty activation, live verification without SSH) are
 recorded per-slice in the roadmap JSON.
