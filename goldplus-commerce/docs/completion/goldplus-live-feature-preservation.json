@@ -1,0 +1,29 @@
+{
+  "generated": "2026-07-16",
+  "rc": "d3836e8",
+  "production": "bfa6de6",
+  "controlTowerDefect": {
+    "classification": [
+      "SOURCE_NOT_DEPLOYED",
+      "API_RUNTIME_FAILURE"
+    ],
+    "repairedInRC": true,
+    "provenAtRC": true
+  },
+  "preservationDiff": {
+    "deleted": 0,
+    "renamed": 0,
+    "added": 62,
+    "modified": 43,
+    "permissionsChanged": 0,
+    "flagsChanged": 0
+  },
+  "deploymentGate": "BLOCKED: ssh goldplus-prod unavailable from this environment + two operator approval markers required",
+  "externalReadiness": {
+    "email": "READY_NOT_ACTIVATED",
+    "sms": "CONFIG_MISSING",
+    "whatsapp": "APPROVAL_REQUIRED",
+    "adsDestinations": "CONFIG_MISSING",
+    "posthog": "READY_NOT_ACTIVATED"
+  }
+}
