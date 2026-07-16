@@ -5,6 +5,10 @@ import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 
+// Audit entity ids are uuids; the loyalty config is a singleton, so it gets a
+// fixed, well-known uuid rather than a free-text marker.
+const LOYALTY_CONFIG_AUDIT_ID = '00000000-0000-4000-8000-00000000106a';
+
 /**
  * Slice 8: loyalty programme administration. Config edits are preparation
  * only — customer-facing activation additionally requires the
@@ -34,7 +38,7 @@ routes.put('/config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (
     actorId: (c.get('user') as any).id,
     action: 'LOYALTY_CONFIG_SAVED',
     entity: 'loyalty_config',
-    entityId: 'singleton',
+    entityId: LOYALTY_CONFIG_AUDIT_ID,
     newState: { ...result.value },
   });
   return c.json({ success: true, data: result.value });
