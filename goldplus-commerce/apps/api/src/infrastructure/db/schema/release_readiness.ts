@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, varchar, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, varchar, jsonb, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './identity';
 
@@ -7,7 +7,7 @@ export const releaseReadinessRuns = pgTable('release_readiness_runs', {
   status: varchar('status', { length: 50 }).notNull(), // PASS, FAIL, WARN, UNKNOWN
   startedAt: timestamp('started_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   completedAt: timestamp('completed_at', { withTimezone: true, mode: 'string' }),
-  triggeredBy: varchar('triggered_by', { length: 36 })
+  triggeredBy: uuid('triggered_by')
     .notNull()
     .references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -30,14 +30,14 @@ export const releaseReadinessGateResults = pgTable('release_readiness_gate_resul
   safeReferenceId: varchar('safe_reference_id', { length: 255 }),
   checkedAt: timestamp('checked_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true, mode: 'string' }),
-  acknowledgedBy: varchar('acknowledged_by', { length: 36 })
+  acknowledgedBy: uuid('acknowledged_by')
     .references(() => users.id),
   acknowledgementReason: text('acknowledgement_reason'),
 });
 
 export const releaseReadinessAuditLog = pgTable('release_readiness_audit_log', {
   id: varchar('id', { length: 36 }).primaryKey().notNull(),
-  adminUserId: varchar('admin_user_id', { length: 36 })
+  adminUserId: uuid('admin_user_id')
     .notNull()
     .references(() => users.id),
   action: varchar('action', { length: 100 }).notNull(),
@@ -53,7 +53,7 @@ export const releaseDecisions = pgTable('release_decisions', {
     .notNull()
     .references(() => releaseReadinessRuns.id),
   status: varchar('status', { length: 50 }).notNull(), // DRAFT, READY_FOR_REVIEW, APPROVED_FOR_CONTROLLED_ACTIVATION, BLOCKED, NEEDS_FIXES, NOT_READY
-  recordedBy: varchar('recorded_by', { length: 36 })
+  recordedBy: uuid('recorded_by')
     .notNull()
     .references(() => users.id),
   notes: text('notes'),

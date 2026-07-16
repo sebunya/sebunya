@@ -68,6 +68,14 @@ review, running-stack matrix rows, SSH live verification) in the roadmap JSON.
 - Secret scan, typecheck, lint (0 errors), build: pass on every slice.
 - Full suite: 170 files / 3,809 tests pass. Architecture: 10/10 pass.
 
+## Local stack verification (Slice 10-E / 0B)
+
+A local PostgreSQL 16 + API stack reproduced and FIXED the 10-D deployment
+crash (client.unsafe wrapper stripping drizzle's chainable API), repaired the
+fresh-replay migration chain (0018 dead FKs + new additive 0028), and verified
+the checkout/lockout/demand/admin-protection behaviour live. See
+docs/platform/evidence/slices/slice-10e-0b-local-stack-verification.md.
+
 ## Programme state
 
 Hard continuation predicate FALSE: all 15 slices are

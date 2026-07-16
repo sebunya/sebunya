@@ -59,12 +59,21 @@ registerMetric(dbTransactionDuration);
 
 export const dbQueryDurations: number[] = [];
 
-// Wrap client.unsafe to log slow queries (>250ms) and track active queries
+// Wrap client.unsafe to log slow queries (>250ms) and track active queries.
+//
+// Slice 10-E (root cause of the failed 10-D deployment): the previous wrapper
+// called `.then()` on the postgres-js Query eagerly, which both triggered
+// execution and replaced the Query with a plain Promise — stripping the
+// chainable API (`.values()`, `.simple()`) that drizzle-orm invokes as
+// `client.unsafe(...).values()`. Every db.select() then crashed with
+// "client.unsafe(...).values is not a function" (the exact production
+// incident that forced the 10-D rollback). The wrapper now returns the SAME
+// Query object and instruments it by intercepting `.then`, so execution stays
+// lazy and every chainable method keeps working.
 const originalUnsafe = client.unsafe.bind(client);
 client.unsafe = function (query: string, parameters?: any[], type?: any) {
-  const start = Date.now();
-  dbQueriesActive.inc();
-  const result = originalUnsafe(query, parameters, type);
+  const q: any = originalUnsafe(query, parameters, type);
+  if (!q || typeof q.then !== 'function') return q;
 
   const trackDuration = (duration: number) => {
     dbQueryDurations.push(duration);
@@ -73,34 +82,42 @@ client.unsafe = function (query: string, parameters?: any[], type?: any) {
     }
   };
 
-  if (result && typeof result.then === 'function') {
-    return result.then(
+  let started = 0;
+  let settled = false;
+  const onSettle = (err?: any) => {
+    if (settled) return;
+    settled = true;
+    dbQueriesActive.dec();
+    const duration = Date.now() - started;
+    trackDuration(duration);
+    dbQueryDuration.observe(duration / 1000);
+    if (duration > 250) {
+      logger.warn(
+        { query, duration, parameters, ...(err ? { error: err.message } : {}) },
+        `[DB] Slow query ${err ? 'failed' : 'detected'} (>250ms)`
+      );
+    }
+  };
+
+  const originalThen = q.then.bind(q);
+  q.then = function (onFulfilled?: any, onRejected?: any) {
+    if (started === 0) {
+      started = Date.now();
+      dbQueriesActive.inc();
+    }
+    return originalThen(
       (res: any) => {
-        dbQueriesActive.dec();
-        const duration = Date.now() - start;
-        trackDuration(duration);
-        dbQueryDuration.observe(duration / 1000);
-        if (duration > 250) {
-          logger.warn({ query, duration, parameters }, `[DB] Slow query detected (>250ms)`);
-        }
-        return res;
+        onSettle();
+        return onFulfilled ? onFulfilled(res) : res;
       },
       (err: any) => {
-        dbQueriesActive.dec();
-        const duration = Date.now() - start;
-        trackDuration(duration);
-        dbQueryDuration.observe(duration / 1000);
-        if (duration > 250) {
-          logger.warn({ query, duration, parameters, error: err.message }, `[DB] Slow query failed (>250ms)`);
-        }
+        onSettle(err);
+        if (onRejected) return onRejected(err);
         throw err;
       }
     );
-  }
-  dbQueriesActive.dec();
-  const duration = Date.now() - start;
-  trackDuration(duration);
-  return result;
+  };
+  return q;
 } as any;
 
 // Wrap client.begin to track database transaction durations and retry deadlocks/serialization failures

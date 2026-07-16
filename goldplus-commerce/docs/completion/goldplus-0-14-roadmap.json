@@ -20,9 +20,13 @@
       "module": "Protection & verification",
       "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "missing": [
-        "production re-verification from this environment"
+        "production re-verification (needs SSH)"
       ],
-      "next": "keep gates green"
+      "next": "keep gates green",
+      "completed": [
+        "Slice 0B: fresh-database migration replay repaired (0018 dead FKs tolerated, 0028 repairs types+FKs) and verified 0000->0028 on PostgreSQL 16",
+        "local live E2E battery (checkout safety, lockout, demand capture, fail-closed admin)"
+      ]
     },
     {
       "id": "1",
@@ -68,7 +72,8 @@
         "delivery fee zones + admin CRUD (pricing.manage, audited)",
         "order idempotency (clientOrderKey)",
         "migration 0023",
-        "Slice 3C: read-only payment reconciliation view"
+        "Slice 3C: read-only payment reconciliation view",
+        "live E2E verified locally: forged price ignored, zone fee applied, truthful unconfigured fee, idempotent replay"
       ],
       "note": "admin payment ops = payments page + reconciliation view + fulfillment PATCH (existing); residual audit satisfied by 3C"
     },
@@ -163,9 +168,12 @@
       "module": "Measurement / control tower",
       "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "blockers": [
-        "BLOCKED_EXTERNAL: 10-D deployment approval"
+        "BLOCKED_EXTERNAL: 10-D deployment approval (crash root cause now fixed in source)"
       ],
-      "next": "await operator-approved image build + scoped recreate"
+      "next": "await operator-approved image build + scoped recreate",
+      "completed": [
+        "Slice 10-E: fixed + regression-tested the client.unsafe wrapper defect that crashed the 10-D deploy (verified live on a local stack)"
+      ]
     },
     {
       "id": "11",
@@ -211,7 +219,8 @@
         "skip link + #main landing target",
         "prefers-reduced-motion global support",
         "static a11y/perf contract (lang, viewport/zoom, lazy+alt imagery)",
-        "verification matrix doc (honest split)"
+        "verification matrix doc (honest split)",
+        "live API behaviour rows verified on local stack (see slice-10e-0b evidence)"
       ],
       "blockers": [
         "BLOCKED_EXTERNAL: Lighthouse budgets + 3-engine Playwright matrix + screen-reader pass require a running stack/staging access"
