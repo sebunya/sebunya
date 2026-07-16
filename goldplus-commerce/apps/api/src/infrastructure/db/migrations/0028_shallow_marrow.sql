@@ -6,25 +6,25 @@ ALTER TABLE "release_decisions" ALTER COLUMN "recorded_by" SET DATA TYPE uuid US
 ALTER TABLE "release_readiness_audit_log" ALTER COLUMN "admin_user_id" SET DATA TYPE uuid USING "admin_user_id"::uuid;--> statement-breakpoint
 ALTER TABLE "release_readiness_gate_results" ALTER COLUMN "acknowledged_by" SET DATA TYPE uuid USING "acknowledged_by"::uuid;--> statement-breakpoint
 ALTER TABLE "release_readiness_runs" ALTER COLUMN "triggered_by" SET DATA TYPE uuid USING "triggered_by"::uuid;--> statement-breakpoint
-DO $$ BEGIN
+DO $$ BEGIN -- slice-0b-repair: valid uuid FK, distinct from the dead 0018 statement
  ALTER TABLE "release_decisions" ADD CONSTRAINT "release_decisions_recorded_by_users_id_fk" FOREIGN KEY ("recorded_by") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
-DO $$ BEGIN
+DO $$ BEGIN -- slice-0b-repair: valid uuid FK, distinct from the dead 0018 statement
  ALTER TABLE "release_readiness_audit_log" ADD CONSTRAINT "release_readiness_audit_log_admin_user_id_users_id_fk" FOREIGN KEY ("admin_user_id") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
-DO $$ BEGIN
+DO $$ BEGIN -- slice-0b-repair: valid uuid FK, distinct from the dead 0018 statement
  ALTER TABLE "release_readiness_gate_results" ADD CONSTRAINT "release_readiness_gate_results_acknowledged_by_users_id_fk" FOREIGN KEY ("acknowledged_by") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
-DO $$ BEGIN
+DO $$ BEGIN -- slice-0b-repair: valid uuid FK, distinct from the dead 0018 statement
  ALTER TABLE "release_readiness_runs" ADD CONSTRAINT "release_readiness_runs_triggered_by_users_id_fk" FOREIGN KEY ("triggered_by") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;

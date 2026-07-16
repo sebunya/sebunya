@@ -55,20 +55,12 @@ DO $$ BEGIN
  ALTER TABLE "release_decisions" ADD CONSTRAINT "release_decisions_recorded_by_users_id_fk" FOREIGN KEY ("recorded_by") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
- -- Slice 0B: this FK is varchar(36) -> uuid and has never applied anywhere
- -- (42804 on every fresh replay). Tolerating the mismatch keeps fresh installs
- -- identical to every existing environment; migration 0028 repairs the type
- -- and adds the constraint properly.
- WHEN datatype_mismatch THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "release_readiness_audit_log" ADD CONSTRAINT "release_readiness_audit_log_admin_user_id_users_id_fk" FOREIGN KEY ("admin_user_id") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
- -- Slice 0B: varchar -> uuid FK never applied anywhere (42804 on every fresh
- -- replay); tolerated here, repaired properly in migration 0028.
- WHEN datatype_mismatch THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
@@ -81,16 +73,10 @@ DO $$ BEGIN
  ALTER TABLE "release_readiness_gate_results" ADD CONSTRAINT "release_readiness_gate_results_acknowledged_by_users_id_fk" FOREIGN KEY ("acknowledged_by") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
- -- Slice 0B: varchar -> uuid FK never applied anywhere (42804 on every fresh
- -- replay); tolerated here, repaired properly in migration 0028.
- WHEN datatype_mismatch THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "release_readiness_runs" ADD CONSTRAINT "release_readiness_runs_triggered_by_users_id_fk" FOREIGN KEY ("triggered_by") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
- -- Slice 0B: varchar -> uuid FK never applied anywhere (42804 on every fresh
- -- replay); tolerated here, repaired properly in migration 0028.
- WHEN datatype_mismatch THEN null;
 END $$;
