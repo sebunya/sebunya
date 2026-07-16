@@ -1,0 +1,95 @@
+{
+  "releaseCandidate": "91e1e0a28c443950201857e60057fc591ef45446",
+  "generated": "2026-07-16",
+  "acceptance": "see GOLDPLUS_FINAL_ACCEPTANCE_MATRIX.md",
+  "modules": {
+    "0": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "1": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "2": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "3": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "4": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "5": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "6": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "7": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "8": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "9": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "10": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "11": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "12": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "13": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    },
+    "14": {
+      "source": "SOURCE_COMPLETE",
+      "acceptance": "ACCEPTED_LOCAL",
+      "live": "NOT_DEPLOYED"
+    }
+  },
+  "environmentGated": {
+    "13": "Firefox/WebKit binaries + Lighthouse preview run",
+    "14": "container image build + image-start smoke (no docker daemon in this container)"
+  },
+  "operatorGated": [
+    "database backup + migrations 0023-0028 approval",
+    "API/web deployment approval",
+    "provider/customer sends",
+    "loyalty activation",
+    "legal review",
+    "PesaPal sandbox credentials for payment-state acceptance",
+    "SSH live verification"
+  ]
+}

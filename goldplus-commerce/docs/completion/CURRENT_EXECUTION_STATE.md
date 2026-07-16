@@ -76,6 +76,15 @@ fresh-replay migration chain (0018 dead FKs + new additive 0028), and verified
 the checkout/lockout/demand/admin-protection behaviour live. See
 docs/platform/evidence/slices/slice-10e-0b-local-stack-verification.md.
 
+## Final acceptance programme (14B–14F)
+
+14C migration integrity (0018 restored, exact shim, fresh+idempotent proofs),
+14D production-shaped upgrade rehearsal, 14E authenticated admin+customer
+acceptance (+loyalty audit fix), 13B Chromium desktop+mobile browser acceptance
+(+real Playwright harness), 14B matrix/JSON/unproven-claims register, 14F
+deterministic release candidate + runbook: COMPLETE and pushed. Remaining gaps
+are operator- or environment-gated and listed in UNPROVEN_COMPLETION_CLAIMS.md.
+
 ## Programme state
 
 Hard continuation predicate FALSE: all 15 slices are
