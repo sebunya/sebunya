@@ -23,3 +23,4 @@ export * from './activation-live-canary';
 export * from './search';
 export * from './compatibility';
 export * from './loyalty';
+export * from './fulfilment';

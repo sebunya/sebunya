@@ -38,9 +38,16 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     label: 'Orders',
     href: '/admin/orders',
     group: 'Commerce',
-    status: 'hidden',
+    status: 'read_only',
     description: 'Read-only relational query of active buyer records.',
-    reason: 'Logistical lifecycles and fulfillment processing not yet implemented.'
+    reason: 'Operational lifecycle actions live on the Fulfilment queue.'
+  },
+  {
+    label: 'Fulfilment',
+    href: '/admin/fulfilment',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Actionable New Orders queue: products, payment status and lifecycle transitions.'
   },
   {
     label: 'Recommendations',

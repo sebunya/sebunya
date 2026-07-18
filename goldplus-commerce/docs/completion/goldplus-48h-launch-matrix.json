@@ -1,0 +1,68 @@
+{
+  "generated": "2026-07-18",
+  "branch": "phase-2-measurement-control-tower-completion",
+  "acceptedHead": "fabc422",
+  "runtimeReleaseCandidate": "d3836e8",
+  "productionHead": "bfa6de6 (evidence-carried, not re-verified: ssh absent)",
+  "environment": {
+    "sshProd": "absent",
+    "dockerDaemon": "down",
+    "approvalMarkers": "none (operator-created only)"
+  },
+  "statuses": [
+    "LIVE_VERIFIED", "LIVE_BROKEN", "LIVE_PARTIAL", "SOURCE_COMPLETE_NOT_DEPLOYED",
+    "SOURCE_PARTIAL", "STATIC_UI_ONLY", "BACKEND_ONLY", "SHELL_OR_PLACEHOLDER",
+    "MIGRATION_MISSING", "CONFIG_MISSING", "DATA_MISSING", "FEATURE_FLAG_DISABLED",
+    "PERMISSION_BROKEN", "CONTRACT_MISMATCH", "EXTERNAL_BLOCKED", "UNSAFE"
+  ],
+  "modules": [
+    {
+      "id": "order-fulfilment-alert",
+      "priority": "P0",
+      "section": "9.3",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "intended": "Every placed order creates one idempotent admin fulfilment task with all products, truthful payment status, lifecycle and audit",
+      "implemented": [
+        "domain FulfilmentTask (9-state lifecycle, pure transitions, contact masking)",
+        "IFulfilmentRepository port",
+        "use cases: create-on-placed, mark-payment-confirmed, transition, list-queue, overview/badge",
+        "schema fulfilment_tasks + migration 0029 (valid uuid FKs)",
+        "DrizzleFulfilmentRepository (idempotent onConflictDoNothing by order_id)",
+        "admin routes: GET / , GET /badge, GET /:id, PATCH /:id/status (orders.read / orders.manage, audited)",
+        "checkout hook (OrderPlaced) + PesaPal callback & IPN hooks (PaymentConfirmed)",
+        "admin web page /admin/fulfilment + nav badge",
+        "17 unit tests; protection-sweep counts updated 56->57 / 55->56"
+      ],
+      "idempotency": ["unique order_id constraint", "duplicate submission/callback/retry collapse to one task", "mark-paid no-op when unchanged"],
+      "providerIndependence": "internal task/badge/queue require no external provider; failure never fails the order",
+      "externalBlockers": ["deployment (no ssh, no docker daemon)", "operator approval markers", "transactional admin email recipients via secure config (provider-gated)"]
+    },
+    {
+      "id": "measurement-control-tower",
+      "priority": "P0",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
+      "intended": "Authenticated measurement readiness summary (401 anon / 200 authed)",
+      "implemented": ["10-E client.unsafe wrapper fix (root cause of live banner) verified at RC"],
+      "externalBlockers": ["deployment approval + image build"]
+    }
+  ],
+  "gates": {
+    "secretScan": "pass",
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "pass",
+    "architecture": "10/10",
+    "newTests": 17,
+    "migration": "0029 generated, valid uuid FKs"
+  },
+  "externalBlockers": [
+    "ssh goldplus-prod absent",
+    "docker daemon down (no image build/smoke)",
+    "/root/APPROVE_GOLDPLUS_DB_BACKUP_AND_MIGRATIONS_0023_0028",
+    "/root/APPROVE_GOLDPLUS_API_WEB_DEPLOY_RC1",
+    "provider/customer send activation",
+    "commercial loyalty activation",
+    "legal review",
+    "Firefox/WebKit/Lighthouse runs"
+  ]
+}

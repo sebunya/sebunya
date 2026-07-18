@@ -132,6 +132,18 @@ routes.post('/orders/create', async (c) => {
       clientOrderKey: body.clientOrderKey ?? null,
     });
 
+    // Section 9.3: every successfully placed order creates exactly one idempotent
+    // admin fulfilment alert (the internal "New Orders" work item). This never
+    // depends on any external provider, so it works even when email/SMS/WhatsApp
+    // are unavailable. A failure here must never fail an already-persisted order,
+    // and the unique order_id constraint makes duplicate submissions collapse to
+    // a single task.
+    try {
+      await registry.createFulfilmentTaskOnOrderPlacedUseCase.execute(result.order);
+    } catch (fulfilErr: any) {
+      console.error('[API_ERROR] Fulfilment task creation failed (order persisted):', fulfilErr?.message);
+    }
+
     const res: ApiResponse<any> = {
       success: true,
       data: {
@@ -378,6 +390,14 @@ routes.get('/payments/pesapal/callback', async (c) => {
     });
 
     if (result.ok && result.status === 'completed') {
+      // Section 9.3: PaymentConfirmed updates the existing admin alert so the
+      // order becomes ready for preparation. Idempotent — duplicate provider
+      // callbacks never duplicate effects; a failure here never blocks the flow.
+      try {
+        await registry.markFulfilmentPaymentConfirmedUseCase.execute(result.orderId, 'paid');
+      } catch (fulfilErr: any) {
+        console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
+      }
       try {
         const order = await registry.orderRepo.findById(result.orderId);
         const mappedInput = registry.pesapalMeasurementMapper.map({
@@ -454,6 +474,14 @@ const handleIpn = async (c: any) => {
     });
 
     if (result.ok && result.status === 'completed') {
+      // Section 9.3: PaymentConfirmed updates the existing admin alert so the
+      // order becomes ready for preparation. Idempotent — duplicate provider
+      // callbacks never duplicate effects; a failure here never blocks the flow.
+      try {
+        await registry.markFulfilmentPaymentConfirmedUseCase.execute(result.orderId, 'paid');
+      } catch (fulfilErr: any) {
+        console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
+      }
       try {
         const order = await registry.orderRepo.findById(result.orderId);
         const mappedInput = registry.pesapalMeasurementMapper.map({

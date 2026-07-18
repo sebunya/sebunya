@@ -285,6 +285,12 @@ import { CompleteControlledLiveCanaryUseCase } from '../application/use-cases/ac
 import { BuildControlledLiveCanaryEvidencePackUseCase } from '../application/use-cases/activation/BuildControlledLiveCanaryEvidencePackUseCase';
 import { GetControlledLiveCanaryUseCase } from '../application/use-cases/activation/GetControlledLiveCanaryUseCase';
 import { ListControlledLiveCanariesUseCase } from '../application/use-cases/activation/ListControlledLiveCanariesUseCase';
+import { DrizzleFulfilmentRepository } from './db/repositories/DrizzleFulfilmentRepository';
+import { CreateFulfilmentTaskOnOrderPlacedUseCase } from '../application/use-cases/fulfilment/CreateFulfilmentTaskOnOrderPlacedUseCase';
+import { MarkFulfilmentPaymentConfirmedUseCase } from '../application/use-cases/fulfilment/MarkFulfilmentPaymentConfirmedUseCase';
+import { TransitionFulfilmentTaskUseCase } from '../application/use-cases/fulfilment/TransitionFulfilmentTaskUseCase';
+import { ListFulfilmentQueueUseCase } from '../application/use-cases/fulfilment/ListFulfilmentQueueUseCase';
+import { GetFulfilmentOverviewUseCase } from '../application/use-cases/fulfilment/GetFulfilmentOverviewUseCase';
 
 export class Registry {
 
@@ -414,6 +420,13 @@ export class Registry {
   public readonly getLifecycleSegmentsUseCase = new GetLifecycleSegmentsUseCase(this.lifecycleReadRepo);
   public readonly loginAttemptStore = new InMemoryLoginAttemptStore();
   public readonly checkoutUseCase = new CheckoutUseCase(this.orderRepo, this.productRepo, this.deliveryZoneRepo);
+  // Launch Phase 1 (Section 9.3): order-to-admin fulfilment alerts.
+  public readonly fulfilmentRepo = new DrizzleFulfilmentRepository();
+  public readonly createFulfilmentTaskOnOrderPlacedUseCase = new CreateFulfilmentTaskOnOrderPlacedUseCase(this.fulfilmentRepo);
+  public readonly markFulfilmentPaymentConfirmedUseCase = new MarkFulfilmentPaymentConfirmedUseCase(this.fulfilmentRepo);
+  public readonly transitionFulfilmentTaskUseCase = new TransitionFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo);
+  public readonly listFulfilmentQueueUseCase = new ListFulfilmentQueueUseCase(this.fulfilmentRepo);
+  public readonly getFulfilmentOverviewUseCase = new GetFulfilmentOverviewUseCase(this.fulfilmentRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);
