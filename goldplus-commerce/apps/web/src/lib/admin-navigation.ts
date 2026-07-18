@@ -168,8 +168,8 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     label: 'Inventory',
     href: '/admin/inventory',
     group: 'Commerce',
-    status: 'hidden',
-    description: 'Track availability status, safety stock and counts.'
+    status: 'working',
+    description: 'Available-to-promise, reserved stock and reorder-point low-stock alerts.'
   },
   {
     label: 'Pricing',

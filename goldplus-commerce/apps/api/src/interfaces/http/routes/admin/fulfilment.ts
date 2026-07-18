@@ -98,6 +98,21 @@ routes.patch('/:id/status', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), asy
     const status = result.code === 'NOT_FOUND' ? 404 : 400;
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, status);
   }
+
+  // Section 12 inventory effects (idempotent, best-effort — never fail the
+  // transition): deduct on-hand stock when the order is dispatched-ready, and
+  // release held stock when the order is cancelled.
+  try {
+    const registry = Registry.getInstance();
+    if (result.to === 'READY_FOR_DISPATCH') {
+      await registry.consumeInventoryForOrderUseCase.execute(result.orderId);
+    } else if (result.to === 'CANCELLED') {
+      await registry.releaseInventoryForOrderUseCase.execute(result.orderId);
+    }
+  } catch (invErr: any) {
+    console.error('[API_ERROR] Inventory effect after fulfilment transition failed:', invErr?.message);
+  }
+
   const res: ApiResponse<typeof result> = { success: true, data: result };
   return c.json(res);
 });

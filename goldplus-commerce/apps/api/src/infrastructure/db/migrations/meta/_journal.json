@@ -218,6 +218,13 @@
       "when": 1784359261728,
       "tag": "0030_sharp_omega_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1784361802173,
+      "tag": "0031_slippery_grim_reaper",
+      "breakpoints": true
     }
   ]
 }

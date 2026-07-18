@@ -4,7 +4,7 @@ import { IAuditRepository } from '../../ports/IAuditRepository';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 
 export type TransitionFulfilmentResult =
-  | { ok: true; taskId: string; from: FulfilmentStatus; to: FulfilmentStatus }
+  | { ok: true; taskId: string; orderId: string; from: FulfilmentStatus; to: FulfilmentStatus }
   | { ok: false; code: 'NOT_FOUND' | 'INVALID_STATUS' | 'INVALID_TRANSITION'; message: string };
 
 /**
@@ -57,6 +57,6 @@ export class TransitionFulfilmentTaskUseCase {
       newState: { status: to, assignedTo: input.assignedTo ?? null, notes: input.notes ?? null },
     });
 
-    return { ok: true, taskId: task.id, from, to };
+    return { ok: true, taskId: task.id, orderId: snapshot.orderId, from, to };
   }
 }

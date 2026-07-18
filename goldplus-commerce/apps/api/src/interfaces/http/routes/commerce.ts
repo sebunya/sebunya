@@ -132,6 +132,17 @@ routes.post('/orders/create', async (c) => {
       clientOrderKey: body.clientOrderKey ?? null,
     });
 
+    // Section 12: reserve stock for the order (idempotent, oversell-safe). Any
+    // shortfall becomes a backorder warning surfaced on the fulfilment task.
+    // Best-effort: a reservation failure must never fail an already-persisted order.
+    let backorderWarnings: string[] = [];
+    try {
+      const reservation = await registry.reserveInventoryForOrderUseCase.execute(result.order);
+      backorderWarnings = reservation.warnings;
+    } catch (invErr: any) {
+      console.error('[API_ERROR] Inventory reservation failed (order persisted):', invErr?.message);
+    }
+
     // Section 9.3: every successfully placed order creates exactly one idempotent
     // admin fulfilment alert (the internal "New Orders" work item). This never
     // depends on any external provider, so it works even when email/SMS/WhatsApp
@@ -139,7 +150,7 @@ routes.post('/orders/create', async (c) => {
     // and the unique order_id constraint makes duplicate submissions collapse to
     // a single task.
     try {
-      await registry.createFulfilmentTaskOnOrderPlacedUseCase.execute(result.order);
+      await registry.createFulfilmentTaskOnOrderPlacedUseCase.execute(result.order, { extraWarnings: backorderWarnings });
     } catch (fulfilErr: any) {
       console.error('[API_ERROR] Fulfilment task creation failed (order persisted):', fulfilErr?.message);
     }

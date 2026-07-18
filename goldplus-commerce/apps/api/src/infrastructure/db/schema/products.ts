@@ -34,6 +34,10 @@ export const products = pgTable('products', {
   hasRetailPrice: boolean('has_retail_price').default(false).notNull(),
   hasImage: boolean('has_image').default(false).notNull(),
   stockQuantity: integer('stock_quantity').default(0).notNull(),
+  // Inventory ledger (Section 12): reserved holds stock committed to open orders;
+  // available = stock_quantity - reserved_quantity. reorder_point drives low-stock alerts.
+  reservedQuantity: integer('reserved_quantity').default(0).notNull(),
+  reorderPoint: integer('reorder_point').default(0).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

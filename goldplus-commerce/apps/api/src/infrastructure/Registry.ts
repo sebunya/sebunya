@@ -293,6 +293,14 @@ import { ListFulfilmentQueueUseCase } from '../application/use-cases/fulfilment/
 import { GetFulfilmentOverviewUseCase } from '../application/use-cases/fulfilment/GetFulfilmentOverviewUseCase';
 import { AssignFulfilmentTaskUseCase } from '../application/use-cases/fulfilment/AssignFulfilmentTaskUseCase';
 import { SetFulfilmentPriorityUseCase } from '../application/use-cases/fulfilment/SetFulfilmentPriorityUseCase';
+import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
+import {
+  ReserveInventoryForOrderUseCase,
+  ReleaseInventoryForOrderUseCase,
+  ConsumeInventoryForOrderUseCase,
+  GetInventoryAvailabilityUseCase,
+  ListLowStockUseCase,
+} from '../application/use-cases/inventory/InventoryUseCases';
 
 export class Registry {
 
@@ -431,6 +439,13 @@ export class Registry {
   public readonly getFulfilmentOverviewUseCase = new GetFulfilmentOverviewUseCase(this.fulfilmentRepo);
   public readonly assignFulfilmentTaskUseCase = new AssignFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo);
   public readonly setFulfilmentPriorityUseCase = new SetFulfilmentPriorityUseCase(this.fulfilmentRepo, this.auditRepo);
+  // Inventory ledger (Section 12): reservation, release, consumption, availability.
+  public readonly inventoryRepo = new DrizzleInventoryRepository();
+  public readonly reserveInventoryForOrderUseCase = new ReserveInventoryForOrderUseCase(this.inventoryRepo);
+  public readonly releaseInventoryForOrderUseCase = new ReleaseInventoryForOrderUseCase(this.inventoryRepo);
+  public readonly consumeInventoryForOrderUseCase = new ConsumeInventoryForOrderUseCase(this.inventoryRepo);
+  public readonly getInventoryAvailabilityUseCase = new GetInventoryAvailabilityUseCase(this.inventoryRepo);
+  public readonly listLowStockUseCase = new ListLowStockUseCase(this.inventoryRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);
