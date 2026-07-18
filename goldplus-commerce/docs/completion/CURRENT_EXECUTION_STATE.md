@@ -2,7 +2,26 @@
 
 Updated: 2026-07-18 (48-Hour Total Launch War Room — Launch Slice L0 + P0 fulfilment)
 
-## All-Modules Real-SSH Production contract (latest)
+## Absolute Completion Orchestrator (latest)
+
+- Inventory ledger + reservation vertical (Section 12) implemented and verified on the
+  local production-shaped stack (migration 0031; upgrade-safe on a populated DB). Reserve
+  on OrderPlaced, oversell prevention via `SELECT … FOR UPDATE` (reserved never exceeds
+  stock), backorder shortfall as a fulfilment-task warning, consume on READY_FOR_DISPATCH
+  (deducts on-hand), release on CANCELLED, low-stock alerts at reorder point. Admin API
+  (`/admin/inventory/low-stock`, `/availability`, inventory.read) + the existing
+  `/admin/inventory` page extended with on-hand/reserved/available/reorder + low-stock;
+  nav promoted to working. Evidence: `docs/platform/evidence/slices/inventory-ledger-reservation.md`.
+- Gates green: secret/typecheck/lint/build; architecture 10/10; +12 inventory tests
+  (full suite 175 files / 3,858 tests).
+- SSH still absent → production deploy/UAT remain EXTERNAL_BLOCKED. Not a valid
+  environment-limit handoff yet: engineering-controlled fulfilment work remains
+  (transactional admin email via outbox, team queues, dispatch tracking, delivery
+  confirmation) — see NEXT_AUTONOMOUS_RESUME.md.
+
+---
+
+## All-Modules Real-SSH Production contract (previous)
 
 - Environment gate: `ssh` binary is **absent** from this container → real production
   deployment/UAT against `shopgoldplus.com` is impossible here. Per the contract's
