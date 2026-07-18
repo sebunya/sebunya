@@ -4,6 +4,8 @@ export interface FulfilmentQueueQuery {
   status?: FulfilmentStatus | null;
   /** When true, only non-terminal (active) tasks are returned. */
   activeOnly?: boolean;
+  /** Filter to a specific assignee, or the literal 'unassigned'. */
+  assignedTo?: string | 'unassigned' | null;
   limit: number;
   offset: number;
 }
@@ -26,4 +28,6 @@ export interface IFulfilmentRepository {
   listQueue(query: FulfilmentQueueQuery): Promise<FulfilmentQueuePage>;
   /** Badge count: number of unacknowledged NEW tasks. */
   countNew(): Promise<number>;
+  /** Count of active (non-terminal) tasks past their SLA deadline. */
+  countOverdue(now: Date): Promise<number>;
 }

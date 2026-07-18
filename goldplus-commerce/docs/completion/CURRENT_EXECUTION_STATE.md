@@ -2,7 +2,29 @@
 
 Updated: 2026-07-18 (48-Hour Total Launch War Room — Launch Slice L0 + P0 fulfilment)
 
-## 48-Hour Launch War Room (latest)
+## All-Modules Real-SSH Production contract (latest)
+
+- Environment gate: `ssh` binary is **absent** from this container → real production
+  deployment/UAT against `shopgoldplus.com` is impossible here. Per the contract's
+  Section 20, independent source + rehearsal work is finished and the run ends with
+  `EXECUTION_PAUSED_BY_ENVIRONMENT_LIMIT — REAL SERVER DEPLOYMENT REQUIRED`.
+- Fulfilment layer extended (Section 12): **staff assignment, priority, deterministic
+  SLA deadlines, overdue escalation**. Migration `0030` (upgrade-safe backfill) adds
+  `priority`, `sla_due_at`, `assigned_at` to `fulfilment_tasks`. New use cases
+  Assign/SetPriority; List gains assignee filter + overdue flag; badge gains `overdue`.
+  Routes `PATCH /:id/assign`, `PATCH /:id/priority`; admin page shows priority/SLA/
+  overdue + assign-to-me/priority controls.
+- Verified locally on a production-shaped PostgreSQL 16 + API stack: fresh replay
+  0000→0030, upgrade-safe 0030 on a populated table (backfill), and live HTTP
+  (assign/priority/overdue badge/assignee filter/401/400/audit rows). **This is
+  rehearsal, NOT production — no module is LIVE_VERIFIED.**
+- Gates green: secret/typecheck/lint/build; architecture 10/10; fulfilment tests 25.
+- Runbook: `docs/completion/GOLDPLUS_PRODUCTION_DEPLOYMENT_RUNBOOK.md` (migrations now
+  0023–0030); resume: `docs/completion/NEXT_AUTONOMOUS_RESUME.md`.
+
+---
+
+## 48-Hour Launch War Room (previous)
 
 - Launch Slice L0 complete: environment truth captured — `ssh goldplus-prod` absent, docker
   daemon down, no approval markers; accepted RC `fabc422` is documentation-only over runtime

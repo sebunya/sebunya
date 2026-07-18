@@ -1,10 +1,11 @@
 import { db } from '../client';
 import { fulfilmentTasks } from '../schema/fulfilment';
-import { and, eq, desc, sql, notInArray, count } from 'drizzle-orm';
+import { and, eq, asc, sql, notInArray, count, isNull, lt } from 'drizzle-orm';
 import {
   FulfilmentTask,
   FulfilmentStatus,
   FulfilmentPaymentStatus,
+  FulfilmentPriority,
   FulfilmentItemLine,
   FulfilmentTaskSnapshot,
   TERMINAL_FULFILMENT_STATUSES,
@@ -32,7 +33,10 @@ function toSnapshot(row: typeof fulfilmentTasks.$inferSelect): FulfilmentTaskSna
     itemCount: row.itemCount,
     items: (row.items as FulfilmentItemLine[]) ?? [],
     warnings: (row.warnings as string[]) ?? [],
+    priority: (row.priority as FulfilmentPriority) ?? 'normal',
+    slaDueAt: row.slaDueAt,
     assignedTo: row.assignedTo ?? null,
+    assignedAt: row.assignedAt ?? null,
     notes: row.notes ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -60,7 +64,10 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
         itemCount: s.itemCount,
         items: s.items,
         warnings: s.warnings,
+        priority: s.priority,
+        slaDueAt: s.slaDueAt,
         assignedTo: s.assignedTo,
+        assignedAt: s.assignedAt,
         notes: s.notes,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
@@ -95,7 +102,10 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
       .set({
         status: s.status,
         paymentStatus: s.paymentStatus,
+        priority: s.priority,
+        slaDueAt: s.slaDueAt,
         assignedTo: s.assignedTo,
+        assignedAt: s.assignedAt,
         notes: s.notes,
         updatedAt: s.updatedAt,
       })
@@ -109,14 +119,24 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
     } else if (query.activeOnly) {
       conditions.push(notInArray(fulfilmentTasks.status, [...TERMINAL_FULFILMENT_STATUSES]));
     }
+    if (query.assignedTo === 'unassigned') {
+      conditions.push(isNull(fulfilmentTasks.assignedTo));
+    } else if (query.assignedTo) {
+      conditions.push(eq(fulfilmentTasks.assignedTo, query.assignedTo));
+    }
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
     const rows = await db
       .select()
       .from(fulfilmentTasks)
       .where(where)
-      // NEW tasks surface first, then most recent.
-      .orderBy(sql`case when ${fulfilmentTasks.status} = 'NEW' then 0 else 1 end`, desc(fulfilmentTasks.createdAt))
+      // Most urgent, soonest-due work first: NEW ahead of the rest, then by
+      // priority weight, then by SLA deadline (earliest/overdue on top).
+      .orderBy(
+        sql`case when ${fulfilmentTasks.status} = 'NEW' then 0 else 1 end`,
+        sql`case ${fulfilmentTasks.priority} when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end`,
+        asc(fulfilmentTasks.slaDueAt)
+      )
       .limit(query.limit)
       .offset(query.offset);
 
@@ -133,6 +153,19 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
       .select({ value: count() })
       .from(fulfilmentTasks)
       .where(eq(fulfilmentTasks.status, 'NEW'));
+    return Number(value);
+  }
+
+  async countOverdue(now: Date): Promise<number> {
+    const [{ value }] = await db
+      .select({ value: count() })
+      .from(fulfilmentTasks)
+      .where(
+        and(
+          notInArray(fulfilmentTasks.status, [...TERMINAL_FULFILMENT_STATUSES]),
+          lt(fulfilmentTasks.slaDueAt, now)
+        )
+      );
     return Number(value);
   }
 }

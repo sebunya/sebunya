@@ -37,22 +37,46 @@ function nextActions(from: Status): Status[] {
   return [...opts];
 }
 
+// The signed-in admin's id, read from the session JWT `sub` claim, used for
+// "assign to me". Decode only (no verification) — this is a display convenience;
+// the API re-authenticates and authorises every mutation.
+let currentUserId = "";
+try {
+  const payload = token.split(".")[1];
+  if (payload) {
+    const json = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (typeof json.sub === "string") currentUserId = json.sub;
+  }
+} catch { /* non-fatal */ }
+
 let notice: { kind: "success" | "error"; text: string } | null = null;
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const id = String(form.get("id") || "");
-  const toStatus = String(form.get("toStatus") || "");
-  const notes = String(form.get("notes") || "").trim();
+  const action = String(form.get("action") || "status");
   try {
-    const res = await fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(id)}/status`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify({ toStatus, notes: notes || undefined }),
-    });
+    let endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(id)}/status`;
+    let payload: Record<string, unknown> = {};
+    let okText = "Updated.";
+    if (action === "assign") {
+      endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(id)}/assign`;
+      const assignee = String(form.get("assignedTo") || "").trim();
+      payload = { assignedTo: assignee || null };
+      okText = assignee ? "Task assigned." : "Task unassigned.";
+    } else if (action === "priority") {
+      endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(id)}/priority`;
+      payload = { priority: String(form.get("priority") || "normal") };
+      okText = "Priority updated.";
+    } else {
+      const notes = String(form.get("notes") || "").trim();
+      payload = { toStatus: String(form.get("toStatus") || ""), notes: notes || undefined };
+      okText = "Order stage updated.";
+    }
+    const res = await fetch(endpoint, { method: "PATCH", headers, body: JSON.stringify(payload) });
     const json = await res.json().catch(() => null);
     notice = json?.success
-      ? { kind: "success", text: `Order moved to ${json.data.to}.` }
+      ? { kind: "success", text: json.data?.to ? `Order moved to ${json.data.to}.` : okText }
       : { kind: "error", text: json?.error?.message || "Could not update the fulfilment task." };
   } catch {
     notice = { kind: "error", text: "Fulfilment service is unreachable right now." };
@@ -66,11 +90,13 @@ interface Task {
   id: string; orderNumber: string; status: Status; paymentStatus: string; paymentMethod: string | null;
   customerName: string; customerContactMasked: string; deliveryArea: string; deliverySummary: string;
   totalUgx: number; deliveryFeeUgx: number; itemCount: number; items: ItemLine[]; warnings: string[];
-  createdAt: string;
+  priority: "low" | "normal" | "high" | "urgent"; slaDueAt: string; assignedTo: string | null;
+  overdue: boolean; createdAt: string;
 }
 let tasks: Task[] = [];
 let total = 0;
 let badge = 0;
+let overdueBadge = 0;
 let loadFailed = false;
 let apiError = "";
 try {
@@ -90,7 +116,10 @@ try {
     loadFailed = true;
     apiError = `Queue query responded with HTTP ${listRes.status}.`;
   }
-  if (badgeJson?.success) badge = badgeJson.data.newOrders;
+  if (badgeJson?.success) {
+    badge = badgeJson.data.newOrders;
+    overdueBadge = badgeJson.data.overdue ?? 0;
+  }
 } catch {
   loadFailed = true;
   apiError = "Fulfilment API is currently unreachable.";
@@ -119,6 +148,15 @@ function payChip(s: string) {
       ? "bg-red-50 text-red-700 border-red-200"
       : "bg-orange-50 text-orange-700 border-orange-200";
 }
+function prioChip(p: string) {
+  switch (p) {
+    case "urgent": return "bg-red-50 text-red-700 border-red-200";
+    case "high": return "bg-orange-50 text-orange-700 border-orange-200";
+    case "low": return "bg-gray-50 text-gray-500 border-gray-200";
+    default: return "bg-slate-50 text-slate-600 border-slate-200";
+  }
+}
+const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 ---
 
 <AdminLayout
@@ -134,6 +172,9 @@ function payChip(s: string) {
       <div class="flex items-center gap-2">
         <span class="bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
           NEW ORDERS: {badge}
+        </span>
+        <span class={`text-xs font-bold px-3 py-1.5 rounded-lg font-mono border ${overdueBadge > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>
+          OVERDUE: {overdueBadge}
         </span>
         <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
           SHOWING: {total}
@@ -179,9 +220,16 @@ function payChip(s: string) {
                 <span class="font-mono font-black text-brand-dark">{task.orderNumber}</span>
                 <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${statusChip(task.status)}`}>{task.status.replace(/_/g, " ")}</span>
                 <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${payChip(task.paymentStatus)}`}>PAYMENT: {task.paymentStatus}</span>
+                <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${prioChip(task.priority)}`}>{task.priority}</span>
+                {task.overdue && (
+                  <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-red-600 text-white border-red-700">OVERDUE</span>
+                )}
               </div>
               <p class="text-xs text-gray-500 mt-1.5">
                 {task.customerName} · {task.customerContactMasked} · {task.deliverySummary || task.deliveryArea}
+              </p>
+              <p class="text-[11px] text-gray-400 mt-1">
+                SLA due {new Date(task.slaDueAt).toLocaleString("en-UG")} · {task.assignedTo ? (task.assignedTo === currentUserId ? "assigned to you" : "assigned") : "unassigned"}
               </p>
             </div>
             <div class="text-right">
@@ -238,6 +286,29 @@ function payChip(s: string) {
               </div>
               <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity">Update</button>
             </form>
+
+            <div class="flex flex-wrap items-end gap-3 mt-3 pt-3 border-t border-gray-100">
+              <form method="POST" class="flex items-end gap-2">
+                <input type="hidden" name="id" value={task.id} />
+                <input type="hidden" name="action" value="priority" />
+                <div>
+                  <label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Priority</label>
+                  <select name="priority" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+                    {PRIORITIES.map((p) => <option value={p} selected={p === task.priority}>{p}</option>)}
+                  </select>
+                </div>
+                <button type="submit" class="bg-gray-100 text-brand-dark text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-gray-200 transition-colors">Set</button>
+              </form>
+
+              <form method="POST" class="flex items-end gap-2">
+                <input type="hidden" name="id" value={task.id} />
+                <input type="hidden" name="action" value="assign" />
+                <input type="hidden" name="assignedTo" value={task.assignedTo === currentUserId ? "" : currentUserId} />
+                <button type="submit" class="bg-gray-100 text-brand-dark text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-gray-200 transition-colors">
+                  {task.assignedTo === currentUserId ? "Unassign me" : "Assign to me"}
+                </button>
+              </form>
+            </div>
           ) : (
             <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400">Terminal state — no further action.</p>
           )}

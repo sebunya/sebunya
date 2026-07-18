@@ -22,6 +22,24 @@ export type FulfilmentStatus =
 /** Payment status mirrored from the order — never invented here. */
 export type FulfilmentPaymentStatus = 'unpaid' | 'pending' | 'paid' | 'failed';
 
+/** Operations priority — drives the deterministic SLA deadline and queue ordering. */
+export type FulfilmentPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export const FULFILMENT_PRIORITIES: readonly FulfilmentPriority[] = ['low', 'normal', 'high', 'urgent'];
+
+/** Deterministic SLA windows (hours) from task creation, by priority. No hidden state. */
+export const FULFILMENT_SLA_HOURS: Record<FulfilmentPriority, number> = {
+  urgent: 4,
+  high: 12,
+  normal: 24,
+  low: 48,
+};
+
+/** Pure SLA deadline: creation time + the priority window. */
+export function computeSlaDueAt(createdAt: Date, priority: FulfilmentPriority): Date {
+  return new Date(createdAt.getTime() + FULFILMENT_SLA_HOURS[priority] * 60 * 60 * 1000);
+}
+
 export const FULFILMENT_STATUSES: readonly FulfilmentStatus[] = [
   'NEW',
   'ACKNOWLEDGED',
@@ -96,7 +114,10 @@ export interface FulfilmentTaskSnapshot {
   itemCount: number;
   items: FulfilmentItemLine[];
   warnings: string[];
+  priority: FulfilmentPriority;
+  slaDueAt: Date;
   assignedTo: string | null;
+  assignedAt: Date | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -142,6 +163,7 @@ export class FulfilmentTask {
     deliveryFeeUgx: number;
     items: FulfilmentItemLine[];
     warnings?: string[];
+    priority?: FulfilmentPriority;
     now?: Date;
   }): FulfilmentTask {
     if (!input.items || input.items.length === 0) {
@@ -149,6 +171,7 @@ export class FulfilmentTask {
     }
     const now = input.now ?? new Date();
     const itemCount = input.items.reduce((sum, i) => sum + i.quantity, 0);
+    const priority = input.priority ?? 'normal';
     return new FulfilmentTask({
       id: input.id,
       orderId: input.orderId,
@@ -165,7 +188,10 @@ export class FulfilmentTask {
       itemCount,
       items: [...input.items],
       warnings: [...(input.warnings ?? [])],
+      priority,
+      slaDueAt: computeSlaDueAt(now, priority),
       assignedTo: null,
+      assignedAt: null,
       notes: null,
       createdAt: now,
       updatedAt: now,
@@ -176,6 +202,15 @@ export class FulfilmentTask {
   get orderId(): string { return this.snap.orderId; }
   get status(): FulfilmentStatus { return this.snap.status; }
   get paymentStatus(): FulfilmentPaymentStatus { return this.snap.paymentStatus; }
+  get priority(): FulfilmentPriority { return this.snap.priority; }
+  get slaDueAt(): Date { return this.snap.slaDueAt; }
+  get assignedTo(): string | null { return this.snap.assignedTo; }
+
+  /** Overdue = past the SLA deadline and not yet in a terminal state. */
+  isOverdue(now: Date = new Date()): boolean {
+    if (isTerminalFulfilmentStatus(this.snap.status)) return false;
+    return now.getTime() > this.snap.slaDueAt.getTime();
+  }
 
   /** A task is ready for preparation once payment is confirmed (or on active pipeline states). */
   get readyForPreparation(): boolean {
@@ -215,5 +250,35 @@ export class FulfilmentTask {
     }
     this.snap = { ...this.snap, status: 'CANCELLED', updatedAt: now };
     return true;
+  }
+
+  /** Assign (or unassign with null) the task to a staff member. Refuses on terminal tasks. */
+  assign(userId: string | null, now: Date = new Date()): void {
+    if (isTerminalFulfilmentStatus(this.snap.status)) {
+      throw new Error(`INVALID_ASSIGNMENT: cannot assign a ${this.snap.status} task`);
+    }
+    this.snap = {
+      ...this.snap,
+      assignedTo: userId,
+      assignedAt: userId ? now : null,
+      updatedAt: now,
+    };
+  }
+
+  /**
+   * Change priority and recompute the SLA deadline relative to the ORIGINAL
+   * creation time, so the deadline stays deterministic and cannot be gamed by
+   * re-prioritising late. Refuses on terminal tasks.
+   */
+  setPriority(priority: FulfilmentPriority, now: Date = new Date()): void {
+    if (isTerminalFulfilmentStatus(this.snap.status)) {
+      throw new Error(`INVALID_PRIORITY: cannot re-prioritise a ${this.snap.status} task`);
+    }
+    this.snap = {
+      ...this.snap,
+      priority,
+      slaDueAt: computeSlaDueAt(this.snap.createdAt, priority),
+      updatedAt: now,
+    };
   }
 }

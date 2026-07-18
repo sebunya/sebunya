@@ -1,0 +1,41 @@
+{
+  "generated": "2026-07-18",
+  "branch": "phase-2-measurement-control-tower-completion",
+  "productionAccess": "UNAVAILABLE (no ssh binary in this container)",
+  "liveVerifiedPolicy": "requires real-server evidence against https://shopgoldplus.com; none granted this run",
+  "pendingProductionMigrations": ["0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030"],
+  "thisSessionDelta": {
+    "migration": "0030_sharp_omega_sentinel.sql (upgrade-safe: sla_due_at nullable -> backfill created_at+24h -> SET NOT NULL)",
+    "feature": "fulfilment staff assignment + priority + deterministic SLA + overdue escalation",
+    "slaHours": { "urgent": 4, "high": 12, "normal": 24, "low": 48 },
+    "endpoints": ["PATCH /admin/fulfilment/:id/assign", "PATCH /admin/fulfilment/:id/priority"],
+    "queueAdditions": ["assignedTo filter", "per-row overdue flag", "badge.overdue"],
+    "localProofs": [
+      "fresh replay 0000->0030",
+      "upgrade-safe 0030 on populated fulfilment_tasks (backfill)",
+      "HTTP: assign 200, priority recomputes SLA, invalid priority 400, unauth 401, assignee filter, audit rows TRANSITIONED/REPRIORITISED/ASSIGNED"
+    ],
+    "gates": { "secretScan": "pass", "typecheck": "pass", "lint": "pass", "build": "pass", "architecture": "10/10", "fulfilmentTests": 25 }
+  },
+  "modules": [
+    { "id": "order-fulfilment-alert", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" },
+    { "id": "fulfilment-assignment-sla", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" },
+    { "id": "measurement-control-tower", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" },
+    { "id": "checkout-orders-payments", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" },
+    { "id": "search-demand", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" },
+    { "id": "compatibility", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" },
+    { "id": "recommendations", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" },
+    { "id": "admin-control-centre", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" },
+    { "id": "loyalty", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers + commercial activation" },
+    { "id": "customer-dna-lifecycle-nba", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" },
+    { "id": "support-inbox", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" },
+    { "id": "legal-returns-warranty", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers + legal review" },
+    { "id": "a11y-perf-cross-browser", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + Firefox/WebKit/Lighthouse runners" },
+    { "id": "commerce-os-modules", "note": "Decision Intelligence, Automation, Surveys, Copy Quality, Behavioural Interventions, Experiments, Pricing/Promotions, Fraud Triage, PIM Import, Search Insights", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" }
+  ],
+  "remainingEngineeringWork": [
+    "inventory reservation on OrderPlaced / release on OrderCancelled / stock deduction / oversell prevention / partial fulfilment / backorders",
+    "transactional admin email via outbox (secure recipients, retry, DLQ, manual replay, delivery audit) - provider-gated no-send",
+    "team queues, escalation notifications, dispatch tracking, delivery confirmation"
+  ]
+}

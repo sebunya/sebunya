@@ -5,8 +5,12 @@ import {
   allowedFulfilmentTransitions,
   isTerminalFulfilmentStatus,
   maskContact,
+  computeSlaDueAt,
+  FULFILMENT_SLA_HOURS,
   FulfilmentStatus,
 } from '../../apps/api/src/domain/fulfilment/FulfilmentTask';
+import { AssignFulfilmentTaskUseCase } from '../../apps/api/src/application/use-cases/fulfilment/AssignFulfilmentTaskUseCase';
+import { SetFulfilmentPriorityUseCase } from '../../apps/api/src/application/use-cases/fulfilment/SetFulfilmentPriorityUseCase';
 import { Order } from '../../apps/api/src/domain/commerce/Order';
 import {
   IFulfilmentRepository,
@@ -50,11 +54,18 @@ class InMemoryFulfilmentRepo implements IFulfilmentRepository {
     let all = [...this.byId.values()];
     if (query.status) all = all.filter((t) => t.status === query.status);
     else if (query.activeOnly) all = all.filter((t) => !isTerminalFulfilmentStatus(t.status));
+    if (query.assignedTo === 'unassigned') all = all.filter((t) => t.assignedTo === null);
+    else if (query.assignedTo) all = all.filter((t) => t.assignedTo === query.assignedTo);
     const total = all.length;
     return { tasks: all.slice(query.offset, query.offset + query.limit), total };
   }
   async countNew(): Promise<number> {
     return [...this.byId.values()].filter((t) => t.status === 'NEW').length;
+  }
+  async countOverdue(now: Date): Promise<number> {
+    return [...this.byId.values()].filter(
+      (t) => !isTerminalFulfilmentStatus(t.status) && now.getTime() > new Date(t.slaDueAt).getTime()
+    ).length;
   }
 }
 
@@ -288,5 +299,107 @@ describe('Order-to-admin fulfilment use cases', () => {
   it('list use case rejects an unknown status', async () => {
     const repo = new InMemoryFulfilmentRepo();
     await expect(new ListFulfilmentQueueUseCase(repo).execute({ status: 'BOGUS' })).rejects.toThrow('INVALID_STATUS');
+  });
+});
+
+// ---------- assignment, priority, SLA, overdue ----------
+
+describe('Fulfilment SLA, priority, assignment and overdue (Section 12)', () => {
+  const created = new Date('2026-07-18T00:00:00.000Z');
+  function openAt(priority?: 'low' | 'normal' | 'high' | 'urgent') {
+    return FulfilmentTask.openForOrder({
+      id: 't', orderId: 'o', orderNumber: 'GP', paymentStatus: 'paid',
+      customerName: 'A', deliveryArea: 'X', deliverySummary: 'X', totalUgx: 1, deliveryFeeUgx: 0,
+      items: [{ productId: 'p', sku: 's', name: 'n', quantity: 1, unitPriceUgx: 1, lineTotalUgx: 1 }],
+      priority, now: created,
+    });
+  }
+
+  it('computes deterministic SLA windows by priority', () => {
+    expect(FULFILMENT_SLA_HOURS).toEqual({ urgent: 4, high: 12, normal: 24, low: 48 });
+    expect(computeSlaDueAt(created, 'urgent').getTime()).toBe(created.getTime() + 4 * 3600_000);
+    expect(openAt().priority).toBe('normal');
+    expect(openAt().slaDueAt.getTime()).toBe(created.getTime() + 24 * 3600_000);
+  });
+
+  it('flags overdue only past the deadline and only when active', () => {
+    const task = openAt('urgent'); // due +4h
+    expect(task.isOverdue(new Date('2026-07-18T03:59:00.000Z'))).toBe(false);
+    expect(task.isOverdue(new Date('2026-07-18T04:01:00.000Z'))).toBe(true);
+    task.transition('ACKNOWLEDGED'); task.transition('PICKING'); task.transition('PACKED');
+    task.transition('READY_FOR_DISPATCH'); task.transition('OUT_FOR_DELIVERY'); task.transition('DELIVERED');
+    expect(task.isOverdue(new Date('2026-07-20T00:00:00.000Z'))).toBe(false); // terminal never overdue
+  });
+
+  it('re-prioritising recomputes SLA from original creation time (not gameable)', () => {
+    const task = openAt('normal');
+    task.setPriority('urgent');
+    expect(task.priority).toBe('urgent');
+    expect(task.slaDueAt.getTime()).toBe(created.getTime() + 4 * 3600_000);
+  });
+
+  it('refuses assignment / re-priority on terminal tasks', () => {
+    const task = openAt('urgent');
+    task.cancel();
+    expect(() => task.assign('u1')).toThrow('INVALID_ASSIGNMENT');
+    expect(() => task.setPriority('high')).toThrow('INVALID_PRIORITY');
+  });
+
+  it('assign use case sets assignee and audits; unassign with null', async () => {
+    const repo = new InMemoryFulfilmentRepo();
+    await new CreateFulfilmentTaskOnOrderPlacedUseCase(repo).execute(makeOrder());
+    const snap = await repo.findByOrderId('11111111-1111-4111-8111-111111111111');
+    const audit = new SpyAuditRepo();
+    const uc = new AssignFulfilmentTaskUseCase(repo, audit);
+
+    const assigned = await uc.execute({ taskId: snap!.id, assignedTo: '99999999-9999-4999-8999-000000000001', actorId: 'admin' });
+    expect(assigned.ok).toBe(true);
+    expect((await repo.findById(snap!.id))!.assignedTo).toBe('99999999-9999-4999-8999-000000000001');
+    expect(audit.saved.at(-1).action).toBe('FULFILMENT_TASK_ASSIGNED');
+
+    const unassigned = await uc.execute({ taskId: snap!.id, assignedTo: null, actorId: 'admin' });
+    expect(unassigned.ok).toBe(true);
+    expect((await repo.findById(snap!.id))!.assignedTo).toBeNull();
+    expect(audit.saved.at(-1).action).toBe('FULFILMENT_TASK_UNASSIGNED');
+  });
+
+  it('priority use case validates and audits', async () => {
+    const repo = new InMemoryFulfilmentRepo();
+    await new CreateFulfilmentTaskOnOrderPlacedUseCase(repo).execute(makeOrder());
+    const snap = await repo.findByOrderId('11111111-1111-4111-8111-111111111111');
+    const audit = new SpyAuditRepo();
+    const uc = new SetFulfilmentPriorityUseCase(repo, audit);
+
+    const ok = await uc.execute({ taskId: snap!.id, priority: 'urgent', actorId: 'admin' });
+    expect(ok.ok).toBe(true);
+    expect((await repo.findById(snap!.id))!.priority).toBe('urgent');
+    expect(audit.saved.at(-1).action).toBe('FULFILMENT_TASK_REPRIORITISED');
+
+    const bad = await uc.execute({ taskId: snap!.id, priority: 'BOGUS', actorId: 'admin' });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.code).toBe('INVALID_PRIORITY');
+  });
+
+  it('list marks rows overdue and badge counts overdue', async () => {
+    const repo = new InMemoryFulfilmentRepo();
+    await new CreateFulfilmentTaskOnOrderPlacedUseCase(repo).execute(makeOrder()); // created now, normal 24h
+    const future = new Date(Date.now() + 25 * 3600_000);
+    const list = await new ListFulfilmentQueueUseCase(repo).execute({ now: future });
+    expect(list.tasks[0].overdue).toBe(true);
+    const badge = await new GetFulfilmentOverviewUseCase(repo).badge(future);
+    expect(badge.overdue).toBe(1);
+    expect(badge.newOrders).toBe(1);
+  });
+
+  it('queue filters by assignee and unassigned', async () => {
+    const repo = new InMemoryFulfilmentRepo();
+    await new CreateFulfilmentTaskOnOrderPlacedUseCase(repo).execute(makeOrder());
+    const snap = await repo.findByOrderId('11111111-1111-4111-8111-111111111111');
+    const list = new ListFulfilmentQueueUseCase(repo);
+
+    expect((await list.execute({ assignedTo: 'unassigned' })).total).toBe(1);
+    await new AssignFulfilmentTaskUseCase(repo, new SpyAuditRepo()).execute({ taskId: snap!.id, assignedTo: 'user-x', actorId: 'a' });
+    expect((await list.execute({ assignedTo: 'unassigned' })).total).toBe(0);
+    expect((await list.execute({ assignedTo: 'user-x' })).total).toBe(1);
   });
 });

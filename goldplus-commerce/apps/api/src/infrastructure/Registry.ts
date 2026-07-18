@@ -291,6 +291,8 @@ import { MarkFulfilmentPaymentConfirmedUseCase } from '../application/use-cases/
 import { TransitionFulfilmentTaskUseCase } from '../application/use-cases/fulfilment/TransitionFulfilmentTaskUseCase';
 import { ListFulfilmentQueueUseCase } from '../application/use-cases/fulfilment/ListFulfilmentQueueUseCase';
 import { GetFulfilmentOverviewUseCase } from '../application/use-cases/fulfilment/GetFulfilmentOverviewUseCase';
+import { AssignFulfilmentTaskUseCase } from '../application/use-cases/fulfilment/AssignFulfilmentTaskUseCase';
+import { SetFulfilmentPriorityUseCase } from '../application/use-cases/fulfilment/SetFulfilmentPriorityUseCase';
 
 export class Registry {
 
@@ -427,6 +429,8 @@ export class Registry {
   public readonly transitionFulfilmentTaskUseCase = new TransitionFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo);
   public readonly listFulfilmentQueueUseCase = new ListFulfilmentQueueUseCase(this.fulfilmentRepo);
   public readonly getFulfilmentOverviewUseCase = new GetFulfilmentOverviewUseCase(this.fulfilmentRepo);
+  public readonly assignFulfilmentTaskUseCase = new AssignFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo);
+  public readonly setFulfilmentPriorityUseCase = new SetFulfilmentPriorityUseCase(this.fulfilmentRepo, this.auditRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);

@@ -4,7 +4,7 @@ import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
-import { FULFILMENT_STATUSES } from '../../../../domain/fulfilment/FulfilmentTask';
+import { FULFILMENT_STATUSES, FULFILMENT_PRIORITIES } from '../../../../domain/fulfilment/FulfilmentTask';
 
 /**
  * Launch Phase 1 (Section 9.3) — admin fulfilment queue.
@@ -13,9 +13,10 @@ import { FULFILMENT_STATUSES } from '../../../../domain/fulfilment/FulfilmentTas
  * orders.manage and is audit-logged (timeline). Deny-by-default: every route is
  * behind authMiddleware + an explicit permission.
  *
- * audit-exempt: the only write endpoint (PATCH /:id/status) delegates auditing
- * to TransitionFulfilmentTaskUseCase, which writes the fulfilment_task audit
- * timeline via CreateAuditLogUseCase — a dedicated audit channel.
+ * audit-exempt: the write endpoints (PATCH /:id/status, /:id/assign,
+ * /:id/priority) delegate auditing to their use cases (Transition/Assign/
+ * SetPriority FulfilmentTaskUseCase), each of which writes the fulfilment_task
+ * audit timeline via CreateAuditLogUseCase — a dedicated audit channel.
  */
 const routes = new Hono();
 routes.use('*', authMiddleware);
@@ -23,6 +24,7 @@ routes.use('*', authMiddleware);
 const listQuerySchema = z.object({
   status: z.enum(FULFILMENT_STATUSES as unknown as [string, ...string[]]).optional(),
   activeOnly: z.enum(['true', 'false']).optional(),
+  assignedTo: z.string().min(1).max(64).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
 });
@@ -31,6 +33,7 @@ routes.get('/', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const parsed = listQuerySchema.safeParse({
     status: c.req.query('status'),
     activeOnly: c.req.query('activeOnly'),
+    assignedTo: c.req.query('assignedTo'),
     limit: c.req.query('limit'),
     offset: c.req.query('offset'),
   });
@@ -43,6 +46,7 @@ routes.get('/', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const result = await Registry.getInstance().listFulfilmentQueueUseCase.execute({
     status: parsed.data.status ?? null,
     activeOnly: parsed.data.activeOnly === 'true',
+    assignedTo: parsed.data.assignedTo ?? null,
     limit: parsed.data.limit,
     offset: parsed.data.offset,
   });
@@ -96,6 +100,56 @@ routes.patch('/:id/status', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), asy
   }
   const res: ApiResponse<typeof result> = { success: true, data: result };
   return c.json(res);
+});
+
+const assignBodySchema = z.object({
+  assignedTo: z.string().uuid().nullable(),
+});
+
+routes.patch('/:id/assign', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const parsed = assignBodySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json(
+      { success: false, error: { code: 'INVALID_BODY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>,
+      400
+    );
+  }
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().assignFulfilmentTaskUseCase.execute({
+    taskId: id,
+    assignedTo: parsed.data.assignedTo,
+    actorId,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_FOUND' ? 404 : 400);
+  }
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
+const priorityBodySchema = z.object({
+  priority: z.enum(FULFILMENT_PRIORITIES as unknown as [string, ...string[]]),
+});
+
+routes.patch('/:id/priority', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const parsed = priorityBodySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json(
+      { success: false, error: { code: 'INVALID_BODY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>,
+      400
+    );
+  }
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().setFulfilmentPriorityUseCase.execute({
+    taskId: id,
+    priority: parsed.data.priority,
+    actorId,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_FOUND' ? 404 : 400);
+  }
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });
 
 export default routes;

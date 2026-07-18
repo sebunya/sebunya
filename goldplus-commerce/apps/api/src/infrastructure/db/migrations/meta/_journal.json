@@ -211,6 +211,13 @@
       "when": 1784357078249,
       "tag": "0029_bumpy_miss_america",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1784359261728,
+      "tag": "0030_sharp_omega_sentinel",
+      "breakpoints": true
     }
   ]
 }

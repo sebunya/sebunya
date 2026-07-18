@@ -1,15 +1,26 @@
-import { FulfilmentStatus, FULFILMENT_STATUSES, FulfilmentTaskSnapshot } from '../../../domain/fulfilment/FulfilmentTask';
+import {
+  FulfilmentStatus,
+  FULFILMENT_STATUSES,
+  FulfilmentTaskSnapshot,
+  isTerminalFulfilmentStatus,
+} from '../../../domain/fulfilment/FulfilmentTask';
 import { IFulfilmentRepository } from '../../ports/IFulfilmentRepository';
 
 export interface ListFulfilmentQueueInput {
   status?: string | null;
   activeOnly?: boolean;
+  assignedTo?: string | 'unassigned' | null;
   limit?: number;
   offset?: number;
+  /** Clock injection for deterministic overdue computation (defaults to now). */
+  now?: Date;
 }
 
+/** A queue row plus the derived, non-persisted overdue flag. */
+export type FulfilmentQueueRow = FulfilmentTaskSnapshot & { overdue: boolean };
+
 export interface ListFulfilmentQueueResult {
-  tasks: FulfilmentTaskSnapshot[];
+  tasks: FulfilmentQueueRow[];
   total: number;
   limit: number;
   offset: number;
@@ -35,9 +46,15 @@ export class ListFulfilmentQueueUseCase {
     const page = await this.repo.listQueue({
       status,
       activeOnly: input.activeOnly ?? false,
+      assignedTo: input.assignedTo ?? null,
       limit,
       offset,
     });
-    return { tasks: page.tasks, total: page.total, limit, offset };
+    const now = input.now ?? new Date();
+    const tasks: FulfilmentQueueRow[] = page.tasks.map((t) => ({
+      ...t,
+      overdue: !isTerminalFulfilmentStatus(t.status) && now.getTime() > new Date(t.slaDueAt).getTime(),
+    }));
+    return { tasks, total: page.total, limit, offset };
   }
 }
