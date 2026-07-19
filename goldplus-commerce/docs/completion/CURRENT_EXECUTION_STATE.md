@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-19 · Automation A3.4)
+# CURRENT EXECUTION STATE (2026-07-19 · Automation A4)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -23,10 +23,15 @@
   the existing router gains an Automation-only outcome wrapper; SENT requires explicit adapter success, attempted
   known failures dead-letter at eight, ambiguous attempts become non-replayable OUTCOME_UNKNOWN, reconciliation
   requires actor/reason evidence, and replay re-evaluates all gates while reusing the original cap and outbox path.
-- Automation **A3.4 implementation and proof complete locally** from clean A3.3 head `2b88fd906a708d47eaa57d070e912cdd19d8d6f1`.
+- Automation **A3.4 implementation and proof committed/pushed** at `ebccac4b88d2a9b4dee4c5b5a54ebbbe89f19d34` from clean A3.3 head `2b88fd906a708d47eaa57d070e912cdd19d8d6f1`.
   Its PostgreSQL proof first reproduced two outbox owners/two provider effects, then verified the bounded no-migration fix:
   one durable outbox owner, one active PROCESSING attempt, one provider effect, conservative crash ambiguity, all 13
   prohibited states at zero calls, evidence-backed reconciliation, cap-preserving replay, and zero residue.
+- Automation **A4 operating surface complete locally** from clean aligned A3.4 head `ebccac4b88d2a9b4dee4c5b5a54ebbbe89f19d34`:
+  exact seven-way Automation RBAC, thin protected Hono/Zod API, immutable definition/version lifecycle, version-scoped
+  approvals, dry-run/manual execution through existing A3 use cases, separate replay/reconciliation privilege, shared
+  audit, truthful persistence aggregates, and real server-rendered Astro list/detail/execution operating pages. No
+  schema/migration, provider transport, second worker, outbox, scheduler, router, or static execution/provider data was added.
 - Other modules SOURCE_COMPLETE_NOT_DEPLOYED (Fulfilment F1-F5+UI, Inventory, Customer DNA & NBA 0037,
   Decision Intelligence 0038). Migrations proven through **0039** (REPORTED — rerun per handover).
 - Production status: not reclassified by C0; nothing is newly claimed `LIVE_VERIFIED`.
@@ -49,7 +54,13 @@
   distinct from SENT; positive, definitive-failure, ambiguous, eighth-failure, reconciliation, replay, and crash paths
   are evidenced; every scoped orphan/duplicate/residue count is zero. Focused 76/76, typecheck, architecture 10/10,
   build, secret scan, changed-path lint, and diff check pass. Full lint retains only the unrelated baseline error.
-- Next gate: commit A3.4, run the clean-tree full suite, push/alignment verification, then begin **A4** using the
-  repository-native admin API/UI, RBAC, audit, metrics, loading/empty/error/conflict states, and protected route style.
+- A4 proof: focused Automation plus architecture 71/71, workspace typecheck/build, secret scan, changed-path lint and
+  diff check pass. The real protected HTTP/PostgreSQL proof covers logged-out protection, draft/version/submission,
+  approval/rejection, activation/pause/resume, stale conflict, dry-run zero calls, execution/suppression/attempt evidence,
+  ambiguous replay denial, evidence-reference reconciliation, audit/correlation, aggregates and zero residue. Repository-wide
+  lint remains `PRE-EXISTING UNRELATED BASELINE ERROR` at `ICustomerDnaRepository.ts:6`. Chromium desktop rendered the
+  built Astro control room from a real scratch PostgreSQL definition through the API; the fixture was removed.
+- Clean-tree full suite after the A4 commit: 191 files / 4,020 tests passed.
+- Next gate: push A4 and verify alignment, then begin **A5** end-to-end acceptance immediately.
 
 ---

@@ -1,0 +1,99 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { apiBase } from "../../../lib/api";
+import { readSessionToken } from "../../../lib/session";
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/automation", 303);
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+type Notice = { kind: "success" | "error" | "conflict"; text: string };
+let notice: Notice | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  if (form.get("operation") === "create") {
+    try {
+      const response = await fetch(`${apiBase}/admin/automation/definitions`, { method: "POST", headers, body: JSON.stringify({ name: form.get("name"), description: form.get("description") || null }) });
+      const body = await response.json().catch(() => null);
+      if (response.status === 403) notice = { kind: "error", text: "Permission denied: automation.create is required." };
+      else if (response.status === 409) notice = { kind: "conflict", text: body?.error?.message || "Stale conflict." };
+      else if (body?.success) notice = { kind: "success", text: `Draft “${body.data.name}” created successfully.` };
+      else notice = { kind: "error", text: body?.error?.message || "Definition creation failed." };
+    } catch { notice = { kind: "error", text: "The Automation API is unavailable." }; }
+  }
+}
+
+interface Overview { activeAutomations: number; pausedAutomations: number; pendingApprovals: number; executions: Record<string, number>; suppressionsByReason: Record<string, number>; oldestQueuedAgeSeconds: number | null; averagePlanningDurationMs: number | null; averageExecutionDurationMs: number | null; nextScheduledRun: string | null; providerReadiness: { queuedIntents: number; attempted: number; succeeded: number; ambiguous: number }; }
+interface Definition { id: string; name: string; description: string | null; status: string; currentVersion: number; approvalStatus: string | null; approvalExpiresAt: string | null; requiresApproval: boolean | null; nextRunAt: string | null; updatedAt: string; }
+interface Execution { id: string; definitionId: string; definitionName: string; status: string; plannedAt: string; triggerFamily: string; }
+let overview: Overview | null = null;
+let definitions: Definition[] = [];
+let executions: Execution[] = [];
+let permissionDenied = false;
+let loadFailed = false;
+let apiError = "";
+try {
+  const [overviewResponse, definitionResponse, executionResponse] = await Promise.all([
+    fetch(`${apiBase}/admin/automation/overview`, { headers }),
+    fetch(`${apiBase}/admin/automation/definitions?limit=50`, { headers }),
+    fetch(`${apiBase}/admin/automation/executions?limit=25`, { headers }),
+  ]);
+  if ([overviewResponse, definitionResponse, executionResponse].some((response) => response.status === 403)) permissionDenied = true;
+  else {
+    const [overviewBody, definitionBody, executionBody] = await Promise.all([overviewResponse.json().catch(() => null), definitionResponse.json().catch(() => null), executionResponse.json().catch(() => null)]);
+    if (overviewBody?.success) overview = overviewBody.data;
+    if (definitionBody?.success) definitions = definitionBody.data.items;
+    if (executionBody?.success) executions = executionBody.data.items;
+    if (!overviewBody?.success || !definitionBody?.success || !executionBody?.success) { loadFailed = true; apiError = "One or more Automation reads failed; no sample data is shown."; }
+  }
+} catch { loadFailed = true; apiError = "The Automation API is unreachable; no sample data is shown."; }
+
+const outcomeStates = ["PLANNED", "ELIGIBLE", "SUPPRESSED", "DRY_RUN", "QUEUED", "PROCESSING", "INTERNAL_SUCCESS", "SENT", "FAILED", "OUTCOME_UNKNOWN", "DEAD_LETTERED", "REPLAYED"];
+const truthfulStates = ["DRAFT", "PENDING_APPROVAL", "APPROVAL_EXPIRED", "ACTIVE", "PAUSED", "NO_PROFILE", "NO_CONSENT", "IDENTITY_CONFLICT", "FREQUENCY_CAPPED", "SUPPRESSED", "DRY_RUN", "DISABLED", "NOT_CONFIGURED", "QUEUED", "PROCESSING", "INTERNAL_SUCCESS", "SENT", "FAILED", "OUTCOME_UNKNOWN", "DEAD_LETTERED"];
+const chip = (state: string) => state === "SENT" || state === "ACTIVE" || state === "INTERNAL_SUCCESS" ? "bg-emerald-50 text-emerald-800 border-emerald-200" : state === "FAILED" || state === "DEAD_LETTERED" ? "bg-red-50 text-red-800 border-red-200" : state === "OUTCOME_UNKNOWN" || state === "APPROVAL_EXPIRED" ? "bg-amber-50 text-amber-900 border-amber-300" : "bg-slate-50 text-slate-700 border-slate-200";
+---
+
+<AdminLayout title="Automation Operations" description="Governed definitions, immutable versions, real execution evidence, delivery lineage and safe reconciliation.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl" data-automation-control-room>
+    <div id="automation-loading" class="hidden bg-blue-50 border border-blue-200 text-blue-800 rounded-xl p-4 mb-5" aria-live="polite">Loading Automation operating state…</div>
+    {notice && <div class={`rounded-xl p-4 mb-5 text-sm font-semibold border ${notice.kind === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : notice.kind === "conflict" ? "bg-amber-50 border-amber-300 text-amber-900" : "bg-red-50 border-red-200 text-red-800"}`}>{notice.kind === "conflict" ? "Stale conflict: " : ""}{notice.text}</div>}
+    {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 rounded-xl p-5 mb-6"><strong>Permission denied.</strong> automation.read is required; operational data was not disclosed.</div>}
+    {loadFailed && <div class="bg-red-50 border border-red-200 text-red-800 rounded-xl p-5 mb-6"><strong>Unavailable.</strong> {apiError}</div>}
+
+    {overview && <section class="mb-8">
+      <div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="text-2xl font-black text-brand-dark">Automation control room</h2><p class="text-sm text-gray-500">Live persistence aggregates. No customer identifiers appear in metrics.</p></div><div class="text-xs text-gray-500">Next run: {overview.nextScheduledRun ? new Date(overview.nextScheduledRun).toLocaleString("en-UG") : "NOT_CONFIGURED"}</div></div>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[['Active', overview.activeAutomations], ['Paused', overview.pausedAutomations], ['Pending approval', overview.pendingApprovals], ['Queued intents', overview.providerReadiness.queuedIntents], ['Outcome unknown', overview.providerReadiness.ambiguous]].map(([label, value]) => <div class="bg-white border rounded-2xl p-4"><div class="text-2xl font-black">{value}</div><div class="text-[10px] uppercase tracking-wider text-gray-500">{label}</div></div>)}
+      </div>
+      <div class="grid md:grid-cols-3 gap-3 mt-3 text-xs">
+        <div class="bg-white border rounded-xl p-4">Oldest queued: {overview.oldestQueuedAgeSeconds === null ? "NO_DATA" : `${Math.round(overview.oldestQueuedAgeSeconds)}s`}</div>
+        <div class="bg-white border rounded-xl p-4">Average planning: {overview.averagePlanningDurationMs === null ? "NO_DATA" : `${Math.round(overview.averagePlanningDurationMs)}ms`}</div>
+        <div class="bg-white border rounded-xl p-4">Average execution: {overview.averageExecutionDurationMs === null ? "NO_DATA" : `${Math.round(overview.averageExecutionDurationMs)}ms`}</div>
+      </div>
+      <div class="flex flex-wrap gap-2 mt-3">{outcomeStates.map((state) => <span class={`border rounded-lg px-2 py-1 text-[10px] font-bold ${chip(state)}`}>{state}: {overview!.executions[state] ?? 0}</span>)}</div>
+      <div class="mt-3 text-xs text-gray-600">Provider evidence: {overview.providerReadiness.attempted} attempts · {overview.providerReadiness.succeeded} positive successes · {overview.providerReadiness.ambiguous} ambiguous. This is persisted evidence, not provider mock status.</div>
+    </section>}
+
+    {!permissionDenied && <section class="grid lg:grid-cols-[1fr_2fr] gap-6 mb-8">
+      <form method="POST" class="bg-white border rounded-2xl p-5 h-fit">
+        <input type="hidden" name="operation" value="create" />
+        <h3 class="font-black mb-4">Create draft</h3>
+        <label class="text-xs font-bold block mb-1" for="name">Name</label><input id="name" name="name" maxlength="160" required class="w-full border rounded-xl px-3 py-2 mb-3" />
+        <label class="text-xs font-bold block mb-1" for="description">Description</label><textarea id="description" name="description" maxlength="4000" class="w-full border rounded-xl px-3 py-2 mb-3"></textarea>
+        <button class="bg-brand-gold text-brand-dark font-black text-xs rounded-xl px-4 py-2.5">Create draft</button>
+        <p class="text-[11px] text-gray-500 mt-3">Requires automation.create. Configuration is added as immutable version 1 on the detail page.</p>
+      </form>
+      <div>
+        <h3 class="font-black mb-3">Definitions</h3>
+        {definitions.length === 0 && !loadFailed && <div class="bg-white border rounded-2xl p-8 text-center text-gray-500">Empty — no Automation definitions exist.</div>}
+        <div class="space-y-3">{definitions.map((definition) => <a href={`/admin/automation/${definition.id}`} class="block bg-white border rounded-2xl p-5 hover:border-brand-gold">
+          <div class="flex justify-between gap-4"><div><div class="font-black">{definition.name}</div><div class="text-xs text-gray-500">{definition.description || "No description"}</div></div><span class={`h-fit border rounded-lg px-2 py-1 text-[10px] font-bold ${chip(definition.status)}`}>{definition.approvalStatus === "PENDING" ? "PENDING_APPROVAL" : definition.status}</span></div>
+          <div class="text-[11px] text-gray-400 mt-2">Version {definition.currentVersion} · approval {definition.approvalStatus ?? "NOT_SUBMITTED"} · updated {new Date(definition.updatedAt).toLocaleString("en-UG")}</div>
+        </a>)}</div>
+      </div>
+    </section>}
+
+    <section class="mb-8"><h3 class="font-black mb-3">Recent executions</h3>{executions.length === 0 && !loadFailed && <div class="bg-white border rounded-2xl p-8 text-center text-gray-500">Empty — no persisted executions exist.</div>}<div class="space-y-2">{executions.map((execution) => <a href={`/admin/automation/executions/${execution.id}`} class="flex justify-between gap-4 bg-white border rounded-xl p-4 hover:border-brand-gold"><div><strong>{execution.definitionName}</strong><div class="text-[11px] text-gray-500">{execution.triggerFamily} · {new Date(execution.plannedAt).toLocaleString("en-UG")}</div></div><span class={`h-fit border rounded-lg px-2 py-1 text-[10px] font-bold ${chip(execution.status)}`}>{execution.status}</span></a>)}</div></section>
+    <details class="bg-white border rounded-2xl p-5"><summary class="font-black cursor-pointer">Truthful state glossary</summary><div class="flex flex-wrap gap-2 mt-4">{truthfulStates.map((state) => <span class={`border rounded-lg px-2 py-1 text-[10px] font-bold ${chip(state)}`}>{state}</span>)}</div><p class="text-xs text-gray-500 mt-3">Permission denied, stale conflict and successful mutation appear as explicit notices. Loading is announced while client navigation is pending.</p></details>
+  </div>
+</AdminLayout>

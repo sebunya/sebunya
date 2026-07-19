@@ -353,6 +353,7 @@ export class DrizzleAutomationActionRepository implements IAutomationActionRepos
     actorId: string;
     reason: string;
     evidence: string;
+    correlationId?: string;
     now: Date;
   }): Promise<boolean> {
     return db.transaction(async (tx) => {
@@ -373,6 +374,7 @@ export class DrizzleAutomationActionRepository implements IAutomationActionRepos
         toState: input.resolution,
         actorId: input.actorId,
         reason: JSON.stringify({ reason: input.reason, evidence: input.evidence }),
+        correlationId: input.correlationId?.slice(0, 64) ?? null,
       });
       return true;
     });

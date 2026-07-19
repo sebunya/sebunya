@@ -157,6 +157,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Read-only consent incident classification, no-send sentinels and operator runbooks.'
   },
   {
+    label: 'Automation',
+    href: '/admin/automation',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Govern immutable automations, approvals, executions, delivery evidence and ambiguous outcomes.'
+  },
+  {
     label: 'Attribution',
     href: '/admin/measurement/attribution',
     group: 'Measurement',

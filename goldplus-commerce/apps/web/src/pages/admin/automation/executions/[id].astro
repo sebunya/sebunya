@@ -1,0 +1,69 @@
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { apiBase } from "../../../../lib/api";
+import { readSessionToken } from "../../../../lib/session";
+
+const token = readSessionToken(Astro.request);
+const id = Astro.params.id!;
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/automation/executions/${id}`, 303);
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+type Notice = { kind: "success" | "error" | "conflict"; text: string };
+let notice: Notice | null = null;
+let execution: any = null;
+let permissionDenied = false;
+let loadFailed = false;
+
+async function load() {
+  const response = await fetch(`${apiBase}/admin/automation/executions/${id}`, { headers });
+  if (response.status === 403) { permissionDenied = true; return; }
+  const body = await response.json().catch(() => null);
+  if (body?.success) execution = body.data; else loadFailed = true;
+}
+try { await load(); } catch { loadFailed = true; }
+
+if (Astro.request.method === "POST" && execution) {
+  const form = await Astro.request.formData();
+  const operation = String(form.get("operation"));
+  const body = operation === "replay"
+    ? { actionExecutionId: form.get("actionExecutionId"), reason: form.get("reason") }
+    : { actionExecutionId: form.get("actionExecutionId"), resolution: form.get("resolution"), reason: form.get("reason"), evidence: form.get("evidence") };
+  try {
+    const response = await fetch(`${apiBase}/admin/automation/executions/${id}/${operation}`, { method: "POST", headers, body: JSON.stringify(body) });
+    const result = await response.json().catch(() => null);
+    if (response.status === 403) notice = { kind: "error", text: `Permission denied: automation.${operation} is required.` };
+    else if (response.status === 409) notice = { kind: "conflict", text: `${result?.error?.code}: ${result?.error?.message}` };
+    else if (result?.success) notice = { kind: "success", text: `${operation} completed successfully.` };
+    else notice = { kind: "error", text: `${result?.error?.code || "OPERATION_FAILED"}: ${result?.error?.message || "Operation failed."}` };
+  } catch { notice = { kind: "error", text: "The Automation API is unavailable." }; }
+  execution = null; permissionDenied = false; loadFailed = false;
+  try { await load(); } catch { loadFailed = true; }
+}
+
+const chip = (state: string) => ["SENT", "INTERNAL_SUCCESS"].includes(state) ? "bg-emerald-50 text-emerald-800 border-emerald-200" : ["FAILED", "DEAD_LETTERED"].includes(state) ? "bg-red-50 text-red-800 border-red-200" : state === "OUTCOME_UNKNOWN" ? "bg-amber-50 text-amber-900 border-amber-300" : "bg-slate-50 text-slate-700 border-slate-200";
+---
+
+<AdminLayout title="Automation Execution" description="Audience, condition, suppression, cap, outbox, attempt and reconciliation evidence.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <a href={execution ? `/admin/automation/${execution.definitionId}` : "/admin/automation"} class="text-xs font-bold text-gray-500">← Automation definition</a>
+    {notice && <div class={`border rounded-xl p-4 my-5 text-sm font-semibold ${notice.kind === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : notice.kind === "conflict" ? "bg-amber-50 border-amber-300 text-amber-900" : "bg-red-50 border-red-200 text-red-800"}`}>{notice.kind === "conflict" ? "Stale conflict — " : ""}{notice.text}</div>}
+    {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 rounded-xl p-5 my-5"><strong>Permission denied.</strong> automation.read is required.</div>}
+    {loadFailed && <div class="bg-red-50 border border-red-200 text-red-800 rounded-xl p-5 my-5"><strong>Error.</strong> Execution evidence is unavailable; no mock execution is shown.</div>}
+    {!execution && !loadFailed && !permissionDenied && <div class="bg-white border rounded-2xl p-8 my-5 text-center">Empty — execution not found.</div>}
+    {execution && <>
+      <header class="flex justify-between gap-4 my-6"><div><h2 class="text-2xl font-black">{execution.definitionName}</h2><div class="text-xs text-gray-500">Execution {execution.id} · immutable version {execution.versionNumber}</div></div><span class={`border rounded-lg px-3 py-1.5 text-xs font-black h-fit ${chip(execution.status)}`}>{execution.status}</span></header>
+      <section class="grid md:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white border rounded-2xl p-5"><h3 class="font-black text-sm">Audience evidence</h3><pre class="text-[11px] whitespace-pre-wrap mt-2 max-h-64 overflow-auto">{JSON.stringify(execution.evidence?.audience ?? { outcome: "NO_PROFILE" }, null, 2)}</pre></div>
+        <div class="bg-white border rounded-2xl p-5"><h3 class="font-black text-sm">Condition evidence</h3><pre class="text-[11px] whitespace-pre-wrap mt-2 max-h-64 overflow-auto">{JSON.stringify(execution.evidence?.conditions ?? [], null, 2)}</pre></div>
+        <div class="bg-white border rounded-2xl p-5"><h3 class="font-black text-sm">Suppression / cap</h3>{execution.suppressions.length === 0 ? <p class="text-xs text-gray-500 mt-2">No suppression evidence.</p> : execution.suppressions.map((item: any) => <div class="text-xs mt-2 font-bold">{item.reason}</div>)}<pre class="text-[11px] whitespace-pre-wrap mt-2">{JSON.stringify(execution.frequencyReservation ?? { reservation: "NONE" }, null, 2)}</pre></div>
+      </section>
+      <section class="mb-6"><h3 class="font-black mb-3">Action and attempt lineage</h3>{execution.actions.length === 0 && <div class="bg-white border rounded-2xl p-7 text-gray-500 text-sm">Empty — this execution has no actions.</div>}<div class="space-y-4">{execution.actions.map((action: any) => <article class="bg-white border rounded-2xl p-5">
+        <div class="flex justify-between"><div><strong>{action.actionIndex}. {action.actionFamily}</strong><div class="text-[11px] text-gray-500">Action {action.id}</div></div><span class={`border rounded-lg px-2 py-1 text-[10px] font-bold h-fit ${chip(action.status)}`}>{action.status}</span></div>
+        <dl class="grid sm:grid-cols-3 gap-3 text-xs mt-4"><div><dt class="text-gray-500">Attempt history</dt><dd>{action.attemptCount} claimed attempt(s)</dd></div><div><dt class="text-gray-500">Outbox intent</dt><dd>{action.outboxEventId || "NONE"} · {action.outboxStatus || "NOT_CREATED"}</dd></div><div><dt class="text-gray-500">Provider readiness/evidence</dt><dd>{action.status === "SENT" ? "Positive success persisted" : action.status === "OUTCOME_UNKNOWN" ? "Ambiguous attempted call" : action.attemptCount > 0 ? "Attempted; not successful" : "No attempted provider call"}</dd></div></dl>
+        {action.lastError && <div class="bg-red-50 text-red-800 rounded-lg p-3 text-xs mt-3">{action.lastError}</div>}
+        {(["FAILED", "DEAD_LETTERED"].includes(action.status)) && <form method="POST" class="mt-4 flex gap-2"><input type="hidden" name="operation" value="replay"/><input type="hidden" name="actionExecutionId" value={action.id}/><input name="reason" required placeholder="Replay reason" class="border rounded-lg p-2 text-xs flex-1"/><button class="bg-brand-dark text-white rounded-lg px-3 text-xs font-bold">Safe replay through current gates</button></form>}
+        {action.status === "OUTCOME_UNKNOWN" && <form method="POST" class="mt-4 grid sm:grid-cols-2 gap-2"><input type="hidden" name="operation" value="reconcile"/><input type="hidden" name="actionExecutionId" value={action.id}/><select name="resolution" required class="border rounded-lg p-2 text-xs"><option value="">Resolution</option><option value="SENT">SENT — provider success proven</option><option value="FAILED">FAILED — provider failure proven</option></select><input name="reason" required placeholder="Operator reason" class="border rounded-lg p-2 text-xs"/><input name="evidence" required maxlength="256" pattern="[A-Za-z0-9][A-Za-z0-9._:/#-]{2,255}" placeholder="Evidence reference, e.g. provider-case-42" class="border rounded-lg p-2 text-xs sm:col-span-2"/><button class="bg-amber-700 text-white rounded-lg px-3 py-2 text-xs font-bold sm:col-span-2">Reconcile ambiguous outcome</button><p class="text-[10px] text-gray-500 sm:col-span-2">Requires separate automation.reconcile permission. Store only a reference—never provider secrets or customer PII. Reconciled FAILED is not automatically resent.</p></form>}
+      </article>)}</div></section>
+      <section class="bg-white border rounded-2xl p-5"><h3 class="font-black mb-3">Immutable event timeline</h3><ol class="space-y-3">{execution.events.map((event: any) => <li class="border-l-2 border-brand-gold pl-3"><div class="text-xs font-bold">{event.eventType}: {event.fromState || "∅"} → {event.toState || "∅"}</div><div class="text-[10px] text-gray-500">{new Date(event.createdAt).toLocaleString("en-UG")} · actor {event.actorId || "system"} · correlation {event.correlationId || "none"}</div>{event.reason && <div class="text-xs text-gray-600 mt-1 break-words">{event.reason}</div>}</li>)}</ol></section>
+    </>}
+  </div>
+</AdminLayout>

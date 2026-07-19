@@ -126,7 +126,8 @@ Focused proof target: native JSONB object writes, compatibility reads for any le
 | A3.1 | `a44f456bc69d6d6fa0c834ff51f7d13f85d4c9de` | Fixed pure gate order and suppression enum; eligibility/cap port and use case; Automation-only reservation schema/migration/Drizzle adapter; focused and PG proofs; factual state evidence | 44 focused tests; fresh `0000`-`0040` and populated `0039`→`0040` upgrade; two racers → one slot/one exact suppression; winner retry reused slot; clean suite 188 files / 3,992 tests passed; provider calls zero | `74b05db5db7294eafa39d63f7297229372373d74`, pushed and clean/aligned | A3.2 |
 | A3.2 | `74b05db5db7294eafa39d63f7297229372373d74` | Automation action port/use case, Drizzle atomic cap/outbox adapter, native fulfilment bridge, Registry wiring, unit/PG proof, factual evidence | 50 Automation tests; two executors → one QUEUED action/one cap/one linked native-JSONB no-send outbox intent; internal duplicate one effect; typecheck, architecture, build, secret scan, lint/diff passed; clean suite 189 files / 3,998 tests passed; provider calls zero | `6a0f924ca97568b14d8536eb6ae793afbefd2917`, pushed and clean/aligned | A3.3 |
 | A3.3 | `6a0f924ca97568b14d8536eb6ae793afbefd2917` | Truthful provider outcome wrapper at the existing router, action outcome/DLQ/reconciliation repository operations, gate-revalidated replay through the existing outbox, focused unit/PG proof, factual evidence | Ambiguous attempts become non-replayable OUTCOME_UNKNOWN; explicit evidence reconciles; eighth known failure dead-letters; replay re-evaluates gates and reuses one cap; successful/internal/unknown actions are non-replayable; clean suite 190 files / 4,011 tests; fake adapter 10 calls, network calls zero | `2b88fd906a708d47eaa57d070e912cdd19d8d6f1`, pushed and clean/aligned | A3.4 |
-| A3.4 | `2b88fd906a708d47eaa57d070e912cdd19d8d6f1` | Real-PG execution proof; proof-found bounded existing-outbox/provider-attempt lease correction; reconciliation evidence strengthening; focused regressions and factual state | 13 prohibited states zero calls; one outbox owner/active attempt/provider effect; truthful QUEUED/PROCESSING/SENT/FAILED/UNKNOWN/DLQ; evidence reconciliation; cap-preserving replay; crash ambiguity; zero orphans/duplicates/residue | Commit subject: `Module Automation A3.4: prove automation delivery safety`; push pending | Clean full suite/alignment, then A4 |
+| A3.4 | `2b88fd906a708d47eaa57d070e912cdd19d8d6f1` | Real-PG execution proof; proof-found bounded existing-outbox/provider-attempt lease correction; reconciliation evidence strengthening; focused regressions and factual state | 13 prohibited states zero calls; one outbox owner/active attempt/provider effect; truthful QUEUED/PROCESSING/SENT/FAILED/UNKNOWN/DLQ; evidence reconciliation; cap-preserving replay; crash ambiguity; zero orphans/duplicates/residue | `ebccac4b88d2a9b4dee4c5b5a54ebbbe89f19d34`, pushed and clean/aligned; clean suite 190 files / 4,015 tests | A4 |
+| A4 | `ebccac4b88d2a9b4dee4c5b5a54ebbbe89f19d34` | Exact Automation RBAC; operations port/use case/Drizzle adapter; protected Hono/Zod API; shared audit; persistence aggregates; real Astro definition/execution UI; PG/API proof | Protected lifecycle, immutability/stale conflict, approval/rejection, pause/resume, zero-call dry run, evidence reads, ambiguous replay guard/reconciliation, audit/correlation, zero residue; focused+architecture 71/71; typecheck/build/secret/lint/diff pass; clean suite 191 files / 4,020 tests | Commit subject: `Module Automation A4: add automation operations control room`; push pending | Push/alignment, then A5 |
 
 ## A3.1 — deterministic eligibility and transactional frequency caps
 
@@ -195,3 +196,25 @@ Focused proof target: native JSONB object writes, compatibility reads for any le
 - PostgreSQL final verdict includes all 13 zero counters, `deliveryWorkerClaims=1`, `duplicateEffectCalls=1`, `statusesDuringProviderCall=["PROCESSING"]`, evidence-backed reconciliation, `replayReusedCap=true`, cap rows `1→1`, `deadLetterAttempts=8`, crash `PROCESSING→OUTCOME_UNKNOWN` with one original call/no resend, every orphan/duplicate count zero, `proofResidue=0`, and `verdict=PASS`.
 - Completion state: Automation is `SOURCE_PARTIAL`; A1–A3.4 are present, while the required A4 protected operating surface and A5 end-to-end acceptance remain.
 - A4 handoff: build the Automation control room by extending the existing Hono admin composition, RBAC permission model, audit path, metrics system, and Astro admin shell. Preserve the proven executor/outbox/provider boundaries.
+
+## A4 — protected Automation operations control room
+
+- Verified base: clean local/origin A3.4 commit `ebccac4b88d2a9b4dee4c5b5a54ebbbe89f19d34`; ledger/current-state/next-worktree reread before edits.
+- Review gate selected the native admin Hono/auth/permission/ApiResponse/Zod, Registry, shared audit, Drizzle transaction,
+  Automation JSONB codec and server-rendered Astro patterns. None of the existing general permissions was precise enough,
+  so all seven exact Automation permissions were added; reconciliation is independent of read/execute.
+- Migration decision: `NONE`. Existing `0039` and `0040`, shared audit, outbox and notification-attempt assets cover A4.
+- The operations adapter owns transactional definition/version/approval transitions and real aggregate/detail reads. The use
+  case validates immutable config, delegates controlled execution/replay/reconciliation to A3, and writes shared audit.
+- API routes never call a provider. Dry-run persists zero-attempt evidence. External manual execution creates only an
+  existing-outbox intent. Reconciliation accepts only a bounded evidence reference, not raw secrets/PII.
+- PostgreSQL/Hono proof passed draft/version/submit/approve/reject/activate/pause/resume, stale conflict, zero-call dry run,
+  suppression/attempt evidence, ambiguous replay denial, separate evidence-backed reconciliation, audit/correlation and
+  aggregate reads. Result: provider calls zero and proof residue zero.
+- Focused Automation plus architecture: 71/71. Workspace typecheck/build, API/Astro production build, secret scan,
+  changed-path lint with zero errors, and diff check pass. Repository lint retains only the unrelated baseline error at
+  `ICustomerDnaRepository.ts:6`. Chromium desktop rendered the built Astro control room from a real scratch PostgreSQL/API
+  definition and cleaned its definition/audit/RBAC/user fixture.
+- Status remains `SOURCE_PARTIAL` only because A5 acceptance is not yet complete. No deployment or `LIVE_VERIFIED` claim.
+- A5 handoff: exercise the complete lifecycle through production-shaped API/web and real PostgreSQL with the controlled
+  fake provider/call counter, all concurrency/crash/ambiguity/replay/pause-resume assertions, migration rehearsals and full gates.

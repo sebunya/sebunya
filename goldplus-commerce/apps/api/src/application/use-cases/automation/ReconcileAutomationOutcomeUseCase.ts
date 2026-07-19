@@ -14,6 +14,7 @@ export class ReconcileAutomationOutcomeUseCase {
     actorId: string;
     reason: string;
     evidence: string;
+    correlationId?: string;
     now?: Date;
   }): Promise<ReconcileAutomationOutcomeResult> {
     if (!input.actorId.trim()) return { ok: false, code: 'ACTOR_REQUIRED' };
@@ -25,6 +26,7 @@ export class ReconcileAutomationOutcomeUseCase {
       actorId: input.actorId,
       reason: input.reason.trim(),
       evidence: input.evidence.trim(),
+      correlationId: input.correlationId,
       now: input.now ?? new Date(),
     });
     if (!reconciled) return { ok: false, code: 'NOT_OUTCOME_UNKNOWN' };

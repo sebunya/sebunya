@@ -37,6 +37,13 @@ export const PERMISSIONS = {
   DECISION_INTELLIGENCE_EVALUATE: 'decision_intelligence.evaluate',
   DECISION_INTELLIGENCE_ASSIGN: 'decision_intelligence.assign',
   DECISION_INTELLIGENCE_MANAGE: 'decision_intelligence.manage',
+  AUTOMATION_READ: 'automation.read',
+  AUTOMATION_CREATE: 'automation.create',
+  AUTOMATION_MANAGE: 'automation.manage',
+  AUTOMATION_APPROVE: 'automation.approve',
+  AUTOMATION_EXECUTE: 'automation.execute',
+  AUTOMATION_REPLAY: 'automation.replay',
+  AUTOMATION_RECONCILE: 'automation.reconcile',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

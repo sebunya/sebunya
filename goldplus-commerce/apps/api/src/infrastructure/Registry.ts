@@ -370,6 +370,8 @@ import { ExecuteAutomationActionUseCase } from '../application/use-cases/automat
 import { ReplayAutomationActionUseCase } from '../application/use-cases/automation/ReplayAutomationActionUseCase';
 import { ReconcileAutomationOutcomeUseCase } from '../application/use-cases/automation/ReconcileAutomationOutcomeUseCase';
 import { AutomationInternalActionExecutor } from './automation/AutomationInternalActionExecutor';
+import { DrizzleAutomationOperationsRepository } from './db/repositories/DrizzleAutomationOperationsRepository';
+import { AutomationOperationsUseCase } from '../application/use-cases/automation/AutomationOperationsUseCase';
 
 export class Registry {
 
@@ -412,6 +414,7 @@ export class Registry {
   public readonly notificationAttemptRepo = new DrizzleNotificationAttemptRepository();
   public readonly outboxRepo = new DrizzleOutboxRepository();
   public readonly automationActionRepo = new DrizzleAutomationActionRepository();
+  public readonly automationOperationsRepo = new DrizzleAutomationOperationsRepository();
 
   public readonly measurementAdminRepo = new DrizzleMeasurementAdminRepository();
   public readonly dlqRepo = new DrizzleDlqRepository();
@@ -586,6 +589,14 @@ export class Registry {
   public readonly executeAutomationActionUseCase = new ExecuteAutomationActionUseCase(this.evaluateExecutionEligibilityUseCase, this.automationActionRepo, this.automationInternalActionExecutor);
   public readonly replayAutomationActionUseCase = new ReplayAutomationActionUseCase(this.automationActionRepo, this.outboxRepo, this.automationAudienceReader, this.evaluateExecutionEligibilityUseCase);
   public readonly reconcileAutomationOutcomeUseCase = new ReconcileAutomationOutcomeUseCase(this.automationActionRepo);
+  public readonly automationOperationsUseCase = new AutomationOperationsUseCase(
+    this.automationOperationsRepo,
+    this.automationAudienceReader,
+    this.executeAutomationActionUseCase,
+    this.replayAutomationActionUseCase,
+    this.reconcileAutomationOutcomeUseCase,
+    this.createAuditLogUseCase,
+  );
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);

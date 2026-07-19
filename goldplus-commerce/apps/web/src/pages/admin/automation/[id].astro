@@ -1,0 +1,97 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { apiBase } from "../../../lib/api";
+import { readSessionToken } from "../../../lib/session";
+
+const token = readSessionToken(Astro.request);
+const id = Astro.params.id!;
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/automation/${id}`, 303);
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+type Notice = { kind: "success" | "error" | "conflict"; text: string };
+let notice: Notice | null = null;
+let permissionDenied = false;
+let loadFailed = false;
+let definition: any = null;
+let executions: any[] = [];
+
+async function load() {
+  const [detailResponse, executionResponse] = await Promise.all([fetch(`${apiBase}/admin/automation/definitions/${id}`, { headers }), fetch(`${apiBase}/admin/automation/executions?definitionId=${id}&limit=30`, { headers })]);
+  if (detailResponse.status === 403 || executionResponse.status === 403) { permissionDenied = true; return; }
+  const [detailBody, executionBody] = await Promise.all([detailResponse.json().catch(() => null), executionResponse.json().catch(() => null)]);
+  if (detailBody?.success) definition = detailBody.data;
+  if (executionBody?.success) executions = executionBody.data.items;
+  if (!detailBody?.success || !executionBody?.success) loadFailed = true;
+}
+try { await load(); } catch { loadFailed = true; }
+
+if (Astro.request.method === "POST" && definition) {
+  const form = await Astro.request.formData();
+  const operation = String(form.get("operation") || "");
+  const version = Number(form.get("expectedVersion") || definition.currentVersion);
+  let endpoint = operation;
+  let body: Record<string, unknown> = { expectedVersion: version };
+  try {
+    if (operation === "version") { endpoint = "versions"; body.config = JSON.parse(String(form.get("config") || "")); }
+    else if (operation === "submit") body.expiresAt = form.get("expiresAt") || null;
+    else if (operation === "approve" || operation === "reject") body = { ...body, versionId: form.get("versionId"), reason: form.get("reason") || null, expiresAt: form.get("expiresAt") || null };
+    else if (["activate", "pause", "resume", "archive"].includes(operation)) body.reason = form.get("reason") || null;
+    else if (operation === "dry-run") body = { subjectId: form.get("subjectId") || null };
+    else if (operation === "execute") body = { subjectId: form.get("subjectId") };
+    const response = await fetch(`${apiBase}/admin/automation/definitions/${id}/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body) });
+    const result = await response.json().catch(() => null);
+    if (response.status === 403) notice = { kind: "error", text: `Permission denied for ${operation}.` };
+    else if (response.status === 409) notice = { kind: "conflict", text: `${result?.error?.code || "STALE_VERSION"}: ${result?.error?.message || "The operation conflicted with current state."}` };
+    else if (result?.success) notice = { kind: "success", text: `${operation} completed successfully.` };
+    else notice = { kind: "error", text: `${result?.error?.code || "OPERATION_FAILED"}: ${result?.error?.message || "Operation failed."}` };
+  } catch (error) { notice = { kind: "error", text: error instanceof SyntaxError ? "Configuration must be valid JSON." : "The Automation API is unavailable." }; }
+  permissionDenied = false; loadFailed = false;
+  try { await load(); } catch { loadFailed = true; }
+}
+
+const current = definition?.versions?.find((version: any) => version.versionNumber === definition.currentVersion) ?? null;
+const chip = (state: string) => ["ACTIVE", "APPROVED", "SENT", "INTERNAL_SUCCESS"].includes(state) ? "bg-emerald-50 text-emerald-800 border-emerald-200" : ["REJECTED", "FAILED", "DEAD_LETTERED"].includes(state) ? "bg-red-50 text-red-800 border-red-200" : ["OUTCOME_UNKNOWN", "EXPIRED"].includes(state) ? "bg-amber-50 text-amber-900 border-amber-300" : "bg-slate-50 text-slate-700 border-slate-200";
+---
+
+<AdminLayout title="Automation Definition" description="Immutable configuration, version-scoped approval and controlled execution.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <a href="/admin/automation" class="text-xs font-bold text-gray-500">← Automation control room</a>
+    {notice && <div class={`border rounded-xl p-4 my-5 text-sm font-semibold ${notice.kind === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : notice.kind === "conflict" ? "bg-amber-50 border-amber-300 text-amber-900" : "bg-red-50 border-red-200 text-red-800"}`}>{notice.kind === "conflict" ? "Stale conflict — " : ""}{notice.text}</div>}
+    {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 rounded-xl p-5 my-5"><strong>Permission denied.</strong> automation.read is required.</div>}
+    {loadFailed && <div class="bg-red-50 border border-red-200 text-red-800 rounded-xl p-5 my-5"><strong>Error.</strong> The definition could not be loaded; no mock data is shown.</div>}
+    {!definition && !loadFailed && !permissionDenied && <div class="bg-white border rounded-2xl p-8 my-5 text-center">Empty — Automation definition not found.</div>}
+
+    {definition && <>
+      <header class="flex flex-wrap justify-between gap-4 my-6"><div><h2 class="text-2xl font-black">{definition.name}</h2><p class="text-sm text-gray-500">{definition.description || "No description"}</p></div><span class={`h-fit border rounded-lg px-3 py-1.5 text-xs font-black ${chip(definition.status)}`}>{definition.approvalStatus === "PENDING" ? "PENDING_APPROVAL" : definition.approvalStatus === "EXPIRED" ? "APPROVAL_EXPIRED" : definition.status}</span></header>
+      <div class="grid lg:grid-cols-3 gap-5 mb-8">
+        <section class="lg:col-span-2 bg-white border rounded-2xl p-5">
+          <h3 class="font-black mb-4">Immutable version {definition.currentVersion}</h3>
+          {current ? <div class="grid md:grid-cols-2 gap-3 text-xs">
+            <div><strong>Trigger</strong><pre class="mt-1 whitespace-pre-wrap bg-slate-50 p-3 rounded-xl">{JSON.stringify({ family: current.config.triggerFamily, ref: current.config.triggerRef }, null, 2)}</pre></div>
+            <div><strong>Audience policy</strong><pre class="mt-1 whitespace-pre-wrap bg-slate-50 p-3 rounded-xl">{current.config.audiencePolicyMode}</pre></div>
+            <div><strong>Conditions</strong><pre class="mt-1 whitespace-pre-wrap bg-slate-50 p-3 rounded-xl max-h-48 overflow-auto">{JSON.stringify(current.config.conditions, null, 2)}</pre></div>
+            <div><strong>Actions / provider readiness</strong><pre class="mt-1 whitespace-pre-wrap bg-slate-50 p-3 rounded-xl max-h-48 overflow-auto">{JSON.stringify(current.config.actions, null, 2)}</pre></div>
+            <div><strong>Schedule / misfire</strong><pre class="mt-1 whitespace-pre-wrap bg-slate-50 p-3 rounded-xl">{JSON.stringify(current.config.schedule, null, 2)}</pre></div>
+            <div><strong>Frequency policy</strong><pre class="mt-1 whitespace-pre-wrap bg-slate-50 p-3 rounded-xl">{JSON.stringify(current.config.frequency, null, 2)}</pre></div>
+          </div> : <div class="text-gray-500 text-sm">Empty — create immutable version 1.</div>}
+        </section>
+        <section class="bg-white border rounded-2xl p-5"><h3 class="font-black mb-3">Approval</h3><div class={`inline-block border rounded-lg px-2 py-1 text-xs font-bold ${chip(current?.approval?.status || "NOT_SUBMITTED")}`}>{current?.approval?.status || "NOT_SUBMITTED"}</div><dl class="text-xs mt-3 space-y-2"><div><dt class="text-gray-500">Requires approval</dt><dd>{current?.requiresApproval ? "Yes — customer-facing action" : "No provider approval gate required"}</dd></div><div><dt class="text-gray-500">Expires</dt><dd>{current?.approval?.expiresAt ? new Date(current.approval.expiresAt).toLocaleString("en-UG") : "No expiry"}</dd></div></dl></section>
+      </div>
+
+      <section class="bg-white border rounded-2xl p-5 mb-8"><h3 class="font-black mb-3">Immutable version history</h3><div class="space-y-2">{definition.versions.map((version: any) => <details class="border rounded-xl p-3"><summary class="cursor-pointer text-xs font-bold">Version {version.versionNumber} · {version.approval?.status || "NOT_SUBMITTED"} · created {new Date(version.createdAt).toLocaleString("en-UG")}</summary><pre class="text-[11px] whitespace-pre-wrap mt-3 max-h-72 overflow-auto bg-slate-50 rounded-lg p-3">{JSON.stringify(version.config, null, 2)}</pre></details>)}</div></section>
+
+      <section class="bg-white border rounded-2xl p-5 mb-8"><h3 class="font-black mb-4">Governed operations</h3>
+        <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <form method="POST" class="border rounded-xl p-4"><input type="hidden" name="operation" value="version"/><input type="hidden" name="expectedVersion" value={definition.currentVersion}/><label class="text-xs font-bold">New immutable configuration (JSON)</label><textarea name="config" required class="w-full border rounded-lg p-2 text-[11px] h-32 mt-2" placeholder='{"triggerFamily":"MANUAL_ADMIN",...}'></textarea><button class="mt-2 bg-brand-dark text-white rounded-lg px-3 py-2 text-xs font-bold">Create new version</button></form>
+          <form method="POST" class="border rounded-xl p-4"><input type="hidden" name="operation" value="submit"/><input type="hidden" name="expectedVersion" value={definition.currentVersion}/><label class="text-xs font-bold">Approval expiry (optional)</label><input name="expiresAt" type="datetime-local" class="w-full border rounded-lg p-2 mt-2"/><button class="mt-2 bg-brand-dark text-white rounded-lg px-3 py-2 text-xs font-bold">Submit version</button></form>
+          <form method="POST" class="border rounded-xl p-4"><input type="hidden" name="expectedVersion" value={definition.currentVersion}/><input type="hidden" name="versionId" value={current?.id}/><label class="text-xs font-bold">Approval decision</label><input name="reason" required placeholder="Reason" class="w-full border rounded-lg p-2 mt-2"/><div class="flex gap-2 mt-2"><button name="operation" value="approve" class="bg-emerald-700 text-white rounded-lg px-3 py-2 text-xs font-bold">Approve</button><button name="operation" value="reject" class="bg-red-700 text-white rounded-lg px-3 py-2 text-xs font-bold">Reject</button></div></form>
+          <form method="POST" class="border rounded-xl p-4"><input type="hidden" name="expectedVersion" value={definition.currentVersion}/><input name="reason" placeholder="Reason" class="w-full border rounded-lg p-2"/><div class="flex flex-wrap gap-2 mt-2">{["activate","pause","resume","archive"].map((operation) => <button name="operation" value={operation} class="bg-slate-800 text-white rounded-lg px-3 py-2 text-xs font-bold">{operation}</button>)}</div></form>
+          <form method="POST" class="border rounded-xl p-4"><label class="text-xs font-bold">Dry-run subject (optional)</label><input name="subjectId" class="w-full border rounded-lg p-2 mt-2"/><button name="operation" value="dry-run" class="mt-2 bg-blue-700 text-white rounded-lg px-3 py-2 text-xs font-bold">Dry run — zero provider calls</button></form>
+          <form method="POST" class="border rounded-xl p-4"><label class="text-xs font-bold">Manual execution subject</label><input name="subjectId" required class="w-full border rounded-lg p-2 mt-2"/><button name="operation" value="execute" class="mt-2 bg-brand-gold text-brand-dark rounded-lg px-3 py-2 text-xs font-black">Execute through current gates</button><p class="text-[10px] text-gray-500 mt-2">External work creates an existing-outbox intent; this page never transports.</p></form>
+        </div>
+      </section>
+
+      <section class="mb-8"><h3 class="font-black mb-3">Execution history</h3>{executions.length === 0 && <div class="bg-white border rounded-2xl p-7 text-gray-500 text-sm">Empty — no executions for this definition.</div>}<div class="space-y-2">{executions.map((execution) => <a href={`/admin/automation/executions/${execution.id}`} class="flex justify-between bg-white border rounded-xl p-4 hover:border-brand-gold"><div><strong>{execution.triggerFamily}</strong><div class="text-[11px] text-gray-500">{new Date(execution.plannedAt).toLocaleString("en-UG")}</div></div><span class={`border rounded-lg px-2 py-1 text-[10px] font-bold h-fit ${chip(execution.status)}`}>{execution.status}</span></a>)}</div></section>
+      <section class="bg-white border rounded-2xl p-5"><h3 class="font-black mb-3">Audit timeline</h3>{definition.events.length === 0 && <div class="text-gray-500 text-sm">Empty — no Automation timeline events.</div>}<ol class="space-y-3">{definition.events.map((event: any) => <li class="border-l-2 border-brand-gold pl-3"><div class="text-xs font-bold">{event.eventType}: {event.fromState || "∅"} → {event.toState || "∅"}</div><div class="text-[10px] text-gray-500">{new Date(event.createdAt).toLocaleString("en-UG")} · actor {event.actorId || "system"} · correlation {event.correlationId || "none"}</div>{event.reason && <div class="text-xs text-gray-600 mt-1">{event.reason}</div>}</li>)}</ol></section>
+    </>}
+  </div>
+</AdminLayout>

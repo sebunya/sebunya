@@ -46,6 +46,7 @@ export interface IAutomationActionRepository {
     actorId: string;
     reason: string;
     evidence: string;
+    correlationId?: string;
     now: Date;
   }): Promise<boolean>;
 }

@@ -133,17 +133,19 @@
       "status": "SOURCE_PARTIAL",
       "businessOutcome": "Trigger/condition/audience/action/schedule automations reusing the existing outbox + scheduler, provider-gated, DRY_RUN makes zero provider calls.",
       "existingAssets": [
-        "Automation A1-A3.4 domain/use cases/ports/Drizzle adapters",
+        "Automation A1-A4 domain/use cases/ports/Drizzle adapters and protected operating surface",
         "migration 0039 Automation control plane + 0040 frequency reservations",
         "existing outbox, notification router and ticker",
         "truthful provider attempt, outcome, retry, DLQ, reconciliation and replay",
-        "real-PostgreSQL zero-network/concurrency/crash proof"
+        "real-PostgreSQL zero-network/concurrency/crash proof",
+        "exact Automation RBAC, shared audit and thin protected Hono/Zod API",
+        "real Astro definition/execution/evidence/reconciliation control room",
+        "truthful persistence aggregates without customer PII labels"
       ],
       "missingLayers": [
-        "A4 protected API/admin UI/RBAC/audit/observability operating surface",
         "A5 production-shaped end-to-end acceptance"
       ],
-      "nextBoundedSlice": "A4 Automation operations control room",
+      "nextBoundedSlice": "A5 Automation end-to-end acceptance",
       "acceptance": [
         "no second outbox/scheduler",
         "DRY_RUN zero network",
@@ -152,9 +154,10 @@
       ],
       "evidence": [
         "automation-execution-proof.ts PASS with 13 zero-call states, one delivery owner, attempt lease/crash ambiguity, reconciliation and cap-preserving replay",
-        "Automation focused tests, typecheck, architecture, build and secret scan PASS"
+        "Automation focused tests, typecheck, architecture, build and secret scan PASS",
+        "automation-control-room-proof.ts PASS: protected lifecycle, dry-run zero calls, evidence inspection, replay guard, reconciliation, audit, aggregates, zero residue"
       ],
-      "commit": "A3.4 pending"
+      "commit": "A3.4 ebccac4; A4 committed by this change"
     },
     {
       "module": "Experiments",
