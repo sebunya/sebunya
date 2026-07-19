@@ -337,6 +337,20 @@ import {
   RecordDeliveryUseCase,
   GetFulfilmentReportUseCase,
 } from '../application/use-cases/fulfilment/DeliveryUseCases';
+import {
+  DrizzleCustomerProfileRepository,
+  DrizzleCustomerIdentityRepository,
+  DrizzleCustomerFeatureRepository,
+  DrizzleCustomerLifecycleRepository,
+  DrizzleNbaDecisionRepository,
+} from './db/repositories/DrizzleCustomerDnaRepositories';
+import { DrizzleCustomerSignalReader } from './db/repositories/DrizzleCustomerSignalReader';
+import {
+  ResolveCustomerIdentityUseCase,
+  ProjectCustomerProfileUseCase,
+  GenerateNextBestActionUseCase,
+  GetCustomerDnaUseCase,
+} from '../application/use-cases/customer-dna/CustomerDnaUseCases';
 
 export class Registry {
 
@@ -516,6 +530,18 @@ export class Registry {
   public readonly getDeliveryHistoryUseCase = new GetDeliveryHistoryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo);
   public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo);
   public readonly getFulfilmentReportUseCase = new GetFulfilmentReportUseCase(this.fulfilmentReportRepo);
+
+  // Customer DNA & NBA: canonical profile projection + next-best action.
+  public readonly customerProfileRepo = new DrizzleCustomerProfileRepository();
+  public readonly customerIdentityRepo = new DrizzleCustomerIdentityRepository();
+  public readonly customerFeatureRepo = new DrizzleCustomerFeatureRepository();
+  public readonly customerLifecycleRepo = new DrizzleCustomerLifecycleRepository();
+  public readonly nbaDecisionRepo = new DrizzleNbaDecisionRepository();
+  public readonly customerSignalReader = new DrizzleCustomerSignalReader();
+  public readonly resolveCustomerIdentityUseCase = new ResolveCustomerIdentityUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.auditRepo);
+  public readonly projectCustomerProfileUseCase = new ProjectCustomerProfileUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.customerSignalReader, this.auditRepo);
+  public readonly generateNextBestActionUseCase = new GenerateNextBestActionUseCase(this.customerProfileRepo, this.nbaDecisionRepo, this.auditRepo);
+  public readonly getCustomerDnaUseCase = new GetCustomerDnaUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.nbaDecisionRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);
