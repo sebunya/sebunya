@@ -2,7 +2,7 @@ import { IAutomationActionRepository } from '../../ports/IAutomationActionReposi
 
 export type ReconcileAutomationOutcomeResult =
   | { ok: true; actionExecutionId: string; resolution: 'SENT' | 'FAILED' }
-  | { ok: false; code: 'EVIDENCE_REQUIRED' | 'NOT_OUTCOME_UNKNOWN' };
+  | { ok: false; code: 'ACTOR_REQUIRED' | 'REASON_REQUIRED' | 'EVIDENCE_REQUIRED' | 'NOT_OUTCOME_UNKNOWN' };
 
 /** Resolve an ambiguous accepted-or-not provider outcome from operator evidence. */
 export class ReconcileAutomationOutcomeUseCase {
@@ -13,14 +13,18 @@ export class ReconcileAutomationOutcomeUseCase {
     resolution: 'SENT' | 'FAILED';
     actorId: string;
     reason: string;
+    evidence: string;
     now?: Date;
   }): Promise<ReconcileAutomationOutcomeResult> {
-    if (!input.reason.trim()) return { ok: false, code: 'EVIDENCE_REQUIRED' };
+    if (!input.actorId.trim()) return { ok: false, code: 'ACTOR_REQUIRED' };
+    if (!input.reason.trim()) return { ok: false, code: 'REASON_REQUIRED' };
+    if (!input.evidence.trim()) return { ok: false, code: 'EVIDENCE_REQUIRED' };
     const reconciled = await this.actions.reconcileUnknown({
       actionExecutionId: input.actionExecutionId,
       resolution: input.resolution,
       actorId: input.actorId,
       reason: input.reason.trim(),
+      evidence: input.evidence.trim(),
       now: input.now ?? new Date(),
     });
     if (!reconciled) return { ok: false, code: 'NOT_OUTCOME_UNKNOWN' };

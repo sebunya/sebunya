@@ -42,7 +42,8 @@ export class DefaultNotificationRouter implements INotificationRouter {
             delegate,
             this.automationOutcomes,
             actionExecutionId,
-            payload.noSendGuarantee === true
+            payload.noSendGuarantee === true,
+            payload.dryRunOnly === true ? 'DRY_RUN' : 'DISABLED'
           ),
           payload: {
             recipient,

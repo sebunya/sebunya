@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-19 · Automation A3.3)
+# CURRENT EXECUTION STATE (2026-07-19 · Automation A3.4)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -23,6 +23,10 @@
   the existing router gains an Automation-only outcome wrapper; SENT requires explicit adapter success, attempted
   known failures dead-letter at eight, ambiguous attempts become non-replayable OUTCOME_UNKNOWN, reconciliation
   requires actor/reason evidence, and replay re-evaluates all gates while reusing the original cap and outbox path.
+- Automation **A3.4 implementation and proof complete locally** from clean A3.3 head `2b88fd906a708d47eaa57d070e912cdd19d8d6f1`.
+  Its PostgreSQL proof first reproduced two outbox owners/two provider effects, then verified the bounded no-migration fix:
+  one durable outbox owner, one active PROCESSING attempt, one provider effect, conservative crash ambiguity, all 13
+  prohibited states at zero calls, evidence-backed reconciliation, cap-preserving replay, and zero residue.
 - Other modules SOURCE_COMPLETE_NOT_DEPLOYED (Fulfilment F1-F5+UI, Inventory, Customer DNA & NBA 0037,
   Decision Intelligence 0038). Migrations proven through **0039** (REPORTED — rerun per handover).
 - Production status: not reclassified by C0; nothing is newly claimed `LIVE_VERIFIED`.
@@ -41,7 +45,11 @@
   eighth-attempt dead-lettering, cap retention/reuse, gate-revalidated replay through the existing outbox, successful
   effect non-replayability, ten fake-adapter calls, and zero network calls. Typecheck, architecture, build, secret scan,
   focused lint, and diff check pass; full lint retains its pre-existing unrelated one-error baseline. No migration was added.
-- Next gate: complete full verification, commit/push A3.3, verify clean local/remote alignment, then begin **A3.4**
-  zero-network mode counters plus combined concurrency, expired-lease recovery, and orphan-row proofs.
+- A3.4 proof: 13 prohibited-state counters are zero; delivery ownership/effect count is one; QUEUED and PROCESSING are
+  distinct from SENT; positive, definitive-failure, ambiguous, eighth-failure, reconciliation, replay, and crash paths
+  are evidenced; every scoped orphan/duplicate/residue count is zero. Focused 76/76, typecheck, architecture 10/10,
+  build, secret scan, changed-path lint, and diff check pass. Full lint retains only the unrelated baseline error.
+- Next gate: commit A3.4, run the clean-tree full suite, push/alignment verification, then begin **A4** using the
+  repository-native admin API/UI, RBAC, audit, metrics, loading/empty/error/conflict states, and protected route style.
 
 ---

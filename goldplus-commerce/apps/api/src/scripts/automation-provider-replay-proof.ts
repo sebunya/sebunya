@@ -88,7 +88,7 @@ async function main() {
   const reservationsBeforeReplay = await db.select().from(automationFrequencyCapReservations).where(eq(automationFrequencyCapReservations.executionId, executionId));
   const unknownReplayCandidate = await actionRepo.findReplayCandidate(actionIds[0], new Date());
   const reconciledUnknown = await new ReconcileAutomationOutcomeUseCase(actionRepo).execute({
-    actionExecutionId: actionIds[0], resolution: 'SENT', actorId, reason: 'fake provider ledger confirms acceptance', now: new Date(),
+    actionExecutionId: actionIds[0], resolution: 'SENT', actorId, reason: 'fake provider ledger confirms acceptance', evidence: 'controlled-ledger-entry-a33', now: new Date(),
   });
   const [reconciledUnknownRow] = await db.select().from(automationActionExecutions).where(eq(automationActionExecutions.id, actionIds[0]));
 

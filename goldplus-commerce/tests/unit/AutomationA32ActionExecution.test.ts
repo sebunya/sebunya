@@ -38,6 +38,7 @@ class ActionRepo implements IAutomationActionRepository {
   }
   async completeInternal() { this.status = 'INTERNAL_SUCCESS'; }
   async markTerminal(_id: string, status: 'NOT_CONFIGURED' | 'SUPPRESSED') { this.terminal.push(status); }
+  async claimProviderAttempt() { return { outcome: 'CLAIMED' as const, attemptCount: 1 }; }
   async recordProviderOutcome() { throw new Error('not used'); }
   async findReplayCandidate() { return null; }
   async markReplayed() { return false; }

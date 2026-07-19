@@ -43,11 +43,11 @@ Tick only with evidence (path + command + result). Do not mark a box from assump
 - [x] Reuse existing retry/backoff/DLQ (no second retry engine)
 
 ## A3.4 — safety, concurrency, crash proofs
-- [ ] Explicit adapter call-counter proof: DRY_RUN / PROVIDER_DISABLED / NOT_CONFIGURED / CUSTOMER_COMMUNICATIONS_DISABLED / NOTIFICATION_DELIVERY_DISABLED / LIVE_SEND_DISABLED → 0 calls
-- [ ] Internal action still completes while providers disabled
-- [ ] Two executors → one action / one cap / one outbox intent
-- [ ] Expired lease / crash window becomes processable again
-- [ ] No orphan action/evidence/event rows
+- [x] Explicit adapter call-counter proof: DRY_RUN / PROVIDER_DISABLED / NOT_CONFIGURED / CUSTOMER_COMMUNICATIONS_DISABLED / NOTIFICATION_DELIVERY_DISABLED / LIVE_SEND_DISABLED → 0 calls
+- [x] Internal action still completes while providers disabled
+- [x] Two executors → one action / one cap / one outbox intent
+- [x] Expired lease / crash window becomes processable again
+- [x] No orphan action/evidence/event rows
 
 ## A4 — control room
 - [ ] Permissions `automation.read/create/manage/approve/execute/replay` added; approve & replay separately privileged

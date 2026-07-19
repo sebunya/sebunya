@@ -1,4 +1,4 @@
-import { eq, lte, and, asc, desc, sql } from 'drizzle-orm';
+import { eq, lte, and, asc, desc, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { outboxEvents } from '../schema/system';
 import { IOutboxRepository, PersistedOutboxEvent } from '../../../application/ports/IOutboxRepository';
@@ -28,21 +28,28 @@ function rowToPersisted(row: typeof outboxEvents.$inferSelect): PersistedOutboxE
 
 export class DrizzleOutboxRepository implements IOutboxRepository {
   async claimDueBatch(now: Date, limit: number): Promise<PersistedOutboxEvent[]> {
-    // Use explicit SELECT to enable FOR UPDATE SKIP LOCKED concurrency safe claiming
-    const rows = await db
-      .select()
-      .from(outboxEvents)
-      .where(
-        and(
-          eq(outboxEvents.isProcessed, false),
-          lte(outboxEvents.nextAttemptAt, now)
+    const leaseExpiresAt = new Date(now.getTime() + 5 * 60_000);
+    return db.transaction(async (tx) => {
+      const rows = await tx
+        .select()
+        .from(outboxEvents)
+        .where(
+          and(
+            eq(outboxEvents.isProcessed, false),
+            lte(outboxEvents.nextAttemptAt, now)
+          )
         )
-      )
-      .orderBy(asc(outboxEvents.nextAttemptAt))
-      .limit(limit)
-      .for('update', { skipLocked: true });
-
-    return rows.map(rowToPersisted);
+        .orderBy(asc(outboxEvents.nextAttemptAt))
+        .limit(limit)
+        .for('update', { skipLocked: true });
+      if (rows.length === 0) return [];
+      const ids = rows.map((row) => row.id);
+      await tx.update(outboxEvents).set({
+        status: 'processing',
+        nextAttemptAt: leaseExpiresAt,
+      }).where(inArray(outboxEvents.id, ids));
+      return rows.map((row) => rowToPersisted({ ...row, status: 'processing', nextAttemptAt: leaseExpiresAt }));
+    });
   }
 
   async markProcessed(eventId: string, opts?: { lastError?: string }): Promise<void> {
@@ -51,6 +58,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
       .set({
         isProcessed: true,
         processedAt: new Date(),
+        status: 'processed',
         lastError: opts?.lastError ?? null,
       })
       .where(eq(outboxEvents.id, eventId));
@@ -61,7 +69,8 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
       .update(outboxEvents)
       .set({
         lastError: error,
-        nextAttemptAt: nextAttemptAt,
+        status: 'pending',
+        nextAttemptAt: sql`greatest(${outboxEvents.nextAttemptAt}, ${nextAttemptAt})`,
         attemptCount: sql`${outboxEvents.attemptCount} + 1`,
       })
       .where(eq(outboxEvents.id, eventId));

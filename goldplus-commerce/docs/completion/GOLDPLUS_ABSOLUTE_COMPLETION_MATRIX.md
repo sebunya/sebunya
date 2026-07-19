@@ -19,7 +19,7 @@ names and old completion labels are **not** treated as proof.
 | Measurement Control Tower | SOURCE_COMPLETE_NOT_DEPLOYED |
 | Customer DNA & NBA | SOURCE_COMPLETE_NOT_DEPLOYED |
 | Decision Intelligence | SOURCE_COMPLETE_NOT_DEPLOYED |
-| Automation | MISSING |
+| Automation | SOURCE_PARTIAL |
 | Experiments | MISSING |
 | Pricing & Promotions | MISSING |
 | Fraud Triage | SOURCE_PARTIAL |

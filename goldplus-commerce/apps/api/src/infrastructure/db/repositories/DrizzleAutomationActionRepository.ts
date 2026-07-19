@@ -53,6 +53,7 @@ export class DrizzleAutomationActionRepository implements IAutomationActionRepos
         channel: input.action.channel,
         config: input.action.config,
         noSendGuarantee: true,
+        dryRunOnly: true,
         relatedEntity: 'automation_action',
         relatedEntityId: input.actionExecutionId,
       };
@@ -178,6 +179,59 @@ export class DrizzleAutomationActionRepository implements IAutomationActionRepos
     });
   }
 
+  async claimProviderAttempt(input: {
+    actionExecutionId: string;
+    workerId: string;
+    now: Date;
+    leaseMs: number;
+  }) {
+    return db.transaction(async (tx) => {
+      const [action] = await tx.select().from(automationActionExecutions)
+        .where(eq(automationActionExecutions.id, input.actionExecutionId)).limit(1).for('update');
+      if (!action) throw new Error('AUTOMATION_ACTION_EXECUTION_NOT_FOUND');
+
+      if (action.status === 'PROCESSING') {
+        if (action.nextRetryAt && action.nextRetryAt.getTime() > input.now.getTime()) {
+          return { outcome: 'BUSY' as const, attemptCount: action.attemptCount };
+        }
+        await tx.update(automationActionExecutions).set({
+          status: 'OUTCOME_UNKNOWN',
+          nextRetryAt: null,
+          lastError: 'ATTEMPT_LEASE_EXPIRED: provider acceptance is ambiguous; operator reconciliation required.',
+          updatedAt: input.now,
+        }).where(eq(automationActionExecutions.id, action.id));
+        await tx.insert(automationEvents).values({
+          executionId: action.executionId,
+          eventType: 'PROVIDER_OUTCOME_UNKNOWN',
+          fromState: 'PROCESSING',
+          toState: 'OUTCOME_UNKNOWN',
+          reason: 'ATTEMPT_LEASE_EXPIRED',
+        });
+        return { outcome: 'TERMINAL' as const, status: 'OUTCOME_UNKNOWN' as const, attemptCount: action.attemptCount };
+      }
+
+      if (action.status !== 'QUEUED' && action.status !== 'FAILED' && action.status !== 'REPLAYED') {
+        return { outcome: 'TERMINAL' as const, status: action.status as ExecutionStatus, attemptCount: action.attemptCount };
+      }
+
+      const attemptCount = action.attemptCount + 1;
+      await tx.update(automationActionExecutions).set({
+        status: 'PROCESSING',
+        attemptCount,
+        nextRetryAt: new Date(input.now.getTime() + input.leaseMs),
+        updatedAt: input.now,
+      }).where(eq(automationActionExecutions.id, action.id));
+      await tx.insert(automationEvents).values({
+        executionId: action.executionId,
+        eventType: 'PROVIDER_PROCESSING',
+        fromState: action.status,
+        toState: 'PROCESSING',
+        correlationId: input.workerId.slice(0, 64),
+      });
+      return { outcome: 'CLAIMED' as const, attemptCount };
+    });
+  }
+
   async recordProviderOutcome(input: {
     actionExecutionId: string;
     status: 'SENT' | 'FAILED' | 'OUTCOME_UNKNOWN' | 'DRY_RUN' | 'NOT_CONFIGURED' | 'DISABLED';
@@ -196,11 +250,16 @@ export class DrizzleAutomationActionRepository implements IAutomationActionRepos
         return { status: action.status as ExecutionStatus, attemptCount: action.attemptCount };
       }
 
-      const attemptCount = action.attemptCount + (input.attempted ? 1 : 0);
+      if (input.attempted && action.status !== 'PROCESSING') {
+        throw new Error('AUTOMATION_PROVIDER_ACTIVE_ATTEMPT_REQUIRED_FOR_OUTCOME');
+      }
+
+      const attemptCount = action.attemptCount;
       const status: ExecutionStatus = input.status === 'FAILED' && attemptCount >= 8 ? 'DEAD_LETTERED' : input.status;
       await tx.update(automationActionExecutions).set({
         status,
         attemptCount,
+        nextRetryAt: null,
         lastError: status === 'SENT' ? null : `${input.providerCode ?? 'NO_CODE'}: ${input.providerMessage}`,
         sentAt: status === 'SENT' ? new Date() : action.sentAt,
         deadLetteredAt: status === 'DEAD_LETTERED' ? new Date() : action.deadLetteredAt,
@@ -293,6 +352,7 @@ export class DrizzleAutomationActionRepository implements IAutomationActionRepos
     resolution: 'SENT' | 'FAILED';
     actorId: string;
     reason: string;
+    evidence: string;
     now: Date;
   }): Promise<boolean> {
     return db.transaction(async (tx) => {
@@ -312,7 +372,7 @@ export class DrizzleAutomationActionRepository implements IAutomationActionRepos
         fromState: 'OUTCOME_UNKNOWN',
         toState: input.resolution,
         actorId: input.actorId,
-        reason: input.reason,
+        reason: JSON.stringify({ reason: input.reason, evidence: input.evidence }),
       });
       return true;
     });

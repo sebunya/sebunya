@@ -25,6 +25,12 @@ export interface IAutomationActionRepository {
   }): Promise<'CLAIMED' | 'COMPLETED' | 'BUSY'>;
   completeInternal(actionExecutionId: string): Promise<void>;
   markTerminal(actionExecutionId: string, status: 'NOT_CONFIGURED' | 'SUPPRESSED'): Promise<void>;
+  claimProviderAttempt(input: {
+    actionExecutionId: string;
+    workerId: string;
+    now: Date;
+    leaseMs: number;
+  }): Promise<AutomationProviderAttemptClaim>;
   recordProviderOutcome(input: {
     actionExecutionId: string;
     status: 'SENT' | 'FAILED' | 'OUTCOME_UNKNOWN' | 'DRY_RUN' | 'NOT_CONFIGURED' | 'DISABLED';
@@ -39,9 +45,15 @@ export interface IAutomationActionRepository {
     resolution: 'SENT' | 'FAILED';
     actorId: string;
     reason: string;
+    evidence: string;
     now: Date;
   }): Promise<boolean>;
 }
+
+export type AutomationProviderAttemptClaim =
+  | { outcome: 'CLAIMED'; attemptCount: number }
+  | { outcome: 'BUSY'; attemptCount: number }
+  | { outcome: 'TERMINAL'; status: ExecutionStatus; attemptCount: number };
 
 export interface AutomationReplayCandidate {
   actionExecutionId: string;

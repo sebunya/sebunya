@@ -7,6 +7,7 @@ import {
 
 const NON_ATTEMPT_FAILURE_CODES = new Set(['INVALID_RECIPIENT']);
 const AMBIGUOUS_FAILURE_CODES = new Set(['PROVIDER_ERROR', 'ADAPTER_THREW']);
+const PROVIDER_ATTEMPT_LEASE_MS = 5 * 60_000;
 
 /** Records truthful Automation outcomes while delegating transport to the existing provider. */
 export class AutomationOutcomeTrackingProvider implements INotificationProvider {
@@ -14,14 +15,41 @@ export class AutomationOutcomeTrackingProvider implements INotificationProvider 
     private readonly delegate: INotificationProvider,
     private readonly outcomes: IAutomationActionRepository,
     private readonly actionExecutionId: string,
-    private readonly noSendGuarantee: boolean
+    private readonly noSendGuarantee: boolean,
+    private readonly noSendStatus: 'DRY_RUN' | 'DISABLED' | 'NOT_CONFIGURED' = 'DISABLED'
   ) {}
 
   async dispatch(payload: NotificationDispatchPayload): Promise<NotificationDispatchResult> {
     if (this.noSendGuarantee) {
-      const result = { status: 'DISABLED' as const, providerCode: 'AUTOMATION_NO_SEND_GUARANTEE', providerMessage: 'Automation intent is no-send.' };
+      const result = {
+        status: this.noSendStatus,
+        providerCode: this.noSendStatus === 'DRY_RUN' ? 'AUTOMATION_DRY_RUN' : 'AUTOMATION_NO_SEND_GUARANTEE',
+        providerMessage: 'Automation intent is no-send.',
+      };
       await this.outcomes.recordProviderOutcome({ actionExecutionId: this.actionExecutionId, ...result, attempted: false });
       return result;
+    }
+
+    const claim = await this.outcomes.claimProviderAttempt({
+      actionExecutionId: this.actionExecutionId,
+      workerId: `automation-delivery-${process.pid}`,
+      now: new Date(),
+      leaseMs: PROVIDER_ATTEMPT_LEASE_MS,
+    });
+    if (claim.outcome === 'BUSY') {
+      return { status: 'DISABLED', providerCode: 'AUTOMATION_ATTEMPT_IN_PROGRESS', providerMessage: 'Another delivery attempt owns the active lease.' };
+    }
+    if (claim.outcome === 'TERMINAL') {
+      if (claim.status === 'SENT') {
+        return { status: 'SENT', providerCode: 'AUTOMATION_ALREADY_SENT', providerMessage: 'Successful provider evidence is already recorded.' };
+      }
+      if (claim.status === 'OUTCOME_UNKNOWN') {
+        return { status: 'OUTCOME_UNKNOWN', providerCode: 'AUTOMATION_OUTCOME_UNKNOWN', providerMessage: 'Ambiguous provider outcome requires reconciliation.' };
+      }
+      const terminalStatus = claim.status === 'DRY_RUN' || claim.status === 'NOT_CONFIGURED' || claim.status === 'DISABLED'
+        ? claim.status
+        : 'DISABLED';
+      return { status: terminalStatus, providerCode: 'AUTOMATION_TERMINAL', providerMessage: `Automation action is terminal: ${claim.status}.` };
     }
 
     try {

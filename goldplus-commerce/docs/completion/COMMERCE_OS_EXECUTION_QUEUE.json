@@ -130,25 +130,31 @@
         "outbox",
         "notifications"
       ],
-      "status": "MISSING",
+      "status": "SOURCE_PARTIAL",
       "businessOutcome": "Trigger/condition/audience/action/schedule automations reusing the existing outbox + scheduler, provider-gated, DRY_RUN makes zero provider calls.",
       "existingAssets": [
-        "outbox",
-        "notification router",
-        "measurement scheduler"
+        "Automation A1-A3.4 domain/use cases/ports/Drizzle adapters",
+        "migration 0039 Automation control plane + 0040 frequency reservations",
+        "existing outbox, notification router and ticker",
+        "truthful provider attempt, outcome, retry, DLQ, reconciliation and replay",
+        "real-PostgreSQL zero-network/concurrency/crash proof"
       ],
       "missingLayers": [
-        "automation domain/use cases/ports/repos/migration/API/UI/RBAC/audit/tests"
+        "A4 protected API/admin UI/RBAC/audit/observability operating surface",
+        "A5 production-shaped end-to-end acceptance"
       ],
-      "nextBoundedSlice": "reconcile; reuse outbox; automation-definition domain",
+      "nextBoundedSlice": "A4 Automation operations control room",
       "acceptance": [
         "no second outbox/scheduler",
         "DRY_RUN zero network",
         "pause/resume/versioning",
         "retry/DLQ/replay reuse"
       ],
-      "evidence": [],
-      "commit": null
+      "evidence": [
+        "automation-execution-proof.ts PASS with 13 zero-call states, one delivery owner, attempt lease/crash ambiguity, reconciliation and cap-preserving replay",
+        "Automation focused tests, typecheck, architecture, build and secret scan PASS"
+      ],
+      "commit": "A3.4 pending"
     },
     {
       "module": "Experiments",

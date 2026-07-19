@@ -30,13 +30,25 @@ class ActionRepo implements IAutomationActionRepository {
   marked = 0;
   terminal: string[] = [];
   reconciled: Array<'SENT' | 'FAILED'> = [];
+  providerState: AutomationReplayCandidate['status'] = 'QUEUED';
+  providerAttempts = 0;
   async queueExternalIntent() { throw new Error('not used'); }
   async claimInternal() { return 'BUSY' as const; }
   async completeInternal() {}
   async markTerminal(_id: string, status: 'NOT_CONFIGURED' | 'SUPPRESSED') { this.terminal.push(status); }
+  async claimProviderAttempt() {
+    if (this.providerState === 'PROCESSING') return { outcome: 'BUSY' as const, attemptCount: this.providerAttempts };
+    if (this.providerState !== 'QUEUED' && this.providerState !== 'FAILED' && this.providerState !== 'REPLAYED') {
+      return { outcome: 'TERMINAL' as const, status: this.providerState, attemptCount: this.providerAttempts };
+    }
+    this.providerState = 'PROCESSING';
+    this.providerAttempts += 1;
+    return { outcome: 'CLAIMED' as const, attemptCount: this.providerAttempts };
+  }
   async recordProviderOutcome(input: { status: 'SENT' | 'FAILED' | 'OUTCOME_UNKNOWN' | 'DRY_RUN' | 'NOT_CONFIGURED' | 'DISABLED'; attempted: boolean }) {
     this.outcomes.push(input);
-    return { status: input.status, attemptCount: input.attempted ? 1 : 0 };
+    this.providerState = input.status;
+    return { status: input.status, attemptCount: this.providerAttempts };
   }
   async findReplayCandidate() { return this.replayCandidate; }
   async markReplayed() { this.marked += 1; return true; }
@@ -86,9 +98,40 @@ describe('Automation A3.3 — truthful provider outcomes', () => {
 
   it('records SENT only after a positive provider response', async () => {
     const repo = new ActionRepo();
-    const provider: INotificationProvider = { async dispatch() { return { status: 'SENT', providerCode: 'message-1', providerMessage: 'accepted' }; } };
+    const provider: INotificationProvider = { async dispatch() {
+      expect(repo.providerState).toBe('PROCESSING');
+      return { status: 'SENT', providerCode: 'message-1', providerMessage: 'accepted' };
+    } };
     expect((await new AutomationOutcomeTrackingProvider(provider, repo, 'action-1', false).dispatch(payload)).status).toBe('SENT');
     expect(repo.outcomes[0]).toMatchObject({ status: 'SENT', attempted: true });
+  });
+
+  it('does not invoke a provider again after positive evidence is terminal', async () => {
+    const repo = new ActionRepo();
+    let calls = 0;
+    const provider: INotificationProvider = { async dispatch() {
+      calls += 1;
+      return { status: 'SENT', providerCode: 'message-1', providerMessage: 'accepted' };
+    } };
+    const tracked = new AutomationOutcomeTrackingProvider(provider, repo, 'action-1', false);
+    expect((await tracked.dispatch(payload)).status).toBe('SENT');
+    expect((await tracked.dispatch(payload)).status).toBe('SENT');
+    expect(calls).toBe(1);
+    expect(repo.providerAttempts).toBe(1);
+  });
+
+  it('does not call transport while another provider attempt owns the lease', async () => {
+    const repo = new ActionRepo();
+    repo.providerState = 'PROCESSING';
+    repo.providerAttempts = 1;
+    let calls = 0;
+    const provider: INotificationProvider = { async dispatch() {
+      calls += 1;
+      return { status: 'SENT', providerCode: 'unsafe', providerMessage: 'unsafe' };
+    } };
+    const result = await new AutomationOutcomeTrackingProvider(provider, repo, 'action-1', false).dispatch(payload);
+    expect(result).toMatchObject({ status: 'DISABLED', providerCode: 'AUTOMATION_ATTEMPT_IN_PROGRESS' });
+    expect(calls).toBe(0);
   });
 
   it('converts an ambiguous provider exception to terminal OUTCOME_UNKNOWN', async () => {
@@ -103,6 +146,19 @@ describe('Automation A3.3 — truthful provider outcomes', () => {
     const provider: INotificationProvider = { async dispatch() { return { status: 'SENT', providerCode: 'DRY_RUN_SUCCESS', providerMessage: 'simulated' }; } };
     expect((await new AutomationOutcomeTrackingProvider(provider, repo, 'action-1', false).dispatch(payload)).status).toBe('DRY_RUN');
     expect(repo.outcomes[0]).toMatchObject({ status: 'DRY_RUN', attempted: false });
+  });
+
+  it('short-circuits an explicit dry-run before the provider adapter', async () => {
+    const repo = new ActionRepo();
+    let calls = 0;
+    const provider: INotificationProvider = { async dispatch() {
+      calls += 1;
+      return { status: 'SENT', providerCode: 'unsafe', providerMessage: 'unsafe' };
+    } };
+    const result = await new AutomationOutcomeTrackingProvider(provider, repo, 'action-1', true, 'DRY_RUN').dispatch(payload);
+    expect(result.status).toBe('DRY_RUN');
+    expect(calls).toBe(0);
+    expect(repo.providerAttempts).toBe(0);
   });
 });
 
@@ -153,7 +209,17 @@ describe('Automation A3.3 — ambiguous-outcome reconciliation', () => {
   it('requires operator evidence before resolving OUTCOME_UNKNOWN', async () => {
     const actions = new ActionRepo();
     const useCase = new ReconcileAutomationOutcomeUseCase(actions);
-    expect(await useCase.execute({ actionExecutionId: 'action-1', resolution: 'SENT', actorId: 'actor-1', reason: '  ' }))
+    expect(await useCase.execute({ actionExecutionId: 'action-1', resolution: 'SENT', actorId: 'actor-1', reason: '  ', evidence: 'provider-ledger-1' }))
+      .toEqual({ ok: false, code: 'REASON_REQUIRED' });
+    expect(actions.reconciled).toHaveLength(0);
+  });
+
+  it('requires actor and evidence independently', async () => {
+    const actions = new ActionRepo();
+    const useCase = new ReconcileAutomationOutcomeUseCase(actions);
+    expect(await useCase.execute({ actionExecutionId: 'action-1', resolution: 'SENT', actorId: ' ', reason: 'reviewed', evidence: 'provider-ledger-1' }))
+      .toEqual({ ok: false, code: 'ACTOR_REQUIRED' });
+    expect(await useCase.execute({ actionExecutionId: 'action-1', resolution: 'SENT', actorId: 'actor-1', reason: 'reviewed', evidence: ' ' }))
       .toEqual({ ok: false, code: 'EVIDENCE_REQUIRED' });
     expect(actions.reconciled).toHaveLength(0);
   });
@@ -161,7 +227,7 @@ describe('Automation A3.3 — ambiguous-outcome reconciliation', () => {
   it.each(['SENT', 'FAILED'] as const)('reconciles UNKNOWN to %s from explicit evidence', async (resolution) => {
     const actions = new ActionRepo();
     const result = await new ReconcileAutomationOutcomeUseCase(actions).execute({
-      actionExecutionId: 'action-1', resolution, actorId: 'actor-1', reason: 'provider console reviewed',
+      actionExecutionId: 'action-1', resolution, actorId: 'actor-1', reason: 'provider console reviewed', evidence: 'provider-ledger-1',
     });
     expect(result).toEqual({ ok: true, actionExecutionId: 'action-1', resolution });
     expect(actions.reconciled).toEqual([resolution]);
