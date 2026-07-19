@@ -303,6 +303,8 @@ import {
   MoveFulfilmentTeamUseCase,
   BulkAssignFulfilmentTasksUseCase,
 } from '../application/use-cases/fulfilment/FulfilmentTeamUseCases';
+import { DrizzleFulfilmentSlaEventRepository } from './db/repositories/DrizzleFulfilmentSlaEventRepository';
+import { EvaluateFulfilmentSlaBatchUseCase } from '../application/use-cases/fulfilment/EvaluateFulfilmentSlaBatchUseCase';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import {
   ReserveInventoryForOrderUseCase,
@@ -446,7 +448,8 @@ export class Registry {
   public readonly markFulfilmentPaymentConfirmedUseCase = new MarkFulfilmentPaymentConfirmedUseCase(this.fulfilmentRepo);
   public readonly transitionFulfilmentTaskUseCase = new TransitionFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo);
   public readonly listFulfilmentQueueUseCase = new ListFulfilmentQueueUseCase(this.fulfilmentRepo);
-  public readonly getFulfilmentOverviewUseCase = new GetFulfilmentOverviewUseCase(this.fulfilmentRepo);
+  public readonly fulfilmentSlaEventRepo = new DrizzleFulfilmentSlaEventRepository();
+  public readonly getFulfilmentOverviewUseCase = new GetFulfilmentOverviewUseCase(this.fulfilmentRepo, this.fulfilmentSlaEventRepo);
   public readonly fulfilmentTeamRepo = new DrizzleFulfilmentTeamRepository();
   public readonly assignFulfilmentTaskUseCase = new AssignFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, this.fulfilmentTeamRepo);
   public readonly setFulfilmentPriorityUseCase = new SetFulfilmentPriorityUseCase(this.fulfilmentRepo, this.auditRepo);
@@ -456,6 +459,8 @@ export class Registry {
   public readonly manageTeamMemberUseCase = new ManageTeamMemberUseCase(this.fulfilmentTeamRepo, this.auditRepo);
   public readonly moveFulfilmentTeamUseCase = new MoveFulfilmentTeamUseCase(this.fulfilmentRepo, this.fulfilmentTeamRepo, this.auditRepo);
   public readonly bulkAssignFulfilmentTasksUseCase = new BulkAssignFulfilmentTasksUseCase(this.fulfilmentRepo, this.fulfilmentTeamRepo, this.auditRepo);
+  // Fulfilment F2: idempotent SLA escalation evaluator.
+  public readonly evaluateFulfilmentSlaBatchUseCase = new EvaluateFulfilmentSlaBatchUseCase(this.fulfilmentRepo, this.fulfilmentSlaEventRepo, this.fulfilmentTeamRepo, this.auditRepo);
   // Inventory ledger (Section 12): reservation, release, consumption, availability.
   public readonly inventoryRepo = new DrizzleInventoryRepository();
   public readonly reserveInventoryForOrderUseCase = new ReserveInventoryForOrderUseCase(this.inventoryRepo);

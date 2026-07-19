@@ -40,6 +40,41 @@ export function computeSlaDueAt(createdAt: Date, priority: FulfilmentPriority): 
   return new Date(createdAt.getTime() + FULFILMENT_SLA_HOURS[priority] * 60 * 60 * 1000);
 }
 
+/** F2 — SLA lifecycle stages, derived deterministically from the deadline. */
+export type FulfilmentSlaStage = 'ON_TRACK' | 'DUE_SOON' | 'OVERDUE' | 'ESCALATED' | 'RESOLVED';
+
+/** Grace period past the deadline before an OVERDUE task becomes ESCALATED. */
+export const FULFILMENT_SLA_GRACE_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Deterministic SLA stage. Terminal tasks are RESOLVED. Otherwise: <75% elapsed
+ * = ON_TRACK; >=75% and not past due = DUE_SOON; past due within grace = OVERDUE;
+ * past due + grace = ESCALATED. Timezone-safe (operates on epoch millis).
+ */
+export function deriveSlaStage(input: {
+  now: Date;
+  createdAt: Date;
+  slaDueAt: Date;
+  terminal: boolean;
+  graceMs?: number;
+}): FulfilmentSlaStage {
+  if (input.terminal) return 'RESOLVED';
+  const now = input.now.getTime();
+  const due = input.slaDueAt.getTime();
+  const start = input.createdAt.getTime();
+  const grace = input.graceMs ?? FULFILMENT_SLA_GRACE_MS;
+  if (now > due + grace) return 'ESCALATED';
+  if (now > due) return 'OVERDUE';
+  const window = Math.max(1, due - start);
+  const elapsed = now - start;
+  return elapsed >= 0.75 * window ? 'DUE_SOON' : 'ON_TRACK';
+}
+
+/** F2 idempotency key: one escalation event per task, stage and policy version. */
+export function buildSlaIdempotencyKey(taskId: string, stage: FulfilmentSlaStage, policyVersion: number): string {
+  return `fulfilment:${taskId}:sla:${stage}:${policyVersion}`;
+}
+
 export const FULFILMENT_STATUSES: readonly FulfilmentStatus[] = [
   'NEW',
   'ACKNOWLEDGED',
@@ -116,6 +151,8 @@ export interface FulfilmentTaskSnapshot {
   warnings: string[];
   priority: FulfilmentPriority;
   slaDueAt: Date;
+  /** SLA policy version — bumped when the deadline is materially recalculated. */
+  slaPolicyVersion: number;
   /** Owning team (queue). One active team owner per task. */
   teamId: string | null;
   assignedTo: string | null;
@@ -197,6 +234,7 @@ export class FulfilmentTask {
       warnings: [...(input.warnings ?? [])],
       priority,
       slaDueAt: computeSlaDueAt(now, priority),
+      slaPolicyVersion: 1,
       teamId: null,
       assignedTo: null,
       assignedAt: null,
@@ -212,6 +250,7 @@ export class FulfilmentTask {
   get paymentStatus(): FulfilmentPaymentStatus { return this.snap.paymentStatus; }
   get priority(): FulfilmentPriority { return this.snap.priority; }
   get slaDueAt(): Date { return this.snap.slaDueAt; }
+  get slaPolicyVersion(): number { return this.snap.slaPolicyVersion; }
   get teamId(): string | null { return this.snap.teamId; }
   get assignedTo(): string | null { return this.snap.assignedTo; }
 
@@ -306,6 +345,8 @@ export class FulfilmentTask {
       ...this.snap,
       priority,
       slaDueAt: computeSlaDueAt(this.snap.createdAt, priority),
+      // Material SLA recalculation → new policy version (restarts escalation idempotency).
+      slaPolicyVersion: this.snap.slaPolicyVersion + 1,
       updatedAt: now,
     };
   }

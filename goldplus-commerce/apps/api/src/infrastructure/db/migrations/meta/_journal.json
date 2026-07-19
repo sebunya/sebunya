@@ -232,6 +232,13 @@
       "when": 1784442923784,
       "tag": "0032_boring_may_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1784443998169,
+      "tag": "0033_sudden_lester",
+      "breakpoints": true
     }
   ]
 }

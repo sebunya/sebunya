@@ -32,4 +32,6 @@ export interface IFulfilmentRepository {
   countNew(): Promise<number>;
   /** Count of active (non-terminal) tasks past their SLA deadline. */
   countOverdue(now: Date): Promise<number>;
+  /** Active (non-terminal) tasks for SLA evaluation, oldest-due first. */
+  findActiveForSla(limit: number): Promise<FulfilmentTaskSnapshot[]>;
 }

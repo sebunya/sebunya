@@ -72,4 +72,21 @@ export class DrizzleFulfilmentTeamRepository implements IFulfilmentTeamRepositor
       .limit(1);
     return !!row;
   }
+
+  async listLeads(teamId: string): Promise<string[]> {
+    const rows = await db
+      .select({ userId: fulfilmentTeamMembers.userId })
+      .from(fulfilmentTeamMembers)
+      .where(and(eq(fulfilmentTeamMembers.teamId, teamId), eq(fulfilmentTeamMembers.active, true), eq(fulfilmentTeamMembers.isLead, true)));
+    return rows.map((r) => r.userId);
+  }
+
+  async setLead(teamId: string, userId: string, isLead: boolean): Promise<{ updated: boolean }> {
+    const updated = await db
+      .update(fulfilmentTeamMembers)
+      .set({ isLead })
+      .where(and(eq(fulfilmentTeamMembers.teamId, teamId), eq(fulfilmentTeamMembers.userId, userId), eq(fulfilmentTeamMembers.active, true)))
+      .returning({ id: fulfilmentTeamMembers.id });
+    return { updated: updated.length > 0 };
+  }
 }

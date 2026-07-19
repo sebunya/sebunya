@@ -30,6 +30,7 @@ export const fulfilmentTasks = pgTable(
     warnings: jsonb('warnings'),
     priority: varchar('priority', { length: 10 }).default('normal').notNull(),
     slaDueAt: timestamp('sla_due_at', { withTimezone: true }).notNull(),
+    slaPolicyVersion: integer('sla_policy_version').default(1).notNull(),
     teamId: uuid('team_id'),
     assignedTo: uuid('assigned_to').references(() => users.id),
     assignedAt: timestamp('assigned_at', { withTimezone: true }),
@@ -71,10 +72,35 @@ export const fulfilmentTeamMembers = pgTable(
     teamId: uuid('team_id').references(() => fulfilmentTeams.id).notNull(),
     userId: uuid('user_id').references(() => users.id).notNull(),
     active: boolean('active').default(true).notNull(),
+    isLead: boolean('is_lead').default(false).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
     memberIdx: uniqueIndex('fulfilment_team_members_team_user_idx').on(table.teamId, table.userId),
     userIdx: index('fulfilment_team_members_user_idx').on(table.userId),
+  })
+);
+
+/** F2 — persisted, idempotent SLA escalation events (one per task/stage/version). */
+export const fulfilmentSlaEvents = pgTable(
+  'fulfilment_sla_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    taskId: uuid('task_id').references(() => fulfilmentTasks.id).notNull(),
+    stage: varchar('stage', { length: 20 }).notNull(),
+    policyVersion: integer('policy_version').notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 200 }).notNull(),
+    teamId: uuid('team_id'),
+    assigneeId: uuid('assignee_id'),
+    dueAtSnapshot: timestamp('due_at_snapshot', { withTimezone: true }).notNull(),
+    prioritySnapshot: varchar('priority_snapshot', { length: 10 }).notNull(),
+    detail: text('detail'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    keyIdx: uniqueIndex('fulfilment_sla_events_key_idx').on(table.idempotencyKey),
+    taskIdx: index('fulfilment_sla_events_task_idx').on(table.taskId),
+    stageIdx: index('fulfilment_sla_events_stage_idx').on(table.stage),
   })
 );

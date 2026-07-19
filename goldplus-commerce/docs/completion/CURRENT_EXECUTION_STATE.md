@@ -2,7 +2,24 @@
 
 Updated: 2026-07-18 (48-Hour Total Launch War Room — Launch Slice L0 + P0 fulfilment)
 
-## Transactional admin order email (latest)
+## Fulfilment F1+F2 (latest)
+
+- F1 team queues & ownership (migration 0032): teams + membership (reusing users),
+  team ownership on task, my/unassigned/team/all scopes, claim/assign/unassign/team-move/
+  bounded-bulk, eligibility + idempotent assignment, RBAC + audit. Tests 7.
+- F2 idempotent SLA escalation (migration 0033): deterministic stages ON_TRACK/DUE_SOON/
+  OVERDUE/ESCALATED/RESOLVED (75% + 1h grace), sla_policy_version (bumped on reprioritise),
+  fulfilment_sla_events with unique idempotency key `fulfilment:{taskId}:sla:{stage}:{ver}`,
+  EvaluateFulfilmentSlaBatchUseCase (one event per task/stage/version; team-lead routing +
+  MISSING_TEAM_LEAD fallback; audit), /sla/evaluate + /sla/summary routes, admin SLA strip.
+  Tests 12 + real-PostgreSQL concurrency proof (two concurrent evaluators → one event, PASS).
+- Migrations 0032/0033 proven on populated launchcheck + fresh 0000→0033.
+- NEXT: F3 packing/partial-fulfilment/backorders, F4 dispatch + single stock consumption,
+  F5 delivery confirmation + reporting.
+
+---
+
+## Transactional admin order email (previous)
 
 - Transactional administrator order email implemented on the existing outbox
   (`outbox_events` + `ProcessOutboxBatchUseCase` + `DefaultNotificationRouter` + ZeptoMail;

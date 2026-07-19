@@ -251,4 +251,17 @@ routes.post('/bulk-assign', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), asy
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });
 
+// --- F2: SLA escalation (evaluate + summary) ---
+
+routes.get('/sla/summary', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const summary = await Registry.getInstance().getFulfilmentOverviewUseCase.slaSummary();
+  return c.json({ success: true, data: summary } satisfies ApiResponse<typeof summary>);
+});
+
+routes.post('/sla/evaluate', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().evaluateFulfilmentSlaBatchUseCase.execute({ actorId });
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
 export default routes;

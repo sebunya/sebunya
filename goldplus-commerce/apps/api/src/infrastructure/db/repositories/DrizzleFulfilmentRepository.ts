@@ -35,6 +35,7 @@ function toSnapshot(row: typeof fulfilmentTasks.$inferSelect): FulfilmentTaskSna
     warnings: (row.warnings as string[]) ?? [],
     priority: (row.priority as FulfilmentPriority) ?? 'normal',
     slaDueAt: row.slaDueAt,
+    slaPolicyVersion: row.slaPolicyVersion ?? 1,
     teamId: row.teamId ?? null,
     assignedTo: row.assignedTo ?? null,
     assignedAt: row.assignedAt ?? null,
@@ -67,6 +68,7 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
         warnings: s.warnings,
         priority: s.priority,
         slaDueAt: s.slaDueAt,
+        slaPolicyVersion: s.slaPolicyVersion,
         teamId: s.teamId,
         assignedTo: s.assignedTo,
         assignedAt: s.assignedAt,
@@ -106,6 +108,7 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
         paymentStatus: s.paymentStatus,
         priority: s.priority,
         slaDueAt: s.slaDueAt,
+        slaPolicyVersion: s.slaPolicyVersion,
         teamId: s.teamId,
         assignedTo: s.assignedTo,
         assignedAt: s.assignedAt,
@@ -162,6 +165,16 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
       .from(fulfilmentTasks)
       .where(eq(fulfilmentTasks.status, 'NEW'));
     return Number(value);
+  }
+
+  async findActiveForSla(limit: number): Promise<FulfilmentTaskSnapshot[]> {
+    const rows = await db
+      .select()
+      .from(fulfilmentTasks)
+      .where(notInArray(fulfilmentTasks.status, [...TERMINAL_FULFILMENT_STATUSES]))
+      .orderBy(asc(fulfilmentTasks.slaDueAt))
+      .limit(limit);
+    return rows.map(toSnapshot);
   }
 
   async countOverdue(now: Date): Promise<number> {

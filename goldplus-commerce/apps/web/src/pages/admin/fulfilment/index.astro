@@ -125,6 +125,14 @@ try {
   apiError = "Fulfilment API is currently unreachable.";
 }
 
+// F2: SLA stage summary (on-track / due-soon / overdue / escalated).
+let sla: { onTrack: number; dueSoon: number; overdue: number; escalated: number } | null = null;
+try {
+  const slaRes = await fetch(`${apiBase}/admin/fulfilment/sla/summary`, { headers });
+  const slaJson = await slaRes.json().catch(() => null);
+  if (slaJson?.success) sla = slaJson.data;
+} catch { /* non-fatal */ }
+
 const ugx = new Intl.NumberFormat("en-UG", { style: "currency", currency: "UGX", maximumFractionDigits: 0 });
 
 function statusChip(s: string) {
@@ -181,6 +189,16 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
         </span>
       </div>
     </div>
+
+    {sla && (
+      <div class="flex flex-wrap items-center gap-2 mb-6 text-[11px] font-bold">
+        <span class="text-gray-400 uppercase tracking-wider">SLA:</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-green-50 text-green-700 border-green-200">On track {sla.onTrack}</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-amber-50 text-amber-800 border-amber-200">Due soon {sla.dueSoon}</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-orange-50 text-orange-700 border-orange-200">Overdue {sla.overdue}</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">Escalated {sla.escalated}</span>
+      </div>
+    )}
 
     {notice && (
       <div class={`px-6 py-4 rounded-2xl mb-6 text-sm font-semibold ${notice.kind === "success" ? "bg-green-50 border border-green-200 text-green-800" : "bg-red-50 border border-red-200 text-red-800"}`}>

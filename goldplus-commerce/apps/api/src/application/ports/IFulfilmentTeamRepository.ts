@@ -20,4 +20,8 @@ export interface IFulfilmentTeamRepository {
   listMembers(teamId: string): Promise<FulfilmentTeamMember[]>;
   /** True when the user is an active member of the team. */
   isMember(teamId: string, userId: string): Promise<boolean>;
+  /** Active team leads (is_lead) for escalation routing. */
+  listLeads(teamId: string): Promise<string[]>;
+  /** Set or clear a member's team-lead flag. */
+  setLead(teamId: string, userId: string, isLead: boolean): Promise<{ updated: boolean }>;
 }
