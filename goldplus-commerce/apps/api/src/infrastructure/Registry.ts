@@ -295,6 +295,14 @@ import { ListFulfilmentQueueUseCase } from '../application/use-cases/fulfilment/
 import { GetFulfilmentOverviewUseCase } from '../application/use-cases/fulfilment/GetFulfilmentOverviewUseCase';
 import { AssignFulfilmentTaskUseCase } from '../application/use-cases/fulfilment/AssignFulfilmentTaskUseCase';
 import { SetFulfilmentPriorityUseCase } from '../application/use-cases/fulfilment/SetFulfilmentPriorityUseCase';
+import { DrizzleFulfilmentTeamRepository } from './db/repositories/DrizzleFulfilmentTeamRepository';
+import {
+  CreateFulfilmentTeamUseCase,
+  ListFulfilmentTeamsUseCase,
+  ManageTeamMemberUseCase,
+  MoveFulfilmentTeamUseCase,
+  BulkAssignFulfilmentTasksUseCase,
+} from '../application/use-cases/fulfilment/FulfilmentTeamUseCases';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import {
   ReserveInventoryForOrderUseCase,
@@ -439,8 +447,15 @@ export class Registry {
   public readonly transitionFulfilmentTaskUseCase = new TransitionFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo);
   public readonly listFulfilmentQueueUseCase = new ListFulfilmentQueueUseCase(this.fulfilmentRepo);
   public readonly getFulfilmentOverviewUseCase = new GetFulfilmentOverviewUseCase(this.fulfilmentRepo);
-  public readonly assignFulfilmentTaskUseCase = new AssignFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo);
+  public readonly fulfilmentTeamRepo = new DrizzleFulfilmentTeamRepository();
+  public readonly assignFulfilmentTaskUseCase = new AssignFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, this.fulfilmentTeamRepo);
   public readonly setFulfilmentPriorityUseCase = new SetFulfilmentPriorityUseCase(this.fulfilmentRepo, this.auditRepo);
+  // Fulfilment F1: team queues + ownership.
+  public readonly createFulfilmentTeamUseCase = new CreateFulfilmentTeamUseCase(this.fulfilmentTeamRepo, this.auditRepo);
+  public readonly listFulfilmentTeamsUseCase = new ListFulfilmentTeamsUseCase(this.fulfilmentTeamRepo);
+  public readonly manageTeamMemberUseCase = new ManageTeamMemberUseCase(this.fulfilmentTeamRepo, this.auditRepo);
+  public readonly moveFulfilmentTeamUseCase = new MoveFulfilmentTeamUseCase(this.fulfilmentRepo, this.fulfilmentTeamRepo, this.auditRepo);
+  public readonly bulkAssignFulfilmentTasksUseCase = new BulkAssignFulfilmentTasksUseCase(this.fulfilmentRepo, this.fulfilmentTeamRepo, this.auditRepo);
   // Inventory ledger (Section 12): reservation, release, consumption, availability.
   public readonly inventoryRepo = new DrizzleInventoryRepository();
   public readonly reserveInventoryForOrderUseCase = new ReserveInventoryForOrderUseCase(this.inventoryRepo);

@@ -6,6 +6,8 @@ export interface FulfilmentQueueQuery {
   activeOnly?: boolean;
   /** Filter to a specific assignee, or the literal 'unassigned'. */
   assignedTo?: string | 'unassigned' | null;
+  /** Filter to a specific team queue, or the literal 'unassigned' (no team). */
+  teamId?: string | 'unassigned' | null;
   limit: number;
   offset: number;
 }

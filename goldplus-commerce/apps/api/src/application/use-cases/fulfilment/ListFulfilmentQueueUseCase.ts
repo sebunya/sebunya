@@ -10,6 +10,7 @@ export interface ListFulfilmentQueueInput {
   status?: string | null;
   activeOnly?: boolean;
   assignedTo?: string | 'unassigned' | null;
+  teamId?: string | 'unassigned' | null;
   limit?: number;
   offset?: number;
   /** Clock injection for deterministic overdue computation (defaults to now). */
@@ -47,6 +48,7 @@ export class ListFulfilmentQueueUseCase {
       status,
       activeOnly: input.activeOnly ?? false,
       assignedTo: input.assignedTo ?? null,
+      teamId: input.teamId ?? null,
       limit,
       offset,
     });

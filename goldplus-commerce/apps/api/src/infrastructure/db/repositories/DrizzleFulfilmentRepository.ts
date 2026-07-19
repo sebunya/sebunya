@@ -35,6 +35,7 @@ function toSnapshot(row: typeof fulfilmentTasks.$inferSelect): FulfilmentTaskSna
     warnings: (row.warnings as string[]) ?? [],
     priority: (row.priority as FulfilmentPriority) ?? 'normal',
     slaDueAt: row.slaDueAt,
+    teamId: row.teamId ?? null,
     assignedTo: row.assignedTo ?? null,
     assignedAt: row.assignedAt ?? null,
     notes: row.notes ?? null,
@@ -66,6 +67,7 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
         warnings: s.warnings,
         priority: s.priority,
         slaDueAt: s.slaDueAt,
+        teamId: s.teamId,
         assignedTo: s.assignedTo,
         assignedAt: s.assignedAt,
         notes: s.notes,
@@ -104,6 +106,7 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
         paymentStatus: s.paymentStatus,
         priority: s.priority,
         slaDueAt: s.slaDueAt,
+        teamId: s.teamId,
         assignedTo: s.assignedTo,
         assignedAt: s.assignedAt,
         notes: s.notes,
@@ -123,6 +126,11 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
       conditions.push(isNull(fulfilmentTasks.assignedTo));
     } else if (query.assignedTo) {
       conditions.push(eq(fulfilmentTasks.assignedTo, query.assignedTo));
+    }
+    if (query.teamId === 'unassigned') {
+      conditions.push(isNull(fulfilmentTasks.teamId));
+    } else if (query.teamId) {
+      conditions.push(eq(fulfilmentTasks.teamId, query.teamId));
     }
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 

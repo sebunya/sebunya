@@ -116,6 +116,8 @@ export interface FulfilmentTaskSnapshot {
   warnings: string[];
   priority: FulfilmentPriority;
   slaDueAt: Date;
+  /** Owning team (queue). One active team owner per task. */
+  teamId: string | null;
   assignedTo: string | null;
   assignedAt: Date | null;
   notes: string | null;
@@ -195,6 +197,7 @@ export class FulfilmentTask {
       warnings: [...(input.warnings ?? [])],
       priority,
       slaDueAt: computeSlaDueAt(now, priority),
+      teamId: null,
       assignedTo: null,
       assignedAt: null,
       notes: null,
@@ -209,6 +212,7 @@ export class FulfilmentTask {
   get paymentStatus(): FulfilmentPaymentStatus { return this.snap.paymentStatus; }
   get priority(): FulfilmentPriority { return this.snap.priority; }
   get slaDueAt(): Date { return this.snap.slaDueAt; }
+  get teamId(): string | null { return this.snap.teamId; }
   get assignedTo(): string | null { return this.snap.assignedTo; }
 
   /** Overdue = past the SLA deadline and not yet in a terminal state. */
@@ -266,6 +270,25 @@ export class FulfilmentTask {
       ...this.snap,
       assignedTo: userId,
       assignedAt: userId ? now : null,
+      updatedAt: now,
+    };
+  }
+
+  /**
+   * Move the task to a team queue (or clear with null). One active team owner per
+   * task. Moving to a different team clears any individual assignee that is no
+   * longer eligible — the caller re-validates eligibility. Refuses terminal tasks.
+   */
+  assignToTeam(teamId: string | null, opts: { clearAssignee?: boolean; now?: Date } = {}): void {
+    if (isTerminalFulfilmentStatus(this.snap.status)) {
+      throw new Error(`INVALID_ASSIGNMENT: cannot move a ${this.snap.status} task between teams`);
+    }
+    const now = opts.now ?? new Date();
+    this.snap = {
+      ...this.snap,
+      teamId,
+      assignedTo: opts.clearAssignee ? null : this.snap.assignedTo,
+      assignedAt: opts.clearAssignee ? null : this.snap.assignedAt,
       updatedAt: now,
     };
   }

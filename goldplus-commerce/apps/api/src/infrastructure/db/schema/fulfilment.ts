@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, integer, text, jsonb, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, integer, text, jsonb, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { orders } from './commerce';
 import { users } from './identity';
 
@@ -30,6 +30,7 @@ export const fulfilmentTasks = pgTable(
     warnings: jsonb('warnings'),
     priority: varchar('priority', { length: 10 }).default('normal').notNull(),
     slaDueAt: timestamp('sla_due_at', { withTimezone: true }).notNull(),
+    teamId: uuid('team_id'),
     assignedTo: uuid('assigned_to').references(() => users.id),
     assignedAt: timestamp('assigned_at', { withTimezone: true }),
     notes: text('notes'),
@@ -42,5 +43,38 @@ export const fulfilmentTasks = pgTable(
     createdIdx: index('fulfilment_tasks_created_idx').on(table.createdAt),
     assignedIdx: index('fulfilment_tasks_assigned_idx').on(table.assignedTo),
     slaIdx: index('fulfilment_tasks_sla_idx').on(table.slaDueAt),
+    teamIdx: index('fulfilment_tasks_team_idx').on(table.teamId),
+  })
+);
+
+/** Fulfilment teams (queues). Reuses users/roles — not a second staff directory. */
+export const fulfilmentTeams = pgTable(
+  'fulfilment_teams',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: varchar('name', { length: 120 }).notNull(),
+    slug: varchar('slug', { length: 140 }).notNull(),
+    active: boolean('active').default(true).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex('fulfilment_teams_slug_idx').on(table.slug),
+  })
+);
+
+/** Team membership — links existing users to a fulfilment team. */
+export const fulfilmentTeamMembers = pgTable(
+  'fulfilment_team_members',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    teamId: uuid('team_id').references(() => fulfilmentTeams.id).notNull(),
+    userId: uuid('user_id').references(() => users.id).notNull(),
+    active: boolean('active').default(true).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    memberIdx: uniqueIndex('fulfilment_team_members_team_user_idx').on(table.teamId, table.userId),
+    userIdx: index('fulfilment_team_members_user_idx').on(table.userId),
   })
 );

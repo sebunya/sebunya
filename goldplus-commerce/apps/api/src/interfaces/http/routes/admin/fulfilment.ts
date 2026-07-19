@@ -13,10 +13,10 @@ import { FULFILMENT_STATUSES, FULFILMENT_PRIORITIES } from '../../../../domain/f
  * orders.manage and is audit-logged (timeline). Deny-by-default: every route is
  * behind authMiddleware + an explicit permission.
  *
- * audit-exempt: the write endpoints (PATCH /:id/status, /:id/assign,
- * /:id/priority) delegate auditing to their use cases (Transition/Assign/
- * SetPriority FulfilmentTaskUseCase), each of which writes the fulfilment_task
- * audit timeline via CreateAuditLogUseCase — a dedicated audit channel.
+ * audit-exempt: every write endpoint (status/assign/priority/claim/team move,
+ * team + membership CRUD, bulk assign) delegates auditing to its use case, each
+ * of which writes the audit timeline via CreateAuditLogUseCase — a dedicated
+ * audit channel.
  */
 const routes = new Hono();
 routes.use('*', authMiddleware);
@@ -25,6 +25,8 @@ const listQuerySchema = z.object({
   status: z.enum(FULFILMENT_STATUSES as unknown as [string, ...string[]]).optional(),
   activeOnly: z.enum(['true', 'false']).optional(),
   assignedTo: z.string().min(1).max(64).optional(),
+  teamId: z.string().min(1).max(64).optional(),
+  scope: z.enum(['my', 'unassigned', 'team', 'all']).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
 });
@@ -34,6 +36,8 @@ routes.get('/', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
     status: c.req.query('status'),
     activeOnly: c.req.query('activeOnly'),
     assignedTo: c.req.query('assignedTo'),
+    teamId: c.req.query('teamId'),
+    scope: c.req.query('scope'),
     limit: c.req.query('limit'),
     offset: c.req.query('offset'),
   });
@@ -43,10 +47,18 @@ routes.get('/', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
       400
     );
   }
+  // Queue scopes (my / unassigned / team / all) resolve to concrete filters.
+  const actorId = (c.get('user') as any).id as string;
+  let assignedTo: string | 'unassigned' | null = parsed.data.assignedTo ?? null;
+  let teamId: string | 'unassigned' | null = parsed.data.teamId ?? null;
+  if (parsed.data.scope === 'my') assignedTo = actorId;
+  else if (parsed.data.scope === 'unassigned') assignedTo = 'unassigned';
+  else if (parsed.data.scope === 'team') teamId = parsed.data.teamId ?? 'unassigned';
   const result = await Registry.getInstance().listFulfilmentQueueUseCase.execute({
     status: parsed.data.status ?? null,
     activeOnly: parsed.data.activeOnly === 'true',
-    assignedTo: parsed.data.assignedTo ?? null,
+    assignedTo,
+    teamId,
     limit: parsed.data.limit,
     offset: parsed.data.offset,
   });
@@ -173,6 +185,69 @@ routes.patch('/:id/priority', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), a
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_FOUND' ? 404 : 400);
   }
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
+// --- F1: teams, membership, ownership (orders.manage; audited in use cases) ---
+
+routes.get('/teams', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const teams = await Registry.getInstance().listFulfilmentTeamsUseCase.execute();
+  return c.json({ success: true, data: teams } satisfies ApiResponse<typeof teams>);
+});
+
+routes.post('/teams', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = z.object({ name: z.string().trim().min(2).max(120) }).safeParse(body);
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_BODY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().createFulfilmentTeamUseCase.execute({ name: parsed.data.name, actorId });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  return c.json({ success: true, data: result.team } satisfies ApiResponse<typeof result.team>);
+});
+
+const memberBody = z.object({ userId: z.string().uuid(), action: z.enum(['add', 'remove']) });
+routes.post('/teams/:teamId/members', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const teamId = String(c.req.param('teamId') ?? '');
+  const parsed = memberBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_BODY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().manageTeamMemberUseCase.execute({ teamId, userId: parsed.data.userId, action: parsed.data.action, actorId });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 404);
+  return c.json({ success: true, data: { ok: true } } satisfies ApiResponse<{ ok: boolean }>);
+});
+
+routes.patch('/:id/claim', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().assignFulfilmentTaskUseCase.execute({ taskId: id, assignedTo: actorId, actorId });
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' ? 404 : 400;
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, status);
+  }
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
+const teamMoveBody = z.object({ teamId: z.string().uuid().nullable() });
+routes.patch('/:id/team', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const parsed = teamMoveBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_BODY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().moveFulfilmentTeamUseCase.execute({ taskId: id, teamId: parsed.data.teamId, actorId });
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' || result.code === 'TEAM_NOT_FOUND' ? 404 : 400;
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, status);
+  }
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
+const bulkBody = z.object({ taskIds: z.array(z.string().uuid()).min(1).max(100), assignedTo: z.string().uuid().nullable() });
+routes.post('/bulk-assign', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const parsed = bulkBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_BODY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().bulkAssignFulfilmentTasksUseCase.execute({ taskIds: parsed.data.taskIds, assignedTo: parsed.data.assignedTo, actorId });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });
 
