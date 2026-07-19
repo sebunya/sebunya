@@ -27,3 +27,4 @@ export * from './fulfilment';
 export * from './inventory';
 export * from './customer_dna';
 export * from './decision_intelligence';
+export * from './automation';
