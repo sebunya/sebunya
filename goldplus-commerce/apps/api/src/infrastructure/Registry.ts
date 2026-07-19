@@ -362,7 +362,12 @@ import {
   RecomputeDecisionInsightUseCase,
 } from '../application/use-cases/decision-intelligence/DecisionIntelligenceUseCases';
 import { DrizzleAutomationRepository, DrizzleAutomationExecutionRepository, DrizzleAutomationAudienceReader } from './db/repositories/DrizzleAutomationRepositories';
+import { DrizzleAutomationEligibilityRepository } from './db/repositories/DrizzleAutomationEligibilityRepository';
+import { DrizzleAutomationActionRepository } from './db/repositories/DrizzleAutomationActionRepository';
 import { PlanAutomationExecutionUseCase } from '../application/use-cases/automation/PlanAutomationExecutionUseCase';
+import { EvaluateExecutionEligibilityUseCase } from '../application/use-cases/automation/EvaluateExecutionEligibilityUseCase';
+import { ExecuteAutomationActionUseCase } from '../application/use-cases/automation/ExecuteAutomationActionUseCase';
+import { AutomationInternalActionExecutor } from './automation/AutomationInternalActionExecutor';
 
 export class Registry {
 
@@ -565,11 +570,17 @@ export class Registry {
   public readonly transitionDecisionInsightUseCase = new TransitionDecisionInsightUseCase(this.decisionInsightRepo, this.auditRepo);
   public readonly recomputeDecisionInsightUseCase = new RecomputeDecisionInsightUseCase(this.decisionInsightRepo, this.evaluateDecisionSignalsBatchUseCase);
 
-  // Automation A2: restart-safe trigger planning (reuses Customer DNA audience).
+  // Automation A2/A3: planning, deterministic gates, native internal effects,
+  // and atomic existing-outbox intents. Providers remain behind the outbox.
   public readonly automationRepo = new DrizzleAutomationRepository();
   public readonly automationExecutionRepo = new DrizzleAutomationExecutionRepository();
   public readonly automationAudienceReader = new DrizzleAutomationAudienceReader();
   public readonly planAutomationExecutionUseCase = new PlanAutomationExecutionUseCase(this.automationRepo, this.automationExecutionRepo, this.automationAudienceReader);
+  public readonly automationEligibilityRepo = new DrizzleAutomationEligibilityRepository();
+  public readonly evaluateExecutionEligibilityUseCase = new EvaluateExecutionEligibilityUseCase(this.automationEligibilityRepo);
+  public readonly automationActionRepo = new DrizzleAutomationActionRepository();
+  public readonly automationInternalActionExecutor = new AutomationInternalActionExecutor(this.orderRepo, this.createFulfilmentTaskOnOrderPlacedUseCase);
+  public readonly executeAutomationActionUseCase = new ExecuteAutomationActionUseCase(this.evaluateExecutionEligibilityUseCase, this.automationActionRepo, this.automationInternalActionExecutor);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);
@@ -908,4 +919,3 @@ export class Registry {
     return Registry._instance;
   }
 }
-

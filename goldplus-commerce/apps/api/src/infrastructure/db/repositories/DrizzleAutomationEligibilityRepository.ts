@@ -7,7 +7,7 @@ import {
   automationSuppressions,
 } from '../schema/automation';
 
-type AutomationTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type AutomationTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function insertSuppressionIfAbsent(
   tx: AutomationTransaction,
@@ -43,61 +43,66 @@ export class DrizzleAutomationEligibilityRepository implements IAutomationEligib
   }
 
   async reserveFrequencyCap(input: AutomationFrequencyCapRequest): Promise<FrequencyCapReservationResult> {
-    if (!Number.isInteger(input.limit) || input.limit <= 0) {
-      throw new Error('INVALID_AUTOMATION_FREQUENCY_CAP');
-    }
-    const subjectScope = input.global ? 'GLOBAL' : `SUBJECT:${input.subjectId}`;
-    const lockKey = `automation-cap:${input.versionId}:${subjectScope}:${input.windowKey}`;
-
-    return db.transaction(async (tx) => {
-      // A transaction-scoped lock serializes count + insert for one exact cap
-      // bucket without locking unrelated automations, subjects, or windows.
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
-
-      const [existing] = await tx.select()
-        .from(automationFrequencyCapReservations)
-        .where(eq(automationFrequencyCapReservations.executionId, input.executionId))
-        .limit(1);
-      if (existing) {
-        if (existing.versionId !== input.versionId || existing.subjectScope !== subjectScope || existing.windowKey !== input.windowKey) {
-          throw new Error('AUTOMATION_CAP_RESERVATION_SCOPE_MISMATCH');
-        }
-        const [count] = await tx.select({ used: sql<number>`count(*)::int` })
-          .from(automationFrequencyCapReservations)
-          .where(and(
-            eq(automationFrequencyCapReservations.versionId, input.versionId),
-            eq(automationFrequencyCapReservations.subjectScope, subjectScope),
-            eq(automationFrequencyCapReservations.windowKey, input.windowKey)
-          ));
-        return { reserved: true, reused: true, used: count?.used ?? 1 };
-      }
-
-      const [count] = await tx.select({ used: sql<number>`count(*)::int` })
-        .from(automationFrequencyCapReservations)
-        .where(and(
-          eq(automationFrequencyCapReservations.versionId, input.versionId),
-          eq(automationFrequencyCapReservations.subjectScope, subjectScope),
-          eq(automationFrequencyCapReservations.windowKey, input.windowKey)
-        ));
-      const used = count?.used ?? 0;
-      if (used >= input.limit) {
-        await insertSuppressionIfAbsent(tx, {
-          executionId: input.executionId,
-          subjectId: input.subjectId,
-          reason: 'FREQUENCY_CAPPED',
-        });
-        return { reserved: false, reused: false, used, reason: 'FREQUENCY_CAPPED' };
-      }
-
-      await tx.insert(automationFrequencyCapReservations).values({
-        executionId: input.executionId,
-        definitionId: input.definitionId,
-        versionId: input.versionId,
-        subjectScope,
-        windowKey: input.windowKey,
-        limitSnapshot: input.limit,
-      });
-      return { reserved: true, reused: false, used: used + 1 };
-    });
+    return db.transaction((tx) => reserveAutomationFrequencyCapInTransaction(tx, input));
   }
+}
+
+export async function reserveAutomationFrequencyCapInTransaction(
+  tx: AutomationTransaction,
+  input: AutomationFrequencyCapRequest
+): Promise<FrequencyCapReservationResult> {
+  if (!Number.isInteger(input.limit) || input.limit <= 0) {
+    throw new Error('INVALID_AUTOMATION_FREQUENCY_CAP');
+  }
+  const subjectScope = input.global ? 'GLOBAL' : `SUBJECT:${input.subjectId}`;
+  const lockKey = `automation-cap:${input.versionId}:${subjectScope}:${input.windowKey}`;
+
+  // A transaction-scoped lock serializes count + insert for one exact cap
+  // bucket without locking unrelated automations, subjects, or windows.
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+
+  const [existing] = await tx.select()
+    .from(automationFrequencyCapReservations)
+    .where(eq(automationFrequencyCapReservations.executionId, input.executionId))
+    .limit(1);
+  if (existing) {
+    if (existing.versionId !== input.versionId || existing.subjectScope !== subjectScope || existing.windowKey !== input.windowKey) {
+      throw new Error('AUTOMATION_CAP_RESERVATION_SCOPE_MISMATCH');
+    }
+    const [count] = await tx.select({ used: sql<number>`count(*)::int` })
+      .from(automationFrequencyCapReservations)
+      .where(and(
+        eq(automationFrequencyCapReservations.versionId, input.versionId),
+        eq(automationFrequencyCapReservations.subjectScope, subjectScope),
+        eq(automationFrequencyCapReservations.windowKey, input.windowKey)
+      ));
+    return { reserved: true, reused: true, used: count?.used ?? 1 };
+  }
+
+  const [count] = await tx.select({ used: sql<number>`count(*)::int` })
+    .from(automationFrequencyCapReservations)
+    .where(and(
+      eq(automationFrequencyCapReservations.versionId, input.versionId),
+      eq(automationFrequencyCapReservations.subjectScope, subjectScope),
+      eq(automationFrequencyCapReservations.windowKey, input.windowKey)
+    ));
+  const used = count?.used ?? 0;
+  if (used >= input.limit) {
+    await insertSuppressionIfAbsent(tx, {
+      executionId: input.executionId,
+      subjectId: input.subjectId,
+      reason: 'FREQUENCY_CAPPED',
+    });
+    return { reserved: false, reused: false, used, reason: 'FREQUENCY_CAPPED' };
+  }
+
+  await tx.insert(automationFrequencyCapReservations).values({
+    executionId: input.executionId,
+    definitionId: input.definitionId,
+    versionId: input.versionId,
+    subjectScope,
+    windowKey: input.windowKey,
+    limitSnapshot: input.limit,
+  });
+  return { reserved: true, reused: false, used: used + 1 };
 }

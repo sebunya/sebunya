@@ -8,6 +8,8 @@ Automation A3.0 has reproduced and classified the Automation JSONB issue as `ACT
 
 Automation A3.0 is committed/pushed at `a44f456bc69d6d6fa0c834ff51f7d13f85d4c9de` and its clean suite passed 187 files / 3,971 tests. A3.1 now has a proven fixed eligibility order, exact suppression persistence, and one durable cap slot per execution. Additive migration `0040` passed fresh and populated upgrades; a real PostgreSQL two-racer proof produced one reservation and one exact cap suppression, and retry reused the winner's slot. Complete the A3.1 commit/push and clean-suite boundary, then start A3.2 by reusing existing internal use cases and the existing outbox in one cap/outbox transaction.
 
+A3.1 is committed/pushed at `74b05db5db7294eafa39d63f7297229372373d74` and its clean suite passed 188 files / 3,992 tests. A3.2 now reuses the existing fulfilment use case for its safe configured internal effect and atomically creates one cap plus one linked no-send row in the existing outbox for an external action. Its PostgreSQL two-executor proof has one winner/one duplicate and zero provider calls. Complete the A3.2 commit/push and clean-suite boundary, then begin A3.3's truthful provider outcome, reconciliation, DLQ, and gate-revalidated replay work without replacing the existing outbox/router/ticker.
+
 This checkout is the canonical clean continuation worktree. Do not use the dirty `GoldPlusFinal` tree or the dirty production source tree for feature work, commits, pushes, or deployments.
 
 - Checkout: `/Users/robertsebunya/goldplus-clean-continuation/phase-2-measurement-control-tower-completion-20260715T122313Z`

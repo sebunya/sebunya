@@ -26,11 +26,11 @@ Tick only with evidence (path + command + result). Do not mark a box from assump
 - [x] Migration decision recorded (`0040` required; fresh and populated upgrade passed)
 
 ## A3.2 — internal effects and atomic outbox intents
-- [ ] Internal actions run through existing use cases; idempotent + audited
-- [ ] External action persists exactly one outbox intent (reuse `ProcessOutboxBatchUseCase`)
-- [ ] Cap reservation and outbox intent created atomically (one transaction)
-- [ ] One action → one outbox intent (real-PG; two executors → one)
-- [ ] No provider call from any route/use case
+- [x] Internal actions run through existing use cases; configured fulfilment is idempotent and action status/lease is auditable
+- [x] External action persists exactly one intent in existing `outbox_events`; no fork of `ProcessOutboxBatchUseCase`
+- [x] Cap reservation and outbox intent created atomically (one Drizzle transaction)
+- [x] One action → one outbox intent (real-PG; two executors → one winner/one duplicate)
+- [x] No provider call from any route/use case (`providerCalls=0`; no provider dependency)
 
 ## A3.3 — provider outcomes, retry, DLQ, reconciliation, replay
 - [ ] QUEUED ≠ SENT

@@ -6,7 +6,7 @@ import {
 } from '../../../domain/automation/Automation';
 import { IAutomationEligibilityRepository } from '../../ports/IAutomationEligibilityRepository';
 
-export type AutomationExecutionMode = 'LIVE' | 'DRY_RUN' | 'DISABLED' | 'NOT_CONFIGURED' | 'SUPPRESSED';
+export type AutomationExecutionMode = 'LIVE' | 'ATOMIC_EXTERNAL' | 'DRY_RUN' | 'DISABLED' | 'NOT_CONFIGURED' | 'SUPPRESSED';
 
 export interface EvaluateExecutionEligibilityInput extends AutomationEligibilityGateInput {
   executionId: string;

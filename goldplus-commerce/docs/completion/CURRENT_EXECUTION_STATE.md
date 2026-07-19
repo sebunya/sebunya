@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-19 · Automation A3.1)
+# CURRENT EXECUTION STATE (2026-07-19 · Automation A3.2)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -15,6 +15,10 @@
   fixed fail-closed eligibility order, full exact suppression enum/persistence, and transactionally serialized durable
   cap reservation. Additive migration `0040` is required because plans/suppressions cannot safely represent reusable
   positive slots or exclude non-live outcomes. No prior migration changed.
+- Automation **A3.2 implementation proven** from clean A3.1 head `74b05db5db7294eafa39d63f7297229372373d74`:
+  external actions atomically reserve/reuse a cap and persist/link exactly one no-send intent in the existing outbox;
+  configured fulfilment actions delegate to the existing idempotent use case, and unsupported internal families fail
+  closed as NOT_CONFIGURED. Registry is wired; no provider is a dependency of the action use case.
 - Other modules SOURCE_COMPLETE_NOT_DEPLOYED (Fulfilment F1-F5+UI, Inventory, Customer DNA & NBA 0037,
   Decision Intelligence 0038). Migrations proven through **0039** (REPORTED — rerun per handover).
 - Production status: not reclassified by C0; nothing is newly claimed `LIVE_VERIFIED`.
@@ -26,8 +30,11 @@
 - A3.1 proof: focused 44/44, fresh replay through `0040`, populated `0039`→`0040` upgrade, and a real-PostgreSQL
   two-racer proof passed with one reservation, one exact capped suppression, winner retry slot reuse, and zero
   provider calls. Workspace typecheck, architecture 10/10, API/web build, secret scan, focused lint, and diff check pass.
-- Next gate: commit A3.1, run the clean-tree full suite, push and verify alignment, then begin **A3.2** from the
-  context ledger/work plan. A3.2 must reuse native internal use cases and the existing outbox and make cap plus
-  external outbox intent atomic; it must not introduce a second router, worker, scheduler, or provider path.
+- A3.2 proof: five focused Automation files / 50 tests and a real-PostgreSQL two-executor race pass with one
+  QUEUED action, one cap, one linked native-JSONB outbox intent, `no_send_guarantee=true`, and zero provider calls.
+  Typecheck, architecture 10/10, build, secret scan, focused lint, and diff check pass; no migration was added.
+- Next gate: commit A3.2, run the clean-tree full suite, push/alignment verification, then begin **A3.3**. Reuse the
+  existing router/outbox/ticker and retry/DLQ path; add truthful SENT/FAILED/OUTCOME_UNKNOWN reconciliation and
+  gate-revalidated replay without synchronous provider calls or duplicate cap slots.
 
 ---
