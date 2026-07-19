@@ -33,14 +33,14 @@ Tick only with evidence (path + command + result). Do not mark a box from assump
 - [x] No provider call from any route/use case (`providerCalls=0`; no provider dependency)
 
 ## A3.3 — provider outcomes, retry, DLQ, reconciliation, replay
-- [ ] QUEUED ≠ SENT
-- [ ] SENT only after provider success
-- [ ] FAILED only after an attempted provider call
-- [ ] Ambiguous acceptance → OUTCOME_UNKNOWN
-- [ ] OUTCOME_UNKNOWN not blindly retried (retains slot until reconciliation)
-- [ ] Successful effect is non-replayable
-- [ ] DLQ replay re-evaluates the full gate and reuses the original cap slot
-- [ ] Reuse existing retry/backoff/DLQ (no second retry engine)
+- [x] QUEUED ≠ SENT
+- [x] SENT only after provider success
+- [x] FAILED only after an attempted provider call
+- [x] Ambiguous acceptance → OUTCOME_UNKNOWN
+- [x] OUTCOME_UNKNOWN not blindly retried (retains slot until reconciliation)
+- [x] Successful effect is non-replayable
+- [x] DLQ replay re-evaluates the full gate and reuses the original cap slot
+- [x] Reuse existing retry/backoff/DLQ (no second retry engine)
 
 ## A3.4 — safety, concurrency, crash proofs
 - [ ] Explicit adapter call-counter proof: DRY_RUN / PROVIDER_DISABLED / NOT_CONFIGURED / CUSTOMER_COMMUNICATIONS_DISABLED / NOTIFICATION_DELIVERY_DISABLED / LIVE_SEND_DISABLED → 0 calls

@@ -1,8 +1,17 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { IAutomationActionRepository, AutomationExternalIntentInput, AutomationExternalIntentResult } from '../../../application/ports/IAutomationActionRepository';
-import { encodeAutomationJsonb } from '../AutomationJsonbCodec';
+import { ExecutionStatus } from '../../../domain/automation/Automation';
+import { decodeAutomationVersionConfig, encodeAutomationJsonb } from '../AutomationJsonbCodec';
 import { db } from '../client';
-import { automationActionExecutions, automationEvents, automationExecutions } from '../schema/automation';
+import {
+  automationActionExecutions,
+  automationApprovals,
+  automationDefinitions,
+  automationEvents,
+  automationExecutions,
+  automationFrequencyCapReservations,
+  automationVersions,
+} from '../schema/automation';
 import { outboxEvents } from '../schema/system';
 import { reserveAutomationFrequencyCapInTransaction } from './DrizzleAutomationEligibilityRepository';
 
@@ -43,6 +52,7 @@ export class DrizzleAutomationActionRepository implements IAutomationActionRepos
         actionFamily: input.action.family,
         channel: input.action.channel,
         config: input.action.config,
+        noSendGuarantee: true,
         relatedEntity: 'automation_action',
         relatedEntityId: input.actionExecutionId,
       };
@@ -165,6 +175,146 @@ export class DrizzleAutomationActionRepository implements IAutomationActionRepos
           toState: status,
         });
       }
+    });
+  }
+
+  async recordProviderOutcome(input: {
+    actionExecutionId: string;
+    status: 'SENT' | 'FAILED' | 'OUTCOME_UNKNOWN' | 'DRY_RUN' | 'NOT_CONFIGURED' | 'DISABLED';
+    attempted: boolean;
+    providerCode: string | null;
+    providerMessage: string;
+  }): Promise<{ status: ExecutionStatus; attemptCount: number }> {
+    if ((input.status === 'SENT' || input.status === 'FAILED' || input.status === 'OUTCOME_UNKNOWN') && !input.attempted) {
+      throw new Error('AUTOMATION_PROVIDER_ATTEMPT_REQUIRED_FOR_OUTCOME');
+    }
+    return db.transaction(async (tx) => {
+      const [action] = await tx.select().from(automationActionExecutions)
+        .where(eq(automationActionExecutions.id, input.actionExecutionId)).limit(1).for('update');
+      if (!action) throw new Error('AUTOMATION_ACTION_EXECUTION_NOT_FOUND');
+      if (action.status === 'SENT' || action.status === 'INTERNAL_SUCCESS' || action.status === 'OUTCOME_UNKNOWN') {
+        return { status: action.status as ExecutionStatus, attemptCount: action.attemptCount };
+      }
+
+      const attemptCount = action.attemptCount + (input.attempted ? 1 : 0);
+      const status: ExecutionStatus = input.status === 'FAILED' && attemptCount >= 8 ? 'DEAD_LETTERED' : input.status;
+      await tx.update(automationActionExecutions).set({
+        status,
+        attemptCount,
+        lastError: status === 'SENT' ? null : `${input.providerCode ?? 'NO_CODE'}: ${input.providerMessage}`,
+        sentAt: status === 'SENT' ? new Date() : action.sentAt,
+        deadLetteredAt: status === 'DEAD_LETTERED' ? new Date() : action.deadLetteredAt,
+        updatedAt: new Date(),
+      }).where(eq(automationActionExecutions.id, input.actionExecutionId));
+
+      // A live attempt owns its original slot through retry, dead letter,
+      // replay, and ambiguous reconciliation. Only zero-attempt outcomes release.
+      const releaseCap = status === 'DRY_RUN' || status === 'DISABLED' || status === 'NOT_CONFIGURED';
+      if (releaseCap) {
+        await tx.delete(automationFrequencyCapReservations)
+          .where(eq(automationFrequencyCapReservations.executionId, action.executionId));
+      }
+      await tx.insert(automationEvents).values({
+        executionId: action.executionId,
+        eventType: `PROVIDER_${status}`,
+        fromState: action.status,
+        toState: status,
+        reason: input.providerCode,
+      });
+      return { status, attemptCount };
+    });
+  }
+
+  async findReplayCandidate(actionExecutionId: string, now: Date) {
+    const [action] = await db.select().from(automationActionExecutions)
+      .where(eq(automationActionExecutions.id, actionExecutionId)).limit(1);
+    if (!action) return null;
+    const [execution] = await db.select().from(automationExecutions)
+      .where(eq(automationExecutions.id, action.executionId)).limit(1);
+    if (!execution) return null;
+    const [definition] = await db.select().from(automationDefinitions)
+      .where(eq(automationDefinitions.id, execution.definitionId)).limit(1);
+    const [version] = await db.select().from(automationVersions)
+      .where(eq(automationVersions.id, execution.versionId)).limit(1);
+    if (!definition || !version || definition.currentVersion !== execution.versionNumber) return null;
+    const config = decodeAutomationVersionConfig(version.config);
+    const configuredAction = config.actions.find((candidate) => candidate.actionIndex === action.actionIndex);
+    if (!configuredAction || configuredAction.family !== action.actionFamily) return null;
+    let approvalValid = !version.requiresApproval;
+    if (version.requiresApproval) {
+      const [approval] = await db.select({ id: automationApprovals.id }).from(automationApprovals)
+        .where(and(
+          eq(automationApprovals.versionId, version.id),
+          eq(automationApprovals.status, 'APPROVED'),
+          sql`(${automationApprovals.expiresAt} is null or ${automationApprovals.expiresAt} > ${now})`
+        )).limit(1);
+      approvalValid = !!approval;
+    }
+    return {
+      actionExecutionId: action.id,
+      executionId: execution.id,
+      outboxEventId: action.outboxEventId,
+      definitionId: execution.definitionId,
+      versionId: execution.versionId,
+      versionNumber: execution.versionNumber,
+      definitionPaused: definition.status !== 'ACTIVE',
+      requiresApproval: version.requiresApproval,
+      approvalValid,
+      subjectId: execution.subjectId,
+      windowKey: execution.windowKey,
+      status: action.status as ExecutionStatus,
+      action: configuredAction,
+      config,
+    };
+  }
+
+  async markReplayed(actionExecutionId: string, actorId: string, reason: string, now: Date): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      const [action] = await tx.update(automationActionExecutions).set({
+        status: 'REPLAYED', replayedAt: now, replayActor: actorId, updatedAt: now,
+      }).where(and(
+        eq(automationActionExecutions.id, actionExecutionId),
+        sql`${automationActionExecutions.status} in ('FAILED', 'DEAD_LETTERED')`
+      )).returning({ executionId: automationActionExecutions.executionId });
+      if (!action) return false;
+      await tx.insert(automationEvents).values({
+        executionId: action.executionId,
+        eventType: 'ACTION_REPLAYED',
+        toState: 'REPLAYED',
+        actorId,
+        reason,
+      });
+      return true;
+    });
+  }
+
+  async reconcileUnknown(input: {
+    actionExecutionId: string;
+    resolution: 'SENT' | 'FAILED';
+    actorId: string;
+    reason: string;
+    now: Date;
+  }): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      const [action] = await tx.update(automationActionExecutions).set({
+        status: input.resolution,
+        sentAt: input.resolution === 'SENT' ? input.now : null,
+        lastError: input.resolution === 'FAILED' ? `RECONCILED_FAILED: ${input.reason}` : null,
+        updatedAt: input.now,
+      }).where(and(
+        eq(automationActionExecutions.id, input.actionExecutionId),
+        eq(automationActionExecutions.status, 'OUTCOME_UNKNOWN')
+      )).returning({ executionId: automationActionExecutions.executionId });
+      if (!action) return false;
+      await tx.insert(automationEvents).values({
+        executionId: action.executionId,
+        eventType: 'OUTCOME_RECONCILED',
+        fromState: 'OUTCOME_UNKNOWN',
+        toState: input.resolution,
+        actorId: input.actorId,
+        reason: input.reason,
+      });
+      return true;
     });
   }
 }

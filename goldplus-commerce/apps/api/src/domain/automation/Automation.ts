@@ -31,10 +31,10 @@ export function isDefinitionTerminal(s: DefinitionStatus): boolean { return s ==
 // ---------- execution lifecycle (separate from definition) ----------
 export type ExecutionStatus =
   | 'PLANNED' | 'INELIGIBLE' | 'ELIGIBLE' | 'SUPPRESSED' | 'DRY_RUN' | 'QUEUED' | 'PROCESSING'
-  | 'INTERNAL_SUCCESS' | 'SENT' | 'FAILED' | 'DEAD_LETTERED' | 'REPLAYED' | 'CANCELLED' | 'NOT_CONFIGURED' | 'DISABLED';
+  | 'INTERNAL_SUCCESS' | 'SENT' | 'FAILED' | 'OUTCOME_UNKNOWN' | 'DEAD_LETTERED' | 'REPLAYED' | 'CANCELLED' | 'NOT_CONFIGURED' | 'DISABLED';
 export const EXECUTION_STATUSES: readonly ExecutionStatus[] = [
   'PLANNED', 'INELIGIBLE', 'ELIGIBLE', 'SUPPRESSED', 'DRY_RUN', 'QUEUED', 'PROCESSING',
-  'INTERNAL_SUCCESS', 'SENT', 'FAILED', 'DEAD_LETTERED', 'REPLAYED', 'CANCELLED', 'NOT_CONFIGURED', 'DISABLED',
+  'INTERNAL_SUCCESS', 'SENT', 'FAILED', 'OUTCOME_UNKNOWN', 'DEAD_LETTERED', 'REPLAYED', 'CANCELLED', 'NOT_CONFIGURED', 'DISABLED',
 ];
 /** A successful effect can never be replayed. */
 export function isReplayable(status: ExecutionStatus): boolean {

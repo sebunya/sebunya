@@ -367,6 +367,8 @@ import { DrizzleAutomationActionRepository } from './db/repositories/DrizzleAuto
 import { PlanAutomationExecutionUseCase } from '../application/use-cases/automation/PlanAutomationExecutionUseCase';
 import { EvaluateExecutionEligibilityUseCase } from '../application/use-cases/automation/EvaluateExecutionEligibilityUseCase';
 import { ExecuteAutomationActionUseCase } from '../application/use-cases/automation/ExecuteAutomationActionUseCase';
+import { ReplayAutomationActionUseCase } from '../application/use-cases/automation/ReplayAutomationActionUseCase';
+import { ReconcileAutomationOutcomeUseCase } from '../application/use-cases/automation/ReconcileAutomationOutcomeUseCase';
 import { AutomationInternalActionExecutor } from './automation/AutomationInternalActionExecutor';
 
 export class Registry {
@@ -409,6 +411,7 @@ export class Registry {
   public readonly attributeRepo = new DrizzleAttributeRepository();
   public readonly notificationAttemptRepo = new DrizzleNotificationAttemptRepository();
   public readonly outboxRepo = new DrizzleOutboxRepository();
+  public readonly automationActionRepo = new DrizzleAutomationActionRepository();
 
   public readonly measurementAdminRepo = new DrizzleMeasurementAdminRepository();
   public readonly dlqRepo = new DrizzleDlqRepository();
@@ -449,7 +452,8 @@ export class Registry {
   public readonly notificationRouter = new DefaultNotificationRouter(
     this.zeptoMailAdapter,
     this.whatsappAdapter,
-    this.smsAdapter
+    this.smsAdapter,
+    this.automationActionRepo
   );
 
   // Recommendation Logic
@@ -578,9 +582,10 @@ export class Registry {
   public readonly planAutomationExecutionUseCase = new PlanAutomationExecutionUseCase(this.automationRepo, this.automationExecutionRepo, this.automationAudienceReader);
   public readonly automationEligibilityRepo = new DrizzleAutomationEligibilityRepository();
   public readonly evaluateExecutionEligibilityUseCase = new EvaluateExecutionEligibilityUseCase(this.automationEligibilityRepo);
-  public readonly automationActionRepo = new DrizzleAutomationActionRepository();
   public readonly automationInternalActionExecutor = new AutomationInternalActionExecutor(this.orderRepo, this.createFulfilmentTaskOnOrderPlacedUseCase);
   public readonly executeAutomationActionUseCase = new ExecuteAutomationActionUseCase(this.evaluateExecutionEligibilityUseCase, this.automationActionRepo, this.automationInternalActionExecutor);
+  public readonly replayAutomationActionUseCase = new ReplayAutomationActionUseCase(this.automationActionRepo, this.outboxRepo, this.automationAudienceReader, this.evaluateExecutionEligibilityUseCase);
+  public readonly reconcileAutomationOutcomeUseCase = new ReconcileAutomationOutcomeUseCase(this.automationActionRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);

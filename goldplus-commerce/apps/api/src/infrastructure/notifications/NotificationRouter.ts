@@ -1,12 +1,15 @@
 import { INotificationProvider } from '../../application/ports/INotificationProvider';
 import { INotificationRouter, NotificationRoutingTarget } from '../../application/use-cases/outbox/ProcessOutboxBatchUseCase';
 import { parseAdminRecipients } from '../../domain/notifications/AdminOrderEmail';
+import { IAutomationActionRepository } from '../../application/ports/IAutomationActionRepository';
+import { AutomationOutcomeTrackingProvider } from '../automation/AutomationOutcomeTrackingProvider';
 
 export class DefaultNotificationRouter implements INotificationRouter {
   constructor(
     private readonly emailProvider: INotificationProvider,
     private readonly whatsappProvider: INotificationProvider,
-    private readonly smsProvider: INotificationProvider
+    private readonly smsProvider: INotificationProvider,
+    private readonly automationOutcomes?: IAutomationActionRepository
   ) {}
 
   async route(eventType: string, payload: Record<string, unknown>): Promise<NotificationRoutingTarget[]> {
@@ -18,6 +21,40 @@ export class DefaultNotificationRouter implements INotificationRouter {
     const relatedEntityId = String(payload.relatedEntityId || payload.id || '');
 
     switch (eventType) {
+      case 'AUTOMATION_ACTION_REQUESTED': {
+        if (!this.automationOutcomes) break;
+        const actionExecutionId = String(payload.actionExecutionId || '');
+        const actionFamily = String(payload.actionFamily || '');
+        const config = payload.config && typeof payload.config === 'object' && !Array.isArray(payload.config)
+          ? payload.config as Record<string, unknown>
+          : {};
+        const recipient = typeof config.recipient === 'string' ? config.recipient : '';
+        const template = typeof config.template === 'string' ? config.template : '';
+        const delegate = actionFamily === 'EMAIL'
+          ? this.emailProvider
+          : actionFamily === 'WHATSAPP_TEMPLATE'
+            ? this.whatsappProvider
+            : null;
+        if (!actionExecutionId || !delegate) break;
+        targets.push({
+          channel: actionFamily === 'EMAIL' ? 'email' : 'whatsapp',
+          provider: new AutomationOutcomeTrackingProvider(
+            delegate,
+            this.automationOutcomes,
+            actionExecutionId,
+            payload.noSendGuarantee === true
+          ),
+          payload: {
+            recipient,
+            template,
+            data: config,
+            relatedEntity: 'automation_action',
+            relatedEntityId: actionExecutionId,
+          },
+        });
+        break;
+      }
+
       case 'ADMIN_ORDER_EMAIL': {
         // Secure, configured admin recipients only (never hard-coded). One
         // pre-rendered email per recipient; missing config yields no target and

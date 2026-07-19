@@ -1,4 +1,4 @@
-import { AutomationActionConfig } from '../../domain/automation/Automation';
+import { AutomationActionConfig, AutomationVersionConfig, ExecutionStatus } from '../../domain/automation/Automation';
 import { AutomationFrequencyCapRequest } from './IAutomationEligibilityRepository';
 
 export interface AutomationExternalIntentInput {
@@ -25,6 +25,39 @@ export interface IAutomationActionRepository {
   }): Promise<'CLAIMED' | 'COMPLETED' | 'BUSY'>;
   completeInternal(actionExecutionId: string): Promise<void>;
   markTerminal(actionExecutionId: string, status: 'NOT_CONFIGURED' | 'SUPPRESSED'): Promise<void>;
+  recordProviderOutcome(input: {
+    actionExecutionId: string;
+    status: 'SENT' | 'FAILED' | 'OUTCOME_UNKNOWN' | 'DRY_RUN' | 'NOT_CONFIGURED' | 'DISABLED';
+    attempted: boolean;
+    providerCode: string | null;
+    providerMessage: string;
+  }): Promise<{ status: ExecutionStatus; attemptCount: number }>;
+  findReplayCandidate(actionExecutionId: string, now: Date): Promise<AutomationReplayCandidate | null>;
+  markReplayed(actionExecutionId: string, actorId: string, reason: string, now: Date): Promise<boolean>;
+  reconcileUnknown(input: {
+    actionExecutionId: string;
+    resolution: 'SENT' | 'FAILED';
+    actorId: string;
+    reason: string;
+    now: Date;
+  }): Promise<boolean>;
+}
+
+export interface AutomationReplayCandidate {
+  actionExecutionId: string;
+  executionId: string;
+  outboxEventId: string | null;
+  definitionId: string;
+  versionId: string;
+  versionNumber: number;
+  definitionPaused: boolean;
+  requiresApproval: boolean;
+  approvalValid: boolean;
+  subjectId: string | null;
+  windowKey: string;
+  status: ExecutionStatus;
+  action: AutomationActionConfig;
+  config: AutomationVersionConfig;
 }
 
 export interface AutomationInternalActionExecutionResult {

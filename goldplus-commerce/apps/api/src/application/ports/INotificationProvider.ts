@@ -1,4 +1,4 @@
-export type NotificationStatus = 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'DISABLED';
+export type NotificationStatus = 'SENT' | 'FAILED' | 'OUTCOME_UNKNOWN' | 'DRY_RUN' | 'NOT_CONFIGURED' | 'DISABLED';
 
 export interface NotificationDispatchPayload {
   recipient: string;
