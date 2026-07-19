@@ -40,7 +40,9 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
         return summariseReservation(orderId, outcomeLines, true);
       }
 
-      // Lock the product rows so concurrent checkouts cannot oversell.
+      // Deterministic lock order avoids deadlocks between concurrent multi-line
+      // orders. Lock every product row so concurrent checkouts cannot oversell.
+      const sortedIds = [...productIds].sort();
       const rows = await tx
         .select({
           id: products.id,
@@ -48,35 +50,39 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           reserved: products.reservedQuantity,
         })
         .from(products)
-        .where(inArray(products.id, productIds))
+        .where(inArray(products.id, sortedIds))
         .for('update');
       const byId = new Map(rows.map((r) => [r.id, r]));
 
-      const outcomeLines: ReservationLineOutcome[] = [];
-      for (const productId of productIds) {
+      // All-or-nothing: a normal order reserves every line fully or reserves
+      // nothing. Any line that cannot be fully satisfied (missing product or
+      // insufficient available stock) makes the whole reservation a backorder,
+      // and NO stock is held — the order is never silently oversold.
+      const feasible = sortedIds.every((productId) => {
         const requested = requestByProduct.get(productId)!;
         const row = byId.get(productId);
-        if (!row) {
-          // Unknown product — reserve nothing, full backorder (truthful).
-          outcomeLines.push({ productId, requested, reserved: 0, shortfall: requested });
-          continue;
-        }
-        const available = computeAvailable(row.stock, row.reserved);
-        const reserved = Math.max(0, Math.min(available, requested));
-        if (reserved > 0) {
+        if (!row) return false;
+        return computeAvailable(row.stock, row.reserved) >= requested;
+      });
+
+      const outcomeLines: ReservationLineOutcome[] = [];
+      for (const productId of sortedIds) {
+        const requested = requestByProduct.get(productId)!;
+        const reserved = feasible ? requested : 0;
+        if (feasible) {
           await tx
             .update(products)
             .set({ reservedQuantity: sql`${products.reservedQuantity} + ${reserved}` })
             .where(eq(products.id, productId));
+          await tx.insert(inventoryReservations).values({
+            orderId,
+            productId,
+            requestedQuantity: requested,
+            reservedQuantity: reserved,
+            status: 'reserved',
+          });
         }
-        await tx.insert(inventoryReservations).values({
-          orderId,
-          productId,
-          requestedQuantity: requested,
-          reservedQuantity: reserved,
-          status: 'reserved',
-        });
-        outcomeLines.push({ productId, requested, reserved, shortfall: Math.max(0, requested - reserved) });
+        outcomeLines.push({ productId, requested, reserved, shortfall: requested - reserved });
       }
       return summariseReservation(orderId, outcomeLines, false);
     });

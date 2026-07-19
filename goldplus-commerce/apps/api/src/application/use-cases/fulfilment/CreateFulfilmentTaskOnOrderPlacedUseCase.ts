@@ -44,7 +44,10 @@ function buildDeliverySummary(order: Order): string {
 export class CreateFulfilmentTaskOnOrderPlacedUseCase {
   constructor(private readonly repo: IFulfilmentRepository) {}
 
-  async execute(order: Order, opts: { extraWarnings?: string[] } = {}): Promise<CreateFulfilmentTaskResult> {
+  async execute(
+    order: Order,
+    opts: { extraWarnings?: string[]; hold?: boolean } = {}
+  ): Promise<CreateFulfilmentTaskResult> {
     const existing = await this.repo.findByOrderId(order.id);
     if (existing) {
       return { created: false, taskId: existing.id, orderId: order.id };
@@ -59,7 +62,11 @@ export class CreateFulfilmentTaskOnOrderPlacedUseCase {
       lineTotalUgx: i.price * i.quantity,
     }));
 
-    const warnings: string[] = [...(opts.extraWarnings ?? [])];
+    const warnings: string[] = [];
+    if (opts.hold) {
+      warnings.push('ON_HOLD (backordered): insufficient confirmed stock — NOT ready for preparation until stock is confirmed.');
+    }
+    warnings.push(...(opts.extraWarnings ?? []));
     if (!order.deliveryFeeConfirmed) {
       warnings.push('Delivery fee not from a configured zone — confirm before dispatch.');
     }
@@ -82,6 +89,7 @@ export class CreateFulfilmentTaskOnOrderPlacedUseCase {
       deliveryFeeUgx: order.deliveryFeeUgx,
       items,
       warnings,
+      hold: opts.hold,
       now: order.createdAt,
     });
 

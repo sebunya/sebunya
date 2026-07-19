@@ -132,25 +132,35 @@ routes.post('/orders/create', async (c) => {
       clientOrderKey: body.clientOrderKey ?? null,
     });
 
-    // Section 12: reserve stock for the order (idempotent, oversell-safe). Any
-    // shortfall becomes a backorder warning surfaced on the fulfilment task.
-    // Best-effort: a reservation failure must never fail an already-persisted order.
+    // Section 12: reserve stock for the order (idempotent, all-or-nothing,
+    // oversell-safe). The order is NEVER silently accepted as ready for
+    // preparation when stock was not reserved. If the reservation is not fully
+    // satisfied — or cannot be confirmed at all — the fulfilment task opens
+    // ON_HOLD (backordered) with a truthful warning instead of NEW.
     let backorderWarnings: string[] = [];
+    let stockHeld = false;
     try {
       const reservation = await registry.reserveInventoryForOrderUseCase.execute(result.order);
       backorderWarnings = reservation.warnings;
+      stockHeld = !reservation.fullyReserved;
     } catch (invErr: any) {
       console.error('[API_ERROR] Inventory reservation failed (order persisted):', invErr?.message);
+      // Fail safe, not silent: hold the order for stock confirmation.
+      stockHeld = true;
+      backorderWarnings = ['PENDING_STOCK_CONFIRMATION: stock could not be confirmed — order held for review.'];
     }
 
     // Section 9.3: every successfully placed order creates exactly one idempotent
     // admin fulfilment alert (the internal "New Orders" work item). This never
     // depends on any external provider, so it works even when email/SMS/WhatsApp
-    // are unavailable. A failure here must never fail an already-persisted order,
-    // and the unique order_id constraint makes duplicate submissions collapse to
-    // a single task.
+    // are unavailable. The unique order_id constraint makes duplicate submissions
+    // collapse to a single task. A held task is created ON_HOLD so it is never
+    // presented as ready for preparation.
     try {
-      await registry.createFulfilmentTaskOnOrderPlacedUseCase.execute(result.order, { extraWarnings: backorderWarnings });
+      await registry.createFulfilmentTaskOnOrderPlacedUseCase.execute(result.order, {
+        extraWarnings: backorderWarnings,
+        hold: stockHeld,
+      });
     } catch (fulfilErr: any) {
       console.error('[API_ERROR] Fulfilment task creation failed (order persisted):', fulfilErr?.message);
     }
@@ -161,6 +171,10 @@ routes.post('/orders/create', async (c) => {
         ...result.order,
         deliveryFeeConfirmed: result.deliveryFeeConfirmed,
         idempotentReplay: result.idempotentReplay,
+        // Truthful stock outcome (Section 11): a held order is backordered and
+        // is not ready for preparation until stock is confirmed.
+        stockConfirmed: !stockHeld,
+        fulfilmentState: stockHeld ? 'ON_HOLD_BACKORDERED' : 'STOCK_CONFIRMED',
       },
     };
     return c.json(res);

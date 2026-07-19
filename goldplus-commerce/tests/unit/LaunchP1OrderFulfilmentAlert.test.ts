@@ -226,6 +226,17 @@ describe('Order-to-admin fulfilment use cases', () => {
     expect(page.total).toBe(1);
   });
 
+  it('opens the task ON_HOLD (backordered) when stock is not confirmed, never NEW', async () => {
+    const repo = new InMemoryFulfilmentRepo();
+    const uc = new CreateFulfilmentTaskOnOrderPlacedUseCase(repo);
+    await uc.execute(makeOrder(), { hold: true, extraWarnings: ['Backorder: 1 of 4 unit(s) …'] });
+    const snap = await repo.findByOrderId('11111111-1111-4111-8111-111111111111');
+    expect(snap!.status).toBe('ON_HOLD'); // not NEW — never presented as ready
+    expect(snap!.warnings.some((w) => /ON_HOLD \(backordered\)/.test(w))).toBe(true);
+    // A held task is not counted as a New Order.
+    expect(await repo.countNew()).toBe(0);
+  });
+
   it('flags an unpaid order with a do-not-dispatch warning', async () => {
     const repo = new InMemoryFulfilmentRepo();
     const uc = new CreateFulfilmentTaskOnOrderPlacedUseCase(repo);

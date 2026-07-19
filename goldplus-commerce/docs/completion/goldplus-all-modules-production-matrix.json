@@ -33,6 +33,11 @@
     { "id": "a11y-perf-cross-browser", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + Firefox/WebKit/Lighthouse runners" },
     { "id": "commerce-os-modules", "note": "Decision Intelligence, Automation, Surveys, Copy Quality, Behavioural Interventions, Experiments, Pricing/Promotions, Fraud Triage, PIM Import, Search Insights", "status": "SOURCE_COMPLETE_NOT_DEPLOYED", "productionBlocker": "ssh + operator markers" }
   ],
+  "inventoryCorrection": {
+    "strategy": "all-or-nothing atomic reservation (FOR UPDATE, deterministic lock order); under-reserved or unconfirmable orders open the fulfilment task ON_HOLD (backordered), never NEW; checkout response carries stockConfirmed + fulfilmentState",
+    "concurrencyProof": "real PostgreSQL: two reservations race for 4 of stock 5 -> winners 1, reservedAfterRace 4, neverOversold true, PASS",
+    "migration0031Integrity": "unique (order_id,product_id) idempotency index, both FKs, 0 orphans, invariant reserved<=stock, ledger 32 rows"
+  },
   "remainingEngineeringWork": [
     "inventory reservation on OrderPlaced / release on OrderCancelled / stock deduction / oversell prevention / partial fulfilment / backorders",
     "transactional admin email via outbox (secure recipients, retry, DLQ, manual replay, delivery audit) - provider-gated no-send",

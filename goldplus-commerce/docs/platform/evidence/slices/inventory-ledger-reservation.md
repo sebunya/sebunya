@@ -21,6 +21,25 @@ database (adds `reserved_quantity` + `reorder_point` to products, both default 0
 | 5 | Order B task → CANCELLED | **release**: reserved 3→0 (stock stays 3), reservation `released` |
 | 6 | `GET /admin/inventory/availability` | stock 3 / reserved 0 / available 3 — consistent |
 
+## Correction: all-or-nothing reservation + truthful hold (no silent oversell)
+
+The initial cut reserved best-effort (partial per line) and let an under-reserved order
+proceed as a normal NEW fulfilment task — a silent-oversell risk. Corrected:
+
+- **All-or-nothing**: `reserveForOrder` locks all product rows (`FOR UPDATE`, deterministic
+  order), and either reserves every line fully or reserves **nothing**. No partial holds.
+- **No silent acceptance**: when the reservation is not fully satisfied — or cannot be
+  confirmed at all (DB error) — the fulfilment task opens **ON_HOLD (backordered)**, never
+  NEW, so it is never presented to staff as ready for preparation. The checkout response
+  carries `stockConfirmed` + `fulfilmentState: ON_HOLD_BACKORDERED | STOCK_CONFIRMED`.
+- **Real-PostgreSQL concurrency proof** (`src/scripts/inventory-concurrency-proof.ts`, run
+  against `launchcheck`): two reservations race for 4 units of a stock of 5 →
+  `{winners:1, reservedAfterRace:4, neverOversold:true, verdict:"PASS"}`. Reserved never
+  reaches 8. The script refuses `NODE_ENV=production` and cleans up its rows.
+- 0031 integrity re-checked on the populated DB: unique `(order_id,product_id)` idempotency
+  index present, both FKs present, 0 orphan reservations, invariant `reserved ≤ stock`
+  holds for all products, migration ledger 32 rows.
+
 ## Guarantees proven
 
 - **Oversell prevention**: atomic `SELECT … FOR UPDATE` + guarded increment means

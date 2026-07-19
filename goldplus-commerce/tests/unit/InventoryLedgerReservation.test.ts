@@ -73,17 +73,23 @@ class InMemoryInventoryRepo implements IInventoryRepository {
       const existing = this.reservations.get(orderId)!;
       return summariseReservation(orderId, existing.map((r) => ({ productId: r.productId, requested: r.requested, reserved: r.reserved, shortfall: r.requested - r.reserved })), true);
     }
+    // All-or-nothing: reserve every line fully, or nothing at all.
+    const feasible = lines.every((l) => {
+      const p = this.products.get(l.productId);
+      return p ? Math.max(0, p.stock - p.reserved) >= l.quantity : false;
+    });
     const out = [];
     const stored = [];
     for (const l of lines) {
-      const p = this.products.get(l.productId);
-      const available = p ? Math.max(0, p.stock - p.reserved) : 0;
-      const reserved = Math.max(0, Math.min(available, l.quantity));
-      if (p) p.reserved += reserved;
+      const reserved = feasible ? l.quantity : 0;
+      if (feasible) {
+        const p = this.products.get(l.productId)!;
+        p.reserved += reserved;
+        stored.push({ productId: l.productId, requested: l.quantity, reserved, status: 'reserved' });
+      }
       out.push({ productId: l.productId, requested: l.quantity, reserved, shortfall: l.quantity - reserved });
-      stored.push({ productId: l.productId, requested: l.quantity, reserved, status: 'reserved' });
     }
-    this.reservations.set(orderId, stored);
+    if (feasible) this.reservations.set(orderId, stored);
     return summariseReservation(orderId, out, false);
   }
 
@@ -152,14 +158,27 @@ describe('Inventory reservation use cases (Section 12)', () => {
     expect(repo.products.get('p1')!.reserved).toBe(3);
   });
 
-  it('prevents oversell: reserves only what is available and backorders the rest', async () => {
+  it('prevents oversell all-or-nothing: insufficient stock reserves NOTHING and backorders', async () => {
     const repo = new InMemoryInventoryRepo();
     repo.seed('p1', 2);
     const outcome = await new ReserveInventoryForOrderUseCase(repo).execute(orderWith('o1', [{ productId: 'p1', quantity: 5 }]));
-    expect(repo.products.get('p1')!.reserved).toBe(2); // never exceeds stock
+    expect(repo.products.get('p1')!.reserved).toBe(0); // nothing held — no silent oversell
     expect(outcome.fullyReserved).toBe(false);
-    expect(outcome.lines[0].shortfall).toBe(3);
+    expect(outcome.lines[0].reserved).toBe(0);
+    expect(outcome.lines[0].shortfall).toBe(5);
     expect(outcome.warnings[0]).toMatch(/Backorder/);
+  });
+
+  it('multi-line is all-or-nothing: one short line rolls back every line', async () => {
+    const repo = new InMemoryInventoryRepo();
+    repo.seed('p1', 10);
+    repo.seed('p2', 1);
+    const outcome = await new ReserveInventoryForOrderUseCase(repo).execute(
+      orderWith('o1', [{ productId: 'p1', quantity: 2 }, { productId: 'p2', quantity: 3 }])
+    );
+    expect(outcome.fullyReserved).toBe(false);
+    expect(repo.products.get('p1')!.reserved).toBe(0); // p1 rolled back despite being available
+    expect(repo.products.get('p2')!.reserved).toBe(0);
   });
 
   it('is idempotent: re-reserving the same order does not double-reserve', async () => {
@@ -196,15 +215,16 @@ describe('Inventory reservation use cases (Section 12)', () => {
     expect((await new ConsumeInventoryForOrderUseCase(repo).execute('o1')).consumed).toBe(false);
   });
 
-  it('two orders cannot oversell the same stock', async () => {
+  it('two orders cannot oversell the same stock (all-or-nothing)', async () => {
     const repo = new InMemoryInventoryRepo();
     repo.seed('p1', 5);
     const uc = new ReserveInventoryForOrderUseCase(repo);
     const a = await uc.execute(orderWith('oa', [{ productId: 'p1', quantity: 4 }]));
     const b = await uc.execute(orderWith('ob', [{ productId: 'p1', quantity: 4 }]));
     expect(a.lines[0].reserved).toBe(4);
-    expect(b.lines[0].reserved).toBe(1); // only 1 left
-    expect(repo.products.get('p1')!.reserved).toBe(5); // never exceeds stock
+    expect(b.lines[0].reserved).toBe(0); // only 1 left, all-or-nothing → nothing
+    expect(b.fullyReserved).toBe(false);
+    expect(repo.products.get('p1')!.reserved).toBe(4); // never exceeds stock
   });
 
   it('low-stock list reflects reorder point against available', async () => {

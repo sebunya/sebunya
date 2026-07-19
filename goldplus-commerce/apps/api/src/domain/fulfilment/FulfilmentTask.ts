@@ -164,6 +164,11 @@ export class FulfilmentTask {
     items: FulfilmentItemLine[];
     warnings?: string[];
     priority?: FulfilmentPriority;
+    /**
+     * When stock could not be fully reserved the task opens ON_HOLD (backordered)
+     * rather than NEW, so it is never presented to staff as ready for preparation.
+     */
+    hold?: boolean;
     now?: Date;
   }): FulfilmentTask {
     if (!input.items || input.items.length === 0) {
@@ -176,7 +181,7 @@ export class FulfilmentTask {
       id: input.id,
       orderId: input.orderId,
       orderNumber: input.orderNumber,
-      status: 'NEW',
+      status: input.hold ? 'ON_HOLD' : 'NEW',
       paymentStatus: input.paymentStatus,
       paymentMethod: input.paymentMethod ?? null,
       customerName: input.customerName,
