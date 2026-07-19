@@ -1,10 +1,10 @@
 {
   "generatedAt": "2026-07-19",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "bbdfa24",
+  "reconciledHead": "480a2ba",
   "note": "Reconciled from actual source + local execution. The binding execution queue is COMMERCE_OS_EXECUTION_QUEUE.json.",
   "migrations": "0000-0038 (fresh replay proven; populated upgrade proven)",
-  "fullSuite": "183 files / 3940 tests",
+  "fullSuite": "184 files / 3948 tests",
   "architecture": "10/10",
   "modules": {
     "Fulfilment Operations": "SOURCE_COMPLETE_NOT_DEPLOYED",
