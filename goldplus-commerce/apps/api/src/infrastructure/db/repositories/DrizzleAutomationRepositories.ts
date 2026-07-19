@@ -2,7 +2,8 @@ import { db } from '../client';
 import { automationDefinitions, automationVersions, automationApprovals, automationExecutions, automationActionExecutions, automationEvents } from '../schema/automation';
 import { customerProfiles } from '../schema/customer_dna';
 import { and, eq, sql } from 'drizzle-orm';
-import { AutomationVersionConfig, TriggerFamily } from '../../../domain/automation/Automation';
+import { TriggerFamily } from '../../../domain/automation/Automation';
+import { automationJsonbReadExpression, decodeAutomationVersionConfig, encodeAutomationJsonb } from '../AutomationJsonbCodec';
 
 function isStaleProfileFreshness(computedAt: Date | null, now: Date, hours: number): boolean {
   if (!computedAt) return true;
@@ -19,21 +20,22 @@ export class DrizzleAutomationRepository implements IAutomationRepository {
     // (+ optional ref) via jsonb accessors, which the query builder mis-renders here.
     // config jsonb is double-encoded as a JSON string in this stack, so normalise
     // to a real object before reading its keys (works whether string- or object-encoded).
+    const normalizedConfig = automationJsonbReadExpression(sql.raw('v.config'));
     const res: any = await db.execute(sql`
       SELECT d.id AS "defId", v.id AS "verId", v.version_number AS "verNum", v.config AS "config", v.requires_approval AS "requiresApproval"
       FROM automation_definitions d
       JOIN automation_versions v ON v.definition_id = d.id AND v.version_number = d.current_version
       WHERE d.status = 'ACTIVE'
-        AND (CASE WHEN jsonb_typeof(v.config) = 'string' THEN (v.config #>> '{}')::jsonb ELSE v.config END)->>'triggerFamily' = ${triggerFamily}
+        AND ${normalizedConfig}->>'triggerFamily' = ${triggerFamily}
         AND (${triggerRef}::text IS NULL
-             OR (CASE WHEN jsonb_typeof(v.config) = 'string' THEN (v.config #>> '{}')::jsonb ELSE v.config END)->>'triggerRef' = ${triggerRef}
-             OR (CASE WHEN jsonb_typeof(v.config) = 'string' THEN (v.config #>> '{}')::jsonb ELSE v.config END)->>'triggerRef' IS NULL)
+             OR ${normalizedConfig}->>'triggerRef' = ${triggerRef}
+             OR ${normalizedConfig}->>'triggerRef' IS NULL)
     `);
     const rows: { defId: string; verId: string; verNum: number; config: unknown; requiresApproval: boolean }[] = res.rows ?? res;
 
     const out: ActiveAutomation[] = [];
     for (const r of rows) {
-      const config = (typeof r.config === 'string' ? JSON.parse(r.config) : r.config) as AutomationVersionConfig;
+      const config = decodeAutomationVersionConfig(r.config);
       let approvalValid = true;
       if (r.requiresApproval) {
         const [a] = await db.select({ id: automationApprovals.id }).from(automationApprovals)
@@ -60,7 +62,7 @@ export class DrizzleAutomationExecutionRepository implements IAutomationExecutio
       triggerExecutionKey: input.triggerExecutionKey, triggerFamily: input.triggerFamily, triggerEventId: input.triggerEventId,
       subjectId: input.subjectId, windowKey: input.windowKey, status: input.status,
       plannedCount: input.status === 'ELIGIBLE' ? input.plannedActions.length : 0, ineligibleCount: input.status === 'INELIGIBLE' ? 1 : 0,
-      evidence: input.evidence as object, expiresAt: input.expiresAt,
+      evidence: encodeAutomationJsonb(input.evidence) as any, expiresAt: input.expiresAt,
     }).onConflictDoNothing({ target: automationExecutions.triggerExecutionKey }).returning({ id: automationExecutions.id });
 
     if (inserted.length === 0) {

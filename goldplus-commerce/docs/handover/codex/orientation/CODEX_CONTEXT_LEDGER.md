@@ -69,13 +69,23 @@ Corpus anchors observed during the complete text pass: 11 Drizzle transaction re
 - Deep verification: targeted `rg`, `sed`, package/config reads, import/reverse-import extraction, route/schema/symbol extraction, and representative end-to-end source/test/proof inspection after the complete corpus pass.
 - Quality gate commands: JSON parser, citation/path checker, census reconciliation, `git status --short`, `git diff --stat`, `git diff --name-only`, and `git diff --check`.
 
-### Current Automation JSONB evidence (source only; PostgreSQL reproduction pending)
+### Automation A3.0 JSONB evidence and decision
 
-- `goldplus-commerce/apps/api/src/infrastructure/db/schema/automation.ts` declares `automation_versions.config` and `automation_executions.evidence` as `jsonb`.
-- `DrizzleAutomationRepository.findActiveApprovedByTrigger` uses a SQL `CASE` that accepts `jsonb_typeof(config) = 'string'` and native objects, then performs another `typeof r.config === 'string' ? JSON.parse(...)` compatibility read.
-- `DrizzleAutomationExecutionRepository.persistPlan` passes `input.evidence as object` to Drizzle without a local codec.
-- `apps/api/src/scripts/automation-planning-proof.ts` inserts a JavaScript configuration object and asserts planning, evidence, and idempotency, but does not assert PostgreSQL `jsonb_typeof`.
-- This is evidence of an active compatibility workaround and an untested write contract. It is not yet sufficient to select NO ACTIVE DEFECT, LEGACY DATA ONLY, or ACTIVE WRITE DEFECT. That decision is blocked on a real PostgreSQL reproduction after the C0 documentation commit.
+- Classification: `ACTIVE WRITE DEFECT`.
+- PostgreSQL 16.14 reproduction against the unmodified `132ff1f` source proved that current Drizzle object writes persisted both `automation_versions.config` and `automation_executions.evidence` with `jsonb_typeof = string`; SQL key access returned null. A direct postgres-js control proved `client.json(object)` persists `jsonb_typeof = object`, while the existing mapped write double-serializes.
+- Scope is confined to the Automation JSONB adapter boundary. No production database was queried. No consent, identity, provider, outbox, notification, checkout, payment, fulfilment, Customer DNA, NBA, Decision Intelligence, RBAC, audit, route, UI, Registry, schema, or migration behavior changed.
+- Migration decision: `NONE`. Fresh migration replay through immutable migrations `0000`-`0039` passed. A new migration is not justified because the adapter can write native JSONB and safely read exactly one historical string layer without bulk data rewriting.
+- The bounded infrastructure codec writes objects/arrays through the postgres-js JSON parameter wrapper, reads native containers, decodes exactly one legacy layer, rejects malformed/two-layer/scalar data, validates stored Automation configuration, and centralizes the SQL read expression used for trigger matching.
+- The planning repository now writes execution evidence through that codec and no longer performs scattered `JSON.parse`. The real-PostgreSQL proof writes version config/evidence objects and array evidence natively, checks SQL key access, proves one-layer legacy semantic equality, proves malformed fail-closed behavior, retains planner concurrency/idempotency and ineligibility assertions, and reports zero provider calls.
+
+### A3.0 verification
+
+- Focused A1/A2/A3.0 tests: 3 files, 23 tests passed.
+- Real PostgreSQL proof: `versionJsonbType=object`, `evidenceJsonbType=object`, `arrayJsonbType=array`, SQL trigger/outcome access succeeded, `legacyJsonbType=string`, `legacySemanticMatch=true`, `malformedRejected=true`, one planned plus one duplicate under the race, repeat duplicate detected, ineligible/no-profile paths retained, `providerCalls=0`, `verdict=PASS`.
+- Fresh migration replay: migrations `0000`-`0039` passed in an isolated PostgreSQL 16.14 scratch database; no migration files changed.
+- API and workspace typecheck: passed. Architecture suite: 2 files / 10 tests passed. Workspace build: API and Astro web passed. Secret scan: 1,095 source/config files passed without values printed. `git diff --check`: passed.
+- Full suite while dirty: 178 files / 3,959 tests passed; 9 files / 12 tests failed only because historical slice artifact tests inspect the whole Git dirty-path set and reject the declared A3.0 paths. No behavioral assertion failed. These exact dirty-tree guards must be rerun from the clean A3.0 commit.
+- API lint: all A3.0 paths had zero errors. The command retained the repository baseline failure at `apps/api/src/application/ports/ICustomerDnaRepository.ts:6` (`no-empty-object-type`), with 718 established warnings; no unrelated lint cleanup was made.
 
 ### C0 generated artifacts and validation duties
 
@@ -89,9 +99,9 @@ Corpus anchors observed during the complete text pass: 11 Drizzle transaction re
 
 Before C0 commit: parse both generated JSON documents; verify every cited repository path exists; reconcile census totals; run `git diff --check`; review that the change set is documentation only. Commit subject: `Docs: add Codex whole-codebase orientation`. Push and prove local HEAD equals origin with a clean tree.
 
-## A3.0 readiness boundary (declared, not yet authorized for editing)
+## A3.0 readiness boundary (completed)
 
-Read this ledger and re-verify HEAD after C0. Then reproduce the JSONB condition in non-production PostgreSQL using the current write/read path. The readiness gate must report the actual `jsonb_typeof`, query behavior, decoded application value, whether newly inserted Automation rows are affected, and whether any legacy data needs compatibility reads.
+The readiness gate was issued after the C0 commit/push and before source editing. It reported the complete census, architecture and conventions, protected assets, current Automation architecture, PostgreSQL defect evidence, `ACTIVE WRITE DEFECT` classification, exact expected/not-expected paths, impact, unknowns, no-migration decision, focused tests, real-PostgreSQL proof, full gates, and proposed commit.
 
 Expected files if the evidence proves a bounded active write/read defect:
 
@@ -111,4 +121,5 @@ Focused proof target: native JSONB object writes, compatibility reads for any le
 
 | Slice | Base | Change boundary | Proof | Commit/push | Next |
 |---|---|---|---|---|---|
-| C0 | `bfb0ffc3d004f8eecc039722f540eef75d8d7193` | Documentation only | Census/JSON/path/diff reconciliation pending final run | Commit subject reserved: `Docs: add Codex whole-codebase orientation` | C0 commit/push, then real-PG JSONB readiness gate |
+| C0 | `bfb0ffc3d004f8eecc039722f540eef75d8d7193` | Exactly seven orientation artifacts plus factual continuation state | 1,690/1,690 classified; 1,620/1,620 text inspected; zero unclassified; JSON/path/hash reconciliation and diff check passed | `132ff1fc04977acd87e5d5c9f0702603786267f7`, pushed and clean/aligned | A3.0 readiness and PostgreSQL reproduction |
+| A3.0 | `132ff1fc04977acd87e5d5c9f0702603786267f7` | Automation JSONB infrastructure codec, repository write/read boundary, focused unit and real-PG proof, factual state evidence | ACTIVE WRITE DEFECT reproduced; native object/array, bounded legacy, malformed rejection, SQL access, concurrency/idempotency, migration replay, typecheck/architecture/build/secret scan passed; dirty-tree-only historical artifact failures and unrelated lint baseline recorded | Commit subject: `Module Automation A3.0: normalize automation JSONB contracts`; push pending this evidence commit | Verify clean full suite/local-remote alignment, then A3.1 |

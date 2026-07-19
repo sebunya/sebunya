@@ -1,5 +1,11 @@
 # GoldPlus clean continuation handoff
 
+## 2026-07-19 Codex whole-codebase continuation
+
+C0 whole-codebase assimilation is committed at `132ff1fc04977acd87e5d5c9f0702603786267f7` after reconciling all 1,690 tracked files, inspecting all 1,620 tracked text files, and producing the seven required orientation artifacts under `docs/handover/codex/orientation/`.
+
+Automation A3.0 has reproduced and classified the Automation JSONB issue as `ACTIVE WRITE DEFECT` in isolated PostgreSQL 16.14. The smallest adapter repair writes native JSONB objects/arrays, supports exactly one historical encoded layer, rejects malformed/two-layer data, centralizes trigger SQL normalization, and requires no migration. Focused tests, migration replay, typecheck, architecture, build, secret scan, and the expanded real-PostgreSQL planning proof pass with zero provider calls. Commit/push and clean-tree verification are the remaining A3.0 continuation boundary; then begin A3.1 from `docs/handover/codex/CODEX_A3_WORK_PLAN.json` and the context ledger.
+
 This checkout is the canonical clean continuation worktree. Do not use the dirty `GoldPlusFinal` tree or the dirty production source tree for feature work, commits, pushes, or deployments.
 
 - Checkout: `/Users/robertsebunya/goldplus-clean-continuation/phase-2-measurement-control-tower-completion-20260715T122313Z`
