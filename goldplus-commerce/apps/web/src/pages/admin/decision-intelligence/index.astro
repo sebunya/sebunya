@@ -1,0 +1,120 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/decision-intelligence", 303);
+}
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+type Notice = { kind: "success" | "error"; text: string };
+let notice: Notice | null = null;
+if (Astro.request.method === "POST") {
+  try {
+    const res = await fetch(`${apiBase}/admin/decision-intelligence/evaluate`, { method: "POST", headers, body: "{}" });
+    const j = await res.json().catch(() => null);
+    if (res.status === 403) notice = { kind: "error", text: "You do not have permission to evaluate signals." };
+    else if (j?.success) notice = { kind: "success", text: `Evaluated ${j.data.evaluated}: ${j.data.created} created, ${j.data.updated} updated, ${j.data.unchanged} unchanged, ${j.data.noData} no-data, ${j.data.insufficientEvidence} insufficient, ${j.data.missingDependency} missing-dep, ${j.data.noActionRequired} no-action.` };
+    else notice = { kind: "error", text: j?.error?.message || "Evaluation failed." };
+  } catch { notice = { kind: "error", text: "The Decision Intelligence service is unreachable right now." }; }
+}
+
+const url = Astro.url;
+const f = { category: url.searchParams.get("category") ?? "", severity: url.searchParams.get("severity") ?? "", status: url.searchParams.get("status") ?? "", confidence: url.searchParams.get("confidence") ?? "" };
+const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v)).toString();
+
+interface Overview { open: number; criticalHigh: number; stale: number; unassigned: number; resolvedToday: number; byCategory: Record<string, number>; bySeverity: Record<string, number>; avgAcknowledgementHours: number | null; avgResolutionHours: number | null; }
+interface Insight { id: string; category: string; signalType: string; severity: string; confidence: string; status: string; recommendation: string; title: string; summary: string; currentValue: number; baselineValue: number; delta: number; sampleSize: number; assignedTo: string | null; generatedAt: string; }
+let overview: Overview | null = null;
+let insights: Insight[] = [];
+let total = 0;
+let permissionDenied = false;
+let loadFailed = false;
+let apiError = "";
+try {
+  const [oRes, iRes] = await Promise.all([
+    fetch(`${apiBase}/admin/decision-intelligence/overview`, { headers }),
+    fetch(`${apiBase}/admin/decision-intelligence/insights${qs ? `?${qs}` : ""}`, { headers }),
+  ]);
+  if (oRes.status === 403 || iRes.status === 403) permissionDenied = true;
+  else {
+    const oj = await oRes.json().catch(() => null);
+    const ij = await iRes.json().catch(() => null);
+    if (oj?.success) overview = oj.data;
+    if (ij?.success) { insights = ij.data.items; total = ij.data.total; }
+    if (!oj?.success && !ij?.success) { loadFailed = true; apiError = `Decision Intelligence responded with HTTP ${oRes.status}/${iRes.status}.`; }
+  }
+} catch { loadFailed = true; apiError = "The Decision Intelligence API is currently unreachable."; }
+
+const noData = overview && overview.open === 0 && insights.length === 0;
+function sevChip(s: string) { return ({ CRITICAL: "bg-red-600 text-white border-red-700", HIGH: "bg-red-50 text-red-700 border-red-200", MEDIUM: "bg-amber-50 text-amber-800 border-amber-200", LOW: "bg-blue-50 text-blue-700 border-blue-200", INFO: "bg-gray-100 text-gray-600 border-gray-200" } as any)[s] ?? "bg-gray-100 text-gray-600 border-gray-200"; }
+function confChip(c: string) { return c === "STALE" ? "bg-gray-200 text-gray-600 border-gray-300" : c === "HIGH_CONFIDENCE" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : c === "MEDIUM_CONFIDENCE" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-50 text-slate-500 border-slate-200"; }
+const CATS = ["REVENUE","CONVERSION","CUSTOMER","INVENTORY","FULFILMENT","SEARCH","PAYMENT","LOYALTY","EXPERIMENT","RISK"];
+const SEVS = ["CRITICAL","HIGH","MEDIUM","LOW","INFO"];
+const STATUSES = ["OPEN","ACKNOWLEDGED","ASSIGNED","IN_PROGRESS","RESOLVED","DISMISSED","EXPIRED"];
+---
+
+<AdminLayout title="Decision Intelligence" description="Explainable, evidence-backed operational insights across revenue, customer, inventory, fulfilment, search and payment.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <div class="flex flex-wrap items-end justify-between gap-4 mb-8 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Decision Intelligence</h2>
+        <p class="text-sm text-gray-500 mt-1">Evidence-first insights — what changed, why it matters, and what to do. No insight without evidence.</p>
+      </div>
+      <form method="POST"><button class="bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90">Evaluate signals</button></form>
+    </div>
+
+    {notice && <div class={`px-6 py-4 rounded-2xl mb-6 text-sm font-semibold ${notice.kind === "success" ? "bg-green-50 border border-green-200 text-green-800" : "bg-red-50 border border-red-200 text-red-800"}`}>{notice.text}</div>}
+    {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm mb-6"><strong>Not permitted.</strong> Your account cannot view Decision Intelligence.</div>}
+    {loadFailed && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm mb-6"><strong>Unavailable.</strong> {apiError}</div>}
+
+    {overview && (
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
+        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{overview.open}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Open</div></div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-red-700">{overview.criticalHigh}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Critical/High</div></div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-gray-500">{overview.stale}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Stale</div></div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{overview.unassigned}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Unassigned</div></div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-green-700">{overview.resolvedToday}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Resolved today</div></div>
+      </div>
+    )}
+    {overview && (
+      <p class="text-[11px] text-gray-400 mb-6">Avg acknowledgement {overview.avgAcknowledgementHours ?? "NO_DATA"}h · avg resolution {overview.avgResolutionHours ?? "NO_DATA"}h</p>
+    )}
+
+    <form method="GET" class="flex flex-wrap items-end gap-3 mb-6">
+      {[["category", CATS, f.category], ["severity", SEVS, f.severity], ["status", STATUSES, f.status]].map(([name, opts, val]) => (
+        <div>
+          <label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">{name}</label>
+          <select name={name as string} class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+            <option value="">any</option>
+            {(opts as string[]).map((o) => <option value={o} selected={o === val}>{o.replace(/_/g, " ")}</option>)}
+          </select>
+        </div>
+      ))}
+      <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:opacity-90">Filter</button>
+    </form>
+
+    {noData && <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">NO_DATA — no insights yet. Run “Evaluate signals” once there is order, customer, inventory, fulfilment or search activity.</div>}
+    {!noData && insights.length === 0 && !loadFailed && !permissionDenied && <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">No insights match these filters.</div>}
+
+    <div class="space-y-3">
+      {insights.map((i) => (
+        <a href={`/admin/decision-intelligence/${i.id}`} class="block bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:border-brand-gold transition-colors">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+            <span class="text-sm font-black text-brand-dark">{i.title}</span>
+            <div class="flex gap-2 text-[10px] font-bold">
+              <span class={`px-2.5 py-1 rounded-lg border ${sevChip(i.severity)}`}>{i.severity}</span>
+              <span class={`px-2.5 py-1 rounded-lg border ${confChip(i.confidence)}`}>{i.confidence.replace("_CONFIDENCE", "")}</span>
+              <span class="px-2.5 py-1 rounded-lg border bg-gray-100 text-gray-600 border-gray-200">{i.status.replace(/_/g, " ")}</span>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500">{i.summary}</p>
+          <p class="text-[11px] text-gray-400 mt-1">{i.category} · rec: {i.recommendation.replace(/_/g, " ")} · {i.assignedTo ? "assigned" : "unassigned"} · {new Date(i.generatedAt).toLocaleString("en-UG")}</p>
+        </a>
+      ))}
+    </div>
+    {total > insights.length && <p class="text-[11px] text-gray-400 text-center mt-4">Showing {insights.length} of {total}.</p>}
+  </div>
+</AdminLayout>

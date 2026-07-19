@@ -100,33 +100,27 @@
         "inventory",
         "fulfilment"
       ],
-      "status": "MISSING",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "Explainable operational decisions derived from real data (signals, anomalies, opportunities, risks) with recommended action, reason codes, freshness, history, acknowledgement/assignment/resolution.",
       "existingAssets": [
         "measurement control tower",
         "nba decision evidence (after Customer DNA)",
         "orders/inventory/fulfilment/search"
       ],
-      "missingLayers": [
-        "domain",
-        "use cases",
-        "ports",
-        "repositories",
-        "migration",
-        "API",
-        "UI",
-        "RBAC",
-        "audit",
-        "tests"
-      ],
-      "nextBoundedSlice": "reconcile after Customer DNA; then decision-summary domain + persistence",
+      "missingLayers": [],
+      "nextBoundedSlice": "none (reconciled complete for this environment); real-server deploy only",
       "acceptance": [
         "insights link to real source data + versions",
         "truthful NO_DATA/INSUFFICIENT_EVIDENCE/STALE_DATA/NO_ACTION_REQUIRED",
         "no black-box claims"
       ],
-      "evidence": [],
-      "commit": null
+      "evidence": [
+        "migration 0038 fresh replay 0000-0038 + populated upgrade",
+        "decision-intelligence-proof.ts PASS (concurrency=1 canonical, idempotent, stale-version race, no silent reopen)",
+        "8 domain+use-case tests",
+        "web build PASS"
+      ],
+      "commit": "PENDING"
     },
     {
       "module": "Automation",

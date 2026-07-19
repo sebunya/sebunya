@@ -106,6 +106,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Canonical customer profiles, lifecycle and next-best action.'
   },
   {
+    label: 'Decision Intelligence',
+    href: '/admin/decision-intelligence',
+    group: 'Merchandising',
+    status: 'read_only',
+    description: 'Explainable, evidence-backed operational insights and workflow.'
+  },
+  {
     label: 'Settings',
     href: '/admin/settings',
     group: 'System',

@@ -267,6 +267,13 @@
       "when": 1784448200000,
       "tag": "0037_wise_customer_dna",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1784449200000,
+      "tag": "0038_brave_decision_intelligence",
+      "breakpoints": true
     }
   ]
 }

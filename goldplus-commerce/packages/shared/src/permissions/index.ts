@@ -33,6 +33,10 @@ export const PERMISSIONS = {
   NBA_READ: 'nba.read',
   NBA_RECOMPUTE: 'nba.recompute',
   IDENTITY_REVIEW: 'identity.review',
+  DECISION_INTELLIGENCE_READ: 'decision_intelligence.read',
+  DECISION_INTELLIGENCE_EVALUATE: 'decision_intelligence.evaluate',
+  DECISION_INTELLIGENCE_ASSIGN: 'decision_intelligence.assign',
+  DECISION_INTELLIGENCE_MANAGE: 'decision_intelligence.manage',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

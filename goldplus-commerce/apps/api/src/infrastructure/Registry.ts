@@ -351,6 +351,16 @@ import {
   GenerateNextBestActionUseCase,
   GetCustomerDnaUseCase,
 } from '../application/use-cases/customer-dna/CustomerDnaUseCases';
+import { DrizzleDecisionEvidenceReader } from './db/repositories/DrizzleDecisionEvidenceReader';
+import { DrizzleDecisionInsightRepository } from './db/repositories/DrizzleDecisionInsightRepository';
+import {
+  EvaluateDecisionSignalsBatchUseCase,
+  GetDecisionInsightUseCase,
+  ListDecisionInsightsUseCase,
+  GetDecisionOverviewUseCase,
+  TransitionDecisionInsightUseCase,
+  RecomputeDecisionInsightUseCase,
+} from '../application/use-cases/decision-intelligence/DecisionIntelligenceUseCases';
 
 export class Registry {
 
@@ -542,6 +552,16 @@ export class Registry {
   public readonly projectCustomerProfileUseCase = new ProjectCustomerProfileUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.customerSignalReader, this.auditRepo);
   public readonly generateNextBestActionUseCase = new GenerateNextBestActionUseCase(this.customerProfileRepo, this.nbaDecisionRepo, this.auditRepo);
   public readonly getCustomerDnaUseCase = new GetCustomerDnaUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.nbaDecisionRepo);
+
+  // Decision Intelligence: evidence-first explainable operational insights.
+  public readonly decisionEvidenceReader = new DrizzleDecisionEvidenceReader();
+  public readonly decisionInsightRepo = new DrizzleDecisionInsightRepository();
+  public readonly evaluateDecisionSignalsBatchUseCase = new EvaluateDecisionSignalsBatchUseCase(this.decisionEvidenceReader, this.decisionInsightRepo, this.auditRepo);
+  public readonly getDecisionInsightUseCase = new GetDecisionInsightUseCase(this.decisionInsightRepo);
+  public readonly listDecisionInsightsUseCase = new ListDecisionInsightsUseCase(this.decisionInsightRepo);
+  public readonly getDecisionOverviewUseCase = new GetDecisionOverviewUseCase(this.decisionInsightRepo);
+  public readonly transitionDecisionInsightUseCase = new TransitionDecisionInsightUseCase(this.decisionInsightRepo, this.auditRepo);
+  public readonly recomputeDecisionInsightUseCase = new RecomputeDecisionInsightUseCase(this.decisionInsightRepo, this.evaluateDecisionSignalsBatchUseCase);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);

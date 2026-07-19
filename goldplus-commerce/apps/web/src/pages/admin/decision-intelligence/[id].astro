@@ -1,0 +1,145 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+const id = String(Astro.params.id ?? "");
+const returnTo = `/admin/decision-intelligence/${id}`;
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect(`/admin/login?returnTo=${returnTo}`, 303);
+}
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+type Notice = { kind: "success" | "error" | "conflict"; text: string };
+let notice: Notice | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const action = String(form.get("action") || "");
+  const expectedVersion = Number(form.get("expectedVersion") || 0);
+  try {
+    let path = ""; let body: Record<string, unknown> = { expectedVersion };
+    if (action === "acknowledge") path = "acknowledge";
+    else if (action === "start") path = "start";
+    else if (action === "assign") { path = "assign"; body.assignedTo = String(form.get("assignedTo") || "").trim() || null; }
+    else if (action === "resolve") { path = "resolve"; body.resolutionCode = String(form.get("resolutionCode") || "ACTION_COMPLETED"); body.reason = String(form.get("reason") || "").trim() || undefined; }
+    else if (action === "dismiss") { path = "dismiss"; body.resolutionCode = String(form.get("resolutionCode") || "FALSE_POSITIVE"); body.reason = String(form.get("reason") || "").trim() || undefined; }
+    else if (action === "recompute") path = "recompute";
+    const isRecompute = action === "recompute";
+    const res = await fetch(`${apiBase}/admin/decision-intelligence/insights/${encodeURIComponent(id)}/${path}`, { method: "POST", headers, body: JSON.stringify(isRecompute ? {} : body) });
+    const j = await res.json().catch(() => null);
+    if (res.status === 403) notice = { kind: "error", text: "You do not have permission for that action." };
+    else if (res.status === 409) notice = { kind: "conflict", text: j?.error?.code === "STALE_INSIGHT_VERSION" ? "This insight changed since the page loaded — the latest state is shown below. Try again." : (j?.error?.message || "Invalid transition.") };
+    else if (j?.success) notice = { kind: "success", text: isRecompute ? "Recomputed from current evidence." : `Insight ${action}d.` };
+    else notice = { kind: "error", text: j?.error?.message || "The action failed." };
+  } catch { notice = { kind: "error", text: "The Decision Intelligence service is unreachable right now." }; }
+}
+
+let d: any = null;
+let notFound = false;
+let permissionDenied = false;
+let loadFailed = false;
+try {
+  const res = await fetch(`${apiBase}/admin/decision-intelligence/insights/${encodeURIComponent(id)}`, { headers });
+  if (res.status === 403) permissionDenied = true;
+  else if (res.status === 404) notFound = true;
+  else { const j = await res.json().catch(() => null); if (j?.success) d = j.data; else loadFailed = true; }
+} catch { loadFailed = true; }
+
+const RESOLVE_CODES = ["ACTION_COMPLETED", "FALSE_POSITIVE", "EXPECTED_VARIATION", "DATA_QUALITY_ISSUE", "DEPENDENCY_BLOCKED", "NO_ACTION_REQUIRED"];
+const active = d && !["RESOLVED", "DISMISSED", "EXPIRED"].includes(d.status);
+function fmt(x: string | null) { return x ? new Date(x).toLocaleString("en-UG") : "—"; }
+---
+
+<AdminLayout title="Insight" description="Decision Intelligence insight detail — evidence, recommendation and operating workflow.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-4xl">
+    <div class="mb-6"><a href="/admin/decision-intelligence" class="text-xs font-bold text-gray-400 hover:text-brand-dark">← Decision Intelligence</a></div>
+
+    {notice && <div class={`px-6 py-4 rounded-2xl mb-6 text-sm font-semibold ${notice.kind === "success" ? "bg-green-50 border border-green-200 text-green-800" : notice.kind === "conflict" ? "bg-amber-50 border border-amber-200 text-amber-900" : "bg-red-50 border border-red-200 text-red-800"}`}>{notice.text}</div>}
+    {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Not permitted.</strong></div>}
+    {notFound && <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">Insight not found.</div>}
+    {loadFailed && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Insight unavailable.</strong></div>}
+
+    {d && (
+      <>
+        <div class="mb-6 pb-6 border-b border-gray-200">
+          <h2 class="text-xl font-black text-brand-dark tracking-tight">{d.title}</h2>
+          <div class="flex flex-wrap gap-2 mt-2 text-[10px] font-bold">
+            <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">Severity {d.severity}</span>
+            <span class="px-2.5 py-1 rounded-lg border bg-blue-50 text-blue-700 border-blue-200">Confidence {d.confidence.replace("_CONFIDENCE", "")}</span>
+            <span class="px-2.5 py-1 rounded-lg border bg-gray-100 text-gray-600 border-gray-200">{d.status.replace(/_/g, " ")}</span>
+            <span class="px-2.5 py-1 rounded-lg border bg-slate-50 text-slate-600 border-slate-200">{d.category}</span>
+          </div>
+          <p class="text-sm text-gray-600 mt-3">{d.summary}</p>
+          <p class="text-[11px] text-gray-400 mt-2">Recommendation: <strong class="text-brand-dark">{d.recommendation.replace(/_/g, " ")}</strong> · policy v{d.policyVersion} · version {d.version}</p>
+        </div>
+
+        <div class="grid gap-6 md:grid-cols-2 mb-6">
+          <div class="bg-white border border-gray-200 rounded-2xl p-6">
+            <h3 class="text-sm font-black text-brand-dark mb-4">What changed</h3>
+            <dl class="grid grid-cols-3 gap-2 text-xs text-gray-600">
+              <div><dt class="text-gray-400 text-[10px] uppercase">Current</dt><dd class="font-bold text-brand-dark">{d.currentValue}</dd></div>
+              <div><dt class="text-gray-400 text-[10px] uppercase">Baseline</dt><dd>{d.baselineValue}</dd></div>
+              <div><dt class="text-gray-400 text-[10px] uppercase">Delta</dt><dd>{d.delta}</dd></div>
+              <div><dt class="text-gray-400 text-[10px] uppercase">Sample</dt><dd>{d.sampleSize}</dd></div>
+              <div><dt class="text-gray-400 text-[10px] uppercase">Freshest</dt><dd>{fmt(d.freshestAt)}</dd></div>
+              <div><dt class="text-gray-400 text-[10px] uppercase">Owner</dt><dd>{d.assignedTo ? `${d.assignedTo.slice(0,8)}…` : "unassigned"}</dd></div>
+            </dl>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-6">
+            <h3 class="text-sm font-black text-brand-dark mb-4">Evidence snapshots</h3>
+            {d.evidence.length === 0 ? <p class="text-xs text-gray-400">No evidence.</p> : (
+              <div class="space-y-2 text-[11px] text-gray-600">{d.evidence.map((e: any) => (
+                <div class="border border-gray-100 rounded-lg p-2">
+                  <span class="font-mono">{e.metric} · {e.sourceType}:{e.sourceRef}</span><br/>
+                  <span class="text-gray-400">win {e.currentWindowDays}d vs {e.comparisonWindowDays}d · sample {e.sampleSize} · srcV {e.sourceVersion} · polV {e.policyVersion} · {fmt(e.generatedAt)}</span>
+                </div>
+              ))}</div>
+            )}
+          </div>
+        </div>
+
+        {active && (
+          <div class="bg-white border border-gray-200 rounded-2xl p-6 mb-6">
+            <h3 class="text-sm font-black text-brand-dark mb-4">Operating actions</h3>
+            <div class="flex flex-wrap gap-3 items-end">
+              <form method="POST"><input type="hidden" name="action" value="acknowledge"/><input type="hidden" name="expectedVersion" value={d.version}/><button class="bg-gray-100 text-brand-dark text-xs font-bold px-4 py-2 rounded-lg hover:bg-gray-200">Acknowledge</button></form>
+              <form method="POST"><input type="hidden" name="action" value="start"/><input type="hidden" name="expectedVersion" value={d.version}/><button class="bg-gray-100 text-brand-dark text-xs font-bold px-4 py-2 rounded-lg hover:bg-gray-200">Start work</button></form>
+              <form method="POST"><input type="hidden" name="action" value="recompute"/><input type="hidden" name="expectedVersion" value={d.version}/><button class="bg-gray-100 text-brand-dark text-xs font-bold px-4 py-2 rounded-lg hover:bg-gray-200">Recompute</button></form>
+              <form method="POST" class="flex items-end gap-2">
+                <input type="hidden" name="action" value="assign"/><input type="hidden" name="expectedVersion" value={d.version}/>
+                <div><label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Assign to (user id)</label><input name="assignedTo" type="text" maxlength="64" class="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold"/></div>
+                <button class="bg-brand-dark text-white text-xs font-bold px-4 py-2 rounded-lg hover:opacity-90">Assign</button>
+              </form>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2 mt-4 pt-4 border-t border-gray-100">
+              <form method="POST" class="flex items-end gap-2">
+                <input type="hidden" name="action" value="resolve"/><input type="hidden" name="expectedVersion" value={d.version}/>
+                <div class="flex-1"><label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Resolve</label>
+                  <select name="resolutionCode" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">{RESOLVE_CODES.map((r) => <option value={r}>{r.replace(/_/g," ")}</option>)}</select></div>
+                <button class="bg-green-100 text-green-800 text-xs font-bold px-4 py-2 rounded-lg hover:bg-green-200">Resolve</button>
+              </form>
+              <form method="POST" class="flex items-end gap-2">
+                <input type="hidden" name="action" value="dismiss"/><input type="hidden" name="expectedVersion" value={d.version}/>
+                <div class="flex-1"><label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Dismiss</label>
+                  <select name="resolutionCode" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">{RESOLVE_CODES.map((r) => <option value={r}>{r.replace(/_/g," ")}</option>)}</select></div>
+                <button class="bg-red-100 text-red-800 text-xs font-bold px-4 py-2 rounded-lg hover:bg-red-200">Dismiss</button>
+              </form>
+            </div>
+          </div>
+        )}
+        {!active && <div class="bg-gray-50 border border-gray-200 rounded-2xl p-5 text-center text-xs text-gray-500 mb-6">Insight is {d.status.replace(/_/g," ")}{d.resolutionCode ? ` (${d.resolutionCode.replace(/_/g," ")})` : ""} — terminal, no further action.</div>}
+
+        <div class="bg-white border border-gray-200 rounded-2xl p-6">
+          <h3 class="text-sm font-black text-brand-dark mb-4">Audit timeline</h3>
+          <div class="space-y-2 text-[11px] text-gray-600">{d.events.map((e: any) => (
+            <div class="flex items-center justify-between border-b border-gray-50 pb-1">
+              <span><strong class="text-brand-dark">{e.eventType}</strong>{e.fromStatus ? ` · ${e.fromStatus}→${e.toStatus}` : ""}{e.reason ? ` · ${e.reason}` : ""}</span>
+              <span class="text-gray-400">{fmt(e.createdAt)}</span>
+            </div>
+          ))}</div>
+        </div>
+      </>
+    )}
+  </div>
+</AdminLayout>
