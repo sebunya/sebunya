@@ -25,3 +25,4 @@ export * from './compatibility';
 export * from './loyalty';
 export * from './fulfilment';
 export * from './inventory';
+export * from './customer_dna';
