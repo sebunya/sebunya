@@ -1,0 +1,126 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/fulfilment/report", 303);
+}
+
+const headers = { Authorization: `Bearer ${token}` };
+
+interface Report {
+  generatedAt: string;
+  queue: { total: number; active: number; unassigned: number; byStatus: Record<string, number> };
+  sla: { onTrack: number; dueSoon: number; overdue: number; escalated: number };
+  packing: { packedTasks: number; backorderedTasks: number };
+  dispatch: { dispatched: number };
+  delivery: { delivered: number; failed: number; rescheduled: number; returnToOrigin: number; partiallyDelivered: number };
+  cycleTime: { deliveredCount: number; avgHoursCreatedToDelivered: number | null };
+  byTeam: { teamId: string | null; active: number }[];
+  byAssignee: { assignedTo: string | null; active: number }[];
+}
+let report: Report | null = null;
+let loadFailed = false;
+let permissionDenied = false;
+let apiError = "";
+try {
+  const res = await fetch(`${apiBase}/admin/fulfilment/report`, { headers });
+  if (res.status === 403) permissionDenied = true;
+  else {
+    const json = await res.json().catch(() => null);
+    if (json?.success) report = json.data;
+    else { loadFailed = true; apiError = `Report responded with HTTP ${res.status}.`; }
+  }
+} catch {
+  loadFailed = true;
+  apiError = "The fulfilment API is currently unreachable.";
+}
+
+const statusOrder = ["NEW", "ACKNOWLEDGED", "PICKING", "PACKED", "READY_FOR_DISPATCH", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "ON_HOLD"];
+const empty = report && report.queue.total === 0;
+---
+
+<AdminLayout title="Fulfilment Report" description="Operational report across the whole fulfilment pipeline: queue, SLA, packing, dispatch, delivery, cycle time and workload.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
+    <div class="mb-6 flex items-center gap-4 text-xs font-bold text-gray-400">
+      <a href="/admin/fulfilment" class="hover:text-brand-dark">← Fulfilment queue</a>
+    </div>
+    <div class="mb-8 pb-6 border-b border-gray-200 flex items-end justify-between">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Fulfilment report</h2>
+        <p class="text-sm text-gray-500 mt-1">Live pipeline health across queue, SLA, packing, dispatch and delivery.</p>
+      </div>
+      {report && <span class="text-[11px] text-gray-400">Generated {new Date(report.generatedAt).toLocaleString("en-UG")}</span>}
+    </div>
+
+    {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Not permitted.</strong> Your account cannot view fulfilment reports.</div>}
+    {loadFailed && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Report unavailable.</strong> {apiError}</div>}
+    {empty && <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">No fulfilment tasks yet — the report populates as orders are placed.</div>}
+
+    {report && !empty && (
+      <div class="space-y-6">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.queue.total}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Total tasks</div></div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.queue.active}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Active</div></div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.queue.unassigned}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Unassigned</div></div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.cycleTime.avgHoursCreatedToDelivered ?? "—"}<span class="text-sm">h</span></div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Avg cycle ({report.cycleTime.deliveredCount})</div></div>
+        </div>
+
+        <div class="grid gap-6 md:grid-cols-2">
+          <div class="bg-white border border-gray-200 rounded-2xl p-6">
+            <h3 class="text-sm font-black text-brand-dark mb-4">By stage</h3>
+            <div class="space-y-2">
+              {statusOrder.filter((s) => report!.queue.byStatus[s]).map((s) => (
+                <div class="flex items-center justify-between text-xs"><span class="text-gray-500">{s.replace(/_/g, " ")}</span><span class="font-bold text-brand-dark">{report!.queue.byStatus[s]}</span></div>
+              ))}
+            </div>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-6">
+            <h3 class="text-sm font-black text-brand-dark mb-4">SLA</h3>
+            <div class="flex flex-wrap gap-2 text-[11px] font-bold">
+              <span class="px-2.5 py-1 rounded-lg border bg-green-50 text-green-700 border-green-200">On track {report.sla.onTrack}</span>
+              <span class="px-2.5 py-1 rounded-lg border bg-amber-50 text-amber-800 border-amber-200">Due soon {report.sla.dueSoon}</span>
+              <span class="px-2.5 py-1 rounded-lg border bg-orange-50 text-orange-700 border-orange-200">Overdue {report.sla.overdue}</span>
+              <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">Escalated {report.sla.escalated}</span>
+            </div>
+            <h3 class="text-sm font-black text-brand-dark mt-6 mb-3">Packing</h3>
+            <div class="flex gap-4 text-xs text-gray-600"><span>Packed tasks <strong class="text-brand-dark">{report.packing.packedTasks}</strong></span><span>Backordered <strong class="text-brand-dark">{report.packing.backorderedTasks}</strong></span></div>
+          </div>
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-2xl p-6">
+          <h3 class="text-sm font-black text-brand-dark mb-4">Dispatch &amp; delivery</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-6 gap-4 text-center">
+            <div><div class="text-xl font-black text-brand-dark">{report.dispatch.dispatched}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">Dispatched</div></div>
+            <div><div class="text-xl font-black text-green-700">{report.delivery.delivered}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">Delivered</div></div>
+            <div><div class="text-xl font-black text-amber-700">{report.delivery.partiallyDelivered}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">Partial</div></div>
+            <div><div class="text-xl font-black text-red-700">{report.delivery.failed}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">Failed</div></div>
+            <div><div class="text-xl font-black text-blue-700">{report.delivery.rescheduled}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">Rescheduled</div></div>
+            <div><div class="text-xl font-black text-orange-700">{report.delivery.returnToOrigin}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">RTO</div></div>
+          </div>
+        </div>
+
+        <div class="grid gap-6 md:grid-cols-2">
+          <div class="bg-white border border-gray-200 rounded-2xl p-6">
+            <h3 class="text-sm font-black text-brand-dark mb-4">Active by team</h3>
+            {report.byTeam.length === 0 ? <p class="text-xs text-gray-400">No active tasks.</p> : (
+              <div class="space-y-2">{report.byTeam.map((t) => (
+                <div class="flex items-center justify-between text-xs"><span class="text-gray-500 font-mono">{t.teamId ? t.teamId.slice(0, 8) : "unassigned team"}</span><span class="font-bold text-brand-dark">{t.active}</span></div>
+              ))}</div>
+            )}
+          </div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-6">
+            <h3 class="text-sm font-black text-brand-dark mb-4">Active by assignee</h3>
+            {report.byAssignee.length === 0 ? <p class="text-xs text-gray-400">No active tasks.</p> : (
+              <div class="space-y-2">{report.byAssignee.map((a) => (
+                <div class="flex items-center justify-between text-xs"><span class="text-gray-500 font-mono">{a.assignedTo ? a.assignedTo.slice(0, 8) : "unassigned"}</span><span class="font-bold text-brand-dark">{a.active}</span></div>
+              ))}</div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+</AdminLayout>

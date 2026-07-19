@@ -41,7 +41,7 @@ const redirectIndex = (source: string) => source.indexOf('return Astro.redirect'
 
 describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
   it('discovers the complete current admin Astro inventory', () => {
-    expect(adminPages).toHaveLength(59);
+    expect(adminPages).toHaveLength(62);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/audit/index.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -58,7 +58,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(58);
+    expect(protectedPages).toHaveLength(61);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');
@@ -98,7 +98,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('keeps every dynamic admin route explicitly guarded', () => {
     const dynamicPages = adminPages.filter((page) => page.includes('['));
-    expect(dynamicPages).toHaveLength(7);
+    expect(dynamicPages).toHaveLength(9);
     for (const page of dynamicPages) {
       expect(read(page), `${page} requires source-level protection`).toContain('readSessionToken(Astro.request)');
     }

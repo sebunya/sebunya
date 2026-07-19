@@ -1,0 +1,214 @@
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../lib/session";
+import { apiBase } from "../../../../lib/api";
+
+const taskId = String(Astro.params.id ?? "");
+const returnTo = `/admin/fulfilment/${taskId}/dispatch`;
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect(`/admin/login?returnTo=${returnTo}`, 303);
+}
+
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+type Notice = { kind: "success" | "error" | "conflict"; text: string };
+let notice: Notice | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const action = String(form.get("action") || "");
+  try {
+    let endpoint = "";
+    let method: "POST" | "PATCH" = "POST";
+    let payload: Record<string, unknown> = {};
+    let okText = "Done.";
+    if (action === "record") {
+      endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/dispatch`;
+      const eta = String(form.get("estimatedDeliveryAt") || "").trim();
+      payload = {
+        method: String(form.get("method") || "RIDER"),
+        carrierName: String(form.get("carrierName") || "").trim() || undefined,
+        riderName: String(form.get("riderName") || "").trim() || undefined,
+        contact: String(form.get("contact") || "").trim() || undefined,
+        notes: String(form.get("notes") || "").trim() || undefined,
+        estimatedDeliveryAt: eta ? new Date(eta).toISOString() : undefined,
+        allowCashOnDelivery: form.get("allowCashOnDelivery") === "on",
+      };
+      okText = "Dispatch recorded — order is out for delivery.";
+    } else if (action === "tracking") {
+      endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/dispatch/tracking`;
+      method = "PATCH";
+      const eta = String(form.get("estimatedDeliveryAt") || "").trim();
+      payload = {
+        expectedVersion: Number(form.get("expectedVersion") || 0),
+        trackingStatus: String(form.get("trackingStatus") || "") || undefined,
+        notes: String(form.get("notes") || "").trim() || undefined,
+        estimatedDeliveryAt: eta ? new Date(eta).toISOString() : undefined,
+      };
+      okText = "Tracking updated.";
+    }
+    if (endpoint) {
+      const res = await fetch(endpoint, { method, headers, body: JSON.stringify(payload) });
+      const json = await res.json().catch(() => null);
+      if (res.status === 403) notice = { kind: "error", text: "You do not have permission to manage dispatch." };
+      else if (json?.success) notice = { kind: "success", text: okText };
+      else if (json?.error?.code === "STALE_DISPATCH_VERSION") notice = { kind: "conflict", text: "This dispatch changed since the page loaded — the latest values are shown below. Try again." };
+      else notice = { kind: "error", text: json?.error?.message || "The dispatch service rejected that change." };
+    }
+  } catch {
+    notice = { kind: "error", text: "The dispatch service is unreachable right now." };
+  }
+}
+
+interface Dispatch {
+  id: string; dispatchReference: string; method: string; carrierName: string | null; riderName: string | null;
+  contactMasked: string | null; paymentPolicy: string; trackingStatus: string; stockConsumed: boolean;
+  dispatchTime: string; estimatedDeliveryAt: string | null; notes: string | null; version: number;
+}
+let dispatch: Dispatch | null = null;
+let status = "";
+let orderNumber = taskId;
+let loadFailed = false;
+let notFound = false;
+let permissionDenied = false;
+let apiError = "";
+try {
+  const [dRes, tRes] = await Promise.all([
+    fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/dispatch`, { headers }),
+    fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}`, { headers }),
+  ]);
+  if (dRes.status === 403) permissionDenied = true;
+  else if (dRes.status === 404) notFound = true;
+  else {
+    const json = await dRes.json().catch(() => null);
+    if (json?.success) { dispatch = json.data.dispatch; status = json.data.status; }
+    else { loadFailed = true; apiError = `Dispatch detail responded with HTTP ${dRes.status}.`; }
+  }
+  const tJson = await tRes.json().catch(() => null);
+  if (tJson?.success && tJson.data?.orderNumber) orderNumber = tJson.data.orderNumber;
+} catch {
+  loadFailed = true;
+  apiError = "The fulfilment API is currently unreachable.";
+}
+
+const canDispatch = status === "READY_FOR_DISPATCH" && !dispatch;
+const METHODS = ["RIDER", "COURIER", "PICKUP", "THIRD_PARTY"];
+const TRACKING = ["DISPATCHED", "IN_TRANSIT", "HANDED_OVER"];
+function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG") : "—"; }
+---
+
+<AdminLayout title="Dispatch" description="Record and track the dispatch of a fulfilment task — carrier, rider, safe contact, tracking status.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-3xl">
+    <div class="mb-6 flex items-center gap-4 text-xs font-bold text-gray-400">
+      <a href="/admin/fulfilment" class="hover:text-brand-dark">← Fulfilment queue</a>
+      <a href={`/admin/fulfilment/${taskId}/packing`} class="hover:text-brand-dark">Packing</a>
+      <a href={`/admin/fulfilment/${taskId}/delivery`} class="hover:text-brand-dark">Delivery →</a>
+    </div>
+
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Dispatch</h2>
+      <p class="text-sm text-gray-500 mt-1">Order <span class="font-mono font-bold text-brand-dark">{orderNumber}</span>
+        {status && <span class="ml-2 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-gray-100 text-gray-600 border-gray-200">{status.replace(/_/g, " ")}</span>}
+      </p>
+    </div>
+
+    {notice && (
+      <div class={`px-6 py-4 rounded-2xl mb-6 text-sm font-semibold ${
+        notice.kind === "success" ? "bg-green-50 border border-green-200 text-green-800"
+        : notice.kind === "conflict" ? "bg-amber-50 border border-amber-200 text-amber-900"
+        : "bg-red-50 border border-red-200 text-red-800"}`}>{notice.text}</div>
+    )}
+
+    {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Not permitted.</strong> Your account cannot view dispatch for this order.</div>}
+    {notFound && <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">This fulfilment task no longer exists.</div>}
+    {loadFailed && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Dispatch unavailable.</strong> {apiError}</div>}
+
+    {dispatch && (
+      <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <span class="font-mono font-black text-brand-dark">{dispatch.dispatchReference}</span>
+          <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-violet-50 text-violet-700 border-violet-200">{dispatch.trackingStatus}</span>
+        </div>
+        <dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs text-gray-600">
+          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Method</dt><dd>{dispatch.method}</dd></div>
+          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Payment policy</dt><dd>{dispatch.paymentPolicy}</dd></div>
+          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Carrier / rider</dt><dd>{dispatch.carrierName || "—"} {dispatch.riderName ? `· ${dispatch.riderName}` : ""}</dd></div>
+          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Contact</dt><dd>{dispatch.contactMasked || "—"}</dd></div>
+          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Dispatched</dt><dd>{fmt(dispatch.dispatchTime)}</dd></div>
+          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Est. delivery</dt><dd>{fmt(dispatch.estimatedDeliveryAt)}</dd></div>
+          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Stock consumed</dt><dd>{dispatch.stockConsumed ? "Yes (once, at ready-for-dispatch)" : "No"}</dd></div>
+        </dl>
+        {dispatch.notes && <p class="mt-3 text-xs text-gray-500">Notes: {dispatch.notes}</p>}
+
+        <form method="POST" class="mt-5 pt-5 border-t border-gray-100 grid gap-3 sm:grid-cols-2">
+          <input type="hidden" name="action" value="tracking" />
+          <input type="hidden" name="expectedVersion" value={dispatch.version} />
+          <div>
+            <label for="trackingStatus" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Tracking status</label>
+            <select id="trackingStatus" name="trackingStatus" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+              {TRACKING.map((t) => <option value={t} selected={t === dispatch!.trackingStatus}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label for="eta2" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Est. delivery</label>
+            <input id="eta2" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div class="sm:col-span-2 flex justify-end">
+            <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:opacity-90">Update tracking</button>
+          </div>
+        </form>
+      </div>
+    )}
+
+    {!dispatch && !notFound && !permissionDenied && !loadFailed && (
+      canDispatch ? (
+        <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm grid gap-4 sm:grid-cols-2">
+          <input type="hidden" name="action" value="record" />
+          <div>
+            <label for="method" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Method</label>
+            <select id="method" name="method" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+              {METHODS.map((m) => <option value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label for="eta" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Est. delivery (optional)</label>
+            <input id="eta" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div>
+            <label for="carrierName" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Carrier (optional)</label>
+            <input id="carrierName" name="carrierName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div>
+            <label for="riderName" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Rider (optional)</label>
+            <input id="riderName" name="riderName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div>
+            <label for="contact" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Rider contact (stored masked)</label>
+            <input id="contact" name="contact" type="text" maxlength="40" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div>
+            <label for="notes" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Notes (optional)</label>
+            <input id="notes" name="notes" type="text" maxlength="2000" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <label class="sm:col-span-2 flex items-center gap-2 text-xs font-bold text-brand-dark">
+            <input type="checkbox" name="allowCashOnDelivery" class="rounded border-gray-300" />
+            Confirm cash-on-delivery (only if the order is not yet paid)
+          </label>
+          <div class="sm:col-span-2 flex justify-end">
+            <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90">Record dispatch</button>
+          </div>
+        </form>
+      ) : (
+        <div class="bg-gray-50 border border-gray-200 rounded-2xl p-8 text-center text-gray-500 text-sm">
+          {status === "ON_HOLD"
+            ? "Order is ON HOLD — clear the hold before dispatch."
+            : status === "DELIVERED" || status === "CANCELLED"
+              ? `Order is ${status} — no dispatch action available.`
+              : "The order must be packed and READY FOR DISPATCH before a dispatch can be recorded."}
+        </div>
+      )
+    )}
+  </div>
+</AdminLayout>

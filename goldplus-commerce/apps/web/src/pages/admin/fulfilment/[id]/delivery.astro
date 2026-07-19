@@ -1,0 +1,202 @@
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../lib/session";
+import { apiBase } from "../../../../lib/api";
+
+const taskId = String(Astro.params.id ?? "");
+const returnTo = `/admin/fulfilment/${taskId}/delivery`;
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect(`/admin/login?returnTo=${returnTo}`, 303);
+}
+
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+type Notice = { kind: "success" | "error"; text: string };
+let notice: Notice | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  try {
+    const outcome = String(form.get("outcome") || "");
+    const dq = String(form.get("deliveredQuantity") || "").trim();
+    const rq = String(form.get("returnedQuantity") || "").trim();
+    const resched = String(form.get("rescheduledFor") || "").trim();
+    const payload: Record<string, unknown> = {
+      outcome,
+      deliveredQuantity: dq ? Number(dq) : undefined,
+      returnedQuantity: rq ? Number(rq) : undefined,
+      recipientName: String(form.get("recipientName") || "").trim() || undefined,
+      recipientConfirmation: String(form.get("recipientConfirmation") || "").trim() || undefined,
+      proofReference: String(form.get("proofReference") || "").trim() || undefined,
+      failedReason: String(form.get("failedReason") || "").trim() || undefined,
+      rescheduledFor: resched ? new Date(resched).toISOString() : undefined,
+      notes: String(form.get("notes") || "").trim() || undefined,
+    };
+    const res = await fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/delivery`, { method: "POST", headers, body: JSON.stringify(payload) });
+    const json = await res.json().catch(() => null);
+    if (res.status === 403) notice = { kind: "error", text: "You do not have permission to record deliveries." };
+    else if (json?.success) notice = { kind: "success", text: json.data?.completed ? "Delivery confirmed — order marked DELIVERED." : "Delivery attempt recorded." };
+    else notice = { kind: "error", text: json?.error?.message || "The delivery service rejected that attempt." };
+  } catch {
+    notice = { kind: "error", text: "The delivery service is unreachable right now." };
+  }
+}
+
+interface Delivery {
+  id: string; attempt: number; outcome: string; deliveredAt: string | null; recipientNameMasked: string | null;
+  recipientConfirmation: string | null; proofReference: string | null; failedReason: string | null;
+  rescheduledFor: string | null; deliveredQuantity: number; returnedQuantity: number; notes: string | null; createdAt: string;
+}
+let deliveries: Delivery[] = [];
+let status = "";
+let orderNumber = taskId;
+let loadFailed = false;
+let notFound = false;
+let permissionDenied = false;
+let apiError = "";
+try {
+  const [dRes, tRes] = await Promise.all([
+    fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/delivery`, { headers }),
+    fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}`, { headers }),
+  ]);
+  if (dRes.status === 403) permissionDenied = true;
+  else if (dRes.status === 404) notFound = true;
+  else {
+    const json = await dRes.json().catch(() => null);
+    if (json?.success) { deliveries = json.data.deliveries; status = json.data.status; }
+    else { loadFailed = true; apiError = `Delivery history responded with HTTP ${dRes.status}.`; }
+  }
+  const tJson = await tRes.json().catch(() => null);
+  if (tJson?.success && tJson.data?.orderNumber) orderNumber = tJson.data.orderNumber;
+} catch {
+  loadFailed = true;
+  apiError = "The fulfilment API is currently unreachable.";
+}
+
+const canRecord = status === "OUT_FOR_DELIVERY";
+const OUTCOMES = ["DELIVERED", "PARTIALLY_DELIVERED", "DELIVERY_FAILED", "RESCHEDULED", "RETURN_TO_ORIGIN"];
+function outcomeChip(o: string) {
+  switch (o) {
+    case "DELIVERED": return "bg-green-50 text-green-700 border-green-200";
+    case "PARTIALLY_DELIVERED": return "bg-amber-50 text-amber-800 border-amber-200";
+    case "DELIVERY_FAILED": return "bg-red-50 text-red-700 border-red-200";
+    case "RESCHEDULED": return "bg-blue-50 text-blue-700 border-blue-200";
+    case "RETURN_TO_ORIGIN": return "bg-orange-50 text-orange-700 border-orange-200";
+    default: return "bg-gray-100 text-gray-600 border-gray-200";
+  }
+}
+function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG") : "—"; }
+---
+
+<AdminLayout title="Delivery" description="Record delivery attempts and outcomes for a fulfilment task and view the full delivery history.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-3xl">
+    <div class="mb-6 flex items-center gap-4 text-xs font-bold text-gray-400">
+      <a href="/admin/fulfilment" class="hover:text-brand-dark">← Fulfilment queue</a>
+      <a href={`/admin/fulfilment/${taskId}/dispatch`} class="hover:text-brand-dark">Dispatch</a>
+      <a href="/admin/fulfilment/report" class="hover:text-brand-dark">Report →</a>
+    </div>
+
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Delivery</h2>
+      <p class="text-sm text-gray-500 mt-1">Order <span class="font-mono font-bold text-brand-dark">{orderNumber}</span>
+        {status && <span class="ml-2 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-gray-100 text-gray-600 border-gray-200">{status.replace(/_/g, " ")}</span>}
+      </p>
+    </div>
+
+    {notice && (
+      <div class={`px-6 py-4 rounded-2xl mb-6 text-sm font-semibold ${notice.kind === "success" ? "bg-green-50 border border-green-200 text-green-800" : "bg-red-50 border border-red-200 text-red-800"}`}>{notice.text}</div>
+    )}
+
+    {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Not permitted.</strong> Your account cannot view delivery for this order.</div>}
+    {notFound && <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">This fulfilment task no longer exists.</div>}
+    {loadFailed && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Delivery unavailable.</strong> {apiError}</div>}
+
+    {!notFound && !permissionDenied && !loadFailed && (
+      canRecord ? (
+        <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm grid gap-4 sm:grid-cols-2 mb-8">
+          <div class="sm:col-span-2">
+            <label for="outcome" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Outcome</label>
+            <select id="outcome" name="outcome" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+              {OUTCOMES.map((o) => <option value={o}>{o.replace(/_/g, " ")}</option>)}
+            </select>
+          </div>
+          <div>
+            <label for="deliveredQuantity" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Delivered qty (partial)</label>
+            <input id="deliveredQuantity" name="deliveredQuantity" type="number" min="0" inputmode="numeric" placeholder="auto" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div>
+            <label for="returnedQuantity" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Returned qty</label>
+            <input id="returnedQuantity" name="returnedQuantity" type="number" min="0" inputmode="numeric" placeholder="0" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div>
+            <label for="recipientName" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Recipient (stored masked)</label>
+            <input id="recipientName" name="recipientName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div>
+            <label for="proofReference" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Proof reference</label>
+            <input id="proofReference" name="proofReference" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div>
+            <label for="recipientConfirmation" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Confirmation (OTP/signature ref)</label>
+            <input id="recipientConfirmation" name="recipientConfirmation" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div>
+            <label for="rescheduledFor" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Reschedule date (RESCHEDULED)</label>
+            <input id="rescheduledFor" name="rescheduledFor" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div class="sm:col-span-2">
+            <label for="failedReason" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Failure reason (DELIVERY FAILED)</label>
+            <input id="failedReason" name="failedReason" type="text" maxlength="500" placeholder="e.g. customer not home" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div class="sm:col-span-2">
+            <label for="notes" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Notes (optional)</label>
+            <input id="notes" name="notes" type="text" maxlength="2000" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          </div>
+          <div class="sm:col-span-2 flex justify-end">
+            <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90">Record attempt</button>
+          </div>
+        </form>
+      ) : (
+        <div class="bg-gray-50 border border-gray-200 rounded-2xl p-8 text-center text-gray-500 text-sm mb-8">
+          {status === "DELIVERED"
+            ? "Order is already DELIVERED. The attempt history is below."
+            : status === "ON_HOLD"
+              ? "Order is ON HOLD and cannot take a delivery attempt."
+              : "The order must be OUT FOR DELIVERY (dispatched) before a delivery attempt can be recorded."}
+        </div>
+      )
+    )}
+
+    {deliveries.length > 0 && (
+      <div>
+        <h3 class="text-sm font-black text-brand-dark mb-3">Delivery history</h3>
+        <div class="space-y-3">
+          {deliveries.map((d) => (
+            <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-gray-500">Attempt {d.attempt}</span>
+                <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${outcomeChip(d.outcome)}`}>{d.outcome.replace(/_/g, " ")}</span>
+              </div>
+              <dl class="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px] text-gray-600">
+                <div><dt class="text-gray-400">Recorded</dt><dd>{fmt(d.createdAt)}</dd></div>
+                {d.deliveredAt && <div><dt class="text-gray-400">Delivered</dt><dd>{fmt(d.deliveredAt)}</dd></div>}
+                <div><dt class="text-gray-400">Delivered / returned</dt><dd>{d.deliveredQuantity} / {d.returnedQuantity}</dd></div>
+                {d.recipientNameMasked && <div><dt class="text-gray-400">Recipient</dt><dd>{d.recipientNameMasked}</dd></div>}
+                {d.proofReference && <div><dt class="text-gray-400">Proof</dt><dd>{d.proofReference}</dd></div>}
+                {d.rescheduledFor && <div><dt class="text-gray-400">Rescheduled</dt><dd>{fmt(d.rescheduledFor)}</dd></div>}
+              </dl>
+              {d.failedReason && <p class="mt-2 text-[11px] text-red-700">Reason: {d.failedReason}</p>}
+              {d.notes && <p class="mt-1 text-[11px] text-gray-500">Notes: {d.notes}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {deliveries.length === 0 && !notFound && !permissionDenied && !loadFailed && (
+      <p class="text-xs text-gray-400 text-center">No delivery attempts recorded yet.</p>
+    )}
+  </div>
+</AdminLayout>

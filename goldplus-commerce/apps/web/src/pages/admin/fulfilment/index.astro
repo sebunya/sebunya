@@ -178,6 +178,9 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
         <p class="text-sm text-gray-500 mt-1">Every successfully placed order becomes one actionable work item here — pick, pack, dispatch, deliver.</p>
       </div>
       <div class="flex items-center gap-2">
+        <a href="/admin/fulfilment/report" class="bg-brand-dark text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
+          Report
+        </a>
         <span class="bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
           NEW ORDERS: {badge}
         </span>
@@ -253,9 +256,11 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
             <div class="text-right">
               <div class="text-sm font-black text-brand-dark">{ugx.format(task.totalUgx)}</div>
               <div class="text-[11px] text-gray-400">delivery {ugx.format(task.deliveryFeeUgx)} · {task.itemCount} item{task.itemCount === 1 ? "" : "s"}</div>
-              <a href={`/admin/fulfilment/${task.id}/packing`} class="inline-block mt-2 text-[11px] font-bold text-brand-dark bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors">
-                Packing workspace →
-              </a>
+              <div class="flex flex-wrap gap-1.5 justify-end mt-2">
+                <a href={`/admin/fulfilment/${task.id}/packing`} class="text-[11px] font-bold text-brand-dark bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors">Packing</a>
+                <a href={`/admin/fulfilment/${task.id}/dispatch`} class="text-[11px] font-bold text-brand-dark bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors">Dispatch</a>
+                <a href={`/admin/fulfilment/${task.id}/delivery`} class="text-[11px] font-bold text-brand-dark bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors">Delivery</a>
+              </div>
             </div>
           </div>
 
