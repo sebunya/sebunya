@@ -196,23 +196,33 @@
         "orders",
         "checkout"
       ],
-      "status": "MISSING",
+      "status": "SOURCE_PARTIAL",
       "businessOutcome": "Server-authoritative promotion definition/eligibility/validity/stacking/limits/calculation/preview/approval/activation.",
       "existingAssets": [
         "products/pricing fields",
-        "checkout"
+        "checkout",
+        "migration 0042 governed definitions/versions/approvals and forward Pricing persistence",
+        "pure lifecycle/policy domain, Drizzle repository, shared audit and PostgreSQL proof"
       ],
       "missingLayers": [
-        "all layers"
+        "deterministic evaluator and explainable quote",
+        "capacity reservation/redemption operations",
+        "authoritative checkout/order snapshot integration",
+        "protected API and administrator control room",
+        "production-shaped acceptance and live deployment"
       ],
-      "nextBoundedSlice": "reconcile; promotion domain + server-authoritative calculation",
+      "nextBoundedSlice": "P2 deterministic server-authoritative evaluation and explainable quotes",
       "acceptance": [
         "no invented discounts",
         "no negative prices",
         "no expired/conflicting/unapproved application"
       ],
-      "evidence": [],
-      "commit": null
+      "evidence": [
+        "pricing-governance-proof.ts PASS: governed lifecycle, direct-activation denial, approval/audit, native JSONB, zero provider calls and zero residue",
+        "fresh migration replay 0000-0042 PASS with zero active promotions",
+        "focused Pricing plus architecture 14/14; typecheck/build/secret scan/changed-path lint PASS"
+      ],
+      "commit": "P1 committed by this change"
     },
     {
       "module": "Fraud Triage",

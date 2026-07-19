@@ -29,3 +29,4 @@ export * from './customer_dna';
 export * from './decision_intelligence';
 export * from './automation';
 export * from './experiments';
+export * from './pricing';

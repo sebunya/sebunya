@@ -35,6 +35,15 @@ export const orders = pgTable('orders', {
   subtotalAmount: integer('subtotal_amount').notNull(),
   deliveryFee: integer('delivery_fee').notNull().default(0),
   totalAmount: integer('total_amount').notNull(),
+  // Pricing 0042: immutable authoritative quote provenance. Existing orders are
+  // backfilled as unadjusted UGX snapshots; new checkout writes the exact quote.
+  pricingQuoteId: uuid('pricing_quote_id'),
+  pricingCurrency: varchar('pricing_currency', { length: 3 }).default('UGX').notNull(),
+  pricingBaseSubtotal: integer('pricing_base_subtotal').default(0).notNull(),
+  pricingDiscountTotal: integer('pricing_discount_total').default(0).notNull(),
+  pricingTaxTotal: integer('pricing_tax_total').default(0).notNull(),
+  pricingCalculationVersion: varchar('pricing_calculation_version', { length: 40 }).default('legacy-unadjusted-v1').notNull(),
+  pricingSnapshot: jsonb('pricing_snapshot'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 
@@ -67,6 +76,10 @@ export const orderItems = pgTable('order_items', {
   productName: varchar('product_name', { length: 255 }).notNull(),
   quantity: integer('quantity').notNull(),
   unitPrice: integer('unit_price').notNull(),
+  canonicalUnitPrice: integer('canonical_unit_price').default(0).notNull(),
+  baseSubtotal: integer('base_subtotal').default(0).notNull(),
+  discountAmount: integer('discount_amount').default(0).notNull(),
+  finalLineTotal: integer('final_line_total').default(0).notNull(),
 });
 
 export const cartsRelations = relations(carts, ({ many }) => ({

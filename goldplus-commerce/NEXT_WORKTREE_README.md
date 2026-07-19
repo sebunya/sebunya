@@ -1,4 +1,4 @@
-# NEXT WORKTREE — Experiments complete; commit/alignment pending
+# NEXT WORKTREE — Pricing P1 proof complete; commit/alignment pending
 
 The forensic handover has been assimilated across the complete tracked repository. Start with
 `docs/handover/codex/orientation/CODEX_CONTEXT_LEDGER.md`, then use the original handover pack under
@@ -15,10 +15,10 @@ The forensic handover has been assimilated across the complete tracked repositor
   calls no real provider, and makes no deployment or `LIVE_VERIFIED` claim.
 - Do not rewrite migrations 0000-0039; do not duplicate scheduler/outbox/router/consent/audit/RBAC.
 
-Automation A5 is pushed at `c84fa6996f86c2d78f62c20f9e3172b311f8a243` with a clean 191-file / 4,020-test
-suite. Experiments is now locally complete with migration 0041, deterministic assignment, atomic exposure evidence,
-exact RBAC/audit, protected API/UI, PostgreSQL concurrency proof and fresh migration replay. Commit/push it, rerun the
-clean suite (193 files / 4,026 tests passed), verify alignment, then select **Pricing & Promotions** from the binding queue.
+Automation A5 is pushed at `c84fa6996f86c2d78f62c20f9e3172b311f8a243`; Experiments is pushed at
+`97f304565679284e7bf6731f56d0183a6e7fd239`. Pricing P1 is locally complete with additive migration 0042,
+governed immutable versions, explicit approval/activation, shared audit, native JSONB, fresh replay and a self-cleaning
+PostgreSQL proof. Commit/push P1, rerun the clean suite, verify alignment, then begin P2 deterministic evaluation.
 
 The detailed A3-A5 plan, protected assets, evidence manifest and risk register live under
 `docs/handover/codex/`. The section below is the prior resume note (superseded by the handover and C0 package).

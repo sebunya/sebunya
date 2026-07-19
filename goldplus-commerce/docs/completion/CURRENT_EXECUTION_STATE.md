@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-19 · Automation A5)
+# CURRENT EXECUTION STATE (2026-07-20 · Pricing P1)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -74,6 +74,7 @@
   built Astro control room from a real scratch PostgreSQL definition through the API; the fixture was removed.
 - Clean-tree full suite after the A4 commit: 191 files / 4,020 tests passed.
 - Clean-commit full suite after A5: 191 files / 4,020 tests passed.
-- Next gate: commit/push Experiments, prove clean local/remote alignment, then begin **Pricing & Promotions**.
+- Pricing P1 is implemented and proven from clean Experiments head `97f304565679284e7bf6731f56d0183a6e7fd239`: governed definitions, immutable versions, explicit approval/activation/pause lifecycle, integer-UGX benefit policy, shared audit, native JSONB persistence and additive migration 0042. Fresh replay has 43 migrations, nine Pricing tables and zero active rules; the self-cleaning PostgreSQL proof passes with zero provider calls.
+- Pricing remains `SOURCE_PARTIAL`. Next gate: commit/push P1, prove clean local/remote alignment, then begin P2 deterministic pricing evaluation.
 
 ---

@@ -260,3 +260,12 @@ Focused proof target: native JSONB object writes, compatibility reads for any le
 - Clean-commit repository suite passes 193 files / 4,026 tests.
 - Status: `SOURCE_COMPLETE_NOT_DEPLOYED`; no production/customer assignment, consent/provider activity or live claim.
 - Next queue selection after commit/push/alignment: Pricing & Promotions.
+
+## Pricing P1 — governed promotion domain
+
+- Verified base: clean local/origin Experiments `97f304565679284e7bf6731f56d0183a6e7fd239`; the Pricing production contract, durable ledger, state, queue, matrix, release controls, Docker/runtime and full commercial path were reviewed before source editing.
+- Canonical catalogue price remains authoritative. P1 adds one bounded Pricing domain with immutable versions, explicit review/approval, effective windows, integer-UGX benefits, exclusions, priority/stacking, price floor and usage policy. No rule activates by migration or deployment.
+- Additive migration `0042` is required. It supplies the governed lifecycle plus forward persistence primitives for deterministic quotes, capacity reservation/redemption, Experiment evidence and immutable order-pricing snapshots. Migrations `0000`–`0041` are unchanged.
+- PostgreSQL proof passes `DRAFT→READY_FOR_REVIEW→APPROVED→ACTIVE→PAUSED`, rejects direct activation, persists one approval and five shared audits, writes native JSONB arrays, calls no provider and removes all proof data.
+- Fresh `0000`–`0042` replay has 43 journal entries, nine Pricing tables, eleven Pricing order/order-line columns and zero active promotions. Focused Pricing plus architecture is 14/14; typecheck/build/secret scan/changed-path lint/diff check pass.
+- Status: `SOURCE_PARTIAL`; next boundary is P2 deterministic server-side evaluation and explainable quotes. No production migration, deployment, order/payment/provider activity or live claim occurred.
