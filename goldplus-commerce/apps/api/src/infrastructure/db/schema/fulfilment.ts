@@ -81,6 +81,53 @@ export const fulfilmentTeamMembers = pgTable(
   })
 );
 
+/** F3 — line-level fulfilment quantities (one per task+order_item). */
+export const fulfilmentLines = pgTable(
+  'fulfilment_lines',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    fulfilmentTaskId: uuid('fulfilment_task_id').references(() => fulfilmentTasks.id).notNull(),
+    orderItemId: uuid('order_item_id').notNull(),
+    productId: uuid('product_id').notNull(),
+    sku: varchar('sku', { length: 50 }).notNull(),
+    orderedQuantity: integer('ordered_quantity').notNull(),
+    reservedQuantity: integer('reserved_quantity').default(0).notNull(),
+    packedQuantity: integer('packed_quantity').default(0).notNull(),
+    backorderedQuantity: integer('backordered_quantity').default(0).notNull(),
+    cancelledQuantity: integer('cancelled_quantity').default(0).notNull(),
+    version: integer('version').default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    taskItemIdx: uniqueIndex('fulfilment_lines_task_item_idx').on(table.fulfilmentTaskId, table.orderItemId),
+    taskIdx: index('fulfilment_lines_task_idx').on(table.fulfilmentTaskId),
+  })
+);
+
+/** F3 — packing sessions per task. */
+export const packingSessions = pgTable(
+  'packing_sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    fulfilmentTaskId: uuid('fulfilment_task_id').references(() => fulfilmentTasks.id).notNull(),
+    status: varchar('status', { length: 20 }).default('NOT_STARTED').notNull(),
+    packerUserId: uuid('packer_user_id').references(() => users.id),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    packageCount: integer('package_count'),
+    packageReference: varchar('package_reference', { length: 120 }),
+    packingNotes: text('packing_notes'),
+    exceptionReason: text('exception_reason'),
+    idempotencyKey: varchar('idempotency_key', { length: 200 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    taskIdx: uniqueIndex('packing_sessions_task_idx').on(table.fulfilmentTaskId),
+  })
+);
+
 /** F2 — persisted, idempotent SLA escalation events (one per task/stage/version). */
 export const fulfilmentSlaEvents = pgTable(
   'fulfilment_sla_events',

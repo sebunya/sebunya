@@ -2,7 +2,28 @@
 
 Updated: 2026-07-18 (48-Hour Total Launch War Room — Launch Slice L0 + P0 fulfilment)
 
-## Fulfilment F1+F2 (latest)
+## Fulfilment F3 (latest)
+
+- F3 packing / partial fulfilment / backorders (migration 0034: fulfilment_lines,
+  packing_sessions). Pure domain FulfilmentLine with invariants (packed ≤ reserved;
+  packed+backordered+cancelled ≤ ordered; unresolved = ordered−packed−backordered−cancelled;
+  version bump per mutation) + deriveTaskFulfilment. Lines initialised from authoritative
+  order items + real inventory reservations (never inferred from stock). Use cases:
+  Initialise, GetPackingDetail, StartPacking, UpdatePackedQuantities (optimistic version),
+  ResolveRemainder (backorder/cancel), CompletePacking (forbidden while unresolved > 0),
+  RecordPackingException. Thin routes under `/admin/fulfilment/:id/packing/*` with precise
+  errors (INVALID_QUANTITY/INSUFFICIENT_RESERVED_STOCK/STALE_FULFILMENT_VERSION 409/
+  TASK_ON_HOLD/TASK_NOT_PACKABLE/UNRESOLVED_REMAINDER). RBAC orders.read/manage; audited.
+  Inventory-consumption transition preserved at F4 READY_FOR_DISPATCH — F3 keeps stock reserved.
+- Tests FulfilmentF3Packing 9 + real-PostgreSQL optimistic-concurrency proof (two packers
+  race one line → exactly one wins, PASS). Migration 0034 proven fresh 0000→0034 + populated.
+- **F3 backend complete; the admin packing-workspace UI is the immediate next micro-slice
+  (F3-UI): a per-task packing panel/page consuming GET /:id/packing + the mutation routes.**
+- NEXT: F3-UI, then F4 (dispatch + single stock consumption), then F5 (delivery + reporting).
+
+---
+
+## Fulfilment F1+F2 (previous)
 
 - F1 team queues & ownership (migration 0032): teams + membership (reusing users),
   team ownership on task, my/unassigned/team/all scopes, claim/assign/unassign/team-move/

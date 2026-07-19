@@ -305,6 +305,17 @@ import {
 } from '../application/use-cases/fulfilment/FulfilmentTeamUseCases';
 import { DrizzleFulfilmentSlaEventRepository } from './db/repositories/DrizzleFulfilmentSlaEventRepository';
 import { EvaluateFulfilmentSlaBatchUseCase } from '../application/use-cases/fulfilment/EvaluateFulfilmentSlaBatchUseCase';
+import { DrizzleFulfilmentLineRepository, DrizzlePackingSessionRepository } from './db/repositories/DrizzleFulfilmentLineRepository';
+import { DrizzleFulfilmentLineSourceReader } from './db/repositories/DrizzleFulfilmentLineSourceReader';
+import {
+  InitialiseFulfilmentLinesUseCase,
+  GetPackingDetailUseCase,
+  StartPackingUseCase,
+  UpdatePackedQuantitiesUseCase,
+  ResolveRemainderUseCase,
+  CompletePackingUseCase,
+  RecordPackingExceptionUseCase,
+} from '../application/use-cases/fulfilment/PackingUseCases';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import {
   ReserveInventoryForOrderUseCase,
@@ -461,6 +472,17 @@ export class Registry {
   public readonly bulkAssignFulfilmentTasksUseCase = new BulkAssignFulfilmentTasksUseCase(this.fulfilmentRepo, this.fulfilmentTeamRepo, this.auditRepo);
   // Fulfilment F2: idempotent SLA escalation evaluator.
   public readonly evaluateFulfilmentSlaBatchUseCase = new EvaluateFulfilmentSlaBatchUseCase(this.fulfilmentRepo, this.fulfilmentSlaEventRepo, this.fulfilmentTeamRepo, this.auditRepo);
+  // Fulfilment F3: packing, partial fulfilment and backorders.
+  public readonly fulfilmentLineRepo = new DrizzleFulfilmentLineRepository();
+  public readonly packingSessionRepo = new DrizzlePackingSessionRepository();
+  public readonly fulfilmentLineSourceReader = new DrizzleFulfilmentLineSourceReader();
+  public readonly initialiseFulfilmentLinesUseCase = new InitialiseFulfilmentLinesUseCase(this.fulfilmentRepo, this.fulfilmentLineRepo, this.fulfilmentLineSourceReader);
+  public readonly getPackingDetailUseCase = new GetPackingDetailUseCase(this.fulfilmentRepo, this.fulfilmentLineRepo, this.packingSessionRepo);
+  public readonly startPackingUseCase = new StartPackingUseCase(this.fulfilmentRepo, this.packingSessionRepo, this.auditRepo);
+  public readonly updatePackedQuantitiesUseCase = new UpdatePackedQuantitiesUseCase(this.fulfilmentRepo, this.fulfilmentLineRepo, this.auditRepo);
+  public readonly resolveRemainderUseCase = new ResolveRemainderUseCase(this.fulfilmentLineRepo, this.auditRepo);
+  public readonly completePackingUseCase = new CompletePackingUseCase(this.fulfilmentRepo, this.fulfilmentLineRepo, this.packingSessionRepo, this.auditRepo);
+  public readonly recordPackingExceptionUseCase = new RecordPackingExceptionUseCase(this.packingSessionRepo, this.auditRepo);
   // Inventory ledger (Section 12): reservation, release, consumption, availability.
   public readonly inventoryRepo = new DrizzleInventoryRepository();
   public readonly reserveInventoryForOrderUseCase = new ReserveInventoryForOrderUseCase(this.inventoryRepo);

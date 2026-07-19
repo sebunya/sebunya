@@ -251,6 +251,88 @@ routes.post('/bulk-assign', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), asy
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });
 
+// --- F3: packing, partial fulfilment and backorders ---
+
+function packingErrStatus(code: string): 400 | 404 | 409 {
+  if (code === 'NOT_FOUND' || code === 'UNKNOWN_LINE') return 404;
+  if (code === 'STALE_FULFILMENT_VERSION') return 409;
+  return 400;
+}
+
+routes.get('/:id/packing', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const reg = Registry.getInstance();
+  await reg.initialiseFulfilmentLinesUseCase.execute(id); // idempotent lazy init
+  const result = await reg.getPackingDetailUseCase.execute(id);
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, packingErrStatus(result.code));
+  return c.json({ success: true, data: result.detail } satisfies ApiResponse<typeof result.detail>);
+});
+
+routes.post('/:id/packing/start', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const reg = Registry.getInstance();
+  await reg.initialiseFulfilmentLinesUseCase.execute(id);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await reg.startPackingUseCase.execute({ taskId: id, actorId });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, packingErrStatus(result.code));
+  return c.json({ success: true, data: result.session } satisfies ApiResponse<typeof result.session>);
+});
+
+const packedBody = z.object({
+  updates: z.array(z.object({ lineId: z.string().uuid(), packed: z.number().int().min(0), expectedVersion: z.number().int().min(0) })).min(1).max(200),
+});
+routes.patch('/:id/packing/packed', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const parsed = packedBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().updatePackedQuantitiesUseCase.execute({ taskId: id, actorId, updates: parsed.data.updates });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, packingErrStatus(result.code));
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
+const remainderBody = z.object({ lineId: z.string().uuid(), quantity: z.number().int().min(1), expectedVersion: z.number().int().min(0), reason: z.string().trim().max(500).optional() });
+routes.post('/:id/packing/backorder', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const parsed = remainderBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().resolveRemainderUseCase.execute({ taskId: id, actorId, action: 'backorder', ...parsed.data });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, packingErrStatus(result.code));
+  return c.json({ success: true, data: { ok: true } } satisfies ApiResponse<{ ok: boolean }>);
+});
+routes.post('/:id/packing/cancel-remainder', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const parsed = remainderBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().resolveRemainderUseCase.execute({ taskId: id, actorId, action: 'cancel', ...parsed.data });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, packingErrStatus(result.code));
+  return c.json({ success: true, data: { ok: true } } satisfies ApiResponse<{ ok: boolean }>);
+});
+
+const completeBody = z.object({ packageCount: z.number().int().min(0).optional(), packageReference: z.string().trim().max(120).optional(), notes: z.string().trim().max(2000).optional() });
+routes.post('/:id/packing/complete', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const parsed = completeBody.safeParse((await c.req.json().catch(() => ({}))) ?? {});
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().completePackingUseCase.execute({ taskId: id, actorId, ...parsed.data });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, packingErrStatus(result.code));
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
+const exceptionBody = z.object({ reason: z.string().trim().min(1).max(500), hold: z.boolean().optional() });
+routes.post('/:id/packing/exception', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const parsed = exceptionBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().recordPackingExceptionUseCase.execute({ taskId: id, actorId, ...parsed.data });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, packingErrStatus(result.code));
+  return c.json({ success: true, data: { ok: true } } satisfies ApiResponse<{ ok: boolean }>);
+});
+
 // --- F2: SLA escalation (evaluate + summary) ---
 
 routes.get('/sla/summary', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
