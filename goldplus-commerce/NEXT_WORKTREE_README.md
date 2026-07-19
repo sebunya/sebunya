@@ -1,4 +1,4 @@
-# NEXT WORKTREE — Pricing P7 release ready; P8 approval gate next
+# NEXT WORKTREE — Fraud Triage source complete; PIM Import next
 
 The forensic handover has been assimilated across the complete tracked repository. Start with
 `docs/handover/codex/orientation/CODEX_CONTEXT_LEDGER.md`, then use the original handover pack under
@@ -32,6 +32,11 @@ Next: use `docs/platform/releases/pricing/PRICING_RELEASE_MANIFEST.json` and
 marker. Missing/invalid approval means `PRICING_P8_BLOCKED_BY_APPROVAL_NO_CHANGES`: no lock, preservation, fetch,
 migration, tag mutation or service action. With approval, deploy only exact `e0f7e809`, recreate API/web only, complete
 safe UAT and a minimum 15-minute soak, and reconcile to `PRICING_PRODUCTION_LIVE_VERIFIED_DORMANT_SAFE`.
+
+The marker check returned missing and therefore made no production or evidence change. Source completion continued.
+Fraud Triage is committed at `6574952` and proven through migration `0043`, exact RBAC, protected API/Astro UI,
+real-PostgreSQL concurrency/immutability/no-effect checks, fresh replay and a clean 200-file / 4,054-test suite. It is
+`SOURCE_COMPLETE_NOT_DEPLOYED`; no live Fraud decision or production migration occurred. Select PIM Import next.
 
 The detailed A3-A5 plan, protected assets, evidence manifest and risk register live under
 `docs/handover/codex/`. The section below is the prior resume note (superseded by the handover and C0 package).

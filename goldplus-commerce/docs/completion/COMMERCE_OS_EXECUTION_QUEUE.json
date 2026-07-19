@@ -236,27 +236,37 @@
         "checkout",
         "identity"
       ],
-      "status": "SOURCE_PARTIAL",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "Risk-signal review system (case/assignment/review/decision) with ALLOW/REVIEW/HOLD/DECLINE; auto-DECLINE only on explicit approved deterministic rules.",
       "existingAssets": [
         "apps/api/src/interfaces/http/middleware/botDetection.ts",
-        "checkout risk controls (task #17)"
+        "checkout risk controls (task #17)",
+        "migration 0043",
+        "apps/api/src/domain/fraud/FraudTriage.ts",
+        "apps/api/src/application/use-cases/fraud/FraudTriageOperationsUseCase.ts",
+        "apps/api/src/infrastructure/db/repositories/DrizzleFraudTriageRepository.ts",
+        "apps/api/src/interfaces/http/routes/admin/fraud.ts",
+        "apps/web/src/pages/admin/fraud/index.astro",
+        "apps/web/src/pages/admin/fraud/[id].astro"
       ],
-      "missingLayers": [
-        "case model",
-        "review workflow",
-        "admin UI",
-        "audit surface",
-        "tests"
-      ],
-      "nextBoundedSlice": "reconcile existing risk controls; add case/review model",
+      "missingLayers": [],
+      "nextBoundedSlice": "none (source complete); production release requires a separately frozen and approval-gated candidate",
       "acceptance": [
         "review-first",
         "no public fraud logic",
-        "audited decisions"
+        "audited decisions",
+        "exact read/signal/assign/decide RBAC",
+        "optimistic assignment and decision concurrency",
+        "bounded non-PII evidence",
+        "zero checkout/order/payment/provider effects"
       ],
-      "evidence": [],
-      "commit": null
+      "evidence": [
+        "fraud-triage-proof.ts PASS: one concurrent case/signal, one assignment winner, explicit operator decision, immutable resolution, zero protected-table deltas/provider calls/residue",
+        "fresh 0000-0043 replay PASS: 44 migration rows, three Fraud tables, two foreign keys, zero cases",
+        "protected API/UI and route census PASS",
+        "clean full suite 200 files / 4054 tests"
+      ],
+      "commit": "6574952"
     },
     {
       "module": "PIM Import",

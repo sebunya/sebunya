@@ -2,7 +2,8 @@
 
 Date: 2026-07-20  
 Base: `bd86928f110a62ff434da9948e3524b293fc2ad3`  
-Status at source commit: acceptance candidate; clean-commit full suite must pass before completion classification.
+Source commit: `6574952`
+Status: `SOURCE_COMPLETE_NOT_DEPLOYED`.
 
 ## Review gate and boundary
 
@@ -19,7 +20,8 @@ Status at source commit: acceptance candidate; clean-commit full suite must pass
 - Safety deltas: orders 0, order lines 0, payment attempts 0, inventory reservations 0, outbox 0, notifications 0, provider calls 0, proof residue 0.
 - Fresh migration replay: 44 migration rows, three Fraud tables, two required foreign keys, zero cases.
 - Workspace typecheck PASS; API/Astro build PASS; architecture 5/5 PASS; secret scan PASS across 1,175 source/config files; changed-path lint has zero errors; `git diff --check` PASS.
-- Dirty-tree full suite: 4,039 behavioral passes. The remaining historical artifact-scope checks observe intentional uncommitted paths; the three route-census assertions were updated for the two new protected Astro pages and pass focused. A clean-commit full-suite run is required before final classification.
+- Dirty-tree full suite: 4,039 behavioral passes. The remaining historical artifact-scope checks observed intentional uncommitted paths; the three route-census assertions were updated for the two new protected Astro pages and passed focused.
+- Clean source commit full suite: 200 files / 4,054 tests PASS.
 
 ## Classification guard
 

@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Pricing P7)
+# CURRENT EXECUTION STATE (2026-07-20 · Fraud Triage source complete)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -91,5 +91,9 @@
 - P7 froze executable release `e0f7e80928398dc758b0d88c25800eab60899986`, built labelled Linux/amd64 API/web images, passed plain-Node and database-connected compiled-runtime smoke, and proved worker/ticker startup and clean shutdown with zero provider or business mutation.
 - A fresh production backup restored into isolated PostgreSQL 16 and exact candidate migrations rehearsed 29→49 rows. The six existing production-only historical ledger rows remain preserved; candidate `0023`–`0042` contributes 20 rows. Pricing is dormant, legacy order/line backfills match, and the old API image is compatible with the additive target schema.
 - Production source, live DB and all seven running containers remained unchanged. Fresh rollback images, source archives, backup, release manifest and deployment/rollback runbook are ready. P8 is blocked unless its exact operator-created approval marker independently verifies.
+- Pricing P8 independently checked the exact root-only approval path and found it absent. The check made no lock, preservation, source, migration, tag, service or evidence change; production remains unchanged and Pricing remains `SOURCE_COMPLETE_NOT_DEPLOYED` at its frozen P7 candidate.
+- Fraud Triage is committed at `6574952`: review-first case/signal/assignment/operator-decision persistence, exact four-way RBAC, immutable transactional audit, protected API/Astro control room and additive migration `0043`. There is no public route, automatic decline, checkout/order/payment hook, provider path, worker or outbox path.
+- Real PostgreSQL concurrency and cleanup proof passes with one case/signal winner, one assignment winner, explicit `REVIEW` then operator `DECLINE`, immutable resolution, zero protected-commerce/communication deltas, zero provider calls and zero residue. Fresh `0000`–`0043` replay has 44 migration rows. Clean suite passes 200 files / 4,054 tests; workspace typecheck/build, architecture, secret scan, changed-path lint and diff check pass.
+- Fraud Triage is `SOURCE_COMPLETE_NOT_DEPLOYED`. The next engineering-controlled queue item is PIM Import.
 
 ---
