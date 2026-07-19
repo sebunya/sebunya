@@ -324,6 +324,12 @@ import {
   GetInventoryAvailabilityUseCase,
   ListLowStockUseCase,
 } from '../application/use-cases/inventory/InventoryUseCases';
+import { DrizzleFulfilmentDispatchRepository } from './db/repositories/DrizzleFulfilmentDispatchRepository';
+import {
+  GetDispatchUseCase,
+  RecordDispatchUseCase,
+  UpdateDispatchTrackingUseCase,
+} from '../application/use-cases/fulfilment/DispatchUseCases';
 
 export class Registry {
 
@@ -490,6 +496,12 @@ export class Registry {
   public readonly consumeInventoryForOrderUseCase = new ConsumeInventoryForOrderUseCase(this.inventoryRepo);
   public readonly getInventoryAvailabilityUseCase = new GetInventoryAvailabilityUseCase(this.inventoryRepo);
   public readonly listLowStockUseCase = new ListLowStockUseCase(this.inventoryRepo);
+
+  // Fulfilment F4: dispatch tracking (stock consumed once at READY_FOR_DISPATCH).
+  public readonly fulfilmentDispatchRepo = new DrizzleFulfilmentDispatchRepository();
+  public readonly getDispatchUseCase = new GetDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo);
+  public readonly recordDispatchUseCase = new RecordDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo, this.inventoryRepo, this.auditRepo);
+  public readonly updateDispatchTrackingUseCase = new UpdateDispatchTrackingUseCase(this.fulfilmentDispatchRepo, this.auditRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);

@@ -128,6 +128,38 @@ export const packingSessions = pgTable(
   })
 );
 
+/**
+ * F4 — one dispatch record per fulfilment task (unique fulfilment_task_id makes
+ * dispatch idempotent). Recorded only from READY_FOR_DISPATCH, where on-hand
+ * stock has already been consumed exactly once; the dispatch never re-consumes.
+ */
+export const fulfilmentDispatches = pgTable(
+  'fulfilment_dispatches',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    fulfilmentTaskId: uuid('fulfilment_task_id').references(() => fulfilmentTasks.id).notNull(),
+    orderId: uuid('order_id').references(() => orders.id).notNull(),
+    dispatchReference: varchar('dispatch_reference', { length: 80 }).notNull(),
+    method: varchar('method', { length: 20 }).notNull(),
+    carrierName: varchar('carrier_name', { length: 120 }),
+    riderName: varchar('rider_name', { length: 120 }),
+    contactMasked: varchar('contact_masked', { length: 40 }),
+    paymentPolicy: varchar('payment_policy', { length: 20 }).notNull(),
+    trackingStatus: varchar('tracking_status', { length: 20 }).default('DISPATCHED').notNull(),
+    stockConsumed: boolean('stock_consumed').default(false).notNull(),
+    dispatchTime: timestamp('dispatch_time', { withTimezone: true }).notNull(),
+    estimatedDeliveryAt: timestamp('estimated_delivery_at', { withTimezone: true }),
+    notes: text('notes'),
+    version: integer('version').default(1).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    taskIdx: uniqueIndex('fulfilment_dispatches_task_idx').on(table.fulfilmentTaskId),
+    orderIdx: index('fulfilment_dispatches_order_idx').on(table.orderId),
+  })
+);
+
 /** F2 — persisted, idempotent SLA escalation events (one per task/stage/version). */
 export const fulfilmentSlaEvents = pgTable(
   'fulfilment_sla_events',

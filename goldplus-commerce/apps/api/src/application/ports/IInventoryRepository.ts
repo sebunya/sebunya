@@ -11,6 +11,15 @@ export interface AvailabilityRow {
   lowStock: boolean;
 }
 
+export interface ReservationStatusSummary {
+  total: number;
+  reserved: number;
+  consumed: number;
+  released: number;
+  /** True only when there is at least one reservation and none remain merely reserved. */
+  fullyConsumed: boolean;
+}
+
 export interface IInventoryRepository {
   /**
    * Atomically reserve stock for an order. Idempotent by order_id: a second call
@@ -23,6 +32,8 @@ export interface IInventoryRepository {
   releaseForOrder(orderId: string): Promise<{ released: boolean }>;
   /** Deduct reserved stock from on-hand at dispatch and mark consumed. Idempotent. */
   consumeForOrder(orderId: string): Promise<{ consumed: boolean }>;
+  /** Truthful reservation-status summary for an order (drives dispatch stock-consumed flag). */
+  summariseReservations(orderId: string): Promise<ReservationStatusSummary>;
   /** Current availability for specific products (admin view). */
   getAvailability(productIds: string[]): Promise<AvailabilityRow[]>;
   /** Products at or below their reorder point (admin low-stock alert). */

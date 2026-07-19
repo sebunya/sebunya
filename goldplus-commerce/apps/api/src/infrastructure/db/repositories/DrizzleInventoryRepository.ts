@@ -10,7 +10,7 @@ import {
   computeAvailable,
   isLowStock,
 } from '../../../domain/inventory/Inventory';
-import { IInventoryRepository, AvailabilityRow } from '../../../application/ports/IInventoryRepository';
+import { IInventoryRepository, AvailabilityRow, ReservationStatusSummary } from '../../../application/ports/IInventoryRepository';
 
 export class DrizzleInventoryRepository implements IInventoryRepository {
   async reserveForOrder(orderId: string, lines: ReservationLineRequest[]): Promise<ReservationOutcome> {
@@ -137,6 +137,20 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
       }
       return { consumed: true };
     });
+  }
+
+  async summariseReservations(orderId: string): Promise<ReservationStatusSummary> {
+    const rows = await db
+      .select({ status: inventoryReservations.status })
+      .from(inventoryReservations)
+      .where(eq(inventoryReservations.orderId, orderId));
+    const summary = { total: rows.length, reserved: 0, consumed: 0, released: 0 };
+    for (const r of rows) {
+      if (r.status === 'reserved') summary.reserved += 1;
+      else if (r.status === 'consumed') summary.consumed += 1;
+      else if (r.status === 'released') summary.released += 1;
+    }
+    return { ...summary, fullyConsumed: summary.total > 0 && summary.reserved === 0 };
   }
 
   async getAvailability(productIds: string[]): Promise<AvailabilityRow[]> {

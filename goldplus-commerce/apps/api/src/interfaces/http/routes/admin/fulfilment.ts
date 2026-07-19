@@ -333,6 +333,73 @@ routes.post('/:id/packing/exception', requirePermissions([PERMISSIONS.ORDERS_MAN
   return c.json({ success: true, data: { ok: true } } satisfies ApiResponse<{ ok: boolean }>);
 });
 
+// --- F4: dispatch tracking (stock consumed once at READY_FOR_DISPATCH) ---
+
+function dispatchErrStatus(code: string): 400 | 404 | 409 {
+  if (code === 'NOT_FOUND' || code === 'NO_DISPATCH') return 404;
+  if (code === 'STALE_DISPATCH_VERSION') return 409;
+  return 400;
+}
+
+routes.get('/:id/dispatch', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const result = await Registry.getInstance().getDispatchUseCase.execute(id);
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, dispatchErrStatus(result.code));
+  return c.json({ success: true, data: { dispatch: result.dispatch, status: result.status } } satisfies ApiResponse<{ dispatch: typeof result.dispatch; status: string }>);
+});
+
+const recordDispatchBody = z.object({
+  method: z.enum(['RIDER', 'COURIER', 'PICKUP', 'THIRD_PARTY']),
+  carrierName: z.string().trim().max(120).optional(),
+  riderName: z.string().trim().max(120).optional(),
+  contact: z.string().trim().max(40).optional(),
+  estimatedDeliveryAt: z.string().datetime().optional(),
+  notes: z.string().trim().max(2000).optional(),
+  allowCashOnDelivery: z.boolean().optional(),
+});
+routes.post('/:id/dispatch', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const parsed = recordDispatchBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_INPUT', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().recordDispatchUseCase.execute({
+    taskId: id,
+    actorId,
+    method: parsed.data.method,
+    carrierName: parsed.data.carrierName,
+    riderName: parsed.data.riderName,
+    contact: parsed.data.contact,
+    estimatedDeliveryAt: parsed.data.estimatedDeliveryAt ? new Date(parsed.data.estimatedDeliveryAt) : null,
+    notes: parsed.data.notes,
+    allowCashOnDelivery: parsed.data.allowCashOnDelivery,
+  });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, dispatchErrStatus(result.code));
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
+const dispatchTrackingBody = z.object({
+  expectedVersion: z.number().int().min(1),
+  trackingStatus: z.enum(['DISPATCHED', 'IN_TRANSIT', 'HANDED_OVER']).optional(),
+  estimatedDeliveryAt: z.string().datetime().nullish(),
+  notes: z.string().trim().max(2000).nullish(),
+});
+routes.patch('/:id/dispatch/tracking', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const parsed = dispatchTrackingBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_INPUT', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().updateDispatchTrackingUseCase.execute({
+    taskId: id,
+    actorId,
+    expectedVersion: parsed.data.expectedVersion,
+    trackingStatus: parsed.data.trackingStatus,
+    estimatedDeliveryAt: parsed.data.estimatedDeliveryAt === undefined ? undefined : parsed.data.estimatedDeliveryAt ? new Date(parsed.data.estimatedDeliveryAt) : null,
+    notes: parsed.data.notes === undefined ? undefined : parsed.data.notes,
+  });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, dispatchErrStatus(result.code));
+  return c.json({ success: true, data: result.dispatch } satisfies ApiResponse<typeof result.dispatch>);
+});
+
 // --- F2: SLA escalation (evaluate + summary) ---
 
 routes.get('/sla/summary', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
