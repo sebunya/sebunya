@@ -1,44 +1,48 @@
-# NEXT WORKTREE — Fulfilment Operations COMPLETE (F1–F5), resume into remaining modules
+# NEXT WORKTREE — Commerce OS matrix execution resume
 
 Branch: `phase-2-measurement-control-tower-completion`
-Resume head: `1b2cad2` (= origin). Clean tree. Full suite **181 files / 3,918 tests**; architecture 10/10.
-Migrations proven through **0036** (fresh `0000→0036` + populated-upgrade on `launchcheck`).
+Resume head: `bbdfa24` (= origin). Clean tree. Full suite **183 files / 3,940 tests**; architecture 10/10.
+Migrations proven through **0037** (fresh `0000→0037` + populated-upgrade on `launchcheck`).
 
-## Completed — Fulfilment Operations F1–F5 (all backend + F3 UI)
-- **F1** team queues & ownership — migration `0032`.
-- **F2** idempotent SLA escalation — migration `0033` (real-PostgreSQL concurrency proof).
-- **F3** packing / partial fulfilment / backorders — migration `0034`
-  (`fulfilment_lines`, `packing_sessions`); real-PostgreSQL optimistic-concurrency proof.
-- **F3-UI** admin packing workspace — `apps/web/src/pages/admin/fulfilment/[id]/packing.astro`
-  (truthful loading/empty/permission-denied/validation/409-conflict/ON_HOLD/short-reservation/
-  partial/full/open-backorder/success states); protection-sweep counts bumped (admin 59 / protected 58 / dynamic 7).
-- **F4** dispatch tracking + single stock consumption — migration `0035` (`fulfilment_dispatches`).
-  Stock consumed exactly once at `READY_FOR_DISPATCH`; dispatch idempotent, never re-consumes;
-  ON_HOLD/unpacked/unpaid (no cash-on-delivery) rejected. Real-PostgreSQL proof
-  (`dispatch-consumption-proof.ts`).
-- **F5** delivery confirmation + pipeline reporting — migration `0036` (`fulfilment_deliveries`).
-  Outcomes DELIVERED/DELIVERY_FAILED/RESCHEDULED/RETURN_TO_ORIGIN/PARTIALLY_DELIVERED; only
-  DELIVERED completes the task; payment never auto-completed; PII-min; report endpoint
-  `GET /admin/fulfilment/report`. Real-PostgreSQL proof (`delivery-report-proof.ts`).
+Binding queue: `docs/completion/COMMERCE_OS_EXECUTION_QUEUE.json`.
+Reconciled matrix: `docs/completion/GOLDPLUS_ABSOLUTE_COMPLETION_MATRIX.md` (+ `.json`).
 
-Proof scripts (all refuse `NODE_ENV=production`, self-clean):
-`inventory-concurrency-proof.ts`, `admin-email-outbox-proof.ts`, `sla-escalation-concurrency-proof.ts`,
-`packing-concurrency-proof.ts`, `dispatch-consumption-proof.ts`, `delivery-report-proof.ts`.
+## Completed this cycle
+- **Fulfilment F4/F5 operating UI** (mandatory gap the prior response wrongly called optional):
+  `/admin/fulfilment/[id]/dispatch`, `/admin/fulfilment/[id]/delivery`, `/admin/fulfilment/report`.
+- **Commerce OS matrix reconciliation** + `COMMERCE_OS_EXECUTION_QUEUE.json`.
+- **Customer DNA & NBA** — full vertical, `SOURCE_COMPLETE_NOT_DEPLOYED`:
+  - domain: `apps/api/src/domain/customer-dna/*` (profile projection, identity
+    resolution, deterministic features, lifecycle, NBA engine + profile-driven candidates).
+  - migration **0037** (`customer_profiles`, `customer_identity_links`,
+    `customer_feature_snapshots`, `customer_lifecycle_snapshots`, `nba_decisions`, `nba_candidates`).
+  - repos + signal reader + use cases (Resolve identity, Project profile, Generate NBA, Get DNA).
+  - RBAC (`customer_dna.read/manage`, `nba.read/recompute`, `identity.review`), API
+    `/admin/customer-dna/*`, admin UI (search + conflicts + profile/features/lifecycle/NBA).
+  - real-PG proof `customer-dna-identity-proof.ts` PASS (uniqueness/idempotency/conflict/isolation).
 
-## NEXT — remaining modules (absolute completion matrix)
-Optional Fulfilment polish (not blocking): F4/F5 admin UI panels on the task page
-(dispatch form + delivery-attempt form + report view). Then continue Commerce-OS modules:
-Decision Intelligence, Customer DNA & NBA, Shopping Assistant, Automation, Surveys, Copy Quality,
-Behavioural Interventions, Experiments, Pricing & Promotions, Fraud Triage, PIM Import, Loyalty,
-Search Insights — plus Slices 0–14 residuals. Each as a bounded, tested, proven vertical.
+## NEXT module: Decision Intelligence (Priority 1, depends on Customer DNA — satisfied)
+Bounded first slice: decision-summary **domain** + persistence (migration **0038**) reusing
+the NBA decision evidence + measurement/CDP ledger + orders/inventory/fulfilment/search.
+- Explainable operational decisions: signals, anomaly/threshold detection, opportunity/risk,
+  recommended action, reason codes, confidence/readiness, freshness, history,
+  acknowledgement/assignment/resolution.
+- Truthful states: `NO_DATA` / `INSUFFICIENT_EVIDENCE` / `STALE_DATA` / `NO_ACTION_REQUIRED`.
+- Every insight links to real source data + versions (no black-box claims).
+- Then API + RBAC + admin UI + tests + real-PG proof. Commit: `Module Decision Intelligence: ...`.
+
+Then continue the queue: Automation → Experiments → Pricing & Promotions → Fraud Triage →
+PIM Import → Shopping Assistant → Surveys → Copy Quality → Behavioural Interventions →
+Loyalty → Search Insights (reconcile each against real code first).
 
 ## Resume commands
 ```
 cd goldplus-clean-continuation/phase-2-measurement-control-tower-completion-20260715/goldplus-commerce
-git fetch origin phase-2-measurement-control-tower-completion && git status --short   # clean at 6efb580
+git fetch origin phase-2-measurement-control-tower-completion && git status --short   # clean at bbdfa24
 # local PostgreSQL 16 (proofs): su -s /bin/bash postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D /var/lib/postgresql/gpdata -o '-p 55432 -k /var/lib/postgresql' start"
-#   DB launchcheck is populated at migration ledger through 0034.
+#   DB launchcheck populated at migration ledger through 0037.
+# gates: node scripts/security/scan-secrets.mjs ; npx vitest run ; npx vitest run tests/architecture
 ```
 
-Production deploy/UAT remain EXTERNAL_BLOCKED: no `ssh goldplus-prod` binary in this container;
-nothing is LIVE_VERIFIED. Do not create operator approval markers.
+Production deploy/UAT remain **EXTERNAL_BLOCKED**: no `ssh goldplus-prod` binary and no docker
+daemon in this container; nothing is `LIVE_VERIFIED`. Do not create operator approval markers.

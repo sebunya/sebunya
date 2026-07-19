@@ -1,7 +1,7 @@
 {
   "generatedAt": "2026-07-19",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "5d21f95",
+  "reconciledHead": "bbdfa24",
   "sourceOfTruth": "actual repository source + local execution (not dashboard cards, route/schema/test names, or old labels)",
   "legend": {
     "SOURCE_COMPLETE_NOT_DEPLOYED": "all applicable layers present and locally accepted; only real-server deploy remains",
@@ -29,182 +29,381 @@
       ],
       "missingLayers": [],
       "nextBoundedSlice": "none (reconciled complete); real-server deploy only",
-      "acceptance": ["protected UI on real API", "RBAC", "audit", "6 real-PostgreSQL proofs", "fresh replay 0000-0036", "full suite 181/3918"],
-      "evidence": ["dispatch-consumption-proof.ts PASS", "delivery-report-proof.ts PASS", "web build PASS"],
+      "acceptance": [
+        "protected UI on real API",
+        "RBAC",
+        "audit",
+        "6 real-PostgreSQL proofs",
+        "fresh replay 0000-0036",
+        "full suite 181/3918"
+      ],
+      "evidence": [
+        "dispatch-consumption-proof.ts PASS",
+        "delivery-report-proof.ts PASS",
+        "web build PASS"
+      ],
       "commit": "5d21f95"
     },
     {
       "module": "Customer DNA & NBA",
       "priority": 1,
-      "dependencies": ["identity", "orders", "consent", "preferences", "recommendations", "search", "fulfilment", "loyalty"],
-      "status": "MISSING",
+      "dependencies": [
+        "identity",
+        "orders",
+        "consent",
+        "preferences",
+        "recommendations",
+        "search",
+        "fulfilment",
+        "loyalty"
+      ],
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "One canonical derived customer profile projection (identity-resolved, feature-computed, lifecycle-staged) plus a deterministic next-best-action engine reusing existing recommendation/compatibility/inventory/promotion/support/loyalty boundaries, with a protected admin operating surface.",
       "existingAssets": [
         "apps/api/src/domain/identity/*",
         "recommendation engine (108 files)",
         "consent + preferences schema",
         "orders + order events",
-        "search demand", "loyalty ledger", "fulfilment delivery/backorder history"
+        "search demand",
+        "loyalty ledger",
+        "fulfilment delivery/backorder history"
       ],
-      "missingLayers": ["domain", "use cases", "ports", "repositories", "migration 0037 (customer_profiles, customer_identity_links, customer_feature_snapshots, customer_lifecycle_snapshots, nba_decisions, nba_candidates)", "API", "RBAC (customer_dna.*, nba.*, identity.review)", "audit", "admin UI", "tests", "real-PG proof"],
-      "nextBoundedSlice": "Customer DNA domain + schema + migration 0037 + ports",
-      "acceptance": ["identity resolution via approved first-party signals only", "weak-signal rejection", "idempotent merge + reversible repair", "consent-boundary + cross-customer isolation", "deterministic features with provenance/freshness", "deterministic lifecycle", "NBA with consent/stock/compat/promo/suppression/frequency + NO_ACTION", "decision evidence persisted", "protected admin UI on real API", "real-PG uniqueness/idempotency/concurrency proof"],
-      "evidence": [],
-      "commit": null
+      "missingLayers": [],
+      "nextBoundedSlice": "none (reconciled complete for this environment); optional: product-level recommendation candidates from the recs engine; real-server deploy only",
+      "acceptance": [
+        "identity resolution via approved first-party signals only",
+        "weak-signal rejection",
+        "idempotent merge + reversible repair",
+        "consent-boundary + cross-customer isolation",
+        "deterministic features with provenance/freshness",
+        "deterministic lifecycle",
+        "NBA with consent/stock/compat/promo/suppression/frequency + NO_ACTION",
+        "decision evidence persisted",
+        "protected admin UI on real API",
+        "real-PG uniqueness/idempotency/concurrency proof"
+      ],
+      "evidence": [
+        "migration 0037 fresh replay 0000-0037 + populated upgrade",
+        "customer-dna-identity-proof.ts PASS (uniqueness/idempotency/conflict/isolation)",
+        "16+ domain tests, 5 use-case tests",
+        "web build PASS; secret-scan PASS; architecture 10/10"
+      ],
+      "commit": "bbdfa24"
     },
     {
       "module": "Decision Intelligence",
       "priority": 1,
-      "dependencies": ["Customer DNA & NBA", "measurement", "orders", "inventory", "fulfilment"],
+      "dependencies": [
+        "Customer DNA & NBA",
+        "measurement",
+        "orders",
+        "inventory",
+        "fulfilment"
+      ],
       "status": "MISSING",
       "businessOutcome": "Explainable operational decisions derived from real data (signals, anomalies, opportunities, risks) with recommended action, reason codes, freshness, history, acknowledgement/assignment/resolution.",
-      "existingAssets": ["measurement control tower", "nba decision evidence (after Customer DNA)", "orders/inventory/fulfilment/search"],
-      "missingLayers": ["domain", "use cases", "ports", "repositories", "migration", "API", "UI", "RBAC", "audit", "tests"],
+      "existingAssets": [
+        "measurement control tower",
+        "nba decision evidence (after Customer DNA)",
+        "orders/inventory/fulfilment/search"
+      ],
+      "missingLayers": [
+        "domain",
+        "use cases",
+        "ports",
+        "repositories",
+        "migration",
+        "API",
+        "UI",
+        "RBAC",
+        "audit",
+        "tests"
+      ],
       "nextBoundedSlice": "reconcile after Customer DNA; then decision-summary domain + persistence",
-      "acceptance": ["insights link to real source data + versions", "truthful NO_DATA/INSUFFICIENT_EVIDENCE/STALE_DATA/NO_ACTION_REQUIRED", "no black-box claims"],
+      "acceptance": [
+        "insights link to real source data + versions",
+        "truthful NO_DATA/INSUFFICIENT_EVIDENCE/STALE_DATA/NO_ACTION_REQUIRED",
+        "no black-box claims"
+      ],
       "evidence": [],
       "commit": null
     },
     {
       "module": "Automation",
       "priority": 1,
-      "dependencies": ["Decision Intelligence", "outbox", "notifications"],
+      "dependencies": [
+        "Decision Intelligence",
+        "outbox",
+        "notifications"
+      ],
       "status": "MISSING",
       "businessOutcome": "Trigger/condition/audience/action/schedule automations reusing the existing outbox + scheduler, provider-gated, DRY_RUN makes zero provider calls.",
-      "existingAssets": ["outbox", "notification router", "measurement scheduler"],
-      "missingLayers": ["automation domain/use cases/ports/repos/migration/API/UI/RBAC/audit/tests"],
+      "existingAssets": [
+        "outbox",
+        "notification router",
+        "measurement scheduler"
+      ],
+      "missingLayers": [
+        "automation domain/use cases/ports/repos/migration/API/UI/RBAC/audit/tests"
+      ],
       "nextBoundedSlice": "reconcile; reuse outbox; automation-definition domain",
-      "acceptance": ["no second outbox/scheduler", "DRY_RUN zero network", "pause/resume/versioning", "retry/DLQ/replay reuse"],
+      "acceptance": [
+        "no second outbox/scheduler",
+        "DRY_RUN zero network",
+        "pause/resume/versioning",
+        "retry/DLQ/replay reuse"
+      ],
       "evidence": [],
       "commit": null
     },
     {
       "module": "Experiments",
       "priority": 2,
-      "dependencies": ["Customer DNA & NBA", "measurement"],
+      "dependencies": [
+        "Customer DNA & NBA",
+        "measurement"
+      ],
       "status": "MISSING",
       "businessOutcome": "Experiment definition, deterministic assignment, exposure logging, guardrails, readiness/decision states.",
-      "existingAssets": ["measurement ledger"],
-      "missingLayers": ["all layers"],
+      "existingAssets": [
+        "measurement ledger"
+      ],
+      "missingLayers": [
+        "all layers"
+      ],
       "nextBoundedSlice": "reconcile; experiment domain + deterministic assignment",
-      "acceptance": ["no assignment without exposure logging", "no unsupported significance", "DRAFT/READY/RUNNING/PAUSED/COMPLETED/INCONCLUSIVE/INVALID"],
+      "acceptance": [
+        "no assignment without exposure logging",
+        "no unsupported significance",
+        "DRAFT/READY/RUNNING/PAUSED/COMPLETED/INCONCLUSIVE/INVALID"
+      ],
       "evidence": [],
       "commit": null
     },
     {
       "module": "Pricing & Promotions",
       "priority": 2,
-      "dependencies": ["products", "orders", "checkout"],
+      "dependencies": [
+        "products",
+        "orders",
+        "checkout"
+      ],
       "status": "MISSING",
       "businessOutcome": "Server-authoritative promotion definition/eligibility/validity/stacking/limits/calculation/preview/approval/activation.",
-      "existingAssets": ["products/pricing fields", "checkout"],
-      "missingLayers": ["all layers"],
+      "existingAssets": [
+        "products/pricing fields",
+        "checkout"
+      ],
+      "missingLayers": [
+        "all layers"
+      ],
       "nextBoundedSlice": "reconcile; promotion domain + server-authoritative calculation",
-      "acceptance": ["no invented discounts", "no negative prices", "no expired/conflicting/unapproved application"],
+      "acceptance": [
+        "no invented discounts",
+        "no negative prices",
+        "no expired/conflicting/unapproved application"
+      ],
       "evidence": [],
       "commit": null
     },
     {
       "module": "Fraud Triage",
       "priority": 2,
-      "dependencies": ["orders", "checkout", "identity"],
+      "dependencies": [
+        "orders",
+        "checkout",
+        "identity"
+      ],
       "status": "SOURCE_PARTIAL",
       "businessOutcome": "Risk-signal review system (case/assignment/review/decision) with ALLOW/REVIEW/HOLD/DECLINE; auto-DECLINE only on explicit approved deterministic rules.",
-      "existingAssets": ["apps/api/src/interfaces/http/middleware/botDetection.ts", "checkout risk controls (task #17)"],
-      "missingLayers": ["case model", "review workflow", "admin UI", "audit surface", "tests"],
+      "existingAssets": [
+        "apps/api/src/interfaces/http/middleware/botDetection.ts",
+        "checkout risk controls (task #17)"
+      ],
+      "missingLayers": [
+        "case model",
+        "review workflow",
+        "admin UI",
+        "audit surface",
+        "tests"
+      ],
       "nextBoundedSlice": "reconcile existing risk controls; add case/review model",
-      "acceptance": ["review-first", "no public fraud logic", "audited decisions"],
+      "acceptance": [
+        "review-first",
+        "no public fraud logic",
+        "audited decisions"
+      ],
       "evidence": [],
       "commit": null
     },
     {
       "module": "PIM Import",
       "priority": 2,
-      "dependencies": ["products"],
+      "dependencies": [
+        "products"
+      ],
       "status": "MISSING",
       "businessOutcome": "Catalogue import with ingestion/validation/preview/mapping/dry-run/approval/partial-failure/rollback.",
-      "existingAssets": ["products schema", "product image storage"],
-      "missingLayers": ["all layers"],
+      "existingAssets": [
+        "products schema",
+        "product image storage"
+      ],
+      "missingLayers": [
+        "all layers"
+      ],
       "nextBoundedSlice": "reconcile; import-session domain + preview/dry-run",
-      "acceptance": ["no overwrite without preview+approval", "no fabricated attributes"],
+      "acceptance": [
+        "no overwrite without preview+approval",
+        "no fabricated attributes"
+      ],
       "evidence": [],
       "commit": null
     },
     {
       "module": "Shopping Assistant",
       "priority": 3,
-      "dependencies": ["products", "inventory", "compatibility", "pricing"],
+      "dependencies": [
+        "products",
+        "inventory",
+        "compatibility",
+        "pricing"
+      ],
       "status": "SOURCE_PARTIAL",
       "businessOutcome": "Guided product finder over real catalogue/inventory/compatibility/pricing; NO_MATCH rather than invented product.",
-      "existingAssets": ["apps/api/src/infrastructure/db/schema/product_finder.ts", "product finder use cases (53 files)"],
-      "missingLayers": ["reconcile completeness of UI/persistence/handoff/tests"],
+      "existingAssets": [
+        "apps/api/src/infrastructure/db/schema/product_finder.ts",
+        "product finder use cases (53 files)"
+      ],
+      "missingLayers": [
+        "reconcile completeness of UI/persistence/handoff/tests"
+      ],
       "nextBoundedSlice": "reconcile product_finder against assistant contract",
-      "acceptance": ["real data", "NO_MATCH truthful", "safe interaction context persisted"],
+      "acceptance": [
+        "real data",
+        "NO_MATCH truthful",
+        "safe interaction context persisted"
+      ],
       "evidence": [],
       "commit": null
     },
     {
       "module": "Surveys",
       "priority": 3,
-      "dependencies": ["consent", "Customer DNA & NBA"],
+      "dependencies": [
+        "consent",
+        "Customer DNA & NBA"
+      ],
       "status": "MISSING",
       "businessOutcome": "Survey/question/audience/consent/response/completion/analysis/export.",
-      "existingAssets": ["consent", "preferences (zero-party)"],
-      "missingLayers": ["all layers"],
+      "existingAssets": [
+        "consent",
+        "preferences (zero-party)"
+      ],
+      "missingLayers": [
+        "all layers"
+      ],
       "nextBoundedSlice": "reconcile; survey domain",
-      "acceptance": ["consent-gated", "no unnecessary PII"],
+      "acceptance": [
+        "consent-gated",
+        "no unnecessary PII"
+      ],
       "evidence": [],
       "commit": null
     },
     {
       "module": "Copy Quality",
       "priority": 3,
-      "dependencies": ["products", "cms"],
+      "dependencies": [
+        "products",
+        "cms"
+      ],
       "status": "MISSING",
       "businessOutcome": "Deterministic copy checks with explainable issues; provider-gated model checks where present.",
-      "existingAssets": ["cms module"],
-      "missingLayers": ["all layers"],
+      "existingAssets": [
+        "cms module"
+      ],
+      "missingLayers": [
+        "all layers"
+      ],
       "nextBoundedSlice": "reconcile; deterministic checks",
-      "acceptance": ["explainable issues", "no subjective unsupported grades"],
+      "acceptance": [
+        "explainable issues",
+        "no subjective unsupported grades"
+      ],
       "evidence": [],
       "commit": null
     },
     {
       "module": "Behavioural Interventions",
       "priority": 3,
-      "dependencies": ["Experiments", "Customer DNA & NBA", "measurement"],
+      "dependencies": [
+        "Experiments",
+        "Customer DNA & NBA",
+        "measurement"
+      ],
       "status": "MISSING",
       "businessOutcome": "Interventions tied to target behaviour/hypothesis/audience/channel/experiment/suppression/outcome; no dark patterns.",
-      "existingAssets": ["measurement", "recommendations"],
-      "missingLayers": ["all layers"],
+      "existingAssets": [
+        "measurement",
+        "recommendations"
+      ],
+      "missingLayers": [
+        "all layers"
+      ],
       "nextBoundedSlice": "reconcile after Experiments + Customer DNA",
-      "acceptance": ["ethical only", "measured outcomes"],
+      "acceptance": [
+        "ethical only",
+        "measured outcomes"
+      ],
       "evidence": [],
       "commit": null
     },
     {
       "module": "Loyalty",
       "priority": 3,
-      "dependencies": ["orders", "identity"],
+      "dependencies": [
+        "orders",
+        "identity"
+      ],
       "status": "SOURCE_PARTIAL",
       "businessOutcome": "Auditable points ledger with idempotent earn/redeem/expire/reverse; no balance mutation without a ledger event.",
-      "existingAssets": ["apps/api/src/domain/loyalty/LoyaltyLedger.ts", "apps/api/src/application/use-cases/loyalty/*", "apps/web/src/pages/admin/loyalty.astro", "schema/loyalty.ts"],
-      "missingLayers": ["reconcile idempotency/reversal completeness + admin operability + tests vs contract"],
+      "existingAssets": [
+        "apps/api/src/domain/loyalty/LoyaltyLedger.ts",
+        "apps/api/src/application/use-cases/loyalty/*",
+        "apps/web/src/pages/admin/loyalty.astro",
+        "schema/loyalty.ts"
+      ],
+      "missingLayers": [
+        "reconcile idempotency/reversal completeness + admin operability + tests vs contract"
+      ],
       "nextBoundedSlice": "reconcile loyalty ledger against double-entry contract",
-      "acceptance": ["ledger-event-backed balances", "idempotent earn/redeem/expire/reverse"],
+      "acceptance": [
+        "ledger-event-backed balances",
+        "idempotent earn/redeem/expire/reverse"
+      ],
       "evidence": [],
       "commit": null
     },
     {
       "module": "Search Insights",
       "priority": 3,
-      "dependencies": ["search"],
+      "dependencies": [
+        "search"
+      ],
       "status": "SOURCE_PARTIAL",
       "businessOutcome": "Query/zero-result/CTR/conversion/demand/synonym/ranking insights.",
-      "existingAssets": ["search demand capture (Slice 4)", "schema/search.ts", "search use cases (59 files)"],
-      "missingLayers": ["reconcile insight aggregation + admin surface + tests"],
+      "existingAssets": [
+        "search demand capture (Slice 4)",
+        "schema/search.ts",
+        "search use cases (59 files)"
+      ],
+      "missingLayers": [
+        "reconcile insight aggregation + admin surface + tests"
+      ],
       "nextBoundedSlice": "reconcile search demand against insights contract",
-      "acceptance": ["no raw personal search histories exposed"],
+      "acceptance": [
+        "no raw personal search histories exposed"
+      ],
       "evidence": [],
       "commit": null
     }

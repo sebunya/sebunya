@@ -1,10 +1,10 @@
 {
   "generatedAt": "2026-07-19",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "5d21f95",
+  "reconciledHead": "bbdfa24",
   "note": "Reconciled from actual source + local execution. The binding execution queue is COMMERCE_OS_EXECUTION_QUEUE.json.",
-  "migrations": "0000-0036 (fresh replay proven; populated upgrade proven)",
-  "fullSuite": "181 files / 3918 tests",
+  "migrations": "0000-0037 (fresh replay proven; populated upgrade proven)",
+  "fullSuite": "183 files / 3940 tests",
   "architecture": "10/10",
   "modules": {
     "Fulfilment Operations": "SOURCE_COMPLETE_NOT_DEPLOYED",
@@ -12,7 +12,7 @@
     "Transactional Admin Order Email (outbox/retry/DLQ/replay)": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Recommendations (engine + admin)": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Measurement Control Tower": "SOURCE_COMPLETE_NOT_DEPLOYED",
-    "Customer DNA & NBA": "MISSING",
+    "Customer DNA & NBA": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Decision Intelligence": "MISSING",
     "Automation": "MISSING",
     "Experiments": "MISSING",
@@ -26,6 +26,6 @@
     "Loyalty": "SOURCE_PARTIAL",
     "Search Insights": "SOURCE_PARTIAL"
   },
-  "nextModule": "Customer DNA & NBA",
+  "nextModule": "Decision Intelligence",
   "productionDeployment": "EXTERNAL_BLOCKED (no ssh goldplus-prod binary; no docker daemon)"
 }
