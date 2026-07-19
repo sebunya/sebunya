@@ -253,6 +253,9 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
             <div class="text-right">
               <div class="text-sm font-black text-brand-dark">{ugx.format(task.totalUgx)}</div>
               <div class="text-[11px] text-gray-400">delivery {ugx.format(task.deliveryFeeUgx)} · {task.itemCount} item{task.itemCount === 1 ? "" : "s"}</div>
+              <a href={`/admin/fulfilment/${task.id}/packing`} class="inline-block mt-2 text-[11px] font-bold text-brand-dark bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors">
+                Packing workspace →
+              </a>
             </div>
           </div>
 

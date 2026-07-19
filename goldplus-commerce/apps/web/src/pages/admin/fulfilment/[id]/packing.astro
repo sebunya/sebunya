@@ -1,0 +1,387 @@
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../lib/session";
+import { apiBase } from "../../../../lib/api";
+
+const taskId = String(Astro.params.id ?? "");
+const returnTo = `/admin/fulfilment/${taskId}/packing`;
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect(`/admin/login?returnTo=${returnTo}`, 303);
+}
+
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+// ---- Actions (server-rendered, one line at a time; truthful optimistic version) ----
+type Notice = { kind: "success" | "error" | "conflict"; text: string };
+let notice: Notice | null = null;
+
+function errorNotice(code: string, message: string): Notice {
+  if (code === "STALE_FULFILMENT_VERSION") {
+    return {
+      kind: "conflict",
+      text: "This line changed since the page was loaded. The latest quantities are shown below — re-enter and try again.",
+    };
+  }
+  return { kind: "error", text: message || "The packing service rejected that change." };
+}
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const action = String(form.get("action") || "");
+  const num = (k: string) => Number(String(form.get(k) ?? ""));
+  try {
+    let endpoint = "";
+    let method: "POST" | "PATCH" = "POST";
+    let payload: Record<string, unknown> = {};
+    let okText = "Done.";
+    if (action === "start") {
+      endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/packing/start`;
+      okText = "Packing started.";
+    } else if (action === "packed") {
+      endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/packing/packed`;
+      method = "PATCH";
+      payload = { updates: [{ lineId: String(form.get("lineId") || ""), packed: num("packed"), expectedVersion: num("expectedVersion") }] };
+      okText = "Packed quantity saved.";
+    } else if (action === "backorder" || action === "cancel") {
+      const path = action === "backorder" ? "backorder" : "cancel-remainder";
+      endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/packing/${path}`;
+      const reason = String(form.get("reason") || "").trim();
+      payload = { lineId: String(form.get("lineId") || ""), quantity: num("quantity"), expectedVersion: num("expectedVersion"), reason: reason || undefined };
+      okText = action === "backorder" ? "Remainder backordered." : "Remainder cancelled.";
+    } else if (action === "complete") {
+      endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/packing/complete`;
+      const ref = String(form.get("packageReference") || "").trim();
+      const notes = String(form.get("notes") || "").trim();
+      const count = num("packageCount");
+      payload = {
+        packageCount: Number.isFinite(count) && count > 0 ? count : undefined,
+        packageReference: ref || undefined,
+        notes: notes || undefined,
+      };
+      okText = "Packing completed.";
+    } else if (action === "exception") {
+      endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/packing/exception`;
+      payload = { reason: String(form.get("reason") || "").trim(), hold: form.get("hold") === "on" };
+      okText = "Exception recorded.";
+    }
+
+    if (endpoint) {
+      const res = await fetch(endpoint, { method, headers, body: JSON.stringify(payload) });
+      const json = await res.json().catch(() => null);
+      if (res.status === 403) {
+        notice = { kind: "error", text: "You do not have permission to change packing on this order." };
+      } else if (json?.success) {
+        notice = { kind: "success", text: okText };
+      } else {
+        notice = errorNotice(json?.error?.code ?? "", json?.error?.message ?? "");
+      }
+    }
+  } catch {
+    notice = { kind: "error", text: "The packing service is unreachable right now." };
+  }
+}
+
+// ---- Read current packing detail (lazily initialises lines server-side) ----
+interface Line {
+  id: string; orderItemId: string; productId: string; sku: string;
+  orderedQuantity: number; reservedQuantity: number; packedQuantity: number;
+  backorderedQuantity: number; cancelledQuantity: number; version: number;
+}
+interface Session {
+  status: string; packerUserId: string | null; startedAt: string | null; completedAt: string | null;
+  packageCount: number | null; packageReference: string | null; packingNotes: string | null; exceptionReason: string | null;
+}
+interface Detail {
+  taskId: string; status: string; onHold: boolean; lines: Line[];
+  session: Session | null; derived: string; fullyResolved: boolean;
+}
+
+let detail: Detail | null = null;
+let loadFailed = false;
+let notFound = false;
+let permissionDenied = false;
+let apiError = "";
+let orderNumber = taskId;
+
+try {
+  const [packRes, taskRes] = await Promise.all([
+    fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/packing`, { headers }),
+    fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}`, { headers }),
+  ]);
+  if (packRes.status === 403) {
+    permissionDenied = true;
+  } else if (packRes.status === 404) {
+    notFound = true;
+  } else {
+    const json = await packRes.json().catch(() => null);
+    if (json?.success) detail = json.data as Detail;
+    else {
+      loadFailed = true;
+      apiError = `Packing detail responded with HTTP ${packRes.status}.`;
+    }
+  }
+  const taskJson = await taskRes.json().catch(() => null);
+  if (taskJson?.success && taskJson.data?.orderNumber) orderNumber = taskJson.data.orderNumber;
+} catch {
+  loadFailed = true;
+  apiError = "The fulfilment API is currently unreachable.";
+}
+
+function unresolved(l: Line): number {
+  return l.orderedQuantity - l.packedQuantity - l.backorderedQuantity - l.cancelledQuantity;
+}
+const lines = detail?.lines ?? [];
+const anyOpenBackorder = lines.some((l) => l.backorderedQuantity > 0);
+const anyShortReservation = lines.some((l) => l.reservedQuantity < l.orderedQuantity);
+const anyUnresolved = lines.some((l) => unresolved(l) > 0);
+const started = !!detail?.session && detail.session.status !== "NOT_STARTED";
+const packable = !!detail && !detail.onHold && !["DELIVERED", "CANCELLED"].includes(detail.status);
+
+function derivedChip(d: string) {
+  switch (d) {
+    case "PACKED": return "bg-green-50 text-green-700 border-green-200";
+    case "PACKING": return "bg-indigo-50 text-indigo-700 border-indigo-200";
+    case "PARTIALLY_FULFILLED": return "bg-amber-50 text-amber-800 border-amber-200";
+    case "BACKORDERED": return "bg-orange-50 text-orange-700 border-orange-200";
+    default: return "bg-gray-100 text-gray-600 border-gray-200";
+  }
+}
+---
+
+<AdminLayout
+  title="Packing Workspace"
+  description="Line-level packing, partial fulfilment and backorders for a single fulfilment task — truthful reserved, packed, backordered and cancelled quantities."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
+    <div class="mb-6">
+      <a href="/admin/fulfilment" class="text-xs font-bold text-gray-400 hover:text-brand-dark">← Fulfilment queue</a>
+    </div>
+
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Packing workspace</h2>
+        <p class="text-sm text-gray-500 mt-1">
+          Order <span class="font-mono font-bold text-brand-dark">{orderNumber}</span> — pack each line against real reservations,
+          then backorder or cancel any remainder before completing.
+        </p>
+      </div>
+      {detail && (
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-gray-100 text-gray-600 border-gray-200">{detail.status.replace(/_/g, " ")}</span>
+          <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${derivedChip(detail.derived)}`}>{detail.derived.replace(/_/g, " ")}</span>
+        </div>
+      )}
+    </div>
+
+    {notice && (
+      <div class={`px-6 py-4 rounded-2xl mb-6 text-sm font-semibold ${
+        notice.kind === "success" ? "bg-green-50 border border-green-200 text-green-800"
+        : notice.kind === "conflict" ? "bg-amber-50 border border-amber-200 text-amber-900"
+        : "bg-red-50 border border-red-200 text-red-800"}`}>
+        {notice.text}
+      </div>
+    )}
+
+    {permissionDenied && (
+      <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm">
+        <strong>Not permitted.</strong> Your account cannot view packing for this order.
+      </div>
+    )}
+
+    {notFound && (
+      <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">
+        This fulfilment task no longer exists.
+      </div>
+    )}
+
+    {loadFailed && (
+      <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm">
+        <strong>Packing workspace unavailable.</strong> {apiError}
+      </div>
+    )}
+
+    {detail && detail.onHold && (
+      <div class="bg-gray-100 border border-gray-300 text-gray-700 px-6 py-4 rounded-2xl mb-6 text-sm">
+        <strong>Order is ON HOLD.</strong> Stock was not fully reserved, so this order cannot be packed until the hold is cleared from the queue.
+      </div>
+    )}
+
+    {detail && !detail.onHold && anyShortReservation && (
+      <div class="bg-orange-50 border border-orange-200 text-orange-800 px-6 py-4 rounded-2xl mb-6 text-sm">
+        <strong>Reservation shortfall.</strong> One or more lines have fewer reserved units than ordered. You can only pack up to the reserved
+        quantity; the remainder must be backordered or cancelled.
+      </div>
+    )}
+
+    {detail && lines.length === 0 && (
+      <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">
+        No fulfilment lines for this order.
+      </div>
+    )}
+
+    {detail && lines.length > 0 && (
+      <>
+        {!started && packable && (
+          <form method="POST" class="mb-6">
+            <input type="hidden" name="action" value="start" />
+            <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity">
+              Start packing
+            </button>
+          </form>
+        )}
+
+        <div class="space-y-4">
+          {lines.map((l) => {
+            const rem = unresolved(l);
+            const maxPack = l.reservedQuantity;
+            return (
+              <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                  <div>
+                    <span class="font-mono font-black text-brand-dark">{l.sku}</span>
+                    <p class="text-[11px] text-gray-400 mt-1">line version {l.version}</p>
+                  </div>
+                  <div class="flex flex-wrap gap-2 text-[11px] font-bold">
+                    <span class="px-2.5 py-1 rounded-lg border bg-slate-50 text-slate-600 border-slate-200">Ordered {l.orderedQuantity}</span>
+                    <span class="px-2.5 py-1 rounded-lg border bg-blue-50 text-blue-700 border-blue-200">Reserved {l.reservedQuantity}</span>
+                    <span class="px-2.5 py-1 rounded-lg border bg-green-50 text-green-700 border-green-200">Packed {l.packedQuantity}</span>
+                    {l.backorderedQuantity > 0 && <span class="px-2.5 py-1 rounded-lg border bg-orange-50 text-orange-700 border-orange-200">Backordered {l.backorderedQuantity}</span>}
+                    {l.cancelledQuantity > 0 && <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">Cancelled {l.cancelledQuantity}</span>}
+                    <span class={`px-2.5 py-1 rounded-lg border ${rem > 0 ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}>Unresolved {rem}</span>
+                  </div>
+                </div>
+
+                {l.reservedQuantity < l.orderedQuantity && (
+                  <p class="text-[11px] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-1.5 mb-4">
+                    Only {l.reservedQuantity} of {l.orderedQuantity} reserved — pack up to {l.reservedQuantity}, then backorder or cancel the rest.
+                  </p>
+                )}
+
+                {started && packable && rem > 0 ? (
+                  <div class="grid gap-3 sm:grid-cols-2">
+                    <form method="POST" class="flex items-end gap-2 bg-gray-50 border border-gray-100 rounded-xl p-3">
+                      <input type="hidden" name="action" value="packed" />
+                      <input type="hidden" name="lineId" value={l.id} />
+                      <input type="hidden" name="expectedVersion" value={l.version} />
+                      <div class="flex-1">
+                        <label for={`packed-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Packed (total, max {maxPack})</label>
+                        <input id={`packed-${l.id}`} name="packed" type="number" min="0" max={maxPack} value={l.packedQuantity} inputmode="numeric"
+                          class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+                      </div>
+                      <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-4 py-2 rounded-lg hover:opacity-90">Save</button>
+                    </form>
+
+                    <div class="grid gap-2">
+                      <form method="POST" class="flex items-end gap-2 bg-gray-50 border border-gray-100 rounded-xl p-3">
+                        <input type="hidden" name="action" value="backorder" />
+                        <input type="hidden" name="lineId" value={l.id} />
+                        <input type="hidden" name="expectedVersion" value={l.version} />
+                        <div class="w-20">
+                          <label for={`bo-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Backorder</label>
+                          <input id={`bo-${l.id}`} name="quantity" type="number" min="1" max={rem} value={rem} inputmode="numeric"
+                            class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+                        </div>
+                        <input name="reason" type="text" maxlength="500" placeholder="reason (optional)"
+                          class="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                        <button type="submit" class="bg-orange-100 text-orange-800 text-xs font-bold px-3 py-2 rounded-lg hover:bg-orange-200">Hold</button>
+                      </form>
+                      <form method="POST" class="flex items-end gap-2 bg-gray-50 border border-gray-100 rounded-xl p-3">
+                        <input type="hidden" name="action" value="cancel" />
+                        <input type="hidden" name="lineId" value={l.id} />
+                        <input type="hidden" name="expectedVersion" value={l.version} />
+                        <div class="w-20">
+                          <label for={`cx-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Cancel</label>
+                          <input id={`cx-${l.id}`} name="quantity" type="number" min="1" max={rem} value={rem} inputmode="numeric"
+                            class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+                        </div>
+                        <input name="reason" type="text" maxlength="500" placeholder="reason (optional)"
+                          class="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                        <button type="submit" class="bg-red-100 text-red-800 text-xs font-bold px-3 py-2 rounded-lg hover:bg-red-200">Cancel</button>
+                      </form>
+                    </div>
+                  </div>
+                ) : (
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                    {rem === 0 ? "Fully resolved" : !packable ? "Not packable in this state" : "Start packing to edit this line"}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {started && packable && (
+          <div class="mt-8 pt-6 border-t border-gray-200 grid gap-6 md:grid-cols-2">
+            <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+              <input type="hidden" name="action" value="complete" />
+              <h3 class="text-sm font-black text-brand-dark mb-1">Complete packing</h3>
+              <p class="text-[11px] text-gray-500 mb-4">
+                {anyUnresolved
+                  ? "Every remainder must be packed, backordered or cancelled before completion."
+                  : anyOpenBackorder
+                    ? "This will complete as a partial fulfilment (open backorder)."
+                    : "All lines resolved — this will complete as fully packed."}
+              </p>
+              <div class="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label for="pkgcount" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Package count</label>
+                  <input id="pkgcount" name="packageCount" type="number" min="1" inputmode="numeric" placeholder="e.g. 2"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                </div>
+                <div>
+                  <label for="pkgref" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Package reference</label>
+                  <input id="pkgref" name="packageReference" type="text" maxlength="120" placeholder="optional"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                </div>
+              </div>
+              <div class="mb-4">
+                <label for="pknotes" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Packing notes</label>
+                <input id="pknotes" name="notes" type="text" maxlength="2000" placeholder="optional"
+                  class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+              </div>
+              <button type="submit" disabled={anyUnresolved}
+                class={`text-xs font-black px-5 py-2.5 rounded-xl transition-opacity ${anyUnresolved ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-brand-gold text-brand-dark hover:opacity-90"}`}>
+                Complete packing
+              </button>
+            </form>
+
+            <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+              <input type="hidden" name="action" value="exception" />
+              <h3 class="text-sm font-black text-brand-dark mb-1">Record a packing exception</h3>
+              <p class="text-[11px] text-gray-500 mb-4">Log a shortage, damage or other issue. Optionally place the session on hold.</p>
+              <div class="mb-3">
+                <label for="exreason" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Reason</label>
+                <input id="exreason" name="reason" type="text" required maxlength="500" placeholder="e.g. one unit damaged in store"
+                  class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+              </div>
+              <label class="flex items-center gap-2 text-xs font-bold text-brand-dark mb-4">
+                <input type="checkbox" name="hold" class="rounded border-gray-300" />
+                Place packing session on hold
+              </label>
+              <button type="submit" class="bg-gray-100 text-brand-dark text-xs font-bold px-5 py-2.5 rounded-xl hover:bg-gray-200 transition-colors">
+                Record exception
+              </button>
+            </form>
+          </div>
+        )}
+
+        {detail?.session && (
+          <div class="mt-6 bg-gray-50 border border-gray-100 rounded-2xl p-5 text-[11px] text-gray-500">
+            <div class="font-black uppercase tracking-wider text-gray-400 mb-2">Packing session</div>
+            <div class="flex flex-wrap gap-x-6 gap-y-1">
+              <span>Status: <strong class="text-brand-dark">{detail.session.status}</strong></span>
+              {detail.session.startedAt && <span>Started: {new Date(detail.session.startedAt).toLocaleString("en-UG")}</span>}
+              {detail.session.completedAt && <span>Completed: {new Date(detail.session.completedAt).toLocaleString("en-UG")}</span>}
+              {detail.session.packageCount != null && <span>Packages: {detail.session.packageCount}</span>}
+              {detail.session.packageReference && <span>Ref: {detail.session.packageReference}</span>}
+            </div>
+            {detail.session.packingNotes && <p class="mt-2">Notes: {detail.session.packingNotes}</p>}
+            {detail.session.exceptionReason && <p class="mt-2 text-orange-700">Exception: {detail.session.exceptionReason}</p>}
+          </div>
+        )}
+      </>
+    )}
+  </div>
+</AdminLayout>
