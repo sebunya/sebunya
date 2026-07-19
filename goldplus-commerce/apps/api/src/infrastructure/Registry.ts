@@ -361,6 +361,8 @@ import {
   TransitionDecisionInsightUseCase,
   RecomputeDecisionInsightUseCase,
 } from '../application/use-cases/decision-intelligence/DecisionIntelligenceUseCases';
+import { DrizzleAutomationRepository, DrizzleAutomationExecutionRepository, DrizzleAutomationAudienceReader } from './db/repositories/DrizzleAutomationRepositories';
+import { PlanAutomationExecutionUseCase } from '../application/use-cases/automation/PlanAutomationExecutionUseCase';
 
 export class Registry {
 
@@ -562,6 +564,12 @@ export class Registry {
   public readonly getDecisionOverviewUseCase = new GetDecisionOverviewUseCase(this.decisionInsightRepo);
   public readonly transitionDecisionInsightUseCase = new TransitionDecisionInsightUseCase(this.decisionInsightRepo, this.auditRepo);
   public readonly recomputeDecisionInsightUseCase = new RecomputeDecisionInsightUseCase(this.decisionInsightRepo, this.evaluateDecisionSignalsBatchUseCase);
+
+  // Automation A2: restart-safe trigger planning (reuses Customer DNA audience).
+  public readonly automationRepo = new DrizzleAutomationRepository();
+  public readonly automationExecutionRepo = new DrizzleAutomationExecutionRepository();
+  public readonly automationAudienceReader = new DrizzleAutomationAudienceReader();
+  public readonly planAutomationExecutionUseCase = new PlanAutomationExecutionUseCase(this.automationRepo, this.automationExecutionRepo, this.automationAudienceReader);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);

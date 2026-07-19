@@ -134,6 +134,40 @@ export function resolveMisfire(schedule: AutomationScheduleConfig, expectedRun: 
   return { action: 'SKIP', nextRun: computeNextRun(schedule, now) };
 }
 
+// ---------- condition evaluation (pure, evidence-producing) ----------
+export interface ConditionContext {
+  lifecycleStage: string | null;
+  consentEligible: boolean | null;
+  identityConfidence: string | null;
+  now: Date;
+}
+export interface ConditionEvidence {
+  conditionId: string;
+  category: string;
+  operator: string;
+  expected: unknown;
+  inputValue: unknown;
+  result: boolean;
+  source: string;
+  freshnessOk: boolean;
+}
+export interface ConditionsOutcome { allPassed: boolean; evidence: ConditionEvidence[] }
+
+/** Evaluate a version's conditions against a subject context, producing evidence. */
+export function evaluateConditions(conditions: AutomationConditionConfig[], ctx: ConditionContext): ConditionsOutcome {
+  const evidence: ConditionEvidence[] = [];
+  for (const c of conditions) {
+    let inputValue: unknown = null;
+    let source = c.category;
+    let result = false;
+    if (c.category === 'lifecycle') { inputValue = ctx.lifecycleStage; source = 'customer_profiles'; result = c.operator === 'equals' ? ctx.lifecycleStage === c.expected : c.operator === 'not_equals' ? ctx.lifecycleStage !== c.expected : false; }
+    else if (c.category === 'consent') { inputValue = ctx.consentEligible; source = 'consent'; result = ctx.consentEligible === c.expected; }
+    else { inputValue = null; result = false; }
+    evidence.push({ conditionId: c.conditionId, category: c.category, operator: c.operator, expected: c.expected, inputValue, result, source, freshnessOk: true });
+  }
+  return { allPassed: evidence.every((e) => e.result), evidence };
+}
+
 // ---------- idempotency keys ----------
 export function buildTriggerExecutionKey(automationId: string, version: number, triggerEventId: string): string {
   return `automation:${automationId}:v${version}:trigger:${triggerEventId}`;
