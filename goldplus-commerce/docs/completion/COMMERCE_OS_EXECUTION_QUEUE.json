@@ -196,7 +196,7 @@
         "orders",
         "checkout"
       ],
-      "status": "SOURCE_PARTIAL",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "Server-authoritative promotion definition/eligibility/validity/stacking/limits/calculation/preview/approval/activation.",
       "existingAssets": [
         "products/pricing fields",
@@ -206,10 +206,8 @@
         "authoritative checkout, immutable order pricing snapshot, atomic redemption and PesaPal amount integrity",
         "protected Pricing API/control room, exact commercial RBAC, audit, capacity metrics and safe simulation"
       ],
-      "missingLayers": [
-        "production-shaped acceptance and live deployment"
-      ],
-      "nextBoundedSlice": "P6 production-shaped Pricing acceptance",
+      "missingLayers": [],
+      "nextBoundedSlice": "P7 exact executable release-candidate freeze, database-connected image smoke, backup/restore rehearsal and rollback package",
       "acceptance": [
         "no invented discounts",
         "no negative prices",
@@ -222,9 +220,12 @@
         "pricing-evaluation-proof.ts PASS: actual canonical catalogue rows, deterministic stacking, persisted explainable quote, safe simulation, zero provider calls/residue",
         "pricing-capacity-proof.ts PASS: one final-slot/customer/coupon winner, idempotent reserve/redeem/release, zero orphans/provider calls/residue",
         "pricing-checkout-proof.ts PASS: canonical price, atomic order/redemption, failed-order compensation, immutable PesaPal retry amount, zero outbox/real-provider calls/residue",
-        "pricing-operations-proof.ts PASS: protected governance surface, Experiment association, canonical non-persistent simulation, truthful capacity/audit, zero business/provider effects/residue"
+        "pricing-operations-proof.ts PASS: protected governance surface, Experiment association, canonical non-persistent simulation, truthful capacity/audit, zero business/provider effects/residue",
+        "verify-pricing-acceptance.sh PASS: all five real-PostgreSQL components, zero real-provider calls and zero proof residue",
+        "fresh 0000-0042 replay plus populated 0041-0042 upgrade PASS with zero active promotions and exact legacy pricing backfill",
+        "production Linux/amd64 API/web image builds and network-none protected-route start smokes PASS; seven running container IDs unchanged"
       ],
-      "commit": "P1-P5 committed in independent reviewed slices"
+      "commit": "P1-P6 committed in independent reviewed slices"
     },
     {
       "module": "Fraud Triage",

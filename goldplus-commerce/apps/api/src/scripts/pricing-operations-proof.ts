@@ -48,6 +48,10 @@ async function main() {
     definitionIds.push(created.definition.id);
     const associated = await operations.associateExperiment({ definitionId: created.definition.id, versionId: created.version.id, experimentId, variantKey: 'treatment', actorId });
     const ready = await operations.transition({ definitionId: created.definition.id, versionId: created.version.id, expectedRevision: 1, to: 'READY_FOR_REVIEW', actorId, reason: 'P5 review evidence', now });
+    let immutableExperimentAssociationDenied = false;
+    try { await operations.associateExperiment({ definitionId: created.definition.id, versionId: created.version.id, experimentId, variantKey: 'treatment', actorId }); }
+    catch (error) { immutableExperimentAssociationDenied = error instanceof Error && 'code' in error && error.code === 'VERSION_IMMUTABLE'; }
+    assert(immutableExperimentAssociationDenied, 'Experiment association bypassed immutable Pricing governance');
     const approved = await operations.transition({ definitionId: created.definition.id, versionId: created.version.id, expectedRevision: ready.definition.revision, to: 'APPROVED', actorId, reason: 'P5 approval evidence', now });
     const active = await operations.transition({ definitionId: created.definition.id, versionId: created.version.id, expectedRevision: approved.definition.revision, to: 'ACTIVE', actorId, reason: 'P5 activation evidence', now });
     const beforeSimulation = await counts();
@@ -58,12 +62,16 @@ async function main() {
     const activeOverview = await operations.overview(); const detail = await operations.detail(created.definition.id);
     assert(activeOverview.definitionsByStatus.ACTIVE >= 1 && activeOverview.activeCapacity.some((row) => row.definitionId === created.definition.id && row.remaining === 10), 'persisted overview did not report active capacity truthfully');
     assert(detail.associations.length === 1 && detail.versions.length === 1 && detail.approvals.length === 1 && detail.audit.length === 5, 'detail did not expose version/association/approval/audit truthfully');
-    await operations.transition({ definitionId: created.definition.id, versionId: created.version.id, expectedRevision: active.definition.revision, to: 'PAUSED', actorId, reason: 'P5 pause evidence', now: new Date() });
+    const paused = await operations.transition({ definitionId: created.definition.id, versionId: created.version.id, expectedRevision: active.definition.revision, to: 'PAUSED', actorId, reason: 'P6 pause evidence', now: new Date() });
     const pausedOverview = await operations.overview();
     assert(pausedOverview.definitionsByStatus.PAUSED >= 1 && !pausedOverview.activeCapacity.some((row) => row.definitionId === created.definition.id), 'pause was not reflected by persisted operations state');
+    const resumed = await operations.transition({ definitionId: created.definition.id, versionId: created.version.id, expectedRevision: paused.definition.revision, to: 'ACTIVE', actorId, reason: 'P6 resume evidence', now: new Date() });
+    const resumedOverview = await operations.overview();
+    assert(resumedOverview.definitionsByStatus.ACTIVE >= 1 && resumedOverview.activeCapacity.some((row) => row.definitionId === created.definition.id && row.remaining === 10), 'resume did not restore persisted active capacity');
+    await operations.transition({ definitionId: created.definition.id, versionId: created.version.id, expectedRevision: resumed.definition.revision, to: 'PAUSED', actorId, reason: 'P6 safe terminal pause', now: new Date() });
     const after = await counts();
     assert(Number(after.quotes) === Number(before.quotes) && Number(after.reservations) === Number(before.reservations) && Number(after.redemptions) === Number(before.redemptions) && Number(after.orders) === Number(before.orders) && Number(after.payments) === Number(before.payments) && Number(after.outbox) === Number(before.outbox), 'P5 operating proof created forbidden business effects');
-    report = { lifecycle: 'DRAFT->READY_FOR_REVIEW->APPROVED->ACTIVE->PAUSED', experimentAssociation: !associated.duplicate, canonicalBaseUgx: 200_000, simulatedDiscountUgx: 30_000, simulatedFinalUgx: 170_000, reservationDelta: 0, redemptionDelta: 0, orderDelta: 0, paymentDelta: 0, outboxDelta: 0, providerCalls: 0, approvalRows: detail.approvals.length, auditRowsBeforePause: detail.audit.length };
+    report = { lifecycle: 'DRAFT->READY_FOR_REVIEW->APPROVED->ACTIVE->PAUSED->ACTIVE->PAUSED', resumeRestoredCapacity: true, experimentAssociation: !associated.duplicate, immutableExperimentAssociationDenied, canonicalBaseUgx: 200_000, simulatedDiscountUgx: 30_000, simulatedFinalUgx: 170_000, reservationDelta: 0, redemptionDelta: 0, orderDelta: 0, paymentDelta: 0, outboxDelta: 0, providerCalls: 0, approvalRows: detail.approvals.length, auditRowsBeforePause: detail.audit.length };
   } catch (error) { failure = error; }
   finally {
     try {

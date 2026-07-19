@@ -1,4 +1,4 @@
-# NEXT WORKTREE — Pricing P3 proof complete; commit/alignment pending
+# NEXT WORKTREE — Pricing P6 accepted; P7 exact release candidate next
 
 The forensic handover has been assimilated across the complete tracked repository. Start with
 `docs/handover/codex/orientation/CODEX_CONTEXT_LEDGER.md`, then use the original handover pack under
@@ -16,12 +16,17 @@ The forensic handover has been assimilated across the complete tracked repositor
 - Do not rewrite migrations 0000-0039; do not duplicate scheduler/outbox/router/consent/audit/RBAC.
 
 Automation A5 is pushed at `c84fa6996f86c2d78f62c20f9e3172b311f8a243`; Experiments is pushed at
-`97f304565679284e7bf6731f56d0183a6e7fd239`. Pricing P1 is locally complete with additive migration 0042,
-governed immutable versions, explicit approval/activation, shared audit, native JSONB, fresh replay and a self-cleaning
-PostgreSQL proof. P1 is pushed at `873d965542fd37212bc05db50470e0fea5013c93` with a clean 194-file / 4,030-test suite.
-P2 is pushed at `2e80bd8c44d4433e5e56ee1dd71a7cd981a0b5c1`. P3 is locally complete: one
-transactional 0042-backed capacity adapter, version/global/customer/coupon limits, final-slot races and idempotent
-reserve/redeem/release with zero provider calls/residue. Commit/push P3, rerun the clean suite, then begin P4.
+`97f304565679284e7bf6731f56d0183a6e7fd239`. Pricing P1–P5 are pushed through route-census head
+`09ceb5a182acaceb913b5f73844f4844060360c0`. P6 adds only the integrated acceptance runner and evidence.
+All five real-PostgreSQL Pricing proofs pass with zero real-provider calls and residue; fresh `0000`–`0042` and
+populated `0041`→`0042` pass; compiled plain-Node and production Linux/amd64 API/web image smokes pass. Production
+services and source were not changed. Pricing is `SOURCE_COMPLETE_NOT_DEPLOYED`.
+
+Next: P7 must freeze one exact executable commit, rebuild labelled API/web images from it, run the separate
+database-connected production-image smoke, create and verify the production backup, restore it into an isolated
+on-server scratch database, apply only `0042`, prove schema/data/Pricing/rollback invariants, and assemble the complete
+rollback package. Do not deploy, switch production source, apply the live migration, or recreate services before every
+P7 gate is green. P8 remains independently approval-marker gated.
 
 The detailed A3-A5 plan, protected assets, evidence manifest and risk register live under
 `docs/handover/codex/`. The section below is the prior resume note (superseded by the handover and C0 package).

@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Pricing P5)
+# CURRENT EXECUTION STATE (2026-07-20 · Pricing P6)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -84,6 +84,9 @@
 - Pricing P4 is pushed at `febdb9850d38d4433bdc7111124038f0ee94580c`; its clean suite is 197 files / 4,041 tests.
 - P5 adds distinct Pricing RBAC, protected persisted APIs, real capacity/audit/Experiment evidence, audited governance operations and an Astro administrator control room. Safe simulation is non-persistent by construction.
 - P5 real-PostgreSQL proof passes governed lifecycle/association, canonical simulation, active/paused capacity truth, zero business/communication deltas, zero provider calls and zero residue. Pricing plus architecture is 30/30; workspace gates pass; repository-wide lint retains only the established unrelated baseline error.
-- Next gate: commit/push P5, prove clean local/remote alignment, then begin P6 production-shaped Pricing acceptance.
+- Pricing P5 is pushed at `dd36b78`; the admin-route census correction is pushed at `09ceb5a182acaceb913b5f73844f4844060360c0`.
+- P6 production-shaped acceptance runs all five Pricing PostgreSQL proofs under one deterministic runner, replays fresh `0000`–`0042`, proves populated `0041`→`0042` legacy order/line backfill, and executes the compiled Pricing proof under plain Node.
+- Exact clean source `09ceb5a` built into production Linux/amd64 API/web images from the pinned Node digest. Network-none read-only image smokes passed API/web health and logged-out Pricing protection; all seven live production container IDs remained unchanged.
+- Pricing is now `SOURCE_COMPLETE_NOT_DEPLOYED`. No live migration, deployment, promotion activation, provider call, customer communication or production database write occurred. P7 exact release-candidate freeze, database-connected image smoke, backup/restore rehearsal and rollback package are next.
 
 ---

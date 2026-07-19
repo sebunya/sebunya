@@ -38,7 +38,8 @@ describe('Pricing P5 protected control room', () => {
     expect((await app.request(`${url}/approve`, { method: 'POST', headers: { Authorization: 'Bearer approve', ...json }, body: transitionBody })).status).toBe(200);
     expect((await app.request(`${url}/activate`, { method: 'POST', headers: { Authorization: 'Bearer activate', ...json }, body: transitionBody })).status).toBe(200);
     expect((await app.request(`${url}/pause`, { method: 'POST', headers: { Authorization: 'Bearer pause', ...json }, body: transitionBody })).status).toBe(200);
-    expect(operations.transition.mock.calls.map(([input]) => input.to)).toEqual(['APPROVED', 'ACTIVE', 'PAUSED']);
+    expect((await app.request(`${url}/resume`, { method: 'POST', headers: { Authorization: 'Bearer activate', ...json }, body: transitionBody })).status).toBe(200);
+    expect(operations.transition.mock.calls.map(([input]) => input.to)).toEqual(['APPROVED', 'ACTIVE', 'PAUSED', 'ACTIVE']);
   });
 
   it('keeps simulation separately privileged and non-persistent by use-case contract', async () => {
@@ -53,5 +54,17 @@ describe('Pricing P5 protected control room', () => {
     const source = fs.readFileSync(path.join(root, 'index.astro'), 'utf8') + fs.readFileSync(path.join(root, '[id].astro'), 'utf8');
     for (const state of ['DRAFT','READY_FOR_REVIEW','APPROVED','ACTIVE','PAUSED','EXPIRED','REJECTED','ARCHIVED','RESERVED','REDEEMED','RELEASED','CANCELLED','Permission denied','Stale conflict','Empty','Unavailable']) expect(source).toContain(state);
     for (const guarantee of ['Creates no quote, reservation, redemption, order, payment or provider call','no sample metrics','shared audit']) expect(source.toLowerCase()).toContain(guarantee.toLowerCase());
+  });
+
+  it('keeps Automation and Decision Intelligence outside the Pricing activation boundary', () => {
+    const roots = [
+      path.resolve(__dirname, '../../apps/api/src/application/use-cases/automation'),
+      path.resolve(__dirname, '../../apps/api/src/application/use-cases/decision-intelligence'),
+    ];
+    const files = roots.flatMap((root) => fs.readdirSync(root).filter((name) => name.endsWith('.ts')).map((name) => path.join(root, name)));
+    for (const file of files) {
+      const source = fs.readFileSync(file, 'utf8');
+      expect(source).not.toMatch(/PricingGovernanceUseCase|pricingOperationsUseCase|PRICING_ACTIVATE/);
+    }
   });
 });
