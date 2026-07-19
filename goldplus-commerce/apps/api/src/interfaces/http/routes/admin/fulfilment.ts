@@ -72,6 +72,12 @@ routes.get('/badge', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) =>
   return c.json(res);
 });
 
+// F5 report — registered before '/:id' so the static path is not shadowed.
+routes.get('/report', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const report = await Registry.getInstance().getFulfilmentReportUseCase.execute();
+  return c.json({ success: true, data: report } satisfies ApiResponse<typeof report>);
+});
+
 routes.get('/:id', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const task = await Registry.getInstance().getFulfilmentOverviewUseCase.byId(id);
@@ -398,6 +404,52 @@ routes.patch('/:id/dispatch/tracking', requirePermissions([PERMISSIONS.ORDERS_MA
   });
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, dispatchErrStatus(result.code));
   return c.json({ success: true, data: result.dispatch } satisfies ApiResponse<typeof result.dispatch>);
+});
+
+// --- F5: delivery confirmation and reporting ---
+
+function deliveryErrStatus(code: string): 400 | 404 {
+  return code === 'NOT_FOUND' ? 404 : 400;
+}
+
+routes.get('/:id/delivery', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const result = await Registry.getInstance().getDeliveryHistoryUseCase.execute(id);
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, deliveryErrStatus(result.code));
+  return c.json({ success: true, data: { status: result.status, deliveries: result.deliveries } } satisfies ApiResponse<{ status: string; deliveries: typeof result.deliveries }>);
+});
+
+const recordDeliveryBody = z.object({
+  outcome: z.enum(['DELIVERED', 'DELIVERY_FAILED', 'RESCHEDULED', 'RETURN_TO_ORIGIN', 'PARTIALLY_DELIVERED']),
+  deliveredQuantity: z.number().int().min(0).optional(),
+  returnedQuantity: z.number().int().min(0).optional(),
+  recipientName: z.string().trim().max(120).optional(),
+  recipientConfirmation: z.string().trim().max(120).optional(),
+  proofReference: z.string().trim().max(120).optional(),
+  failedReason: z.string().trim().max(500).optional(),
+  rescheduledFor: z.string().datetime().optional(),
+  notes: z.string().trim().max(2000).optional(),
+});
+routes.post('/:id/delivery', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const parsed = recordDeliveryBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().recordDeliveryUseCase.execute({
+    taskId: id,
+    actorId,
+    outcome: parsed.data.outcome,
+    deliveredQuantity: parsed.data.deliveredQuantity,
+    returnedQuantity: parsed.data.returnedQuantity,
+    recipientName: parsed.data.recipientName,
+    recipientConfirmation: parsed.data.recipientConfirmation,
+    proofReference: parsed.data.proofReference,
+    failedReason: parsed.data.failedReason,
+    rescheduledFor: parsed.data.rescheduledFor ? new Date(parsed.data.rescheduledFor) : null,
+    notes: parsed.data.notes,
+  });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, deliveryErrStatus(result.code));
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });
 
 // --- F2: SLA escalation (evaluate + summary) ---

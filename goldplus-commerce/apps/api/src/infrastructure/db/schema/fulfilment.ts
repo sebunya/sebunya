@@ -160,6 +160,37 @@ export const fulfilmentDispatches = pgTable(
   })
 );
 
+/**
+ * F5 — delivery attempts per fulfilment task. Attempts accumulate; the unique
+ * (fulfilment_task_id, attempt) index makes a resubmitted attempt idempotent.
+ * Recording a delivery never changes payment. Recipient data is minimised.
+ */
+export const fulfilmentDeliveries = pgTable(
+  'fulfilment_deliveries',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    fulfilmentTaskId: uuid('fulfilment_task_id').references(() => fulfilmentTasks.id).notNull(),
+    orderId: uuid('order_id').references(() => orders.id).notNull(),
+    attempt: integer('attempt').notNull(),
+    outcome: varchar('outcome', { length: 30 }).notNull(),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    recipientNameMasked: varchar('recipient_name_masked', { length: 60 }),
+    recipientConfirmation: varchar('recipient_confirmation', { length: 120 }),
+    proofReference: varchar('proof_reference', { length: 120 }),
+    failedReason: text('failed_reason'),
+    rescheduledFor: timestamp('rescheduled_for', { withTimezone: true }),
+    deliveredQuantity: integer('delivered_quantity').default(0).notNull(),
+    returnedQuantity: integer('returned_quantity').default(0).notNull(),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    taskAttemptIdx: uniqueIndex('fulfilment_deliveries_task_attempt_idx').on(table.fulfilmentTaskId, table.attempt),
+    orderIdx: index('fulfilment_deliveries_order_idx').on(table.orderId),
+    outcomeIdx: index('fulfilment_deliveries_outcome_idx').on(table.outcome),
+  })
+);
+
 /** F2 — persisted, idempotent SLA escalation events (one per task/stage/version). */
 export const fulfilmentSlaEvents = pgTable(
   'fulfilment_sla_events',

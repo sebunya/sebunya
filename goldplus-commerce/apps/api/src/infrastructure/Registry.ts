@@ -330,6 +330,13 @@ import {
   RecordDispatchUseCase,
   UpdateDispatchTrackingUseCase,
 } from '../application/use-cases/fulfilment/DispatchUseCases';
+import { DrizzleFulfilmentDeliveryRepository } from './db/repositories/DrizzleFulfilmentDeliveryRepository';
+import { DrizzleFulfilmentReportRepository } from './db/repositories/DrizzleFulfilmentReportRepository';
+import {
+  GetDeliveryHistoryUseCase,
+  RecordDeliveryUseCase,
+  GetFulfilmentReportUseCase,
+} from '../application/use-cases/fulfilment/DeliveryUseCases';
 
 export class Registry {
 
@@ -502,6 +509,13 @@ export class Registry {
   public readonly getDispatchUseCase = new GetDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo);
   public readonly recordDispatchUseCase = new RecordDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo, this.inventoryRepo, this.auditRepo);
   public readonly updateDispatchTrackingUseCase = new UpdateDispatchTrackingUseCase(this.fulfilmentDispatchRepo, this.auditRepo);
+
+  // Fulfilment F5: delivery confirmation and pipeline reporting.
+  public readonly fulfilmentDeliveryRepo = new DrizzleFulfilmentDeliveryRepository();
+  public readonly fulfilmentReportRepo = new DrizzleFulfilmentReportRepository();
+  public readonly getDeliveryHistoryUseCase = new GetDeliveryHistoryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo);
+  public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo);
+  public readonly getFulfilmentReportUseCase = new GetFulfilmentReportUseCase(this.fulfilmentReportRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);

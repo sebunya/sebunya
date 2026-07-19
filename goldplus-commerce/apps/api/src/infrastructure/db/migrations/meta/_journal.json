@@ -253,6 +253,13 @@
       "when": 1784446200000,
       "tag": "0035_lonely_iron_fist",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "5",
+      "when": 1784447200000,
+      "tag": "0036_curly_delivery",
+      "breakpoints": true
     }
   ]
 }
