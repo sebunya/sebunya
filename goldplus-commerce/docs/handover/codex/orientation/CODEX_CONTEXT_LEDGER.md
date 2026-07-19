@@ -278,3 +278,12 @@ Focused proof target: native JSONB object writes, compatibility reads for any le
 - PostgreSQL proof uses actual catalogue rows and active approved immutable versions. It persists and rehydrates one quote, two lines, three adjustments and native decision-trace JSONB; non-persistent simulation returns identical totals and creates no extra quote. Provider calls and proof residue are zero.
 - Focused Pricing plus architecture is 18/18; typecheck/build/secret scan/changed-path lint/diff check pass. No migration, reservation, redemption, order, payment, outbox, provider or production change occurred.
 - Status: `SOURCE_PARTIAL`; next boundary is P3 transactionally serialized limits and idempotent reservation/redemption/release.
+
+## Pricing P3 — transactionally safe promotion capacity
+
+- Verified base: clean/pushed P2 `2e80bd8c44d4433e5e56ee1dd71a7cd981a0b5c1`; clean suite green.
+- One 0042-backed adapter serializes immutable-version capacity, expires stale holds before counts, and revalidates active version/window/quote. Global, customer and coupon limits count live reservations plus redemptions and fail closed when required scope is absent.
+- Reserve, redeem and release are idempotent. Partial replay, different-order redemption, expired/non-live reservation and release-after-redemption fail closed. Preview/simulation uses no reservation path.
+- PostgreSQL races prove one winner for the final global slot, same customer and same coupon; retry reuses one hold, redemption stays one row, release transitions once, all orphan counts and proof residue are zero, and provider calls remain zero.
+- Focused Pricing plus architecture is 21/21; typecheck/build/secret scan/changed-path lint/diff check pass. Migration 0042 and earlier migrations are unchanged.
+- Status: `SOURCE_PARTIAL`; next boundary is P4 atomic authoritative checkout/order pricing snapshot and committed-order PesaPal integrity.
