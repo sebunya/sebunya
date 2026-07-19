@@ -182,7 +182,12 @@ export class ZeptoMailAdapter implements INotificationProvider {
       'ORDER_FULFILLMENT_COMPLETED',
     ].includes(payload.template);
 
-    if (isOrderTemplate) {
+    if (payload.template === 'ADMIN_ORDER_EMAIL' && typeof payload.data?.html === 'string') {
+      // Pre-rendered admin order email (already escaped in the pure domain).
+      subject = String(payload.data.subject || subject);
+      htmlContent = String(payload.data.html);
+      textContent = String(payload.data.text || subject);
+    } else if (isOrderTemplate) {
       const orderModel = payload.data?.order || payload.data || {};
       subject = this.renderer.getSubject(payload.template as any);
       htmlContent = this.renderer.renderEmail(payload.template as any, orderModel);

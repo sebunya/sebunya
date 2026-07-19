@@ -165,6 +165,19 @@ routes.post('/orders/create', async (c) => {
       console.error('[API_ERROR] Fulfilment task creation failed (order persisted):', fulfilErr?.message);
     }
 
+    // Transactional admin order email intent (OrderPlaced). Idempotent, dry-run
+    // (no provider call until activated); the order/fulfilment/notification all
+    // remain available even if this enqueue fails.
+    try {
+      await registry.enqueueAdminOrderEmailUseCase.execute({
+        order: result.order,
+        event: 'placed',
+        stockConfirmed: !stockHeld,
+      });
+    } catch (emailErr: any) {
+      console.error('[API_ERROR] Admin order email enqueue failed (order persisted):', emailErr?.message);
+    }
+
     const res: ApiResponse<any> = {
       success: true,
       data: {
@@ -423,6 +436,22 @@ routes.get('/payments/pesapal/callback', async (c) => {
       } catch (fulfilErr: any) {
         console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
       }
+      // Transactional admin email (PaymentConfirmed). Idempotent per order.
+      // Payment confirmation never clears an inventory hold: stockConfirmed is
+      // derived from the fulfilment task's ON_HOLD state, not from payment.
+      try {
+        const paidOrder = await registry.orderRepo.findById(result.orderId);
+        const task = await registry.getFulfilmentOverviewUseCase.byOrderId(result.orderId);
+        if (paidOrder) {
+          await registry.enqueueAdminOrderEmailUseCase.execute({
+            order: paidOrder,
+            event: 'payment-confirmed',
+            stockConfirmed: task ? task.status !== 'ON_HOLD' : true,
+          });
+        }
+      } catch (emailErr: any) {
+        console.error('[API_ERROR] Admin payment-confirmed email enqueue failed:', emailErr?.message);
+      }
       try {
         const order = await registry.orderRepo.findById(result.orderId);
         const mappedInput = registry.pesapalMeasurementMapper.map({
@@ -506,6 +535,22 @@ const handleIpn = async (c: any) => {
         await registry.markFulfilmentPaymentConfirmedUseCase.execute(result.orderId, 'paid');
       } catch (fulfilErr: any) {
         console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
+      }
+      // Transactional admin email (PaymentConfirmed). Idempotent per order.
+      // Payment confirmation never clears an inventory hold: stockConfirmed is
+      // derived from the fulfilment task's ON_HOLD state, not from payment.
+      try {
+        const paidOrder = await registry.orderRepo.findById(result.orderId);
+        const task = await registry.getFulfilmentOverviewUseCase.byOrderId(result.orderId);
+        if (paidOrder) {
+          await registry.enqueueAdminOrderEmailUseCase.execute({
+            order: paidOrder,
+            event: 'payment-confirmed',
+            stockConfirmed: task ? task.status !== 'ON_HOLD' : true,
+          });
+        }
+      } catch (emailErr: any) {
+        console.error('[API_ERROR] Admin payment-confirmed email enqueue failed:', emailErr?.message);
       }
       try {
         const order = await registry.orderRepo.findById(result.orderId);

@@ -124,4 +124,58 @@ routes.get('/health-check', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ])
   });
 });
 
+// --- Transactional admin order email (outbox intents + manual replay) ---
+// audit-exempt: the only write endpoint (POST /admin-order-emails/:id/replay)
+// delegates to ReplayAdminOrderEmailUseCase, which writes the outbox_event audit
+// entry via CreateAuditLogUseCase — a dedicated audit channel.
+
+function deliveryStateOf(row: { isProcessed: boolean; status: string; attemptCount: number; lastError?: string | null; dryRunOnly: boolean }): string {
+  if (!row.isProcessed) return row.attemptCount > 0 ? 'RETRYING' : 'PENDING';
+  if (!row.lastError) return 'SENT';
+  const e = row.lastError.toLowerCase();
+  if (e.includes('exhausted')) return 'DEAD_LETTER';
+  if (e.includes('not_configured') || e.includes('no channel')) return 'MISSING_CONFIG';
+  if (e.includes('disabled')) return row.dryRunOnly ? 'DELIVERY_DISABLED' : 'DELIVERY_DISABLED';
+  return 'RETRYING';
+}
+
+routes.get('/admin-order-emails', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const { parseAdminRecipients, maskAdminEmail } = await import('../../../../domain/notifications/AdminOrderEmail');
+  const recipientCfg = parseAdminRecipients(process.env.ADMIN_ORDER_NOTIFICATION_EMAILS || process.env.OPS_ALERT_EMAIL);
+  const rows = await registry.outboxRepo.listByEventType('ADMIN_ORDER_EMAIL', 100);
+  const data = {
+    recipientReadiness: {
+      state: recipientCfg.state,
+      recipients: recipientCfg.recipients.map(maskAdminEmail),
+    },
+    intents: rows.map((r) => ({
+      id: r.id,
+      orderId: r.relatedEntityId,
+      event: (r.payload as any)?.event ?? null,
+      preparationState: (r.payload as any)?.preparationState ?? null,
+      deliveryState: deliveryStateOf(r),
+      attemptCount: r.attemptCount,
+      nextAttemptAt: r.nextAttemptAt.toISOString(),
+      lastError: scrubMessage(r.lastError ?? null),
+      dryRunOnly: r.dryRunOnly,
+      createdAt: r.createdAt.toISOString(),
+    })),
+  };
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
+routes.post('/admin-order-emails/:id/replay', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const body = await c.req.json().catch(() => ({}));
+  const reason = String(body?.reason ?? '').slice(0, 500);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().replayAdminOrderEmailUseCase.execute({ eventId: id, actorId, reason });
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' ? 404 : 400;
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, status);
+  }
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
 export default routes;

@@ -1,4 +1,4 @@
-import { eq, lte, and, asc, sql } from 'drizzle-orm';
+import { eq, lte, and, asc, desc, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { outboxEvents } from '../schema/system';
 import { IOutboxRepository, PersistedOutboxEvent } from '../../../application/ports/IOutboxRepository';
@@ -22,6 +22,7 @@ function rowToPersisted(row: typeof outboxEvents.$inferSelect): PersistedOutboxE
     previewOnly: row.previewOnly,
     noSendGuarantee: row.noSendGuarantee,
     suppressedReason: row.suppressedReason,
+    lastError: row.lastError,
   };
 }
 
@@ -79,5 +80,61 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
       .orderBy(asc(outboxEvents.createdAt));
 
     return rows.map(rowToPersisted);
+  }
+
+  async enqueueAdminOrderEmail(input: {
+    idempotencyKey: string;
+    payload: Record<string, unknown>;
+    relatedEntityId: string;
+  }): Promise<{ enqueued: boolean }> {
+    const inserted = await db
+      .insert(outboxEvents)
+      .values({
+        eventType: 'ADMIN_ORDER_EMAIL',
+        payload: input.payload as any,
+        idempotencyKey: input.idempotencyKey,
+        status: 'pending',
+        channel: 'email',
+        template: 'ADMIN_ORDER_EMAIL',
+        dryRunOnly: true,
+        relatedEntity: 'order',
+        relatedEntityId: input.relatedEntityId,
+      })
+      .onConflictDoNothing({ target: outboxEvents.idempotencyKey })
+      .returning({ id: outboxEvents.id });
+    return { enqueued: inserted.length > 0 };
+  }
+
+  async findById(eventId: string): Promise<PersistedOutboxEvent | null> {
+    const [row] = await db.select().from(outboxEvents).where(eq(outboxEvents.id, eventId)).limit(1);
+    return row ? rowToPersisted(row) : null;
+  }
+
+  async listByEventType(eventType: string, limit: number): Promise<PersistedOutboxEvent[]> {
+    const rows = await db
+      .select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.eventType, eventType))
+      .orderBy(desc(outboxEvents.createdAt))
+      .limit(limit);
+    return rows.map(rowToPersisted);
+  }
+
+  async requeueForReplay(eventId: string, now: Date): Promise<boolean> {
+    // Replay only a processed event that carries an error (failed / exhausted /
+    // suppressed). A cleanly SENT event has last_error IS NULL and is never
+    // re-sent; a still-pending event needs no replay.
+    const updated = await db
+      .update(outboxEvents)
+      .set({ isProcessed: false, processedAt: null, status: 'pending', nextAttemptAt: now, attemptCount: 0, lastError: null })
+      .where(
+        and(
+          eq(outboxEvents.id, eventId),
+          eq(outboxEvents.isProcessed, true),
+          sql`${outboxEvents.lastError} is not null`
+        )
+      )
+      .returning({ id: outboxEvents.id });
+    return updated.length > 0;
   }
 }

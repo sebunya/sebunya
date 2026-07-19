@@ -108,6 +108,8 @@ import { RecordNotificationAttemptUseCase } from '../application/use-cases/notif
 import { ListRecentNotificationsUseCase } from '../application/use-cases/notifications/ListRecentNotificationsUseCase';
 import { ListOrderNotificationsUseCase } from '../application/use-cases/notifications/ListOrderNotificationsUseCase';
 import { ProcessOutboxBatchUseCase } from '../application/use-cases/outbox/ProcessOutboxBatchUseCase';
+import { EnqueueAdminOrderEmailUseCase } from '../application/use-cases/notifications/EnqueueAdminOrderEmailUseCase';
+import { ReplayAdminOrderEmailUseCase } from '../application/use-cases/notifications/ReplayAdminOrderEmailUseCase';
 import { UploadProductImagesUseCase } from '../application/use-cases/products/UploadProductImagesUseCase';
 import { TrackRecommendationEventUseCase } from '../application/recommendations/TrackRecommendationEventUseCase';
 import { GetRecommendationsUseCase } from '../application/recommendations/GetRecommendationsUseCase';
@@ -459,6 +461,9 @@ export class Registry {
   public readonly recordNotificationAttemptUseCase = new RecordNotificationAttemptUseCase(this.notificationAttemptRepo);
   public readonly listRecentNotificationsUseCase = new ListRecentNotificationsUseCase(this.notificationAttemptRepo);
   public readonly listOrderNotificationsUseCase = new ListOrderNotificationsUseCase(this.outboxRepo, this.notificationAttemptRepo);
+  // Transactional admin order email (reuses the outbox + ProcessOutboxBatch + ZeptoMail).
+  public readonly enqueueAdminOrderEmailUseCase = new EnqueueAdminOrderEmailUseCase(this.outboxRepo);
+  public readonly replayAdminOrderEmailUseCase = new ReplayAdminOrderEmailUseCase(this.outboxRepo, this.auditRepo);
   public readonly uploadProductImagesUseCase = new UploadProductImagesUseCase(this.productImageStorage, this.productImageRepo);
   public readonly processOutboxBatchUseCase = new ProcessOutboxBatchUseCase(
     this.outboxRepo,

@@ -50,6 +50,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Actionable New Orders queue: products, payment status and lifecycle transitions.'
   },
   {
+    label: 'Order Emails',
+    href: '/admin/notifications/order-emails',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Transactional admin order-email intents: delivery status, dead-letter and manual replay.'
+  },
+  {
     label: 'Recommendations',
     href: '/admin/recommendations',
     group: 'Recommendations',

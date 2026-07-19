@@ -2,7 +2,25 @@
 
 Updated: 2026-07-18 (48-Hour Total Launch War Room — Launch Slice L0 + P0 fulfilment)
 
-## Absolute Completion Orchestrator (latest)
+## Transactional admin order email (latest)
+
+- Transactional administrator order email implemented on the existing outbox
+  (`outbox_events` + `ProcessOutboxBatchUseCase` + `DefaultNotificationRouter` + ZeptoMail;
+  no second system, no new migration). One idempotent intent per order event
+  (`order:{id}:admin-email:{placed|payment-confirmed|cancelled}`), enqueued on OrderPlaced,
+  PaymentConfirmed (callback+IPN), OrderCancelled. Truthful preparation state
+  (READY only when payment AND stock confirmed; payment never clears a stock hold). Secure
+  env recipients (never hard-coded), MISSING_CONFIG state, masked display. One email/order
+  with all products, escaped, secure admin link. Retry/DLQ via the processor; manual replay
+  (RBAC orders.manage, audited) + admin page `/admin/notifications/order-emails`. No-send by
+  default (dryRunOnly + provider DISABLED = zero network).
+- Real-PostgreSQL proof: sequential + concurrent duplicate enqueue → one row; failed→replayable;
+  sent→not re-sent (PASS). Unit tests 12. Gates green; architecture 10/10; protection sweep 58.
+- Evidence: `docs/platform/evidence/slices/transactional-admin-order-email.md`.
+
+---
+
+## Absolute Completion Orchestrator (previous)
 
 - Inventory ledger + reservation vertical (Section 12) implemented and verified on the
   local production-shaped stack (migration 0031; upgrade-safe on a populated DB). Reserve

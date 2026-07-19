@@ -108,9 +108,18 @@ routes.patch('/:id/status', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), asy
       await registry.consumeInventoryForOrderUseCase.execute(result.orderId);
     } else if (result.to === 'CANCELLED') {
       await registry.releaseInventoryForOrderUseCase.execute(result.orderId);
+      // Transactional admin email (OrderCancelled). Idempotent per order.
+      const cancelledOrder = await registry.orderRepo.findById(result.orderId);
+      if (cancelledOrder) {
+        await registry.enqueueAdminOrderEmailUseCase.execute({
+          order: cancelledOrder,
+          event: 'cancelled',
+          stockConfirmed: false,
+        });
+      }
     }
   } catch (invErr: any) {
-    console.error('[API_ERROR] Inventory effect after fulfilment transition failed:', invErr?.message);
+    console.error('[API_ERROR] Inventory/email effect after fulfilment transition failed:', invErr?.message);
   }
 
   const res: ApiResponse<typeof result> = { success: true, data: result };

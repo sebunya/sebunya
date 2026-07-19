@@ -1,5 +1,6 @@
 import { INotificationProvider } from '../../application/ports/INotificationProvider';
 import { INotificationRouter, NotificationRoutingTarget } from '../../application/use-cases/outbox/ProcessOutboxBatchUseCase';
+import { parseAdminRecipients } from '../../domain/notifications/AdminOrderEmail';
 
 export class DefaultNotificationRouter implements INotificationRouter {
   constructor(
@@ -17,6 +18,35 @@ export class DefaultNotificationRouter implements INotificationRouter {
     const relatedEntityId = String(payload.relatedEntityId || payload.id || '');
 
     switch (eventType) {
+      case 'ADMIN_ORDER_EMAIL': {
+        // Secure, configured admin recipients only (never hard-coded). One
+        // pre-rendered email per recipient; missing config yields no target and
+        // the processor records it as unroutable (MISSING_CONFIG at the surface).
+        const { recipients } = parseAdminRecipients(
+          process.env.ADMIN_ORDER_NOTIFICATION_EMAILS || process.env.OPS_ALERT_EMAIL
+        );
+        for (const recipient of recipients) {
+          targets.push({
+            channel: 'email',
+            provider: this.emailProvider,
+            payload: {
+              recipient,
+              template: 'ADMIN_ORDER_EMAIL',
+              data: {
+                subject: payload.subject,
+                text: payload.text,
+                html: payload.html,
+                orderNumber: payload.orderNumber,
+                preparationState: payload.preparationState,
+              },
+              relatedEntity: 'order',
+              relatedEntityId,
+            },
+          });
+        }
+        break;
+      }
+
       case 'PAYMENT_SUCCESS':
       case 'PAYMENT_FAILED':
         if (opsEmail) {
