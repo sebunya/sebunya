@@ -297,3 +297,12 @@ Focused proof target: native JSONB object writes, compatibility reads for any le
 - Real PostgreSQL proof passes canonical `100000` versus injected `1`, final `180000`, one atomic redemption, idempotent order replay, one compensated failed reservation, two controlled retry submissions at the same amount, preserved callback snapshot, zero outbox mutation, zero real-provider calls and zero residue.
 - Pricing plus architecture is 25/25; the extended focused set is 56/56. Workspace typecheck/build, secret scan, changed-path lint with zero errors and diff check pass.
 - Status: `SOURCE_PARTIAL`; next boundary is P5 protected Pricing Operations Control Room with truthful persisted state and non-persistent simulation.
+
+## Pricing P5 — protected commercial operating surface
+
+- Verified base: clean/pushed P4 `febdb9850d38d4433bdc7111124038f0ee94580c`; clean suite 197 files / 4,041 tests. Expected change boundary covered only Pricing permissions, operating read model/use case, protected routes, Astro UI, tests/proof and evidence.
+- Exact read/create/manage/approve/activate/simulate/pause permissions now protect distinct operations. All mutations use the existing governed lifecycle/shared audit; no parallel control plane, provider route, Activation path, Automation change or Experiments rewrite was added.
+- Persisted operations reads expose definition/version policy, approvals, governed Experiment association, shared audit, quotes, reservation/redemption states and capacity. UI states are real API/DB state and explicitly render empty, unavailable, permission-denied and stale-conflict outcomes.
+- Real PostgreSQL proof passes DRAFT→READY_FOR_REVIEW→APPROVED→ACTIVE→PAUSED, governed Experiment association, canonical `200000` simulation to `170000`, truthful capacity/audit, and zero quote/reservation/redemption/order/payment/outbox mutation, provider calls or residue.
+- Pricing plus architecture is 30/30. Typecheck/build, secret scan, changed-path lint and diff check pass. Repository-wide lint retains only the established unrelated `ICustomerDnaRepository.ts:6` error.
+- Status: `SOURCE_PARTIAL`; next boundary is P6 production-shaped acceptance through compiled API/web images, real PostgreSQL and controlled provider boundaries.

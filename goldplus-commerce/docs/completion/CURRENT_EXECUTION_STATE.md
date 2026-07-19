@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Pricing P4)
+# CURRENT EXECUTION STATE (2026-07-20 · Pricing P5)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -81,6 +81,9 @@
 - Pricing P2 is pushed at `2e80bd8c44d4433e5e56ee1dd71a7cd981a0b5c1`. P3 now adds one 0042-backed transactional capacity boundary. Real-PG races prove one global-slot winner, one same-customer winner and one same-coupon winner; reserve/redeem/release retries are idempotent; orphans, provider calls and residue are zero.
 - Pricing P3 is pushed at `8627cdb6fa304804ce885ad00cf2bd21132eb398`. P4 wires production checkout to authoritative Pricing, atomically persists immutable order snapshots plus redemptions, compensates reservation on pre-order failure, and preserves committed-order amount through PesaPal retries and callback verification.
 - P4 real-PostgreSQL proof passes with canonical `100000` versus injected `1`, final `180000`, one order/redemption, idempotent replay, forced-failure release, two controlled submissions at the immutable amount, zero outbox mutation, zero real provider calls and zero residue. Pricing plus architecture is 25/25; the extended focused set is 56/56; full workspace gates pass.
-- Next gate: commit/push P4, prove clean local/remote alignment, then begin P5 Pricing Operations Control Room.
+- Pricing P4 is pushed at `febdb9850d38d4433bdc7111124038f0ee94580c`; its clean suite is 197 files / 4,041 tests.
+- P5 adds distinct Pricing RBAC, protected persisted APIs, real capacity/audit/Experiment evidence, audited governance operations and an Astro administrator control room. Safe simulation is non-persistent by construction.
+- P5 real-PostgreSQL proof passes governed lifecycle/association, canonical simulation, active/paused capacity truth, zero business/communication deltas, zero provider calls and zero residue. Pricing plus architecture is 30/30; workspace gates pass; repository-wide lint retains only the established unrelated baseline error.
+- Next gate: commit/push P5, prove clean local/remote alignment, then begin P6 production-shaped Pricing acceptance.
 
 ---

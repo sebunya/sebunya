@@ -1,79 +1,80 @@
 ---
-import AdminLayout from "../../../layouts/AdminLayout.astro";
-import { readSessionToken } from "../../../lib/session";
-import { tryFetchAdminList } from "../../../lib/api";
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
 
 const token = readSessionToken(Astro.request);
-if (!token) {
-  return Astro.redirect("/admin/login?returnTo=/admin/pricing", 303);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/pricing', 303);
+const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+type Notice = { kind: 'success' | 'error' | 'conflict'; text: string };
+let notice: Notice | null = null;
+let simulation: any = null;
+
+const optionalInteger = (value: FormDataEntryValue | null) => value && String(value).trim() ? Number(value) : null;
+const versionFrom = (form: FormData) => ({
+  conditions: form.get('minimumSubtotal') ? [{ type: 'MIN_CART_SUBTOTAL', value: Number(form.get('minimumSubtotal')) }] : [],
+  benefits: [{ type: String(form.get('benefitType')), value: Number(form.get('benefitValue')), maximumDiscountUgx: optionalInteger(form.get('maximumDiscount')) }],
+  exclusions: form.get('excludedProductId') ? [{ type: 'PRODUCT', value: String(form.get('excludedProductId')) }] : [],
+  schedule: { startsAt: form.get('startsAt'), endsAt: form.get('endsAt') },
+  usagePolicy: { globalLimit: optionalInteger(form.get('globalLimit')), perCustomerLimit: optionalInteger(form.get('perCustomerLimit')), perCouponLimit: optionalInteger(form.get('perCouponLimit')), reservationTtlSeconds: Number(form.get('reservationTtlSeconds') || 900) },
+  priority: Number(form.get('priority') || 0), stackable: form.get('stackable') === 'on', couponCode: form.get('couponCode') || null, priceFloorUgx: Number(form.get('priceFloorUgx') || 0),
+});
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const operation = String(form.get('operation'));
+  try {
+    const response = operation === 'simulate'
+      ? await fetch(`${apiBase}/admin/pricing/simulate`, { method: 'POST', headers, body: JSON.stringify({ items: [{ productId: form.get('productId'), quantity: Number(form.get('quantity')) }], couponCode: form.get('simulationCoupon') || null, shippingUgx: Number(form.get('shippingUgx') || 0), taxUgx: 0 }) })
+      : await fetch(`${apiBase}/admin/pricing/definitions`, { method: 'POST', headers, body: JSON.stringify({ key: form.get('key'), name: form.get('name'), description: form.get('description'), version: versionFrom(form) }) });
+    const body = await response.json().catch(() => null);
+    if (response.status === 403) notice = { kind: 'error', text: `Permission denied: pricing.${operation === 'simulate' ? 'simulate' : 'create'} is required.` };
+    else if (response.status === 409) notice = { kind: 'conflict', text: body?.error?.message || 'Stale conflict.' };
+    else if (body?.success) { if (operation === 'simulate') simulation = body.data; notice = { kind: 'success', text: operation === 'simulate' ? 'Non-persistent simulation completed.' : 'Draft promotion and immutable version 1 created.' }; }
+    else notice = { kind: 'error', text: body?.error?.message || 'Pricing operation failed.' };
+  } catch { notice = { kind: 'error', text: 'The Pricing API is unavailable.' }; }
 }
 
-const result = await tryFetchAdminList<any>('/governance/admin/products', [], 'Live catalogue data is unavailable right now (service unreachable or permission denied). No sample data is shown.', token);
-const products = result.items;
-const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+let overview: any = null; let definitions: any[] = []; let permissionDenied = false; let loadFailed = false;
+try {
+  const [overviewResponse, definitionsResponse] = await Promise.all([fetch(`${apiBase}/admin/pricing/overview`, { headers }), fetch(`${apiBase}/admin/pricing/definitions`, { headers })]);
+  permissionDenied = overviewResponse.status === 403 || definitionsResponse.status === 403;
+  if (!permissionDenied) {
+    const [overviewBody, definitionsBody] = await Promise.all([overviewResponse.json().catch(() => null), definitionsResponse.json().catch(() => null)]);
+    overview = overviewBody?.success ? overviewBody.data : null; definitions = definitionsBody?.success ? definitionsBody.data : [];
+    loadFailed = !overviewBody?.success || !definitionsBody?.success;
+  }
+} catch { loadFailed = true; }
+const tone = (state: string) => state === 'ACTIVE' || state === 'APPROVED' || state === 'REDEEMED' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : state === 'REJECTED' || state === 'EXPIRED' ? 'bg-red-50 text-red-800 border-red-200' : state === 'READY_FOR_REVIEW' || state === 'PAUSED' ? 'bg-amber-50 text-amber-900 border-amber-300' : 'bg-slate-50 text-slate-700 border-slate-200';
 ---
+<AdminLayout title="Pricing Operations" description="Governed promotions, immutable versions, capacity evidence and non-persistent simulation.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl" data-pricing-control-room>
+    <div id="pricing-loading" class="hidden bg-blue-50 border border-blue-200 text-blue-800 rounded-xl p-4 mb-5" aria-live="polite">Loading persisted Pricing state…</div>
+    <div class="flex flex-wrap justify-between gap-4 mb-6"><div><h2 class="text-2xl font-black">Pricing & Promotions control room</h2><p class="text-sm text-gray-500">Commercial rules remain dormant until separately approved and activated.</p></div><a href="/admin/pricing/delivery-zones" class="border rounded-xl px-4 py-2 text-xs font-bold">Delivery zones</a></div>
+    {notice && <div class={`rounded-xl p-4 mb-5 border text-sm font-semibold ${notice.kind === 'success' ? 'bg-emerald-50 text-emerald-800' : notice.kind === 'conflict' ? 'bg-amber-50 text-amber-900' : 'bg-red-50 text-red-800'}`}>{notice.kind === 'conflict' ? 'Stale conflict: ' : ''}{notice.text}</div>}
+    {permissionDenied && <div class="bg-red-50 text-red-800 border rounded-xl p-5 mb-6"><strong>Permission denied.</strong> pricing.read is required; commercial evidence was not disclosed.</div>}
+    {loadFailed && <div class="bg-red-50 text-red-800 border rounded-xl p-5 mb-6"><strong>Unavailable.</strong> Pricing persistence could not be read; no sample metrics are shown.</div>}
 
-<AdminLayout 
-  title="Pricing Oversight" 
-  description="Track item retail values, base price points and currency mappings."
->
-  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    
-    <div class="mb-8 pb-6 border-b border-gray-200 flex flex-col md:flex-row justify-between md:items-center gap-4">
-      <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Pricing & Valuation</h2>
-        <p class="text-sm text-gray-500 mt-1 max-w-2xl">
-          View active retail selling points stored in PostgreSQL. Value modifications require operational approval.
-        </p>
-      </div>
+    {overview && <section class="mb-8"><div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+      {['DRAFT','READY_FOR_REVIEW','APPROVED','ACTIVE','PAUSED'].map((state) => <div class="bg-white border rounded-2xl p-4"><div class="text-2xl font-black">{overview.definitionsByStatus[state] ?? 0}</div><div class="text-[10px] uppercase text-gray-500">{state}</div></div>)}
+    </div><div class="grid md:grid-cols-3 gap-3 mt-3 text-xs"><div class="bg-white border rounded-xl p-4">Persisted quotes: <strong>{overview.quoteCount}</strong></div><div class="bg-white border rounded-xl p-4">Redemptions: <strong>{overview.redemptionCount}</strong></div><div class="bg-white border rounded-xl p-4">Live reservations: <strong>{overview.reservationsByStatus.RESERVED ?? 0}</strong></div></div>
+    <div class="mt-3 space-y-2">{overview.activeCapacity.map((row: any) => <div class="bg-white border rounded-xl p-3 text-xs flex justify-between"><span>{row.definitionName} · v{row.versionNumber}</span><span>{row.reserved} reserved · {row.redeemed} redeemed · {row.remaining === null ? 'UNLIMITED' : `${row.remaining} remaining`}</span></div>)}</div></section>}
 
-      <div class="flex items-center gap-2">
-        <span class="text-[8px] border border-yellow-200 bg-yellow-50 text-yellow-700 font-black px-2.5 py-1 rounded uppercase tracking-widest">Read-Only View</span>
-      </div>
-    </div>
-
-    {result.isSample && (
-      <div class="bg-amber-50 border border-amber-200 text-amber-800 px-6 py-4 rounded-2xl mb-8 text-xs leading-relaxed" role="status">
-        <strong>System note:</strong> {result.reason}
-      </div>
-    )}
-
-    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-6">
-      <table class="w-full text-left border-collapse">
-        <thead>
-          <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
-            <th class="p-5">Product Spec</th>
-            <th class="p-5 text-right">Standard Retail (UGX)</th>
-            <th class="p-5 text-center">Currency</th>
-          </tr>
-        </thead>
-        <tbody class="text-xs">
-          {products.map(p => (
-            <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-              <td class="p-5">
-                <div class="font-bold text-brand-dark">{p.name}</div>
-                <div class="text-[10px] text-gray-400 mt-0.5 font-mono">SKU: {p.sku}</div>
-              </td>
-              <td class="p-5 text-right font-black text-brand-dark text-sm">
-                {p.priceUgx ? formatter.format(p.priceUgx) : 'Price on Request'}
-              </td>
-              <td class="p-5 text-center font-mono text-gray-500 font-bold">UGX</td>
-            </tr>
-          ))}
-          {products.length === 0 && (
-            <tr>
-              <td colspan="3" class="p-12 text-center text-gray-400 italic">No items registered in core catalog database.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="mt-6 bg-gray-100 border border-gray-200 rounded-xl p-4 text-center">
-      <p class="text-xs font-bold text-gray-500 flex items-center justify-center gap-2">
-        Bulk update mechanisms, promotional markdown managers and currency multipliers not yet implemented.
-      </p>
-    </div>
-
+    {!permissionDenied && <section class="grid xl:grid-cols-2 gap-6 mb-8">
+      <form method="POST" class="bg-white border rounded-2xl p-5 space-y-3"><input type="hidden" name="operation" value="create"/><h3 class="font-black">Create governed draft</h3>
+        <div class="grid md:grid-cols-2 gap-3"><input name="key" required pattern="[A-Za-z0-9_-]{2,80}" placeholder="promotion-key" class="border rounded-xl p-2"/><input name="name" required maxlength="160" placeholder="Name" class="border rounded-xl p-2"/></div><textarea name="description" required maxlength="4000" placeholder="Commercial purpose" class="w-full border rounded-xl p-2"></textarea>
+        <div class="grid md:grid-cols-2 gap-3"><input name="startsAt" type="datetime-local" required class="border rounded-xl p-2"/><input name="endsAt" type="datetime-local" required class="border rounded-xl p-2"/></div>
+        <div class="grid md:grid-cols-3 gap-3"><select name="benefitType" class="border rounded-xl p-2"><option>PERCENTAGE_OFF</option><option>FIXED_AMOUNT_OFF</option><option>FIXED_PRICE</option><option>FREE_SHIPPING</option></select><input name="benefitValue" type="number" min="0" required placeholder="Benefit integer" class="border rounded-xl p-2"/><input name="maximumDiscount" type="number" min="0" placeholder="Maximum discount" class="border rounded-xl p-2"/></div>
+        <div class="grid md:grid-cols-3 gap-3"><input name="minimumSubtotal" type="number" min="0" placeholder="Minimum subtotal" class="border rounded-xl p-2"/><input name="excludedProductId" placeholder="Excluded product UUID" class="border rounded-xl p-2"/><input name="couponCode" placeholder="Optional coupon" class="border rounded-xl p-2"/></div>
+        <div class="grid md:grid-cols-4 gap-3"><input name="globalLimit" type="number" min="1" placeholder="Global limit" class="border rounded-xl p-2"/><input name="perCustomerLimit" type="number" min="1" placeholder="Customer limit" class="border rounded-xl p-2"/><input name="perCouponLimit" type="number" min="1" placeholder="Coupon limit" class="border rounded-xl p-2"/><input name="reservationTtlSeconds" type="number" value="900" min="60" max="86400" class="border rounded-xl p-2"/></div>
+        <div class="grid md:grid-cols-3 gap-3"><input name="priority" type="number" value="0" min="0" max="10000" class="border rounded-xl p-2"/><input name="priceFloorUgx" type="number" value="0" min="0" class="border rounded-xl p-2"/><label class="text-xs flex items-center gap-2"><input name="stackable" type="checkbox"/> Stackable</label></div>
+        <button class="bg-brand-gold text-brand-dark font-black rounded-xl px-4 py-2">Create draft</button><p class="text-[11px] text-gray-500">Requires pricing.create. Creation does not approve or activate the rule.</p>
+      </form>
+      <form method="POST" class="bg-white border rounded-2xl p-5 h-fit space-y-3"><input type="hidden" name="operation" value="simulate"/><h3 class="font-black">Safe pricing simulation</h3><p class="text-xs text-gray-500">Canonical product read and current eligibility trace. Creates no quote, reservation, redemption, order, payment or provider call.</p><input name="productId" required placeholder="Product UUID" class="w-full border rounded-xl p-2"/><div class="grid grid-cols-3 gap-3"><input name="quantity" type="number" value="1" min="1" max="99" class="border rounded-xl p-2"/><input name="simulationCoupon" placeholder="Coupon" class="border rounded-xl p-2"/><input name="shippingUgx" type="number" value="0" min="0" class="border rounded-xl p-2"/></div><button class="border border-brand-gold font-black rounded-xl px-4 py-2">Simulate only</button>
+        {simulation && <div class="bg-slate-50 border rounded-xl p-4 text-xs"><strong>UGX {simulation.finalTotalUgx.toLocaleString()}</strong><div>Base {simulation.baseSubtotalUgx.toLocaleString()} · discount {simulation.discountTotalUgx.toLocaleString()} · shipping {simulation.shippingUgx.toLocaleString()}</div><div class="mt-2">{simulation.decisionTrace.length ? simulation.decisionTrace.map((item: any) => `${item.outcome}: ${item.reason}`).join(' · ') : 'No promotion candidates.'}</div></div>}
+      </form>
+    </section>}
+    <section><h3 class="font-black mb-3">Definitions</h3>{definitions.length === 0 && !loadFailed && <div class="bg-white border rounded-2xl p-8 text-center text-gray-500">Empty — no promotion definitions exist.</div>}<div class="space-y-3">{definitions.map((definition) => <a href={`/admin/pricing/${definition.id}`} class="block bg-white border rounded-2xl p-5 hover:border-brand-gold"><div class="flex justify-between"><div><strong>{definition.name}</strong><div class="text-xs text-gray-500">{definition.key} · revision {definition.revision}</div></div><span class={`h-fit border rounded-lg px-2 py-1 text-[10px] font-bold ${tone(definition.status)}`}>{definition.status}</span></div></a>)}</div></section>
+    <details class="bg-white border rounded-2xl p-5 mt-8"><summary class="font-black cursor-pointer">Governed state glossary</summary><div class="flex flex-wrap gap-2 mt-4">{['DRAFT','READY_FOR_REVIEW','APPROVED','ACTIVE','PAUSED','EXPIRED','REJECTED','ARCHIVED','RESERVED','REDEEMED','RELEASED','EXPIRED','CANCELLED'].map((state) => <span class={`border rounded-lg px-2 py-1 text-[10px] font-bold ${tone(state)}`}>{state}</span>)}</div><p class="text-xs text-gray-500 mt-3">Loading, empty, unavailable, permission denied and stale conflict are shown explicitly. No sample metrics are substituted.</p></details>
   </div>
 </AdminLayout>
