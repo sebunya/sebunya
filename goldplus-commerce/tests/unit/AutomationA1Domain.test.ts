@@ -47,6 +47,16 @@ describe('Automation A1 — versioning, actions and approval', () => {
     expect(validateVersionConfig(cfg({ triggerFamily: 'SCHEDULED', schedule: null })).ok).toBe(false);
     expect(validateVersionConfig(cfg({ triggerFamily: 'SCHEDULED', schedule: { timezone: 'Africa/Kampala', intervalMinutes: 60, effectiveStart: null, effectiveEnd: null, misfirePolicy: 'SKIP' } })).ok).toBe(true);
   });
+  it('requires positive configured frequency caps and windows', () => {
+    expect(validateVersionConfig(cfg({ frequency: { perCustomerPerWindow: 0, windowDays: 1, global: false, countsAttempts: false } })))
+      .toEqual({ ok: false, code: 'INVALID_FREQUENCY_CAP' });
+    expect(validateVersionConfig(cfg({ frequency: { perCustomerPerWindow: -1, windowDays: 1, global: false, countsAttempts: false } })))
+      .toEqual({ ok: false, code: 'INVALID_FREQUENCY_CAP' });
+    expect(validateVersionConfig(cfg({ frequency: { perCustomerPerWindow: 1, windowDays: 0, global: false, countsAttempts: false } })))
+      .toEqual({ ok: false, code: 'INVALID_FREQUENCY_WINDOW' });
+    expect(validateVersionConfig(cfg({ frequency: { perCustomerPerWindow: 1, windowDays: 7, global: false, countsAttempts: false } })))
+      .toEqual({ ok: true, requiresApproval: false });
+  });
   it('freezes an approved version and gates activation on valid approval', () => {
     expect(isVersionMutable('DRAFT', 'PENDING')).toBe(true);
     expect(isVersionMutable('ACTIVE', 'APPROVED')).toBe(false);

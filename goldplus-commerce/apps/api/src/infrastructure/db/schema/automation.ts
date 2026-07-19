@@ -127,6 +127,25 @@ export const automationSuppressions = pgTable(
   (t) => ({ executionIdx: index('automation_suppressions_execution_idx').on(t.executionId), reasonIdx: index('automation_suppressions_reason_idx').on(t.reason) })
 );
 
+/** Durable cap slots. One execution owns at most one slot; retries/replay reuse it. */
+export const automationFrequencyCapReservations = pgTable(
+  'automation_frequency_cap_reservations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    executionId: uuid('execution_id').references(() => automationExecutions.id).notNull(),
+    definitionId: uuid('definition_id').references(() => automationDefinitions.id).notNull(),
+    versionId: uuid('version_id').references(() => automationVersions.id).notNull(),
+    subjectScope: varchar('subject_scope', { length: 140 }).notNull(),
+    windowKey: varchar('window_key', { length: 40 }).notNull(),
+    limitSnapshot: integer('limit_snapshot').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    executionIdx: uniqueIndex('automation_frequency_cap_reservations_execution_idx').on(t.executionId),
+    scopeWindowIdx: index('automation_frequency_cap_reservations_scope_window_idx').on(t.versionId, t.subjectScope, t.windowKey),
+  })
+);
+
 export const automationEvents = pgTable(
   'automation_events',
   {

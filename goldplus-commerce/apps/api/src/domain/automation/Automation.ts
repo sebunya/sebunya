@@ -91,7 +91,13 @@ export interface AutomationVersionConfig {
   frequency: AutomationFrequencyConfig | null;
 }
 
-export type VersionValidationError = 'UNSUPPORTED_ACTION' | 'NO_ACTIONS' | 'SCHEDULE_REQUIRED' | 'INVALID_INTERVAL';
+export type VersionValidationError =
+  | 'UNSUPPORTED_ACTION'
+  | 'NO_ACTIONS'
+  | 'SCHEDULE_REQUIRED'
+  | 'INVALID_INTERVAL'
+  | 'INVALID_FREQUENCY_CAP'
+  | 'INVALID_FREQUENCY_WINDOW';
 
 /** Validate a version's config before it can be submitted for review. */
 export function validateVersionConfig(cfg: AutomationVersionConfig): { ok: true; requiresApproval: boolean } | { ok: false; code: VersionValidationError } {
@@ -100,6 +106,14 @@ export function validateVersionConfig(cfg: AutomationVersionConfig): { ok: true;
   if (cfg.triggerFamily === 'SCHEDULED') {
     if (!cfg.schedule) return { ok: false, code: 'SCHEDULE_REQUIRED' };
     if (cfg.schedule.intervalMinutes <= 0) return { ok: false, code: 'INVALID_INTERVAL' };
+  }
+  if (cfg.frequency) {
+    if (cfg.frequency.perCustomerPerWindow !== null && cfg.frequency.perCustomerPerWindow <= 0) {
+      return { ok: false, code: 'INVALID_FREQUENCY_CAP' };
+    }
+    if (cfg.frequency.windowDays !== null && cfg.frequency.windowDays <= 0) {
+      return { ok: false, code: 'INVALID_FREQUENCY_WINDOW' };
+    }
   }
   const requiresApproval = cfg.actions.some((a) => isCustomerFacingAction(a.family));
   return { ok: true, requiresApproval };
@@ -152,6 +166,63 @@ export interface ConditionEvidence {
   freshnessOk: boolean;
 }
 export interface ConditionsOutcome { allPassed: boolean; evidence: ConditionEvidence[] }
+
+// ---------- execution eligibility (fixed fail-closed order) ----------
+export const AUTOMATION_SUPPRESSION_REASONS = [
+  'DEFINITION_PAUSED',
+  'APPROVAL_REQUIRED',
+  'SUBJECT_REQUIRED',
+  'NO_PROFILE',
+  'NO_DATA',
+  'IDENTITY_CONFLICT',
+  'STALE_PROFILE',
+  'NO_CONSENT',
+  'AUDIENCE_INELIGIBLE',
+  'CONDITION_FAILED',
+  'FREQUENCY_CAPPED',
+] as const;
+export type AutomationSuppressionReason = (typeof AUTOMATION_SUPPRESSION_REASONS)[number];
+
+export type AutomationAudienceGateOutcome =
+  | 'ELIGIBLE'
+  | 'INELIGIBLE'
+  | 'NO_PROFILE'
+  | 'NO_CONSENT'
+  | 'STALE_PROFILE'
+  | 'IDENTITY_CONFLICT'
+  | 'NO_DATA';
+
+export interface AutomationEligibilityGateInput {
+  definitionPaused: boolean;
+  requiresApproval: boolean;
+  approvalValid: boolean;
+  subjectId: string | null;
+  audienceOutcome: AutomationAudienceGateOutcome | null;
+  consentEligible: boolean | null;
+  conditionsPassed: boolean;
+}
+
+export type AutomationEligibilityGateResult =
+  | { eligible: true; suppressionReason: null }
+  | { eligible: false; suppressionReason: Exclude<AutomationSuppressionReason, 'FREQUENCY_CAPPED'> };
+
+/**
+ * Evaluate non-provider execution gates in one stable, fail-closed order.
+ * Frequency is reserved transactionally after this pure decision succeeds.
+ */
+export function evaluateAutomationEligibility(input: AutomationEligibilityGateInput): AutomationEligibilityGateResult {
+  if (input.definitionPaused) return { eligible: false, suppressionReason: 'DEFINITION_PAUSED' };
+  if (input.requiresApproval && !input.approvalValid) return { eligible: false, suppressionReason: 'APPROVAL_REQUIRED' };
+  if (!input.subjectId) return { eligible: false, suppressionReason: 'SUBJECT_REQUIRED' };
+  if (input.audienceOutcome === 'NO_PROFILE') return { eligible: false, suppressionReason: 'NO_PROFILE' };
+  if (input.audienceOutcome === 'NO_DATA' || input.audienceOutcome === null) return { eligible: false, suppressionReason: 'NO_DATA' };
+  if (input.audienceOutcome === 'IDENTITY_CONFLICT') return { eligible: false, suppressionReason: 'IDENTITY_CONFLICT' };
+  if (input.audienceOutcome === 'STALE_PROFILE') return { eligible: false, suppressionReason: 'STALE_PROFILE' };
+  if (input.audienceOutcome === 'NO_CONSENT' || input.consentEligible !== true) return { eligible: false, suppressionReason: 'NO_CONSENT' };
+  if (input.audienceOutcome !== 'ELIGIBLE') return { eligible: false, suppressionReason: 'AUDIENCE_INELIGIBLE' };
+  if (!input.conditionsPassed) return { eligible: false, suppressionReason: 'CONDITION_FAILED' };
+  return { eligible: true, suppressionReason: null };
+}
 
 /** Evaluate a version's conditions against a subject context, producing evidence. */
 export function evaluateConditions(conditions: AutomationConditionConfig[], ctx: ConditionContext): ConditionsOutcome {

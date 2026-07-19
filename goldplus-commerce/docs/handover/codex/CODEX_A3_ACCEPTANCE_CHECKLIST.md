@@ -11,19 +11,19 @@ Tick only with evidence (path + command + result). Do not mark a box from assump
 - [ ] Printed the CODEX REVIEW GATE block
 
 ## A3.0 — JSONB compatibility and normalization
-- [ ] New Automation jsonb write stored natively (`SELECT jsonb_typeof(config) = 'object'`)
-- [ ] Legacy string-encoded jsonb still reads correctly
-- [ ] Malformed jsonb rejected (not silently coerced)
-- [ ] One compatibility boundary (no scattered parsing); no platform-wide rewrite
-- [ ] Focused codec test green; `apps/api` tsc clean
+- [x] New Automation jsonb write stored natively (`AutomationJsonbCodec.ts`; PostgreSQL proof: object/object/array)
+- [x] Legacy string-encoded jsonb still reads correctly (`legacySemanticMatch=true`)
+- [x] Malformed jsonb rejected (not silently coerced) (`malformedRejected=true`)
+- [x] One compatibility boundary (no scattered parsing); no platform-wide rewrite
+- [x] Focused codec test green; `apps/api` tsc clean (A3.0: 23/23; clean full suite 3,971/3,971)
 
 ## A3.1 — eligibility gates and frequency-cap reservation
-- [ ] Deterministic gate order persisted and auditable
-- [ ] Every rejection persists an exact suppression reason (full enum), not "blocked"
-- [ ] Cap slot reserved only after non-provider gates pass
-- [ ] Two cap racers → exactly one slot (real-PG)
-- [ ] DRY_RUN / DISABLED / NOT_CONFIGURED / SUPPRESSED consume no slot
-- [ ] Migration decision recorded (0040 only if genuinely required)
+- [x] Deterministic gate order persisted and auditable (`evaluateAutomationEligibility`; exact suppression rows)
+- [x] Every rejection persists an exact suppression reason (full eleven-value enum), not "blocked"
+- [x] Cap slot reserved only after non-provider gates pass (`EvaluateExecutionEligibilityUseCase`)
+- [x] Two cap racers → exactly one slot (real-PG: one reservation, one capped suppression)
+- [x] DRY_RUN / DISABLED / NOT_CONFIGURED / SUPPRESSED consume no slot (focused unit proof)
+- [x] Migration decision recorded (`0040` required; fresh and populated upgrade passed)
 
 ## A3.2 — internal effects and atomic outbox intents
 - [ ] Internal actions run through existing use cases; idempotent + audited

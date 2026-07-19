@@ -6,6 +6,8 @@ C0 whole-codebase assimilation is committed at `132ff1fc04977acd87e5d5c9f0702603
 
 Automation A3.0 has reproduced and classified the Automation JSONB issue as `ACTIVE WRITE DEFECT` in isolated PostgreSQL 16.14. The smallest adapter repair writes native JSONB objects/arrays, supports exactly one historical encoded layer, rejects malformed/two-layer data, centralizes trigger SQL normalization, and requires no migration. Focused tests, migration replay, typecheck, architecture, build, secret scan, and the expanded real-PostgreSQL planning proof pass with zero provider calls. Commit/push and clean-tree verification are the remaining A3.0 continuation boundary; then begin A3.1 from `docs/handover/codex/CODEX_A3_WORK_PLAN.json` and the context ledger.
 
+Automation A3.0 is committed/pushed at `a44f456bc69d6d6fa0c834ff51f7d13f85d4c9de` and its clean suite passed 187 files / 3,971 tests. A3.1 now has a proven fixed eligibility order, exact suppression persistence, and one durable cap slot per execution. Additive migration `0040` passed fresh and populated upgrades; a real PostgreSQL two-racer proof produced one reservation and one exact cap suppression, and retry reused the winner's slot. Complete the A3.1 commit/push and clean-suite boundary, then start A3.2 by reusing existing internal use cases and the existing outbox in one cap/outbox transaction.
+
 This checkout is the canonical clean continuation worktree. Do not use the dirty `GoldPlusFinal` tree or the dirty production source tree for feature work, commits, pushes, or deployments.
 
 - Checkout: `/Users/robertsebunya/goldplus-clean-continuation/phase-2-measurement-control-tower-completion-20260715T122313Z`
