@@ -1,0 +1,133 @@
+{
+  "generatedAt": "2026-07-19",
+  "handoverCommit": "this commit",
+  "repository": {
+    "root": "/home/user/sebunya/goldplus-clean-continuation/phase-2-measurement-control-tower-completion-20260715",
+    "appSubdir": "goldplus-commerce",
+    "branch": "phase-2-measurement-control-tower-completion",
+    "head": "3fe0f13218355bfe273348a75b6b77c845015637",
+    "originHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+    "clean": true,
+    "upstream": "origin/phase-2-measurement-control-tower-completion",
+    "remote": "http://local_proxy@127.0.0.1:41729/git/sebunya/sebunya",
+    "node": "v22.22.2",
+    "pnpm": "10.33.0",
+    "verifiedBy": "git rev-parse HEAD; git rev-parse origin/phase-2-measurement-control-tower-completion; git status --porcelain; node --version; pnpm --version"
+  },
+  "sourceOfTruthOrder": [
+    "1. Current Git commit and tracked source",
+    "2. Current migrations and schema definitions",
+    "3. Executable tests and proof scripts",
+    "4. Runtime/configuration code",
+    "5. Completion matrix and execution queue",
+    "6. Current state documents",
+    "7. New Codex handover documents",
+    "8. Historical chat summaries and old narrative claims"
+  ],
+  "conflictRule": "When sources conflict, code + migrations + tests win.",
+  "verifiedCommits": [
+    { "hash": "480a2ba", "subject": "Module Decision Intelligence: add explainable operational insights", "presentAtHead": true },
+    { "hash": "a3a3146", "subject": "Module Automation A1: add governed versioned automation domain", "presentAtHead": true },
+    { "hash": "2000fce", "subject": "Module Automation A2: add restart-safe trigger planning", "presentAtHead": true },
+    { "hash": "3fe0f13", "subject": "docs: record Automation A1/A2 progress and A3 resume plan", "presentAtHead": true }
+  ],
+  "latestMigration": "0039_mighty_automation",
+  "migrationLedger": [
+    "0029_bumpy_miss_america", "0030_sharp_omega_sentinel", "0031_slippery_grim_reaper",
+    "0032_boring_may_parker", "0033_sudden_lester", "0034_icy_doctor_octopus",
+    "0035_lonely_iron_fist", "0036_curly_delivery", "0037_wise_customer_dna",
+    "0038_brave_decision_intelligence", "0039_mighty_automation"
+  ],
+  "migrationLedgerVerifiedBy": "git ls-files | grep -E 'migrations/00(29|3[0-9])_'",
+  "nextMigrationNumberIfNeeded": "0040",
+  "reportedVerification": {
+    "testFiles": 185,
+    "tests": 3965,
+    "architecture": "10/10",
+    "freshReplayThrough": "0039",
+    "populatedUpgradeThrough": "0039",
+    "evidenceMode": "REPORTED — NOT RERUN DURING HANDOVER",
+    "rerunCommands": [
+      "(cd goldplus-commerce) npx vitest run",
+      "(cd goldplus-commerce) npx vitest run tests/architecture",
+      "(cd goldplus-commerce/apps/api) DATABASE_URL=postgres://gp@127.0.0.1:55432/launchcheck JWT_SECRET=... IDENTITY_HASH_PEPPER=... MTN_WEBHOOK_SECRET=x AIRTEL_WEBHOOK_SECRET=y PUBLIC_API_BASE_URL=http://127.0.0.1:3000 NODE_ENV=development npx tsx src/infrastructure/db/migrations/migrate.ts"
+    ]
+  },
+  "currentModule": "Automation",
+  "completedSlices": ["A1", "A2"],
+  "nextSlice": "A3.0",
+  "nextCommitMessage": "Module Automation A3.0: normalize automation JSONB contracts",
+  "expectedFilesToInspectFirst": [
+    "goldplus-commerce/apps/api/src/domain/automation/Automation.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/db/repositories/DrizzleAutomationRepositories.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/db/schema/automation.ts",
+    "goldplus-commerce/apps/api/src/application/use-cases/automation/PlanAutomationExecutionUseCase.ts",
+    "goldplus-commerce/apps/api/src/application/use-cases/outbox/ProcessOutboxBatchUseCase.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/notifications/NotificationRouter.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/db/schema/system.ts"
+  ],
+  "expectedFilesToModify": [
+    "goldplus-commerce/apps/api/src/infrastructure/db/repositories/DrizzleAutomationRepositories.ts (A3.0 write-side normalization)",
+    "goldplus-commerce/apps/api/src/domain/automation/Automation.ts (A3.1+ gate order, suppression enum)",
+    "goldplus-commerce/apps/api/src/application/use-cases/automation/* (A3.2/A3.3 execution + replay use cases — NEW files expected)",
+    "goldplus-commerce/apps/api/src/infrastructure/Registry.ts (wiring)"
+  ],
+  "protectedPaths": [
+    "goldplus-commerce/apps/api/src/domain/fulfilment/*",
+    "goldplus-commerce/apps/api/src/domain/inventory/*",
+    "goldplus-commerce/apps/api/src/domain/customer-dna/*",
+    "goldplus-commerce/apps/api/src/domain/decision-intelligence/*",
+    "goldplus-commerce/apps/api/src/application/use-cases/outbox/ProcessOutboxBatchUseCase.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/notifications/NotificationRouter.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/db/schema/system.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/db/migrations/0000..0039 (never rewrite)"
+  ],
+  "providerGates": {
+    "names": ["PROVIDER_DELIVERY_ENABLED", "CUSTOMER_COMMUNICATIONS_ENABLED", "NOTIFICATION_DELIVERY_ENABLED", "NOTIFICATIONS_LIVE_SEND_ENABLED"],
+    "referencedIn": "goldplus-commerce/apps/api/src/application/services/consent/ConsentOperationsSummaryService.ts",
+    "defaultsExpected": "all false (preserve)",
+    "defaultsEvidence": "UNKNOWN — NOT VERIFIED at this head; resolve with: git grep -nE \"PROVIDER_DELIVERY_ENABLED|CUSTOMER_COMMUNICATIONS_ENABLED|NOTIFICATION_DELIVERY_ENABLED|NOTIFICATIONS_LIVE_SEND_ENABLED\" -- goldplus-commerce/apps/api/src"
+  },
+  "knownUnknowns": [
+    "Exact runtime default values + read site of the four provider gates (see providerGates.defaultsEvidence).",
+    "Whether an Automation admin route/UI exists yet (expected: NO). Resolve: git ls-files | grep -iE 'routes/admin/automation|pages/admin/automation'.",
+    "Whether OutboxTicker/worker is wired to run automation intents (A3 must reuse, not duplicate). Resolve: read goldplus-commerce/apps/api/src/infrastructure/scheduler/OutboxTicker.ts + interfaces/http/server.ts."
+  ],
+  "knownRisks": ["JSONB double-encoding (see CODEX_RISK_REGISTER.md R1)", "provider call inside route/use-case", "frequency-cap race", "cap/outbox non-atomicity", "blind retry after ambiguous provider outcome"],
+  "mustReuse": [
+    "goldplus-commerce/apps/api/src/application/use-cases/outbox/ProcessOutboxBatchUseCase.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/db/repositories/DrizzleOutboxRepository.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/notifications/NotificationRouter.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/scheduler/OutboxTicker.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/outbox/OutboxProcessor.ts",
+    "goldplus-commerce/apps/api/src/infrastructure/db/schema/system.ts (outbox_events)",
+    "goldplus-commerce/apps/api/src/application/use-cases/audit/CreateAuditLogUseCase.ts",
+    "goldplus-commerce/apps/api/src/interfaces/http/middleware/permissions.ts",
+    "goldplus-commerce/apps/api/src/domain/customer-dna/* (audience/consent source)"
+  ],
+  "mustNotDuplicate": ["scheduler", "worker framework", "outbox", "notification router", "provider adapter", "consent engine", "customer profile", "audience engine", "audit system", "permission catalogue"],
+  "firstCommands": [
+    "git fetch origin phase-2-measurement-control-tower-completion",
+    "git status --branch --short",
+    "git rev-parse HEAD && git rev-parse origin/phase-2-measurement-control-tower-completion",
+    "git log --oneline -12",
+    "cat goldplus-commerce/docs/handover/codex/CODEX_START_HERE.md",
+    "node -e \"['CODEX_EXECUTION_STATE.json','CODEX_EVIDENCE_MANIFEST.json','CODEX_A3_WORK_PLAN.json'].forEach(f=>JSON.parse(require('fs').readFileSync('goldplus-commerce/docs/handover/codex/'+f,'utf8')))\"",
+    "git grep -n \"class PlanAutomationExecutionUseCase\" -- goldplus-commerce/apps/api/src",
+    "git grep -n \"pgTable('outbox_events'\" -- goldplus-commerce/apps/api/src",
+    "sed -n '1,60p' goldplus-commerce/apps/api/src/infrastructure/db/repositories/DrizzleAutomationRepositories.ts",
+    "git diff --check"
+  ],
+  "acceptanceDocuments": [
+    "goldplus-commerce/docs/handover/codex/CODEX_A3_ACCEPTANCE_CHECKLIST.md",
+    "goldplus-commerce/docs/handover/codex/CODEX_A3_WORK_PLAN.json"
+  ],
+  "production": {
+    "sshAlias": "goldplus-prod",
+    "path": "/opt/goldplus/app/goldplus-commerce",
+    "url": "https://shopgoldplus.com",
+    "status": "EXTERNAL_BLOCKED",
+    "note": "No ssh binary and no docker daemon in the Claude environment; nothing is LIVE_VERIFIED."
+  },
+  "status": "READY_FOR_CODEX"
+}

@@ -1,18 +1,14 @@
-# CURRENT EXECUTION STATE (2026-07-19 · Automation A2 committed)
+# CURRENT EXECUTION STATE (2026-07-19 · Codex forensic handover)
 
-- head at A2 (= origin after push); clean tree. Migrations through **0039** (fresh 0000-0039 + populated upgrade).
-- Automation **A1** (governed versioned domain + migration 0039) and **A2** (restart-safe trigger planning)
-  committed. A2: PlanAutomationExecutionUseCase resolves audience from Customer DNA, evaluates conditions
-  into evidence, persists one idempotent execution plan (unique trigger_execution_key) + planned actions;
-  real-PG proof `automation-planning-proof.ts` PASS (two planners -> one plan; duplicate ignored;
-  ineligible/no-profile truthful). NOTE: this stack double-encodes jsonb; the automation config reader
-  normalises both encodings.
-- NEXT slice: **A3** consent-safe execution + outbox + retry/DLQ + replay. Deterministic pre-flight gate
-  order + suppression reasons; transactional frequency-cap reservation; internal actions via existing use
-  cases; external actions enqueue ONE outbox intent (reuse ProcessOutboxBatchUseCase/NotificationRouter,
-  never sync). Explicit call-counter zero-network proof for DRY_RUN/DISABLED/NOT_CONFIGURED/*_DISABLED;
-  real-PG proof (two executors -> one action/one cap slot/one outbox intent; successful non-replayable;
-  DLQ replays once). Commit `Module Automation A3: add consent-safe execution and replay`.
+- Claude implementation deliberately ended for this cycle; a forensic Codex handover pack was created
+  (documentation only). See `docs/handover/codex/CODEX_START_HERE.md` first.
+- Branch `phase-2-measurement-control-tower-completion`; verified handover HEAD
+  `3fe0f13218355bfe273348a75b6b77c845015637` (== origin); clean tree.
+- Automation **A1 complete** (a3a3146), **A2 complete** (2000fce), **A3 NOT started**. Next slice: **A3.0**
+  (Automation JSONB compatibility and normalization). Automation status: **SOURCE_PARTIAL**.
+- Other modules SOURCE_COMPLETE_NOT_DEPLOYED (Fulfilment F1-F5+UI, Inventory, Customer DNA & NBA 0037,
+  Decision Intelligence 0038). Migrations proven through **0039** (REPORTED — rerun per handover).
+- Production status: **EXTERNAL_BLOCKED** (no ssh, no docker daemon); nothing LIVE_VERIFIED.
+- Codex entry point: `docs/handover/codex/CODEX_START_HERE.md` then `CODEX_BOOTSTRAP_PROMPT.md`.
 
 ---
-

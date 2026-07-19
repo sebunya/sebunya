@@ -1,0 +1,338 @@
+{
+  "generatedAt": "2026-07-19",
+  "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+  "algorithm": "sha256",
+  "note": "Anchors the exact bytes Claude reviewed at HEAD. No secrets or node_modules included.",
+  "files": [
+    {
+      "path": "goldplus-commerce/apps/api/src/domain/automation/Automation.ts",
+      "sha256": "862b8a5b03dd1cab3bf74c59aa5ce231e5bfba88f2104a30ccb9696d8160f774",
+      "category": "automation-domain-A1A2",
+      "symbols": [
+        "canTransitionDefinition",
+        "validateVersionConfig",
+        "canActivate",
+        "computeNextRun",
+        "resolveMisfire",
+        "buildTriggerExecutionKey",
+        "buildActionIdempotencyKey",
+        "evaluateConditions"
+      ],
+      "evidenceFor": [
+        "Automation A1 domain",
+        "A2 condition evaluation"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/infrastructure/db/schema/automation.ts",
+      "sha256": "e6fb187fb742e750cc3ea204e383a34da7cc32587b23a45e2868b51f46f598c5",
+      "category": "automation-schema",
+      "symbols": [
+        "automationDefinitions",
+        "automationVersions",
+        "automationApprovals",
+        "automationExecutions",
+        "automationActionExecutions",
+        "automationSuppressions",
+        "automationEvents"
+      ],
+      "evidenceFor": [
+        "Automation A1 tables"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/infrastructure/db/migrations/0039_mighty_automation.sql",
+      "sha256": "91898c0bd6c24c44f875779fc1b7933252743fde2a0b5c246ced2bf8a3f2e454",
+      "category": "migration-0039",
+      "symbols": [],
+      "evidenceFor": [
+        "migration 0039 creates automation_* tables"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/tests/unit/AutomationA1Domain.test.ts",
+      "sha256": "42e0869deef4a3dd3b95d1f37415fda9593fa76a7394f34132e83929e96c5443",
+      "category": "test-A1",
+      "symbols": [],
+      "evidenceFor": [
+        "A1 domain tests (10)"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/application/ports/IAutomationRepository.ts",
+      "sha256": "e3f96d201ae17099ff4332cf1aff0ec170b9cd48289640babe95a45cbb238716",
+      "category": "automation-ports",
+      "symbols": [
+        "IAutomationRepository",
+        "IAutomationExecutionRepository",
+        "IAutomationAudienceReader"
+      ],
+      "evidenceFor": [
+        "A2 ports"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/application/use-cases/automation/PlanAutomationExecutionUseCase.ts",
+      "sha256": "0e74cf80334e1d409fca3d524d3f42b6f253f138745cb0a2614a1e2990442c68",
+      "category": "automation-usecase-A2",
+      "symbols": [
+        "PlanAutomationExecutionUseCase"
+      ],
+      "evidenceFor": [
+        "A2 restart-safe planning"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/infrastructure/db/repositories/DrizzleAutomationRepositories.ts",
+      "sha256": "8c5192290cd7dc7bad5f012fbb2949f2d23973b30a151c0f78d51200d6095f30",
+      "category": "automation-repos-A2",
+      "symbols": [
+        "DrizzleAutomationRepository",
+        "DrizzleAutomationExecutionRepository",
+        "DrizzleAutomationAudienceReader"
+      ],
+      "evidenceFor": [
+        "A2 repos; JSONB normalization workaround"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/scripts/automation-planning-proof.ts",
+      "sha256": "16d0e9fe7ab28cae3af8a967f9d1566e0c408c071787d9c964ff6d2f4af8933d",
+      "category": "automation-proof-A2",
+      "symbols": [],
+      "evidenceFor": [
+        "A2 real-PG proof: two planners one plan"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/tests/unit/AutomationA2Planning.test.ts",
+      "sha256": "5ee5cd6c8787150ed9f9a9cad1b985dfbc5d577fbd1ebaf2b3f45475cd0a068b",
+      "category": "test-A2",
+      "symbols": [],
+      "evidenceFor": [
+        "A2 planning tests (7)"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/infrastructure/Registry.ts",
+      "sha256": "6dbe7a6d922b61e3805751ca8f940ebb553129811ff7dcc062f527a55dda5efb",
+      "category": "registry",
+      "symbols": [
+        "Registry"
+      ],
+      "evidenceFor": [
+        "DI composition; automation wiring"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/application/use-cases/outbox/ProcessOutboxBatchUseCase.ts",
+      "sha256": "039f9e7d42374bcdb2385b978d6c9a45d2ade57ed98296f3816dd32290528dcc",
+      "category": "reuse-outbox",
+      "symbols": [
+        "ProcessOutboxBatchUseCase"
+      ],
+      "evidenceFor": [
+        "A3 external delivery reuse"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/infrastructure/db/repositories/DrizzleOutboxRepository.ts",
+      "sha256": "eb2c8a712b19587e5eefcf013b5ad8b8d90a21b9ca5eb60ffcd5f49af2661d54",
+      "category": "reuse-outbox-repo",
+      "symbols": [
+        "DrizzleOutboxRepository"
+      ],
+      "evidenceFor": [
+        "A3 outbox intent persistence reuse"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/infrastructure/notifications/NotificationRouter.ts",
+      "sha256": "c567a84856ab005e8a25ea0088b169af0936fe5508d7823124f74de406045f82",
+      "category": "reuse-router",
+      "symbols": [
+        "NotificationRouter"
+      ],
+      "evidenceFor": [
+        "A3 provider routing reuse"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/infrastructure/scheduler/OutboxTicker.ts",
+      "sha256": "3071f4d8b7121f40c2c85f409a80c7d28dee3c2c4c8819f772a07c37fb5c6ac2",
+      "category": "reuse-ticker",
+      "symbols": [
+        "OutboxTicker"
+      ],
+      "evidenceFor": [
+        "A3 scheduler reuse (no new scheduler)"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/infrastructure/outbox/OutboxProcessor.ts",
+      "sha256": "a115982e921ea55d683f67c1b84da84fb59aeb5d6c39be7d3653d052a0e423c4",
+      "category": "reuse-processor",
+      "symbols": [
+        "OutboxProcessor"
+      ],
+      "evidenceFor": [
+        "A3 processor reuse"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/infrastructure/db/schema/system.ts",
+      "sha256": "92761e397aa7e6214e3b025f4a2b2dd5805ef6966f37e4c941aaab946e44419e",
+      "category": "reuse-outbox-table",
+      "symbols": [
+        "outboxEvents"
+      ],
+      "evidenceFor": [
+        "outbox_events table"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/application/services/consent/ConsentOperationsSummaryService.ts",
+      "sha256": "3361f4b05291396eb28f7e6154f1266561e7f5316091555d97556b4334d073c4",
+      "category": "provider-gates",
+      "symbols": [
+        "PROVIDER_DELIVERY_ENABLED",
+        "CUSTOMER_COMMUNICATIONS_ENABLED",
+        "NOTIFICATION_DELIVERY_ENABLED"
+      ],
+      "evidenceFor": [
+        "provider gate names referenced"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/domain/decision-intelligence/DecisionIntelligence.ts",
+      "sha256": "fef2dd31c6b31b398d61970b26ee71aa2717b628521e70c6971f96b5d80fd504",
+      "category": "protected-DI",
+      "symbols": [
+        "evaluatePolicy",
+        "buildInsightIdempotencyKey"
+      ],
+      "evidenceFor": [
+        "Decision Intelligence 0038 (protected)"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/domain/customer-dna/CustomerProfile.ts",
+      "sha256": "7cd3874a3971bd70c00ae93cb6855445b731e2466cdae6b8985c28c2665f852e",
+      "category": "protected-DNA",
+      "symbols": [
+        "CustomerProfileSnapshot"
+      ],
+      "evidenceFor": [
+        "Customer DNA 0037 (protected)"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/interfaces/http/middleware/permissions.ts",
+      "sha256": "f4ead610bd65eb610abfa6141ddf36e5b52d134f916f60957677487c53ac8137",
+      "category": "rbac",
+      "symbols": [
+        "requirePermissions"
+      ],
+      "evidenceFor": [
+        "RBAC fail-closed"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/apps/api/src/application/use-cases/audit/CreateAuditLogUseCase.ts",
+      "sha256": "644efa9b43baeaf6cb0bba5744f8872c30894c10dd53d6876caf533d13252d71",
+      "category": "audit",
+      "symbols": [
+        "CreateAuditLogUseCase"
+      ],
+      "evidenceFor": [
+        "audit channel"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/tests/architecture/boundaries.test.ts",
+      "sha256": "31f9df469cfc74618e14e379520a2c5160b069f962779087909256aa519494a7",
+      "category": "arch",
+      "symbols": [],
+      "evidenceFor": [
+        "architecture boundary tests"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/tests/architecture/domain-purity.test.ts",
+      "sha256": "d22cbc37de7b1673d39939dd2efd6b855c758849c077edc7e840e12eef42319f",
+      "category": "arch",
+      "symbols": [],
+      "evidenceFor": [
+        "domain purity tests"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/docs/completion/CURRENT_EXECUTION_STATE.md",
+      "sha256": "7b512c9364006fc4cb491e3effbec6d52a84e24b60b30d8a6f2d39c15c01c221",
+      "category": "state",
+      "symbols": [],
+      "evidenceFor": [
+        "live execution state"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    },
+    {
+      "path": "goldplus-commerce/NEXT_WORKTREE_README.md",
+      "sha256": "598283d5b5529fc4efbd252d29311e56a0bf2fa17660e3dc32c6f1c8827f90f9",
+      "category": "state",
+      "symbols": [],
+      "evidenceFor": [
+        "resume readme"
+      ],
+      "verifiedAtHead": "3fe0f13218355bfe273348a75b6b77c845015637",
+      "exists": true
+    }
+  ]
+}
