@@ -1,12 +1,28 @@
 import { db } from '../client';
 import { orders, orderItems } from '../schema/commerce';
+import { pricingQuotes, promotionRedemptions, promotionReservations } from '../schema/pricing';
 import { products } from '../schema/products';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import { Order, OrderStatus as DomainOrderStatus, PaymentStatus, BuyerType } from '../../../domain/commerce/Order';
+import type { ITransactionalPricedOrderRepository } from '../../../application/use-cases/commerce/CheckoutUseCase';
+import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
+import { decodePricingJsonb, encodePricingJsonb } from '../PricingJsonbCodec';
 import { ICustomerOrderRepository } from '../../../application/ports/ICustomerOrderRepository';
 import { OrderDetailDto, OrderSummaryDto, OrderStatus } from '@goldplus/shared';
 
-export class DrizzleOrderRepository implements ICustomerOrderRepository {
+export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransactionalPricedOrderRepository {
+  private hydrate(result: typeof orders.$inferSelect & { items: Array<typeof orderItems.$inferSelect> }): Order {
+    const pricing = result.pricingSnapshot ? decodePricingJsonb<any>(result.pricingSnapshot) : null;
+    if (pricing?.evaluatedAt && !(pricing.evaluatedAt instanceof Date)) pricing.evaluatedAt = new Date(pricing.evaluatedAt);
+    return new Order(
+      result.id, result.orderNumber, result.customerName, result.customerPhone, result.customerEmail ?? undefined,
+      result.deliveryArea, result.deliveryAddress, result.buyerType as BuyerType,
+      result.items.map((item) => ({ productId: item.productId, sku: item.sku, name: item.productName, price: item.unitPrice, quantity: item.quantity, canonicalUnitPrice: item.canonicalUnitPrice, baseSubtotal: item.baseSubtotal, discountAmount: item.discountAmount, finalLineTotal: item.finalLineTotal })),
+      result.subtotalAmount, result.deliveryFee, result.totalAmount, result.paymentStatus as PaymentStatus,
+      result.status as DomainOrderStatus, result.createdAt, result.updatedAt, (result.deliveryLocation as any) ?? null,
+      result.deliveryFeeConfirmed ?? false, pricing
+    );
+  }
   async findById(id: string): Promise<Order | null> {
     const isUuid = id.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
     const result = await db.query.orders.findFirst({
@@ -18,32 +34,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository {
 
     if (!result) return null;
 
-    return new Order(
-      result.id,
-      result.orderNumber,
-      result.customerName,
-      result.customerPhone,
-      result.customerEmail ?? undefined,
-      result.deliveryArea,
-      result.deliveryAddress,
-      result.buyerType as BuyerType,
-      (result as any).items.map((item: any) => ({
-        productId: item.productId,
-        sku: item.sku,
-        name: item.productName,
-        price: item.unitPrice,
-        quantity: item.quantity,
-      })),
-      result.subtotalAmount,
-      result.deliveryFee,
-      result.totalAmount,
-      result.paymentStatus as PaymentStatus,
-      result.status as DomainOrderStatus,
-      result.createdAt,
-      result.updatedAt,
-      (result.deliveryLocation as any) ?? null,
-      result.deliveryFeeConfirmed ?? false
-    );
+    return this.hydrate(result as typeof orders.$inferSelect & { items: Array<typeof orderItems.$inferSelect> });
   }
 
   async findByClientKey(clientOrderKey: string): Promise<Order | null> {
@@ -62,32 +53,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository {
       }
     });
 
-    return results.map(result => new Order(
-      result.id,
-      result.orderNumber,
-      result.customerName,
-      result.customerPhone,
-      result.customerEmail ?? undefined,
-      result.deliveryArea,
-      result.deliveryAddress,
-      result.buyerType as BuyerType,
-      (result as any).items.map((item: any) => ({
-        productId: item.productId,
-        sku: item.sku,
-        name: item.productName,
-        price: item.unitPrice,
-        quantity: item.quantity,
-      })),
-      result.subtotalAmount,
-      result.deliveryFee,
-      result.totalAmount,
-      result.paymentStatus as PaymentStatus,
-      result.status as DomainOrderStatus,
-      result.createdAt,
-      result.updatedAt,
-      (result.deliveryLocation as any) ?? null,
-      result.deliveryFeeConfirmed ?? false
-    ));
+    return results.map((result) => this.hydrate(result as typeof orders.$inferSelect & { items: Array<typeof orderItems.$inferSelect> }));
   }
 
   async save(order: Order, opts?: { clientOrderKey?: string | null }): Promise<void> {
@@ -106,6 +72,13 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository {
         subtotalAmount: order.subtotalUgx,
         deliveryFee: order.deliveryFeeUgx,
         totalAmount: order.totalUgx,
+        pricingQuoteId: order.pricingSnapshot?.quoteId ?? null,
+        pricingCurrency: order.pricingSnapshot?.currency ?? 'UGX',
+        pricingBaseSubtotal: order.pricingSnapshot?.baseSubtotalUgx ?? order.subtotalUgx,
+        pricingDiscountTotal: order.pricingSnapshot?.discountTotalUgx ?? 0,
+        pricingTaxTotal: order.pricingSnapshot?.taxUgx ?? 0,
+        pricingCalculationVersion: order.pricingSnapshot?.calculationVersion ?? 'legacy-unadjusted-v1',
+        pricingSnapshot: order.pricingSnapshot ? encodePricingJsonb(order.pricingSnapshot as any) as any : null,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
         deliveryLocation: order.deliveryLocation ?? null,
@@ -130,8 +103,50 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository {
           productName: item.name,
           quantity: item.quantity,
           unitPrice: item.price,
+          canonicalUnitPrice: item.canonicalUnitPrice ?? item.price,
+          baseSubtotal: item.baseSubtotal ?? item.price * item.quantity,
+          discountAmount: item.discountAmount ?? 0,
+          finalLineTotal: item.finalLineTotal ?? item.price * item.quantity,
         });
       }
+    });
+  }
+
+  async savePricedOrder(input: { order: Order; quote: PricingQuote; reservationIds: string[]; clientOrderKey: string | null }): Promise<{ order: Order; duplicate: boolean }> {
+    if (!input.order.pricingSnapshot || input.order.pricingSnapshot.quoteId !== input.quote.id || input.order.totalUgx !== input.quote.finalTotalUgx) throw new Error('PRICING_ORDER_SNAPSHOT_MISMATCH');
+    return db.transaction(async (tx) => {
+      if (input.clientOrderKey) await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.clientOrderKey}, 0))`);
+      if (input.clientOrderKey) {
+        const [existing] = await tx.select().from(orders).where(eq(orders.clientOrderKey, input.clientOrderKey)).limit(1);
+        if (existing) {
+          const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, existing.id));
+          return { order: this.hydrate({ ...existing, items }), duplicate: true };
+        }
+      }
+      const [persistedQuote] = await tx.select().from(pricingQuotes).where(eq(pricingQuotes.id, input.quote.id)).limit(1);
+      if (!persistedQuote || persistedQuote.expiresAt <= new Date() || persistedQuote.currency !== input.quote.currency || persistedQuote.baseSubtotalUgx !== input.quote.baseSubtotalUgx || persistedQuote.discountTotalUgx !== input.quote.discountTotalUgx || persistedQuote.shippingUgx !== input.quote.shippingUgx || persistedQuote.taxUgx !== input.quote.taxUgx || persistedQuote.finalTotalUgx !== input.quote.finalTotalUgx || persistedQuote.calculationVersion !== input.quote.calculationVersion) throw new Error('PRICING_QUOTE_COMMIT_MISMATCH');
+      const initialReservations = input.reservationIds.length ? await tx.select().from(promotionReservations).where(inArray(promotionReservations.id, input.reservationIds)) : [];
+      for (const versionId of [...new Set(initialReservations.map((row) => row.promotionVersionId))].sort()) await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${versionId}, 0))`);
+      const reservations = input.reservationIds.length ? await tx.select().from(promotionReservations).where(inArray(promotionReservations.id, input.reservationIds)) : [];
+      if (reservations.length !== input.reservationIds.length || reservations.some((row) => row.quoteId !== input.quote.id || row.status !== 'RESERVED' || row.expiresAt <= new Date())) throw new Error('PRICING_RESERVATION_COMMIT_MISMATCH');
+      await tx.insert(orders).values({
+        id: input.order.id, orderNumber: input.order.orderNumber, buyerType: input.order.buyerType,
+        customerName: input.order.customerName, customerPhone: input.order.customerPhone, customerEmail: input.order.customerEmail,
+        deliveryArea: input.order.deliveryArea, deliveryAddress: input.order.deliveryAddress, status: input.order.orderStatus,
+        paymentStatus: input.order.paymentStatus, subtotalAmount: input.order.subtotalUgx, deliveryFee: input.order.deliveryFeeUgx,
+        totalAmount: input.order.totalUgx, createdAt: input.order.createdAt, updatedAt: input.order.updatedAt,
+        deliveryLocation: input.order.deliveryLocation ?? null, deliveryFeeConfirmed: input.order.deliveryFeeConfirmed,
+        clientOrderKey: input.clientOrderKey, pricingQuoteId: input.quote.id, pricingCurrency: input.quote.currency,
+        pricingBaseSubtotal: input.quote.baseSubtotalUgx, pricingDiscountTotal: input.quote.discountTotalUgx,
+        pricingTaxTotal: input.quote.taxUgx, pricingCalculationVersion: input.quote.calculationVersion,
+        pricingSnapshot: encodePricingJsonb(input.order.pricingSnapshot as any) as any,
+      });
+      await tx.insert(orderItems).values(input.order.items.map((item) => ({ orderId: input.order.id, productId: item.productId, sku: item.sku, productName: item.name, quantity: item.quantity, unitPrice: item.price, canonicalUnitPrice: item.canonicalUnitPrice ?? item.price, baseSubtotal: item.baseSubtotal ?? item.price * item.quantity, discountAmount: item.discountAmount ?? 0, finalLineTotal: item.finalLineTotal ?? item.price * item.quantity })));
+      if (reservations.length) {
+        await tx.insert(promotionRedemptions).values(reservations.map((reservation) => ({ reservationId: reservation.id, orderId: input.order.id, redeemedAt: new Date() })));
+        await tx.update(promotionReservations).set({ status: 'REDEEMED', updatedAt: new Date() }).where(inArray(promotionReservations.id, reservations.map((row) => row.id)));
+      }
+      return { order: input.order, duplicate: false };
     });
   }
 

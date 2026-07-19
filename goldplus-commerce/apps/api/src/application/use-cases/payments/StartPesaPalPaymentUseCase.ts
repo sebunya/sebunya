@@ -82,8 +82,10 @@ export class StartPesaPalPaymentUseCase {
 
     const pesapalResponse = await this.pesapalClient.submitOrderRequest({
       id: merchantReference,
-      currency: 'UGX',
-      amount: order.totalUgx,
+      // Retry integrity: once the attempt exists, its committed order-derived
+      // amount/currency are immutable and remain the provider request source.
+      currency: attempt.currency,
+      amount: attempt.amount,
       description: `Payment for order ${order.orderNumber}`,
       callback_url: callbackUrl,
       cancellation_url: cancellationUrl,

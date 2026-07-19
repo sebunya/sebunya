@@ -202,14 +202,14 @@
         "products/pricing fields",
         "checkout",
         "migration 0042 governed definitions/versions/approvals and forward Pricing persistence",
-        "pure lifecycle/policy domain, Drizzle repository, shared audit and PostgreSQL proof"
+        "pure lifecycle/policy domain, Drizzle repository, shared audit and PostgreSQL proof",
+        "authoritative checkout, immutable order pricing snapshot, atomic redemption and PesaPal amount integrity"
       ],
       "missingLayers": [
-        "authoritative checkout/order snapshot integration",
         "protected API and administrator control room",
         "production-shaped acceptance and live deployment"
       ],
-      "nextBoundedSlice": "P4 authoritative checkout, immutable order snapshot and payment integrity",
+      "nextBoundedSlice": "P5 protected Pricing Operations Control Room",
       "acceptance": [
         "no invented discounts",
         "no negative prices",
@@ -220,9 +220,10 @@
         "fresh migration replay 0000-0042 PASS with zero active promotions",
         "focused Pricing plus architecture 14/14; typecheck/build/secret scan/changed-path lint PASS",
         "pricing-evaluation-proof.ts PASS: actual canonical catalogue rows, deterministic stacking, persisted explainable quote, safe simulation, zero provider calls/residue",
-        "pricing-capacity-proof.ts PASS: one final-slot/customer/coupon winner, idempotent reserve/redeem/release, zero orphans/provider calls/residue"
+        "pricing-capacity-proof.ts PASS: one final-slot/customer/coupon winner, idempotent reserve/redeem/release, zero orphans/provider calls/residue",
+        "pricing-checkout-proof.ts PASS: canonical price, atomic order/redemption, failed-order compensation, immutable PesaPal retry amount, zero outbox/real-provider calls/residue"
       ],
-      "commit": "P1 committed by this change"
+      "commit": "P1-P4 committed in independent reviewed slices"
     },
     {
       "module": "Fraud Triage",

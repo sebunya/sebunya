@@ -1,13 +1,21 @@
-import { Order, OrderItem, BuyerType, OrderDeliveryLocation } from '../../../domain/commerce/Order';
+import { Order, OrderItem, BuyerType, OrderDeliveryLocation, OrderPricingSnapshot } from '../../../domain/commerce/Order';
 import { normalizeDistrict, resolveDeliveryFee } from '../../../domain/commerce/DeliveryFee';
 import { IProductRepository } from '../../ports/IProductRepository';
 import { IDeliveryZoneRepository } from '../../ports/IDeliveryZoneRepository';
+import { EvaluateCartPricingUseCase } from '../pricing/EvaluateCartPricingUseCase';
+import { ManagePromotionCapacityUseCase } from '../pricing/ManagePromotionCapacityUseCase';
+import { IPricingQuoteRepository } from '../../ports/IPricingQuoteRepository';
+import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
 
 export interface IOrderRepository {
   save(order: Order, opts?: { clientOrderKey?: string | null }): Promise<void>;
   findById(id: string): Promise<Order | null>;
   /** Idempotency: find an order previously created with this client key. */
   findByClientKey?(clientOrderKey: string): Promise<Order | null>;
+}
+
+export interface ITransactionalPricedOrderRepository extends IOrderRepository {
+  savePricedOrder(input: { order: Order; quote: PricingQuote; reservationIds: string[]; clientOrderKey: string | null }): Promise<{ order: Order; duplicate: boolean }>;
 }
 
 export interface CheckoutDto {
@@ -32,6 +40,9 @@ export interface CheckoutDto {
   }>;
   /** Optional idempotency key: repeated submissions return the same order. */
   clientOrderKey?: string | null;
+  couponCode?: string | null;
+  previewQuoteId?: string | null;
+  acceptPriceChange?: boolean;
 }
 
 export interface CheckoutResult {
@@ -49,7 +60,13 @@ export class CheckoutUseCase {
   constructor(
     private readonly orderRepo: IOrderRepository,
     private readonly products: IProductRepository,
-    private readonly deliveryZones: IDeliveryZoneRepository | null = null
+    private readonly deliveryZones: IDeliveryZoneRepository | null = null,
+    private readonly authoritativePricing: {
+      evaluator: EvaluateCartPricingUseCase;
+      capacity: ManagePromotionCapacityUseCase;
+      quotes: IPricingQuoteRepository;
+      orders: ITransactionalPricedOrderRepository;
+    } | null = null
   ) {}
 
   public async execute(dto: CheckoutDto): Promise<CheckoutResult> {
@@ -78,7 +95,61 @@ export class CheckoutUseCase {
       }
     }
 
-    // Server-authoritative pricing: resolve every line from the public catalogue.
+    // Delivery fee from configured zones; unconfigured districts stay truthful (0, unconfirmed).
+    const district = dto.customerDetails.deliveryLocation?.district
+      ? normalizeDistrict(dto.customerDetails.deliveryLocation.district)
+      : null;
+    const zone = district && this.deliveryZones ? await this.deliveryZones.findByDistrict(district) : null;
+    const fee = resolveDeliveryFee(zone);
+
+    if (this.authoritativePricing) {
+      const quote = await this.authoritativePricing.evaluator.execute({
+        items: dto.items,
+        couponCode: dto.couponCode,
+        customerScopeKey: dto.customerDetails.email?.trim().toLowerCase() || dto.customerDetails.phone.trim(),
+        customerDnaSegments: [],
+        experimentEvidence: [],
+        shippingUgx: fee.feeUgx,
+        taxUgx: 0,
+        persist: true,
+      });
+      if (dto.previewQuoteId) {
+        const preview = await this.authoritativePricing.quotes.findQuote(dto.previewQuoteId);
+        if (!preview || preview.expiresAt <= quote.evaluatedAt) throw new Error('PRICE_CHANGED: The preview quote expired or is unavailable. Review the current price.');
+        const baseChanged = preview.baseSubtotalUgx !== quote.baseSubtotalUgx || preview.lines.some((line, index) => line.canonicalUnitPriceUgx !== quote.lines[index]?.canonicalUnitPriceUgx || line.quantity !== quote.lines[index]?.quantity);
+        const promotionChanged = preview.discountTotalUgx !== quote.discountTotalUgx || preview.finalTotalUgx !== quote.finalTotalUgx || preview.appliedPromotionVersions.map((item) => item.versionId).join(',') !== quote.appliedPromotionVersions.map((item) => item.versionId).join(',');
+        if (!dto.acceptPriceChange && (baseChanged || promotionChanged)) throw new Error(`${baseChanged ? 'PRICE_CHANGED' : 'PROMOTION_CHANGED'}: The authoritative checkout total differs from the preview. Review and confirm the revised breakdown.`);
+      }
+      const checkoutKey = clientOrderKey ?? `quote:${quote.id}`;
+      const reservation = await this.authoritativePricing.capacity.reserve({ quoteId: quote.id, checkoutKey });
+      const snapshot: OrderPricingSnapshot = {
+        quoteId: quote.id,
+        currency: quote.currency,
+        baseSubtotalUgx: quote.baseSubtotalUgx,
+        discountTotalUgx: quote.discountTotalUgx,
+        shippingUgx: quote.shippingUgx,
+        taxUgx: quote.taxUgx,
+        finalTotalUgx: quote.finalTotalUgx,
+        calculationVersion: quote.calculationVersion,
+        couponReference: quote.couponReference,
+        appliedPromotionVersions: quote.appliedPromotionVersions,
+        experimentEvidence: quote.experimentEvidence,
+        adjustments: quote.adjustments,
+        evaluatedAt: quote.evaluatedAt,
+      };
+      const pricedItems: OrderItem[] = quote.lines.map((line) => ({ productId: line.productId, sku: line.sku, name: line.name, price: line.canonicalUnitPriceUgx, quantity: line.quantity, canonicalUnitPrice: line.canonicalUnitPriceUgx, baseSubtotal: line.baseSubtotalUgx, discountAmount: line.discountUgx, finalLineTotal: line.finalSubtotalUgx }));
+      const order = Order.create(crypto.randomUUID(), dto.customerDetails, dto.buyerType, pricedItems, quote.shippingUgx, fee.confirmed, snapshot);
+      try {
+        const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey });
+        if (saved.duplicate && reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id });
+        return { order: saved.order, deliveryFeeConfirmed: saved.order.deliveryFeeConfirmed, idempotentReplay: saved.duplicate };
+      } catch (error) {
+        if (reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id }).catch(() => undefined);
+        throw error;
+      }
+    }
+
+    // Legacy test/fallback composition: resolve every line from the public catalogue.
     const ids = [...new Set(dto.items.map((i) => i.productId))];
     const rows = await this.products.findPublicViewList({ ids, limit: ids.length });
     const byId = new Map(rows.map((r) => [r.entity.id, r]));
@@ -100,13 +171,6 @@ export class CheckoutUseCase {
         quantity: i.quantity,
       };
     });
-
-    // Delivery fee from configured zones; unconfigured districts stay truthful (0, unconfirmed).
-    const district = dto.customerDetails.deliveryLocation?.district
-      ? normalizeDistrict(dto.customerDetails.deliveryLocation.district)
-      : null;
-    const zone = district && this.deliveryZones ? await this.deliveryZones.findByDistrict(district) : null;
-    const fee = resolveDeliveryFee(zone);
 
     const order = Order.create(
       crypto.randomUUID(),

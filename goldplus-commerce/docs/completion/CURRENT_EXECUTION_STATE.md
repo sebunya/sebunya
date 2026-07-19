@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Pricing P3)
+# CURRENT EXECUTION STATE (2026-07-20 · Pricing P4)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -79,6 +79,8 @@
 - Pricing P1 is pushed at `873d965542fd37212bc05db50470e0fea5013c93` with a clean 194-file / 4,030-test suite. P2 now adds one canonical-price evaluator with explicit qualification/exclusion evidence, deterministic stacking/tie-breaking/rounding/floors, safe hashed references, persisted explainable quotes and a non-persistent simulation path. Its real-PG proof passes with actual catalogue rows, native JSONB and zero provider calls/residue.
 - Pricing P2 established the deterministic evaluation and explainable quote boundary.
 - Pricing P2 is pushed at `2e80bd8c44d4433e5e56ee1dd71a7cd981a0b5c1`. P3 now adds one 0042-backed transactional capacity boundary. Real-PG races prove one global-slot winner, one same-customer winner and one same-coupon winner; reserve/redeem/release retries are idempotent; orphans, provider calls and residue are zero.
-- Next gate: commit/push P3, prove clean local/remote alignment, then begin P4 checkout/order/payment integrity.
+- Pricing P3 is pushed at `8627cdb6fa304804ce885ad00cf2bd21132eb398`. P4 wires production checkout to authoritative Pricing, atomically persists immutable order snapshots plus redemptions, compensates reservation on pre-order failure, and preserves committed-order amount through PesaPal retries and callback verification.
+- P4 real-PostgreSQL proof passes with canonical `100000` versus injected `1`, final `180000`, one order/redemption, idempotent replay, forced-failure release, two controlled submissions at the immutable amount, zero outbox mutation, zero real provider calls and zero residue. Pricing plus architecture is 25/25; the extended focused set is 56/56; full workspace gates pass.
+- Next gate: commit/push P4, prove clean local/remote alignment, then begin P5 Pricing Operations Control Room.
 
 ---

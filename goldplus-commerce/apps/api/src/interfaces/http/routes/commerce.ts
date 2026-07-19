@@ -38,6 +38,9 @@ const checkoutBodySchema = z.object({
     .min(1)
     .max(50),
   clientOrderKey: z.string().trim().min(8).max(80).nullish(),
+  couponCode: z.string().trim().min(3).max(40).nullish(),
+  previewQuoteId: z.string().uuid().nullish(),
+  acceptPriceChange: z.boolean().optional(),
 });
 
 const routes = new Hono();
@@ -130,6 +133,9 @@ routes.post('/orders/create', async (c) => {
       buyerType: body.buyerType,
       items: body.items,
       clientOrderKey: body.clientOrderKey ?? null,
+      couponCode: body.couponCode ?? null,
+      previewQuoteId: body.previewQuoteId ?? null,
+      acceptPriceChange: body.acceptPriceChange ?? false,
     });
 
     // Section 12: reserve stock for the order (idempotent, all-or-nothing,
@@ -195,7 +201,7 @@ routes.post('/orders/create', async (c) => {
     if (err.message.includes('DATABASE_URL')) {
       return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Order service is temporarily unavailable (Database is not configured).' } }, 503);
     }
-    const known = ['PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE'].find((k) => err.message.startsWith(k));
+    const known = ['PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE', 'PRICE_CHANGED', 'PROMOTION_CHANGED'].find((k) => err.message.startsWith(k));
     return c.json({ success: false, error: { code: known ?? 'ORDER_FAILED', message: err.message } }, 400);
   }
 });
@@ -601,4 +607,3 @@ routes.post('/payments/pesapal/ipn', handleIpn);
 routes.get('/payments/pesapal/ipn', handleIpn);
 
 export default routes;
-

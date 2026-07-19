@@ -287,3 +287,13 @@ Focused proof target: native JSONB object writes, compatibility reads for any le
 - PostgreSQL races prove one winner for the final global slot, same customer and same coupon; retry reuses one hold, redemption stays one row, release transitions once, all orphan counts and proof residue are zero, and provider calls remain zero.
 - Focused Pricing plus architecture is 21/21; typecheck/build/secret scan/changed-path lint/diff check pass. Migration 0042 and earlier migrations are unchanged.
 - Status: `SOURCE_PARTIAL`; next boundary is P4 atomic authoritative checkout/order pricing snapshot and committed-order PesaPal integrity.
+
+## Pricing P4 — authoritative checkout, immutable order pricing and PesaPal integrity
+
+- Verified base: clean/pushed P3 `8627cdb6fa304804ce885ad00cf2bd21132eb398`; no Automation or Experiments source was reopened and migration 0042 remained unchanged.
+- Production checkout is now wired to canonical catalogue reload, approved immutable promotion evaluation, persisted quote, capacity reservation and one repository-native order/redemption transaction. Browser-provided amounts are not inputs; public callers cannot inject Customer DNA or Experiment eligibility evidence.
+- Preview drift fails before capacity/order creation as `PRICE_CHANGED` or `PROMOTION_CHANGED` unless explicitly accepted. A pre-order persistence failure compensates its live reservation. A committed order retains its valid redemption when downstream Inventory later chooses a backorder/hold policy.
+- Orders and lines persist the complete reproducible Pricing snapshot. PesaPal attempts originate from the committed order and retries use the immutable attempt amount/currency; redirect does not mark paid and verified callback status cannot rewrite pricing.
+- Real PostgreSQL proof passes canonical `100000` versus injected `1`, final `180000`, one atomic redemption, idempotent order replay, one compensated failed reservation, two controlled retry submissions at the same amount, preserved callback snapshot, zero outbox mutation, zero real-provider calls and zero residue.
+- Pricing plus architecture is 25/25; the extended focused set is 56/56. Workspace typecheck/build, secret scan, changed-path lint with zero errors and diff check pass.
+- Status: `SOURCE_PARTIAL`; next boundary is P5 protected Pricing Operations Control Room with truthful persisted state and non-persistent simulation.

@@ -3,6 +3,9 @@ import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
+import { DrizzlePricingRepository } from './db/repositories/DrizzlePricingRepository';
+import { DrizzlePricingQuoteRepository } from './db/repositories/DrizzlePricingQuoteRepository';
+import { DrizzlePricingCapacityRepository } from './db/repositories/DrizzlePricingCapacityRepository';
 import { DrizzleDealerRepository } from './db/repositories/DrizzleDealerRepository';
 import { DrizzleSupportRepository } from './db/repositories/DrizzleSupportRepository';
 import { DrizzleQuoteRepository } from './db/repositories/DrizzleQuoteRepository';
@@ -91,6 +94,8 @@ import { RecommendationDiversityService } from '../application/recommendations/R
 import { AddToCartUseCase } from '../application/use-cases/commerce/AddToCartUseCase';
 import { GetCartByIdUseCase } from '../application/use-cases/commerce/GetCartByIdUseCase';
 import { CheckoutUseCase } from '../application/use-cases/commerce/CheckoutUseCase';
+import { EvaluateCartPricingUseCase } from '../application/use-cases/pricing/EvaluateCartPricingUseCase';
+import { ManagePromotionCapacityUseCase } from '../application/use-cases/pricing/ManagePromotionCapacityUseCase';
 import { DrizzleDeliveryZoneRepository } from './db/repositories/DrizzleDeliveryZoneRepository';
 import {
   ListDeliveryZonesUseCase,
@@ -384,6 +389,9 @@ export class Registry {
   public readonly cartQueryRepo = new DrizzleCartQueryRepository();
   public readonly orderRepo = new DrizzleOrderRepository();
   public readonly productRepo = new DrizzleProductRepository();
+  public readonly pricingRepo = new DrizzlePricingRepository();
+  public readonly pricingQuoteRepo = new DrizzlePricingQuoteRepository();
+  public readonly pricingCapacityRepo = new DrizzlePricingCapacityRepository();
   public readonly dealerRepo = new DrizzleDealerRepository();
   public readonly supportRepo = new DrizzleSupportRepository();
   public readonly quoteRepo = new DrizzleQuoteRepository();
@@ -506,7 +514,23 @@ export class Registry {
   public readonly lifecycleReadRepo = new DrizzleLifecycleReadRepository();
   public readonly getLifecycleSegmentsUseCase = new GetLifecycleSegmentsUseCase(this.lifecycleReadRepo);
   public readonly loginAttemptStore = new InMemoryLoginAttemptStore();
-  public readonly checkoutUseCase = new CheckoutUseCase(this.orderRepo, this.productRepo, this.deliveryZoneRepo);
+  public readonly evaluateCartPricingUseCase = new EvaluateCartPricingUseCase(
+    this.productRepo,
+    this.pricingRepo,
+    this.pricingQuoteRepo,
+  );
+  public readonly managePromotionCapacityUseCase = new ManagePromotionCapacityUseCase(this.pricingCapacityRepo);
+  public readonly checkoutUseCase = new CheckoutUseCase(
+    this.orderRepo,
+    this.productRepo,
+    this.deliveryZoneRepo,
+    {
+      evaluator: this.evaluateCartPricingUseCase,
+      capacity: this.managePromotionCapacityUseCase,
+      quotes: this.pricingQuoteRepo,
+      orders: this.orderRepo,
+    },
+  );
   // Launch Phase 1 (Section 9.3): order-to-admin fulfilment alerts.
   public readonly fulfilmentRepo = new DrizzleFulfilmentRepository();
   public readonly createFulfilmentTaskOnOrderPlacedUseCase = new CreateFulfilmentTaskOnOrderPlacedUseCase(this.fulfilmentRepo);

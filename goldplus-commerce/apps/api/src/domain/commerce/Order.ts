@@ -8,6 +8,26 @@ export interface OrderItem {
   name: string;
   price: number;
   quantity: number;
+  canonicalUnitPrice?: number;
+  baseSubtotal?: number;
+  discountAmount?: number;
+  finalLineTotal?: number;
+}
+
+export interface OrderPricingSnapshot {
+  quoteId: string;
+  currency: 'UGX';
+  baseSubtotalUgx: number;
+  discountTotalUgx: number;
+  shippingUgx: number;
+  taxUgx: number;
+  finalTotalUgx: number;
+  calculationVersion: string;
+  couponReference: string | null;
+  appliedPromotionVersions: Array<{ definitionId: string; versionId: string; versionNumber: number }>;
+  experimentEvidence: Array<{ experimentId: string; variantKey: string }>;
+  adjustments: Array<{ scope: string; productId: string | null; promotionDefinitionId: string; promotionVersionId: string; benefitType: string; amountUgx: number; applicationOrder: number; explanation: string }>;
+  evaluatedAt: Date;
 }
 
 export interface OrderCustomerDetails {
@@ -51,7 +71,8 @@ export class Order {
     public readonly updatedAt: Date,
     public readonly deliveryLocation: OrderDeliveryLocation | null = null,
     /** True only when the fee came from an enabled configured delivery zone. */
-    public readonly deliveryFeeConfirmed: boolean = false
+    public readonly deliveryFeeConfirmed: boolean = false,
+    public readonly pricingSnapshot: OrderPricingSnapshot | null = null
   ) {}
 
   public static create(
@@ -60,10 +81,13 @@ export class Order {
     buyerType: BuyerType,
     items: OrderItem[],
     deliveryFeeUgx: number = 0,
-    deliveryFeeConfirmed: boolean = false
+    deliveryFeeConfirmed: boolean = false,
+    pricingSnapshot: OrderPricingSnapshot | null = null
   ): Order {
-    const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const total = subtotal + deliveryFeeUgx;
+    const subtotal = pricingSnapshot?.finalTotalUgx != null
+      ? pricingSnapshot.finalTotalUgx - pricingSnapshot.shippingUgx - pricingSnapshot.taxUgx
+      : items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const total = pricingSnapshot?.finalTotalUgx ?? subtotal + deliveryFeeUgx;
     const timestamp = new Date();
     
     // Business Rule: wholesale/corporate require pending_owner_review
@@ -89,7 +113,8 @@ export class Order {
       timestamp,
       timestamp,
       customer.deliveryLocation ?? null,
-      deliveryFeeConfirmed
+      deliveryFeeConfirmed,
+      pricingSnapshot
     );
   }
 
@@ -98,7 +123,7 @@ export class Order {
       this.id, this.orderNumber, this.customerName, this.customerPhone, this.customerEmail,
       this.deliveryArea, this.deliveryAddress, this.buyerType, this.items,
       this.subtotalUgx, this.deliveryFeeUgx, this.totalUgx, this.paymentStatus,
-      newStatus, this.createdAt, new Date(), this.deliveryLocation, this.deliveryFeeConfirmed
+      newStatus, this.createdAt, new Date(), this.deliveryLocation, this.deliveryFeeConfirmed, this.pricingSnapshot
     );
   }
 }
