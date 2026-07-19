@@ -207,7 +207,7 @@
         "protected Pricing API/control room, exact commercial RBAC, audit, capacity metrics and safe simulation"
       ],
       "missingLayers": [],
-      "nextBoundedSlice": "P7 exact executable release-candidate freeze, database-connected image smoke, backup/restore rehearsal and rollback package",
+      "nextBoundedSlice": "P8 exact-approval-gated deployment of frozen release e0f7e809, then P9 safe UAT and 15-minute soak",
       "acceptance": [
         "no invented discounts",
         "no negative prices",
@@ -223,7 +223,8 @@
         "pricing-operations-proof.ts PASS: protected governance surface, Experiment association, canonical non-persistent simulation, truthful capacity/audit, zero business/provider effects/residue",
         "verify-pricing-acceptance.sh PASS: all five real-PostgreSQL components, zero real-provider calls and zero proof residue",
         "fresh 0000-0042 replay plus populated 0041-0042 upgrade PASS with zero active promotions and exact legacy pricing backfill",
-        "production Linux/amd64 API/web image builds and network-none protected-route start smokes PASS; seven running container IDs unchanged"
+        "production Linux/amd64 API/web image builds and network-none protected-route start smokes PASS; seven running container IDs unchanged",
+        "P7 exact e0f7e809 images, compiled DB/Registry/Pricing smoke, worker/ticker start, backup restore, 29-49 migration rehearsal and rollback-image compatibility PASS"
       ],
       "commit": "P1-P6 committed in independent reviewed slices"
     },

@@ -1,4 +1,4 @@
-# NEXT WORKTREE — Pricing P6 accepted; P7 exact release candidate next
+# NEXT WORKTREE — Pricing P7 release ready; P8 approval gate next
 
 The forensic handover has been assimilated across the complete tracked repository. Start with
 `docs/handover/codex/orientation/CODEX_CONTEXT_LEDGER.md`, then use the original handover pack under
@@ -22,11 +22,16 @@ All five real-PostgreSQL Pricing proofs pass with zero real-provider calls and r
 populated `0041`→`0042` pass; compiled plain-Node and production Linux/amd64 API/web image smokes pass. Production
 services and source were not changed. Pricing is `SOURCE_COMPLETE_NOT_DEPLOYED`.
 
-Next: P7 must freeze one exact executable commit, rebuild labelled API/web images from it, run the separate
-database-connected production-image smoke, create and verify the production backup, restore it into an isolated
-on-server scratch database, apply only `0042`, prove schema/data/Pricing/rollback invariants, and assemble the complete
-rollback package. Do not deploy, switch production source, apply the live migration, or recreate services before every
-P7 gate is green. P8 remains independently approval-marker gated.
+P7 freezes executable release `e0f7e80928398dc758b0d88c25800eab60899986`. Exact labelled images, plain-Node
+and database-connected smoke, production-mode worker/ticker initialization, candidate Compose/Caddy validation,
+fresh rollback tags/source archives/backup, isolated restore, exact 29→49 migration rehearsal and old-image rollback
+compatibility all pass. Production source, live DB and seven service container identities remain unchanged.
+
+Next: use `docs/platform/releases/pricing/PRICING_RELEASE_MANIFEST.json` and
+`PRICING_DEPLOYMENT_AND_ROLLBACK_RUNBOOK.md`. P8 must first independently verify the exact operator-created root-only
+marker. Missing/invalid approval means `PRICING_P8_BLOCKED_BY_APPROVAL_NO_CHANGES`: no lock, preservation, fetch,
+migration, tag mutation or service action. With approval, deploy only exact `e0f7e809`, recreate API/web only, complete
+safe UAT and a minimum 15-minute soak, and reconcile to `PRICING_PRODUCTION_LIVE_VERIFIED_DORMANT_SAFE`.
 
 The detailed A3-A5 plan, protected assets, evidence manifest and risk register live under
 `docs/handover/codex/`. The section below is the prior resume note (superseded by the handover and C0 package).

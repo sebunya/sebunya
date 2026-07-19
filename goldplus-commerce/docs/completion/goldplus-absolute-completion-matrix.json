@@ -1,7 +1,7 @@
 {
   "generatedAt": "2026-07-20",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "Pricing P6 evidence commit",
+  "reconciledHead": "Pricing P7 release evidence commit",
   "note": "Reconciled from actual source + local execution. The binding execution queue is COMMERCE_OS_EXECUTION_QUEUE.json.",
   "migrations": "0000-0042 (fresh replay proven; 0040 populated upgrade proven; 0042 continuation upgrade proven)",
   "fullSuite": "198 files / 4047 tests at clean Pricing P6",
@@ -27,5 +27,5 @@
     "Search Insights": "SOURCE_PARTIAL"
   },
   "nextModule": "Pricing & Promotions",
-  "productionDeployment": "NOT_DEPLOYED (P7 exact release, restore and rollback gates pending; ssh/Docker verified read-only)"
+  "productionDeployment": "APPROVAL_GATED (P7 exact release, images, restore rehearsal and rollback package complete; production unchanged)"
 }

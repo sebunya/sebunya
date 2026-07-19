@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Pricing P6)
+# CURRENT EXECUTION STATE (2026-07-20 · Pricing P7)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -88,5 +88,8 @@
 - P6 production-shaped acceptance runs all five Pricing PostgreSQL proofs under one deterministic runner, replays fresh `0000`–`0042`, proves populated `0041`→`0042` legacy order/line backfill, and executes the compiled Pricing proof under plain Node.
 - Exact clean source `09ceb5a` built into production Linux/amd64 API/web images from the pinned Node digest. Network-none read-only image smokes passed API/web health and logged-out Pricing protection; all seven live production container IDs remained unchanged.
 - Pricing is now `SOURCE_COMPLETE_NOT_DEPLOYED`. No live migration, deployment, promotion activation, provider call, customer communication or production database write occurred. P7 exact release-candidate freeze, database-connected image smoke, backup/restore rehearsal and rollback package are next.
+- P7 froze executable release `e0f7e80928398dc758b0d88c25800eab60899986`, built labelled Linux/amd64 API/web images, passed plain-Node and database-connected compiled-runtime smoke, and proved worker/ticker startup and clean shutdown with zero provider or business mutation.
+- A fresh production backup restored into isolated PostgreSQL 16 and exact candidate migrations rehearsed 29→49 rows. The six existing production-only historical ledger rows remain preserved; candidate `0023`–`0042` contributes 20 rows. Pricing is dormant, legacy order/line backfills match, and the old API image is compatible with the additive target schema.
+- Production source, live DB and all seven running containers remained unchanged. Fresh rollback images, source archives, backup, release manifest and deployment/rollback runbook are ready. P8 is blocked unless its exact operator-created approval marker independently verifies.
 
 ---

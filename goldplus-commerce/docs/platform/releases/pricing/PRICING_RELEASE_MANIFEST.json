@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-20T02:30:00+03:00",
+  "module": "Pricing & Promotions",
+  "classification": "RELEASE_CANDIDATE_FROZEN_NOT_DEPLOYED",
+  "release": {
+    "commit": "e0f7e80928398dc758b0d88c25800eab60899986",
+    "sourceTree": "dff71c3b4649db86cfb44f7c8b1f96abf9da7e8c",
+    "sourceGapCommits": 65,
+    "sourceGapTrackedPaths": 392,
+    "candidateArchive": "/opt/goldplus/releases/pricing-e0f7e809-20260719T231232Z/goldplus-pricing-e0f7e80928398dc758b0d88c25800eab60899986.tar.gz",
+    "candidateArchiveSha256": "7218f7b6eb7752bcf1fb2577816f6f5859051a75cb47df5f9de72a3bc9cc2079"
+  },
+  "expectedProduction": {
+    "sourceHead": "4b4016c75bd29bd1c6c251663fe277837d6573c0",
+    "sourceTree": "d0095cd61042d393beda411178ea0290cc5c4c82",
+    "sourceClean": true,
+    "migrationRows": 29,
+    "candidateJournalRowsAlreadyRepresented": 23,
+    "additionalHistoricalMigrationRows": [
+      { "createdAt": 1783890000000, "hash": "2231f011e9e3950d0e08b3d1293038c9085fbdf1494bfae401c5056ed8e4b230" },
+      { "createdAt": 1783890060000, "hash": "d2c88c61be9b3687b36287127d6826edad7263a24bf041829cbd039608198cd6" },
+      { "createdAt": 1783890120000, "hash": "267ff5b189f3a8ea2c3dbc6c501352fcb1ec47bc7fd2a64dce09c9d9f399bb08" },
+      { "createdAt": 1783918179000, "hash": "e579c787fabb2eaab919fe6d507e8e88343af1022eed03161041564e6eb27a11" },
+      { "createdAt": 1783922400000, "hash": "a2d49173561c71a25562524450b172a54eec89d578f1f0956e7e6731570625f6" },
+      { "createdAt": 1783926000000, "hash": "13775fadcd56e4f6839c02a9744c5bb2a0f14a1106f786cfe171b31f14cdc3e4" }
+    ],
+    "businessCounters": {
+      "users": 2,
+      "products": 8,
+      "orders": 13,
+      "orderItems": 18,
+      "payments": 0,
+      "paymentAttempts": 9,
+      "outboxEvents": 0,
+      "notificationAttempts": 0,
+      "consentEvents": 30,
+      "consentCurrentState": 0
+    },
+    "activePromotions": 0
+  },
+  "migrations": {
+    "candidateRange": "0000-0042",
+    "pendingCandidateRange": "0023-0042",
+    "pendingFiles": [
+      "0023_steady_stellaris.sql",
+      "0024_reflective_ikaris.sql",
+      "0025_next_supreme_intelligence.sql",
+      "0026_strong_psynapse.sql",
+      "0027_lethal_triton.sql",
+      "0028_shallow_marrow.sql",
+      "0029_bumpy_miss_america.sql",
+      "0030_sharp_omega_sentinel.sql",
+      "0031_slippery_grim_reaper.sql",
+      "0032_boring_may_parker.sql",
+      "0033_sudden_lester.sql",
+      "0034_icy_doctor_octopus.sql",
+      "0035_lonely_iron_fist.sql",
+      "0036_curly_delivery.sql",
+      "0037_wise_customer_dna.sql",
+      "0038_brave_decision_intelligence.sql",
+      "0039_mighty_automation.sql",
+      "0040_automation_frequency_cap_reservations.sql",
+      "0041_experiments.sql",
+      "0042_pricing_promotions.sql"
+    ],
+    "targetLedgerRows": 49,
+    "targetCandidateRowsAdded": 20,
+    "pricingMigrationSha256": "5a647ce8e00ffeb4e96c4034132c561a3cef69c202ed8c1cd03d19e01e54721c",
+    "pricingTables": 9,
+    "commercialActivationDefault": "DORMANT_ZERO_ACTIVE_PROMOTIONS"
+  },
+  "images": {
+    "base": "node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293",
+    "api": {
+      "tag": "goldplus-commerce-api:pricing-e0f7e809-20260719T231232Z",
+      "id": "sha256:2aebad44d4363cd0bcd5df645e3f4c3579472fa3b943eff66b1d316ee69c559f",
+      "sizeBytes": 115774880,
+      "revisionLabel": "e0f7e80928398dc758b0d88c25800eab60899986",
+      "createdLabel": "2026-07-19T23:12:32Z"
+    },
+    "web": {
+      "tag": "goldplus-commerce-web:pricing-e0f7e809-20260719T231232Z",
+      "id": "sha256:a3eb362e1e00d54306410423cbf28bfa699186b23cafa5e4d8243c9243812229",
+      "sizeBytes": 145646667,
+      "revisionLabel": "e0f7e80928398dc758b0d88c25800eab60899986",
+      "createdLabel": "2026-07-19T23:12:32Z"
+    }
+  },
+  "toolchain": {
+    "node": "20.20.2",
+    "localPnpm": "10.17.1",
+    "imagePnpm": "9.1.4",
+    "dockerServer": "29.5.1",
+    "dockerApi": "1.54",
+    "dockerBuildx": "0.33.0",
+    "platform": "linux/amd64"
+  },
+  "verification": {
+    "tests": { "files": 198, "tests": 4047 },
+    "pricingArchitectureTests": 31,
+    "pricingPostgreSqlProofComponents": 5,
+    "plainNodeApiImageStart": "PASS",
+    "webImageStart": "PASS",
+    "databaseConnectedReadOnlySmoke": "PASS",
+    "productionModeWorkerTickerSmoke": "PASS_WITH_TWO_EXPECTED_DRY_RUN_WARNINGS_ZERO_ERRORS",
+    "composeConfigSha256": "64b433755d3b60fd511adaee0da3e5c541994c425e81e2649cbd4a1581ba0c71",
+    "caddyValidation": "PASS",
+    "restoreAndUpgrade": "PASS_29_TO_49",
+    "rollbackImageAgainstUpgradedSchema": "PASS",
+    "productionContainerIdentitiesChanged": false,
+    "productionDatabaseChanged": false
+  },
+  "preservation": {
+    "releaseDirectory": "/opt/goldplus/releases/pricing-e0f7e809-20260719T231232Z",
+    "productionSourceArchive": "/opt/goldplus/releases/pricing-e0f7e809-20260719T231232Z/production-source-4b4016c75bd29bd1c6c251663fe277837d6573c0.tar.gz",
+    "productionSourceArchiveSha256": "74c0496073718d7d8df9fd838886ce493eb6cbbea8dbdf15ed7910f4fb6e828b",
+    "databaseBackup": "/opt/goldplus/releases/pricing-e0f7e809-20260719T231232Z/production-pre-pricing-20260719T231232Z.dump",
+    "databaseBackupSha256": "b98882d3c1c1daabd8b0aac5502752d8c5c276f9855c4bdcbef6353fc23e7cb9",
+    "databaseBackupMode": "600",
+    "apiRollbackTag": "goldplus-commerce-api:rollback-pre-pricing-4b4016c-20260719T231232Z",
+    "apiRollbackImageId": "sha256:4057585542b53b35265d7ab702ecd233048ee47ec3dcaa75a5dd204e011d8638",
+    "webRollbackTag": "goldplus-commerce-web:rollback-pre-pricing-4b4016c-20260719T231232Z",
+    "webRollbackImageId": "sha256:2caef4d600a6974c471b95ceb670bd662c066f1c4c1a45c40bf81c27ec4f8ea9"
+  },
+  "deployment": {
+    "transport": "ssh goldplus-prod",
+    "path": "/opt/goldplus/app/goldplus-commerce",
+    "lock": "/opt/goldplus/app/.pricing-production-release.lock",
+    "approval": {
+      "path": "/root/APPROVE_GOLDPLUS_PRICING_DEPLOY_E0F7E809",
+      "exactContent": "APPROVE_GOLDPLUS_PRICING_DEPLOY_E0F7E809",
+      "owner": "root",
+      "mode": "600",
+      "missingStatus": "PRICING_P8_BLOCKED_BY_APPROVAL_NO_CHANGES"
+    },
+    "recreateOnly": ["api", "web"],
+    "mustNotRestart": ["caddy", "postgres", "redis"],
+    "mustNotRun": ["docker compose down", "provider sends", "promotion activation", "paid order UAT"],
+    "providerGates": {
+      "notificationsSmsEnabled": false,
+      "notificationsEmailEnabled": false,
+      "notificationsLiveSendEnabled": false,
+      "notificationsDryRun": true
+    },
+    "healthEndpoints": [
+      "https://shopgoldplus.com/",
+      "https://shopgoldplus.com/api/health/live",
+      "https://shopgoldplus.com/admin/pricing",
+      "https://shopgoldplus.com/api/admin/pricing/overview"
+    ],
+    "soakMinutes": 15
+  },
+  "rollbackTriggers": [
+    "two consecutive health failures within 30 seconds",
+    "any candidate API/web restart after initial recreation",
+    "any fatal, uncaught, database-client or migration incompatibility error",
+    "any canonical/displayed/cart/order/PesaPal amount mismatch",
+    "any Inventory or fulfilment regression",
+    "any provider attempt, customer communication, outbox retry storm or unexpected queue growth",
+    "any Pricing RBAC exposure or active promotion introduced by deployment"
+  ]
+}
