@@ -1,0 +1,104 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/customer-dna", 303);
+}
+const headers = { Authorization: `Bearer ${token}` };
+
+const q = Astro.url.searchParams.get("q") ?? "";
+
+interface Profile {
+  canonicalCustomerId: string; accountUserId: string | null; identityConfidence: string;
+  primaryLifecycleStage: string; valueFlags: string[]; riskFlags: string[]; lastSeen: string | null;
+}
+interface Conflict { signalType: string; identifierKey: string; status: string; createdAt: string; }
+let results: Profile[] = [];
+let conflicts: Conflict[] = [];
+let loadFailed = false;
+let permissionDenied = false;
+let apiError = "";
+try {
+  const [rRes, cRes] = await Promise.all([
+    fetch(`${apiBase}/admin/customer-dna?q=${encodeURIComponent(q)}&limit=25`, { headers }),
+    fetch(`${apiBase}/admin/customer-dna/conflicts`, { headers }),
+  ]);
+  if (rRes.status === 403) permissionDenied = true;
+  else {
+    const j = await rRes.json().catch(() => null);
+    if (j?.success) results = j.data.results;
+    else { loadFailed = true; apiError = `Search responded with HTTP ${rRes.status}.`; }
+  }
+  const cj = await cRes.json().catch(() => null);
+  if (cj?.success) conflicts = cj.data.conflicts;
+} catch {
+  loadFailed = true;
+  apiError = "The Customer DNA API is currently unreachable.";
+}
+
+function confChip(c: string) {
+  switch (c) {
+    case "VERIFIED": return "bg-green-50 text-green-700 border-green-200";
+    case "HIGH": return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    case "MEDIUM": return "bg-blue-50 text-blue-700 border-blue-200";
+    case "CONFLICT": return "bg-red-50 text-red-700 border-red-200";
+    default: return "bg-gray-100 text-gray-600 border-gray-200";
+  }
+}
+function maskKey(k: string) { return k.length > 8 ? `${k.slice(0, 4)}…${k.slice(-4)}` : "••••"; }
+---
+
+<AdminLayout title="Customer DNA" description="Canonical customer profiles, identity confidence, lifecycle and next-best action — a projection over the authoritative systems.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Customer DNA</h2>
+      <p class="text-sm text-gray-500 mt-1">Search canonical customer profiles. Every attribute is a truthful projection — never a fabricated value.</p>
+    </div>
+
+    {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm mb-6"><strong>Not permitted.</strong> Your account cannot view Customer DNA.</div>}
+    {loadFailed && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm mb-6"><strong>Customer DNA unavailable.</strong> {apiError}</div>}
+
+    {conflicts.length > 0 && (
+      <div class="bg-red-50 border border-red-200 rounded-2xl p-5 mb-6">
+        <h3 class="text-sm font-black text-red-800 mb-2">Identity conflicts for review ({conflicts.length})</h3>
+        <div class="space-y-1 text-[11px] text-red-700">
+          {conflicts.map((c) => <div class="font-mono">{c.signalType} · {maskKey(c.identifierKey)} · {new Date(c.createdAt).toLocaleDateString("en-UG")}</div>)}
+        </div>
+      </div>
+    )}
+
+    <form method="GET" class="flex items-end gap-3 mb-8">
+      <div class="flex-1">
+        <label for="q" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Search (canonical id or account id)</label>
+        <input id="q" name="q" type="text" value={q} placeholder="paste a customer or account id" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+      </div>
+      <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:opacity-90">Search</button>
+    </form>
+
+    {!loadFailed && !permissionDenied && results.length === 0 && (
+      <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">
+        {q ? "No profiles match that search." : "Profiles appear as customers are observed. Search by canonical or account id."}
+      </div>
+    )}
+
+    <div class="space-y-3">
+      {results.map((p) => (
+        <a href={`/admin/customer-dna/${p.canonicalCustomerId}`} class="block bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:border-brand-gold transition-colors">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <span class="font-mono text-xs font-black text-brand-dark">{p.canonicalCustomerId.slice(0, 8)}…</span>
+            <div class="flex flex-wrap gap-2 text-[10px] font-bold">
+              <span class={`px-2.5 py-1 rounded-lg border ${confChip(p.identityConfidence)}`}>{p.identityConfidence}</span>
+              <span class="px-2.5 py-1 rounded-lg border bg-slate-50 text-slate-600 border-slate-200">{p.primaryLifecycleStage.replace(/_/g, " ")}</span>
+              {p.valueFlags.map((f) => <span class="px-2.5 py-1 rounded-lg border bg-amber-50 text-amber-800 border-amber-200">{f}</span>)}
+              {p.riskFlags.map((f) => <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">{f}</span>)}
+            </div>
+          </div>
+          <p class="text-[11px] text-gray-400 mt-1">{p.accountUserId ? `account ${p.accountUserId.slice(0, 8)}…` : "guest"} · last seen {p.lastSeen ? new Date(p.lastSeen).toLocaleDateString("en-UG") : "—"}</p>
+        </a>
+      ))}
+    </div>
+  </div>
+</AdminLayout>

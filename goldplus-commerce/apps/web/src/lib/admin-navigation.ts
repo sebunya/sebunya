@@ -99,6 +99,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Manage sections on the homepage.'
   },
   {
+    label: 'Customer DNA',
+    href: '/admin/customer-dna',
+    group: 'Merchandising',
+    status: 'read_only',
+    description: 'Canonical customer profiles, lifecycle and next-best action.'
+  },
+  {
     label: 'Settings',
     href: '/admin/settings',
     group: 'System',

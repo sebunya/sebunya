@@ -3,7 +3,7 @@ import { shouldReproject, isStale } from '../../apps/api/src/domain/customer-dna
 import { canLinkIdentity, resolveLinkTarget, signalConfidence, aggregateConfidence, canMergeProfiles } from '../../apps/api/src/domain/customer-dna/CustomerIdentity';
 import { computeFeatures, numericFeature, RawCustomerSignals } from '../../apps/api/src/domain/customer-dna/CustomerFeatures';
 import { deriveLifecycle, deriveValueFlags, deriveRiskFlags } from '../../apps/api/src/domain/customer-dna/CustomerLifecycle';
-import { decideNextBestAction, evaluateCandidate, NbaContext, NbaCandidate } from '../../apps/api/src/domain/customer-dna/NextBestAction';
+import { decideNextBestAction, evaluateCandidate, buildProfileDrivenCandidates, NbaContext, NbaCandidate } from '../../apps/api/src/domain/customer-dna/NextBestAction';
 
 const now = new Date('2026-07-19T00:00:00Z');
 const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000);
@@ -131,5 +131,17 @@ describe('Customer DNA — next best action', () => {
     const support: NbaCandidate = { actionType: 'SUPPORT_FOLLOW_UP', targetRef: null, baseScore: 3, reasonCodes: [] };
     const d = decideNextBestAction([rec('p1', 10), support], baseCtx({ openSupportCase: true }));
     expect(d.selectedAction).toBe('SUPPORT_FOLLOW_UP');
+  });
+  it('builds profile-driven candidates only from real signals', () => {
+    const none = buildProfileDrivenCandidates({ lifecycleStage: 'ACTIVE', cartAbandonments: 0, backorderExposure: 0, riskFlags: [], daysSinceLastOrder: 5 });
+    expect(none).toEqual([]);
+    const many = buildProfileDrivenCandidates({ lifecycleStage: 'LAPSED', cartAbandonments: 1, backorderExposure: 2, riskFlags: ['DELIVERY_RISK'], daysSinceLastOrder: 200 });
+    const types = many.map((c) => c.actionType);
+    expect(types).toContain('RESUME_CART');
+    expect(types).toContain('BACK_IN_STOCK');
+    expect(types).toContain('DELIVERY_FOLLOW_UP');
+    expect(types).toContain('RETENTION');
+    // A lapsed customer resuming a cart: RESUME_CART outranks RETENTION and needs no consent.
+    expect(decideNextBestAction(many, baseCtx({ consentEligible: false })).selectedAction).toBe('RESUME_CART');
   });
 });

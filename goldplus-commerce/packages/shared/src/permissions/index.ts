@@ -28,6 +28,11 @@ export const PERMISSIONS = {
   NOTIFICATIONS_READ: 'notifications.read',
   RECOMMENDATIONS_READ: 'recommendations.read',
   RECOMMENDATIONS_MANAGE: 'recommendations.manage',
+  CUSTOMER_DNA_READ: 'customer_dna.read',
+  CUSTOMER_DNA_MANAGE: 'customer_dna.manage',
+  NBA_READ: 'nba.read',
+  NBA_RECOMPUTE: 'nba.recompute',
+  IDENTITY_REVIEW: 'identity.review',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

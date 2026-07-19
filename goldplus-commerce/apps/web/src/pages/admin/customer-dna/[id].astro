@@ -1,0 +1,160 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+const canonicalId = String(Astro.params.id ?? "");
+const returnTo = `/admin/customer-dna/${canonicalId}`;
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect(`/admin/login?returnTo=${returnTo}`, 303);
+}
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+type Notice = { kind: "success" | "error"; text: string };
+let notice: Notice | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const action = String(form.get("action") || "");
+  try {
+    const path = action === "nba" ? "nba" : "recompute";
+    const res = await fetch(`${apiBase}/admin/customer-dna/${encodeURIComponent(canonicalId)}/${path}`, { method: "POST", headers, body: JSON.stringify({}) });
+    const j = await res.json().catch(() => null);
+    if (res.status === 403) notice = { kind: "error", text: "You do not have permission to perform that action." };
+    else if (j?.success) notice = { kind: "success", text: action === "nba" ? `Next-best action: ${j.data.selectedAction}.` : (j.data.advanced ? "Profile recomputed." : "Profile already current (no new source data).") };
+    else notice = { kind: "error", text: j?.error?.message || "The action failed." };
+  } catch {
+    notice = { kind: "error", text: "The Customer DNA service is unreachable right now." };
+  }
+}
+
+interface Feature { key: string; value: unknown; attributeClass: string; source: string; computedAt: string; }
+let data: any = null;
+let notFound = false;
+let permissionDenied = false;
+let loadFailed = false;
+let apiError = "";
+try {
+  const res = await fetch(`${apiBase}/admin/customer-dna/${encodeURIComponent(canonicalId)}`, { headers });
+  if (res.status === 403) permissionDenied = true;
+  else if (res.status === 404) notFound = true;
+  else {
+    const j = await res.json().catch(() => null);
+    if (j?.success) data = j.data;
+    else { loadFailed = true; apiError = `Profile responded with HTTP ${res.status}.`; }
+  }
+} catch {
+  loadFailed = true;
+  apiError = "The Customer DNA API is currently unreachable.";
+}
+
+const profile = data?.profile;
+const features: Feature[] = data?.features?.features ?? [];
+const lifecycle = data?.lifecycle;
+const links = data?.links ?? [];
+const decisions = data?.decisions ?? [];
+function fmtVal(v: unknown) { return typeof v === "object" ? JSON.stringify(v) : String(v); }
+function classChip(c: string) {
+  switch (c) {
+    case "OBSERVED": return "bg-blue-50 text-blue-700 border-blue-200";
+    case "DECLARED": return "bg-green-50 text-green-700 border-green-200";
+    case "DERIVED": return "bg-violet-50 text-violet-700 border-violet-200";
+    case "PREDICTED": return "bg-amber-50 text-amber-800 border-amber-200";
+    default: return "bg-gray-100 text-gray-600 border-gray-200";
+  }
+}
+---
+
+<AdminLayout title="Customer profile" description="Canonical customer profile projection — identity, features, lifecycle and next-best action decisions.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-4xl">
+    <div class="mb-6"><a href="/admin/customer-dna" class="text-xs font-bold text-gray-400 hover:text-brand-dark">← Customer DNA</a></div>
+
+    {notice && (
+      <div class={`px-6 py-4 rounded-2xl mb-6 text-sm font-semibold ${notice.kind === "success" ? "bg-green-50 border border-green-200 text-green-800" : "bg-red-50 border border-red-200 text-red-800"}`}>{notice.text}</div>
+    )}
+    {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Not permitted.</strong> Your account cannot view this profile.</div>}
+    {notFound && <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">Customer not found.</div>}
+    {loadFailed && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Profile unavailable.</strong> {apiError}</div>}
+
+    {profile && (
+      <>
+        <div class="mb-8 pb-6 border-b border-gray-200 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 class="text-xl font-black text-brand-dark tracking-tight font-mono">{profile.canonicalCustomerId.slice(0, 12)}…</h2>
+            <div class="flex flex-wrap gap-2 mt-2 text-[10px] font-bold">
+              <span class="px-2.5 py-1 rounded-lg border bg-gray-100 text-gray-600 border-gray-200">{profile.identityConfidence}</span>
+              <span class="px-2.5 py-1 rounded-lg border bg-slate-50 text-slate-600 border-slate-200">{profile.primaryLifecycleStage.replace(/_/g, " ")}</span>
+              {profile.valueFlags.map((f: string) => <span class="px-2.5 py-1 rounded-lg border bg-amber-50 text-amber-800 border-amber-200">{f}</span>)}
+              {profile.riskFlags.map((f: string) => <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">{f}</span>)}
+            </div>
+            <p class="text-[11px] text-gray-400 mt-2">
+              profile v{profile.profileVersion} · source v{profile.sourceVersion} ·
+              consent {profile.consentEligible === true ? "eligible" : profile.consentEligible === false ? "not eligible" : "UNKNOWN"}
+            </p>
+          </div>
+          <div class="flex gap-2">
+            <form method="POST"><input type="hidden" name="action" value="recompute" /><button class="bg-gray-100 text-brand-dark text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-gray-200">Recompute</button></form>
+            <form method="POST"><input type="hidden" name="action" value="nba" /><button class="bg-brand-gold text-brand-dark text-xs font-black px-4 py-2.5 rounded-xl hover:opacity-90">Next-best action</button></form>
+          </div>
+        </div>
+
+        <div class="grid gap-6 md:grid-cols-2 mb-6">
+          <div class="bg-white border border-gray-200 rounded-2xl p-6">
+            <h3 class="text-sm font-black text-brand-dark mb-4">Identity links (masked)</h3>
+            {links.length === 0 ? <p class="text-xs text-gray-400">No links.</p> : (
+              <div class="space-y-2">{links.map((l: any) => (
+                <div class="flex items-center justify-between text-[11px]">
+                  <span class="font-mono text-gray-600">{l.signalType} · {l.identifierMasked}</span>
+                  <span class={`px-2 py-0.5 rounded border ${l.status === "CONFLICT" ? "bg-red-50 text-red-700 border-red-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}>{l.confidence}/{l.status}</span>
+                </div>
+              ))}</div>
+            )}
+          </div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-6">
+            <h3 class="text-sm font-black text-brand-dark mb-4">Lifecycle</h3>
+            {lifecycle ? (
+              <p class="text-xs text-gray-600">Stage <strong class="text-brand-dark">{lifecycle.stage.replace(/_/g, " ")}</strong> · policy v{lifecycle.policyVersion}<br/><span class="text-[11px] text-gray-400">computed {new Date(lifecycle.computedAt).toLocaleString("en-UG")}</span></p>
+            ) : <p class="text-xs text-gray-400">No lifecycle snapshot yet — recompute to project.</p>}
+          </div>
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-2xl p-6 mb-6">
+          <h3 class="text-sm font-black text-brand-dark mb-4">Features</h3>
+          {features.length === 0 ? <p class="text-xs text-gray-400">No features computed yet — recompute to project from real signals.</p> : (
+            <div class="overflow-x-auto"><table class="w-full text-xs">
+              <thead class="text-gray-400"><tr><th class="text-left font-black uppercase tracking-wider py-1.5">Feature</th><th class="text-left font-black uppercase tracking-wider py-1.5">Value</th><th class="text-left font-black uppercase tracking-wider py-1.5">Class</th><th class="text-left font-black uppercase tracking-wider py-1.5">Source</th></tr></thead>
+              <tbody>{features.map((f) => (
+                <tr class="border-t border-gray-100">
+                  <td class="py-1.5 font-semibold text-brand-dark">{f.key}</td>
+                  <td class="py-1.5 font-mono">{fmtVal(f.value)}</td>
+                  <td class="py-1.5"><span class={`text-[10px] font-bold px-2 py-0.5 rounded border ${classChip(f.attributeClass)}`}>{f.attributeClass}</span></td>
+                  <td class="py-1.5 text-gray-400">{f.source}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-2xl p-6">
+          <h3 class="text-sm font-black text-brand-dark mb-4">Recent next-best-action decisions</h3>
+          {decisions.length === 0 ? <p class="text-xs text-gray-400">No decisions recorded. Run “Next-best action”.</p> : (
+            <div class="space-y-3">{decisions.map((d: any) => (
+              <div class="border border-gray-100 rounded-xl p-4">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm font-black text-brand-dark">{d.selectedAction.replace(/_/g, " ")}</span>
+                  <span class="text-[11px] text-gray-400">{new Date(d.createdAt).toLocaleString("en-UG")}</span>
+                </div>
+                <p class="text-[11px] text-gray-500">reasons: {d.reasonCodes.join(", ") || "—"} · policy v{d.policyVersion} · {d.activationState}</p>
+                {d.candidates?.some((c: any) => !c.eligible) && (
+                  <p class="text-[11px] text-gray-400 mt-1">excluded: {d.candidates.filter((c: any) => !c.eligible).map((c: any) => `${c.actionType}(${c.exclusionReason})`).join(", ")}</p>
+                )}
+              </div>
+            ))}</div>
+          )}
+        </div>
+      </>
+    )}
+  </div>
+</AdminLayout>

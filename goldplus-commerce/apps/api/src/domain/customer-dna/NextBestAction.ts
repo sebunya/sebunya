@@ -101,6 +101,28 @@ export function evaluateCandidate(candidate: NbaCandidate, ctx: NbaContext): Eva
   return { ...candidate, eligible: true, exclusionReason: null, score: candidate.baseScore };
 }
 
+/**
+ * Build deterministic NBA candidates purely from a customer's real profile signals
+ * — never from invented products, discounts or stock. Product-level recommendation
+ * candidates come from the recommendation engine separately; these are the
+ * profile-driven operational actions.
+ */
+export function buildProfileDrivenCandidates(input: {
+  lifecycleStage: string;
+  cartAbandonments: number;
+  backorderExposure: number;
+  riskFlags: string[];
+  daysSinceLastOrder: number | null;
+}): NbaCandidate[] {
+  const c: NbaCandidate[] = [];
+  if (input.cartAbandonments > 0) c.push({ actionType: 'RESUME_CART', targetRef: null, baseScore: 80, reasonCodes: ['ABANDONED_CART'] });
+  if (input.backorderExposure > 0) c.push({ actionType: 'BACK_IN_STOCK', targetRef: null, baseScore: 70, reasonCodes: ['BACKORDER_EXPOSED'] });
+  if (input.riskFlags.includes('DELIVERY_RISK')) c.push({ actionType: 'DELIVERY_FOLLOW_UP', targetRef: null, baseScore: 75, reasonCodes: ['DELIVERY_RISK'] });
+  if (input.lifecycleStage === 'WIN_BACK') c.push({ actionType: 'WIN_BACK', targetRef: null, baseScore: 60, reasonCodes: ['RETURNED_AFTER_GAP'] });
+  else if (input.lifecycleStage === 'LAPSED' || input.lifecycleStage === 'AT_RISK') c.push({ actionType: 'RETENTION', targetRef: null, baseScore: 55, reasonCodes: [input.lifecycleStage] });
+  return c;
+}
+
 /** Deterministic action priority for tie-breaking (lower = preferred). */
 const ACTION_PRIORITY: NbaActionType[] = [
   'COMPLETE_CHECKOUT', 'RESUME_CART', 'DELIVERY_FOLLOW_UP', 'SUPPORT_FOLLOW_UP', 'BACK_IN_STOCK',
