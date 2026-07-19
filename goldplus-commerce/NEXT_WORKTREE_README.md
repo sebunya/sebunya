@@ -1,51 +1,63 @@
-# NEXT WORKTREE — Commerce OS matrix execution resume
+# NEXT WORKTREE — Automation control plane (A3+) resume
 
 Branch: `phase-2-measurement-control-tower-completion`
-Resume head: `480a2ba` (= origin). Clean tree. Full suite **184 files / 3,948 tests**; architecture 10/10.
-Migrations proven through **0038** (fresh `0000→0038` + populated-upgrade on `launchcheck`).
+Resume head: `2000fce` (= origin). Clean tree. Full suite **185 files / 3,965 tests**; architecture 10/10.
+Migrations proven through **0039** (fresh `0000→0039` + populated-upgrade on `launchcheck`).
 
 Binding queue: `docs/completion/COMMERCE_OS_EXECUTION_QUEUE.json`.
-Reconciled matrix: `docs/completion/GOLDPLUS_ABSOLUTE_COMPLETION_MATRIX.md` (+ `.json`).
+Live status: `docs/completion/CURRENT_EXECUTION_STATE.md`.
 
 ## Completed (SOURCE_COMPLETE_NOT_DEPLOYED)
-- Fulfilment F1–F5 + dispatch/delivery/report admin UI.
-- Inventory reservation/oversell; transactional admin order email (outbox/retry/DLQ/replay).
-- **Customer DNA & NBA** — migration 0037, real-PG proof, protected admin UI.
-- **Decision Intelligence** — migration 0038 (`decision_policies/insights/evidence/recommendations/
-  assignments/events`); two-phase evidence-first evaluator (10 signals), idempotent insights,
-  optimistic-version workflow (acknowledge/assign/start/resolve/dismiss/recompute), overview,
-  RBAC (`decision_intelligence.read/evaluate/assign/manage`), admin UI
-  (`/admin/decision-intelligence` + `[id]`). Proof `decision-intelligence-proof.ts` PASS.
+Fulfilment F1–F5 + admin UI · Inventory/oversell · admin order email (outbox) ·
+Customer DNA & NBA (0037) · Decision Intelligence (0038).
 
-## NEXT module: Automation (Priority 1) — complete through A1–A5 (single "Module Automation" commit)
-Reuse the EXISTING outbox, workers/tickers, notification router, provider gates, consent,
-Customer DNA/NBA, Decision Intelligence DRAFT_RECOMMENDATION handoff, audience logic, audit, RBAC.
-**Do not create a second scheduler or outbox.**
-- **A1** domain + versioning + trigger/condition/action contract + migration **0039**
-  (e.g. `automation_definitions`, `automation_versions`, `automation_runs`, `automation_actions`,
-  `automation_suppressions`). Approval state, pause/resume, frequency cap, consent, provider readiness.
-- **A2** evaluator/executor on the existing scheduler + outbox (enqueue only; no new queue).
-- **A3** consent + suppression + frequency caps + provider readiness; `DRY_RUN` makes **zero** network
-  calls — prove with a real-PG no-send proof (counters stay at 0).
-- **A4** thin Hono API + RBAC (`automation.read/manage/approve/execute` or reuse) + admin UI with
-  pause/resume/manual replay; truthful states.
-- **A5** domain+use-case+repo tests, migration replay proof, full gates, evidence, commit
-  `Module Automation: ...`, push, verify head==origin.
+## Automation — five independently green slices (contract switched from one big commit)
+- **A1 DONE** (`a3a3146`): governed versioned domain + migration **0039**
+  (`automation_definitions/versions/approvals/executions/action_executions/suppressions/events`).
+- **A2 DONE** (`2000fce`): restart-safe trigger planning — PlanAutomationExecutionUseCase resolves
+  audience from Customer DNA, evaluates conditions into evidence, persists one idempotent execution
+  plan (unique `trigger_execution_key`) + planned actions. Real-PG proof `automation-planning-proof.ts`.
+  **Note:** this stack double-encodes jsonb (even `fulfilment_tasks.items` is `jsonb_typeof=string`);
+  the automation config reader normalises both encodings — reuse that pattern when querying jsonb keys.
+
+### NEXT: A3 — consent-safe execution and replay (`Module Automation A3: add consent-safe execution and replay`)
+Reuse `ProcessOutboxBatchUseCase`, `NotificationRouter`, provider adapters, `OutboxTicker`, consent,
+existing retry/DLQ. **No second outbox/scheduler/router.** Build:
+- A deterministic pre-flight gate in the mandated order (definition ACTIVE → version APPROVED → trigger
+  valid → not expired → subject/identity safe → consent now → channel pref now → action supported →
+  global pause → automation pause → frequency-cap slot → business suppression → provider configured →
+  provider enabled → customer-comms enabled → notification-delivery enabled → live-send enabled),
+  persisting the exact suppression reason (the full enum in §9.2 of the contract) to `automation_suppressions`.
+- Transactional frequency-cap reservation (per customer/automation/channel/action-family/rolling-window/
+  global) so concurrent executions never exceed the cap; document attempts-vs-sends.
+- Internal actions via existing use cases (idempotent, audited). External actions persist ONE outbox
+  intent (into `automation_action_executions.outbox_event_id`) — never call providers synchronously.
+- Delivery semantics exactly: DRY_RUN/DISABLED/NOT_CONFIGURED/QUEUED/PROCESSING/INTERNAL_SUCCESS/SENT/
+  FAILED. Replay re-evaluates the full gate; a SENT/INTERNAL_SUCCESS effect is never replayable; a
+  DEAD_LETTERED action replays once as a new attempt without duplicating the effect.
+- **Zero-network proof via an explicit adapter call counter / transport spy** (not "no exception"):
+  DRY_RUN / PROVIDER_DISABLED / NOT_CONFIGURED / CUSTOMER_COMMUNICATIONS_DISABLED /
+  NOTIFICATION_DELIVERY_DISABLED / LIVE_SEND_DISABLED → 0 calls; internal action still completes;
+  QUEUED ≠ SENT.
+- **Real-PG proof:** two executors race → one action execution wins, one cap reservation wins, one outbox
+  intent persists; duplicate retry no double-effect; successful action non-replayable; DLQ replays once.
+- Default gates stay OFF: `PROVIDER_DELIVERY_ENABLED=false, CUSTOMER_COMMUNICATIONS_ENABLED=false,
+  NOTIFICATION_DELIVERY_ENABLED=false, NOTIFICATIONS_LIVE_SEND_ENABLED=false`. No approval markers.
+
+Then **A4** (RBAC `automation.read/create/manage/approve/execute/replay` — approve & replay separately
+privileged — thin Hono+Zod API + admin control room UI + observability) and **A5** (end-to-end acceptance,
+migration proof, full gates, matrix evidence, mark Automation `SOURCE_COMPLETE_NOT_DEPLOYED`).
 
 Then continue the queue: Experiments → Pricing & Promotions → Fraud Triage → PIM Import →
-Shopping Assistant → Surveys → Copy Quality → Behavioural Interventions → Loyalty → Search Insights
-(reconcile each against real code first; Fraud Triage / Shopping Assistant / Loyalty / Search Insights
-are currently SOURCE_PARTIAL — reconcile before rebuilding).
+Shopping Assistant → Surveys → Copy Quality → Behavioural Interventions → Loyalty → Search Insights.
 
 ## Resume commands
 ```
 cd goldplus-clean-continuation/phase-2-measurement-control-tower-completion-20260715/goldplus-commerce
-git fetch origin phase-2-measurement-control-tower-completion && git status --short   # clean at 480a2ba
-# local PostgreSQL 16 (proofs): su -s /bin/bash postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D /var/lib/postgresql/gpdata -o '-p 55432 -k /var/lib/postgresql' start"
-#   DB launchcheck populated at migration ledger through 0038.
+git fetch origin phase-2-measurement-control-tower-completion && git status --short   # clean at 2000fce
+# local PostgreSQL 16: su -s /bin/bash postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D /var/lib/postgresql/gpdata -o '-p 55432 -k /var/lib/postgresql' start"  (launchcheck migrated through 0039)
 # gates: node scripts/security/scan-secrets.mjs ; npx vitest run ; npx vitest run tests/architecture
-# migrate: (in apps/api) env DATABASE_URL=postgres://gp@127.0.0.1:55432/launchcheck JWT_SECRET=... IDENTITY_HASH_PEPPER=... MTN_WEBHOOK_SECRET=x AIRTEL_WEBHOOK_SECRET=y PUBLIC_API_BASE_URL=http://127.0.0.1:3000 NODE_ENV=development npx tsx src/infrastructure/db/migrations/migrate.ts
+# outbox reuse: apps/api/src/application/use-cases/outbox/ProcessOutboxBatchUseCase.ts ; infrastructure/notifications/NotificationRouter.ts ; infrastructure/scheduler/OutboxTicker.ts ; schema/system.ts outbox_events
 ```
 
-Production deploy/UAT remain **EXTERNAL_BLOCKED**: no `ssh goldplus-prod` binary and no docker
-daemon in this container; nothing is `LIVE_VERIFIED`. Do not create operator approval markers.
+Production deploy/UAT remain **EXTERNAL_BLOCKED**: no `ssh goldplus-prod`, no docker daemon; nothing `LIVE_VERIFIED`.
