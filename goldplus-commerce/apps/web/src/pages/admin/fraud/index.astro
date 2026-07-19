@@ -1,0 +1,29 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/fraud', 303);
+const headers = { Authorization: `Bearer ${token}` };
+let overview: any = null; let cases: any[] = []; let denied = false; let failed = false;
+try {
+  const [overviewResponse, casesResponse] = await Promise.all([fetch(`${apiBase}/admin/fraud/overview`, { headers }), fetch(`${apiBase}/admin/fraud/cases`, { headers })]);
+  denied = overviewResponse.status === 403 || casesResponse.status === 403;
+  if (!denied) {
+    const [overviewBody, casesBody] = await Promise.all([overviewResponse.json().catch(() => null), casesResponse.json().catch(() => null)]);
+    overview = overviewBody?.success ? overviewBody.data : null; cases = casesBody?.success ? casesBody.data : []; failed = !overviewBody?.success || !casesBody?.success;
+  }
+} catch { failed = true; }
+const tone = (value: string) => value === 'RESOLVED' || value === 'ALLOW' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : value === 'CRITICAL' || value === 'DECLINE' ? 'bg-red-50 text-red-800 border-red-200' : value === 'HIGH' || value === 'HOLD' || value === 'IN_REVIEW' ? 'bg-amber-50 text-amber-900 border-amber-300' : 'bg-slate-50 text-slate-700 border-slate-200';
+---
+<AdminLayout title="Fraud Triage" description="Review-first risk-signal operations with immutable evidence and governed decisions.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl" data-fraud-control-room>
+    <div id="fraud-loading" class="hidden bg-blue-50 border border-blue-200 text-blue-800 rounded-xl p-4 mb-5" aria-live="polite">Loading persisted Fraud Triage state…</div>
+    <div class="flex flex-wrap justify-between gap-4 mb-6"><div><h2 class="text-2xl font-black">Fraud Triage control room</h2><p class="text-sm text-gray-500">Review-first only. Automatic decline and checkout mutation are disabled.</p></div><span class="border rounded-xl px-4 py-2 text-xs font-black bg-emerald-50 text-emerald-800">NO PROVIDER PATH</span></div>
+    {denied && <div class="bg-red-50 text-red-800 border rounded-xl p-5 mb-6"><strong>Permission denied.</strong> fraud.read is required; risk evidence was not disclosed.</div>}
+    {failed && <div class="bg-red-50 text-red-800 border rounded-xl p-5 mb-6"><strong>Unavailable.</strong> Fraud persistence could not be read; no sample metrics are shown.</div>}
+    {overview && <section class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">{['OPEN','IN_REVIEW','RESOLVED'].map((state) => <div class="bg-white border rounded-2xl p-4"><div class="text-2xl font-black">{overview.byStatus[state] ?? 0}</div><div class="text-[10px] uppercase text-gray-500">{state}</div></div>)}<div class="bg-white border rounded-2xl p-4"><div class="text-2xl font-black">{overview.unassigned}</div><div class="text-[10px] uppercase text-gray-500">UNASSIGNED</div></div></section>}
+    {!denied && <section><h3 class="font-black mb-3">Persisted review queue</h3>{cases.length === 0 && !failed && <div class="bg-white border rounded-2xl p-8 text-center text-gray-500">Empty — no risk cases exist.</div>}<div class="space-y-3">{cases.map((item) => <a href={`/admin/fraud/${item.id}`} class="block bg-white border rounded-2xl p-5 hover:border-brand-gold"><div class="flex flex-wrap justify-between gap-3"><div><strong>{item.referenceKey}</strong><div class="text-xs text-gray-500">{item.sourceType} · {item.sourceRef} · v{item.version}</div></div><div class="flex gap-2"><span class={`border rounded-lg px-2 py-1 text-[10px] font-bold ${tone(item.priority)}`}>{item.priority}</span><span class={`border rounded-lg px-2 py-1 text-[10px] font-bold ${tone(item.status)}`}>{item.status}</span></div></div></a>)}</div></section>}
+    <details class="bg-white border rounded-2xl p-5 mt-8"><summary class="font-black cursor-pointer">Truthful operating states</summary><div class="flex flex-wrap gap-2 mt-4">{['OPEN','IN_REVIEW','RESOLVED','ALLOW','REVIEW','HOLD','DECLINE','LOW','MEDIUM','HIGH','CRITICAL'].map((state) => <span class={`border rounded-lg px-2 py-1 text-[10px] font-bold ${tone(state)}`}>{state}</span>)}</div><p class="text-xs text-gray-500 mt-3">Loading, empty, unavailable, permission denied and stale conflict are explicit. A signal never becomes an automatic decision.</p></details>
+  </div>
+</AdminLayout>

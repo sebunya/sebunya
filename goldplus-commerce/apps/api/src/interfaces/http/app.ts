@@ -51,6 +51,7 @@ import adminConsentOperationsRoutes from './routes/admin/consent-operations';
 import adminAutomationRoutes from './routes/admin/automation';
 import adminExperimentRoutes from './routes/admin/experiments';
 import adminPricingRoutes from './routes/admin/pricing';
+import adminFraudRoutes from './routes/admin/fraud';
 
 
 
@@ -181,6 +182,7 @@ app.route('/api/admin/consent/operations', adminConsentOperationsRoutes);
 app.route('/admin/automation', adminAutomationRoutes);
 app.route('/admin/experiments', adminExperimentRoutes);
 app.route('/admin/pricing', adminPricingRoutes);
+app.route('/admin/fraud', adminFraudRoutes);
 
 
 // Health check route mounted via route registration

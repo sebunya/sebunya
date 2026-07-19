@@ -43,6 +43,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     reason: 'Operational lifecycle actions live on the Fulfilment queue.'
   },
   {
+    label: 'Fraud Triage',
+    href: '/admin/fraud',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Review risk signals, assignments, evidence and governed operator decisions.'
+  },
+  {
     label: 'Fulfilment',
     href: '/admin/fulfilment',
     group: 'Commerce',

@@ -53,6 +53,10 @@ export const PERMISSIONS = {
   EXPERIMENTS_READ: 'experiments.read',
   EXPERIMENTS_MANAGE: 'experiments.manage',
   EXPERIMENTS_ASSIGN: 'experiments.assign',
+  FRAUD_READ: 'fraud.read',
+  FRAUD_SIGNAL: 'fraud.signal',
+  FRAUD_ASSIGN: 'fraud.assign',
+  FRAUD_DECIDE: 'fraud.decide',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

@@ -30,3 +30,4 @@ export * from './decision_intelligence';
 export * from './automation';
 export * from './experiments';
 export * from './pricing';
+export * from './fraud';

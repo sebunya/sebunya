@@ -201,6 +201,8 @@ import { ConsentAwareMeasurementPolicy } from '../application/services/measureme
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
 import { DrizzleExperimentRepository } from './db/repositories/DrizzleExperimentRepository';
 import { ExperimentOperationsUseCase } from '../application/use-cases/experiments/ExperimentOperationsUseCase';
+import { DrizzleFraudTriageRepository } from './db/repositories/DrizzleFraudTriageRepository';
+import { FraudTriageOperationsUseCase } from '../application/use-cases/fraud/FraudTriageOperationsUseCase';
 
 import { DrizzleProductFinderRepository } from './product-finder/DrizzleProductFinderRepository';
 import { DrizzleProductFinderCatalogRepository } from './product-finder/DrizzleProductFinderCatalogRepository';
@@ -430,6 +432,7 @@ export class Registry {
   public readonly automationActionRepo = new DrizzleAutomationActionRepository();
   public readonly automationOperationsRepo = new DrizzleAutomationOperationsRepository();
   public readonly experimentRepo = new DrizzleExperimentRepository();
+  public readonly fraudTriageRepo = new DrizzleFraudTriageRepository();
 
   public readonly measurementAdminRepo = new DrizzleMeasurementAdminRepository();
   public readonly dlqRepo = new DrizzleDlqRepository();
@@ -636,6 +639,7 @@ export class Registry {
     this.createAuditLogUseCase,
   );
   public readonly experimentOperationsUseCase = new ExperimentOperationsUseCase(this.experimentRepo, this.createAuditLogUseCase);
+  public readonly fraudTriageOperationsUseCase = new FraudTriageOperationsUseCase(this.fraudTriageRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);

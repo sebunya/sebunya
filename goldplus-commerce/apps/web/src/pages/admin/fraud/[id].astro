@@ -1,0 +1,28 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
+const token = readSessionToken(Astro.request); const id = Astro.params.id!;
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/fraud/${id}`, 303);
+const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+let notice: { kind: 'success' | 'error' | 'conflict'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData(); const operation = String(form.get('operation'));
+  const payload = operation === 'assign'
+    ? { expectedVersion: Number(form.get('expectedVersion')), assigneeId: form.get('assigneeId'), reason: form.get('reason') }
+    : { expectedVersion: Number(form.get('expectedVersion')), decision: operation, reason: form.get('reason'), evidence: { operatorEvidence: String(form.get('evidence') ?? '') } };
+  const response = await fetch(`${apiBase}/admin/fraud/cases/${id}/${operation === 'assign' ? 'assign' : 'decision'}`, { method: 'POST', headers, body: JSON.stringify(payload) });
+  const body = await response.json().catch(() => null);
+  notice = response.status === 403 ? { kind: 'error', text: `Permission denied: fraud.${operation === 'assign' ? 'assign' : 'decide'} required.` } : response.status === 409 ? { kind: 'conflict', text: body?.error?.message ?? 'Stale conflict.' } : body?.success ? { kind: 'success', text: `${operation} recorded with immutable audit evidence.` } : { kind: 'error', text: body?.error?.message ?? 'Fraud operation failed.' };
+}
+let detail: any = null; let denied = false; let failed = false;
+try { const response = await fetch(`${apiBase}/admin/fraud/cases/${id}`, { headers }); denied = response.status === 403; const body = await response.json().catch(() => null); detail = body?.success ? body.data : null; failed = !detail && !denied; } catch { failed = true; }
+---
+<AdminLayout title="Fraud case" description="Assignment, review and immutable decision evidence."><div class="container mx-auto px-6 max-w-6xl">
+  {notice && <div class={`rounded-xl p-4 mb-5 border ${notice.kind === 'success' ? 'bg-emerald-50 text-emerald-800' : notice.kind === 'conflict' ? 'bg-amber-50 text-amber-900' : 'bg-red-50 text-red-800'}`}>{notice.kind === 'conflict' ? 'Stale conflict: ' : ''}{notice.text}</div>}
+  {denied && <div class="bg-red-50 text-red-800 border rounded-xl p-5">Permission denied: fraud.read required.</div>}{failed && <div class="bg-red-50 text-red-800 border rounded-xl p-5">Unavailable — persisted case evidence could not be loaded.</div>}
+  {detail && <><a href="/admin/fraud" class="text-sm">← Fraud Triage</a><section class="bg-white border rounded-2xl p-6 mt-4"><div class="flex justify-between"><div><h2 class="text-2xl font-black">{detail.fraudCase.referenceKey}</h2><p class="text-sm text-gray-500">{detail.fraudCase.sourceType} · {detail.fraudCase.sourceRef}</p></div><strong>{detail.fraudCase.status} · {detail.fraudCase.priority}</strong></div><p class="text-xs mt-4">Review-first: {String(detail.safeguards.reviewFirst)} · automatic decline: {String(detail.safeguards.automaticDeclineEnabled)} · checkout mutation: {String(detail.safeguards.checkoutMutationEnabled)}</p></section>
+  {detail.fraudCase.status !== 'RESOLVED' && <div class="grid md:grid-cols-2 gap-5 mt-5"><form method="POST" class="bg-white border rounded-2xl p-5 space-y-3"><input type="hidden" name="operation" value="assign"/><input type="hidden" name="expectedVersion" value={detail.fraudCase.version}/><h3 class="font-black">Assign review</h3><input name="assigneeId" required placeholder="Reviewer UUID" class="w-full border rounded-xl p-2"/><textarea name="reason" required minlength="3" placeholder="Assignment reason" class="w-full border rounded-xl p-2"></textarea><button class="bg-brand-gold font-black rounded-xl px-4 py-2">Assign</button><p class="text-xs text-gray-500">Requires fraud.assign.</p></form>
+  <form method="POST" class="bg-white border rounded-2xl p-5 space-y-3"><h3 class="font-black">Record operator decision</h3><input type="hidden" name="expectedVersion" value={detail.fraudCase.version}/><select name="operation" class="w-full border rounded-xl p-2"><option>REVIEW</option><option>ALLOW</option><option>HOLD</option><option>DECLINE</option></select><textarea name="reason" required minlength="3" placeholder="Decision reason" class="w-full border rounded-xl p-2"></textarea><textarea name="evidence" required minlength="1" maxlength="500" placeholder="Bounded evidence reference" class="w-full border rounded-xl p-2"></textarea><button class="bg-brand-gold font-black rounded-xl px-4 py-2">Record decision</button><p class="text-xs text-gray-500">Requires fraud.decide. DECLINE is never automatic.</p></form></div>}
+  <section class="grid md:grid-cols-2 gap-5 mt-5"><div class="bg-white border rounded-2xl p-5"><h3 class="font-black mb-3">Signals</h3>{detail.signals.length === 0 ? <p class="text-sm text-gray-500">Empty.</p> : detail.signals.map((signal) => <div class="border-t py-3 text-sm"><strong>{signal.signalType}</strong> · {signal.severity}<div class="text-xs text-gray-500">{signal.reasonCode} · {signal.signalKey}</div></div>)}</div><div class="bg-white border rounded-2xl p-5"><h3 class="font-black mb-3">Immutable audit timeline</h3>{detail.events.map((event) => <div class="border-t py-3 text-sm"><strong>{event.action}</strong><div>{event.reason}</div><div class="text-xs text-gray-500">{new Date(event.createdAt).toISOString()}</div></div>)}</div></section></>}
+</div></AdminLayout>
