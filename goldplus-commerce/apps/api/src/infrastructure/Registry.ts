@@ -191,6 +191,8 @@ import { ListPaymentMeasurementReconciliationsUseCase } from '../application/use
 import { RetryPaymentMeasurementReconciliationUseCase } from '../application/use-cases/measurement/RetryPaymentMeasurementReconciliationUseCase';
 import { ConsentAwareMeasurementPolicy } from '../application/services/measurement/ConsentAwareMeasurementPolicy';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
+import { DrizzleExperimentRepository } from './db/repositories/DrizzleExperimentRepository';
+import { ExperimentOperationsUseCase } from '../application/use-cases/experiments/ExperimentOperationsUseCase';
 
 import { DrizzleProductFinderRepository } from './product-finder/DrizzleProductFinderRepository';
 import { DrizzleProductFinderCatalogRepository } from './product-finder/DrizzleProductFinderCatalogRepository';
@@ -415,6 +417,7 @@ export class Registry {
   public readonly outboxRepo = new DrizzleOutboxRepository();
   public readonly automationActionRepo = new DrizzleAutomationActionRepository();
   public readonly automationOperationsRepo = new DrizzleAutomationOperationsRepository();
+  public readonly experimentRepo = new DrizzleExperimentRepository();
 
   public readonly measurementAdminRepo = new DrizzleMeasurementAdminRepository();
   public readonly dlqRepo = new DrizzleDlqRepository();
@@ -597,6 +600,7 @@ export class Registry {
     this.reconcileAutomationOutcomeUseCase,
     this.createAuditLogUseCase,
   );
+  public readonly experimentOperationsUseCase = new ExperimentOperationsUseCase(this.experimentRepo, this.createAuditLogUseCase);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);

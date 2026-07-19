@@ -38,6 +38,12 @@
   observability, crash/ambiguity/reconciliation and cleanup invariants pass against PostgreSQL 16.14. Fresh `0000`–`0040`
   replay, populated `0039`→`0040` upgrade, and built API/Astro Chromium evidence pass. Automation is now
   `SOURCE_COMPLETE_NOT_DEPLOYED`; no local evidence is labelled live.
+- **Experiments complete locally** from clean aligned Automation A5 head `c84fa6996f86c2d78f62c20f9e3172b311f8a243`:
+  deterministic weighted assignment, atomic exposure evidence, lifecycle/readiness/decision states, optimistic conflict,
+  exact RBAC, shared audit, protected API and Astro operating pages are implemented. PostgreSQL concurrency and cleanup,
+  focused 49/49, typecheck/build/architecture/secret scan, and fresh `0000`–`0041` replay pass. Statistical significance
+  remains explicitly `NOT_CALCULATED`; no customer or production assignment occurred.
+- Clean-commit suite after Experiments: 193 files / 4,026 tests passed.
 - Other modules SOURCE_COMPLETE_NOT_DEPLOYED (Fulfilment F1-F5+UI, Inventory, Customer DNA & NBA 0037,
   Decision Intelligence 0038). Migrations proven through **0039** (REPORTED — rerun per handover).
 - Production status: not reclassified by C0; nothing is newly claimed `LIVE_VERIFIED`.
@@ -68,6 +74,6 @@
   built Astro control room from a real scratch PostgreSQL definition through the API; the fixture was removed.
 - Clean-tree full suite after the A4 commit: 191 files / 4,020 tests passed.
 - Clean-commit full suite after A5: 191 files / 4,020 tests passed.
-- Next gate: commit/push A5, prove clean local/remote alignment, then begin **Experiments** from the binding queue.
+- Next gate: commit/push Experiments, prove clean local/remote alignment, then begin **Pricing & Promotions**.
 
 ---

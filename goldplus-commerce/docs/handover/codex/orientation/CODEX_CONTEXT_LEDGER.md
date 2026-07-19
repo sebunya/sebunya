@@ -243,3 +243,20 @@ Focused proof target: native JSONB object writes, compatibility reads for any le
 - Status: Automation is `SOURCE_COMPLETE_NOT_DEPLOYED`. No production deployment, real provider, consent lifecycle,
   identity provisioning, customer communication, database migration, or `LIVE_VERIFIED` claim occurred.
 - Next queue selection after A5 commit/push/alignment: Experiments (priority 2, currently MISSING).
+
+## Experiments — deterministic assignment and exposure vertical
+
+- Verified base: clean local/origin Automation A5 `c84fa6996f86c2d78f62c20f9e3172b311f8a243`; queue selected Experiments.
+- Initial reconciliation found no implementation and only the measurement-ledger dependency. Boundary: pure lifecycle
+  and weighted assignment, additive persistence, protected API/UI, exact RBAC, shared audit, focused tests/proof and 0041.
+- Deterministic FNV-1a bucketing uses the immutable experiment UUID plus a SHA-256 subject hash. Variants are immutable,
+  uniquely keyed and must total 10,000 basis points. Assignment and exposure commit atomically with separate unique keys.
+- Lifecycle is DRAFT/READY/RUNNING/PAUSED/COMPLETED/INCONCLUSIVE/INVALID with optimistic versions and explicit invalid
+  transitions. Only RUNNING assigns. Results report `NOT_CALCULATED`; no unsupported significance is inferred.
+- PostgreSQL proof passes a two-call race with stable variant, one assignment/exposure, hashed subject, pause denial,
+  four lifecycle audits, zero orphan exposure and zero residue. Focused domain/API/admin/architecture is 49/49.
+- Fresh `0000`–`0041` replay produces 42 migration records, four tables and four FKs. Typecheck, API/Astro build,
+  secret scan (1,134 files), changed-path lint with zero errors and diff check pass.
+- Clean-commit repository suite passes 193 files / 4,026 tests.
+- Status: `SOURCE_COMPLETE_NOT_DEPLOYED`; no production/customer assignment, consent/provider activity or live claim.
+- Next queue selection after commit/push/alignment: Pricing & Promotions.

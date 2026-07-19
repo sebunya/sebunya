@@ -1,4 +1,4 @@
-# NEXT WORKTREE — Automation A5 acceptance complete; commit/alignment pending
+# NEXT WORKTREE — Experiments complete; commit/alignment pending
 
 The forensic handover has been assimilated across the complete tracked repository. Start with
 `docs/handover/codex/orientation/CODEX_CONTEXT_LEDGER.md`, then use the original handover pack under
@@ -15,8 +15,10 @@ The forensic handover has been assimilated across the complete tracked repositor
   calls no real provider, and makes no deployment or `LIVE_VERIFIED` claim.
 - Do not rewrite migrations 0000-0039; do not duplicate scheduler/outbox/router/consent/audit/RBAC.
 
-The clean A5 commit suite passes 191 files / 4,020 tests. Push and verify local/origin alignment, then select **Experiments**,
-the next engineering-controlled incomplete module in `docs/completion/COMMERCE_OS_EXECUTION_QUEUE.json`.
+Automation A5 is pushed at `c84fa6996f86c2d78f62c20f9e3172b311f8a243` with a clean 191-file / 4,020-test
+suite. Experiments is now locally complete with migration 0041, deterministic assignment, atomic exposure evidence,
+exact RBAC/audit, protected API/UI, PostgreSQL concurrency proof and fresh migration replay. Commit/push it, rerun the
+clean suite (193 files / 4,026 tests passed), verify alignment, then select **Pricing & Promotions** from the binding queue.
 
 The detailed A3-A5 plan, protected assets, evidence manifest and risk register live under
 `docs/handover/codex/`. The section below is the prior resume note (superseded by the handover and C0 package).

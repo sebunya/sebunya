@@ -5,7 +5,7 @@ Reconciled from **actual source + local execution** through Automation A5 on bra
 names and old completion labels are **not** treated as proof.
 
 - Migrations: **0000–0040** (fresh replay and populated `0039`→`0040` upgrade proven).
-- Full suite: clean A5 **191 files / 4,020 tests**. Architecture **10/10**.
+- Full suite: clean Experiments **193 files / 4,026 tests**. Architecture **10/10**.
 - Binding execution queue: [`COMMERCE_OS_EXECUTION_QUEUE.json`](./COMMERCE_OS_EXECUTION_QUEUE.json).
 
 ## Module status
@@ -20,7 +20,7 @@ names and old completion labels are **not** treated as proof.
 | Customer DNA & NBA | SOURCE_COMPLETE_NOT_DEPLOYED |
 | Decision Intelligence | SOURCE_COMPLETE_NOT_DEPLOYED |
 | Automation | SOURCE_COMPLETE_NOT_DEPLOYED |
-| Experiments | MISSING |
+| Experiments | SOURCE_COMPLETE_NOT_DEPLOYED |
 | Pricing & Promotions | MISSING |
 | Fraud Triage | SOURCE_PARTIAL |
 | PIM Import | MISSING |

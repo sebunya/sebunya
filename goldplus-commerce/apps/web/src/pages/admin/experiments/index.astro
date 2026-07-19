@@ -1,0 +1,30 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/experiments', 303);
+const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+let notice = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const variants = [{ key: 'control', name: 'Control', weightBasisPoints: 5000 }, { key: 'treatment', name: 'Treatment', weightBasisPoints: 5000 }];
+  const response = await fetch(`${apiBase}/admin/experiments`, { method: 'POST', headers, body: JSON.stringify({ key: form.get('key'), name: form.get('name'), hypothesis: form.get('hypothesis'), primaryMetric: form.get('primaryMetric'), variants }) });
+  const body = await response.json().catch(() => null);
+  notice = body?.success ? 'Draft experiment created.' : body?.error?.message ?? 'Experiment creation failed.';
+}
+let experiments: any[] = []; let denied = false; let failed = false;
+try { const response = await fetch(`${apiBase}/admin/experiments`, { headers }); denied = response.status === 403; const body = await response.json().catch(() => null); if (body?.success) experiments = body.data; else failed = !denied; } catch { failed = true; }
+const tone = (status: string) => status === 'RUNNING' || status === 'READY' ? 'bg-emerald-50 text-emerald-800' : status === 'INVALID' ? 'bg-red-50 text-red-800' : 'bg-slate-100 text-slate-700';
+---
+<AdminLayout title="Experiments" description="Deterministic assignment, atomic exposure evidence and truthful readiness states.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <h2 class="text-2xl font-black mb-2">Experiment operations</h2><p class="text-sm text-gray-500 mb-6">No significance is inferred. Assignments are created only with an exposure record.</p>
+    {notice && <div class="border rounded-xl p-3 mb-4">{notice}</div>}{denied && <div class="bg-red-50 text-red-800 p-4 rounded-xl">Permission denied: experiments.read required.</div>}{failed && <div class="bg-red-50 text-red-800 p-4 rounded-xl">Experiment API unavailable; no sample data shown.</div>}
+    {!denied && <div class="grid lg:grid-cols-[1fr_2fr] gap-6">
+      <form method="POST" class="bg-white border rounded-2xl p-5 space-y-3"><h3 class="font-black">Create 50/50 draft</h3><input name="key" required pattern="[A-Za-z0-9_-]{2,80}" placeholder="checkout-copy-v1" class="w-full border rounded-xl p-2"/><input name="name" required placeholder="Name" class="w-full border rounded-xl p-2"/><textarea name="hypothesis" required placeholder="Testable hypothesis" class="w-full border rounded-xl p-2"></textarea><input name="primaryMetric" required placeholder="Primary metric" class="w-full border rounded-xl p-2"/><button class="bg-brand-gold font-black rounded-xl px-4 py-2">Create draft</button><p class="text-xs text-gray-500">Requires experiments.manage. Variant weights are immutable for this bounded slice.</p></form>
+      <section><h3 class="font-black mb-3">Definitions</h3>{experiments.length === 0 && !failed && <div class="bg-white border rounded-2xl p-8 text-center text-gray-500">Empty — no experiments exist.</div>}<div class="space-y-3">{experiments.map((experiment) => <a href={`/admin/experiments/${experiment.id}`} class="block bg-white border rounded-2xl p-5"><div class="flex justify-between"><strong>{experiment.name}</strong><span class={`px-2 py-1 rounded-lg text-xs font-bold ${tone(experiment.status)}`}>{experiment.status}</span></div><div class="text-xs text-gray-500 mt-2">{experiment.hypothesis} · metric {experiment.primaryMetric} · v{experiment.version}</div></a>)}</div></section>
+    </div>}
+    <div class="flex flex-wrap gap-2 mt-8">{['DRAFT','READY','RUNNING','PAUSED','COMPLETED','INCONCLUSIVE','INVALID'].map((state) => <span class={`px-2 py-1 rounded-lg text-xs font-bold ${tone(state)}`}>{state}</span>)}</div>
+  </div>
+</AdminLayout>

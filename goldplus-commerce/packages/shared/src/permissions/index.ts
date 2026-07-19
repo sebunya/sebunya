@@ -44,6 +44,9 @@ export const PERMISSIONS = {
   AUTOMATION_EXECUTE: 'automation.execute',
   AUTOMATION_REPLAY: 'automation.replay',
   AUTOMATION_RECONCILE: 'automation.reconcile',
+  EXPERIMENTS_READ: 'experiments.read',
+  EXPERIMENTS_MANAGE: 'experiments.manage',
+  EXPERIMENTS_ASSIGN: 'experiments.assign',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

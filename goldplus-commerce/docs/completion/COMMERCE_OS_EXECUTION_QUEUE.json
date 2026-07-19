@@ -166,22 +166,27 @@
         "Customer DNA & NBA",
         "measurement"
       ],
-      "status": "MISSING",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "Experiment definition, deterministic assignment, exposure logging, guardrails, readiness/decision states.",
       "existingAssets": [
-        "measurement ledger"
+        "measurement ledger",
+        "migration 0041 experiment definitions/variants/assignments/exposures",
+        "deterministic assignment domain and atomic Drizzle evidence adapter",
+        "protected Hono/Zod API, exact RBAC, shared audit and Astro operating surface"
       ],
-      "missingLayers": [
-        "all layers"
-      ],
-      "nextBoundedSlice": "reconcile; experiment domain + deterministic assignment",
+      "missingLayers": [],
+      "nextBoundedSlice": "none (reconciled complete for this environment); real-server deploy only",
       "acceptance": [
         "no assignment without exposure logging",
         "no unsupported significance",
         "DRAFT/READY/RUNNING/PAUSED/COMPLETED/INCONCLUSIVE/INVALID"
       ],
-      "evidence": [],
-      "commit": null
+      "evidence": [
+        "experiments-proof.ts PASS: deterministic concurrency, one assignment/exposure, pause guard, audit and zero residue",
+        "fresh migration replay 0000-0041 PASS",
+        "focused 49/49, typecheck, build, architecture and secret scan PASS"
+      ],
+      "commit": "committed by this change"
     },
     {
       "module": "Pricing & Promotions",
