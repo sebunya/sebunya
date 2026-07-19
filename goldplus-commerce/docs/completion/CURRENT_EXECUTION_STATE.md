@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-19 · Automation A4)
+# CURRENT EXECUTION STATE (2026-07-19 · Automation A5)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -32,6 +32,12 @@
   approvals, dry-run/manual execution through existing A3 use cases, separate replay/reconciliation privilege, shared
   audit, truthful persistence aggregates, and real server-rendered Astro list/detail/execution operating pages. No
   schema/migration, provider transport, second worker, outbox, scheduler, router, or static execution/provider data was added.
+- Automation **A5 acceptance complete locally** from clean aligned A4 head `f628b6d0b9cbd31193506f3940429bdc0482de24`:
+  the complete immutable lifecycle, real trigger, Customer DNA/condition evidence, internal action, zero-call dry run,
+  concurrent cap/action/outbox creation, controlled fake-provider delivery, terminal replay guards, pause/resume, audit,
+  observability, crash/ambiguity/reconciliation and cleanup invariants pass against PostgreSQL 16.14. Fresh `0000`–`0040`
+  replay, populated `0039`→`0040` upgrade, and built API/Astro Chromium evidence pass. Automation is now
+  `SOURCE_COMPLETE_NOT_DEPLOYED`; no local evidence is labelled live.
 - Other modules SOURCE_COMPLETE_NOT_DEPLOYED (Fulfilment F1-F5+UI, Inventory, Customer DNA & NBA 0037,
   Decision Intelligence 0038). Migrations proven through **0039** (REPORTED — rerun per handover).
 - Production status: not reclassified by C0; nothing is newly claimed `LIVE_VERIFIED`.
@@ -61,6 +67,7 @@
   lint remains `PRE-EXISTING UNRELATED BASELINE ERROR` at `ICustomerDnaRepository.ts:6`. Chromium desktop rendered the
   built Astro control room from a real scratch PostgreSQL definition through the API; the fixture was removed.
 - Clean-tree full suite after the A4 commit: 191 files / 4,020 tests passed.
-- Next gate: push A4 and verify alignment, then begin **A5** end-to-end acceptance immediately.
+- Clean-commit full suite after A5: 191 files / 4,020 tests passed.
+- Next gate: commit/push A5, prove clean local/remote alignment, then begin **Experiments** from the binding queue.
 
 ---

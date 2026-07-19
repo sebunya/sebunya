@@ -130,7 +130,7 @@
         "outbox",
         "notifications"
       ],
-      "status": "SOURCE_PARTIAL",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "Trigger/condition/audience/action/schedule automations reusing the existing outbox + scheduler, provider-gated, DRY_RUN makes zero provider calls.",
       "existingAssets": [
         "Automation A1-A4 domain/use cases/ports/Drizzle adapters and protected operating surface",
@@ -142,10 +142,8 @@
         "real Astro definition/execution/evidence/reconciliation control room",
         "truthful persistence aggregates without customer PII labels"
       ],
-      "missingLayers": [
-        "A5 production-shaped end-to-end acceptance"
-      ],
-      "nextBoundedSlice": "A5 Automation end-to-end acceptance",
+      "missingLayers": [],
+      "nextBoundedSlice": "none (reconciled complete for this environment); real-server deploy only",
       "acceptance": [
         "no second outbox/scheduler",
         "DRY_RUN zero network",
@@ -155,9 +153,11 @@
       "evidence": [
         "automation-execution-proof.ts PASS with 13 zero-call states, one delivery owner, attempt lease/crash ambiguity, reconciliation and cap-preserving replay",
         "Automation focused tests, typecheck, architecture, build and secret scan PASS",
-        "automation-control-room-proof.ts PASS: protected lifecycle, dry-run zero calls, evidence inspection, replay guard, reconciliation, audit, aggregates, zero residue"
+        "automation-control-room-proof.ts PASS: protected lifecycle, dry-run zero calls, evidence inspection, replay guard, reconciliation, audit, aggregates, zero residue",
+        "automation-acceptance-proof.ts PASS: complete real-PG lifecycle, Customer DNA evidence, controlled fake-provider SENT, pause/resume, zero real-provider calls and zero residue",
+        "fresh 0000-0040 replay, populated 0039-0040 upgrade, and built Astro/API Chromium acceptance PASS"
       ],
-      "commit": "A3.4 ebccac4; A4 committed by this change"
+      "commit": "A3.4 ebccac4; A4 f628b6d; A5 committed by this change"
     },
     {
       "module": "Experiments",

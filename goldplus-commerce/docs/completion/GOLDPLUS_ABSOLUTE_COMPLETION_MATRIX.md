@@ -1,11 +1,11 @@
 # GoldPlus Absolute Completion Matrix (reconciled)
 
-Reconciled from **actual source + local execution** at head `480a2ba` on branch
+Reconciled from **actual source + local execution** through Automation A5 on branch
 `phase-2-measurement-control-tower-completion`. Dashboard cards, route/schema/test
 names and old completion labels are **not** treated as proof.
 
-- Migrations: **0000–0038** (fresh replay proven + populated-upgrade proven).
-- Full suite: **184 files / 3,948 tests**. Architecture **10/10**.
+- Migrations: **0000–0040** (fresh replay and populated `0039`→`0040` upgrade proven).
+- Full suite: clean A5 **191 files / 4,020 tests**. Architecture **10/10**.
 - Binding execution queue: [`COMMERCE_OS_EXECUTION_QUEUE.json`](./COMMERCE_OS_EXECUTION_QUEUE.json).
 
 ## Module status
@@ -19,7 +19,7 @@ names and old completion labels are **not** treated as proof.
 | Measurement Control Tower | SOURCE_COMPLETE_NOT_DEPLOYED |
 | Customer DNA & NBA | SOURCE_COMPLETE_NOT_DEPLOYED |
 | Decision Intelligence | SOURCE_COMPLETE_NOT_DEPLOYED |
-| Automation | SOURCE_PARTIAL |
+| Automation | SOURCE_COMPLETE_NOT_DEPLOYED |
 | Experiments | MISSING |
 | Pricing & Promotions | MISSING |
 | Fraud Triage | SOURCE_PARTIAL |

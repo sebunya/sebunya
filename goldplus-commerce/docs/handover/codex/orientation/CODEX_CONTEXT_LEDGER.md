@@ -218,3 +218,28 @@ Focused proof target: native JSONB object writes, compatibility reads for any le
 - Status remains `SOURCE_PARTIAL` only because A5 acceptance is not yet complete. No deployment or `LIVE_VERIFIED` claim.
 - A5 handoff: exercise the complete lifecycle through production-shaped API/web and real PostgreSQL with the controlled
   fake provider/call counter, all concurrency/crash/ambiguity/replay/pause-resume assertions, migration rehearsals and full gates.
+
+## A5 — complete Automation acceptance
+
+- Verified base: clean local/origin A4 commit `f628b6d0b9cbd31193506f3940429bdc0482de24`; the context ledger,
+  current execution state, next-worktree handoff, completion matrix and binding queue were reread before A5 work.
+- Boundary decision: A4 supplied the final missing runtime/operating layer, so A5 adds only the self-cleaning
+  `automation-acceptance-proof.ts` and factual evidence/continuation updates. No runtime source or migration change is justified.
+- Integrated PostgreSQL 16.14 proof: immutable draft/version/submit/approve/activate; one real `OrderPlaced` trigger plan
+  plus one concurrent duplicate; real Customer DNA ELIGIBLE audience and two passing conditions; INTERNAL_SUCCESS with
+  no provider; DRY_RUN with zero attempts/calls; one concurrent action winner/duplicate, cap and existing-outbox intent;
+  exactly one controlled fake-provider call and positive SENT attempt; SENT replay denial; pause prevents matching,
+  resume restores planning; admin detail/aggregates/audits are persistence-backed; all duplicate/orphan/residue counts zero.
+- The A3 planning, eligibility, action, provider/replay, execution and A4 control-room proofs all reran PASS. The execution
+  proof retains explicit zero adapter calls for all 13 prohibited states and covers definitive retry/DLQ, ambiguity,
+  crash/lease recovery, evidence reconciliation, cap-preserving replay and all integrity queries.
+- Fresh `0000`–`0040` replay passed with 41 records, three cap-table FKs and three indexes. A populated simulated
+  `0039` database retained its definition/version/execution/action across 0040 and had zero orphan reservations.
+- Production-shaped browser proof passed in Chromium desktop against the built Astro server and protected API on real
+  scratch PostgreSQL; the real fixture was removed and both servers shut down cleanly.
+- Gates: workspace typecheck, API/web build, architecture 10/10, secret scan of 1,123 source/config files, changed-path
+  lint with zero errors, and diff check pass. Repository-wide lint remains `PRE-EXISTING UNRELATED BASELINE ERROR` at
+  `ICustomerDnaRepository.ts:6`. The clean-commit full suite passes 191 files / 4,020 tests.
+- Status: Automation is `SOURCE_COMPLETE_NOT_DEPLOYED`. No production deployment, real provider, consent lifecycle,
+  identity provisioning, customer communication, database migration, or `LIVE_VERIFIED` claim occurred.
+- Next queue selection after A5 commit/push/alignment: Experiments (priority 2, currently MISSING).

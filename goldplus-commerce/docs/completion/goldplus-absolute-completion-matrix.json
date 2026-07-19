@@ -1,10 +1,10 @@
 {
   "generatedAt": "2026-07-19",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "ebccac4",
+  "reconciledHead": "A5 evidence commit",
   "note": "Reconciled from actual source + local execution. The binding execution queue is COMMERCE_OS_EXECUTION_QUEUE.json.",
   "migrations": "0000-0040 (fresh replay and populated upgrade proven through A3.1; no A4 migration)",
-  "fullSuite": "191 files / 4020 tests at clean A4",
+  "fullSuite": "191 files / 4020 tests at clean A5",
   "architecture": "10/10",
   "modules": {
     "Fulfilment Operations": "SOURCE_COMPLETE_NOT_DEPLOYED",
@@ -14,7 +14,7 @@
     "Measurement Control Tower": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Customer DNA & NBA": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Decision Intelligence": "SOURCE_COMPLETE_NOT_DEPLOYED",
-    "Automation": "SOURCE_PARTIAL",
+    "Automation": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Experiments": "MISSING",
     "Pricing & Promotions": "MISSING",
     "Fraud Triage": "SOURCE_PARTIAL",
@@ -26,6 +26,6 @@
     "Loyalty": "SOURCE_PARTIAL",
     "Search Insights": "SOURCE_PARTIAL"
   },
-  "nextModule": "Automation",
+  "nextModule": "Experiments",
   "productionDeployment": "EXTERNAL_BLOCKED (no ssh goldplus-prod binary; no docker daemon)"
 }
