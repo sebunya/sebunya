@@ -39,6 +39,7 @@ export interface IPricingRepository {
   findDefinition(id: string): Promise<PromotionDefinitionRecord | null>;
   findVersion(id: string): Promise<PromotionVersionRecord | null>;
   listDefinitions(): Promise<PromotionDefinitionRecord[]>;
+  listActiveVersions(at: Date): Promise<Array<{ definition: PromotionDefinitionRecord; version: PromotionVersionRecord }>>;
   transitionVersion(input: { definitionId: string; versionId: string; expectedRevision: number; from: PromotionStatus; to: PromotionStatus; actorId: string; reason: string; now: Date }): Promise<{ definition: PromotionDefinitionRecord; version: PromotionVersionRecord } | null>;
   listApprovals(versionId: string): Promise<PromotionApprovalRecord[]>;
 }

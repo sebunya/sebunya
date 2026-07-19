@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Pricing P1)
+# CURRENT EXECUTION STATE (2026-07-20 · Pricing P2)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -75,6 +75,8 @@
 - Clean-tree full suite after the A4 commit: 191 files / 4,020 tests passed.
 - Clean-commit full suite after A5: 191 files / 4,020 tests passed.
 - Pricing P1 is implemented and proven from clean Experiments head `97f304565679284e7bf6731f56d0183a6e7fd239`: governed definitions, immutable versions, explicit approval/activation/pause lifecycle, integer-UGX benefit policy, shared audit, native JSONB persistence and additive migration 0042. Fresh replay has 43 migrations, nine Pricing tables and zero active rules; the self-cleaning PostgreSQL proof passes with zero provider calls.
-- Pricing remains `SOURCE_PARTIAL`. Next gate: commit/push P1, prove clean local/remote alignment, then begin P2 deterministic pricing evaluation.
+- Pricing remains `SOURCE_PARTIAL`; P1 established its governed persistence and lifecycle boundary.
+- Pricing P1 is pushed at `873d965542fd37212bc05db50470e0fea5013c93` with a clean 194-file / 4,030-test suite. P2 now adds one canonical-price evaluator with explicit qualification/exclusion evidence, deterministic stacking/tie-breaking/rounding/floors, safe hashed references, persisted explainable quotes and a non-persistent simulation path. Its real-PG proof passes with actual catalogue rows, native JSONB and zero provider calls/residue.
+- Next gate: commit/push P2, prove clean local/remote alignment, then begin P3 reservation/redemption concurrency.
 
 ---

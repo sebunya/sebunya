@@ -269,3 +269,12 @@ Focused proof target: native JSONB object writes, compatibility reads for any le
 - PostgreSQL proof passes `DRAFT→READY_FOR_REVIEW→APPROVED→ACTIVE→PAUSED`, rejects direct activation, persists one approval and five shared audits, writes native JSONB arrays, calls no provider and removes all proof data.
 - Fresh `0000`–`0042` replay has 43 journal entries, nine Pricing tables, eleven Pricing order/order-line columns and zero active promotions. Focused Pricing plus architecture is 14/14; typecheck/build/secret scan/changed-path lint/diff check pass.
 - Status: `SOURCE_PARTIAL`; next boundary is P2 deterministic server-side evaluation and explainable quotes. No production migration, deployment, order/payment/provider activity or live claim occurred.
+
+## Pricing P2 — deterministic evaluation and explainable quotes
+
+- Verified base: clean/pushed P1 `873d965542fd37212bc05db50470e0fea5013c93`; clean repository suite 194 files / 4,030 tests.
+- One pure evaluator now orders candidates explicitly, applies coupon/condition/exclusion/Experiment evidence fail-closed, defines stackable/exclusive behavior and maximum rule count, and returns complete deterministic decision evidence.
+- Integer-UGX percentage basis points, fixed amount, fixed price and free shipping use floor rounding, deterministic product ordering, caps and price floors. The application use case reloads canonical catalogue prices and hashes coupon/customer references; browser totals are not an input.
+- PostgreSQL proof uses actual catalogue rows and active approved immutable versions. It persists and rehydrates one quote, two lines, three adjustments and native decision-trace JSONB; non-persistent simulation returns identical totals and creates no extra quote. Provider calls and proof residue are zero.
+- Focused Pricing plus architecture is 18/18; typecheck/build/secret scan/changed-path lint/diff check pass. No migration, reservation, redemption, order, payment, outbox, provider or production change occurred.
+- Status: `SOURCE_PARTIAL`; next boundary is P3 transactionally serialized limits and idempotent reservation/redemption/release.

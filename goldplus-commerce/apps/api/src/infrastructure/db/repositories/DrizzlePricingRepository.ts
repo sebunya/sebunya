@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, lte, sql } from 'drizzle-orm';
 import {
   IPricingRepository,
   PromotionApprovalRecord,
@@ -99,6 +99,20 @@ export class DrizzlePricingRepository implements IPricingRepository {
 
   async listDefinitions() {
     return (await db.select().from(promotionDefinitions).orderBy(asc(promotionDefinitions.createdAt))).map(definitionRecord);
+  }
+
+  async listActiveVersions(at: Date) {
+    const rows = await db.select({ definition: promotionDefinitions, version: promotionVersions })
+      .from(promotionVersions)
+      .innerJoin(promotionDefinitions, eq(promotionDefinitions.id, promotionVersions.definitionId))
+      .where(and(
+        eq(promotionDefinitions.status, 'ACTIVE'),
+        eq(promotionDefinitions.activeVersionId, promotionVersions.id),
+        eq(promotionVersions.status, 'ACTIVE'),
+        lte(promotionVersions.startsAt, at),
+        gt(promotionVersions.endsAt, at),
+      ));
+    return rows.map((row) => ({ definition: definitionRecord(row.definition), version: versionRecord(row.version) }));
   }
 
   async transitionVersion(input: { definitionId: string; versionId: string; expectedRevision: number; from: PromotionStatus; to: PromotionStatus; actorId: string; reason: string; now: Date }) {
