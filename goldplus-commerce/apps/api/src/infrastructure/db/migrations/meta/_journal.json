@@ -337,6 +337,13 @@
       "when": 1784952000000,
       "tag": "0047_loyalty_ledger_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "5",
+      "when": 1785038400000,
+      "tag": "0048_search_insights",
+      "breakpoints": true
     }
   ]
 }

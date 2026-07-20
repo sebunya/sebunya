@@ -61,11 +61,11 @@ const browseFallback = products.length === 0 ? availableProducts.slice(0, 6) : [
 
 // Slice 4: anonymous search telemetry — query + result count only, no identifiers.
 if (search) {
-  fetch(`${apiBase}/products/search-events`, {
+  await fetch(`${apiBase}/products/search-events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: search, resultCount: filteredProducts.length }),
-    signal: AbortSignal.timeout(1500),
+    body: JSON.stringify({ query: search, resultCount: filteredProducts.length, rankedProductIds: products.map((product) => product.id) }),
+    signal: AbortSignal.timeout(500),
   }).catch(() => {});
 }
 const hasFilters = Boolean(search || category || subcategory || sort !== 'default');
@@ -158,7 +158,7 @@ const activeFilters = [
 
     {products.length > 0 ? (
       <section aria-label="Product results" class="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {products.map((product) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product))} />)}
+        {products.map((product, index) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product))} searchQuery={search} searchRank={index + 1} />)}
       </section>
     ) : (
       <section class="mt-7 rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10" aria-labelledby="no-results-heading">

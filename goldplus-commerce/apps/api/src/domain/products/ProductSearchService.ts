@@ -5,6 +5,8 @@
  */
 
 export const MAX_QUERY_LENGTH = 120;
+export const MIN_SEARCH_INSIGHT_VOLUME = 3;
+export const MAX_SEARCH_RESULT_PRODUCTS = 50;
 
 /** Canonical form used for matching, telemetry, and demand aggregation. */
 export function normalizeSearchQuery(raw: string): string {
@@ -70,6 +72,54 @@ export interface SearchDemandSignal {
   status: SearchDemandStatus;
   firstSearchedAt: Date;
   lastSearchedAt: Date;
+}
+
+export const SEARCH_INTERACTION_TYPES = ['click', 'add_to_cart'] as const;
+export type SearchInteractionType = (typeof SEARCH_INTERACTION_TYPES)[number];
+
+export interface SearchProductInsight {
+  query: string;
+  productId: string;
+  productName: string;
+  impressions: number;
+  clicks: number;
+  addToCartConversions: number;
+  averageObservedRank: number;
+  lastObservedRank: number;
+  clickThroughRate: number;
+  addToCartRate: number;
+}
+
+export interface SearchSynonymCandidate {
+  query: string;
+  candidate: string;
+  sharedProductName: string;
+  evidenceClicks: number;
+  status: 'EVIDENCE_ONLY';
+}
+
+export interface SearchInsightsOverview {
+  minimumReportedSearches: number;
+  totalSearches: number;
+  zeroResultSearches: number;
+  zeroResultRate: number;
+  impressions: number;
+  clicks: number;
+  addToCartConversions: number;
+  clickThroughRate: number;
+  addToCartRate: number;
+  demand: SearchDemandSignal[];
+  ranking: SearchProductInsight[];
+  synonymCandidates: SearchSynonymCandidate[];
+}
+
+export function boundedRate(numerator: number, denominator: number): number {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return 0;
+  return Math.round(Math.min(1, Math.max(0, numerator / denominator)) * 10_000) / 10_000;
+}
+
+export function isSearchInteractionType(value: string): value is SearchInteractionType {
+  return (SEARCH_INTERACTION_TYPES as readonly string[]).includes(value);
 }
 
 /** Kept for backwards compatibility with the original service shape. */

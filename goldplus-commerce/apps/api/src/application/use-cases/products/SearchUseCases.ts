@@ -7,6 +7,8 @@ import {
   isValidDemandStatus,
   SearchDemandSignal,
   SearchDemandStatus,
+  MAX_SEARCH_RESULT_PRODUCTS,
+  isSearchInteractionType,
 } from '../../../domain/products/ProductSearchService';
 
 export interface ProductSuggestionDto {
@@ -54,12 +56,30 @@ export class SuggestProductsUseCase {
 export class RecordSearchEventUseCase {
   constructor(private readonly demand: ISearchDemandRepository) {}
 
-  async execute(input: { query: string; resultCount: number }): Promise<{ recorded: boolean }> {
+  async execute(input: { query: string; resultCount: number; rankedProductIds?: unknown }): Promise<{ recorded: boolean }> {
     const q = normalizeSearchQuery(input.query ?? '');
     if (!isMeaningfulQuery(q)) return { recorded: false };
     const resultCount = Number.isInteger(input.resultCount) && input.resultCount >= 0 ? Math.min(input.resultCount, 100_000) : 0;
-    await this.demand.recordSearch(q, resultCount);
+    const rankedProductIds = Array.isArray(input.rankedProductIds)
+      ? [...new Set(input.rankedProductIds.filter((id): id is string => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))].slice(0, MAX_SEARCH_RESULT_PRODUCTS)
+      : [];
+    await this.demand.recordSearch(q, resultCount, rankedProductIds);
     return { recorded: true };
+  }
+}
+
+export class RecordSearchInteractionUseCase {
+  constructor(private readonly demand: ISearchDemandRepository) {}
+
+  async execute(input: { query: string; productId: string; rank: number; type: string }): Promise<{ recorded: boolean }> {
+    const normalizedQuery = normalizeSearchQuery(input.query ?? '');
+    if (!isMeaningfulQuery(normalizedQuery)
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.productId)
+      || !Number.isInteger(input.rank) || input.rank < 1 || input.rank > MAX_SEARCH_RESULT_PRODUCTS
+      || !isSearchInteractionType(input.type)) {
+      return { recorded: false };
+    }
+    return this.demand.recordInteraction({ normalizedQuery, productId: input.productId, rank: input.rank, type: input.type });
   }
 }
 
@@ -67,6 +87,13 @@ export class ListSearchDemandUseCase {
   constructor(private readonly demand: ISearchDemandRepository) {}
   async execute(opts?: { status?: SearchDemandStatus; limit?: number }): Promise<SearchDemandSignal[]> {
     return this.demand.list(opts);
+  }
+}
+
+export class GetSearchInsightsUseCase {
+  constructor(private readonly demand: ISearchDemandRepository) {}
+  async execute(input: { limit?: number } = {}) {
+    return this.demand.getInsights(input.limit);
   }
 }
 

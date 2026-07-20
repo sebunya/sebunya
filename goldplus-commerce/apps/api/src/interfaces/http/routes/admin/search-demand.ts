@@ -22,6 +22,14 @@ routes.get('/', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   return c.json(res);
 });
 
+routes.get('/insights', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const limit = Number(c.req.query('limit') ?? 100);
+  const data = await Registry.getInstance().getSearchInsightsUseCase.execute({
+    limit: Number.isInteger(limit) ? limit : 100,
+  });
+  return c.json({ success: true, data });
+});
+
 routes.patch('/:id', requirePermissions([PERMISSIONS.LEADS_ASSIGN]), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) {

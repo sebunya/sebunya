@@ -58,6 +58,24 @@ routes.post('/search-events', async (c) => {
   const data = await registry.recordSearchEventUseCase.execute({
     query: body.query,
     resultCount: typeof body.resultCount === 'number' ? body.resultCount : 0,
+    rankedProductIds: body.rankedProductIds,
+  });
+  const res: ApiResponse<typeof data> = { success: true, data };
+  return c.json(res);
+});
+
+// Aggregate-only search behavior. No visitor/session/cart/order identifier is accepted.
+routes.post('/search-interactions', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'INVALID_EVENT', message: 'JSON body is required.' } };
+    return c.json(res, 400);
+  }
+  const data = await Registry.getInstance().recordSearchInteractionUseCase.execute({
+    query: typeof body.query === 'string' ? body.query : '',
+    productId: typeof body.productId === 'string' ? body.productId : '',
+    rank: typeof body.rank === 'number' ? body.rank : 0,
+    type: typeof body.type === 'string' ? body.type : '',
   });
   const res: ApiResponse<typeof data> = { success: true, data };
   return c.json(res);

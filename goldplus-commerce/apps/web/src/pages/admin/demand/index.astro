@@ -43,6 +43,9 @@ let signals: Array<{
   lastSearchedAt: string;
 }> = [];
 let loadFailed = false;
+type RankingInsight = { query: string; productId: string; productName: string; impressions: number; clicks: number; addToCartConversions: number; averageObservedRank: number; lastObservedRank: number; clickThroughRate: number; addToCartRate: number };
+type SynonymCandidate = { query: string; candidate: string; sharedProductName: string; evidenceClicks: number; status: "EVIDENCE_ONLY" };
+let insights: { minimumReportedSearches: number; totalSearches: number; zeroResultSearches: number; zeroResultRate: number; impressions: number; clicks: number; addToCartConversions: number; clickThroughRate: number; addToCartRate: number; ranking: RankingInsight[]; synonymCandidates: SynonymCandidate[] } | null = null;
 try {
   const url = statusFilter
     ? `${apiBase}/admin/search-demand?status=${encodeURIComponent(statusFilter)}`
@@ -54,6 +57,12 @@ try {
 } catch {
   loadFailed = true;
 }
+try {
+  const res = await fetch(`${apiBase}/admin/search-demand/insights?limit=100`, { headers });
+  const json = await res.json().catch(() => null);
+  if (json?.success) insights = json.data;
+} catch { /* explanatory unavailable state below */ }
+const percent = (rate: number) => `${(rate * 100).toFixed(1)}%`;
 ---
 
 <AdminLayout
@@ -81,6 +90,42 @@ try {
         <a href={`/admin/demand?status=${s}`} class={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border ${statusFilter === s ? "bg-brand-dark text-white border-brand-dark" : "border-gray-300 text-gray-600"}`}>{s}</a>
       ))}
     </nav>
+
+    <section aria-labelledby="search-insights-heading" class="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div class="max-w-3xl">
+        <h2 id="search-insights-heading" class="text-xl font-black text-brand-dark">Search performance insights</h2>
+        <p class="mt-2 text-sm leading-relaxed text-slate-600">Aggregate evidence only. Add-to-cart is the conversion boundary; it is not an order, payment or revenue claim. Terms appear only after the minimum reporting volume. No visitor, session, contact, cart or order history is stored or exposed.</p>
+      </div>
+      {insights ? (
+        <>
+          <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              ["Searches", insights.totalSearches],
+              ["Zero-result rate", percent(insights.zeroResultRate)],
+              ["Impressions", insights.impressions],
+              ["Click-through rate", percent(insights.clickThroughRate)],
+              ["Add-to-cart rate", percent(insights.addToCartRate)],
+            ].map(([label, value]) => <article class="rounded-xl border border-slate-200 bg-slate-50 p-4"><p class="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p><p class="mt-2 text-xl font-black text-slate-950">{value}</p></article>)}
+          </div>
+          <p class="mt-3 text-xs text-slate-500">Minimum term disclosure: {insights.minimumReportedSearches} searches. Ranking is observed evidence only and does not alter catalogue order.</p>
+
+          <h3 class="mt-7 text-base font-black text-slate-900">Observed query/product ranking</h3>
+          <div class="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+            <table class="min-w-[980px] w-full text-left text-xs"><thead class="bg-slate-950 text-white"><tr>{["Query", "Product", "Impressions", "Average rank", "Clicks", "CTR", "Add to cart", "ATC rate"].map((heading) => <th class="px-4 py-3 font-black">{heading}</th>)}</tr></thead><tbody class="divide-y divide-slate-100">
+              {insights.ranking.length === 0 ? <tr><td colspan="8" class="px-4 py-6 text-center italic text-slate-500">No query/product row has reached the privacy-safe reporting threshold.</td></tr> : insights.ranking.map((row) => <tr><td class="px-4 py-3 font-bold text-slate-900">{row.query}</td><td class="px-4 py-3 text-slate-700">{row.productName}</td><td class="px-4 py-3 font-mono">{row.impressions}</td><td class="px-4 py-3 font-mono">{row.averageObservedRank}</td><td class="px-4 py-3 font-mono">{row.clicks}</td><td class="px-4 py-3 font-mono">{percent(row.clickThroughRate)}</td><td class="px-4 py-3 font-mono">{row.addToCartConversions}</td><td class="px-4 py-3 font-mono">{percent(row.addToCartRate)}</td></tr>)}
+            </tbody></table>
+          </div>
+
+          <h3 class="mt-7 text-base font-black text-slate-900">Synonym candidates</h3>
+          <p class="mt-1 text-xs text-slate-500">Candidates require repeated clicks on the same product. They are evidence only; no synonym or ranking rule is created or activated here.</p>
+          <div class="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+            <table class="min-w-[720px] w-full text-left text-xs"><thead class="bg-slate-950 text-white"><tr>{["Query", "Candidate", "Shared clicked product", "Evidence clicks", "Status"].map((heading) => <th class="px-4 py-3 font-black">{heading}</th>)}</tr></thead><tbody class="divide-y divide-slate-100">
+              {insights.synonymCandidates.length === 0 ? <tr><td colspan="5" class="px-4 py-6 text-center italic text-slate-500">No synonym candidate has enough aggregate evidence.</td></tr> : insights.synonymCandidates.map((row) => <tr><td class="px-4 py-3 font-bold">{row.query}</td><td class="px-4 py-3 font-bold">{row.candidate}</td><td class="px-4 py-3">{row.sharedProductName}</td><td class="px-4 py-3 font-mono">{row.evidenceClicks}</td><td class="px-4 py-3 font-black text-amber-700">{row.status}</td></tr>)}
+            </tbody></table>
+          </div>
+        </>
+      ) : <p class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Search insights are unavailable (service unavailable or permission denied).</p>}
+    </section>
 
     <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
       <div class="overflow-x-auto">

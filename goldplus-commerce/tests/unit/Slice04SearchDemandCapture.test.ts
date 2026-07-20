@@ -6,11 +6,13 @@ import {
   isValidDemandStatus,
   SearchDemandSignal,
   SearchDemandStatus,
+  boundedRate,
 } from '../../apps/api/src/domain/products/ProductSearchService';
 import {
   SuggestProductsUseCase,
   RecordSearchEventUseCase,
   UpdateSearchDemandStatusUseCase,
+  RecordSearchInteractionUseCase,
 } from '../../apps/api/src/application/use-cases/products/SearchUseCases';
 import { ISearchDemandRepository } from '../../apps/api/src/application/ports/ISearchDemandRepository';
 import { IProductRepository, ProductWithPrice } from '../../apps/api/src/application/ports/IProductRepository';
@@ -42,6 +44,9 @@ function fakeDemand(): ISearchDemandRepository & { rows: Map<string, SearchDeman
         });
       }
     },
+    async recordInteraction(input) {
+      return { recorded: rows.has(input.normalizedQuery) };
+    },
     async list() {
       return [...rows.values()];
     },
@@ -50,6 +55,9 @@ function fakeDemand(): ISearchDemandRepository & { rows: Map<string, SearchDeman
       if (!row) return null;
       row.status = status;
       return row;
+    },
+    async getInsights() {
+      return { minimumReportedSearches: 3, totalSearches: 0, zeroResultSearches: 0, zeroResultRate: 0, impressions: 0, clicks: 0, addToCartConversions: 0, clickThroughRate: 0, addToCartRate: 0, demand: [], ranking: [], synonymCandidates: [] };
     },
   };
 }
@@ -104,6 +112,12 @@ describe('Search domain (Slice 4)', () => {
     expect(isValidDemandStatus('sourced')).toBe(true);
     expect(isValidDemandStatus('deleted')).toBe(false);
   });
+
+  it('computes bounded deterministic rates', () => {
+    expect(boundedRate(1, 4)).toBe(0.25);
+    expect(boundedRate(5, 4)).toBe(1);
+    expect(boundedRate(1, 0)).toBe(0);
+  });
 });
 
 // ---------- use cases ----------
@@ -157,5 +171,17 @@ describe('Search use cases (Slice 4)', () => {
     if (good.ok) expect(good.signal.status).toBe('reviewing');
     const missing = await uc.execute('nope', 'sourced');
     expect(missing.ok).toBe(false);
+  });
+
+  it('fails search interaction capture closed on invalid query, product, rank or type', async () => {
+    const repo = fakeDemand();
+    await new RecordSearchEventUseCase(repo).execute({ query: 'power bank', resultCount: 1 });
+    const useCase = new RecordSearchInteractionUseCase(repo);
+    const productId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    expect((await useCase.execute({ query: 'power bank', productId, rank: 1, type: 'click' })).recorded).toBe(true);
+    expect((await useCase.execute({ query: 'x', productId, rank: 1, type: 'click' })).recorded).toBe(false);
+    expect((await useCase.execute({ query: 'power bank', productId: 'not-a-uuid', rank: 1, type: 'click' })).recorded).toBe(false);
+    expect((await useCase.execute({ query: 'power bank', productId, rank: 0, type: 'click' })).recorded).toBe(false);
+    expect((await useCase.execute({ query: 'power bank', productId, rank: 1, type: 'purchase' })).recorded).toBe(false);
   });
 });

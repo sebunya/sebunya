@@ -40,6 +40,8 @@ if (Astro.request.method === 'POST') {
     const name = formData.get('name')?.toString() || '';
     const categoryName = formData.get('categoryName')?.toString() || '';
     const priceUgx = Number(formData.get('priceUgx') || 0);
+    const searchQuery = formData.get('searchQuery')?.toString() || '';
+    const searchRank = Number(formData.get('searchRank') || 0);
 
     if (productId) {
       if (!sessionId) {
@@ -79,6 +81,15 @@ if (Astro.request.method === 'POST') {
           });
         } catch (err) {
           console.warn('[CART_OFFLINE] Using client fallback for Add to Cart:', err);
+        }
+
+        if (searchQuery && Number.isInteger(searchRank) && searchRank >= 1 && searchRank <= 50) {
+          await fetch(`${apiBase}/products/search-interactions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: searchQuery, productId, rank: searchRank, type: 'add_to_cart' }),
+            signal: AbortSignal.timeout(500),
+          }).catch(() => {});
         }
 
       } else if (action === 'update') {

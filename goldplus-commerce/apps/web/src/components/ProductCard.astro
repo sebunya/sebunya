@@ -4,9 +4,14 @@ import type { ProductPublicDto } from '@goldplus/shared';
 interface Props {
   product: ProductPublicDto;
   subcategory?: string;
+  searchQuery?: string;
+  searchRank?: number;
 }
 
-const { product, subcategory = '' } = Astro.props;
+const { product, subcategory = '', searchQuery = '', searchRank = 0 } = Astro.props;
+const productHref = searchQuery && searchRank > 0
+  ? `/products/${product.slug}?searchQuery=${encodeURIComponent(searchQuery)}&searchRank=${searchRank}`
+  : `/products/${product.slug}`;
 
 const hasValidPrice = typeof product.retailPriceUgx === 'number'
   && Number.isFinite(product.retailPriceUgx)
@@ -54,7 +59,7 @@ const availabilityBadgeClass = (() => {
   
   {/* Product Image & Status Badge */}
   <div class="relative mb-4">
-    <a href={`/products/${product.slug}`} class="block aspect-square bg-slate-50 rounded-xl overflow-hidden relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 border border-slate-100">
+    <a href={productHref} class="block aspect-square bg-slate-50 rounded-xl overflow-hidden relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 border border-slate-100">
       {product.primaryImageUrl ? (
         <img 
           src={product.primaryImageUrl} 
@@ -91,7 +96,7 @@ const availabilityBadgeClass = (() => {
     
     {/* Title */}
     <h3 class="text-[15px] font-bold text-gray-900 leading-snug mb-2 group-hover:text-brand-primary transition-colors line-clamp-2 min-h-[2.5rem]">
-      <a href={`/products/${product.slug}`} class="outline-none focus-visible:underline">
+      <a href={productHref} class="outline-none focus-visible:underline">
         {product.name}
       </a>
     </h3>
@@ -118,7 +123,7 @@ const availabilityBadgeClass = (() => {
       </p>
       
       <a 
-        href={`/products/${product.slug}`}
+        href={productHref}
         class="px-3.5 py-1.5 rounded-full font-bold text-xs transition-all duration-300 outline-none focus:ring-4 focus:ring-brand-primary/20 bg-slate-50 text-gray-700 hover:bg-brand-primary hover:text-gray-950 border border-slate-200/60 shadow-xs active:scale-95"
         aria-label={`View product details for ${product.name}`}>
          View details

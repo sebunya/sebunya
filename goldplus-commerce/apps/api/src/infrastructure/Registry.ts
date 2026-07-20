@@ -69,7 +69,9 @@ import {
 import {
   SuggestProductsUseCase,
   RecordSearchEventUseCase,
+  RecordSearchInteractionUseCase,
   ListSearchDemandUseCase,
+  GetSearchInsightsUseCase,
   UpdateSearchDemandStatusUseCase,
 } from '../application/use-cases/products/SearchUseCases';
 import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
@@ -516,7 +518,9 @@ export class Registry {
   public readonly searchDemandRepo = new DrizzleSearchDemandRepository();
   public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo);
   public readonly recordSearchEventUseCase = new RecordSearchEventUseCase(this.searchDemandRepo);
+  public readonly recordSearchInteractionUseCase = new RecordSearchInteractionUseCase(this.searchDemandRepo);
   public readonly listSearchDemandUseCase = new ListSearchDemandUseCase(this.searchDemandRepo);
+  public readonly getSearchInsightsUseCase = new GetSearchInsightsUseCase(this.searchDemandRepo);
   public readonly updateSearchDemandStatusUseCase = new UpdateSearchDemandStatusUseCase(this.searchDemandRepo);
   public readonly compatibilityMappingRepo = new DrizzleCompatibilityMappingRepository();
   public readonly upsertCompatibilityMappingUseCase = new UpsertCompatibilityMappingUseCase(this.compatibilityMappingRepo, this.productRepo);

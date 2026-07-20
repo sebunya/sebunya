@@ -92,7 +92,9 @@ describe('Slice 05 product discovery P0', () => {
   });
 
   it('uses clear and accessible PDP links and product-card labels', () => {
-    expect(card).toContain('href={`/products/${product.slug}`}');
+    expect(card).toContain('const productHref = searchQuery && searchRank > 0');
+    expect(card).toContain(': `/products/${product.slug}`;');
+    expect(card).toContain('href={productHref}');
     expect(card).toContain('aria-label={`${product.name}, ${formattedPrice}, ${availabilityLabel}`}');
     expect(card).toContain('View product details for ${product.name}');
     expect(card).toContain('View details');
