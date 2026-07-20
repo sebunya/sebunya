@@ -1,10 +1,10 @@
 {
   "generatedAt": "2026-07-20",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "Loyalty source completion commit 32e3ef0",
+  "reconciledHead": "Search Insights source completion commit 682384b",
   "note": "Reconciled from actual source + local execution. The binding execution queue is COMMERCE_OS_EXECUTION_QUEUE.json.",
-  "migrations": "0000-0047 (fresh replay proven; 0047 populated continuation upgrade proven)",
-  "fullSuite": "214 files / 4116 tests at clean Loyalty source commit",
+  "migrations": "0000-0048 (fresh replay proven; 0048 populated continuation upgrade proven)",
+  "fullSuite": "216 files / 4129 tests at clean Search Insights source commit",
   "architecture": "10/10",
   "modules": {
     "Fulfilment Operations": "SOURCE_COMPLETE_NOT_DEPLOYED",
@@ -24,8 +24,8 @@
     "Copy Quality": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Behavioural Interventions": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Loyalty": "SOURCE_COMPLETE_NOT_DEPLOYED",
-    "Search Insights": "SOURCE_PARTIAL"
+    "Search Insights": "SOURCE_COMPLETE_NOT_DEPLOYED"
   },
-  "nextModule": "Search Insights",
+  "nextModule": "none (engineering-controlled source queue complete)",
   "productionDeployment": "APPROVAL_GATED (P7 exact release, images, restore rehearsal and rollback package complete; production unchanged)"
 }

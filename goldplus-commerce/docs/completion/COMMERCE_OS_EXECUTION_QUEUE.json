@@ -1,7 +1,7 @@
 {
   "generatedAt": "2026-07-20",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "42a3aa1",
+  "reconciledHead": "682384b",
   "sourceOfTruth": "actual repository source + local execution (not dashboard cards, route/schema/test names, or old labels)",
   "legend": {
     "SOURCE_COMPLETE_NOT_DEPLOYED": "all applicable layers present and locally accepted; only real-server deploy remains",
@@ -456,22 +456,27 @@
       "dependencies": [
         "search"
       ],
-      "status": "SOURCE_PARTIAL",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "Query/zero-result/CTR/conversion/demand/synonym/ranking insights.",
       "existingAssets": [
-        "search demand capture (Slice 4)",
-        "schema/search.ts",
-        "search use cases (59 files)"
+        "anonymous normalized query and zero-result aggregation",
+        "migration 0048 aggregate query/product counters with database integrity constraints",
+        "bounded impression, click, add-to-cart and observed-rank capture",
+        "privacy-thresholded demand/ranking and evidence-only synonym read model",
+        "protected reports.read API and persisted Astro administrator surface"
       ],
-      "missingLayers": [
-        "reconcile insight aggregation + admin surface + tests"
-      ],
-      "nextBoundedSlice": "reconcile search demand against insights contract",
+      "missingLayers": [],
+      "nextBoundedSlice": "none (engineering source queue complete); production release requires a separately frozen and approval-gated candidate",
       "acceptance": [
         "no raw personal search histories exposed"
       ],
-      "evidence": [],
-      "commit": null
+      "evidence": [
+        "search-insights-proof.ts PASS: concurrent aggregation, bounded interaction counters, privacy threshold, evidence-only synonyms, zero protected deltas/provider calls/residue",
+        "fresh 0000-0048 replay PASS: 49 migration rows, two Search tables, four constraints, zero business rows",
+        "focused Search/API/UI/architecture/admin-protection tests PASS: 60/60",
+        "clean full suite 216 files / 4129 tests"
+      ],
+      "commit": "682384b"
     }
   ]
 }

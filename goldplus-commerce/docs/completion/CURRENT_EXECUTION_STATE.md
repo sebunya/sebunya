@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Loyalty source complete)
+# CURRENT EXECUTION STATE (2026-07-20 · engineering source queue complete)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -111,5 +111,8 @@
 - Real PostgreSQL proves control suppression, one concurrent frequency winner, exactly one Experiment assignment/exposure and intervention exposure, current-consent recheck, idempotency, ownership, dismissal/pause suppression, truthful outcomes, zero protected deltas/provider calls/residue and five native-JSONB governance events. Fresh replay reaches 47 rows/five empty tables; focused tests pass 61/61 and clean suite passes 212 files / 4,102 tests. Behavioral Interventions is `SOURCE_COMPLETE_NOT_DEPLOYED`; Loyalty is selected next.
 - Loyalty is committed and pushed at `32e3ef0c24aa2bd06c85c73400b7dd2751507389`. Migration `0047` enforces immutable ledger type/sign/source shape plus one expiry/reversal per source. Account-serialized transactions make earn/redeem/expire/reverse idempotent; FIFO expiry offsets only an earn's unspent remainder, and no stored balance exists.
 - Verified paid-order completion supplies only persisted customer identity and authoritative order total to the existing dual-gated earn boundary; the programme remains dormant. The protected operations API/Astro page exposes PII-minimized liability and recent-event evidence. PostgreSQL proves one concurrent redemption winner, exact partial expiry, collision/sign denial, zero protected deltas/provider calls/residue; fresh replay reaches 48 rows. Focused tests pass 99/99 and the clean suite passes 214 files / 4,116 tests. Loyalty is `SOURCE_COMPLETE_NOT_DEPLOYED`; Search Insights is selected next.
+- Search Insights is committed and pushed at `682384b2a862e86ce3a14f4f5a875506f4a9d33f`. Migration `0048` adds aggregate-only query/product impressions, clicks, add-to-cart conversions and observed ranks with database-enforced count ordering. No visitor, session, contact, cart, order, payment or consent linkage is stored.
+- The read model suppresses low-volume terms and exposes only persisted, protected reports. Add-to-cart is labelled as the conversion boundary; synonyms and ranking remain evidence-only and cannot modify catalogue behavior. PostgreSQL proves concurrent atomic aggregation, bounded interactions, low-volume suppression, zero protected deltas/provider calls/residue; fresh replay reaches 49 rows. Focused tests pass 60/60 and the clean suite passes 216 files / 4,129 tests.
+- Every engineering-controlled module in `COMMERCE_OS_EXECUTION_QUEUE.json` is now `SOURCE_COMPLETE_NOT_DEPLOYED`. Production remains approval-gated; no new module is selected from the source queue and no local evidence is `LIVE_VERIFIED`.
 
 ---
