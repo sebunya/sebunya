@@ -1,34 +1,61 @@
-import { ProductFinderRepository } from '../../ports/product-finder/ProductFinderRepository';
-import { ProductFinderMeasurementPublisher } from '../../ports/product-finder/ProductFinderMeasurementPublisher';
+import {
+  ProductFinderPrincipal,
+  ProductFinderRepository,
+} from "../../ports/product-finder/ProductFinderRepository";
+import { ProductFinderMeasurementPublisher } from "../../ports/product-finder/ProductFinderMeasurementPublisher";
+import { canAccessProductFinderSession } from "../../services/product-finder/ProductFinderAccess";
 
 export interface RecordProductFinderActionInput {
   sessionId: string;
-  action: 'recommendation_clicked' | 'add_to_cart_intent' | 'whatsapp_intent';
+  action: "recommendation_clicked" | "add_to_cart_intent" | "whatsapp_intent";
   productId: string;
+  principal: ProductFinderPrincipal;
 }
 
 export class RecordProductFinderActionUseCase {
   constructor(
     private readonly repository: ProductFinderRepository,
-    private readonly measurement: ProductFinderMeasurementPublisher
+    private readonly measurement: ProductFinderMeasurementPublisher,
   ) {}
 
   public async execute(input: RecordProductFinderActionInput) {
     const session = await this.repository.getSession(input.sessionId);
-    if (!session) return { error: 'SESSION_NOT_FOUND' };
+    if (!session) return { error: "SESSION_NOT_FOUND" };
+    if (!canAccessProductFinderSession(session, input.principal))
+      return { error: "SESSION_NOT_FOUND" };
+    if (session.status !== "RECOMMENDATIONS_READY")
+      return { error: "RECOMMENDATIONS_NOT_READY" };
+    if (
+      !session.recommendations.some(
+        (item) =>
+          item &&
+          typeof item === "object" &&
+          item.productId === input.productId,
+      )
+    )
+      return { error: "PRODUCT_NOT_RECOMMENDED" };
 
     switch (input.action) {
-      case 'recommendation_clicked':
-        await this.measurement.publishRecommendationClicked(input.sessionId, input.productId);
+      case "recommendation_clicked":
+        await this.measurement.publishRecommendationClicked(
+          input.sessionId,
+          input.productId,
+        );
         break;
-      case 'add_to_cart_intent':
-        await this.measurement.publishFinderAddToCartIntent(input.sessionId, input.productId);
+      case "add_to_cart_intent":
+        await this.measurement.publishFinderAddToCartIntent(
+          input.sessionId,
+          input.productId,
+        );
         break;
-      case 'whatsapp_intent':
-        await this.measurement.publishFinderWhatsAppIntent(input.sessionId, input.productId);
+      case "whatsapp_intent":
+        await this.measurement.publishFinderWhatsAppIntent(
+          input.sessionId,
+          input.productId,
+        );
         break;
       default:
-        return { error: 'VALIDATION_FAILED' };
+        return { error: "VALIDATION_FAILED" };
     }
 
     return { success: true };

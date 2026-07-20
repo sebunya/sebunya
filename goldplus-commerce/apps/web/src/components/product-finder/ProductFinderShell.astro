@@ -1,240 +1,140 @@
 ---
-// Shell manages the client-side state of the finder questions
+interface Props { apiBase: string; compatibleWith?: string | null }
+const { apiBase, compatibleWith = null } = Astro.props;
 ---
 
-<div id="product-finder-shell" class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-  <!-- Progress -->
-  <div id="pf-progress" class="mb-6">
-    <div class="flex justify-between text-sm text-gray-500 mb-2">
-      <span id="pf-step-text">Step 1 of 4</span>
-    </div>
-    <div class="w-full bg-gray-200 rounded-full h-2">
-      <div id="pf-progress-bar" class="bg-[#96cc06] h-2 rounded-full transition-all" style="width: 25%"></div>
-    </div>
+<div id="product-finder-shell" data-api-base={apiBase} data-compatible-with={compatibleWith ?? ''} class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+  <div id="pf-status" class="mb-4 text-sm text-gray-600" aria-live="polite">Starting a private finder session…</div>
+  <div id="pf-progress" class="mb-6 hidden">
+    <div class="flex justify-between text-sm text-gray-500 mb-2"><span id="pf-step-text">Step 1 of 4</span></div>
+    <div class="w-full bg-gray-200 rounded-full h-2"><div id="pf-progress-bar" class="bg-[#96cc06] h-2 rounded-full transition-all" style="width:25%"></div></div>
   </div>
-
-  <!-- Questions Container -->
   <div id="pf-questions"></div>
-
-  <!-- Results Container -->
   <div id="pf-results" class="hidden"></div>
-
-  <!-- Actions -->
-  <div id="pf-actions" class="mt-8 flex justify-between">
-    <button id="pf-back" class="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50 hidden">Back</button>
+  <div id="pf-actions" class="mt-8 flex justify-between hidden">
+    <button id="pf-back" class="px-4 py-2 text-gray-600 border border-gray-300 rounded hidden">Back</button>
     <button id="pf-next" class="px-6 py-2 bg-[#96cc06] text-white rounded font-medium ml-auto">Next</button>
-    <button id="pf-submit" class="px-6 py-2 bg-[#96cc06] text-white rounded font-medium ml-auto hidden">See Recommendations</button>
+    <button id="pf-submit" class="px-6 py-2 bg-[#96cc06] text-white rounded font-medium ml-auto hidden">See recommendations</button>
   </div>
-
-  <!-- Trust Note -->
   <div class="mt-8 pt-4 border-t border-gray-100 text-xs text-gray-500 text-center">
-    <p>Your answers help us recommend better products. We will not use them for advertising unless you have allowed advertising consent.</p>
+    <p>Answers are limited to this finder. Advertising consent is never inferred. Interest buttons do not add to cart or send WhatsApp messages.</p>
   </div>
 </div>
 
 <script>
-  // Simple client-side orchestrator for the wizard
-  const questions = [
-    {
-      id: 'category',
-      title: 'What are you shopping for?',
-      options: ['Power', 'Storage', 'Phone battery', 'Personal audio', 'Accessories', 'Not sure yet']
-    },
-    {
-      id: 'problem',
-      title: 'What problem are you trying to solve?',
-      options: ['My phone dies quickly', 'I need fast charging', 'I need backup power for travel', 'I need a reliable charger', 'I need something for school or office', 'I need more phone storage', 'I need storage for photos and videos', 'My battery drains quickly', 'I need earphones', 'I need a speaker', 'I need everyday phone accessories']
-    },
-    {
-      id: 'priority',
-      title: 'What matters most?',
-      options: ['Best value', 'Long-lasting', 'Fast performance', 'Warranty confidence', 'Portability', 'Premium feel']
-    },
-    {
-      id: 'budget',
-      title: 'Budget range',
-      options: ['Budget-friendly', 'Mid-range', 'Premium', 'Not sure']
-    }
+  type Question = { id: string; title: string; options: string[] };
+  type Recommendation = { productId: string; name: string; category: string; price: number; productUrl: string; imageUrl: string; reasons: string[]; primaryCta: string; secondaryCta: string; availabilityEvidence: string; compatibilityEvidence: string; pricingEvidence: string };
+  const questions: Question[] = [
+    { id: 'category', title: 'What are you shopping for?', options: ['Power','Storage','Phone battery','Personal audio','Accessories','Not sure yet'] },
+    { id: 'problem', title: 'What problem are you trying to solve?', options: ['My phone dies quickly','I need fast charging','I need backup power for travel','I need a reliable charger','I need something for school or office','I need more phone storage','I need storage for photos and videos','My battery drains quickly','I need earphones','I need a speaker','I need everyday phone accessories'] },
+    { id: 'priority', title: 'What matters most?', options: ['Best value','Long-lasting','Fast performance','Warranty confidence','Portability','Premium feel'] },
+    { id: 'budget', title: 'Budget range', options: ['Budget-friendly','Mid-range','Premium','Not sure'] },
   ];
-
+  const shell = document.getElementById('product-finder-shell') as HTMLElement;
+  const status = document.getElementById('pf-status') as HTMLElement;
+  const qContainer = document.getElementById('pf-questions') as HTMLElement;
+  const rContainer = document.getElementById('pf-results') as HTMLElement;
+  const actions = document.getElementById('pf-actions') as HTMLElement;
+  const progress = document.getElementById('pf-progress') as HTMLElement;
+  const btnNext = document.getElementById('pf-next') as HTMLButtonElement;
+  const btnBack = document.getElementById('pf-back') as HTMLButtonElement;
+  const btnSubmit = document.getElementById('pf-submit') as HTMLButtonElement;
+  const stepText = document.getElementById('pf-step-text') as HTMLElement;
+  const progressBar = document.getElementById('pf-progress-bar') as HTMLElement;
+  const api = shell.dataset.apiBase ?? '';
   let currentStep = 0;
   let sessionId = '';
+  let accessToken = '';
   const answers: Record<string, string> = {};
 
-  const qContainer = document.getElementById('pf-questions');
-  const rContainer = document.getElementById('pf-results');
-  const btnNext = document.getElementById('pf-next');
-  const btnBack = document.getElementById('pf-back');
-  const btnSubmit = document.getElementById('pf-submit');
-  const stepText = document.getElementById('pf-step-text');
-  const progressBar = document.getElementById('pf-progress-bar');
-  const actionsContainer = document.getElementById('pf-actions');
+  const finderHeaders = () => ({ 'Content-Type': 'application/json', 'x-product-finder-access-token': accessToken });
+  const text = (tag: string, value: string, className = '') => { const node = document.createElement(tag); node.textContent = value; node.className = className; return node; };
+
+  async function request(path: string, init: RequestInit = {}) {
+    const response = await fetch(`${api}${path}`, init);
+    const body = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(body?.error ?? `HTTP_${response.status}`);
+    return body;
+  }
 
   async function startSession() {
     try {
-      const res = await fetch('http://localhost:3000/product-finder/sessions', { method: 'POST' });
-      const data = await res.json();
+      const data = await request('/product-finder/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       sessionId = data.sessionId;
-    } catch (err) {
-      console.error('Failed to start session');
+      accessToken = data.accessToken;
+      const reference = shell.dataset.compatibleWith;
+      if (reference) await saveAnswer('referenceProductId', reference);
+      status.textContent = reference ? 'Private session ready. Only declared compatible, available products can match.' : 'Private session ready.';
+      progress.classList.remove('hidden');
+      actions.classList.remove('hidden');
+      renderQuestion();
+    } catch {
+      status.textContent = 'Shopping Assistant unavailable. No sample recommendations are shown.';
     }
   }
 
   function renderQuestion() {
-    if (!qContainer) return;
     const q = questions[currentStep];
-    
-    let html = `<h2 class="text-xl font-medium text-gray-900 mb-4">${q.title}</h2><div class="space-y-3">`;
-    
-    q.options.forEach(opt => {
-      const isSelected = answers[q.id] === opt;
-      html += `
-        <label class="flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${isSelected ? 'border-[#96cc06] bg-green-50' : 'border-gray-200 hover:border-gray-300'}">
-          <input type="radio" name="${q.id}" value="${opt}" class="w-4 h-4 text-[#96cc06] border-gray-300 focus:ring-[#96cc06]" ${isSelected ? 'checked' : ''} onchange="window.pfSelect('${q.id}', '${opt}')">
-          <span class="ml-3 text-gray-700">${opt}</span>
-        </label>
-      `;
-    });
-    html += '</div>';
-    qContainer.innerHTML = html;
-
-    // Update progress
-    if (stepText) stepText.textContent = `Step ${currentStep + 1} of ${questions.length}`;
-    if (progressBar) progressBar.style.width = `${((currentStep + 1) / questions.length) * 100}%`;
-
-    // Update buttons
-    if (btnBack) btnBack.classList.toggle('hidden', currentStep === 0);
-    
-    if (currentStep === questions.length - 1) {
-      btnNext?.classList.add('hidden');
-      btnSubmit?.classList.remove('hidden');
-    } else {
-      btnNext?.classList.remove('hidden');
-      btnSubmit?.classList.add('hidden');
+    qContainer.replaceChildren(text('h2', q.title, 'text-xl font-medium text-gray-900 mb-4'));
+    const list = document.createElement('div'); list.className = 'space-y-3';
+    for (const option of q.options) {
+      const label = document.createElement('label'); label.className = 'flex items-center p-4 border rounded-lg cursor-pointer';
+      const input = document.createElement('input'); input.type = 'radio'; input.name = q.id; input.value = option; input.checked = answers[q.id] === option;
+      input.addEventListener('change', () => { answers[q.id] = option; renderQuestion(); });
+      label.append(input, text('span', option, 'ml-3 text-gray-700')); list.append(label);
     }
+    qContainer.append(list);
+    stepText.textContent = `Step ${currentStep + 1} of ${questions.length}`;
+    progressBar.style.width = `${((currentStep + 1) / questions.length) * 100}%`;
+    btnBack.classList.toggle('hidden', currentStep === 0);
+    btnNext.classList.toggle('hidden', currentStep === questions.length - 1);
+    btnSubmit.classList.toggle('hidden', currentStep !== questions.length - 1);
   }
 
-  // Expose to window for the inline onclick handlers
-  (window as any).pfSelect = (qId: string, val: string) => {
-    answers[qId] = val;
-    renderQuestion();
-  };
-
-  async function saveAnswer(qId: string, val: string) {
-    if (!sessionId) return;
-    await fetch(`http://localhost:3000/product-finder/sessions/${sessionId}/answers`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stepId: qId, answer: val })
-    });
+  async function saveAnswer(stepId: string, answer: string) {
+    await request(`/product-finder/sessions/${sessionId}/answers`, { method: 'PUT', headers: finderHeaders(), body: JSON.stringify({ stepId, answer }) });
   }
 
-  btnNext?.addEventListener('click', async () => {
+  btnNext.addEventListener('click', async () => {
     const q = questions[currentStep];
-    if (answers[q.id]) {
-      await saveAnswer(q.id, answers[q.id]);
-      currentStep++;
-      renderQuestion();
-    } else {
-      alert('Please select an option');
-    }
+    if (!answers[q.id]) return void (status.textContent = 'Select one option to continue.');
+    try { await saveAnswer(q.id, answers[q.id]); currentStep += 1; renderQuestion(); } catch { status.textContent = 'Answer was not saved. Please retry.'; }
   });
-
-  btnBack?.addEventListener('click', () => {
-    if (currentStep > 0) {
-      currentStep--;
-      renderQuestion();
-    }
-  });
-
-  btnSubmit?.addEventListener('click', async () => {
+  btnBack.addEventListener('click', () => { if (currentStep > 0) { currentStep -= 1; renderQuestion(); } });
+  btnSubmit.addEventListener('click', async () => {
     const q = questions[currentStep];
-    if (!answers[q.id]) {
-      alert('Please select an option');
-      return;
-    }
-    
-    // Save last answer
-    await saveAnswer(q.id, answers[q.id]);
-
-    // Complete session
-    if (btnSubmit) btnSubmit.textContent = 'Finding matches...';
+    if (!answers[q.id]) return void (status.textContent = 'Select one option to continue.');
+    btnSubmit.disabled = true; status.textContent = 'Checking live catalogue, availability, compatibility and pricing…';
     try {
-      const res = await fetch(`http://localhost:3000/product-finder/sessions/${sessionId}/complete`, {
-        method: 'POST'
-      });
-      const data = await res.json();
-      renderResults(data);
-    } catch (err) {
-      console.error(err);
-      if (btnSubmit) btnSubmit.textContent = 'See Recommendations';
-    }
+      await saveAnswer(q.id, answers[q.id]);
+      const data = await request(`/product-finder/sessions/${sessionId}/complete`, { method: 'POST', headers: finderHeaders() });
+      renderResults(data.status, data.recommendations ?? []);
+    } catch { status.textContent = 'Recommendations unavailable. No products were invented or substituted.'; btnSubmit.disabled = false; }
   });
 
-  function renderResults(data: any) {
-    if (qContainer) qContainer.classList.add('hidden');
-    if (actionsContainer) actionsContainer.classList.add('hidden');
-    if (document.getElementById('pf-progress')) document.getElementById('pf-progress')?.classList.add('hidden');
-    if (rContainer) {
-      rContainer.classList.remove('hidden');
-
-      if (data.status === 'NO_EXACT_MATCH') {
-        const fallbacks = data.recommendations.map((r: any) => r.category).join(', ');
-        rContainer.innerHTML = `
-          <h2 class="text-2xl font-bold text-gray-900 mb-4">No exact match found</h2>
-          <p class="text-gray-600 mb-6">We could not find an exact match, but these categories are the best place to start: <strong class="text-gray-900">${fallbacks}</strong></p>
-          <a href="/products" class="inline-block bg-[#96cc06] text-white px-6 py-3 rounded font-medium">Browse All Products</a>
-        `;
-        return;
-      }
-
-      let html = `<h2 class="text-2xl font-bold text-gray-900 mb-6">Your GoldPlus matches</h2><div class="space-y-6">`;
-      data.recommendations.forEach((rec: any) => {
-        html += `
-          <div class="border border-gray-200 rounded-lg p-6 flex flex-col md:flex-row gap-6">
-            <div class="w-full md:w-1/3 bg-gray-50 rounded p-4 flex items-center justify-center">
-               <img src="${rec.imageUrl}" alt="${rec.name}" class="max-h-48 object-contain" />
-            </div>
-            <div class="flex-1">
-               <div class="text-sm text-[#96cc06] font-medium mb-1">${rec.category}</div>
-               <h3 class="text-xl font-bold text-gray-900 mb-2">${rec.name}</h3>
-               <div class="text-lg font-medium text-gray-900 mb-4">UGX ${rec.price.toLocaleString()}</div>
-               
-               <div class="bg-blue-50 border border-blue-100 rounded p-3 mb-6">
-                 <p class="text-sm text-blue-800 font-medium mb-1">Why we recommend this:</p>
-                 <ul class="text-sm text-blue-700 list-disc list-inside">
-                   ${rec.reasons.map((r: string) => `<li>${r}</li>`).join('')}
-                 </ul>
-               </div>
-
-               <div class="flex flex-wrap gap-3">
-                 <a href="${rec.productUrl}" onclick="window.pfAction('recommendation_clicked', '${rec.productId}')" class="px-5 py-2 bg-gray-900 text-white rounded font-medium hover:bg-gray-800">${rec.primaryCta}</a>
-                 <button onclick="window.pfAction('add_to_cart_intent', '${rec.productId}')" class="px-5 py-2 border border-gray-300 text-gray-700 rounded font-medium hover:bg-gray-50">${rec.secondaryCta}</button>
-                 <button onclick="window.pfAction('whatsapp_intent', '${rec.productId}')" class="px-5 py-2 text-[#96cc06] font-medium hover:underline flex items-center">
-                    Ask GoldPlus on WhatsApp
-                 </button>
-               </div>
-            </div>
-          </div>
-        `;
-      });
-      html += '</div>';
-      rContainer.innerHTML = html;
+  function renderResults(resultStatus: string, recommendations: Recommendation[]) {
+    qContainer.classList.add('hidden'); actions.classList.add('hidden'); progress.classList.add('hidden'); rContainer.classList.remove('hidden'); rContainer.replaceChildren();
+    if (resultStatus === 'NO_MATCH' || resultStatus === 'NO_EXACT_MATCH') {
+      rContainer.append(text('h2', 'No exact match found', 'text-2xl font-bold mb-4'), text('p', 'No eligible product satisfied the answers and current safety gates. Browse the catalogue without an invented recommendation.', 'text-gray-600 mb-6'));
+      const link = text('a', 'Browse all products', 'inline-block bg-[#96cc06] text-white px-6 py-3 rounded font-medium') as HTMLAnchorElement; link.href = '/shop'; rContainer.append(link); status.textContent = 'NO_MATCH — no product recommendation was fabricated.'; return;
     }
+    rContainer.append(text('h2', 'Your GoldPlus matches', 'text-2xl font-bold mb-6'));
+    for (const rec of recommendations) {
+      const card = document.createElement('article'); card.className = 'border rounded-lg p-6 mb-5';
+      card.append(text('div', rec.category, 'text-sm text-[#659000] font-medium'), text('h3', rec.name, 'text-xl font-bold'), text('div', `UGX ${rec.price.toLocaleString()}`, 'text-lg my-2'));
+      const evidence = text('ul', '', 'text-sm text-gray-600 my-3 list-disc list-inside');
+      for (const item of [...rec.reasons, rec.availabilityEvidence, rec.compatibilityEvidence, rec.pricingEvidence]) evidence.append(text('li', item));
+      card.append(evidence);
+      const view = text('a', rec.primaryCta, 'inline-block px-5 py-2 bg-gray-900 text-white rounded mr-3') as HTMLAnchorElement; view.href = rec.productUrl; view.addEventListener('click', () => void recordIntent('recommendation_clicked', rec.productId));
+      const interest = text('button', rec.secondaryCta, 'px-5 py-2 border rounded') as HTMLButtonElement; interest.addEventListener('click', () => void recordIntent('add_to_cart_intent', rec.productId));
+      card.append(view, interest); rContainer.append(card);
+    }
+    status.textContent = 'Recommendations use current persisted catalogue evidence. Revalidate price and stock at checkout.';
   }
 
-  (window as any).pfAction = async (action: string, productId: string) => {
-    if (!sessionId) return;
-    await fetch(`http://localhost:3000/product-finder/sessions/${sessionId}/actions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, productId })
-    });
-    if (action === 'add_to_cart_intent') alert('Added to cart!');
-    if (action === 'whatsapp_intent') alert('Opening WhatsApp...');
-  };
+  async function recordIntent(action: string, productId: string) {
+    try { await request(`/product-finder/sessions/${sessionId}/actions`, { method: 'POST', headers: finderHeaders(), body: JSON.stringify({ action, productId }) }); status.textContent = action === 'add_to_cart_intent' ? 'Interest recorded. Your cart was not changed.' : 'Recommendation click recorded.'; } catch { status.textContent = 'Intent was not recorded; no cart or message action occurred.'; }
+  }
 
-  // Init
-  startSession();
-  renderQuestion();
+  void startSession();
 </script>

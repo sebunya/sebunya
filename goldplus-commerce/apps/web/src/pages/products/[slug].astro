@@ -360,6 +360,10 @@ const canonical = Astro.url.toString();
             </a>
           </form>
 
+          <a href={`/product-finder?compatibleWith=${encodeURIComponent(product.id)}`} class="block mb-8 rounded-xl border border-brand-primary/40 bg-brand-primary/5 px-5 py-4 text-sm font-semibold text-gray-900 hover:border-brand-primary">
+            Find declared-compatible available products with the Shopping Assistant
+          </a>
+
           <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-6 mb-8">
             <h3 class="font-bold text-gray-900 mb-2">Support & Trust</h3>
             <p class="text-sm text-slate-600 mb-6 leading-relaxed">Buy with confidence. Every GoldPlus product is supported with verification tools to help customers confirm authenticity, report product concerns and protect themselves from counterfeits.</p>

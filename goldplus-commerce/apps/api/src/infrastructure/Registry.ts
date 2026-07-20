@@ -211,6 +211,7 @@ import { DrizzleProductFinderCatalogRepository } from './product-finder/DrizzleP
 import { MeasurementProductFinderPublisher } from './product-finder/MeasurementProductFinderPublisher';
 import { PreferenceProductFinderUpdater } from './product-finder/PreferenceProductFinderUpdater';
 import { ProductFinderRedactor } from './product-finder/ProductFinderRedactor';
+import { PricingProductFinderReader } from './product-finder/PricingProductFinderReader';
 import { StartProductFinderUseCase } from '../application/use-cases/product-finder/StartProductFinderUseCase';
 import { AnswerProductFinderStepUseCase } from '../application/use-cases/product-finder/AnswerProductFinderStepUseCase';
 import { CompleteProductFinderUseCase } from '../application/use-cases/product-finder/CompleteProductFinderUseCase';
@@ -816,6 +817,9 @@ export class Registry {
   public readonly productFinderPreferenceUpdater = new PreferenceProductFinderUpdater(
     this.updateCustomerPreferenceCentreUseCase
   );
+  public readonly productFinderPricingReader = new PricingProductFinderReader(
+    this.evaluateCartPricingUseCase
+  );
 
   public readonly startProductFinderUseCase = new StartProductFinderUseCase(
     this.productFinderRepo,
@@ -829,7 +833,8 @@ export class Registry {
     this.productFinderRepo,
     this.productFinderCatalogRepo,
     this.productFinderPublisher,
-    this.productFinderPreferenceUpdater
+    this.productFinderPreferenceUpdater,
+    this.productFinderPricingReader
   );
   public readonly getProductFinderRecommendationsUseCase = new GetProductFinderRecommendationsUseCase(
     this.productFinderRepo

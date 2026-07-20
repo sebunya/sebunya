@@ -1,91 +1,117 @@
-import { Hono } from 'hono';
-import { Registry } from '../../../infrastructure/Registry';
-import { z } from 'zod';
+import { Hono } from "hono";
+import { z } from "zod";
+import { Registry } from "../../../infrastructure/Registry";
+import { ProductFinderPrincipal } from "../../../application/ports/product-finder/ProductFinderRepository";
 
 const productFinderRoutes = new Hono();
-const registry = Registry.getInstance();
+const sessionId = z.string().uuid();
+const startSchema = z.object({}).strict();
+const answerSchema = z
+  .object({
+    stepId: z.string().min(1).max(40),
+    answer: z.string().min(1).max(160),
+  })
+  .strict();
+const actionSchema = z
+  .object({
+    action: z.enum([
+      "recommendation_clicked",
+      "add_to_cart_intent",
+      "whatsapp_intent",
+    ]),
+    productId: z.string().uuid(),
+  })
+  .strict();
 
-const startSchema = z.object({
-  anonymousId: z.string().optional()
+async function principal(c: any): Promise<ProductFinderPrincipal | null> {
+  const header = c.req.header("Authorization");
+  if (header) {
+    if (!header.startsWith("Bearer ")) return null;
+    const verified = await Registry.getInstance().tokenSigner.verify(
+      header.slice(7).trim(),
+    );
+    if (!verified) return null;
+    return { userId: verified.subject };
+  }
+  const accessToken = c.req.header("x-product-finder-access-token");
+  return accessToken && /^[A-Za-z0-9_-]{43}$/.test(accessToken)
+    ? { accessToken }
+    : {};
+}
+
+const invalid = (c: any, code = "INVALID_PAYLOAD", status: 400 | 401 = 400) =>
+  c.json({ error: code }, status);
+
+productFinderRoutes.post("/sessions", async (c) => {
+  if (!startSchema.safeParse(await c.req.json().catch(() => ({}))).success)
+    return invalid(c);
+  const identity = await principal(c);
+  if (!identity) return invalid(c, "UNAUTHENTICATED", 401);
+  return c.json(
+    await Registry.getInstance().startProductFinderUseCase.execute({
+      userId: identity.userId,
+    }),
+    201,
+  );
 });
 
-const answerSchema = z.object({
-  stepId: z.string().min(1),
-  answer: z.union([z.string(), z.array(z.string())])
+productFinderRoutes.put("/sessions/:sessionId/answers", async (c) => {
+  const id = sessionId.safeParse(c.req.param("sessionId"));
+  const body = answerSchema.safeParse(await c.req.json().catch(() => null));
+  const identity = await principal(c);
+  if (!identity) return invalid(c, "UNAUTHENTICATED", 401);
+  if (!id.success || !body.success) return invalid(c);
+  const result =
+    await Registry.getInstance().answerProductFinderStepUseCase.execute({
+      sessionId: id.data,
+      principal: identity,
+      ...body.data,
+    });
+  return result.success ? c.json({ success: true }) : invalid(c, result.error);
 });
 
-const actionSchema = z.object({
-  action: z.enum(['recommendation_clicked', 'add_to_cart_intent', 'whatsapp_intent']),
-  productId: z.string().uuid()
+productFinderRoutes.post("/sessions/:sessionId/complete", async (c) => {
+  const id = sessionId.safeParse(c.req.param("sessionId"));
+  const identity = await principal(c);
+  if (!identity) return invalid(c, "UNAUTHENTICATED", 401);
+  if (!id.success) return invalid(c);
+  const result =
+    await Registry.getInstance().completeProductFinderUseCase.execute({
+      sessionId: id.data,
+      principal: identity,
+    });
+  if ("error" in result) return invalid(c, result.error);
+  return c.json(Registry.getInstance().productFinderRedactor.redact(result));
 });
 
-productFinderRoutes.post('/sessions', async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const parsed = startSchema.safeParse(body);
-  if (!parsed.success) return c.json({ error: 'INVALID_PAYLOAD' }, 400);
-
-  const userStr = c.req.header('x-user-id');
-  const user = userStr ? { id: userStr } : undefined;
-
-  const result = await registry.startProductFinderUseCase.execute({
-    userId: user?.id,
-    anonymousId: parsed.data.anonymousId
-  });
-
-  return c.json(result, 201);
+productFinderRoutes.get("/sessions/:sessionId/recommendations", async (c) => {
+  const id = sessionId.safeParse(c.req.param("sessionId"));
+  const identity = await principal(c);
+  if (!identity) return invalid(c, "UNAUTHENTICATED", 401);
+  if (!id.success) return invalid(c);
+  const result =
+    await Registry.getInstance().getProductFinderRecommendationsUseCase.execute(
+      { sessionId: id.data, principal: identity },
+    );
+  if ("error" in result) return invalid(c, result.error);
+  return c.json(Registry.getInstance().productFinderRedactor.redact(result));
 });
 
-productFinderRoutes.put('/sessions/:sessionId/answers', async (c) => {
-  const sessionId = c.req.param('sessionId');
-  const body = await c.req.json().catch(() => ({}));
-  const parsed = answerSchema.safeParse(body);
-  if (!parsed.success) return c.json({ error: 'INVALID_PAYLOAD' }, 400);
-
-  const result = await registry.answerProductFinderStepUseCase.execute({
-    sessionId,
-    stepId: parsed.data.stepId,
-    answer: parsed.data.answer
-  });
-
-  if (!result.success) return c.json({ error: result.error }, 400);
-  return c.json({ success: true });
-});
-
-productFinderRoutes.post('/sessions/:sessionId/complete', async (c) => {
-  const sessionId = c.req.param('sessionId');
-  const result = await registry.completeProductFinderUseCase.execute({ sessionId });
-  
-  if (result.error) return c.json({ error: result.error }, 400);
-  
-  // Strip PII from output just in case
-  const safeOutput = registry.productFinderRedactor.redact(result);
-  return c.json(safeOutput);
-});
-
-productFinderRoutes.get('/sessions/:sessionId/recommendations', async (c) => {
-  const sessionId = c.req.param('sessionId');
-  const result = await registry.getProductFinderRecommendationsUseCase.execute({ sessionId });
-  
-  if (result.error) return c.json({ error: result.error }, 400);
-  
-  const safeOutput = registry.productFinderRedactor.redact(result);
-  return c.json(safeOutput);
-});
-
-productFinderRoutes.post('/sessions/:sessionId/actions', async (c) => {
-  const sessionId = c.req.param('sessionId');
-  const body = await c.req.json().catch(() => ({}));
-  const parsed = actionSchema.safeParse(body);
-  if (!parsed.success) return c.json({ error: 'INVALID_PAYLOAD' }, 400);
-
-  const result = await registry.recordProductFinderActionUseCase.execute({
-    sessionId,
-    action: parsed.data.action,
-    productId: parsed.data.productId
-  });
-
-  if (result.error) return c.json({ error: result.error }, 400);
-  return c.json({ success: true });
+productFinderRoutes.post("/sessions/:sessionId/actions", async (c) => {
+  const id = sessionId.safeParse(c.req.param("sessionId"));
+  const body = actionSchema.safeParse(await c.req.json().catch(() => null));
+  const identity = await principal(c);
+  if (!identity) return invalid(c, "UNAUTHENTICATED", 401);
+  if (!id.success || !body.success) return invalid(c);
+  const result =
+    await Registry.getInstance().recordProductFinderActionUseCase.execute({
+      sessionId: id.data,
+      principal: identity,
+      ...body.data,
+    });
+  return "error" in result
+    ? invalid(c, result.error)
+    : c.json({ success: true, effect: "MEASUREMENT_INTENT_ONLY" });
 });
 
 export { productFinderRoutes };
