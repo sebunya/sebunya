@@ -1,0 +1,12 @@
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { Registry } from '../../../infrastructure/Registry';
+import { BehaviouralInterventionError } from '../../../application/use-cases/behavioural-interventions/BehaviouralInterventionOperationsUseCase';
+import { customerSessionMiddleware } from '../middleware/customerSession';
+
+const routes = new Hono<{ Variables: { userId: string; userEmail: string } }>(); routes.use('*', customerSessionMiddleware);
+const fail = (c: any, error: unknown) => { const code = error instanceof BehaviouralInterventionError ? error.code : 'INTERVENTION_OPERATION_FAILED'; const status = code === 'EXPOSURE_NOT_FOUND' ? 404 : code === 'SUPPRESSED' ? 409 : 400; return c.json({ success: false, error: { code, message: error instanceof Error ? error.message : 'Intervention operation failed.' } }, status); };
+routes.get('/', async (c) => { const rows = await Registry.getInstance().behaviouralInterventionOperationsUseCase.eligible(c.get('userId')); return c.json({ success: true, data: rows.map(({ definition, version }) => ({ definition: { id: definition.id }, version: { id: version.id, name: version.name, targetBehaviour: version.targetBehaviour, placement: version.placement, content: version.content } })) }); });
+routes.post('/:id/exposures', async (c) => { const body = z.object({ deliveryKey: z.string() }).safeParse(await c.req.json().catch(() => null)); if (!body.success) return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'Invalid delivery key.' } }, 400); try { const result = await Registry.getInstance().behaviouralInterventionOperationsUseCase.expose({ definitionId: c.req.param('id'), userId: c.get('userId'), ...body.data }); const { id, definitionId, versionId, occurredAt } = result.exposure; return c.json({ success: true, data: { exposure: { id, definitionId, versionId, occurredAt }, duplicate: result.duplicate } }, 201); } catch (error) { return fail(c, error); } });
+routes.post('/exposures/:id/outcomes', async (c) => { const body = z.object({ outcomeKey: z.string(), outcome: z.enum(['ENGAGED','DISMISSED']) }).safeParse(await c.req.json().catch(() => null)); if (!body.success) return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'Invalid customer outcome.' } }, 400); try { return c.json({ success: true, data: await Registry.getInstance().behaviouralInterventionOperationsUseCase.recordCustomerOutcome({ exposureId: c.req.param('id'), userId: c.get('userId'), ...body.data }) }); } catch (error) { return fail(c, error); } });
+export default routes;

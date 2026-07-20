@@ -33,3 +33,4 @@ export * from './pricing';
 export * from './fraud';
 export * from './pim';
 export * from './surveys';
+export * from './behavioural_interventions';

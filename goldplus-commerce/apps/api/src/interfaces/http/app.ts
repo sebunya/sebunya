@@ -56,6 +56,8 @@ import adminPimImportRoutes from './routes/admin/pim-imports';
 import adminSurveyRoutes from './routes/admin/surveys';
 import surveyRoutes from './routes/surveys';
 import adminCopyQualityRoutes from './routes/admin/copy-quality';
+import adminBehaviouralInterventionRoutes from './routes/admin/behavioural-interventions';
+import behaviouralInterventionRoutes from './routes/behavioural-interventions';
 
 
 
@@ -191,6 +193,8 @@ app.route('/admin/pim-imports', adminPimImportRoutes);
 app.route('/admin/surveys', adminSurveyRoutes);
 app.route('/account/surveys', surveyRoutes);
 app.route('/admin/copy-quality', adminCopyQualityRoutes);
+app.route('/admin/behavioural-interventions', adminBehaviouralInterventionRoutes);
+app.route('/account/behavioural-interventions', behaviouralInterventionRoutes);
 
 
 // Health check route mounted via route registration

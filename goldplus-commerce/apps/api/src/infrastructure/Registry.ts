@@ -209,6 +209,8 @@ import { DrizzleSurveyRepository } from './db/repositories/DrizzleSurveyReposito
 import { SurveyOperationsUseCase } from '../application/use-cases/surveys/SurveyOperationsUseCase';
 import { DrizzleCopyQualityCatalogReader } from './db/repositories/DrizzleCopyQualityCatalogReader';
 import { GetCopyQualityReportUseCase } from '../application/use-cases/copy-quality/GetCopyQualityReportUseCase';
+import { DrizzleBehaviouralInterventionRepository } from './db/repositories/DrizzleBehaviouralInterventionRepository';
+import { BehaviouralInterventionOperationsUseCase } from '../application/use-cases/behavioural-interventions/BehaviouralInterventionOperationsUseCase';
 
 import { DrizzleProductFinderRepository } from './product-finder/DrizzleProductFinderRepository';
 import { DrizzleProductFinderCatalogRepository } from './product-finder/DrizzleProductFinderCatalogRepository';
@@ -443,6 +445,7 @@ export class Registry {
   public readonly pimImportRepo = new DrizzlePimImportRepository();
   public readonly surveyRepo = new DrizzleSurveyRepository();
   public readonly copyQualityCatalog = new DrizzleCopyQualityCatalogReader();
+  public readonly behaviouralInterventionRepo = new DrizzleBehaviouralInterventionRepository();
 
   public readonly measurementAdminRepo = new DrizzleMeasurementAdminRepository();
   public readonly dlqRepo = new DrizzleDlqRepository();
@@ -653,6 +656,7 @@ export class Registry {
   public readonly pimImportOperationsUseCase = new PimImportOperationsUseCase(this.pimImportRepo);
   public readonly surveyOperationsUseCase = new SurveyOperationsUseCase(this.surveyRepo);
   public readonly getCopyQualityReportUseCase = new GetCopyQualityReportUseCase(this.copyQualityCatalog);
+  public readonly behaviouralInterventionOperationsUseCase = new BehaviouralInterventionOperationsUseCase(this.behaviouralInterventionRepo);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);

@@ -71,6 +71,11 @@ export const PERMISSIONS = {
   SURVEYS_EXPORT: 'surveys.export',
   COPY_QUALITY_READ: 'copy_quality.read',
   COPY_QUALITY_EXPORT: 'copy_quality.export',
+  INTERVENTIONS_READ: 'interventions.read',
+  INTERVENTIONS_CREATE: 'interventions.create',
+  INTERVENTIONS_MANAGE: 'interventions.manage',
+  INTERVENTIONS_APPROVE: 'interventions.approve',
+  INTERVENTIONS_ACTIVATE: 'interventions.activate',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
