@@ -1,7 +1,7 @@
 {
   "generatedAt": "2026-07-20",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "d5cdec7",
+  "reconciledHead": "de05a19",
   "sourceOfTruth": "actual repository source + local execution (not dashboard cards, route/schema/test names, or old labels)",
   "legend": {
     "SOURCE_COMPLETE_NOT_DEPLOYED": "all applicable layers present and locally accepted; only real-server deploy remains",
@@ -368,21 +368,26 @@
         "products",
         "cms"
       ],
-      "status": "MISSING",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "Deterministic copy checks with explainable issues; provider-gated model checks where present.",
       "existingAssets": [
-        "cms module"
+        "read-only canonical catalogue adapter",
+        "deterministic copy-quality policy with explainable findings",
+        "protected report/export API and administrator control room",
+        "explicit NOT_CONFIGURED model boundary with zero provider transport"
       ],
-      "missingLayers": [
-        "all layers"
-      ],
-      "nextBoundedSlice": "reconcile; deterministic checks",
+      "missingLayers": [],
+      "nextBoundedSlice": "none (source complete); production release requires a separately frozen and approval-gated candidate",
       "acceptance": [
         "explainable issues",
         "no subjective unsupported grades"
       ],
-      "evidence": [],
-      "commit": null
+      "evidence": [
+        "copy-quality-proof.ts PASS: three canonical fixtures, deterministic rule/filter truth, NOT_CONFIGURED model status, zero protected deltas/provider calls/residue",
+        "focused Copy Quality/API/admin-route/architecture tests PASS: 52/52",
+        "clean full suite 209 files / 4084 tests"
+      ],
+      "commit": "de05a19"
     },
     {
       "module": "Behavioural Interventions",

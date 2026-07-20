@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Surveys source complete)
+# CURRENT EXECUTION STATE (2026-07-20 · Copy Quality source complete)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -105,5 +105,7 @@
 - Surveys is committed and pushed at `d5cdec7c58e2c470beeb7fee37545d2a2ddf58b6`: immutable questionnaire versions, four-eyes approval, separately privileged activation/export, current-consent and Customer DNA audience reads, hashed participant ownership, bounded non-free-text answers, idempotent start, single-winner completion, aggregate analysis and participant-free export.
 - Real PostgreSQL proves `DRAFT→PENDING_APPROVAL→APPROVED→ACTIVE→PAUSED`, self-approval denial, no-consent exclusion, response isolation, invalid-answer denial, one concurrent completion winner, native JSONB, five immutable governance events, zero consent/preference/outbox/notification/order/payment deltas, zero provider calls and zero residue. Fresh `0000`–`0045` replay has 46 migration rows and four empty Survey tables.
 - Focused Survey/API/admin-route/architecture tests pass 54/54; workspace typecheck/build, secret scan, changed-path lint with zero errors and diff check pass. Repository lint retains the unrelated baseline. Clean suite passes 206 files / 4,075 tests. Surveys is `SOURCE_COMPLETE_NOT_DEPLOYED`; Copy Quality is selected next.
+- Copy Quality is committed and pushed at `de05a194a84936aed4028ca86a6dbcfc1ad2480f`: a read-only canonical catalogue adapter, deterministic `copy-quality-v1` rules, explainable `PASS`/`REVIEW`/`BLOCKED` results, explicit `NOT_CONFIGURED` model status, distinct read/export RBAC, protected API and Astro administrator UI. No migration, rewrite, publish or provider path was added.
+- Real PostgreSQL proves three canonical fixtures, one blocked row, two duplicate rows, truthful placeholder/claim/filter evidence, zero provider calls, zero audit/outbox/notification/consent/order/payment deltas and zero residue. Focused Copy Quality/API/admin-route/architecture tests pass 52/52; clean suite passes 209 files / 4,084 tests. Copy Quality is `SOURCE_COMPLETE_NOT_DEPLOYED`; Behavioural Interventions is selected next.
 
 ---
