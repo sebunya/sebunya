@@ -1,4 +1,5 @@
-import { pgTable, uuid, varchar, integer, boolean, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, integer, boolean, timestamp, uniqueIndex, index, check } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { users } from './identity';
 import { orders } from './commerce';
 
@@ -29,6 +30,21 @@ export const loyaltyLedgerEntries = pgTable('loyalty_ledger_entries', {
 }, (table) => ({
   idemIdx: uniqueIndex('loyalty_ledger_idem_idx').on(table.idempotencyKey),
   accountIdx: index('loyalty_ledger_account_idx').on(table.accountId),
+  orderIdx: index('loyalty_ledger_order_idx').on(table.orderId),
+  reversalSourceIdx: uniqueIndex('loyalty_ledger_reversal_source_idx').on(table.reversedEntryId)
+    .where(sql`${table.type} = 'reversal'`),
+  expirySourceIdx: uniqueIndex('loyalty_ledger_expiry_source_idx').on(table.reversedEntryId)
+    .where(sql`${table.type} = 'expiry'`),
+  typeCheck: check('loyalty_ledger_type_check', sql`${table.type} in ('earn', 'redeem', 'reversal', 'expiry', 'adjustment')`),
+  shapeCheck: check('loyalty_ledger_shape_check', sql`
+    ${table.points} <> 0 and (
+      (${table.type} = 'earn' and ${table.points} > 0 and ${table.orderId} is not null and ${table.reversedEntryId} is null)
+      or (${table.type} = 'redeem' and ${table.points} < 0 and ${table.reversedEntryId} is null)
+      or (${table.type} = 'expiry' and ${table.points} < 0 and ${table.reversedEntryId} is not null)
+      or (${table.type} = 'reversal' and ${table.reversedEntryId} is not null)
+      or (${table.type} = 'adjustment' and ${table.reversedEntryId} is null)
+    )
+  `),
 }));
 
 export const loyaltyConfig = pgTable('loyalty_config', {

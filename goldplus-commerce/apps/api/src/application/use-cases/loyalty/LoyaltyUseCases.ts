@@ -50,18 +50,35 @@ export class EarnLoyaltyPointsUseCase {
     const valid = validateEarn(points, input.orderId);
     if (!valid.ok) return valid;
     const account = await this.repo.getOrCreateAccount(input.userId);
-    const expiresAt = config.expiryDays > 0 ? new Date(Date.now() + config.expiryDays * 24 * 60 * 60 * 1000) : null;
-    const { entry } = await this.repo.append({
-      accountId: account.id,
-      type: 'earn',
-      points,
-      orderId: input.orderId,
-      reason: `Earned on order (rate ${config.earnRatePer1000Ugx}/1000 UGX)`,
-      idempotencyKey: `earn:${input.orderId}`,
-      expiresAt,
-      reversedEntryId: null,
-    });
-    return { ok: true, value: entry };
+    const idempotencyKey = `earn:${input.orderId}`;
+    const existing = await this.repo.findEntryByIdempotencyKey(idempotencyKey);
+    if (existing) {
+      return existing.accountId === account.id && existing.type === 'earn' && existing.points === points && existing.orderId === input.orderId
+        ? { ok: true, value: existing }
+        : { ok: false, code: 'IDEMPOTENCY_CONFLICT', message: 'The order earn key was already used for different ledger facts.' };
+    }
+    const earnedOn = new Date();
+    const expiresAt = config.expiryDays > 0
+      ? new Date(Date.UTC(earnedOn.getUTCFullYear(), earnedOn.getUTCMonth(), earnedOn.getUTCDate() + config.expiryDays))
+      : null;
+    try {
+      const { entry } = await this.repo.append({
+        accountId: account.id,
+        type: 'earn',
+        points,
+        orderId: input.orderId,
+        reason: `Earned on order (rate ${config.earnRatePer1000Ugx}/1000 UGX)`,
+        idempotencyKey,
+        expiresAt,
+        reversedEntryId: null,
+      });
+      return { ok: true, value: entry };
+    } catch (error) {
+      if ((error as Error).message === 'LOYALTY_IDEMPOTENCY_CONFLICT') {
+        return { ok: false, code: 'IDEMPOTENCY_CONFLICT', message: 'The order earn key was already used for different ledger facts.' };
+      }
+      throw error;
+    }
   }
 }
 
@@ -77,11 +94,12 @@ export class RedeemLoyaltyPointsUseCase {
       return { ok: false, code: 'IDEMPOTENCY_REQUIRED', message: 'An idempotency key of at least 8 characters is required.' };
     }
     const account = await this.repo.getOrCreateAccount(input.userId);
+    const now = new Date();
     const entries = await this.repo.listEntries(account.id);
-    const balance = computeBalance(entries, new Date());
+    const balance = computeBalance(entries, now);
     const valid = validateRedeem(input.points, balance);
     if (!valid.ok) return valid;
-    const { entry } = await this.repo.append({
+    const result = await this.repo.appendDebitIfAvailable({
       accountId: account.id,
       type: 'redeem',
       points: -input.points,
@@ -90,8 +108,21 @@ export class RedeemLoyaltyPointsUseCase {
       idempotencyKey: `redeem:${input.idempotencyKey}`,
       expiresAt: null,
       reversedEntryId: null,
-    });
-    return { ok: true, value: entry };
+    }, now);
+    if (!result.ok) {
+      return result.code === 'INSUFFICIENT_BALANCE'
+        ? { ok: false, code: result.code, message: 'Redemption exceeds the transactionally verified available balance.' }
+        : { ok: false, code: result.code, message: 'The redemption key was already used for different ledger facts.' };
+    }
+    return { ok: true, value: result.entry };
+  }
+}
+
+export class ExpireLoyaltyPointsUseCase {
+  constructor(private readonly repo: ILoyaltyRepository) {}
+
+  async execute(input: { accountId: string; now?: Date }): Promise<LoyaltyLedgerEntry[]> {
+    return this.repo.expireDue(input.accountId, input.now ?? new Date());
   }
 }
 
@@ -100,20 +131,15 @@ export class ReverseLoyaltyEntryUseCase {
 
   /** Admin repair path (refunds, fraud). Idempotent per reversed entry. */
   async execute(input: { entryId: string; reason: string }): Promise<LoyaltyResult<LoyaltyLedgerEntry>> {
-    const target = await this.repo.findEntryById(input.entryId);
-    if (!target) return { ok: false, code: 'NOT_FOUND', message: 'Ledger entry not found.' };
-    if (target.type === 'reversal') return { ok: false, code: 'ALREADY_REVERSAL', message: 'A reversal cannot be reversed.' };
-    const { entry } = await this.repo.append({
-      accountId: target.accountId,
-      type: 'reversal',
-      points: -target.points,
-      orderId: target.orderId,
-      reason: input.reason?.slice(0, 300) || `Reversal of ${target.type}`,
-      idempotencyKey: `reversal:${target.id}`,
-      expiresAt: null,
-      reversedEntryId: target.id,
-    });
-    return { ok: true, value: entry };
+    const result = await this.repo.reverseEntry(input.entryId, input.reason);
+    if (result.ok) return { ok: true, value: result.entry };
+    const messages: Record<typeof result.code, string> = {
+      NOT_FOUND: 'Ledger entry not found.',
+      NON_REVERSIBLE: 'Expiry and reversal entries cannot be reversed.',
+      ALREADY_REVERSED: 'The ledger entry is already expired or reversed.',
+      IDEMPOTENCY_CONFLICT: 'The reversal key was already used for different ledger facts.',
+    };
+    return { ok: false, code: result.code, message: messages[result.code] };
   }
 }
 
@@ -130,13 +156,21 @@ export class GetLoyaltyHistoryUseCase {
   ) {}
 
   async execute(input: { userId: string }): Promise<LoyaltyHistory> {
-    const account = await this.repo.getOrCreateAccount(input.userId);
-    const entries = await this.repo.listEntries(account.id);
+    const account = await this.repo.findAccountByUserId(input.userId);
+    const entries = account ? await this.repo.listEntries(account.id) : [];
     return {
       programmeActive: await this.gate.isActive(),
       balance: computeBalance(entries, new Date()),
       entries,
     };
+  }
+}
+
+export class GetLoyaltyOperationsUseCase {
+  constructor(private readonly repo: ILoyaltyRepository) {}
+
+  async execute(input: { limit?: number } = {}) {
+    return this.repo.getOperationsSnapshot({ now: new Date(), limit: input.limit ?? 50 });
   }
 }
 

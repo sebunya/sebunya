@@ -62,35 +62,88 @@ export function computeEarnPoints(orderTotalUgx: number, config: LoyaltyConfig):
 export interface LoyaltyBalance {
   /** Points currently spendable (earned, unexpired, minus redemptions/reversals). */
   available: number;
-  /** Earned points past their expiry that have not been formally expired yet. */
+  /** Earned points past their expiry that have not been formally expired or reversed yet. */
   pendingExpiry: number;
   lifetimeEarned: number;
   lifetimeRedeemed: number;
 }
 
+export interface ExpirableEarn {
+  entry: LoyaltyLedgerEntry;
+  points: number;
+}
+
+/** FIFO liability allocation used to expire only the unspent remainder of an earn. */
+export function computeExpirableEarns(entries: LoyaltyLedgerEntry[], now: Date): ExpirableEarn[] {
+  const reversedSources = new Set(
+    entries.filter((entry) => entry.type === 'reversal' && entry.reversedEntryId).map((entry) => entry.reversedEntryId as string),
+  );
+  const expiryByEarn = new Map(
+    entries
+      .filter((entry) => entry.type === 'expiry' && entry.reversedEntryId)
+      .map((entry) => [entry.reversedEntryId as string, entry] as const),
+  );
+  let unallocatedRedemptions = entries
+    .filter((entry) => entry.type === 'redeem' && !reversedSources.has(entry.id))
+    .reduce((sum, entry) => sum + -entry.points, 0);
+  const earns = entries
+    .filter((entry) => entry.type === 'earn')
+    .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id));
+  const due: ExpirableEarn[] = [];
+  for (const earn of earns) {
+    if (reversedSources.has(earn.id)) continue;
+    const expiry = expiryByEarn.get(earn.id);
+    if (expiry) {
+      const consumedBeforeExpiry = Math.max(0, earn.points + expiry.points);
+      unallocatedRedemptions -= Math.min(consumedBeforeExpiry, unallocatedRedemptions);
+      continue;
+    }
+    const consumed = Math.min(earn.points, unallocatedRedemptions);
+    unallocatedRedemptions -= consumed;
+    const remaining = earn.points - consumed;
+    if (remaining > 0 && earn.expiresAt && earn.expiresAt.getTime() <= now.getTime()) {
+      due.push({ entry: earn, points: remaining });
+    }
+  }
+  return due;
+}
+
 /**
- * Balance is derived, never stored: earns count only while unexpired;
- * every other entry applies its signed points directly.
+ * Balance is derived, never stored. Time alone never changes a balance: an
+ * expired earn remains in the signed total until an explicit `expiry` entry
+ * references it. This keeps every liability change attributable to one
+ * immutable ledger event.
  */
 export function computeBalance(entries: LoyaltyLedgerEntry[], now: Date): LoyaltyBalance {
-  let available = 0;
+  let signedTotal = 0;
   let pendingExpiry = 0;
   let lifetimeEarned = 0;
   let lifetimeRedeemed = 0;
   for (const e of entries) {
+    signedTotal += e.points;
     if (e.type === 'earn') {
       lifetimeEarned += e.points;
-      if (e.expiresAt && e.expiresAt.getTime() <= now.getTime()) {
-        pendingExpiry += e.points;
-      } else {
-        available += e.points;
-      }
-    } else {
-      if (e.type === 'redeem') lifetimeRedeemed += -e.points;
-      available += e.points;
     }
+    if (e.type === 'redeem') lifetimeRedeemed += -e.points;
   }
-  return { available: Math.max(0, available), pendingExpiry, lifetimeEarned, lifetimeRedeemed };
+  pendingExpiry = computeExpirableEarns(entries, now).reduce((sum, earn) => sum + earn.points, 0);
+  return { available: signedTotal, pendingExpiry, lifetimeEarned, lifetimeRedeemed };
+}
+
+export function sameLedgerCommand(entry: LoyaltyLedgerEntry, input: {
+  accountId: string;
+  type: LoyaltyEntryType;
+  points: number;
+  orderId: string | null;
+  expiresAt: Date | null;
+  reversedEntryId: string | null;
+}): boolean {
+  return entry.accountId === input.accountId
+    && entry.type === input.type
+    && entry.points === input.points
+    && entry.orderId === input.orderId
+    && entry.expiresAt?.getTime() === input.expiresAt?.getTime()
+    && entry.reversedEntryId === input.reversedEntryId;
 }
 
 export type EntryValidation = { ok: true } | { ok: false; code: string; message: string };

@@ -24,6 +24,30 @@ routes.get('/config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (
   return c.json({ success: true, data: { ...config, envFlag, active: envFlag && config.enabled } });
 });
 
+routes.get('/operations', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const limit = Number(c.req.query('limit') ?? 50);
+  const data = await Registry.getInstance().getLoyaltyOperationsUseCase.execute({
+    limit: Number.isInteger(limit) ? limit : 50,
+  });
+  return c.json({ success: true, data });
+});
+
+routes.post('/accounts/:id/expire', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const accountId = String(c.req.param('id') ?? '');
+  const entries = await registry.expireLoyaltyPointsUseCase.execute({ accountId });
+  for (const entry of entries) {
+    await new CreateAuditLogUseCase(registry.auditRepo).execute({
+      actorId: (c.get('user') as any).id,
+      action: 'LOYALTY_POINTS_EXPIRED',
+      entity: 'loyalty_ledger_entry',
+      entityId: entry.id,
+      newState: { accountId: entry.accountId, points: entry.points, sourceEntryId: entry.reversedEntryId },
+    });
+  }
+  return c.json({ success: true, data: { expiredCount: entries.length, entries } });
+});
+
 routes.put('/config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) {

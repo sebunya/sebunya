@@ -46,6 +46,19 @@ const checkoutBodySchema = z.object({
 const routes = new Hono();
 const registry = Registry.getInstance();
 
+async function earnDormantLoyaltyForVerifiedOrder(orderId: string): Promise<void> {
+  const source = await registry.orderRepo.findLoyaltyEarnSource(orderId);
+  if (!source) return;
+  const result = await registry.earnLoyaltyPointsUseCase.execute({
+    userId: source.userId,
+    orderId,
+    orderTotalUgx: source.totalUgx,
+  });
+  if (!result.ok && result.code !== 'PROGRAMME_DISABLED') {
+    throw new Error(`${result.code}: ${result.message}`);
+  }
+}
+
 routes.post('/cart/add', async (c) => {
   const body = await c.req.json();
   await registry.addToCartUseCase.execute(body.cartId, body.item);
@@ -442,6 +455,11 @@ routes.get('/payments/pesapal/callback', async (c) => {
       } catch (fulfilErr: any) {
         console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
       }
+      try {
+        await earnDormantLoyaltyForVerifiedOrder(result.orderId);
+      } catch (loyaltyErr: any) {
+        console.error('[API_ERROR] Loyalty paid-order earn failed:', loyaltyErr?.message);
+      }
       // Transactional admin email (PaymentConfirmed). Idempotent per order.
       // Payment confirmation never clears an inventory hold: stockConfirmed is
       // derived from the fulfilment task's ON_HOLD state, not from payment.
@@ -541,6 +559,11 @@ const handleIpn = async (c: any) => {
         await registry.markFulfilmentPaymentConfirmedUseCase.execute(result.orderId, 'paid');
       } catch (fulfilErr: any) {
         console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
+      }
+      try {
+        await earnDormantLoyaltyForVerifiedOrder(result.orderId);
+      } catch (loyaltyErr: any) {
+        console.error('[API_ERROR] Loyalty paid-order earn failed:', loyaltyErr?.message);
       }
       // Transactional admin email (PaymentConfirmed). Idempotent per order.
       // Payment confirmation never clears an inventory hold: stockConfirmed is

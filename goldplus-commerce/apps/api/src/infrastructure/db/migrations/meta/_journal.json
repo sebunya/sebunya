@@ -330,6 +330,13 @@
       "when": 1784865600000,
       "tag": "0046_behavioural_interventions",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1784952000000,
+      "tag": "0047_loyalty_ledger_integrity",
+      "breakpoints": true
     }
   ]
 }

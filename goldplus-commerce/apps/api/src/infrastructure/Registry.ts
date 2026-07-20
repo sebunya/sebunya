@@ -53,8 +53,10 @@ import {
   LoyaltyProgrammeGate,
   EarnLoyaltyPointsUseCase,
   RedeemLoyaltyPointsUseCase,
+  ExpireLoyaltyPointsUseCase,
   ReverseLoyaltyEntryUseCase,
   GetLoyaltyHistoryUseCase,
+  GetLoyaltyOperationsUseCase,
   GetLoyaltyConfigUseCase,
   SaveLoyaltyConfigUseCase,
 } from '../application/use-cases/loyalty/LoyaltyUseCases';
@@ -525,8 +527,10 @@ export class Registry {
   public readonly loyaltyGate = new LoyaltyProgrammeGate(this.loyaltyRepo, () => process.env.LOYALTY_PROGRAMME_ENABLED === 'true');
   public readonly earnLoyaltyPointsUseCase = new EarnLoyaltyPointsUseCase(this.loyaltyRepo, this.loyaltyGate);
   public readonly redeemLoyaltyPointsUseCase = new RedeemLoyaltyPointsUseCase(this.loyaltyRepo, this.loyaltyGate);
+  public readonly expireLoyaltyPointsUseCase = new ExpireLoyaltyPointsUseCase(this.loyaltyRepo);
   public readonly reverseLoyaltyEntryUseCase = new ReverseLoyaltyEntryUseCase(this.loyaltyRepo);
   public readonly getLoyaltyHistoryUseCase = new GetLoyaltyHistoryUseCase(this.loyaltyRepo, this.loyaltyGate);
+  public readonly getLoyaltyOperationsUseCase = new GetLoyaltyOperationsUseCase(this.loyaltyRepo);
   public readonly getLoyaltyConfigUseCase = new GetLoyaltyConfigUseCase(this.loyaltyRepo);
   public readonly saveLoyaltyConfigUseCase = new SaveLoyaltyConfigUseCase(this.loyaltyRepo);
   public readonly getSupportInboxUseCase = new GetSupportInboxUseCase(this.supportRepo);

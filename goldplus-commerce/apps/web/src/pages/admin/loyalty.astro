@@ -41,10 +41,17 @@ if (Astro.request.method === "POST") {
   }
 }
 let ledgerConfig: { enabled: boolean; earnRatePer1000Ugx: number; expiryDays: number; envFlag: boolean; active: boolean } | null = null;
+type LedgerEntry = { id: string; accountId: string; type: string; points: number; orderId: string | null; reason: string; createdAt: string };
+let operations: { accountCount: number; entryCount: number; signedBalance: number; pendingExpiry: number; byType: Record<string, number>; recentEntries: LedgerEntry[] } | null = null;
 try {
   const res = await fetch(`${apiBase}/admin/loyalty/config`, { headers });
   const json = await res.json().catch(() => null);
   if (json?.success) ledgerConfig = json.data;
+} catch { /* section shows unavailable state */ }
+try {
+  const res = await fetch(`${apiBase}/admin/loyalty/operations?limit=50`, { headers });
+  const json = await res.json().catch(() => null);
+  if (json?.success) operations = json.data;
 } catch { /* section shows unavailable state */ }
 
 const levelClass = (value: string) => value === "High"
@@ -113,6 +120,42 @@ const levelClass = (value: string) => value === "High"
       ) : (
         <p class="mt-4 text-sm text-slate-500 italic">Configuration is unavailable right now (service unreachable or permission denied).</p>
       )}
+    </section>
+
+    <section aria-labelledby="ledger-operations" class="mt-7 rounded-2xl border border-slate-200 bg-white p-6">
+      <h2 id="ledger-operations" class="text-lg font-black text-brand-dark">Immutable ledger operations</h2>
+      <p class="mt-2 text-sm leading-relaxed text-slate-600">Read-only liability evidence. Balances are the signed sum of ledger events; this view exposes no email, phone or customer name.</p>
+      {operations ? (
+        <>
+          <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["Accounts", operations.accountCount],
+              ["Ledger events", operations.entryCount],
+              ["Signed points liability", operations.signedBalance],
+              ["Due for explicit expiry", operations.pendingExpiry],
+            ].map(([label, value]) => <article class="rounded-xl border border-slate-200 bg-slate-50 p-4"><p class="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p><p class="mt-2 text-xl font-black text-slate-950">{value}</p></article>)}
+          </div>
+          <div class="mt-5 overflow-x-auto rounded-xl border border-slate-200">
+            <table class="min-w-[900px] w-full text-left text-xs">
+              <thead class="bg-slate-950 text-white"><tr>{["Created", "Type", "Points", "Account reference", "Order reference", "Reason"].map((heading) => <th class="px-4 py-3 font-black">{heading}</th>)}</tr></thead>
+              <tbody class="divide-y divide-slate-100">
+                {operations.recentEntries.length === 0 ? (
+                  <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">No loyalty ledger events. The programme remains dormant.</td></tr>
+                ) : operations.recentEntries.map((entry) => (
+                  <tr>
+                    <td class="px-4 py-3 text-slate-500">{new Date(entry.createdAt).toISOString()}</td>
+                    <td class="px-4 py-3 font-black text-slate-900">{entry.type.toUpperCase()}</td>
+                    <td class={`px-4 py-3 font-black ${entry.points < 0 ? "text-red-700" : "text-emerald-700"}`}>{entry.points}</td>
+                    <td class="px-4 py-3 font-mono text-[10px] text-slate-500">{entry.accountId}</td>
+                    <td class="px-4 py-3 font-mono text-[10px] text-slate-500">{entry.orderId ?? "—"}</td>
+                    <td class="max-w-xs px-4 py-3 text-slate-600">{entry.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : <p class="mt-4 text-sm italic text-slate-500">Ledger operations are unavailable (service unreachable or permission denied).</p>}
     </section>
 
     <section aria-labelledby="mechanic-statuses" class="mt-10">
