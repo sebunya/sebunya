@@ -63,6 +63,12 @@ export const PERMISSIONS = {
   PIM_APPROVE: 'pim.approve',
   PIM_APPLY: 'pim.apply',
   PIM_ROLLBACK: 'pim.rollback',
+  SURVEYS_READ: 'surveys.read',
+  SURVEYS_CREATE: 'surveys.create',
+  SURVEYS_MANAGE: 'surveys.manage',
+  SURVEYS_APPROVE: 'surveys.approve',
+  SURVEYS_ACTIVATE: 'surveys.activate',
+  SURVEYS_EXPORT: 'surveys.export',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
