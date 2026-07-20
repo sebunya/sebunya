@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "decision": "GOLDPLUS_PROGRAMME_RELEASE_ROLLED_BACK_AFTER_RUNTIME_FAILURE",
+  "releaseId": "goldplus-programme-682384b2-m0048-b79a4de7",
+  "attemptId": "goldplus-programme-682384b2-m0048-b79a4de7-20260720T160226Z",
+  "executableCommit": "682384b2a862e86ce3a14f4f5a875506f4a9d33f",
+  "releasePackageHead": "c5191f26776cb4b7c8e424eb9250a2b1441c09f0",
+  "scopeManifestSha256": "b79a4de78f66ccc25cf58d5a319ddf8a99ec240148f32eb9dc854d5de15ee261",
+  "approval": {
+    "path": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_682384b2-m0048-b79a4de7",
+    "device": 2049,
+    "inode": 129547,
+    "ownerGroup": "root:root",
+    "mode": "600",
+    "links": 1,
+    "mtimeEpoch": 1784562095,
+    "bytes": 58,
+    "sha256": "7fd9d49d1883a068bb37743670a0370b8ef75a36d3abeee59c883d980200fc1f",
+    "unchangedThroughTerminalReconciliation": true,
+    "codexModifiedOrRemoved": false
+  },
+  "preservation": {
+    "sourceArchiveSha256": "651ac7c0093c08e279cdb8a97dded363d3145a86f71debee41d042c25300e1c8",
+    "databaseBackupBytes": 301175,
+    "databaseBackupSha256": "a188b0c5768ce304e5316005a23db38862b3e3748308df07ced4829e85bde60f",
+    "pgRestoreListLines": 601,
+    "apiRollbackImage": "sha256:4057585542b53b35265d7ab702ecd233048ee47ec3dcaa75a5dd204e011d8638",
+    "webRollbackImage": "sha256:2caef4d600a6974c471b95ceb670bd662c066f1c4c1a45c40bf81c27ec4f8ea9"
+  },
+  "rehearsal": {
+    "isolatedPostgresql": true,
+    "isolatedRedis": true,
+    "internalNetwork": true,
+    "migrationRowsBefore": 29,
+    "migrationRowsAfter": 55,
+    "migrationRowsAdded": 26,
+    "oldRuntimeCompatibility": "PASS",
+    "newRuntimeDatabaseCanary": "PASS",
+    "pricingSimulation": "PASS_ZERO_WRITES_ZERO_PROVIDER_CALLS",
+    "foreignKeyOrphans": 0,
+    "duplicateIdempotencyKeys": 0,
+    "liveProductionDrift": false,
+    "scratchResourcesRemoved": true
+  },
+  "releaseImages": {
+    "api": "sha256:784647e9f178a9fd5d34093aae99a9aa590701b82bb791ccd2c19977995e69b7",
+    "web": "sha256:331c9432d5b94e00c97b7abf494b6cdebf30a4ad2dba27a34a0f86ce023f67af",
+    "labelsVerified": true,
+    "plainNodeSmoke": "PASS",
+    "webSmoke": "PASS"
+  },
+  "live": {
+    "sourceFastForward": "PASS",
+    "migrationRows": 55,
+    "oldRuntimeLiveSchemaCheckpoint": "PASS",
+    "apiOnlyFiveMinuteStabilization": "PASSED_HEALTH_BUT_RUNTIME_THRESHOLD_BREACHED",
+    "failure": {
+      "component": "SyntheticMonitor",
+      "message": "Catalog returned zero products",
+      "criticalOccurrences": 3,
+      "queue": "analytics-fanout",
+      "classification": "RUNTIME_WORKER_REGRESSION"
+    },
+    "rollbackStartedUtc": "2026-07-20T16:37:54Z",
+    "apiWebRolledBack": true,
+    "additiveSchemaRetained": true,
+    "productionUatCompleted": false,
+    "thirtyMinuteSuccessSoakCompleted": false
+  },
+  "terminal": {
+    "sourceHead": "c5191f26776cb4b7c8e424eb9250a2b1441c09f0",
+    "sourceClean": true,
+    "runningApiImage": "sha256:4057585542b53b35265d7ab702ecd233048ee47ec3dcaa75a5dd204e011d8638",
+    "runningWebImage": "sha256:2caef4d600a6974c471b95ceb670bd662c066f1c4c1a45c40bf81c27ec4f8ea9",
+    "apiReplicasHealthy": 2,
+    "webReplicasHealthy": 2,
+    "restartCount": 0,
+    "caddyUnchanged": true,
+    "postgresqlUnchanged": true,
+    "redisUnchanged": true,
+    "orders": 13,
+    "orderItems": 18,
+    "payments": 0,
+    "paymentAttempts": 9,
+    "consentEvents": 30,
+    "outboxEvents": 0,
+    "notificationAttempts": 0,
+    "newEngineRows": 0,
+    "providerTransport": 0,
+    "customerCommunications": 0
+  },
+  "operatorAction": "REMOVE_APPROVAL_MARKER_MANUALLY"
+}
