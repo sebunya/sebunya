@@ -52,6 +52,7 @@ import adminAutomationRoutes from './routes/admin/automation';
 import adminExperimentRoutes from './routes/admin/experiments';
 import adminPricingRoutes from './routes/admin/pricing';
 import adminFraudRoutes from './routes/admin/fraud';
+import adminPimImportRoutes from './routes/admin/pim-imports';
 
 
 
@@ -183,6 +184,7 @@ app.route('/admin/automation', adminAutomationRoutes);
 app.route('/admin/experiments', adminExperimentRoutes);
 app.route('/admin/pricing', adminPricingRoutes);
 app.route('/admin/fraud', adminFraudRoutes);
+app.route('/admin/pim-imports', adminPimImportRoutes);
 
 
 // Health check route mounted via route registration

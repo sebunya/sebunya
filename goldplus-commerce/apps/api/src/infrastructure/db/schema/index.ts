@@ -31,3 +31,4 @@ export * from './automation';
 export * from './experiments';
 export * from './pricing';
 export * from './fraud';
+export * from './pim';

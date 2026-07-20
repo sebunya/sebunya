@@ -28,6 +28,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Manage physical catalogue items, definitions and specs.'
   },
   {
+    label: 'PIM Imports',
+    href: '/admin/pim-imports',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Stage, validate, approve, apply and safely roll back catalogue imports.'
+  },
+  {
     label: 'Carts',
     href: '/admin/carts',
     group: 'Commerce',

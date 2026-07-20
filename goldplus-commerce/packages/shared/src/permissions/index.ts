@@ -57,6 +57,12 @@ export const PERMISSIONS = {
   FRAUD_SIGNAL: 'fraud.signal',
   FRAUD_ASSIGN: 'fraud.assign',
   FRAUD_DECIDE: 'fraud.decide',
+  PIM_READ: 'pim.read',
+  PIM_CREATE: 'pim.create',
+  PIM_MAP: 'pim.map',
+  PIM_APPROVE: 'pim.approve',
+  PIM_APPLY: 'pim.apply',
+  PIM_ROLLBACK: 'pim.rollback',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
