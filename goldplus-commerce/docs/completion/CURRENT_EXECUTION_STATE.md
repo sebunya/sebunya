@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Shopping Assistant source complete)
+# CURRENT EXECUTION STATE (2026-07-20 · Surveys source complete)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -102,5 +102,8 @@
 - Recommendations use only active/approved catalogue rows with available unreserved inventory, declared compatibility, canonical retail prices, and the existing non-persistent Pricing evaluator. Unknown compatibility and unavailable/draft products fail closed; zero matches are reported truthfully as `NO_MATCH`.
 - The public shell uses configured API origin and safe DOM construction. Its actions persist product interest only and no longer claim to add to cart or send WhatsApp. Real PostgreSQL proves ownership isolation, one completion winner, canonical Pricing, zero preference/provider/protected-table deltas and zero residue.
 - Focused Product Finder/safety/architecture tests pass 37/37; workspace typecheck and API/Astro build pass; secret scan, changed-path lint with zero errors and diff check pass. Repository-wide lint retains the unrelated `ICustomerDnaRepository.ts:6` baseline. Clean full suite passes 203 files / 4,064 tests. Shopping Assistant is `SOURCE_COMPLETE_NOT_DEPLOYED`; Surveys is selected next.
+- Surveys is committed and pushed at `d5cdec7c58e2c470beeb7fee37545d2a2ddf58b6`: immutable questionnaire versions, four-eyes approval, separately privileged activation/export, current-consent and Customer DNA audience reads, hashed participant ownership, bounded non-free-text answers, idempotent start, single-winner completion, aggregate analysis and participant-free export.
+- Real PostgreSQL proves `DRAFT→PENDING_APPROVAL→APPROVED→ACTIVE→PAUSED`, self-approval denial, no-consent exclusion, response isolation, invalid-answer denial, one concurrent completion winner, native JSONB, five immutable governance events, zero consent/preference/outbox/notification/order/payment deltas, zero provider calls and zero residue. Fresh `0000`–`0045` replay has 46 migration rows and four empty Survey tables.
+- Focused Survey/API/admin-route/architecture tests pass 54/54; workspace typecheck/build, secret scan, changed-path lint with zero errors and diff check pass. Repository lint retains the unrelated baseline. Clean suite passes 206 files / 4,075 tests. Surveys is `SOURCE_COMPLETE_NOT_DEPLOYED`; Copy Quality is selected next.
 
 ---

@@ -1,4 +1,4 @@
-# NEXT WORKTREE — Shopping Assistant source complete; Surveys next
+# NEXT WORKTREE — Surveys source complete; Copy Quality next
 
 The forensic handover has been assimilated across the complete tracked repository. Start with
 `docs/handover/codex/orientation/CODEX_CONTEXT_LEDGER.md`, then use the original handover pack under
@@ -42,6 +42,8 @@ subsequently completed as recorded below.
 PIM Import is committed and pushed at `ab156aea207d281380f018ddfcb15e464bc893fc` and proven through migration `0044`, immutable source hashing, explicit mapping, deterministic zero-write preview, full drift snapshots, independent approval, per-row partial failure and exact rollback. The protected API/Astro control room has exact read/create/map/approve/apply/rollback RBAC. Real PostgreSQL proves zero protected-commerce, communication and provider effects and zero residue; fresh replay and the clean 202-file / 4,061-test suite pass. PIM Import is `SOURCE_COMPLETE_NOT_DEPLOYED`; no production migration or catalogue import occurred.
 
 Shopping Assistant is committed and pushed at `95d672bdd6babc3b0b55031a0c961b27a47bc120`. The product finder now enforces capability-backed session ownership, native JSONB persistence and a single completion winner; it reads active approved catalogue rows, unreserved inventory, declared compatibility, canonical retail prices and the existing non-persistent Pricing evaluator. It reports `NO_MATCH` truthfully and records interest-only actions through safe browser DOM handling. Real PostgreSQL proves zero preference/provider/protected effects and zero residue; focused 37/37 and the clean 203-file / 4,064-test suite pass. No migration or deployment occurred. Select Surveys next and reconcile consent/audience/response/analysis/export requirements against actual repository assets before editing.
+
+Surveys is committed and pushed at `d5cdec7c58e2c470beeb7fee37545d2a2ddf58b6`. Migration `0045` adds governed definitions, immutable versions, PII-minimized responses and immutable events. Current personalization consent plus Customer DNA lifecycle determine eligibility; response ownership is hashed, completion rechecks gates, and analysis/export do not expose participant references. There is no invitation, provider, outbox or communication path. Real PostgreSQL proves four-eyes governance, consent exclusion, one concurrent completion winner, zero protected deltas/provider calls/residue; fresh replay, focused 54/54 and clean 206-file / 4,075-test suite pass. Surveys is `SOURCE_COMPLETE_NOT_DEPLOYED`; no production migration or response occurred. Select Copy Quality next and reconcile deterministic catalogue/CMS checks, explainable issues and provider-gated model boundaries before editing.
 
 The detailed A3-A5 plan, protected assets, evidence manifest and risk register live under
 `docs/handover/codex/`. The section below is the prior resume note (superseded by the handover and C0 package).
