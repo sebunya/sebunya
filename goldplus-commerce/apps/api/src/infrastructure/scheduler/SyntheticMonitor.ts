@@ -1,11 +1,343 @@
-import { Registry } from '../Registry';
 import { db } from '../db/client';
 import { orders } from '../db/schema/commerce';
 import { outboxEvents } from '../db/schema/system';
 import { eq, and } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { logger } from '../logging/logger';
 import { env } from '../../config/env';
 import * as client from 'prom-client';
+import { createHash } from 'node:crypto';
+
+const CATALOGUE_MONITOR_LIMIT = 5;
+const PUBLIC_CATALOGUE_PREDICATE_VERSION =
+  'public-catalogue-v1:approval_status=approved;limit=5;price=retail_price_when_has_retail_price';
+
+export type CatalogueParityReasonCode =
+  | 'CATALOGUE_PARITY_OK'
+  | 'CATALOGUE_DATABASE_TARGET_MISMATCH'
+  | 'CATALOGUE_DATABASE_SCHEMA_MISMATCH'
+  | 'CATALOGUE_HTTP_STATUS_INVALID'
+  | 'CATALOGUE_CONTENT_TYPE_INVALID'
+  | 'CATALOGUE_RESPONSE_MALFORMED'
+  | 'CATALOGUE_COLLECTION_MISSING'
+  | 'CATALOGUE_COLLECTION_MALFORMED'
+  | 'CATALOGUE_DB_GT_ZERO_API_ZERO'
+  | 'CATALOGUE_PAGE_COUNT_DIVERGENCE'
+  | 'CATALOGUE_IDENTIFIER_DIVERGENCE'
+  | 'CATALOGUE_PRICE_DIVERGENCE';
+
+export interface CatalogueObservation {
+  id: string;
+  slug: string;
+  canonicalPriceUgx: number | null;
+}
+
+export interface IndependentCatalogueTruth {
+  databaseName: string;
+  schemaName: string;
+  searchPath: string;
+  predicateVersion: string;
+  totalEligible: number;
+  expectedPageCount: number;
+  page: CatalogueObservation[];
+  identifierSetSha256: string;
+  identifierPriceSha256: string;
+}
+
+export interface CatalogueParityResult {
+  ok: boolean;
+  reasonCode: CatalogueParityReasonCode;
+  firstDivergentLayer: 'none' | 'database_target' | 'database_schema' | 'api_http' | 'api_schema' | 'api_collection';
+  sqlCount: number;
+  apiCount: number;
+  sqlIdentifierSetSha256: string;
+  apiIdentifierSetSha256: string;
+  sqlIdentifierPriceSha256: string;
+  apiIdentifierPriceSha256: string;
+  databaseFingerprintSha256: string;
+}
+
+interface CatalogueHttpObservation {
+  status: number;
+  contentType: string | null;
+  body: unknown;
+}
+
+export class CatalogueParityError extends Error {
+  constructor(
+    public readonly result: CatalogueParityResult,
+  ) {
+    super(`Catalogue parity failed: ${result.reasonCode}`);
+    this.name = 'CatalogueParityError';
+  }
+}
+
+const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
+
+export function hashCatalogueIdentifiers(rows: CatalogueObservation[]): string {
+  return sha256(rows.map((row) => row.id).sort().join('\n'));
+}
+
+export function hashCatalogueIdentifiersAndPrices(rows: CatalogueObservation[]): string {
+  return sha256(
+    rows
+      .map((row) => `${row.id}|${row.canonicalPriceUgx === null ? 'null' : row.canonicalPriceUgx}`)
+      .sort()
+      .join('\n'),
+  );
+}
+
+function databaseNameFromUrl(value: string): string | null {
+  try {
+    const name = new URL(value).pathname.replace(/^\//, '').split('/')[0];
+    return name ? decodeURIComponent(name) : null;
+  } catch {
+    return null;
+  }
+}
+
+function resultRows<T>(result: unknown): T[] {
+  if (result && typeof result === 'object' && 'rows' in result) {
+    const rows = (result as { rows?: unknown }).rows;
+    if (Array.isArray(rows)) return rows as T[];
+  }
+  return Array.isArray(result) ? (result as T[]) : [];
+}
+
+function parityResult(
+  truth: IndependentCatalogueTruth,
+  apiRows: CatalogueObservation[],
+  reasonCode: CatalogueParityReasonCode,
+  firstDivergentLayer: CatalogueParityResult['firstDivergentLayer'],
+): CatalogueParityResult {
+  return {
+    ok: reasonCode === 'CATALOGUE_PARITY_OK',
+    reasonCode,
+    firstDivergentLayer,
+    sqlCount: truth.expectedPageCount,
+    apiCount: apiRows.length,
+    sqlIdentifierSetSha256: truth.identifierSetSha256,
+    apiIdentifierSetSha256: hashCatalogueIdentifiers(apiRows),
+    sqlIdentifierPriceSha256: truth.identifierPriceSha256,
+    apiIdentifierPriceSha256: hashCatalogueIdentifiersAndPrices(apiRows),
+    databaseFingerprintSha256: sha256(
+      `${truth.databaseName}|${truth.schemaName}|${truth.searchPath}|${truth.predicateVersion}`,
+    ),
+  };
+}
+
+export function evaluateCatalogueParity(
+  truth: IndependentCatalogueTruth,
+  http: CatalogueHttpObservation,
+  expectedTarget: { databaseName?: string | null; schemaName?: string } = {},
+): { result: CatalogueParityResult; products: Array<Record<string, unknown>> } {
+  const noRows: CatalogueObservation[] = [];
+  if (expectedTarget.databaseName && truth.databaseName !== expectedTarget.databaseName) {
+    return {
+      result: parityResult(truth, noRows, 'CATALOGUE_DATABASE_TARGET_MISMATCH', 'database_target'),
+      products: [],
+    };
+  }
+  if (expectedTarget.schemaName && truth.schemaName !== expectedTarget.schemaName) {
+    return {
+      result: parityResult(truth, noRows, 'CATALOGUE_DATABASE_SCHEMA_MISMATCH', 'database_schema'),
+      products: [],
+    };
+  }
+  if (http.status < 200 || http.status >= 300) {
+    return {
+      result: parityResult(truth, noRows, 'CATALOGUE_HTTP_STATUS_INVALID', 'api_http'),
+      products: [],
+    };
+  }
+  if (!http.contentType?.toLowerCase().includes('application/json')) {
+    return {
+      result: parityResult(truth, noRows, 'CATALOGUE_CONTENT_TYPE_INVALID', 'api_http'),
+      products: [],
+    };
+  }
+  if (!http.body || typeof http.body !== 'object' || Array.isArray(http.body)) {
+    return {
+      result: parityResult(truth, noRows, 'CATALOGUE_RESPONSE_MALFORMED', 'api_schema'),
+      products: [],
+    };
+  }
+
+  const envelope = http.body as Record<string, unknown>;
+  if (envelope.success !== true) {
+    return {
+      result: parityResult(truth, noRows, 'CATALOGUE_RESPONSE_MALFORMED', 'api_schema'),
+      products: [],
+    };
+  }
+  if (!Object.prototype.hasOwnProperty.call(envelope, 'data')) {
+    return {
+      result: parityResult(truth, noRows, 'CATALOGUE_COLLECTION_MISSING', 'api_schema'),
+      products: [],
+    };
+  }
+  if (!Array.isArray(envelope.data)) {
+    return {
+      result: parityResult(truth, noRows, 'CATALOGUE_COLLECTION_MALFORMED', 'api_schema'),
+      products: [],
+    };
+  }
+
+  const products = envelope.data as Array<Record<string, unknown>>;
+  const apiRows: CatalogueObservation[] = [];
+  for (const product of products) {
+    if (
+      !product ||
+      typeof product !== 'object' ||
+      typeof product.id !== 'string' ||
+      product.id.length === 0 ||
+      typeof product.slug !== 'string' ||
+      product.slug.length === 0 ||
+      !(
+        product.retailPriceUgx === null ||
+        (typeof product.retailPriceUgx === 'number' && Number.isFinite(product.retailPriceUgx))
+      )
+    ) {
+      return {
+        result: parityResult(truth, apiRows, 'CATALOGUE_COLLECTION_MALFORMED', 'api_collection'),
+        products: [],
+      };
+    }
+    apiRows.push({
+      id: product.id,
+      slug: product.slug,
+      canonicalPriceUgx: product.retailPriceUgx as number | null,
+    });
+  }
+
+  if (truth.totalEligible > 0 && apiRows.length === 0) {
+    return {
+      result: parityResult(truth, apiRows, 'CATALOGUE_DB_GT_ZERO_API_ZERO', 'api_collection'),
+      products,
+    };
+  }
+  if (apiRows.length !== truth.expectedPageCount) {
+    return {
+      result: parityResult(truth, apiRows, 'CATALOGUE_PAGE_COUNT_DIVERGENCE', 'api_collection'),
+      products,
+    };
+  }
+  if (hashCatalogueIdentifiers(apiRows) !== truth.identifierSetSha256) {
+    return {
+      result: parityResult(truth, apiRows, 'CATALOGUE_IDENTIFIER_DIVERGENCE', 'api_collection'),
+      products,
+    };
+  }
+  if (hashCatalogueIdentifiersAndPrices(apiRows) !== truth.identifierPriceSha256) {
+    return {
+      result: parityResult(truth, apiRows, 'CATALOGUE_PRICE_DIVERGENCE', 'api_collection'),
+      products,
+    };
+  }
+
+  return {
+    result: parityResult(truth, apiRows, 'CATALOGUE_PARITY_OK', 'none'),
+    products,
+  };
+}
+
+export async function loadIndependentCatalogueTruth(
+  limit = CATALOGUE_MONITOR_LIMIT,
+): Promise<IndependentCatalogueTruth> {
+  const targetResult = await db.execute(sql`
+    select
+      current_database()::text as "databaseName",
+      current_schema()::text as "schemaName",
+      current_setting('search_path')::text as "searchPath"
+  `);
+  const target = resultRows<{
+    databaseName: string;
+    schemaName: string;
+    searchPath: string;
+  }>(targetResult)[0];
+
+  const countResult = await db.execute(sql`
+    select count(*)::int as count
+    from products p
+    where p.approval_status = 'approved'
+  `);
+  const totalEligible = Number(resultRows<{ count: number | string }>(countResult)[0]?.count ?? 0);
+
+  // This intentionally does not call the product repository or DTO mapper. It
+  // mirrors the public route's tracked predicate and exact bounded request so
+  // the monitor has an independent data-plane observation.
+  const pageResult = await db.execute(sql`
+    select
+      p.id::text as id,
+      p.slug::text as slug,
+      case
+        when p.has_retail_price then (
+          select case when pp.retail_price > 0 then pp.retail_price else null end
+          from product_prices pp
+          where pp.product_id = p.id
+          limit 1
+        )
+        else null
+      end as "canonicalPriceUgx"
+    from products p
+    where p.approval_status = 'approved'
+    limit ${limit}
+  `);
+  const page = resultRows<Record<string, unknown>>(pageResult).map((row) => ({
+    id: String(row.id),
+    slug: String(row.slug),
+    canonicalPriceUgx:
+      row.canonicalPriceUgx === null || row.canonicalPriceUgx === undefined
+        ? null
+        : Number(row.canonicalPriceUgx),
+  }));
+
+  return {
+    databaseName: target.databaseName,
+    schemaName: target.schemaName,
+    searchPath: target.searchPath,
+    predicateVersion: PUBLIC_CATALOGUE_PREDICATE_VERSION,
+    totalEligible,
+    expectedPageCount: page.length,
+    page,
+    identifierSetSha256: hashCatalogueIdentifiers(page),
+    identifierPriceSha256: hashCatalogueIdentifiersAndPrices(page),
+  };
+}
+
+export async function verifyCatalogueParity(
+  baseUrl: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<{ truth: IndependentCatalogueTruth; result: CatalogueParityResult; products: Array<Record<string, unknown>> }> {
+  const truth = await loadIndependentCatalogueTruth(CATALOGUE_MONITOR_LIMIT);
+  const response = await fetchFn(`${baseUrl}/products?limit=${CATALOGUE_MONITOR_LIMIT}`, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(5000),
+  });
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  const evaluated = evaluateCatalogueParity(
+    truth,
+    {
+      status: response.status,
+      contentType: response.headers.get('content-type'),
+      body,
+    },
+    {
+      databaseName: databaseNameFromUrl(env.databaseUrl),
+      schemaName: 'public',
+    },
+  );
+
+  if (!evaluated.result.ok) {
+    throw new CatalogueParityError(evaluated.result);
+  }
+  return { truth, ...evaluated };
+}
 
 // Prometheus Metrics for Synthetic Monitoring
 const syntheticUptimeGauge = new client.Gauge({
@@ -45,7 +377,12 @@ registerMetric(syntheticDuration);
 registerMetric(syntheticFailures);
 
 export class SyntheticMonitor {
-  async execute(): Promise<{ success: boolean; durationMs: number; stages: string[] }> {
+  async execute(): Promise<{
+    success: boolean;
+    durationMs: number;
+    stages: string[];
+    reasonCode?: CatalogueParityReasonCode;
+  }> {
     const start = Date.now();
     const stages: string[] = [];
     const baseUrl = env.publicApiBaseUrl || 'http://localhost:3000';
@@ -75,17 +412,22 @@ export class SyntheticMonitor {
       // Stage 1: Load Products (simulate homepage/catalog view)
       stages.push('catalog_load');
       const catalogStart = Date.now();
-      const catalogRes = await fetch(`${baseUrl}/products?limit=5`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!catalogRes.ok) {
-        throw new Error(`Catalog load failed with status: ${catalogRes.status}`);
-      }
-      const catalogData = await catalogRes.json() as any;
-      const productsList = catalogData?.data?.items || [];
-      if (productsList.length === 0) {
-        throw new Error('Catalog returned zero products');
-      }
+      const catalogueParity = await verifyCatalogueParity(baseUrl);
+      const productsList = catalogueParity.products as any[];
+      logger.info(
+        {
+          reasonCode: catalogueParity.result.reasonCode,
+          firstDivergentLayer: catalogueParity.result.firstDivergentLayer,
+          databaseFingerprintSha256: catalogueParity.result.databaseFingerprintSha256,
+          sqlCount: catalogueParity.result.sqlCount,
+          apiCount: catalogueParity.result.apiCount,
+          sqlIdentifierSetSha256: catalogueParity.result.sqlIdentifierSetSha256,
+          apiIdentifierSetSha256: catalogueParity.result.apiIdentifierSetSha256,
+          sqlIdentifierPriceSha256: catalogueParity.result.sqlIdentifierPriceSha256,
+          apiIdentifierPriceSha256: catalogueParity.result.apiIdentifierPriceSha256,
+        },
+        '[SyntheticMonitor] Catalogue SQL/API parity verified',
+      );
       const catalogDuration = Date.now() - catalogStart;
       if (catalogDuration > 1500) {
         isDegraded = true;
@@ -299,6 +641,7 @@ export class SyntheticMonitor {
     } catch (err: any) {
       const durationMs = Date.now() - start;
       const failedStage = stages[stages.length - 1] || 'unknown';
+      const catalogueParityResult = err instanceof CatalogueParityError ? err.result : undefined;
       let failureClass = 'ASSERTION_FAILED';
       const msg = err.message || String(err);
       
@@ -322,7 +665,24 @@ export class SyntheticMonitor {
         failureClass = 'DEGRADED_PERFORMANCE';
       }
 
-      logger.error({ err, durationMs, failedStage, failureClass }, '[SyntheticMonitor] CRITICAL: Synthetic commerce check failed!');
+      logger.error(
+        {
+          err,
+          durationMs,
+          failedStage,
+          failureClass,
+          reasonCode: catalogueParityResult?.reasonCode,
+          firstDivergentLayer: catalogueParityResult?.firstDivergentLayer,
+          databaseFingerprintSha256: catalogueParityResult?.databaseFingerprintSha256,
+          sqlCount: catalogueParityResult?.sqlCount,
+          apiCount: catalogueParityResult?.apiCount,
+          sqlIdentifierSetSha256: catalogueParityResult?.sqlIdentifierSetSha256,
+          apiIdentifierSetSha256: catalogueParityResult?.apiIdentifierSetSha256,
+          sqlIdentifierPriceSha256: catalogueParityResult?.sqlIdentifierPriceSha256,
+          apiIdentifierPriceSha256: catalogueParityResult?.apiIdentifierPriceSha256,
+        },
+        '[SyntheticMonitor] CRITICAL: Synthetic commerce check failed!',
+      );
       
       syntheticUptimeGauge.set(0);
       syntheticFailures.inc({ failed_stage: failedStage, failure_class: failureClass });
@@ -331,6 +691,7 @@ export class SyntheticMonitor {
         success: false,
         durationMs,
         stages,
+        reasonCode: catalogueParityResult?.reasonCode,
       };
     }
   }

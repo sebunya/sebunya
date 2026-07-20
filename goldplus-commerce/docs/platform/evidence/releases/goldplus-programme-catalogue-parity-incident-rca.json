@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "decision": "CATALOGUE_INCIDENT_CLASSIFIED_MONITOR_REQUEST_OR_PARSER_DEFECT",
+  "classification": "A_SYNTHETIC_MONITOR_REQUEST_OR_PARSER_DEFECT",
+  "failedRelease": {
+    "id": "goldplus-programme-682384b2-m0048-b79a4de7",
+    "executableCommit": "682384b2a862e86ce3a14f4f5a875506f4a9d33f",
+    "releasePackageHead": "c5191f26776cb4b7c8e424eb9250a2b1441c09f0",
+    "terminalRollbackEvidenceHead": "c9ce093e73913d47eed6255e33fe240c7753de2d"
+  },
+  "incident": {
+    "newApiStartUtc": "2026-07-20T16:30:19Z",
+    "rollbackStartUtc": "2026-07-20T16:37:54Z",
+    "message": "Catalog returned zero products",
+    "criticalOccurrences": 3,
+    "queue": "analytics-fanout",
+    "firstDivergentLayer": "API_RESPONSE_TO_SYNTHETIC_MONITOR_PARSER",
+    "responsibleContract": "ApiResponse<ProductPublicDto[]>.data",
+    "failedParserContract": "data.items",
+    "sourceLineAtFailedExecutable": 85
+  },
+  "preservation": {
+    "forensicsRoot": "/Users/robertsebunya/Documents/GitHub_Projects/goldplus-catalogue-incident-forensics",
+    "failedApiImage": "sha256:784647e9f178a9fd5d34093aae99a9aa590701b82bb791ccd2c19977995e69b7",
+    "failedWebImage": "sha256:331c9432d5b94e00c97b7abf494b6cdebf30a4ad2dba27a34a0f86ce023f67af",
+    "rollbackApiImage": "sha256:4057585542b53b35265d7ab702ecd233048ee47ec3dcaa75a5dd204e011d8638",
+    "rollbackWebImage": "sha256:2caef4d600a6974c471b95ceb670bd662c066f1c4c1a45c40bf81c27ec4f8ea9",
+    "databaseBackupSha256": "a188b0c5768ce304e5316005a23db38862b3e3748308df07ced4829e85bde60f"
+  },
+  "truth": {
+    "request": "GET /products?limit=5",
+    "predicateVersion": "public-catalogue-v1:approval_status=approved;limit=5;price=retail_price_when_has_retail_price",
+    "databaseName": "goldplus",
+    "schemaName": "public",
+    "eligibleTotal": 8,
+    "pageCount": 5,
+    "identifierSetSha256": "14c57483a91eb7b563f4f0e9ccbadf2f14b4a107bbe4565911b1fa50655b220b",
+    "identifierPriceSha256": "5e34628a127e93cb6d9ee432ca63e2ce64fcd2f22349edd52929dd0c1d65d4e2"
+  },
+  "differential": {
+    "oldApi": { "status": 200, "collectionPath": "data", "count": 5, "hashesMatchSql": true },
+    "failedApi": { "status": 200, "collectionPath": "data", "count": 5, "hashesMatchSql": true },
+    "repairedApi": { "status": 200, "collectionPath": "data", "count": 5, "hashesMatchSql": true },
+    "failedMonitor": "REPRODUCED_ZERO_PRODUCT_ERROR",
+    "repairedMonitor": "PASS_SQL_API_PARITY",
+    "earliestMismatch": "API_RESPONSE_TO_MONITOR_PARSER"
+  },
+  "repair": {
+    "runtimePaths": ["apps/api/src/infrastructure/scheduler/SyntheticMonitor.ts"],
+    "proofPaths": [
+      "apps/api/src/scripts/catalogue-parity-proof.ts",
+      "tests/unit/CatalogueParityMonitor.test.ts"
+    ],
+    "migrationRequired": false,
+    "migrationCeiling": "0048",
+    "workingTreeApiImage": "sha256:0950db52867580e71062e7be54d0031e95d371fd3262088b8255de99e120a936"
+  },
+  "proof": {
+    "focusedTests": { "files": 1, "tests": 12, "status": "PASS" },
+    "architectureTests": { "files": 2, "tests": 10, "status": "PASS" },
+    "typecheck": "PASS",
+    "sourceBuild": "PASS_API_AND_WEB",
+    "secretScan": "PASS",
+    "changedPathLint": "PASS_ZERO_ERRORS",
+    "dirtyTreeFullSuite": {
+      "behavioralPasses": 4129,
+      "newCataloguePasses": 12,
+      "artifactScopeGuardFailures": 12,
+      "cause": "EXPECTED_GIT_STATUS_SENSITIVE_LEGACY_GUARDS",
+      "cleanCommitRerunRequired": true
+    },
+    "restoredProduction": {
+      "migrationRows": 55,
+      "products": 8,
+      "approvedProducts": 8,
+      "orders": 13,
+      "consentEvents": 30,
+      "outboxEvents": 0,
+      "notificationAttempts": 0
+    },
+    "freshMigrationReplay": {
+      "migrationRows": 49,
+      "products": 0,
+      "orders": 0,
+      "outboxEvents": 0,
+      "notificationAttempts": 0,
+      "scratchResourcesRemoved": true,
+      "status": "PASS"
+    },
+    "compiledProofExitCode": 0,
+    "faultInjections": 8,
+    "providerCalls": 0,
+    "protectedMutationDelta": 0,
+    "redisResidue": 0
+  },
+  "productionReadOnlyTerminal": {
+    "sourceHead": "c9ce093e73913d47eed6255e33fe240c7753de2d",
+    "sourceClean": true,
+    "migrationRows": 55,
+    "products": 8,
+    "approvedProducts": 8,
+    "prices": 8,
+    "priceSumUgx": 630000,
+    "orders": 13,
+    "orderTotalUgx": 1545000,
+    "consentEvents": 30,
+    "outboxEvents": 0,
+    "notificationAttempts": 0,
+    "productionMutationDuringRca": false
+  },
+  "oldApprovalMarker": {
+    "path": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_682384b2-m0048-b79a4de7",
+    "present": true,
+    "ownerGroup": "root:root",
+    "mode": "600",
+    "links": 1,
+    "bytes": 58,
+    "inode": 129547,
+    "mtimeEpoch": 1784562095,
+    "sha256": "7fd9d49d1883a068bb37743670a0370b8ef75a36d3abeee59c883d980200fc1f",
+    "codexModifiedOrRemoved": false
+  }
+}
