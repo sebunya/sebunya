@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Copy Quality source complete)
+# CURRENT EXECUTION STATE (2026-07-20 · Behavioral Interventions source complete)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -107,5 +107,7 @@
 - Focused Survey/API/admin-route/architecture tests pass 54/54; workspace typecheck/build, secret scan, changed-path lint with zero errors and diff check pass. Repository lint retains the unrelated baseline. Clean suite passes 206 files / 4,075 tests. Surveys is `SOURCE_COMPLETE_NOT_DEPLOYED`; Copy Quality is selected next.
 - Copy Quality is committed and pushed at `de05a194a84936aed4028ca86a6dbcfc1ad2480f`: a read-only canonical catalogue adapter, deterministic `copy-quality-v1` rules, explainable `PASS`/`REVIEW`/`BLOCKED` results, explicit `NOT_CONFIGURED` model status, distinct read/export RBAC, protected API and Astro administrator UI. No migration, rewrite, publish or provider path was added.
 - Real PostgreSQL proves three canonical fixtures, one blocked row, two duplicate rows, truthful placeholder/claim/filter evidence, zero provider calls, zero audit/outbox/notification/consent/order/payment deltas and zero residue. Focused Copy Quality/API/admin-route/architecture tests pass 52/52; clean suite passes 209 files / 4,084 tests. Copy Quality is `SOURCE_COMPLETE_NOT_DEPLOYED`; Behavioural Interventions is selected next.
+- Behavioral Interventions is committed and pushed at `42a3aa1ff82933eec4bab662aea789e3a505d6f3`. Migration `0046` adds governed immutable intervention versions, atomic Experiment/intervention exposure evidence, measured outcomes and immutable events. Ethical policy permits only truthful, dismissible `ON_SITE` guidance; current consent, Customer DNA audience, running Experiment/treatment assignment, frequency and dismissal gates fail closed.
+- Real PostgreSQL proves control suppression, one concurrent frequency winner, exactly one Experiment assignment/exposure and intervention exposure, current-consent recheck, idempotency, ownership, dismissal/pause suppression, truthful outcomes, zero protected deltas/provider calls/residue and five native-JSONB governance events. Fresh replay reaches 47 rows/five empty tables; focused tests pass 61/61 and clean suite passes 212 files / 4,102 tests. Behavioral Interventions is `SOURCE_COMPLETE_NOT_DEPLOYED`; Loyalty is selected next.
 
 ---

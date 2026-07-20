@@ -1,7 +1,7 @@
 {
   "generatedAt": "2026-07-20",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "de05a19",
+  "reconciledHead": "42a3aa1",
   "sourceOfTruth": "actual repository source + local execution (not dashboard cards, route/schema/test names, or old labels)",
   "legend": {
     "SOURCE_COMPLETE_NOT_DEPLOYED": "all applicable layers present and locally accepted; only real-server deploy remains",
@@ -397,22 +397,28 @@
         "Customer DNA & NBA",
         "measurement"
       ],
-      "status": "MISSING",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "Interventions tied to target behaviour/hypothesis/audience/channel/experiment/suppression/outcome; no dark patterns.",
       "existingAssets": [
-        "measurement",
-        "recommendations"
+        "migration 0046 governed definitions, immutable versions, exposures, outcomes and events",
+        "deterministic Experiment treatment assignment with atomic assignment/exposure persistence",
+        "current personalization consent and Customer DNA lifecycle audience gates",
+        "ethical ON_SITE-only content and suppression policy",
+        "protected API, administrator control room and authenticated customer surface"
       ],
-      "missingLayers": [
-        "all layers"
-      ],
-      "nextBoundedSlice": "reconcile after Experiments + Customer DNA",
+      "missingLayers": [],
+      "nextBoundedSlice": "none (source complete); production release requires a separately frozen and approval-gated candidate",
       "acceptance": [
         "ethical only",
         "measured outcomes"
       ],
-      "evidence": [],
-      "commit": null
+      "evidence": [
+        "behavioural-interventions-proof.ts PASS: treatment/control separation, atomic Experiment/intervention exposure, concurrent cap, consent recheck, measured outcomes, zero protected deltas/provider calls/residue",
+        "fresh 0000-0046 replay PASS: 47 migration rows, five empty intervention tables",
+        "focused Behavioral Intervention/API/admin-route/architecture tests PASS: 61/61",
+        "clean full suite 212 files / 4102 tests"
+      ],
+      "commit": "42a3aa1"
     },
     {
       "module": "Loyalty",

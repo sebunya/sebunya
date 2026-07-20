@@ -1,10 +1,10 @@
 {
   "generatedAt": "2026-07-20",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "Copy Quality source completion commit de05a19",
+  "reconciledHead": "Behavioral Interventions source completion commit 42a3aa1",
   "note": "Reconciled from actual source + local execution. The binding execution queue is COMMERCE_OS_EXECUTION_QUEUE.json.",
-  "migrations": "0000-0045 (fresh replay proven; 0040 populated upgrade proven; 0042 continuation upgrade proven)",
-  "fullSuite": "209 files / 4084 tests at clean Copy Quality source commit",
+  "migrations": "0000-0046 (fresh replay proven; 0040 populated upgrade proven; 0042 continuation upgrade proven)",
+  "fullSuite": "212 files / 4102 tests at clean Behavioral Interventions source commit",
   "architecture": "10/10",
   "modules": {
     "Fulfilment Operations": "SOURCE_COMPLETE_NOT_DEPLOYED",
@@ -22,10 +22,10 @@
     "Shopping Assistant (product finder)": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Surveys": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Copy Quality": "SOURCE_COMPLETE_NOT_DEPLOYED",
-    "Behavioural Interventions": "MISSING",
+    "Behavioural Interventions": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Loyalty": "SOURCE_PARTIAL",
     "Search Insights": "SOURCE_PARTIAL"
   },
-  "nextModule": "Behavioural Interventions",
+  "nextModule": "Loyalty",
   "productionDeployment": "APPROVAL_GATED (P7 exact release, images, restore rehearsal and rollback package complete; production unchanged)"
 }
