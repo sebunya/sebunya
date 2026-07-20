@@ -1,10 +1,10 @@
 {
   "generatedAt": "2026-07-20",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "Fraud Triage source completion commit 6574952",
+  "reconciledHead": "PIM Import source completion commit ab156ae",
   "note": "Reconciled from actual source + local execution. The binding execution queue is COMMERCE_OS_EXECUTION_QUEUE.json.",
-  "migrations": "0000-0043 (fresh replay proven; 0040 populated upgrade proven; 0042 continuation upgrade proven)",
-  "fullSuite": "200 files / 4054 tests at clean Fraud Triage source commit",
+  "migrations": "0000-0044 (fresh replay proven; 0040 populated upgrade proven; 0042 continuation upgrade proven)",
+  "fullSuite": "202 files / 4061 tests at clean PIM Import source commit",
   "architecture": "10/10",
   "modules": {
     "Fulfilment Operations": "SOURCE_COMPLETE_NOT_DEPLOYED",
@@ -18,7 +18,7 @@
     "Experiments": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Pricing & Promotions": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Fraud Triage": "SOURCE_COMPLETE_NOT_DEPLOYED",
-    "PIM Import": "MISSING",
+    "PIM Import": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Shopping Assistant (product finder)": "SOURCE_PARTIAL",
     "Surveys": "MISSING",
     "Copy Quality": "MISSING",
@@ -26,6 +26,6 @@
     "Loyalty": "SOURCE_PARTIAL",
     "Search Insights": "SOURCE_PARTIAL"
   },
-  "nextModule": "PIM Import",
+  "nextModule": "Shopping Assistant (product finder)",
   "productionDeployment": "APPROVAL_GATED (P7 exact release, images, restore rehearsal and rollback package complete; production unchanged)"
 }

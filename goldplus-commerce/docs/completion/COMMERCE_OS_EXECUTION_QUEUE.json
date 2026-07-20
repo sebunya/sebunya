@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-19",
+  "generatedAt": "2026-07-20",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "480a2ba",
+  "reconciledHead": "ab156ae",
   "sourceOfTruth": "actual repository source + local execution (not dashboard cards, route/schema/test names, or old labels)",
   "legend": {
     "SOURCE_COMPLETE_NOT_DEPLOYED": "all applicable layers present and locally accepted; only real-server deploy remains",
@@ -274,22 +274,29 @@
       "dependencies": [
         "products"
       ],
-      "status": "MISSING",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "Catalogue import with ingestion/validation/preview/mapping/dry-run/approval/partial-failure/rollback.",
       "existingAssets": [
-        "products schema",
-        "product image storage"
+        "products schema and canonical retail-price persistence",
+        "migration 0044 governed import sessions/rows/approvals/events",
+        "immutable canonical source digest and explicit field mapping",
+        "deterministic preview/action digest with full before snapshots",
+        "separately privileged four-eyes approval/apply/rollback",
+        "protected Hono/Zod API and Astro operating surface"
       ],
-      "missingLayers": [
-        "all layers"
-      ],
-      "nextBoundedSlice": "reconcile; import-session domain + preview/dry-run",
+      "missingLayers": [],
+      "nextBoundedSlice": "none (source complete); production release requires a separately frozen and approval-gated candidate",
       "acceptance": [
         "no overwrite without preview+approval",
         "no fabricated attributes"
       ],
-      "evidence": [],
-      "commit": null
+      "evidence": [
+        "pim-import-proof.ts PASS: digest tamper denial, preview zero writes, independent approval, partial conflict, exact rollback, zero protected deltas/provider calls/residue",
+        "fresh 0000-0044 replay PASS: 45 migration rows, four PIM tables, three foreign keys, zero sessions",
+        "protected API/UI and route census PASS",
+        "clean full suite 202 files / 4061 tests"
+      ],
+      "commit": "ab156ae"
     },
     {
       "module": "Shopping Assistant",

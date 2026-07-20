@@ -1,4 +1,4 @@
-# NEXT WORKTREE — Fraud Triage source complete; PIM Import next
+# NEXT WORKTREE — PIM Import source complete; Shopping Assistant next
 
 The forensic handover has been assimilated across the complete tracked repository. Start with
 `docs/handover/codex/orientation/CODEX_CONTEXT_LEDGER.md`, then use the original handover pack under
@@ -36,7 +36,10 @@ safe UAT and a minimum 15-minute soak, and reconcile to `PRICING_PRODUCTION_LIVE
 The marker check returned missing and therefore made no production or evidence change. Source completion continued.
 Fraud Triage is committed at `6574952` and proven through migration `0043`, exact RBAC, protected API/Astro UI,
 real-PostgreSQL concurrency/immutability/no-effect checks, fresh replay and a clean 200-file / 4,054-test suite. It is
-`SOURCE_COMPLETE_NOT_DEPLOYED`; no live Fraud decision or production migration occurred. Select PIM Import next.
+`SOURCE_COMPLETE_NOT_DEPLOYED`; no live Fraud decision or production migration occurred. Its PIM Import selection was
+subsequently completed as recorded below.
+
+PIM Import is committed and pushed at `ab156aea207d281380f018ddfcb15e464bc893fc` and proven through migration `0044`, immutable source hashing, explicit mapping, deterministic zero-write preview, full drift snapshots, independent approval, per-row partial failure and exact rollback. The protected API/Astro control room has exact read/create/map/approve/apply/rollback RBAC. Real PostgreSQL proves zero protected-commerce, communication and provider effects and zero residue; fresh replay and the clean 202-file / 4,061-test suite pass. PIM Import is `SOURCE_COMPLETE_NOT_DEPLOYED`; no production migration or catalogue import occurred. Select Shopping Assistant next and reconcile the existing product-finder implementation against real catalogue/inventory/compatibility/Pricing, truthful `NO_MATCH`, and safe persisted interaction context before editing.
 
 The detailed A3-A5 plan, protected assets, evidence manifest and risk register live under
 `docs/handover/codex/`. The section below is the prior resume note (superseded by the handover and C0 package).

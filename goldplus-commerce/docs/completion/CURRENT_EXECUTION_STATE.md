@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Fraud Triage source complete)
+# CURRENT EXECUTION STATE (2026-07-20 · PIM Import source complete)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -95,5 +95,8 @@
 - Fraud Triage is committed at `6574952`: review-first case/signal/assignment/operator-decision persistence, exact four-way RBAC, immutable transactional audit, protected API/Astro control room and additive migration `0043`. There is no public route, automatic decline, checkout/order/payment hook, provider path, worker or outbox path.
 - Real PostgreSQL concurrency and cleanup proof passes with one case/signal winner, one assignment winner, explicit `REVIEW` then operator `DECLINE`, immutable resolution, zero protected-commerce/communication deltas, zero provider calls and zero residue. Fresh `0000`–`0043` replay has 44 migration rows. Clean suite passes 200 files / 4,054 tests; workspace typecheck/build, architecture, secret scan, changed-path lint and diff check pass.
 - Fraud Triage is `SOURCE_COMPLETE_NOT_DEPLOYED`. The next engineering-controlled queue item is PIM Import.
+- PIM Import is committed and pushed at `ab156aea207d281380f018ddfcb15e464bc893fc`: immutable canonical source rows and SHA-256 verification, explicit bounded mapping, deterministic non-writing preview, full catalogue snapshots, independent approval, separately privileged apply/rollback, exact RBAC, protected API/Astro control room and additive migration `0044`.
+- Real PostgreSQL proves digest tamper denial, three valid/one invalid row, preview catalogue delta zero, creator self-approval denial, two applied rows with one safely contained concurrent conflict, exact rollback, hidden zero-stock draft creation, seven immutable events, zero inventory/order/payment/outbox/notification/attribute/image deltas, zero provider calls and zero residue. Fresh `0000`–`0044` replay has 45 migration rows and four empty PIM tables.
+- Focused PIM/API/admin-route tests pass 40/40; architecture passes 10/10; workspace typecheck, API/Astro builds, secret scan, changed-path lint with zero errors and diff check pass. Clean full suite passes 202 files / 4,061 tests. PIM Import is `SOURCE_COMPLETE_NOT_DEPLOYED`; Shopping Assistant is selected next.
 
 ---
