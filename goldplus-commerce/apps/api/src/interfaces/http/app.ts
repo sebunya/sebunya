@@ -55,6 +55,7 @@ import adminFraudRoutes from './routes/admin/fraud';
 import adminPimImportRoutes from './routes/admin/pim-imports';
 import adminSurveyRoutes from './routes/admin/surveys';
 import surveyRoutes from './routes/surveys';
+import adminCopyQualityRoutes from './routes/admin/copy-quality';
 
 
 
@@ -189,6 +190,7 @@ app.route('/admin/fraud', adminFraudRoutes);
 app.route('/admin/pim-imports', adminPimImportRoutes);
 app.route('/admin/surveys', adminSurveyRoutes);
 app.route('/account/surveys', surveyRoutes);
+app.route('/admin/copy-quality', adminCopyQualityRoutes);
 
 
 // Health check route mounted via route registration

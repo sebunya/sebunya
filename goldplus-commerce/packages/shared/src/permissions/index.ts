@@ -69,6 +69,8 @@ export const PERMISSIONS = {
   SURVEYS_APPROVE: 'surveys.approve',
   SURVEYS_ACTIVATE: 'surveys.activate',
   SURVEYS_EXPORT: 'surveys.export',
+  COPY_QUALITY_READ: 'copy_quality.read',
+  COPY_QUALITY_EXPORT: 'copy_quality.export',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

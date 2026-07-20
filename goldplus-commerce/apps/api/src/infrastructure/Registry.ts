@@ -207,6 +207,8 @@ import { DrizzlePimImportRepository } from './db/repositories/DrizzlePimImportRe
 import { PimImportOperationsUseCase } from '../application/use-cases/pim/PimImportOperationsUseCase';
 import { DrizzleSurveyRepository } from './db/repositories/DrizzleSurveyRepository';
 import { SurveyOperationsUseCase } from '../application/use-cases/surveys/SurveyOperationsUseCase';
+import { DrizzleCopyQualityCatalogReader } from './db/repositories/DrizzleCopyQualityCatalogReader';
+import { GetCopyQualityReportUseCase } from '../application/use-cases/copy-quality/GetCopyQualityReportUseCase';
 
 import { DrizzleProductFinderRepository } from './product-finder/DrizzleProductFinderRepository';
 import { DrizzleProductFinderCatalogRepository } from './product-finder/DrizzleProductFinderCatalogRepository';
@@ -440,6 +442,7 @@ export class Registry {
   public readonly fraudTriageRepo = new DrizzleFraudTriageRepository();
   public readonly pimImportRepo = new DrizzlePimImportRepository();
   public readonly surveyRepo = new DrizzleSurveyRepository();
+  public readonly copyQualityCatalog = new DrizzleCopyQualityCatalogReader();
 
   public readonly measurementAdminRepo = new DrizzleMeasurementAdminRepository();
   public readonly dlqRepo = new DrizzleDlqRepository();
@@ -649,6 +652,7 @@ export class Registry {
   public readonly fraudTriageOperationsUseCase = new FraudTriageOperationsUseCase(this.fraudTriageRepo);
   public readonly pimImportOperationsUseCase = new PimImportOperationsUseCase(this.pimImportRepo);
   public readonly surveyOperationsUseCase = new SurveyOperationsUseCase(this.surveyRepo);
+  public readonly getCopyQualityReportUseCase = new GetCopyQualityReportUseCase(this.copyQualityCatalog);
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);
