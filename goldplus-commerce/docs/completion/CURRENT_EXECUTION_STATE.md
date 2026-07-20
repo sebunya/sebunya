@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · Behavioral Interventions source complete)
+# CURRENT EXECUTION STATE (2026-07-20 · Loyalty source complete)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -109,5 +109,7 @@
 - Real PostgreSQL proves three canonical fixtures, one blocked row, two duplicate rows, truthful placeholder/claim/filter evidence, zero provider calls, zero audit/outbox/notification/consent/order/payment deltas and zero residue. Focused Copy Quality/API/admin-route/architecture tests pass 52/52; clean suite passes 209 files / 4,084 tests. Copy Quality is `SOURCE_COMPLETE_NOT_DEPLOYED`; Behavioural Interventions is selected next.
 - Behavioral Interventions is committed and pushed at `42a3aa1ff82933eec4bab662aea789e3a505d6f3`. Migration `0046` adds governed immutable intervention versions, atomic Experiment/intervention exposure evidence, measured outcomes and immutable events. Ethical policy permits only truthful, dismissible `ON_SITE` guidance; current consent, Customer DNA audience, running Experiment/treatment assignment, frequency and dismissal gates fail closed.
 - Real PostgreSQL proves control suppression, one concurrent frequency winner, exactly one Experiment assignment/exposure and intervention exposure, current-consent recheck, idempotency, ownership, dismissal/pause suppression, truthful outcomes, zero protected deltas/provider calls/residue and five native-JSONB governance events. Fresh replay reaches 47 rows/five empty tables; focused tests pass 61/61 and clean suite passes 212 files / 4,102 tests. Behavioral Interventions is `SOURCE_COMPLETE_NOT_DEPLOYED`; Loyalty is selected next.
+- Loyalty is committed and pushed at `32e3ef0c24aa2bd06c85c73400b7dd2751507389`. Migration `0047` enforces immutable ledger type/sign/source shape plus one expiry/reversal per source. Account-serialized transactions make earn/redeem/expire/reverse idempotent; FIFO expiry offsets only an earn's unspent remainder, and no stored balance exists.
+- Verified paid-order completion supplies only persisted customer identity and authoritative order total to the existing dual-gated earn boundary; the programme remains dormant. The protected operations API/Astro page exposes PII-minimized liability and recent-event evidence. PostgreSQL proves one concurrent redemption winner, exact partial expiry, collision/sign denial, zero protected deltas/provider calls/residue; fresh replay reaches 48 rows. Focused tests pass 99/99 and the clean suite passes 214 files / 4,116 tests. Loyalty is `SOURCE_COMPLETE_NOT_DEPLOYED`; Search Insights is selected next.
 
 ---

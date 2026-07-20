@@ -427,24 +427,28 @@
         "orders",
         "identity"
       ],
-      "status": "SOURCE_PARTIAL",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "Auditable points ledger with idempotent earn/redeem/expire/reverse; no balance mutation without a ledger event.",
       "existingAssets": [
-        "apps/api/src/domain/loyalty/LoyaltyLedger.ts",
-        "apps/api/src/application/use-cases/loyalty/*",
-        "apps/web/src/pages/admin/loyalty.astro",
-        "schema/loyalty.ts"
+        "migration 0047 ledger shape, source and uniqueness constraints",
+        "transactionally serialized earn/redeem/expire/reverse ledger operations",
+        "verified paid-order dual-gated idempotent earn integration",
+        "FIFO unspent-expiry calculation with no stored balance",
+        "protected administrator operations API and PII-minimized Astro control room"
       ],
-      "missingLayers": [
-        "reconcile idempotency/reversal completeness + admin operability + tests vs contract"
-      ],
-      "nextBoundedSlice": "reconcile loyalty ledger against double-entry contract",
+      "missingLayers": [],
+      "nextBoundedSlice": "none (source complete); commercial activation and production release require separate governance",
       "acceptance": [
         "ledger-event-backed balances",
         "idempotent earn/redeem/expire/reverse"
       ],
-      "evidence": [],
-      "commit": null
+      "evidence": [
+        "loyalty-ledger-proof.ts PASS: one redemption winner, FIFO partial expiry, idempotent earn/expiry/reversal, strict collision denial, zero protected deltas/provider calls/residue",
+        "fresh 0000-0047 replay PASS: 48 migration rows, three Loyalty tables, three integrity constraints, zero business rows",
+        "focused Loyalty domain/API/UI/architecture tests PASS: 99/99",
+        "clean full suite 214 files / 4116 tests"
+      ],
+      "commit": "32e3ef0"
     },
     {
       "module": "Search Insights",
