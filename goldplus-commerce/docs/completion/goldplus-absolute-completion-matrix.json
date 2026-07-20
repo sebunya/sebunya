@@ -1,10 +1,10 @@
 {
   "generatedAt": "2026-07-20",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "PIM Import source completion commit ab156ae",
+  "reconciledHead": "Shopping Assistant source completion commit 95d672b",
   "note": "Reconciled from actual source + local execution. The binding execution queue is COMMERCE_OS_EXECUTION_QUEUE.json.",
   "migrations": "0000-0044 (fresh replay proven; 0040 populated upgrade proven; 0042 continuation upgrade proven)",
-  "fullSuite": "202 files / 4061 tests at clean PIM Import source commit",
+  "fullSuite": "203 files / 4064 tests at clean Shopping Assistant source commit",
   "architecture": "10/10",
   "modules": {
     "Fulfilment Operations": "SOURCE_COMPLETE_NOT_DEPLOYED",
@@ -19,13 +19,13 @@
     "Pricing & Promotions": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Fraud Triage": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "PIM Import": "SOURCE_COMPLETE_NOT_DEPLOYED",
-    "Shopping Assistant (product finder)": "SOURCE_PARTIAL",
+    "Shopping Assistant (product finder)": "SOURCE_COMPLETE_NOT_DEPLOYED",
     "Surveys": "MISSING",
     "Copy Quality": "MISSING",
     "Behavioural Interventions": "MISSING",
     "Loyalty": "SOURCE_PARTIAL",
     "Search Insights": "SOURCE_PARTIAL"
   },
-  "nextModule": "Shopping Assistant (product finder)",
+  "nextModule": "Surveys",
   "productionDeployment": "APPROVAL_GATED (P7 exact release, images, restore rehearsal and rollback package complete; production unchanged)"
 }

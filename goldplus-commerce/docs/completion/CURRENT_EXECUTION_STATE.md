@@ -1,4 +1,4 @@
-# CURRENT EXECUTION STATE (2026-07-20 · PIM Import source complete)
+# CURRENT EXECUTION STATE (2026-07-20 · Shopping Assistant source complete)
 
 - The forensic handover was verified at `bfb0ffc3d004f8eecc039722f540eef75d8d7193`, then Codex completed
   C0 whole-codebase assimilation without application-source changes. The durable orientation package is
@@ -98,5 +98,9 @@
 - PIM Import is committed and pushed at `ab156aea207d281380f018ddfcb15e464bc893fc`: immutable canonical source rows and SHA-256 verification, explicit bounded mapping, deterministic non-writing preview, full catalogue snapshots, independent approval, separately privileged apply/rollback, exact RBAC, protected API/Astro control room and additive migration `0044`.
 - Real PostgreSQL proves digest tamper denial, three valid/one invalid row, preview catalogue delta zero, creator self-approval denial, two applied rows with one safely contained concurrent conflict, exact rollback, hidden zero-stock draft creation, seven immutable events, zero inventory/order/payment/outbox/notification/attribute/image deltas, zero provider calls and zero residue. Fresh `0000`–`0044` replay has 45 migration rows and four empty PIM tables.
 - Focused PIM/API/admin-route tests pass 40/40; architecture passes 10/10; workspace typecheck, API/Astro builds, secret scan, changed-path lint with zero errors and diff check pass. Clean full suite passes 202 files / 4,061 tests. PIM Import is `SOURCE_COMPLETE_NOT_DEPLOYED`; Shopping Assistant is selected next.
+- Shopping Assistant is committed and pushed at `95d672bdd6babc3b0b55031a0c961b27a47bc120`. It now uses a server-issued anonymous capability with only a SHA-256-derived identifier persisted, enforces session ownership on every operation, writes native JSONB, and completes idempotently with one concurrent winner.
+- Recommendations use only active/approved catalogue rows with available unreserved inventory, declared compatibility, canonical retail prices, and the existing non-persistent Pricing evaluator. Unknown compatibility and unavailable/draft products fail closed; zero matches are reported truthfully as `NO_MATCH`.
+- The public shell uses configured API origin and safe DOM construction. Its actions persist product interest only and no longer claim to add to cart or send WhatsApp. Real PostgreSQL proves ownership isolation, one completion winner, canonical Pricing, zero preference/provider/protected-table deltas and zero residue.
+- Focused Product Finder/safety/architecture tests pass 37/37; workspace typecheck and API/Astro build pass; secret scan, changed-path lint with zero errors and diff check pass. Repository-wide lint retains the unrelated `ICustomerDnaRepository.ts:6` baseline. Clean full suite passes 203 files / 4,064 tests. Shopping Assistant is `SOURCE_COMPLETE_NOT_DEPLOYED`; Surveys is selected next.
 
 ---

@@ -1,7 +1,7 @@
 {
   "generatedAt": "2026-07-20",
   "branch": "phase-2-measurement-control-tower-completion",
-  "reconciledHead": "ab156ae",
+  "reconciledHead": "95d672b",
   "sourceOfTruth": "actual repository source + local execution (not dashboard cards, route/schema/test names, or old labels)",
   "legend": {
     "SOURCE_COMPLETE_NOT_DEPLOYED": "all applicable layers present and locally accepted; only real-server deploy remains",
@@ -307,23 +307,29 @@
         "compatibility",
         "pricing"
       ],
-      "status": "SOURCE_PARTIAL",
+      "status": "SOURCE_COMPLETE_NOT_DEPLOYED",
       "businessOutcome": "Guided product finder over real catalogue/inventory/compatibility/pricing; NO_MATCH rather than invented product.",
       "existingAssets": [
         "apps/api/src/infrastructure/db/schema/product_finder.ts",
-        "product finder use cases (53 files)"
+        "server-issued anonymous capability with hashed persisted ownership",
+        "real catalogue, available-inventory, declared compatibility and non-persistent Pricing readers",
+        "ownership-protected product-finder use cases and native JSONB persistence",
+        "safe Astro interaction shell with truthful interest-only actions"
       ],
-      "missingLayers": [
-        "reconcile completeness of UI/persistence/handoff/tests"
-      ],
-      "nextBoundedSlice": "reconcile product_finder against assistant contract",
+      "missingLayers": [],
+      "nextBoundedSlice": "none (source complete); production release requires a separately frozen and approval-gated candidate",
       "acceptance": [
         "real data",
         "NO_MATCH truthful",
         "safe interaction context persisted"
       ],
-      "evidence": [],
-      "commit": null
+      "evidence": [
+        "shopping-assistant-proof.ts PASS: ownership denial, one completion winner, declared-only compatibility, canonical Pricing, truthful NO_MATCH, zero preference/provider/protected deltas and zero residue",
+        "focused Product Finder, safety and architecture tests PASS: 13 files / 37 tests",
+        "workspace typecheck, API/Astro build, secret scan, changed-path lint and diff check PASS",
+        "clean full suite 203 files / 4064 tests"
+      ],
+      "commit": "95d672b"
     },
     {
       "module": "Surveys",
