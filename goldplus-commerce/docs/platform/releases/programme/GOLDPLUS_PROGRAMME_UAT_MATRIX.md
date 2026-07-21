@@ -28,6 +28,7 @@ Every check is read-only, permission-denied, empty-state, non-persistent simulat
 
 ## Commerce and dormant-state reconciliation
 
+- For `GET /products?limit=5`, require independent SQL, both direct API replicas and the public API to have identical dynamic page count, identifier-set SHA-256 and identifier+canonical-price SHA-256. Require rendered storefront product/price evidence to match the API set where feasible.
 - Record the same bounded canonical product-price sample before and after deployment; every value must match.
 - Confirm cart totals remain canonical, checkout rejects client-authoritative totals and the PesaPal amount source remains the committed order total without initiating payment.
 - Confirm zero active new promotions, active new Experiments, customer-facing Automation, Survey invitations, PIM publications, Fraud auto-decline, automatic interventions, automatic Loyalty redemption and automatic Search synonym application.
@@ -36,4 +37,4 @@ Every check is read-only, permission-denied, empty-state, non-persistent simulat
 
 ## Soak checkpoints
 
-At T+0, T+1, T+5, T+10, T+15, T+20 and T+30 record API/web health and IDs, restart counts, error/exit logs, database-client and UUID errors, worker/ticker/BullMQ/Redis health, queue depth, outbox retries, provider/notification attempts, DB pool health, CPU/memory, module-read health and the bounded price sample.
+At T+0, T+1, T+5, T+10, T+15, T+20 and T+30 record independent SQL and direct-replica/public-API/storefront catalogue counts and hashes, API/web health and IDs, restart counts, error/exit logs, database-client and UUID errors, worker/ticker/BullMQ/Redis health, queue depth, outbox retries, provider/notification attempts, DB pool health, CPU/memory, module-read health and the bounded price sample.

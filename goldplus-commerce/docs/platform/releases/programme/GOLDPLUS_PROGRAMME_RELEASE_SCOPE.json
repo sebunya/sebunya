@@ -1,24 +1,45 @@
 {
-  "schemaVersion": 1,
-  "classification": "FINAL_PROGRAMME_EXECUTABLE_SCOPE",
+  "schemaVersion": 2,
+  "classification": "CATALOGUE_PARITY_REPAIR_EXECUTABLE_SCOPE",
   "branch": "phase-2-measurement-control-tower-completion",
   "executable": {
-    "commit": "682384b2a862e86ce3a14f4f5a875506f4a9d33f",
-    "tree": "1d54cc2d840d7683ca6fa14db79f7138de0983fb",
-    "archiveSha256": "9f775e704b51a2de3a16f2606f049be09f350e0c381dab46bd1396fc61b106e2",
-    "applicationTree": "beef8e18016af5b5073f8cf15a4d7f6656535dbe",
-    "applicationArchiveSha256": "d202a6ae6c7d6f208474646a1d8e78952c5fc02d971ad7fd5336d9f85b7bee38",
-    "evidenceHead": "06b1fee26eab1b0a208c28ce82a8d4934be9b3b1",
-    "evidenceDelta": "DOCUMENTATION_AND_EVIDENCE_ONLY",
-    "rejectedCandidate": "e0f7e80928398dc758b0d88c25800eab60899986"
+    "commit": "13633d86c808bd6fde49c47248f234b861a411bb",
+    "tree": "68b0ac4adc830d8be52b3f341f07032a8d84e361",
+    "archiveSha256": "4ba57acb9f0d455e4ea0c6abe26292b2c64a12de88b01fa82ac833567228ecd2",
+    "applicationTree": "7cbe8220d2675c7f914391bd4a887a77eecb1e5e",
+    "applicationArchiveSha256": "4d3566fc2464fb4d1140066b9e1b9015a8d13436ff94667018d2d3de873b4428",
+    "evidenceHead": "13633d86c808bd6fde49c47248f234b861a411bb",
+    "evidenceDelta": "INCIDENT_RCA_PLUS_MINIMAL_MONITOR_REPAIR"
+  },
+  "failedRelease": {
+    "releaseId": "goldplus-programme-682384b2-m0048-b79a4de7",
+    "executableCommit": "682384b2a862e86ce3a14f4f5a875506f4a9d33f",
+    "releasePackageHead": "c5191f26776cb4b7c8e424eb9250a2b1441c09f0",
+    "terminalEvidenceHead": "c9ce093e73913d47eed6255e33fe240c7753de2d",
+    "terminalDecision": "GOLDPLUS_PROGRAMME_RELEASE_ROLLED_BACK_AFTER_RUNTIME_FAILURE",
+    "rejectedForReuse": true
+  },
+  "repair": {
+    "classification": "A_SYNTHETIC_MONITOR_REQUEST_OR_PARSER_DEFECT",
+    "firstDivergentLayer": "API_RESPONSE_TO_SYNTHETIC_MONITOR_PARSER",
+    "request": "GET /products?limit=5",
+    "actualCollectionPath": "data",
+    "failedCollectionPath": "data.items",
+    "migrationRequired": false,
+    "incidentEvidence": [
+      "docs/platform/evidence/releases/goldplus-programme-20260720-approved-attempt.json",
+      "docs/platform/evidence/releases/goldplus-programme-20260720-approved-attempt.md",
+      "docs/platform/evidence/releases/goldplus-programme-catalogue-parity-incident-rca.json",
+      "docs/platform/evidence/releases/goldplus-programme-catalogue-parity-incident-rca.md"
+    ]
   },
   "migrations": {
     "range": "0000-0048",
     "ceiling": "0048",
     "freshJournalRows": 49,
-    "productionBaselineRows": 29,
-    "productionMissingRange": "0023-0048",
-    "productionMissingCandidateRows": 26,
+    "productionBaselineRows": 55,
+    "productionMissingRange": "NONE",
+    "productionMissingCandidateRows": 0,
     "productionTargetRows": 55,
     "journalSha256": "60df1c0a102695048a3f195c11950dd773ac3ca2359f5efb5a0bb6a7b039ef59",
     "orderedMigrationSetSha256": "31ddcd574969834ac0289e8148f59687b3600a27d6bfdc9e5218189dd69a02a2",
@@ -45,9 +66,12 @@
     "caddyfileSha256": "ca560fa5678c336a6cb802bb96b8e9c38d91539b0dfe1f18eaf9d9d99b9f68ba"
   },
   "verification": {
-    "testFiles": 216,
-    "tests": 4129,
+    "testFiles": 217,
+    "tests": 4144,
     "architectureTests": 10,
+    "catalogueParityTests": 12,
+    "restoredProductionParity": true,
+    "faultInjections": 8,
     "commands": [
       "pnpm security:scan-secrets",
       "pnpm typecheck",
@@ -109,11 +133,11 @@
   "production": {
     "transport": "ssh goldplus-prod",
     "applicationPath": "/opt/goldplus/app/goldplus-commerce",
-    "baselineSourceCommit": "4b4016c75bd29bd1c6c251663fe277837d6573c0",
+    "baselineSourceCommit": "c9ce093e73913d47eed6255e33fe240c7753de2d",
     "baselineSourceClean": true,
-    "sourceGapCommits": 81,
-    "sourceGapTrackedPaths": 507,
-    "baselineMigrationRows": 29,
+    "sourceGapCommits": 1,
+    "sourceGapTrackedPaths": 5,
+    "baselineMigrationRows": 55,
     "baselineApiImageId": "sha256:4057585542b53b35265d7ab702ecd233048ee47ec3dcaa75a5dd204e011d8638",
     "baselineWebImageId": "sha256:2caef4d600a6974c471b95ceb670bd662c066f1c4c1a45c40bf81c27ec4f8ea9",
     "baselineProviderGates": {
@@ -123,8 +147,18 @@
       "dryRun": true
     }
   },
+  "preMutationShadowCanary": {
+    "mandatory": true,
+    "liveDatabaseAccess": "READ_ONLY_ROLE_OR_ENFORCED_READ_ONLY_TRANSACTION",
+    "redis": "ISOLATED",
+    "providerEgress": false,
+    "workersAndTickers": "DISABLED_OR_ISOLATED",
+    "publicRoute": false,
+    "requiredParity": ["independent SQL", "repository", "API", "monitor"]
+  },
   "soak": {
     "minimumMinutes": 30,
-    "checkpointsMinutes": [0, 1, 5, 10, 15, 20, 30]
+    "checkpointsMinutes": [0, 1, 5, 10, 15, 20, 30],
+    "catalogueHashesRequiredAtEveryCheckpoint": true
   }
 }

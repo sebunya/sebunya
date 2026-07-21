@@ -1,6 +1,6 @@
-# Final programme release review gate
+# Catalogue-parity repair release review gate
 
-Decision: `PASS_TO_MANIFEST_FREEZE`
+Decision: `PASS_TO_NEW_MANIFEST_FREEZE`
 
 Verified Git root: `/Users/robertsebunya/Documents/GitHub_Projects/goldplus-commerce-next-phase-c1925dbd`
 
@@ -8,51 +8,64 @@ Verified application root: `/Users/robertsebunya/Documents/GitHub_Projects/goldp
 
 Verified branch: `phase-2-measurement-control-tower-completion`
 
-Verified local/origin head: `06b1fee26eab1b0a208c28ce82a8d4934be9b3b1`
+Verified repair executable and origin head before release-document work: `13633d86c808bd6fde49c47248f234b861a411bb`
 
-Tree: clean
+## Incident boundary
 
-## Executable boundary
+- Failed release: `goldplus-programme-682384b2-m0048-b79a4de7`; it is rejected for reuse.
+- Production rollback source: clean `c9ce093e73913d47eed6255e33fe240c7753de2d`.
+- Production rollback images: API `sha256:4057585542b53b35265d7ab702ecd233048ee47ec3dcaa75a5dd204e011d8638`; web `sha256:2caef4d600a6974c471b95ceb670bd662c066f1c4c1a45c40bf81c27ec4f8ea9`.
+- Failed images: API `sha256:784647e9f178a9fd5d34093aae99a9aa590701b82bb791ccd2c19977995e69b7`; web `sha256:331c9432d5b94e00c97b7abf494b6cdebf30a4ad2dba27a34a0f86ce023f67af`.
+- Production rollback health, source cleanliness, container identities, migration ledger, commerce counts and no-send counters were verified read-only.
+- Forensic artefacts were preserved outside the repository before repair work, including the production database backup, failed/rollback image archives, logs and deployment-attempt evidence.
 
-- Latest executable commit: `682384b2a862e86ce3a14f4f5a875506f4a9d33f`
-- Evidence-only head: `06b1fee26eab1b0a208c28ce82a8d4934be9b3b1`
-- Executable-to-evidence delta: six documentation/evidence paths only; executable delta is empty.
-- Executable Git tree: `1d54cc2d840d7683ca6fa14db79f7138de0983fb`
-- Deterministic executable archive SHA-256: `9f775e704b51a2de3a16f2606f049be09f350e0c381dab46bd1396fc61b106e2`
-- Obsolete Pricing candidate `e0f7e80928398dc758b0d88c25800eab60899986`: rejected as final programme release authority. It is 148 tracked paths behind the final executable and predates migrations `0043`–`0048`.
+## Classification and first divergence
 
-## Source and migration state
+- Classification: `A_SYNTHETIC_MONITOR_REQUEST_OR_PARSER_DEFECT`.
+- Independent SQL, compiled repository, use case/DTO and `GET /products?limit=5` all returned the same five products from the restored production database.
+- The API contract is `ApiResponse<ProductPublicDto[]>`, with the collection at response path `data`.
+- The failed monitor extracted `catalogData?.data?.items || []`; it therefore converted a valid populated response into an empty set.
+- The first divergent boundary was API response → synthetic monitor parser. There was no catalogue repository, DTO, API, database, migration, cache or product-data defect.
+- The failed release crossed the rollback threshold because the scheduled monitor reported `Catalog returned zero products`; the public API remained populated and HTTP 200.
 
-- Full suite at the executable commit: 216 files / 4,129 tests.
-- Architecture: 10/10.
-- Workspace typecheck and API/web builds: passed.
-- Secret scan and changed-path lint: passed.
-- Repository lint baseline: the unrelated `apps/api/src/application/ports/ICustomerDnaRepository.ts:6` error.
-- Latest migration: `0048_search_insights.sql`.
-- Migration journal: 49 ordered entries (`0000`–`0048`).
-- Queue: 14/14 entries `SOURCE_COMPLETE_NOT_DEPLOYED`; zero incomplete.
-- Completion matrix: 18/18 modules `SOURCE_COMPLETE_NOT_DEPLOYED`; zero `LIVE_VERIFIED`.
+## Smallest repair
 
-## Read-only production baseline
+- Repair executable: `13633d86c808bd6fde49c47248f234b861a411bb`.
+- The repair changes only the catalogue parity monitor, its read-only proof, focused unit tests and incident evidence.
+- The monitor now compares an independent SQL truth set with the actual API contract and emits deterministic reason codes, database/schema fingerprint checks, identifier hashes, canonical-price hashes and first-divergence evidence.
+- The mandatory storefront gate separately proved that `getCleanCatalog` injected all 21 local seeds into a successful eight-product API response. The repair now keeps live API data authoritative and uses local seeds only as the existing unavailable/empty fallback.
+- Focused storefront tests prove populated-API authority and empty-API fallback; the exact compiled web must match restored API identifiers and prices before freeze.
+- No migration, repository, catalogue use case, DTO, route, storefront, business-state, provider, checkout, payment, order, Inventory or fulfilment implementation changed.
 
-- Production source: clean detached `4b4016c75bd29bd1c6c251663fe277837d6573c0`, tree `d0095cd61042d393beda411178ea0290cc5c4c82`.
-- Source gap to final executable: 81 commits / 507 tracked paths.
-- Production migration ledger: 29 rows. The final executable contributes 26 missing candidate migrations (`0023`–`0048`), so the restored/live upgraded ledger target is 55 rows while a fresh database target remains 49.
-- Public health: storefront, API live and API ready all HTTP 200.
-- API: two healthy replicas, image `sha256:4057585542b53b35265d7ab702ecd233048ee47ec3dcaa75a5dd204e011d8638`, zero restarts.
-- Web: two healthy replicas, image `sha256:2caef4d600a6974c471b95ceb670bd662c066f1c4c1a45c40bf81c27ec4f8ea9`, zero restarts.
-- Non-target identities: Caddy `6f6e517e…`, PostgreSQL `ebb57744…`, Redis `32c8a247…`; all running with zero restarts.
-- Compose SHA-256: `8b871bef505117edc2870b2c9b90e4c0e8514f58a5a311b586d6e8f92bafbb62`.
-- Caddyfile SHA-256: `ca560fa5678c336a6cb802bb96b8e9c38d91539b0dfe1f18eaf9d9d99b9f68ba`.
-- Free disk: 54,435,992 KiB.
-- Business baseline: 8 approved active products, 13 orders, 18 order lines, 9 payment attempts, zero outbox events and zero notification attempts.
-- Provider booleans: SMS false, email false, live-send false, dry-run true.
-- Programme module tables introduced after production migration `0022` are absent; there is no live activation to inherit.
+## Exact executable verification
 
-## Release scope, risks and gates
+- Detached clean worktree fixed at `13633d86c808bd6fde49c47248f234b861a411bb`.
+- Git tree: `68b0ac4adc830d8be52b3f341f07032a8d84e361`.
+- Deterministic source archive SHA-256: `4ba57acb9f0d455e4ea0c6abe26292b2c64a12de88b01fa82ac833567228ecd2`.
+- Application tree: `7cbe8220d2675c7f914391bd4a887a77eecb1e5e`.
+- Application archive SHA-256: `4d3566fc2464fb4d1140066b9e1b9015a8d13436ff94667018d2d3de873b4428`.
+- Focused parity tests: 12/12 pass.
+- Full suite: 217 files / 4,144 tests pass.
+- Architecture: 10/10 pass.
+- Typecheck, API/web builds and secret scan (1,237 files): pass.
+- Changed-path lint: zero errors; existing warnings only.
+- Repository lint remains the pre-existing unrelated `apps/api/src/application/ports/ICustomerDnaRepository.ts:6` baseline.
+- Fresh migration replay: 49 journal rows through `0048`, zero business rows.
+- Restored-production proof: 55 ledger rows, eight approved products, 13 orders totalling UGX 1,545,000, zero outbox rows and zero notification attempts.
 
-- New scope: the complete executable at `682384b2`, migrations through `0048`, API/web images only, all completed control surfaces dormant by default.
-- Primary risk: the old runtime must remain safe against the additive 26-migration production upgrade before and after live migration.
-- Other risks: large source gap, compiled database-client/ESM regressions, UUID input failures, accidental activation, price/checkout/payment drift, provider activity, queue storms and late worker/ticker failures.
-- Required approval: a new marker derived only after canonical scope hashing. The prior Pricing marker is invalid for this release.
-- No lock, backup, source mutation, image retag, migration or service action occurred during this review.
+## New release boundary
+
+- Release ID: `goldplus-programme-13633d86-m0048-5c6f9d25`.
+- Release token: `13633d86-m0048-5c6f9d25`.
+- Canonical scope SHA-256: `5c6f9d255295431821af86d9d134466361987eead46a295ce8a7c92aa970ad60`.
+- Canonicalization recursively sorts object keys, preserves array order and serializes without whitespace. The scope excludes its own hash, approval token/path and mutable timestamps.
+- Migration ceiling remains `0048`; production already has all 55 historical ledger rows, so no live migration is expected for this repair.
+- Exact linux/amd64 release images were built from the isolated executable boundary and are recorded in the manifest and freeze evidence.
+- Production access during incident review and freeze remained read-only. No lock, backup, rollback tag, source fast-forward, live migration, service recreation, provider action or customer communication occurred.
+
+## Approval boundary
+
+- The failed release approval marker is consumed and cannot authorize this release.
+- Codex must not create, modify, replace or remove any approval marker.
+- The consumed marker `/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_682384b2-m0048-b79a4de7` must be absent before the new operator approval handoff can be issued.
+- The new marker, when independently created by the operator, is `/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_13633d86-m0048-5c6f9d25` with exact one-line content `APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_13633d86-m0048-5c6f9d25` and the controller-required root-only metadata.

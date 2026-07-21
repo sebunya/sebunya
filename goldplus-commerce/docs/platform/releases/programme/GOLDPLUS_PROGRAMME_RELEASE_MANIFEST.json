@@ -1,22 +1,22 @@
 {
   "schemaVersion": 1,
-  "classification": "MANIFEST_BOUND_CANDIDATE_NOT_DEPLOYED",
+  "classification": "CATALOGUE_PARITY_REPAIR_MANIFEST_BOUND_CANDIDATE_NOT_DEPLOYED",
   "release": {
-    "id": "goldplus-programme-682384b2-m0048-b79a4de7",
-    "token": "682384b2-m0048-b79a4de7",
+    "id": "goldplus-programme-13633d86-m0048-5c6f9d25",
+    "token": "13633d86-m0048-5c6f9d25",
     "scopeManifest": "docs/platform/releases/programme/GOLDPLUS_PROGRAMME_RELEASE_SCOPE.json",
     "scopeCanonicalization": "recursively sort object keys, preserve array order, JSON.stringify without whitespace",
-    "scopeManifestSha256": "b79a4de78f66ccc25cf58d5a319ddf8a99ec240148f32eb9dc854d5de15ee261",
-    "executableCommit": "682384b2a862e86ce3a14f4f5a875506f4a9d33f",
-    "evidenceHead": "06b1fee26eab1b0a208c28ce82a8d4934be9b3b1",
+    "scopeManifestSha256": "5c6f9d255295431821af86d9d134466361987eead46a295ce8a7c92aa970ad60",
+    "executableCommit": "13633d86c808bd6fde49c47248f234b861a411bb",
+    "evidenceHead": "13633d86c808bd6fde49c47248f234b861a411bb",
     "branch": "phase-2-measurement-control-tower-completion",
-    "stalePricingCandidate": "REJECTED"
+    "failedProgrammeRelease": "REJECTED_GOLDPLUS_PROGRAMME_682384B2_M0048_B79A4DE7"
   },
   "source": {
-    "gitTree": "1d54cc2d840d7683ca6fa14db79f7138de0983fb",
-    "archiveSha256": "9f775e704b51a2de3a16f2606f049be09f350e0c381dab46bd1396fc61b106e2",
-    "applicationTree": "beef8e18016af5b5073f8cf15a4d7f6656535dbe",
-    "applicationArchiveSha256": "d202a6ae6c7d6f208474646a1d8e78952c5fc02d971ad7fd5336d9f85b7bee38",
+    "gitTree": "68b0ac4adc830d8be52b3f341f07032a8d84e361",
+    "archiveSha256": "4ba57acb9f0d455e4ea0c6abe26292b2c64a12de88b01fa82ac833567228ecd2",
+    "applicationTree": "7cbe8220d2675c7f914391bd4a887a77eecb1e5e",
+    "applicationArchiveSha256": "4d3566fc2464fb4d1140066b9e1b9015a8d13436ff94667018d2d3de873b4428",
     "pnpmLockSha256": "0a750b72d4ec2bc1c5506d35d962b921881d7e580ae2dbc004d3b0c771b6874a",
     "apiDockerfileSha256": "66acf6b6d47a5172598c4469f014d9309f5d03dac6f413157652308e22bf7f48",
     "webDockerfileSha256": "bd93666f7f40b860e5e0f1304f0e7e1f6a2c93c1836934f94229e274d4ba1b4e",
@@ -27,9 +27,9 @@
     "range": "0000-0048",
     "ceiling": "0048",
     "freshDatabaseRows": 49,
-    "productionBaselineRows": 29,
-    "productionMissingRange": "0023-0048",
-    "productionCandidateRowsAdded": 26,
+    "productionBaselineRows": 55,
+    "productionMissingRange": "NONE",
+    "productionCandidateRowsAdded": 0,
     "productionTargetRows": 55,
     "journalSha256": "60df1c0a102695048a3f195c11950dd773ac3ca2359f5efb5a0bb6a7b039ef59",
     "orderedMigrationSetSha256": "31ddcd574969834ac0289e8148f59687b3600a27d6bfdc9e5218189dd69a02a2"
@@ -43,40 +43,42 @@
   },
   "images": {
     "api": {
-      "tag": "goldplus-commerce-api:goldplus-programme-682384b2-m0048-b79a4de7",
-      "id": "sha256:e5d00dcfa580435f849305408f013ca26dbe76a6a4b97d4265c8ce814be918e1",
-      "digest": "sha256:e5d00dcfa580435f849305408f013ca26dbe76a6a4b97d4265c8ce814be918e1",
+      "tag": "goldplus-commerce-api:goldplus-programme-13633d86-m0048-5c6f9d25",
+      "id": "sha256:259440b3d30996ec286bc53ed810f2cd3a81c6d22371f44490e792932492677f",
+      "digest": "sha256:259440b3d30996ec286bc53ed810f2cd3a81c6d22371f44490e792932492677f",
       "platform": "linux/amd64",
-      "sizeBytes": 115836215
+      "sizeBytes": 115840396
     },
     "web": {
-      "tag": "goldplus-commerce-web:goldplus-programme-682384b2-m0048-b79a4de7",
-      "id": "sha256:885687927458167b3b472d9f36dd9d8360480fee2fd0a3e74f9950daeee6fb5f",
-      "digest": "sha256:885687927458167b3b472d9f36dd9d8360480fee2fd0a3e74f9950daeee6fb5f",
+      "tag": "goldplus-commerce-web:goldplus-programme-13633d86-m0048-5c6f9d25",
+      "id": "sha256:d339956595e6bee1c3ee1f6647633cb022ea6a42bebea93976a5e4a10b0487ee",
+      "digest": "sha256:d339956595e6bee1c3ee1f6647633cb022ea6a42bebea93976a5e4a10b0487ee",
       "platform": "linux/amd64",
-      "sizeBytes": 145707987
+      "sizeBytes": 151715894
     },
     "labels": {
-      "org.opencontainers.image.revision": "682384b2a862e86ce3a14f4f5a875506f4a9d33f",
-      "org.opencontainers.image.version": "goldplus-programme-682384b2-m0048-b79a4de7",
-      "com.goldplus.evidence-head": "06b1fee26eab1b0a208c28ce82a8d4934be9b3b1",
+      "org.opencontainers.image.revision": "13633d86c808bd6fde49c47248f234b861a411bb",
+      "org.opencontainers.image.version": "goldplus-programme-13633d86-m0048-5c6f9d25",
+      "com.goldplus.evidence-head": "13633d86c808bd6fde49c47248f234b861a411bb",
       "com.goldplus.migration-ceiling": "0048",
       "com.goldplus.service": "api|web"
     }
   },
   "sourceVerification": {
-    "cleanExecutableWorktree": "PASS_DETACHED_682384b2",
-    "secretScan": "PASS_1235_FILES",
+    "cleanExecutableWorktree": "PASS_DETACHED_13633D86",
+    "secretScan": "PASS_1237_FILES",
     "typecheck": "PASS",
     "build": "PASS_API_AND_WEB",
-    "testFiles": 216,
-    "tests": 4129,
-    "fullSuite": "PASS_216_FILES_4129_TESTS",
+    "testFiles": 217,
+    "tests": 4144,
+    "fullSuite": "PASS_217_FILES_4144_TESTS",
     "architecture": "PASS_10_OF_10",
     "changedPathLint": "PASS_ZERO_ERRORS",
     "repositoryLint": "PRE_EXISTING_UNRELATED_ICustomerDnaRepository.ts_6",
     "freshMigrationReplay": "PASS_49_ROWS_ZERO_BUSINESS_ROWS",
-    "populatedUpgrade": "PASS_43_TO_49_WITH_CORE_DATA_AND_DORMANT_NEW_TABLES"
+    "populatedUpgrade": "PASS_RESTORED_PRODUCTION_29_TO_55_WITH_CORE_DATA_AND_DORMANT_NEW_TABLES",
+    "catalogueParityFocused": "PASS_2_FILES_28_TESTS",
+    "catalogueParityProof": "PASS_SQL_REPOSITORY_DTO_API_CACHE_FAULTS"
   },
   "imageVerification": {
     "apiBuild": "PASS_EXACT_EXECUTABLE_LINUX_AMD64",
@@ -85,12 +87,21 @@
     "webStartHealth": "PASS_NETWORK_NONE_READ_ONLY_FILESYSTEM",
     "composeConfig": "PASS_NO_INTERPOLATION_405_LINES_SHA256_BC32CDF13FB1B83EA52F4C9ECF83F21608EDDDEB882DEFB94FF591309B6B2C98",
     "ociLabels": "PASS_EXACT_RELEASE_BINDING",
-    "residualContainers": "PASS_ZERO"
+    "databaseConnectedApiCanary": "PASS_RESTORED_PRODUCTION_55_LEDGER_ROWS",
+    "catalogueParity": "PASS_DYNAMIC_COUNT_5_IDENTIFIER_14C57483_IDENTIFIER_PRICE_5E34628A",
+    "cacheMatrix": "PASS_COLD_MISS_STALE_EMPTY_EXPIRED_RECOVERED_WARM",
+    "faultInjections": "PASS_8",
+    "replicaParity": "PASS_TWO_EXACT_IMAGE_INSTANCES",
+    "storefrontParity": "PASS_API_8_RENDERED_8_IDENTIFIER_PRICE_SHA256_B2079948",
+    "providerCalls": 0,
+    "protectedMutationDelta": 0,
+    "redisResidue": 0,
+    "residualContainers": "PASS_ZERO_PROOF_CONTAINERS_AND_NETWORKS"
   },
   "productionBaseline": {
-    "sourceCommit": "4b4016c75bd29bd1c6c251663fe277837d6573c0",
+    "sourceCommit": "c9ce093e73913d47eed6255e33fe240c7753de2d",
     "sourceClean": true,
-    "migrationRows": 29,
+    "migrationRows": 55,
     "apiImageId": "sha256:4057585542b53b35265d7ab702ecd233048ee47ec3dcaa75a5dd204e011d8638",
     "webImageId": "sha256:2caef4d600a6974c471b95ceb670bd662c066f1c4c1a45c40bf81c27ec4f8ea9",
     "caddyContainerId": "6f6e517ee9d02fa4021925866f8925ac1fd4d6c200905469ddfa4a11bf11f2a2",
@@ -98,6 +109,8 @@
     "redisContainerId": "32c8a24753941f4ed417dd2491a1424af38e9677ac78321df56c59bbd9b8cf39",
     "composeSha256": "8b871bef505117edc2870b2c9b90e4c0e8514f58a5a311b586d6e8f92bafbb62",
     "caddyfileSha256": "ca560fa5678c336a6cb802bb96b8e9c38d91539b0dfe1f18eaf9d9d99b9f68ba",
+    "approvedProducts": 8,
+    "cataloguePriceTotalUgx": 630000,
     "orders": 13,
     "orderItems": 18,
     "paymentAttempts": 9,
@@ -111,14 +124,15 @@
     }
   },
   "approval": {
-    "path": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_682384b2-m0048-b79a4de7",
-    "exactContent": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_682384b2-m0048-b79a4de7",
+    "path": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_13633d86-m0048-5c6f9d25",
+    "exactContent": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_13633d86-m0048-5c6f9d25",
     "ownerGroup": "root:root",
     "mode": "600",
     "regularFile": true,
     "symlink": false,
     "oneLine": true,
-    "codexMustNotCreateOrModify": true
+    "codexMustNotCreateOrModify": true,
+    "consumedPriorMarkerMustBeAbsent": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_682384b2-m0048-b79a4de7"
   },
   "deployment": {
     "transport": "ssh goldplus-prod",
@@ -139,7 +153,7 @@
   "rehearsal": {
     "oldRuntimeAgainstUpgradedRestore": "MANDATORY_BEFORE_LIVE_MIGRATION",
     "newRuntimeAgainstUpgradedRestore": "MANDATORY_BEFORE_LIVE_MIGRATION",
-    "newRuntimeRequiredComponents": ["compiled runtime", "postgres-js/Drizzle", "Registry", "workers/ticker", "module reads", "safe Pricing simulation"],
+    "newRuntimeRequiredComponents": ["compiled runtime", "postgres-js/Drizzle", "Registry", "workers/ticker", "module reads", "safe Pricing simulation", "catalogue SQL/repository/DTO/API parity"],
     "requiredZeroEffects": ["provider calls", "outbox rows", "notification attempts", "customer communications"]
   },
   "uat": {
