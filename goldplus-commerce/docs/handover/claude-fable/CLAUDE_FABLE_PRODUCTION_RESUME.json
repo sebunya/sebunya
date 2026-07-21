@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "state": "PAUSED_AWAITING_NEW_OPERATOR_APPROVAL_MARKER",
+  "generatedUtc": "2026-07-21T00:00:00Z",
+  "controllingContract": "Claude_Fable_PRODUCTION_ONLY_Resume_From_Repaired_Release",
+  "branch": "phase-2-measurement-control-tower-completion",
+  "worktreeVerification": {
+    "headEqualsOrigin": true,
+    "tipAtVerification": "0823281cfae2cac6e3c669188e802b35ed0b69dc",
+    "treeClean": true,
+    "staleWorktreeBfb0ffcRetired": true,
+    "migrationCeilingPresent": "0048",
+    "catalogueRcaPresent": "docs/platform/evidence/releases/goldplus-programme-catalogue-parity-incident-rca.json",
+    "repairedReleaseFilesPresent": [
+      "docs/platform/releases/programme/GOLDPLUS_PROGRAMME_RELEASE_MANIFEST.json",
+      "docs/platform/releases/programme/GOLDPLUS_PROGRAMME_RELEASE_SCOPE.json",
+      "docs/platform/releases/programme/FINAL_PROGRAMME_RELEASE_FREEZE_EVIDENCE.md",
+      "docs/platform/releases/programme/GOLDPLUS_PROGRAMME_DEPLOYMENT_RUNBOOK.md",
+      "docs/platform/releases/programme/GOLDPLUS_PROGRAMME_ROLLBACK_MATRIX.md",
+      "docs/platform/releases/programme/GOLDPLUS_PROGRAMME_UAT_MATRIX.md"
+    ]
+  },
+  "repairedRelease": {
+    "id": "goldplus-programme-13633d86-m0048-5c6f9d25",
+    "token": "13633d86-m0048-5c6f9d25",
+    "executableCommit": "13633d86c808bd6fde49c47248f234b861a411bb",
+    "releasePackageHead": "0823281cfae2cac6e3c669188e802b35ed0b69dc",
+    "scopeManifestSha256": "5c6f9d255295431821af86d9d134466361987eead46a295ce8a7c92aa970ad60",
+    "scopeShaIndependentlyRecomputed": true,
+    "executableTreeHashVerified": "68b0ac4adc830d8be52b3f341f07032a8d84e361",
+    "executableIsAncestorOfPackageHead": true,
+    "migrationCeiling": "0048",
+    "migrationRequiredByRepair": false,
+    "frozen": true,
+    "freezeCommit": "0823281cfae2cac6e3c669188e802b35ed0b69dc",
+    "apiImage": {
+      "tag": "goldplus-commerce-api:goldplus-programme-13633d86-m0048-5c6f9d25",
+      "digest": "sha256:259440b3d30996ec286bc53ed810f2cd3a81c6d22371f44490e792932492677f"
+    },
+    "webImage": {
+      "tag": "goldplus-commerce-web:goldplus-programme-13633d86-m0048-5c6f9d25",
+      "digest": "sha256:d339956595e6bee1c3ee1f6647633cb022ea6a42bebea93976a5e4a10b0487ee"
+    },
+    "supersedes": "REJECTED_GOLDPLUS_PROGRAMME_682384B2_M0048_B79A4DE7"
+  },
+  "approvalHandoff": {
+    "newMarkerPath": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_13633d86-m0048-5c6f9d25",
+    "newMarkerExactContent": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_13633d86-m0048-5c6f9d25",
+    "newMarkerRequirements": {
+      "ownerGroup": "root:root",
+      "mode": "600",
+      "regularFile": true,
+      "symlink": false,
+      "oneLine": true
+    },
+    "consumedPriorMarkerMustBeAbsent": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_682384b2-m0048-b79a4de7",
+    "consumedPriorMarkerLastKnownState": "PRESENT_ON_PRODUCTION_HOST_AT_TERMINAL_RECONCILIATION_PER_RCA",
+    "onlyOperatorMayRemoveOrCreateMarkers": true,
+    "agentTouchedNoMarker": true,
+    "continuationSignal": "CONTINUE FROM REPAIRED RELEASE APPROVAL"
+  },
+  "productionAccess": {
+    "authoritativeHost": "operator host where `ssh goldplus-prod` works",
+    "productionPath": "/opt/goldplus/app/goldplus-commerce",
+    "thisEnvironment": {
+      "sshBinary": "ABSENT",
+      "goldplusProdResolves": false,
+      "dockerDaemon": "DOWN",
+      "productionPathPresent": false,
+      "rootApprovalMarkersPresent": false,
+      "verdict": "PRODUCTION_PHASES_EXTERNAL_BLOCKED_FROM_THIS_SANDBOX"
+    }
+  },
+  "completedBeforePause": [
+    "worktree fast-forwarded bfb0ffc -> 0823281, clean, HEAD == origin",
+    "release identity recomputed from canonical files (not assumed from tip)",
+    "scope manifest SHA-256 independently recomputed: MATCH",
+    "executable commit tree hash verified against manifest gitTree: MATCH",
+    "freeze status verified: frozen at 0823281, no new freeze needed",
+    "old consumed marker verified absent on this host; prod-host check reserved for continuation"
+  ],
+  "remainingOnContinuation": [
+    "independent verification of the new marker (path, content, owner, mode, inode identity)",
+    "single-attempt validation",
+    "read-only production shadow canary",
+    "independent SQL vs shadow repository/API/monitor parity",
+    "zero-write and zero-send proof",
+    "persistent deployment lock (/opt/goldplus/app/.programme-production-release.lock)",
+    "source and configuration preservation",
+    "exact rollback-image tags",
+    "database backup and isolated restore",
+    "OLD runtime compatibility rehearsal",
+    "REPAIRED runtime catalogue parity rehearsal",
+    "no-live-drift proof",
+    "production ff-only source update to 0823281",
+    "exact image label and digest verification",
+    "API-first deployment (recreate api only; never caddy/postgres/redis)",
+    "direct replica-by-replica catalogue verification (replica1 == replica2 == SQL truth == public API == storefront; canonical prices unchanged)",
+    "five-minute API stabilization",
+    "web deployment",
+    "safe production UAT (read/denial/empty/simulation/dry-run only)",
+    "30-minute catalogue-aware soak (checkpoints 0,1,5,10,15,20,30)",
+    "final reconciliation",
+    "production evidence commit and push"
+  ],
+  "terminalDeclaration": {
+    "value": "GOLDPLUS_PROGRAMME_RELEASE_LIVE_VERIFIED_DORMANT_SAFE",
+    "declaredNow": false,
+    "gatedOn": "complete 30-minute soak and final reconciliation on the production host"
+  },
+  "hardProhibitions": [
+    "run Compose from /root",
+    "docker compose down",
+    "reboot the server",
+    "restart Caddy, PostgreSQL or Redis",
+    "hard-code eight products",
+    "weaken the catalogue monitor",
+    "prepend seed products to a healthy live catalogue",
+    "place a real order or payment",
+    "activate customer-facing features / providers / communications",
+    "redeploy the retired release or reuse its approval marker",
+    "claim success after rollback"
+  ]
+}
