@@ -33,6 +33,12 @@ describe('Storefront Catalog Normalization & Inference', () => {
     expect(getCleanCatalog([apiProduct]).map((product) => product.id)).toEqual(['api-product']);
   });
 
+  it('does not let a legacy slug denylist override live API authority', () => {
+    const liveProduct = { ...MOCK_BASE_PRODUCT, id: 'live-product', slug: 'generic-fast-charger' };
+
+    expect(getCleanCatalog([liveProduct]).map((product) => product.id)).toEqual(['live-product']);
+  });
+
   it('uses local seeds only when the API catalogue is unavailable or empty', () => {
     expect(getCleanCatalog([]).map((product) => product.id)).toEqual(
       LOCAL_SEED_PRODUCTS.map((product) => product.id),

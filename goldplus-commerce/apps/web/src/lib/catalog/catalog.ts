@@ -735,7 +735,7 @@ export function sortProducts(products: ProductPublicDto[], sortKey: string): Pro
 }
 
 /**
- * 6. Filters stale/legacy products while keeping a populated API response authoritative.
+ * 6. Keeps a populated API response authoritative.
  * The local catalogue is an availability fallback only; it must never be merged into live data.
  */
 export const STALE_SLUGS = new Set([
@@ -750,7 +750,7 @@ export const STALE_SLUGS = new Set([
 ]);
 
 export function getCleanCatalog(apiProducts: ProductPublicDto[]): ProductPublicDto[] {
-  const cleanApi = (apiProducts || []).filter(p => p && p.slug && !STALE_SLUGS.has(p.slug));
-  const source = cleanApi.length > 0 ? cleanApi : LOCAL_SEED_PRODUCTS;
+  const liveProducts = (apiProducts || []).filter(p => p && p.slug);
+  const source = liveProducts.length > 0 ? liveProducts : LOCAL_SEED_PRODUCTS;
   return source.map(p => normalizeProductCategory(p));
 }

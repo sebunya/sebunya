@@ -50,7 +50,7 @@
       "cause": "LOCAL_SEED_PRODUCTS_ALWAYS_PREPENDED_TO_LIVE_API",
       "fallbackNoticeShown": false
     },
-    "storefrontRequiredAfterRepair": "API_COLLECTION_AUTHORITATIVE_WITH_LOCAL_SEEDS_ONLY_ON_EMPTY_OR_UNAVAILABLE_API"
+    "storefrontRequiredAfterRepair": "API_COLLECTION_AUTHORITATIVE_WITH_NO_LEGACY_DENYLIST_OVERRIDE_AND_LOCAL_SEEDS_ONLY_ON_EMPTY_OR_UNAVAILABLE_API"
   },
   "repair": {
     "runtimePaths": [

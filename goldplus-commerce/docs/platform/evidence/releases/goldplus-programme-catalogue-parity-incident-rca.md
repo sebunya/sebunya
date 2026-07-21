@@ -96,7 +96,7 @@ The exact failed monitor reproduced the incident against the restored database w
 
 The mandatory production-web proof then caught a separate, genuine data-plane divergence before a new release was frozen. Against an exact restored-data API returning eight products, the compiled web rendered 21 products. `getCleanCatalog` always prepended `LOCAL_SEED_PRODUCTS` to every non-empty API response, making the offline fallback catalogue authoritative over live API truth. The storefront did not display its offline notice because the API request itself had succeeded.
 
-The smallest repair keeps a non-empty, stale-filtered API collection authoritative and uses local seeds only when the caller has no live catalogue. Existing shop, home, PDP and recommendation callers retain their explicit empty/unavailable fallback paths. Focused tests prove both live authority and empty-response fallback. No product, price, order or database state changed.
+The smallest repair keeps a non-empty API collection authoritative and uses local seeds only when the caller has no live catalogue. The production proof also established that all eight restored slugs matched the helper's legacy `STALE_SLUGS` denylist; that filter was therefore another non-authoritative source override and was removed from live-data selection. Existing shop, home, PDP and recommendation callers retain their explicit empty/unavailable fallback paths. Focused tests prove live authority, denylist non-interference and empty-response fallback. No product, price, order or database state changed.
 
 ## Environment and image differential
 
