@@ -4,7 +4,8 @@ import {
   getQueryIntent, 
   matchesQuery, 
   sortProducts,
-  LOCAL_SEED_PRODUCTS
+  LOCAL_SEED_PRODUCTS,
+  getCleanCatalog,
 } from '../../apps/web/src/lib/catalog/catalog';
 import type { ProductPublicDto } from '@goldplus/shared';
 
@@ -26,6 +27,18 @@ const MOCK_BASE_PRODUCT: ProductPublicDto = {
 };
 
 describe('Storefront Catalog Normalization & Inference', () => {
+  it('keeps a populated API catalogue authoritative without injecting local seeds', () => {
+    const apiProduct = { ...MOCK_BASE_PRODUCT, id: 'api-product', slug: 'api-product' };
+
+    expect(getCleanCatalog([apiProduct]).map((product) => product.id)).toEqual(['api-product']);
+  });
+
+  it('uses local seeds only when the API catalogue is unavailable or empty', () => {
+    expect(getCleanCatalog([]).map((product) => product.id)).toEqual(
+      LOCAL_SEED_PRODUCTS.map((product) => product.id),
+    );
+  });
+
   it('should preserve Power Devices and Sound Devices categories', () => {
     const powerProd = { ...MOCK_BASE_PRODUCT, categoryName: 'Power Devices' };
     const soundProd = { ...MOCK_BASE_PRODUCT, categoryName: 'Sound Devices' };

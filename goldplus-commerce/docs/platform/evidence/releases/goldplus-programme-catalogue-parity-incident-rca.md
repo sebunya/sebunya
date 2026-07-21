@@ -92,6 +92,12 @@ identifier+canonical-price SHA-256:
 
 The exact failed monitor reproduced the incident against the restored database with `{success:false, stages:["storefront_html_check","catalog_load"]}` and the same zero-product error. The repaired compiled image produced `CATALOGUE_PARITY_PROOF_PASS` with SQL, repository, DTO and API counts all equal to five.
 
+## Storefront parity defect caught before release freeze
+
+The mandatory production-web proof then caught a separate, genuine data-plane divergence before a new release was frozen. Against an exact restored-data API returning eight products, the compiled web rendered 21 products. `getCleanCatalog` always prepended `LOCAL_SEED_PRODUCTS` to every non-empty API response, making the offline fallback catalogue authoritative over live API truth. The storefront did not display its offline notice because the API request itself had succeeded.
+
+The smallest repair keeps a non-empty, stale-filtered API collection authoritative and uses local seeds only when the caller has no live catalogue. Existing shop, home, PDP and recommendation callers retain their explicit empty/unavailable fallback paths. Focused tests prove both live authority and empty-response fallback. No product, price, order or database state changed.
+
 ## Environment and image differential
 
 All three images used Node `v20.20.2`, `/app`, database `goldplus`, schema `public`, isolated Redis, disabled notification gates and no provider live mode. The failed and repaired images use the compiled entrypoint `node apps/api/dist/interfaces/http/server.js`; the rollback image uses its preserved source/tsx entrypoint. The failed API carried the exact failed release labels. No missing compiled shared module, alternate database, alternate schema, pagination drift or price/DTO divergence was observed.
@@ -110,11 +116,13 @@ It validates database/schema fingerprint, HTTP status, content type, response en
 Changed runtime boundary:
 
 - `apps/api/src/infrastructure/scheduler/SyntheticMonitor.ts`
+- `apps/web/src/lib/catalog/catalog.ts`
 
 Proof boundary:
 
 - `apps/api/src/scripts/catalogue-parity-proof.ts`
 - `tests/unit/CatalogueParityMonitor.test.ts`
+- `tests/unit/StorefrontCatalog.test.ts`
 
 No repository query, use case, DTO, route, product schema, migration, price, checkout, payment, Inventory, fulfilment, provider, consent, RBAC or production data file changed. Migration ceiling remains `0048`.
 

@@ -43,13 +43,24 @@
     "repairedApi": { "status": 200, "collectionPath": "data", "count": 5, "hashesMatchSql": true },
     "failedMonitor": "REPRODUCED_ZERO_PRODUCT_ERROR",
     "repairedMonitor": "PASS_SQL_API_PARITY",
-    "earliestMismatch": "API_RESPONSE_TO_MONITOR_PARSER"
+    "earliestMismatch": "API_RESPONSE_TO_MONITOR_PARSER",
+    "storefrontBeforeRepair": {
+      "apiCount": 8,
+      "renderedCount": 21,
+      "cause": "LOCAL_SEED_PRODUCTS_ALWAYS_PREPENDED_TO_LIVE_API",
+      "fallbackNoticeShown": false
+    },
+    "storefrontRequiredAfterRepair": "API_COLLECTION_AUTHORITATIVE_WITH_LOCAL_SEEDS_ONLY_ON_EMPTY_OR_UNAVAILABLE_API"
   },
   "repair": {
-    "runtimePaths": ["apps/api/src/infrastructure/scheduler/SyntheticMonitor.ts"],
+    "runtimePaths": [
+      "apps/api/src/infrastructure/scheduler/SyntheticMonitor.ts",
+      "apps/web/src/lib/catalog/catalog.ts"
+    ],
     "proofPaths": [
       "apps/api/src/scripts/catalogue-parity-proof.ts",
-      "tests/unit/CatalogueParityMonitor.test.ts"
+      "tests/unit/CatalogueParityMonitor.test.ts",
+      "tests/unit/StorefrontCatalog.test.ts"
     ],
     "migrationRequired": false,
     "migrationCeiling": "0048",
