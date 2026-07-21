@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-07-21T08:25:00Z",
+  "worktree": "/Users/robertsebunya/Documents/GitHub_Projects/goldplus-rail-a-closure-20260721T075544Z/goldplus-commerce",
+  "branch": "anti-gravity/rail-a-closure-20260721T075544Z",
+  "overallStatus": "PASS",
+  "gates": {
+    "securityScan": { "status": "PASS", "filesChecked": 1242, "secretsFound": 0 },
+    "typecheck": { "status": "PASS", "packages": ["shared", "api", "web"] },
+    "build": { "status": "PASS", "artifacts": ["apps/api/dist", "apps/web/dist"] },
+    "testSuite": { "status": "PASS", "testFilesPassed": 217, "testsPassed": 4144 },
+    "architecture": { "status": "PASS", "testFilesPassed": 3, "testsPassed": 39 }
+  },
+  "routeMountProof": {
+    "paidSocial": {
+      "file": "apps/api/src/interfaces/http/routes/admin/measurement-paid-social.ts",
+      "mountPath": "/admin/measurement/paid-social",
+      "rbacProtected": true,
+      "sideEffectFreeOnImport": true
+    },
+    "payments": {
+      "file": "apps/api/src/interfaces/http/routes/admin/measurement-payments.ts",
+      "mountPath": "/admin/measurement/payments",
+      "rbacProtected": true,
+      "sideEffectFreeOnImport": true
+    }
+  }
+}
