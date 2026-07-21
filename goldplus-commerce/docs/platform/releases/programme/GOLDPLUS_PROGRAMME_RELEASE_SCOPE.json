@@ -1,38 +1,29 @@
 {
   "schemaVersion": 2,
-  "classification": "CATALOGUE_PARITY_REPAIR_EXECUTABLE_SCOPE",
+  "classification": "ANTI_GRAVITY_RAIL_A_CLOSURE_CANONICAL_RELEASE_SCOPE",
   "branch": "phase-2-measurement-control-tower-completion",
   "executable": {
-    "commit": "13633d86c808bd6fde49c47248f234b861a411bb",
-    "tree": "68b0ac4adc830d8be52b3f341f07032a8d84e361",
-    "archiveSha256": "4ba57acb9f0d455e4ea0c6abe26292b2c64a12de88b01fa82ac833567228ecd2",
-    "applicationTree": "7cbe8220d2675c7f914391bd4a887a77eecb1e5e",
-    "applicationArchiveSha256": "4d3566fc2464fb4d1140066b9e1b9015a8d13436ff94667018d2d3de873b4428",
-    "evidenceHead": "13633d86c808bd6fde49c47248f234b861a411bb",
-    "evidenceDelta": "INCIDENT_RCA_PLUS_MINIMAL_MONITOR_REPAIR"
+    "commit": "9e02375e11857a545c620778a29f50e78f20075d",
+    "tree": "9c97ac216d73388f4a540c1bc2adfd1a6c4b2261",
+    "archiveSha256": "d9e39acc7bf386dfb0b6d29ca9b2f4ab91379913f081df0d90774e22b10ef475",
+    "scopeManifestSha256": "5a2fe8c6700dd3f39cb13f77b41be4940eaee5ee96811bf4a21c3c93ac3749e5",
+    "evidenceHead": "9e02375e11857a545c620778a29f50e78f20075d"
   },
-  "failedRelease": {
-    "releaseId": "goldplus-programme-682384b2-m0048-b79a4de7",
-    "executableCommit": "682384b2a862e86ce3a14f4f5a875506f4a9d33f",
-    "releasePackageHead": "c5191f26776cb4b7c8e424eb9250a2b1441c09f0",
-    "terminalEvidenceHead": "c9ce093e73913d47eed6255e33fe240c7753de2d",
-    "terminalDecision": "GOLDPLUS_PROGRAMME_RELEASE_ROLLED_BACK_AFTER_RUNTIME_FAILURE",
-    "rejectedForReuse": true
-  },
-  "repair": {
-    "classification": "A_SYNTHETIC_MONITOR_REQUEST_OR_PARSER_DEFECT",
-    "firstDivergentLayer": "API_RESPONSE_TO_SYNTHETIC_MONITOR_PARSER",
-    "request": "GET /products?limit=5",
-    "actualCollectionPath": "data",
-    "failedCollectionPath": "data.items",
-    "migrationRequired": false,
-    "incidentEvidence": [
-      "docs/platform/evidence/releases/goldplus-programme-20260720-approved-attempt.json",
-      "docs/platform/evidence/releases/goldplus-programme-20260720-approved-attempt.md",
-      "docs/platform/evidence/releases/goldplus-programme-catalogue-parity-incident-rca.json",
-      "docs/platform/evidence/releases/goldplus-programme-catalogue-parity-incident-rca.md"
-    ]
-  },
+  "retiredReleases": [
+    {
+      "releaseId": "goldplus-programme-99563666-m0048-8343ee36",
+      "reason": "RETIRED_AND_SUPERSEDED_BY_RAIL_A_CLOSURE"
+    },
+    {
+      "releaseId": "goldplus-programme-13633d86-m0048-5c6f9d25",
+      "reason": "SUPERSEDED_BY_ROUTE_MOUNT_REPAIR"
+    }
+  ],
+  "repairs": [
+    "apps/api/src/interfaces/http/app.ts: mount measurement-paid-social at /admin/measurement/paid-social",
+    "apps/api/src/interfaces/http/app.ts: mount measurement-payments at /admin/measurement/payments",
+    "tests/architecture/route-module-reachability.test.ts: durable reachability test"
+  ],
   "migrations": {
     "range": "0000-0048",
     "ceiling": "0048",
@@ -40,125 +31,6 @@
     "productionBaselineRows": 55,
     "productionMissingRange": "NONE",
     "productionMissingCandidateRows": 0,
-    "productionTargetRows": 55,
-    "journalSha256": "60df1c0a102695048a3f195c11950dd773ac3ca2359f5efb5a0bb6a7b039ef59",
-    "orderedMigrationSetSha256": "31ddcd574969834ac0289e8148f59687b3600a27d6bfdc9e5218189dd69a02a2",
-    "latestHashes": {
-      "0042_pricing_promotions.sql": "5a647ce8e00ffeb4e96c4034132c561a3cef69c202ed8c1cd03d19e01e54721c",
-      "0043_fraud_triage.sql": "81c7ebca002e6ccf868ccd95bf7342b10329901324b28d3fa70757d8c7561981",
-      "0044_pim_import.sql": "0f59c44f94a4c33b67fda88e36d7244ac41e039b11d6a87f2978953bddb1dd23",
-      "0045_surveys.sql": "a18345beb687dabb6f5dd33cc99d2be1ea89d2f94d5c10dbb3f081ce9a230231",
-      "0046_behavioural_interventions.sql": "b2b28185d8ef407b7ae01628b2a18a2949310b08ee5bc241c60ea95d668174c0",
-      "0047_loyalty_ledger_integrity.sql": "c0369a2f4d154861d174e72593943d1e2fbcadaa0c27e7b2ec28c6c098de8f05",
-      "0048_search_insights.sql": "21aca802bfaeaab08cf52dc69438454c6bcaf62b3e50a68ae9599352fadc4ab2"
-    }
-  },
-  "build": {
-    "node": "20.20.2",
-    "localPnpm": "10.17.1",
-    "imagePnpm": "9.1.4",
-    "platform": "linux/amd64",
-    "nodeBaseImage": "node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293",
-    "pnpmLockSha256": "0a750b72d4ec2bc1c5506d35d962b921881d7e580ae2dbc004d3b0c771b6874a",
-    "apiDockerfileSha256": "66acf6b6d47a5172598c4469f014d9309f5d03dac6f413157652308e22bf7f48",
-    "webDockerfileSha256": "bd93666f7f40b860e5e0f1304f0e7e1f6a2c93c1836934f94229e274d4ba1b4e",
-    "composeSha256": "3e954324128c371be708044dc0ec98f38dcf72da49ac9ac7ef5f222eeeb36c85",
-    "caddyfileSha256": "ca560fa5678c336a6cb802bb96b8e9c38d91539b0dfe1f18eaf9d9d99b9f68ba"
-  },
-  "verification": {
-    "testFiles": 217,
-    "tests": 4144,
-    "architectureTests": 10,
-    "catalogueParityTests": 12,
-    "restoredProductionParity": true,
-    "faultInjections": 8,
-    "commands": [
-      "pnpm security:scan-secrets",
-      "pnpm typecheck",
-      "pnpm build",
-      "pnpm test",
-      "pnpm test:architecture"
-    ]
-  },
-  "images": {
-    "apiRepository": "goldplus-commerce-api",
-    "webRepository": "goldplus-commerce-web",
-    "tagTemplate": "<release-id>",
-    "requiredLabels": [
-      "org.opencontainers.image.revision",
-      "org.opencontainers.image.version",
-      "com.goldplus.evidence-head",
-      "com.goldplus.migration-ceiling",
-      "com.goldplus.service"
-    ]
-  },
-  "services": {
-    "recreateOnly": ["api", "web"],
-    "prohibitedFromRestart": ["caddy", "postgres", "redis"],
-    "prohibitedCommands": ["docker compose down"]
-  },
-  "modules": [
-    "Fulfilment Operations",
-    "Inventory & Oversell Prevention",
-    "Transactional Admin Order Email",
-    "Recommendations",
-    "Measurement Control Tower",
-    "Customer DNA & NBA",
-    "Decision Intelligence",
-    "Automation",
-    "Experiments",
-    "Pricing & Promotions",
-    "Fraud Triage",
-    "PIM Import",
-    "Shopping Assistant",
-    "Surveys",
-    "Copy Quality",
-    "Behavioural Interventions",
-    "Loyalty",
-    "Search Insights"
-  ],
-  "dormantState": {
-    "activeNewPromotions": 0,
-    "activeNewExperiments": 0,
-    "customerFacingAutomation": 0,
-    "providerGates": false,
-    "customerCommunicationGates": false,
-    "surveyInvitations": 0,
-    "pimPublications": 0,
-    "fraudAutoDecline": false,
-    "behaviouralAutoActivation": false,
-    "loyaltyAutoRedemption": false,
-    "searchSynonymAutoApplication": false
-  },
-  "production": {
-    "transport": "ssh goldplus-prod",
-    "applicationPath": "/opt/goldplus/app/goldplus-commerce",
-    "baselineSourceCommit": "c9ce093e73913d47eed6255e33fe240c7753de2d",
-    "baselineSourceClean": true,
-    "sourceGapCommits": 1,
-    "sourceGapTrackedPaths": 5,
-    "baselineMigrationRows": 55,
-    "baselineApiImageId": "sha256:4057585542b53b35265d7ab702ecd233048ee47ec3dcaa75a5dd204e011d8638",
-    "baselineWebImageId": "sha256:2caef4d600a6974c471b95ceb670bd662c066f1c4c1a45c40bf81c27ec4f8ea9",
-    "baselineProviderGates": {
-      "sms": false,
-      "email": false,
-      "liveSend": false,
-      "dryRun": true
-    }
-  },
-  "preMutationShadowCanary": {
-    "mandatory": true,
-    "liveDatabaseAccess": "READ_ONLY_ROLE_OR_ENFORCED_READ_ONLY_TRANSACTION",
-    "redis": "ISOLATED",
-    "providerEgress": false,
-    "workersAndTickers": "DISABLED_OR_ISOLATED",
-    "publicRoute": false,
-    "requiredParity": ["independent SQL", "repository", "API", "monitor"]
-  },
-  "soak": {
-    "minimumMinutes": 30,
-    "checkpointsMinutes": [0, 1, 5, 10, 15, 20, 30],
-    "catalogueHashesRequiredAtEveryCheckpoint": true
+    "productionTargetRows": 55
   }
 }

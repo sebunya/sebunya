@@ -1,23 +1,24 @@
 {
   "schemaVersion": 1,
-  "classification": "ANTI_GRAVITY_ALL_MODULES_RELEASE_CANDIDATE_ROUTE_MOUNT_REPAIR",
-  "generatedUtc": "2026-07-21T07:36:00Z",
+  "classification": "ANTI_GRAVITY_RAIL_A_CLOSURE_RELEASE_CANDIDATE",
+  "generatedUtc": "2026-07-21T08:27:00Z",
   "release": {
-    "id": "goldplus-programme-99563666-m0048-8343ee36",
-    "token": "99563666-m0048-8343ee36",
-    "executableCommit": "99563666db7056e57b5088a0c75008d589586dac",
-    "releasePackageHead": "99563666db7056e57b5088a0c75008d589586dac",
+    "id": "goldplus-programme-9e02375e-m0048-5a2fe8c6",
+    "token": "9e02375e-m0048-5a2fe8c6",
+    "executableCommit": "9e02375e11857a545c620778a29f50e78f20075d",
+    "releasePackageHead": "9e02375e11857a545c620778a29f50e78f20075d",
     "branch": "phase-2-measurement-control-tower-completion",
-    "scopeManifestSha256": "8343ee3625349fbc30e2aa78c22b4e3893fb1a361df81eaf221534e5185d778b",
-    "supersedes": "goldplus-programme-13633d86-m0048-5c6f9d25",
+    "scopeManifestSha256": "5a2fe8c6700dd3f39cb13f77b41be4940eaee5ee96811bf4a21c3c93ac3749e5",
+    "supersedes": "goldplus-programme-99563666-m0048-8343ee36",
     "antiGravityRepairs": [
       "Mount measurement-paid-social route at /admin/measurement/paid-social",
-      "Mount measurement-payments route at /admin/measurement/payments"
+      "Mount measurement-payments route at /admin/measurement/payments",
+      "Durable route-module reachability test added to architecture test suite"
     ]
   },
   "source": {
-    "gitTree": "71729d07e5644e6c58f32b81aa6eabbc6973214d",
-    "archiveSha256": "f57a4a161c23ba278a6c29d5579fb122df28cba4b31789a6dfcf7c940506b920",
+    "gitTree": "9c97ac216d73388f4a540c1bc2adfd1a6c4b2261",
+    "archiveSha256": "d9e39acc7bf386dfb0b6d29ca9b2f4ab91379913f081df0d90774e22b10ef475",
     "pnpmLockSha256": "0a750b72d4ec2bc1c5506d35d962b921881d7e580ae2dbc004d3b0c771b6874a"
   },
   "migrations": {
@@ -27,37 +28,41 @@
     "range": "0000-0048"
   },
   "gatesVerified": {
-    "securityScan": "PASS_1237_files",
+    "securityScan": "PASS_1242_files",
     "typecheck": "PASS",
     "build": "PASS_API_and_Web",
     "test": "PASS_217_files_4144_tests",
-    "architecture": "PASS_10of10",
-    "postRepairTypecheck": "PASS",
-    "postRepairArchitecture": "PASS_10of10"
+    "architecture": "PASS_3_files_39_tests"
   },
   "approval": {
-    "markerPath": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_99563666-m0048-8343ee36",
-    "markerExactContent": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_99563666-m0048-8343ee36",
+    "markerPath": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_9e02375e-m0048-5a2fe8c6",
+    "markerExactContent": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_9e02375e-m0048-5a2fe8c6",
     "markerRequirements": {
       "ownerGroup": "root:root",
       "mode": "600",
       "regularFile": true,
       "symlink": false
     },
-    "consumedPriorMarkerMustBeAbsent": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_682384b2-m0048-b79a4de7",
+    "retiredPriorMarkersMustBeAbsent": [
+      "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_99563666-m0048-8343ee36",
+      "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_682384b2-m0048-b79a4de7"
+    ],
     "agentTouchedNoMarker": true,
     "continuationSignal": "CONTINUE FROM ANTI-GRAVITY ALL-MODULES APPROVAL"
   },
   "images": {
-    "note": "Images must be built on production host from executable commit 99563666db7056e57b5088a0c75008d589586dac",
-    "apiTag": "goldplus-commerce-api:goldplus-programme-99563666-m0048-8343ee36",
-    "webTag": "goldplus-commerce-web:goldplus-programme-99563666-m0048-8343ee36"
+    "note": "Images must be built on production host from executable commit 9e02375e11857a545c620778a29f50e78f20075d",
+    "apiTag": "goldplus-commerce-api:goldplus-programme-9e02375e-m0048-5a2fe8c6",
+    "webTag": "goldplus-commerce-web:goldplus-programme-9e02375e-m0048-5a2fe8c6"
   },
   "operatorBundle": {
     "preflight": "scripts/release/anti-gravity/all-modules-preflight.sh",
     "deploy": "scripts/release/anti-gravity/all-modules-deploy.sh",
     "verify": "scripts/release/anti-gravity/all-modules-verify.sh",
     "rollback": "scripts/release/anti-gravity/all-modules-rollback.sh",
-    "soak": "scripts/release/anti-gravity/all-modules-soak.sh"
+    "soak": "scripts/release/anti-gravity/all-modules-soak.sh",
+    "shadowCanary": "scripts/release/anti-gravity/all-modules-shadow-canary.sh",
+    "backupRehearsal": "scripts/release/anti-gravity/all-modules-backup-rehearsal.sh",
+    "scopeVerifier": "scripts/release/anti-gravity/verify-release-scope.mjs"
   }
 }

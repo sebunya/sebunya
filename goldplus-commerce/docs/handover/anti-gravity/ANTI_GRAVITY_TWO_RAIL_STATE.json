@@ -1,66 +1,22 @@
 {
   "schemaVersion": 1,
-  "generatedUtc": "2026-07-21T07:30:00Z",
+  "generatedUtc": "2026-07-21T08:27:00Z",
   "controller": "GOLDPLUS_TWO_RAIL_ABSOLUTE_COMPLETION_CONTROLLER",
   "executionMode": "ENGINEERING_AND_RELEASE_PACKAGING_MODE",
-  "selectedWorktree": {
-    "path": "/Users/robertsebunya/Documents/GitHub_Projects/goldplus-commerce-next-phase-c1925dbd/goldplus-commerce",
-    "branch": "phase-2-measurement-control-tower-completion",
-    "localHead": "30811fb4cbb3",
-    "originHead": "30811fb4cbb3",
-    "treeStatus": "CLEAN",
-    "ancestorVerified": "c9ce093e73913d47eed6255e33fe240c7753de2d",
-    "staleBfb0ffcRetired": true
+  "canonicalRelease": {
+    "id": "goldplus-programme-9e02375e-m0048-5a2fe8c6",
+    "token": "9e02375e-m0048-5a2fe8c6",
+    "executableCommit": "9e02375e11857a545c620778a29f50e78f20075d",
+    "scopeManifestSha256": "5a2fe8c6700dd3f39cb13f77b41be4940eaee5ee96811bf4a21c3c93ac3749e5",
+    "migrationCeiling": "0048",
+    "approvalMarkerPath": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_9e02375e-m0048-5a2fe8c6"
   },
   "gateResults": {
     "securityScan": "PASS",
     "typecheck": "PASS",
     "build": "PASS",
     "test": "PASS_217files_4144tests",
-    "architecture": "PASS_10of10",
-    "postFixTypecheck": "PASS",
-    "postFixArchitecture": "PASS_10of10"
+    "architecture": "PASS_3files_39tests"
   },
-  "routeMountRepair": {
-    "gap1": {
-      "file": "apps/api/src/interfaces/http/routes/admin/measurement-paid-social.ts",
-      "mountPath": "/admin/measurement/paid-social",
-      "wasImported": false,
-      "wasMounted": false,
-      "fixed": true
-    },
-    "gap2": {
-      "file": "apps/api/src/interfaces/http/routes/admin/measurement-payments.ts",
-      "mountPath": "/admin/measurement/payments",
-      "wasImported": false,
-      "wasMounted": false,
-      "fixed": true
-    }
-  },
-  "priorRelease": {
-    "id": "goldplus-programme-13633d86-m0048-5c6f9d25",
-    "executableCommit": "13633d86c808bd6fde49c47248f234b861a411bb",
-    "releasePackageHead": "0823281cfae2cac6e3c669188e802b35ed0b69dc",
-    "scopeManifestSha256": "5c6f9d255295431821af86d9d134466361987eead46a295ce8a7c92aa970ad60",
-    "migrationCeiling": "0048",
-    "supersededBy": "REQUIRES_NEW_FREEZE_AFTER_ROUTE_REPAIR"
-  },
-  "moduleStatusTotals": {
-    "DISCOVERED_NOT_CLASSIFIED": 0,
-    "DEAD_OR_DEPRECATED_CONFIRMED": 0,
-    "SOURCE_PARTIAL": 0,
-    "SOURCE_COMPLETE_NOT_WIRED": 0,
-    "WIRED_NOT_TESTED": 0,
-    "TESTED_NOT_PRODUCTION_SHAPED": 0,
-    "DATA_NOT_READY": 0,
-    "RELEASE_READY_NOT_DEPLOYED": 47,
-    "DEPLOYED_NOT_ACCEPTED": 0,
-    "LIVE_VERIFIED_DORMANT_SAFE": 0,
-    "LIVE_VERIFIED_ACTIVE": 0,
-    "EXTERNAL_PROVIDER_BLOCKED": 8,
-    "OPERATOR_ACTIVATION_REQUIRED": 6
-  },
-  "deploymentPhase": "RAIL_A_ENGINEERING_COMPLETE_PENDING_NEW_FREEZE",
-  "terminalDecision": "ANTI_GRAVITY_ENGINEERING_COMPLETE_RELEASE_FROZEN_PRODUCTION_HOST_REQUIRED",
-  "nextAction": "commit_route_repair_then_new_release_freeze"
+  "terminalDecision": "ANTI_GRAVITY_RAIL_A_CLOSURE_COMPLETE_PRODUCTION_APPROVAL_REQUIRED"
 }
