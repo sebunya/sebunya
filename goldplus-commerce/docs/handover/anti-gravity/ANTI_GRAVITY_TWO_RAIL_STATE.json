@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "generatedUtc": "2026-07-21T08:27:00Z",
+  "generatedUtc": "2026-07-21T08:35:00Z",
   "controller": "GOLDPLUS_TWO_RAIL_ABSOLUTE_COMPLETION_CONTROLLER",
   "executionMode": "ENGINEERING_AND_RELEASE_PACKAGING_MODE",
   "canonicalRelease": {
-    "id": "goldplus-programme-9e02375e-m0048-5a2fe8c6",
-    "token": "9e02375e-m0048-5a2fe8c6",
-    "executableCommit": "9e02375e11857a545c620778a29f50e78f20075d",
-    "scopeManifestSha256": "5a2fe8c6700dd3f39cb13f77b41be4940eaee5ee96811bf4a21c3c93ac3749e5",
+    "id": "goldplus-programme-7d235d75-m0048-79fffe70",
+    "token": "7d235d75-m0048-79fffe70",
+    "executableCommit": "7d235d751276a598562b684fb19f55196bdab4aa",
+    "scopeManifestSha256": "79fffe7024ce4b91a863dd518c1475e658fa15ed2b2642fd833e96e449753eba",
     "migrationCeiling": "0048",
-    "approvalMarkerPath": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_9e02375e-m0048-5a2fe8c6"
+    "approvalMarkerPath": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_7d235d75-m0048-79fffe70"
   },
   "gateResults": {
     "securityScan": "PASS",

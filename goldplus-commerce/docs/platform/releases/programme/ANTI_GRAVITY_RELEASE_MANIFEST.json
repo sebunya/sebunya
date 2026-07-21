@@ -1,19 +1,20 @@
 {
   "schemaVersion": 1,
   "classification": "ANTI_GRAVITY_RAIL_A_CLOSURE_RELEASE_CANDIDATE",
-  "generatedUtc": "2026-07-21T08:28:00Z",
+  "generatedUtc": "2026-07-21T08:35:00Z",
   "release": {
-    "id": "goldplus-programme-01141319-m0048-0e96480f",
-    "token": "01141319-m0048-0e96480f",
-    "executableCommit": "0114131946b4c6c6a213c6ef1fb93285e9a2d03f",
-    "releasePackageHead": "0114131946b4c6c6a213c6ef1fb93285e9a2d03f",
+    "id": "goldplus-programme-7d235d75-m0048-79fffe70",
+    "token": "7d235d75-m0048-79fffe70",
+    "executableCommit": "7d235d751276a598562b684fb19f55196bdab4aa",
+    "releasePackageHead": "7d235d751276a598562b684fb19f55196bdab4aa",
     "branch": "phase-2-measurement-control-tower-completion",
-    "scopeManifestSha256": "0e96480ff833976c525c677af98ff2ec452ca2b9aeede4bb08f3f7a788a0c052",
+    "scopeManifestSha256": "79fffe7024ce4b91a863dd518c1475e658fa15ed2b2642fd833e96e449753eba",
     "supersedes": "goldplus-programme-99563666-m0048-8343ee36"
   },
   "source": {
-    "gitTree": "31bc4c3fb94df7ed5e55ce721284743e09936a74",
-    "archiveSha256": "9f3809620786ddebfbb2eae98f35f83274a9bc090b58dcc476f45e0f36a70c97"
+    "gitTree": "c1579a7ccd829ca2293123d9497818007011d93e",
+    "archiveSha256": "e50a3e6805750e3e4384171b0dd34f305d82cb187d0790b78bbb5703d904c910",
+    "pnpmLockSha256": "0a750b72d4ec2bc1c5506d35d962b921881d7e580ae2dbc004d3b0c771b6874a"
   },
   "migrations": {
     "ceiling": "0048",
@@ -27,8 +28,8 @@
     "architecture": "PASS_3_files_39_tests"
   },
   "approval": {
-    "markerPath": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_01141319-m0048-0e96480f",
-    "markerExactContent": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_01141319-m0048-0e96480f",
+    "markerPath": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_7d235d75-m0048-79fffe70",
+    "markerExactContent": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_7d235d75-m0048-79fffe70",
     "markerRequirements": {
       "ownerGroup": "root:root",
       "mode": "600",
