@@ -1,68 +1,38 @@
 {
   "schemaVersion": 1,
   "classification": "ANTI_GRAVITY_RAIL_A_CLOSURE_RELEASE_CANDIDATE",
-  "generatedUtc": "2026-07-21T08:27:00Z",
+  "generatedUtc": "2026-07-21T08:28:00Z",
   "release": {
-    "id": "goldplus-programme-9e02375e-m0048-5a2fe8c6",
-    "token": "9e02375e-m0048-5a2fe8c6",
-    "executableCommit": "9e02375e11857a545c620778a29f50e78f20075d",
-    "releasePackageHead": "9e02375e11857a545c620778a29f50e78f20075d",
+    "id": "goldplus-programme-01141319-m0048-0e96480f",
+    "token": "01141319-m0048-0e96480f",
+    "executableCommit": "0114131946b4c6c6a213c6ef1fb93285e9a2d03f",
+    "releasePackageHead": "0114131946b4c6c6a213c6ef1fb93285e9a2d03f",
     "branch": "phase-2-measurement-control-tower-completion",
-    "scopeManifestSha256": "5a2fe8c6700dd3f39cb13f77b41be4940eaee5ee96811bf4a21c3c93ac3749e5",
-    "supersedes": "goldplus-programme-99563666-m0048-8343ee36",
-    "antiGravityRepairs": [
-      "Mount measurement-paid-social route at /admin/measurement/paid-social",
-      "Mount measurement-payments route at /admin/measurement/payments",
-      "Durable route-module reachability test added to architecture test suite"
-    ]
+    "scopeManifestSha256": "0e96480ff833976c525c677af98ff2ec452ca2b9aeede4bb08f3f7a788a0c052",
+    "supersedes": "goldplus-programme-99563666-m0048-8343ee36"
   },
   "source": {
-    "gitTree": "9c97ac216d73388f4a540c1bc2adfd1a6c4b2261",
-    "archiveSha256": "d9e39acc7bf386dfb0b6d29ca9b2f4ab91379913f081df0d90774e22b10ef475",
-    "pnpmLockSha256": "0a750b72d4ec2bc1c5506d35d962b921881d7e580ae2dbc004d3b0c771b6874a"
+    "gitTree": "31bc4c3fb94df7ed5e55ce721284743e09936a74",
+    "archiveSha256": "9f3809620786ddebfbb2eae98f35f83274a9bc090b58dcc476f45e0f36a70c97"
   },
   "migrations": {
     "ceiling": "0048",
-    "count": 49,
-    "newMigrationsRequired": false,
-    "range": "0000-0048"
+    "count": 49
   },
   "gatesVerified": {
     "securityScan": "PASS_1242_files",
     "typecheck": "PASS",
-    "build": "PASS_API_and_Web",
+    "build": "PASS",
     "test": "PASS_217_files_4144_tests",
     "architecture": "PASS_3_files_39_tests"
   },
   "approval": {
-    "markerPath": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_9e02375e-m0048-5a2fe8c6",
-    "markerExactContent": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_9e02375e-m0048-5a2fe8c6",
+    "markerPath": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_01141319-m0048-0e96480f",
+    "markerExactContent": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_01141319-m0048-0e96480f",
     "markerRequirements": {
       "ownerGroup": "root:root",
       "mode": "600",
-      "regularFile": true,
-      "symlink": false
-    },
-    "retiredPriorMarkersMustBeAbsent": [
-      "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_99563666-m0048-8343ee36",
-      "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_682384b2-m0048-b79a4de7"
-    ],
-    "agentTouchedNoMarker": true,
-    "continuationSignal": "CONTINUE FROM ANTI-GRAVITY ALL-MODULES APPROVAL"
-  },
-  "images": {
-    "note": "Images must be built on production host from executable commit 9e02375e11857a545c620778a29f50e78f20075d",
-    "apiTag": "goldplus-commerce-api:goldplus-programme-9e02375e-m0048-5a2fe8c6",
-    "webTag": "goldplus-commerce-web:goldplus-programme-9e02375e-m0048-5a2fe8c6"
-  },
-  "operatorBundle": {
-    "preflight": "scripts/release/anti-gravity/all-modules-preflight.sh",
-    "deploy": "scripts/release/anti-gravity/all-modules-deploy.sh",
-    "verify": "scripts/release/anti-gravity/all-modules-verify.sh",
-    "rollback": "scripts/release/anti-gravity/all-modules-rollback.sh",
-    "soak": "scripts/release/anti-gravity/all-modules-soak.sh",
-    "shadowCanary": "scripts/release/anti-gravity/all-modules-shadow-canary.sh",
-    "backupRehearsal": "scripts/release/anti-gravity/all-modules-backup-rehearsal.sh",
-    "scopeVerifier": "scripts/release/anti-gravity/verify-release-scope.mjs"
+      "regularFile": true
+    }
   }
 }

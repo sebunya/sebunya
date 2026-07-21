@@ -3,11 +3,11 @@
   "classification": "ANTI_GRAVITY_RAIL_A_CLOSURE_CANONICAL_RELEASE_SCOPE",
   "branch": "phase-2-measurement-control-tower-completion",
   "executable": {
-    "commit": "9e02375e11857a545c620778a29f50e78f20075d",
-    "tree": "9c97ac216d73388f4a540c1bc2adfd1a6c4b2261",
-    "archiveSha256": "d9e39acc7bf386dfb0b6d29ca9b2f4ab91379913f081df0d90774e22b10ef475",
-    "scopeManifestSha256": "5a2fe8c6700dd3f39cb13f77b41be4940eaee5ee96811bf4a21c3c93ac3749e5",
-    "evidenceHead": "9e02375e11857a545c620778a29f50e78f20075d"
+    "commit": "0114131946b4c6c6a213c6ef1fb93285e9a2d03f",
+    "tree": "31bc4c3fb94df7ed5e55ce721284743e09936a74",
+    "archiveSha256": "9f3809620786ddebfbb2eae98f35f83274a9bc090b58dcc476f45e0f36a70c97",
+    "scopeManifestSha256": "0e96480ff833976c525c677af98ff2ec452ca2b9aeede4bb08f3f7a788a0c052",
+    "evidenceHead": "0114131946b4c6c6a213c6ef1fb93285e9a2d03f"
   },
   "retiredReleases": [
     {
@@ -28,9 +28,6 @@
     "range": "0000-0048",
     "ceiling": "0048",
     "freshJournalRows": 49,
-    "productionBaselineRows": 55,
-    "productionMissingRange": "NONE",
-    "productionMissingCandidateRows": 0,
-    "productionTargetRows": 55
+    "productionBaselineRows": 55
   }
 }
