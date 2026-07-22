@@ -3,11 +3,11 @@
   "classification": "ANTI_GRAVITY_RAIL_A_CLOSURE_CANONICAL_RELEASE_SCOPE",
   "branch": "phase-2-measurement-control-tower-completion",
   "executable": {
-    "commit": "7d235d751276a598562b684fb19f55196bdab4aa",
-    "tree": "c1579a7ccd829ca2293123d9497818007011d93e",
-    "archiveSha256": "e50a3e6805750e3e4384171b0dd34f305d82cb187d0790b78bbb5703d904c910",
-    "evidenceHead": "7d235d751276a598562b684fb19f55196bdab4aa",
-    "scopeManifestSha256": "79fffe7024ce4b91a863dd518c1475e658fa15ed2b2642fd833e96e449753eba"
+    "commit": "fe177b04f446ddff91f9aa00d3293aaa85846363",
+    "tree": "59d35411a48c1de238a0d6f7352259f784a9148d",
+    "archiveSha256": "ab08466d14d37118ce188e441883b5689b35c7fbd736f8a72967bc5666567f73",
+    "evidenceHead": "fe177b04f446ddff91f9aa00d3293aaa85846363",
+    "scopeManifestSha256": "6c5e026482f2fb69264bc544ce12b5d2702575e42c2b66f8a2314cb79535e326"
   },
   "retiredReleases": [
     {
