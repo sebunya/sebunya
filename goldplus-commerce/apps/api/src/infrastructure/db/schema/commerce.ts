@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, integer, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { products } from './products';
 import { users } from './identity';
@@ -16,7 +16,9 @@ export const cartItems = pgTable('cart_items', {
   quantity: integer('quantity').notNull(),
 });
 
-export const orders = pgTable('orders', {
+export const orders = pgTable(
+  'orders',
+  {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id),
   orderNumber: varchar('order_number', { length: 20 }).unique().notNull(),
@@ -33,17 +35,31 @@ export const orders = pgTable('orders', {
   totalAmount: integer('total_amount').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+  },
+  (table) => ({
+    // Bestsellers / recent-purchase queries filter by user and date.
+    userCreatedIdx: index('orders_user_created_idx').on(table.userId, table.createdAt),
+    paymentCreatedIdx: index('orders_payment_created_idx').on(table.paymentStatus, table.createdAt),
+  }),
+);
 
-export const orderItems = pgTable('order_items', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  orderId: uuid('order_id').references(() => orders.id).notNull(),
-  productId: uuid('product_id').references(() => products.id).notNull(),
-  sku: varchar('sku', { length: 50 }).notNull(),
-  productName: varchar('product_name', { length: 255 }).notNull(),
-  quantity: integer('quantity').notNull(),
-  unitPrice: integer('unit_price').notNull(),
-});
+export const orderItems = pgTable(
+  'order_items',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    orderId: uuid('order_id').references(() => orders.id).notNull(),
+    productId: uuid('product_id').references(() => products.id).notNull(),
+    sku: varchar('sku', { length: 50 }).notNull(),
+    productName: varchar('product_name', { length: 255 }).notNull(),
+    quantity: integer('quantity').notNull(),
+    unitPrice: integer('unit_price').notNull(),
+  },
+  (table) => ({
+    // Co-purchase self-joins both directions.
+    productOrderIdx: index('order_items_product_order_idx').on(table.productId, table.orderId),
+    orderProductIdx: index('order_items_order_product_idx').on(table.orderId, table.productId),
+  }),
+);
 
 export const cartsRelations = relations(carts, ({ many }) => ({
   items: many(cartItems),

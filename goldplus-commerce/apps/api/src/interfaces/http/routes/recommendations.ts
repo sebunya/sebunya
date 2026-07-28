@@ -4,20 +4,51 @@ import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
 
 /**
- * Public recommendation endpoints. Personalisation uses the first-party
- * visitor id (gp_vid cookie) and, when signed in, the user id — no
- * third-party data. All results are public product DTOs (dealer pricing
- * and unpublished products are never exposed).
+ * Public recommendation endpoints.
+ *
+ * Identity rules (privacy-safe):
+ *  - userId is NEVER taken from a query param. It is derived only from a
+ *    verified session token (Authorization: Bearer <session jwt>).
+ *  - The anonymous visitor id comes only from the first-party gp_vid cookie.
+ *  - Personalisation consent is honoured (gp_consent cookie / GPC / DNT).
+ * All results are public product DTOs — dealer pricing and unpublished
+ * products never leak.
  */
 const routes = new Hono();
 const VISITOR_COOKIE = 'gp_vid';
+const CONSENT_COOKIE = 'gp_consent';
+
+function parseLimit(raw: string | undefined, fallback: number, max: number): number {
+  if (!raw) return fallback;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.max(1, Math.min(n, max));
+}
+
+/** userId strictly from a verified session token — never from the query. */
+async function resolveUserId(c: any): Promise<string | null> {
+  const header = c.req.header('authorization') || c.req.header('Authorization');
+  const token = header && header.startsWith('Bearer ') ? header.slice(7).trim() : null;
+  if (!token) return null;
+  const verified = await Registry.getInstance().tokenSigner.verify(token);
+  if (!verified || verified.scope !== 'session') return null;
+  return verified.subject;
+}
+
+function personalizationConsent(c: any): boolean {
+  // Explicit opt-out signals win.
+  if ((c.req.header('sec-gpc') || '').trim() === '1') return false;
+  if ((c.req.header('dnt') || '').trim() === '1') return false;
+  const cookie = (getCookie(c, CONSENT_COOKIE) || '').toLowerCase();
+  if (cookie === 'deny' || cookie === 'reject' || cookie === 'off') return false;
+  return true;
+}
 
 routes.get('/products/:id', async (c) => {
-  const registry = Registry.getInstance();
-  const data = await registry.getProductRecommendationsUseCase.execute({
+  const data = await Registry.getInstance().getProductRecommendationsUseCase.execute({
     productId: c.req.param('id'),
     categoryId: c.req.query('categoryId') ?? null,
-    limit: parseLimit(c.req.query('limit')),
+    limit: parseLimit(c.req.query('limit'), 8, 20),
   });
   const res: ApiResponse<typeof data> = { success: true, data };
   return c.json(res);
@@ -25,31 +56,87 @@ routes.get('/products/:id', async (c) => {
 
 routes.get('/for-you', async (c) => {
   const registry = Registry.getInstance();
-  const visitorId = (getCookie(c, VISITOR_COOKIE) || c.req.query('visitorId') || '').trim() || null;
-  const userId = c.req.query('userId')?.trim() || null; // set server-side by trusted callers only
+  const userId = await resolveUserId(c);
+  const visitorId = (getCookie(c, VISITOR_COOKIE) || '').trim() || null;
 
   const data = await registry.getPersonalizedRecommendationsUseCase.execute({
     identity: { userId, visitorId },
-    limit: parseLimit(c.req.query('limit')),
+    limit: parseLimit(c.req.query('limit'), 12, 30),
+    consent: { personalization: personalizationConsent(c) },
   });
   const res: ApiResponse<typeof data> = { success: true, data };
   return c.json(res);
 });
 
 routes.get('/trending', async (c) => {
-  const registry = Registry.getInstance();
-  const data = await registry.getTrendingProductsUseCase.execute({
-    limit: parseLimit(c.req.query('limit')),
+  const data = await Registry.getInstance().getTrendingProductsUseCase.execute({
+    strategy: 'trending',
+    limit: parseLimit(c.req.query('limit'), 8, 20),
     categoryId: c.req.query('categoryId') ?? null,
   });
   const res: ApiResponse<typeof data> = { success: true, data };
   return c.json(res);
 });
 
-function parseLimit(raw: string | undefined): number | undefined {
-  if (!raw) return undefined;
-  const n = parseInt(raw, 10);
-  return Number.isNaN(n) ? undefined : n;
-}
+routes.get('/bestsellers', async (c) => {
+  const data = await Registry.getInstance().getTrendingProductsUseCase.execute({
+    strategy: 'bestseller',
+    limit: parseLimit(c.req.query('limit'), 8, 20),
+    categoryId: c.req.query('categoryId') ?? null,
+  });
+  const res: ApiResponse<typeof data> = { success: true, data };
+  return c.json(res);
+});
+
+routes.get('/new-arrivals', async (c) => {
+  const data = await Registry.getInstance().getTrendingProductsUseCase.execute({
+    strategy: 'new_arrival',
+    limit: parseLimit(c.req.query('limit'), 8, 20),
+    categoryId: c.req.query('categoryId') ?? null,
+  });
+  const res: ApiResponse<typeof data> = { success: true, data };
+  return c.json(res);
+});
+
+// "Complete Your Setup" — compatibility-driven accessories for a product.
+routes.get('/complete-the-set/:id', async (c) => {
+  const data = await Registry.getInstance().getCompleteTheSetUseCase.execute({
+    productId: c.req.param('id'),
+    limit: parseLimit(c.req.query('limit'), 6, 12),
+  });
+  const res: ApiResponse<typeof data> = { success: true, data };
+  return c.json(res);
+});
+
+// First-party recommendation interaction tracking (impression/click/atc/purchase).
+routes.post('/events', async (c) => {
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } } satisfies ApiResponse<never>, 400);
+  }
+  const visitorId = (getCookie(c, VISITOR_COOKIE) || '').trim() || (body.visitorId ? String(body.visitorId) : null);
+  const result = await Registry.getInstance().recordRecommendationEventUseCase.execute({
+    eventType: String(body.eventType ?? '') as any,
+    surface: String(body.surface ?? ''),
+    recommendationId: body.recommendationId ?? null,
+    algorithmVersion: body.algorithmVersion ?? null,
+    productId: body.productId ?? null,
+    anchorProductId: body.anchorProductId ?? null,
+    rank: body.rank != null ? Number(body.rank) : null,
+    score: body.score != null ? Number(body.score) : null,
+    reasonCode: body.reasonCode ?? null,
+    experimentKey: body.experimentKey ?? null,
+    experimentVariant: body.experimentVariant ?? null,
+    visitorId,
+    userId: null, // attributed server-side only; never trusted from the body
+    sessionId: body.sessionId ?? null,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: { recorded: true } });
+});
 
 export default routes;

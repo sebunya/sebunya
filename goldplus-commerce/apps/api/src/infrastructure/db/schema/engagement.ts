@@ -30,6 +30,21 @@ export const activityEvents = pgTable(
   (table) => ({
     visitorIdx: index('activity_events_visitor_idx').on(table.visitorId, table.createdAt),
     typeIdx: index('activity_events_type_idx').on(table.eventType, table.createdAt),
+    // Co-occurrence queries scan (entity, event_type, entity_id) within a window.
+    coOccurrenceIdx: index('activity_events_cooccurrence_idx').on(
+      table.entity,
+      table.eventType,
+      table.entityId,
+      table.visitorId,
+      table.createdAt,
+    ),
+    // "Recent interactions by user" for personalisation.
+    userRecentIdx: index('activity_events_user_recent_idx').on(
+      table.userId,
+      table.entity,
+      table.eventType,
+      table.createdAt,
+    ),
   }),
 );
 

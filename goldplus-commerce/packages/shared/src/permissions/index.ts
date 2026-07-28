@@ -29,6 +29,13 @@ export const PERMISSIONS = {
   EXPERIMENTS_MANAGE: 'experiments.manage',
   CONTENT_MANAGE: 'content.manage',
   DASHBOARD_READ: 'dashboard.read',
+  // Recommendation control room
+  RECS_VIEW: 'recommendations.view',
+  RECS_MANAGE_SURFACES: 'recommendations.edit_surface_config',
+  RECS_MANAGE_MERCHANDISING: 'recommendations.manage_merchandising_rules',
+  RECS_MANAGE_COMPATIBILITY: 'recommendations.manage_compatibility',
+  RECS_VIEW_ANALYTICS: 'recommendations.view_analytics',
+  RECS_PUBLISH: 'recommendations.publish_changes',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

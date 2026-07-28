@@ -57,6 +57,13 @@
       "when": 1783395288428,
       "tag": "0007_sour_mysterio",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1783440173935,
+      "tag": "0008_silly_pestilence",
+      "breakpoints": true
     }
   ]
 }
