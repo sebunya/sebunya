@@ -17,6 +17,21 @@ test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
   if (process.env.NODE_ENV === 'production') throw new Error('REFUSING_TO_RUN_IN_PRODUCTION');
+  // Database access here goes through the shared client, which honours DATABASE_URL and
+  // otherwise falls back to localhost:5432. Without this guard an unset variable surfaces
+  // as a bare ECONNREFUSED against a port the suite never intended to use.
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      'DATABASE_URL_REQUIRED: this browser proof writes real fixtures through the API database. ' +
+        'Export DATABASE_URL for the test database (any host/port) before running it.',
+    );
+  }
+  if ((process.env.JWT_SECRET ?? '').length < 32) {
+    throw new Error(
+      'JWT_SECRET_REQUIRED: this browser proof signs a real admin session token. ' +
+        'Export a JWT_SECRET of at least 32 characters, matching the API under test.',
+    );
+  }
   await db.insert(users).values({ id: actorId, email: `a4-browser-${actorId}@fixture.local`, passwordHash: 'not-used', isActive: true });
   await db.insert(roles).values({ id: roleId, name: `a4-browser-${roleId.slice(0, 8)}` });
   await db.insert(permissions).values([
