@@ -3,8 +3,6 @@ import { IdentityLinkSnapshot, IdentitySignalType, IdentityLinkStatus } from '..
 import { RawCustomerSignals } from '../../domain/customer-dna/CustomerFeatures';
 import { NbaDecision } from '../../domain/customer-dna/NextBestAction';
 
-export interface CustomerProfileRow extends CustomerProfileSnapshot {}
-
 export interface ICustomerProfileRepository {
   /** Create the canonical profile row (used when a first link is established). */
   create(input: { canonicalCustomerId?: string; accountUserId: string | null }): Promise<CustomerProfileSnapshot>;
