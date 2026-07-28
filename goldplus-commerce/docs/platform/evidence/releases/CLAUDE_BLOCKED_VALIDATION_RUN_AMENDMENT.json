@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "amendmentOf": "the previous real Mac preapproval run that recorded docker.ready = BLOCKED and then continued into the image phase",
+  "originalEvidencePreserved": true,
+  "originalEvidenceModified": false,
+  "classification": "ABORTED_BLOCKED",
+  "eligibleForFinalisation": false,
+  "terminalGate": "docker.ready",
+  "terminalStatus": "BLOCKED",
+  "reasonCode": "MANDATORY_GATE_BLOCKED_AND_RUN_CONTINUED",
+  "rule": "The earliest mandatory FAIL or BLOCKED is authoritative. Later records can never rehabilitate a run.",
+  "enforcement": "mac-rail-b-finalise-release.sh refuses any validation summary whose classification is ABORTED_BLOCKED, and refuses any run with blockedCount, failCount or notRunCount above zero.",
+  "permanentlyIneligible": true
+}

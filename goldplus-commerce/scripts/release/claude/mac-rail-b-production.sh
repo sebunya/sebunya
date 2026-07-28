@@ -64,6 +64,31 @@ ssh "$REMOTE" "grep -qx 'APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_${RELEASE_ID#goldplus
   || die "marker content does not bind to $RELEASE_ID"
 ok "exact marker verified (root:root 600, link count 1, exact content)"
 
+# ─── 0b. Finalised-release binding ──────────────────────────────────────────
+# Production accepts ONLY a finalised, remotely tagged release. Validation-only
+# evidence and the provisional Rail A scope are refused outright.
+FINAL_SCOPE="$APP_ROOT/docs/platform/releases/claude/CLAUDE_FINAL_RELEASE_SCOPE.json"
+[[ -f "$FINAL_SCOPE" ]] || die "MISSING_FINAL_SCOPE — validation-only evidence is not a release"
+grep -q '"provisionalRailAScopeSha256"' "$FINAL_SCOPE" 2>/dev/null \
+  && die "PROVISIONAL_SCOPE_REFUSED — a provisional Rail A scope cannot authorise production"
+if [[ -n "${RAIL_B_VALIDATION_SUMMARY:-}" ]]; then
+  node -e 'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));
+    if(d.runState!=="FINALISED"&&!d.releasePackageHead){console.error("VALIDATION_ONLY_EVIDENCE_REFUSED");process.exit(1);}' \
+    "$RAIL_B_VALIDATION_SUMMARY" || die "VALIDATION_ONLY_EVIDENCE_REFUSED"
+fi
+A_SHA="$(node "$APP_ROOT/scripts/release/claude/verify-final-scope.mjs" "$FINAL_SCOPE" --print)" \
+  || die "FINAL_SCOPE_VERIFIER_FAILED"
+B_SHA="$(node "$APP_ROOT/scripts/release/claude/verify-final-scope.mjs" "$FINAL_SCOPE" --independent)" \
+  || die "FINAL_SCOPE_INDEPENDENT_VERIFIER_FAILED"
+[[ "$A_SHA" == "$B_SHA" ]] || die "FINAL_SCOPE_VERIFIER_DISAGREEMENT"
+REMOTE_TAG_TARGET="$(git -C "$APP_ROOT" ls-remote origin "refs/tags/${RELEASE_ID}^{}" | cut -f1)"
+[[ -n "$REMOTE_TAG_TARGET" ]] || die "MISSING_REMOTE_ANNOTATED_TAG for $RELEASE_ID"
+PKG_HEAD_LOCAL="$(git -C "$APP_ROOT" rev-parse HEAD)"
+[[ "$REMOTE_TAG_TARGET" == "$PKG_HEAD_LOCAL" ]] || die "REMOTE_TAG_TARGET_MISMATCH"
+REMOTE_BRANCH_HEAD="$(git -C "$APP_ROOT" ls-remote origin "refs/heads/${BRANCH}" | cut -f1)"
+[[ "$REMOTE_BRANCH_HEAD" == "$PKG_HEAD_LOCAL" ]] || die "REMOTE_BRANCH_NOT_AT_PACKAGE_HEAD"
+ok "finalised release binding verified (remote branch and annotated tag both at package head)"
+
 (( CHECK_ONLY )) && { echo "MARKER_CHECK_ONLY_OK"; exit 0; }
 
 # ─── 1. Local and remote preflight (read-only) ──────────────────────────────

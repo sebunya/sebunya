@@ -62,7 +62,9 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-step "Rail B pre-approval  target=$TARGET_BRANCH  dry-run=$DRY_RUN"
+railb_run_init
+railb_cleanup() { for c in rail-b-api rail-b-web rail-b-pg rail-b-redis; do docker rm -f "$c" >/dev/null 2>&1 || true; done; return 0; }
+step "Rail B validation  target=$TARGET_BRANCH  dry-run=$DRY_RUN  run=$RUN_ID"
 echo "evidence: $EVIDENCE_ROOT"
 
 # ─── 1. Host attestation ────────────────────────────────────────────────────
@@ -93,19 +95,17 @@ record_gate boundary.runtimeSource "$GATE_PASS" "git diff --name-only ${EXEC_CAN
 step "3. Locked dependency installation"
 gate deps.frozenInstall "cd '$APP_ROOT' && CI=1 pnpm install --frozen-lockfile --prefer-offline"
 
-step "4. Docker Desktop readiness"
+step "4. Docker readiness (deterministic context selection)"
 if (( DRY_RUN )); then
-  record_gate docker.ready "$GATE_NOT_RUN" "docker info" null "$EVIDENCE_ROOT" "dry run"
-elif docker info >/dev/null 2>&1; then
-  record_gate docker.ready "$GATE_PASS" "docker info" 0 "$EVIDENCE_ROOT" ""
+  record_gate docker.ready "$GATE_NOT_RUN" "railb_docker_ready" null "$EVIDENCE_ROOT" "dry run" 1
+elif railb_docker_ready; then
+  record_gate docker.ready "$GATE_PASS" "railb_docker_ready" 0 "$EVIDENCE_ROOT" \
+    "context=$SELECTED_DOCKER_CONTEXT server=$DOCKER_SERVER_VERSION arch=$DOCKER_SERVER_ARCH driver=$DOCKER_STORAGE_DRIVER elapsed=${DOCKER_ELAPSED_SECONDS}s"
+  railb_write_evidence_atomic "$EVIDENCE_ROOT/docker-context.json" "$(railb_docker_diagnostics_json)"
 else
-  open -a Docker >/dev/null 2>&1 || true
-  for _ in $(seq 1 36); do docker info >/dev/null 2>&1 && break; sleep 5; done
-  if docker info >/dev/null 2>&1; then
-    record_gate docker.ready "$GATE_PASS" "open -a Docker; docker info" 0 "$EVIDENCE_ROOT" ""
-  else
-    gate_blocked docker.ready "docker info" "Docker Desktop did not become ready within three minutes"
-  fi
+  railb_write_evidence_atomic "$EVIDENCE_ROOT/docker-context.json" "$(railb_docker_diagnostics_json)"
+  # Terminal: no clean-context gate, image build, production SSH, backup or finalisation follows.
+  railb_terminate docker.ready BLOCKED "DOCKER_DESKTOP_NOT_READY" "MAC_RAIL_B_BLOCKED_DOCKER_DESKTOP_NOT_READY"
 fi
 
 # ─── 5. Exact clean-source images ───────────────────────────────────────────
@@ -180,43 +180,41 @@ else
 fi
 gate tooling.faultMatrix "cd '$APP_ROOT' && bash scripts/release/claude/rail-b-selftest.sh"
 
-# ─── 14. Result ─────────────────────────────────────────────────────────────
-step "14. Result"
-if (( DRY_RUN )); then PW_CLASS="NOT_RUN"; else PW_CLASS="EXACT_IMAGE_PLAYWRIGHT_ACCEPTANCE_PASSED"; fi
-cat > "$EVIDENCE_ROOT/rail-b-preapproval-${TS}.json" <<JSON
-{
-  "timestampUtc": "${TS}",
-  "worktreeBranch": "${WORKTREE_BRANCH}",
-  "targetBranch": "${TARGET_BRANCH}",
-  "expectedRemoteHead": "${EXPECTED_REMOTE_HEAD}",
-  "localHead": "${LOCAL_HEAD}",
-  "executableCandidate": "${EXEC_CANDIDATE}",
-  "runtimeSourcePathCount": ${RUNTIME_PATHS},
-  "dryRun": ${DRY_RUN},
-  "productionMutation": "none",
-  "playwrightClassification": "${PW_CLASS}",
-  "gates": [${GATE_RESULTS_JSON}]
-}
-JSON
-echo "  evidence: $EVIDENCE_ROOT/rail-b-preapproval-${TS}.json"
+# ─── 14. Result (validation only — never approval-ready wording) ────────────
+step "14. Validation result"
+railb_finalise_run_state || true
+SUMMARY="$EVIDENCE_ROOT/validation-summary.json"
+railb_write_evidence_atomic "$SUMMARY" "$(node -e '
+  const base=JSON.parse(process.argv[1]);
+  base.targetBranch=process.argv[2];
+  base.executableCandidate=process.argv[3];
+  base.migrationCeiling="0048";
+  base.selectedDockerContext=process.argv[4]||null;
+  base.apiImageTag=process.argv[5]||null;
+  base.webImageTag=process.argv[6]||null;
+  base.dryRun=process.argv[7]==="1";
+  base.playwrightClassification=process.argv[7]==="1"?"NOT_RUN":"EXACT_IMAGE_PLAYWRIGHT_ACCEPTANCE_PASSED";
+  base.productionMutation="none";
+  process.stdout.write(JSON.stringify(base,null,2));
+' "$(railb_run_summary_json)" "$TARGET_BRANCH" "$EXEC_CANDIDATE" "${SELECTED_DOCKER_CONTEXT:-}" "${API_TAG:-}" "${WEB_TAG:-}" "$DRY_RUN")"
+echo "  summary: $SUMMARY"
 
 if (( DRY_RUN )); then
-  echo "MAC_RAIL_B_DRY_RUN_COMPLETE — nothing executed, nothing frozen, no marker touched."
+  echo "MAC_RAIL_B_DRY_RUN_COMPLETE — nothing executed, nothing validated, no marker touched."
   exit 0
 fi
 
-# A runtime defect stops the run. This script never repairs code, freezes a
-# release, derives a release ID, creates a tag or emits marker instructions.
 for g in playwright.exactImage runtime.newRestoredCanary upgrade.migrate upgrade.idempotent api.catalogueCollection; do
   if printf '%s' "$GATE_RESULTS_JSON" | grep -q "\"gateId\":\"${g}\",\"status\":\"FAIL\""; then
-    fail_with "MAC_RAIL_B_RUNTIME_DEFECT_FOUND: ${g} failed — implement the defect, commit it, rerun every invalidated gate and restart preapproval with a new executable candidate." 20
+    fail_with "MAC_RAIL_B_RUNTIME_DEFECT_FOUND: ${g} failed — implement the defect, commit it, rerun every invalidated gate and restart validation with a new executable candidate." 20
   fi
 done
 
-gates_allow_final_result \
-  || fail_with "MAC_RAIL_B_PREAPPROVAL_INCOMPLETE: fail=${GATE_FAIL_COUNT} blocked=${GATE_BLOCKED_COUNT} notRun=${GATE_NOT_RUN_COUNT}" 21
+[[ "$RUN_STATE" == "VALIDATED" ]] \
+  || fail_with "MAC_RAIL_B_VALIDATION_FAILED: fail=${GATE_FAIL_COUNT} blocked=${GATE_BLOCKED_COUNT} notRun=${GATE_NOT_RUN_COUNT}" 21
 
-# Documented operator-facing success contract. The human approval step follows;
-# this script never creates a marker and never deploys.
-echo "CLAUDE_MAC_RAIL_B_PREAPPROVAL_COMPLETE_HUMAN_APPROVAL_REQUIRED"
-echo "  no marker was created; production was not mutated."
+# Validation only. This script derives no release ID, writes no manifest, creates
+# no package head or tag, and returns no marker instructions.
+echo "CLAUDE_MAC_RAIL_B_VALIDATION_COMPLETE_RELEASE_FINALISATION_REQUIRED"
+echo "  validation summary: $SUMMARY"
+echo "  next: bash scripts/release/claude/mac-rail-b-finalise-release.sh --validation-run \"$SUMMARY\""

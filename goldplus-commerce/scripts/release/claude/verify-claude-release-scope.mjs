@@ -61,7 +61,7 @@ function rebuild(scope) {
   for (const f of fs
     .readdirSync('scripts/release/claude')
     .sort()
-    .filter((x) => x.startsWith('mac-rail-b') || x.startsWith('rail-b'))) {
+    .filter((x) => x.endsWith('.sh') || x.endsWith('.mjs'))) {
     operatorScripts[`claude/${f}`] = fileSha(path.join('scripts/release/claude', f));
   }
 

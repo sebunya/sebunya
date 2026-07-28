@@ -6,40 +6,76 @@
   "railANote": "Rail A changed no runtime source. All Rail A commits are tests, release tooling, inventory and evidence, so the executable candidate is unchanged from the operator-verified Mac baseline.",
   "branch": "phase-2-measurement-control-tower-completion",
   "scripts": {
+    "verifier": {
+      "path": "scripts/release/claude/mac-rail-b-verifier.sh",
+      "sha256": "15c337756a31f09838f44bd2072cee05651fba4775e6e43da18127dbfe268d5a",
+      "canonical": true,
+      "note": "An attachment or ~/Downloads copy is NOT release authority.",
+      "terminalStatus": "GOLDPLUS_MAC_RAIL_B_PACKAGE_VERIFIED"
+    },
     "preapproval": {
       "path": "scripts/release/claude/mac-rail-b-preapproval.sh",
-      "sha256": "08b7f826c145ab24a5a27a361eddb45fc0c1bea524f59a3db197d1f7266d82f9",
-      "usage": "scripts/release/claude/mac-rail-b-preapproval.sh [--dry-run]",
-      "productionMutation": "none \u2014 production is read-only for the whole script"
+      "sha256": "ac2b5673fa9dc8d9c54c638d2cad8653d9f890cbfc335e2ffdd0ad25e51f78ed",
+      "validationOnly": true,
+      "terminalStatuses": [
+        "MAC_RAIL_B_VALIDATION_FAILED",
+        "MAC_RAIL_B_VALIDATION_BLOCKED",
+        "MAC_RAIL_B_BLOCKED_DOCKER_DESKTOP_NOT_READY",
+        "MAC_RAIL_B_RUNTIME_DEFECT_FOUND",
+        "CLAUDE_MAC_RAIL_B_VALIDATION_COMPLETE_RELEASE_FINALISATION_REQUIRED"
+      ],
+      "mustNot": [
+        "derive a release ID",
+        "derive an approval token",
+        "write a final manifest",
+        "commit a package head",
+        "create or push a tag",
+        "return marker instructions",
+        "claim approval readiness"
+      ]
+    },
+    "finaliser": {
+      "path": "scripts/release/claude/mac-rail-b-finalise-release.sh",
+      "sha256": "9954220b9d5be52fb1cc74e6ad6a632b1096d59798515ef700de026c5c049a64",
+      "usage": "mac-rail-b-finalise-release.sh --validation-run /absolute/path/validation-summary.json",
+      "terminalStatus": "CLAUDE_MAC_RAIL_B_RELEASE_FINALISED_HUMAN_APPROVAL_REQUIRED",
+      "onlyScriptPermittedToReturnThatStatus": true
     },
     "production": {
       "path": "scripts/release/claude/mac-rail-b-production.sh",
-      "sha256": "b7da615b1f4333a00acbce5e997e63cc1bbf2744ec2da75e3d57777b373ca5ba",
-      "usage": "scripts/release/claude/mac-rail-b-production.sh --release <id> --marker <exact path> [--check-only]",
-      "precondition": "the exact human-created approval marker must already exist"
+      "sha256": "091257dcb59a1b4f115e1b4d26c21490279dfcebaad284936f67684cb99d328b",
+      "requires": [
+        "finalised final scope",
+        "remote branch at package head",
+        "remote annotated tag at package head",
+        "exact human marker"
+      ],
+      "rejects": [
+        "validation-only evidence",
+        "provisional Rail A scope",
+        "missing final scope",
+        "scope-verifier disagreement"
+      ]
     },
     "rollback": {
       "path": "scripts/release/claude/mac-rail-b-rollback.sh",
-      "sha256": "e148c6371f06f6ae9a5bb79465cb8956a27d1fe9cc6279535fac5adb1b9de6ce",
-      "usage": "scripts/release/claude/mac-rail-b-rollback.sh --api-image <id> --web-image <id> [--reason \"...\"]"
+      "sha256": "e148c6371f06f6ae9a5bb79465cb8956a27d1fe9cc6279535fac5adb1b9de6ce"
     },
     "library": {
       "path": "scripts/release/claude/rail-b-lib.sh",
-      "sha256": "78b18878b4071c25fceca643e3be8a424855bc6fb736a7a448509f0ca52c9ad3",
-      "usage": "sourced; branch semantics, gate states, evidence-path safety"
+      "sha256": "4c4e6b329347644c1e1b623760bc4bd1be96b2f4a05c4e9cc07c23b553bde3e0"
     },
     "selftest": {
       "path": "scripts/release/claude/rail-b-selftest.sh",
-      "sha256": "99c0491cadf21756a8f7231188e73bbf7e2efc019140ac57826a7dbaab2ddf20",
-      "usage": "rail-b-selftest.sh [--json <path>]"
+      "sha256": "fe77213e0f30196effba3df43e5b9b4e9057e2bb94b0bd277052a72b217679d7"
     }
   },
   "validation": {
     "syntax": "PASS 3/3 (bash -n)",
     "dryRun": "PASS \u2014 host attestation correctly reported this non-Darwin host as FAIL; unexecuted steps report NOT-RUN(dry-run), never PASS",
     "faultInjection": {
-      "total": 36,
-      "passed": 36,
+      "total": 69,
+      "passed": 69,
       "hermetic": true,
       "contactedProduction": false,
       "createdMarker": false,
@@ -53,7 +89,12 @@
         "approval-marker",
         "deployment/rollback",
         "commerce-safety",
-        "gate-state"
+        "gate-state",
+        "terminal-abort",
+        "docker-context",
+        "validation-evidence",
+        "final-scope",
+        "production-contract"
       ]
     },
     "prohibitionAudit": "performed on executable lines with comments stripped: 0 compose-down, 0 reboot, 0 infra restart, 0 marker write, 0 wildcard removal",
@@ -238,5 +279,65 @@
   "releaseFinalisation": {
     "performedByPreapprovalScript": false,
     "note": "The tracked preapproval script does NOT compute a final scope or create an annotated tag. It validates and stops. Final scope and tag creation remain a separate, explicitly authorised step once the Mac evidence exists."
-  }
+  },
+  "architecture": {
+    "trackedVerifier": "verifies the worktree and Rail B package; runs no validation, freezes nothing",
+    "preapprovalValidator": "executes every mandatory gate; produces immutable validation evidence only",
+    "releaseFinaliser": "consumes one successful validation run; builds the final scope, package head and remote annotated tag",
+    "productionExecutor": "accepts only a finalised, remotely tagged release plus the exact human marker"
+  },
+  "gateStateMachine": {
+    "allowed": [
+      "PASS",
+      "FAIL",
+      "BLOCKED",
+      "NOT_RUN",
+      "NOT_APPLICABLE"
+    ],
+    "terminalRule": "The earliest mandatory FAIL or BLOCKED is authoritative: persist evidence atomically, run cleanup, exit non-zero. No later phase, adapter, PASS record, SSH or Docker work, and no finalisation.",
+    "notRun": "allowed only in explicit dry-run or as a post-terminal record; never satisfies a mandatory gate",
+    "notApplicable": "allowed only for a genuinely optional gate and requires a recorded reason",
+    "evidenceWrite": "temp file, flush, atomic rename"
+  },
+  "dockerReadiness": {
+    "deterministic": true,
+    "contextsProbed": [
+      "current",
+      "desktop-linux",
+      "default"
+    ],
+    "startsDesktopWhenNeeded": true,
+    "timeoutSeconds": 360,
+    "propagation": "DOCKER_CONTEXT only",
+    "neverRuns": "docker context use \u2014 the operator global context is never changed",
+    "blockedStatus": "MAC_RAIL_B_BLOCKED_DOCKER_DESKTOP_NOT_READY",
+    "diagnostics": [
+      "selected context",
+      "server version",
+      "architecture",
+      "storage driver",
+      "desktop detected",
+      "elapsed seconds",
+      "failure reason"
+    ]
+  },
+  "blockedRunAmendment": {
+    "path": "docs/platform/evidence/releases/CLAUDE_BLOCKED_VALIDATION_RUN_AMENDMENT.json",
+    "classification": "ABORTED_BLOCKED",
+    "eligibleForFinalisation": false,
+    "originalEvidencePreserved": true,
+    "permanentlyIneligible": true
+  },
+  "correctMacSequence": [
+    "fast-forward the clean Mac side worktree",
+    "bash scripts/release/claude/mac-rail-b-verifier.sh",
+    "bash scripts/release/claude/mac-rail-b-preapproval.sh",
+    "receive CLAUDE_MAC_RAIL_B_VALIDATION_COMPLETE_RELEASE_FINALISATION_REQUIRED",
+    "bash scripts/release/claude/mac-rail-b-finalise-release.sh --validation-run <summary>",
+    "receive CLAUDE_MAC_RAIL_B_RELEASE_FINALISED_HUMAN_APPROVAL_REQUIRED",
+    "human creates the exact marker",
+    "bash scripts/release/claude/mac-rail-b-production.sh",
+    "shadow canary, backup rehearsal, API-first deploy, web deploy, all-module UAT, one-hour soak, reconciliation",
+    "human removes the exact marker"
+  ]
 }
