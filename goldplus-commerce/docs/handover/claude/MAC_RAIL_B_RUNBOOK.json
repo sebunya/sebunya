@@ -5,11 +5,10 @@
   "railAExecutableCandidate": "232e2903410e317d06e1416f67ed5f85904eb693",
   "railANote": "Rail A changed no runtime source. All Rail A commits are tests, release tooling, inventory and evidence, so the executable candidate is unchanged from the operator-verified Mac baseline.",
   "branch": "phase-2-measurement-control-tower-completion",
-  "moduleInventorySha256": "0ccb4f4d2fd3d6b1fdd764b438d198ce01271a8d74b5584b7010ce01c5e6f180",
   "scripts": {
     "preapproval": {
       "path": "scripts/release/claude/mac-rail-b-preapproval.sh",
-      "sha256": "f86926cf3bf10ac50840ccb0d4b0a06e352dd1e7a97f30c9f86cace4fa94952e",
+      "sha256": "6885259401a6c088cbf01fac7f4330a1b0a892ac4d421212194fbb5a6b2e8ffc",
       "usage": "scripts/release/claude/mac-rail-b-preapproval.sh [--dry-run]",
       "productionMutation": "none — production is read-only for the whole script"
     },
@@ -23,33 +22,44 @@
       "path": "scripts/release/claude/mac-rail-b-rollback.sh",
       "sha256": "e148c6371f06f6ae9a5bb79465cb8956a27d1fe9cc6279535fac5adb1b9de6ce",
       "usage": "scripts/release/claude/mac-rail-b-rollback.sh --api-image <id> --web-image <id> [--reason \"...\"]"
+    },
+    "library": {
+      "path": "scripts/release/claude/rail-b-lib.sh",
+      "sha256": "78b18878b4071c25fceca643e3be8a424855bc6fb736a7a448509f0ca52c9ad3",
+      "usage": "sourced; branch semantics, gate states, evidence-path safety"
+    },
+    "selftest": {
+      "path": "scripts/release/claude/rail-b-selftest.sh",
+      "sha256": "99c0491cadf21756a8f7231188e73bbf7e2efc019140ac57826a7dbaab2ddf20",
+      "usage": "rail-b-selftest.sh [--json <path>]"
     }
   },
   "validation": {
     "syntax": "PASS 3/3 (bash -n)",
     "dryRun": "PASS — host attestation correctly reported this non-Darwin host as FAIL; unexecuted steps report NOT-RUN(dry-run), never PASS",
     "faultInjection": {
-      "productionMissingRelease": "REFUSED",
-      "productionMissingMarker": "REFUSED",
-      "productionNonApprovalMarkerPath": "REFUSED",
-      "productionWildcardMarkerPath": "REFUSED",
-      "productionUnknownArgument": "REFUSED",
-      "productionAbsentMarker": "REFUSED",
-      "rollbackMissingApiImage": "REFUSED",
-      "rollbackMissingWebImage": "REFUSED",
-      "rollbackUnknownArgument": "REFUSED",
-      "total": "9/9 refused as required"
+      "total": 36,
+      "passed": 36,
+      "hermetic": true,
+      "contactedProduction": false,
+      "createdMarker": false,
+      "touchedRealDocker": false,
+      "touchedRealRemote": false,
+      "classes": [
+        "host/local-source",
+        "remote-movement",
+        "release-identity",
+        "evidence-path",
+        "approval-marker",
+        "deployment/rollback",
+        "commerce-safety",
+        "gate-state"
+      ]
     },
-    "prohibitionAudit": {
-      "setEuoPipefail": "3/3",
-      "composeDownInvocations": 0,
-      "rebootInvocations": 0,
-      "caddyPostgresRedisRestarts": 0,
-      "markerCreationOrDeletion": 0,
-      "wildcardUnderRoot": 0,
-      "note": "Grep hits on 'docker compose down' are the prohibition comments themselves; the /root/APPROVE prefix match is the marker-path validation guard, not a glob."
-    },
-    "evidenceLocation": "written outside the Git root (sibling of the outer repo), so gate runs never dirty the worktree"
+    "prohibitionAudit": "performed on executable lines with comments stripped: 0 compose-down, 0 reboot, 0 infra restart, 0 marker write, 0 wildcard removal",
+    "evidenceLocation": "written outside the Git root (sibling of the outer repo), so gate runs never dirty the worktree",
+    "evidencePathSafety": "rejects paths inside the Git root, inside .git, inside GoldPlusFinal, and symlinks into any of them; resolves physically before deciding",
+    "dryRunTruthfulness": "0 PASS lines in dry-run output; every unexecuted step records NOT_RUN"
   },
   "preapprovalGates": [
     "Darwin and non-root verification",
@@ -104,11 +114,16 @@
     "perform unapproved activations"
   ],
   "lintBaseline": {
-    "errors": 0,
-    "warnings": 889,
+    "sharedErrors": 0,
+    "sharedWarnings": 0,
+    "apiErrors": 0,
+    "apiWarnings": 889,
+    "webErrors": 0,
     "webWarnings": 21,
+    "aggregateErrors": 0,
+    "aggregateWarnings": 910,
     "policy": "NO_REGRESSION_CEILING",
-    "note": "Recorded as technical debt. A broad unrelated cleanup is explicitly out of scope for this release. Changed files must introduce zero new lint errors and no unjustified warning increase."
+    "source": "parsed from pnpm lint output by scripts/release/claude/reconcile-lint.mjs"
   },
   "releaseFreeze": {
     "performedInRailA": false,
@@ -117,5 +132,83 @@
   "terminalDeclaration": {
     "value": "GOLDPLUS_ALL_MODULES_LIVE_VERIFIED_DORMANT_SAFE",
     "declared": false
-  }
+  },
+  "branchSemantics": {
+    "WORKTREE_BRANCH": "local branch name; evidence only — never required to equal TARGET_BRANCH",
+    "TARGET_BRANCH": "remote branch defining the baseline and receiving the package (default phase-2-measurement-control-tower-completion, override with --target-branch or RAIL_B_TARGET_BRANCH)",
+    "EXPECTED_REMOTE_HEAD": "origin/TARGET_BRANCH at run start; re-checked before finalisation",
+    "acceptedCase": "clean side branch whose HEAD equals origin/TARGET_BRANCH",
+    "refusals": [
+      "WORKTREE_NOT_CLEAN",
+      "LOCAL_HEAD_NOT_AT_TARGET_REMOTE_HEAD",
+      "LOCAL_HISTORY_DIVERGED_FROM_TARGET",
+      "TARGET_BRANCH_MOVED_DURING_RAIL_B",
+      "NON_FAST_FORWARD_FINALISATION",
+      "RAIL_A_EXECUTABLE_BOUNDARY_INVALID"
+    ]
+  },
+  "gateStates": {
+    "allowed": [
+      "PASS",
+      "FAIL",
+      "BLOCKED",
+      "NOT_RUN",
+      "NOT_APPLICABLE"
+    ],
+    "rules": {
+      "PASS": "command executed and exited zero",
+      "FAIL": "command executed and failed",
+      "BLOCKED": "external prerequisite prevented execution",
+      "NOT_RUN": "deliberately skipped, including every dry-run step",
+      "NOT_APPLICABLE": "gate genuinely does not apply"
+    },
+    "finalResultImpossibleWhenAnyMandatoryGateIs": [
+      "FAIL",
+      "BLOCKED",
+      "NOT_RUN"
+    ],
+    "persistedFields": [
+      "gateId",
+      "status",
+      "startedAt",
+      "finishedAt",
+      "command",
+      "exitCode",
+      "evidencePath",
+      "reason"
+    ]
+  },
+  "playwrightClassification": {
+    "railA": "COMPILED_SERVICE_PLAYWRIGHT_SUBSET_PASSED",
+    "railADetail": "14/14 journeys, chromium desktop + mobile, live API catalogue resolver, 11 resolver tests, compiled services (not exact images)",
+    "macFinal": "EXACT_IMAGE_PLAYWRIGHT_ACCEPTANCE_PASSED",
+    "macFinalRequires": [
+      "exact API production image running",
+      "exact web production image running",
+      "isolated PostgreSQL and Redis connected",
+      "complete image-backed journey set passing",
+      "zero provider/customer side effects proven"
+    ],
+    "note": "The final release scope must bind the Mac exact-image evidence, never substitute the Rail A subset."
+  },
+  "railBDefectBehaviour": {
+    "code": "MAC_RAIL_B_RUNTIME_DEFECT_FOUND",
+    "appliesTo": [
+      "playwright.exactImage",
+      "runtime.newRestoredCanary",
+      "upgrade.migrate",
+      "upgrade.idempotent",
+      "api.catalogueCollection"
+    ],
+    "mustNot": [
+      "freeze a release",
+      "derive a final release ID",
+      "create a tag",
+      "push a package head",
+      "produce approval-marker instructions"
+    ]
+  },
+  "provisionalRailAScopeSha256": "50e9baa05c3e7d695be07e498064cf0abbd32c04126e2a6c7c612138d55ff842",
+  "scopeStatus": "PROVISIONAL_RAIL_A",
+  "moduleInventorySha256": "0ccb4f4d2fd3d6b1fdd764b438d198ce01271a8d74b5584b7010ce01c5e6f180"
 }

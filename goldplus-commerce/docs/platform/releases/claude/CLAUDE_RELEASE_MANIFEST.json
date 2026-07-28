@@ -9,7 +9,6 @@
     "releasePackageHead": "RESOLVED_BY_ANNOTATED_TAG_TARGET",
     "branch": "phase-2-measurement-control-tower-completion",
     "scopePath": "docs/platform/releases/claude/CLAUDE_RELEASE_SCOPE.json",
-    "scopeSha256": "3a467adb7813848b172d612f4ae761e9f619de32a4a5860a86d8fbd95f15b8d6",
     "scopeCanonicalisation": "UTF-8, recursively sorted object keys, deterministic array order, no insignificant whitespace, no trailing newline",
     "migrationCeiling": "0048",
     "newMigrations": 0,
@@ -19,12 +18,26 @@
       "goldplus-programme-99563666-m0048-8343ee36",
       "goldplus-programme-51b86fb5-m0048-5a198e5f"
     ],
-    "packageHeadResolution": "The release-package head is the commit this manifest is committed in, which cannot contain its own hash. The annotated tag goldplus-programme-51cebfd6-m0048-3a467adb is the authoritative pointer: its target IS the release-package head. Writing a literal hash here would require a further commit, which is the manifest-chasing-HEAD circularity this design exists to avoid."
+    "packageHeadResolution": "The release-package head is the commit this manifest is committed in, which cannot contain its own hash. The annotated tag goldplus-programme-51cebfd6-m0048-3a467adb is the authoritative pointer: its target IS the release-package head. Writing a literal hash here would require a further commit, which is the manifest-chasing-HEAD circularity this design exists to avoid.",
+    "provisionalRailAScopeSha256": "3a467adb7813848b172d612f4ae761e9f619de32a4a5860a86d8fbd95f15b8d6",
+    "scopeStatus": "PROVISIONAL_RAIL_A",
+    "finalScopeRequires": [
+      "exact API image identity",
+      "exact web image identity",
+      "production-shaped backup identity",
+      "populated-upgrade evidence",
+      "old-runtime compatibility evidence",
+      "new-runtime restored-data canary evidence",
+      "exact-image Playwright evidence",
+      "final operator-script hashes",
+      "final module inventory",
+      "final engineering acceptance"
+    ]
   },
   "scopeVerification": {
     "repositoryVerifier": "scripts/release/claude/verify-claude-release-scope.mjs",
-    "repositoryVerifierResult": "PASS_3a467adb7813848b172d612f4ae761e9f619de32a4a5860a86d8fbd95f15b8d6",
-    "independentVerifierResult": "PASS_3a467adb7813848b172d612f4ae761e9f619de32a4a5860a86d8fbd95f15b8d6",
+    "repositoryVerifierResult": "PROVISIONAL_PASS_3a467adb7813848b172d612f4ae761e9f619de32a4a5860a86d8fbd95f15b8d6",
+    "independentVerifierResult": "PROVISIONAL_PASS_3a467adb7813848b172d612f4ae761e9f619de32a4a5860a86d8fbd95f15b8d6",
     "verifiersAgree": true,
     "faultInjection": {
       "operatorScriptDrift": "DETECTED",

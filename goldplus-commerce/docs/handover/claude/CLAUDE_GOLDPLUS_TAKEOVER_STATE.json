@@ -21,7 +21,6 @@
   },
   "executableCommit": "51b86fb5ab0810d75a04492ce5dbf8e80aec901c",
   "releasePackageHead": "b6a4d26a3e575a84ddb0131a233b728773982e4a",
-  "scopeSha256": "5a198e5fb073e2bfc47b2651a901e07b0170fe7fce656ec5ecce626ba20509ee",
   "releaseId": "goldplus-programme-51b86fb5-m0048-5a198e5f",
   "releaseToken": "51b86fb5-m0048-5a198e5f",
   "migrationCeiling": "0048",
@@ -71,5 +70,7 @@
     "declared": false,
     "reason": "Requires production acceptance evidence for every module. Production is unreachable from this session and the historic module truth map is absent."
   },
-  "exactNextCommand": "On the operator host: verify no retired marker is present, then create /root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_51b86fb5-m0048-5a198e5f (root:root, mode 600, one line, exact content) and reply: CONTINUE FROM CLAUDE_ALL_MODULES_APPROVAL"
+  "exactNextCommand": "On the operator host: verify no retired marker is present, then create /root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_51b86fb5-m0048-5a198e5f (root:root, mode 600, one line, exact content) and reply: CONTINUE FROM CLAUDE_ALL_MODULES_APPROVAL",
+  "provisionalRailAScopeSha256": "5a198e5fb073e2bfc47b2651a901e07b0170fe7fce656ec5ecce626ba20509ee",
+  "scopeStatus": "PROVISIONAL_RAIL_A"
 }

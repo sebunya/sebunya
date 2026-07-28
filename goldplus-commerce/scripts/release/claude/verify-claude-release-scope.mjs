@@ -58,7 +58,10 @@ function rebuild(scope) {
     operatorScripts[f] = fileSha(path.join('scripts/release/anti-gravity', f));
   }
   // Rail B operator tooling is release-bound and must be covered by the scope.
-  for (const f of fs.readdirSync('scripts/release/claude').sort().filter((x) => x.startsWith('mac-rail-b'))) {
+  for (const f of fs
+    .readdirSync('scripts/release/claude')
+    .sort()
+    .filter((x) => x.startsWith('mac-rail-b') || x.startsWith('rail-b'))) {
     operatorScripts[`claude/${f}`] = fileSha(path.join('scripts/release/claude', f));
   }
 
@@ -116,7 +119,9 @@ function main() {
   }
 
   console.log(`scope inputs verified against working tree`);
-  console.log(`CLAUDE_SCOPE_SHA256=${scopeSha(scope)}`);
+  // Provisional: the final canonical scope can only be computed on the Mac, once
+// exact image, restored-data and exact-image Playwright evidence exist.
+console.log(`provisionalRailAScopeSha256=${scopeSha(scope)}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

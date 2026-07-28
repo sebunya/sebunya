@@ -15,7 +15,6 @@
   "localTagTarget": "RESOLVED_BY_ANNOTATED_TAG_TARGET",
   "remoteTagTarget": "NOT_PUSHED_ENVIRONMENT_LIMITATION",
   "remoteTagBlocker": "The sandbox git proxy refuses every tag push, including a throwaway lightweight probe tag, disconnecting mid-sideband. Branch pushes succeed. The 82 pre-existing remote tags were created from another environment. Push the tag from the operator host with: git push origin refs/tags/goldplus-programme-51cebfd6-m0048-3a467adb",
-  "scopeSha256": "3a467adb7813848b172d612f4ae761e9f619de32a4a5860a86d8fbd95f15b8d6",
   "releaseId": "goldplus-programme-51cebfd6-m0048-3a467adb",
   "migrationCeiling": "0048",
   "moduleCount": 31,
@@ -66,5 +65,7 @@
     "reason": "Requires production acceptance evidence for every module across a one-hour soak; production is unreachable from this session."
   },
   "exactNextAction": "On the operator host: push the annotated tag, verify no retired marker is present, create /root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_51cebfd6-m0048-3a467adb atomically, then reply CONTINUE FROM CLAUDE_FINAL_ALL_MODULES_APPROVAL",
-  "headResolution": "A literal head hash in this file goes stale the moment the file is committed, which is the manifest-chasing-HEAD circularity this programme already suffered. The annotated tag goldplus-programme-51cebfd6-m0048-3a467adb is authoritative: its target is simultaneously the release-package head, the local head and the origin head. Verify with: git rev-parse 'goldplus-programme-51cebfd6-m0048-3a467adb^{}'"
+  "headResolution": "A literal head hash in this file goes stale the moment the file is committed, which is the manifest-chasing-HEAD circularity this programme already suffered. The annotated tag goldplus-programme-51cebfd6-m0048-3a467adb is authoritative: its target is simultaneously the release-package head, the local head and the origin head. Verify with: git rev-parse 'goldplus-programme-51cebfd6-m0048-3a467adb^{}'",
+  "provisionalRailAScopeSha256": "3a467adb7813848b172d612f4ae761e9f619de32a4a5860a86d8fbd95f15b8d6",
+  "scopeStatus": "PROVISIONAL_RAIL_A"
 }
