@@ -16,8 +16,11 @@ export interface InboxTicket {
 export class GetSupportInboxUseCase {
   constructor(private readonly repo: ISupportRepository) {}
 
-  async execute(): Promise<InboxTicket[]> {
-    const now = new Date();
+  /**
+   * `now` is injectable so SLA ordering is deterministic under test. Reading the wall
+   * clock here made the ordering depend on how long ago the fixtures were written.
+   */
+  async execute(now: Date = new Date()): Promise<InboxTicket[]> {
     const tickets = await this.repo.findAll();
     return tickets
       .map((ticket) => ({ ticket, sla: ticketSlaState(ticket.priority, ticket.status, ticket.createdAt, now) }))

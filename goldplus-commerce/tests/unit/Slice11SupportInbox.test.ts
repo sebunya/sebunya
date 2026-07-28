@@ -78,7 +78,7 @@ describe('Support inbox use cases (Slice 11)', () => {
       ticket({ id: 'fresh', priority: 'low', createdAt: hoursAgo(1) }),
       ticket({ id: 'late', priority: 'urgent', createdAt: hoursAgo(10) }),
     ]);
-    const inbox = await new GetSupportInboxUseCase(repo).execute();
+    const inbox = await new GetSupportInboxUseCase(repo).execute(now);
     expect(inbox[0].ticket.id).toBe('late');
     expect(inbox[0].sla.overdue).toBe(true);
   });
