@@ -29,7 +29,11 @@ done
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
-EVIDENCE_ROOT="${GOLDPLUS_EVIDENCE_ROOT:-${APP_ROOT}/../goldplus-mac-validation-${TS}}"
+# Evidence must land OUTSIDE the repository: writing it inside the worktree makes
+# the tree dirty and trips the artifact-scope guards. Default to a sibling of the
+# outer Git root, matching the operator's goldplus-mac-validation-<ts> convention.
+GIT_ROOT="$(git -C "$APP_ROOT" rev-parse --show-toplevel)"
+EVIDENCE_ROOT="${GOLDPLUS_EVIDENCE_ROOT:-$(dirname "$GIT_ROOT")/goldplus-mac-validation-${TS}}"
 REMOTE="goldplus-prod"
 REMOTE_APP="/opt/goldplus/app/goldplus-commerce"
 LOCK="/opt/goldplus/app/.programme-production-release.lock"

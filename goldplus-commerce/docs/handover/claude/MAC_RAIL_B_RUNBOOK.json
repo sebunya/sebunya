@@ -9,19 +9,19 @@
   "scripts": {
     "preapproval": {
       "path": "scripts/release/claude/mac-rail-b-preapproval.sh",
-      "sha256": "1e8881c4088fc25cf8c58aee588e97f7843b0d4b3c11f9592996c6f5e46432eb",
+      "sha256": "f86926cf3bf10ac50840ccb0d4b0a06e352dd1e7a97f30c9f86cace4fa94952e",
       "usage": "scripts/release/claude/mac-rail-b-preapproval.sh [--dry-run]",
       "productionMutation": "none — production is read-only for the whole script"
     },
     "production": {
       "path": "scripts/release/claude/mac-rail-b-production.sh",
-      "sha256": "37efb11ea9969f0bf52ce4c26fa5e34413c79091cb842a38fbaf93cf97201fad",
+      "sha256": "b7da615b1f4333a00acbce5e997e63cc1bbf2744ec2da75e3d57777b373ca5ba",
       "usage": "scripts/release/claude/mac-rail-b-production.sh --release <id> --marker <exact path> [--check-only]",
       "precondition": "the exact human-created approval marker must already exist"
     },
     "rollback": {
       "path": "scripts/release/claude/mac-rail-b-rollback.sh",
-      "sha256": "3286fa1c91426736a0adf248549e46f751666c2028a78b86f1b950c87f7245b0",
+      "sha256": "e148c6371f06f6ae9a5bb79465cb8956a27d1fe9cc6279535fac5adb1b9de6ce",
       "usage": "scripts/release/claude/mac-rail-b-rollback.sh --api-image <id> --web-image <id> [--reason \"...\"]"
     }
   },
@@ -48,7 +48,8 @@
       "markerCreationOrDeletion": 0,
       "wildcardUnderRoot": 0,
       "note": "Grep hits on 'docker compose down' are the prohibition comments themselves; the /root/APPROVE prefix match is the marker-path validation guard, not a glob."
-    }
+    },
+    "evidenceLocation": "written outside the Git root (sibling of the outer repo), so gate runs never dirty the worktree"
   },
   "preapprovalGates": [
     "Darwin and non-root verification",
