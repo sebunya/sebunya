@@ -77,13 +77,20 @@ railb_classify_delta "$APP_ROOT" "$EXEC_CANDIDATE" "$LOCAL_HEAD"
 
 for f in mac-rail-b-verifier mac-rail-b-preapproval mac-rail-b-finalise-release \
          mac-rail-b-verify-finalised-release mac-rail-b-production mac-rail-b-rollback \
-         rail-b-lib rail-b-selftest rail-b-api-linkage-test; do
+         rail-b-lib rail-b-selftest rail-b-api-linkage-test \
+         rail-b-bash32-compatibility-test; do
   [[ -f "$APP_ROOT/scripts/release/claude/$f.sh" ]] || fail_with "REQUIRED_RAIL_B_FILE_MISSING: $f.sh" 8
   bash -n "$APP_ROOT/scripts/release/claude/$f.sh" || fail_with "SCRIPT_SYNTAX_INVALID: $f.sh" 8
 done
 for f in MAC_RAIL_B_RUNBOOK.md MAC_RAIL_B_RUNBOOK.json; do
   [[ -f "$APP_ROOT/docs/handover/claude/$f" ]] || fail_with "REQUIRED_RAIL_B_FILE_MISSING: $f" 8
 done
+
+# The bash 3.2 contract runs BEFORE the matrix: on stock macOS bash a bash-4
+# construct kills the harness itself, and an opaque RAIL_B_FAULT_MATRIX_FAILED is a
+# far worse diagnostic than naming the construct and the file.
+/bin/bash "$APP_ROOT/scripts/release/claude/rail-b-bash32-compatibility-test.sh" >/dev/null 2>&1 \
+  || fail_with "BASH_3_2_COMPATIBILITY_FAILED" 16
 
 bash "$APP_ROOT/scripts/release/claude/rail-b-selftest.sh" >/dev/null 2>&1 \
   || fail_with "RAIL_B_FAULT_MATRIX_FAILED" 9

@@ -1,0 +1,24 @@
+# GoldPlus Rail B — bash 4+ construct rules for the bash 3.2 compatibility contract.
+#
+# Held in a DATA file, not in the scanner, for two reasons:
+#   1. the scanner is itself a tracked .sh file and would otherwise match its own
+#      rule literals, and
+#   2. a rule table kept beside the code it guards is easier to review than regexes
+#      buried in a scan loop.
+#
+# Format: <extended-regex><TAB><human description>
+# Builtin rules anchor on COMMAND POSITION so a pattern literal inside a quoted
+# assignment is never mistaken for an invocation.
+(^|[;&|][[:space:]]*|[[:space:]]do[[:space:]]|\$\()[[:space:]]*(mapfile|readarray)([[:space:]]|$)	mapfile/readarray (bash 4 builtin)
+(^|[;&|][[:space:]]*)[[:space:]]*coproc([[:space:]]|$)	coproc (bash 4 keyword)
+(^|[;&|][[:space:]]*)[[:space:]]*(declare|typeset)[[:space:]]+(-[A-Za-z]*A[A-Za-z]*)([[:space:]]|$)	associative array declare -A / typeset -A (bash 4)
+(^|[;&|][[:space:]]*)[[:space:]]*(declare|typeset|local)[[:space:]]+(-[A-Za-z]*n[A-Za-z]*)([[:space:]]|$)	nameref declare -n / local -n / typeset -n (bash 4.3)
+(^|[;&|][[:space:]]*)[[:space:]]*(declare|typeset)[[:space:]]+(-[A-Za-z]*g[A-Za-z]*)([[:space:]]|$)	declare -g global declaration (bash 4.2)
+\$\{[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?(,,|\^\^|,[^,]|\^[^^])	case-modification parameter expansion (bash 4)
+\[\[[[:space:]]+-v[[:space:]]	[[ -v ]] variable-set test (bash 4.2)
+\$\{[A-Za-z_][A-Za-z0-9_]*\[[[:space:]]*-[0-9]	negative array index (bash 4.2)
+shopt[[:space:]]+-s[[:space:]]+globstar	globstar recursive glob (bash 4)
+(^|[;&|][[:space:]]*)[[:space:]]*wait[[:space:]]+-n([[:space:]]|$)	wait -n (bash 4.3)
+[^|&]\|&([[:space:]]|$)	|& stderr pipe shorthand (bash 4)
+&>>	&>> append stdout+stderr (bash 4)
+;;&	;;& case fallthrough (bash 4)

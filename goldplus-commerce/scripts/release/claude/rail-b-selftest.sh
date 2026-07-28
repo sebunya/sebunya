@@ -451,12 +451,12 @@ expect_success "macos-fs-metadata" "probe left the worktree exactly as found" \
 # the word (e.g. "startup timeout blocks") is not mistaken for an invocation.
 cat > "$SANDBOX/portability-scan.sh" <<'PSCAN'
 #!/usr/bin/env bash
-# usage: portability-scan.sh <dir> <bash4|coreutils|wordboundary>
+# usage: portability-scan.sh <dir> <coreutils|wordboundary>
+# bash 4+ constructs are covered by the dedicated tracked compatibility test.
 set -uo pipefail
 d="$1"; mode="$2"; hits=0
 for f in "$d"/*.sh; do
   case "$mode" in
-    bash4)     pat='^[[:space:]]*(mapfile|readarray|coproc)[[:space:]]|^[[:space:]]*declare -A[[:space:]]|^[[:space:]]*local -n[[:space:]]' ;;
     coreutils) pat='^[[:space:]]*(timeout|sha256sum|md5sum|tac|nproc|realpath)[[:space:]]' ;;
     wordboundary) pat='grep [^|]*\\b' ;;
   esac
@@ -469,12 +469,53 @@ done
 exit $(( hits > 0 ))
 PSCAN
 chmod +x "$SANDBOX/portability-scan.sh"
-expect_success "portability" "no bash 4+ only builtins invoked in tracked scripts" \
-  "$SANDBOX/portability-scan.sh" "$LIB_DIR" bash4
 expect_success "portability" "no GNU-only coreutils invoked on the Mac path" \
   "$SANDBOX/portability-scan.sh" "$LIB_DIR" coreutils
 expect_success "portability" "no GNU-only \\b word boundary in grep patterns" \
   "$SANDBOX/portability-scan.sh" "$LIB_DIR" wordboundary
+
+# ─── bash 3.2 compatibility contract (tracked test) ─────────────────────────
+B32="$LIB_DIR/rail-b-bash32-compatibility-test.sh"
+expect_success "bash32" "tracked scripts satisfy the bash 3.2 contract" \
+  /bin/bash "$B32"
+expect_success "bash32" "contract reports zero unsupported constructs" \
+  bash -c "/bin/bash '$B32' | grep -q '^unsupportedConstructCount=0$'"
+expect_success "bash32" "contract runs the linkage test through /bin/bash" \
+  bash -c "/bin/bash '$B32' | grep -q 'linkageUnderBinBash = SHELL_API_LINKAGE_PASSED'"
+expect_success "bash32" "rule table is loaded from the tracked data file" \
+  bash -c "/bin/bash '$B32' | grep -qE '^rulesLoaded = 1[0-9]$'"
+expect_refusal "bash32" "missing rule table refused" "MISSING_RULES_FILE" \
+  bash -c "cp '$LIB_DIR/rail-b-bash32-rules.tsv' '$SANDBOX/rules.bak'; \
+    mv '$LIB_DIR/rail-b-bash32-rules.tsv' '$SANDBOX/rules.hidden'; \
+    /bin/bash '$B32'; rc=\$?; mv '$SANDBOX/rules.hidden' '$LIB_DIR/rail-b-bash32-rules.tsv'; exit \$rc"
+# The scan-exempt escape hatch must not spread: exactly one declared fixture region.
+expect_success "bash32" "exactly one declared scan-exempt region" \
+  bash -c "/bin/bash '$B32' | grep -qE '^exemptRegions = 1 '"
+expect_success "bash32" "scanner declares no exemption over its own source" \
+  bash -c "! grep -q 'EXEMPT-BEGIN' '$B32'"
+
+# REQUIRED REGRESSION: inject `mapfile` into a sandbox COPY of the tracked scripts
+# and prove the contract refuses it. This is the exact construct that killed the
+# real Mac run at 812046d.
+B32_COPY="$SANDBOX/b32-injected"
+mkdir -p "$B32_COPY"
+cp "$LIB_DIR"/*.sh "$B32_COPY/" 2>/dev/null || true
+printf '\nvalues=()\nmapfile -t values < <(printf %%s x)\n' >> "$B32_COPY/rail-b-api-linkage-test.sh"
+expect_refusal "bash32" "injected mapfile is refused" "BASH_3_2_COMPATIBILITY_FAILED" \
+  /bin/bash "$B32" --dir "$B32_COPY"
+expect_success "bash32" "injected mapfile is named in the violation report" \
+  bash -c "/bin/bash '$B32' --dir '$B32_COPY' 2>&1 | grep -q 'mapfile/readarray'"
+# Each remaining bash 4 construct is refused on its own. This list DESCRIBES the
+# constructs; it never executes them, so it is a declared scan-exempt fixture.
+# BASH32-EXEMPT-BEGIN (fault-injection fixture: construct literals, never executed)
+for _c in 'declare -A assoc' 'local -n ref=x' 'x="${name,,}"' '[[ -v name ]]' 'y="${arr[-1]}"' 'coproc worker { :; }'; do
+  printf '#!/usr/bin/env bash\n%s\n' "$_c" > "$B32_COPY/probe.sh"
+  expect_refusal "bash32" "refuses: ${_c}" "BASH_3_2_COMPATIBILITY_FAILED" \
+    /bin/bash "$B32" --dir "$B32_COPY"
+done
+# BASH32-EXEMPT-END
+rm -f "$B32_COPY/probe.sh"
+
 expect_success "portability" "verifier normalises grep -c instead of appending a fallback" \
   bash -c "! grep -qE 'grep -cE .* \\|\\| printf' '$LIB_DIR/mac-rail-b-verifier.sh'"
 

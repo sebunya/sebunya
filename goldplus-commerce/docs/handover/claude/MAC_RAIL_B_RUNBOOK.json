@@ -86,8 +86,8 @@
     "syntax": "PASS 3/3 (bash -n)",
     "dryRun": "NOT_ASSESSABLE on this Linux host — the validator refuses at host attestation with exit 10 and WRONG_OPERATING_SYSTEM: Linux, which is asserted against the wrong-host contract; truthfulness is provable only on Darwin",
     "faultInjection": {
-      "total": 117,
-      "passed": 117,
+      "total": 131,
+      "passed": 131,
       "hermetic": true,
       "contactedProduction": false,
       "createdMarker": false,
@@ -110,7 +110,8 @@
         "dry-run-assessment",
         "scope-circularity",
         "macos-fs-metadata",
-        "portability"
+        "portability",
+        "bash32"
       ]
     },
     "prohibitionAudit": "performed on executable lines with comments stripped: 0 compose-down, 0 reboot, 0 infra restart, 0 marker write, 0 wildcard removal",
@@ -486,6 +487,45 @@
         "classification": "BSD_USERLAND_PORTABILITY_DEFECT",
         "impact": "BSD grep lacks them; predicates could mismatch silently on macOS"
       }
-    ]
+    ],
+    "fixDetail": "portable while-read enumeration using process substitution, never a pipe, so the array survives the loop"
+  },
+  "bash32CompatibilityContract": {
+    "target": "/bin/bash 3.2.57 on macOS",
+    "homebrewBashRequired": false,
+    "script": "scripts/release/claude/rail-b-bash32-compatibility-test.sh",
+    "rulesFile": "scripts/release/claude/rail-b-bash32-rules.tsv",
+    "rulesLoaded": 13,
+    "staticConstructsDetected": [
+      "mapfile",
+      "readarray",
+      "coproc",
+      "declare -A",
+      "typeset -A",
+      "declare -n",
+      "local -n",
+      "typeset -n",
+      "declare -g",
+      "case-modification expansion",
+      "[[ -v ]]",
+      "negative array index",
+      "globstar",
+      "wait -n",
+      "|&",
+      "&>>",
+      ";;&"
+    ],
+    "dynamicProof": "executes rail-b-api-linkage-test.sh through the exact interpreter /bin/bash",
+    "requiredResult": [
+      "BASH_3_2_COMPATIBILITY_PASSED",
+      "unsupportedConstructCount=0"
+    ],
+    "missingRulesFile": "MISSING_RULES_FILE (refusal, never a silent pass)",
+    "scanExemptions": {
+      "declaredRegions": 1,
+      "policy": "fault-injection fixtures only; tag assembled at run time so it never appears in the scanner's own source; counts printed and asserted by the fault matrix; scanner declares none over itself"
+    },
+    "verifierOrder": "runs before the fault matrix so a bash-4 construct names itself instead of surfacing as RAIL_B_FAULT_MATRIX_FAILED",
+    "verifierReasonCode": "BASH_3_2_COMPATIBILITY_FAILED (exit 16)"
   }
 }

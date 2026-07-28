@@ -80,6 +80,7 @@ substitutes the Rail A subset.
 | `rail-b-lib.sh` | Gate state machine, deterministic Docker readiness, branch semantics, evidence-path safety, fail-closed helpers |
 | `rail-b-selftest.sh [--json <p>]` | Hermetic fault matrix |
 | `rail-b-api-linkage-test.sh [--json <p>]` | Shell API linkage contract (`declare -F`) |
+| `rail-b-bash32-compatibility-test.sh [--dir <p>] [--json <p>]` | Bash 3.2 compatibility contract; rules in `rail-b-bash32-rules.tsv` |
 
 ## Runtime-defect behaviour
 
@@ -95,12 +96,12 @@ preapproval with a new executable candidate.
 - **Syntax** 9/9 (`bash -n`). ShellCheck is not installed here — recorded `NOT_APPLICABLE`, which is
   not a release failure; the Mac run re-evaluates it.
 - **Shell API linkage** — `SHELL_API_LINKAGE_PASSED`, 0 undefined, 0 late-source, 0 shadowed.
-- **Fault matrix 117/117**, hermetic: never contacts production, never creates a marker, never touches
+- **Fault matrix 131/131**, hermetic: never contacts production, never creates a marker, never touches
   real Docker resources or a real Git remote. Classes include host/local-source, remote-movement,
   release-identity, evidence-path, approval-marker, deployment/rollback, commerce-safety,
   gate-state, terminal-abort, docker-context, validation-evidence, final-scope,
   production-contract, linkage, fail-closed, dry-run-assessment, scope-circularity,
-  macos-fs-metadata, portability, placeholder and failed-run.
+  macos-fs-metadata, portability, bash32, placeholder and failed-run.
 
 ## Why the Mac failed at 812046d with RAIL_B_FAULT_MATRIX_FAILED
 
@@ -125,9 +126,48 @@ the linkage test"*, so the matrix ended 96/97 and the tracked verifier reported
 Linux could not catch this: bash 5 has `mapfile`, so the same case passed there. The failure was
 never in the assertion — it was in the tool the assertion runs.
 
-Fix: the library-function enumeration uses a portable `while read` loop. Nothing was weakened.
+Fix: the library-function enumeration uses a portable `while read` loop — with process
+substitution, never a pipe, so the array survives the loop instead of dying in a subshell.
+Nothing was weakened.
 
-**Regression test — executable, not a text scan.** `enable -n mapfile` removes the builtin from a
+## Bash 3.2 compatibility contract
+
+The canonical compatibility target is **`/bin/bash` 3.2.57 on macOS**. Homebrew bash is not
+required and the operator environment is never changed.
+
+`rail-b-bash32-compatibility-test.sh` does two independent things:
+
+1. **Static** — scans every tracked Rail B `.sh` for bash 4+ constructs: `mapfile`/`readarray`,
+   `coproc`, `declare -A`/`typeset -A`, `declare -n`/`local -n`, `declare -g`, case-modification
+   expansions, `[[ -v ]]`, negative array indices, `globstar`, `wait -n`, `|&`, `&>>`, `;;&`.
+2. **Dynamic** — executes the API-linkage test through the exact interpreter `/bin/bash`.
+
+Required result:
+
+```
+BASH_3_2_COMPATIBILITY_PASSED
+unsupportedConstructCount=0
+```
+
+The rules live in **`rail-b-bash32-rules.tsv`**, not inside the scanner: the scanner is itself a
+tracked `.sh`, so inline construct literals would make it match its own rules. A missing or empty
+rule table is a refusal (`MISSING_RULES_FILE`), never a silent pass.
+
+A fault-injection fixture that *describes* a construct may declare a scan-exempt region. The tag is
+assembled at run time so it never appears literally in the scanner's own source — otherwise the
+region-delete would eat the scanner's real code. Exempt regions and lines are counted and printed,
+and the fault matrix asserts there is **exactly one** and that the scanner declares none over
+itself, so the escape hatch cannot spread silently.
+
+The tracked verifier runs this contract **before** the fault matrix: on stock macOS bash a bash-4
+construct kills the harness itself, and naming the construct and file beats an opaque
+`RAIL_B_FAULT_MATRIX_FAILED`.
+
+**Regression tests.** The `bash32` class copies the tracked scripts to a sandbox, injects
+`mapfile`, and proves the contract refuses it (`BASH_3_2_COMPATIBILITY_FAILED`) and names the rule;
+six further constructs are each refused on their own.
+
+**Also executable, not a text scan.** `enable -n mapfile` removes the builtin from a
 child shell via `BASH_ENV`, reproducing bash 3.2 for this defect class *on Linux*. The
 `portability` class runs the real linkage test that way and parses every tracked entry point under
 the same constraint. Verified in both directions: with the 812046d file restored the case fails
