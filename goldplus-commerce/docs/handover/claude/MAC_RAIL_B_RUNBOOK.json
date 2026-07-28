@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "rail": "B",
+  "purpose": "Deterministic Mac-local / Hetzner-remote execution package. Rail A completed all source-side work reachable from a cloud Linux environment; Rail B generates the release-scope inputs that can only be produced on the Mac (exact images, production-shaped data, complete browser journeys) and then deploys.",
+  "railAExecutableCandidate": "232e2903410e317d06e1416f67ed5f85904eb693",
+  "railANote": "Rail A changed no runtime source. All Rail A commits are tests, release tooling, inventory and evidence, so the executable candidate is unchanged from the operator-verified Mac baseline.",
+  "branch": "phase-2-measurement-control-tower-completion",
+  "moduleInventorySha256": "0ccb4f4d2fd3d6b1fdd764b438d198ce01271a8d74b5584b7010ce01c5e6f180",
+  "scripts": {
+    "preapproval": {
+      "path": "scripts/release/claude/mac-rail-b-preapproval.sh",
+      "sha256": "1e8881c4088fc25cf8c58aee588e97f7843b0d4b3c11f9592996c6f5e46432eb",
+      "usage": "scripts/release/claude/mac-rail-b-preapproval.sh [--dry-run]",
+      "productionMutation": "none — production is read-only for the whole script"
+    },
+    "production": {
+      "path": "scripts/release/claude/mac-rail-b-production.sh",
+      "sha256": "37efb11ea9969f0bf52ce4c26fa5e34413c79091cb842a38fbaf93cf97201fad",
+      "usage": "scripts/release/claude/mac-rail-b-production.sh --release <id> --marker <exact path> [--check-only]",
+      "precondition": "the exact human-created approval marker must already exist"
+    },
+    "rollback": {
+      "path": "scripts/release/claude/mac-rail-b-rollback.sh",
+      "sha256": "3286fa1c91426736a0adf248549e46f751666c2028a78b86f1b950c87f7245b0",
+      "usage": "scripts/release/claude/mac-rail-b-rollback.sh --api-image <id> --web-image <id> [--reason \"...\"]"
+    }
+  },
+  "validation": {
+    "syntax": "PASS 3/3 (bash -n)",
+    "dryRun": "PASS — host attestation correctly reported this non-Darwin host as FAIL; unexecuted steps report NOT-RUN(dry-run), never PASS",
+    "faultInjection": {
+      "productionMissingRelease": "REFUSED",
+      "productionMissingMarker": "REFUSED",
+      "productionNonApprovalMarkerPath": "REFUSED",
+      "productionWildcardMarkerPath": "REFUSED",
+      "productionUnknownArgument": "REFUSED",
+      "productionAbsentMarker": "REFUSED",
+      "rollbackMissingApiImage": "REFUSED",
+      "rollbackMissingWebImage": "REFUSED",
+      "rollbackUnknownArgument": "REFUSED",
+      "total": "9/9 refused as required"
+    },
+    "prohibitionAudit": {
+      "setEuoPipefail": "3/3",
+      "composeDownInvocations": 0,
+      "rebootInvocations": 0,
+      "caddyPostgresRedisRestarts": 0,
+      "markerCreationOrDeletion": 0,
+      "wildcardUnderRoot": 0,
+      "note": "Grep hits on 'docker compose down' are the prohibition comments themselves; the /root/APPROVE prefix match is the marker-path validation guard, not a glob."
+    }
+  },
+  "preapprovalGates": [
+    "Darwin and non-root verification",
+    "clean worktree with --untracked-files=all and origin alignment",
+    "locked dependency installation (CI=1 pnpm install --frozen-lockfile)",
+    "Docker Desktop readiness (open -a Docker, up to 3 minutes)",
+    "exact clean-source API and web image builds from git archive at the executable commit",
+    "build-context proof: no node_modules or dist leakage",
+    "image IDs and digests recorded",
+    "exact-image API canary: /health, /health/live, /health/ready, /products, collection at data",
+    "exact-image web canary against the exact API image, no restart loop",
+    "read-only production-shaped backup through ssh goldplus-prod (pg_dump -Fc, mode 600, credentials never echoed)",
+    "backup SHA-256 and pg_restore table-of-contents listing",
+    "isolated restore into a throwaway PostgreSQL container",
+    "populated migration rehearsal, then an idempotent second run",
+    "old-runtime image identity capture and new-runtime restored-data canary",
+    "complete Playwright journeys on both chromium projects",
+    "clean-tree gates: secret scan, typecheck, build, test, architecture, lint, diff check",
+    "module coverage validation and canonical scope verification",
+    "operator-script syntax, dry-run and refusal tests",
+    "timestamped JSON evidence outside Git"
+  ],
+  "productionOrder": [
+    "release/scope/tag re-verification",
+    "read-only local and remote preflight",
+    "read-only shadow canary",
+    "persistent deployment lock",
+    "baseline capture and exact rollback-image preservation",
+    "database backup and isolated restore rehearsal",
+    "approval re-verification immediately before mutation",
+    "fast-forward-only production source update",
+    "verified migrations",
+    "API-first deployment with --no-deps",
+    "direct replica-by-replica verification",
+    "five-minute API stabilization",
+    "web deployment with --no-deps",
+    "all-module production UAT",
+    "one-hour soak at T+0,1,5,10,15,20,30,45,60",
+    "final reconciliation",
+    "evidence generation"
+  ],
+  "prohibitions": [
+    "create or remove approval markers",
+    "wildcard marker deletion",
+    "print secrets or PII",
+    "docker compose down",
+    "reboot",
+    "restart Caddy, PostgreSQL or Redis",
+    "create real orders or payments",
+    "enable provider delivery",
+    "send customer communications",
+    "perform unapproved activations"
+  ],
+  "lintBaseline": {
+    "errors": 0,
+    "warnings": 889,
+    "webWarnings": 21,
+    "policy": "NO_REGRESSION_CEILING",
+    "note": "Recorded as technical debt. A broad unrelated cleanup is explicitly out of scope for this release. Changed files must introduce zero new lint errors and no unjustified warning increase."
+  },
+  "releaseFreeze": {
+    "performedInRailA": false,
+    "reason": "Exact image identities, restored production-shaped data and complete Playwright results are release-scope inputs and can only be generated on the Mac. Freezing in Rail A would produce another candidate with unrun gates."
+  },
+  "terminalDeclaration": {
+    "value": "GOLDPLUS_ALL_MODULES_LIVE_VERIFIED_DORMANT_SAFE",
+    "declared": false
+  }
+}

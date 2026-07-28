@@ -35,10 +35,17 @@ for (const m of appSrc.matchAll(/import\s+(?:\{\s*([\w\s,]+)\s*\}|(\w+))\s+from\
   for (const n of names) if (n) importedRouters.set(n, spec);
 }
 
-const domains = fs
-  .readdirSync(`${API}/domain`, { withFileTypes: true })
-  .filter((e) => e.isDirectory())
-  .map((e) => e.name);
+// Modules are keyed on the UNION of domain directories and application use-case
+// directories. Keying on domain alone omitted twelve real capabilities that have
+// use cases, routes and repositories but no domain folder (activation, checkout,
+// measurement, preferences, telemetry, outbox, release, product-finder, addresses,
+// leads, admin, system), so the previously reported count understated the platform.
+const dirNames = (dir) =>
+  fs.existsSync(dir)
+    ? fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+    : [];
+
+const domains = [...new Set([...dirNames(`${API}/domain`), ...dirNames(`${API}/application/use-cases`)])].sort();
 
 const allUseCases = walk(`${API}/application/use-cases`).filter((f) => f.endsWith('.ts'));
 const allPorts = walk(`${API}/application/ports`).filter((f) => f.endsWith('.ts'));
@@ -101,7 +108,10 @@ const modules = domains.map((d) => {
   // PesaPal, webhooks and checkout). Count any test that imports the domain
   // directory or mentions the module, and record whether runtime code references
   // the domain at all — an unreferenced domain is dead code, not a coverage gap.
-  const domainImportRe = new RegExp(`domain/${d}\\b`);
+  // A capability may live only as use cases (checkout, activation, measurement...),
+  // so references must be counted against both roots. Counting domain/ alone marked
+  // live capabilities dead.
+  const domainImportRe = new RegExp(`(domain|use-cases)/${d}\\b`);
   const testsReferencing = allTests.filter(
     (f) => domainImportRe.test(read(f)) || matches(f, d) || read(f).toLowerCase().includes(d.toLowerCase()),
   );
@@ -122,7 +132,7 @@ const modules = domains.map((d) => {
   if (hasApi && !mounted) {
     status = 'SOURCE_COMPLETE_NOT_WIRED';
     blocker = 'route module present but no matching mount in app.ts';
-  } else if (runtimeReferences === 0 && !hasApi && !hasPersistence) {
+  } else if (runtimeReferences === 0 && !hasApi && !hasPersistence && useCases.length === 0) {
     status = 'DEAD_OR_DEPRECATED_CONFIRMED';
     deadCodeEvidence = `no runtime file outside domain/${d} imports it; no route, repository, schema or migration`;
     // A dead directory does not mean a dead business capability. Record where the
@@ -164,6 +174,19 @@ const modules = domains.map((d) => {
   };
 });
 
+/**
+ * Mounts that belong to the shared foundation rather than one module. Each was
+ * confirmed by reading its route file; they are declared explicitly so the
+ * coverage validator can require that every live mount is accounted for.
+ */
+const SHARED_FOUNDATION_MOUNTS = {
+  '/auth': 'identity/authentication foundation',
+  '/account': 'authenticated customer account foundation',
+  '/webhooks': 'inbound payment/provider webhook foundation',
+  '/health': 'observability: health, liveness and readiness',
+  '/metrics': 'observability: Prometheus metrics',
+};
+
 const totals = modules.reduce((acc, m) => ((acc[m.status] = (acc[m.status] ?? 0) + 1), acc), {});
 const inventory = {
   schemaVersion: 1,
@@ -183,6 +206,7 @@ const inventory = {
     postgresProofs: allProofs.length,
   },
   statusTotals: totals,
+  sharedFoundationMounts: SHARED_FOUNDATION_MOUNTS,
   engineeringIncomplete: modules.filter((m) =>
     [
       'DISCOVERED_NOT_CLASSIFIED',

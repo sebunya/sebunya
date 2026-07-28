@@ -1,7 +1,7 @@
 {
   "branch": "phase-2-measurement-control-tower-completion",
-  "executableCommit": "51cebfd68c29e082e4ec39700c5b2e520e237f9a",
-  "executableTree": "5b945ede159f08afb5fa6fe0799d86453cdee832",
+  "executableCommit": "232e2903410e317d06e1416f67ed5f85904eb693",
+  "executableTree": "d9819c425195d8acdec7a8cc7c3f08e463dba86b",
   "pnpmLockSha256": "0a750b72d4ec2bc1c5506d35d962b921881d7e580ae2dbc004d3b0c771b6874a",
   "apiDockerfileSha256": "66acf6b6d47a5172598c4469f014d9309f5d03dac6f413157652308e22bf7f48",
   "webDockerfileSha256": "bd93666f7f40b860e5e0f1304f0e7e1f6a2c93c1836934f94229e274d4ba1b4e",
@@ -212,21 +212,26 @@
     "all-modules-shadow-canary.sh": "c2e2d62b5abb3f45af1918bc644ec5109ccca8d0aa451d7d91e6296a6570c040",
     "all-modules-soak.sh": "e9617eecc01be5248acef3e2f6160ad4b57ab5daa3e5be7acd3f06f6b2e5cfdf",
     "all-modules-verify.sh": "6d3bf25159a235d90f33171072543d66742c88e449c8d7032057014f4ca6bf78",
-    "verify-release-scope.mjs": "4fc9fbd63a5e84bfd023a6794449e2822bd507e78531c401a12e32e8a707d75e"
+    "verify-release-scope.mjs": "4fc9fbd63a5e84bfd023a6794449e2822bd507e78531c401a12e32e8a707d75e",
+    "claude/mac-rail-b-preapproval.sh": "1e8881c4088fc25cf8c58aee588e97f7843b0d4b3c11f9592996c6f5e46432eb",
+    "claude/mac-rail-b-production.sh": "37efb11ea9969f0bf52ce4c26fa5e34413c79091cb842a38fbaf93cf97201fad",
+    "claude/mac-rail-b-rollback.sh": "3286fa1c91426736a0adf248549e46f751666c2028a78b86f1b950c87f7245b0"
   },
-  "moduleInventorySha256": "b6bcba18c018fbeea1a3ab47d2d03ea2ae45a8fc3ef4d96f3178ffea4a15f94e",
+  "moduleInventorySha256": "0ccb4f4d2fd3d6b1fdd764b438d198ce01271a8d74b5584b7010ce01c5e6f180",
   "engineeringAcceptanceSha256": "21b16543426b3429f7176915f08cce6946386e18c9359f5dd55d5a366fd132ae",
   "historicSourceStatusSha256": "850a2ab445483e3b5cecfbc104df7713fcd32ea61be5714a969abff08cf4ef13",
   "inventoryToolingSha256": {
-    "build": "aac4d9635b7dcedcef21b90e1c82d31ece422efbafea5c102fb1fe9cd099a0fd",
-    "validate": "e5f969ff8f2a022a348e26b6830d5b73141a9c8606c3974ff01a32d8364b9249"
+    "build": "1c345e0111bdde6556288f92c3a0b5a466b4866e52c96f4f45234fd010b2a621",
+    "validate": "2c3f41fe31cf73295346f008f41725eb1b8713a6a188e66f5586669203c021e9"
   },
   "auditSha256": "ce3c76b8067c64789090ad78b9da307a4d4261d2a8db031c100073cbc6a1eb76",
   "executableBoundarySha256": "69704740c9d3f48c3459b0dbcd92df94de11e87117561d05d1b065f4a19ca394",
+  "railBRunbookSha256": "a48bfae254a4048272581d144925056f4d28910530ecdb9d009d7d4e8bac6154",
   "retiredReleaseIds": [
     "goldplus-programme-682384b2-m0048-b79a4de7",
     "goldplus-programme-13633d86-m0048-5c6f9d25",
     "goldplus-programme-99563666-m0048-8343ee36",
-    "goldplus-programme-51b86fb5-m0048-5a198e5f"
+    "goldplus-programme-51b86fb5-m0048-5a198e5f",
+    "goldplus-programme-51cebfd6-m0048-3a467adb"
   ]
 }

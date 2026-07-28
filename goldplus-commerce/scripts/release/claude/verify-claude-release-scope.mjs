@@ -57,6 +57,10 @@ function rebuild(scope) {
   for (const f of fs.readdirSync('scripts/release/anti-gravity').sort()) {
     operatorScripts[f] = fileSha(path.join('scripts/release/anti-gravity', f));
   }
+  // Rail B operator tooling is release-bound and must be covered by the scope.
+  for (const f of fs.readdirSync('scripts/release/claude').sort().filter((x) => x.startsWith('mac-rail-b'))) {
+    operatorScripts[`claude/${f}`] = fileSha(path.join('scripts/release/claude', f));
+  }
 
   return {
     branch: scope.branch,
@@ -83,6 +87,7 @@ function rebuild(scope) {
     executableBoundarySha256: fileSha(
       'docs/platform/evidence/releases/CLAUDE_EXECUTABLE_BOUNDARY.json',
     ),
+    railBRunbookSha256: fileSha('docs/handover/claude/MAC_RAIL_B_RUNBOOK.json'),
     retiredReleaseIds: scope.retiredReleaseIds,
   };
 }
