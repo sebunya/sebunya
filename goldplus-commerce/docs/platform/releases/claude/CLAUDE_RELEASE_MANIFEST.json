@@ -6,7 +6,7 @@
     "token": "51cebfd6-m0048-3a467adb",
     "tag": "goldplus-programme-51cebfd6-m0048-3a467adb",
     "executableCommit": "51cebfd68c29e082e4ec39700c5b2e520e237f9a",
-    "releasePackageHead": "SET_BY_THE_FREEZE_COMMIT",
+    "releasePackageHead": "c03bf07732a512d13ef2f254b7846c7a10c0816e",
     "branch": "phase-2-measurement-control-tower-completion",
     "scopePath": "docs/platform/releases/claude/CLAUDE_RELEASE_SCOPE.json",
     "scopeSha256": "3a467adb7813848b172d612f4ae761e9f619de32a4a5860a86d8fbd95f15b8d6",

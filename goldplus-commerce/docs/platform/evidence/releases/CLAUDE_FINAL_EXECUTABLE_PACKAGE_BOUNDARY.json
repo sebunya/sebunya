@@ -21,7 +21,7 @@
     "packages/shared/package.json (add build script so pnpm -r build produces dist)",
     "apps/api/src/application/ports/ICustomerDnaRepository.ts (remove unused empty interface; last lint error)"
   ],
-  "releasePackageHead": "SET_BY_THE_FREEZE_COMMIT",
+  "releasePackageHead": "c03bf07732a512d13ef2f254b7846c7a10c0816e",
   "migrationCeiling": "0048",
   "newMigrationsIntroduced": 0,
   "rules": {
