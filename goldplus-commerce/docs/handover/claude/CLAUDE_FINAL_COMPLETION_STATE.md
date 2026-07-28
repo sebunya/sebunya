@@ -8,9 +8,9 @@ Machine-readable twin: `CLAUDE_FINAL_COMPLETION_STATE.json`. Resume from these t
 | | |
 |---|---|
 | Executable commit | `51cebfd68c29e082e4ec39700c5b2e520e237f9a` (immutable) |
-| Release-package head | `0d72c772e01e9affd4dd0b5741329ee4fd0478ef` (= origin) |
+| Release-package head | resolved by the annotated tag target (= local head = origin head) |
 | Release tag | `goldplus-programme-51cebfd6-m0048-3a467adb` |
-| Local tag target | `0d72c77` ✅ |
+| Local tag target | `git rev-parse 'goldplus-programme-51cebfd6-m0048-3a467adb^{}'` ✅ |
 | Remote tag target | **not pushed — environment limitation** |
 | Scope SHA-256 | `3a467adb7813848b172d612f4ae761e9f619de32a4a5860a86d8fbd95f15b8d6` |
 | Migration ceiling | `0048` (no new migrations) |
