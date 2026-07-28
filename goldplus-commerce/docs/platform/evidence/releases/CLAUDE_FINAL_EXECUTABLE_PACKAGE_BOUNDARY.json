@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "branch": "phase-2-measurement-control-tower-completion",
+  "priorInconsistencyResolved": {
+    "reported": {
+      "runtimeRepairCommit": "51b86fb5ab0810d75a04492ce5dbf8e80aec901c",
+      "releasePackageHead": "b6a4d26a3e575a84ddb0131a233b728773982e4a",
+      "laterBranchHead": "c442cd4"
+    },
+    "resolution": "All three are real commits. 51b86fb was the last runtime-source commit at that time; b6a4d26 was the docs-only freeze; c442cd4 was a further docs-only commit recording the package head. The recorded releasePackageHead of b6a4d26a was therefore stale the moment c442cd4 landed, which is the inconsistency. This pass supersedes all of them."
+  },
+  "classificationSincePriorExecutable": [
+    { "commit": "b6a4d26", "class": "MANIFEST+EVIDENCE+DOCUMENTATION", "runtimeSourcePaths": 0 },
+    { "commit": "c442cd4", "class": "MANIFEST+DOCUMENTATION", "runtimeSourcePaths": 0 },
+    { "commit": "df0e359", "class": "RUNTIME_SOURCE+MANIFEST", "runtimeSourcePaths": 2 },
+    { "commit": "51cebfd", "class": "RUNTIME_SOURCE", "runtimeSourcePaths": 1 }
+  ],
+  "executableCommit": "51cebfd68c29e082e4ec39700c5b2e520e237f9a",
+  "executableRuntimeChanges": [
+    "apps/api/src/scripts/automation-control-room-proof.ts (close queue connections; deterministic exit)",
+    "packages/shared/package.json (add build script so pnpm -r build produces dist)",
+    "apps/api/src/application/ports/ICustomerDnaRepository.ts (remove unused empty interface; last lint error)"
+  ],
+  "releasePackageHead": "SET_BY_THE_FREEZE_COMMIT",
+  "migrationCeiling": "0048",
+  "newMigrationsIntroduced": 0,
+  "rules": {
+    "executableIsImmutableOnceSelected": true,
+    "manifestCommitMustNotBecomeExecutable": true,
+    "executableMustBeAncestorOfPackageHead": true,
+    "executableToPackageDiffMustContainNoRuntimeSource": true,
+    "scopeMustNotContainPackageHeadOrTag": true
+  },
+  "gatesAtExecutable": {
+    "fullSuite": "PASS_220_FILES_4186_TESTS",
+    "architecture": "PASS_46_TESTS",
+    "typecheck": "PASS",
+    "build": "PASS_SHARED_API_WEB",
+    "lintErrors": 0,
+    "secretScan": "PASS_1248_FILES",
+    "postgresProofs": "PASS_30_OF_30",
+    "freshMigrationReplay": "PASS",
+    "compiledApiCanary": "PASS",
+    "treeClean": true
+  }
+}

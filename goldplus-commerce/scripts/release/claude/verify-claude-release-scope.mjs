@@ -65,11 +65,20 @@ function rebuild(scope) {
       encoding: 'utf8',
     }).trim(),
     pnpmLockSha256: fileSha('pnpm-lock.yaml'),
-    apiDockerfileSha256: fs.existsSync('apps/api/Dockerfile') ? fileSha('apps/api/Dockerfile') : null,
-    webDockerfileSha256: fs.existsSync('apps/web/Dockerfile') ? fileSha('apps/web/Dockerfile') : null,
+    apiDockerfileSha256: fileSha('Dockerfile.api'),
+    webDockerfileSha256: fileSha('Dockerfile.web'),
     migrationCeiling: scope.migrationCeiling,
     migrations,
     operatorScripts,
+    moduleInventorySha256: fileSha('docs/completion/CLAUDE_CURRENT_MODULE_INVENTORY.json'),
+    engineeringAcceptanceSha256: fileSha('docs/completion/CLAUDE_FINAL_ENGINEERING_ACCEPTANCE.json'),
+    historicSourceStatusSha256: fileSha(
+      'docs/platform/evidence/releases/CLAUDE_HISTORIC_128_SOURCE_STATUS.json',
+    ),
+    inventoryToolingSha256: {
+      build: fileSha('scripts/release/claude/build-module-inventory.mjs'),
+      validate: fileSha('scripts/release/claude/validate-module-inventory.mjs'),
+    },
     auditSha256: fileSha('docs/handover/claude/CLAUDE_ANTI_GRAVITY_INDEPENDENT_AUDIT.json'),
     executableBoundarySha256: fileSha(
       'docs/platform/evidence/releases/CLAUDE_EXECUTABLE_BOUNDARY.json',

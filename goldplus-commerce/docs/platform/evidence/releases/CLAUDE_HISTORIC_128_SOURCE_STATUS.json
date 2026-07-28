@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "decision": "HISTORIC_128_SOURCE_UNAVAILABLE",
+  "verifiedOnce": true,
+  "citedHistoricCommit": "bbdb3e1c84efec01a88e10c5dcd137a611f67e54",
+  "citedCommitExists": true,
+  "commitsSearched": 326,
+  "searchMethod": "git ls-tree at the cited commit for the named paths, plus git log --all -S across every reachable commit for the required status vocabulary",
+  "pathsSearched": ["module-truth-map", "uat-gap-matrix", "02-module-truth-map"],
+  "pathsFoundAtCitedCommit": 0,
+  "vocabularySearched": [
+    "production-working",
+    "working-needs-polish",
+    "half-built",
+    "unsafe-to-use",
+    "schema-only",
+    "api-only",
+    "stubbed"
+  ],
+  "vocabularyResult": "The only commit containing this vocabulary is b6a4d26a, which is Claude's own audit documentation describing the absence. Excluding that self-reference, the vocabulary appears in zero commits and zero files at any revision.",
+  "antiGravityArtefact": {
+    "path": "docs/completion/HISTORIC_128_MODULE_RECONCILIATION.json",
+    "claim": "ALL_128_HISTORIC_MODULES_ACCOUNTED_FOR",
+    "perModuleRows": 0,
+    "summaryKeys": ["same", "renamed", "merged", "split", "deprecated", "stillMissing"],
+    "assessment": "Relationship-type counts only. It contains no crosswalk rows and does not reproduce the required historic status totals, so it cannot substantiate its own claim."
+  },
+  "whyReconstructionWouldBeSpeculative": "Reconstructing 128 historic rows would require inventing module identities, statuses and relationships that exist in no tracked revision. That is fabrication, not reconciliation, and it would produce an artefact indistinguishable from evidence while being unfounded.",
+  "consequence": "The release authority is the complete source-grounded current module inventory (docs/completion/CLAUDE_CURRENT_MODULE_INVENTORY.json), which is generated from source and validated. Historic-source unavailability is a disclosed evidence limitation, not an engineering blocker.",
+  "doNotInvent": true
+}

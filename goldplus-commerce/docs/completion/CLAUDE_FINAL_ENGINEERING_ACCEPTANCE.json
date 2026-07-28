@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "executionMode": "ENGINEERING_AND_RELEASE_MODE",
+  "environment": {
+    "git": true,
+    "node": "v22.22.2",
+    "pnpm": "10.33.0",
+    "postgresql": "16.13 (local, port 55432)",
+    "redis": "local, port 6399",
+    "docker": "binary present, daemon DOWN",
+    "ssh": "ABSENT",
+    "goldplusProdResolves": false
+  },
+  "sourceGates": {
+    "secretScan": "PASS_1248_FILES",
+    "typecheck": "PASS_SHARED_API_WEB",
+    "build": "PASS_SHARED_API_ASTRO_WEB",
+    "fullSuite": "PASS_220_FILES_4186_TESTS_CLEAN_TREE",
+    "architecture": "PASS_4_FILES_46_TESTS",
+    "gitDiffCheck": "PASS",
+    "lintErrors": 0,
+    "lintWarningBaseline": { "api": 889, "web": 21, "note": "pre-existing no-explicit-any baseline; unchanged" }
+  },
+  "databaseGates": {
+    "freshMigrationReplay": {
+      "range": "0000-0048",
+      "journalRows": 49,
+      "publicTables": 174,
+      "secondRunIdempotent": true,
+      "knownInvalid0018Statements": "skipped as designed; migration 0028 applied the repair",
+      "status": "PASS"
+    },
+    "seededCatalogue": {
+      "source": "tracked scripts/seed.ts (no invented product facts)",
+      "products": 8,
+      "approved": 8,
+      "matchesProductionApprovedCount": true
+    }
+  },
+  "postgresProofs": {
+    "total": 30,
+    "passed": 30,
+    "failed": 0,
+    "note": "All 30 real-PostgreSQL module proofs executed against a live PostgreSQL 16 instance. Two initially failed and were repaired rather than excused."
+  },
+  "catalogueParity": {
+    "verdict": "CATALOGUE_PARITY_PROOF_PASS",
+    "sqlCount": 5,
+    "repositoryCount": 5,
+    "dtoCount": 5,
+    "apiCount": 5,
+    "identifierSetSha256": "14c57483a91eb7b563f4f0e9ccbadf2f14b4a107bbe4565911b1fa50655b220b",
+    "matchesProductionRcaIdentifierSet": true,
+    "faultInjections": 8,
+    "cacheMatrix": ["cold", "miss", "stale_empty", "expired", "recovered", "warm"],
+    "coldWarmParity": true,
+    "providerCalls": 0,
+    "protectedMutationDelta": 0,
+    "redisResidue": 0
+  },
+  "compiledRuntime": {
+    "plainNodeApiStart": "PASS",
+    "health": 200,
+    "live": 200,
+    "readiness": 200,
+    "productsEndpoint": 200,
+    "collectionPath": "data",
+    "monitorMustNotParse": "data.items",
+    "note": "Requires the image's main=dist/index.js rewrite for @goldplus/shared, replicated exactly as Dockerfile.api does at build time."
+  },
+  "moduleInventory": {
+    "moduleCount": 31,
+    "engineeringIncomplete": 0,
+    "statusTotals": { "RELEASE_READY_NOT_DEPLOYED": 29, "DEAD_OR_DEPRECATED_CONFIRMED": 2 },
+    "validator": "PASS",
+    "validatorFaultInjection": "2_OF_2_DETECTED"
+  },
+  "operatorScripts": {
+    "count": 7,
+    "setEuoPipefail": "7/7",
+    "composeDownInvocations": 0,
+    "rebootInvocations": 0,
+    "caddyPostgresRedisRestarts": 0,
+    "markerCreationOrDeletion": 0,
+    "wildcardMarkerDeletion": 0,
+    "syntaxCheck": "PASS_7_OF_7"
+  },
+  "defectsFoundAndRepaired": [
+    {
+      "id": "C-1",
+      "severity": "HIGH",
+      "title": "Automation control-room proof never terminated",
+      "detail": "It printed verdict PASS then hung indefinitely because the real Hono app leaves queue/Redis connections open, so every timeout-bounded gate recorded it as a failure.",
+      "repair": "Closes queue connections as the server does and exits deterministically once stdout drains.",
+      "commit": "df0e359"
+    },
+    {
+      "id": "C-2",
+      "severity": "MEDIUM",
+      "title": "packages/shared had no build script",
+      "detail": "'pnpm -r build' never produced its dist output, so the compiled API could not be started or proven outside the Docker image.",
+      "repair": "Added a build script; the tracked main field is unchanged so dev and test resolution are unaffected.",
+      "commit": "df0e359"
+    },
+    {
+      "id": "C-3",
+      "severity": "LOW",
+      "title": "Repository lint error",
+      "detail": "An unused empty interface made 'pnpm lint' exit non-zero.",
+      "repair": "Removed the dead declaration; lint is now 0 errors.",
+      "commit": "51cebfd"
+    },
+    {
+      "id": "C-4",
+      "severity": "LOW",
+      "title": "Live fake-report domain had no test coverage",
+      "detail": "Reached via IFakeReportRepository, DrizzleFakeReportRepository and ReportFakeProductUseCase, but untested.",
+      "repair": "Added tests/unit/FakeReportDomain.test.ts covering the factory, trimming, anonymous reporting and blank-identity normalisation.",
+      "commit": "pending package head"
+    }
+  ],
+  "notRunInThisEnvironment": {
+    "dockerImageBuilds": "docker daemon down",
+    "playwrightJourneys": "not executed in this session",
+    "populatedUpgradeFromProductionPredecessor": "no production database snapshot available here; fresh replay plus tracked seed used instead",
+    "allProductionPhases": "ssh goldplus-prod unavailable"
+  },
+  "terminalDeclaration": {
+    "value": "GOLDPLUS_ALL_MODULES_LIVE_VERIFIED_DORMANT_SAFE",
+    "declared": false,
+    "reason": "Requires production acceptance evidence for every module; production is unreachable from this session."
+  }
+}
