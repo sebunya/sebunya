@@ -527,5 +527,9 @@
     },
     "verifierOrder": "runs before the fault matrix so a bash-4 construct names itself instead of surfacing as RAIL_B_FAULT_MATRIX_FAILED",
     "verifierReasonCode": "BASH_3_2_COMPATIBILITY_FAILED (exit 16)"
+  },
+  "scopeResyncOrdering": {
+    "rule": "run resync AFTER git add",
+    "reason": "scope inputs come from git ls-files, so a new operator script is invisible to the scope until staged; resyncing before staging verifies clean pre-commit and drifts once the file becomes tracked"
   }
 }

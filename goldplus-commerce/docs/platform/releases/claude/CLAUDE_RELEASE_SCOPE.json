@@ -223,6 +223,8 @@
     "claude/mac-rail-b-verifier.sh": "2102e68746cff9e4fbd9bb3e95c84cd4a98de6b0d625f908b05b5bd7e9515637",
     "claude/mac-rail-b-verify-finalised-release.sh": "1eafc2add65a4c8d4fb27a067ef17063204f73beb2059315e048a3617c435801",
     "claude/rail-b-api-linkage-test.sh": "40c9671e24a7204d8b9076670ac102a0e079521f2f3bc89ec3689116268c5539",
+    "claude/rail-b-bash32-compatibility-test.sh": "2c2354bd0d6a5c0eeabab866b46c89cf1b2d16bb823efc956c84c7f333ed0e3b",
+    "claude/rail-b-bash32-rules.tsv": "5bf041b7f67a0834bb091648e4784382dae3f3b9428dfb0471a23efd48926a01",
     "claude/rail-b-lib.sh": "c8a859716f0dc39a8216fc694ca71638100d36377945de23e7985c8a0f066d64",
     "claude/rail-b-selftest.sh": "d67a07d5de1d4ae312cef7d6aafe6f6ec62b121871e57bd5913ebba7d12b9038",
     "claude/reconcile-lint.mjs": "58e5a191207e1e9b19e63a3235384a75493897e6922814b73a73e07b91d607dd",
@@ -240,7 +242,7 @@
   },
   "auditSha256": "ce3c76b8067c64789090ad78b9da307a4d4261d2a8db031c100073cbc6a1eb76",
   "executableBoundarySha256": "69704740c9d3f48c3459b0dbcd92df94de11e87117561d05d1b065f4a19ca394",
-  "railBRunbookSha256": "13cb6c15994bcc6f39d008cced74985c2b3501dc7b8b4388b577a79295e1145b",
+  "railBRunbookSha256": "784551ae87ea5a715f9cd49c5078c3b80cc06edd875d41d26780920f8f40d339",
   "retiredReleaseIds": [
     "goldplus-programme-682384b2-m0048-b79a4de7",
     "goldplus-programme-13633d86-m0048-5c6f9d25",

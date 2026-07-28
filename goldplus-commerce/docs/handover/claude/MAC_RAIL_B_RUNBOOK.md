@@ -28,6 +28,10 @@ The verifier never rewrites its own expectation; resync is a separate, deliberat
 that reuses the verifier's `rebuild`, refuses to repoint `executableCommit`, and carries
 operator-declared fields through untouched.
 
+**Ordering:** scope inputs come from `git ls-files`, so a *new* operator script is invisible to the
+scope until it is staged. Run resync **after** `git add`, otherwise the scope verifies clean
+pre-commit and drifts the moment the file becomes tracked.
+
 ## Branch semantics
 
 The local branch name is **evidence only**. It is never required to equal the target branch, so
