@@ -11,6 +11,10 @@ import { DrizzleControlledActivationAuditRepository } from '../../infrastructure
 import { SafeControlledActivationReadinessChecker } from '../../infrastructure/activation/SafeControlledActivationReadinessChecker.js';
 import { DefaultControlledActivationAccessPolicy } from '../../infrastructure/activation/DefaultControlledActivationAccessPolicy.js';
 import { DrizzleControlledActivationRepository } from '../../infrastructure/activation/DrizzleControlledActivationRepository.js';
+import { DrizzleRoleRepository } from '../../infrastructure/db/repositories/DrizzleRoleRepository.js';
+import { authMiddleware } from '../../interfaces/http/middleware/auth.js';
+import { requirePermissions } from '../../interfaces/http/middleware/permissions.js';
+import { PERMISSIONS } from '@goldplus/shared';
 
 import { CreateControlledActivationExecutionPlanUseCase } from '../../application/use-cases/activation/CreateControlledActivationExecutionPlanUseCase.js';
 import { RunControlledActivationDryRunUseCase } from '../../application/use-cases/activation/RunControlledActivationDryRunUseCase.js';
@@ -27,10 +31,9 @@ const canaryPlanner = new DefaultControlledActivationCanaryPlanner();
 const evidencePackBuilder = new DefaultControlledActivationEvidencePackBuilder();
 const auditRepo = new DrizzleControlledActivationAuditRepository();
 const readinessChecker = new SafeControlledActivationReadinessChecker();
-const dummyRoleRepo = {
-  findPermissionsForUser: async () => ['settings.manage', 'reports.read']
-};
-const accessPolicy = new DefaultControlledActivationAccessPolicy(dummyRoleRepo);
+// The access policy must resolve real per-user permissions. A stub that returns a fixed
+// permission set would grant every caller settings.manage and reports.read.
+const accessPolicy = new DefaultControlledActivationAccessPolicy(new DrizzleRoleRepository());
 
 const activationRepo = new DrizzleControlledActivationRepository();
 const createExecutionPlanUseCase = new CreateControlledActivationExecutionPlanUseCase(executionPlanRepo, activationRepo, readinessChecker, accessPolicy, auditRepo);
@@ -47,14 +50,22 @@ const markReadyUseCase = new MarkActivationReadyForLiveReviewUseCase(
 );
 const cancelDryRunUseCase = new CancelControlledActivationDryRunUseCase(dryRunRepo, executionPlanRepo, auditRepo);
 
-const router = new Hono();
+const router = new Hono<{ Variables: { user?: { id: string; email: string; permissions: string[] } } }>();
+
+// Mounted under /admin: authenticate every request and derive the acting admin from the
+// session rather than from the request body.
+router.use('*', authMiddleware);
+
+const actingAdminId = (c: { get: (k: 'user') => { id: string } | undefined }): string | null =>
+  c.get('user')?.id ?? null;
 
 router.post(
   '/execution-plans',
+  requirePermissions([PERMISSIONS.SETTINGS_MANAGE]),
   zValidator(
     'json',
     z.object({
-      adminId: z.string(),
+      adminId: z.string().optional(),
       activationRequestId: z.string(),
       activationScope: z.string(),
       environment: z.string(),
@@ -67,8 +78,11 @@ router.post(
   ),
   async (c) => {
     const data = c.req.valid('json');
+    const admin = actingAdminId(c);
+    if (!admin) return c.json({ success: false, error: 'UNAUTHENTICATED' }, 401);
     const command = {
       ...data,
+      adminId: admin,
       requestedWindowStart: data.requestedWindowStart ? new Date(data.requestedWindowStart) : undefined,
       requestedWindowEnd: data.requestedWindowEnd ? new Date(data.requestedWindowEnd) : undefined,
       canaryScopeSummary: data.canaryScopeSummary || '',
@@ -88,17 +102,20 @@ router.post(
 
 router.post(
   '/dry-runs',
+  requirePermissions([PERMISSIONS.SETTINGS_MANAGE]),
   zValidator(
     'json',
     z.object({
-      adminId: z.string(),
+      adminId: z.string().optional(),
       executionPlanId: z.string()
     })
   ),
   async (c) => {
     const data = c.req.valid('json');
+    const admin = actingAdminId(c);
+    if (!admin) return c.json({ success: false, error: 'UNAUTHENTICATED' }, 401);
     try {
-      const dryRunId = await runDryRunUseCase.execute(data);
+      const dryRunId = await runDryRunUseCase.execute({ ...data, adminId: admin });
       return c.json({ success: true, dryRunId });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -109,6 +126,7 @@ router.post(
 
 router.post(
   '/dry-runs/:id/previews',
+  requirePermissions([PERMISSIONS.REPORTS_READ]),
   zValidator(
     'json',
     z.object({
@@ -130,6 +148,7 @@ router.post(
 
 router.post(
   '/canary-plans/validate',
+  requirePermissions([PERMISSIONS.REPORTS_READ]),
   zValidator(
     'json',
     z.object({
@@ -152,6 +171,7 @@ router.post(
 
 router.post(
   '/dry-runs/:id/evidence',
+  requirePermissions([PERMISSIONS.REPORTS_READ]),
   zValidator(
     'json',
     z.object({
@@ -173,17 +193,20 @@ router.post(
 
 router.post(
   '/execution-plans/:id/ready-for-review',
+  requirePermissions([PERMISSIONS.SETTINGS_MANAGE]),
   zValidator(
     'json',
     z.object({
-      adminId: z.string()
+      adminId: z.string().optional()
     })
   ),
   async (c) => {
     const executionPlanId = c.req.param('id');
     const data = c.req.valid('json');
+    const admin = actingAdminId(c);
+    if (!admin) return c.json({ success: false, error: 'UNAUTHENTICATED' }, 401);
     try {
-      await markReadyUseCase.execute({ adminId: data.adminId, executionPlanId });
+      await markReadyUseCase.execute({ adminId: admin, executionPlanId });
       return c.json({ success: true });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -194,19 +217,22 @@ router.post(
 
 router.post(
   '/dry-runs/:id/cancel',
+  requirePermissions([PERMISSIONS.SETTINGS_MANAGE]),
   zValidator(
     'json',
     z.object({
-      adminId: z.string(),
+      adminId: z.string().optional(),
       reason: z.string()
     })
   ),
   async (c) => {
     const dryRunId = c.req.param('id');
     const data = c.req.valid('json');
+    const admin = actingAdminId(c);
+    if (!admin) return c.json({ success: false, error: 'UNAUTHENTICATED' }, 401);
     try {
       await cancelDryRunUseCase.execute({
-        adminId: data.adminId,
+        adminId: admin,
         dryRunId,
         reason: data.reason
       });

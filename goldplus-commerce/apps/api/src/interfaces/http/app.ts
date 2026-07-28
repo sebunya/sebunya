@@ -37,6 +37,7 @@ import consentRoutes from './routes/consent';
 import measurementRoutes from './routes/measurement';
 import adminMeasurementRoutes from './routes/admin/measurement';
 import { measurementGtmRoutes } from './routes/admin/measurement-gtm';
+import { controlledActivationRoutes } from './routes/admin/controlled-activation';
 import measurementPaidSocialRoutes from './routes/admin/measurement-paid-social';
 import measurementPaymentsRoutes from './routes/admin/measurement-payments';
 import measurementControlTowerRoutes from './routes/admin/measurement-control-tower';
@@ -185,6 +186,8 @@ app.route('/admin/release-readiness', releaseReadinessAdminRouter);
 app.route('/admin/controlled-activation-dry-run', controlledActivationDryRunRouter);
 app.route('/admin/controlled-activation-live-review', liveReview);
 app.route('/admin/controlled-activation/live-canaries', controlledLiveCanaryRouter);
+// Registered after /live-canaries so the more specific mount keeps priority.
+app.route('/admin/controlled-activation', controlledActivationRoutes);
 app.route('/product-finder', productFinderRoutes);
 app.route('/account/consent-operating', consentOperatingRoutes);
 app.route('/admin/consent-operating', adminConsentOperatingRoutes);
