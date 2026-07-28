@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "state": "LOCAL_ENGINEERING_COMPLETE_MANDATORY_GATES_EXTERNALLY_BLOCKED",
+  "terminalStatus": "CLAUDE_LOCAL_ENGINEERING_COMPLETE_PRODUCTION_DATA_ACCESS_REQUIRED",
+  "executionMode": "ENGINEERING_AND_RELEASE_MODE_WITH_BLOCKED_IMAGE_GATE",
+  "selectedWorktree": "/home/user/sebunya/goldplus-clean-continuation/phase-2-measurement-control-tower-completion-20260715",
+  "quarantinedWorktree": "GoldPlusFinal — not present in this environment; never read, written or copied from",
+  "branch": "phase-2-measurement-control-tower-completion",
+  "localHeadEqualsOrigin": true,
+  "treeStatus": "clean",
+  "productionSourceHead": "UNKNOWN_PRODUCTION_UNREACHABLE",
+  "executableCommit": "51cebfd68c29e082e4ec39700c5b2e520e237f9a",
+  "executableBoundaryUnchanged": true,
+  "executableBoundaryEvidence": "All five commits after 51cebfd6 (c03bf077, 875b39a2, 0d72c772, 2d117d08, 400ab3a0) contain 0 runtime paths.",
+  "migrationCeiling": "0048",
+  "retiredReleaseIds": [
+    "goldplus-programme-682384b2-m0048-b79a4de7",
+    "goldplus-programme-13633d86-m0048-5c6f9d25",
+    "goldplus-programme-99563666-m0048-8343ee36",
+    "goldplus-programme-51b86fb5-m0048-5a198e5f",
+    "goldplus-programme-51cebfd6-m0048-3a467adb"
+  ],
+  "retiredThisPass": {
+    "id": "goldplus-programme-51cebfd6-m0048-3a467adb",
+    "classification": "RETIRED_UNAPPROVED_INCOMPLETE_GATE_CANDIDATE",
+    "tagPushed": false,
+    "approvalMarkerCreated": false,
+    "deployed": false
+  },
+  "newReleaseFrozen": false,
+  "newReleaseNotFrozenReason": "Mandatory pre-approval gates cannot be executed in this environment. Freezing a candidate here would repeat the exact error this controller was written to correct.",
+  "environmentProbe": {
+    "platform": "Linux (not macOS; this is not the installed-Mac environment the controller targets)",
+    "git": true,
+    "node": "v22.22.2",
+    "pnpm": "10.33.0",
+    "dockerCli": "29.3.1",
+    "dockerDaemon": "STARTED SUCCESSFULLY this pass via dockerd",
+    "postgresql": "16.13 local on 55432",
+    "redis": "local on 6399",
+    "chromium": "/opt/pw-browsers/chromium-1194",
+    "ssh": "ABSENT",
+    "goldplusProdResolves": false
+  },
+  "blockingEvidence": [
+    {
+      "id": "BLOCK-1",
+      "gate": "Exact API and web Docker image build and image canary (controller §7)",
+      "status": "EXTERNALLY_BLOCKED",
+      "detail": "The Docker daemon starts and works. The agent network proxy denies Docker Hub's blob CDN at CONNECT level: production.cloudfront.docker.com:443 returns 'gateway answered 403 to CONNECT (policy denial)'. Manifest resolution reaches registry-1.docker.io (401 auth challenge) but blob download is refused, so node:20-alpine@sha256:fb4cd12c... cannot be pulled and no base image is cached.",
+      "attemptsMade": [
+        "docker build from a clean git-archive export of the executable commit",
+        "installed the proxy CA into the system trust store",
+        "restarted dockerd with HTTP_PROXY/HTTPS_PROXY/NO_PROXY exported",
+        "direct docker pull of the pinned base image digest"
+      ],
+      "notWorkedAround": "The proxy README lists policy denials under 'Not supported through the proxy (report, do not work around)'.",
+      "consequence": "No image tag, image ID or digest exists, so §17 image fields cannot be filled and no approval may be requested."
+    },
+    {
+      "id": "BLOCK-2",
+      "gate": "Production-shaped dataset, populated upgrade rehearsal, shadow canary, deployment, all-module UAT, one-hour soak (controller §8, §9, §18-§22)",
+      "status": "EXTERNALLY_BLOCKED",
+      "detail": "ssh is not installed and goldplus-prod does not resolve. Controller §8 directs exactly this outcome: complete every local gate, do not claim populated-production rehearsal, do not create approval instructions.",
+      "consequence": "Terminal status is CLAUDE_LOCAL_ENGINEERING_COMPLETE_PRODUCTION_DATA_ACCESS_REQUIRED."
+    },
+    {
+      "id": "BLOCK-3",
+      "gate": "Annotated release tag push and remote tag verification (controller §16.3)",
+      "status": "EXTERNALLY_BLOCKED",
+      "detail": "The sandbox git proxy refuses every tag push, including a throwaway lightweight probe tag, disconnecting mid-sideband. Branch pushes succeed. §16.3 requires the remote tag target to equal the package head and §17 forbids requesting approval while the remote tag is absent.",
+      "consequence": "No release may be frozen and offered for approval from this environment."
+    }
+  ],
+  "gatesExecutedThisPass": {
+    "dockerDaemonStart": "PASS",
+    "executableBoundaryReverification": "PASS_UNCHANGED_51CEBFD6",
+    "playwrightCriticalJourneys": "EXECUTED_8_PASSED_6_FAILED_3_DISTINCT_TESTS_ACROSS_2_PROJECTS",
+    "compiledApiCanary": "PASS_HEALTH_200_PRODUCTS_5",
+    "compiledWebServer": "PASS_HTTP_200"
+  },
+  "findings": [
+    {
+      "id": "F-1",
+      "severity": "MEDIUM",
+      "title": "Playwright acceptance specs are coupled to a dataset the repository cannot produce",
+      "evidence": "tests/e2e/acceptance.spec.ts navigates to /products/power-bank-20000mah. The tracked scripts/seed.ts never creates that slug; it creates heavy-duty-power-bank. The live API served 8 approved products, none with the expected slug.",
+      "failingTests": [
+        "acceptance.spec.ts:19 shop search finds the catalogue product and zero-result CTA appears",
+        "acceptance.spec.ts:29 PDP shows verified compatibility with its condition note"
+      ],
+      "assessment": "Not a storefront defect. The e2e suite depends on fixture data that is not in the repository, so it cannot pass against the repository's own seed. Repairing it requires the intended dataset; inventing product facts is forbidden by CLAUDE.md and controller §13.",
+      "status": "OPEN_REQUIRES_DATASET_DECISION"
+    },
+    {
+      "id": "F-2",
+      "severity": "LOW",
+      "title": "automation-a4 e2e test connects to PostgreSQL on the default port",
+      "evidence": "tests/e2e/automation-a4.spec.ts:52 failed with connect ECONNREFUSED 127.0.0.1:5432 while the session database ran on 55432 and DATABASE_URL was exported.",
+      "assessment": "A component in the browser-driven path resolves the database independently of the exported DATABASE_URL. Needs confirmation on a host where 5432 is the real port before deciding whether it is a defect or a harness assumption.",
+      "status": "OPEN_UNCONFIRMED"
+    }
+  ],
+  "preservedPriorRepairs": [
+    "unauthenticated controlled live-canary administration — repaired, verified present",
+    "unauthenticated controlled dry-run execution — repaired, verified present",
+    "attacker-controlled acting-admin identity — repaired, verified present",
+    "dummy role repository granting permissions to every user — repaired, verified present",
+    "unmounted controlled-activation governance routes — mounted, verified present",
+    "wall-clock-dependent Support Inbox ordering — repaired",
+    "text-only route-reachability test — replaced with a real-app test",
+    "control-room proof hanging after PASS — repaired",
+    "shared package missing a build script — repaired",
+    "lint blocked by a dead empty interface — repaired",
+    "live fakeReports capability lacking tests — covered",
+    "release scope hashing nonexistent Dockerfile paths — repaired"
+  ],
+  "approvalState": "NOT_REQUESTED_AND_MUST_NOT_BE_REQUESTED_FROM_THIS_ENVIRONMENT",
+  "approvalMarkerCreatedByClaude": false,
+  "deploymentState": "NOT_STARTED",
+  "soakCheckpoint": null,
+  "terminalDeclaration": {
+    "value": "GOLDPLUS_ALL_MODULES_LIVE_VERIFIED_DORMANT_SAFE",
+    "declared": false
+  },
+  "exactNextAction": "Re-run this controller from the installed Claude Code on the macOS host, where Docker Hub is reachable, ssh goldplus-prod resolves and tag pushes are permitted. All three blocks are environmental; the source tree is clean, green and unchanged in its engineering state."
+}
