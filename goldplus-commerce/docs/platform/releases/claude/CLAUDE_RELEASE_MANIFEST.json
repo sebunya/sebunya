@@ -6,7 +6,7 @@
     "token": "51b86fb5-m0048-5a198e5f",
     "executableCommit": "51b86fb5ab0810d75a04492ce5dbf8e80aec901c",
     "executableTree": "2eb7edf5805b2f444b430ca5be9a93777ab197d1",
-    "releasePackageHead": "SET_BY_THE_DOCS_ONLY_FREEZE_COMMIT",
+    "releasePackageHead": "b6a4d26a3e575a84ddb0131a233b728773982e4a",
     "branch": "phase-2-measurement-control-tower-completion",
     "scopePath": "docs/platform/releases/claude/CLAUDE_RELEASE_SCOPE.json",
     "scopeSha256": "5a198e5fb073e2bfc47b2651a901e07b0170fe7fce656ec5ecce626ba20509ee",
