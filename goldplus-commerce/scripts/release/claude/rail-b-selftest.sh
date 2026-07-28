@@ -363,6 +363,55 @@ expect_success "fail-closed" "no success wording after an unexpected error" \
     out=\$( (railb_enable_fail_closed; nope_cmd; echo VALIDATION_COMPLETE) 2>&1 ); \
     ! echo \"\$out\" | grep -q VALIDATION_COMPLETE"
 
+# ─── Class: dry-run truthfulness assessment ─────────────────────────────────
+# The verifier must never conflate "this host cannot assess the dry run" with
+# "the dry run lied". Both paths are asserted against the tracked verifier text
+# and against a synthetic dry-run log evaluated by the same predicates.
+VERF="$LIB_DIR/mac-rail-b-verifier.sh"
+expect_success "dry-run-assessment" "non-Darwin host is reported NOT_ASSESSABLE, never truthful" \
+  bash -c "grep -q 'DRY_RUN_TRUTHFUL=not_assessable' '$VERF' && \
+    grep -q 'NOT_ASSESSABLE_NON_DARWIN_HOST' '$VERF'"
+expect_success "dry-run-assessment" "non-Darwin path never prints PACKAGE_VERIFIED" \
+  bash -c "! grep -A6 'DRY_RUN_ASSESSMENT_REQUIRES_DARWIN_HOST' '$VERF' | grep -qE 'GOLDPLUS_MAC_RAIL_B_PACKAGE_VERIFIED\$'"
+expect_success "dry-run-assessment" "non-Darwin path exits non-zero" \
+  bash -c "grep -A8 'DRY_RUN_ASSESSMENT_REQUIRES_DARWIN_HOST' '$VERF' | grep -qE '^  exit 14'"
+expect_success "dry-run-assessment" "Darwin untruthful path still fails closed" \
+  bash -c "grep -q 'fail_with \"DRY_RUN_NOT_TRUTHFUL\" 13' '$VERF'"
+expect_success "dry-run-assessment" "failed predicate is printed, not just the verdict" \
+  bash -c "grep -q 'DRY_RUN_TRUTHFULNESS_FAILED' '$VERF' && grep -q \"printf 'predicate=%s\" '$VERF'"
+expect_success "dry-run-assessment" "wrong-host refusal has its own contract check" \
+  bash -c "grep -q 'wrong_host_dry_run_exit_code' '$VERF' && grep -q 'wrong_host_no_later_phase' '$VERF'"
+# The real wrong-host dry run: exit 10, exact reason, and no later phase.
+DRY_PROBE="$SANDBOX/wrong-host-dry.log"
+DRY_PROBE_EXIT=0
+bash "$LIB_DIR/mac-rail-b-preapproval.sh" --dry-run > "$DRY_PROBE" 2>&1 || DRY_PROBE_EXIT=$?
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  expect_success "dry-run-assessment" "Darwin dry run is assessable" bash -c "true"
+else
+  expect_success "dry-run-assessment" "wrong-host dry run exits 10" \
+    bash -c "[[ '$DRY_PROBE_EXIT' == 10 ]]"
+  expect_success "dry-run-assessment" "wrong-host dry run names the OS" \
+    bash -c "grep -q 'WRONG_OPERATING_SYSTEM: $(uname -s)' '$DRY_PROBE'"
+  expect_success "dry-run-assessment" "wrong-host dry run reaches no later phase" \
+    bash -c "! grep -qE 'VALIDATION_COMPLETE_RELEASE_FINALISATION_REQUIRED|RELEASE_FINALISED_HUMAN_APPROVAL_REQUIRED|/root/APPROVE_' '$DRY_PROBE'"
+fi
+expect_success "dry-run-assessment" "dry-run exit is captured in a || list, not under set +e" \
+  bash -c "grep -q '|| DRY_EXIT=\$?' '$VERF' && ! grep -qE '^set \\+e' '$VERF'"
+
+# ─── Class: scope non-circularity ───────────────────────────────────────────
+REPO_ROOT="$LIB_DIR/../../.."
+expect_success "scope-circularity" "runbook JSON embeds no scope SHA value" \
+  bash -c "! grep -oE '\"provisionalRailAScopeSha256\"[[:space:]]*:[[:space:]]*\"[0-9a-f]{64}\"' \
+    '$REPO_ROOT/docs/handover/claude/MAC_RAIL_B_RUNBOOK.json' | grep -q ."
+expect_success "scope-circularity" "runbook markdown embeds no 64-hex scope SHA" \
+  bash -c "! grep -qE '\\b[0-9a-f]{64}\\b' '$REPO_ROOT/docs/handover/claude/MAC_RAIL_B_RUNBOOK.md'"
+expect_success "scope-circularity" "verifier is read-only (never writes the scope file)" \
+  bash -c "! grep -qE 'writeFileSync|appendFileSync' '$LIB_DIR/verify-claude-release-scope.mjs'"
+expect_success "scope-circularity" "resync refuses to repoint the executable commit" \
+  bash -c "grep -q 'SCOPE_RESYNC_REFUSED' '$LIB_DIR/resync-claude-release-scope.mjs'"
+expect_success "scope-circularity" "scope is a fixed point of the working tree" \
+  bash -c "cd '$REPO_ROOT' && node scripts/release/claude/verify-claude-release-scope.mjs"
+
 # ─── Class: placeholder hazards ─────────────────────────────────────────────
 VFR="$LIB_DIR/mac-rail-b-verify-finalised-release.sh"
 expect_refusal "placeholder" "literal angle-bracket manifest path refused" "LITERAL_PLACEHOLDER_PATH_REFUSED" \

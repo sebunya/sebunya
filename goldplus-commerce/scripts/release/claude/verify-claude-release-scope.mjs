@@ -45,7 +45,9 @@ const FORBIDDEN = [
   'timestamp',
 ];
 
-function rebuild(scope) {
+export const SCOPE_FILE = SCOPE_PATH;
+
+export function rebuild(scope) {
   const migDir = 'apps/api/src/infrastructure/db/migrations';
   const migrations = fs
     .readdirSync(migDir)

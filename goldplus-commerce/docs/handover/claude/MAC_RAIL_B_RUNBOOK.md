@@ -15,6 +15,19 @@ exact-image browser journeys — and then deploys.
 | Executable→package diff | 14 paths, **0 runtime source** (6 tooling, 4 test, 3 docs, 1 evidence) |
 | Provisional scope | `provisionalRailAScopeSha256` — **not** a final release scope |
 
+The scope SHA is deliberately **not** written into this runbook or its JSON twin. The canonical
+scope hashes the runbook (`railBRunbookSha256`), so embedding the SHA here would make the scope
+self-referential by proxy and could never reach a fixed point. Derive it instead:
+
+```bash
+node scripts/release/claude/verify-claude-release-scope.mjs      # read-only; prints the SHA
+node scripts/release/claude/resync-claude-release-scope.mjs      # separate tool; rewrites inputs
+```
+
+The verifier never rewrites its own expectation; resync is a separate, deliberately-invoked tool
+that reuses the verifier's `rebuild`, refuses to repoint `executableCommit`, and carries
+operator-declared fields through untouched.
+
 ## Branch semantics
 
 The local branch name is **evidence only**. It is never required to equal the target branch, so
@@ -79,14 +92,14 @@ preapproval with a new executable candidate.
 
 ## Validation performed
 
-- **Syntax** 8/8 (`bash -n`). ShellCheck is not installed here — recorded `NOT_APPLICABLE`, which is
+- **Syntax** 9/9 (`bash -n`). ShellCheck is not installed here — recorded `NOT_APPLICABLE`, which is
   not a release failure; the Mac run re-evaluates it.
 - **Shell API linkage** — `SHELL_API_LINKAGE_PASSED`, 0 undefined, 0 late-source, 0 shadowed.
-- **Fault matrix 84/84**, hermetic: never contacts production, never creates a marker, never touches
+- **Fault matrix 94/94**, hermetic: never contacts production, never creates a marker, never touches
   real Docker resources or a real Git remote. Classes include host/local-source, remote-movement,
   release-identity, evidence-path, approval-marker, deployment/rollback, commerce-safety,
   gate-state, terminal-abort, docker-context, validation-evidence, final-scope,
-  production-contract, linkage, fail-closed, placeholder and failed-run.
+  production-contract, linkage, fail-closed, dry-run-assessment, placeholder and failed-run.
 - **Evidence-path safety** — rejects paths inside the Git root, inside `.git`, inside the
   quarantined `GoldPlusFinal`, and symlinks into any of them; paths resolve physically first.
 - **Prohibition audit** on executable lines with comments stripped: 0 `docker compose down`,
@@ -157,6 +170,27 @@ truthful dry run legitimately passes the gates that genuinely execute. It now ch
 code, executed attestation gates, `NOT_RUN` for skipped work, zero FAIL/BLOCKED and the
 absence of validation, finalisation and marker wording — and prints
 `predicate` / `expected` / `actual` / `evidence` when it fails.
+
+## Dry-run truthfulness has three outcomes, never two
+
+Truthfulness is a property of a dry run that was *allowed to run*. On a non-Darwin host the
+validator refuses at gate 1 by design, so a non-zero exit there is correct fail-closed
+behaviour — not a lie. The verifier separates the cases:
+
+| Host | Dry run | `DRY_RUN_ASSESSMENT` | `DRY_RUN_TRUTHFUL` | Terminal line | Exit |
+|---|---|---|---|---|---|
+| Darwin | exit 0, predicates hold | `ASSESSED` | `true` | `GOLDPLUS_MAC_RAIL_B_PACKAGE_VERIFIED` | 0 |
+| Darwin | any predicate fails | `ASSESSED` | `false` | `DRY_RUN_NOT_TRUTHFUL` | 13 |
+| non-Darwin | refuses at host attestation | `NOT_ASSESSABLE_NON_DARWIN_HOST` | `not_assessable` | `GOLDPLUS_MAC_RAIL_B_PACKAGE_STRUCTURE_VERIFIED` + `DRY_RUN_ASSESSMENT_REQUIRES_DARWIN_HOST` | 14 |
+
+On a non-Darwin host the refusal is itself asserted against a wrong-host contract — exit
+code exactly `10`, the reason `WRONG_OPERATING_SYSTEM: <os>`, and no validation,
+finalisation or marker wording anywhere in the log. A wrong-host refusal that is *not*
+exact aborts with `WRONG_HOST_DRY_RUN_CONTRACT_FAILED` (exit 15).
+
+Exit 14 is not a pass. Structure, branch semantics and the executable boundary are proven,
+but **dry-run truthfulness is unproven** and preapproval must not be run from that host.
+Only a Darwin run of this verifier can print `GOLDPLUS_MAC_RAIL_B_PACKAGE_VERIFIED`.
 
 Every tracked entry point now runs `set -Eeuo pipefail` with an `ERR` trap, so an
 unexpected shell error records terminal evidence, marks the run ineligible and never prints

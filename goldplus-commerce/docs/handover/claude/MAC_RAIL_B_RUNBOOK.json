@@ -84,10 +84,10 @@
   },
   "validation": {
     "syntax": "PASS 3/3 (bash -n)",
-    "dryRun": "PASS \u2014 host attestation correctly reported this non-Darwin host as FAIL; unexecuted steps report NOT-RUN(dry-run), never PASS",
+    "dryRun": "NOT_ASSESSABLE on this Linux host — the validator refuses at host attestation with exit 10 and WRONG_OPERATING_SYSTEM: Linux, which is asserted against the wrong-host contract; truthfulness is provable only on Darwin",
     "faultInjection": {
-      "total": 84,
-      "passed": 84,
+      "total": 94,
+      "passed": 94,
       "hermetic": true,
       "contactedProduction": false,
       "createdMarker": false,
@@ -106,7 +106,8 @@
         "docker-context",
         "validation-evidence",
         "final-scope",
-        "production-contract"
+        "production-contract",
+        "dry-run-assessment"
       ]
     },
     "prohibitionAudit": "performed on executable lines with comments stripped: 0 compose-down, 0 reboot, 0 infra restart, 0 marker write, 0 wildcard removal",
@@ -188,7 +189,7 @@
     "declared": false
   },
   "branchSemantics": {
-    "WORKTREE_BRANCH": "local branch name; evidence only \u2014 never required to equal TARGET_BRANCH",
+    "WORKTREE_BRANCH": "local branch name; evidence only — never required to equal TARGET_BRANCH",
     "TARGET_BRANCH": "remote branch defining the baseline and receiving the package (default phase-2-measurement-control-tower-completion, override with --target-branch or RAIL_B_TARGET_BRANCH)",
     "EXPECTED_REMOTE_HEAD": "origin/TARGET_BRANCH at run start; re-checked before finalisation",
     "acceptedCase": "clean side branch whose HEAD equals origin/TARGET_BRANCH",
@@ -262,11 +263,16 @@
       "produce approval-marker instructions"
     ]
   },
-  "provisionalRailAScopeSha256": "50e9baa05c3e7d695be07e498064cf0abbd32c04126e2a6c7c612138d55ff842",
+  "provisionalRailAScopeSha256": {
+    "value": "NOT_EMBEDDED_BY_DESIGN",
+    "reason": "the canonical scope hashes this runbook (railBRunbookSha256); embedding the scope SHA here would make the scope self-referential by proxy and could never reach a fixed point",
+    "derivation": "node scripts/release/claude/verify-claude-release-scope.mjs",
+    "resync": "node scripts/release/claude/resync-claude-release-scope.mjs (verifier stays read-only)"
+  },
   "scopeStatus": "PROVISIONAL_RAIL_A",
   "moduleInventorySha256": "0ccb4f4d2fd3d6b1fdd764b438d198ce01271a8d74b5584b7010ce01c5e6f180",
   "terminalStatuses": {
-    "verifierVerifyOnly": "VERIFICATION_COMPLETE \u2014 REAL PREAPPROVAL NOT STARTED",
+    "verifierVerifyOnly": "VERIFICATION_COMPLETE — REAL PREAPPROVAL NOT STARTED",
     "preapprovalDryRun": "MAC_RAIL_B_DRY_RUN_COMPLETE",
     "preapprovalSuccess": "CLAUDE_MAC_RAIL_B_PREAPPROVAL_COMPLETE_HUMAN_APPROVAL_REQUIRED",
     "preapprovalRuntimeDefect": "MAC_RAIL_B_RUNTIME_DEFECT_FOUND",
@@ -276,7 +282,7 @@
     "name": "GoldPlus_Mac_Rail_B_Final_Verifier.sh",
     "tracked": false,
     "location": "must live OUTSIDE the worktree (e.g. ~/Downloads); it refuses to run from inside the Git root",
-    "portability": "POSIX tools only \u2014 no GNU-specific awk/grep/sed, so BSD userland on macOS behaves identically",
+    "portability": "POSIX tools only — no GNU-specific awk/grep/sed, so BSD userland on macOS behaves identically",
     "emits": [
       "RUNTIME_SOURCE_COUNT",
       "EXECUTABLE_BUILD_INPUT_COUNT",
@@ -322,7 +328,7 @@
     "startsDesktopWhenNeeded": true,
     "timeoutSeconds": 360,
     "propagation": "DOCKER_CONTEXT only",
-    "neverRuns": "docker context use \u2014 the operator global context is never changed",
+    "neverRuns": "docker context use — the operator global context is never changed",
     "blockedStatus": "MAC_RAIL_B_BLOCKED_DOCKER_DESKTOP_NOT_READY",
     "diagnostics": [
       "selected context",
@@ -370,18 +376,68 @@
     }
   },
   "dryRunTruthfulness": {
+    "assessmentIsHostDependent": true,
+    "outcomes": [
+      {
+        "host": "Darwin",
+        "dryRunExitCode": 0,
+        "assessment": "ASSESSED",
+        "truthful": "true",
+        "terminal": "GOLDPLUS_MAC_RAIL_B_PACKAGE_VERIFIED",
+        "exitCode": 0,
+        "meaning": "package verified; preapproval may be run"
+      },
+      {
+        "host": "Darwin",
+        "dryRunExitCode": "non-zero or predicate failure",
+        "assessment": "ASSESSED",
+        "truthful": "false",
+        "terminal": "DRY_RUN_NOT_TRUTHFUL",
+        "exitCode": 13,
+        "meaning": "release-blocking defect; do not run preapproval"
+      },
+      {
+        "host": "non-Darwin",
+        "dryRunExitCode": 10,
+        "assessment": "NOT_ASSESSABLE_NON_DARWIN_HOST",
+        "truthful": "not_assessable",
+        "terminal": "GOLDPLUS_MAC_RAIL_B_PACKAGE_STRUCTURE_VERIFIED + DRY_RUN_ASSESSMENT_REQUIRES_DARWIN_HOST",
+        "exitCode": 14,
+        "meaning": "structure, branch semantics and executable boundary proven; dry-run truthfulness UNPROVEN; preapproval must not be run from this host"
+      }
+    ],
     "predicates": [
       "dry_run_exit_code=0",
-      "executed attestation gates PASS",
-      "skipped mandatory gates NOT_RUN",
-      "FAIL=0",
-      "BLOCKED=0",
-      "no validation-complete status",
-      "no finalisation status",
-      "no marker instruction"
+      "executed_attestation_gate:host.attestation=PASS",
+      "executed_attestation_gate:branch.semantics=PASS",
+      "executed_attestation_gate:boundary.runtimeSource=PASS",
+      "skipped_mandatory_gates_not_run>0",
+      "dry_run_fail_count=0",
+      "dry_run_blocked_count=0",
+      "no_validation_complete_status",
+      "no_finalisation_status",
+      "no_marker_instruction"
     ],
+    "wrongHostContract": {
+      "predicates": [
+        "wrong_host_dry_run_exit_code=10",
+        "wrong_host_reason_code=WRONG_OPERATING_SYSTEM: <os>",
+        "wrong_host_no_later_phase:VALIDATION_COMPLETE_RELEASE_FINALISATION_REQUIRED",
+        "wrong_host_no_later_phase:RELEASE_FINALISED_HUMAN_APPROVAL_REQUIRED",
+        "wrong_host_no_later_phase:/root/APPROVE_"
+      ],
+      "onViolation": {
+        "terminal": "WRONG_HOST_DRY_RUN_CONTRACT_FAILED",
+        "exitCode": 15
+      }
+    },
     "diagnosticShape": "DRY_RUN_TRUTHFULNESS_FAILED predicate/expected/actual/evidence",
-    "previousDefect": "blanket \"any PASS is untruthful\" produced a false negative on the Mac"
+    "previousDefects": [
+      "blanket \"any PASS is untruthful\" produced a false negative on the Mac",
+      "a non-Darwin host limitation was reported as DRY_RUN_TRUTHFUL=false, conflating 'cannot assess' with 'lied'",
+      "the dry-run call ran under set +e, which does not suppress an ERR trap; it is now a || list"
+    ],
+    "macRootCause": "the Mac's DRY_RUN_TRUTHFUL=false was caused by preapproval aborting on railb_assert_no_runtime_source: command not found, which made dry_run_exit_code non-zero"
   },
   "failedMacRuns": {
     "amendmentPath": "docs/platform/evidence/releases/CLAUDE_FAILED_MAC_RUN_AMENDMENTS.json",
@@ -392,5 +448,5 @@
     ],
     "permanentlyIneligible": true
   },
-  "realMacSmokeTest": "NOT_RUN_IN_THIS_ENVIRONMENT \u2014 requires the Darwin worktree; this environment is Linux"
+  "realMacSmokeTest": "NOT_RUN_IN_THIS_ENVIRONMENT — requires the Darwin worktree; this environment is Linux"
 }

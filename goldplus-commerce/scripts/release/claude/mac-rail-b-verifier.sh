@@ -76,7 +76,8 @@ git -C "$APP_ROOT" merge-base --is-ancestor "$EXEC_CANDIDATE" "$LOCAL_HEAD" \
 railb_classify_delta "$APP_ROOT" "$EXEC_CANDIDATE" "$LOCAL_HEAD"
 
 for f in mac-rail-b-verifier mac-rail-b-preapproval mac-rail-b-finalise-release \
-         mac-rail-b-production mac-rail-b-rollback rail-b-lib rail-b-selftest; do
+         mac-rail-b-verify-finalised-release mac-rail-b-production mac-rail-b-rollback \
+         rail-b-lib rail-b-selftest rail-b-api-linkage-test; do
   [[ -f "$APP_ROOT/scripts/release/claude/$f.sh" ]] || fail_with "REQUIRED_RAIL_B_FILE_MISSING: $f.sh" 8
   bash -n "$APP_ROOT/scripts/release/claude/$f.sh" || fail_with "SCRIPT_SYNTAX_INVALID: $f.sh" 8
 done
@@ -102,6 +103,7 @@ bash "$APP_ROOT/scripts/release/claude/mac-rail-b-preapproval.sh" --dry-run > "$
   || DRY_EXIT=$?
 
 DRY_RUN_TRUTHFUL=true
+DRY_RUN_ASSESSMENT=ASSESSED
 dry_fail() { # predicate, expected, actual
   DRY_RUN_TRUTHFUL=false
   printf '\nDRY_RUN_TRUTHFULNESS_FAILED\n' >&2
@@ -111,10 +113,39 @@ dry_fail() { # predicate, expected, actual
   printf 'evidence=%s\n' "$DRY_LOG" >&2
 }
 
+# A wrong-host refusal that is not exact is a real defect, not a limitation, so it
+# aborts immediately with the same machine-readable diagnostic shape.
+wrong_host_fail() { # predicate, expected, actual
+  printf '\nWRONG_HOST_DRY_RUN_CONTRACT_FAILED\n' >&2
+  printf 'predicate=%s\n' "$1" >&2
+  printf 'expected=%s\n' "$2" >&2
+  printf 'actual=%s\n' "$3" >&2
+  printf 'evidence=%s\n' "$DRY_LOG" >&2
+  fail_with "WRONG_HOST_DRY_RUN_CONTRACT_FAILED" 15
+}
+
 EXECUTED_ATTESTATION_GATES="host.attestation branch.semantics boundary.runtimeSource"
 count_status() { grep -cE "^  $1 " "$DRY_LOG" 2>/dev/null || printf '0'; }
 
-if (( DRY_EXIT != 0 )); then
+# Truthfulness is a property of a dry run that was ALLOWED to run. On a non-Darwin
+# host the validator refuses at gate 1 by design, so exit 10 there is correct
+# fail-closed behaviour, not an untruthful dry run. That case is asserted against
+# its own wrong-host contract and reported as NOT_ASSESSABLE — never as truthful.
+VERIFIER_HOST_OS="$(uname -s)"
+if [[ "$VERIFIER_HOST_OS" != "Darwin" ]]; then
+  DRY_RUN_ASSESSMENT=NOT_ASSESSABLE_NON_DARWIN_HOST
+  DRY_RUN_TRUTHFUL=not_assessable
+  # The wrong-host refusal must itself be exact and side-effect free.
+  (( DRY_EXIT == 10 )) \
+    || wrong_host_fail wrong_host_dry_run_exit_code 10 "$DRY_EXIT"
+  grep -q "WRONG_OPERATING_SYSTEM: ${VERIFIER_HOST_OS}" "$DRY_LOG" \
+    || wrong_host_fail wrong_host_reason_code "WRONG_OPERATING_SYSTEM: ${VERIFIER_HOST_OS}" "$(tail -1 "$DRY_LOG")"
+  for forbidden in VALIDATION_COMPLETE_RELEASE_FINALISATION_REQUIRED \
+                   RELEASE_FINALISED_HUMAN_APPROVAL_REQUIRED '/root/APPROVE_'; do
+    grep -qE -- "$forbidden" "$DRY_LOG" \
+      && wrong_host_fail "wrong_host_no_later_phase:${forbidden}" absent present
+  done
+elif (( DRY_EXIT != 0 )); then
   dry_fail dry_run_exit_code 0 "$DRY_EXIT"
 else
   for g in $EXECUTED_ATTESTATION_GATES; do
@@ -138,17 +169,33 @@ POST_STATUS="$(git -C "$APP_ROOT" status --porcelain --untracked-files=all | wc 
 [[ "$POST_STATUS" -eq 0 ]] || fail_with "VERIFIER_DIRTIED_THE_WORKTREE" 12
 
 railb_write_evidence_atomic "$EVIDENCE_ROOT/verifier-${TS}.json" "$(printf \
-'{"timestampUtc":"%s","worktreeBranch":"%s","localHead":"%s","expectedRemoteHead":"%s","executableCandidate":"%s","runtimeSourceCount":%s,"executableBuildInputCount":%s,"unknownPathCount":%s,"dryRunTruthful":%s,"statusCount":%s,"canonicalSource":"tracked repository script","productionMutation":"none"}' \
+'{"timestampUtc":"%s","worktreeBranch":"%s","localHead":"%s","expectedRemoteHead":"%s","executableCandidate":"%s","runtimeSourceCount":%s,"executableBuildInputCount":%s,"unknownPathCount":%s,"hostOs":"%s","dryRunAssessment":"%s","dryRunTruthful":"%s","statusCount":%s,"canonicalSource":"tracked repository script","productionMutation":"none"}' \
   "$TS" "$WORKTREE_BRANCH" "$LOCAL_HEAD" "$REMOTE_HEAD" "$EXEC_CANDIDATE" \
-  "$DELTA_RUNTIME" "$DELTA_BUILD_INPUT" "$DELTA_UNKNOWN" "$DRY_RUN_TRUTHFUL" "$POST_STATUS")"
+  "$DELTA_RUNTIME" "$DELTA_BUILD_INPUT" "$DELTA_UNKNOWN" "$VERIFIER_HOST_OS" \
+  "$DRY_RUN_ASSESSMENT" "$DRY_RUN_TRUTHFUL" "$POST_STATUS")"
 
 printf '\nWORKTREE_BRANCH=%s\nLOCAL_HEAD=%s\nEXPECTED_REMOTE_HEAD=%s\n' "$WORKTREE_BRANCH" "$LOCAL_HEAD" "$REMOTE_HEAD"
-printf 'RUNTIME_SOURCE_COUNT=%s\nEXECUTABLE_BUILD_INPUT_COUNT=%s\nUNKNOWN_PATH_COUNT=%s\nDRY_RUN_TRUTHFUL=%s\nSTATUS_COUNT=%s\n' \
-  "$DELTA_RUNTIME" "$DELTA_BUILD_INPUT" "$DELTA_UNKNOWN" "$DRY_RUN_TRUTHFUL" "$POST_STATUS"
+printf 'RUNTIME_SOURCE_COUNT=%s\nEXECUTABLE_BUILD_INPUT_COUNT=%s\nUNKNOWN_PATH_COUNT=%s\nHOST_OS=%s\nDRY_RUN_ASSESSMENT=%s\nDRY_RUN_TRUTHFUL=%s\nSTATUS_COUNT=%s\n' \
+  "$DELTA_RUNTIME" "$DELTA_BUILD_INPUT" "$DELTA_UNKNOWN" "$VERIFIER_HOST_OS" \
+  "$DRY_RUN_ASSESSMENT" "$DRY_RUN_TRUTHFUL" "$POST_STATUS"
 
 (( DELTA_RUNTIME == 0 )) || fail_with "EXECUTABLE_BOUNDARY_INVALID" 10
 (( DELTA_BUILD_INPUT == 0 )) || fail_with "EXECUTABLE_BOUNDARY_INVALID" 10
 (( DELTA_UNKNOWN == 0 )) || fail_with "UNCLASSIFIED_PATHS_PRESENT" 11
+
+# Three terminal outcomes, never conflated:
+#   Darwin + truthful dry run  → package verified, validation may start
+#   Darwin + untruthful        → DRY_RUN_NOT_TRUTHFUL (release-blocking defect)
+#   non-Darwin                 → structure verified, dry-run truthfulness unproven
+if [[ "$DRY_RUN_ASSESSMENT" == NOT_ASSESSABLE_NON_DARWIN_HOST ]]; then
+  printf '\nGOLDPLUS_MAC_RAIL_B_PACKAGE_STRUCTURE_VERIFIED\n'
+  printf 'DRY_RUN_ASSESSMENT_REQUIRES_DARWIN_HOST\n'
+  printf 'Package structure, boundary and wrong-host refusal are proven on %s.\n' "$VERIFIER_HOST_OS"
+  printf 'Dry-run truthfulness is UNPROVEN here — rerun this verifier on the MacBook.\n'
+  printf 'DO NOT run mac-rail-b-preapproval.sh from this host.\n'
+  exit 14
+fi
+
 [[ "$DRY_RUN_TRUTHFUL" == true ]] || fail_with "DRY_RUN_NOT_TRUTHFUL" 13
 
 printf '\nGOLDPLUS_MAC_RAIL_B_PACKAGE_VERIFIED\n'
