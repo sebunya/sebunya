@@ -95,11 +95,41 @@ preapproval with a new executable candidate.
 - **Syntax** 9/9 (`bash -n`). ShellCheck is not installed here — recorded `NOT_APPLICABLE`, which is
   not a release failure; the Mac run re-evaluates it.
 - **Shell API linkage** — `SHELL_API_LINKAGE_PASSED`, 0 undefined, 0 late-source, 0 shadowed.
-- **Fault matrix 94/94**, hermetic: never contacts production, never creates a marker, never touches
+- **Fault matrix 109/109**, hermetic: never contacts production, never creates a marker, never touches
   real Docker resources or a real Git remote. Classes include host/local-source, remote-movement,
   release-identity, evidence-path, approval-marker, deployment/rollback, commerce-safety,
   gate-state, terminal-abort, docker-context, validation-evidence, final-scope,
-  production-contract, linkage, fail-closed, dry-run-assessment, placeholder and failed-run.
+  production-contract, linkage, fail-closed, dry-run-assessment, scope-circularity,
+  macos-fs-metadata, portability, placeholder and failed-run.
+
+## Why the Mac failed at 812046d with RAIL_B_FAULT_MATRIX_FAILED
+
+Linux reported 109/109 while the real Mac failed the tracked verifier on a **clean** worktree.
+The cause was platform-dependent scope derivation, not a bad assertion:
+
+`rebuild()` enumerated the operator-script directories with `readdirSync`, which returns whatever
+the OS left on disk. macOS Finder writes `.DS_Store`, `.gitignore` hides it — so `git status` stays
+clean while the derived scope silently gains an extra input. No fixed point exists, the
+`scope-circularity` case fails, `rail-b-selftest.sh` exits 1, and the verifier reports
+`RAIL_B_FAULT_MATRIX_FAILED` (exit 9). No Linux run can reproduce it, because Linux has no Finder.
+
+Scope inputs now come from `git ls-files`, so untracked and ignored files can never be release-scope
+inputs and the enumeration is identical on every platform. The `macos-fs-metadata` class creates
+`.DS_Store` and AppleDouble `._*` files in both operator-script directories and asserts the scope is
+still a fixed point; it fails under the pre-fix derivation and passes after it.
+
+Two further defects on the same Mac execution path were found and fixed:
+
+- `mapfile` is bash 4+, and stock macOS ships **bash 3.2.57**, where it is a fatal
+  `command not found` inside the linkage test — which is also fault-matrix case 1, producing the
+  same opaque `RAIL_B_FAULT_MATRIX_FAILED`. Replaced with a portable `while read` loop.
+- `grep -c` **prints `0` and exits 1** on no match, so the verifier's `|| printf '0'` fallback
+  produced `"0\n0"`. That breaks the `== "0"` comparisons and makes `(( ))` a syntax error the ERR
+  trap escalates to `UNHANDLED_SCRIPT_ERROR`. This code path runs **only on Darwin**, so it was
+  invisible on Linux and would have made `DRY_RUN_TRUTHFUL=true` unreachable on the Mac.
+
+GNU-only `\b` word boundaries were also removed (BSD grep does not support them). The `portability`
+class anchors its probes on command position and fails if any of these is reintroduced.
 - **Evidence-path safety** — rejects paths inside the Git root, inside `.git`, inside the
   quarantined `GoldPlusFinal`, and symlinks into any of them; paths resolve physically first.
 - **Prohibition audit** on executable lines with comments stripped: 0 `docker compose down`,

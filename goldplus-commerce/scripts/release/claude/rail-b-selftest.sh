@@ -404,13 +404,107 @@ expect_success "scope-circularity" "runbook JSON embeds no scope SHA value" \
   bash -c "! grep -oE '\"provisionalRailAScopeSha256\"[[:space:]]*:[[:space:]]*\"[0-9a-f]{64}\"' \
     '$REPO_ROOT/docs/handover/claude/MAC_RAIL_B_RUNBOOK.json' | grep -q ."
 expect_success "scope-circularity" "runbook markdown embeds no 64-hex scope SHA" \
-  bash -c "! grep -qE '\\b[0-9a-f]{64}\\b' '$REPO_ROOT/docs/handover/claude/MAC_RAIL_B_RUNBOOK.md'"
+  bash -c "! grep -qE '[0-9a-f]{64}' '$REPO_ROOT/docs/handover/claude/MAC_RAIL_B_RUNBOOK.md'"
 expect_success "scope-circularity" "verifier is read-only (never writes the scope file)" \
   bash -c "! grep -qE 'writeFileSync|appendFileSync' '$LIB_DIR/verify-claude-release-scope.mjs'"
 expect_success "scope-circularity" "resync refuses to repoint the executable commit" \
   bash -c "grep -q 'SCOPE_RESYNC_REFUSED' '$LIB_DIR/resync-claude-release-scope.mjs'"
 expect_success "scope-circularity" "scope is a fixed point of the working tree" \
   bash -c "cd '$REPO_ROOT' && node scripts/release/claude/verify-claude-release-scope.mjs"
+
+# ─── Class: macOS filesystem metadata (regression, Mac-reproduced) ──────────
+# At 812046d the real Mac failed the tracked verifier with RAIL_B_FAULT_MATRIX_FAILED
+# on a clean worktree while Linux reported 99/99. Root cause: scope derivation used
+# readdirSync, so Finder's .DS_Store — which .gitignore hides, leaving the worktree
+# clean — became a release-scope input and no fixed point existed. These cases fail
+# under the pre-fix derivation and pass with tracked-files-only enumeration. They
+# create only files that were absent and restore the directory exactly.
+mac_metadata_probe() { # $1 = metadata filename
+  local made=()
+  local d f
+  for d in scripts/release/anti-gravity scripts/release/claude; do
+    f="$REPO_ROOT/$d/$1"
+    [[ -e "$f" ]] || { : > "$f"; made+=("$f"); }
+  done
+  local rc=0
+  ( cd "$REPO_ROOT" && node scripts/release/claude/verify-claude-release-scope.mjs >/dev/null 2>&1 ) || rc=$?
+  [[ ${#made[@]} -eq 0 ]] || rm -f "${made[@]}"
+  return $rc
+}
+expect_success "macos-fs-metadata" "Finder .DS_Store does not drift the release scope" \
+  mac_metadata_probe .DS_Store
+expect_success "macos-fs-metadata" "AppleDouble ._ file does not drift the release scope" \
+  mac_metadata_probe ._probe.sh
+expect_success "macos-fs-metadata" "operator-script scope inputs come from git, not readdir" \
+  bash -c "! grep -qE \"readdirSync\\('scripts/release/(anti-gravity|claude)'\\)\" '$LIB_DIR/verify-claude-release-scope.mjs'"
+expect_success "macos-fs-metadata" "tracked enumeration helper is present" \
+  bash -c "grep -q 'git ls-files -z' '$LIB_DIR/verify-claude-release-scope.mjs'"
+expect_success "macos-fs-metadata" "probe left the worktree exactly as found" \
+  bash -c "! ls '$REPO_ROOT/scripts/release/anti-gravity/.DS_Store' '$REPO_ROOT/scripts/release/claude/.DS_Store' \
+    '$REPO_ROOT/scripts/release/anti-gravity/._probe.sh' '$REPO_ROOT/scripts/release/claude/._probe.sh' >/dev/null 2>&1"
+
+# ─── Class: BSD/bash-3.2 portability (macOS userland) ───────────────────────
+# Stock macOS ships bash 3.2.57 and BSD grep. Constructs that work on GNU/Linux
+# fail or silently mismatch there, and every such failure surfaces only as an
+# opaque RAIL_B_FAULT_MATRIX_FAILED from the tracked verifier.
+# Probes anchor on COMMAND POSITION so a pattern literal or a test name containing
+# the word (e.g. "startup timeout blocks") is not mistaken for an invocation.
+cat > "$SANDBOX/portability-scan.sh" <<'PSCAN'
+#!/usr/bin/env bash
+# usage: portability-scan.sh <dir> <bash4|coreutils|wordboundary>
+set -uo pipefail
+d="$1"; mode="$2"; hits=0
+for f in "$d"/*.sh; do
+  case "$mode" in
+    bash4)     pat='^[[:space:]]*(mapfile|readarray|coproc)[[:space:]]|^[[:space:]]*declare -A[[:space:]]|^[[:space:]]*local -n[[:space:]]' ;;
+    coreutils) pat='^[[:space:]]*(timeout|sha256sum|md5sum|tac|nproc|realpath)[[:space:]]' ;;
+    wordboundary) pat='grep [^|]*\\b' ;;
+  esac
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    printf '%s:%s\n' "$(basename "$f")" "$line"
+    hits=$((hits+1))
+  done < <(grep -nE "$pat" "$f" 2>/dev/null)
+done
+exit $(( hits > 0 ))
+PSCAN
+chmod +x "$SANDBOX/portability-scan.sh"
+expect_success "portability" "no bash 4+ only builtins invoked in tracked scripts" \
+  "$SANDBOX/portability-scan.sh" "$LIB_DIR" bash4
+expect_success "portability" "no GNU-only coreutils invoked on the Mac path" \
+  "$SANDBOX/portability-scan.sh" "$LIB_DIR" coreutils
+expect_success "portability" "no GNU-only \\b word boundary in grep patterns" \
+  "$SANDBOX/portability-scan.sh" "$LIB_DIR" wordboundary
+expect_success "portability" "verifier normalises grep -c instead of appending a fallback" \
+  bash -c "! grep -qE 'grep -cE .* \\|\\| printf' '$LIB_DIR/mac-rail-b-verifier.sh'"
+
+# grep -c PRINTS "0" and EXITS 1 on no-match; a `|| printf 0` fallback yields "0\n0",
+# which breaks == "0" and makes (( )) a syntax error. Only the Darwin branch runs it.
+cat > "$SANDBOX/darwin-predicates.sh" <<'DPRED'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+L="$1"
+{ echo "  PASS  host.attestation"
+  echo "  PASS  branch.semantics"
+  echo "  PASS  boundary.runtimeSource"
+  echo "  NOT_RUN  docker.ready"
+  echo "  NOT_RUN  playwright.exactImage"; } > "$L"
+count_status() {
+  local n
+  n="$(grep -cE "^  $1 " "$L" 2>/dev/null || true)"
+  n="${n%%$'\n'*}"
+  printf '%s' "${n:-0}"
+}
+for g in host.attestation branch.semantics boundary.runtimeSource; do
+  grep -qE "^  PASS +${g}([^A-Za-z0-9_.]|$)" "$L" || { echo "gate $g not PASS"; exit 1; }
+done
+(( $(count_status NOT_RUN) > 0 )) || { echo "no NOT_RUN"; exit 1; }
+[[ "$(count_status FAIL)" == "0" ]] || { echo "FAIL count not 0"; exit 1; }
+[[ "$(count_status BLOCKED)" == "0" ]] || { echo "BLOCKED count not 0"; exit 1; }
+DPRED
+chmod +x "$SANDBOX/darwin-predicates.sh"
+expect_success "portability" "Darwin truthfulness predicates hold on a truthful dry-run log" \
+  "$SANDBOX/darwin-predicates.sh" "$SANDBOX/darwin-dry.log"
 
 # ─── Class: placeholder hazards ─────────────────────────────────────────────
 VFR="$LIB_DIR/mac-rail-b-verify-finalised-release.sh"

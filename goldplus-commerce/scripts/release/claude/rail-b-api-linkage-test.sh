@@ -51,7 +51,12 @@ row() {
 }
 
 # Library-defined functions, for shadow detection.
-mapfile -t LIB_FUNCS < <(grep -oE '^railb_[a-z_]+\(\)' "$LIB" | tr -d '()' | sort -u)
+# `mapfile` is bash 4+; stock macOS ships bash 3.2.57, where it is a fatal
+# "command not found". A while-read loop is equivalent and runs everywhere.
+LIB_FUNCS=()
+while IFS= read -r _lf; do
+  [[ -n "$_lf" ]] && LIB_FUNCS+=("$_lf")
+done < <(grep -oE '^railb_[a-z_]+\(\)' "$LIB" | tr -d '()' | sort -u)
 
 printf 'Rail B shell API linkage\n'
 
@@ -72,11 +77,11 @@ for caller in "${CALLERS[@]}"; do
       UNDEFINED=$((UNDEFINED+1))
       row "$caller" "$fn" UNDEFINED
     fi
-  done < <(grep -oE '\brailb_[a-z_]+\b' "$path" | sort -u)
+  done < <(grep -oE 'railb_[a-z_]+' "$path" | sort -u)
 
   # 2. The library must be sourced before the first railb_* invocation.
   src_line="$(grep -nE 'source "\$\{SCRIPT_DIR\}/rail-b-lib\.sh"' "$path" | head -1 | cut -d: -f1 || true)"
-  use_line="$(grep -nE '\brailb_[a-z_]+\b' "$path" | grep -vE 'source |rail-b-lib' | head -1 | cut -d: -f1 || true)"
+  use_line="$(grep -nE 'railb_[a-z_]+' "$path" | grep -vE 'source |rail-b-lib' | head -1 | cut -d: -f1 || true)"
   if [[ -z "$src_line" ]]; then
     printf '  NO_SOURCE  %s\n' "$caller"; LATE_SOURCE=$((LATE_SOURCE+1)); row "$caller" "-" NO_SOURCE
   elif [[ -n "$use_line" ]] && (( src_line > use_line )); then

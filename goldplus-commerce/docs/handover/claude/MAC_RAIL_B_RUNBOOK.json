@@ -86,8 +86,8 @@
     "syntax": "PASS 3/3 (bash -n)",
     "dryRun": "NOT_ASSESSABLE on this Linux host — the validator refuses at host attestation with exit 10 and WRONG_OPERATING_SYSTEM: Linux, which is asserted against the wrong-host contract; truthfulness is provable only on Darwin",
     "faultInjection": {
-      "total": 94,
-      "passed": 94,
+      "total": 109,
+      "passed": 109,
       "hermetic": true,
       "contactedProduction": false,
       "createdMarker": false,
@@ -107,7 +107,10 @@
         "validation-evidence",
         "final-scope",
         "production-contract",
-        "dry-run-assessment"
+        "dry-run-assessment",
+        "scope-circularity",
+        "macos-fs-metadata",
+        "portability"
       ]
     },
     "prohibitionAudit": "performed on executable lines with comments stripped: 0 compose-down, 0 reboot, 0 infra restart, 0 marker write, 0 wildcard removal",
@@ -448,5 +451,34 @@
     ],
     "permanentlyIneligible": true
   },
-  "realMacSmokeTest": "NOT_RUN_IN_THIS_ENVIRONMENT — requires the Darwin worktree; this environment is Linux"
+  "realMacSmokeTest": "NOT_RUN_IN_THIS_ENVIRONMENT — requires the Darwin worktree; this environment is Linux",
+  "macFaultMatrixFailureAt812046d": {
+    "symptom": "tracked verifier exited 9 with RAIL_B_FAULT_MATRIX_FAILED on a clean Mac worktree while Linux reported 109/109",
+    "classification": "MAC_IMPLEMENTATION_DEFECT",
+    "failingCase": "scope-circularity / scope is a fixed point of the working tree",
+    "rootCause": "release-scope derivation enumerated scripts/release/{anti-gravity,claude} with readdirSync, so macOS Finder's .DS_Store — hidden by .gitignore, leaving the worktree clean — became a release-scope input and no fixed point could exist",
+    "fix": "scope inputs are enumerated with git ls-files (tracked files only), identical on every platform",
+    "regressionClass": "macos-fs-metadata",
+    "secondaryDefectsOnSameMacPath": [
+      {
+        "defect": "mapfile is bash 4+; stock macOS ships bash 3.2.57",
+        "impact": "fatal command-not-found in rail-b-api-linkage-test.sh, which is also fault-matrix case 1, producing the same opaque RAIL_B_FAULT_MATRIX_FAILED",
+        "fix": "portable while-read loop",
+        "classification": "BASH_VERSION_COMPATIBILITY_DEFECT"
+      },
+      {
+        "defect": "grep -c prints 0 and exits 1 on no match, so `|| printf '0'` yielded \"0\\n0\"",
+        "impact": "Darwin-only branch; breaks == \"0\" comparisons and makes (( )) a syntax error escalated by the ERR trap to UNHANDLED_SCRIPT_ERROR, making DRY_RUN_TRUTHFUL=true unreachable on the Mac",
+        "fix": "capture inside the substitution and normalise to one integer",
+        "classification": "BSD_USERLAND_PORTABILITY_DEFECT"
+      },
+      {
+        "defect": "GNU-only \\b word boundaries in grep -E",
+        "impact": "BSD grep does not support them; predicates could mismatch silently on macOS",
+        "fix": "portable character-class boundaries, or dropped where dropping is strictly stricter",
+        "classification": "BSD_USERLAND_PORTABILITY_DEFECT"
+      }
+    ],
+    "guardClass": "portability — probes anchor on command position and fail if any defect is reintroduced"
+  }
 }

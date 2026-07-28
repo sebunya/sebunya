@@ -47,6 +47,30 @@ const FORBIDDEN = [
 
 export const SCOPE_FILE = SCOPE_PATH;
 
+/**
+ * Scope inputs must be TRACKED files only.
+ *
+ * `readdirSync` returns whatever the operating system left in the directory. On
+ * macOS, Finder writes `.DS_Store` (and AppleDouble `._*` files on some volumes),
+ * which `.gitignore` hides — so the worktree still reports clean while the derived
+ * scope silently gains an extra input and can never reach a fixed point. That is a
+ * Mac-only, clean-worktree scope failure that no Linux run can reproduce.
+ *
+ * `git ls-files` makes the enumeration identical on every platform: untracked and
+ * ignored files can never become release-scope inputs.
+ */
+function trackedFilesIn(dir) {
+  const out = execSync(`git ls-files -z -- ${JSON.stringify(dir)}`, {
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return out
+    .split('\0')
+    .filter(Boolean)
+    .map((p) => path.posix.basename(p))
+    .sort();
+}
+
 export function rebuild(scope) {
   const migDir = 'apps/api/src/infrastructure/db/migrations';
   const migrations = fs
@@ -56,14 +80,11 @@ export function rebuild(scope) {
     .map((f) => ({ file: f, sha256: fileSha(path.join(migDir, f)) }));
 
   const operatorScripts = {};
-  for (const f of fs.readdirSync('scripts/release/anti-gravity').sort()) {
+  for (const f of trackedFilesIn('scripts/release/anti-gravity')) {
     operatorScripts[f] = fileSha(path.join('scripts/release/anti-gravity', f));
   }
   // Rail B operator tooling is release-bound and must be covered by the scope.
-  for (const f of fs
-    .readdirSync('scripts/release/claude')
-    .sort()
-    .filter((x) => x.endsWith('.sh') || x.endsWith('.mjs'))) {
+  for (const f of trackedFilesIn('scripts/release/claude')) {
     operatorScripts[`claude/${f}`] = fileSha(path.join('scripts/release/claude', f));
   }
 

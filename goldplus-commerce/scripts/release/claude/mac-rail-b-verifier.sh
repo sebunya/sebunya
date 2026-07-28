@@ -125,7 +125,17 @@ wrong_host_fail() { # predicate, expected, actual
 }
 
 EXECUTED_ATTESTATION_GATES="host.attestation branch.semantics boundary.runtimeSource"
-count_status() { grep -cE "^  $1 " "$DRY_LOG" 2>/dev/null || printf '0'; }
+# `grep -c` PRINTS "0" and EXITS 1 when there are no matches, so a `|| printf '0'`
+# fallback emits "0\n0" — which fails the == "0" comparisons and makes `(( ))`
+# raise a syntax error that the ERR trap turns into UNHANDLED_SCRIPT_ERROR. This
+# branch only runs on Darwin, so the bug was invisible on Linux. Capture inside the
+# substitution and normalise to exactly one integer.
+count_status() {
+  local n
+  n="$(grep -cE "^  $1 " "$DRY_LOG" 2>/dev/null || true)"
+  n="${n%%$'\n'*}"
+  printf '%s' "${n:-0}"
+}
 
 # Truthfulness is a property of a dry run that was ALLOWED to run. On a non-Darwin
 # host the validator refuses at gate 1 by design, so exit 10 there is correct
@@ -149,8 +159,8 @@ elif (( DRY_EXIT != 0 )); then
   dry_fail dry_run_exit_code 0 "$DRY_EXIT"
 else
   for g in $EXECUTED_ATTESTATION_GATES; do
-    if ! grep -qE "^  PASS +${g}\b" "$DRY_LOG"; then
-      dry_fail "executed_attestation_gate:${g}" PASS "$(grep -oE "^  [A-Z_]+ +${g}\b" "$DRY_LOG" | awk '{print $1}' | head -1)"
+    if ! grep -qE "^  PASS +${g}([^A-Za-z0-9_.]|$)" "$DRY_LOG"; then
+      dry_fail "executed_attestation_gate:${g}" PASS "$(grep -oE "^  [A-Z_]+ +${g}([^A-Za-z0-9_.]|$)" "$DRY_LOG" | awk '{print $1}' | head -1)"
     fi
   done
   SKIPPED_NOT_RUN="$(count_status NOT_RUN)"
