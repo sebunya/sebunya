@@ -216,4 +216,7 @@ done
 gates_allow_final_result \
   || fail_with "MAC_RAIL_B_PREAPPROVAL_INCOMPLETE: fail=${GATE_FAIL_COUNT} blocked=${GATE_BLOCKED_COUNT} notRun=${GATE_NOT_RUN_COUNT}" 21
 
-echo "MAC_RAIL_B_PREAPPROVAL_COMPLETE — no marker was created; production was not mutated."
+# Documented operator-facing success contract. The human approval step follows;
+# this script never creates a marker and never deploys.
+echo "CLAUDE_MAC_RAIL_B_PREAPPROVAL_COMPLETE_HUMAN_APPROVAL_REQUIRED"
+echo "  no marker was created; production was not mutated."

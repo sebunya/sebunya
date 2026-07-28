@@ -8,9 +8,9 @@
   "scripts": {
     "preapproval": {
       "path": "scripts/release/claude/mac-rail-b-preapproval.sh",
-      "sha256": "6885259401a6c088cbf01fac7f4330a1b0a892ac4d421212194fbb5a6b2e8ffc",
+      "sha256": "08b7f826c145ab24a5a27a361eddb45fc0c1bea524f59a3db197d1f7266d82f9",
       "usage": "scripts/release/claude/mac-rail-b-preapproval.sh [--dry-run]",
-      "productionMutation": "none — production is read-only for the whole script"
+      "productionMutation": "none \u2014 production is read-only for the whole script"
     },
     "production": {
       "path": "scripts/release/claude/mac-rail-b-production.sh",
@@ -36,7 +36,7 @@
   },
   "validation": {
     "syntax": "PASS 3/3 (bash -n)",
-    "dryRun": "PASS — host attestation correctly reported this non-Darwin host as FAIL; unexecuted steps report NOT-RUN(dry-run), never PASS",
+    "dryRun": "PASS \u2014 host attestation correctly reported this non-Darwin host as FAIL; unexecuted steps report NOT-RUN(dry-run), never PASS",
     "faultInjection": {
       "total": 36,
       "passed": 36,
@@ -134,7 +134,7 @@
     "declared": false
   },
   "branchSemantics": {
-    "WORKTREE_BRANCH": "local branch name; evidence only — never required to equal TARGET_BRANCH",
+    "WORKTREE_BRANCH": "local branch name; evidence only \u2014 never required to equal TARGET_BRANCH",
     "TARGET_BRANCH": "remote branch defining the baseline and receiving the package (default phase-2-measurement-control-tower-completion, override with --target-branch or RAIL_B_TARGET_BRANCH)",
     "EXPECTED_REMOTE_HEAD": "origin/TARGET_BRANCH at run start; re-checked before finalisation",
     "acceptedCase": "clean side branch whose HEAD equals origin/TARGET_BRANCH",
@@ -210,5 +210,33 @@
   },
   "provisionalRailAScopeSha256": "50e9baa05c3e7d695be07e498064cf0abbd32c04126e2a6c7c612138d55ff842",
   "scopeStatus": "PROVISIONAL_RAIL_A",
-  "moduleInventorySha256": "0ccb4f4d2fd3d6b1fdd764b438d198ce01271a8d74b5584b7010ce01c5e6f180"
+  "moduleInventorySha256": "0ccb4f4d2fd3d6b1fdd764b438d198ce01271a8d74b5584b7010ce01c5e6f180",
+  "terminalStatuses": {
+    "verifierVerifyOnly": "VERIFICATION_COMPLETE \u2014 REAL PREAPPROVAL NOT STARTED",
+    "preapprovalDryRun": "MAC_RAIL_B_DRY_RUN_COMPLETE",
+    "preapprovalSuccess": "CLAUDE_MAC_RAIL_B_PREAPPROVAL_COMPLETE_HUMAN_APPROVAL_REQUIRED",
+    "preapprovalRuntimeDefect": "MAC_RAIL_B_RUNTIME_DEFECT_FOUND",
+    "preapprovalIncomplete": "MAC_RAIL_B_PREAPPROVAL_INCOMPLETE"
+  },
+  "externalVerifier": {
+    "name": "GoldPlus_Mac_Rail_B_Final_Verifier.sh",
+    "tracked": false,
+    "location": "must live OUTSIDE the worktree (e.g. ~/Downloads); it refuses to run from inside the Git root",
+    "portability": "POSIX tools only \u2014 no GNU-specific awk/grep/sed, so BSD userland on macOS behaves identically",
+    "emits": [
+      "RUNTIME_SOURCE_COUNT",
+      "EXECUTABLE_BUILD_INPUT_COUNT",
+      "UNKNOWN_PATH_COUNT",
+      "DRY_RUN_TRUTHFUL",
+      "STATUS_COUNT"
+    ],
+    "modes": {
+      "default": "verification only; starts no preapproval work and mutates nothing",
+      "--execute": "verification then the tracked real preapproval"
+    }
+  },
+  "releaseFinalisation": {
+    "performedByPreapprovalScript": false,
+    "note": "The tracked preapproval script does NOT compute a final scope or create an annotated tag. It validates and stops. Final scope and tag creation remain a separate, explicitly authorised step once the Mac evidence exists."
+  }
 }
