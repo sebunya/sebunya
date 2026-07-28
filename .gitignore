@@ -15,3 +15,9 @@ dist/
 .astro/
 .cache/
 coverage/
+
+# Nested git worktrees. `git worktree add` under the main worktree leaves the
+# checkout untracked here; committing it would embed a second copy of this
+# repository (thousands of files) into this branch. The work inside lives on
+# its own branch and is pushed from there.
+goldplus-clean-continuation/
