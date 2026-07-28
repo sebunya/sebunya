@@ -38,9 +38,10 @@ Finalisation pushes with `git push origin HEAD:refs/heads/${TARGET_BRANCH}` — 
 Every gate records exactly one of `PASS`, `FAIL`, `BLOCKED`, `NOT_RUN`, `NOT_APPLICABLE`, with
 `gateId`, `startedAt`, `finishedAt`, `command`, `exitCode`, `evidencePath` and `reason`.
 
-`PASS` is reachable **only** when a command actually ran and exited zero. Every dry-run step records
-`NOT_RUN`, so a dry run cannot report success — verified: **0 `PASS` lines** in dry-run output. A
-final result is impossible while any mandatory gate is `FAIL`, `BLOCKED` or `NOT_RUN`.
+`PASS` is reachable **only** when a command actually ran and exited zero. A dry run records
+`NOT_RUN` for every skipped execution gate, while the gates that genuinely execute (host
+attestation, branch semantics, executable boundary) legitimately record `PASS`. A final result is
+impossible while any mandatory gate is `FAIL`, `BLOCKED` or `NOT_RUN`.
 
 ## Playwright classification
 
@@ -60,8 +61,12 @@ substitutes the Rail A subset.
 | `mac-rail-b-preapproval.sh [--dry-run] [--target-branch <b>] [--evidence-root <p>]` | Every pre-approval gate; production read-only throughout |
 | `mac-rail-b-production.sh --release <id> --marker <path> [--check-only]` | Deploys only when the exact operator-created marker already exists |
 | `mac-rail-b-rollback.sh --api-image <id> --web-image <id>` | Restores exact preserved images with `--no-deps`, re-verifies catalogue and canonical-price parity |
-| `rail-b-lib.sh` | Branch semantics, gate-state machine, evidence-path safety |
+| `mac-rail-b-verifier.sh` | Tracked canonical verifier — release authority; an attachment or Downloads copy is not |
+| `mac-rail-b-finalise-release.sh --validation-run <abs path>` | Consumes one successful validation summary; creates the package head and remote annotated tag |
+| `mac-rail-b-verify-finalised-release.sh --manifest <abs path>` | Independently re-verifies remote branch, annotated tag, package head, final scope and image digests |
+| `rail-b-lib.sh` | Gate state machine, deterministic Docker readiness, branch semantics, evidence-path safety, fail-closed helpers |
 | `rail-b-selftest.sh [--json <p>]` | Hermetic fault matrix |
+| `rail-b-api-linkage-test.sh [--json <p>]` | Shell API linkage contract (`declare -F`) |
 
 ## Runtime-defect behaviour
 
@@ -74,11 +79,14 @@ preapproval with a new executable candidate.
 
 ## Validation performed
 
-- **Syntax** 5/5 (`bash -n`). ShellCheck is not installed here — recorded `NOT_APPLICABLE`, which is
+- **Syntax** 8/8 (`bash -n`). ShellCheck is not installed here — recorded `NOT_APPLICABLE`, which is
   not a release failure; the Mac run re-evaluates it.
-- **Fault matrix 36/36**, hermetic: never contacts production, never creates a marker, never touches
-  real Docker resources or a real Git remote. Classes: host/local-source, remote-movement,
-  release-identity, evidence-path, approval-marker, deployment/rollback, commerce-safety, gate-state.
+- **Shell API linkage** — `SHELL_API_LINKAGE_PASSED`, 0 undefined, 0 late-source, 0 shadowed.
+- **Fault matrix 84/84**, hermetic: never contacts production, never creates a marker, never touches
+  real Docker resources or a real Git remote. Classes include host/local-source, remote-movement,
+  release-identity, evidence-path, approval-marker, deployment/rollback, commerce-safety,
+  gate-state, terminal-abort, docker-context, validation-evidence, final-scope,
+  production-contract, linkage, fail-closed, placeholder and failed-run.
 - **Evidence-path safety** — rejects paths inside the Git root, inside `.git`, inside the
   quarantined `GoldPlusFinal`, and symlinks into any of them; paths resolve physically first.
 - **Prohibition audit** on executable lines with comments stripped: 0 `docker compose down`,
@@ -98,14 +106,58 @@ Parsed from `pnpm lint` by `scripts/release/claude/reconcile-lint.mjs`. Recorded
 
 ## Running Rail B on the Mac
 
+One fail-closed block. Do not split it across terminal sessions and do not
+substitute values by hand.
+
 ```bash
+set -Eeuo pipefail
 cd /Users/robertsebunya/Documents/GitHub_Projects/goldplus-mac-rail-b-20260728T175024Z/goldplus-commerce
 git fetch origin phase-2-measurement-control-tower-completion
 git merge --ff-only origin/phase-2-measurement-control-tower-completion
-scripts/release/claude/mac-rail-b-preapproval.sh --dry-run
-scripts/release/claude/mac-rail-b-preapproval.sh
+bash scripts/release/claude/mac-rail-b-verifier.sh
+bash scripts/release/claude/mac-rail-b-preapproval.sh
 ```
 
-Evidence defaults to `goldplus-mac-rail-b-evidence-<timestamp>` beside the outer Git root.
+- **Do not run preapproval when the verifier fails.**
+- **Do not run the finaliser** unless validation returns exactly
+  `CLAUDE_MAC_RAIL_B_VALIDATION_COMPLETE_RELEASE_FINALISATION_REQUIRED` and prints a real
+  absolute summary path.
+- **Do not run remote tag verification** unless finalisation succeeds.
 
-Neither Claude nor any script creates or removes an approval marker.
+Validation and finalisation stay separate operator decisions; nothing chains automatically.
+
+Finalisation and remote verification use tracked, fail-closed scripts — never a copy-paste block:
+
+```
+scripts/release/claude/mac-rail-b-finalise-release.sh --validation-run <path printed by the validator>
+scripts/release/claude/mac-rail-b-verify-finalised-release.sh --manifest <path printed by the finaliser>
+```
+
+Those two lines are prose, not a runnable block: both scripts refuse an angle-bracket
+literal, a relative path, a symlink and a missing file, so a pasted placeholder fails
+closed instead of appearing to succeed.
+
+## Why the previous Mac run failed
+
+The first real Mac execution stopped at
+`railb_assert_no_runtime_source: command not found` while the hermetic suite reported
+69/69, because the suite exercised library functions directly and never checked that the
+*callers* referenced functions that exist. `bash -n` cannot see a missing sourced function.
+
+Two fixes close that gap permanently:
+
+- one canonical boundary function, `railb_assert_executable_boundary`, enforcing all three
+  counts, with every stale caller updated and no compatibility alias;
+- `rail-b-api-linkage-test.sh`, which enumerates every `railb_*` call in every tracked
+  caller and proves it exists with `declare -F`. Fault injection confirms it fails on the
+  exact Mac defect and on a misspelling, while `bash -n` still passes.
+
+The verifier's dry-run predicate was also wrong: it treated any `PASS` as untruthful, but a
+truthful dry run legitimately passes the gates that genuinely execute. It now checks exit
+code, executed attestation gates, `NOT_RUN` for skipped work, zero FAIL/BLOCKED and the
+absence of validation, finalisation and marker wording — and prints
+`predicate` / `expected` / `actual` / `evidence` when it fails.
+
+Every tracked entry point now runs `set -Eeuo pipefail` with an `ERR` trap, so an
+unexpected shell error records terminal evidence, marks the run ineligible and never prints
+a success status.

@@ -138,7 +138,7 @@ echo 'export const x = 1;' > "$SANDBOX/r5/work/goldplus-commerce/apps/api/src/le
 git -C "$SANDBOX/r5/work" add -A >/dev/null
 git -C "$SANDBOX/r5/work" commit -qm "runtime leak"
 expect_refusal "release-identity" "runtime source in exec..package diff" "EXECUTABLE_BOUNDARY_INVALID" \
-  probe "railb_assert_boundary_clean '$R5' '$EXEC5' HEAD"
+  probe "railb_assert_executable_boundary '$R5' '$EXEC5' HEAD"
 
 # ─── Class: evidence-path safety ────────────────────────────────────────────
 GITROOT="$SANDBOX/r1/work"
@@ -295,7 +295,7 @@ expect_refusal "validation-evidence" "runState not VALIDATED" "VALIDATION_RUN_ST
   bash "$FIN" --validation-run "$(mkv rs.json '{"runState":"RUNNING"}')"
 expect_refusal "validation-evidence" "not eligible for finalisation" "VALIDATION_NOT_ELIGIBLE" \
   bash "$FIN" --validation-run "$(mkv el.json '{"runState":"VALIDATED","eligibleForFinalisation":false}')"
-expect_refusal "validation-evidence" "blocked historic run refused" "BLOCKED_RUN_PERMANENTLY_INELIGIBLE" \
+expect_refusal "validation-evidence" "blocked historic run refused" "FAILED_RUN_PERMANENTLY_INELIGIBLE" \
   bash "$FIN" --validation-run "$(mkv bl.json '{"runState":"VALIDATED","eligibleForFinalisation":true,"classification":"ABORTED_BLOCKED"}')"
 expect_refusal "validation-evidence" "contains FAIL" "VALIDATION_CONTAINS_FAIL" \
   bash "$FIN" --validation-run "$(mkv f.json '{"runState":"VALIDATED","eligibleForFinalisation":true,"failCount":1}')"
@@ -335,6 +335,54 @@ expect_success "production-contract" "preapproval never claims approval readines
   bash -c "! grep -qE '^[^#]*HUMAN_APPROVAL_REQUIRED' '$LIB_DIR/mac-rail-b-preapproval.sh'"
 expect_success "production-contract" "only the finaliser returns the finalised status" \
   bash -c "grep -q 'CLAUDE_MAC_RAIL_B_RELEASE_FINALISED_HUMAN_APPROVAL_REQUIRED' '$LIB_DIR/mac-rail-b-finalise-release.sh'"
+
+
+# ─── Class: shell API linkage and fail-closed behaviour ─────────────────────
+LINK="$LIB_DIR/rail-b-api-linkage-test.sh"
+expect_success "linkage" "tracked callers pass the linkage test" bash "$LINK"
+expect_success "linkage" "undefined function is detected" \
+  bash -c "cp '$LIB_DIR/mac-rail-b-preapproval.sh' '$SANDBOX/pre.bak'; \
+    sed -i.bak 's/railb_branch_preflight /railb_branch_prefligt /' '$LIB_DIR/mac-rail-b-preapproval.sh'; \
+    ! bash '$LINK' >/dev/null 2>&1; rc=\$?; \
+    cp '$SANDBOX/pre.bak' '$LIB_DIR/mac-rail-b-preapproval.sh'; rm -f '$LIB_DIR/mac-rail-b-preapproval.sh.bak'; exit \$rc"
+expect_success "linkage" "stale renamed caller is detected" \
+  bash -c "cp '$LIB_DIR/mac-rail-b-preapproval.sh' '$SANDBOX/pre2.bak'; \
+    sed -i.bak 's/railb_assert_executable_boundary /railb_assert_no_runtime_source /' '$LIB_DIR/mac-rail-b-preapproval.sh'; \
+    ! bash '$LINK' >/dev/null 2>&1; rc=\$?; \
+    cp '$SANDBOX/pre2.bak' '$LIB_DIR/mac-rail-b-preapproval.sh'; rm -f '$LIB_DIR/mac-rail-b-preapproval.sh.bak'; exit \$rc"
+expect_refusal "linkage" "missing library file refused" "MISSING_LIBRARY_FILE" \
+  bash -c "cp '$LIB_DIR/rail-b-lib.sh' '$SANDBOX/lib.bak'; mv '$LIB_DIR/rail-b-lib.sh' '$SANDBOX/lib.hidden'; \
+    bash '$LIB_DIR/mac-rail-b-preapproval.sh' --dry-run; rc=\$?; \
+    mv '$SANDBOX/lib.hidden' '$LIB_DIR/rail-b-lib.sh'; exit \$rc"
+expect_refusal "fail-closed" "undefined railb_ function refused at startup" "UNDEFINED_SHELL_FUNCTION" \
+  bash -c "source '$LIB_DIR/rail-b-lib.sh'; railb_require_functions railb_does_not_exist"
+expect_refusal "fail-closed" "unexpected command-not-found is terminal" "UNHANDLED_SCRIPT_ERROR" \
+  bash -c "source '$LIB_DIR/rail-b-lib.sh'; railb_run_init fc1; EVIDENCE_ROOT=''; railb_enable_fail_closed; definitely_not_a_command; echo SHOULD_NOT_PRINT"
+expect_success "fail-closed" "no success wording after an unexpected error" \
+  bash -c "source '$LIB_DIR/rail-b-lib.sh'; railb_run_init fc2; EVIDENCE_ROOT=''; \
+    out=\$( (railb_enable_fail_closed; nope_cmd; echo VALIDATION_COMPLETE) 2>&1 ); \
+    ! echo \"\$out\" | grep -q VALIDATION_COMPLETE"
+
+# ─── Class: placeholder hazards ─────────────────────────────────────────────
+VFR="$LIB_DIR/mac-rail-b-verify-finalised-release.sh"
+expect_refusal "placeholder" "literal angle-bracket manifest path refused" "LITERAL_PLACEHOLDER_PATH_REFUSED" \
+  bash "$VFR" --manifest "/tmp/<package-head-from-finaliser>.json"
+expect_refusal "placeholder" "relative manifest path refused" "MANIFEST_PATH_MUST_BE_ABSOLUTE" \
+  bash "$VFR" --manifest "./final-manifest.json"
+expect_refusal "placeholder" "missing manifest refused" "MANIFEST_FILE_MISSING" \
+  bash "$VFR" --manifest "/tmp/definitely-absent-manifest.json"
+expect_refusal "placeholder" "literal placeholder validation path refused" "VALIDATION_FILE_MISSING" \
+  bash "$FIN" --validation-run "/absolute/path/printed/by/the-validator.json"
+expect_success "placeholder" "runbook contains no angle-bracket executable placeholders" \
+  bash -c "! grep -nE '^[[:space:]]*(bash|git|test|\\[)' '$LIB_DIR/../../../docs/handover/claude/MAC_RAIL_B_RUNBOOK.md' | grep -q '<'"
+expect_success "placeholder" "runbook prints no bare remote-verification success" \
+  bash -c "! grep -qE '^[[:space:]]*echo .*REMOTE_BRANCH_AND_ANNOTATED_TAG_VERIFIED' '$LIB_DIR/../../../docs/handover/claude/MAC_RAIL_B_RUNBOOK.md'"
+
+# ─── Class: failed-run rehabilitation refused ───────────────────────────────
+expect_refusal "failed-run" "ABORTED_SCRIPT_ERROR run refused" "FAILED_RUN_PERMANENTLY_INELIGIBLE" \
+  bash "$FIN" --validation-run "$(mkv ase.json '{"runState":"VALIDATED","eligibleForFinalisation":true,"classification":"ABORTED_SCRIPT_ERROR"}')"
+expect_refusal "failed-run" "VERIFIER_FAILED run refused" "FAILED_RUN_PERMANENTLY_INELIGIBLE" \
+  bash "$FIN" --validation-run "$(mkv vf.json '{"runState":"VALIDATED","eligibleForFinalisation":true,"classification":"VERIFIER_FAILED"}')"
 
 # ─── Summary ────────────────────────────────────────────────────────────────
 TOTAL=$((PASS+FAIL))

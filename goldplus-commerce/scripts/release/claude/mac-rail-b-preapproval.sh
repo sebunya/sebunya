@@ -18,11 +18,25 @@
 # Usage:
 #   mac-rail-b-preapproval.sh [--dry-run] [--target-branch <name>] [--evidence-root <path>]
 # =============================================================================
-set -euo pipefail
+set -Eeuo pipefail
 
-APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
-# shellcheck source=./rail-b-lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/rail-b-lib.sh"
+SCRIPT_DIR="$(
+  CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &&
+  pwd -P
+)"
+APP_ROOT="$(cd -- "${SCRIPT_DIR}/../../.." && pwd -P)"
+# shellcheck source=rail-b-lib.sh
+[[ -f "${SCRIPT_DIR}/rail-b-lib.sh" ]] || {
+  printf '
+MAC_RAIL_B_VALIDATION_FAILED
+reasonCode=MISSING_LIBRARY_FILE path=%s
+' \
+    "${SCRIPT_DIR}/rail-b-lib.sh" >&2
+  exit 92
+}
+source "${SCRIPT_DIR}/rail-b-lib.sh"
+railb_enable_fail_closed
+railb_require_functions railb_run_init railb_branch_preflight railb_assert_executable_boundary railb_docker_ready railb_docker_diagnostics_json railb_write_evidence_atomic railb_run_summary_json railb_finalise_run_state railb_terminate
 
 DRY_RUN=0
 TARGET_BRANCH="${RAIL_B_TARGET_BRANCH:-phase-2-measurement-control-tower-completion}"
@@ -87,7 +101,7 @@ echo "  EXPECTED_REMOTE_HEAD = $EXPECTED_REMOTE_HEAD"
 record_gate branch.semantics "$GATE_PASS" "railb_branch_preflight" 0 "$EVIDENCE_ROOT" \
   "side branch accepted: HEAD == origin/$TARGET_BRANCH"
 
-RUNTIME_PATHS="$(railb_assert_no_runtime_source "$APP_ROOT" "$EXEC_CANDIDATE" "$LOCAL_HEAD")"
+RUNTIME_PATHS="$(railb_assert_executable_boundary "$APP_ROOT" "$EXEC_CANDIDATE" "$LOCAL_HEAD")"
 record_gate boundary.runtimeSource "$GATE_PASS" "git diff --name-only ${EXEC_CANDIDATE}..HEAD" 0 \
   "$EVIDENCE_ROOT" "runtime-source paths=$RUNTIME_PATHS"
 

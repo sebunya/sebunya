@@ -11,10 +11,25 @@
 #
 # Usage: mac-rail-b-verifier.sh [--target-branch <b>] [--evidence-root <p>] [--allow-fast-forward]
 # =============================================================================
-set -euo pipefail
+set -Eeuo pipefail
 
-APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
-source "$(dirname "${BASH_SOURCE[0]}")/rail-b-lib.sh"
+SCRIPT_DIR="$(
+  CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &&
+  pwd -P
+)"
+APP_ROOT="$(cd -- "${SCRIPT_DIR}/../../.." && pwd -P)"
+# shellcheck source=rail-b-lib.sh
+[[ -f "${SCRIPT_DIR}/rail-b-lib.sh" ]] || {
+  printf '
+MAC_RAIL_B_VALIDATION_FAILED
+reasonCode=MISSING_LIBRARY_FILE path=%s
+' \
+    "${SCRIPT_DIR}/rail-b-lib.sh" >&2
+  exit 92
+}
+source "${SCRIPT_DIR}/rail-b-lib.sh"
+railb_enable_fail_closed
+railb_require_functions railb_classify_delta railb_write_evidence_atomic
 
 TARGET_BRANCH="${RAIL_B_TARGET_BRANCH:-phase-2-measurement-control-tower-completion}"
 EXEC_CANDIDATE="${RAIL_B_EXECUTABLE:-232e2903410e317d06e1416f67ed5f85904eb693}"
@@ -72,9 +87,50 @@ done
 bash "$APP_ROOT/scripts/release/claude/rail-b-selftest.sh" >/dev/null 2>&1 \
   || fail_with "RAIL_B_FAULT_MATRIX_FAILED" 9
 
-DRY_OUT="$(bash "$APP_ROOT/scripts/release/claude/mac-rail-b-preapproval.sh" --dry-run 2>&1 || true)"
+# ─── Dry-run truthfulness ───────────────────────────────────────────────────
+# A truthful dry run legitimately reports PASS for gates that genuinely execute
+# (host attestation, branch semantics, executable boundary) and must report
+# NOT_RUN for every skipped mandatory execution gate. The earlier blanket
+# "any PASS means untruthful" predicate was wrong and produced a false
+# DRY_RUN_NOT_TRUTHFUL on the Mac.
+DRY_LOG="$EVIDENCE_ROOT/dry-run-${TS}.log"
+set +e
+bash "$APP_ROOT/scripts/release/claude/mac-rail-b-preapproval.sh" --dry-run > "$DRY_LOG" 2>&1
+DRY_EXIT=$?
+set -e
+
 DRY_RUN_TRUTHFUL=true
-printf '%s' "$DRY_OUT" | grep -q 'PASS' && DRY_RUN_TRUTHFUL=false
+dry_fail() { # predicate, expected, actual
+  DRY_RUN_TRUTHFUL=false
+  printf '\nDRY_RUN_TRUTHFULNESS_FAILED\n' >&2
+  printf 'predicate=%s\n' "$1" >&2
+  printf 'expected=%s\n' "$2" >&2
+  printf 'actual=%s\n' "$3" >&2
+  printf 'evidence=%s\n' "$DRY_LOG" >&2
+}
+
+EXECUTED_ATTESTATION_GATES="host.attestation branch.semantics boundary.runtimeSource"
+count_status() { grep -cE "^  $1 " "$DRY_LOG" 2>/dev/null || printf '0'; }
+
+if (( DRY_EXIT != 0 )); then
+  dry_fail dry_run_exit_code 0 "$DRY_EXIT"
+else
+  for g in $EXECUTED_ATTESTATION_GATES; do
+    if ! grep -qE "^  PASS +${g}\b" "$DRY_LOG"; then
+      dry_fail "executed_attestation_gate:${g}" PASS "$(grep -oE "^  [A-Z_]+ +${g}\b" "$DRY_LOG" | awk '{print $1}' | head -1)"
+    fi
+  done
+  SKIPPED_NOT_RUN="$(count_status NOT_RUN)"
+  (( SKIPPED_NOT_RUN > 0 )) || dry_fail skipped_mandatory_gates_not_run ">0" "$SKIPPED_NOT_RUN"
+  F="$(count_status FAIL)";    [[ "$F" == "0" ]] || dry_fail dry_run_fail_count 0 "$F"
+  B="$(count_status BLOCKED)"; [[ "$B" == "0" ]] || dry_fail dry_run_blocked_count 0 "$B"
+  grep -q 'VALIDATION_COMPLETE_RELEASE_FINALISATION_REQUIRED' "$DRY_LOG" \
+    && dry_fail no_validation_complete_status absent present
+  grep -q 'RELEASE_FINALISED_HUMAN_APPROVAL_REQUIRED' "$DRY_LOG" \
+    && dry_fail no_finalisation_status absent present
+  grep -qE '/root/APPROVE_' "$DRY_LOG" \
+    && dry_fail no_marker_instruction absent present
+fi
 
 POST_STATUS="$(git -C "$APP_ROOT" status --porcelain --untracked-files=all | wc -l | tr -d ' ')"
 [[ "$POST_STATUS" -eq 0 ]] || fail_with "VERIFIER_DIRTIED_THE_WORKTREE" 12

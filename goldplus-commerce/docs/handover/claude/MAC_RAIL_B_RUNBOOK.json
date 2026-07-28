@@ -8,14 +8,14 @@
   "scripts": {
     "verifier": {
       "path": "scripts/release/claude/mac-rail-b-verifier.sh",
-      "sha256": "15c337756a31f09838f44bd2072cee05651fba4775e6e43da18127dbfe268d5a",
+      "sha256": "2b5715da5456d3d20b017cfa2ff3eacb46f51781ecf96a65a394e1fed31900af",
       "canonical": true,
       "note": "An attachment or ~/Downloads copy is NOT release authority.",
       "terminalStatus": "GOLDPLUS_MAC_RAIL_B_PACKAGE_VERIFIED"
     },
     "preapproval": {
       "path": "scripts/release/claude/mac-rail-b-preapproval.sh",
-      "sha256": "ac2b5673fa9dc8d9c54c638d2cad8653d9f890cbfc335e2ffdd0ad25e51f78ed",
+      "sha256": "e461e435fad415e05f26a221f1fa17d29e195a0c680912d776f2d552e4df4fa9",
       "validationOnly": true,
       "terminalStatuses": [
         "MAC_RAIL_B_VALIDATION_FAILED",
@@ -36,14 +36,14 @@
     },
     "finaliser": {
       "path": "scripts/release/claude/mac-rail-b-finalise-release.sh",
-      "sha256": "9954220b9d5be52fb1cc74e6ad6a632b1096d59798515ef700de026c5c049a64",
+      "sha256": "c2bfeb0a5901313ac75bf78e9f9cc98239279301aad74bf75661e33dc455ee26",
       "usage": "mac-rail-b-finalise-release.sh --validation-run /absolute/path/validation-summary.json",
       "terminalStatus": "CLAUDE_MAC_RAIL_B_RELEASE_FINALISED_HUMAN_APPROVAL_REQUIRED",
       "onlyScriptPermittedToReturnThatStatus": true
     },
     "production": {
       "path": "scripts/release/claude/mac-rail-b-production.sh",
-      "sha256": "091257dcb59a1b4f115e1b4d26c21490279dfcebaad284936f67684cb99d328b",
+      "sha256": "dad0c0afe37ace15c9ac9300dcf42e43e3c075b57cd4101a8e9e56b560a60a7d",
       "requires": [
         "finalised final scope",
         "remote branch at package head",
@@ -59,23 +59,35 @@
     },
     "rollback": {
       "path": "scripts/release/claude/mac-rail-b-rollback.sh",
-      "sha256": "e148c6371f06f6ae9a5bb79465cb8956a27d1fe9cc6279535fac5adb1b9de6ce"
+      "sha256": "2a3acdf51434190c1c23d5da6711cde16243313da1b0cae5dac84d521675cccf"
     },
     "library": {
       "path": "scripts/release/claude/rail-b-lib.sh",
-      "sha256": "4c4e6b329347644c1e1b623760bc4bd1be96b2f4a05c4e9cc07c23b553bde3e0"
+      "sha256": "c8a859716f0dc39a8216fc694ca71638100d36377945de23e7985c8a0f066d64"
     },
     "selftest": {
       "path": "scripts/release/claude/rail-b-selftest.sh",
-      "sha256": "fe77213e0f30196effba3df43e5b9b4e9057e2bb94b0bd277052a72b217679d7"
+      "sha256": "d2b910d5dc11c1649b9fd6fd4713677751427bc2ea4d7ff4f2384d2b8760d1a7"
+    },
+    "finalisedReleaseVerifier": {
+      "path": "scripts/release/claude/mac-rail-b-verify-finalised-release.sh",
+      "sha256": "1eafc2add65a4c8d4fb27a067ef17063204f73beb2059315e048a3617c435801",
+      "usage": "mac-rail-b-verify-finalised-release.sh --manifest /absolute/path/final-manifest.json",
+      "terminalStatus": "REMOTE_BRANCH_AND_ANNOTATED_TAG_VERIFIED",
+      "note": "Fails non-zero before printing any success wording; refuses angle-bracket literals, relative paths, symlinks and missing files."
+    },
+    "apiLinkageTest": {
+      "path": "scripts/release/claude/rail-b-api-linkage-test.sh",
+      "sha256": "3476c6d1ec314a739e0dded199105c889412b95f31c417753c23c3a95335ee1f",
+      "terminalStatus": "SHELL_API_LINKAGE_PASSED"
     }
   },
   "validation": {
     "syntax": "PASS 3/3 (bash -n)",
     "dryRun": "PASS \u2014 host attestation correctly reported this non-Darwin host as FAIL; unexecuted steps report NOT-RUN(dry-run), never PASS",
     "faultInjection": {
-      "total": 69,
-      "passed": 69,
+      "total": 84,
+      "passed": 84,
       "hermetic": true,
       "contactedProduction": false,
       "createdMarker": false,
@@ -100,7 +112,8 @@
     "prohibitionAudit": "performed on executable lines with comments stripped: 0 compose-down, 0 reboot, 0 infra restart, 0 marker write, 0 wildcard removal",
     "evidenceLocation": "written outside the Git root (sibling of the outer repo), so gate runs never dirty the worktree",
     "evidencePathSafety": "rejects paths inside the Git root, inside .git, inside GoldPlusFinal, and symlinks into any of them; resolves physically before deciding",
-    "dryRunTruthfulness": "0 PASS lines in dry-run output; every unexecuted step records NOT_RUN"
+    "dryRunTruthfulness": "0 PASS lines in dry-run output; every unexecuted step records NOT_RUN",
+    "shellApiLinkage": "SHELL_API_LINKAGE_PASSED (0 undefined, 0 late-source, 0 shadowed)"
   },
   "preapprovalGates": [
     "Darwin and non-root verification",
@@ -339,5 +352,45 @@
     "bash scripts/release/claude/mac-rail-b-production.sh",
     "shadow canary, backup rehearsal, API-first deploy, web deploy, all-module UAT, one-hour soak, reconciliation",
     "human removes the exact marker"
-  ]
+  ],
+  "canonicalBoundaryFunction": "railb_assert_executable_boundary",
+  "failClosed": {
+    "everyEntryPoint": "set -Eeuo pipefail with an ERR trap",
+    "unexpectedError": {
+      "terminalStatus": "MAC_RAIL_B_VALIDATION_FAILED",
+      "reasonCode": "UNHANDLED_SCRIPT_ERROR",
+      "eligibleForFinalisation": false
+    },
+    "undefinedFunction": {
+      "reasonCode": "UNDEFINED_SHELL_FUNCTION",
+      "checkedBy": "railb_require_functions before any phase"
+    },
+    "missingLibrary": {
+      "reasonCode": "MISSING_LIBRARY_FILE"
+    }
+  },
+  "dryRunTruthfulness": {
+    "predicates": [
+      "dry_run_exit_code=0",
+      "executed attestation gates PASS",
+      "skipped mandatory gates NOT_RUN",
+      "FAIL=0",
+      "BLOCKED=0",
+      "no validation-complete status",
+      "no finalisation status",
+      "no marker instruction"
+    ],
+    "diagnosticShape": "DRY_RUN_TRUTHFULNESS_FAILED predicate/expected/actual/evidence",
+    "previousDefect": "blanket \"any PASS is untruthful\" produced a false negative on the Mac"
+  },
+  "failedMacRuns": {
+    "amendmentPath": "docs/platform/evidence/releases/CLAUDE_FAILED_MAC_RUN_AMENDMENTS.json",
+    "runs": [
+      "20260728T202036Z-45818",
+      "20260728T202216Z-47219",
+      "20260728T202151Z"
+    ],
+    "permanentlyIneligible": true
+  },
+  "realMacSmokeTest": "NOT_RUN_IN_THIS_ENVIRONMENT \u2014 requires the Darwin worktree; this environment is Linux"
 }

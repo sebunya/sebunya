@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "note": "Original evidence for each run is preserved unmodified. These amendments record the authoritative earliest failed state; later operator commands cannot rehabilitate a run.",
+  "amendments": [
+    {
+      "runId": "20260728T202036Z-45818",
+      "classification": "ABORTED_SCRIPT_ERROR",
+      "eligibleForFinalisation": false,
+      "terminalStatus": "FAIL",
+      "terminalGate": "boundary.runtimeSource",
+      "reasonCode": "MISSING_SHELL_FUNCTION_RAILB_ASSERT_NO_RUNTIME_SOURCE",
+      "detail": "mac-rail-b-preapproval.sh line 90 invoked railb_assert_no_runtime_source, which the library no longer defined after the boundary function was renamed. bash -n could not detect it."
+    },
+    {
+      "runId": "20260728T202216Z-47219",
+      "classification": "ABORTED_SCRIPT_ERROR",
+      "eligibleForFinalisation": false,
+      "terminalStatus": "FAIL",
+      "terminalGate": "boundary.runtimeSource",
+      "reasonCode": "MISSING_SHELL_FUNCTION_RAILB_ASSERT_NO_RUNTIME_SOURCE"
+    },
+    {
+      "runId": "20260728T202151Z",
+      "artefact": "verifier",
+      "classification": "VERIFIER_FAILED",
+      "eligibleForValidation": false,
+      "reasonCode": "DRY_RUN_TRUTHFULNESS_ASSERTION_FAILED",
+      "detail": "The verifier used a blanket 'any PASS means untruthful' predicate. A truthful dry run legitimately reports PASS for gates that genuinely execute (host attestation, branch semantics, executable boundary), so the predicate produced a false negative."
+    }
+  ],
+  "finaliserBehaviour": "mac-rail-b-finalise-release.sh rejects every record above permanently: ABORTED_SCRIPT_ERROR and VERIFIER_FAILED are refused, as is any run with failCount, blockedCount or notRunCount above zero.",
+  "humanApproval": "FORBIDDEN until a real Mac validation succeeds and a release is finalised with a verified remote annotated tag."
+}

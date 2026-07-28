@@ -160,6 +160,48 @@ railb_finalise_run_state() {
 
 fail_with() { printf '\n%s\n' "$1" >&2; exit "${2:-1}"; }
 
+# ─── Fail-closed unexpected-error handling ──────────────────────────────────
+# bash -n cannot see a missing sourced function; an unexpected shell error such
+# as "command not found" must never leave a run without terminal evidence.
+railb_on_unexpected_error() {
+  local code=$? line="${1:-?}" cmd="${2:-?}"
+  trap - ERR
+  TERMINAL_GATE="${TERMINAL_GATE:-shell}"
+  TERMINAL_STATUS=FAIL
+  TERMINAL_REASON_CODE=UNHANDLED_SCRIPT_ERROR
+  RUN_STATE=ABORTED_FAIL
+  if declare -F railb_cleanup >/dev/null 2>&1; then
+    railb_cleanup && CLEANUP_STATUS=COMPLETED || CLEANUP_STATUS=PARTIAL
+  else
+    CLEANUP_STATUS=NOT_REQUIRED
+  fi
+  if [[ -n "${EVIDENCE_ROOT:-}" && -d "${EVIDENCE_ROOT:-}" ]]; then
+    railb_write_evidence_atomic "${EVIDENCE_ROOT}/validation-summary.json" "$(railb_run_summary_json)"
+  fi
+  printf '\nMAC_RAIL_B_VALIDATION_FAILED\n' >&2
+  printf 'reasonCode=UNHANDLED_SCRIPT_ERROR line=%s command=%s exit=%s\n' "$line" "$cmd" "$code" >&2
+  printf 'eligibleForFinalisation=false\n' >&2
+  exit "${code:-1}"
+}
+
+railb_enable_fail_closed() {
+  set -Eeuo pipefail
+  trap 'railb_on_unexpected_error "$LINENO" "$BASH_COMMAND"' ERR
+}
+
+# Every railb_* function a caller uses must exist before any phase runs.
+railb_require_functions() {
+  local missing=() f
+  for f in "$@"; do
+    declare -F "$f" >/dev/null 2>&1 || missing+=("$f")
+  done
+  if (( ${#missing[@]} )); then
+    printf '\nMAC_RAIL_B_VALIDATION_FAILED\n' >&2
+    printf 'reasonCode=UNDEFINED_SHELL_FUNCTION functions=%s\n' "${missing[*]}" >&2
+    exit 91
+  fi
+}
+
 # ─── Deterministic Docker readiness ─────────────────────────────────────────
 # Inspects the current, desktop-linux and default contexts, starts Docker
 # Desktop when nothing responds, waits up to six minutes and selects one
@@ -287,7 +329,7 @@ railb_classify_delta() {
   export DELTA_RUNTIME DELTA_BUILD_INPUT DELTA_UNKNOWN
 }
 
-railb_assert_boundary_clean() {
+railb_assert_executable_boundary() {
   railb_classify_delta "$1" "$2" "$3"
   (( DELTA_RUNTIME == 0 && DELTA_BUILD_INPUT == 0 && DELTA_UNKNOWN == 0 )) \
     || fail_with "EXECUTABLE_BOUNDARY_INVALID: runtime=$DELTA_RUNTIME buildInput=$DELTA_BUILD_INPUT unknown=$DELTA_UNKNOWN" 100

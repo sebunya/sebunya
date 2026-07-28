@@ -13,10 +13,25 @@
 # Usage:
 #   mac-rail-b-finalise-release.sh --validation-run /absolute/path/validation-summary.json
 # =============================================================================
-set -euo pipefail
+set -Eeuo pipefail
 
-APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
-source "$(dirname "${BASH_SOURCE[0]}")/rail-b-lib.sh"
+SCRIPT_DIR="$(
+  CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &&
+  pwd -P
+)"
+APP_ROOT="$(cd -- "${SCRIPT_DIR}/../../.." && pwd -P)"
+# shellcheck source=rail-b-lib.sh
+[[ -f "${SCRIPT_DIR}/rail-b-lib.sh" ]] || {
+  printf '
+MAC_RAIL_B_VALIDATION_FAILED
+reasonCode=MISSING_LIBRARY_FILE path=%s
+' \
+    "${SCRIPT_DIR}/rail-b-lib.sh" >&2
+  exit 92
+}
+source "${SCRIPT_DIR}/rail-b-lib.sh"
+railb_enable_fail_closed
+railb_require_functions railb_assert_target_unmoved railb_assert_fast_forward railb_assert_executable_boundary
 
 VALIDATION=""
 TARGET_BRANCH="${RAIL_B_TARGET_BRANCH:-phase-2-measurement-control-tower-completion}"
@@ -56,7 +71,10 @@ jqf() { node -e '
 
 [[ "$(jqf runState)" == "VALIDATED" ]]                || fail_with "VALIDATION_RUN_STATE_NOT_VALIDATED: $(jqf runState)" 38
 [[ "$(jqf eligibleForFinalisation)" == "true" ]]      || fail_with "VALIDATION_NOT_ELIGIBLE_FOR_FINALISATION" 39
-[[ "$(jqf classification)" != "ABORTED_BLOCKED" ]]    || fail_with "BLOCKED_RUN_PERMANENTLY_INELIGIBLE" 40
+case "$(jqf classification)" in
+  ABORTED_BLOCKED|ABORTED_SCRIPT_ERROR|VERIFIER_FAILED)
+    fail_with "FAILED_RUN_PERMANENTLY_INELIGIBLE: $(jqf classification)" 40 ;;
+esac
 [[ "$(jqf failCount)"    == "0" ]]                    || fail_with "VALIDATION_CONTAINS_FAIL" 41
 [[ "$(jqf blockedCount)" == "0" ]]                    || fail_with "VALIDATION_CONTAINS_BLOCKED" 42
 [[ "$(jqf notRunCount)"  == "0" ]]                    || fail_with "VALIDATION_CONTAINS_NOT_RUN" 43
@@ -74,7 +92,7 @@ LOCAL_HEAD="$(git -C "$APP_ROOT" rev-parse HEAD)"
 [[ "$VALIDATED_HEAD" == "$LOCAL_HEAD" ]] || fail_with "VALIDATION_SOURCE_HEAD_MISMATCH: $VALIDATED_HEAD != $LOCAL_HEAD" 46
 railb_assert_target_unmoved "$APP_ROOT" "$TARGET_BRANCH" "$(jqf expectedRemoteHead)"
 git -C "$APP_ROOT" merge-base --is-ancestor "$EXEC_CANDIDATE" "$LOCAL_HEAD" || fail_with "EXECUTABLE_NOT_ANCESTOR" 47
-railb_assert_boundary_clean "$APP_ROOT" "$EXEC_CANDIDATE" "$LOCAL_HEAD"
+railb_assert_executable_boundary "$APP_ROOT" "$EXEC_CANDIDATE" "$LOCAL_HEAD"
 
 # ─── Independent re-verification of bound evidence hashes ───────────────────
 for k in apiImageDigest webImageDigest backupSha256 moduleInventorySha256; do
@@ -107,7 +125,7 @@ git -C "$APP_ROOT" -c user.name=goldplus -c user.email=release@goldplus.local \
   commit -q -m "Release Programme: finalise ${RELEASE_ID}" || true
 PKG_HEAD="$(git -C "$APP_ROOT" rev-parse HEAD)"
 git -C "$APP_ROOT" merge-base --is-ancestor "$EXEC_CANDIDATE" "$PKG_HEAD" || fail_with "EXECUTABLE_NOT_ANCESTOR_OF_PACKAGE_HEAD" 55
-railb_assert_boundary_clean "$APP_ROOT" "$EXEC_CANDIDATE" "$PKG_HEAD"
+railb_assert_executable_boundary "$APP_ROOT" "$EXEC_CANDIDATE" "$PKG_HEAD"
 
 # ─── Push branch, then tag; verify both remotely ────────────────────────────
 railb_assert_target_unmoved "$APP_ROOT" "$TARGET_BRANCH" "$(jqf expectedRemoteHead)"

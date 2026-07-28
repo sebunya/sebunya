@@ -15,7 +15,7 @@
 # Usage:
 #   mac-rail-b-rollback.sh --api-image <id|tag> --web-image <id|tag> [--reason "..."]
 # =============================================================================
-set -euo pipefail
+set -Eeuo pipefail
 
 API_IMAGE=""; WEB_IMAGE=""; REASON="unspecified"
 while [[ $# -gt 0 ]]; do
@@ -28,7 +28,22 @@ while [[ $# -gt 0 ]]; do
 done
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+SCRIPT_DIR="$(
+  CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &&
+  pwd -P
+)"
+APP_ROOT="$(cd -- "${SCRIPT_DIR}/../../.." && pwd -P)"
+# shellcheck source=rail-b-lib.sh
+[[ -f "${SCRIPT_DIR}/rail-b-lib.sh" ]] || {
+  printf '
+MAC_RAIL_B_VALIDATION_FAILED
+reasonCode=MISSING_LIBRARY_FILE path=%s
+' \
+    "${SCRIPT_DIR}/rail-b-lib.sh" >&2
+  exit 92
+}
+source "${SCRIPT_DIR}/rail-b-lib.sh"
+railb_enable_fail_closed
 # Evidence must land OUTSIDE the repository: writing it inside the worktree makes
 # the tree dirty and trips the artifact-scope guards. Default to a sibling of the
 # outer Git root, matching the operator's goldplus-mac-validation-<ts> convention.
