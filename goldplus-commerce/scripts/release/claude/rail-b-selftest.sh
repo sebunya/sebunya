@@ -478,6 +478,24 @@ expect_success "portability" "no GNU-only \\b word boundary in grep patterns" \
 expect_success "portability" "verifier normalises grep -c instead of appending a fallback" \
   bash -c "! grep -qE 'grep -cE .* \\|\\| printf' '$LIB_DIR/mac-rail-b-verifier.sh'"
 
+# EXECUTABLE reproduction of the real Mac failure at 812046d, not a text scan.
+# macOS 12.3.1 ships bash 3.2.57, which has no `mapfile`; the linkage test died with
+#   rail-b-api-linkage-test.sh: line 54: mapfile: command not found   (exit 127)
+# failing fault-matrix case "linkage / tracked callers pass the linkage test" and so
+# the tracked verifier with RAIL_B_FAULT_MATRIX_FAILED. `enable -n` removes the bash-4
+# builtins from a child shell via BASH_ENV, reproducing bash 3.2 for this defect class.
+printf 'enable -n mapfile 2>/dev/null || true\nenable -n readarray 2>/dev/null || true\n' \
+  > "$SANDBOX/no-bash4-builtins.sh"
+expect_success "portability" "linkage test runs without bash 4 builtins (bash 3.2 shape)" \
+  env BASH_ENV="$SANDBOX/no-bash4-builtins.sh" bash "$LIB_DIR/rail-b-api-linkage-test.sh"
+expect_success "portability" "selftest itself runs without bash 4 builtins" \
+  env BASH_ENV="$SANDBOX/no-bash4-builtins.sh" bash -n "$LIB_DIR/rail-b-selftest.sh"
+for _pc in mac-rail-b-verifier mac-rail-b-preapproval mac-rail-b-finalise-release \
+           mac-rail-b-verify-finalised-release mac-rail-b-production mac-rail-b-rollback; do
+  expect_success "portability" "${_pc}.sh parses without bash 4 builtins" \
+    env BASH_ENV="$SANDBOX/no-bash4-builtins.sh" bash -n "$LIB_DIR/${_pc}.sh"
+done
+
 # grep -c PRINTS "0" and EXITS 1 on no-match; a `|| printf 0` fallback yields "0\n0",
 # which breaks == "0" and makes (( )) a syntax error. Only the Darwin branch runs it.
 cat > "$SANDBOX/darwin-predicates.sh" <<'DPRED'

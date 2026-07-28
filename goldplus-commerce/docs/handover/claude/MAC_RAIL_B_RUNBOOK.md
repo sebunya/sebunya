@@ -95,7 +95,7 @@ preapproval with a new executable candidate.
 - **Syntax** 9/9 (`bash -n`). ShellCheck is not installed here — recorded `NOT_APPLICABLE`, which is
   not a release failure; the Mac run re-evaluates it.
 - **Shell API linkage** — `SHELL_API_LINKAGE_PASSED`, 0 undefined, 0 late-source, 0 shadowed.
-- **Fault matrix 109/109**, hermetic: never contacts production, never creates a marker, never touches
+- **Fault matrix 117/117**, hermetic: never contacts production, never creates a marker, never touches
   real Docker resources or a real Git remote. Classes include host/local-source, remote-movement,
   release-identity, evidence-path, approval-marker, deployment/rollback, commerce-safety,
   gate-state, terminal-abort, docker-context, validation-evidence, final-scope,
@@ -104,36 +104,59 @@ preapproval with a new executable candidate.
 
 ## Why the Mac failed at 812046d with RAIL_B_FAULT_MATRIX_FAILED
 
-Linux reported 109/109 while the real Mac failed the tracked verifier on a **clean** worktree.
-The cause was platform-dependent scope derivation, not a bad assertion:
+Confirmed from the operator's Mac diagnostic run (macOS **12.3.1**, GNU bash **3.2.57(1)-release**,
+arm64-apple-darwin21).
 
-`rebuild()` enumerated the operator-script directories with `readdirSync`, which returns whatever
-the OS left on disk. macOS Finder writes `.DS_Store`, `.gitignore` hides it — so `git status` stays
-clean while the derived scope silently gains an extra input. No fixed point exists, the
-`scope-circularity` case fails, `rail-b-selftest.sh` exits 1, and the verifier reports
-`RAIL_B_FAULT_MATRIX_FAILED` (exit 9). No Linux run can reproduce it, because Linux has no Finder.
+```
+api_linkage_EXIT=127
+rail-b-api-linkage-test.sh: line 54: mapfile: command not found
+fault matrix: 96/97 passed
+  linkage   tracked callers pass the linkage test   UNEXPECTED_REFUSAL
+```
 
-Scope inputs now come from `git ls-files`, so untracked and ignored files can never be release-scope
-inputs and the enumeration is identical on every platform. The `macos-fs-metadata` class creates
-`.DS_Store` and AppleDouble `._*` files in both operator-script directories and asserts the scope is
-still a fixed point; it fails under the pre-fix derivation and passes after it.
+**Classification: `BASH_VERSION_COMPATIBILITY_DEFECT`.**
 
-Two further defects on the same Mac execution path were found and fixed:
+`mapfile` is a bash 4 builtin. Stock macOS ships bash **3.2.57** (2007) — Apple has not shipped a
+newer bash for licensing reasons — so `mapfile` is a fatal `command not found`. The linkage test
+died at line 54 with exit 127. That test is also fault-matrix case *"linkage / tracked callers pass
+the linkage test"*, so the matrix ended 96/97 and the tracked verifier reported
+`RAIL_B_FAULT_MATRIX_FAILED` (exit 9).
 
-- `mapfile` is bash 4+, and stock macOS ships **bash 3.2.57**, where it is a fatal
-  `command not found` inside the linkage test — which is also fault-matrix case 1, producing the
-  same opaque `RAIL_B_FAULT_MATRIX_FAILED`. Replaced with a portable `while read` loop.
+Linux could not catch this: bash 5 has `mapfile`, so the same case passed there. The failure was
+never in the assertion — it was in the tool the assertion runs.
+
+Fix: the library-function enumeration uses a portable `while read` loop. Nothing was weakened.
+
+**Regression test — executable, not a text scan.** `enable -n mapfile` removes the builtin from a
+child shell via `BASH_ENV`, reproducing bash 3.2 for this defect class *on Linux*. The
+`portability` class runs the real linkage test that way and parses every tracked entry point under
+the same constraint. Verified in both directions: with the 812046d file restored the case fails
+(111/117) with the identical `mapfile: command not found`; after the fix it passes (117/117).
+
+### Corrections to the previous diagnosis
+
+An earlier commit attributed this failure to macOS Finder `.DS_Store` files entering the release
+scope through `readdirSync`. **That was wrong.** The Mac evidence shows
+`scope-circularity / scope is a fixed point of the working tree` **PASSED** on the Mac — there was
+no `.DS_Store` in the operator's worktree, and the only failing case was the linkage one above.
+
+The `git ls-files` change and its `macos-fs-metadata` regression class are kept: enumerating
+untracked, OS-generated files as release-scope inputs is a real latent defect and the tracked
+enumeration is strictly more correct. But it was **not** the cause of this failure and is not
+claimed as such.
+
+### Other portability defects fixed alongside
+
+Both are on the Mac execution path and neither could surface on Linux:
+
 - `grep -c` **prints `0` and exits 1** on no match, so the verifier's `|| printf '0'` fallback
   produced `"0\n0"`. That breaks the `== "0"` comparisons and makes `(( ))` a syntax error the ERR
-  trap escalates to `UNHANDLED_SCRIPT_ERROR`. This code path runs **only on Darwin**, so it was
-  invisible on Linux and would have made `DRY_RUN_TRUTHFUL=true` unreachable on the Mac.
+  trap escalates to `UNHANDLED_SCRIPT_ERROR`. The branch runs **only on Darwin**, so it would have
+  made `DRY_RUN_TRUTHFUL=true` unreachable on the Mac. (`BSD_USERLAND_PORTABILITY_DEFECT`)
+- GNU-only `\b` word boundaries removed — BSD grep does not support them, so predicates could
+  mismatch silently on macOS. (`BSD_USERLAND_PORTABILITY_DEFECT`)
 
-GNU-only `\b` word boundaries were also removed (BSD grep does not support them). The `portability`
-class anchors its probes on command position and fails if any of these is reintroduced.
-- **Evidence-path safety** — rejects paths inside the Git root, inside `.git`, inside the
-  quarantined `GoldPlusFinal`, and symlinks into any of them; paths resolve physically first.
-- **Prohibition audit** on executable lines with comments stripped: 0 `docker compose down`,
-  0 reboots, 0 Caddy/PostgreSQL/Redis restarts, 0 marker writes, 0 wildcard removals.
+The `portability` class anchors its probes on command position and fails if any is reintroduced.
 
 ## Lint (parsed, not transcribed)
 
