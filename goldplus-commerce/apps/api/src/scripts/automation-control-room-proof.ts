@@ -4,6 +4,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import app from '../interfaces/http/app';
 import { Hs256TokenSigner } from '../infrastructure/security/Hs256TokenSigner';
 import { db, endDbConnection } from '../infrastructure/db/client';
+import { QueueService } from '../infrastructure/queues/QueueService';
 import { users, roles, permissions, rolePermissions, userRoles } from '../infrastructure/db/schema/identity';
 import {
   automationActionExecutions,
@@ -191,9 +192,21 @@ async function main() {
     final.proofResidue = Number(rows[0]?.definitions ?? 0) + Number(rows[0]?.users ?? 0);
     if (final.proofResidue !== 0) final.verdict = 'FAIL';
     await endDbConnection();
+    // This proof drives the real Hono app, which opens queue/Redis connections.
+    // Close them as the server does, otherwise the process never exits.
+    await QueueService.getInstance().closeAll();
   }
   console.log(JSON.stringify(final));
-  if (final.verdict !== 'PASS') process.exitCode = 1;
+  // Booting the real Hono app leaves a residual handle after every resource is closed,
+  // so this proof would otherwise never exit and would hang an operator gate. The
+  // verdict and all cleanup are complete at this point; exit deterministically once
+  // stdout has drained.
+  const code = final.verdict === 'PASS' ? 0 : 1;
+  await new Promise<void>((resolve) => {
+    if (process.stdout.writableLength === 0) resolve();
+    else process.stdout.once('drain', () => resolve());
+  });
+  process.exit(code);
 }
 
 main().catch(async (error) => {
