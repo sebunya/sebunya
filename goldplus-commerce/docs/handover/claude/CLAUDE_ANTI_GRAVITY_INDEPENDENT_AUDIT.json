@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "auditor": "Claude (ABSOLUTE Takeover contract)",
+  "executionMode": "ENGINEERING_AND_RELEASE_MODE",
+  "auditedBranch": "phase-2-measurement-control-tower-completion",
+  "antiGravityTipAudited": "53cbde38c68bf5c18b6f26e2c153b6bc3a43ba8a",
+  "runtimeAnchorClaimed": "99563666db7056e57b5088a0c75008d589586dac",
+  "method": "Every claim reproduced against tracked source or the real Hono composition root. Static text assertions were not accepted as proof of runtime behaviour.",
+  "claims": [
+    {
+      "id": "AG-01",
+      "claim": "The two measurement route mounts (/admin/measurement/paid-social, /admin/measurement/payments) were repaired.",
+      "claimedEvidence": "commit 99563666 modifying apps/api/src/interfaces/http/app.ts",
+      "trackedImplementation": "app.ts lines 40-41 import, 181-182 app.route",
+      "independentReproduction": "Confirmed present in app.ts and reachable through the real app; both route files carry authMiddleware and requirePermissions.",
+      "status": "VERIFIED",
+      "requiredRepair": null
+    },
+    {
+      "id": "AG-02",
+      "claim": "route-module-reachability.test.ts proves route reachability.",
+      "claimedEvidence": "tests/architecture/route-module-reachability.test.ts (29 tests, passing)",
+      "trackedImplementation": "Reads app.ts as text and regexes app.route(...) and import strings.",
+      "independentReproduction": "The test never instantiates the Hono app. Its docblock asserts 'Every route file is imported and mounted in app.ts' and 'No route file exists that is imported but not app.route()'d', but no test enforces either. A real unmounted router (routes/admin/controlled-activation) was present and the suite stayed green. Its RBAC assertion scans only interfaces/http/routes/admin and therefore never inspects presentation/routes, where three admin-mounted routers had no authentication at all.",
+      "status": "INCORRECT",
+      "requiredRepair": "Added tests/architecture/admin-route-authentication.test.ts, which drives the real app via app.request(). Fault injection confirms it fails when the mount, the auth middleware, or the real role repository is removed."
+    },
+    {
+      "id": "AG-03",
+      "claim": "Historic 128-module reconciliation complete — ALL_128_HISTORIC_MODULES_ACCOUNTED_FOR.",
+      "claimedEvidence": "docs/completion/HISTORIC_128_MODULE_RECONCILIATION.json",
+      "trackedImplementation": "The file contains only schemaVersion, historicCommit, currentWorktree, a six-key summary and a status string. It contains zero per-module rows.",
+      "independentReproduction": "The contract requires 128 explicit crosswalk rows and a validator. None exist. The cited historic commit bbdb3e1c84efec01a88e10c5dcd137a611f67e54 exists but contains no module-truth-map and no uat-gap-matrix. A search across all 322 commits in the repository for the required historic status vocabulary (production-working, working-needs-polish, half-built, unsafe-to-use, schema-only) returns zero hits in any file at any revision. The summary keys are relationship types, not the historic status totals the reconciliation requires, so the file does not even attempt the mandated reconciliation.",
+      "status": "INCORRECT",
+      "requiredRepair": "Cannot be repaired from this repository: the source of truth is absent. Fabricating 128 rows would be invention, not reconciliation. Recorded as a blocking evidence gap; the historic truth map must be supplied from outside this repository before any all-modules reconciliation claim is credible."
+    },
+    {
+      "id": "AG-04",
+      "claim": "Zero missing engineering gaps.",
+      "claimedEvidence": "Anti-Gravity Rail A closure evidence and release freeze.",
+      "trackedImplementation": "n/a",
+      "independentReproduction": "False. Four genuine defects were found and repaired, three of them security-affecting. See findings AG-F1..AG-F4.",
+      "status": "INCORRECT",
+      "requiredRepair": "Implemented; see commits 8eff5fb and 51b86fb."
+    },
+    {
+      "id": "AG-05",
+      "claim": "Full test totals 217 files / 4144 tests.",
+      "claimedEvidence": "GOLDPLUS_PROGRAMME_RELEASE_MANIFEST.json sourceVerification.fullSuite",
+      "trackedImplementation": "n/a",
+      "independentReproduction": "Reproduced at the audited tip: the suite did not run fully green. On a clean tree after repair the suite is 219 files / 4180 tests, all passing.",
+      "status": "PARTIAL",
+      "requiredRepair": "Totals restated from actual execution rather than carried forward."
+    },
+    {
+      "id": "AG-06",
+      "claim": "Canonical, non-circular release scope.",
+      "claimedEvidence": "GOLDPLUS_PROGRAMME_RELEASE_SCOPE.json / release manifests",
+      "trackedImplementation": "Commits fe177b04 ('sync canonical release manifests to HEAD 7d235d75') and 53cbde38 ('sync release manifests to HEAD fe177b04').",
+      "independentReproduction": "The manifests were repeatedly rewritten to chase the moving package head, which is the circularity the release design is meant to exclude. Each sync commit invalidates the previous binding.",
+      "status": "PARTIAL",
+      "requiredRepair": "Re-freeze against a fixed executable commit whose scope never contains the package head."
+    },
+    {
+      "id": "AG-07",
+      "claim": "Clean local/origin alignment.",
+      "claimedEvidence": "Anti-Gravity state files",
+      "trackedImplementation": "n/a",
+      "independentReproduction": "Confirmed at audit time: worktree clean, local HEAD equals origin HEAD.",
+      "status": "VERIFIED",
+      "requiredRepair": null
+    }
+  ],
+  "findings": [
+    {
+      "id": "AG-F1",
+      "severity": "CRITICAL",
+      "title": "Unauthenticated admin mutation surface",
+      "detail": "controlledLiveCanaryRouter is mounted at /admin/controlled-activation/live-canaries with no authMiddleware and no requirePermissions. There is no global /admin guard in app.ts.",
+      "reproduction": "Against the real Hono app with no Authorization header: GET /admin/controlled-activation/live-canaries returned 200; POST returned 200 and executed createControlledLiveCanaryUseCase.",
+      "impact": "Unauthenticated creation, start, pause, rollback and completion of controlled live canaries, which are a customer-facing activation primitive.",
+      "status": "REPAIRED",
+      "repairCommit": "8eff5fb"
+    },
+    {
+      "id": "AG-F2",
+      "severity": "CRITICAL",
+      "title": "Caller-supplied admin identity reaching the database",
+      "detail": "controlled-activation-dry-run accepted adminId from the request body with no authentication.",
+      "reproduction": "Unauthenticated POST /admin/controlled-activation-dry-run/execution-plans with adminId 'attacker-supplied' passed validation and reached the database layer, failing only on ECONNREFUSED because no PostgreSQL runs in the audit sandbox. With a database available it would have executed.",
+      "impact": "Forged actor identity on governance records and audit entries.",
+      "status": "REPAIRED",
+      "repairCommit": "8eff5fb"
+    },
+    {
+      "id": "AG-F3",
+      "severity": "HIGH",
+      "title": "Access policy backed by a permission stub",
+      "detail": "controlled-activation-dry-run constructed DefaultControlledActivationAccessPolicy with a dummyRoleRepo returning ['settings.manage','reports.read'] for every user.",
+      "reproduction": "Read from tracked source; the policy could never deny.",
+      "impact": "The activation access policy granted itself for all callers.",
+      "status": "REPAIRED",
+      "repairCommit": "8eff5fb",
+      "repair": "Now uses the real DrizzleRoleRepository already wired in the Registry."
+    },
+    {
+      "id": "AG-F4",
+      "severity": "MEDIUM",
+      "title": "Implemented governance module never mounted",
+      "detail": "routes/admin/controlled-activation.ts exposes 9 RBAC-protected endpoints and has a shipped admin page, but was never imported by app.ts.",
+      "reproduction": "GET /admin/controlled-activation/summary returned 404 against the real app.",
+      "impact": "Controlled Activation Governance was unreachable in every environment.",
+      "status": "REPAIRED",
+      "repairCommit": "8eff5fb",
+      "repair": "Mounted after /live-canaries so the more specific mount retains priority."
+    },
+    {
+      "id": "AG-F5",
+      "severity": "LOW",
+      "title": "Non-deterministic SLA ordering",
+      "detail": "GetSupportInboxUseCase.execute() read the wall clock, so support inbox ordering depended on fixture age.",
+      "reproduction": "tests/unit/Slice11SupportInbox.test.ts failed at the audited tip, independently of any of the repairs above.",
+      "impact": "Untestable ordering; a permanently drifting assertion.",
+      "status": "REPAIRED",
+      "repairCommit": "51b86fb",
+      "repair": "Clock is an injectable parameter defaulting to new Date(); production behaviour unchanged."
+    }
+  ],
+  "gatesAfterRepair": {
+    "fullSuite": "PASS_219_FILES_4180_TESTS_CLEAN_TREE",
+    "architecture": "PASS_4_FILES_46_TESTS",
+    "apiTypecheck": "PASS",
+    "secretScan": "PASS_1247_FILES",
+    "gitDiffCheck": "PASS",
+    "faultInjection": "PASS_3_OF_3_DETECTED"
+  },
+  "blockingEvidenceGaps": [
+    {
+      "id": "GAP-1",
+      "title": "Historic 128-module truth map absent from the repository",
+      "consequence": "No credible all-modules reconciliation can be produced here, and GOLDPLUS_ALL_MODULES_LIVE_VERIFIED_DORMANT_SAFE cannot be justified on module-coverage grounds.",
+      "resolution": "Supply the original machine-readable module truth map, or authorise a current-inventory-only acceptance basis."
+    },
+    {
+      "id": "GAP-2",
+      "title": "Production unreachable from this environment",
+      "consequence": "Shadow canary, backup rehearsal, deployment, per-module production UAT, one-hour soak and reconciliation cannot be executed or evidenced.",
+      "resolution": "Run the post-approval phases from the operator host where ssh goldplus-prod resolves."
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "classification": "SECURITY_REPAIR_CANDIDATE_NOT_DEPLOYED",
+  "release": {
+    "id": "goldplus-programme-51b86fb5-m0048-5a198e5f",
+    "token": "51b86fb5-m0048-5a198e5f",
+    "executableCommit": "51b86fb5ab0810d75a04492ce5dbf8e80aec901c",
+    "executableTree": "2eb7edf5805b2f444b430ca5be9a93777ab197d1",
+    "releasePackageHead": "SET_BY_THE_DOCS_ONLY_FREEZE_COMMIT",
+    "branch": "phase-2-measurement-control-tower-completion",
+    "scopePath": "docs/platform/releases/claude/CLAUDE_RELEASE_SCOPE.json",
+    "scopeSha256": "5a198e5fb073e2bfc47b2651a901e07b0170fe7fce656ec5ecce626ba20509ee",
+    "scopeCanonicalisation": "UTF-8, recursively sorted object keys, deterministic array order, no insignificant whitespace, no trailing newline",
+    "migrationCeiling": "0048",
+    "newMigrations": 0,
+    "retiredReleaseIds": [
+      "goldplus-programme-682384b2-m0048-b79a4de7",
+      "goldplus-programme-13633d86-m0048-5c6f9d25",
+      "goldplus-programme-99563666-m0048-8343ee36"
+    ]
+  },
+  "scopeVerification": {
+    "repositoryVerifier": "scripts/release/claude/verify-claude-release-scope.mjs",
+    "repositoryVerifierResult": "PASS_5a198e5fb073e2bfc47b2651a901e07b0170fe7fce656ec5ecce626ba20509ee",
+    "independentVerifierResult": "PASS_5a198e5fb073e2bfc47b2651a901e07b0170fe7fce656ec5ecce626ba20509ee",
+    "verifiersAgree": true,
+    "faultInjection": {
+      "operatorScriptDrift": "DETECTED",
+      "migrationDrift": "DETECTED",
+      "scopeInputDrift": "DETECTED",
+      "selfReferentialKey": "DETECTED",
+      "allFaultsReverted": true,
+      "treeCleanAfterRevert": true
+    },
+    "nonCircular": true,
+    "scopeContainsPackageHead": false
+  },
+  "engineering": {
+    "fullSuite": "PASS_219_FILES_4180_TESTS_CLEAN_TREE",
+    "architecture": "PASS_4_FILES_46_TESTS",
+    "apiTypecheck": "PASS",
+    "secretScan": "PASS_1247_FILES",
+    "gitDiffCheck": "PASS",
+    "repairCommits": ["8eff5fb", "51b86fb"],
+    "defectsRepaired": [
+      "unauthenticated /admin/controlled-activation/live-canaries (200 + use case executed)",
+      "unauthenticated dry-run accepting a caller-supplied adminId (reached the database layer)",
+      "activation access policy backed by a fixed permission stub",
+      "implemented controlled-activation governance router never mounted (404)",
+      "non-deterministic support inbox SLA ordering"
+    ]
+  },
+  "approval": {
+    "path": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_51b86fb5-m0048-5a198e5f",
+    "exactContent": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_51b86fb5-m0048-5a198e5f",
+    "ownerGroup": "root:root",
+    "mode": "600",
+    "regularFile": true,
+    "symlink": false,
+    "linkCount": 1,
+    "claudeMustNotCreateOrModify": true,
+    "retiredMarkersMustNotBeReused": true
+  },
+  "deployment": {
+    "transport": "ssh goldplus-prod",
+    "path": "/opt/goldplus/app/goldplus-commerce",
+    "recreateOnly": ["api", "web"],
+    "mustNotRestart": ["caddy", "postgres", "redis"],
+    "mustNotRun": ["docker compose down", "reboot", "real paid order", "provider send"],
+    "executedFromThisEnvironment": false,
+    "reason": "ssh absent and goldplus-prod does not resolve in this session"
+  },
+  "openBlockers": [
+    {
+      "id": "GAP-1",
+      "title": "Historic 128-module truth map absent from the repository",
+      "effect": "No evidence-backed all-modules reconciliation is possible here; GOLDPLUS_ALL_MODULES_LIVE_VERIFIED_DORMANT_SAFE cannot be justified on module-coverage grounds."
+    },
+    {
+      "id": "GAP-2",
+      "title": "Production unreachable from this session",
+      "effect": "Shadow canary, backup rehearsal, deployment, per-module UAT, one-hour soak and reconciliation are not executed and not evidenced."
+    }
+  ],
+  "terminalDeclaration": {
+    "value": "GOLDPLUS_ALL_MODULES_LIVE_VERIFIED_DORMANT_SAFE",
+    "declared": false
+  }
+}

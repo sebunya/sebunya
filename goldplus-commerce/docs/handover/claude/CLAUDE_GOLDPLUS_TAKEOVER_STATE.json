@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "state": "ENGINEERING_COMPLETE_AWAITING_OPERATOR_APPROVAL_AND_PRODUCTION_HOST",
+  "executionMode": "ENGINEERING_AND_RELEASE_MODE",
+  "selectedWorktree": "/home/user/sebunya/goldplus-clean-continuation/phase-2-measurement-control-tower-completion-20260715",
+  "quarantinedWorktree": "GoldPlusFinal (not present in this environment; never used)",
+  "branch": "phase-2-measurement-control-tower-completion",
+  "startedFromTip": "53cbde38c68bf5c18b6f26e2c153b6bc3a43ba8a",
+  "localHead": "51b86fb5ab0810d75a04492ce5dbf8e80aec901c",
+  "originHead": "51b86fb5ab0810d75a04492ce5dbf8e80aec901c",
+  "treeStatus": "clean",
+  "productionSourceHead": "UNKNOWN_PRODUCTION_UNREACHABLE",
+  "environmentProbe": {
+    "git": true,
+    "node": true,
+    "pnpm": true,
+    "ssh": false,
+    "goldplusProdResolves": false,
+    "dockerDaemon": false,
+    "productionPathPresent": false
+  },
+  "executableCommit": "51b86fb5ab0810d75a04492ce5dbf8e80aec901c",
+  "releasePackageHead": "SET_BY_THE_DOCS_ONLY_FREEZE_COMMIT",
+  "scopeSha256": "5a198e5fb073e2bfc47b2651a901e07b0170fe7fce656ec5ecce626ba20509ee",
+  "releaseId": "goldplus-programme-51b86fb5-m0048-5a198e5f",
+  "releaseToken": "51b86fb5-m0048-5a198e5f",
+  "migrationCeiling": "0048",
+  "approvalState": "NOT_REQUESTED_UNTIL_OPERATOR_CREATES_MARKER",
+  "approvalMarkerPath": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_51b86fb5-m0048-5a198e5f",
+  "filesChanged": [
+    "apps/api/src/interfaces/http/app.ts",
+    "apps/api/src/presentation/routes/controlled-live-canary.ts",
+    "apps/api/src/presentation/routes/controlled-activation-dry-run.ts",
+    "apps/api/src/application/use-cases/governance/SupportInboxUseCases.ts",
+    "tests/architecture/admin-route-authentication.test.ts",
+    "tests/unit/Slice11SupportInbox.test.ts"
+  ],
+  "completeGates": {
+    "fullSuite": "PASS_219_FILES_4180_TESTS",
+    "architecture": "PASS_4_FILES_46_TESTS",
+    "apiTypecheck": "PASS",
+    "secretScan": "PASS_1247_FILES",
+    "gitDiffCheck": "PASS",
+    "scopeVerifiers": "PASS_BOTH_AGREE",
+    "scopeFaultInjection": "PASS_4_OF_4_DETECTED",
+    "routeTestFaultInjection": "PASS_3_OF_3_DETECTED"
+  },
+  "notRun": {
+    "webAstroBuild": "not run in this session",
+    "realPostgresRepositoryProofs": "no PostgreSQL available in this sandbox",
+    "migrationReplayAndPopulatedUpgrade": "no PostgreSQL available in this sandbox",
+    "playwrightJourneys": "not run in this session",
+    "imageBuilds": "docker daemon down",
+    "allProductionPhases": "ssh goldplus-prod unavailable"
+  },
+  "auditSummary": {
+    "claimsVerified": 2,
+    "claimsPartial": 2,
+    "claimsIncorrect": 3,
+    "defectsFound": 5,
+    "defectsRepaired": 5,
+    "criticalSecurityDefects": 2
+  },
+  "moduleReconciliation": {
+    "historic128CrosswalkProduced": false,
+    "reason": "The historic module truth map does not exist in this repository. The cited commit bbdb3e1c contains no module-truth-map or uat-gap-matrix, and the required status vocabulary appears zero times across all 322 commits. Anti-Gravity's HISTORIC_128_MODULE_RECONCILIATION.json contains no per-module rows.",
+    "status": "BLOCKED_MISSING_SOURCE_DATA"
+  },
+  "terminalDecision": {
+    "declaration": "GOLDPLUS_ALL_MODULES_LIVE_VERIFIED_DORMANT_SAFE",
+    "declared": false,
+    "reason": "Requires production acceptance evidence for every module. Production is unreachable from this session and the historic module truth map is absent."
+  },
+  "exactNextCommand": "On the operator host: verify no retired marker is present, then create /root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_51b86fb5-m0048-5a198e5f (root:root, mode 600, one line, exact content) and reply: CONTINUE FROM CLAUDE_ALL_MODULES_APPROVAL"
+}

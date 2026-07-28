@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "branch": "phase-2-measurement-control-tower-completion",
+  "priorRuntimeAnchor": "99563666db7056e57b5088a0c75008d589586dac",
+  "priorAnchorRuntimePaths": ["goldplus-commerce/apps/api/src/interfaces/http/app.ts"],
+  "classificationOfCommitsAfterPriorAnchor": [
+    { "commit": "06a1ecb6", "class": "MANIFEST", "runtimeSourcePaths": 0 },
+    { "commit": "9e02375e", "class": "TEST+RELEASE_TOOLING+EVIDENCE", "runtimeSourcePaths": 0 },
+    { "commit": "01141319", "class": "MANIFEST+EVIDENCE", "runtimeSourcePaths": 0 },
+    { "commit": "7d235d75", "class": "MANIFEST", "runtimeSourcePaths": 0 },
+    { "commit": "fe177b04", "class": "MANIFEST+EVIDENCE", "runtimeSourcePaths": 0 },
+    { "commit": "53cbde38", "class": "MANIFEST+RELEASE_TOOLING", "runtimeSourcePaths": 0 },
+    { "commit": "8eff5fb", "class": "RUNTIME_SOURCE+TEST", "runtimeSourcePaths": 3, "author": "Claude" },
+    { "commit": "51b86fb", "class": "RUNTIME_SOURCE+TEST", "runtimeSourcePaths": 1, "author": "Claude" }
+  ],
+  "note": "99563666 was the last runtime-source commit at the audited tip, so the Anti-Gravity boundary was internally consistent. It is superseded because the independent audit required runtime repairs.",
+  "executableCommit": "51b86fb5ab0810d75a04492ce5dbf8e80aec901c",
+  "executableTree": "2eb7edf5805b2f444b430ca5be9a93777ab197d1",
+  "executableRuntimeChanges": [
+    "apps/api/src/interfaces/http/app.ts (mount controlled-activation governance router)",
+    "apps/api/src/presentation/routes/controlled-live-canary.ts (auth + RBAC + session-derived identity)",
+    "apps/api/src/presentation/routes/controlled-activation-dry-run.ts (auth + RBAC + session-derived identity + real role repository)",
+    "apps/api/src/application/use-cases/governance/SupportInboxUseCases.ts (injectable clock)"
+  ],
+  "migrationCeiling": "0048",
+  "newMigrationsIntroduced": 0,
+  "releasePackageHead": "PENDING_DOCS_ONLY_COMMIT",
+  "rules": {
+    "executableIsImmutableOnceSelected": true,
+    "manifestCommitMustNotBecomeExecutable": true,
+    "executableMustBeAncestorOfPackageHead": true,
+    "executableToPackageDiffMustContainNoRuntimeSource": true,
+    "scopeMustNotContainPackageHead": true
+  },
+  "gatesAtExecutable": {
+    "fullSuite": "PASS_219_FILES_4180_TESTS",
+    "architecture": "PASS_4_FILES_46_TESTS",
+    "apiTypecheck": "PASS",
+    "secretScan": "PASS_1247_FILES",
+    "gitDiffCheck": "PASS",
+    "treeClean": true,
+    "localEqualsOrigin": true
+  }
+}
