@@ -94,10 +94,12 @@ bash "$APP_ROOT/scripts/release/claude/rail-b-selftest.sh" >/dev/null 2>&1 \
 # "any PASS means untruthful" predicate was wrong and produced a false
 # DRY_RUN_NOT_TRUTHFUL on the Mac.
 DRY_LOG="$EVIDENCE_ROOT/dry-run-${TS}.log"
-set +e
-bash "$APP_ROOT/scripts/release/claude/mac-rail-b-preapproval.sh" --dry-run > "$DRY_LOG" 2>&1
-DRY_EXIT=$?
-set -e
+# A non-zero dry-run exit is a PREDICATE RESULT to evaluate, not a crash. `set +e`
+# does not suppress an ERR trap, so the call is placed in a || list, where bash
+# does not run the trap.
+DRY_EXIT=0
+bash "$APP_ROOT/scripts/release/claude/mac-rail-b-preapproval.sh" --dry-run > "$DRY_LOG" 2>&1 \
+  || DRY_EXIT=$?
 
 DRY_RUN_TRUTHFUL=true
 dry_fail() { # predicate, expected, actual
