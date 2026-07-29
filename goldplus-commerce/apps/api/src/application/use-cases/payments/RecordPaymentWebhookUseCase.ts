@@ -1,4 +1,5 @@
 import { IPaymentRepository, PaymentWebhookOutcome, RecordedPayment } from '../../ports/IPaymentRepository';
+import { decideWebhookVerification } from '../../../domain/payments/WebhookVerificationPolicy';
 
 export type PaymentProvider = 'mtn' | 'airtel';
 const ALLOWED_PROVIDERS: ReadonlySet<PaymentProvider> = new Set<PaymentProvider>(['mtn', 'airtel']);
@@ -17,10 +18,21 @@ export interface RecordPaymentWebhookInput {
    */
   idempotencyKey?: string | null;
   signatureVerified: boolean;
+  /** Whether a signing secret exists for this provider at all. */
+  secretConfigured?: boolean;
+  /** Monitored grace mode for an unconfigured provider. Default off. */
+  graceEnabled?: boolean;
 }
 
 export type RecordPaymentWebhookResult =
-  | { ok: true; payment: RecordedPayment; replay: boolean; signatureVerified: boolean }
+  | {
+      ok: true;
+      payment: RecordedPayment;
+      replay: boolean;
+      signatureVerified: boolean;
+      /** True when grace mode recorded an unauthenticated payment. */
+      requiresReview: boolean;
+    }
   | {
       ok: false;
       code:
@@ -70,7 +82,13 @@ export class RecordPaymentWebhookUseCase {
     // This check is FIRST. Nothing about an unauthenticated payload — not the
     // order id, not the amount, not the idempotency key — deserves to be acted
     // on, and every later branch here reads or writes on its behalf.
-    if (!input.signatureVerified) {
+    const verification = decideWebhookVerification({
+      signatureVerified: input.signatureVerified,
+      secretConfigured: input.secretConfigured ?? input.signatureVerified,
+      graceEnabled: input.graceEnabled ?? false,
+    });
+
+    if (verification.action === 'REJECT') {
       return {
         ok: false,
         code: 'SIGNATURE_INVALID',
@@ -79,6 +97,8 @@ export class RecordPaymentWebhookUseCase {
         message: 'Webhook signature could not be verified. The payment was not recorded.',
       };
     }
+
+    const requiresReview = verification.action === 'ACCEPT_UNVERIFIED';
 
     if (input.outcome !== 'SUCCESS' && input.outcome !== 'FAILED') {
       return { ok: false, code: 'BAD_OUTCOME', message: `Outcome must be SUCCESS or FAILED, got "${input.outcome}".` };
@@ -134,7 +154,13 @@ export class RecordPaymentWebhookUseCase {
 
     const existing = await this.payments.findByIdempotencyKey(idempotencyKey);
     if (existing) {
-      return { ok: true, payment: existing, replay: true, signatureVerified: input.signatureVerified };
+      return {
+        ok: true,
+        payment: existing,
+        replay: true,
+        signatureVerified: input.signatureVerified,
+        requiresReview,
+      };
     }
 
     const payment = await this.payments.recordWebhookOutcome({
@@ -144,8 +170,10 @@ export class RecordPaymentWebhookUseCase {
       providerReference: input.providerReference,
       amount: input.amount,
       outcome: input.outcome,
+      signatureVerified: input.signatureVerified,
+      requiresReview,
     });
 
-    return { ok: true, payment, replay: false, signatureVerified: input.signatureVerified };
+    return { ok: true, payment, replay: false, signatureVerified: input.signatureVerified, requiresReview };
   }
 }

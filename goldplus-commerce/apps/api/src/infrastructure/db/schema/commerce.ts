@@ -129,6 +129,12 @@ export const payments = pgTable('payments', {
   amount: integer('amount').notNull(),
   status: varchar('status', { length: 30 }).default('PENDING').notNull(),
   paidAt: timestamp('paid_at', { withTimezone: true }),
+  // Was the webhook that created this payment authenticated? (migration 0056)
+  // Recorded per payment so an unverified one stays distinguishable by query,
+  // permanently — not by grepping logs that roll over.
+  signatureVerified: boolean('signature_verified').default(true).notNull(),
+  requiresReview: boolean('requires_review').default(false).notNull(),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

@@ -30,5 +30,9 @@ export interface IPaymentRepository {
     providerReference: string | null;
     amount: number;
     outcome: PaymentWebhookOutcome;
+    /** Was the creating webhook authenticated? Recorded per payment. */
+    signatureVerified?: boolean;
+    /** True when grace mode recorded an unauthenticated payment. */
+    requiresReview?: boolean;
   }): Promise<RecordedPayment>;
 }

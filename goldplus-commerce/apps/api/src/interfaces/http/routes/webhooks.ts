@@ -6,6 +6,7 @@ import { enqueuePurchaseEvent } from '../../../application/use-cases/telemetry/E
 import { ApiResponse } from '@goldplus/shared';
 import { logger } from '../../../infrastructure/logging/logger';
 import { clientIp } from '../clientAddress';
+import { graceEnabledFor } from '../../../domain/payments/WebhookVerificationPolicy';
 
 const routes = new Hono();
 
@@ -78,6 +79,8 @@ routes.post('/payment/:provider', async (c) => {
       outcome: String(parsed.outcome ?? '').toUpperCase() as 'SUCCESS' | 'FAILED',
       idempotencyKey: c.req.header('idempotency-key') ?? (parsed.idempotencyKey as string | undefined) ?? null,
       signatureVerified,
+      secretConfigured,
+      graceEnabled: graceEnabledFor(provider, process.env),
     });
 
     if (!result.ok) {
@@ -127,8 +130,21 @@ routes.post('/payment/:provider', async (c) => {
       },
     };
 
+    if (result.requiresReview) {
+      // Loud, and at error level: an unauthenticated payment is sitting in the
+      // finance queue and an order is stalled behind it until a human acts.
+      logger.error(
+        { provider, orderId: result.payment.orderId, paymentId: result.payment.id },
+        'PAYMENT_WEBHOOK_UNVERIFIED_ACCEPTED_PENDING_REVIEW',
+      );
+      res.meta = { ...res.meta, requiresReview: true };
+    }
+
     // ─── Enqueue server-side purchase event on first confirmed SUCCESS ────────
-    if (result.payment.status === 'SUCCESS' && !result.replay) {
+    // "Confirmed" excludes a payment held for review: it has not been
+    // authenticated, so treating it as a purchase would report revenue that
+    // nobody has established happened.
+    if (result.payment.status === 'SUCCESS' && !result.replay && !result.requiresReview) {
       enqueuePurchaseEvent({
         orderId: result.payment.orderId,
         transactionId: result.payment.providerReference || result.payment.id,

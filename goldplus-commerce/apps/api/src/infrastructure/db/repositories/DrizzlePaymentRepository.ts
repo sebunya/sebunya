@@ -41,7 +41,11 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
     providerReference: string | null;
     amount: number;
     outcome: PaymentWebhookOutcome;
+    signatureVerified?: boolean;
+    requiresReview?: boolean;
   }): Promise<RecordedPayment> {
+    const signatureVerified = input.signatureVerified ?? true;
+    const requiresReview = input.requiresReview ?? false;
     // Resolve the matching order: do NOT create one here.
     // Webhooks must operate on existing orders only.
     const order = await db.query.orders.findFirst({
@@ -65,18 +69,34 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
             amount: input.amount,
             status: input.outcome,
             paidAt,
+            signatureVerified,
+            requiresReview,
           })
           .returning();
 
-        await tx
-          .update(orders)
-          .set({ 
-            paymentStatus: input.outcome === 'SUCCESS' ? 'paid' : 'failed',
-            status: input.outcome === 'SUCCESS' ? 'processing' : 'pending_payment'
-          })
-          .where(eq(orders.id, input.orderId));
+        // An unauthenticated payment does NOT move the order.
+        //
+        // Grace mode records the payment row so there is a trail, but marking
+        // the order paid on the strength of a webhook nobody could authenticate
+        // would make "held for manual review" a phrase with nothing behind it —
+        // the order would progress to fulfilment exactly as if the payment were
+        // proven. The order advances when a human confirms the payment.
+        if (!requiresReview) {
+          await tx
+            .update(orders)
+            .set({
+              paymentStatus: input.outcome === 'SUCCESS' ? 'paid' : 'failed',
+              status: input.outcome === 'SUCCESS' ? 'processing' : 'pending_payment'
+            })
+            .where(eq(orders.id, input.orderId));
+        }
 
+        // No domain event for an unreviewed payment either: PAYMENT_SUCCESS is
+        // what downstream consumers act on, and none of them should act on a
+        // payment that has not been authenticated.
         let outboxId: string | null = null;
+        if (requiresReview) return { row, outboxId };
+
         const [outboxRow] = await tx.insert(outboxEvents).values({
           eventType: input.outcome === 'SUCCESS' ? DOMAIN_EVENTS.PAYMENT_SUCCESS : DOMAIN_EVENTS.PAYMENT_FAILED,
           payload: {
