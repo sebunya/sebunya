@@ -170,3 +170,26 @@ export const deliveryZones = pgTable('delivery_zones', {
 }, (table) => ({
   districtIdx: uniqueIndex('delivery_zones_district_idx').on(table.district),
 }));
+
+/**
+ * Checkout idempotency (migration 0057).
+ *
+ * One row per (trusted principal, client order key), claimed atomically with
+ * INSERT ... ON CONFLICT so two concurrent submissions cannot both perform
+ * commerce work. The fingerprint makes "same key, materially different request"
+ * detectable rather than silently answered with the earlier order.
+ */
+export const checkoutIdempotency = pgTable('checkout_idempotency', {
+  identity: varchar('identity', { length: 64 }).primaryKey(),
+  principalKey: varchar('principal_key', { length: 96 }).notNull(),
+  fingerprint: varchar('fingerprint', { length: 64 }).notNull(),
+  state: varchar('state', { length: 20 }).default('IN_PROGRESS').notNull(),
+  orderId: uuid('order_id'),
+  failureReason: varchar('failure_reason', { length: 200 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (table) => ({
+  inProgressIdx: index('checkout_idempotency_in_progress_idx').on(table.updatedAt),
+  principalIdx: index('checkout_idempotency_principal_idx').on(table.principalKey, table.createdAt),
+}));

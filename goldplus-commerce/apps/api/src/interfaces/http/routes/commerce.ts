@@ -6,6 +6,15 @@ import { customerSessionMiddleware } from '../middleware/customerSession';
 import { createHash } from 'crypto';
 import { clientIp } from '../clientAddress';
 import { mayProgressToPayment, mayCreateFulfilment } from '../../../domain/inventory/Inventory';
+import {
+  CHECKOUT_POLICY_VERSION,
+  checkoutFingerprint,
+  decideIdempotency,
+  idempotencyIdentity,
+  principalKey,
+} from '../../../domain/commerce/CheckoutPrincipal';
+import { resolveCheckoutPrincipal, checkoutIdempotencyRepo } from '../middleware/checkoutPrincipal';
+import { toCheckoutResponseDto } from '../../../application/mappers/toCheckoutResponseDto';
 
 // Slice 3B: server-authoritative checkout input. Client prices/sku/names are
 // deliberately absent — only productId + quantity are trusted; extra fields
@@ -142,6 +151,8 @@ routes.get('/carts/:id', async (c) => {
 });
 
 routes.post('/orders/create', async (c) => {
+  // Declared outside the try so the catch can release a claim this request took.
+  let claimedIdentity: string | null = null;
   try {
     const raw = await c.req.json().catch(() => null);
     const parsed = checkoutBodySchema.safeParse(raw);
@@ -151,6 +162,91 @@ routes.post('/orders/create', async (c) => {
       return c.json({ success: false, error: { code: 'INVALID_CHECKOUT', message } }, 400);
     }
     const body = parsed.data;
+
+    // Trusted principal. Ownership of a checkout cannot come from the request
+    // body: email and phone are caller-supplied, so anyone could adopt any
+    // identity by typing it. An authenticated customer uses their server-side
+    // user id; a guest gets a signed, expiring, server-issued cookie.
+    const resolved = resolveCheckoutPrincipal(c);
+    if (!resolved.ok) {
+      return c.json({
+        success: false,
+        error: {
+          code: 'CHECKOUT_SESSION_UNAVAILABLE',
+          message: 'Checkout is temporarily unavailable. Please try again.',
+        },
+      }, 503);
+    }
+    const principal = resolved.principal;
+
+    // Canonical fingerprint of what was actually asked for, so reusing a key for
+    // a materially different basket is a conflict rather than being silently
+    // answered with the earlier order.
+    const fingerprint = checkoutFingerprint({
+      principal,
+      items: body.items,
+      buyerType: body.buyerType,
+      couponCode: body.couponCode ?? null,
+      deliveryZoneKey: body.customerDetails.deliveryLocation?.district ?? body.customerDetails.deliveryArea,
+      currency: 'UGX',
+      acceptedQuoteId: body.previewQuoteId ?? null,
+      policyVersion: CHECKOUT_POLICY_VERSION,
+    });
+    const identity = idempotencyIdentity(principal, body.clientOrderKey);
+    const idem = checkoutIdempotencyRepo();
+
+    // Atomic claim. The previous read-then-write let two concurrent submissions
+    // both perform pricing, capacity reservation and order creation, with only
+    // the unique index catching the second INSERT after the work was done.
+    const claim = await idem.claim({ identity, principalKey: principalKey(principal), fingerprint });
+    if (claim.claimed) claimedIdentity = identity;
+    if (!claim.claimed) {
+      const decision = decideIdempotency(claim.record, fingerprint);
+      if (decision.action === 'CONFLICT') {
+        return c.json({
+          success: false,
+          error: {
+            code: 'IDEMPOTENCY_CONFLICT',
+            message:
+              'This checkout reference was already used for a different order. Start a new checkout.',
+          },
+        }, 409);
+      }
+      if (decision.action === 'IN_FLIGHT') {
+        c.header('Retry-After', String(decision.retryAfterSeconds));
+        return c.json({
+          success: false,
+          error: {
+            code: 'CHECKOUT_IN_PROGRESS',
+            message: 'This order is already being processed. Please wait a moment.',
+          },
+        }, 409);
+      }
+      if (decision.action === 'TERMINAL') {
+        return c.json({
+          success: false,
+          error: { code: 'CHECKOUT_FAILED', message: 'This checkout cannot be completed. Please start a new one.' },
+        }, 409);
+      }
+      if (decision.action === 'RETURN_EXISTING') {
+        const existing = await registry.orderRepo.findById(decision.orderId);
+        if (existing) {
+          const state = await registry.orderReservationState.getReservationState(decision.orderId);
+          // Minimal DTO, never the domain order: the replay path must not hand
+          // back the customer's contact and address details.
+          return c.json({
+            success: true,
+            data: toCheckoutResponseDto({
+              order: existing,
+              reservationState: state ?? 'PENDING',
+              deliveryFeeConfirmed: existing.deliveryFeeConfirmed,
+              idempotentReplay: true,
+            }),
+          });
+        }
+      }
+    }
+
     const result = await registry.checkoutUseCase.execute({
       customerDetails: body.customerDetails,
       buyerType: body.buyerType,
@@ -215,44 +311,74 @@ routes.post('/orders/create', async (c) => {
     // the customer's intent — but it is reported truthfully as not proceeding,
     // and 409 rather than 200 so no client treats it as ready to pay.
     if (!mayProgress) {
+      // The order exists and is recorded truthfully, but it does not progress.
+      // The claim is marked COMPLETED against that order, so a retry with the
+      // same key returns this same blocked order rather than creating a second.
+      await idem.complete(identity, result.order.id);
       return c.json({
         success: false,
         error: {
           code: 'STOCK_NOT_RESERVED',
           message:
             'Your order was recorded but stock could not be confirmed, so it cannot be paid for yet. Our team will contact you.',
-          details: {
-            orderId: result.order.id,
-            orderNumber: result.order.orderNumber,
+          // Minimal: identifiers and state only. The customer's contact and
+          // address details are not echoed back into proxy logs and caches.
+          details: toCheckoutResponseDto({
+            order: result.order,
             reservationState,
-            reservationOutcome: reservation.code,
-            warnings: backorderWarnings,
-          },
+            deliveryFeeConfirmed: result.deliveryFeeConfirmed,
+            idempotentReplay: false,
+          }),
         },
       }, 409);
     }
 
+    await idem.complete(identity, result.order.id);
+
+    // A dedicated response DTO, not `{ ...result.order }`. Spreading the domain
+    // order published the customer's full name, phone, email and delivery
+    // address — and on the replay path, published them for whatever key the
+    // caller could get to match. This is an allowlist built by naming fields, so
+    // anything later added to the entity is not silently exposed.
     const res: ApiResponse<any> = {
       success: true,
-      data: {
-        ...result.order,
+      data: toCheckoutResponseDto({
+        order: result.order,
+        reservationState,
         deliveryFeeConfirmed: result.deliveryFeeConfirmed,
         idempotentReplay: result.idempotentReplay,
-        // Truthful stock outcome (Section 11): a held order is backordered and
-        // is not ready for preparation until stock is confirmed.
-        stockConfirmed: !stockHeld,
-        reservationState,
-        reservationOutcome: reservation.code,
-        fulfilmentState: stockHeld ? 'ON_HOLD_BACKORDERED' : 'STOCK_CONFIRMED',
-      },
+      }),
     };
     return c.json(res);
   } catch (err: any) {
-    if (err.message.includes('DATABASE_URL')) {
+    // Release the claim so the outcome matches reality. A rejected request
+    // (bad coupon, unavailable product) is FINAL — retrying it reaches the same
+    // rejection. Anything else is RETRYABLE, because a transient database fault
+    // must not permanently poison the customer's checkout key.
+    const known = ['PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE', 'PRICE_CHANGED', 'PROMOTION_CHANGED']
+      .find((k) => String(err?.message ?? '').startsWith(k));
+    if (claimedIdentity) {
+      try {
+        await checkoutIdempotencyRepo().fail(claimedIdentity, known ?? 'CHECKOUT_ERROR', !known);
+      } catch {
+        // The claim expires on its own lease; failing to release it must not
+        // replace the real error with a bookkeeping one.
+      }
+    }
+
+    if (String(err?.message ?? '').includes('DATABASE_URL')) {
       return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Order service is temporarily unavailable (Database is not configured).' } }, 503);
     }
-    const known = ['PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE', 'PRICE_CHANGED', 'PROMOTION_CHANGED'].find((k) => err.message.startsWith(k));
-    return c.json({ success: false, error: { code: known ?? 'ORDER_FAILED', message: err.message } }, 400);
+    // Known business rejections carry their message; anything else does not.
+    // An unexpected error message can contain query text or internal detail,
+    // and a public caller has no use for it.
+    if (known) {
+      return c.json({ success: false, error: { code: known, message: err.message } }, 400);
+    }
+    return c.json({
+      success: false,
+      error: { code: 'ORDER_FAILED', message: 'The order could not be completed. Please try again.' },
+    }, 400);
   }
 });
 

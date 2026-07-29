@@ -345,6 +345,7 @@ import { logger } from './logging/logger';
 import { RedisLoginAttemptStore } from './security/RedisLoginAttemptStore';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
+import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
 import { SetProductStockUseCase } from '../application/use-cases/inventory/SetProductStockUseCase';
 import {
   ReserveInventoryForOrderUseCase,
@@ -603,6 +604,7 @@ export class Registry {
   // Inventory ledger (Section 12): reservation, release, consumption, availability.
   public readonly inventoryRepo = new DrizzleInventoryRepository();
   public readonly orderReservationState = new DrizzleOrderReservationState();
+  public readonly checkoutIdempotencyRepo = new DrizzleCheckoutIdempotencyRepository();
   public readonly setProductStockUseCase = new SetProductStockUseCase(this.inventoryRepo);
   public readonly reserveInventoryForOrderUseCase = new ReserveInventoryForOrderUseCase({
     repo: this.inventoryRepo,
