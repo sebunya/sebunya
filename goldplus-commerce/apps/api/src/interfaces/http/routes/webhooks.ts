@@ -56,7 +56,15 @@ routes.post('/payment/:provider', async (c) => {
   const signatureVerified = verifySignature(rawBody, signatureHeader, secret);
   const secretConfigured = !!secret;
 
-  const useCase = new RecordPaymentWebhookUseCase(Registry.getInstance().paymentRepo);
+  // Verify the provider-reported amount against the order total. The signature
+  // proves who sent the payload, not that the figure in it is correct.
+  const registry = Registry.getInstance();
+  const useCase = new RecordPaymentWebhookUseCase(registry.paymentRepo, {
+    findTotalAmount: async (orderId: string) => {
+      const order = await registry.orderRepo.findById(orderId);
+      return order ? order.totalUgx : null;
+    },
+  });
 
   // Implementation Safety Update: Encapsulating useCase.execute inside try-catch
   // to correctly capture DB/Entity throws and translate to 422 responses.

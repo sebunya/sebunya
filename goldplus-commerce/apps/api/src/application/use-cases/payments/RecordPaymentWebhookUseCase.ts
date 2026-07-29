@@ -21,10 +21,34 @@ export interface RecordPaymentWebhookInput {
 
 export type RecordPaymentWebhookResult =
   | { ok: true; payment: RecordedPayment; replay: boolean; signatureVerified: boolean }
-  | { ok: false; code: 'UNKNOWN_PROVIDER' | 'BAD_AMOUNT' | 'BAD_OUTCOME' | 'MISSING_IDEMPOTENCY' | 'MISSING_ORDER'; message: string };
+  | {
+      ok: false;
+      code:
+        | 'UNKNOWN_PROVIDER'
+        | 'BAD_AMOUNT'
+        | 'BAD_OUTCOME'
+        | 'MISSING_IDEMPOTENCY'
+        | 'MISSING_ORDER'
+        | 'ORDER_NOT_FOUND'
+        | 'AMOUNT_MISMATCH';
+      message: string;
+      /** Present on AMOUNT_MISMATCH so an operator can triage without re-querying. */
+      detail?: { expectedAmount: number; reportedAmount: number; orderId: string };
+    };
+
+/**
+ * Resolves the authoritative amount an order should be paid. Optional so existing
+ * callers keep working unchanged; when supplied, the webhook is verified against it.
+ */
+export interface OrderAmountResolver {
+  findTotalAmount(orderId: string): Promise<number | null>;
+}
 
 export class RecordPaymentWebhookUseCase {
-  constructor(private readonly payments: IPaymentRepository) {}
+  constructor(
+    private readonly payments: IPaymentRepository,
+    private readonly orders?: OrderAmountResolver,
+  ) {}
 
   public async execute(input: RecordPaymentWebhookInput): Promise<RecordPaymentWebhookResult> {
     if (!ALLOWED_PROVIDERS.has(input.provider as PaymentProvider)) {
@@ -50,6 +74,39 @@ export class RecordPaymentWebhookUseCase {
         code: 'MISSING_IDEMPOTENCY',
         message: 'Either Idempotency-Key header or providerReference body field is required.',
       };
+    }
+
+    // Verify the provider-reported amount against the order total BEFORE recording.
+    //
+    // The provider payload is untrusted input: a signature proves who sent it, not
+    // that the figure is right. Without this check a SUCCESS webhook reporting less
+    // than the order total marks the order paid for the smaller sum — the customer
+    // is under-charged and nothing downstream ever notices, because the recorded
+    // payment becomes the only record of what "should" have been paid.
+    //
+    // A mismatch is never auto-accepted and never auto-rejected: it is surfaced for
+    // manual review, because both an under-payment and an over-payment can be
+    // legitimate (partial settlement, provider fees) and guessing either way is a
+    // financial decision this code is not entitled to make.
+    if (this.orders) {
+      const expectedAmount = await this.orders.findTotalAmount(input.orderId);
+      if (expectedAmount === null) {
+        return {
+          ok: false,
+          code: 'ORDER_NOT_FOUND',
+          message: `Order "${input.orderId}" does not exist; refusing to record a payment against it.`,
+        };
+      }
+      if (input.outcome === 'SUCCESS' && input.amount !== expectedAmount) {
+        return {
+          ok: false,
+          code: 'AMOUNT_MISMATCH',
+          message:
+            `Provider reported ${input.amount} for order ${input.orderId} but the order total is ` +
+            `${expectedAmount}. The payment was NOT recorded and requires manual review.`,
+          detail: { expectedAmount, reportedAmount: input.amount, orderId: input.orderId },
+        };
+      }
     }
 
     const existing = await this.payments.findByIdempotencyKey(idempotencyKey);
