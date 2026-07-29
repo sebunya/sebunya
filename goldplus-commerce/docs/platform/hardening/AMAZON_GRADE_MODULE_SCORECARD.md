@@ -197,10 +197,101 @@ more than 10% of the backlog. Plus `ProcessOutboxBatchUseCase.test.ts` (9).
 Still outstanding for the outbox: out-of-order and duplicate handling at the
 consumer, and dead-letter visibility for events that exhaust their attempts.
 
+### Inventory — WORKING_BUT_THIN
+
+The reservation design is sound and is preserved, not rebuilt: reservations are
+all-or-nothing (a partially satisfiable order becomes a backorder holding *no*
+stock rather than a silent oversell), duplicate product lines are collapsed, the
+unique `(order_id, product_id)` index makes reservation idempotent, and reserve,
+release and consume each run in a single transaction.
+
+| Dimension | Before | After | Evidence |
+|---|---|---|---|
+| Data integrity | 2 | 5 | the stock invariant is now enforced by the database |
+| Concurrency safety | 3 | 5 | lock acquisition order is now actually deterministic |
+| Idempotency | 5 | 5 | unique `(order_id, product_id)` index (pre-existing) |
+| Observability | 2 | 4 | a stranded reservation is refused and named, not clamped away |
+
+#### Finding 5 — the lock order the code documented was not the lock order it took
+
+**Risk.** `reserveForOrder` sorted the product ids in JavaScript and commented
+that this gave a "deterministic lock order [that] avoids deadlocks". It did not.
+Sorting the `IN` list does not control lock acquisition: with no `ORDER BY`, the
+`LockRows` node sits directly above the scan and locks in whatever order that scan
+emits, which varies with the plan. Two concurrent multi-line orders touching the
+same products in opposite scan orders deadlock, and PostgreSQL aborts one.
+
+That abort is not a retry nuisance here. Reservation is best-effort by contract —
+*"a failure here must not fail the order"* — so the losing order proceeds with **no
+stock held** and the same units can be sold again. The deadlock defeats the exact
+oversell guarantee the lock exists to provide.
+
+**Change.** `.orderBy(products.id)` on the `FOR UPDATE` select, which places the
+`LockRows` node above a `Sort` so every transaction takes locks in one global id
+order. The comment was corrected to state the real mechanism.
+
+**Proof — real PostgreSQL 16.13, two concurrent sessions:** locking two rows in
+opposite orders reproduces `ERROR: deadlock detected`; locking them in a single
+global order commits both. `EXPLAIN` confirms the mechanism — without `ORDER BY`
+the plan is `LockRows → Seq Scan`; with it, `LockRows → Sort (Sort Key: id) → Seq
+Scan`.
+
+#### Finding 6 — the invariant that prevents overselling was enforced nowhere
+
+**Risk.** The inventory domain header states the invariant plainly:
+*"reserved_quantity is never allowed to exceed stock_quantity"*. The `products`
+table carried **zero** CHECK constraints of any kind (verified against a real
+database built from the tracked baseline). The invariant lived only in arithmetic
+inside one repository method, and every other writer bypassed it — most directly
+the admin product update, which writes `stock_quantity` with no knowledge of
+`reserved_quantity`, so an operator recording a stock-take could set stock below
+what was already promised to customers.
+
+The resulting corruption was **silent by construction**: `computeAvailable()`
+clamps with `Math.max(0, …)` and the dispatch deduction clamps with
+`greatest(0, …)`, so a stranded reservation reads as an ordinary out-of-stock.
+Orders sit unfulfillable and no alert, report or low-stock list says why. Every
+clamp in the codebase sits exactly where a violation would otherwise have surfaced.
+
+**Change.** Migration `0052` adds two constraints with deliberately different
+enforcement strengths:
+
+- **non-negativity, validated immediately** — negative physical stock and negative
+  reservations have no legitimate meaning, so existing rows are checked and a
+  failure here means the data is already corrupt and must be seen;
+- **`reserved_quantity <= stock_quantity`, added `NOT VALID`** — it binds every
+  INSERT and UPDATE from now on, but a *pre-existing* violation is a commercial
+  problem (real orders promised against units the business does not hold) that a
+  schema migration is not entitled to settle by refusing to deploy. Legacy rows
+  raise an explicit `INVENTORY_STRANDED_RESERVATIONS` warning naming the count and
+  the `VALIDATE CONSTRAINT` to run once reconciled. This also avoids a full-table
+  `ACCESS EXCLUSIVE` scan on a live `products` table.
+
+Above the database, `validateStockAdjustment()` (pure domain) gives the operator an
+actionable `409 STOCK_BELOW_RESERVED` naming the reserved count and the shortfall,
+rather than a raw constraint violation surfacing as a 500. It refuses rather than
+forces: releasing reservations is a decision about specific customer orders and is
+not the adjustment path's to make.
+
+**Proof — real PostgreSQL 16.13 (baseline → 0050 → 0051 → 0052), 16 probes, all
+passing:** applies and re-applies idempotently; non-negativity is `convalidated`
+and reserved-within-stock is not; negative stock and negative reservations rejected
+(each isolated, since a negative stock necessarily trips both constraints);
+lowering stock below outstanding reservations rejected; zeroing stock while
+reservations are outstanding rejected; raising reservations above stock rejected;
+inserting an already-oversold product rejected. Legitimate operations still work:
+raising stock, lowering it to exactly the reserved level, releasing then lowering,
+reserving up to full available stock, the dispatch deduction, and the release.
+
+**Test.** `tests/unit/InventoryStockInvariant.test.ts` (10).
+
+Still outstanding for inventory: reservation expiry for abandoned orders, a
+movement ledger explaining every change to on-hand stock, and multi-location stock.
+
 ## Not yet assessed
 
 The remaining Wave 1 modules (authentication, authorization, audit, health,
 database, Redis, queues, webhooks, release readiness, controlled activation,
-Control Centre, products, pricing, promotions, cart, checkout, orders, inventory,
+Control Centre, products, pricing, promotions, cart, checkout, orders,
 fulfilment, notifications, support) are not scored here.
 No score is recorded without evidence.

@@ -7,6 +7,7 @@ import { AddProductImageByUrlUseCase } from '../../../../application/use-cases/p
 import { RemoveProductImageUseCase } from '../../../../application/use-cases/products/RemoveProductImageUseCase';
 import { SetAttributeValueUseCase } from '../../../../application/use-cases/products/SetAttributeValueUseCase';
 import { DefineAttributeUseCase } from '../../../../application/use-cases/products/DefineAttributeUseCase';
+import { validateStockAdjustment } from '../../../../domain/inventory/Inventory';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 
 const routes = new Hono();
@@ -408,6 +409,27 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
     const slugExists = await registry.productRepo.checkSlugExists(slug, productId);
     if (slugExists) {
       return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Product slug is already in use.' } }, 400);
+    }
+
+    // Stock cannot be written below what is already reserved for customer
+    // orders. Doing so does not free the units up — it strands the promises,
+    // and every downstream reader clamps at zero, so the position would read as
+    // an ordinary out-of-stock while those orders quietly became unfulfillable.
+    const [availability] = await registry.getInventoryAvailabilityUseCase.execute([productId]);
+    const stockDecision = validateStockAdjustment(availability?.reserved ?? 0, stockQuantity);
+    if (!stockDecision.allowed) {
+      return c.json({
+        success: false,
+        error: {
+          code: 'STOCK_BELOW_RESERVED',
+          message: stockDecision.message,
+          details: {
+            reserved: stockDecision.currentReserved,
+            requestedStock: stockDecision.requestedStock,
+            shortfall: stockDecision.shortfall,
+          },
+        },
+      }, 409);
     }
 
     const productEntity = new ProductEntity(

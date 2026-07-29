@@ -40,8 +40,21 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
         return summariseReservation(orderId, outcomeLines, true);
       }
 
-      // Deterministic lock order avoids deadlocks between concurrent multi-line
-      // orders. Lock every product row so concurrent checkouts cannot oversell.
+      // Lock every product row so concurrent checkouts cannot oversell.
+      //
+      // The ORDER BY is load-bearing, not cosmetic. Sorting the id array in
+      // JavaScript does NOT control the order PostgreSQL takes the locks in:
+      // without an ORDER BY the LockRows node sits directly above the scan and
+      // locks in whatever order that scan emits, which varies with the chosen
+      // plan. Two concurrent multi-line orders touching the same products in
+      // opposite scan orders then deadlock, and PostgreSQL aborts one of them.
+      //
+      // That abort is not a mere retry nuisance here: reservation is
+      // best-effort by contract (a failure must not fail the order), so the
+      // losing order proceeds with NO stock held and the same units can be sold
+      // again — the exact oversell this lock exists to prevent. With ORDER BY,
+      // the LockRows node sits above a Sort and every transaction takes the
+      // locks in one global id order, so the cycle cannot form.
       const sortedIds = [...productIds].sort();
       const rows = await tx
         .select({
@@ -51,6 +64,7 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
         })
         .from(products)
         .where(inArray(products.id, sortedIds))
+        .orderBy(products.id)
         .for('update');
       const byId = new Map(rows.map((r) => [r.id, r]));
 

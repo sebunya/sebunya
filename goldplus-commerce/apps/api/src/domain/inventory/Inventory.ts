@@ -37,6 +37,64 @@ export function isLowStock(pos: StockPosition): boolean {
   return computeAvailable(pos.stockOnHand, pos.reserved) <= pos.reorderPoint;
 }
 
+/**
+ * Whether an operator may set on-hand stock to `newStockOnHand` while
+ * `currentReserved` units are already promised to customers.
+ *
+ * Writing stock below what is reserved does not "free up" anything — it strands
+ * reservations that were made against units the business no longer claims to
+ * have. Nothing downstream reports that: `computeAvailable` clamps at zero and
+ * the dispatch deduction clamps at zero, so the position reads as merely
+ * out-of-stock while orders sit unfulfillable. The refusal is what makes the
+ * situation visible.
+ *
+ * The remedy is not to force the number through. It is to release or cancel the
+ * affected reservations first, which is a commercial decision about specific
+ * customer orders and is not this function's to make.
+ */
+export type StockAdjustmentDecision =
+  | { allowed: true }
+  | {
+      allowed: false;
+      reason: 'NEGATIVE_STOCK' | 'RESERVED_EXCEEDS_STOCK';
+      currentReserved: number;
+      requestedStock: number;
+      /** Units that would be promised but unbacked. */
+      shortfall: number;
+      message: string;
+    };
+
+export function validateStockAdjustment(
+  currentReserved: number,
+  newStockOnHand: number,
+): StockAdjustmentDecision {
+  if (!Number.isInteger(newStockOnHand) || newStockOnHand < 0) {
+    return {
+      allowed: false,
+      reason: 'NEGATIVE_STOCK',
+      currentReserved,
+      requestedStock: newStockOnHand,
+      shortfall: 0,
+      message: 'Stock quantity must be a non-negative whole number.',
+    };
+  }
+  if (newStockOnHand < currentReserved) {
+    const shortfall = currentReserved - newStockOnHand;
+    return {
+      allowed: false,
+      reason: 'RESERVED_EXCEEDS_STOCK',
+      currentReserved,
+      requestedStock: newStockOnHand,
+      shortfall,
+      message:
+        `Cannot set stock to ${newStockOnHand}: ${currentReserved} unit(s) are already ` +
+        `reserved for customer orders, so ${shortfall} unit(s) would be promised but ` +
+        `unbacked. Release or cancel the affected reservations first, then set the stock.`,
+    };
+  }
+  return { allowed: true };
+}
+
 export interface ReservationLineRequest {
   productId: string;
   quantity: number;
