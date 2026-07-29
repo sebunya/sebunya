@@ -1,0 +1,90 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import ControlCentreModuleCard from "../../components/admin/ControlCentreModuleCard.astro";
+import ControlCentreFailure from "../../components/admin/ControlCentreFailure.astro";
+import { fetchModuleReadiness } from "../../lib/control-centre";
+import { readSessionToken } from "../../lib/session";
+
+/**
+ * Commerce Operating System — an operational directory and readiness surface over
+ * the modules that already exist in this codebase.
+ *
+ * It implements no module of its own. Every card derives from the canonical
+ * registry and the computed readiness response, and links to the module's real
+ * admin page. Building a second implementation of any module here would be the
+ * duplication the programme forbids.
+ */
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/commerce-os", 303);
+}
+
+const readiness = await fetchModuleReadiness(token, { category: "COMMERCE_OS" });
+const summary = readiness.ok ? readiness.summary : null;
+---
+
+<AdminLayout
+  title="Commerce Operating System"
+  description="Operational directory and live readiness for every commerce module."
+>
+  <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8" data-commerce-os>
+    <header class="border-b border-slate-200 pb-7">
+      <p class="text-[10px] font-black uppercase tracking-[0.2em] text-brand-primary">Operator workspace</p>
+      <h1 class="mt-2 text-3xl font-black tracking-tight text-brand-dark">Commerce Operating System</h1>
+      <p class="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600">
+        Every card below is measured, not declared. Service availability, access policy and business
+        activation are reported separately, so a protected or dormant module is never presented as broken.
+      </p>
+
+      {summary && (
+        <dl class="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs font-bold text-slate-600" data-cc-summary>
+          <div class="flex gap-1"><dt>Modules</dt><dd class="text-brand-dark" data-cc-total>{summary.totalModules}</dd></div>
+          <div class="flex gap-1"><dt>Live</dt><dd class="text-emerald-700" data-cc-live>{summary.liveModules}</dd></div>
+          <div class="flex gap-1"><dt>Degraded</dt><dd class="text-amber-700" data-cc-degraded>{summary.degradedModules}</dd></div>
+          <div class="flex gap-1"><dt>Blocked</dt><dd class="text-amber-700" data-cc-blocked>{summary.blockedModules}</dd></div>
+          <div class="flex gap-1"><dt>Unavailable</dt><dd class="text-red-700" data-cc-unavailable>{summary.unavailableModules}</dd></div>
+          <div class="flex gap-1"><dt>Contract</dt><dd class="text-brand-dark">{summary.contractVersion}</dd></div>
+        </dl>
+      )}
+
+      <div class="mt-4 flex flex-wrap gap-2">
+        <a href="/admin/commerce-os?refresh=1" class="inline-flex items-center rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-black text-slate-700 hover:bg-slate-50" data-cc-refresh>Refresh readiness</a>
+        <a href="/admin" class="inline-flex items-center rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-black text-slate-700 hover:bg-slate-50" data-cc-trust-centre-link>Open Trust Centre</a>
+        <a href="/admin/control-centre-approvals" class="inline-flex items-center rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-black text-slate-700 hover:bg-slate-50" data-cc-approvals-link>Module activation approvals</a>
+      </div>
+    </header>
+
+    {summary ? (
+      <section class="mt-8" aria-labelledby="commerce-os-modules">
+        <h2 id="commerce-os-modules" class="sr-only">Commerce OS modules</h2>
+        <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {summary.modules.map((module) => (
+            <div id={module.moduleKey}>
+              <ControlCentreModuleCard module={module} />
+            </div>
+          ))}
+        </div>
+      </section>
+    ) : (
+      <div class="mt-8">
+        <ControlCentreFailure
+          reason={readiness.ok ? "MALFORMED_RESPONSE" : readiness.reason}
+          message={readiness.ok ? "" : readiness.message}
+          traceId={readiness.traceId}
+          status={readiness.ok ? undefined : readiness.status}
+          retryHref="/admin/commerce-os?refresh=1"
+        />
+      </div>
+    )}
+
+    <section class="mt-10 rounded-2xl border border-slate-200 bg-slate-900 p-6 text-white" aria-labelledby="commerce-os-legend">
+      <h2 id="commerce-os-legend" class="text-lg font-black">Reading these states</h2>
+      <div class="mt-4 grid gap-4 text-sm leading-relaxed md:grid-cols-3">
+        <div><p class="font-black text-brand-primary">Service</p><p class="mt-1 text-slate-300">Whether the capability is reachable and healthy. Only an unmounted route is UNAVAILABLE; a failing dependency is DEGRADED.</p></div>
+        <div><p class="font-black text-brand-primary">Access</p><p class="mt-1 text-slate-300">What you need in order to use it. PROTECTED means permissioned, never broken.</p></div>
+        <div><p class="font-black text-brand-primary">Activation</p><p class="mt-1 text-slate-300">Whether the business capability is switched on. DORMANT means operational and auditable but awaiting an operator approval.</p></div>
+      </div>
+    </section>
+  </div>
+</AdminLayout>

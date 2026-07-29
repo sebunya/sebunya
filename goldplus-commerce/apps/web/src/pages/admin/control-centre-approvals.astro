@@ -1,0 +1,155 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { apiBase } from "../../lib/api";
+import { readSessionToken } from "../../lib/session";
+
+/**
+ * Governed module activation approvals.
+ *
+ * Approving a module here moves its activationStatus from DORMANT to ACTIVE and
+ * does nothing else. It never enables provider delivery, customer communications,
+ * payment mutation, loyalty issuance, price or promotion publication, behavioural
+ * interventions or experiment traffic — each of those keeps its own domain gate.
+ */
+
+interface ApprovalRecord {
+  id: string;
+  moduleKey: string;
+  approvedBy: string;
+  approvedAt: string;
+  reason: string;
+  approvalReference: string;
+  revokedBy: string | null;
+  revokedAt: string | null;
+  revocationReason: string | null;
+}
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/control-centre-approvals", 303);
+}
+
+let approvals: ApprovalRecord[] = [];
+let gatedModules: string[] = [];
+let loadError: string | null = null;
+let deniedReason: string | null = null;
+
+try {
+  const response = await fetch(`${apiBase}/admin/control-centre/approvals`, {
+    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (response.status === 403) {
+    deniedReason = "Your role does not include reports read access, which is required to view the approval ledger.";
+  } else if (!response.ok) {
+    loadError = `The approval ledger returned HTTP ${response.status}.`;
+  } else {
+    const body = await response.json();
+    approvals = body?.data?.approvals ?? [];
+    gatedModules = body?.data?.approvalGatedModules ?? [];
+  }
+} catch {
+  loadError = "The approval ledger could not be reached from the admin server.";
+}
+
+const live = approvals.filter((a) => !a.revokedAt);
+const historic = approvals.filter((a) => a.revokedAt);
+const dormant = gatedModules.filter((key) => !live.some((a) => a.moduleKey === key));
+---
+
+<AdminLayout
+  title="Module activation approvals"
+  description="Governed activation ledger for approval-gated modules."
+>
+  <div class="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8" data-cc-approvals>
+    <header class="border-b border-slate-200 pb-6">
+      <h1 class="text-3xl font-black tracking-tight text-brand-dark">Module activation approvals</h1>
+      <p class="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600">
+        An approval moves a module from <strong>DORMANT</strong> to <strong>ACTIVE</strong> and nothing
+        more. Provider delivery, customer communications, payment mutation, loyalty issuance, price and
+        promotion publication, behavioural interventions and experiment traffic each keep their own gate
+        and are unaffected by anything on this page.
+      </p>
+    </header>
+
+    {deniedReason && (
+      <p class="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="alert" data-cc-approvals-denied>
+        {deniedReason}
+      </p>
+    )}
+    {loadError && (
+      <p class="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900" role="alert" data-cc-approvals-error>
+        {loadError}
+      </p>
+    )}
+
+    {!deniedReason && !loadError && (
+      <>
+        <section class="mt-8" aria-labelledby="cc-live-approvals">
+          <h2 id="cc-live-approvals" class="text-lg font-black text-brand-dark">Active approvals</h2>
+          {live.length === 0 ? (
+            <p class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600" data-cc-approvals-empty>
+              No module is currently activated by approval. Every approval-gated module is dormant, which
+              is the safe default.
+            </p>
+          ) : (
+            <ul class="mt-3 space-y-3" data-cc-live-approvals>
+              {live.map((a) => (
+                <li class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm" data-cc-approval={a.moduleKey}>
+                  <p class="font-black text-emerald-900">{a.moduleKey}</p>
+                  <dl class="mt-2 grid gap-1 text-xs text-emerald-900">
+                    <div class="flex gap-2"><dt class="font-bold">Reason</dt><dd>{a.reason}</dd></div>
+                    <div class="flex gap-2"><dt class="font-bold">Reference</dt><dd>{a.approvalReference}</dd></div>
+                    <div class="flex gap-2"><dt class="font-bold">Approved</dt><dd>{a.approvedAt.replace("T", " ").slice(0, 19)}Z</dd></div>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section class="mt-8" aria-labelledby="cc-dormant">
+          <h2 id="cc-dormant" class="text-lg font-black text-brand-dark">Dormant, awaiting approval</h2>
+          <p class="mt-1 text-xs text-slate-500">
+            These modules are operational and auditable. They are not switched on.
+          </p>
+          <ul class="mt-3 flex flex-wrap gap-2" data-cc-dormant-modules>
+            {dormant.map((key) => (
+              <li class="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-black text-slate-700" data-cc-dormant={key}>
+                {key}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {historic.length > 0 && (
+          <section class="mt-8" aria-labelledby="cc-revoked">
+            <h2 id="cc-revoked" class="text-lg font-black text-brand-dark">Revoked</h2>
+            <ul class="mt-3 space-y-3" data-cc-revoked-approvals>
+              {historic.map((a) => (
+                <li class="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+                  <p class="font-black text-slate-800">{a.moduleKey}</p>
+                  <dl class="mt-2 grid gap-1 text-xs text-slate-600">
+                    <div class="flex gap-2"><dt class="font-bold">Revoked</dt><dd>{a.revokedAt?.replace("T", " ").slice(0, 19)}Z</dd></div>
+                    <div class="flex gap-2"><dt class="font-bold">Reason</dt><dd>{a.revocationReason}</dd></div>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section class="mt-8 rounded-2xl border border-slate-200 bg-slate-900 p-6 text-white">
+          <h2 class="text-lg font-black">Recording an approval</h2>
+          <p class="mt-2 text-sm leading-relaxed text-slate-300">
+            Approvals are recorded through the governed API so that the actor, reason and authorising
+            reference are captured and audited. Settings-manage permission is required; reading this page
+            is not sufficient to change activation.
+          </p>
+          <pre class="mt-3 overflow-x-auto rounded-xl bg-slate-950 p-4 text-xs text-slate-200"><code>POST /admin/control-centre/approvals
+{"{"} "moduleKey": "loyalty", "reason": "…", "approvalReference": "…" {"}"}</code></pre>
+        </section>
+      </>
+    )}
+  </div>
+</AdminLayout>

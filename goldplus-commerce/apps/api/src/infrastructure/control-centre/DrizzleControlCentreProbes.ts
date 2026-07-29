@@ -7,6 +7,10 @@ import type {
   ProviderConfigProbe,
   RouteMountProbe,
 } from '../../application/use-cases/control-centre/EvaluateModuleReadinessUseCase';
+import type {
+  IModuleApprovalRepository,
+  ModuleApprovalRecord,
+} from '../../application/use-cases/control-centre/ModuleActivationApprovalUseCases';
 
 /**
  * Infrastructure adapters for Control Centre readiness.
@@ -90,4 +94,75 @@ export function createRouteMountProbe(mountedPrefixes: readonly string[]): Route
       return false;
     },
   };
+}
+
+/**
+ * Approval ledger adapter over module_activation_approvals (migration 0049).
+ *
+ * The database enforces the invariants — one live approval per module via a
+ * partial unique index, non-blank reason and reference, complete revocations —
+ * so this adapter stays a thin mapping and cannot weaken them.
+ */
+export const drizzleModuleApprovalRepository: IModuleApprovalRepository = {
+  async list() {
+    const result = await db.execute(sql`
+      select id, module_key, approved_by, approved_at, reason, approval_reference,
+             revoked_by, revoked_at, revocation_reason, trace_id
+      from module_activation_approvals
+      order by approved_at desc
+    `);
+    return toRecords(result);
+  },
+
+  async findLive(moduleKey) {
+    const result = await db.execute(sql`
+      select id, module_key, approved_by, approved_at, reason, approval_reference,
+             revoked_by, revoked_at, revocation_reason, trace_id
+      from module_activation_approvals
+      where module_key = ${moduleKey} and revoked_at is null
+      limit 1
+    `);
+    return toRecords(result)[0] ?? null;
+  },
+
+  async approve(input) {
+    const result = await db.execute(sql`
+      insert into module_activation_approvals
+        (module_key, approved_by, reason, approval_reference, trace_id)
+      values (${input.moduleKey}, ${input.approvedBy}, ${input.reason},
+              ${input.approvalReference}, ${input.traceId})
+      returning id, module_key, approved_by, approved_at, reason, approval_reference,
+                revoked_by, revoked_at, revocation_reason, trace_id
+    `);
+    return toRecords(result)[0];
+  },
+
+  async revoke(input) {
+    const result = await db.execute(sql`
+      update module_activation_approvals
+      set revoked_by = ${input.revokedBy},
+          revoked_at = now(),
+          revocation_reason = ${input.revocationReason}
+      where module_key = ${input.moduleKey} and revoked_at is null
+      returning id, module_key, approved_by, approved_at, reason, approval_reference,
+                revoked_by, revoked_at, revocation_reason, trace_id
+    `);
+    return toRecords(result)[0] ?? null;
+  },
+};
+
+function toRecords(result: unknown): ModuleApprovalRecord[] {
+  const rows = (result as { rows?: Record<string, unknown>[] }).rows ?? [];
+  return rows.map((row) => ({
+    id: String(row.id),
+    moduleKey: String(row.module_key),
+    approvedBy: String(row.approved_by),
+    approvedAt: new Date(row.approved_at as string).toISOString(),
+    reason: String(row.reason),
+    approvalReference: String(row.approval_reference),
+    revokedBy: row.revoked_by ? String(row.revoked_by) : null,
+    revokedAt: row.revoked_at ? new Date(row.revoked_at as string).toISOString() : null,
+    revocationReason: row.revocation_reason ? String(row.revocation_reason) : null,
+    traceId: row.trace_id ? String(row.trace_id) : null,
+  }));
 }

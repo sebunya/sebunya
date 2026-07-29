@@ -1,0 +1,121 @@
+---
+import type { ModuleReadiness } from "../../lib/control-centre";
+import {
+  accessTone,
+  activationExplanation,
+  activationTone,
+  serviceTone,
+} from "../../lib/control-centre";
+
+interface Props {
+  module: ModuleReadiness;
+}
+
+const { module } = Astro.props;
+
+// Three separate badges. Collapsing them is what made PROTECTED read as a failure.
+const toneClass = (tone: string) =>
+  tone === "success"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    : tone === "warning"
+      ? "border-amber-200 bg-amber-50 text-amber-800"
+      : tone === "danger"
+        ? "border-red-200 bg-red-50 text-red-800"
+        : tone === "info"
+          ? "border-blue-200 bg-blue-50 text-blue-800"
+          : "border-slate-200 bg-slate-100 text-slate-700";
+
+const primary = module.availableActions.find((a) => a.kind === "READ") ?? module.availableActions[0];
+const down = module.dependencies.filter((d) => d.status !== "UP");
+const descriptionId = `cc-${module.moduleKey}-detail`;
+const checkedAt = new Date(module.lastCheckedAt);
+---
+
+<article
+  class="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+  data-cc-module={module.moduleKey}
+  data-service-status={module.serviceStatus}
+  data-access-status={module.accessStatus}
+  data-activation-status={module.activationStatus}
+>
+  <h3 class="text-base font-black tracking-tight text-brand-dark">{module.displayName}</h3>
+
+  <dl class="mt-3 flex flex-wrap gap-1.5 text-[11px] font-black">
+    <div class={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${toneClass(serviceTone(module.serviceStatus))}`}>
+      <dt class="font-bold uppercase tracking-wide opacity-70">Service</dt>
+      <dd data-cc-service>{module.serviceStatus}</dd>
+    </div>
+    <div class={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${toneClass(accessTone(module.accessStatus))}`}>
+      <dt class="font-bold uppercase tracking-wide opacity-70">Access</dt>
+      <dd data-cc-access>{module.accessStatus}</dd>
+    </div>
+    <div class={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${toneClass(activationTone(module.activationStatus))}`}>
+      <dt class="font-bold uppercase tracking-wide opacity-70">Activation</dt>
+      <dd data-cc-activation>{module.activationStatus}</dd>
+    </div>
+  </dl>
+
+  <p id={descriptionId} class="mt-3 text-xs leading-relaxed text-slate-600">
+    {activationExplanation(module.activationStatus)}
+  </p>
+
+  {module.degradedReasons.length > 0 && (
+    <ul class="mt-3 space-y-1 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900" data-cc-reasons>
+      {module.degradedReasons.map((reason) => <li>{reason}</li>)}
+    </ul>
+  )}
+
+  <dl class="mt-4 grid gap-1 text-[11px] text-slate-500">
+    <div class="flex justify-between gap-2">
+      <dt>Required permission</dt>
+      <dd class="font-bold text-slate-700">
+        {module.requiredPermissions.length > 0 ? module.requiredPermissions.join(", ") : "authenticated"}
+      </dd>
+    </div>
+    <div class="flex justify-between gap-2">
+      <dt>Dependencies</dt>
+      <dd class="font-bold text-slate-700">
+        {module.dependencies.length === 0
+          ? "none"
+          : down.length === 0
+            ? `${module.dependencies.length} available`
+            : `${down.length} unavailable`}
+      </dd>
+    </div>
+    <div class="flex justify-between gap-2">
+      <dt>Last checked</dt>
+      <dd class="font-bold text-slate-700">
+        <time datetime={module.lastCheckedAt}>{checkedAt.toISOString().replace("T", " ").slice(0, 19)}Z</time>
+        {" · "}{module.latencyMs}ms
+      </dd>
+    </div>
+  </dl>
+
+  <div class="mt-auto flex flex-wrap gap-2 pt-4">
+    {primary ? (
+      <a
+        href={primary.target}
+        class="inline-flex items-center rounded-xl bg-brand-dark px-3.5 py-2 text-xs font-black text-white hover:bg-slate-800"
+        data-cc-primary-action
+        aria-describedby={descriptionId}
+      >
+        {primary.label}
+      </a>
+    ) : (
+      // No permitted action is a permission fact, stated precisely rather than
+      // rendered as a dead button.
+      <p class="text-xs font-bold text-slate-500" data-cc-no-action>
+        Your role cannot open this module. Required: {module.requiredPermissions.join(", ") || "an administrator role"}.
+      </p>
+    )}
+    <a
+      href={`/admin/commerce-os#${module.moduleKey}`}
+      class="inline-flex items-center rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"
+      data-cc-diagnostic-action
+    >
+      Diagnostics
+    </a>
+  </div>
+
+  <p class="mt-3 font-mono text-[10px] text-slate-400" data-cc-trace>trace {module.traceId}</p>
+</article>

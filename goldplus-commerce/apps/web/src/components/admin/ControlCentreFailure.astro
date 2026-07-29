@@ -1,0 +1,61 @@
+---
+import type { ReadinessFailureReason } from "../../lib/control-centre";
+
+interface Props {
+  reason: ReadinessFailureReason;
+  message: string;
+  traceId: string;
+  status?: number;
+  retryHref: string;
+}
+
+const { reason, message, traceId, status, retryHref } = Astro.props;
+
+// When readiness cannot be computed the page shows THIS, never static green
+// cards. A fabricated healthy status is the exact defect this programme removed.
+const nextAction: Record<ReadinessFailureReason, string> = {
+  UNAUTHENTICATED: "Sign in again, then retry.",
+  FORBIDDEN: "Ask an administrator to grant reports read access to your role.",
+  ROUTE_MISSING:
+    "Deploy the API build that contains /admin/control-centre/modules, then retry.",
+  SERVICE_UNAVAILABLE: "Check API and database health, then retry.",
+  MALFORMED_RESPONSE: "Check the API contract version against this admin build.",
+  NETWORK: "Check that the admin server can reach the API, then retry.",
+};
+---
+
+<section
+  class="rounded-2xl border border-red-200 bg-red-50 p-6"
+  role="alert"
+  data-cc-failure={reason}
+>
+  <h2 class="text-lg font-black text-red-900">Module readiness is unavailable</h2>
+  <p class="mt-2 text-sm leading-relaxed text-red-900">{message}</p>
+
+  <dl class="mt-4 grid gap-1 text-xs text-red-900">
+    <div class="flex gap-2">
+      <dt class="font-black">Cause</dt>
+      <dd data-cc-failure-reason>{reason}{status ? ` (HTTP ${status})` : ""}</dd>
+    </div>
+    <div class="flex gap-2">
+      <dt class="font-black">Next action</dt>
+      <dd>{nextAction[reason]}</dd>
+    </div>
+    <div class="flex gap-2">
+      <dt class="font-black">Trace</dt>
+      <dd class="font-mono" data-cc-failure-trace>{traceId}</dd>
+    </div>
+  </dl>
+
+  <p class="mt-4 text-xs font-bold text-red-900">
+    No module status is shown, because none could be verified.
+  </p>
+
+  <a
+    href={retryHref}
+    class="mt-4 inline-flex items-center rounded-xl bg-red-700 px-4 py-2 text-xs font-black text-white hover:bg-red-800"
+    data-cc-retry
+  >
+    Retry readiness check
+  </a>
+</section>

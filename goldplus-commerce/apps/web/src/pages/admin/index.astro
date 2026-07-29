@@ -1,10 +1,12 @@
 ---
 import AdminLayout from "../../layouts/AdminLayout.astro";
 import AdminEmptyState from "../../components/admin/AdminEmptyState.astro";
-import AdminModuleCard from "../../components/admin/AdminModuleCard.astro";
 import AdminReadinessChecklist from "../../components/admin/AdminReadinessChecklist.astro";
-import { ADMIN_READINESS_ITEMS, ADMIN_TRUST_MODULES } from "../../lib/admin-trust-centre";
+import ControlCentreModuleCard from "../../components/admin/ControlCentreModuleCard.astro";
+import ControlCentreFailure from "../../components/admin/ControlCentreFailure.astro";
+import { ADMIN_READINESS_ITEMS } from "../../lib/admin-trust-centre";
 import { apiBase } from "../../lib/api";
+import { fetchModuleReadiness } from "../../lib/control-centre";
 import { readSessionToken } from "../../lib/session";
 
 const token = readSessionToken(Astro.request);
@@ -23,6 +25,12 @@ try {
 } catch {
   serviceState = "unavailable";
 }
+
+// Runtime module status comes ONLY from the readiness service. The old static
+// ADMIN_TRUST_MODULES array is no longer a source of runtime truth; when this call
+// fails the page renders a truthful failure state rather than static green cards.
+const readiness = await fetchModuleReadiness(token, { category: "TRUST_CENTRE" });
+const summary = readiness.ok ? readiness.summary : null;
 ---
 
 <AdminLayout
@@ -89,12 +97,40 @@ try {
       <div class="max-w-3xl">
         <h2 id="admin-modules-title" class="text-2xl font-black tracking-tight text-brand-dark">Operational modules</h2>
         <p class="mt-2 text-sm leading-relaxed text-slate-600">
-          Statuses describe verified release posture—not traffic, revenue, order volume or provider activity.
+          Service, access and activation are measured separately. A protected module is not a broken one.
         </p>
+        {summary && (
+          <dl class="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs font-bold text-slate-600" data-cc-summary>
+            <div class="flex gap-1"><dt>Modules</dt><dd class="text-brand-dark" data-cc-total>{summary.totalModules}</dd></div>
+            <div class="flex gap-1"><dt>Live</dt><dd class="text-emerald-700" data-cc-live>{summary.liveModules}</dd></div>
+            <div class="flex gap-1"><dt>Degraded</dt><dd class="text-amber-700" data-cc-degraded>{summary.degradedModules}</dd></div>
+            <div class="flex gap-1"><dt>Blocked</dt><dd class="text-amber-700" data-cc-blocked>{summary.blockedModules}</dd></div>
+            <div class="flex gap-1"><dt>Unavailable</dt><dd class="text-red-700" data-cc-unavailable>{summary.unavailableModules}</dd></div>
+            <div class="flex gap-1"><dt>Checked</dt><dd class="text-brand-dark">{summary.generatedAt.replace("T", " ").slice(0, 19)}Z</dd></div>
+          </dl>
+        )}
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a href="/admin?refresh=1" class="inline-flex items-center rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-black text-slate-700 hover:bg-slate-50" data-cc-refresh>Refresh readiness</a>
+          <a href="/admin/commerce-os" class="inline-flex items-center rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-black text-slate-700 hover:bg-slate-50" data-cc-commerce-os-link>Open Commerce OS</a>
+          <a href="/admin/release-readiness" class="inline-flex items-center rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">View release readiness</a>
+          <a href="/admin/audit" class="inline-flex items-center rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">View audit trail</a>
+        </div>
       </div>
-      <div class="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {ADMIN_TRUST_MODULES.map((module) => <AdminModuleCard module={module} />)}
-      </div>
+      {summary ? (
+        <div class="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {summary.modules.map((module) => <ControlCentreModuleCard module={module} />)}
+        </div>
+      ) : (
+        <div class="mt-6">
+          <ControlCentreFailure
+            reason={readiness.ok ? "MALFORMED_RESPONSE" : readiness.reason}
+            message={readiness.ok ? "" : readiness.message}
+            traceId={readiness.traceId}
+            status={readiness.ok ? undefined : readiness.status}
+            retryHref="/admin?refresh=1"
+          />
+        </div>
+      )}
     </section>
 
     <div class="mt-10">

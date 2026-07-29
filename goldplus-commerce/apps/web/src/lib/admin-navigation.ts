@@ -217,7 +217,7 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     label: 'Pricing',
     href: '/admin/pricing',
     group: 'Commerce',
-    status: 'hidden',
+    status: 'working',
     description: 'Control Ugandan Shilling rates, currencies and wholesale levels.'
   },
   {
@@ -245,8 +245,22 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     label: 'Support Tickets',
     href: '/admin/support',
     group: 'Other',
-    status: 'hidden',
+    status: 'working',
     description: 'Assist users with technical difficulties and support cases.'
+  },
+  {
+    label: 'Commerce OS',
+    href: '/admin/commerce-os',
+    group: 'Dashboard',
+    status: 'working',
+    description: 'Operational directory and live readiness for every commerce module.'
+  },
+  {
+    label: 'Module approvals',
+    href: '/admin/control-centre-approvals',
+    group: 'System',
+    status: 'working',
+    description: 'Governed activation approvals for approval-gated modules.'
   }
 ];
 
