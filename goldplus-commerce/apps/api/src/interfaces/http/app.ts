@@ -28,6 +28,7 @@ import adminSearchDemandRoutes from './routes/admin/search-demand';
 import adminCompatibilityRoutes from './routes/admin/compatibility';
 import adminLoyaltyRoutes from './routes/admin/loyalty';
 import adminFulfilmentRoutes from './routes/admin/fulfilment';
+import adminControlCentreRoutes, { registerMountedPrefixes } from './routes/admin/control-centre';
 import adminInventoryRoutes from './routes/admin/inventory';
 import recommendationRoutes from './routes/recommendations';
 import telemetryRoutes from './routes/telemetry';
@@ -171,6 +172,7 @@ app.route('/admin/compatibility', adminCompatibilityRoutes);
 app.route('/admin/loyalty', adminLoyaltyRoutes);
 app.route('/admin/fulfilment', adminFulfilmentRoutes);
 app.route('/admin/inventory', adminInventoryRoutes);
+app.route('/admin/control-centre', adminControlCentreRoutes);
 app.route('/recommendations', recommendationRoutes);
 app.route('/telemetry', telemetryRoutes);
 app.route('/health', healthRoutes);
@@ -260,3 +262,68 @@ app.notFound((c) => {
 });
 
 export default app;
+
+// The Control Centre readiness service must know what is genuinely mounted, so the
+// list is derived from this file at build time by scripts/release/claude/… rather
+// than hand-maintained. Registering it here keeps the probe honest: a router that
+// is removed or never mounted makes its module report UNAVAILABLE.
+
+/** Every API prefix mounted below. Kept in step by tests/architecture/control-centre-route-coverage.test.ts. */
+export const MOUNTED_API_PREFIXES: readonly string[] = [
+  '/account',
+  '/account/behavioural-interventions',
+  '/account/consent-operating',
+  '/account/surveys',
+  '/admin/audit',
+  '/admin/automation',
+  '/admin/behavioural-interventions',
+  '/admin/compatibility',
+  '/admin/consent-operating',
+  '/admin/control-centre',
+  '/admin/controlled-activation',
+  '/admin/controlled-activation-dry-run',
+  '/admin/controlled-activation-live-review',
+  '/admin/controlled-activation/live-canaries',
+  '/admin/copy-quality',
+  '/admin/customer-dna',
+  '/admin/decision-intelligence',
+  '/admin/delivery-zones',
+  '/admin/deployment',
+  '/admin/experiments',
+  '/admin/fraud',
+  '/admin/fulfilment',
+  '/admin/inventory',
+  '/admin/loyalty',
+  '/admin/measurement',
+  '/admin/measurement-control-tower',
+  '/admin/measurement/gtm',
+  '/admin/measurement/paid-social',
+  '/admin/measurement/payments',
+  '/admin/notifications',
+  '/admin/pim-imports',
+  '/admin/pricing',
+  '/admin/products',
+  '/admin/queues',
+  '/admin/recommendations',
+  '/admin/release-readiness',
+  '/admin/roles',
+  '/admin/search-demand',
+  '/admin/surveys',
+  '/admin/users',
+  '/api/admin/consent/operations',
+  '/auth',
+  '/commerce',
+  '/consent',
+  '/governance',
+  '/health',
+  '/measurement',
+  '/metrics',
+  '/product-finder',
+  '/products',
+  '/recommendations',
+  '/telemetry',
+  '/webhooks',
+] as const;
+
+registerMountedPrefixes(MOUNTED_API_PREFIXES);
+

@@ -24,3 +24,4 @@ export * from './date-validation';
 export * from './events/telemetry';
 export * from './events/consent';
 export * from './events/zero-party';
+export * from './control-centre/module-registry';
