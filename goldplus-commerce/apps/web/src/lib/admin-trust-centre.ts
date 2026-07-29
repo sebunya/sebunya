@@ -1,11 +1,10 @@
 export const ADMIN_TRUST_STATUSES = [
   "Live",
   "Ready",
-  "Needs configuration",
   "No data yet",
   "Protected",
   "Disabled",
-  "Coming soon",
+  "Dormant",
   "Action required",
   "Review recommended",
 ] as const;
@@ -82,11 +81,12 @@ export const ADMIN_TRUST_MODULES: readonly AdminTrustModule[] = [
     id: "support",
     title: "Support operations",
     description: "Prepare operator handling for customer questions without implying that a verified ticket queue is connected.",
-    status: "Needs configuration",
-    actionLabel: "Support queue unavailable",
-    actionDisabled: true,
-    disabledReason: "A verified operator support source is not connected to this trust centre yet.",
-    nextStep: "Review the public support journey and approve a real case source before operational handling.",
+    status: "Protected",
+    actionLabel: "Open support inbox",
+    href: "/admin/support",
+    nextStep: "Triage open cases, confirm SLA state and record customer-safe responses.",
+    accessNote: "Support cases require an authenticated role with reports access.",
+    safetyNote: "Optional external connectors are configured separately; the first-party queue operates without them.",
   },
   {
     id: "legal",
@@ -102,14 +102,13 @@ export const ADMIN_TRUST_MODULES: readonly AdminTrustModule[] = [
     id: "loyalty",
     title: "Loyalty and rewards",
     description: "Prepare policy and operating safeguards before any rewards programme is introduced.",
-    status: "Coming soon",
-    actionLabel: "Programme not active",
-    actionDisabled: true,
-    disabledReason: "Requires an approved policy, liability model, support process and launch decision.",
+    status: "Dormant",
+    actionLabel: "Open loyalty operations",
+    href: "/admin/loyalty",
     previewHref: "/admin/loyalty",
-    previewLabel: "Review read-only foundation",
-    nextStep: "Define programme rules and financial liability before building issuance or redemption.",
-    safetyNote: "No points, balance, cashback, discount or reward is active.",
+    previewLabel: "Review ledger foundation",
+    nextStep: "Approve programme rules and the liability model to move activation from dormant to active.",
+    safetyNote: "The ledger is operational and auditable; no value is issued until an operator approves the policy.",
   },
 ] as const;
 
@@ -123,7 +122,7 @@ export const ADMIN_READINESS_ITEMS: readonly AdminReadinessItem[] = [
   { id: "recommendations", label: "Recommendations preview", status: "Ready", detail: "Read-only operator preview and deterministic public rails are available." },
   { id: "admin-access", label: "Admin access", status: "Protected", detail: "Existing session and API permission checks remain enforced." },
   { id: "providers", label: "Provider sends", status: "Disabled", detail: "No send or activation is performed by the trust centre." },
-  { id: "loyalty", label: "Loyalty programme", status: "Coming soon", detail: "No rewards programme, points balance or redemption is active." },
+  { id: "loyalty", label: "Loyalty programme", status: "Dormant", detail: "Ledger and rules are operational; no value is issued until an operator approves the programme policy." },
 ] as const;
 
 export function isAdminTrustStatus(value: string): value is AdminTrustStatus {
@@ -133,7 +132,8 @@ export function isAdminTrustStatus(value: string): value is AdminTrustStatus {
 export function adminStatusTone(status: AdminTrustStatus): "success" | "info" | "warning" | "danger" | "neutral" {
   if (status === "Live" || status === "Ready") return "success";
   if (status === "Protected") return "info";
-  if (status === "Needs configuration" || status === "Action required" || status === "Review recommended") return "warning";
+  if (status === "Action required" || status === "Review recommended") return "warning";
+  if (status === "Dormant") return "neutral";
   if (status === "Disabled") return "danger";
   return "neutral";
 }
