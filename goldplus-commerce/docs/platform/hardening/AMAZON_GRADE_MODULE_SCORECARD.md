@@ -75,6 +75,41 @@ errcode, no carve-out (no conditional escape, no `current_setting`, no
 restored production-shaped backup; verified by appending and reversing one entry
 and confirming the derived balance, with no mutation of existing rows.
 
+### Payments — WORKING_BUT_THIN
+
+Duplicate protection is genuinely sound and preserved: `payments.idempotency_key`
+is `UNIQUE` at the database level, and the use case refuses any webhook it cannot
+deduplicate rather than accepting it undeduplicated.
+
+| Dimension | Before | After | Evidence |
+|---|---|---|---|
+| Data integrity | 3 | 5 | provider amount verified against the order total |
+| Idempotency | 5 | 5 | DB-unique key; verification ordered before the replay lookup |
+| Auditability | 3 | 4 | mismatches surface expected/reported/orderId for triage |
+
+#### Finding 2 — the provider-reported amount was never verified
+
+**Risk.** The payload is untrusted input; a signature proves who sent it, not that
+the figure is right. A SUCCESS webhook reporting less than the order total marked
+the order paid for the smaller sum, and the recorded payment then became the only
+record of what *should* have been paid — so the under-charge was invisible to every
+downstream reconciliation. Reachable from a provider bug, a partial settlement, or
+a forged payload that passes signature.
+
+**Verified absent before claiming it.** No reference to `totalAmount` existed
+anywhere in the payments use cases or the webhook route.
+
+**Change.** Optional `OrderAmountResolver`. A SUCCESS webhook whose amount differs
+from the order total is refused with `AMOUNT_MISMATCH` and **nothing is recorded**.
+Never auto-accepted, never auto-rejected as an outcome: both under- and
+over-payment can be legitimate, and choosing between them is a financial decision
+this code is not entitled to make, so it goes to manual review. The check runs
+*before* the idempotency lookup, so a tampered amount cannot be waved through as a
+replay of an earlier good payment. The live route supplies the resolver, so the
+check is active in production.
+
+**Test.** `tests/unit/PaymentWebhookAmountVerification.test.ts` (9).
+
 ## Not yet assessed
 
 The remaining Wave 1 modules (authentication, authorization, audit, health,
