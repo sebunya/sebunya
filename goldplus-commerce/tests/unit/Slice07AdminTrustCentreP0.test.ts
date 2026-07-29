@@ -157,9 +157,16 @@ describe('Slice 07-A admin trust centre P0', () => {
     expect(dashboard).toContain('Astro.redirect("/admin/login?returnTo=/admin", 303)');
   });
 
-  it('renders the trust-centre modules and checklist without exposing the API base', () => {
+  it('renders modules from computed readiness, not a static table, and hides the API base', () => {
     expect(dashboard).toContain('GoldPlus Admin Trust Centre');
-    expect(dashboard).toContain('ADMIN_TRUST_MODULES.map');
+    // Runtime status must come from the readiness service. Rendering the static
+    // ADMIN_TRUST_MODULES array here is the defect this programme removed: a card
+    // could claim "Live" with no relationship to whether anything worked.
+    expect(dashboard).not.toContain('ADMIN_TRUST_MODULES.map');
+    expect(dashboard).toContain('fetchModuleReadiness');
+    expect(dashboard).toContain('summary.modules.map');
+    // A readiness failure must render a truthful failure state, never static cards.
+    expect(dashboard).toContain('ControlCentreFailure');
     expect(dashboard).toContain('AdminReadinessChecklist');
     expect(dashboard).not.toContain("apiBase || 'No API Base Key'");
     expect(dashboard).not.toContain('No API Base Key');
