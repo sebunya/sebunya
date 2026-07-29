@@ -154,10 +154,53 @@ Still outstanding for loyalty: liability ageing and breakage forecast built on
 these snapshots, the redemption reservation lifecycle, and programme governance
 states. Earning and redemption remain dormant pending commercial approval.
 
+### Outbox — WORKING_BUT_THIN
+
+The existing foundation is strong and is preserved, not rebuilt: claims are taken
+with `FOR UPDATE SKIP LOCKED` (`DrizzleOutboxRepository.ts:44`) so concurrent
+workers never contend or double-deliver, attempts are counted, `MAX_ATTEMPTS = 8`
+bounds retries, and exhausted events are parked rather than dropped.
+
+| Dimension | Before | After | Evidence |
+|---|---|---|---|
+| Concurrency safety | 5 | 5 | `FOR UPDATE SKIP LOCKED` claim (pre-existing) |
+| Delivery guarantee | 4 | 4 | at-least-once with bounded attempts (pre-existing) |
+| Failure recovery | 2 | 4 | a failed backlog no longer retries as one synchronised burst |
+
+#### Finding 4 — retry backoff had no jitter, so a backlog retried as one burst
+
+**Risk.** Both retry sites computed
+`min(60 · 2^attemptCount, 3600)` with no randomisation. Every event that failed
+during a single incident therefore carried an identical `nextAttemptAt`. When the
+dependency recovered, the entire backlog hit it in the same instant and could knock
+it straight back down — the thundering herd that retries exist to prevent. The
+larger the outage, the larger the herd, so the failure mode got worse exactly when
+the system was least able to absorb it.
+
+**Change.** `computeBackoffSeconds(attemptCount, random)` applies *equal* jitter:
+`delay = cap/2 + random·cap/2`. Equal rather than full jitter is deliberate — full
+jitter can schedule a retry almost immediately, which for an outbox means hammering
+a dependency that is still failing. Keeping a floor of half the deterministic delay
+preserves the backoff's protective intent while spreading the herd across the
+window. The exponential growth and the one-hour cap are unchanged; the RNG is
+constructor-injected so the schedule stays deterministic under test.
+
+`ProcessOutboxBatchUseCase.test.ts`'s "Backoff grows and respects cap" previously
+asserted an exact delay. It now asserts the range `cap/2 ≤ delay ≤ cap`; the growth
+and cap guarantees it existed to protect are still asserted, unweakened.
+
+**Test.** `tests/unit/OutboxRetryJitter.test.ts` (7) — floor, ceiling, cap at
+attempt 20, monotonic growth, whole seconds, determinism under a fixed RNG, and a
+500-event herd that produces >100 distinct delays with no single instant carrying
+more than 10% of the backlog. Plus `ProcessOutboxBatchUseCase.test.ts` (9).
+
+Still outstanding for the outbox: out-of-order and duplicate handling at the
+consumer, and dead-letter visibility for events that exhaust their attempts.
+
 ## Not yet assessed
 
 The remaining Wave 1 modules (authentication, authorization, audit, health,
-database, Redis, queues, outbox, webhooks, release readiness, controlled
-activation, Control Centre, products, pricing, promotions, cart, checkout, orders,
-payments, inventory, fulfilment, notifications, support) are not scored here.
+database, Redis, queues, webhooks, release readiness, controlled activation,
+Control Centre, products, pricing, promotions, cart, checkout, orders, inventory,
+fulfilment, notifications, support) are not scored here.
 No score is recorded without evidence.
