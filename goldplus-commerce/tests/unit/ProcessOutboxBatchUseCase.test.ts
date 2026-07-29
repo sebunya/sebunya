@@ -219,17 +219,28 @@ describe('ProcessOutboxBatchUseCase', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(baseTime));
 
-    // First failure: attemptCount=0 -> backoff = 60 * 2^0 = 60s
+    // Backoff now carries equal jitter so a backlog that failed together does not
+    // retry in one instant, so the delay is a RANGE rather than a fixed value:
+    // cap/2 <= delay <= cap. The growth and cap guarantees are unchanged.
+
+    // attemptCount=0 -> cap = 60 * 2^0 = 60s -> delay in [30s, 60s]
     const ev1 = makeEvent({ id: '1', attemptCount: 0 });
     outbox.events.push(ev1);
     await useCase.execute();
-    expect(ev1.nextAttemptAt.getTime()).toBe(baseTime + 60 * 1000);
+    const delay1 = ev1.nextAttemptAt.getTime() - baseTime;
+    expect(delay1).toBeGreaterThanOrEqual(30 * 1000);
+    expect(delay1).toBeLessThanOrEqual(60 * 1000);
 
-    // High failure: attemptCount=6 -> backoff = 60 * 2^6 = 3840s -> caps at 3600s
+    // attemptCount=6 -> 60 * 2^6 = 3840s, capped at 3600s -> delay in [1800s, 3600s]
     const ev2 = makeEvent({ id: '2', attemptCount: 6 });
     outbox.events.push(ev2);
     await useCase.execute();
-    expect(ev2.nextAttemptAt.getTime()).toBe(baseTime + 3600 * 1000);
+    const delay2 = ev2.nextAttemptAt.getTime() - baseTime;
+    expect(delay2).toBeGreaterThanOrEqual(1800 * 1000);
+    expect(delay2).toBeLessThanOrEqual(3600 * 1000);
+
+    // The cap must still bind: a later attempt cannot exceed one hour.
+    expect(delay2).toBeLessThanOrEqual(3600 * 1000);
 
     vi.useRealTimers();
   });

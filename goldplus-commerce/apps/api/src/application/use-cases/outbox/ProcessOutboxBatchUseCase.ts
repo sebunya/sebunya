@@ -25,11 +25,43 @@ const MAX_ATTEMPTS = 8;
 const BACKOFF_BASE_SECONDS = 60;
 const MAX_BACKOFF_SECONDS = 3600; // Capped at 1 hour
 
+/**
+ * Retry delay with equal jitter.
+ *
+ * The previous schedule was purely deterministic — 60s, 120s, 240s … — so every
+ * event that failed during the same incident retried at the same instant. When a
+ * dependency comes back after an outage the whole backlog lands on it
+ * simultaneously and can knock it straight over again, which is exactly the
+ * thundering herd retries are supposed to prevent.
+ *
+ * Equal jitter keeps half the delay deterministic and randomises the other half:
+ *
+ *   delay = cap/2 + random(0, cap/2)
+ *
+ * Full jitter (random across the whole window) spreads slightly better but can
+ * retry almost immediately, which for an outbox means hammering a service that is
+ * still failing. Keeping a floor of half the backoff preserves the intended
+ * minimum wait while still spreading the herd across the window.
+ *
+ * `random` is injected so the schedule is deterministically testable.
+ */
+export function computeBackoffSeconds(
+  attemptCount: number,
+  random: () => number = Math.random,
+): number {
+  const uncapped = BACKOFF_BASE_SECONDS * Math.pow(2, attemptCount);
+  const cap = Math.min(uncapped, MAX_BACKOFF_SECONDS);
+  const half = cap / 2;
+  return Math.round(half + random() * half);
+}
+
 export class ProcessOutboxBatchUseCase {
   constructor(
     private readonly outboxRepo: IOutboxRepository,
     private readonly router: INotificationRouter,
-    private readonly recordAttempt: RecordNotificationAttemptUseCase
+    private readonly recordAttempt: RecordNotificationAttemptUseCase,
+    /** Injected so the retry schedule is deterministically testable. */
+    private readonly random: () => number = Math.random,
   ) {}
 
   async execute(): Promise<ProcessOutboxBatchResult> {
@@ -111,10 +143,7 @@ export class ProcessOutboxBatchUseCase {
             });
             result.exhausted++;
           } else {
-            const backoffSeconds = Math.min(
-              BACKOFF_BASE_SECONDS * Math.pow(2, event.attemptCount), // Uses current attempt count for 60s, 120s, 240s...
-              MAX_BACKOFF_SECONDS
-            );
+            const backoffSeconds = computeBackoffSeconds(event.attemptCount, this.random);
             const nextAttemptAt = new Date(Date.now() + backoffSeconds * 1000);
             await this.outboxRepo.recordFailure(event.id, finalError || 'Unknown fail', nextAttemptAt);
             result.retried++;
@@ -132,7 +161,7 @@ export class ProcessOutboxBatchUseCase {
 
       } catch (fatalErr: any) {
         // Unexpected crash processing single item, increment counter and retry normally
-        const backoffSeconds = Math.min(BACKOFF_BASE_SECONDS * Math.pow(2, event.attemptCount), MAX_BACKOFF_SECONDS);
+        const backoffSeconds = computeBackoffSeconds(event.attemptCount, this.random);
         const nextAttemptAt = new Date(Date.now() + backoffSeconds * 1000);
         await this.outboxRepo.recordFailure(event.id, `UNEXPECTED_CRASH: ${fatalErr.message}`, nextAttemptAt);
         result.retried++;
