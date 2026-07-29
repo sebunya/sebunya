@@ -138,9 +138,15 @@ export class ProcessOutboxBatchUseCase {
         if (hasFailed) {
           const nextAttemptCount = event.attemptCount + 1;
           if (nextAttemptCount >= MAX_ATTEMPTS) {
-            await this.outboxRepo.markProcessed(event.id, {
-              lastError: `Exhausted after ${MAX_ATTEMPTS} attempts. Last error: ${finalError}`,
-            });
+            // Dead-letter, not "processed". An exhausted event was never
+            // delivered, and recording it as processed made it identical to a
+            // success in every metric and query — the failures were invisible.
+            const message = `Exhausted after ${MAX_ATTEMPTS} attempts. Last error: ${finalError}`;
+            if (this.outboxRepo.markDeadLettered) {
+              await this.outboxRepo.markDeadLettered(event.id, message);
+            } else {
+              await this.outboxRepo.markProcessed(event.id, { lastError: message });
+            }
             result.exhausted++;
           } else {
             const backoffSeconds = computeBackoffSeconds(event.attemptCount, this.random);

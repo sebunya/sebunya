@@ -21,8 +21,21 @@ export interface PersistedOutboxEvent {
 
 export interface IOutboxRepository {
   claimDueBatch(now: Date, limit: number): Promise<PersistedOutboxEvent[]>;
-  markProcessed(eventId: string, opts?: { lastError?: string }): Promise<void>;
-  recordFailure(eventId: string, error: string, nextAttemptAt: Date): Promise<void>;
+  /**
+   * Completion is guarded by the claiming worker's lease. `false` means this
+   * worker no longer owns the event — its lease expired and another worker took
+   * over — and nothing was written. Writing regardless would let a stale worker
+   * overwrite its successor's outcome, including turning a delivered event back
+   * into a pending one and sending it twice.
+   */
+  markProcessed(eventId: string, opts?: { lastError?: string }): Promise<boolean | void>;
+  recordFailure(eventId: string, error: string, nextAttemptAt: Date): Promise<boolean | void>;
+  /**
+   * Terminal failure after the retry bound. Distinct from markProcessed because
+   * the event was never delivered, and recording it as processed made it
+   * indistinguishable from a success in every metric and query.
+   */
+  markDeadLettered?(eventId: string, error: string): Promise<boolean | void>;
   findByRelatedEntity(entity: string, entityId: string): Promise<PersistedOutboxEvent[]>;
   /**
    * Idempotently enqueue an admin-order-email intent. Returns enqueued=false when

@@ -22,6 +22,15 @@ export const outboxEvents = pgTable('outbox_events', {
   processedAt: timestamp('processed_at', { withTimezone: true }),
   attemptCount: integer('attempt_count').default(0).notNull(),
   lastError: text('last_error'),
+  // Lease ownership (migration 0054). Ownership is an explicit fact rather than
+  // an inference from next_attempt_at, so completion can compare-and-set on it
+  // and a worker that lost its lease writes nothing.
+  workerId: varchar('worker_id', { length: 64 }),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+  // Set when the event is dead-lettered. status = 'dead_letter' is the truthful
+  // discriminator; is_processed stays true because the event IS finished.
+  deadLetteredAt: timestamp('dead_lettered_at', { withTimezone: true }),
   nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).defaultNow().notNull(),
   idempotencyKey: varchar('idempotency_key', { length: 255 }).unique(),
   channel: varchar('channel', { length: 50 }),
