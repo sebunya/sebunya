@@ -91,6 +91,20 @@ describe('route coverage', () => {
   it('mounts the aggregated readiness endpoint itself', () => {
     expect(MOUNTED_API_PREFIXES).toContain('/admin/control-centre');
   });
+
+  it('keeps MOUNTED_API_PREFIXES exactly in step with the real app.route calls', () => {
+    // MOUNTED_API_PREFIXES is what the readiness probe trusts. If it drifts from
+    // the actual mounts it becomes the same class of lie this programme exists to
+    // remove: a removed router would still be reported LIVE, and a newly added one
+    // would be reported UNAVAILABLE. Derive the truth from the source and compare.
+    const appSource = fs.readFileSync(
+      path.join(repoRoot, 'apps/api/src/interfaces/http/app.ts'),
+      'utf8',
+    );
+    const declared = [...appSource.matchAll(/app\.route\('([^']+)'/g)].map((m) => m[1]);
+    expect(declared.length).toBeGreaterThan(50);
+    expect([...MOUNTED_API_PREFIXES].sort()).toEqual([...new Set(declared)].sort());
+  });
 });
 
 describe('card-to-route integrity', () => {
