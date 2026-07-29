@@ -342,6 +342,7 @@ import {
   RecordPackingExceptionUseCase,
 } from '../application/use-cases/fulfilment/PackingUseCases';
 import { logger } from './logging/logger';
+import { RedisLoginAttemptStore } from './security/RedisLoginAttemptStore';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
 import { SetProductStockUseCase } from '../application/use-cases/inventory/SetProductStockUseCase';
@@ -544,7 +545,7 @@ export class Registry {
   public readonly updateSupportTicketUseCase = new UpdateSupportTicketUseCase(this.supportRepo);
   public readonly lifecycleReadRepo = new DrizzleLifecycleReadRepository();
   public readonly getLifecycleSegmentsUseCase = new GetLifecycleSegmentsUseCase(this.lifecycleReadRepo);
-  public readonly loginAttemptStore = new InMemoryLoginAttemptStore();
+  public readonly loginAttemptStore = new RedisLoginAttemptStore();
   public readonly evaluateCartPricingUseCase = new EvaluateCartPricingUseCase(
     this.productRepo,
     this.pricingRepo,

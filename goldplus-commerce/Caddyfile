@@ -77,12 +77,39 @@ api.shopgoldplus.com {
 
   reverse_proxy api:3000 {
     header_up Host              {host}
+
+    # ── Client identity — MODE A: Caddy is the public edge ──────────────────
+    #
+    # These two are SET (not appended), so whatever the caller sent is
+    # discarded and the API sees only the address Caddy actually observed.
     header_up X-Real-IP         {remote_host}
-    header_up X-Forwarded-For  {remote_host}
+    header_up X-Forwarded-For   {remote_host}
     header_up X-Forwarded-Proto {scheme}
-    # Forward Cloudflare bot management scores to the API for bot detection
-    header_up X-CF-Bot-Score    {http.request.header.Cf-Bot-Management-Score}
-    header_up X-CF-Threat-Score {http.request.header.Cf-Threat-Score}
+
+    # reverse_proxy forwards every header it is not told about, so any
+    # alternate client-identity header arrives exactly as the caller wrote it.
+    # Stripping them is what makes the two lines above the only answer to "who
+    # is this?" — otherwise a caller can simply pick a different header.
+    header_up -CF-Connecting-IP
+    header_up -True-Client-IP
+    header_up -Fastly-Client-IP
+    header_up -X-Client-IP
+    header_up -X-Cluster-Client-IP
+    header_up -Forwarded
+
+    # Cloudflare scores are forgeable for the same reason: without Cloudflare in
+    # front, Cf-Bot-Management-Score is just a header the caller chose. Bot
+    # detection treats a low score as grounds to reject, so an attacker could
+    # equally send a high one to wave itself through. Both the source header and
+    # the internal header are cleared here.
+    #
+    # In MODE B (Cloudflare is the edge, origin locked to Cloudflare networks),
+    # replace this block with the pass-through in
+    # docs/platform/security/PROXY_TOPOLOGY.md — do NOT simply delete the strip.
+    header_up -Cf-Bot-Management-Score
+    header_up -Cf-Threat-Score
+    header_up -X-CF-Bot-Score
+    header_up -X-CF-Threat-Score
   }
 
   handle_errors {

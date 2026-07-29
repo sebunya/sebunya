@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+
 /**
  * Client address resolution. Pure domain — no Hono, Drizzle, adapters.
  *
@@ -19,6 +21,18 @@
  */
 
 export const UNKNOWN_CLIENT_IP = 'ip-unknown';
+
+/**
+ * How the service is exposed. Stated explicitly rather than inferred, because
+ * the difference decides whether a forwarded header may be believed at all.
+ */
+export type ProxyTopologyMode =
+  /** Caddy is the only public edge and overwrites client-identity headers. */
+  | 'CADDY_EDGE'
+  /** Cloudflare fronts Caddy; origin access is restricted to Cloudflare. */
+  | 'CLOUDFLARE_EDGE'
+  /** No proxy: the service is exposed directly and trusts no forwarded header. */
+  | 'DIRECT';
 
 export type ClientAddressConfidence =
   /** Supplied by a proxy we operate; a caller cannot have forged it. */
@@ -46,12 +60,18 @@ export interface ClientAddress {
 }
 
 /**
- * Normalises one address: strips an IPv4 port suffix, unwraps a bracketed IPv6
- * literal, and rejects anything that is not recognisably an address.
+ * Normalises one address using the runtime's own parser, then canonicalises it.
  *
- * Rejection matters as much as parsing. An unrecognised value that flowed
- * through as a bucket key would let a caller mint unlimited distinct keys out of
- * arbitrary text.
+ * Two separate jobs. `net.isIP` rejects malformed input — multiple elisions,
+ * over-long segments, out-of-range octets, leading zeros, arbitrary colon
+ * strings. Canonicalisation then collapses the many legal spellings of one IPv6
+ * address (`2001:DB8::1`, `2001:0db8:0000:...:0001`, `2001:db8:0:0:0:0:0:1`) to
+ * a single form, so one client cannot occupy several rate-limit buckets simply
+ * by varying how it writes its own address.
+ *
+ * A zone identifier (`fe80::1%eth0`) is rejected rather than stripped: it is
+ * link-local scope, the same address means different hosts on different links,
+ * and it has no business arriving from a client anyway.
  */
 export function normaliseIp(raw: string | null | undefined): string | null {
   if (raw == null) return null;
@@ -59,33 +79,45 @@ export function normaliseIp(raw: string | null | undefined): string | null {
   if (!value) return null;
 
   // [2001:db8::1]:443 or [2001:db8::1]
-  const bracketed = /^\[([0-9a-fA-F:.]+)\](?::\d{1,5})?$/.exec(value);
+  const bracketed = /^\[([^\]]+)\](?::\d{1,5})?$/.exec(value);
   if (bracketed) value = bracketed[1];
   // 203.0.113.7:51234 — a bare IPv6 has more than one colon, so this is safe.
   else if ((value.match(/:/g) ?? []).length === 1 && value.includes('.')) {
     value = value.slice(0, value.indexOf(':'));
   }
 
-  if (isIpv4(value) || isIpv6(value)) return value.toLowerCase();
-  return null;
+  if (value.includes('%')) return null;
+
+  const family = isIP(value);
+  if (family === 4) return value;
+  if (family !== 6) return null;
+
+  return canonicaliseIpv6(value);
 }
 
-function isIpv4(value: string): boolean {
-  const parts = value.split('.');
-  if (parts.length !== 4) return false;
-  return parts.every((part) => {
-    if (!/^\d{1,3}$/.test(part)) return false;
-    // Reject leading zeros: 010.1.1.1 and 10.1.1.1 must not be two identities.
-    if (part.length > 1 && part.startsWith('0')) return false;
-    return Number(part) <= 255;
-  });
-}
+/**
+ * Canonical IPv6 form (RFC 5952), via the WHATWG URL parser the runtime already
+ * ships. An IPv4-mapped address collapses to its IPv4 form so a dual-stack
+ * client is one identity rather than two.
+ */
+function canonicaliseIpv6(value: string): string | null {
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(value);
+  if (mapped && isIP(mapped[1]) === 4) return mapped[1];
 
-function isIpv6(value: string): boolean {
-  if (!value.includes(':')) return false;
-  if (!/^[0-9a-fA-F:.]+$/.test(value)) return false;
-  // At most one "::" elision.
-  return (value.match(/::/g) ?? []).length <= 1;
+  try {
+    const host = new URL(`http://[${value}]`).hostname;
+    const inner = host.startsWith('[') ? host.slice(1, -1) : host;
+    // ::ffff:102:304 is the canonical spelling of ::ffff:1.2.3.4.
+    const hexMapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(inner);
+    if (hexMapped) {
+      const a = parseInt(hexMapped[1], 16);
+      const b = parseInt(hexMapped[2], 16);
+      return `${a >> 8}.${a & 0xff}.${b >> 8}.${b & 0xff}`;
+    }
+    return isIP(inner) === 6 ? inner : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Splits an X-Forwarded-For value into normalised entries, left to right. */
@@ -132,13 +164,136 @@ export function resolveClientAddress(input: ClientAddressInput): ClientAddress {
   return { ip: UNKNOWN_CLIENT_IP, confidence: 'UNKNOWN' };
 }
 
+// ---------------------------------------------------------------------------
+// Bucket keys
+// ---------------------------------------------------------------------------
+
 /**
- * Reads the trusted hop count from configuration.
+ * The key a per-client control should count against.
  *
- * Defaults to 1, matching the tracked deployment where Caddy is the only public
- * edge and reverse-proxies to the API on an internal network. A deployment that
- * exposes the service directly must set 0; one that adds a CDN in front must
- * raise it to match, otherwise the CDN's address is counted as the client.
+ * Confidence is part of the key, not a footnote. A TRUSTED address and an
+ * UNVERIFIED claim of the same address must not share a bucket, or an
+ * unverifiable request could consume — or reset — a real client's budget.
+ *
+ * UNKNOWN deliberately does NOT collapse into one shared identity. A single
+ * `ip-unknown` bucket is an accidental denial-of-service mechanism: one caller
+ * that suppresses its own identity exhausts the budget for every other client
+ * whose address also cannot be resolved. Unknown traffic gets its own namespace
+ * governed by a separate, stricter ceiling.
+ */
+export function clientBucketKey(address: ClientAddress): string {
+  switch (address.confidence) {
+    case 'TRUSTED':
+      return `t:${address.ip}`;
+    case 'UNVERIFIED':
+      return `u:${address.ip}`;
+    case 'UNKNOWN':
+      return 'x:unattributed';
+  }
+}
+
+/** Whether a control must apply its conservative policy to this request. */
+export function isDegradedAttribution(address: ClientAddress): boolean {
+  return address.confidence !== 'TRUSTED';
+}
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
+export interface ProxyConfig {
+  mode: ProxyTopologyMode;
+  trustedHops: number;
+}
+
+export type ProxyConfigResult =
+  | { ok: true; config: ProxyConfig; warnings: string[] }
+  | { ok: false; errors: string[] };
+
+const HOPS_FOR_MODE: Record<ProxyTopologyMode, number> = {
+  DIRECT: 0,
+  CADDY_EDGE: 1,
+  CLOUDFLARE_EDGE: 2,
+};
+
+/**
+ * Resolves the proxy topology from configuration.
+ *
+ * Fails closed in production: an unset or invalid mode is an error rather than a
+ * default, because guessing wrong in either direction is a real failure. Guess
+ * too low and a forged header is believed; guess too high and every client
+ * behind the edge is counted as one, which is a denial of service against
+ * legitimate traffic.
+ *
+ * Outside production an unset mode falls back to CADDY_EDGE with a warning, so
+ * local development does not require the variable to be set.
+ */
+export function resolveProxyConfig(env: {
+  mode?: string;
+  hops?: string;
+  isProduction: boolean;
+}): ProxyConfigResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const rawMode = (env.mode ?? '').trim().toUpperCase();
+  let mode: ProxyTopologyMode | null = null;
+  if (rawMode === 'CADDY_EDGE' || rawMode === 'CLOUDFLARE_EDGE' || rawMode === 'DIRECT') {
+    mode = rawMode;
+  } else if (rawMode === '') {
+    if (env.isProduction) {
+      errors.push(
+        'PROXY_TOPOLOGY_MODE is not set. In production the topology must be explicit: ' +
+          'CADDY_EDGE, CLOUDFLARE_EDGE or DIRECT. Guessing it wrong either believes a ' +
+          'forged header or counts every client behind the edge as one.',
+      );
+    } else {
+      mode = 'CADDY_EDGE';
+      warnings.push('PROXY_TOPOLOGY_MODE is not set; assuming CADDY_EDGE outside production.');
+    }
+  } else {
+    errors.push(`PROXY_TOPOLOGY_MODE is not a known topology: ${rawMode}`);
+  }
+
+  const rawHops = (env.hops ?? '').trim();
+  let hops: number | null = null;
+  if (rawHops === '') {
+    hops = mode ? HOPS_FOR_MODE[mode] : null;
+  } else {
+    const parsed = Number(rawHops);
+    if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+      errors.push(`TRUSTED_PROXY_HOPS must be a non-negative whole number, got: ${rawHops}`);
+    } else {
+      hops = parsed;
+    }
+  }
+
+  if (mode && hops !== null) {
+    const expected = HOPS_FOR_MODE[mode];
+    if (mode === 'DIRECT' && hops !== 0) {
+      errors.push(
+        `PROXY_TOPOLOGY_MODE=DIRECT means no proxy is trusted, but TRUSTED_PROXY_HOPS=${hops}. ` +
+          'A directly exposed service that trusts a forwarded header believes whatever the caller sends.',
+      );
+    } else if (mode !== 'DIRECT' && hops === 0) {
+      errors.push(
+        `PROXY_TOPOLOGY_MODE=${mode} expects at least one trusted proxy, but TRUSTED_PROXY_HOPS=0.`,
+      );
+    } else if (hops !== expected) {
+      warnings.push(
+        `TRUSTED_PROXY_HOPS=${hops} differs from the ${expected} expected for ${mode}. ` +
+          'This is only correct if the deployment really has that many trusted proxies.',
+      );
+    }
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, config: { mode: mode!, trustedHops: hops! }, warnings };
+}
+
+/**
+ * Legacy accessor kept for callers that only need the hop count.
+ * Prefer `resolveProxyConfig`, which validates the topology as a whole.
  */
 export function trustedHopsFromEnv(value: string | undefined): number {
   if (value == null || value.trim() === '') return 1;

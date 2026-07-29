@@ -8,6 +8,10 @@ export default defineConfig({
       // was erased at transform time and never actually resolved. Tests that import
       // real values (the Control Centre registry) need a genuine path.
       '@goldplus/shared': path.resolve(__dirname, 'packages/shared/src/index.ts'),
+      // ioredis is a dependency of apps/api, not of the workspace root, so the
+      // root-level vitest run cannot resolve it from a test file. The Redis
+      // integration proofs import it directly.
+      ioredis: path.resolve(__dirname, 'apps/api/node_modules/ioredis'),
     },
   },
   test: {

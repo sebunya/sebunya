@@ -1,6 +1,6 @@
 import type { Context, Next } from 'hono';
 import { logger } from '../../../infrastructure/logging/logger';
-import { clientIp } from '../clientAddress';
+import { clientKey, proxyConfig } from '../clientAddress';
 
 // In-memory cache for telemetry event replay protection
 const processedEventIds = new Set<string>();
@@ -76,12 +76,23 @@ function isTimestampOutOfBounds(eventTimeSec: number): boolean {
  * `next()` returns Promise<Response>, which satisfies the return type.
  */
 export async function botDetectionMiddleware(c: Context, next: Next): Promise<Response | void> {
-  const ip = clientIp(c);
+  // Namespaced by attribution confidence: an unverifiable claim must not be
+  // able to consume or reset a real client's velocity budget, and unresolvable
+  // clients share a bounded namespace rather than one global bucket.
+  const ip = clientKey(c);
   const ua = c.req.header('user-agent') ?? '';
 
-  // 1. Cloudflare bot score (forwarded by Caddy)
-  const cfBotScore = parseInt(c.req.header('x-cf-bot-score') ?? '100', 10);
-  if (cfBotScore < 30) return c.newResponse(null, 403);
+  // 1. Cloudflare bot score — believed ONLY when Cloudflare is actually the edge.
+  //
+  // Without Cloudflare in front, this header is just a value the caller chose.
+  // Acting on a low score would then let anyone get anyone else's request
+  // rejected, and acting on a high one lets an attacker wave itself past the
+  // check entirely. In CADDY_EDGE mode the edge strips it and this block is
+  // skipped rather than reading a header that cannot mean anything.
+  if (proxyConfig().mode === 'CLOUDFLARE_EDGE') {
+    const cfBotScore = parseInt(c.req.header('x-cf-bot-score') ?? '100', 10);
+    if (Number.isFinite(cfBotScore) && cfBotScore < 30) return c.newResponse(null, 403);
+  }
 
   // 2. User-agent check
   if (isBotUserAgent(ua)) return c.newResponse(null, 403);

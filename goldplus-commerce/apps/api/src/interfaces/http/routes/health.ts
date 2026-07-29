@@ -3,6 +3,8 @@ import { Registry } from '../../../infrastructure/Registry';
 import { env } from '../../../config/env';
 import { ApiResponse } from '@goldplus/shared';
 import { QueueService } from '../../../infrastructure/queues/QueueService';
+import { proxyConfig } from '../clientAddress';
+import { abuseControlStore } from '../../../infrastructure/security/RedisAbuseControlStore';
 
 const routes = new Hono();
 
@@ -73,6 +75,33 @@ routes.get('/ready', async (c) => {
   if (!redisHealthy) {
     overallHealthy = false;
   }
+
+  // Proxy topology. Every per-client abuse control depends on knowing how the
+  // service is exposed, so a service that cannot answer that is not ready. The
+  // mode and hop count are reported; no hostnames, addresses or network detail.
+  try {
+    const proxy = proxyConfig();
+    subsystems.proxy_topology = {
+      status: 'healthy',
+      mode: proxy.mode,
+      trusted_hops: proxy.trustedHops,
+    } as never;
+  } catch (err) {
+    overallHealthy = false;
+    subsystems.proxy_topology = {
+      status: 'unhealthy',
+      error: 'PROXY_TOPOLOGY_INVALID',
+    };
+  }
+
+  // Abuse controls. Redis holds the authoritative counters; a degraded control
+  // is still enforcing, but on a stricter per-replica budget, so it is reported
+  // rather than hidden behind an overall "ready".
+  const abuse = await abuseControlStore.probe();
+  subsystems.abuse_controls = {
+    status: abuse.available ? (abuse.degraded ? 'degraded' : 'healthy') : 'degraded',
+    ...(abuse.available ? {} : { error: 'REDIS_UNAVAILABLE_LOCAL_FALLBACK_ACTIVE' }),
+  };
 
   const res: ApiResponse<{ status: string; timestamp: string; subsystems: typeof subsystems }> = {
     success: overallHealthy,
