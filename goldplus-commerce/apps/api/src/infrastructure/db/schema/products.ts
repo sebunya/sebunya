@@ -38,6 +38,12 @@ export const products = pgTable('products', {
   // available = stock_quantity - reserved_quantity. reorder_point drives low-stock alerts.
   reservedQuantity: integer('reserved_quantity').default(0).notNull(),
   reorderPoint: integer('reorder_point').default(0).notNull(),
+  // Whether this product may be sold without holding stock (migration 0053).
+  // Defaults to STOCK_CONTROLLED: an unclassified product must be reserved,
+  // never implicitly oversold.
+  inventoryPolicy: varchar('inventory_policy', { length: 24 })
+    .default('STOCK_CONTROLLED')
+    .notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

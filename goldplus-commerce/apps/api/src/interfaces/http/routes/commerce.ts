@@ -5,6 +5,7 @@ import { ApiResponse } from '@goldplus/shared';
 import { customerSessionMiddleware } from '../middleware/customerSession';
 import { createHash } from 'crypto';
 import { clientIp } from '../clientAddress';
+import { mayProgressToPayment, mayCreateFulfilment } from '../../../domain/inventory/Inventory';
 
 // Slice 3B: server-authoritative checkout input. Client prices/sku/names are
 // deliberately absent — only productId + quantity are trusted; extra fields
@@ -153,49 +154,74 @@ routes.post('/orders/create', async (c) => {
     });
 
     // Section 12: reserve stock for the order (idempotent, all-or-nothing,
-    // oversell-safe). The order is NEVER silently accepted as ready for
-    // preparation when stock was not reserved. If the reservation is not fully
-    // satisfied — or cannot be confirmed at all — the fulfilment task opens
-    // ON_HOLD (backordered) with a truthful warning instead of NEW.
-    let backorderWarnings: string[] = [];
-    let stockHeld = false;
-    try {
-      const reservation = await registry.reserveInventoryForOrderUseCase.execute(result.order);
-      backorderWarnings = reservation.warnings;
-      stockHeld = !reservation.fullyReserved;
-    } catch (invErr: any) {
-      console.error('[API_ERROR] Inventory reservation failed (order persisted):', invErr?.message);
-      // Fail safe, not silent: hold the order for stock confirmation.
-      stockHeld = true;
-      backorderWarnings = ['PENDING_STOCK_CONFIRMATION: stock could not be confirmed — order held for review.'];
-    }
+    // oversell-safe).
+    //
+    // Reservation is NOT best effort. The use case classifies the outcome
+    // explicitly and records it on the order, so a technical failure is never
+    // laundered into an ordinary backorder — which is what happened while every
+    // exception here was caught and turned into ON_HOLD. Only a product whose
+    // policy permits it can reach BACKORDERED; a stock-controlled line that
+    // could not be held leaves the order UNRESERVED_BLOCKED.
+    const reservation = await registry.reserveInventoryForOrderUseCase.execute(result.order);
+    const backorderWarnings = reservation.warnings;
+    const reservationState = reservation.state;
+    const stockHeld = !reservation.fullyReserved;
+    const mayProgress = mayProgressToPayment(reservationState);
 
     // Section 9.3: every successfully placed order creates exactly one idempotent
     // admin fulfilment alert (the internal "New Orders" work item). This never
     // depends on any external provider, so it works even when email/SMS/WhatsApp
     // are unavailable. The unique order_id constraint makes duplicate submissions
-    // collapse to a single task. A held task is created ON_HOLD so it is never
-    // presented as ready for preparation.
-    try {
-      await registry.createFulfilmentTaskOnOrderPlacedUseCase.execute(result.order, {
-        extraWarnings: backorderWarnings,
-        hold: stockHeld,
-      });
-    } catch (fulfilErr: any) {
-      console.error('[API_ERROR] Fulfilment task creation failed (order persisted):', fulfilErr?.message);
+    // collapse to a single task.
+    //
+    // An order whose stock could not be confirmed gets NO fulfilment task at
+    // all. Creating one — even ON_HOLD — puts unfulfillable work into the
+    // operator's queue and asserts a stock position nobody established.
+    if (mayCreateFulfilment(reservationState)) {
+      try {
+        await registry.createFulfilmentTaskOnOrderPlacedUseCase.execute(result.order, {
+          extraWarnings: backorderWarnings,
+          hold: stockHeld,
+        });
+      } catch (fulfilErr: any) {
+        console.error('[API_ERROR] Fulfilment task creation failed (order persisted):', fulfilErr?.message);
+      }
     }
 
     // Transactional admin order email intent (OrderPlaced). Idempotent, dry-run
     // (no provider call until activated); the order/fulfilment/notification all
     // remain available even if this enqueue fails.
-    try {
-      await registry.enqueueAdminOrderEmailUseCase.execute({
-        order: result.order,
-        event: 'placed',
-        stockConfirmed: !stockHeld,
-      });
-    } catch (emailErr: any) {
-      console.error('[API_ERROR] Admin order email enqueue failed (order persisted):', emailErr?.message);
+    if (mayProgress) {
+      try {
+        await registry.enqueueAdminOrderEmailUseCase.execute({
+          order: result.order,
+          event: 'placed',
+          stockConfirmed: !stockHeld,
+        });
+      } catch (emailErr: any) {
+        console.error('[API_ERROR] Admin order email enqueue failed (order persisted):', emailErr?.message);
+      }
+    }
+
+    // The order exists — it is never discarded, because discarding it would lose
+    // the customer's intent — but it is reported truthfully as not proceeding,
+    // and 409 rather than 200 so no client treats it as ready to pay.
+    if (!mayProgress) {
+      return c.json({
+        success: false,
+        error: {
+          code: 'STOCK_NOT_RESERVED',
+          message:
+            'Your order was recorded but stock could not be confirmed, so it cannot be paid for yet. Our team will contact you.',
+          details: {
+            orderId: result.order.id,
+            orderNumber: result.order.orderNumber,
+            reservationState,
+            reservationOutcome: reservation.code,
+            warnings: backorderWarnings,
+          },
+        },
+      }, 409);
     }
 
     const res: ApiResponse<any> = {
@@ -207,6 +233,8 @@ routes.post('/orders/create', async (c) => {
         // Truthful stock outcome (Section 11): a held order is backordered and
         // is not ready for preparation until stock is confirmed.
         stockConfirmed: !stockHeld,
+        reservationState,
+        reservationOutcome: reservation.code,
         fulfilmentState: stockHeld ? 'ON_HOLD_BACKORDERED' : 'STOCK_CONFIRMED',
       },
     };

@@ -28,6 +28,18 @@ export interface IInventoryRepository {
    * any shortfall is reported as backorder.
    */
   reserveForOrder(orderId: string, lines: ReservationLineRequest[]): Promise<ReservationOutcome>;
+  /**
+   * Sets on-hand stock atomically, refusing to write it below what is reserved.
+   *
+   * Returns `applied: false` with the authoritative current figures when the
+   * invariant blocked the write, and `null` when the product does not exist.
+   * The caller must not pre-read and decide for itself: a reservation committed
+   * between that read and the write would slip straight through.
+   */
+  setStockQuantity(
+    productId: string,
+    newStock: number,
+  ): Promise<{ applied: boolean; reserved: number; stock: number } | null>;
   /** Release an order's active reservations back to available stock. Idempotent. */
   releaseForOrder(orderId: string): Promise<{ released: boolean }>;
   /** Deduct reserved stock from on-hand at dispatch and mark consumed. Idempotent. */

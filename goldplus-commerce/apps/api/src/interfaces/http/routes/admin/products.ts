@@ -415,18 +415,40 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
     // orders. Doing so does not free the units up — it strands the promises,
     // and every downstream reader clamps at zero, so the position would read as
     // an ordinary out-of-stock while those orders quietly became unfulfillable.
-    const [availability] = await registry.getInventoryAvailabilityUseCase.execute([productId]);
-    const stockDecision = validateStockAdjustment(availability?.reserved ?? 0, stockQuantity);
-    if (!stockDecision.allowed) {
+    //
+    // The shape check is cheap and local; the reserved-quantity check is NOT
+    // done here. Reading availability, validating against it and then writing
+    // leaves a window in which a checkout reserves the last units — the
+    // validation passes against a figure that is already stale. The comparison
+    // and the write happen together, inside the conditional UPDATE below.
+    const shape = validateStockAdjustment(0, stockQuantity);
+    if (!shape.allowed) {
+      return c.json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: shape.message },
+      }, 400);
+    }
+
+    const stockResult = await registry.setProductStockUseCase.execute(productId, stockQuantity);
+    if (stockResult === null) {
+      return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Product not found.' } }, 404);
+    }
+    if (!stockResult.applied) {
+      // Authoritative: these figures come from the same transaction that
+      // refused the write, not from a pre-read that may since have changed.
+      const decision = validateStockAdjustment(stockResult.reserved, stockQuantity);
       return c.json({
         success: false,
         error: {
           code: 'STOCK_BELOW_RESERVED',
-          message: stockDecision.message,
+          message: decision.allowed
+            ? 'Stock could not be updated because reservations changed during the update. Please retry.'
+            : decision.message,
           details: {
-            reserved: stockDecision.currentReserved,
-            requestedStock: stockDecision.requestedStock,
-            shortfall: stockDecision.shortfall,
+            reserved: stockResult.reserved,
+            currentStock: stockResult.stock,
+            requestedStock: stockQuantity,
+            shortfall: Math.max(0, stockResult.reserved - stockQuantity),
           },
         },
       }, 409);

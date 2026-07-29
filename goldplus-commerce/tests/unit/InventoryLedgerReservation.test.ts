@@ -46,13 +46,26 @@ describe('Inventory domain (Section 12)', () => {
   });
 
   it('summarise reports backorder warnings truthfully', () => {
+    // A short line on a backorder-eligible product is an ordinary backorder.
     const outcome = summariseReservation('o1', [
-      { productId: 'p1', requested: 2, reserved: 2, shortfall: 0 },
-      { productId: 'p2', requested: 5, reserved: 3, shortfall: 2 },
+      { productId: 'p1', requested: 2, reserved: 2, shortfall: 0, policy: 'BACKORDER_ALLOWED' },
+      { productId: 'p2', requested: 5, reserved: 3, shortfall: 2, policy: 'BACKORDER_ALLOWED' },
     ]);
     expect(outcome.fullyReserved).toBe(false);
     expect(outcome.warnings).toHaveLength(1);
     expect(outcome.warnings[0]).toMatch(/Backorder: 2 of 5/);
+    expect(outcome.code).toBe('BACKORDERED');
+  });
+
+  it('a short line on a stock-controlled product is NOT an ordinary backorder', () => {
+    // Unclassified defaults to STOCK_CONTROLLED, so the same shortfall now
+    // blocks the order and says so, rather than reading as a routine backorder.
+    const outcome = summariseReservation('o1', [
+      { productId: 'p2', requested: 5, reserved: 3, shortfall: 2 },
+    ]);
+    expect(outcome.code).toBe('INSUFFICIENT_STOCK');
+    expect(outcome.state).toBe('UNRESERVED_BLOCKED');
+    expect(outcome.warnings.some((w) => w.includes('cannot be sold short'))).toBe(true);
   });
 });
 

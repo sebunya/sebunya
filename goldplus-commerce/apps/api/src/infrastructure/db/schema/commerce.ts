@@ -58,6 +58,13 @@ export const orders = pgTable('orders', {
   deliveryLocation: jsonb('delivery_location'),
   deliveryFeeConfirmed: boolean('delivery_fee_confirmed').default(false).notNull(),
   clientOrderKey: varchar('client_order_key', { length: 80 }),
+  // What actually happened to stock for this order (migration 0053). Recorded on
+  // the order rather than inferred from a fulfilment task, so payment and
+  // fulfilment can both fail closed on it.
+  reservationState: varchar('reservation_state', { length: 24 })
+    .default('PENDING')
+    .notNull(),
+  reservationUpdatedAt: timestamp('reservation_updated_at', { withTimezone: true }),
 }, (table) => ({
   orderNumberIdx: index('orders_number_idx').on(table.orderNumber),
   clientOrderKeyIdx: uniqueIndex('orders_client_order_key_idx').on(table.clientOrderKey),

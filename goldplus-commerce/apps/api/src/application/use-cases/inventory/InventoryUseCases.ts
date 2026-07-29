@@ -1,19 +1,14 @@
-import { Order } from '../../../domain/commerce/Order';
-import { ReservationOutcome } from '../../../domain/inventory/Inventory';
 import { IInventoryRepository, AvailabilityRow } from '../../ports/IInventoryRepository';
 
-/**
- * OrderPlaced → reserve stock. Idempotent (repository keys by order_id), never
- * oversells, and returns backorder warnings for the fulfilment task. A failure
- * here must not fail the order — the caller treats it as best-effort.
- */
-export class ReserveInventoryForOrderUseCase {
-  constructor(private readonly repo: IInventoryRepository) {}
-  execute(order: Order): Promise<ReservationOutcome> {
-    const lines = order.items.map((i) => ({ productId: i.productId, quantity: i.quantity }));
-    return this.repo.reserveForOrder(order.id, lines);
-  }
-}
+// OrderPlaced → reserve stock. The best-effort implementation that used to live
+// here has been replaced: a reservation failure is no longer indistinguishable
+// from a backorder. See ReserveInventoryForOrderUseCase.
+export {
+  ReserveInventoryForOrderUseCase,
+  type ReservationAlert,
+  type ReserveInventoryDeps,
+  type IOrderReservationStateWriter,
+} from './ReserveInventoryForOrderUseCase';
 
 /** OrderCancelled / fulfilment CANCELLED → release reservations. Idempotent. */
 export class ReleaseInventoryForOrderUseCase {

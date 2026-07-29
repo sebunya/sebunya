@@ -102,6 +102,12 @@ export class DrizzleProductRepository implements IProductRepository {
       stockQuantity: product.stockQuantity,
     }).onConflictDoUpdate({
       target: products.id,
+      // stockQuantity is deliberately NOT updated here. On-hand stock is owned by
+      // setStockQuantity, whose conditional UPDATE carries the
+      // reserved <= stock invariant in its WHERE clause. Rewriting stock from a
+      // property save would reopen the read-then-write window this exists to
+      // close, and could trip the database constraint as a raw 500. The insert
+      // above still sets the initial value when the product is created.
       set: {
         sku: product.sku,
         modelNumber: product.modelNumber,
@@ -109,7 +115,6 @@ export class DrizzleProductRepository implements IProductRepository {
         categoryName: product.category,
         priceUgx: product.priceUgx,
         approvalStatus: product.approvalStatus,
-        stockQuantity: product.stockQuantity,
       }
     });
   }

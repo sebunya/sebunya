@@ -341,7 +341,10 @@ import {
   CompletePackingUseCase,
   RecordPackingExceptionUseCase,
 } from '../application/use-cases/fulfilment/PackingUseCases';
+import { logger } from './logging/logger';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
+import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
+import { SetProductStockUseCase } from '../application/use-cases/inventory/SetProductStockUseCase';
 import {
   ReserveInventoryForOrderUseCase,
   ReleaseInventoryForOrderUseCase,
@@ -598,7 +601,24 @@ export class Registry {
   public readonly recordPackingExceptionUseCase = new RecordPackingExceptionUseCase(this.packingSessionRepo, this.auditRepo);
   // Inventory ledger (Section 12): reservation, release, consumption, availability.
   public readonly inventoryRepo = new DrizzleInventoryRepository();
-  public readonly reserveInventoryForOrderUseCase = new ReserveInventoryForOrderUseCase(this.inventoryRepo);
+  public readonly orderReservationState = new DrizzleOrderReservationState();
+  public readonly setProductStockUseCase = new SetProductStockUseCase(this.inventoryRepo);
+  public readonly reserveInventoryForOrderUseCase = new ReserveInventoryForOrderUseCase({
+    repo: this.inventoryRepo,
+    orderState: this.orderReservationState,
+    // Retry exhaustion and blocked stock are operational events, not noise. The
+    // order id is safe to log; no customer detail is included.
+    onAlert: (alert) =>
+      logger.error(
+        {
+          orderId: alert.orderId,
+          code: alert.code,
+          attempts: alert.attempts,
+          detail: alert.detail,
+        },
+        'INVENTORY_RESERVATION_ALERT',
+      ),
+  });
   public readonly releaseInventoryForOrderUseCase = new ReleaseInventoryForOrderUseCase(this.inventoryRepo);
   public readonly consumeInventoryForOrderUseCase = new ConsumeInventoryForOrderUseCase(this.inventoryRepo);
   public readonly getInventoryAvailabilityUseCase = new GetInventoryAvailabilityUseCase(this.inventoryRepo);
