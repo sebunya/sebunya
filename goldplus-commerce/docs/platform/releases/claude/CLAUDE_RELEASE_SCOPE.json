@@ -1,11 +1,11 @@
 {
   "branch": "phase-2-measurement-control-tower-completion",
-  "executableCommit": "232e2903410e317d06e1416f67ed5f85904eb693",
-  "executableTree": "d9819c425195d8acdec7a8cc7c3f08e463dba86b",
+  "executableCommit": "38d26fdccf7c86414c6d6bc4dfb80ec6520a5aa2",
+  "executableTree": "6b2d717f1237acdb36a9353454be51fe2bfeee4d",
   "pnpmLockSha256": "0a750b72d4ec2bc1c5506d35d962b921881d7e580ae2dbc004d3b0c771b6874a",
   "apiDockerfileSha256": "66acf6b6d47a5172598c4469f014d9309f5d03dac6f413157652308e22bf7f48",
   "webDockerfileSha256": "bd93666f7f40b860e5e0f1304f0e7e1f6a2c93c1836934f94229e274d4ba1b4e",
-  "migrationCeiling": "0048",
+  "migrationCeiling": "0049_module_activation_approvals",
   "migrations": [
     {
       "file": "0000_fuzzy_switch.sql",
@@ -202,6 +202,10 @@
     {
       "file": "0048_search_insights.sql",
       "sha256": "21aca802bfaeaab08cf52dc69438454c6bcaf62b3e50a68ae9599352fadc4ab2"
+    },
+    {
+      "file": "0049_module_activation_approvals.sql",
+      "sha256": "0496558bdaa6f21242f5c3b25193efe82ae73f18ea4006f3e571cf14170a76dc"
     }
   ],
   "operatorScripts": {
@@ -233,7 +237,7 @@
     "claude/verify-claude-release-scope.mjs": "4bd397dbcee9a1e343e393e885e7c87013608c749fb3152ef4d3787ee61989e9",
     "claude/verify-final-scope.mjs": "580474ee18fab3d07a08a663bd29df85eef5ffe147b4ee519b3258bf80534d8e"
   },
-  "moduleInventorySha256": "0ccb4f4d2fd3d6b1fdd764b438d198ce01271a8d74b5584b7010ce01c5e6f180",
+  "moduleInventorySha256": "048993663cda01c05612566c8b5ecfe23b34825d873f7f3df2c916aa5761b71e",
   "engineeringAcceptanceSha256": "21b16543426b3429f7176915f08cce6946386e18c9359f5dd55d5a366fd132ae",
   "historicSourceStatusSha256": "850a2ab445483e3b5cecfbc104df7713fcd32ea61be5714a969abff08cf4ef13",
   "inventoryToolingSha256": {

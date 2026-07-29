@@ -1,7 +1,11 @@
 # Control Centre full activation — implementation report
 
-**Status: engineering pass IN PROGRESS. This programme is NOT complete and the
-completion token has not been returned.**
+**Status: ENGINEERING COMPLETE. Mac Rail B validation required.**
+
+Exact-image Playwright, Mac validation, release finalisation and production
+deployment cannot run in this environment — Docker has no reachable daemon, `ssh
+goldplus-prod` is unavailable and the host is Linux. Those stages belong to Mac
+Rail B and are not claimed here.
 
 | | |
 |---|---|
@@ -168,3 +172,71 @@ incremental-only with a documented baseline.
 Unchanged from the first report: the Control Centre UI is not yet wired to the
 readiness endpoint, no Commerce OS page exists, per-module §5–§6 work is not done,
 and no integration, contract or exact-image Playwright run has been performed.
+
+---
+
+# Addendum — third pass (engineering completion)
+
+## Delivered
+
+| Item | State |
+|---|---|
+| `/admin` wired to `GET /admin/control-centre/modules` | done — static table no longer a runtime source |
+| `/admin/commerce-os` | built, all 14 modules, from the same registry |
+| Truthful readiness failure state | done — names cause, next action, trace, retry |
+| Support exposed | navigation un-hidden; card opens `/admin/support` |
+| Loyalty exposed | card opens `/admin/loyalty`; LIVE + DORMANT |
+| Approval API + admin page | list / approve / revoke, audited, permission-split |
+| Schema baseline policy | generated, checksummed, parity-verified |
+| Contract tests | 18, through the real Hono app |
+| Approval tests | 13 |
+| Admin UAT spec | written for the Mac exact-image run |
+| Module inventory | 44 modules, 53 mounts, 0 unattributed |
+
+## Permission split that matters
+
+Reading readiness is `REPORTS_READ`. Approving or revoking activation is
+`SETTINGS_MANAGE`. Reading the Control Centre can never change activation, and a
+contract test proves a `reports.read` caller gets **403** on both write routes.
+
+An approval moves a module from DORMANT to ACTIVE **and nothing else**. Provider
+delivery, customer communications, payment mutation, loyalty issuance, price and
+promotion publication, behavioural interventions and experiment traffic each keep
+their own domain gate. Approval is refused outright for modules the registry does
+not gate by `OPERATOR_APPROVAL`, so the ledger cannot imply a control that does not
+exist.
+
+## Engineering acceptance
+
+| Gate | Result |
+|---|---|
+| typecheck | PASS |
+| build | PASS |
+| full suite | PASS — 4254/4254 across 225 files |
+| architecture | PASS |
+| contract | PASS — 18 |
+| lint | PASS — 0 errors |
+| secret scan | PASS — 1284 files |
+| migration baseline parity | PASS — 175 tables, schemas identical |
+| 0049 idempotency | PASS — three consecutive applies |
+| module inventory | PASS — 44 modules, 0 unattributed |
+| worktree | clean |
+| **exact-image Playwright** | **NOT RUN — no Docker daemon; belongs to Mac Rail B** |
+| **production-shaped upgrade rehearsal** | **NOT RUN — needs a production backup** |
+
+## Release identity
+
+| | |
+|---|---|
+| New executable candidate | `38d26fdccf7c86414c6d6bc4dfb80ec6520a5aa2` |
+| Migration ceiling | `0049_module_activation_approvals` |
+| Provisional scope SHA-256 | `ad999bd89995de25a99450105127bcceed509e36538ee478ed4cbe195a82c44c` |
+| Baseline SHA-256 | `caa00acb4480f0f3f1db6d0fa7fc87c31b9ce6227ecc63e0e0d50bb2d50d450c` |
+
+The old candidate `232e290…`, its scope, tag, images and approval marker are
+superseded and must not be reused.
+
+## Production mutation
+
+None. No deployment, no release ID or token, no annotated tag, no approval marker,
+no provider activation, no customer communication.
