@@ -117,12 +117,24 @@ describe('RecordPaymentWebhookUseCase', () => {
     if (!out.ok) expect(out.code).toBe('BAD_OUTCOME');
   });
 
-  it('propagates signatureVerified=false through a normal write', async () => {
+  it('refuses to write at all when the signature did not verify', async () => {
+    // This previously asserted that an unverified webhook was still written and
+    // merely carried signatureVerified=false in the result. That was the
+    // vulnerability: anyone who could reach the endpoint could mark an order
+    // paid with no credential. The flag now gates the write.
     const repo = makeFakeRepo();
     const uc = new RecordPaymentWebhookUseCase(repo);
     const out = await uc.execute({ ...baseInput, signatureVerified: false });
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.code).toBe('SIGNATURE_INVALID');
+  });
+
+  it('still reports signatureVerified on a verified write', async () => {
+    const repo = makeFakeRepo();
+    const uc = new RecordPaymentWebhookUseCase(repo);
+    const out = await uc.execute({ ...baseInput, signatureVerified: true });
     expect(out.ok).toBe(true);
-    if (out.ok) expect(out.signatureVerified).toBe(false);
+    if (out.ok) expect(out.signatureVerified).toBe(true);
   });
 
   it('uses provider:providerReference as a deterministic fallback key', async () => {

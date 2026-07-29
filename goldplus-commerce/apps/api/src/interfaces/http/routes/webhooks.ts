@@ -81,6 +81,23 @@ routes.post('/payment/:provider', async (c) => {
     });
 
     if (!result.ok) {
+      if (result.code === 'SIGNATURE_INVALID') {
+        // Recorded so a burst of forged webhooks is visible. No body content is
+        // logged: it is attacker-controlled and may carry anything.
+        logger.warn(
+          { provider, secretConfigured, hasSignatureHeader: !!signatureHeader },
+          'PAYMENT_WEBHOOK_SIGNATURE_REJECTED',
+        );
+        return c.json({
+          success: false,
+          error: {
+            code: secretConfigured ? 'SIGNATURE_INVALID' : 'NOT_CONFIGURED',
+            message: secretConfigured
+              ? 'Webhook signature could not be verified.'
+              : 'Not configured: webhook signature secret is missing for this provider.',
+          },
+        }, secretConfigured ? 401 : 503);
+      }
       const statusCode = result.code === 'MISSING_ORDER' ? 422 : 400;
       const res: ApiResponse<never> = {
         success: false,

@@ -30,7 +30,8 @@ export type RecordPaymentWebhookResult =
         | 'MISSING_IDEMPOTENCY'
         | 'MISSING_ORDER'
         | 'ORDER_NOT_FOUND'
-        | 'AMOUNT_MISMATCH';
+        | 'AMOUNT_MISMATCH'
+        | 'SIGNATURE_INVALID';
       message: string;
       /** Present on AMOUNT_MISMATCH so an operator can triage without re-querying. */
       detail?: { expectedAmount: number; reportedAmount: number; orderId: string };
@@ -57,6 +58,28 @@ export class RecordPaymentWebhookUseCase {
     if (!Number.isInteger(input.amount) || input.amount <= 0) {
       return { ok: false, code: 'BAD_AMOUNT', message: 'Amount must be a positive integer (UGX, no decimals).' };
     }
+    // An unverified webhook is not recorded. At all.
+    //
+    // signatureVerified used to be threaded through this whole use case and
+    // returned in the result without ever gating anything: an unsigned request,
+    // a wrongly-signed request, and a request arriving while the provider secret
+    // was simply unset were all recorded as genuine payments. Anyone who could
+    // reach the endpoint could POST {orderId, amount, outcome: "SUCCESS"} and
+    // mark an order paid, with no credential of any kind.
+    //
+    // This check is FIRST. Nothing about an unauthenticated payload — not the
+    // order id, not the amount, not the idempotency key — deserves to be acted
+    // on, and every later branch here reads or writes on its behalf.
+    if (!input.signatureVerified) {
+      return {
+        ok: false,
+        code: 'SIGNATURE_INVALID',
+        // Deliberately uninformative: distinguishing "wrong signature" from
+        // "no secret configured" tells an attacker which one to work on.
+        message: 'Webhook signature could not be verified. The payment was not recorded.',
+      };
+    }
+
     if (input.outcome !== 'SUCCESS' && input.outcome !== 'FAILED') {
       return { ok: false, code: 'BAD_OUTCOME', message: `Outcome must be SUCCESS or FAILED, got "${input.outcome}".` };
     }
