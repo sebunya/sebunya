@@ -92,8 +92,19 @@ client.unsafe = function (query: string, parameters?: any[], type?: any) {
     trackDuration(duration);
     dbQueryDuration.observe(duration / 1000);
     if (duration > 250) {
+      // Parameter VALUES are deliberately not logged. A slow query is very often
+      // a customer lookup, so the bound parameters are the customer's email,
+      // phone, name or address — copied into log storage that is retained far
+      // longer than the request and read by people with no need to see them.
+      // The statement text and the parameter COUNT are enough to identify which
+      // query is slow, which is what this line is for.
       logger.warn(
-        { query, duration, parameters, ...(err ? { error: err.message } : {}) },
+        {
+          query,
+          duration,
+          parameterCount: Array.isArray(parameters) ? parameters.length : 0,
+          ...(err ? { error: err.message } : {}),
+        },
         `[DB] Slow query ${err ? 'failed' : 'detected'} (>250ms)`
       );
     }
@@ -120,57 +131,75 @@ client.unsafe = function (query: string, parameters?: any[], type?: any) {
   return q;
 } as any;
 
-// Wrap client.begin to track database transaction durations and retry deadlocks/serialization failures
+/**
+ * Transaction instrumentation and deadlock retry.
+ *
+ * The retry used to sit INSIDE the begin() callback, re-running the caller's
+ * function on the same `sql` handle. That cannot work, and was verified against
+ * a real PostgreSQL 16 not to: once any statement errors inside a transaction,
+ * the transaction enters an aborted state and every subsequent statement fails
+ * with 25P02 "current transaction is aborted, commands ignored until end of
+ * transaction block". The retry therefore consumed all three attempts, added
+ * latency, and surfaced a more confusing error than the original — during
+ * exactly the contention incidents it existed to smooth over.
+ *
+ * A retry must restart the whole transaction, so it runs here, around
+ * originalBegin. Re-running the callback is safe precisely because a
+ * serialization failure or deadlock means PostgreSQL rolled the transaction back
+ * entirely: there is nothing partial to undo.
+ */
 const originalBegin = client.begin.bind(client);
+
+const RETRYABLE_TX_CODES = new Set([
+  '40001', // serialization_failure
+  '40P01', // deadlock_detected
+]);
+
+const MAX_TX_ATTEMPTS = 3;
+
 client.begin = function (options: any, cb: any) {
   const callback = typeof options === 'function' ? options : cb;
   const opts = typeof options === 'function' ? {} : options;
-  const start = Date.now();
 
-  dbTransactionsActive.inc();
+  const runOnce = () =>
+    typeof options === 'function' ? originalBegin(callback) : originalBegin(opts, callback);
 
-  const wrappedCallback = async (sql: any) => {
-    let attempts = 0;
-    const maxAttempts = 3;
-    while (attempts < maxAttempts) {
-      try {
-        attempts++;
-        const res = await callback(sql);
-        dbTransactionsActive.dec();
-        const duration = Date.now() - start;
-        dbTransactionDuration.observe(duration / 1000);
-        if (duration > 1000) {
-          logger.warn({ durationMs: duration, attempts }, '[DB] Long running database transaction committed (>1s)');
-        }
-        return res;
-      } catch (err: any) {
-        const code = err?.code || err?.statusCode || '';
-        const isRetryable = code === '40001' || code === '40P01';
-
-        if (isRetryable && attempts < maxAttempts) {
-          const delay = Math.min(100 * Math.pow(2, attempts), 1000) + Math.floor(Math.random() * 100);
+  return (async () => {
+    const start = Date.now();
+    dbTransactionsActive.inc();
+    try {
+      let lastError: any;
+      for (let attempt = 1; attempt <= MAX_TX_ATTEMPTS; attempt++) {
+        try {
+          const res = await runOnce();
+          const duration = Date.now() - start;
+          dbTransactionDuration.observe(duration / 1000);
+          if (duration > 1000) {
+            logger.warn({ durationMs: duration, attempts: attempt }, '[DB] Long running database transaction committed (>1s)');
+          }
+          return res;
+        } catch (err: any) {
+          lastError = err;
+          const code = err?.code || err?.statusCode || '';
+          if (!RETRYABLE_TX_CODES.has(code) || attempt === MAX_TX_ATTEMPTS) break;
+          // Jittered: two transactions that deadlocked against each other must
+          // not retry in step and deadlock again.
+          const delay = Math.min(100 * 2 ** attempt, 1000) * (0.5 + Math.random() * 0.5);
           logger.warn(
-            { code, attempt: attempts, nextDelayMs: delay, error: err.message },
-            '[DB] Transaction serialization or deadlock failure detected. Retrying transaction...'
+            { code, attempt, nextDelayMs: Math.round(delay) },
+            '[DB] Serialization or deadlock failure. Restarting the transaction...'
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
-          continue;
         }
-
-        dbTransactionsActive.dec();
-        const duration = Date.now() - start;
-        dbTransactionDuration.observe(duration / 1000);
-        logger.warn({ durationMs: duration, attempts, err: err.message }, '[DB] Transaction rolled back/failed');
-        throw err;
       }
+      const duration = Date.now() - start;
+      dbTransactionDuration.observe(duration / 1000);
+      logger.warn({ durationMs: duration, err: lastError?.message }, '[DB] Transaction rolled back/failed');
+      throw lastError;
+    } finally {
+      dbTransactionsActive.dec();
     }
-  };
-
-  if (typeof options === 'function') {
-    return originalBegin(wrappedCallback);
-  } else {
-    return originalBegin(opts, wrappedCallback);
-  }
+  })();
 } as any;
 
 export const db = drizzle(client, { schema });
