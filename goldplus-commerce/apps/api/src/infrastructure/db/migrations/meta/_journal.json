@@ -351,6 +351,13 @@
       "when": 1785124800000,
       "tag": "0049_module_activation_approvals",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "5",
+      "when": 1785211200000,
+      "tag": "0050_loyalty_ledger_immutability",
+      "breakpoints": true
     }
   ]
 }
