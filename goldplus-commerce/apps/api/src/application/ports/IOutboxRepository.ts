@@ -36,6 +36,17 @@ export interface IOutboxRepository {
    * indistinguishable from a success in every metric and query.
    */
   markDeadLettered?(eventId: string, error: string): Promise<boolean | void>;
+  /** Operational counts, read from status rather than the processed boolean. */
+  metrics?(now?: Date): Promise<{
+    pending: number;
+    due: number;
+    processing: number;
+    deadLettered: number;
+    oldestPendingAgeSeconds: number | null;
+    expiredLeases: number;
+  }>;
+  listDeadLettered?(limit?: number): Promise<PersistedOutboxEvent[]>;
+  replayDeadLettered?(eventId: string): Promise<boolean | void>;
   findByRelatedEntity(entity: string, entityId: string): Promise<PersistedOutboxEvent[]>;
   /**
    * Idempotently enqueue an admin-order-email intent. Returns enqueued=false when

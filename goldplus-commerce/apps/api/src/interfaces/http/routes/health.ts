@@ -43,7 +43,11 @@ routes.get('/live', (c) => {
 // ------------------------------------------------------------------------------
 routes.get('/ready', async (c) => {
   const subsystems: Record<string, { status: string; latency_ms?: number; error?: string }> = {};
+  // Two distinct questions, deliberately not collapsed into one flag:
+  //   overallHealthy — can this instance serve at all? (false ⇒ take it out)
+  //   degraded       — is something impaired but still serveable? (keep traffic)
   let overallHealthy = true;
+  let degraded = false;
 
   const registry = Registry.getInstance();
   const healthMetrics = await registry.checkSystemHealthUseCase.execute();
@@ -68,13 +72,25 @@ routes.get('/ready', async (c) => {
   subsystems.zeptomail_config = { status: zeptoMailToken ? 'configured' : 'not_configured' };
   subsystems.sms_config = { status: smsApiKey ? 'configured' : 'not_configured' };
 
-  // Check Redis Queue Health
+  // Redis: DEGRADED, not unready.
+  //
+  // Readiness answers "should the load balancer send traffic here", and the
+  // answer when Redis is down is still yes. HTTP reads and writes work, the
+  // outbox lives in PostgreSQL, and the abuse controls fall back to their
+  // documented local policy. Reporting unready would pull EVERY replica out of
+  // rotation at the same instant, because they all see the same Redis — turning
+  // a cache outage into a total site outage, which is strictly worse than the
+  // degradation it was reacting to.
+  //
+  // PostgreSQL is different and stays fatal above: without it the service
+  // genuinely cannot answer.
   const queueService = QueueService.getInstance();
   const redisHealthy = queueService.isHealthy();
-  subsystems.redis = { status: redisHealthy ? 'healthy' : 'unhealthy' };
-  if (!redisHealthy) {
-    overallHealthy = false;
-  }
+  subsystems.redis = {
+    status: redisHealthy ? 'healthy' : 'degraded',
+    ...(redisHealthy ? {} : { error: 'QUEUES_UNAVAILABLE_BACKGROUND_WORK_DELAYED' }),
+  };
+  if (!redisHealthy) degraded = true;
 
   // Proxy topology. Every per-client abuse control depends on knowing how the
   // service is exposed, so a service that cannot answer that is not ready. The
@@ -98,15 +114,20 @@ routes.get('/ready', async (c) => {
   // is still enforcing, but on a stricter per-replica budget, so it is reported
   // rather than hidden behind an overall "ready".
   const abuse = await abuseControlStore.probe();
+  const abuseDegraded = !abuse.available || abuse.degraded;
   subsystems.abuse_controls = {
-    status: abuse.available ? (abuse.degraded ? 'degraded' : 'healthy') : 'degraded',
+    status: abuseDegraded ? 'degraded' : 'healthy',
     ...(abuse.available ? {} : { error: 'REDIS_UNAVAILABLE_LOCAL_FALLBACK_ACTIVE' }),
   };
+  if (abuseDegraded) degraded = true;
 
   const res: ApiResponse<{ status: string; timestamp: string; subsystems: typeof subsystems }> = {
     success: overallHealthy,
     data: {
-      status: overallHealthy ? 'ready' : 'unready',
+      // 'degraded' is reported truthfully AND still serves traffic. Collapsing
+      // it into 'ready' would hide a real impairment from operators; collapsing
+      // it into 'unready' would take the site down over a recoverable one.
+      status: overallHealthy ? (degraded ? 'degraded' : 'ready') : 'unready',
       timestamp: new Date().toISOString(),
       subsystems,
     },
@@ -161,6 +182,35 @@ routes.get('/deep', async (c) => {
     }
   } else if (healthMetrics.postgresError) {
     subsystems.outbox_queue = { status: 'unknown', error: healthMetrics.postgresError };
+  }
+
+  // 3b. Outbox operating state.
+  //
+  // Lag alone does not say whether anything is stuck or lost. Dead letters are
+  // events that were NEVER DELIVERED — until migration 0054 they were recorded
+  // as 'processed' and were invisible here. An expired lease is a worker that
+  // claimed an event and never came back.
+  if (subsystems.postgres.status === 'healthy') {
+    try {
+      const outbox = await Registry.getInstance().outboxRepo.metrics?.();
+      if (outbox) {
+        const stuck = outbox.expiredLeases > 0;
+        subsystems.outbox_operations = {
+          status: outbox.deadLettered > 0 || stuck ? 'degraded' : 'healthy',
+          pending: outbox.pending,
+          due: outbox.due,
+          processing: outbox.processing,
+          dead_lettered: outbox.deadLettered,
+          expired_leases: outbox.expiredLeases,
+          oldest_pending_age_seconds: outbox.oldestPendingAgeSeconds,
+        } as never;
+        if (subsystems.outbox_operations.status === 'degraded' && overallStatus === 'healthy') {
+          overallStatus = 'degraded';
+        }
+      }
+    } catch (err) {
+      subsystems.outbox_operations = { status: 'unknown', error: errorMessage(err) };
+    }
   }
 
   // Redis Queue Health

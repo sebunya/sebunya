@@ -51,12 +51,21 @@ describe('Observability & Health API Endpoints', () => {
     stubHealthySystemMetrics();
 
     const res = await app.request('/health/ready');
+    // Readiness now separates "cannot serve" from "impaired". Only a fatal
+    // dependency (PostgreSQL, or an invalid proxy topology) makes an instance
+    // unready; an impaired one keeps serving and is reported as degraded, so a
+    // Redis blip no longer pulls the whole fleet out of rotation at once.
     expect(res.status).toBe(200);
     const data = await res.json() as any;
     expect(data.success).toBe(true);
-    expect(data.data.status).toBe('ready');
+    expect(data.data.status).not.toBe('unready');
+    expect(['ready', 'degraded']).toContain(data.data.status);
     expect(data.data.subsystems.postgres.status).toBe('healthy');
     expect(data.data.subsystems.redis.status).toBe('healthy');
+    // There is no Redis in this environment, so the abuse controls are running
+    // on their local fallback — reported truthfully rather than as healthy.
+    expect(data.data.subsystems.abuse_controls.status).toBe('degraded');
+    expect(data.data.subsystems.proxy_topology.status).toBe('healthy');
   });
 
   test('GET /metrics returns 200 and prometheus metrics format', async () => {
