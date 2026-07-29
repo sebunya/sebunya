@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono';
 import { logger } from '../../../infrastructure/logging/logger';
+import { clientIp } from '../clientAddress';
 
 // In-memory cache for telemetry event replay protection
 const processedEventIds = new Set<string>();
@@ -75,12 +76,7 @@ function isTimestampOutOfBounds(eventTimeSec: number): boolean {
  * `next()` returns Promise<Response>, which satisfies the return type.
  */
 export async function botDetectionMiddleware(c: Context, next: Next): Promise<Response | void> {
-  const ip = (
-    c.req.header('cf-connecting-ip') ||
-    c.req.header('x-real-ip') ||
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'unknown'
-  );
+  const ip = clientIp(c);
   const ua = c.req.header('user-agent') ?? '';
 
   // 1. Cloudflare bot score (forwarded by Caddy)

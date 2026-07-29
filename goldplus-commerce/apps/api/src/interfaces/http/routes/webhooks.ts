@@ -5,6 +5,7 @@ import { RecordPaymentWebhookUseCase } from '../../../application/use-cases/paym
 import { enqueuePurchaseEvent } from '../../../application/use-cases/telemetry/EnqueuePurchaseEventUseCase';
 import { ApiResponse } from '@goldplus/shared';
 import { logger } from '../../../infrastructure/logging/logger';
+import { clientIp } from '../clientAddress';
 
 const routes = new Hono();
 
@@ -117,7 +118,7 @@ routes.post('/payment/:provider', async (c) => {
         value: Number(parsed.amount) || 0,
         currency: 'UGX',
         // Attempt to extract client context forwarded by the provider webhook
-        ipAddress: c.req.header('x-real-ip') || c.req.header('cf-connecting-ip'),
+        ipAddress: clientIp(c),
         traceId: c.req.header('x-request-id'),
       }).then(async (outboxId) => {
         if (outboxId) {

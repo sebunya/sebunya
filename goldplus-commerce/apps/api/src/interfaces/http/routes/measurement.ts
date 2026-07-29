@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { ZeroPartySignalSchema } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
 import { logger } from '../../../infrastructure/logging/logger';
+import { clientIp } from '../clientAddress';
 
 const registry = Registry.getInstance();
 const routes = new Hono();
@@ -26,12 +27,7 @@ routes.post('/zero-party', async (c) => {
     return c.json({ success: false, error: 'SCHEMA_VIOLATION', issues: parsed.error.flatten() }, 422);
   }
 
-  const realIp = (
-    c.req.header('cf-connecting-ip') ||
-    c.req.header('x-real-ip') ||
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'unknown'
-  );
+  const realIp = clientIp(c);
   const realUa = c.req.header('user-agent') || '';
 
   try {

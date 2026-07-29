@@ -4,6 +4,7 @@ import { Registry } from '../../../infrastructure/Registry';
 import { ListMyOrdersUseCase, GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
 import { ListMyAddressesUseCase, AddAddressUseCase } from '../../../application/use-cases/addresses/AddressUseCases';
 import { ApiResponse, MeDto, OrderSummaryDto, OrderDetailDto, AddressDto } from '@goldplus/shared';
+import { clientIp } from '../clientAddress';
 
 const routes = new Hono<{ Variables: { userId: string; userEmail: string } }>();
 routes.use('*', customerSessionMiddleware);
@@ -110,7 +111,7 @@ routes.put('/preferences', async (c) => {
   const data = await uc.execute({
     userId,
     ...body,
-    ipAddress: c.req.header('x-forwarded-for') || '127.0.0.1',
+    ipAddress: clientIp(c),
     userAgent: c.req.header('user-agent') || 'unknown'
   });
   const res: ApiResponse<any> = { success: true, data };

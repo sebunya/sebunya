@@ -288,9 +288,81 @@ reserving up to full available stock, the dispatch deduction, and the release.
 Still outstanding for inventory: reservation expiry for abandoned orders, a
 movement ledger explaining every change to on-hand stock, and multi-location stock.
 
+### Authentication / abuse controls — WORKING_BUT_THIN
+
+The credential path itself is genuinely careful and is preserved, not rebuilt:
+unknown emails are verified against a real dummy scrypt hash so response time does
+not leak whether an address is registered, the failure message is identical either
+way, `ACCOUNT_DISABLED` is checked only *after* the password matches, and the
+admin middleware re-reads the user's active flag and permissions on every request
+rather than trusting claims baked into the token.
+
+| Dimension | Before | After | Evidence |
+|---|---|---|---|
+| Abuse resistance | 2 | 4 | per-client controls can no longer be escaped with a header |
+| Auditability | 2 | 4 | recorded addresses are real or absent, never fabricated |
+| Observability | 2 | 4 | one client identity across throttle, limiter, bot check and audit |
+| Credential safety | 4 | 4 | timing equalisation and generic failures (pre-existing) |
+
+#### Finding 7 — the client identity behind every abuse control was caller-supplied
+
+**Risk.** The login lockout keys on `email|ip`, the rate limiter on `ip:path`, and
+bot detection runs a velocity check per `ip`. All three derived that `ip` from
+request headers with no trusted-proxy model.
+
+`X-Forwarded-For` turns out **not** to be exploitable through the tracked edge:
+the Caddyfile uses `header_up X-Forwarded-For {remote_host}`, which *replaces*
+rather than appends, so a caller-supplied value is discarded before the API sees
+it. That is worth stating plainly rather than overclaiming. But the safety was an
+undocumented coupling between a proxy config file and three security controls —
+asserted nowhere, tested nowhere, and one `header_up +X-Forwarded-For` or one CDN
+insertion away from becoming a complete bypass.
+
+`cf-connecting-ip` **was** exploitable. `reverse_proxy` forwards unlisted headers
+untouched, so that header arrives exactly as the caller set it — and
+`botDetectionMiddleware` preferred it above all others. Varying one header per
+request gave every request a fresh velocity bucket, defeating the check outright.
+The same header fed the consent and telemetry records, so a caller could choose
+the address written into them.
+
+Separately and independently of any attack: the address was derived in **seven**
+places with **five** different precedence orders and parsings — the rate limiter
+took the whole `X-Forwarded-For` string, bot detection took the first element
+after two other headers, commerce took the first element then fell back to a
+literal `127.0.0.1`, and the account audit log took the whole string then also
+fell back to `127.0.0.1`. One request therefore presented a different identity to
+each subsystem, so a rate-limit block could not be correlated with a bot score or
+an audit entry — and two sites wrote a *fabricated* address into records an
+operator would later rely on.
+
+**Change.** One pure-domain resolver, `resolveClientAddress`, with an explicit
+trusted-hop model: the client is the `X-Forwarded-For` entry counted `hops` from
+the **right**, the portion appended by proxies we operate. Everything to its left
+is discarded regardless of how much of it there is. `cf-connecting-ip` is not
+consulted at all. When the chain is shorter than configured the result falls back
+to the transport peer and is marked `UNVERIFIED` rather than trusting the header;
+when nothing is available it reports `UNKNOWN` and returns a sentinel — it never
+invents `127.0.0.1`. Addresses are normalised (port stripped, IPv6 unbracketed,
+leading zeros rejected) so one client is one identity, and unparseable values are
+dropped rather than becoming an unlimited supply of distinct bucket keys.
+
+`TRUSTED_PROXY_HOPS` defaults to 1, matching the tracked topology where Caddy is
+the sole public edge (ports 80/443) proxying to `api:3000` on an internal network.
+All nine call sites across eight files now use the resolver.
+
+**Test.** `tests/unit/ClientAddressResolution.test.ts` (16) — including a
+20-iteration padding attack that must collapse to exactly one identity, and a
+structural sweep asserting that no file under `interfaces/` reads a forwarded
+header except the single resolver.
+
+Still outstanding for authentication: token revocation (sessions are stateless, so
+a stolen token stays valid for its 7-day TTL and there is no "sign out everywhere"
+short of disabling the account), and lockout counters are not yet shared across
+API instances.
+
 ## Not yet assessed
 
-The remaining Wave 1 modules (authentication, authorization, audit, health,
+The remaining Wave 1 modules (authorization, audit, health,
 database, Redis, queues, webhooks, release readiness, controlled activation,
 Control Centre, products, pricing, promotions, cart, checkout, orders,
 fulfilment, notifications, support) are not scored here.

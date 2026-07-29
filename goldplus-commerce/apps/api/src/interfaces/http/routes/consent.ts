@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { ConsentSignalSchema, ConsentWithdrawalSchema } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
 import { logger } from '../../../infrastructure/logging/logger';
+import { clientIp } from '../clientAddress';
 
 const routes = new Hono();
 const registry = Registry.getInstance();
@@ -22,12 +23,7 @@ routes.post('/signal', async (c) => {
     return c.json({ success: false, error: 'SCHEMA_VIOLATION', issues: parsed.error.flatten() }, 422);
   }
 
-  const realIp = (
-    c.req.header('cf-connecting-ip') ||
-    c.req.header('x-real-ip') ||
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'unknown'
-  );
+  const realIp = clientIp(c);
   const realUa = c.req.header('user-agent') || '';
 
   // Validate timing — reject signals more than 5 minutes in the past or future
@@ -77,7 +73,7 @@ routes.post('/withdraw', async (c) => {
     return c.json({ success: false, error: 'SCHEMA_VIOLATION', issues: parsed.error.flatten() }, 422);
   }
 
-  const realIp = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const realIp = clientIp(c);
   const realUa = c.req.header('user-agent') || '';
 
   try {

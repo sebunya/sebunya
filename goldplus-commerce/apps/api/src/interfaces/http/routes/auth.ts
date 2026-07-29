@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { Registry } from '../../../infrastructure/Registry';
 import { AuthenticateUserUseCase } from '../../../application/use-cases/identity/AuthenticateUserUseCase';
 import { ApiResponse } from '@goldplus/shared';
+import { clientIp } from '../clientAddress';
 
 import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
 
@@ -21,7 +22,7 @@ routes.post('/login', async (c) => {
   const result = await uc.execute({
     email: String(body.email ?? ''),
     password: String(body.password ?? ''),
-    ip: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '',
+    ip: clientIp(c),
   });
 
   if (!result.ok) {
@@ -69,7 +70,7 @@ routes.post('/admin/login', async (c) => {
   const result = await authUc.execute({
     email: String(body.email ?? ''),
     password: String(body.password ?? ''),
-    ip: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '',
+    ip: clientIp(c),
   });
 
   if (!result.ok) {

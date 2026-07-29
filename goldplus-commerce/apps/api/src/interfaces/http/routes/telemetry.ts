@@ -4,6 +4,7 @@ import { botDetectionMiddleware } from '../middleware/botDetection';
 import { logger } from '../../../infrastructure/logging/logger';
 import { TrackBrowserTelemetryEventUseCase } from '../../../application/use-cases/telemetry/TrackBrowserTelemetryEventUseCase';
 import { StitchBrowserIdentityUseCase } from '../../../application/use-cases/telemetry/StitchBrowserIdentityUseCase';
+import { clientIp } from '../clientAddress';
 
 const routes = new Hono();
 const trackUseCase = new TrackBrowserTelemetryEventUseCase();
@@ -34,12 +35,7 @@ routes.post('/collect', botDetectionMiddleware, async (c) => {
     return c.json({ success: false, error: 'PURCHASE_SERVER_ONLY' }, 403);
   }
 
-  const realIp = (
-    c.req.header('cf-connecting-ip') ||
-    c.req.header('x-real-ip') ||
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'unknown'
-  );
+  const realIp = clientIp(c);
   const realUa = c.req.header('user-agent') || '';
 
   try {
@@ -70,12 +66,7 @@ routes.post('/collect/batch', botDetectionMiddleware, async (c) => {
     return c.json({ success: false, error: 'BATCH_TOO_LARGE', max: MAX_BATCH_SIZE }, 400);
   }
 
-  const realIp = (
-    c.req.header('cf-connecting-ip') ||
-    c.req.header('x-real-ip') ||
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'unknown'
-  );
+  const realIp = clientIp(c);
   const realUa = c.req.header('user-agent') || '';
 
   const results: { event_id: string; ok: boolean; error?: string }[] = [];
@@ -115,7 +106,7 @@ routes.post('/identity', async (c) => {
     return c.json({ success: false, error: 'INVALID_FP_CLIENT_ID' }, 400);
   }
 
-  const realIp = c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || '';
+  const realIp = clientIp(c);
   const realUa = c.req.header('user-agent') || '';
 
   try {

@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { authMiddleware } from '../middleware/auth';
 import { requirePermissions } from '../middleware/permissions';
 import { NotificationTemplateRenderer } from '../../../application/use-cases/notifications/NotificationTemplateRenderer';
+import { clientIp } from '../clientAddress';
 
 
 const routes = new Hono();
@@ -131,7 +132,7 @@ routes.post('/support/report-fake', async (c) => {
 // ---------- Verification check (unchanged — own audit table) ----------
 routes.post('/verification/check', async (c) => {
   const body = await c.req.json();
-  const ip = c.req.header('x-forwarded-for') || '';
+  const ip = clientIp(c);
   const ua = c.req.header('user-agent') || '';
   
   const result = await registry.verificationCheckUseCase.execute(body.code, ip, ua);

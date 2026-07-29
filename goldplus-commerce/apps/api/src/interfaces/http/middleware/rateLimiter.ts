@@ -1,5 +1,6 @@
 import { Context, Next } from 'hono';
 import { logger } from '../../../infrastructure/logging/logger';
+import { clientIp } from '../clientAddress';
 
 interface RateLimitInfo {
   count: number;
@@ -24,7 +25,7 @@ export function rateLimiter(options: { limit: number; windowMs: number }) {
       return next();
     }
 
-    const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'ip-unknown';
+    const ip = clientIp(c);
     const key = `${ip}:${c.req.path}`;
     const now = Date.now();
 

@@ -4,6 +4,7 @@ import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
 import { customerSessionMiddleware } from '../middleware/customerSession';
 import { createHash } from 'crypto';
+import { clientIp } from '../clientAddress';
 
 // Slice 3B: server-authoritative checkout input. Client prices/sku/names are
 // deliberately absent — only productId + quantity are trusted; extra fields
@@ -284,8 +285,7 @@ routes.post('/orders/lookup', async (c) => {
       }, 400);
     }
 
-    const ipHeader = c.req.header('x-forwarded-for');
-    const ip = ipHeader ? ipHeader.split(',')[0].trim() : (c.req.header('x-real-ip') || '127.0.0.1');
+    const ip = clientIp(c);
 
     // Create safe anonymous fingerprint using SHA-256 (no raw credentials stored in keys)
     const fingerprint = createHash('sha256')
