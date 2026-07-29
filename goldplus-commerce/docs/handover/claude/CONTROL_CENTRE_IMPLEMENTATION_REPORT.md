@@ -109,3 +109,62 @@ Playwright, secret scan, module-inventory reconciliation.
 
 None. No deployment, no release identity, no approval marker, no provider
 activation, no customer communication.
+
+---
+
+# Addendum — second pass
+
+## Fixed since the first report
+
+- **`module_activation_approvals` (migration 0049)** — the missing table that made
+  every OPERATOR_APPROVAL module permanently DORMANT. Applied and verified against
+  a real PostgreSQL 16: nine governance behaviours enforced (blank reason and
+  reference rejected, one live approval per module, partial and backdated
+  revocations rejected, re-approval after revocation allowed, probe returns exactly
+  one live row). Registered in `meta/_journal.json` — without that entry the runner
+  would never have executed it.
+- **Migration idempotency** — the first version was *not* idempotent: `ADD
+  CONSTRAINT` has no `IF NOT EXISTS` and failed on replay. Now guarded and verified
+  by applying the file three times consecutively.
+- **`MOUNTED_API_PREFIXES` drift guard** — that list is what the readiness probe
+  trusts, and it was a snapshot that could silently drift from the real
+  `app.route` calls. A test now derives the truth from `app.ts` and demands an
+  exact match.
+- Gates previously skipped are now run: **lint** (0 errors) and **secret scan**
+  (1274 files) both pass.
+
+## BLOCKER FOUND — pre-existing, not introduced here
+
+**A fresh migration replay from 0000 cannot complete.** It aborts at
+`0018_real_prism.sql`:
+
+```
+ERROR: foreign key constraint "release_decisions_recorded_by_users_id_fk"
+       cannot be implemented
+DETAIL: Key columns "recorded_by" and "id" are of incompatible types:
+        character varying and uuid.
+```
+
+`users.id` is `uuid` from `0000`, but `release_decisions.recorded_by` is declared
+`varchar(36)` in `0018`. The surrounding `DO $$ … EXCEPTION WHEN duplicate_object`
+block catches only `duplicate_object`, so `datatype_mismatch` propagates and the
+chain stops. Six blocks in that file share the same narrow handler.
+
+Reproduce: `initdb`, `createdb`, then apply `migrations/*.sql` in order with
+`psql -v ON_ERROR_STOP=1`.
+
+This matters because §14 requires a populated migration rehearsal before release,
+and earlier programme evidence claimed a successful `0000→0048` replay. That claim
+does not hold under raw replay.
+
+It is **not fixed here**: altering a historical migration or the
+`release_decisions.recorded_by` column type is platform engineering beyond the
+Control Centre boundary and could affect existing databases. It needs an explicit
+decision — repair `0018` in place, add a corrective `0050`, or record the chain as
+incremental-only with a documented baseline.
+
+## Still outstanding
+
+Unchanged from the first report: the Control Centre UI is not yet wired to the
+readiness endpoint, no Commerce OS page exists, per-module §5–§6 work is not done,
+and no integration, contract or exact-image Playwright run has been performed.
