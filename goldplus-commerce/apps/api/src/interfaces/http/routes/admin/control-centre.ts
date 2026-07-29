@@ -33,8 +33,10 @@ const VALID_CATEGORIES = new Set(['TRUST_CENTRE', 'COMMERCE_OS', 'READINESS']);
  * Aggregated, computed readiness for every Control Centre and Commerce OS card.
  */
 routes.get('/modules', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
-  const traceId = c.get('traceId') ?? crypto.randomUUID();
-  const actorPermissions = (c.get('user')?.permissions as string[] | undefined) ?? [];
+  // The context has no typed traceId, so take the inbound correlation id and fall
+  // back to a fresh one; every module result carries it for cross-log stitching.
+  const traceId = c.req.header('x-correlation-id') ?? crypto.randomUUID();
+  const actorPermissions = c.get('user')?.permissions ?? [];
   const categoryParam = c.req.query('category');
 
   if (categoryParam && !VALID_CATEGORIES.has(categoryParam)) {

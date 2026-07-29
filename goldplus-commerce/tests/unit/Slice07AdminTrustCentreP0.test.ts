@@ -18,10 +18,10 @@ const measurement = read('apps/web/src/pages/admin/measurement-control-tower.ast
 const recommendationPreview = read('apps/web/src/components/recommendations/RecommendationRulePreviewPanel.astro');
 
 describe('Slice 07-A admin trust centre P0', () => {
-  it('constrains status vocabulary to the approved nine values', () => {
+  it('constrains status vocabulary to the approved eight values', () => {
     expect(ADMIN_TRUST_STATUSES).toEqual([
-      'Live', 'Ready', 'Needs configuration', 'No data yet', 'Protected', 'Disabled',
-      'Coming soon', 'Action required', 'Review recommended',
+      'Live', 'Ready', 'No data yet', 'Protected', 'Disabled',
+      'Dormant', 'Action required', 'Review recommended',
     ]);
   });
 
@@ -34,9 +34,9 @@ describe('Slice 07-A admin trust centre P0', () => {
   it('maps statuses to consistent operator-facing tones', () => {
     expect(adminStatusTone('Live')).toBe('success');
     expect(adminStatusTone('Protected')).toBe('info');
-    expect(adminStatusTone('Needs configuration')).toBe('warning');
+    expect(adminStatusTone('Dormant')).toBe('neutral');
     expect(adminStatusTone('Disabled')).toBe('danger');
-    expect(adminStatusTone('Coming soon')).toBe('neutral');
+    expect(adminStatusTone('Action required')).toBe('warning');
   });
 
   it('defines exactly the required trust-centre module families once each', () => {
@@ -57,7 +57,6 @@ describe('Slice 07-A admin trust centre P0', () => {
 
   it('requires a reason for every disabled module action', () => {
     const disabled = ADMIN_TRUST_MODULES.filter((module) => module.actionDisabled);
-    expect(disabled.length).toBeGreaterThan(0);
     expect(disabled.every((module) => Boolean(module.disabledReason?.trim()))).toBe(true);
   });
 
@@ -90,10 +89,13 @@ describe('Slice 07-A admin trust centre P0', () => {
     expect(measurementModule?.safetyNote).toContain('does not activate');
   });
 
-  it('marks support operations as needing a verified source', () => {
+  it('presents support operations as a live, protected first-party queue', () => {
+    // The first-party support capability has a mounted API and an admin page, so
+    // presenting it as unconfigured misreported a working module as broken.
     const support = ADMIN_TRUST_MODULES.find((module) => module.id === 'support');
-    expect(support).toMatchObject({ status: 'Needs configuration', actionDisabled: true });
-    expect(support?.disabledReason).toContain('verified operator support source');
+    expect(support).toMatchObject({ status: 'Protected', href: '/admin/support' });
+    expect(support?.actionDisabled).toBeFalsy();
+    expect(support?.safetyNote).toContain('without them');
   });
 
   it('distinguishes live interim legal routes from final legal approval', () => {
@@ -102,10 +104,13 @@ describe('Slice 07-A admin trust centre P0', () => {
     expect(legal?.safetyNote).toContain('does not mean lawyer-approved final wording');
   });
 
-  it('marks loyalty coming soon and states that no reward is active', () => {
+  it('presents loyalty as an operational ledger whose programme is dormant', () => {
+    // Service availability and business activation are separate: the ledger works
+    // and is auditable, but no value is issued until an operator approves a policy.
     const loyalty = ADMIN_TRUST_MODULES.find((module) => module.id === 'loyalty');
-    expect(loyalty).toMatchObject({ status: 'Coming soon', actionDisabled: true });
-    expect(loyalty?.safetyNote).toContain('No points, balance, cashback, discount or reward is active');
+    expect(loyalty).toMatchObject({ status: 'Dormant', href: '/admin/loyalty' });
+    expect(loyalty?.actionDisabled).toBeFalsy();
+    expect(loyalty?.safetyNote).toContain('no value is issued until an operator approves');
   });
 
   it('renders all ten required readiness topics without invented metrics', () => {
