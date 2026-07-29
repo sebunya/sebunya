@@ -210,10 +210,26 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
     expect(res.providerMessage).toContain('******');
   });
 
-  test('10. getBalance (config check) returns PASS when credentials and formats are valid', async () => {
+  test('10. getBalance (config check) WARNs when outbound safety defaults are not enforced', async () => {
+    // This suite's environment is deliberately fully unlocked
+    // (NOTIFICATIONS_EMAIL_ENABLED=true, DRY_RUN=false, LIVE_SEND_ENABLED=true),
+    // which is precisely the arrangement the check exists to detect. It used to
+    // return PASS here with the warning buried in a message string, so the
+    // unsafe case reported the same status as a locked-down one.
+    const check = await adapter.getBalance();
+    expect(check.status).toBe('WARN');
+    expect(check.message).toContain('safe dry-run defaults are NOT enforced');
+    // And it names which guard is open, so the warning is actionable.
+    expect(check.message).toContain('NOTIFICATIONS_LIVE_SEND_ENABLED');
+  });
+
+  test('10b. getBalance (config check) returns PASS when the environment is locked down', async () => {
+    process.env.NOTIFICATIONS_EMAIL_ENABLED = 'false';
+    process.env.NOTIFICATIONS_LIVE_SEND_ENABLED = 'false';
+    process.env.NOTIFICATIONS_DRY_RUN = 'true';
     const check = await adapter.getBalance();
     expect(check.status).toBe('PASS');
-    expect(check.message).toContain('Configuration validated');
+    expect(check.message).toContain('Safe dry-run defaults are active');
   });
 
   test('11. getBalance (config check) returns FAIL when from address format is invalid', async () => {

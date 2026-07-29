@@ -308,7 +308,7 @@ export class ZeptoMailAdapter implements INotificationProvider {
    * Pure Config Validation Health Check.
    * Does NOT make any network/HTTP calls. Validates environment configurations safely.
    */
-  async getBalance(): Promise<{ status: 'PASS' | 'FAIL' | 'NOT_CONFIGURED'; message: string }> {
+  async getBalance(): Promise<{ status: 'PASS' | 'WARN' | 'FAIL' | 'NOT_CONFIGURED'; message: string }> {
     const token = (process.env.ZEPTOMAIL_API_TOKEN || '').trim();
     const fromAddr = (process.env.ZEPTOMAIL_FROM_ADDRESS || '').trim();
     const baseUrl = (process.env.ZEPTOMAIL_BASE_URL || 'https://api.zeptomail.com/v1.1/email').trim();
@@ -362,11 +362,25 @@ export class ZeptoMailAdapter implements INotificationProvider {
     const emailEnabled = process.env.NOTIFICATIONS_EMAIL_ENABLED === 'true';
     const liveSendEnabled = process.env.NOTIFICATIONS_LIVE_SEND_ENABLED === 'true';
 
-    // During this preflight, live sending or email alerts should be locked by default
+    // A safety check must not PASS in the case it exists to detect.
+    //
+    // This previously returned status 'PASS' with the warning buried in the
+    // message string, so the one arrangement it is here to catch — outbound
+    // email unlocked while the dry-run guard is off — reported the same status
+    // as a correctly locked-down environment. Anyone scanning statuses, or any
+    // dashboard keyed on them, saw PASS.
     if (emailEnabled || liveSendEnabled || !dryRun) {
+      const unlocked = [
+        emailEnabled ? 'NOTIFICATIONS_EMAIL_ENABLED' : null,
+        liveSendEnabled ? 'NOTIFICATIONS_LIVE_SEND_ENABLED' : null,
+        !dryRun ? 'NOTIFICATIONS_DRY_RUN is not true' : null,
+      ].filter(Boolean).join(', ');
       return {
-        status: 'PASS',
-        message: 'ZeptoMail config check: Configuration validated. Warning: Safe dry-run defaults are not currently enforced in environment.',
+        status: 'WARN',
+        message:
+          'ZeptoMail config check: configuration is valid, but safe dry-run defaults are NOT enforced. ' +
+          `Outbound email is not fully locked: ${unlocked}. Customer communications must stay disabled ` +
+          'until separately approved.',
       };
     }
 
