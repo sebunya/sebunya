@@ -6,6 +6,7 @@ import { EvaluateCartPricingUseCase } from '../pricing/EvaluateCartPricingUseCas
 import { ManagePromotionCapacityUseCase } from '../pricing/ManagePromotionCapacityUseCase';
 import { IPricingQuoteRepository } from '../../ports/IPricingQuoteRepository';
 import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
+import { scopeClientOrderKey } from '../../../domain/commerce/Order';
 
 export interface IOrderRepository {
   save(order: Order, opts?: { clientOrderKey?: string | null }): Promise<void>;
@@ -78,7 +79,21 @@ export class CheckoutUseCase {
     }
 
     // Idempotent replay: a repeated submission must not create a second order.
-    const clientOrderKey = dto.clientOrderKey?.trim() || null;
+    //
+    // The key is scoped to the customer BEFORE it is used, for both the lookup
+    // and the write. The raw key is caller-chosen and carries a GLOBAL unique
+    // index, so looking it up directly returned whichever customer's order held
+    // that string — including their name, phone, email and delivery address, all
+    // of which the checkout response returns in full. A plausible guess was
+    // enough. Scoping only the write would leave the disclosure in place;
+    // scoping only the lookup would break idempotency entirely.
+    const customerScopeKey =
+      dto.customerDetails.email?.trim().toLowerCase() || dto.customerDetails.phone.trim();
+    const rawClientOrderKey = dto.clientOrderKey?.trim() || null;
+    const clientOrderKey = rawClientOrderKey
+      ? scopeClientOrderKey(rawClientOrderKey, customerScopeKey)
+      : null;
+
     if (clientOrderKey && this.orderRepo.findByClientKey) {
       const existing = await this.orderRepo.findByClientKey(clientOrderKey);
       if (existing) {
@@ -106,7 +121,7 @@ export class CheckoutUseCase {
       const quote = await this.authoritativePricing.evaluator.execute({
         items: dto.items,
         couponCode: dto.couponCode,
-        customerScopeKey: dto.customerDetails.email?.trim().toLowerCase() || dto.customerDetails.phone.trim(),
+        customerScopeKey,
         customerDnaSegments: [],
         experimentEvidence: [],
         shippingUgx: fee.feeUgx,

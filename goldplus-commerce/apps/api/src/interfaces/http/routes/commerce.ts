@@ -39,7 +39,15 @@ const checkoutBodySchema = z.object({
     )
     .min(1)
     .max(50),
-  clientOrderKey: z.string().trim().min(8).max(80).nullish(),
+  // REQUIRED. Without it a double-click, a browser retry or a flaky mobile
+  // network creates a second real order, and nothing downstream can tell the
+  // duplicate from a genuine second purchase.
+  //
+  // Deliberately not given a server-derived fallback: deriving one from the cart
+  // contents would collapse a customer legitimately ordering the same basket
+  // twice into a single order — an invisible loss of a real order. A missing key
+  // is a visible, diagnosable 400 instead.
+  clientOrderKey: z.string().trim().min(8).max(80),
   couponCode: z.string().trim().min(3).max(40).nullish(),
   previewQuoteId: z.string().uuid().nullish(),
   acceptPriceChange: z.boolean().optional(),
@@ -147,7 +155,7 @@ routes.post('/orders/create', async (c) => {
       customerDetails: body.customerDetails,
       buyerType: body.buyerType,
       items: body.items,
-      clientOrderKey: body.clientOrderKey ?? null,
+      clientOrderKey: body.clientOrderKey,
       couponCode: body.couponCode ?? null,
       previewQuoteId: body.previewQuoteId ?? null,
       acceptPriceChange: body.acceptPriceChange ?? false,

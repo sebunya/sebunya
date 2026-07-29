@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export type OrderStatus = 'received' | 'pending_payment' | 'pending_owner_review' | 'processing' | 'completed' | 'cancelled' | 'failed';
 export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'failed';
 export type BuyerType = 'retail' | 'wholesale' | 'corporate';
@@ -127,3 +129,36 @@ export class Order {
     );
   }
 }
+
+/**
+ * Scopes a client-supplied idempotency key to the customer who supplied it.
+ *
+ * `client_order_key` is a caller-chosen string carrying a GLOBAL unique index,
+ * and checkout looked it up directly and returned the matching order. That order
+ * carries the customer's name, phone, email and delivery address, and the
+ * checkout response returns it in full.
+ *
+ * So anyone who guessed or reused a key that another customer had already used
+ * received that customer's order back — a PII disclosure requiring nothing but a
+ * plausible string, entirely under the caller's control. `min(8)` on the route
+ * bounds the length, not the guessability: keys are typically predictable
+ * client-generated patterns.
+ *
+ * Hashing the key together with the customer's own identifier means a key can
+ * only ever match within the same customer. It also keeps the raw key out of the
+ * database, which is worth having on its own: callers put meaningful data in
+ * idempotency keys.
+ *
+ * Keys written before this change remain raw and will not match a new scoped
+ * lookup. The cost is bounded and one-off: a customer retrying an in-flight
+ * checkout across the deploy could create a second order, which is the ordinary
+ * duplicate-submission case the rest of the pipeline already handles — and a far
+ * smaller problem than the disclosure.
+ */
+export function scopeClientOrderKey(clientOrderKey: string, customerScopeKey: string): string {
+  const scope = customerScopeKey.trim().toLowerCase();
+  // The NUL separator prevents a boundary collision: without it ("ab","c") and
+  // ("a","bc") would hash identically and share an idempotency identity.
+  return createHash('sha256').update(`${scope}\u0000${clientOrderKey.trim()}`).digest('hex').slice(0, 64);
+}
+
