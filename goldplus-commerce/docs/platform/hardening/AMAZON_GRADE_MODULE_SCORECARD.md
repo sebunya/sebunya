@@ -110,6 +110,50 @@ check is active in production.
 
 **Test.** `tests/unit/PaymentWebhookAmountVerification.test.ts` (9).
 
+#### Finding 3 — no periodic control total, so reconciliation was unmeasurable
+
+**Risk.** Re-deriving a figure from a source and comparing it to itself proves
+nothing. Without an independent frozen snapshot there was no way to detect that a
+day's position changed after it closed, no liability ageing, no breakage forecast,
+and no month-end figure finance could rely on. The required control *100% daily
+ledger reconciliation* had nothing to reconcile against.
+
+**Why it works now.** Because finding 1 made the ledger immutable, a closed day's
+totals can never legitimately change — so re-deriving any past date must reproduce
+the stored figure forever. A mismatch becomes proof of tampering, a bad restore, or
+a defect, never ordinary drift. Finding 1 is what makes finding 3 meaningful.
+
+**Change.** Migration `0051` adds one immutable snapshot per business date, with
+the per-type breakdown, cumulative closing balance and count of accounts holding a
+non-zero balance. `ReconcileLoyaltyControlTotalsUseCase` creates the snapshot on
+first close, then re-derives and compares, returning every differing field. A
+discrepancy is **reported, never corrected** — overwriting the stored figure would
+destroy the only evidence that something changed.
+
+Closing balance is cumulative, not per-day movement: liability is a position, not a
+flow. Mixing them is the classic control-total error — a day's movement can be zero
+while outstanding liability is large.
+
+**Proof — real PostgreSQL 16 (baseline → 0050 → 0051):** applies and re-applies
+idempotently; duplicate business date rejected; negative earn, positive redeem and
+positive expiry rejected by sign discipline; zero entry count with non-zero movement
+rejected as internally inconsistent; a genuinely quiet day accepted; negative counts
+rejected; UPDATE, DELETE and bulk UPDATE on a closed day all rejected with the
+snapshot intact.
+
+**Test.** `tests/unit/LoyaltyControlTotals.test.ts` (12).
+
+| Loyalty dimension | Before | After | Evidence |
+|---|---|---|---|
+| Auditability | 5 | 5 | control totals give reconciliation a fixed point |
+| Data integrity | 5 | 5 | snapshot self-checks its own arithmetic at write time |
+| Observability | 2 | 4 | daily position, per-type movement and liability headcount |
+| Failure recovery | 2 | 4 | a bad restore is now detectable rather than silent |
+
+Still outstanding for loyalty: liability ageing and breakage forecast built on
+these snapshots, the redemption reservation lifecycle, and programme governance
+states. Earning and redemption remain dormant pending commercial approval.
+
 ## Not yet assessed
 
 The remaining Wave 1 modules (authentication, authorization, audit, health,
