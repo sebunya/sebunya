@@ -1,0 +1,318 @@
+{
+  "$comment": "Cloud-side frozen release identity for the Amazon-grade hardening milestone. Generated once, from a clean tree at the candidate, after all ten cloud gates passed with exit code 0. The image digests, backup hash and Playwright evidence are DELIBERATELY absent: they are physical artifacts produced on the Mac, and recording placeholders for them here would be fabricated evidence.",
+  "releaseId": "goldplus-hardening-milestone-20260730-02320bb0bdc3",
+  "tag": "goldplus-hardening-milestone-20260730-02320bb0bdc3",
+  "targetBranch": "claude/amazon-grade-module-hardening-20260729",
+  "executableCandidate": "02320bb0bdc3df32a42e2060b9f9093c2498e6cb",
+  "executableTree": "796acc826d4a7287cfd8911eb0a956fa15027ace",
+  "migrationCeiling": "0060_cart_ownership_and_version.sql",
+  "cloudScopeSha256": "5f49f5bb00d7d772af75b7111f8344456e235d8dbd2607aeeba276488b26c9b4",
+  "scopeInputs": {
+    "targetBranch": "claude/amazon-grade-module-hardening-20260729",
+    "executableCommit": "02320bb0bdc3df32a42e2060b9f9093c2498e6cb",
+    "executableTree": "796acc826d4a7287cfd8911eb0a956fa15027ace",
+    "migrationCeiling": "0060_cart_ownership_and_version.sql",
+    "migrationCount": 61,
+    "migrations": [
+      {
+        "file": "0000_fuzzy_switch.sql",
+        "sha256": "d94c1c274c0c20607ebfb9c0a416aece4eb104c74a1603f3e1f1264580affb05"
+      },
+      {
+        "file": "0001_red_flatman.sql",
+        "sha256": "049af123fd0c097f4ac5c4c65f1f93e0227835b2797912521c54cec99374071b"
+      },
+      {
+        "file": "0002_outstanding_the_order.sql",
+        "sha256": "2299b1c913ec7ccc6bbca00b83ad36c310027bb9d12e0b576cb9c9c384e55d2d"
+      },
+      {
+        "file": "0003_ambiguous_makkari.sql",
+        "sha256": "2f3aa44d0ef60ad5de9a16c5e7b68b8c416e6eb491aa00c96471426e3eec9033"
+      },
+      {
+        "file": "0004_glorious_lionheart.sql",
+        "sha256": "70629b586b62fd70e300b1ce22ac4bb09a2b296d5c01093c485fb192c46b2117"
+      },
+      {
+        "file": "0005_fast_proudstar.sql",
+        "sha256": "89b61320832bb9dedafcca0ff2bf9ebe767edc5fceafe9c9959d9a5d45f1497e"
+      },
+      {
+        "file": "0006_colossal_brood.sql",
+        "sha256": "97db69f8755f135422803746c4861ff671c3f6a02ecd6d726ddfab5e163e3376"
+      },
+      {
+        "file": "0007_safe_piledriver.sql",
+        "sha256": "1accbbf03dedc3eca0ae506f545c1ed6cfb2486103f70200d36aac881cfa8057"
+      },
+      {
+        "file": "0008_slimy_killmonger.sql",
+        "sha256": "9268583acbf894a3aa47501b3bf98419c57b866e168501ffec84405e989bbdf9"
+      },
+      {
+        "file": "0009_spooky_shockwave.sql",
+        "sha256": "0efdd65c1a8a59aa821d2e64ace25e179a1149c452ec56486fe8d150f612686f"
+      },
+      {
+        "file": "0010_living_clint_barton.sql",
+        "sha256": "829ca8a0026d9bd2134302002c774ac66266260dc0b8ce0674dc8b7f3ba7ab50"
+      },
+      {
+        "file": "0011_light_shatterstar.sql",
+        "sha256": "29271606e46b3d2dbf8e7f89b8e2ff98c07451dbfb91a8b08a4cdece3132dabb"
+      },
+      {
+        "file": "0012_harsh_maverick.sql",
+        "sha256": "426900a34d8b0cc5e5f5224e126c53100371a61fea12c008378ef8f6ec52c1a7"
+      },
+      {
+        "file": "0013_outgoing_molecule_man.sql",
+        "sha256": "3d9a0b9c432237f62a9d6683eac15041a0f06163e095aa4c0a0f7419098d0d85"
+      },
+      {
+        "file": "0014_smooth_tana_nile.sql",
+        "sha256": "7d4d517fdad73100fac6ebb8fc65bd98aa7b47ef6eff961a9a7b46343b9184fc"
+      },
+      {
+        "file": "0015_funny_vampiro.sql",
+        "sha256": "fc2790d7cea71cdd62f9239911867756dc276c025d88b39fd8819257cab17c5f"
+      },
+      {
+        "file": "0016_open_doctor_strange.sql",
+        "sha256": "2f4eeb2f48f77cd513daf04ab3ee95a9a90e9e2911b77653890c3b1856e4ee52"
+      },
+      {
+        "file": "0017_lyrical_groot.sql",
+        "sha256": "58a0731bce38f0f4d734ec0b4089d9c291ebd074e1fb266e09df7c759ecd21fc"
+      },
+      {
+        "file": "0018_real_prism.sql",
+        "sha256": "69acb44c10ab115cc527cb0aa9fab7c1844e740ab8418d235669ab812f9bba46"
+      },
+      {
+        "file": "0019_red_corsair.sql",
+        "sha256": "881819aace172b1f3e1f9abcdc060d3122891667b22e785cc2b3a23edc0d1180"
+      },
+      {
+        "file": "0020_stiff_random.sql",
+        "sha256": "7f5f22fd1ff68d21ad3f28c505840566b87892774b6c24e613be6067c2f296d1"
+      },
+      {
+        "file": "0021_military_punisher.sql",
+        "sha256": "5eb0c1c94bbbb71cac9f667550fb013712af856822cac947f12bc3ddccf9f54b"
+      },
+      {
+        "file": "0022_low_phil_sheldon.sql",
+        "sha256": "aa56877cc0614bfc334dde98b98d13e34ab40203bfd8300817f41fcde9d7c373"
+      },
+      {
+        "file": "0023_steady_stellaris.sql",
+        "sha256": "71298c1cfbfdd4b0117782b7458e85566c30f12902ed0d6718b4ac06f9a35b77"
+      },
+      {
+        "file": "0024_reflective_ikaris.sql",
+        "sha256": "5241516751631a284d34446c1d22f1d2540ab8302982585e6397ed68080d52cc"
+      },
+      {
+        "file": "0025_next_supreme_intelligence.sql",
+        "sha256": "66c68b24b5c6f727ca595d630bb1c7f3166c3bf175467a0cd4f3ac559bc6f06c"
+      },
+      {
+        "file": "0026_strong_psynapse.sql",
+        "sha256": "3fd0336a5fa910b5b383d392c3fa959bb91184d8eddf286a77e4cdd53a10c7ca"
+      },
+      {
+        "file": "0027_lethal_triton.sql",
+        "sha256": "e574291507f1d0cf7fd6d704dc677439467f562ec03cc27458d7a9878a0e7bd5"
+      },
+      {
+        "file": "0028_shallow_marrow.sql",
+        "sha256": "d957b09bebac58ed94337101fb53c59377c71d5dee1f99948c787b3180a59506"
+      },
+      {
+        "file": "0029_bumpy_miss_america.sql",
+        "sha256": "d7ed2c321a0e83d8bf70b3260e7da2955c19a8c0572fd4a01d773cffd16bd80e"
+      },
+      {
+        "file": "0030_sharp_omega_sentinel.sql",
+        "sha256": "7a38e6bcc3b55bb5c2943707f597308a7c8d45a5d3988cd697922f1dabde1286"
+      },
+      {
+        "file": "0031_slippery_grim_reaper.sql",
+        "sha256": "3068c9bae74255b10b90dd0c14bab341c626ab9efc970b302caa052d25b3d314"
+      },
+      {
+        "file": "0032_boring_may_parker.sql",
+        "sha256": "b0eab45caf2dcf931c95494a85d051106f64ff2d3e233961125d279741c1bac3"
+      },
+      {
+        "file": "0033_sudden_lester.sql",
+        "sha256": "d72935c8289e7da6210b4e780d34094497118d3adfa4ce358d3e1874c2fc78df"
+      },
+      {
+        "file": "0034_icy_doctor_octopus.sql",
+        "sha256": "4a80e58db35567cffe818d9dd8f2f1451d6004f24bab42b58ec27f36948ffa77"
+      },
+      {
+        "file": "0035_lonely_iron_fist.sql",
+        "sha256": "ea3a0a095501ef475167becdfa1016a96bc1daba5811a89fd7ea5abd9a1da923"
+      },
+      {
+        "file": "0036_curly_delivery.sql",
+        "sha256": "fbb5141f5ca5f85dbea4322ffe7fac011c0e7dc96e60fb715d982907c2545d22"
+      },
+      {
+        "file": "0037_wise_customer_dna.sql",
+        "sha256": "d9f1ba00a678a9dc8b9ec0f31a43cbaf12cf3a25f66760efedebc23e33ae0886"
+      },
+      {
+        "file": "0038_brave_decision_intelligence.sql",
+        "sha256": "35486842c8e0c92bfae8b4b9f9e6714a94aba41433f93be005c90701956eb7ab"
+      },
+      {
+        "file": "0039_mighty_automation.sql",
+        "sha256": "91898c0bd6c24c44f875779fc1b7933252743fde2a0b5c246ced2bf8a3f2e454"
+      },
+      {
+        "file": "0040_automation_frequency_cap_reservations.sql",
+        "sha256": "bbaabf89e425fbec98be7595ae834d432f75beb2ef9486bcc29a9ebd48d2bd96"
+      },
+      {
+        "file": "0041_experiments.sql",
+        "sha256": "ca4c24b2e3e3a8223f97cd82d617c4e63f5075b5d2e5251b34be638f94d9c38a"
+      },
+      {
+        "file": "0042_pricing_promotions.sql",
+        "sha256": "5a647ce8e00ffeb4e96c4034132c561a3cef69c202ed8c1cd03d19e01e54721c"
+      },
+      {
+        "file": "0043_fraud_triage.sql",
+        "sha256": "81c7ebca002e6ccf868ccd95bf7342b10329901324b28d3fa70757d8c7561981"
+      },
+      {
+        "file": "0044_pim_import.sql",
+        "sha256": "0f59c44f94a4c33b67fda88e36d7244ac41e039b11d6a87f2978953bddb1dd23"
+      },
+      {
+        "file": "0045_surveys.sql",
+        "sha256": "a18345beb687dabb6f5dd33cc99d2be1ea89d2f94d5c10dbb3f081ce9a230231"
+      },
+      {
+        "file": "0046_behavioural_interventions.sql",
+        "sha256": "b2b28185d8ef407b7ae01628b2a18a2949310b08ee5bc241c60ea95d668174c0"
+      },
+      {
+        "file": "0047_loyalty_ledger_integrity.sql",
+        "sha256": "c0369a2f4d154861d174e72593943d1e2fbcadaa0c27e7b2ec28c6c098de8f05"
+      },
+      {
+        "file": "0048_search_insights.sql",
+        "sha256": "21aca802bfaeaab08cf52dc69438454c6bcaf62b3e50a68ae9599352fadc4ab2"
+      },
+      {
+        "file": "0049_module_activation_approvals.sql",
+        "sha256": "0496558bdaa6f21242f5c3b25193efe82ae73f18ea4006f3e571cf14170a76dc"
+      },
+      {
+        "file": "0050_loyalty_ledger_immutability.sql",
+        "sha256": "a91edf1cf8173eebdacda015469a4f2349ba10597ebe273a3fa8a48a73964de7"
+      },
+      {
+        "file": "0051_loyalty_daily_control_totals.sql",
+        "sha256": "246afa1a774e7fb9ba161d7ee3218f21dfff504a6cb92257cc86defd2e2408bf"
+      },
+      {
+        "file": "0052_inventory_stock_invariants.sql",
+        "sha256": "9365694505ba69df61b3983cbc311fce3704cc4661171a66937e1ca2abf71d76"
+      },
+      {
+        "file": "0053_inventory_policy_and_reservation_state.sql",
+        "sha256": "4bedd446279171e2007ac236b318bc82b42ed9cde9f0fd6e8d6a92bf9bf1e780"
+      },
+      {
+        "file": "0054_outbox_lease_and_dead_letter.sql",
+        "sha256": "d24fc6a1abf6feec13fcacd67e76eb0025d144f1c08fda73ae6915203767e776"
+      },
+      {
+        "file": "0055_audit_log_immutability.sql",
+        "sha256": "dd9af157d36cf14f705bbfb153da0484055d3024aeb7fc687770e54fbf127e09"
+      },
+      {
+        "file": "0056_payment_signature_verification.sql",
+        "sha256": "48fe77408efa7121864311772a23a8267ffb4a9e73de5cb18f0119652ca06e67"
+      },
+      {
+        "file": "0057_checkout_idempotency.sql",
+        "sha256": "5ed0b3e827f8440a548c827116de8ba0057985155ae2591588ecfa8f2259eeba"
+      },
+      {
+        "file": "0058_checkout_fenced_lease.sql",
+        "sha256": "c2729964d27c56ee5f27616113e71525aa809a9c26e682e3921b81e152a4fa80"
+      },
+      {
+        "file": "0059_checkout_saga_and_durable_side_effects.sql",
+        "sha256": "4658fef668cc6b4a20bd1a31f4428795109957c6478a85d742caf2b3a5714395"
+      },
+      {
+        "file": "0060_cart_ownership_and_version.sql",
+        "sha256": "13db54abd0f7f59f8eaab104632bf63ade23d3017eadc1f7664fd80a23e62cc5"
+      }
+    ],
+    "pnpmLockSha256": "0a750b72d4ec2bc1c5506d35d962b921881d7e580ae2dbc004d3b0c771b6874a",
+    "apiDockerfileSha256": "66acf6b6d47a5172598c4469f014d9309f5d03dac6f413157652308e22bf7f48",
+    "webDockerfileSha256": "bd93666f7f40b860e5e0f1304f0e7e1f6a2c93c1836934f94229e274d4ba1b4e",
+    "productionComposeSha256": "3e954324128c371be708044dc0ec98f38dcf72da49ac9ac7ef5f222eeeb36c85",
+    "caddySha256": "5af34a596e6121d61388690243d6ba4cf58d07b6f9dc08d072c92ea8a86de22d"
+  },
+  "expectedImages": {
+    "$comment": "Tags are inputs. The DIGESTS are frozen on the Mac after the exact build.",
+    "apiTag": "goldplus-api:hardening-02320bb0bdc3",
+    "webTag": "goldplus-web:hardening-02320bb0bdc3",
+    "apiDigest": null,
+    "webDigest": null
+  },
+  "approvalMarker": {
+    "$comment": "A NEW marker identity, never reused. Claude must never create it; the command below is for the human operator and is deliberately not run by any script here.",
+    "path": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_HARDENING_MILESTONE_20260730_02320bb0bdc3",
+    "content": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_HARDENING_MILESTONE_20260730_02320bb0bdc3",
+    "requiredMetadata": "root:root 600 1"
+  },
+  "retiredMarkersRemainProhibited": [
+    "Any marker from the Control Centre Track A release",
+    "Any marker from a previous programme release"
+  ],
+  "trackASeparation": {
+    "$comment": "Track A is a separate release line and must not be modified or invalidated.",
+    "branch": "claude/control-centre-full-activation-20260729",
+    "engineeringHead": "5e6d4ea37d5f181fbf0ab3a69a8cdb29ad6ca465",
+    "executableCandidate": "38d26fdccf7c86414c6d6bc4dfb80ec6520a5aa2"
+  },
+  "cloudGateResults": {
+    "$comment": "Actual results, each command run with an authoritative exit code.",
+    "pnpmInstallFrozenLockfile": "exit 0",
+    "typecheck": "exit 0",
+    "build": "exit 0",
+    "lint": "exit 0 (0 errors; warnings only)",
+    "unitSuite": "exit 0 \u2014 4692 passed, 238 files, clean tree",
+    "architectureSuite": "exit 0 \u2014 90 passed",
+    "secretScan": "exit 0 \u2014 1359 files checked, no values printed",
+    "checkoutDurabilityRealPostgres": "exit 0 \u2014 38/38",
+    "cartAuthorizationRealPostgres": "exit 0 \u2014 25/25",
+    "endToEndHarness": "exit 0 \u2014 43/43"
+  },
+  "rollback": {
+    "$comment": "Rollback targets the CURRENTLY DEPLOYED images, which only the Mac can read from production before the deploy. Captured there, not guessed here.",
+    "previousApiImageDigest": null,
+    "previousWebImageDigest": null,
+    "command": "scripts/release/claude/mac-rail-b-rollback.sh --api-image <previous> --web-image <previous> --reason \"<why>\"",
+    "migrationRollback": "Migrations 0052-0060 are additive and each carries an explicit rollback block in its header. No destructive down-migration is required for this release."
+  },
+  "outboundRemainsDormant": {
+    "PROVIDER_DELIVERY_ENABLED": "false",
+    "CUSTOMER_COMMUNICATIONS_ENABLED": "false",
+    "NOTIFICATION_DELIVERY_ENABLED": "false",
+    "NOTIFICATIONS_LIVE_SEND_ENABLED": "false"
+  },
+  "frozenAt": "2026-07-30"
+}
