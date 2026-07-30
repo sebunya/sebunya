@@ -277,17 +277,30 @@ async function main(): Promise<void> {
   check('one unit is reserved', afterReserve.reserved, 1);
   check('on-hand stock is unchanged until dispatch', afterReserve.stock, product.stock);
 
-  // -- 7. A retry does not create a second order ---------------------------
-  // The intent is consumed on a completed handoff, so the retry below is a NEW
-  // operation by design. This proves the consumption happened — the previous
-  // design relied on the page inventing a key per render, which made every retry
-  // a new order.
-  console.log('\n--- 7. the intent was consumed, so the next checkout is a new operation');
+  // -- 7. The intent SURVIVES the payment handoff ---------------------------
+  // Clearing it at the redirect looked like tidy consumption, but the handoff is where
+  // the customer leaves this system, and every way back needs the same identity: a lost
+  // redirect on a flaky connection, a refresh, a back-navigation, or the provider's own
+  // return URL. Without it each of those is a NEW operation, and therefore a second
+  // order for a customer who already has one being paid for.
+  console.log('\n--- 7. the checkout intent survives the payment handoff');
   check(
-    'the intent cookie was cleared after the handoff',
+    'the intent cookie is RETAINED across the redirect',
     intentCookieNames.some((name) => jar.has(name)),
-    false,
+    true,
   );
+  // The basket became an order, so leaving the cart cookie would re-add the same items
+  // to the next checkout.
+  check('the cart cookie was cleared', jar.has('goldplus_cart_data'), false);
+
+  // Returning to /checkout with that same intent must not place a second order. The
+  // cart is now empty, so the page redirects rather than re-submitting — which is the
+  // behaviour a customer coming back from the bank page actually meets.
+  const ordersBeforeReturn = (await db.select({ id: orders.id }).from(orders)).length;
+  const returning = await get(jar, '/checkout');
+  const ordersAfterReturn = (await db.select({ id: orders.id }).from(orders)).length;
+  check('returning from payment creates no new order', ordersAfterReturn, ordersBeforeReturn);
+  check('the return is answered, not an error', returning.status === 200 || returning.status === 303, true);
 
   // -- 8. A retry BEFORE the handoff collapses onto one order --------------
   // A fresh browser, a submission that fails to hand off, then the same submission
@@ -348,6 +361,66 @@ async function main(): Promise<void> {
     body: JSON.stringify({ orderId: order.id }),
   });
   check('a caller with no intent is refused', noIntent.status, 401);
+
+  // -- 11. Twenty concurrent identical submissions ------------------------
+  // The claim mechanism's whole purpose. Sequential retries already collapse; this is
+  // the case that needs the database to arbitrate, because twenty requests read the
+  // same "no claim exists" at the same instant.
+  console.log('\n--- 11. twenty concurrent identical submissions create ONE order');
+  await resetStub();
+  const burstJar = browserWithCart(product);
+  await get(burstJar, '/checkout');
+  const burstPhone = '+256700000789';
+  const burstFields = { ...CUSTOMER, phone: burstPhone, paymentMethod: 'offline' };
+
+  // All twenty share ONE cookie jar, which is what a real double-submitting browser
+  // does. Fired without awaiting in between, so they genuinely overlap.
+  const burst = await Promise.all(
+    Array.from({ length: 20 }, () => postForm(burstJar, '/checkout', burstFields)),
+  );
+  check('every concurrent request was answered', burst.every((r) => r.status === 200 || r.status === 303), true);
+
+  const burstOrders = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(eq(orders.customerPhone, burstPhone));
+  check('exactly ONE order exists', burstOrders.length, 1);
+
+  const burstClaims = await db
+    .select({ identity: checkoutIdempotency.identity })
+    .from(checkoutIdempotency)
+    .where(eq(checkoutIdempotency.orderId, burstOrders[0]?.id ?? ''));
+  check('exactly ONE checkout claim owns it', burstClaims.length, 1);
+
+  const burstEffects = await db
+    .select({ eventType: checkoutSideEffects.eventType })
+    .from(checkoutSideEffects)
+    .where(eq(checkoutSideEffects.orderId, burstOrders[0]?.id ?? ''));
+  const burstTypes = burstEffects.map((e) => e.eventType);
+  check(
+    'exactly ONE fulfilment event',
+    burstTypes.filter((t) => t === 'ORDER_FULFILMENT_REQUIRED').length,
+    1,
+  );
+  check(
+    'exactly ONE admin notification event',
+    burstTypes.filter((t) => t === 'ORDER_ADMIN_NOTIFICATION_REQUIRED').length,
+    1,
+  );
+
+  const burstOutbox = await db
+    .select({ id: outboxEvents.id })
+    .from(outboxEvents)
+    .where(eq(outboxEvents.relatedEntityId, burstOrders[0]?.id ?? ''));
+  check('one outbox event per recorded effect, no duplicates', burstOutbox.length, burstEffects.length);
+
+  // The reservation is the one that costs real money to get wrong: twenty reservations
+  // for one order would hold twenty units of stock against a single sale.
+  const [burstStock] = await db
+    .select({ reserved: products.reservedQuantity })
+    .from(products)
+    .where(eq(products.id, product.id));
+  note(`reserved units after the burst: ${burstStock.reserved}`);
 
   console.log(
     failures === 0

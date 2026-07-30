@@ -354,6 +354,7 @@ import {
 import { MutateCartUseCase } from '../application/use-cases/commerce/MutateCartUseCase';
 import { ExecuteCheckoutIntentUseCase } from '../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { StartOrderPaymentUseCase } from '../application/use-cases/commerce/StartOrderPaymentUseCase';
+import { ReconcileOrderPaymentUseCase } from '../application/use-cases/commerce/ReconcileOrderPaymentUseCase';
 import { ProcessCheckoutSideEffectBatchUseCase } from '../application/use-cases/outbox/ProcessCheckoutSideEffectBatchUseCase';
 import { SetProductStockUseCase } from '../application/use-cases/inventory/SetProductStockUseCase';
 import {
@@ -876,6 +877,26 @@ export class Registry {
     this.pesapalPaymentRepo,
     this.pesapalClient
   );
+
+  /**
+   * Payment settlement, in ONE place.
+   *
+   * The callback and IPN routes each held the same ~100 lines of settlement
+   * orchestration. Two copies of a payment path drift, and the drift is invisible: an
+   * order settled by IPN would quietly differ from one settled by the browser callback.
+   */
+  public readonly reconcileOrderPaymentUseCase = new ReconcileOrderPaymentUseCase({
+    idempotency: this.checkoutIdempotencyRepo,
+    sideEffectRecorder: this.checkoutSideEffectRecorder,
+    observer: {
+      // Order ids and codes only. A settlement is financially significant and these
+      // lines outlive the request; no customer or payment detail belongs in them.
+      onSettled: (orderId, kind, traceId) =>
+        logger.info({ orderId, kind, traceId }, 'PAYMENT_SETTLED'),
+      onReviewRequired: (orderId, traceId, reason) =>
+        logger.error({ orderId, traceId, reason }, 'PAYMENT_REVIEW_REQUIRED'),
+    },
+  });
   /**
    * Authorized, idempotent payment start.
    *

@@ -192,10 +192,23 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            });
 
            if (payRes.ok) {
-              // The intent is consumed only once the order is durably placed
-              // and handed to payment, so a retry before this point still
-              // collapses onto the same order.
-              clearCheckoutIntent(Astro.cookies);
+              // The intent is DELIBERATELY RETAINED across the redirect.
+              //
+              // Clearing it here looked like tidy consumption, but the handoff is the
+              // point at which the customer leaves this system, and every way they can
+              // come back needs the same identity:
+              //
+              //   - the redirect is lost on a flaky mobile connection
+              //   - they refresh, or press back
+              //   - they abandon the bank page and return to /checkout
+              //   - the provider sends them back to the return URL
+              //
+              // Without the intent, each of those is a NEW operation and therefore a
+              // NEW order for a customer who already has one being paid for. The intent
+              // is consumed when the order actually settles, not when it is handed over.
+              //
+              // The cart cookie IS cleared: the basket has become an order, and leaving
+              // it would re-add the same items to the next checkout.
               Astro.cookies.delete('goldplus_cart_data', { path: '/' });
               return Astro.redirect(payRes.data.redirectUrl, 303);
            }

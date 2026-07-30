@@ -8,6 +8,7 @@ import { clientIp } from '../clientAddress';
 import { CHECKOUT_POLICY_VERSION } from '../../../domain/commerce/CheckoutPrincipal';
 import { isCheckoutSuccess } from '../../../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { isRedirectReady } from '../../../application/use-cases/commerce/StartOrderPaymentUseCase';
+import { paymentDidConfirm } from '../../../application/use-cases/commerce/ReconcileOrderPaymentUseCase';
 import { isCartApplied, type CartOutcome } from '../../../application/use-cases/commerce/MutateCartUseCase';
 import { resolveCartCredential, cartRefusalStatus } from '../middleware/cartCredential';
 
@@ -716,7 +717,16 @@ routes.get('/payments/pesapal/callback', async (c) => {
       source: 'callback'
     });
 
-    if (result.ok && result.status === 'completed') {
+    // Settlement is decided ONCE, by the use case, for both the browser callback and the
+    // IPN. It advances the saga stage (nothing did before, so a paid order sat at
+    // PAYMENT_STARTED forever) and records the durable downstream events. An unverified
+    // or unrecognised payment progresses nothing at all.
+    const settlement = await registry.reconcileOrderPaymentUseCase.execute({
+      verification: { ok: result.ok, orderId: result.orderId, status: result.status },
+      traceId: c.req.header('x-request-id') ?? crypto.randomUUID(),
+    });
+
+    if (paymentDidConfirm(settlement)) {
       // Section 9.3: PaymentConfirmed updates the existing admin alert so the
       // order becomes ready for preparation. Idempotent — duplicate provider
       // callbacks never duplicate effects; a failure here never blocks the flow.
@@ -779,11 +789,17 @@ routes.get('/payments/pesapal/callback', async (c) => {
       }
     }
     
-    if (result.ok && result.status === 'completed') {
+    // What the CUSTOMER is told follows the settlement, not the raw provider status.
+    // Reading the status directly here could show "success" for a payment the settlement
+    // parked for review — the two would disagree, and the customer would believe the more
+    // optimistic one.
+    if (paymentDidConfirm(settlement)) {
       return c.redirect(`${frontendCallbackUrl}?status=success&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}`);
-    } else {
-      return c.redirect(`${frontendCallbackUrl}?status=failed&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}&message=${encodeURIComponent(result.message || 'Payment unresolved')}`);
     }
+
+    // Deliberately no provider message in the URL: it is provider text on a page the
+    // customer sees, and the storefront maps this code to its own wording.
+    return c.redirect(`${frontendCallbackUrl}?status=${encodeURIComponent(settlement.kind.toLowerCase())}&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}&code=${encodeURIComponent(settlement.reason)}`);
   } catch (err: any) {
     console.error('[API_ERROR] PesaPal callback failed:', err);
     return c.redirect(`${frontendCallbackUrl}?status=failed&message=${encodeURIComponent(err.message)}`);
@@ -821,7 +837,16 @@ const handleIpn = async (c: any) => {
       source: 'ipn'
     });
 
-    if (result.ok && result.status === 'completed') {
+    // Settlement is decided ONCE, by the use case, for both the browser callback and the
+    // IPN. It advances the saga stage (nothing did before, so a paid order sat at
+    // PAYMENT_STARTED forever) and records the durable downstream events. An unverified
+    // or unrecognised payment progresses nothing at all.
+    const settlement = await registry.reconcileOrderPaymentUseCase.execute({
+      verification: { ok: result.ok, orderId: result.orderId, status: result.status },
+      traceId: c.req.header('x-request-id') ?? crypto.randomUUID(),
+    });
+
+    if (paymentDidConfirm(settlement)) {
       // Section 9.3: PaymentConfirmed updates the existing admin alert so the
       // order becomes ready for preparation. Idempotent — duplicate provider
       // callbacks never duplicate effects; a failure here never blocks the flow.
