@@ -113,4 +113,29 @@ export interface ICheckoutIdempotencyRepository {
   finishOperation(lease: LeaseToken, orderId: string): Promise<boolean>;
   fail(lease: LeaseToken, reason: string, retryable: boolean): Promise<boolean>;
   find(identity: string): Promise<IdempotencyRecord | null>;
+  /**
+   * The checkout that produced this order, for object-level authorization.
+   *
+   * Payment start took an orderId from the request body and nothing else, so any
+   * caller who knew or guessed one could open a provider transaction against
+   * somebody else's order. Answering "which principal owns this order?" from the
+   * server's own record is what makes that checkable. Unique on order_id
+   * (migration 0057), so this is at most one row.
+   */
+  findByOrderId(orderId: string): Promise<IdempotencyRecord | null>;
+  /**
+   * Records payment progress WITHOUT a lease.
+   *
+   * The checkout lease is long gone by the time the customer reaches the payment
+   * provider — it is scoped to the request that created the order, and requiring
+   * it here would mean either never recording payment progress or keeping a lease
+   * alive across a human being's visit to a bank page. The write is safe without a
+   * fence because it only ever moves forward: `WHERE stage` names the stages this
+   * transition may leave, so a late duplicate updates nothing.
+   */
+  advancePaymentStage(
+    orderId: string,
+    stage: Extract<CheckoutSagaStage, 'PAYMENT_STARTED' | 'PAYMENT_PENDING' | 'PAYMENT_REVIEW' | 'ORDER_CONFIRMED'>,
+    from: readonly CheckoutSagaStage[],
+  ): Promise<boolean>;
 }

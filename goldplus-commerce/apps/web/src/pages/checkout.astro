@@ -10,7 +10,12 @@ import { prepareCheckoutPayload, validateCheckoutPayload } from '../lib/checkout
 import { parseLocalCartCookie } from '../lib/cart';
 import { resolveCheckoutIntent, clearCheckoutIntent } from '../lib/checkoutIntent';
 import { resolveAuthenticatedUserId } from '../lib/customerAuth';
-import { submitCheckout, customerMessageFor } from '../lib/checkoutClient';
+import {
+  submitCheckout,
+  customerMessageFor,
+  startPayment,
+  paymentStartMessageFor,
+} from '../lib/checkoutClient';
 import { mayStartPayment } from '@goldplus/shared';
 import type { ApiEnvelope } from '@goldplus/shared';
 
@@ -143,24 +148,30 @@ if (Astro.request.method === 'POST') {
         // previous condition was just "we have an order id", which would start a
         // payment for a stock-blocked or already-paid order.
         if (paymentMethod === 'pesapal' && mayStartPayment(dto)) {
-           try {
-              const payRes = await postJson('/commerce/payments/pesapal/start', { orderId: dto.orderId });
-              if (payRes && payRes.ok && (payRes.data as any)?.redirectUrl) {
-                 // The intent is consumed only once the order is durably placed
-                 // and handed to payment, so a retry before this point still
-                 // collapses onto the same order.
-                 clearCheckoutIntent(Astro.cookies);
-                 Astro.cookies.delete('goldplus_cart_data', { path: '/' });
-                 return Astro.redirect((payRes.data as any).redirectUrl, 303);
-              }
-              status = 'error';
-              message = payRes?.ok === false
-                 ? payRes.message
-                 : 'We could not start payment. Please try again or contact support.';
-           } catch {
-              status = 'error';
-              message = 'We could not start payment. Please try again or contact support.';
+           // Typed, and the intent is forwarded: the API cannot authorize this
+           // caller without it. The previous untyped call also showed the API's
+           // own error text to the customer on failure.
+           const payRes = await startPayment({
+              orderId: dto.orderId,
+              intentToken: checkoutIntent.token,
+              sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null,
+           });
+
+           if (payRes.ok) {
+              // The intent is consumed only once the order is durably placed
+              // and handed to payment, so a retry before this point still
+              // collapses onto the same order.
+              clearCheckoutIntent(Astro.cookies);
+              Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+              return Astro.redirect(payRes.data.redirectUrl, 303);
            }
+
+           // The order EXISTS and is payable; only the handoff failed. The intent
+           // is kept so the customer can retry onto the same order rather than
+           // creating a second one.
+           status = 'error';
+           reference = dto.orderNumber || dto.orderId;
+           message = paymentStartMessageFor(payRes.code);
         } else if (outcome.status === 'awaiting_payment') {
            // Payable, but the customer chose the offline path.
            status = 'received';

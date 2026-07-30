@@ -348,6 +348,7 @@ import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderRese
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
 import { DrizzleCheckoutSideEffectRecorder } from './db/repositories/DrizzleCheckoutSideEffectRecorder';
 import { ExecuteCheckoutIntentUseCase } from '../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
+import { StartOrderPaymentUseCase } from '../application/use-cases/commerce/StartOrderPaymentUseCase';
 import { ProcessCheckoutSideEffectBatchUseCase } from '../application/use-cases/outbox/ProcessCheckoutSideEffectBatchUseCase';
 import { SetProductStockUseCase } from '../application/use-cases/inventory/SetProductStockUseCase';
 import {
@@ -848,6 +849,42 @@ export class Registry {
     this.pesapalPaymentRepo,
     this.pesapalClient
   );
+  /**
+   * Authorized, idempotent payment start.
+   *
+   * Wraps the PesaPal starter rather than replacing it: the provider mechanics are
+   * unchanged, but ownership is checked against the server's own record of which
+   * checkout produced the order, an existing live attempt is reused instead of
+   * submitting a second transaction, and outcomes are typed so the route stops
+   * returning internal error text on a blanket 400.
+   */
+  public readonly startOrderPaymentUseCase = new StartOrderPaymentUseCase({
+    idempotency: this.checkoutIdempotencyRepo,
+    orders: {
+      findById: async (orderId) => {
+        const order = await this.orderRepo.findById(orderId);
+        return order ? { id: order.id, paymentStatus: order.paymentStatus } : null;
+      },
+    },
+    attempts: {
+      findAttemptsByOrderId: (orderId) => this.pesapalPaymentRepo.findAttemptsByOrderId(orderId),
+    },
+    provider: {
+      execute: (input) => this.startPesaPalPaymentUseCase.execute(input),
+    },
+    sideEffectRecorder: this.checkoutSideEffectRecorder,
+    observer: {
+      // Order ids and codes only. A refused payment start is a security-relevant
+      // event and these lines outlive the request; no customer data belongs in them.
+      onForbidden: (orderId, traceId) =>
+        logger.warn({ orderId, traceId }, 'PAYMENT_START_FORBIDDEN'),
+      onNotPayable: (orderId, traceId, stage) =>
+        logger.warn({ orderId, traceId, stage }, 'PAYMENT_START_NOT_PAYABLE'),
+      onProviderFailure: (orderId, traceId, code) =>
+        logger.error({ orderId, traceId, code }, 'PAYMENT_START_PROVIDER_FAILED'),
+    },
+  });
+
 
   public readonly checkSystemHealthUseCase = new CheckSystemHealthUseCase(
     this.systemHealthRepo

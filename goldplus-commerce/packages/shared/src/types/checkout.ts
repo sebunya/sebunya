@@ -118,9 +118,34 @@ export interface PaymentStartRequestDto {
 
 export interface PaymentStartResponseDto {
   redirectUrl: string;
-  paymentAttemptId: string;
-  providerReference: string | null;
+  /** Provider transaction id, for support and reconciliation. */
+  orderTrackingId: string;
+  merchantReference: string;
+  /**
+   * True when a live provider transaction already existed and its URL is being
+   * reused. The storefront treats it identically — the point is that a retry does
+   * NOT open a second transaction — but it is worth surfacing in logs.
+   */
+  reused: boolean;
 }
+
+/**
+ * Stable refusal codes for payment start.
+ *
+ * The endpoint previously answered every failure with HTTP 400 and the server's
+ * own error message in the body, so a missing IPN configuration reached the
+ * customer as a bad request carrying internal text. These codes are the contract;
+ * the message shown to a customer is chosen by the storefront from the code.
+ */
+export type PaymentStartErrorCode =
+  | 'ORDER_NOT_FOUND'
+  | 'ORDER_ALREADY_PAID'
+  | 'ORDER_NOT_PAYABLE'
+  | 'OFFLINE_DRAFT_NOT_PAYABLE'
+  | 'PAYMENT_NOT_CONFIGURED'
+  | 'PAYMENT_PROVIDER_UNAVAILABLE'
+  | 'CHECKOUT_INTENT_REQUIRED'
+  | 'PAYMENT_START_FAILED';
 
 /** Header carrying the BFF-issued checkout intent token to the API. */
 export const CHECKOUT_INTENT_HEADER = 'x-goldplus-checkout-intent';

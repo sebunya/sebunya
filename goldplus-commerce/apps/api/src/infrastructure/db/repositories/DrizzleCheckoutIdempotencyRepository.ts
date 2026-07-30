@@ -1,4 +1,4 @@
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { and, eq, inArray, lt, sql } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import { db } from '../client';
 import { checkoutIdempotency } from '../schema/commerce';
@@ -192,6 +192,52 @@ export class DrizzleCheckoutIdempotencyRepository implements ICheckoutIdempotenc
       .update(checkoutIdempotency)
       .set({ orderId, stage: 'ORDER_CREATED', updatedAt: new Date() })
       .where(this.fenced(lease))
+      .returning({ identity: checkoutIdempotency.identity });
+    return updated.length === 1;
+  }
+
+  /**
+   * The checkout that produced this order, for object-level authorization.
+   *
+   * `order_id` is uniquely indexed (migration 0057), so this is at most one row.
+   */
+  async findByOrderId(orderId: string): Promise<IdempotencyRecord | null> {
+    const rows = await db
+      .select()
+      .from(checkoutIdempotency)
+      .where(eq(checkoutIdempotency.orderId, orderId))
+      .limit(1);
+    return rows.length === 1 ? toRecord(rows[0]) : null;
+  }
+
+  /**
+   * Records payment progress without a lease, by moving forward only.
+   *
+   * The checkout lease belongs to the request that created the order and is long
+   * expired by the time a customer returns from a bank page. Rather than keep a
+   * lease alive across a human being's actions — or give up on recording payment
+   * progress at all — the transition names the stages it is allowed to leave. A
+   * late duplicate matches nothing and updates nothing, which is the same
+   * protection a fence gives for a strictly forward move.
+   *
+   * `operation_state` is deliberately untouched: this is saga progress, not a
+   * statement about a workflow that finished running long ago.
+   */
+  async advancePaymentStage(
+    orderId: string,
+    stage: CheckoutSagaStage,
+    from: readonly CheckoutSagaStage[],
+  ): Promise<boolean> {
+    if (from.length === 0) return false;
+    const updated = await db
+      .update(checkoutIdempotency)
+      .set({ stage, updatedAt: new Date() })
+      .where(
+        and(
+          eq(checkoutIdempotency.orderId, orderId),
+          inArray(checkoutIdempotency.stage, [...from]),
+        ),
+      )
       .returning({ identity: checkoutIdempotency.identity });
     return updated.length === 1;
   }

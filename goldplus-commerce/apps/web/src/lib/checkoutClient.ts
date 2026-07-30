@@ -2,6 +2,9 @@ import type {
   CheckoutErrorCode,
   CheckoutRequestDto,
   CheckoutResponseDto,
+  PaymentStartErrorCode,
+  PaymentStartRequestDto,
+  PaymentStartResponseDto,
 } from '@goldplus/shared';
 import { CHECKOUT_INTENT_HEADER } from '@goldplus/shared';
 
@@ -88,6 +91,86 @@ export async function submitCheckout(args: {
     ...(Number.isFinite(retryAfterSeconds) ? { retryAfterSeconds } : {}),
     ...(json?.error?.details ? { details: json.error.details } : {}),
   };
+}
+
+/**
+ * Starts payment through the API, forwarding the checkout intent.
+ *
+ * The storefront previously called this with the generic `postJson` helper and no
+ * intent header, then showed the customer `payRes.message` on failure — which was
+ * the API's own internal error text, including things like the server's missing
+ * PesaPal IPN configuration. This client forwards the intent the API needs in order
+ * to authorize the caller at all, and returns a stable code the page maps to
+ * customer-safe wording.
+ */
+export type PaymentStartResult =
+  | { ok: true; data: PaymentStartResponseDto }
+  | { ok: false; status: number; code: PaymentStartErrorCode | 'NETWORK' };
+
+export async function startPayment(args: {
+  orderId: string;
+  intentToken: string;
+  sessionToken?: string | null;
+}): Promise<PaymentStartResult> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    [CHECKOUT_INTENT_HEADER]: args.intentToken,
+  };
+  if (args.sessionToken) headers.Authorization = `Bearer ${args.sessionToken}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/commerce/payments/pesapal/start`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ orderId: args.orderId } satisfies PaymentStartRequestDto),
+    });
+  } catch {
+    return { ok: false, status: 0, code: 'NETWORK' };
+  }
+
+  const json = (await res.json().catch(() => null)) as
+    | { success?: boolean; data?: PaymentStartResponseDto; error?: { code?: string } }
+    | null;
+
+  // A redirect URL is required, not assumed: the whole point of the typed DTO is
+  // that a missing field fails loudly here instead of silently skipping payment.
+  if (res.ok && json?.success && json.data?.redirectUrl) {
+    return { ok: true, data: json.data };
+  }
+
+  return {
+    ok: false,
+    status: res.status,
+    code: (json?.error?.code as PaymentStartErrorCode) ?? 'PAYMENT_START_FAILED',
+  };
+}
+
+/**
+ * What to tell the customer when payment could not be started.
+ *
+ * Every branch is spelled out so no case falls through to the API's own message.
+ */
+export function paymentStartMessageFor(code: PaymentStartErrorCode | 'NETWORK'): string {
+  switch (code) {
+    case 'ORDER_ALREADY_PAID':
+      return 'This order has already been paid. No further payment is needed.';
+    case 'ORDER_NOT_PAYABLE':
+      return 'This order cannot be paid for yet. Our team will contact you to confirm it.';
+    case 'OFFLINE_DRAFT_NOT_PAYABLE':
+      return 'This is a local draft saved on your device and cannot be paid for online.';
+    case 'PAYMENT_NOT_CONFIGURED':
+      return 'Online payment is temporarily unavailable. Your order is saved — our team will contact you.';
+    case 'PAYMENT_PROVIDER_UNAVAILABLE':
+    case 'NETWORK':
+      return 'We could not reach the payment service. Your order is saved — please try again shortly.';
+    case 'CHECKOUT_INTENT_REQUIRED':
+      return 'Your checkout session expired. Please reload the page and try again.';
+    case 'ORDER_NOT_FOUND':
+    case 'PAYMENT_START_FAILED':
+      return 'We could not start payment for this order. Please contact support and quote your order number.';
+  }
 }
 
 /**

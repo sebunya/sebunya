@@ -30,6 +30,14 @@ describe('Slice 03 checkout location and payment P0 protected contract', () => {
 
   it('does not claim a payment succeeded or an order is paid', () => {
     expect(checkout).not.toMatch(/payment (?:complete|successful)|order (?:is|was) paid|paid in full/i);
-    expect(checkout).toContain('We could not start payment. Please try again or contact support.');
+  });
+
+  it('tells the customer payment failed via a mapped code, not the API message', () => {
+    // The page used to show `payRes.message` — the API's own internal error text,
+    // including the server's missing PesaPal configuration. Every failure branch
+    // now goes through paymentStartMessageFor, which is exhaustive over the typed
+    // codes, so no case can fall through to a passed-through message.
+    expect(checkout).toContain('paymentStartMessageFor(payRes.code)');
+    expect(checkout).not.toContain('payRes.message');
   });
 });

@@ -195,6 +195,50 @@ async function main(): Promise<void> {
   check('the takeover reads the durable stage', retake.record.stage, 'NOTIFICATION_QUEUED');
   check('the takeover is running again', retake.record.operationState, 'IN_PROGRESS');
 
+  // -- 7. Ownership lookup and forward-only payment progress ---------------
+  // Payment start took an orderId from the request body and nothing else, so this
+  // lookup is the whole authorization boundary.
+  const payIdentity = randomUUID().replace(/-/g, '');
+  const payOrderId = randomUUID();
+  const payPrincipal = `g:${randomUUID()}`;
+  const payClaim = await idem.claim({
+    identity: payIdentity,
+    principalKey: payPrincipal,
+    fingerprint: randomUUID().replace(/-/g, ''),
+  });
+  if (!payClaim.lease) throw new Error('claim reported acquired without a lease');
+  await idem.linkOrder(payClaim.lease, payOrderId);
+  await idem.advanceStage(payClaim.lease, 'PAYMENT_READY');
+
+  const owner = await idem.findByOrderId(payOrderId);
+  check('findByOrderId resolves the owning checkout', owner?.identity, payIdentity);
+  check('it reports the owning principal', owner?.principalKey, payPrincipal);
+  check('findByOrderId returns null for an unknown order', await idem.findByOrderId(randomUUID()), null);
+
+  const advanced = await idem.advancePaymentStage(payOrderId, 'PAYMENT_STARTED', ['PAYMENT_READY']);
+  check('payment progress is recorded without a lease', advanced, true);
+
+  // The guard is the WHERE clause: a duplicate has nothing left to leave, so it
+  // updates nothing. This is what replaces a fence for a strictly forward move.
+  const duplicate = await idem.advancePaymentStage(payOrderId, 'PAYMENT_STARTED', ['PAYMENT_READY']);
+  check('a duplicate advance updates nothing', duplicate, false);
+
+  const [afterPayment] = await db
+    .select()
+    .from(checkoutIdempotency)
+    .where(eq(checkoutIdempotency.identity, payIdentity));
+  check('the stage moved forward once', afterPayment.stage, 'PAYMENT_STARTED');
+  // The workflow finished running long ago; payment progress must not claim
+  // otherwise.
+  check('operation_state is untouched by payment progress', afterPayment.operationState, 'IN_PROGRESS');
+
+  // A backwards move must be refused: PAYMENT_READY is no longer a stage this
+  // record may leave.
+  const backwards = await idem.advancePaymentStage(payOrderId, 'PAYMENT_PENDING', ['PAYMENT_READY']);
+  check('a stage it has already left cannot be re-entered', backwards, false);
+  const forwards = await idem.advancePaymentStage(payOrderId, 'PAYMENT_PENDING', ['PAYMENT_STARTED']);
+  check('the next real transition applies', forwards, true);
+
   console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);
 }
 

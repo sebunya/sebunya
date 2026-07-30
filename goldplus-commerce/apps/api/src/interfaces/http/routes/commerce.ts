@@ -7,6 +7,7 @@ import { createHash } from 'crypto';
 import { clientIp } from '../clientAddress';
 import { CHECKOUT_POLICY_VERSION } from '../../../domain/commerce/CheckoutPrincipal';
 import { isCheckoutSuccess } from '../../../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
+import { isRedirectReady } from '../../../application/use-cases/commerce/StartOrderPaymentUseCase';
 
 /** Rejections whose code is safe and useful to name back to the customer. */
 const TERMINAL_PUBLIC_CODES = [
@@ -20,6 +21,7 @@ import {
   resolveCheckoutIntent,
 } from '../middleware/checkoutIntent';
 import { checkoutOperationIdentity, intentPrincipalKey } from '@goldplus/shared';
+import type { PaymentStartResponseDto } from '@goldplus/shared';
 import { logger } from '../../../infrastructure/logging/logger';
 import { toCheckoutResponseDto } from '../../../application/mappers/toCheckoutResponseDto';
 
@@ -468,19 +470,80 @@ routes.get('/orders/:id', customerSessionMiddleware, async (c) => {
   }
 });
 
+/**
+ * Starts payment for an order the caller owns.
+ *
+ * The previous handler took an orderId from the request body, started a provider
+ * transaction against it with no authorization whatsoever, and answered every
+ * failure with HTTP 400 carrying the server's own error message — so a missing IPN
+ * configuration reached the customer as a bad request with internal text in it.
+ *
+ * The principal is now derived server-side from the verified checkout intent, and
+ * outcomes are typed. This handler only maps them to status codes.
+ */
 routes.post('/payments/pesapal/start', async (c) => {
+  const traceId = createHash('sha256')
+    .update(`${Date.now()}:${Math.random()}`)
+    .digest('hex')
+    .slice(0, 16);
+
+  const intent = await resolveCheckoutIntent(c);
+  if (!intent.ok) {
+    // No verified principal means nothing to authorize against. Refused before the
+    // order id is even looked at.
+    return c.json(
+      { success: false, error: { code: 'CHECKOUT_INTENT_REQUIRED', message: 'Your checkout session expired. Please reload and try again.', traceId } },
+      401,
+    );
+  }
+
+  let orderId = '';
   try {
     const body = await c.req.json();
-    const orderId = String(body.orderId || '').trim();
-    if (!orderId) {
-      return c.json({ success: false, error: { code: 'INVALID_REQUEST', message: 'Missing orderId parameter.' } }, 400);
-    }
-    const result = await registry.startPesaPalPaymentUseCase.execute({ orderId });
-    return c.json({ success: true, data: result });
-  } catch (err: any) {
-    console.error('[API_ERROR] PesaPal start failed:', err);
-    return c.json({ success: false, error: { code: 'PAYMENT_START_FAILED', message: err.message } }, 400);
+    orderId = String(body?.orderId ?? '').trim();
+  } catch {
+    orderId = '';
   }
+
+  const outcome = await registry.startOrderPaymentUseCase.execute({
+    orderId,
+    principalKey: intentPrincipalKey(intent.claims),
+    traceId,
+  });
+
+  if (isRedirectReady(outcome)) {
+    const data: PaymentStartResponseDto = {
+      redirectUrl: outcome.redirectUrl,
+      orderTrackingId: outcome.orderTrackingId,
+      merchantReference: outcome.merchantReference,
+      reused: outcome.kind === 'ALREADY_STARTED',
+    };
+    return c.json({ success: true, data });
+  }
+
+  // Status per outcome, not one blanket 400. A server misconfiguration is a 503,
+  // an already-paid order is a 409, and neither is the caller's mistake.
+  const status =
+    outcome.kind === 'NOT_FOUND' ? 404
+    : outcome.kind === 'ALREADY_PAID' ? 409
+    : outcome.kind === 'PROVIDER_NOT_CONFIGURED' ? 503
+    : outcome.kind === 'PROVIDER_UNAVAILABLE' ? 502
+    : 409;
+
+  const code =
+    outcome.kind === 'PROVIDER_NOT_CONFIGURED' ? 'PAYMENT_NOT_CONFIGURED'
+    : outcome.kind === 'PROVIDER_UNAVAILABLE' ? 'PAYMENT_PROVIDER_UNAVAILABLE'
+    : outcome.reason;
+
+  return c.json(
+    {
+      success: false,
+      // A stable code and a generic message. The diagnostic detail is in the log
+      // line the trace id points at, not in the customer's browser.
+      error: { code, message: 'Payment could not be started for this order.', traceId },
+    },
+    status as 404 | 409 | 502 | 503,
+  );
 });
 
 routes.get('/payments/pesapal/callback', async (c) => {
