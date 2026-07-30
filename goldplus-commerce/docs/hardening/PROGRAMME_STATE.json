@@ -122,7 +122,7 @@
     "nonArtifactGuardFailures": 0,
     "note": "12 reported failures are Slice-09 artifact-scope guards asserting a clean worktree; they pass once committed."
   },
-  "lastCleanSuiteCommit": "a263d2cccb16e0ebd5f8dab1e985ff963f1a93bc",
+  "lastCleanSuiteCommit": "785588438038f7093f00df6a3e793c4b6048b447",
   "latestReleaseIdentity": null,
   "trackA": {
     "branch": "claude/control-centre-full-activation-20260729",
@@ -133,8 +133,8 @@
   },
   "nextExactAction": "Complete checkout: move orchestration into ExecuteCheckoutIntentUseCase (H-05), extend the fingerprint to delivery/contact/payment intent (H-04), add state-aware retention (H-06), then Playwright the real SSR path. Then cart object-level authorization (H-02) and the central outbound-delivery policy (H-03).",
   "lastUpdatedAt": "2026-07-30T00:00:00Z",
-  "codeHead": "d977e0e8105ce0d7fca836394029409e751ccc9e",
-  "stateBasedOnHead": "d977e0e8105ce0d7fca836394029409e751ccc9e",
+  "codeHead": "785588438038f7093f00df6a3e793c4b6048b447",
+  "stateBasedOnHead": "785588438038f7093f00df6a3e793c4b6048b447",
   "stateCommit": "PENDING",
   "headResolutionRule": "Always resolve the LIVE remote branch head first. Never reset to codeHead: it is the commit this state described, not necessarily the newest commit.",
   "moduleCompletionCriteria": [
