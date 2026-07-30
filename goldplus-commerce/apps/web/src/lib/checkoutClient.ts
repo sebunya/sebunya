@@ -1,5 +1,6 @@
 import type {
   CheckoutErrorCode,
+  CheckoutRequestDto,
   CheckoutResponseDto,
 } from '@goldplus/shared';
 import { CHECKOUT_INTENT_HEADER } from '@goldplus/shared';
@@ -13,7 +14,7 @@ const API_BASE = (
 /**
  * Typed checkout client for the storefront BFF.
  *
- * The generic `postJson` helper returned `data: unknown` and dropped every
+ * The generic `postJson` helper returned an untyped payload and dropped every
  * response header. That is how the API's move to a minimal DTO returning
  * `orderId` went unnoticed while the page kept reading `res.data.id`: the value
  * was simply `undefined`, the PesaPal branch was skipped, and the customer was
@@ -38,18 +39,10 @@ export type CheckoutCallResult =
       details?: CheckoutResponseDto;
     };
 
-export interface CheckoutRequest {
-  customerDetails: unknown;
-  buyerType: string;
-  items: unknown;
-  clientOrderKey: string;
-  couponCode?: string | null;
-  previewQuoteId?: string | null;
-  acceptPriceChange?: boolean;
-}
+
 
 export async function submitCheckout(args: {
-  request: CheckoutRequest;
+  request: CheckoutRequestDto;
   intentToken: string;
   /** Forwarded so the API can establish a verified USER principal. */
   sessionToken?: string | null;

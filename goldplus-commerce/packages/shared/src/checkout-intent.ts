@@ -173,18 +173,40 @@ export function intentPrincipalKey(claims: CheckoutIntentClaims): string {
   return `${claims.kind === 'USER' ? 'u' : 'g'}:${claims.principalId}`;
 }
 
+/** Operations that can be claimed against an intent. */
+export type CheckoutOperation = 'CREATE_ORDER' | 'START_PAYMENT';
+
 /**
- * The durable idempotency identity.
+ * Length-prefixed canonical encoding.
  *
- * Bound to the INTENT, not merely the principal: a customer placing a genuine
- * second order gets a new intent and therefore a new identity, while every retry
- * of the same intended purchase collapses onto one.
+ * Space- or colon-joined concatenation is ambiguous: ("ab","c") and ("a","bc")
+ * produce the same string and therefore the same digest, so two different
+ * operations could share one idempotency identity. Prefixing each field with its
+ * byte length makes the encoding injective.
  */
-export function intentIdempotencyIdentity(
+function canonical(fields: readonly string[]): string {
+  return fields.map((f) => `${Buffer.byteLength(f, 'utf8')}:${f}`).join('|');
+}
+
+/**
+ * The durable operation identity — derived entirely server-side.
+ *
+ * It previously mixed in a `clientOrderKey` taken from a hidden form field. A
+ * hidden field is caller-controlled, so the client could vary it to force a
+ * duplicate order, or supply another customer's value. Deriving from the verified
+ * principal, the signed intent id, the operation label and the policy version
+ * removes the caller from the identity entirely.
+ *
+ * Bound to the INTENT rather than merely the principal: a genuine second purchase
+ * gets a new intent and therefore a new identity, while every retry of the same
+ * intended purchase collapses onto one.
+ */
+export function checkoutOperationIdentity(
   claims: CheckoutIntentClaims,
-  clientOrderKey: string,
+  operation: CheckoutOperation,
+  policyVersion: string,
 ): string {
   return createHash('sha256')
-    .update(`${intentPrincipalKey(claims)} ${claims.intentId} ${clientOrderKey.trim()}`)
+    .update(canonical([intentPrincipalKey(claims), claims.intentId, operation, policyVersion]))
     .digest('hex');
 }

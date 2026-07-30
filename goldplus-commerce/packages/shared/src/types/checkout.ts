@@ -70,6 +70,58 @@ export type CheckoutErrorCode =
   | 'CHECKOUT_SESSION_UNAVAILABLE'
   | 'DB_NOT_CONFIGURED';
 
+/**
+ * The checkout request contract.
+ *
+ * Typed rather than `unknown`: an untyped request boundary is how the response
+ * boundary drifted unnoticed, and the same argument applies in both directions.
+ * Note there is NO client order key — the operation identity is derived
+ * server-side from the verified principal and the signed intent id, so the caller
+ * cannot influence it.
+ */
+export interface CheckoutDeliveryLocationDto {
+  district: string;
+  region?: string;
+  countyOrMunicipality?: string;
+  subcountyDivisionTc?: string;
+  parishWard?: string;
+  postcode?: string;
+  displayLabel?: string;
+}
+
+export interface CheckoutCustomerDetailsDto {
+  name: string;
+  email?: string;
+  phone: string;
+  deliveryArea: string;
+  deliveryAddress: string;
+  deliveryLocation?: CheckoutDeliveryLocationDto | null;
+}
+
+export interface CheckoutLineItemDto {
+  productId: string;
+  quantity: number;
+}
+
+export interface CheckoutRequestDto {
+  customerDetails: CheckoutCustomerDetailsDto;
+  buyerType: 'retail' | 'wholesale' | 'corporate';
+  items: CheckoutLineItemDto[];
+  couponCode?: string | null;
+  previewQuoteId?: string | null;
+  acceptPriceChange?: boolean;
+}
+
+export interface PaymentStartRequestDto {
+  orderId: string;
+}
+
+export interface PaymentStartResponseDto {
+  redirectUrl: string;
+  paymentAttemptId: string;
+  providerReference: string | null;
+}
+
 /** Header carrying the BFF-issued checkout intent token to the API. */
 export const CHECKOUT_INTENT_HEADER = 'x-goldplus-checkout-intent';
 

@@ -14,7 +14,14 @@ export interface IOrderRepository {
 }
 
 export interface ITransactionalPricedOrderRepository extends IOrderRepository {
-  savePricedOrder(input: { order: Order; quote: PricingQuote; reservationIds: string[]; clientOrderKey: string | null }): Promise<{ order: Order; duplicate: boolean }>;
+  savePricedOrder(input: {
+    order: Order;
+    quote: PricingQuote;
+    reservationIds: string[];
+    clientOrderKey: string | null;
+    /** Fenced link, written in the SAME transaction as the order insert. */
+    checkoutLink?: { identity: string; claimToken: string; fencingNumber: number };
+  }): Promise<{ order: Order; duplicate: boolean }>;
 }
 
 export interface CheckoutDto {
@@ -39,6 +46,8 @@ export interface CheckoutDto {
   }>;
   /** Optional idempotency key: repeated submissions return the same order. */
   clientOrderKey?: string | null;
+  /** Active checkout lease, so the order and its claim link commit together. */
+  checkoutLink?: { identity: string; claimToken: string; fencingNumber: number };
   couponCode?: string | null;
   previewQuoteId?: string | null;
   acceptPriceChange?: boolean;
@@ -146,7 +155,7 @@ export class CheckoutUseCase {
       const pricedItems: OrderItem[] = quote.lines.map((line) => ({ productId: line.productId, sku: line.sku, name: line.name, price: line.canonicalUnitPriceUgx, quantity: line.quantity, canonicalUnitPrice: line.canonicalUnitPriceUgx, baseSubtotal: line.baseSubtotalUgx, discountAmount: line.discountUgx, finalLineTotal: line.finalSubtotalUgx }));
       const order = Order.create(crypto.randomUUID(), dto.customerDetails, dto.buyerType, pricedItems, quote.shippingUgx, fee.confirmed, snapshot);
       try {
-        const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey });
+        const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink });
         if (saved.duplicate && reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id });
         return { order: saved.order, deliveryFeeConfirmed: saved.order.deliveryFeeConfirmed, idempotentReplay: saved.duplicate };
       } catch (error) {

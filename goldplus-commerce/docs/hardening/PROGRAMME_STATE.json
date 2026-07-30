@@ -20,16 +20,18 @@
   "inProgressModules": [
     {
       "module": "checkout",
-      "reason": "Component-level work is proven, but the end-to-end browser path is not. Strong components are not a completed customer journey.",
+      "reason": "Component and transactional work is proven against real PostgreSQL, but the browser-to-payment journey has no end-to-end proof yet.",
       "remaining": [
-        "Playwright end-to-end through the real Astro SSR path",
-        "twenty-concurrent-request checkout proof",
-        "crash-after-order-create recovery proof",
-        "lost-response retry proof through the BFF",
-        "PesaPal handoff contract proof",
-        "fingerprint coverage of delivery destination and contact intent (contract \u00a710)",
-        "state-aware retention model (contract \u00a711)",
-        "orchestration moved out of the route into an application use case (contract \u00a76)"
+        "Playwright through the real Astro SSR path (initial GET, refresh, failed POST reuse)",
+        "20-concurrent-request proof: one order, one reservation, one fulfilment, one notification, one payment attempt",
+        "typed idempotent PesaPal handoff (contract \u00a72.10)",
+        "resumable saga stages FULFILMENT_QUEUED / NOTIFICATION_QUEUED / PAYMENT_READY / PAYMENT_STARTED (\u00a72.7)",
+        "fingerprint coverage of delivery/contact/payment intent (\u00a72.8, H-04)",
+        "state-aware retention (\u00a72.9, H-06)",
+        "orchestration moved into ExecuteCheckoutIntentUseCase (\u00a72.6, H-05)",
+        "CSRF and origin validation (\u00a72.14)",
+        "offline-draft governance (\u00a72.12)",
+        "explicit current/previous key pairs (\u00a72.13)"
       ]
     }
   ],
@@ -71,14 +73,24 @@
       "summary": "Fingerprint does not yet cover delivery destination, normalized contact or payment path (contract \u00a710)."
     },
     {
-      "id": "H-05",
-      "module": "checkout",
-      "summary": "Idempotency orchestration still lives in the HTTP route rather than an application use case (contract \u00a76)."
-    },
-    {
       "id": "H-06",
       "module": "checkout",
       "summary": "Retention is a generic TTL; not yet state-aware, so a sweep could remove an unresolved order link (contract \u00a711)."
+    },
+    {
+      "id": "H-05",
+      "module": "checkout",
+      "summary": "Orchestration still lives in the HTTP route; ExecuteCheckoutIntentUseCase not yet extracted (\u00a72.6)."
+    },
+    {
+      "id": "H-07",
+      "module": "checkout",
+      "summary": "No CSRF/origin validation on checkout or cart mutations (\u00a72.14)."
+    },
+    {
+      "id": "H-08",
+      "module": "checkout",
+      "summary": "PesaPal handoff is not yet a typed principal-aware idempotent client with a durable payment-attempt claim (\u00a72.10)."
     }
   ],
   "resolvedFindings": [
@@ -112,15 +124,22 @@
     "reservation used an inverted stockHeld variable",
     "migration 0058 initially used gen_random_bytes (pgcrypto), leaving the migration part-applied",
     "takeover did not extend the lease in the same statement, so six concurrent takeovers produced six owners",
-    "route imported a repository type directly, violating the architecture boundary"
+    "route imported a repository type directly, violating the architecture boundary",
+    "checkout intent was resolved only inside the POST branch, so the initial GET issued no cookie and the template binding was a ReferenceError \u2014 the page was broken on first load while pnpm build passed",
+    "operation identity mixed in a caller-controlled hidden clientOrderKey field",
+    "operation identity used ambiguous space-joined concatenation instead of a length-prefixed encoding",
+    "every fenced mutation result was ignored, so the fence detected lease loss and the caller discarded the detection",
+    "order insert and claim link were two statements, leaving a crash window that orphaned orders",
+    "checkout request boundary was typed unknown on both customerDetails and items",
+    "storefront had no canonical authenticated-session helper, so a signed USER intent alone could outlive a logout"
   ],
   "migrationCeiling": "0058",
   "testTotals": {
-    "files": 244,
-    "passed": 4536,
+    "files": 245,
+    "passed": 4574,
     "skipped": 11,
     "nonArtifactGuardFailures": 0,
-    "note": "12 reported failures are Slice-09 artifact-scope guards asserting a clean worktree; they pass once committed."
+    "note": "12 reported failures are Slice-09 artifact-scope guards asserting a clean worktree."
   },
   "lastCleanSuiteCommit": "785588438038f7093f00df6a3e793c4b6048b447",
   "latestReleaseIdentity": null,
@@ -131,8 +150,8 @@
     "status": "AWAITING_MAC_RAIL_B_VALIDATION",
     "note": "Not merged into this branch. Its scope, candidate, tag and approval marker are untouched."
   },
-  "nextExactAction": "Complete checkout: move orchestration into ExecuteCheckoutIntentUseCase (H-05), extend the fingerprint to delivery/contact/payment intent (H-04), add state-aware retention (H-06), then Playwright the real SSR path. Then cart object-level authorization (H-02) and the central outbound-delivery policy (H-03).",
-  "lastUpdatedAt": "2026-07-30T00:00:00Z",
+  "nextExactAction": "Extract ExecuteCheckoutIntentUseCase (H-05) with resumable saga stages, then the typed idempotent PesaPal handoff (H-08), CSRF/origin (H-07), fingerprint coverage (H-04) and state-aware retention (H-06). Then cart object-level authorization (H-02) and the central outbound-delivery policy (H-03).",
+  "lastUpdatedAt": "2026-07-30T01:00:00Z",
   "codeHead": "785588438038f7093f00df6a3e793c4b6048b447",
   "stateBasedOnHead": "785588438038f7093f00df6a3e793c4b6048b447",
   "stateCommit": "PENDING",

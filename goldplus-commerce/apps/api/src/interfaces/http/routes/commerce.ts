@@ -16,8 +16,10 @@ import {
   applyOptionalCustomerSession,
   resolveCheckoutIntent,
 } from '../middleware/checkoutIntent';
-import { intentIdempotencyIdentity, intentPrincipalKey } from '@goldplus/shared';
+import { checkoutOperationIdentity, intentPrincipalKey } from '@goldplus/shared';
 import type { LeaseToken } from '../../../application/ports/ICheckoutIdempotencyRepository';
+import { requireFence, isLeaseLost } from '../../../application/use-cases/commerce/requireFence';
+import { logger } from '../../../infrastructure/logging/logger';
 import { toCheckoutResponseDto } from '../../../application/mappers/toCheckoutResponseDto';
 
 // Slice 3B: server-authoritative checkout input. Client prices/sku/names are
@@ -52,15 +54,9 @@ const checkoutBodySchema = z.object({
     )
     .min(1)
     .max(50),
-  // REQUIRED. Without it a double-click, a browser retry or a flaky mobile
-  // network creates a second real order, and nothing downstream can tell the
-  // duplicate from a genuine second purchase.
-  //
-  // Deliberately not given a server-derived fallback: deriving one from the cart
-  // contents would collapse a customer legitimately ordering the same basket
-  // twice into a single order — an invisible loss of a real order. A missing key
-  // is a visible, diagnosable 400 instead.
-  clientOrderKey: z.string().trim().min(8).max(80),
+  // No clientOrderKey. The operation identity is derived server-side from the
+  // verified principal and the signed intent id, so the caller cannot influence
+  // it at all. A field accepted here would be attacker-controlled by definition.
   couponCode: z.string().trim().min(3).max(40).nullish(),
   previewQuoteId: z.string().uuid().nullish(),
   acceptPriceChange: z.boolean().optional(),
@@ -204,17 +200,22 @@ routes.post('/orders/create', async (c) => {
       acceptedQuoteId: body.previewQuoteId ?? null,
       policyVersion: CHECKOUT_POLICY_VERSION,
     });
-    // Bound to the INTENT, not merely the principal: a genuine second order gets
-    // a new intent and therefore a new identity, while every retry of the same
-    // intended purchase collapses onto one.
-    const identity = intentIdempotencyIdentity(claims, body.clientOrderKey);
+    // Derived entirely server-side. It previously mixed in a clientOrderKey from
+    // a hidden form field — caller-controlled, so a client could vary it to force
+    // a duplicate order or supply another customer's value.
+    const identity = checkoutOperationIdentity(claims, 'CREATE_ORDER', CHECKOUT_POLICY_VERSION);
     const idem = checkoutIdempotencyRepo();
 
     // Atomic claim. The previous read-then-write let two concurrent submissions
     // both perform pricing, capacity reservation and order creation, with only
     // the unique index catching the second INSERT after the work was done.
     const claim = await idem.claim({ identity, principalKey: intentPrincipalKey(claims), fingerprint });
-    if (claim.claimed && claim.lease) lease = claim.lease;
+    if (claim.claimed) {
+      // A successful claim without a lease is incoherent — there would be no way
+      // to prove ownership of work already begun.
+      requireFence(!!claim.lease, 'CLAIM');
+      lease = claim.lease!;
+    }
     if (!claim.claimed) {
       const decision = decideIdempotency(claim.record, fingerprint);
       if (decision.action === 'CONFLICT') {
@@ -266,17 +267,17 @@ routes.post('/orders/create', async (c) => {
       customerDetails: body.customerDetails,
       buyerType: body.buyerType,
       items: body.items,
-      clientOrderKey: body.clientOrderKey,
+      clientOrderKey: null,
+      checkoutLink: lease ?? undefined,
       couponCode: body.couponCode ?? null,
       previewQuoteId: body.previewQuoteId ?? null,
       acceptPriceChange: body.acceptPriceChange ?? false,
     });
 
-    // Link the order to the claim NOW, before any side effect. A crash between
-    // order creation and this link left a committed order with an IN_PROGRESS
-    // record holding no order id, so a later takeover re-priced, re-reserved and
-    // re-created — duplicating the order the customer already had.
-    if (lease) await idem.linkOrder(lease, result.order.id);
+    // No separate link step: the order insert and the fenced claim link commit in
+    // ONE transaction inside savePricedOrder. Two statements left a window where a
+    // crash produced a committed order with no recoverable checkout identity, and
+    // narrowing that window is not the same as closing it.
 
     // Section 12: reserve stock for the order (idempotent, all-or-nothing,
     // oversell-safe).
@@ -351,8 +352,8 @@ routes.post('/orders/create', async (c) => {
       // The claim is marked COMPLETED against that order, so a retry with the
       // same key returns this same blocked order rather than creating a second.
       if (lease) {
-        await idem.advanceStage(lease, 'BLOCKED_STOCK');
-        await idem.complete(lease, result.order.id);
+        requireFence(await idem.advanceStage(lease, 'BLOCKED_STOCK'), 'ADVANCE_STAGE');
+        requireFence(await idem.complete(lease, result.order.id), 'COMPLETE');
       }
       return c.json({
         success: false,
@@ -373,8 +374,8 @@ routes.post('/orders/create', async (c) => {
     }
 
     if (lease) {
-      await idem.advanceStage(lease, 'AWAITING_PAYMENT');
-      await idem.complete(lease, result.order.id);
+      requireFence(await idem.advanceStage(lease, 'AWAITING_PAYMENT'), 'ADVANCE_STAGE');
+      requireFence(await idem.complete(lease, result.order.id), 'COMPLETE');
     }
 
     // A dedicated response DTO, not `{ ...result.order }`. Spreading the domain
@@ -393,6 +394,21 @@ routes.post('/orders/create', async (c) => {
     };
     return c.json(res);
   } catch (err: any) {
+    // A lost lease is not a checkout failure: the successor is still working, or
+    // has already finished. Do NOT mark the record failed — that would overwrite
+    // the very owner this check exists to protect.
+    if (isLeaseLost(err)) {
+      logger.warn({ stage: err.stage }, 'CHECKOUT_LEASE_LOST');
+      c.header('Retry-After', '2');
+      return c.json({
+        success: false,
+        error: {
+          code: 'CHECKOUT_IN_PROGRESS',
+          message: 'This order is already being processed. Please wait a moment.',
+        },
+      }, 409);
+    }
+
     // Release the claim so the outcome matches reality. A rejected request
     // (bad coupon, unavailable product) is FINAL — retrying it reaches the same
     // rejection. Anything else is RETRYABLE, because a transient database fault

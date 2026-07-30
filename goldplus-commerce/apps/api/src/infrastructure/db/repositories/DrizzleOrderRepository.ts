@@ -1,5 +1,5 @@
 import { db } from '../client';
-import { orders, orderItems } from '../schema/commerce';
+import { orders, orderItems , checkoutIdempotency } from '../schema/commerce';
 import { pricingQuotes, promotionRedemptions, promotionReservations } from '../schema/pricing';
 import { products } from '../schema/products';
 import { and, eq, desc, inArray, sql } from 'drizzle-orm';
@@ -117,7 +117,27 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
     });
   }
 
-  async savePricedOrder(input: { order: Order; quote: PricingQuote; reservationIds: string[]; clientOrderKey: string | null }): Promise<{ order: Order; duplicate: boolean }> {
+  /**
+   * Persists the order and, in the SAME transaction, links it to its checkout
+   * claim under the active fence.
+   *
+   * These were two statements: commit the order, then link it. A crash in that
+   * window left a committed order with an IN_PROGRESS claim holding no order id,
+   * so a later takeover re-priced, re-reserved and re-created — duplicating the
+   * order the customer already had. Narrowing the window is not a fix; the two
+   * writes have to be one commit.
+   *
+   * If the fenced link affects zero rows this worker has lost the lease, and the
+   * throw rolls the order back. The invariant is therefore: either nothing
+   * committed, or exactly one order durably linked to one checkout operation.
+   */
+  async savePricedOrder(input: {
+    order: Order;
+    quote: PricingQuote;
+    reservationIds: string[];
+    clientOrderKey: string | null;
+    checkoutLink?: { identity: string; claimToken: string; fencingNumber: number };
+  }): Promise<{ order: Order; duplicate: boolean }> {
     if (!input.order.pricingSnapshot || input.order.pricingSnapshot.quoteId !== input.quote.id || input.order.totalUgx !== input.quote.finalTotalUgx) throw new Error('PRICING_ORDER_SNAPSHOT_MISMATCH');
     return db.transaction(async (tx) => {
       if (input.clientOrderKey) await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.clientOrderKey}, 0))`);
@@ -146,6 +166,25 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
         pricingTaxTotal: input.quote.taxUgx, pricingCalculationVersion: input.quote.calculationVersion,
         pricingSnapshot: encodePricingJsonb(input.order.pricingSnapshot as any) as any,
       });
+
+      // Same transaction as the insert above. A zero-row result means the lease
+      // was taken over while this worker was pricing; the throw rolls the order
+      // back rather than leaving it orphaned.
+      if (input.checkoutLink) {
+        const linked = await tx
+          .update(checkoutIdempotency)
+          .set({ orderId: input.order.id, stage: 'ORDER_CREATED', updatedAt: new Date() })
+          .where(
+            and(
+              eq(checkoutIdempotency.identity, input.checkoutLink.identity),
+              eq(checkoutIdempotency.claimToken, input.checkoutLink.claimToken),
+              eq(checkoutIdempotency.fencingNumber, input.checkoutLink.fencingNumber),
+              eq(checkoutIdempotency.state, 'IN_PROGRESS'),
+            ),
+          )
+          .returning({ identity: checkoutIdempotency.identity });
+        if (linked.length !== 1) throw new Error('CHECKOUT_LEASE_LOST');
+      }
       await tx.insert(orderItems).values(input.order.items.map((item) => ({ orderId: input.order.id, productId: item.productId, sku: item.sku, productName: item.name, quantity: item.quantity, unitPrice: item.price, canonicalUnitPrice: item.canonicalUnitPrice ?? item.price, baseSubtotal: item.baseSubtotal ?? item.price * item.quantity, discountAmount: item.discountAmount ?? 0, finalLineTotal: item.finalLineTotal ?? item.price * item.quantity })));
       if (reservations.length) {
         await tx.insert(promotionRedemptions).values(reservations.map((reservation) => ({ reservationId: reservation.id, orderId: input.order.id, redeemedAt: new Date() })));
