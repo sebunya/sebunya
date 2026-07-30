@@ -5,7 +5,7 @@
  * lease, and the first version of the wiring ignored every one of those results:
  *
  *     await idem.linkOrder(lease, order.id);
- *     await idem.complete(lease, order.id);
+ *     await idem.finishOperation(lease, order.id);
  *
  * A `false` there means another worker took the operation over. Continuing past
  * it is the whole failure the fence exists to prevent — the stale worker would go
@@ -22,7 +22,8 @@ export type FencedStage =
   | 'LINK_ORDER'
   | 'ADVANCE_STAGE'
   | 'HEARTBEAT'
-  | 'COMPLETE'
+  /** Marks the workflow no longer running. Named for that, not for "completed". */
+  | 'FINISH_OPERATION'
   | 'FAIL';
 
 export class LeaseLostError extends Error {

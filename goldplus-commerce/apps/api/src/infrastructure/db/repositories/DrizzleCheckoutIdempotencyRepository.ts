@@ -9,6 +9,7 @@ import {
   CheckoutSagaStage,
 } from '../../../application/ports/ICheckoutIdempotencyRepository';
 import {
+  CheckoutOperationState,
   IdempotencyRecord,
   IdempotencyState,
   IDEMPOTENCY_LEASE_SECONDS,
@@ -40,6 +41,8 @@ function toRecord(row: typeof checkoutIdempotency.$inferSelect): IdempotencyReco
     principalKey: row.principalKey,
     fingerprint: row.fingerprint,
     state: row.state as IdempotencyState,
+    operationState: row.operationState as CheckoutOperationState,
+    stage: row.stage,
     orderId: row.orderId,
     failureReason: row.failureReason,
     createdAt: row.createdAt,
@@ -110,6 +113,9 @@ export class DrizzleCheckoutIdempotencyRepository implements ICheckoutIdempotenc
       .update(checkoutIdempotency)
       .set({
         state: 'IN_PROGRESS',
+        // The workflow is running again. `stage` is left alone: it is exactly the
+        // durable evidence this takeover resumes from.
+        operationState: 'IN_PROGRESS',
         claimToken,
         fencingNumber: sql`${checkoutIdempotency.fencingNumber} + 1`,
         attemptNumber: sql`${checkoutIdempotency.attemptNumber} + 1`,
@@ -220,13 +226,25 @@ export class DrizzleCheckoutIdempotencyRepository implements ICheckoutIdempotenc
     return updated.length === 1;
   }
 
-  /** Marks the operation completed. Requires the active lease. */
-  async complete(lease: LeaseToken, orderId: string): Promise<boolean> {
+  /**
+   * Marks the WORKFLOW as no longer running. Requires the active lease.
+   *
+   * `stage` is deliberately untouched. The previous version also wrote
+   * stage = 'COMPLETED', which destroyed the saga position: an order that had only
+   * reached PAYMENT_READY was stored as a completed checkout, so nothing reading
+   * progress could tell an unpaid order from a confirmed one, and a resume could
+   * not tell which side effects were still owed.
+   *
+   * `state` remains COMPLETED because it drives the idempotency decision machine —
+   * "this key is settled, replay its order" — while `operation_state` carries the
+   * outcome. TERMINAL means the workflow stopped running; it does not mean paid.
+   */
+  async finishOperation(lease: LeaseToken, orderId: string): Promise<boolean> {
     const updated = await db
       .update(checkoutIdempotency)
       .set({
         state: 'COMPLETED',
-        stage: 'COMPLETED',
+        operationState: 'TERMINAL',
         orderId,
         updatedAt: new Date(),
         failureReason: null,
@@ -250,7 +268,11 @@ export class DrizzleCheckoutIdempotencyRepository implements ICheckoutIdempotenc
       .update(checkoutIdempotency)
       .set({
         state: retryable ? 'FAILED_RETRYABLE' : 'FAILED_FINAL',
-        stage: retryable ? 'FAILED_RETRYABLE' : 'FAILED_FINAL',
+        operationState: retryable ? 'FAILED_RETRYABLE' : 'FAILED_FINAL',
+        // `stage` is NOT overwritten. Writing the failure into the stage column
+        // erased where the saga had got to, so a retryable failure at
+        // NOTIFICATION_QUEUED resumed from nothing and re-ran work that was
+        // already durably recorded.
         // Truncated to the column width, and never the raw error object, which
         // can carry query text or customer data.
         failureReason: reason.slice(0, 200),

@@ -12,8 +12,18 @@ import { Order } from '../../../domain/commerce/Order';
 import {
   ICheckoutIdempotencyRepository,
   LeaseToken,
+  stageReached,
 } from '../../ports/ICheckoutIdempotencyRepository';
 import { LeaseLostError, isLeaseLost, requireFence } from './requireFence';
+import {
+  CheckoutDependencyCode,
+  classifyDependencyError,
+  isTerminalDependencyCode,
+} from '../../ports/CheckoutDependencyOutcomes';
+import {
+  ICheckoutSideEffectRecorder,
+  SideEffectOutcome,
+} from '../../ports/ICheckoutSideEffectRecorder';
 
 /**
  * Owns the checkout workflow.
@@ -32,7 +42,8 @@ import { LeaseLostError, isLeaseLost, requireFence } from './requireFence';
  */
 
 export type CheckoutOutcomeKind =
-  | 'CHECKOUT_COMPLETED'
+  /** The order is paid and confirmed. NOT merely "the workflow finished". */
+  | 'ORDER_CONFIRMED'
   | 'AWAITING_PAYMENT'
   | 'BLOCKED_STOCK'
   | 'CHECKOUT_IN_PROGRESS'
@@ -45,7 +56,9 @@ export type CheckoutOutcomeKind =
   | 'FAILED_FINAL';
 
 export interface CheckoutSuccessOutcome {
-  kind: 'CHECKOUT_COMPLETED' | 'AWAITING_PAYMENT' | 'BLOCKED_STOCK';
+  kind: 'ORDER_CONFIRMED' | 'AWAITING_PAYMENT' | 'BLOCKED_STOCK';
+  /** Where the saga actually got to, independent of whether it stopped running. */
+  stage: string;
   order: Order;
   reservationState: OrderReservationState;
   deliveryFeeConfirmed: boolean;
@@ -54,7 +67,7 @@ export interface CheckoutSuccessOutcome {
 }
 
 export interface CheckoutRefusalOutcome {
-  kind: Exclude<CheckoutOutcomeKind, 'CHECKOUT_COMPLETED' | 'AWAITING_PAYMENT' | 'BLOCKED_STOCK'>;
+  kind: Exclude<CheckoutOutcomeKind, 'ORDER_CONFIRMED' | 'AWAITING_PAYMENT' | 'BLOCKED_STOCK'>;
   /** Stable code for the storefront. Never an internal message. */
   reason: string;
   retryAfterSeconds?: number;
@@ -64,7 +77,7 @@ export type CheckoutOutcome = CheckoutSuccessOutcome | CheckoutRefusalOutcome;
 
 export function isCheckoutSuccess(outcome: CheckoutOutcome): outcome is CheckoutSuccessOutcome {
   return (
-    outcome.kind === 'CHECKOUT_COMPLETED' ||
+    outcome.kind === 'ORDER_CONFIRMED' ||
     outcome.kind === 'AWAITING_PAYMENT' ||
     outcome.kind === 'BLOCKED_STOCK'
   );
@@ -122,12 +135,6 @@ export interface CheckoutReservationRunner {
   }>;
 }
 
-export interface CheckoutSideEffects {
-  /** Durable, idempotent by order id. Failure is reported, never swallowed. */
-  queueFulfilment(order: Order, opts: { warnings: string[]; hold: boolean }): Promise<void>;
-  queueAdminNotification(order: Order, opts: { stockConfirmed: boolean }): Promise<void>;
-}
-
 export interface CheckoutOrderReader {
   findById(orderId: string): Promise<Order | null>;
   reservationStateOf(orderId: string): Promise<OrderReservationState | null>;
@@ -140,20 +147,22 @@ export interface CheckoutObserver {
 
 export interface ExecuteCheckoutIntentDeps {
   idempotency: ICheckoutIdempotencyRepository;
+  /**
+   * Durable, idempotent side-effect recording.
+   *
+   * This replaces the previous in-request `sideEffects` port, which called the
+   * fulfilment and notification use cases inline. That work is now queued durably
+   * and performed by `ProcessCheckoutSideEffectBatchUseCase`, so a failure is
+   * retried instead of disappearing when the response is written.
+   */
+  sideEffectRecorder: ICheckoutSideEffectRecorder;
   orders: CheckoutOrderCreator;
   reservations: CheckoutReservationRunner;
-  sideEffects: CheckoutSideEffects;
   orderReader: CheckoutOrderReader;
   observer?: CheckoutObserver;
 }
 
-/** Business rejections that must not be retried into the same failure forever. */
-const TERMINAL_REASONS = [
-  'PRODUCT_UNAVAILABLE',
-  'PRICE_UNAVAILABLE',
-  'PRICE_CHANGED',
-  'PROMOTION_CHANGED',
-];
+
 
 export class ExecuteCheckoutIntentUseCase {
   constructor(private readonly deps: ExecuteCheckoutIntentDeps) {}
@@ -192,8 +201,11 @@ export class ExecuteCheckoutIntentUseCase {
     // A takeover resumes from durable evidence rather than restarting. Without
     // this, a retry after a partial success would re-price, re-create and
     // re-reserve work that already committed.
+    // Resume from the STORED SAGA STAGE, not merely from the existence of an
+    // order id: the order can exist while the reservation, the fulfilment event
+    // and the notification event are each independently done or not done.
     if (claim.record.orderId) {
-      const resumed = await this.resume(command, claim.record.orderId, lease);
+      const resumed = await this.resume(command, claim.record.orderId, lease, claim.record.stage);
       if (resumed) return resumed;
     }
 
@@ -207,16 +219,25 @@ export class ExecuteCheckoutIntentUseCase {
         return { kind: 'CHECKOUT_IN_PROGRESS', reason: 'LEASE_LOST', retryAfterSeconds: 2 };
       }
 
-      const message = error instanceof Error ? error.message : String(error);
-      const terminal = TERMINAL_REASONS.find((r) => message.startsWith(r));
+      // Classified by the adapter boundary, not by parsing text here. Rewording
+      // a message must not silently stop a branch matching, and a database fault
+      // whose message happens to start with a business word must not be
+      // misclassified as a business rejection.
+      const classified = classifyDependencyError(error);
+      const code: CheckoutDependencyCode | 'CHECKOUT_ERROR' = classified?.code ?? 'CHECKOUT_ERROR';
+
+      if (code === 'LEASE_LOST') {
+        this.deps.observer?.onLeaseLost('ORDER_TRANSACTION', command.traceId);
+        return { kind: 'CHECKOUT_IN_PROGRESS', reason: 'LEASE_LOST', retryAfterSeconds: 2 };
+      }
+
+      const terminal = code !== 'CHECKOUT_ERROR' && isTerminalDependencyCode(code);
       // Best-effort: if the claim cannot be released it lapses on its own lease.
-      await this.deps.idempotency
-        .fail(lease, terminal ?? 'CHECKOUT_ERROR', !terminal)
-        .catch(() => undefined);
+      await this.deps.idempotency.fail(lease, code, !terminal).catch(() => undefined);
 
       return terminal
-        ? { kind: 'FAILED_FINAL', reason: terminal }
-        : { kind: 'FAILED_RETRYABLE', reason: 'CHECKOUT_ERROR' };
+        ? { kind: 'FAILED_FINAL', reason: code }
+        : { kind: 'FAILED_RETRYABLE', reason: code };
     }
   }
 
@@ -246,75 +267,156 @@ export class ExecuteCheckoutIntentUseCase {
     });
   }
 
-  /** Everything after the order exists: reservation, side effects, completion. */
+  /**
+   * Everything after the order exists: reservation, durable side effects, and the
+   * terminal transition.
+   *
+   * `resumeFrom` is the stage already reached, so a retry skips work that is
+   * durably done instead of repeating it. Resuming on the mere existence of an
+   * order id was not enough: the order can exist while the reservation, the
+   * fulfilment event and the notification event are each independently done or
+   * not done.
+   */
   private async afterOrder(
     command: CheckoutCommand,
     lease: LeaseToken,
     order: Order,
-    meta: { deliveryFeeConfirmed: boolean; idempotentReplay: boolean },
+    meta: { deliveryFeeConfirmed: boolean; idempotentReplay: boolean; resumeFrom?: string },
   ): Promise<CheckoutOutcome> {
-    const reservation = await this.deps.reservations.execute(order);
+    const done = new Set(await this.deps.sideEffectRecorder.recordedTypes(command.identity));
+    const alreadyBlocked = meta.resumeFrom === 'BLOCKED_STOCK';
 
-    // One canonical decision. An inverted `stockHeld = !fullyReserved` forced
-    // every downstream branch to be re-derived by negation.
-    const decision = {
-      reservationState: reservation.state,
-      stockConfirmed: reservation.fullyReserved,
-      requiresHold: !reservation.fullyReserved,
-      mayPay: mayProgressToPayment(reservation.state),
-      mayFulfil: mayCreateFulfilment(reservation.state),
-    };
+    // Reservation is skipped when a previous attempt durably recorded its result.
+    // Re-running it would be a second reservation attempt for one order.
+    // Compared by saga POSITION rather than by listing stage names: a list has to
+    // be extended every time a later stage is added, and the one time it is
+    // forgotten a resume silently reserves the same order twice.
+    const reservedAlready = stageReached(meta.resumeFrom, 'INVENTORY_RESERVED');
 
-    if (!decision.mayPay) {
+    let reservationState: OrderReservationState;
+    let warnings: string[] = [];
+    let fullyReserved: boolean;
+
+    if (alreadyBlocked) {
+      reservationState = 'UNRESERVED_BLOCKED';
+      fullyReserved = false;
+    } else if (reservedAlready) {
+      reservationState =
+        (await this.deps.orderReader.reservationStateOf(order.id)) ?? 'RESERVED';
+      fullyReserved = mayProgressToPayment(reservationState);
+    } else {
+      const reservation = await this.deps.reservations.execute(order);
+      reservationState = reservation.state;
+      warnings = reservation.warnings;
+      fullyReserved = reservation.fullyReserved;
+    }
+
+    const mayPay = mayProgressToPayment(reservationState);
+
+    if (!mayPay) {
       requireFence(
         await this.deps.idempotency.advanceStage(lease, 'BLOCKED_STOCK'),
         'ADVANCE_STAGE',
       );
-      requireFence(await this.deps.idempotency.complete(lease, order.id), 'COMPLETE');
+      // The workflow stops RUNNING here, but the order is neither paid nor
+      // confirmed, and the stage says so. finishOperation deliberately does not
+      // touch the stage.
+      requireFence(await this.deps.idempotency.finishOperation(lease, order.id), 'FINISH_OPERATION');
       return {
         kind: 'BLOCKED_STOCK',
+        stage: 'BLOCKED_STOCK',
         order,
-        reservationState: decision.reservationState,
+        reservationState,
         deliveryFeeConfirmed: meta.deliveryFeeConfirmed,
         idempotentReplay: meta.idempotentReplay,
-        warnings: reservation.warnings,
+        warnings,
       };
     }
 
-    requireFence(
-      await this.deps.idempotency.advanceStage(lease, 'INVENTORY_RESERVED'),
-      'ADVANCE_STAGE',
-    );
-
-    if (decision.mayFulfil) {
-      // Reported, not swallowed. A console.error here left the operator with a
-      // paid order and no work item, and nothing to alert on.
-      await this.durably('FULFILMENT_QUEUED', command.traceId, () =>
-        this.deps.sideEffects.queueFulfilment(order, {
-          warnings: reservation.warnings,
-          hold: decision.requiresHold,
-        }),
-      );
-      await this.durably('NOTIFICATION_QUEUED', command.traceId, () =>
-        this.deps.sideEffects.queueAdminNotification(order, {
-          stockConfirmed: decision.stockConfirmed,
-        }),
+    if (!reservedAlready) {
+      requireFence(
+        await this.deps.idempotency.advanceStage(lease, 'INVENTORY_RESERVED'),
+        'ADVANCE_STAGE',
       );
     }
 
-    requireFence(
-      await this.deps.idempotency.advanceStage(lease, 'AWAITING_PAYMENT'),
-      'ADVANCE_STAGE',
-    );
-    requireFence(await this.deps.idempotency.complete(lease, order.id), 'COMPLETE');
+    // Durable side effects. The checkout may only advance past each one once the
+    // record exists — a report to an observer is evidence, not durability, and a
+    // crash after the order committed would otherwise lose the work entirely.
+    if (mayCreateFulfilment(reservationState)) {
+      const fulfilment = await this.recordSideEffect(command, order, 'ORDER_FULFILMENT_REQUIRED', done, {
+        warnings,
+        hold: !fullyReserved,
+      });
+      if (fulfilment !== 'ok') return fulfilment.outcome;
+      requireFence(
+        await this.deps.idempotency.advanceStage(lease, 'FULFILMENT_QUEUED'),
+        'ADVANCE_STAGE',
+      );
+
+      const notification = await this.recordSideEffect(
+        command, order, 'ORDER_ADMIN_NOTIFICATION_REQUIRED', done, { stockConfirmed: fullyReserved },
+      );
+      if (notification !== 'ok') return notification.outcome;
+      requireFence(
+        await this.deps.idempotency.advanceStage(lease, 'NOTIFICATION_QUEUED'),
+        'ADVANCE_STAGE',
+      );
+    }
+
+    // PAYMENT_READY, not COMPLETED. An unpaid order is not a completed one, and
+    // recording it as such made every unpaid order look finished to
+    // reconciliation, support and the retention sweep.
+    requireFence(await this.deps.idempotency.advanceStage(lease, 'PAYMENT_READY'), 'ADVANCE_STAGE');
+    requireFence(await this.deps.idempotency.finishOperation(lease, order.id), 'FINISH_OPERATION');
 
     return {
       kind: 'AWAITING_PAYMENT',
+      stage: 'PAYMENT_READY',
       order,
-      reservationState: decision.reservationState,
+      reservationState,
       deliveryFeeConfirmed: meta.deliveryFeeConfirmed,
       idempotentReplay: meta.idempotentReplay,
-      warnings: reservation.warnings,
+      warnings,
+    };
+  }
+
+  /**
+   * Records one side effect durably, or explains why the checkout must not
+   * advance.
+   *
+   * ALREADY_RECORDED is a success: a previous attempt wrote it, so the work is
+   * owed exactly once and must not be redone.
+   */
+  private async recordSideEffect(
+    command: CheckoutCommand,
+    order: Order,
+    eventType: Parameters<ICheckoutSideEffectRecorder['record']>[0]['eventType'],
+    done: Set<string>,
+    payload: Record<string, unknown>,
+  ): Promise<'ok' | { outcome: CheckoutOutcome }> {
+    if (done.has(eventType)) return 'ok';
+
+    const result: SideEffectOutcome = await this.deps.sideEffectRecorder.record({
+      checkoutIdentity: command.identity,
+      orderId: order.id,
+      eventType,
+      policyVersion: CHECKOUT_POLICY_VERSION,
+      payload,
+      traceId: command.traceId,
+    });
+
+    if (result === 'DURABLY_RECORDED' || result === 'ALREADY_RECORDED') return 'ok';
+
+    // The stage is NOT advanced. The checkout is retained for recovery and the
+    // failed stage is surfaced, rather than the order proceeding with work that
+    // no record says is owed.
+    this.deps.observer?.onSideEffectFailed(eventType, command.traceId, result);
+    return {
+      outcome:
+        result === 'RETRYABLE_FAILURE'
+          ? { kind: 'FAILED_RETRYABLE', reason: eventType }
+          : { kind: 'FAILED_FINAL', reason: eventType },
     };
   }
 
@@ -328,12 +430,14 @@ export class ExecuteCheckoutIntentUseCase {
     command: CheckoutCommand,
     orderId: string,
     lease: LeaseToken,
+    resumeFrom?: string,
   ): Promise<CheckoutOutcome | null> {
     const order = await this.deps.orderReader.findById(orderId);
     if (!order) return null;
     return this.afterOrder(command, lease, order, {
       deliveryFeeConfirmed: order.deliveryFeeConfirmed,
       idempotentReplay: true,
+      resumeFrom,
     });
   }
 
@@ -366,7 +470,13 @@ export class ExecuteCheckoutIntentUseCase {
         const state =
           (await this.deps.orderReader.reservationStateOf(decision.orderId)) ?? 'PENDING';
         return {
-          kind: mayProgressToPayment(state) ? 'CHECKOUT_COMPLETED' : 'BLOCKED_STOCK',
+          // An order awaiting payment is AWAITING_PAYMENT, never confirmed.
+          kind: !mayProgressToPayment(state)
+            ? 'BLOCKED_STOCK'
+            : order.paymentStatus === 'paid'
+              ? 'ORDER_CONFIRMED'
+              : 'AWAITING_PAYMENT',
+          stage: (record as { stage?: string })?.stage ?? 'COMPLETED',
           order,
           reservationState: state,
           deliveryFeeConfirmed: order.deliveryFeeConfirmed,
@@ -382,22 +492,4 @@ export class ExecuteCheckoutIntentUseCase {
     }
   }
 
-  /**
-   * Runs a side effect, reporting failure instead of swallowing it.
-   *
-   * The failure does NOT abort the checkout: the order is already committed and
-   * discarding it would be worse. But it must be visible — a console.error left
-   * the operator with an order and no work item and nothing to alert on.
-   */
-  private async durably(stage: string, traceId: string, run: () => Promise<void>): Promise<void> {
-    try {
-      await run();
-    } catch (error) {
-      this.deps.observer?.onSideEffectFailed(
-        stage,
-        traceId,
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  }
 }

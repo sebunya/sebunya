@@ -296,26 +296,32 @@ describe('checkout orchestration does not swallow reservation errors', () => {
     'utf8',
   );
 
-  it('derives every downstream decision from one reservation object', () => {
+  it('derives every downstream decision from the reservation state, not by negation', () => {
     // `stockHeld = !fullyReserved` forced each branch to be re-derived by
-    // negation, which is where a reader's model and the code diverge.
-    expect(useCase).toContain('mayProgressToPayment(reservation.state)');
-    expect(useCase).toContain('mayCreateFulfilment(reservation.state)');
+    // negation, which is where a reader's model and the code diverge. The domain
+    // predicates are asked directly instead.
+    expect(useCase).toContain('mayProgressToPayment(reservationState)');
+    expect(useCase).toContain('mayCreateFulfilment(reservationState)');
     expect(useCase).not.toMatch(/const stockHeld =/);
   });
 
-  it('queues no fulfilment or notification for an unpayable order', () => {
-    const blocked = useCase.slice(useCase.indexOf('if (!decision.mayPay)'));
-    const window = blocked.slice(0, blocked.indexOf('return {'));
-    expect(window).not.toContain('queueFulfilment');
-    expect(window).not.toContain('queueAdminNotification');
+  it('no longer performs side effects inside the request at all', () => {
+    // The in-request `sideEffects` port was removed: fulfilment and notification
+    // work is queued durably and performed by the outbox consumer, so a failure
+    // is retried rather than reported to an observer and forgotten.
+    const code = useCase.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(code).not.toContain('queueFulfilment');
+    expect(code).not.toContain('queueAdminNotification');
+    expect(code).not.toContain('console.error');
   });
 
-  it('reports a side-effect failure instead of a bare console.error', () => {
-    // Comments stripped: the prose explaining WHY console.error was wrong would
-    // otherwise trip this check.
+  it('records a side effect durably before advancing past it', () => {
+    // The stage is the resume point. Advancing past work with no durable record
+    // would make a retry skip work nothing says was ever queued.
     const code = useCase.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(code).toContain('onSideEffectFailed');
-    expect(code).not.toContain('console.error');
+    const recordAt = code.indexOf('this.recordSideEffect(');
+    const advanceAt = code.indexOf("advanceStage(lease, 'FULFILMENT_QUEUED')");
+    expect(recordAt).toBeGreaterThan(-1);
+    expect(advanceAt).toBeGreaterThan(recordAt);
   });
 });

@@ -28,9 +28,14 @@ async function runTick(): Promise<void> {
     const registry = Registry.getInstance();
 
     // Run both outbox processors concurrently — isolated failure domains
-    const [notifResult, telemetryResult] = await Promise.allSettled([
+    // Checkout side effects are a THIRD isolated domain. They are commerce work,
+    // not outbound messages, so they must not share a failure domain with a
+    // provider that can hang for its whole timeout — a stalled email provider must
+    // never be the reason an order gets no fulfilment task.
+    const [notifResult, telemetryResult, sideEffectResult] = await Promise.allSettled([
       registry.processOutboxBatchUseCase.execute(),
       telemetryDispatcher.processBatch(),
+      registry.processCheckoutSideEffectBatchUseCase.execute(),
     ]);
 
     // Log notification results
@@ -44,6 +49,27 @@ async function runTick(): Promise<void> {
       }
     } else {
       logger.error({ err: notifResult.reason }, '[OutboxTicker] Notifications processor threw unexpectedly');
+    }
+
+    if (sideEffectResult.status === 'fulfilled') {
+      const r = sideEffectResult.value;
+      if (r.claimed > 0) {
+        logger.info(
+          {
+            claimed: r.claimed,
+            handled: r.handled,
+            retried: r.retried,
+            deadLettered: r.deadLettered,
+            unhandledType: r.unhandledType,
+          },
+          '[OutboxTicker] Checkout side-effect batch complete'
+        );
+      }
+    } else {
+      logger.error(
+        { err: sideEffectResult.reason },
+        '[OutboxTicker] Checkout side-effect processor threw unexpectedly'
+      );
     }
 
     // Log telemetry results

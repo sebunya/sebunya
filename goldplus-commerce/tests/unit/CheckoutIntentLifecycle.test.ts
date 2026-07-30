@@ -177,7 +177,7 @@ describe('fencing fails closed', () => {
   });
 
   it('passes through when the mutation applied', () => {
-    expect(() => requireFence(true, 'COMPLETE')).not.toThrow();
+    expect(() => requireFence(true, 'FINISH_OPERATION')).not.toThrow();
   });
 
   it('names the stage, so an operator can see where ownership was lost', () => {
@@ -209,7 +209,7 @@ describe('fencing fails closed', () => {
       readFileSync(join(__dirname, '../../apps/api/src/application/use-cases/commerce/ExecuteCheckoutIntentUseCase.ts'), 'utf8'),
     ).replace(/\s+/g, ' ').replace(/\(\s+/g, '(');
 
-    for (const method of ['advanceStage', 'complete']) {
+    for (const method of ['advanceStage', 'finishOperation']) {
       const bare = `await this.deps.idempotency.${method}(`;
       const guarded = `requireFence(${bare}`;
       const total = flat.split(bare).length - 1;

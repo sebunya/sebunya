@@ -5,13 +5,17 @@ import {
   ExecuteCheckoutIntentUseCase,
   isCheckoutSuccess,
   type CheckoutCommand,
-  type CheckoutOutcome,
 } from '../../apps/api/src/application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import type {
   ClaimResult,
   ICheckoutIdempotencyRepository,
   LeaseToken,
 } from '../../apps/api/src/application/ports/ICheckoutIdempotencyRepository';
+import type {
+  CheckoutSideEffectType,
+  ICheckoutSideEffectRecorder,
+  SideEffectOutcome,
+} from '../../apps/api/src/application/ports/ICheckoutSideEffectRecorder';
 import type { OrderReservationState } from '../../apps/api/src/domain/inventory/Inventory';
 import {
   CHECKOUT_POLICY_VERSION,
@@ -26,14 +30,23 @@ import {
  *
  * These are behavioural tests driven through the ports, not source-text
  * assertions: the point is what the workflow DOES when a lease is lost, when a
- * retry arrives after a partial success, and when stock is blocked.
+ * retry arrives after a partial success, when a durable record cannot be written,
+ * and when stock is blocked.
  */
 
 const LEASE: LeaseToken = { identity: 'id-1', claimToken: 'tok-1', fencingNumber: 1 };
 const now = new Date('2026-07-30T00:00:00Z');
 
-const order = (id = 'order-1') =>
-  ({ id, orderNumber: 'GP-1', deliveryFeeConfirmed: true, totalUgx: 1000, pricingSnapshot: null }) as never;
+const order = (over: Record<string, unknown> = {}) =>
+  ({
+    id: 'order-1',
+    orderNumber: 'GP-1',
+    deliveryFeeConfirmed: true,
+    totalUgx: 1000,
+    pricingSnapshot: null,
+    paymentStatus: 'unpaid',
+    ...over,
+  }) as never;
 
 /**
  * The fingerprint the use case will compute for `command`. Using a placeholder
@@ -56,6 +69,8 @@ const record = (over: Partial<IdempotencyRecord> = {}): IdempotencyRecord => ({
   principalKey: 'g:1',
   fingerprint: COMMAND_FINGERPRINT,
   state: 'IN_PROGRESS',
+  operationState: 'IN_PROGRESS',
+  stage: 'CLAIMED',
   orderId: null,
   failureReason: null,
   createdAt: now,
@@ -66,9 +81,9 @@ const record = (over: Partial<IdempotencyRecord> = {}): IdempotencyRecord => ({
 
 interface Trace {
   stages: string[];
-  fulfilment: number;
-  notifications: number;
+  recorded: string[];
   ordersCreated: number;
+  reservationsRun: number;
   leaseLost: string[];
   sideEffectFailures: string[];
   fails: Array<{ reason: string; retryable: boolean }>;
@@ -80,10 +95,13 @@ function build(opts: {
   fenceFailsAt?: string;
   existingOrder?: unknown;
   orderThrows?: Error;
-  fulfilmentThrows?: boolean;
+  /** Forces the recorder's answer, to exercise a non-durable side effect. */
+  recordOutcome?: SideEffectOutcome;
+  /** Side effects a previous attempt already wrote durably. */
+  alreadyRecorded?: CheckoutSideEffectType[];
 } = {}) {
   const trace: Trace = {
-    stages: [], fulfilment: 0, notifications: 0, ordersCreated: 0,
+    stages: [], recorded: [], ordersCreated: 0, reservationsRun: 0,
     leaseLost: [], sideEffectFailures: [], fails: [],
   };
 
@@ -95,9 +113,9 @@ function build(opts: {
       return opts.fenceFailsAt !== stage;
     },
     heartbeat: async () => true,
-    complete: async () => {
-      trace.stages.push('COMPLETE');
-      return opts.fenceFailsAt !== 'COMPLETE';
+    finishOperation: async () => {
+      trace.stages.push('FINISH_OPERATION');
+      return opts.fenceFailsAt !== 'FINISH_OPERATION';
     },
     fail: async (_l, reason, retryable) => {
       trace.fails.push({ reason, retryable });
@@ -106,8 +124,17 @@ function build(opts: {
     find: async () => null,
   };
 
+  const sideEffectRecorder: ICheckoutSideEffectRecorder = {
+    record: async ({ eventType }) => {
+      trace.recorded.push(eventType);
+      return opts.recordOutcome ?? 'DURABLY_RECORDED';
+    },
+    recordedTypes: async () => opts.alreadyRecorded ?? [],
+  };
+
   const useCase = new ExecuteCheckoutIntentUseCase({
     idempotency,
+    sideEffectRecorder,
     orders: {
       execute: async () => {
         if (opts.orderThrows) throw opts.orderThrows;
@@ -116,20 +143,16 @@ function build(opts: {
       },
     },
     reservations: {
-      execute: async () => ({
-        state: 'RESERVED' as OrderReservationState,
-        code: 'RESERVED',
-        fullyReserved: true,
-        warnings: [],
-        ...opts.reservation,
-      }),
-    },
-    sideEffects: {
-      queueFulfilment: async () => {
-        if (opts.fulfilmentThrows) throw new Error('queue down');
-        trace.fulfilment++;
+      execute: async () => {
+        trace.reservationsRun++;
+        return {
+          state: 'RESERVED' as OrderReservationState,
+          code: 'RESERVED',
+          fullyReserved: true,
+          warnings: [],
+          ...opts.reservation,
+        };
       },
-      queueAdminNotification: async () => { trace.notifications++; },
     },
     orderReader: {
       findById: async () => (opts.existingOrder === undefined ? order() : (opts.existingOrder as never)),
@@ -158,15 +181,57 @@ const command: CheckoutCommand = {
 };
 
 describe('the happy path', () => {
-  it('creates one order, reserves, queues both side effects and completes', async () => {
+  it('creates one order, reserves, records both side effects durably', async () => {
     const { useCase, trace } = build();
     const outcome = await useCase.execute(command);
 
     expect(outcome.kind).toBe('AWAITING_PAYMENT');
     expect(trace.ordersCreated).toBe(1);
-    expect(trace.fulfilment).toBe(1);
-    expect(trace.notifications).toBe(1);
-    expect(trace.stages).toEqual(['INVENTORY_RESERVED', 'AWAITING_PAYMENT', 'COMPLETE']);
+    expect(trace.recorded).toEqual([
+      'ORDER_FULFILMENT_REQUIRED',
+      'ORDER_ADMIN_NOTIFICATION_REQUIRED',
+    ]);
+  });
+
+  it('advances one durable stage per completed step, in order', async () => {
+    const { useCase, trace } = build();
+    await useCase.execute(command);
+    expect(trace.stages).toEqual([
+      'INVENTORY_RESERVED',
+      'FULFILMENT_QUEUED',
+      'NOTIFICATION_QUEUED',
+      'PAYMENT_READY',
+      'FINISH_OPERATION',
+    ]);
+  });
+});
+
+describe('an unpaid order is never recorded as complete', () => {
+  it('stops the saga at PAYMENT_READY, not COMPLETED', async () => {
+    // The old code advanced to COMPLETED here, so every unpaid order looked
+    // finished to reconciliation, support and the retention sweep.
+    const { useCase, trace } = build();
+    const outcome = await useCase.execute(command);
+
+    expect(isCheckoutSuccess(outcome) && outcome.stage).toBe('PAYMENT_READY');
+    expect(trace.stages).not.toContain('COMPLETED');
+    expect(trace.stages).not.toContain('ORDER_CONFIRMED');
+  });
+
+  it('reports AWAITING_PAYMENT rather than ORDER_CONFIRMED', async () => {
+    const { useCase } = build();
+    const outcome = await useCase.execute(command);
+    expect(outcome.kind).not.toBe('ORDER_CONFIRMED');
+    expect(outcome.kind).toBe('AWAITING_PAYMENT');
+  });
+
+  it('finishes the operation without overwriting the stage it reached', async () => {
+    // finishOperation says "the workflow stopped running". It is a separate fact
+    // from where the saga got to, and it must not destroy the latter.
+    const { useCase, trace } = build();
+    await useCase.execute(command);
+    expect(trace.stages.at(-2)).toBe('PAYMENT_READY');
+    expect(trace.stages.at(-1)).toBe('FINISH_OPERATION');
   });
 });
 
@@ -182,19 +247,18 @@ describe('blocked stock does not progress', () => {
     expect(trace.stages).toContain('BLOCKED_STOCK');
   });
 
-  it('queues NO fulfilment and NO notification for an unpayable order', async () => {
+  it('records NO side effect for an unpayable order', async () => {
     // Putting unfulfillable work in the operator queue asserts a stock position
     // nobody established.
     const { useCase, trace } = build(blocked);
     await useCase.execute(command);
-    expect(trace.fulfilment).toBe(0);
-    expect(trace.notifications).toBe(0);
+    expect(trace.recorded).toEqual([]);
   });
 
-  it('never advances to AWAITING_PAYMENT', async () => {
+  it('never advances to PAYMENT_READY', async () => {
     const { useCase, trace } = build(blocked);
     await useCase.execute(command);
-    expect(trace.stages).not.toContain('AWAITING_PAYMENT');
+    expect(trace.stages).not.toContain('PAYMENT_READY');
   });
 
   it('still preserves the order rather than discarding the customer intent', async () => {
@@ -212,9 +276,8 @@ describe('lease loss aborts before further side effects', () => {
 
     expect(outcome.kind).toBe('CHECKOUT_IN_PROGRESS');
     // Nothing after the failed fence ran.
-    expect(trace.fulfilment).toBe(0);
-    expect(trace.notifications).toBe(0);
-    expect(trace.stages).not.toContain('AWAITING_PAYMENT');
+    expect(trace.recorded).toEqual([]);
+    expect(trace.stages).not.toContain('PAYMENT_READY');
   });
 
   it('does NOT mark the checkout failed, which would overwrite the successor', async () => {
@@ -224,9 +287,9 @@ describe('lease loss aborts before further side effects', () => {
   });
 
   it('reports the lease loss for metrics and audit', async () => {
-    const { useCase, trace } = build({ fenceFailsAt: 'COMPLETE' });
+    const { useCase, trace } = build({ fenceFailsAt: 'FINISH_OPERATION' });
     await useCase.execute(command);
-    expect(trace.leaseLost).toEqual(['COMPLETE']);
+    expect(trace.leaseLost).toEqual(['FINISH_OPERATION']);
   });
 
   it('fails closed when a claim is reported acquired with no lease', async () => {
@@ -238,12 +301,52 @@ describe('lease loss aborts before further side effects', () => {
   });
 });
 
-describe('a retry after partial success resumes instead of restarting', () => {
+describe('a side effect that is not durably recorded stops the saga', () => {
+  it('does not advance the stage when the record could not be written', async () => {
+    // The stage is the resume point. Advancing past work that has no durable
+    // record would make a retry skip work nothing says was ever queued.
+    const { useCase, trace } = build({ recordOutcome: 'RETRYABLE_FAILURE' });
+    const outcome = await useCase.execute(command);
+
+    expect(outcome.kind).toBe('FAILED_RETRYABLE');
+    expect(trace.stages).not.toContain('FULFILMENT_QUEUED');
+    expect(trace.stages).not.toContain('PAYMENT_READY');
+  });
+
+  it('does not report success for an order whose work was never queued', async () => {
+    // The previous version reported the failure to an observer and returned
+    // success anyway — an order with no fulfilment task and nothing owed.
+    const { useCase } = build({ recordOutcome: 'RETRYABLE_FAILURE' });
+    const outcome = await useCase.execute(command);
+    expect(isCheckoutSuccess(outcome)).toBe(false);
+  });
+
+  it('surfaces the failed event type for alerting', async () => {
+    const { useCase, trace } = build({ recordOutcome: 'RETRYABLE_FAILURE' });
+    await useCase.execute(command);
+    expect(trace.sideEffectFailures).toEqual(['ORDER_FULFILMENT_REQUIRED']);
+  });
+
+  it('reports a non-transient recording failure as final rather than inviting retries', async () => {
+    const { useCase } = build({ recordOutcome: 'FINAL_FAILURE' });
+    const outcome = await useCase.execute(command);
+    expect(outcome.kind).toBe('FAILED_FINAL');
+  });
+
+  it('treats an already-recorded effect as done and carries on', async () => {
+    const { useCase, trace } = build({ recordOutcome: 'ALREADY_RECORDED' });
+    const outcome = await useCase.execute(command);
+    expect(outcome.kind).toBe('AWAITING_PAYMENT');
+    expect(trace.stages).toContain('PAYMENT_READY');
+  });
+});
+
+describe('a retry after partial success resumes from the durable stage', () => {
   it('loads the recorded order rather than creating a second', async () => {
     // This is the duplicate-order failure: without resumption, a takeover
     // re-prices and re-creates work that already committed.
     const { useCase, trace } = build({
-      claim: { claimed: true, record: record({ orderId: 'order-1' }), lease: LEASE },
+      claim: { claimed: true, record: record({ orderId: 'order-1', stage: 'ORDER_CREATED' }), lease: LEASE },
     });
     const outcome = await useCase.execute(command);
 
@@ -255,10 +358,50 @@ describe('a retry after partial success resumes instead of restarting', () => {
     }
   });
 
+  it('does not reserve inventory a second time once the reservation is durable', async () => {
+    // Re-running the reservation is a second reservation attempt for one order.
+    const { useCase, trace } = build({
+      claim: { claimed: true, record: record({ orderId: 'order-1', stage: 'INVENTORY_RESERVED' }), lease: LEASE },
+    });
+    await useCase.execute(command);
+    expect(trace.reservationsRun).toBe(0);
+  });
+
+  it('does not re-record side effects a previous attempt already wrote', async () => {
+    const { useCase, trace } = build({
+      claim: { claimed: true, record: record({ orderId: 'order-1', stage: 'NOTIFICATION_QUEUED' }), lease: LEASE },
+      alreadyRecorded: ['ORDER_FULFILMENT_REQUIRED', 'ORDER_ADMIN_NOTIFICATION_REQUIRED'],
+    });
+    const outcome = await useCase.execute(command);
+
+    expect(trace.recorded).toEqual([]);
+    expect(outcome.kind).toBe('AWAITING_PAYMENT');
+  });
+
+  it('re-records only the effect that is missing', async () => {
+    // Resuming on the mere existence of an order id could not tell these apart:
+    // the fulfilment event is durable and the notification event is not.
+    const { useCase, trace } = build({
+      claim: { claimed: true, record: record({ orderId: 'order-1', stage: 'FULFILMENT_QUEUED' }), lease: LEASE },
+      alreadyRecorded: ['ORDER_FULFILMENT_REQUIRED'],
+    });
+    await useCase.execute(command);
+    expect(trace.recorded).toEqual(['ORDER_ADMIN_NOTIFICATION_REQUIRED']);
+  });
+
+  it('does not re-reserve stock for a checkout that was durably blocked', async () => {
+    const { useCase, trace } = build({
+      claim: { claimed: true, record: record({ orderId: 'order-1', stage: 'BLOCKED_STOCK' }), lease: LEASE },
+    });
+    const outcome = await useCase.execute(command);
+    expect(trace.reservationsRun).toBe(0);
+    expect(outcome.kind).toBe('BLOCKED_STOCK');
+  });
+
   it('falls through to the forward path when the recorded order cannot be loaded', async () => {
     // Resuming from a phantom would be worse than starting again.
     const { useCase, trace } = build({
-      claim: { claimed: true, record: record({ orderId: 'gone' }), lease: LEASE },
+      claim: { claimed: true, record: record({ orderId: 'gone', stage: 'ORDER_CREATED' }), lease: LEASE },
       existingOrder: null,
     });
     await useCase.execute(command);
@@ -269,12 +412,34 @@ describe('a retry after partial success resumes instead of restarting', () => {
 describe('an existing record is answered without doing commerce work', () => {
   const notClaimed = (rec: IdempotencyRecord) => ({ claim: { claimed: false, record: rec, lease: undefined } });
 
-  it('returns the original order for a completed operation', async () => {
-    const { useCase, trace } = build(notClaimed(record({ state: 'COMPLETED', orderId: 'order-1' })));
+  it('reports an unpaid settled operation as AWAITING_PAYMENT, not confirmed', async () => {
+    const { useCase, trace } = build({
+      ...notClaimed(record({ state: 'COMPLETED', operationState: 'TERMINAL', stage: 'PAYMENT_READY', orderId: 'order-1' })),
+      existingOrder: order({ paymentStatus: 'unpaid' }),
+    });
     const outcome = await useCase.execute(command);
-    expect(outcome.kind).toBe('CHECKOUT_COMPLETED');
+
+    expect(outcome.kind).toBe('AWAITING_PAYMENT');
     expect(trace.ordersCreated).toBe(0);
-    expect(trace.fulfilment).toBe(0);
+    expect(trace.recorded).toEqual([]);
+  });
+
+  it('reports a paid order as ORDER_CONFIRMED', async () => {
+    const { useCase } = build({
+      ...notClaimed(record({ state: 'COMPLETED', operationState: 'TERMINAL', stage: 'ORDER_CONFIRMED', orderId: 'order-1' })),
+      existingOrder: order({ paymentStatus: 'paid' }),
+    });
+    const outcome = await useCase.execute(command);
+    expect(outcome.kind).toBe('ORDER_CONFIRMED');
+  });
+
+  it('replays the stage the saga actually reached', async () => {
+    const { useCase } = build({
+      ...notClaimed(record({ state: 'COMPLETED', operationState: 'TERMINAL', stage: 'PAYMENT_READY', orderId: 'order-1' })),
+      existingOrder: order({ paymentStatus: 'unpaid' }),
+    });
+    const outcome = await useCase.execute(command);
+    expect(isCheckoutSuccess(outcome) && outcome.stage).toBe('PAYMENT_READY');
   });
 
   it('conflicts on a different fingerprint rather than replaying the wrong order', async () => {
@@ -291,7 +456,7 @@ describe('an existing record is answered without doing commerce work', () => {
     if (!isCheckoutSuccess(outcome)) expect(outcome.retryAfterSeconds).toBeGreaterThan(0);
   });
 
-  it('refuses rather than inventing a replay when a completed record names a missing order', async () => {
+  it('refuses rather than inventing a replay when a settled record names a missing order', async () => {
     const { useCase } = build({
       ...notClaimed(record({ state: 'COMPLETED', orderId: 'gone' })),
       existingOrder: null,
@@ -324,20 +489,6 @@ describe('failure classification is typed, not parsed from messages downstream',
       expect(outcome.reason).toBe('CHECKOUT_ERROR');
       expect(outcome.reason).not.toContain('SELECT');
     }
-  });
-});
-
-describe('side-effect failures are reported, not swallowed', () => {
-  it('surfaces a fulfilment queue failure without discarding the committed order', async () => {
-    // A console.error here left the operator with an order and no work item, and
-    // nothing to alert on. Aborting instead would discard a committed order.
-    const { useCase, trace } = build({ fulfilmentThrows: true });
-    const outcome = await useCase.execute(command);
-
-    expect(outcome.kind).toBe('AWAITING_PAYMENT');
-    expect(trace.sideEffectFailures).toEqual(['FULFILMENT_QUEUED']);
-    // The notification still runs: one failed queue must not cascade.
-    expect(trace.notifications).toBe(1);
   });
 });
 

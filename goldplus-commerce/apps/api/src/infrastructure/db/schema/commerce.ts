@@ -198,7 +198,38 @@ export const checkoutIdempotency = pgTable('checkout_idempotency', {
   attemptNumber: integer('attempt_number').default(1).notNull(),
   lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
   stage: varchar('stage', { length: 24 }).default('CLAIMED').notNull(),
+  // Separated from `stage` in migration 0059. `stage` says where the saga got to;
+  // this says whether the workflow is still running. Collapsing them is what
+  // recorded an unpaid order as a completed checkout.
+  operationState: varchar('operation_state', { length: 20 }).default('IN_PROGRESS').notNull(),
 }, (table) => ({
   inProgressIdx: index('checkout_idempotency_in_progress_idx').on(table.updatedAt),
   principalIdx: index('checkout_idempotency_principal_idx').on(table.principalKey, table.createdAt),
+}));
+
+/**
+ * Durable side-effect identities (migration 0059).
+ *
+ * One row per (checkout identity, event type), written in the SAME transaction as
+ * the outbox event it creates. Before this, fulfilment and notification work ran
+ * inside the request and a failure was merely reported to an observer while the
+ * checkout carried on: if the process died after the order committed, the work was
+ * gone and nothing recorded that it had ever been owed.
+ */
+export const checkoutSideEffects = pgTable('checkout_side_effects', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  checkoutIdentity: varchar('checkout_identity', { length: 64 }).notNull(),
+  orderId: uuid('order_id').notNull(),
+  eventType: varchar('event_type', { length: 64 }).notNull(),
+  policyVersion: varchar('policy_version', { length: 48 }).notNull(),
+  /** The outbox row this created, so source and delivery reconcile. */
+  outboxEventId: uuid('outbox_event_id'),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
+  traceId: varchar('trace_id', { length: 128 }),
+}, (table) => ({
+  identityEventIdx: uniqueIndex('checkout_side_effects_identity_event_idx').on(
+    table.checkoutIdentity,
+    table.eventType,
+  ),
+  orderIdx: index('checkout_side_effects_order_idx').on(table.orderId),
 }));

@@ -19,8 +19,26 @@ export interface PersistedOutboxEvent {
   lastError?: string | null;
 }
 
+/**
+ * Which event types a worker is willing to claim.
+ *
+ * The outbox carries two unrelated kinds of work: outbound messages, which route
+ * to a provider, and units of commerce work, which do not. A worker that claims
+ * everything and then finds no route for an event marks it processed as
+ * "unroutable" — indistinguishable from a success, and the work is gone. Claiming
+ * has to be selective for the two kinds to coexist in one table.
+ */
+export interface OutboxClaimFilter {
+  includeEventTypes?: readonly string[];
+  excludeEventTypes?: readonly string[];
+}
+
 export interface IOutboxRepository {
-  claimDueBatch(now: Date, limit: number): Promise<PersistedOutboxEvent[]>;
+  claimDueBatch(
+    now: Date,
+    limit: number,
+    filter?: OutboxClaimFilter,
+  ): Promise<PersistedOutboxEvent[]>;
   /**
    * Completion is guarded by the claiming worker's lease. `false` means this
    * worker no longer owns the event — its lease expired and another worker took

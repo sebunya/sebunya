@@ -316,7 +316,13 @@ describe('the checkout response never publishes the domain order', () => {
       join(__dirname, '../../apps/api/src/application/use-cases/commerce/ExecuteCheckoutIntentUseCase.ts'),
       'utf8',
     );
-    // The typed reason for an unexpected error is a constant, never the message.
-    expect(useCase).toContain("reason: 'CHECKOUT_ERROR'");
+    // The unexpected-error reason is a CONSTANT, not the error's message. Asserted
+    // on the fallback expression rather than a literal `reason:` line, because the
+    // code now assigns the constant once and reuses it — and the behavioural proof
+    // that no message leaks is in ExecuteCheckoutIntentUseCase.test.ts, which runs
+    // the workflow with a thrown `syntax error at or near SELECT` and checks the
+    // returned reason.
+    expect(useCase).toContain("?? 'CHECKOUT_ERROR'");
+    expect(useCase).not.toMatch(/reason:\s*(error|err)\.message/);
   });
 });

@@ -1,8 +1,12 @@
-import { eq, lte, and, asc, desc, inArray, sql } from 'drizzle-orm';
+import { eq, lte, and, asc, desc, inArray, notInArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../client';
 import { outboxEvents } from '../schema/system';
-import { IOutboxRepository, PersistedOutboxEvent } from '../../../application/ports/IOutboxRepository';
+import {
+  IOutboxRepository,
+  OutboxClaimFilter,
+  PersistedOutboxEvent,
+} from '../../../application/ports/IOutboxRepository';
 
 function rowToPersisted(row: typeof outboxEvents.$inferSelect): PersistedOutboxEvent {
   return {
@@ -47,8 +51,17 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
    * completion — so a worker whose lease had expired could still come back and
    * overwrite the outcome recorded by its successor.
    */
-  async claimDueBatch(now: Date, limit: number): Promise<PersistedOutboxEvent[]> {
+  async claimDueBatch(
+    now: Date,
+    limit: number,
+    filter?: OutboxClaimFilter,
+  ): Promise<PersistedOutboxEvent[]> {
     const leaseExpiresAt = new Date(now.getTime() + LEASE_DURATION_MS);
+    // An empty include list means "claim nothing", not "claim everything": that is
+    // what the caller asked for, and inverting it would hand a worker events it has
+    // no handler for. An empty exclude list is a no-op, which is correct.
+    const include = filter?.includeEventTypes;
+    const exclude = filter?.excludeEventTypes;
     return db.transaction(async (tx) => {
       const rows = await tx
         .select()
@@ -56,7 +69,13 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         .where(
           and(
             eq(outboxEvents.isProcessed, false),
-            lte(outboxEvents.nextAttemptAt, now)
+            lte(outboxEvents.nextAttemptAt, now),
+            ...(include
+              ? [include.length > 0 ? inArray(outboxEvents.eventType, [...include]) : sql`false`]
+              : []),
+            ...(exclude && exclude.length > 0
+              ? [notInArray(outboxEvents.eventType, [...exclude])]
+              : []),
           )
         )
         .orderBy(asc(outboxEvents.nextAttemptAt))

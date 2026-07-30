@@ -1,3 +1,4 @@
+import { CHECKOUT_SIDE_EFFECT_EVENT_TYPES } from '../../ports/ICheckoutSideEffectRecorder';
 import { IOutboxRepository } from '../../ports/IOutboxRepository';
 import { INotificationProvider, NotificationDispatchPayload, NotificationStatus } from '../../ports/INotificationProvider';
 import { RecordNotificationAttemptUseCase } from '../notifications/RecordNotificationAttemptUseCase';
@@ -66,7 +67,14 @@ export class ProcessOutboxBatchUseCase {
 
   async execute(): Promise<ProcessOutboxBatchResult> {
     const now = new Date();
-    const events = await this.outboxRepo.claimDueBatch(now, BATCH_SIZE);
+    // Commerce-work events are excluded. This worker routes an event to a
+    // notification provider; those events have no channel and no recipient, so it
+    // would find no route, mark them processed as "unroutable", and report success
+    // while the fulfilment task the order depends on was discarded.
+    // `ProcessCheckoutSideEffectBatchUseCase` claims them instead.
+    const events = await this.outboxRepo.claimDueBatch(now, BATCH_SIZE, {
+      excludeEventTypes: CHECKOUT_SIDE_EFFECT_EVENT_TYPES,
+    });
 
     const result: ProcessOutboxBatchResult = {
       claimed: events.length,

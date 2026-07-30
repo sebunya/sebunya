@@ -346,7 +346,9 @@ import { RedisLoginAttemptStore } from './security/RedisLoginAttemptStore';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
+import { DrizzleCheckoutSideEffectRecorder } from './db/repositories/DrizzleCheckoutSideEffectRecorder';
 import { ExecuteCheckoutIntentUseCase } from '../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
+import { ProcessCheckoutSideEffectBatchUseCase } from '../application/use-cases/outbox/ProcessCheckoutSideEffectBatchUseCase';
 import { SetProductStockUseCase } from '../application/use-cases/inventory/SetProductStockUseCase';
 import {
   ReserveInventoryForOrderUseCase,
@@ -614,8 +616,11 @@ export class Registry {
    * imports Drizzle, Hono or a provider SDK, which is what keeps the workflow
    * testable without standing up HTTP.
    */
+  public readonly checkoutSideEffectRecorder = new DrizzleCheckoutSideEffectRecorder();
+
   public readonly executeCheckoutIntentUseCase = new ExecuteCheckoutIntentUseCase({
     idempotency: this.checkoutIdempotencyRepo,
+    sideEffectRecorder: this.checkoutSideEffectRecorder,
     orders: {
       execute: (input) => this.checkoutUseCase.execute(input as never),
     },
@@ -628,21 +633,6 @@ export class Registry {
           fullyReserved: outcome.fullyReserved,
           warnings: outcome.warnings,
         };
-      },
-    },
-    sideEffects: {
-      queueFulfilment: async (order, opts) => {
-        await this.createFulfilmentTaskOnOrderPlacedUseCase.execute(order, {
-          extraWarnings: opts.warnings,
-          hold: opts.hold,
-        });
-      },
-      queueAdminNotification: async (order, opts) => {
-        await this.enqueueAdminOrderEmailUseCase.execute({
-          order,
-          event: 'placed',
-          stockConfirmed: opts.stockConfirmed,
-        });
       },
     },
     orderReader: {
@@ -763,6 +753,60 @@ export class Registry {
     this.notificationRouter,
     this.recordNotificationAttemptUseCase
   );
+
+  /**
+   * Performs the commerce work checkout queued durably.
+   *
+   * These handlers used to run inline inside the checkout request, with a failure
+   * reported to an observer while the checkout reported success — so a crash after
+   * the order committed lost the fulfilment task entirely. They now run here, off
+   * the request, where a failure is retried and an unrecoverable one is
+   * dead-lettered instead of disappearing.
+   *
+   * Each handler must tolerate being called again: the outbox guarantees
+   * at-least-once, and both underlying use cases are idempotent by order id.
+   */
+  public readonly processCheckoutSideEffectBatchUseCase =
+    new ProcessCheckoutSideEffectBatchUseCase(
+      this.outboxRepo,
+      {
+        ORDER_FULFILMENT_REQUIRED: {
+          handle: async (event) => {
+            const order = await this.orderRepo.findById(event.orderId);
+            // A queued event naming an order that does not exist cannot be fixed
+            // by waiting.
+            if (!order) return { status: 'FINAL', error: 'ORDER_NOT_FOUND' };
+            await this.createFulfilmentTaskOnOrderPlacedUseCase.execute(order, {
+              extraWarnings: Array.isArray(event.payload.warnings)
+                ? (event.payload.warnings as string[])
+                : [],
+              hold: event.payload.hold === true,
+            });
+            return { status: 'HANDLED' };
+          },
+        },
+        ORDER_ADMIN_NOTIFICATION_REQUIRED: {
+          handle: async (event) => {
+            const order = await this.orderRepo.findById(event.orderId);
+            if (!order) return { status: 'FINAL', error: 'ORDER_NOT_FOUND' };
+            await this.enqueueAdminOrderEmailUseCase.execute({
+              order,
+              event: 'placed',
+              stockConfirmed: event.payload.stockConfirmed === true,
+            });
+            return { status: 'HANDLED' };
+          },
+        },
+      },
+      {
+        // No customer data: an unhandled type and a dead letter are both operator
+        // alerts, and these lines outlive the request by far.
+        onUnhandledType: (eventType, eventId) =>
+          logger.error({ eventType, eventId }, 'CHECKOUT_SIDE_EFFECT_NO_HANDLER'),
+        onDeadLettered: (eventType, eventId, error) =>
+          logger.error({ eventType, eventId, error }, 'CHECKOUT_SIDE_EFFECT_DEAD_LETTERED'),
+      },
+    );
 
   public readonly trackRecommendationEventUseCase = new TrackRecommendationEventUseCase(
     this.recommendationEventRepo
