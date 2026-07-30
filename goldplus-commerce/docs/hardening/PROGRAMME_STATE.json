@@ -116,21 +116,31 @@
       "id": "H-03",
       "module": "outbound-delivery",
       "resolution": "Closed at c2058c7. One pure OutboundGovernancePolicy used by email and SMS: ordered guards, typed decisions, each naming its guard as a code. A dry run now reports DRY_RUN rather than SENT \u2014 both adapters previously recorded a simulated message as delivered. PROVIDER_DELIVERY_ENABLED and CUSTOMER_COMMUNICATIONS_ENABLED are now actually enforced; they were read by neither adapter. A contradictory configuration BLOCKS and fails release readiness rather than returning WARN. 47 behavioural tests over the pure policy."
+    },
+    {
+      "id": "4.6-RESIDUAL",
+      "module": "checkout",
+      "resolution": "Closed at a9756e7. ReconcileOrderPaymentUseCase settles both the browser callback and the IPN through one path, advancing the saga to ORDER_CONFIRMED (nothing did before, so a paid order sat at PAYMENT_STARTED forever). Unverified or unrecognised payments progress nothing and park at PAYMENT_REVIEW. The checkout intent is no longer cleared at the payment handoff, so a lost redirect or a return from the provider reaches the same operation instead of creating a second order."
+    },
+    {
+      "id": "4.7-RESIDUAL",
+      "module": "checkout",
+      "resolution": "Closed at 2912482. Personal-data fingerprint fields are HMAC digests under a server-held key (an unkeyed hash of a phone number is guessable and allows re-identification). Cart id/version, payment method and the pricing/promotion/stock/delivery policy versions are now fingerprint inputs. CHECKOUT_POLICY_VERSION bumped to checkout-v4-keyed-fingerprint."
     }
   ],
   "migrationCeiling": "0060_cart_ownership_and_version.sql",
   "testTotals": {
-    "unit": 4662,
-    "unitFiles": 237,
+    "unit": 4692,
+    "unitFiles": 238,
     "architecture": 90,
     "realPostgresChecks": {
       "checkoutDurability": 38,
       "cartAuthorization": 25
     },
-    "endToEndChecks": 34,
+    "endToEndChecks": 43,
     "note": "tests/unit is fully green on a clean tree. The 12 Slice-09 artifact-scope guards read git status --porcelain and fail while the tree is dirty by design."
   },
-  "lastCleanSuiteCommit": "c2058c783dfe657d94d7e09b9336a0d7af828d91",
+  "lastCleanSuiteCommit": "2912482d34187c5aaad02c7c58590ba5dfe69624",
   "latestReleaseIdentity": null,
   "trackA": {
     "branch": "claude/control-centre-full-activation-20260729",
@@ -141,8 +151,8 @@
   },
   "nextExactAction": "Wave 1 Bundle 1 (platform): authorization, audit, health, database, Redis, queues, outbox, webhooks, release readiness, controlled activation. Then Bundles 2 and 3. Release remains blocked on the Mac Rail B host, production access and the human approval marker.",
   "lastUpdatedAt": "2026-07-30",
-  "codeHead": "c2058c783dfe657d94d7e09b9336a0d7af828d91",
-  "stateBasedOnHead": "c2058c783dfe657d94d7e09b9336a0d7af828d91",
+  "codeHead": "2912482d34187c5aaad02c7c58590ba5dfe69624",
+  "stateBasedOnHead": "2912482d34187c5aaad02c7c58590ba5dfe69624",
   "stateCommit": "PENDING",
   "headResolutionRule": "Always resolve the LIVE remote branch head first. Never reset to codeHead: it is the commit this state described, not necessarily the newest commit.",
   "moduleCompletionCriteria": [
