@@ -141,7 +141,7 @@
     "nonArtifactGuardFailures": 0,
     "note": "12 reported failures are Slice-09 artifact-scope guards asserting a clean worktree."
   },
-  "lastCleanSuiteCommit": "785588438038f7093f00df6a3e793c4b6048b447",
+  "lastCleanSuiteCommit": "36fdb70af29ce40821dacc97075e8e194876a5a7",
   "latestReleaseIdentity": null,
   "trackA": {
     "branch": "claude/control-centre-full-activation-20260729",
@@ -152,8 +152,8 @@
   },
   "nextExactAction": "Extract ExecuteCheckoutIntentUseCase (H-05) with resumable saga stages, then the typed idempotent PesaPal handoff (H-08), CSRF/origin (H-07), fingerprint coverage (H-04) and state-aware retention (H-06). Then cart object-level authorization (H-02) and the central outbound-delivery policy (H-03).",
   "lastUpdatedAt": "2026-07-30T01:00:00Z",
-  "codeHead": "785588438038f7093f00df6a3e793c4b6048b447",
-  "stateBasedOnHead": "785588438038f7093f00df6a3e793c4b6048b447",
+  "codeHead": "36fdb70af29ce40821dacc97075e8e194876a5a7",
+  "stateBasedOnHead": "36fdb70af29ce40821dacc97075e8e194876a5a7",
   "stateCommit": "PENDING",
   "headResolutionRule": "Always resolve the LIVE remote branch head first. Never reset to codeHead: it is the commit this state described, not necessarily the newest commit.",
   "moduleCompletionCriteria": [
