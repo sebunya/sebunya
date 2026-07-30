@@ -45,6 +45,38 @@ A module is now only complete when the real caller path, the security boundary,
 the retry path, the failure path, the recovery path, the UI contract and a defined
 production acceptance all hold.
 
+## What closed most recently
+
+**H-04 — the fingerprint did not cover where the goods go.** It covered the basket,
+buyer type, coupon, delivery ZONE and currency, but not the delivery ADDRESS or the
+contact details. A customer who spotted a wrong house number, corrected it and
+resubmitted with the same key was answered with the earlier order — the goods stayed
+bound for the address just corrected away from. Address, phone and email are now
+inputs, normalised only for cosmetic differences, under a length-prefixed encoding
+(the previous NUL separator is unambiguous only while no field can contain a NUL, and
+a JSON string can). `CHECKOUT_POLICY_VERSION` is bumped so v2 values cannot be
+compared against v3 ones.
+
+**H-06 — the expiry sweep deleted live commerce.** It deleted on `expires_at` alone.
+A checkout at `PAYMENT_STARTED` — a customer slower at the bank page than the 24-hour
+TTL — was deleted along with the only record of who owns the order (which payment
+start now authorizes against), which side effects are owed, and the idempotency
+guarantee itself. Retention is now a function of state, and retained rows are counted
+and reported rather than silently skipped.
+
+**H-07 — no cross-site protection on a state-changing POST.** Checkout is a
+top-level form POST and there was no origin check at all. Worse, the intent cookie is
+SameSite=Lax, so a cross-site POST arrives without it — and the response to a missing
+cookie was to MINT a fresh guest identity and carry on. The check now runs before
+anything can mint, with `Sec-Fetch-Site` as the primary signal so it needs no
+configuration to work.
+
+**H-08 — payment start had no authorization.** It took `orderId` from the request
+body and opened a PesaPal transaction against it, so anyone who knew an order id
+could start a payment for someone else's order and receive its redirect URL. It also
+re-submitted to the provider on every retry, and answered every failure with HTTP 400
+carrying the server's own error text. All three are closed.
+
 ## What is still open
 
 **H-01 — inventory constraint not yet validated.** `products_reserved_within_stock`

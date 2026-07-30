@@ -20,18 +20,10 @@
   "inProgressModules": [
     {
       "module": "checkout",
-      "reason": "Component and transactional work is proven against real PostgreSQL, but the browser-to-payment journey has no end-to-end proof yet.",
+      "reason": "Every component and transactional defect is closed and proven; the browser-to-payment journey still has no end-to-end proof, which needs the real harness.",
       "remaining": [
-        "durable resumable saga stages FULFILMENT_QUEUED / NOTIFICATION_QUEUED / PAYMENT_READY / PAYMENT_STARTED / PAYMENT_PENDING / PAYMENT_REVIEW (\u00a76)",
-        "outbox-backed side effects with stable source identities (\u00a78)",
-        "fingerprint coverage of delivery/contact/payment intent (\u00a79, H-04)",
-        "state-aware retention (\u00a710, H-06)",
-        "typed idempotent PesaPal start and payment return (\u00a711-12, H-08)",
-        "CSRF and origin protection (\u00a713, H-07)",
-        "explicit current/previous keyring pairs (\u00a714)",
-        "offline-draft governance (\u00a715)",
-        "real end-to-end harness: Astro + API + PostgreSQL + Redis + provider stubs (\u00a716)",
-        "every \u00a717 behavioural proof"
+        "real end-to-end harness: Astro + API + PostgreSQL + Redis + provider stubs (\u00a74.9)",
+        "end-to-end checkout proof through that harness (\u00a74.10)"
       ]
     }
   ],
@@ -66,26 +58,6 @@
       "module": "inventory",
       "summary": "products_reserved_within_stock remains NOT VALID until the readiness gate is run against production data.",
       "gate": "scripts/db/inventory-constraint-readiness.sh"
-    },
-    {
-      "id": "H-04",
-      "module": "checkout",
-      "summary": "Fingerprint does not yet cover delivery destination, normalized contact or payment path (contract \u00a710)."
-    },
-    {
-      "id": "H-06",
-      "module": "checkout",
-      "summary": "Retention is a generic TTL; not yet state-aware, so a sweep could remove an unresolved order link (contract \u00a711)."
-    },
-    {
-      "id": "H-07",
-      "module": "checkout",
-      "summary": "No CSRF/origin validation on checkout or cart mutations (\u00a72.14)."
-    },
-    {
-      "id": "H-08",
-      "module": "checkout",
-      "summary": "PesaPal handoff is not yet a typed principal-aware idempotent client with a durable payment-attempt claim (\u00a72.10)."
     }
   ],
   "resolvedFindings": [
@@ -130,17 +102,37 @@
     "checkout orchestration lived in the HTTP route (289 lines), so transaction and recovery policy could only be exercised through HTTP",
     "expected commerce decisions were identified by parsing error-message prefixes rather than typed outcomes",
     "a retry after a partial success restarted the workflow instead of resuming from the durable order",
-    "fulfilment and notification failures were swallowed by console.error, leaving an order with no work item and nothing to alert on"
+    "fulfilment and notification failures were swallowed by console.error, leaving an order with no work item and nothing to alert on",
+    {
+      "id": "H-04",
+      "module": "checkout",
+      "resolution": "Closed at a37fc2a. Fingerprint now covers delivery address and normalised contact phone/email, with a length-prefixed canonical encoding (a NUL separator is ambiguous once free text is included) and CHECKOUT_POLICY_VERSION bumped to checkout-v3-full-fingerprint so v2 values are unmatchable by construction. 18 behavioural tests."
+    },
+    {
+      "id": "H-06",
+      "module": "checkout",
+      "resolution": "Closed at a37fc2a. purgeExpired is state-aware: a row is removable only when its stage holds nothing unresolved, matching migration 0059 partial index; retained rows are counted and returned. Proven against real PostgreSQL \u2014 an expired checkout mid-payment is retained, an expired resolved one is still reclaimed."
+    },
+    {
+      "id": "H-07",
+      "module": "checkout",
+      "resolution": "Closed at a37fc2a. Cross-site refusal on the checkout POST, evaluated BEFORE the intent is resolved because resolving mints. Sec-Fetch-Site primary (needs no configuration), Origin then Referer fallback against PUBLIC_SITE_ORIGINS, fail-closed on no evidence. 30 behavioural tests."
+    },
+    {
+      "id": "H-08",
+      "module": "checkout",
+      "resolution": "Closed at c0b8ce6. StartOrderPaymentUseCase authorizes against the checkout that produced the order, reuses a live provider attempt instead of re-submitting, records PAYMENT_STARTED durably plus an ORDER_PAYMENT_VERIFICATION_REQUIRED side effect, and returns typed outcomes so no internal message or blanket 400 reaches the caller. 22 behavioural tests + real-PostgreSQL ownership and forward-only stage proofs."
+    }
   ],
-  "migrationCeiling": "0058",
+  "migrationCeiling": "0059_checkout_saga_and_durable_side_effects.sql",
   "testTotals": {
-    "files": 246,
-    "passed": 4599,
-    "skipped": 11,
-    "nonArtifactGuardFailures": 0,
-    "note": "12 reported failures are Slice-09 artifact-scope guards asserting a clean worktree."
+    "unit": 4571,
+    "unitFiles": 235,
+    "architecture": 90,
+    "realPostgresChecks": 41,
+    "note": "tests/unit is fully green on a clean tree. The 12 Slice-09 artifact-scope guards read git status --porcelain and fail while the tree is dirty by design."
   },
-  "lastCleanSuiteCommit": "8d4a381f03dae021fecb509b09fe64366489ddfc",
+  "lastCleanSuiteCommit": "a37fc2aa172457c96c30389e89b8a5fd4267acfc",
   "latestReleaseIdentity": null,
   "trackA": {
     "branch": "claude/control-centre-full-activation-20260729",
@@ -149,10 +141,10 @@
     "status": "AWAITING_MAC_RAIL_B_VALIDATION",
     "note": "Not merged into this branch. Its scope, candidate, tag and approval marker are untouched."
   },
-  "nextExactAction": "Extend the saga to the payment stages and move side effects onto the outbox (\u00a76, \u00a78), then the typed idempotent PesaPal start/return (H-08), CSRF/origin (H-07), fingerprint coverage (H-04), state-aware retention (H-06), and the end-to-end harness (\u00a716).",
-  "lastUpdatedAt": "2026-07-30T02:00:00Z",
-  "codeHead": "8d4a381f03dae021fecb509b09fe64366489ddfc",
-  "stateBasedOnHead": "8d4a381f03dae021fecb509b09fe64366489ddfc",
+  "nextExactAction": "Build the real end-to-end harness (\u00a74.9): Astro SSR + API + real PostgreSQL + real Redis + a PesaPal stub, then run the \u00a74.10 checkout proofs through it.",
+  "lastUpdatedAt": "2026-07-30",
+  "codeHead": "a37fc2aa172457c96c30389e89b8a5fd4267acfc",
+  "stateBasedOnHead": "a37fc2aa172457c96c30389e89b8a5fd4267acfc",
   "stateCommit": "PENDING",
   "headResolutionRule": "Always resolve the LIVE remote branch head first. Never reset to codeHead: it is the commit this state described, not necessarily the newest commit.",
   "moduleCompletionCriteria": [
