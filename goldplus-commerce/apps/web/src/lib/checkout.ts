@@ -70,10 +70,36 @@ export function prepareCheckoutPayload(formData: FormData, cartItems: CartItem[]
   if (locationJson.startsWith('{')) {
     try {
       const loc = JSON.parse(locationJson);
-      deliveryArea = `${loc.parishWard || loc.parish} | ${loc.subcountyDivisionTc || loc.subcounty}, ${loc.district}`;
+
+      // Composed from the parts that are actually PRESENT.
+      //
+      // Both strings were built by interpolating optional fields directly, so a
+      // location without a parish, a region or a postcode produced literal
+      // "undefined" in the address — `undefined | undefined, Kampala` and
+      // `Plot 1 | undefined · Postcode undefined`. That string is what the
+      // delivery driver reads and what the admin sees on the order, and only the
+      // district is guaranteed for a Uganda location. Found by the end-to-end
+      // harness: typecheck and every component test passed, because `${undefined}`
+      // is a valid string.
+      const present = (...parts: unknown[]) =>
+        parts
+          .map((part) => (part === null || part === undefined ? '' : String(part).trim()))
+          .filter(Boolean);
+
+      const areaParts = present(loc.parishWard || loc.parish, loc.subcountyDivisionTc || loc.subcounty);
+      const district = present(loc.district).join('');
+      deliveryArea = areaParts.length > 0
+        ? `${areaParts.join(' | ')}${district ? `, ${district}` : ''}`
+        : district;
+
       const rawDetails = String(formData.get('deliveryAddress') || '').trim();
-      const adminDetails = `${loc.countyOrMunicipality || loc.county || ''} · ${loc.region} · Postcode ${loc.postcode}`.replace(/^\s*·\s*/, '').trim();
-      deliveryAddress = rawDetails ? `${rawDetails} | ${adminDetails}` : adminDetails;
+      const postcode = present(loc.postcode).join('');
+      const adminDetails = present(
+        loc.countyOrMunicipality || loc.county,
+        loc.region,
+        postcode ? `Postcode ${postcode}` : '',
+      ).join(' · ');
+      deliveryAddress = [rawDetails, adminDetails].filter(Boolean).join(' | ');
       if (loc.district) {
         deliveryLocation = {
           district: String(loc.district),

@@ -7,6 +7,7 @@ import {
   verifyCheckoutIntent,
 } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
+import { logger } from '../../../infrastructure/logging/logger';
 
 /**
  * Verifies the BFF-issued checkout intent. This layer NEVER mints one.
@@ -92,8 +93,18 @@ export function resolveCheckoutIntent(c: Context): IntentResolution {
   }
 
   if (verified.reason === 'EXPIRED') return { ok: false, code: 'CHECKOUT_INTENT_EXPIRED' };
-  // MALFORMED, BAD_SIGNATURE and UNKNOWN_KEY collapse to one code: telling the
-  // caller which one occurred hands them a forgery oracle.
+
+  // The CALLER is told one collapsed code — distinguishing MALFORMED from
+  // BAD_SIGNATURE from UNKNOWN_KEY hands them a forgery oracle. The OPERATOR needs
+  // the distinction: a wave of BAD_SIGNATURE means the issuer and the verifier
+  // disagree about the key, which is a misconfiguration, while MALFORMED means a
+  // truncated or rewritten header. Without this the two are indistinguishable, and
+  // a key mismatch presents as "customers cannot check out" with nothing to point
+  // at. Logged without the token, which is a bearer credential.
+  logger.warn(
+    { reason: verified.reason, acceptedKeyIds: keys.map((k) => k.keyId) },
+    'CHECKOUT_INTENT_REJECTED',
+  );
   return { ok: false, code: 'CHECKOUT_INTENT_INVALID' };
 }
 

@@ -263,6 +263,15 @@ routes.post('/orders/create', async (c) => {
   };
   if (outcome.retryAfterSeconds) c.header('Retry-After', String(outcome.retryAfterSeconds));
 
+  // The kind AND the typed reason, together. The public body carries a collapsed
+  // code by design, so without this line two different refusals — a conflicting
+  // fingerprint and a lost lease — are indistinguishable in the logs, and an
+  // operator investigating "customers cannot check out" has nothing to go on.
+  logger.warn(
+    { outcome: outcome.kind, reason: outcome.reason, traceId },
+    'CHECKOUT_REFUSED',
+  );
+
   // A known business rejection names itself; an unexpected one never leaks
   // internal text, which can carry query fragments.
   const publicMessage = TERMINAL_PUBLIC_CODES.includes(outcome.reason)

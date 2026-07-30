@@ -230,7 +230,12 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            Astro.cookies.delete('goldplus_cart_data', { path: '/' });
         } else {
            status = 'error';
-           message = res?.message || 'Failed to submit order. The checkout service is temporarily offline. You may retry, or check "Save as offline draft on this device" below to proceed in local demonstration mode.';
+           // `res` was a leftover from the untyped postJson call this branch used
+           // to make. It is scoped to the cart-fetch block far above, so reaching
+           // this line threw a ReferenceError and the customer got a 500 instead
+           // of a message — on the ONE path that exists to explain a failure.
+           // Found by the end-to-end harness; typecheck and build both passed.
+           message = outcome.message || 'Failed to submit order. The checkout service is temporarily offline. You may retry, or check "Save as offline draft on this device" below to proceed in local demonstration mode.';
            // Preserve the cart cookie on failure so items are not lost!
         }
      }

@@ -28,7 +28,9 @@
     "measurement:gtm:diff": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-diff.ts",
     "measurement:gtm:create-workspace": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-create-workspace.ts",
     "measurement:gtm:create-version-draft": "pnpm -F @goldplus/api exec tsx src/scripts/measurement-gtm-create-version-draft.ts",
-    "security:scan-secrets": "node scripts/security/scan-secrets.mjs"
+    "security:scan-secrets": "node scripts/security/scan-secrets.mjs",
+    "e2e:checkout": "scripts/qa/checkout-e2e-harness.sh",
+    "proof:checkout-durability": "tsx scripts/qa/checkout-side-effect-durability.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

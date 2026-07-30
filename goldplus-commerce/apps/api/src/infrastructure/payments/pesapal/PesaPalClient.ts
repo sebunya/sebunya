@@ -17,11 +17,38 @@ export class PesaPalClient implements IPesaPalClient {
     this.config = config;
   }
 
+  private isLive(): boolean {
+    return this.config.pesapalEnv === 'live' || this.config.pesapalEnv === 'production';
+  }
+
+  /**
+   * The provider endpoint.
+   *
+   * `PESAPAL_BASE_URL` was read into config but never used, so an end-to-end test
+   * had no way to exercise this client without calling PesaPal's real sandbox — the
+   * reason the checkout journey had component tests and no journey test.
+   *
+   * The override is IGNORED IN LIVE MODE, unconditionally. An environment variable
+   * that can redirect live payment traffic to an arbitrary host is a payment
+   * redirection primitive, so live mode does not consult it at all rather than
+   * validating it: there is no value it could hold that would be correct.
+   */
   private getBaseUrl(): string {
-    const isProd = this.config.pesapalEnv === 'live' || this.config.pesapalEnv === 'production';
-    return isProd
-      ? 'https://pay.pesapal.com/v3'
-      : 'https://cybqa.pesapal.com/pesapalv3';
+    if (this.isLive()) return 'https://pay.pesapal.com/v3';
+
+    const override = (this.config.pesapalBaseUrl || '').trim().replace(/\/+$/, '');
+    if (override) {
+      try {
+        const parsed = new URL(override);
+        // http is permitted here only because this branch cannot be reached in live
+        // mode, and a local stub has no certificate.
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return override;
+      } catch {
+        // An unparseable override falls through to the sandbox rather than being
+        // used as a bare string, which would produce a confusing fetch error.
+      }
+    }
+    return 'https://cybqa.pesapal.com/pesapalv3';
   }
 
   public async requestToken(): Promise<string> {
@@ -77,8 +104,7 @@ export class PesaPalClient implements IPesaPalClient {
   }
 
   private validateLiveUrls(callbackUrl: string, cancellationUrl: string): void {
-    const isLive = this.config.pesapalEnv === 'live' || this.config.pesapalEnv === 'production';
-    if (!isLive) return;
+    if (!this.isLive()) return;
 
     const urls = [callbackUrl, cancellationUrl];
     for (const urlStr of urls) {
