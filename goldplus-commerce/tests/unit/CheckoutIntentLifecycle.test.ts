@@ -198,31 +198,41 @@ describe('fencing fails closed', () => {
     expect(seen).toEqual(['HEARTBEAT']);
   });
 
-  it('is checked at every fenced call site in the route', () => {
-    const route = readFileSync(
-      join(__dirname, '../../apps/api/src/interfaces/http/routes/commerce.ts'),
-      'utf8',
-    );
-    // Neutralise the guarded form, then assert no bare fenced call survives. An
-    // unchecked one is the original defect: the fence made lease loss detectable
-    // and the caller discarded the detection.
-    const withoutGuarded = route.split('requireFence(await idem.').join('GUARDED(');
+  it('is checked at every fenced call site in the use case', () => {
+    // Orchestration moved out of the route, so this asserts against the layer
+    // that owns it now. Whitespace is normalised because some calls are wrapped
+    // across lines; comments are stripped so prose about the defect does not
+    // read as the defect.
+    const stripComments = (t: string) =>
+    t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const flat = stripComments(
+      readFileSync(join(__dirname, '../../apps/api/src/application/use-cases/commerce/ExecuteCheckoutIntentUseCase.ts'), 'utf8'),
+    ).replace(/\s+/g, ' ').replace(/\(\s+/g, '(');
+
     for (const method of ['advanceStage', 'complete']) {
-      expect(withoutGuarded.includes(`await idem.${method}(`), `bare idem.${method} remains`).toBe(false);
+      const bare = `await this.deps.idempotency.${method}(`;
+      const guarded = `requireFence(${bare}`;
+      const total = flat.split(bare).length - 1;
+      const wrapped = flat.split(guarded).length - 1;
+      // Every occurrence must be inside requireFence. An unchecked one is the
+      // original defect: the fence detected lease loss and the caller discarded it.
+      expect(total, `unguarded ${method} call`).toBe(wrapped);
+      expect(total).toBeGreaterThan(0);
     }
-    expect(route).toContain('requireFence(await idem.complete(');
   });
 
-  it('treats lease loss as CHECKOUT_IN_PROGRESS, not as a checkout failure', () => {
-    const route = readFileSync(
-      join(__dirname, '../../apps/api/src/interfaces/http/routes/commerce.ts'),
+  it('treats lease loss as CHECKOUT_IN_PROGRESS and does not mark the checkout failed', () => {
+    const useCase = readFileSync(
+      join(__dirname, '../../apps/api/src/application/use-cases/commerce/ExecuteCheckoutIntentUseCase.ts'),
       'utf8',
     );
-    // Marking the record failed would overwrite the very successor the fence
-    // exists to protect.
-    const branch = route.slice(route.indexOf('if (isLeaseLost(err))'));
-    expect(branch.slice(0, 700)).toContain('CHECKOUT_IN_PROGRESS');
-    expect(branch.slice(0, 700)).not.toContain('.fail(');
+    const start = useCase.indexOf('if (isLeaseLost(error))');
+    // Bounded to the branch itself: the code AFTER it legitimately calls fail()
+    // for real failures, so an over-long window would always match.
+    const branch = useCase.slice(start, useCase.indexOf('\n      }', start));
+    expect(branch).toContain("kind: 'CHECKOUT_IN_PROGRESS'");
+    // Marking it failed would overwrite the very successor the fence protects.
+    expect(branch).not.toContain('.fail(');
   });
 });
 

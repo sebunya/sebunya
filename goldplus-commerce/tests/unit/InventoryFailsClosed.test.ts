@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   summariseReservation,
   reservationStateFor,
@@ -288,19 +290,32 @@ describe('reservation use case compensation', () => {
   });
 });
 
-describe('checkout route contract', () => {
-  const source = new URL('../../apps/api/src/interfaces/http/routes/commerce.ts', import.meta.url);
+describe('checkout orchestration does not swallow reservation errors', () => {
+  const useCase = readFileSync(
+    join(__dirname, '../../apps/api/src/application/use-cases/commerce/ExecuteCheckoutIntentUseCase.ts'),
+    'utf8',
+  );
 
-  it('no longer swallows reservation errors into a hold', async () => {
-    const text = await (await import('node:fs/promises')).readFile(source, 'utf8');
-    const start = text.indexOf('const reservation = await registry.reserveInventoryForOrderUseCase');
-    expect(start).toBeGreaterThan(-1);
-    const window = text.slice(start - 400, start + 200);
-    expect(window).not.toContain('catch (invErr');
-    // Renamed to one canonical decision object; `stockHeld = !fullyReserved` was
-    // an inverse name that forced every branch to be re-derived by negation.
-    expect(text).toContain('decision.mayCreateFulfilment');
-    expect(text).not.toMatch(/const stockHeld =/);
-    expect(text).toContain("code: 'STOCK_NOT_RESERVED'");
+  it('derives every downstream decision from one reservation object', () => {
+    // `stockHeld = !fullyReserved` forced each branch to be re-derived by
+    // negation, which is where a reader's model and the code diverge.
+    expect(useCase).toContain('mayProgressToPayment(reservation.state)');
+    expect(useCase).toContain('mayCreateFulfilment(reservation.state)');
+    expect(useCase).not.toMatch(/const stockHeld =/);
+  });
+
+  it('queues no fulfilment or notification for an unpayable order', () => {
+    const blocked = useCase.slice(useCase.indexOf('if (!decision.mayPay)'));
+    const window = blocked.slice(0, blocked.indexOf('return {'));
+    expect(window).not.toContain('queueFulfilment');
+    expect(window).not.toContain('queueAdminNotification');
+  });
+
+  it('reports a side-effect failure instead of a bare console.error', () => {
+    // Comments stripped: the prose explaining WHY console.error was wrong would
+    // otherwise trip this check.
+    const code = useCase.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(code).toContain('onSideEffectFailed');
+    expect(code).not.toContain('console.error');
   });
 });

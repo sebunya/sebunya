@@ -291,11 +291,16 @@ describe('the checkout response never publishes the domain order', () => {
     expect(dto).toContain('mayProgressToPayment(reservationState)');
   });
 
-  it('claims atomically rather than reading then writing', () => {
-    expect(checkoutHandler).toContain('idem.claim(');
-    const claimIndex = checkoutHandler.indexOf('idem.claim(');
-    const useCaseIndex = checkoutHandler.indexOf('registry.checkoutUseCase.execute');
-    expect(claimIndex).toBeLessThan(useCaseIndex);
+  it('claims atomically before any commerce work, now inside the use case', () => {
+    // The claim moved with the rest of the orchestration.
+    const useCase = readFileSync(
+      join(__dirname, '../../apps/api/src/application/use-cases/commerce/ExecuteCheckoutIntentUseCase.ts'),
+      'utf8',
+    );
+    const claimAt = useCase.indexOf('this.deps.idempotency.claim(');
+    const orderAt = useCase.indexOf('this.deps.orders.execute(');
+    expect(claimAt).toBeGreaterThan(-1);
+    expect(orderAt).toBeGreaterThan(claimAt);
   });
 
   it('returns 409 IDEMPOTENCY_CONFLICT for a reused key with a different order', () => {
@@ -303,9 +308,15 @@ describe('the checkout response never publishes the domain order', () => {
   });
 
   it('does not leak internal error text to public callers', () => {
-    const catchBlock = checkoutHandler.slice(checkoutHandler.lastIndexOf('} catch (err: any) {'));
-    expect(catchBlock).toContain("message: 'The order could not be completed. Please try again.'");
-    // Known business rejections still carry their message; anything else does not.
-    expect(catchBlock).toContain('if (known)');
+    // The route now maps typed outcomes; only an allowlisted business code is
+    // named back to the customer.
+    expect(checkoutHandler).toContain('TERMINAL_PUBLIC_CODES.includes(outcome.reason)');
+    expect(checkoutHandler).toContain("message: 'The order could not be completed. Please try again.'");
+    const useCase = readFileSync(
+      join(__dirname, '../../apps/api/src/application/use-cases/commerce/ExecuteCheckoutIntentUseCase.ts'),
+      'utf8',
+    );
+    // The typed reason for an unexpected error is a constant, never the message.
+    expect(useCase).toContain("reason: 'CHECKOUT_ERROR'");
   });
 });

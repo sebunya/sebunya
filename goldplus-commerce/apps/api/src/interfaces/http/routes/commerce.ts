@@ -5,20 +5,21 @@ import { ApiResponse } from '@goldplus/shared';
 import { customerSessionMiddleware } from '../middleware/customerSession';
 import { createHash } from 'crypto';
 import { clientIp } from '../clientAddress';
-import { mayProgressToPayment, mayCreateFulfilment } from '../../../domain/inventory/Inventory';
-import {
-  CHECKOUT_POLICY_VERSION,
-  checkoutFingerprint,
-  decideIdempotency,
-} from '../../../domain/commerce/CheckoutPrincipal';
-import { checkoutIdempotencyRepo } from '../middleware/checkoutPrincipal';
+import { CHECKOUT_POLICY_VERSION } from '../../../domain/commerce/CheckoutPrincipal';
+import { isCheckoutSuccess } from '../../../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
+
+/** Rejections whose code is safe and useful to name back to the customer. */
+const TERMINAL_PUBLIC_CODES = [
+  'PRODUCT_UNAVAILABLE',
+  'PRICE_UNAVAILABLE',
+  'PRICE_CHANGED',
+  'PROMOTION_CHANGED',
+];
 import {
   applyOptionalCustomerSession,
   resolveCheckoutIntent,
 } from '../middleware/checkoutIntent';
 import { checkoutOperationIdentity, intentPrincipalKey } from '@goldplus/shared';
-import type { LeaseToken } from '../../../application/ports/ICheckoutIdempotencyRepository';
-import { requireFence, isLeaseLost } from '../../../application/use-cases/commerce/requireFence';
 import { logger } from '../../../infrastructure/logging/logger';
 import { toCheckoutResponseDto } from '../../../application/mappers/toCheckoutResponseDto';
 
@@ -151,293 +152,126 @@ routes.get('/carts/:id', async (c) => {
 });
 
 routes.post('/orders/create', async (c) => {
-  // Declared outside the try so the catch can release a claim this request took.
-  // The lease, not just the identity: every mutation must prove ownership.
-  let lease: LeaseToken | null = null;
-  try {
-    const raw = await c.req.json().catch(() => null);
-    const parsed = checkoutBodySchema.safeParse(raw);
-    if (!parsed.success) {
-      const first = parsed.error.issues[0];
-      const message = first ? `${first.path.join('.') || 'body'}: ${first.message}` : 'Invalid checkout payload.';
-      return c.json({ success: false, error: { code: 'INVALID_CHECKOUT', message } }, 400);
-    }
-    const body = parsed.data;
+  // Thin transport adapter. Validate input, establish identity, delegate, map.
+  // Orchestration — fingerprinting, claiming, fencing, pricing, order creation,
+  // reservation, side effects, completion and failure classification — lives in
+  // ExecuteCheckoutIntentUseCase, so transaction and recovery policy is testable
+  // without HTTP and reusable by any other caller.
+  const raw = await c.req.json().catch(() => null);
+  const parsed = checkoutBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    const message = first ? `${first.path.join('.') || 'body'}: ${first.message}` : 'Invalid checkout payload.';
+    return c.json({ success: false, error: { code: 'INVALID_CHECKOUT', message } }, 400);
+  }
+  const body = parsed.data;
 
-    // Verified optional authentication first, so an authenticated principal wins
-    // over any intent that claims to be a guest.
-    await applyOptionalCustomerSession(c);
+  await applyOptionalCustomerSession(c);
 
-    // Verify the BFF-issued checkout intent. This route NEVER mints one: silent
-    // minting turns a lost or expired identity into a NEW operation, which is
-    // exactly how a lost HTTP response becomes a duplicate order.
-    const intent = resolveCheckoutIntent(c);
-    if (!intent.ok) {
-      const status = intent.code === 'CHECKOUT_SESSION_UNAVAILABLE' ? 503 : 409;
-      return c.json({
-        success: false,
-        error: {
-          code: intent.code,
-          message:
-            intent.code === 'CHECKOUT_SESSION_UNAVAILABLE'
-              ? 'Checkout is temporarily unavailable. Please try again.'
-              : 'Your checkout session is no longer valid. Please reload the checkout page.',
-        },
-      }, status);
-    }
-    const claims = intent.claims;
+  const intent = resolveCheckoutIntent(c);
+  if (!intent.ok) {
+    const status = intent.code === 'CHECKOUT_SESSION_UNAVAILABLE' ? 503 : 409;
+    return c.json({
+      success: false,
+      error: {
+        code: intent.code,
+        message:
+          intent.code === 'CHECKOUT_SESSION_UNAVAILABLE'
+            ? 'Checkout is temporarily unavailable. Please try again.'
+            : 'Your checkout session is no longer valid. Please reload the checkout page.',
+      },
+    }, status);
+  }
+  const claims = intent.claims;
+  const traceId = c.req.header('x-request-id') ?? crypto.randomUUID();
 
-    // Canonical fingerprint of what was actually asked for, so reusing a key for
-    // a materially different basket is a conflict rather than being silently
-    // answered with the earlier order.
-    const fingerprint = checkoutFingerprint({
-      principal: { kind: claims.kind, id: claims.principalId },
-      items: body.items,
-      buyerType: body.buyerType,
-      couponCode: body.couponCode ?? null,
-      deliveryZoneKey: body.customerDetails.deliveryLocation?.district ?? body.customerDetails.deliveryArea,
-      currency: 'UGX',
-      acceptedQuoteId: body.previewQuoteId ?? null,
-      policyVersion: CHECKOUT_POLICY_VERSION,
-    });
-    // Derived entirely server-side. It previously mixed in a clientOrderKey from
-    // a hidden form field — caller-controlled, so a client could vary it to force
-    // a duplicate order or supply another customer's value.
-    const identity = checkoutOperationIdentity(claims, 'CREATE_ORDER', CHECKOUT_POLICY_VERSION);
-    const idem = checkoutIdempotencyRepo();
+  const outcome = await registry.executeCheckoutIntentUseCase.execute({
+    claims,
+    // Derived server-side: a hidden form field would be caller-controlled.
+    identity: checkoutOperationIdentity(claims, 'CREATE_ORDER', CHECKOUT_POLICY_VERSION),
+    principalKey: intentPrincipalKey(claims),
+    customerDetails: body.customerDetails,
+    buyerType: body.buyerType,
+    items: body.items,
+    couponCode: body.couponCode ?? null,
+    previewQuoteId: body.previewQuoteId ?? null,
+    acceptPriceChange: body.acceptPriceChange ?? false,
+    traceId,
+  });
 
-    // Atomic claim. The previous read-then-write let two concurrent submissions
-    // both perform pricing, capacity reservation and order creation, with only
-    // the unique index catching the second INSERT after the work was done.
-    const claim = await idem.claim({ identity, principalKey: intentPrincipalKey(claims), fingerprint });
-    if (claim.claimed) {
-      // A successful claim without a lease is incoherent — there would be no way
-      // to prove ownership of work already begun.
-      requireFence(!!claim.lease, 'CLAIM');
-      lease = claim.lease!;
-    }
-    if (!claim.claimed) {
-      const decision = decideIdempotency(claim.record, fingerprint);
-      if (decision.action === 'CONFLICT') {
-        return c.json({
-          success: false,
-          error: {
-            code: 'IDEMPOTENCY_CONFLICT',
-            message:
-              'This checkout reference was already used for a different order. Start a new checkout.',
-          },
-        }, 409);
-      }
-      if (decision.action === 'IN_FLIGHT') {
-        c.header('Retry-After', String(decision.retryAfterSeconds));
-        return c.json({
-          success: false,
-          error: {
-            code: 'CHECKOUT_IN_PROGRESS',
-            message: 'This order is already being processed. Please wait a moment.',
-          },
-        }, 409);
-      }
-      if (decision.action === 'TERMINAL') {
-        return c.json({
-          success: false,
-          error: { code: 'CHECKOUT_FAILED', message: 'This checkout cannot be completed. Please start a new one.' },
-        }, 409);
-      }
-      if (decision.action === 'RETURN_EXISTING') {
-        const existing = await registry.orderRepo.findById(decision.orderId);
-        if (existing) {
-          const state = await registry.orderReservationState.getReservationState(decision.orderId);
-          // Minimal DTO, never the domain order: the replay path must not hand
-          // back the customer's contact and address details.
-          return c.json({
-            success: true,
-            data: toCheckoutResponseDto({
-              order: existing,
-              reservationState: state ?? 'PENDING',
-              deliveryFeeConfirmed: existing.deliveryFeeConfirmed,
-              idempotentReplay: true,
-            }),
-          });
-        }
-      }
-    }
-
-    const result = await registry.checkoutUseCase.execute({
-      customerDetails: body.customerDetails,
-      buyerType: body.buyerType,
-      items: body.items,
-      clientOrderKey: null,
-      checkoutLink: lease ?? undefined,
-      couponCode: body.couponCode ?? null,
-      previewQuoteId: body.previewQuoteId ?? null,
-      acceptPriceChange: body.acceptPriceChange ?? false,
+  if (isCheckoutSuccess(outcome)) {
+    const dto = toCheckoutResponseDto({
+      order: outcome.order,
+      reservationState: outcome.reservationState,
+      deliveryFeeConfirmed: outcome.deliveryFeeConfirmed,
+      idempotentReplay: outcome.idempotentReplay,
     });
 
-    // No separate link step: the order insert and the fenced claim link commit in
-    // ONE transaction inside savePricedOrder. Two statements left a window where a
-    // crash produced a committed order with no recoverable checkout identity, and
-    // narrowing that window is not the same as closing it.
-
-    // Section 12: reserve stock for the order (idempotent, all-or-nothing,
-    // oversell-safe).
-    //
-    // Reservation is NOT best effort. The use case classifies the outcome
-    // explicitly and records it on the order, so a technical failure is never
-    // laundered into an ordinary backorder — which is what happened while every
-    // exception here was caught and turned into ON_HOLD. Only a product whose
-    // policy permits it can reach BACKORDERED; a stock-controlled line that
-    // could not be held leaves the order UNRESERVED_BLOCKED.
-    const reservation = await registry.reserveInventoryForOrderUseCase.execute(result.order);
-    // One canonical decision object. `stockHeld = !fullyReserved` was an inverse
-    // name, and an inverted boolean is where a reader's mental model and the
-    // code's silently diverge — every downstream branch then has to be re-derived
-    // by negation.
-    const decision = {
-      reservationState: reservation.state,
-      outcome: reservation.code,
-      fullyReserved: reservation.fullyReserved,
-      stockConfirmed: reservation.fullyReserved,
-      isBackordered: reservation.code === 'BACKORDERED',
-      requiresHold: !reservation.fullyReserved,
-      mayProgressToPayment: mayProgressToPayment(reservation.state),
-      mayCreateFulfilment: mayCreateFulfilment(reservation.state),
-      warnings: reservation.warnings,
-    } as const;
-
-    const backorderWarnings = decision.warnings;
-    const reservationState = decision.reservationState;
-    const mayProgress = decision.mayProgressToPayment;
-
-    // Section 9.3: every successfully placed order creates exactly one idempotent
-    // admin fulfilment alert (the internal "New Orders" work item). This never
-    // depends on any external provider, so it works even when email/SMS/WhatsApp
-    // are unavailable. The unique order_id constraint makes duplicate submissions
-    // collapse to a single task.
-    //
-    // An order whose stock could not be confirmed gets NO fulfilment task at
-    // all. Creating one — even ON_HOLD — puts unfulfillable work into the
-    // operator's queue and asserts a stock position nobody established.
-    if (decision.mayCreateFulfilment) {
-      try {
-        await registry.createFulfilmentTaskOnOrderPlacedUseCase.execute(result.order, {
-          extraWarnings: backorderWarnings,
-          hold: decision.requiresHold,
-        });
-      } catch (fulfilErr: any) {
-        console.error('[API_ERROR] Fulfilment task creation failed (order persisted):', fulfilErr?.message);
-      }
-    }
-
-    // Transactional admin order email intent (OrderPlaced). Idempotent, dry-run
-    // (no provider call until activated); the order/fulfilment/notification all
-    // remain available even if this enqueue fails.
-    if (mayProgress) {
-      try {
-        await registry.enqueueAdminOrderEmailUseCase.execute({
-          order: result.order,
-          event: 'placed',
-          stockConfirmed: decision.stockConfirmed,
-        });
-      } catch (emailErr: any) {
-        console.error('[API_ERROR] Admin order email enqueue failed (order persisted):', emailErr?.message);
-      }
-    }
-
-    // The order exists — it is never discarded, because discarding it would lose
-    // the customer's intent — but it is reported truthfully as not proceeding,
-    // and 409 rather than 200 so no client treats it as ready to pay.
-    if (!mayProgress) {
+    if (outcome.kind === 'BLOCKED_STOCK') {
       // The order exists and is recorded truthfully, but it does not progress.
-      // The claim is marked COMPLETED against that order, so a retry with the
-      // same key returns this same blocked order rather than creating a second.
-      if (lease) {
-        requireFence(await idem.advanceStage(lease, 'BLOCKED_STOCK'), 'ADVANCE_STAGE');
-        requireFence(await idem.complete(lease, result.order.id), 'COMPLETE');
-      }
       return c.json({
         success: false,
         error: {
           code: 'STOCK_NOT_RESERVED',
           message:
             'Your order was recorded but stock could not be confirmed, so it cannot be paid for yet. Our team will contact you.',
-          // Minimal: identifiers and state only. The customer's contact and
-          // address details are not echoed back into proxy logs and caches.
-          details: toCheckoutResponseDto({
-            order: result.order,
-            reservationState,
-            deliveryFeeConfirmed: result.deliveryFeeConfirmed,
-            idempotentReplay: false,
-          }),
+          details: dto,
         },
       }, 409);
     }
-
-    if (lease) {
-      requireFence(await idem.advanceStage(lease, 'AWAITING_PAYMENT'), 'ADVANCE_STAGE');
-      requireFence(await idem.complete(lease, result.order.id), 'COMPLETE');
-    }
-
-    // A dedicated response DTO, not `{ ...result.order }`. Spreading the domain
-    // order published the customer's full name, phone, email and delivery
-    // address — and on the replay path, published them for whatever key the
-    // caller could get to match. This is an allowlist built by naming fields, so
-    // anything later added to the entity is not silently exposed.
-    const res: ApiResponse<any> = {
-      success: true,
-      data: toCheckoutResponseDto({
-        order: result.order,
-        reservationState,
-        deliveryFeeConfirmed: result.deliveryFeeConfirmed,
-        idempotentReplay: result.idempotentReplay,
-      }),
-    };
-    return c.json(res);
-  } catch (err: any) {
-    // A lost lease is not a checkout failure: the successor is still working, or
-    // has already finished. Do NOT mark the record failed — that would overwrite
-    // the very owner this check exists to protect.
-    if (isLeaseLost(err)) {
-      logger.warn({ stage: err.stage }, 'CHECKOUT_LEASE_LOST');
-      c.header('Retry-After', '2');
-      return c.json({
-        success: false,
-        error: {
-          code: 'CHECKOUT_IN_PROGRESS',
-          message: 'This order is already being processed. Please wait a moment.',
-        },
-      }, 409);
-    }
-
-    // Release the claim so the outcome matches reality. A rejected request
-    // (bad coupon, unavailable product) is FINAL — retrying it reaches the same
-    // rejection. Anything else is RETRYABLE, because a transient database fault
-    // must not permanently poison the customer's checkout key.
-    const known = ['PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE', 'PRICE_CHANGED', 'PROMOTION_CHANGED']
-      .find((k) => String(err?.message ?? '').startsWith(k));
-    if (lease) {
-      try {
-        await checkoutIdempotencyRepo().fail(lease, known ?? 'CHECKOUT_ERROR', !known);
-      } catch {
-        // The claim expires on its own lease; failing to release it must not
-        // replace the real error with a bookkeeping one.
-      }
-    }
-
-    if (String(err?.message ?? '').includes('DATABASE_URL')) {
-      return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Order service is temporarily unavailable (Database is not configured).' } }, 503);
-    }
-    // Known business rejections carry their message; anything else does not.
-    // An unexpected error message can contain query text or internal detail,
-    // and a public caller has no use for it.
-    if (known) {
-      return c.json({ success: false, error: { code: known, message: err.message } }, 400);
-    }
-    return c.json({
-      success: false,
-      error: { code: 'ORDER_FAILED', message: 'The order could not be completed. Please try again.' },
-    }, 400);
+    return c.json({ success: true, data: dto, meta: { traceId } });
   }
+
+  // Expected commerce decisions are typed, not parsed out of error messages.
+  const mapping: Record<string, { status: 400 | 409 | 503; code: string; message: string }> = {
+    CHECKOUT_IN_PROGRESS: {
+      status: 409, code: 'CHECKOUT_IN_PROGRESS',
+      message: 'This order is already being processed. Please wait a moment.',
+    },
+    IDEMPOTENCY_CONFLICT: {
+      status: 409, code: 'IDEMPOTENCY_CONFLICT',
+      message: 'This checkout reference was already used for a different order. Start a new checkout.',
+    },
+    LEASE_LOST: {
+      status: 409, code: 'CHECKOUT_IN_PROGRESS',
+      message: 'This order is already being processed. Please wait a moment.',
+    },
+    PRICE_REVIEW_REQUIRED: {
+      status: 409, code: 'PRICE_CHANGED',
+      message: 'The price changed since you started. Please review the updated total.',
+    },
+    INTENT_INVALID: {
+      status: 409, code: 'CHECKOUT_INTENT_INVALID',
+      message: 'Your checkout session is no longer valid. Please reload the checkout page.',
+    },
+    SESSION_INVALID: {
+      status: 409, code: 'CHECKOUT_INTENT_INVALID',
+      message: 'Please sign in again to complete this order.',
+    },
+    FAILED_FINAL: { status: 400, code: 'ORDER_FAILED', message: 'This order cannot be completed.' },
+    FAILED_RETRYABLE: {
+      status: 503, code: 'ORDER_FAILED',
+      message: 'The order could not be completed. Please try again.',
+    },
+  };
+
+  const mapped = mapping[outcome.kind] ?? {
+    status: 400 as const, code: 'ORDER_FAILED',
+    message: 'The order could not be completed. Please try again.',
+  };
+  if (outcome.retryAfterSeconds) c.header('Retry-After', String(outcome.retryAfterSeconds));
+
+  // A known business rejection names itself; an unexpected one never leaks
+  // internal text, which can carry query fragments.
+  const publicMessage = TERMINAL_PUBLIC_CODES.includes(outcome.reason)
+    ? `${outcome.reason}: ${mapped.message}`
+    : mapped.message;
+
+  return c.json({
+    success: false,
+    error: { code: mapped.code, message: publicMessage },
+    meta: { traceId },
+  }, mapped.status);
 });
 
 const maskPhone = (phone: string | null | undefined) => {

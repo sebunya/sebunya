@@ -346,6 +346,7 @@ import { RedisLoginAttemptStore } from './security/RedisLoginAttemptStore';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
+import { ExecuteCheckoutIntentUseCase } from '../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { SetProductStockUseCase } from '../application/use-cases/inventory/SetProductStockUseCase';
 import {
   ReserveInventoryForOrderUseCase,
@@ -605,6 +606,58 @@ export class Registry {
   public readonly inventoryRepo = new DrizzleInventoryRepository();
   public readonly orderReservationState = new DrizzleOrderReservationState();
   public readonly checkoutIdempotencyRepo = new DrizzleCheckoutIdempotencyRepository();
+
+  /**
+   * Checkout orchestration, assembled from ports.
+   *
+   * The adapters below are deliberately thin: they exist so the use case never
+   * imports Drizzle, Hono or a provider SDK, which is what keeps the workflow
+   * testable without standing up HTTP.
+   */
+  public readonly executeCheckoutIntentUseCase = new ExecuteCheckoutIntentUseCase({
+    idempotency: this.checkoutIdempotencyRepo,
+    orders: {
+      execute: (input) => this.checkoutUseCase.execute(input as never),
+    },
+    reservations: {
+      execute: async (order) => {
+        const outcome = await this.reserveInventoryForOrderUseCase.execute(order);
+        return {
+          state: outcome.state,
+          code: outcome.code,
+          fullyReserved: outcome.fullyReserved,
+          warnings: outcome.warnings,
+        };
+      },
+    },
+    sideEffects: {
+      queueFulfilment: async (order, opts) => {
+        await this.createFulfilmentTaskOnOrderPlacedUseCase.execute(order, {
+          extraWarnings: opts.warnings,
+          hold: opts.hold,
+        });
+      },
+      queueAdminNotification: async (order, opts) => {
+        await this.enqueueAdminOrderEmailUseCase.execute({
+          order,
+          event: 'placed',
+          stockConfirmed: opts.stockConfirmed,
+        });
+      },
+    },
+    orderReader: {
+      findById: (orderId) => this.orderRepo.findById(orderId),
+      reservationStateOf: (orderId) => this.orderReservationState.getReservationState(orderId),
+    },
+    observer: {
+      // Metric + audit, with no customer data: these lines are retained far
+      // longer than the request.
+      onLeaseLost: (stage, traceId) =>
+        logger.warn({ stage, traceId }, 'CHECKOUT_LEASE_LOST'),
+      onSideEffectFailed: (stage, traceId, message) =>
+        logger.error({ stage, traceId, message }, 'CHECKOUT_SIDE_EFFECT_FAILED'),
+    },
+  });
   public readonly setProductStockUseCase = new SetProductStockUseCase(this.inventoryRepo);
   public readonly reserveInventoryForOrderUseCase = new ReserveInventoryForOrderUseCase({
     repo: this.inventoryRepo,

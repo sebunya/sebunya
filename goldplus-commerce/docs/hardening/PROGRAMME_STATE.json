@@ -22,16 +22,16 @@
       "module": "checkout",
       "reason": "Component and transactional work is proven against real PostgreSQL, but the browser-to-payment journey has no end-to-end proof yet.",
       "remaining": [
-        "Playwright through the real Astro SSR path (initial GET, refresh, failed POST reuse)",
-        "20-concurrent-request proof: one order, one reservation, one fulfilment, one notification, one payment attempt",
-        "typed idempotent PesaPal handoff (contract \u00a72.10)",
-        "resumable saga stages FULFILMENT_QUEUED / NOTIFICATION_QUEUED / PAYMENT_READY / PAYMENT_STARTED (\u00a72.7)",
-        "fingerprint coverage of delivery/contact/payment intent (\u00a72.8, H-04)",
-        "state-aware retention (\u00a72.9, H-06)",
-        "orchestration moved into ExecuteCheckoutIntentUseCase (\u00a72.6, H-05)",
-        "CSRF and origin validation (\u00a72.14)",
-        "offline-draft governance (\u00a72.12)",
-        "explicit current/previous key pairs (\u00a72.13)"
+        "durable resumable saga stages FULFILMENT_QUEUED / NOTIFICATION_QUEUED / PAYMENT_READY / PAYMENT_STARTED / PAYMENT_PENDING / PAYMENT_REVIEW (\u00a76)",
+        "outbox-backed side effects with stable source identities (\u00a78)",
+        "fingerprint coverage of delivery/contact/payment intent (\u00a79, H-04)",
+        "state-aware retention (\u00a710, H-06)",
+        "typed idempotent PesaPal start and payment return (\u00a711-12, H-08)",
+        "CSRF and origin protection (\u00a713, H-07)",
+        "explicit current/previous keyring pairs (\u00a714)",
+        "offline-draft governance (\u00a715)",
+        "real end-to-end harness: Astro + API + PostgreSQL + Redis + provider stubs (\u00a716)",
+        "every \u00a717 behavioural proof"
       ]
     }
   ],
@@ -76,11 +76,6 @@
       "id": "H-06",
       "module": "checkout",
       "summary": "Retention is a generic TTL; not yet state-aware, so a sweep could remove an unresolved order link (contract \u00a711)."
-    },
-    {
-      "id": "H-05",
-      "module": "checkout",
-      "summary": "Orchestration still lives in the HTTP route; ExecuteCheckoutIntentUseCase not yet extracted (\u00a72.6)."
     },
     {
       "id": "H-07",
@@ -131,12 +126,16 @@
     "every fenced mutation result was ignored, so the fence detected lease loss and the caller discarded the detection",
     "order insert and claim link were two statements, leaving a crash window that orphaned orders",
     "checkout request boundary was typed unknown on both customerDetails and items",
-    "storefront had no canonical authenticated-session helper, so a signed USER intent alone could outlive a logout"
+    "storefront had no canonical authenticated-session helper, so a signed USER intent alone could outlive a logout",
+    "checkout orchestration lived in the HTTP route (289 lines), so transaction and recovery policy could only be exercised through HTTP",
+    "expected commerce decisions were identified by parsing error-message prefixes rather than typed outcomes",
+    "a retry after a partial success restarted the workflow instead of resuming from the durable order",
+    "fulfilment and notification failures were swallowed by console.error, leaving an order with no work item and nothing to alert on"
   ],
   "migrationCeiling": "0058",
   "testTotals": {
-    "files": 245,
-    "passed": 4574,
+    "files": 246,
+    "passed": 4599,
     "skipped": 11,
     "nonArtifactGuardFailures": 0,
     "note": "12 reported failures are Slice-09 artifact-scope guards asserting a clean worktree."
@@ -150,8 +149,8 @@
     "status": "AWAITING_MAC_RAIL_B_VALIDATION",
     "note": "Not merged into this branch. Its scope, candidate, tag and approval marker are untouched."
   },
-  "nextExactAction": "Extract ExecuteCheckoutIntentUseCase (H-05) with resumable saga stages, then the typed idempotent PesaPal handoff (H-08), CSRF/origin (H-07), fingerprint coverage (H-04) and state-aware retention (H-06). Then cart object-level authorization (H-02) and the central outbound-delivery policy (H-03).",
-  "lastUpdatedAt": "2026-07-30T01:00:00Z",
+  "nextExactAction": "Extend the saga to the payment stages and move side effects onto the outbox (\u00a76, \u00a78), then the typed idempotent PesaPal start/return (H-08), CSRF/origin (H-07), fingerprint coverage (H-04), state-aware retention (H-06), and the end-to-end harness (\u00a716).",
+  "lastUpdatedAt": "2026-07-30T02:00:00Z",
   "codeHead": "36fdb70af29ce40821dacc97075e8e194876a5a7",
   "stateBasedOnHead": "36fdb70af29ce40821dacc97075e8e194876a5a7",
   "stateCommit": "PENDING",
