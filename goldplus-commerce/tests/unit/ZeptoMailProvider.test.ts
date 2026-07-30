@@ -16,6 +16,14 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
       ZEPTOMAIL_REPLY_TO: 'support@shopgoldplus.com',
       ZEPTOMAIL_BASE_URL: 'https://api.zeptomail.com/v1.1/email',
       ZEPTOMAIL_TIMEOUT_MS: '10000',
+      // The master outbound gates. The adapters used to read neither
+      // PROVIDER_DELIVERY_ENABLED nor CUSTOMER_COMMUNICATIONS_ENABLED — they were
+      // enforced only by convention — so a provider test could reach a live send
+      // without ever naming them. The shared policy requires them explicitly.
+      PROVIDER_DELIVERY_ENABLED: 'true',
+      CUSTOMER_COMMUNICATIONS_ENABLED: 'true',
+      NOTIFICATION_DELIVERY_ENABLED: 'true',
+      NOTIFICATIONS_OPERATOR_APPROVED: 'true',
       NOTIFICATIONS_EMAIL_ENABLED: 'true',
       NOTIFICATIONS_DRY_RUN: 'false',
       NOTIFICATIONS_LIVE_SEND_ENABLED: 'true',
@@ -38,12 +46,16 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
       relatedEntityId: '1001',
     });
     expect(res.status).toBe('NOT_CONFIGURED');
-    expect(res.providerCode).toBe('NOT_CONFIGURED');
-    expect(res.providerMessage).toContain('credentials missing');
+    expect(res.providerCode).toBe('BLOCK_PROVIDER_NOT_CONFIGURED');
+    expect(res.providerMessage).toContain('EMAIL_CREDENTIALS');
   });
 
-  test('2. Dry-run returns DRY_RUN_SUCCESS and does not call fetch', async () => {
+  test('2. Dry-run reports DRY_RUN, never SENT, and does not call fetch', async () => {
     process.env.NOTIFICATIONS_DRY_RUN = 'true';
+    // Live sending OFF. Dry-run and live-send both enabled is now refused as
+    // contradictory: resolving that silently either way risks sending real messages to
+    // someone who believed they were simulating.
+    process.env.NOTIFICATIONS_LIVE_SEND_ENABLED = 'false';
     const res = await adapter.dispatch({
       recipient: 'customer@example.com',
       template: 'ORDER_PAYMENT_SUCCESS',
@@ -51,9 +63,12 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
       relatedEntity: 'Order',
       relatedEntityId: '1001',
     });
-    expect(res.status).toBe('SENT');
-    expect(res.providerCode).toBe('DRY_RUN_SUCCESS');
-    expect(res.providerMessage).toContain('(Dry-Run)');
+    // This adapter used to report a simulated message as SENT, which made a suppressed
+    // message indistinguishable from a delivered one in every metric and query.
+    expect(res.status).toBe('DRY_RUN');
+    expect(res.status).not.toBe('SENT');
+    expect(res.providerCode).toBe('DRY_RUN');
+    expect(res.providerMessage).toContain('No message was sent');
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -67,8 +82,8 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
       relatedEntityId: '1001',
     });
     expect(res.status).toBe('DISABLED');
-    expect(res.providerCode).toBe('BLOCKED_BY_LIVE_SEND_DISABLED');
-    expect(res.providerMessage).toContain('globally disabled');
+    expect(res.providerCode).toBe('BLOCK_APPROVAL_REQUIRED');
+    expect(res.providerMessage).toContain('NOTIFICATIONS_LIVE_SEND_ENABLED');
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -82,8 +97,8 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
       relatedEntityId: '1001',
     });
     expect(res.status).toBe('DISABLED');
-    expect(res.providerCode).toBe('CHANNEL_DISABLED');
-    expect(res.providerMessage).toContain('disabled');
+    expect(res.providerCode).toBe('BLOCK_CHANNEL_DISABLED');
+    expect(res.providerMessage).toContain('EMAIL_CHANNEL_ENABLED');
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -97,8 +112,8 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
       relatedEntityId: '1001',
     });
     expect(res.status).toBe('DISABLED');
-    expect(res.providerCode).toBe('BLOCKED_BY_ALLOWLIST');
-    expect(res.providerMessage).toContain('allowlist');
+    expect(res.providerCode).toBe('BLOCK_RECIPIENT_NOT_ALLOWLISTED');
+    expect(res.providerMessage).toContain('NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS');
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -210,17 +225,26 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
     expect(res.providerMessage).toContain('******');
   });
 
-  test('10. getBalance (config check) WARNs when outbound safety defaults are not enforced', async () => {
-    // This suite's environment is deliberately fully unlocked
-    // (NOTIFICATIONS_EMAIL_ENABLED=true, DRY_RUN=false, LIVE_SEND_ENABLED=true),
-    // which is precisely the arrangement the check exists to detect. It used to
-    // return PASS here with the warning buried in a message string, so the
-    // unsafe case reported the same status as a locked-down one.
+  test('10. getBalance (config check) WARNs when live sending is genuinely permitted', async () => {
+    // This suite's environment is deliberately fully unlocked, so every guard is
+    // satisfied and customer email CAN leave the system. That is reported as a WARN, not
+    // a PASS: it is a state an operator should be told about explicitly even when it was
+    // arranged deliberately. It used to return PASS with the warning buried in a message
+    // string, so the unlocked case looked identical to a locked-down one.
     const check = await adapter.getBalance();
     expect(check.status).toBe('WARN');
-    expect(check.message).toContain('safe dry-run defaults are NOT enforced');
-    // And it names which guard is open, so the warning is actionable.
-    expect(check.message).toContain('NOTIFICATIONS_LIVE_SEND_ENABLED');
+    expect(check.message).toContain('LIVE SENDING IS ENABLED');
+  });
+
+  test('10a. getBalance (config check) FAILS on a contradictory configuration', async () => {
+    // Dry-run and live-send both on. A safety check must not pass in the case it exists
+    // to detect, and this must fail release readiness rather than merely warn.
+    process.env.NOTIFICATIONS_DRY_RUN = 'true';
+    process.env.NOTIFICATIONS_LIVE_SEND_ENABLED = 'true';
+    const check = await adapter.getBalance();
+    expect(check.status).toBe('FAIL');
+    // The exact combination is named, so the operator knows what to change.
+    expect(check.message).toContain('DRY_RUN_AND_LIVE_SEND_BOTH_ENABLED');
   });
 
   test('10b. getBalance (config check) returns PASS when the environment is locked down', async () => {

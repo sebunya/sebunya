@@ -1,3 +1,5 @@
+import { outboundGovernance } from '../OutboundGovernanceService';
+import { classifyMessage } from '../messageClassification';
 import {
   INotificationProvider,
   NotificationDispatchPayload,
@@ -49,20 +51,7 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
   }
 
   async dispatch(payload: NotificationDispatchPayload): Promise<NotificationDispatchResult> {
-    const dryRun = process.env.NOTIFICATIONS_DRY_RUN === 'true';
-    const liveEnabled = process.env.NOTIFICATIONS_LIVE_SEND_ENABLED === 'true';
-    const smsEnabled = process.env.NOTIFICATIONS_SMS_ENABLED === 'true';
-
-    // 1. Guard check: Is SMS channel enabled?
-    if (!smsEnabled) {
-      return {
-        status: 'DISABLED' as NotificationStatus,
-        providerCode: 'CHANNEL_DISABLED',
-        providerMessage: 'SMS channel is disabled.',
-      };
-    }
-
-    // 2. Validate and Normalize Recipient Number
+    // 1. Validate and Normalize Recipient Number
     const rawRecipient = payload.recipient || '';
     const normalizedNumber = this.normalizeUgandanNumber(rawRecipient);
     if (!normalizedNumber) {
@@ -73,62 +62,65 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
       };
     }
 
-    // 3. Credentials Check
+    // 2. Credentials Check
     const username = (process.env.SMS_USERNAME || '').trim();
     const apiKey = (process.env.SMS_API_KEY || '').trim();
     const senderId = (process.env.SMS_SENDER_ID || '').trim();
     const priority = (process.env.SMS_PRIORITY || '0').trim();
     const baseUrl = (process.env.SMS_BASE_URL || 'https://comms.egosms.co/api/v1/json/').trim();
 
-    if (!username || !apiKey || !senderId) {
-      return {
-        status: 'NOT_CONFIGURED' as NotificationStatus,
-        providerCode: 'NOT_CONFIGURED',
-        providerMessage: 'SMS provider credentials missing.',
-      };
-    }
-
-    // 4. Test Recipient Allowlist Check
-    const rawAllowlist = process.env.NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS || '';
-    const allowlist = rawAllowlist
+    // 3. ONE governance decision, made by the shared policy.
+    //
+    // This adapter used to interpret the flags itself: channel-enabled first, then the
+    // allowlist, then dry-run, then live-send — an order that differed from the email
+    // adapter's, so the same environment refused different messages depending on which
+    // channel carried them. It also read neither PROVIDER_DELIVERY_ENABLED nor
+    // CUSTOMER_COMMUNICATIONS_ENABLED, which were enforced only by convention.
+    const allowlist = (process.env.NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS || '')
       .split(',')
-      .map(item => item.trim())
-      .filter(item => item.length > 0);
-
-    const isAllowlisted = allowlist.some(allowed => {
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    const recipientAllowlisted = allowlist.some((allowed) => {
       const allowedNormalized = this.normalizeUgandanNumber(allowed);
-      return allowedNormalized && allowedNormalized === normalizedNumber;
+      return allowedNormalized !== null && allowedNormalized === normalizedNumber;
     });
 
-    if (allowlist.length > 0 && !isAllowlisted) {
-      console.log(`[SMS Dry-Run Blocked] Recipient ${this.maskPhone(normalizedNumber)} is not allowlisted.`);
+    const decision = outboundGovernance.decide({
+      channel: 'SMS',
+      messageClass: classifyMessage(payload),
+      recipientClass: recipientAllowlisted ? 'TEST' : 'CUSTOMER',
+      // The credential check moves INTO the decision so an unconfigured provider is
+      // reported by the same vocabulary as every other block, in the right order.
+      providerConfigured: Boolean(username && apiKey && senderId),
+      allowlistActive: allowlist.length > 0,
+      recipientAllowlisted,
+      maskedRecipient: this.maskPhone(normalizedNumber),
+    });
+
+    if (decision.kind === 'ALLOW_DRY_RUN') {
       return {
-        status: 'DISABLED' as NotificationStatus,
-        providerCode: 'BLOCKED_BY_ALLOWLIST',
-        providerMessage: 'Recipient is not in the test-recipient allowlist.',
+        // DRY_RUN, not SENT. Returning SENT made a simulated message indistinguishable
+        // from a delivered one in every metric, dashboard and query — which is what made
+        // "did we message customers?" unanswerable from the data.
+        status: 'DRY_RUN' as NotificationStatus,
+        providerCode: 'DRY_RUN',
+        providerMessage: 'SMS simulated. No message was sent.',
       };
     }
 
-    // 5. Dry-Run Check
-    if (dryRun) {
-      console.log(`[SMS Dry-Run Log] Sender ID: ${senderId} | Recipient: ${this.maskPhone(normalizedNumber)} | Msg: "${payload.data.message || payload.template}"`);
+    if (decision.kind !== 'ALLOW_LIVE') {
       return {
-        status: 'SENT' as NotificationStatus,
-        providerCode: 'DRY_RUN_SUCCESS',
-        providerMessage: 'SMS simulated successfully (Dry-Run).',
+        status: (decision.kind === 'BLOCK_PROVIDER_NOT_CONFIGURED'
+          ? 'NOT_CONFIGURED'
+          : 'DISABLED') as NotificationStatus,
+        // The decision kind IS the code, and the guard names the exact flag. A caller
+        // grouping by code now sees why, not merely that.
+        providerCode: decision.kind,
+        providerMessage: `SMS not sent: ${decision.guard}.`,
       };
     }
 
-    // 6. Live-Send Global Guard Check
-    if (!liveEnabled) {
-      return {
-        status: 'DISABLED' as NotificationStatus,
-        providerCode: 'BLOCKED_BY_LIVE_SEND_DISABLED',
-        providerMessage: 'Live dispatch is globally disabled.',
-      };
-    }
-
-    // 7. Live Send Dispatch
+    // 4. Live Send Dispatch
     try {
       const body = {
         method: 'SendSms',

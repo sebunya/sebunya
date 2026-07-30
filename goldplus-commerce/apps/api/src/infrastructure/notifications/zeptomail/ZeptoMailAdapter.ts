@@ -1,3 +1,6 @@
+import { outboundGovernance } from '../OutboundGovernanceService';
+import { failsReleaseReadiness } from '../../../domain/notifications/OutboundGovernancePolicy';
+import { classifyMessage } from '../messageClassification';
 import {
   INotificationProvider,
   NotificationDispatchPayload,
@@ -96,20 +99,7 @@ export class ZeptoMailAdapter implements INotificationProvider {
   }
 
   async dispatch(payload: NotificationDispatchPayload): Promise<NotificationDispatchResult> {
-    const dryRun = process.env.NOTIFICATIONS_DRY_RUN === 'true';
-    const liveEnabled = process.env.NOTIFICATIONS_LIVE_SEND_ENABLED === 'true';
-    const emailEnabled = process.env.NOTIFICATIONS_EMAIL_ENABLED === 'true';
-
-    // 1. Guard check: Is email channel enabled?
-    if (!emailEnabled) {
-      return {
-        status: 'DISABLED' as NotificationStatus,
-        providerCode: 'CHANNEL_DISABLED',
-        providerMessage: 'Email channel is disabled.',
-      };
-    }
-
-    // 2. Validate Recipient Email Address
+    // 1. Validate Recipient Email Address
     const rawRecipient = (payload.recipient || '').trim();
     if (!rawRecipient || !rawRecipient.includes('@')) {
       return {
@@ -126,33 +116,46 @@ export class ZeptoMailAdapter implements INotificationProvider {
     const replyTo = (process.env.ZEPTOMAIL_REPLY_TO || fromAddr).trim();
     const baseUrl = (process.env.ZEPTOMAIL_BASE_URL || 'https://api.zeptomail.com/v1.1/email').trim();
 
-    if (!token || !fromAddr) {
-      return {
-        status: 'NOT_CONFIGURED' as NotificationStatus,
-        providerCode: 'NOT_CONFIGURED',
-        providerMessage: 'ZeptoMail API credentials missing.',
-      };
-    }
-
-    // 4. Recipient Allowlist Gate Check
-    const rawAllowlist = process.env.NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS || '';
-    const allowlist = rawAllowlist
+    // 3. ONE governance decision, made by the shared policy.
+    //
+    // This adapter used to interpret the flags itself, in an order that differed from the
+    // SMS adapter's — so the same environment refused different messages depending on
+    // which channel carried them. It also read neither PROVIDER_DELIVERY_ENABLED nor
+    // CUSTOMER_COMMUNICATIONS_ENABLED, which were enforced only by convention.
+    const allowlist = (process.env.NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS || '')
       .split(',')
-      .map(item => item.trim().toLowerCase())
-      .filter(item => item.length > 0);
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => item.length > 0);
+    const recipientAllowlisted = allowlist.includes(rawRecipient.toLowerCase());
+    const messageClass = classifyMessage(payload);
 
-    const isAllowlisted = allowlist.some(allowed => allowed === rawRecipient.toLowerCase());
+    const decision = outboundGovernance.decide({
+      channel: 'EMAIL',
+      messageClass,
+      // An operational alert goes to staff; anything else is treated as reaching a
+      // customer unless it is on the test allowlist.
+      recipientClass: messageClass === 'OPERATIONAL'
+        ? 'INTERNAL'
+        : recipientAllowlisted ? 'TEST' : 'CUSTOMER',
+      providerConfigured: Boolean(token && fromAddr),
+      allowlistActive: allowlist.length > 0,
+      recipientAllowlisted,
+      maskedRecipient: this.maskEmail(rawRecipient),
+    });
 
-    if (allowlist.length > 0 && !isAllowlisted) {
-      console.log(`[Email Dry-Run Blocked] Recipient ${this.maskEmail(rawRecipient)} is not allowlisted.`);
+    if (decision.kind !== 'ALLOW_LIVE' && decision.kind !== 'ALLOW_DRY_RUN') {
       return {
-        status: 'DISABLED' as NotificationStatus,
-        providerCode: 'BLOCKED_BY_ALLOWLIST',
-        providerMessage: 'Recipient is not in the test-recipient allowlist.',
+        status: (decision.kind === 'BLOCK_PROVIDER_NOT_CONFIGURED'
+          ? 'NOT_CONFIGURED'
+          : 'DISABLED') as NotificationStatus,
+        // The decision kind IS the code, and the guard names the exact flag, so a caller
+        // grouping by code sees why rather than merely that.
+        providerCode: decision.kind,
+        providerMessage: `Email not sent: ${decision.guard}.`,
       };
     }
 
-    // 5. Compile email subject and body content
+    // 4. Compile email subject and body content
     const templateSubjectMap: Record<string, string> = {
       'ORDER_RECEIVED_UNPAID': 'GoldPlus - Order Received',
       'ORDER_PAYMENT_PENDING': 'GoldPlus - Payment Pending',
@@ -209,26 +212,20 @@ export class ZeptoMailAdapter implements INotificationProvider {
         .join('\n')}`;
     }
 
-    // 6. Dry-Run Gate Check
-    if (dryRun) {
-      console.log(`[Email Dry-Run Log] Sender Address: ${fromAddr} | Recipient: ${this.maskEmail(rawRecipient)} | Subject: "${subject}"`);
+    // 5. Simulate, if that is what the decision said. The message is rendered first so
+    //    a dry run exercises the same rendering path a live send would — a simulation
+    //    that skips rendering cannot catch a broken template.
+    if (decision.kind === 'ALLOW_DRY_RUN') {
       return {
-        status: 'SENT' as NotificationStatus,
-        providerCode: 'DRY_RUN_SUCCESS',
-        providerMessage: 'Email simulated successfully (Dry-Run).',
+        // DRY_RUN, not SENT. Returning SENT made a simulated message indistinguishable
+        // from a delivered one in every metric, dashboard and query.
+        status: 'DRY_RUN' as NotificationStatus,
+        providerCode: 'DRY_RUN',
+        providerMessage: 'Email simulated. No message was sent.',
       };
     }
 
-    // 7. Live-Send Global Guard Check
-    if (!liveEnabled) {
-      return {
-        status: 'DISABLED' as NotificationStatus,
-        providerCode: 'BLOCKED_BY_LIVE_SEND_DISABLED',
-        providerMessage: 'Live dispatch is globally disabled.',
-      };
-    }
-
-    // 8. Live POST to Zoho ZeptoMail API
+    // 6. Live POST to Zoho ZeptoMail API
     try {
       const bodyPayload = {
         from: {
@@ -357,30 +354,39 @@ export class ZeptoMailAdapter implements INotificationProvider {
       }
     }
 
-    // 5. Verify safety defaults
-    const dryRun = process.env.NOTIFICATIONS_DRY_RUN === 'true';
-    const emailEnabled = process.env.NOTIFICATIONS_EMAIL_ENABLED === 'true';
-    const liveSendEnabled = process.env.NOTIFICATIONS_LIVE_SEND_ENABLED === 'true';
-
-    // A safety check must not PASS in the case it exists to detect.
+    // 5. Verify safety defaults, through the SAME policy the dispatch path uses.
     //
-    // This previously returned status 'PASS' with the warning buried in the
-    // message string, so the one arrangement it is here to catch — outbound
-    // email unlocked while the dry-run guard is off — reported the same status
-    // as a correctly locked-down environment. Anyone scanning statuses, or any
-    // dashboard keyed on them, saw PASS.
-    if (emailEnabled || liveSendEnabled || !dryRun) {
-      const unlocked = [
-        emailEnabled ? 'NOTIFICATIONS_EMAIL_ENABLED' : null,
-        liveSendEnabled ? 'NOTIFICATIONS_LIVE_SEND_ENABLED' : null,
-        !dryRun ? 'NOTIFICATIONS_DRY_RUN is not true' : null,
-      ].filter(Boolean).join(', ');
+    // A safety check must not PASS in the case it exists to detect. It previously
+    // returned 'PASS' with the warning buried in a message string, so an environment
+    // with outbound email unlocked and the dry-run guard off reported the same status as
+    // a correctly locked-down one — anything scanning statuses saw PASS.
+    //
+    // It also re-derived its own flag reading, so this check and the dispatch path could
+    // disagree about whether the environment was safe. Asking the policy means they
+    // cannot.
+    const verdict = outboundGovernance.configurationVerdict('EMAIL', true);
+
+    if (failsReleaseReadiness(verdict)) {
+      // A contradictory configuration is a FAIL, not a warning: it must block release
+      // readiness and activation, and it names the guard so the operator knows which
+      // combination is wrong.
+      return {
+        status: 'FAIL',
+        message:
+          `ZeptoMail config check: unsafe outbound configuration (${verdict.guard}). ` +
+          'This must be resolved before release; live sending is blocked.',
+      };
+    }
+
+    if (verdict.kind === 'ALLOW_LIVE') {
+      // Live sending is genuinely permitted. Reported as a WARN rather than a PASS
+      // because "customer email can leave this system" is a state an operator should be
+      // told about explicitly, even when every guard was satisfied deliberately.
       return {
         status: 'WARN',
         message:
-          'ZeptoMail config check: configuration is valid, but safe dry-run defaults are NOT enforced. ' +
-          `Outbound email is not fully locked: ${unlocked}. Customer communications must stay disabled ` +
-          'until separately approved.',
+          'ZeptoMail config check: configuration is valid and LIVE SENDING IS ENABLED. ' +
+          'Customer communications can leave this system.',
       };
     }
 

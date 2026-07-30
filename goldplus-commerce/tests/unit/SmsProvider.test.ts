@@ -18,6 +18,14 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
       SMS_DEFAULT_COUNTRY_CODE: 'UG',
       SMS_PRIORITY: '0',
       SMS_TIMEOUT_MS: '10000',
+      // The master outbound gates. The adapters used to read neither
+      // PROVIDER_DELIVERY_ENABLED nor CUSTOMER_COMMUNICATIONS_ENABLED — they were
+      // enforced only by convention — so a provider test could reach a live send
+      // without ever naming them. The shared policy requires them explicitly.
+      PROVIDER_DELIVERY_ENABLED: 'true',
+      CUSTOMER_COMMUNICATIONS_ENABLED: 'true',
+      NOTIFICATION_DELIVERY_ENABLED: 'true',
+      NOTIFICATIONS_OPERATOR_APPROVED: 'true',
       NOTIFICATIONS_SMS_ENABLED: 'true',
       NOTIFICATIONS_DRY_RUN: 'false',
       NOTIFICATIONS_LIVE_SEND_ENABLED: 'true',
@@ -31,27 +39,38 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
   });
 
   test('1. Missing credentials returns NOT_CONFIGURED', async () => {
+    // The STATUS stays NOT_CONFIGURED — it is what the notification port means by
+    // "the provider cannot be called" — while the CODE is now the governance decision,
+    // so a caller grouping by code sees which guard answered.
     process.env.SMS_USERNAME = '';
     const res = await adapter.dispatch({
       recipient: '0772123456',
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Hello' },
     });
     expect(res.status).toBe('NOT_CONFIGURED');
-    expect(res.providerCode).toBe('NOT_CONFIGURED');
-    expect(res.providerMessage).toContain('credentials missing');
+    expect(res.providerCode).toBe('BLOCK_PROVIDER_NOT_CONFIGURED');
+    expect(res.providerMessage).toContain('SMS_CREDENTIALS');
   });
 
-  test('2. Dry-run returns DRY_RUN_SUCCESS and does not call fetch', async () => {
+  test('2. Dry-run reports DRY_RUN, never SENT, and does not call fetch', async () => {
     process.env.NOTIFICATIONS_DRY_RUN = 'true';
+    // Live sending OFF. Dry-run and live-send both enabled is now refused as
+    // contradictory: resolving that silently either way risks sending real messages to
+    // someone who believed they were simulating.
+    process.env.NOTIFICATIONS_LIVE_SEND_ENABLED = 'false';
     const res = await adapter.dispatch({
       recipient: '0772123456',
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Hello' },
     });
-    expect(res.status).toBe('SENT');
-    expect(res.providerCode).toBe('DRY_RUN_SUCCESS');
-    expect(res.providerMessage).toContain('(Dry-Run)');
+    // This adapter used to report a simulated message as SENT with a DRY_RUN_SUCCESS
+    // code, which made a suppressed message indistinguishable from a delivered one in
+    // every metric, dashboard and query.
+    expect(res.status).toBe('DRY_RUN');
+    expect(res.status).not.toBe('SENT');
+    expect(res.providerCode).toBe('DRY_RUN');
+    expect(res.providerMessage).toContain('No message was sent');
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -59,12 +78,14 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
     process.env.NOTIFICATIONS_LIVE_SEND_ENABLED = 'false';
     const res = await adapter.dispatch({
       recipient: '0772123456',
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Hello' },
     });
     expect(res.status).toBe('DISABLED');
-    expect(res.providerCode).toBe('BLOCKED_BY_LIVE_SEND_DISABLED');
-    expect(res.providerMessage).toContain('globally disabled');
+    expect(res.providerCode).toBe('BLOCK_APPROVAL_REQUIRED');
+    // The guard is named exactly, rather than described in prose the operator cannot
+    // group by.
+    expect(res.providerMessage).toContain('NOTIFICATIONS_LIVE_SEND_ENABLED');
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -72,12 +93,12 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
     process.env.NOTIFICATIONS_SMS_ENABLED = 'false';
     const res = await adapter.dispatch({
       recipient: '0772123456',
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Hello' },
     });
     expect(res.status).toBe('DISABLED');
-    expect(res.providerCode).toBe('CHANNEL_DISABLED');
-    expect(res.providerMessage).toContain('disabled');
+    expect(res.providerCode).toBe('BLOCK_CHANNEL_DISABLED');
+    expect(res.providerMessage).toContain('SMS_CHANNEL_ENABLED');
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -85,12 +106,12 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
     process.env.NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS = '0772000000, 0772111111';
     const res = await adapter.dispatch({
       recipient: '0772123456', // Different number
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Hello' },
     });
     expect(res.status).toBe('DISABLED');
-    expect(res.providerCode).toBe('BLOCKED_BY_ALLOWLIST');
-    expect(res.providerMessage).toContain('allowlist');
+    expect(res.providerCode).toBe('BLOCK_RECIPIENT_NOT_ALLOWLISTED');
+    expect(res.providerMessage).toContain('NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS');
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -111,7 +132,7 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
 
     const res = await adapter.dispatch({
       recipient: '0772123456',
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Hello' },
     });
 
@@ -123,7 +144,7 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
   test('7. Invalid phone number rejected safely', async () => {
     const res = await adapter.dispatch({
       recipient: 'abcdefg', // invalid
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Hello' },
     });
     expect(res.status).toBe('FAILED');
@@ -151,7 +172,7 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
 
     await adapter.dispatch({
       recipient: '0772123456',
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Test message body' },
     });
 
@@ -189,7 +210,7 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
 
     const res = await adapter.dispatch({
       recipient: '0772123456',
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Hello' },
     });
 
@@ -207,7 +228,7 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
 
     const res = await adapter.dispatch({
       recipient: '0772123456',
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Hello' },
     });
 
@@ -251,7 +272,7 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
 
     const res = await adapter.dispatch({
       recipient: '0772123456',
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Hello' },
     });
 
@@ -268,7 +289,7 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
 
     const res = await adapter.dispatch({
       recipient: '0772123456',
-      template: 'test-template',
+      template: 'ORDER_PAYMENT_SUCCESS',
       data: { message: 'Hello' },
     });
 
