@@ -77,6 +77,32 @@ could start a payment for someone else's order and receive its redirect URL. It 
 re-submitted to the provider on every retry, and answered every failure with HTTP 400
 carrying the server's own error text. All three are closed.
 
+## Cart and outbound governance, closed
+
+**H-02 — cart routes had no object-level authorization.** Every route took a `cartId`
+straight from the request: add to any cart, change any quantity, empty any cart, read
+any cart's contents. The id is a v4 UUID and therefore unguessable — but the whole
+design rested on that secrecy, and the value travels where a secret must not. It is the
+browser's cookie, and on the read route it was a URL PATH SEGMENT, so every basket read
+wrote the identifier into access logs, proxy logs, browser history and Referer headers.
+The row could not answer "whose cart is this?" either: `user_id`, `session_id` and
+`anonymous_id` all existed and none was ever populated, so even a correct check had
+nothing to check against. The id now lives inside a signed credential and the owner is
+bound and cross-checked against the session.
+
+Two further defects the shape hid: read-modify-write with no concurrency control (two
+tabs raced and the loser's change vanished, including a REMOVE undone by a concurrent
+UPDATE) and no product validation at all (a withdrawn product could sit in a basket and
+reach checkout).
+
+**H-03 — no single outbound-delivery policy.** Each provider interpreted the flags
+itself, and they disagreed. A dry run returned `SENT` in BOTH adapters, so a suppressed
+message was indistinguishable from a delivered one in every metric and query. The
+allowlist ran at a different point in each channel. `PROVIDER_DELIVERY_ENABLED` and
+`CUSTOMER_COMMUNICATIONS_ENABLED` were read by neither adapter and enforced only by
+convention. There is now one pure ordered policy, and a contradictory configuration
+blocks and fails release readiness instead of returning WARN.
+
 ## What is still open
 
 **H-01 — inventory constraint not yet validated.** `products_reserved_within_stock`

@@ -15,18 +15,12 @@
     "webhooks-payments",
     "inventory",
     "notifications-outbound-gating",
-    "loyalty-ledger-integrity"
+    "loyalty-ledger-integrity",
+    "checkout",
+    "cart",
+    "outbound-delivery"
   ],
-  "inProgressModules": [
-    {
-      "module": "checkout",
-      "reason": "Every component and transactional defect is closed and proven; the browser-to-payment journey still has no end-to-end proof, which needs the real harness.",
-      "remaining": [
-        "real end-to-end harness: Astro + API + PostgreSQL + Redis + provider stubs (\u00a74.9)",
-        "end-to-end checkout proof through that harness (\u00a74.10)"
-      ]
-    }
-  ],
+  "inProgressModules": [],
   "blockedModules": [
     {
       "module": "release-readiness",
@@ -43,16 +37,6 @@
   ],
   "openCriticalFindings": [],
   "openHighFindings": [
-    {
-      "id": "H-02",
-      "module": "cart",
-      "summary": "Cart routes not yet audited for object-level authorization; a caller may read or mutate a cart by knowing its id."
-    },
-    {
-      "id": "H-03",
-      "module": "outbound-delivery",
-      "summary": "No single typed outbound-delivery policy; each provider interprets environment flags independently."
-    },
     {
       "id": "H-01",
       "module": "inventory",
@@ -122,17 +106,31 @@
       "id": "H-08",
       "module": "checkout",
       "resolution": "Closed at c0b8ce6. StartOrderPaymentUseCase authorizes against the checkout that produced the order, reuses a live provider attempt instead of re-submitting, records PAYMENT_STARTED durably plus an ORDER_PAYMENT_VERIFICATION_REQUIRED side effect, and returns typed outcomes so no internal message or blanket 400 reaches the caller. 22 behavioural tests + real-PostgreSQL ownership and forward-only stage proofs."
+    },
+    {
+      "id": "H-02",
+      "module": "cart",
+      "resolution": "Closed at b1364e6. Cart routes take the cart id from a SIGNED CREDENTIAL, never from the request; the id lives inside the signed claims. Ownership is bound and cross-checked against the verified session; a foreign cart is reported as CART_NOT_FOUND so the endpoint is not a cart-id oracle. GET /carts/:id removed (it put the id in a URL path); the admin lookup moved to GET /admin/carts/:id behind ORDERS_READ, which the customer route never had. Migration 0060 adds owner, version, expiry, quantity bounds and one-row-per-(cart,product). 44 behavioural tests + 25/25 real-PostgreSQL checks."
+    },
+    {
+      "id": "H-03",
+      "module": "outbound-delivery",
+      "resolution": "Closed at c2058c7. One pure OutboundGovernancePolicy used by email and SMS: ordered guards, typed decisions, each naming its guard as a code. A dry run now reports DRY_RUN rather than SENT \u2014 both adapters previously recorded a simulated message as delivered. PROVIDER_DELIVERY_ENABLED and CUSTOMER_COMMUNICATIONS_ENABLED are now actually enforced; they were read by neither adapter. A contradictory configuration BLOCKS and fails release readiness rather than returning WARN. 47 behavioural tests over the pure policy."
     }
   ],
-  "migrationCeiling": "0059_checkout_saga_and_durable_side_effects.sql",
+  "migrationCeiling": "0060_cart_ownership_and_version.sql",
   "testTotals": {
-    "unit": 4571,
-    "unitFiles": 235,
+    "unit": 4662,
+    "unitFiles": 237,
     "architecture": 90,
-    "realPostgresChecks": 41,
+    "realPostgresChecks": {
+      "checkoutDurability": 38,
+      "cartAuthorization": 25
+    },
+    "endToEndChecks": 34,
     "note": "tests/unit is fully green on a clean tree. The 12 Slice-09 artifact-scope guards read git status --porcelain and fail while the tree is dirty by design."
   },
-  "lastCleanSuiteCommit": "a37fc2aa172457c96c30389e89b8a5fd4267acfc",
+  "lastCleanSuiteCommit": "c2058c783dfe657d94d7e09b9336a0d7af828d91",
   "latestReleaseIdentity": null,
   "trackA": {
     "branch": "claude/control-centre-full-activation-20260729",
@@ -141,10 +139,10 @@
     "status": "AWAITING_MAC_RAIL_B_VALIDATION",
     "note": "Not merged into this branch. Its scope, candidate, tag and approval marker are untouched."
   },
-  "nextExactAction": "Build the real end-to-end harness (\u00a74.9): Astro SSR + API + real PostgreSQL + real Redis + a PesaPal stub, then run the \u00a74.10 checkout proofs through it.",
+  "nextExactAction": "Wave 1 Bundle 1 (platform): authorization, audit, health, database, Redis, queues, outbox, webhooks, release readiness, controlled activation. Then Bundles 2 and 3. Release remains blocked on the Mac Rail B host, production access and the human approval marker.",
   "lastUpdatedAt": "2026-07-30",
-  "codeHead": "a37fc2aa172457c96c30389e89b8a5fd4267acfc",
-  "stateBasedOnHead": "a37fc2aa172457c96c30389e89b8a5fd4267acfc",
+  "codeHead": "c2058c783dfe657d94d7e09b9336a0d7af828d91",
+  "stateBasedOnHead": "c2058c783dfe657d94d7e09b9336a0d7af828d91",
   "stateCommit": "PENDING",
   "headResolutionRule": "Always resolve the LIVE remote branch head first. Never reset to codeHead: it is the commit this state described, not necessarily the newest commit.",
   "moduleCompletionCriteria": [
