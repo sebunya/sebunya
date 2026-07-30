@@ -1,25 +1,25 @@
 ---
-import { apiBase } from '../lib/api';
-import { readCartSessionId } from '../lib/cart-session';
+import { cartClient } from '../lib/cartClient';
+import { resolveCartCredential } from '../lib/cartCredential';
+import { resolveAuthenticatedUserId } from '../lib/customerAuth';
 
-const sessionId = readCartSessionId(Astro.request);
+// The badge reads the basket through the signed credential, not through a cart id in
+// the URL. The previous request put the id in a URL PATH, so every basket read wrote
+// the identifier into access logs, proxy logs and browser history — and the API served
+// it to anyone who presented it.
 let cartItemCount = 0;
+const headerUserId = await resolveAuthenticatedUserId(Astro.cookies);
+const headerCart = resolveCartCredential(Astro.cookies, headerUserId);
 
-if (sessionId) {
-  try {
-    const res = await fetch(`${apiBase}/commerce/carts/${encodeURIComponent(sessionId)}`, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(1500), // Quick, safe fallback timeout
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data && json.data.items) {
-        cartItemCount = json.data.items.reduce((acc: number, item: any) => acc + item.quantity, 0);
-      }
-    }
-  } catch (err) {
-    // Graceful error fail-safe, leaves count at 0 without blocking render
-    cartItemCount = 0;
+if (headerCart) {
+  const result = await cartClient.read(
+    headerCart.token,
+    Astro.cookies.get('goldplus_session')?.value ?? null,
+  );
+  // A failed read leaves the badge at zero rather than blocking the render. It is a
+  // count, not a decision, and every mutating path validates against the server.
+  if (result.ok) {
+    cartItemCount = result.cart.items.reduce((acc, item) => acc + item.quantity, 0);
   }
 }
 

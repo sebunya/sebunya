@@ -10,6 +10,8 @@ import { prepareCheckoutPayload, validateCheckoutPayload } from '../lib/checkout
 import { parseLocalCartCookie } from '../lib/cart';
 import { resolveCheckoutIntent, clearCheckoutIntent } from '../lib/checkoutIntent';
 import { resolveAuthenticatedUserId } from '../lib/customerAuth';
+import { cartClient } from '../lib/cartClient';
+import { resolveCartCredential, clearCartCredential } from '../lib/cartCredential';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 import {
   submitCheckout,
@@ -36,23 +38,32 @@ interface CartResponse {
   subtotalUgx: number;
 }
 
-const sessionId = readCartSessionId(Astro.request);
-if (!sessionId) {
+// The basket is read through the SIGNED CREDENTIAL, not a cart id in the URL. The
+// credential also names the owner, so a signed-in customer cannot be served a guest
+// basket and vice versa.
+const cartCredential = resolveCartCredential(Astro.cookies, await resolveAuthenticatedUserId(Astro.cookies));
+if (!cartCredential) {
   return Astro.redirect('/cart', 303);
 }
 
-// Load cart from server API
 let cart: CartResponse | null = null;
-try {
-  const res = await fetch(`${apiBase}/commerce/carts/${encodeURIComponent(sessionId)}`, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(2000)
-  });
-  if (res.ok) {
-    const json = (await res.json()) as ApiEnvelope<CartResponse>;
-    if (json.success && json.data) cart = json.data;
-  }
-} catch { /* ignore, treated as empty below */ }
+const serverCart = await cartClient.read(
+  cartCredential.token,
+  Astro.cookies.get('goldplus_session')?.value ?? null,
+);
+if (serverCart.ok) {
+  cart = {
+    id: serverCart.cart.id,
+    items: serverCart.cart.items.map((line) => ({
+      productId: line.productId,
+      name: line.name,
+      quantity: line.quantity,
+      unitPriceUgx: line.unitPriceUgx,
+      priceUgx: line.unitPriceUgx,
+    })) as CartResponse['items'],
+    subtotalUgx: serverCart.cart.subtotalUgx,
+  };
+}
 
 // Fallback to local cookie state if API failed or returned empty!
 if (!cart || cart.items.length === 0) {
@@ -61,7 +72,9 @@ if (!cart || cart.items.length === 0) {
   if (items.length > 0) {
     const subtotalUgx = items.reduce((acc, item) => acc + ((item.unitPriceUgx || item.priceUgx) * item.quantity), 0);
     cart = {
-      id: sessionId,
+      // The credential's cart id, so the local fallback and the server basket refer to
+      // the same basket rather than to whatever the browser last held.
+      id: cartCredential.cartId,
       items,
       subtotalUgx
     };

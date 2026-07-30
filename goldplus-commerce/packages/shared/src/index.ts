@@ -27,3 +27,4 @@ export * from './events/zero-party';
 export * from './control-centre/module-registry';
 export * from './types/checkout';
 export * from './checkout-intent';
+export * from './cart-credential';

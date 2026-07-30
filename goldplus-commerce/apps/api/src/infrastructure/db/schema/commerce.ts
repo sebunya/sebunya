@@ -8,9 +8,19 @@ export const carts = pgTable('carts', {
   userId: uuid('user_id'),
   sessionId: varchar('session_id', { length: 255 }),
   anonymousId: varchar('anonymous_id', { length: 160 }),
+  // Ownership (migration 0060). Nullable because carts predating it cannot be
+  // attributed retroactively — there is no record of who created them — and a
+  // guessed owner would look like an authorization decision nobody made.
+  ownerKind: varchar('owner_kind', { length: 8 }),
+  ownerId: varchar('owner_id', { length: 128 }),
+  /** Monotonic, for optimistic concurrency. See the migration for why. */
+  version: integer('version').default(1).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
 }, (table) => ({
   sessionIdx: index('carts_session_idx').on(table.sessionId),
   anonymousIdx: index('carts_anonymous_idx').on(table.anonymousId),
+  ownerIdx: index('carts_owner_idx').on(table.ownerKind, table.ownerId),
 }));
 
 export const cartItems = pgTable('cart_items', {
@@ -18,7 +28,12 @@ export const cartItems = pgTable('cart_items', {
   cartId: uuid('cart_id').references(() => carts.id).notNull(),
   productId: uuid('product_id').references(() => products.id).notNull(),
   quantity: integer('quantity').notNull(),
-});
+}, (table) => ({
+  // One row per (cart, product), enforced by the database (migration 0060). The
+  // repository's delete-then-reinsert hid the absence of this: nothing stopped two
+  // rows for the same product silently doubling a line.
+  cartProductIdx: uniqueIndex('cart_items_cart_product_idx').on(table.cartId, table.productId),
+}));
 
 export const orders = pgTable('orders', {
   id: uuid('id').defaultRandom().primaryKey(),

@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
@@ -8,6 +8,8 @@ import { clientIp } from '../clientAddress';
 import { CHECKOUT_POLICY_VERSION } from '../../../domain/commerce/CheckoutPrincipal';
 import { isCheckoutSuccess } from '../../../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { isRedirectReady } from '../../../application/use-cases/commerce/StartOrderPaymentUseCase';
+import { isCartApplied, type CartOutcome } from '../../../application/use-cases/commerce/MutateCartUseCase';
+import { resolveCartCredential, cartRefusalStatus } from '../middleware/cartCredential';
 
 /** Rejections whose code is safe and useful to name back to the customer. */
 const TERMINAL_PUBLIC_CODES = [
@@ -81,76 +83,218 @@ async function earnDormantLoyaltyForVerifiedOrder(orderId: string): Promise<void
   }
 }
 
+// ---------------------------------------------------------------------------
+// Cart
+//
+// Every route below previously took a `cartId` from the request body or path and
+// acted on it with NO authorization of any kind: add items to any cart, change any
+// quantity, empty any cart, read any cart's contents. The id is a v4 UUID, so it is
+// not guessable — but the design rested on that secrecy, and the value travels where
+// a secret must not. It is the browser's `goldplus_cart_id` cookie, and on the read
+// route it was a URL PATH SEGMENT, so it reached access logs, proxy logs, browser
+// history and Referer headers.
+//
+// The cart id now comes from a SIGNED CREDENTIAL, never from the request payload, and
+// the routes are thin: schema, identity, delegate, map.
+// ---------------------------------------------------------------------------
+
+/** Bounded so an oversized or malformed payload is refused before any work. */
+const cartMutationSchema = z.object({
+  productId: z.string().uuid(),
+  quantity: z.number().int().min(0).max(999).optional(),
+  /** The version the caller believes it is changing. Optional on a first write. */
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+const cartClearSchema = z.object({
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+/**
+ * Refusal codes safe to name back to the caller.
+ *
+ * NOT_OWNED is deliberately reported as CART_NOT_FOUND by the use case, so a caller
+ * probing ids cannot tell an existing cart from a missing one.
+ */
+const CART_REFUSAL_STATUS: Record<string, 404 | 409 | 422 | 503> = {
+  CART_NOT_FOUND: 404,
+  NOT_OWNED: 404,
+  VERSION_CONFLICT: 409,
+  PRODUCT_UNAVAILABLE: 409,
+  QUANTITY_OUT_OF_BOUNDS: 422,
+  CART_LIMIT_EXCEEDED: 422,
+  RETRYABLE_FAILURE: 503,
+};
+
+const CART_REFUSAL_MESSAGE: Record<string, string> = {
+  CART_NOT_FOUND: 'This basket is no longer available. Please start a new one.',
+  NOT_OWNED: 'This basket is no longer available. Please start a new one.',
+  VERSION_CONFLICT: 'Your basket changed in another tab. It has been refreshed — please try again.',
+  PRODUCT_UNAVAILABLE: 'One or more items are no longer available. Please review your basket.',
+  QUANTITY_OUT_OF_BOUNDS: 'That quantity is not allowed.',
+  CART_LIMIT_EXCEEDED: 'Your basket has too many different products.',
+  RETRYABLE_FAILURE: 'The basket service is temporarily unavailable. Please try again.',
+};
+
+/**
+ * Establishes who the caller is and which cart they may touch.
+ *
+ * Returns a Response on refusal so each handler stays a single expression rather than
+ * repeating four lines of error mapping — which is how one of them came to be missed.
+ */
+async function requireCart(c: Context) {
+  // The session is resolved FIRST: a USER-owned cart is cross-checked against it, and
+  // that check cannot run before the session is known.
+  await applyOptionalCustomerSession(c);
+  const resolved = resolveCartCredential(c);
+  if (!resolved.ok) {
+    return {
+      refusal: c.json(
+        {
+          success: false,
+          error: {
+            code: resolved.code,
+            message:
+              resolved.code === 'CART_SESSION_UNAVAILABLE'
+                ? 'The basket service is temporarily unavailable. Please try again.'
+                : 'Your basket session has expired. Please reload the page.',
+          },
+        },
+        cartRefusalStatus(resolved.code),
+      ),
+    } as const;
+  }
+  return {
+    claims: resolved.claims,
+    owner: { kind: resolved.claims.ownerKind, id: resolved.claims.ownerId },
+    traceId: c.req.header('x-request-id') ?? crypto.randomUUID(),
+  } as const;
+}
+
+function cartResponse(c: Context, outcome: CartOutcome) {
+  if (isCartApplied(outcome)) {
+    return c.json({ success: true, data: outcome.cart });
+  }
+
+  if (outcome.kind === 'VERSION_CONFLICT') {
+    // The refreshed cart is returned WITH the conflict, so the storefront can show
+    // the customer what the basket actually holds instead of an error with no state.
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: 'VERSION_CONFLICT',
+          message: CART_REFUSAL_MESSAGE.VERSION_CONFLICT,
+          details: outcome.cart,
+        },
+      },
+      409,
+    );
+  }
+
+  const status = CART_REFUSAL_STATUS[outcome.kind] ?? 400;
+  return c.json(
+    {
+      success: false,
+      // A stable code and a fixed message. The previous handlers returned
+      // `err.message`, which carries query fragments and internal identifiers.
+      error: {
+        code: outcome.kind,
+        message: CART_REFUSAL_MESSAGE[outcome.kind] ?? 'The basket could not be updated.',
+        ...(outcome.kind === 'PRODUCT_UNAVAILABLE' ? { details: { productIds: outcome.reason.split(',') } } : {}),
+      },
+    },
+    status,
+  );
+}
+
+routes.get('/cart', async (c) => {
+  const gate = await requireCart(c);
+  if ('refusal' in gate) return gate.refusal;
+  const outcome = await registry.mutateCartUseCase.read({
+    cartId: gate.claims.cartId,
+    owner: gate.owner,
+    traceId: gate.traceId,
+  });
+  return cartResponse(c, outcome);
+});
+
 routes.post('/cart/add', async (c) => {
-  const body = await c.req.json();
-  await registry.addToCartUseCase.execute(body.cartId, body.item);
-  
-  const res: ApiResponse<{ status: string }> = {
-    success: true,
-    data: { status: 'item_added' },
-  };
-  return c.json(res);
+  const gate = await requireCart(c);
+  if ('refusal' in gate) return gate.refusal;
+
+  const parsed = cartMutationSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ success: false, error: { code: 'INVALID_CART_REQUEST', message: 'Invalid basket request.' } }, 400);
+  }
+
+  const outcome = await registry.mutateCartUseCase.mutate({
+    cartId: gate.claims.cartId,
+    owner: gate.owner,
+    expectedVersion: parsed.data.expectedVersion,
+    // Defaults to one, which is what an "add to basket" button means. Zero is not a
+    // meaningful add and would silently do nothing.
+    mutation: { kind: 'ADD', productId: parsed.data.productId, quantity: parsed.data.quantity ?? 1 },
+    traceId: gate.traceId,
+  });
+  return cartResponse(c, outcome);
 });
 
 routes.post('/cart/update', async (c) => {
-  const body = await c.req.json();
-  const { cartId, productId, quantity } = body;
-  const cart = await registry.cartRepo.findById(cartId);
-  if (cart) {
-    const updated = cart.updateQuantity(productId, quantity);
-    await registry.cartRepo.save(updated);
+  const gate = await requireCart(c);
+  if ('refusal' in gate) return gate.refusal;
+
+  const parsed = cartMutationSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success || parsed.data.quantity === undefined) {
+    return c.json({ success: false, error: { code: 'INVALID_CART_REQUEST', message: 'Invalid basket request.' } }, 400);
   }
-  const res: ApiResponse<{ status: string }> = {
-    success: true,
-    data: { status: 'item_updated' },
-  };
-  return c.json(res);
+
+  const outcome = await registry.mutateCartUseCase.mutate({
+    cartId: gate.claims.cartId,
+    owner: gate.owner,
+    expectedVersion: parsed.data.expectedVersion,
+    mutation: { kind: 'UPDATE', productId: parsed.data.productId, quantity: parsed.data.quantity },
+    traceId: gate.traceId,
+  });
+  return cartResponse(c, outcome);
 });
 
 routes.post('/cart/remove', async (c) => {
-  const body = await c.req.json();
-  const { cartId, productId } = body;
-  const cart = await registry.cartRepo.findById(cartId);
-  if (cart) {
-    const updated = cart.removeItem(productId);
-    await registry.cartRepo.save(updated);
+  const gate = await requireCart(c);
+  if ('refusal' in gate) return gate.refusal;
+
+  const parsed = cartMutationSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ success: false, error: { code: 'INVALID_CART_REQUEST', message: 'Invalid basket request.' } }, 400);
   }
-  const res: ApiResponse<{ status: string }> = {
-    success: true,
-    data: { status: 'item_removed' },
-  };
-  return c.json(res);
+
+  const outcome = await registry.mutateCartUseCase.mutate({
+    cartId: gate.claims.cartId,
+    owner: gate.owner,
+    expectedVersion: parsed.data.expectedVersion,
+    mutation: { kind: 'REMOVE', productId: parsed.data.productId },
+    traceId: gate.traceId,
+  });
+  return cartResponse(c, outcome);
 });
 
-routes.get('/carts/:id', async (c) => {
-  try {
-    const id = c.req.param('id');
-    
-    // Validate UUID format before querying to prevent Postgres database syntax exceptions
-    const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-    if (!uuidRegex.test(id)) {
-      const errRes: ApiResponse<never> = {
-        success: false,
-        error: { code: 'INVALID_UUID', message: 'Invalid cart session identifier format.' }
-      };
-      return c.json(errRes, 400);
-    }
+routes.post('/cart/clear', async (c) => {
+  const gate = await requireCart(c);
+  if ('refusal' in gate) return gate.refusal;
 
-    const cartData = await registry.getCartByIdUseCase.execute(id);
-
-    const res: ApiResponse<any> = {
-      success: true,
-      data: cartData,
-    };
-    return c.json(res);
-  } catch (err: any) {
-    console.error('[API_ERROR] Failed to fetch cart data:', err);
-    const errRes: ApiResponse<never> = {
-      success: false,
-      error: { code: 'INTERNAL_ERROR', message: err.message }
-    };
-    return c.json(errRes, 500);
+  const parsed = cartClearSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ success: false, error: { code: 'INVALID_CART_REQUEST', message: 'Invalid basket request.' } }, 400);
   }
+
+  const outcome = await registry.mutateCartUseCase.mutate({
+    cartId: gate.claims.cartId,
+    owner: gate.owner,
+    expectedVersion: parsed.data.expectedVersion,
+    mutation: { kind: 'CLEAR' },
+    traceId: gate.traceId,
+  });
+  return cartResponse(c, outcome);
 });
 
 routes.post('/orders/create', async (c) => {

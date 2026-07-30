@@ -9,6 +9,10 @@ import CartAddonRail from '../components/recommendations/CartAddonRail.astro';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
 import { LOCAL_SEED_PRODUCTS } from '../lib/catalog/catalog';
 import { parseLocalCartCookie } from '../lib/cart';
+import { cartClient, cartMessageFor } from '../lib/cartClient';
+import { resolveCartCredential } from '../lib/cartCredential';
+import { resolveAuthenticatedUserId } from '../lib/customerAuth';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 
 import crypto from 'node:crypto';
 
@@ -30,8 +34,31 @@ interface CartResponse {
 let sessionId = readCartSessionId(Astro.request);
 let isNewSession = false;
 
+/** Set when a server write was refused, so the customer is told rather than misled. */
+let cartNotice: string | null = null;
+
+// Cross-site refusal comes FIRST, before the credential is resolved, because resolving
+// MINTS one. The credential cookie is SameSite=Lax, so a cross-site POST arrives
+// without it — and answering a missing cookie by manufacturing a basket identity is
+// exactly backwards for a request the browser has already labelled cross-site.
+const cartOrigin =
+  Astro.request.method === 'POST'
+    ? checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>)
+    : ({ allowed: true, basis: 'SEC_FETCH_SITE' } as const);
+
+if (!cartOrigin.allowed) {
+  cartNotice = CROSS_SITE_MESSAGE;
+}
+
+// The signed basket credential. The cart id lives inside the signed claims, so the
+// browser never names a cart and knowing an id is no longer authority over it.
+const cartUserId = cartOrigin.allowed ? await resolveAuthenticatedUserId(Astro.cookies) : null;
+const cartCredential = cartOrigin.allowed
+  ? resolveCartCredential(Astro.cookies, cartUserId)
+  : null;
+
 // Handle Add, Update, and Remove POST submissions
-if (Astro.request.method === 'POST') {
+if (Astro.request.method === 'POST' && cartOrigin.allowed) {
   try {
     const formData = await Astro.request.formData();
     const action = formData.get('action')?.toString() || 'add';
@@ -69,18 +96,19 @@ if (Astro.request.method === 'POST') {
           });
         }
 
-        try {
-          await fetch(`${apiBase}/commerce/cart/add`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cartId: sessionId,
-              item: { productId, quantity: 1 }
-            }),
-            signal: AbortSignal.timeout(2000)
-          });
-        } catch (err) {
-          console.warn('[CART_OFFLINE] Using client fallback for Add to Cart:', err);
+        // Typed, credential-scoped, and the RESULT IS READ. The previous call sent
+        // the cart id in the body, discarded the response and swallowed failures into
+        // a console warning while updating the local cookie regardless — so a rejected
+        // server write looked exactly like an accepted one. The customer saw their
+        // basket change and the server's basket did not, which surfaced at checkout
+        // where the server's cart is the authority.
+        if (cartCredential) {
+          const result = await cartClient.add(
+            cartCredential.token,
+            { productId, quantity: 1 },
+            Astro.cookies.get('goldplus_session')?.value ?? null,
+          );
+          if (!result.ok) cartNotice = cartMessageFor(result.code);
         }
 
         if (searchQuery && Number.isInteger(searchRank) && searchRank >= 1 && searchRank <= 50) {
@@ -101,36 +129,25 @@ if (Astro.request.method === 'POST') {
           existing.quantity = validatedQty;
         }
 
-        try {
-          await fetch(`${apiBase}/commerce/cart/update`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cartId: sessionId,
-              productId,
-              quantity: validatedQty
-            }),
-            signal: AbortSignal.timeout(2000)
-          });
-        } catch (err) {
-          console.warn('[CART_OFFLINE] Using client fallback for Update Quantity:', err);
+        if (cartCredential) {
+          const result = await cartClient.update(
+            cartCredential.token,
+            { productId, quantity: validatedQty },
+            Astro.cookies.get('goldplus_session')?.value ?? null,
+          );
+          if (!result.ok) cartNotice = cartMessageFor(result.code);
         }
 
       } else if (action === 'remove') {
         localItems = localItems.filter(i => i.productId !== productId);
 
-        try {
-          await fetch(`${apiBase}/commerce/cart/remove`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cartId: sessionId,
-              productId
-            }),
-            signal: AbortSignal.timeout(2000)
-          });
-        } catch (err) {
-          console.warn('[CART_OFFLINE] Using client fallback for Remove Item:', err);
+        if (cartCredential) {
+          const result = await cartClient.remove(
+            cartCredential.token,
+            { productId },
+            Astro.cookies.get('goldplus_session')?.value ?? null,
+          );
+          if (!result.ok) cartNotice = cartMessageFor(result.code);
         }
       }
 
@@ -161,22 +178,29 @@ if (Astro.request.method === 'POST') {
 let cart: CartResponse | null = null;
 let fetchError: string | null = null;
 
-if (sessionId) {
-  try {
-    const res = await fetch(`${apiBase}/commerce/carts/${encodeURIComponent(sessionId)}`, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(2000)
-    });
-    if (res.ok) {
-      const json = (await res.json()) as ApiEnvelope<CartResponse>;
-      if (json.success && json.data) {
-        cart = json.data;
-      }
-    } else if (res.status !== 404) {
-      fetchError = `Failed to load cart (HTTP ${res.status})`;
-    }
-  } catch {
-    fetchError = 'Cannot reach the commerce service right now.';
+if (cartCredential) {
+  const result = await cartClient.read(
+    cartCredential.token,
+    Astro.cookies.get('goldplus_session')?.value ?? null,
+  );
+  if (result.ok) {
+    cart = {
+      id: result.cart.id,
+      items: result.cart.items.map((line) => ({
+        productId: line.productId,
+        slug: '',
+        name: line.name,
+        categoryName: null,
+        quantity: line.quantity,
+        unitPriceUgx: line.unitPriceUgx,
+      })),
+      subtotalUgx: result.cart.subtotalUgx,
+    };
+  } else if (result.code !== 'CART_NOT_FOUND') {
+    // A missing basket is not an error to show: a first visit has none. Anything else
+    // is, and it is named through the exhaustive mapper rather than by passing the
+    // server's own message to the customer.
+    fetchError = cartMessageFor(result.code);
   }
 }
 
@@ -200,6 +224,17 @@ const formatUgx = (n: number): string =>
 <BaseLayout title="Your cart">
   <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
     <h1 class="text-2xl md:text-3xl font-black text-gray-900 mb-8 tracking-tight">Your cart</h1>
+
+    {cartNotice && (
+      <div class="mb-6">
+        {/*
+          A refused server write must be visible. Setting a notice and never rendering
+          it is the same silence the discarded fetch responses produced: the customer's
+          view updates from the local cookie while the server rejected the change.
+        */}
+        <Notice kind="not-configured" title="Basket not updated" message={cartNotice} />
+      </div>
+    )}
 
     {fetchError && (
       <div class="mb-6">

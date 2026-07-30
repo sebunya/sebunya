@@ -347,6 +347,11 @@ import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRe
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
 import { DrizzleCheckoutSideEffectRecorder } from './db/repositories/DrizzleCheckoutSideEffectRecorder';
+import {
+  DrizzleAuthorizedCartRepository,
+  DrizzleCartProductReader,
+} from './db/repositories/DrizzleAuthorizedCartRepository';
+import { MutateCartUseCase } from '../application/use-cases/commerce/MutateCartUseCase';
 import { ExecuteCheckoutIntentUseCase } from '../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { StartOrderPaymentUseCase } from '../application/use-cases/commerce/StartOrderPaymentUseCase';
 import { ProcessCheckoutSideEffectBatchUseCase } from '../application/use-cases/outbox/ProcessCheckoutSideEffectBatchUseCase';
@@ -618,6 +623,28 @@ export class Registry {
    * testable without standing up HTTP.
    */
   public readonly checkoutSideEffectRecorder = new DrizzleCheckoutSideEffectRecorder();
+
+  /**
+   * Cart mutation, with ownership and optimistic concurrency.
+   *
+   * Replaces the inline logic the four cart routes each held separately — which is how
+   * one of them came to have no authorization while another had none either, and why
+   * concurrency policy lived in a transport adapter.
+   */
+  public readonly authorizedCartRepo = new DrizzleAuthorizedCartRepository();
+  public readonly cartProductReader = new DrizzleCartProductReader();
+  public readonly mutateCartUseCase = new MutateCartUseCase({
+    carts: this.authorizedCartRepo,
+    products: this.cartProductReader,
+    observer: {
+      // Cart ids and trace ids only. A denied cart operation is a security-relevant
+      // event, and these lines outlive the request; no basket contents belong in them.
+      onOwnershipDenied: (cartId, traceId) =>
+        logger.warn({ cartId, traceId }, 'CART_OWNERSHIP_DENIED'),
+      onVersionConflict: (cartId, traceId) =>
+        logger.info({ cartId, traceId }, 'CART_VERSION_CONFLICT'),
+    },
+  });
 
   public readonly executeCheckoutIntentUseCase = new ExecuteCheckoutIntentUseCase({
     idempotency: this.checkoutIdempotencyRepo,

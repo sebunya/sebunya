@@ -109,6 +109,13 @@ app.use('/telemetry/collect', rateLimiter({ limit: 100, windowMs: 1000 }));
 app.use('*', rateLimiter({ limit: 1000, windowMs: 60 * 1000 }));
 // Slice 1B: credential endpoints get a much tighter per-IP budget than the
 // global limiter — brute force is bounded even before the account lockout.
+// Basket mutations are cheap for a caller and not free for us: each one reads the
+// catalogue and writes two tables. The global 1000/min ceiling above is far too loose
+// to bound a script hammering add-to-basket, and the previous routes had no per-path
+// limit at all. Generous enough for real shopping — a customer adjusting quantities
+// clicks a few times a second at most.
+app.use('/commerce/cart', rateLimiter({ limit: 120, windowMs: 60 * 1000 }));
+app.use('/commerce/cart/*', rateLimiter({ limit: 120, windowMs: 60 * 1000 }));
 app.use('/auth/login', rateLimiter({ limit: 10, windowMs: 60 * 1000 }));
 app.use('/auth/admin/login', rateLimiter({ limit: 10, windowMs: 60 * 1000 }));
 app.use('*', maintenanceMode);

@@ -244,6 +244,43 @@ routes.get('/admin/orders/:id', requirePermissions([PERMISSIONS.ORDERS_READ]), a
   }
 });
 
+/**
+ * Admin cart lookup.
+ *
+ * The storefront's admin page already sent a bearer token to `GET /commerce/carts/:id`
+ * — but that route had NO permission guard, so the token was decorative and any
+ * unauthenticated caller could read any cart by id. The customer-facing route is now
+ * credential-scoped and cannot serve an arbitrary id at all, so the admin need moves
+ * here where it can actually be authorized.
+ */
+routes.get('/admin/carts/:id', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const id = c.req.param('id') as string;
+  // Validated before the query so a malformed id is a 400 rather than a Postgres
+  // syntax error surfacing as a 500.
+  if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id)) {
+    return c.json({ success: false, error: { code: 'INVALID_UUID', message: 'Cart ids are UUIDs.' } }, 400);
+  }
+
+  const record = await registry.authorizedCartRepo.find(id);
+  if (!record) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Cart not found.' } }, 404);
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      id: record.id,
+      version: record.version,
+      // The owner KIND is useful for support ("is this a guest basket?"); the owner ID
+      // is not returned, because for a USER cart it is the customer's account id and
+      // this surface has no need to hand it out.
+      ownerKind: record.ownerKind,
+      items: record.items,
+      subtotalUgx: record.items.reduce((sum, line) => sum + line.unitPriceUgx * line.quantity, 0),
+    },
+  });
+});
+
 // Admin Communication Preview Route
 routes.get('/admin/orders/:id/communication-preview', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   try {

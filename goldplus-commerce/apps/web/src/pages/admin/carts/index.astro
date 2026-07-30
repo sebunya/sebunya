@@ -36,7 +36,10 @@ if (lookupId) {
     lookupError = 'Connectivity Alert: The commerce API backend is offline and cannot process lookups.';
   } else {
     try {
-      const res = await fetch(`${apiBase}/commerce/carts/${lookupId}`, {
+      // The guarded admin route. The customer-facing read is now credential-scoped and
+      // cannot serve an arbitrary id — and the route this used to call had no
+      // permission guard at all, so the bearer token below was decorative.
+      const res = await fetch(`${apiBase}/commerce/admin/carts/${lookupId}`, {
         headers: { 
           'Accept': 'application/json',
           'Authorization': `Bearer ${token}`

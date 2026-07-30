@@ -147,6 +147,7 @@ done
 E2E_JWT_SECRET="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')"
 E2E_INTENT_SECRET="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')"
 E2E_PEPPER="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')"
+E2E_CART_SECRET="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')"
 
 # --- PesaPal stub ------------------------------------------------------------
 say 'Starting the PesaPal stub'
@@ -176,6 +177,7 @@ env \
   REDIS_URL="redis://127.0.0.1:${REDIS_PORT}" \
   JWT_SECRET="$E2E_JWT_SECRET" \
   CHECKOUT_INTENT_SECRET="$E2E_INTENT_SECRET" \
+  CART_CREDENTIAL_SECRET="$E2E_CART_SECRET" \
   IDENTITY_HASH_PEPPER="$E2E_PEPPER" \
   PESAPAL_ENV=sandbox \
   PESAPAL_BASE_URL="http://127.0.0.1:${STUB_PORT}" \
@@ -213,6 +215,7 @@ env \
   PUBLIC_API_BASE_URL="http://127.0.0.1:${API_PORT}" \
   PUBLIC_SITE_ORIGINS="http://127.0.0.1:${WEB_PORT}" \
   CHECKOUT_INTENT_SECRET="$E2E_INTENT_SECRET" \
+  CART_CREDENTIAL_SECRET="$E2E_CART_SECRET" \
   JWT_SECRET="$E2E_JWT_SECRET" \
   node apps/web/dist/server/entry.mjs >"$LOG_DIR/web.log" 2>&1 &
 WEB_PID=$!
