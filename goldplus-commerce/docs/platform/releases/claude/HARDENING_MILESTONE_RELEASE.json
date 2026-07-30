@@ -314,5 +314,9 @@
     "NOTIFICATION_DELIVERY_ENABLED": "false",
     "NOTIFICATIONS_LIVE_SEND_ENABLED": "false"
   },
-  "frozenAt": "2026-07-30"
+  "frozenAt": "2026-07-30",
+  "candidateReachability": {
+    "$comment": "The controller asserts the candidate is REACHABLE on the target branch, not that the branch head equals it. The release package is itself a commit on the same branch, so an equality check would make the branch fail its own release the moment the package was pushed. What matters is that the candidate has not been rewritten, reverted or force-pushed away. The deployed tree is the candidate's; later commits on the branch are release metadata and are not deployed.",
+    "rule": "git merge-base --is-ancestor <candidate> origin/<targetBranch>"
+  }
 }

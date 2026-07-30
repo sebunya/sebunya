@@ -93,15 +93,31 @@ assert_environment() {
   esac
   [ -z "$(git -C "$APP_ROOT" status --porcelain)" ] || die "DIRTY_WORKTREE — a release needs a clean tree"
   HEAD_SHA="$(git -C "$APP_ROOT" rev-parse HEAD)"
-  [ "$HEAD_SHA" = "$CANDIDATE" ] || die "WRONG_CANDIDATE — HEAD is $HEAD_SHA, expected $CANDIDATE"
-  ok "clean worktree at the exact candidate"
+  # HEAD must be the candidate, or a descendant of it on the target branch — which is
+  # what the checkout looks like when the release package itself is the latest commit.
+  # It must never be something that does not contain the candidate.
+  if [ "$HEAD_SHA" != "$CANDIDATE" ]; then
+    git -C "$APP_ROOT" merge-base --is-ancestor "$CANDIDATE" HEAD \
+      || die "WRONG_CANDIDATE — HEAD is $HEAD_SHA and does not contain $CANDIDATE"
+    printf '  NOTE  HEAD is %s, a descendant of the candidate; the CANDIDATE tree is what deploys\n' "$HEAD_SHA"
+  fi
+  ok "clean worktree containing the exact candidate"
 
-  # The remote branch must still point at the candidate. If someone pushed after the
-  # freeze, this release is stale and must be re-frozen rather than deployed.
-  REMOTE_HEAD="$(git -C "$APP_ROOT" ls-remote origin "refs/heads/${TARGET_BRANCH}" | cut -f1)"
-  [ "$REMOTE_HEAD" = "$CANDIDATE" ] \
-    || die "REMOTE_MOVED — origin/$TARGET_BRANCH is $REMOTE_HEAD, not the frozen candidate"
-  ok "remote branch still at the candidate"
+  # The remote branch must still CONTAIN the candidate.
+  #
+  # Not "equal" it: this very release package is a commit on the same branch, so
+  # requiring equality would make the branch fail its own release the moment the package
+  # was pushed. What actually matters is that the candidate is still reachable — it has
+  # not been rewritten, reverted or force-pushed away — and that is exactly what an
+  # ancestry check asserts.
+  #
+  # The deployed tree is the CANDIDATE's, not the branch head's. Later commits on the
+  # branch (release metadata, documentation) are not deployed by this release, and
+  # production fast-forwards to the candidate SHA rather than to the branch.
+  git -C "$APP_ROOT" fetch -q origin "$TARGET_BRANCH" || die "CANNOT_FETCH_TARGET_BRANCH"
+  git -C "$APP_ROOT" merge-base --is-ancestor "$CANDIDATE" "origin/${TARGET_BRANCH}" \
+    || die "CANDIDATE_NOT_REACHABLE — $CANDIDATE is no longer on origin/$TARGET_BRANCH; re-freeze before deploying"
+  ok "candidate still reachable on the remote branch"
 
   [ -f "$RELEASE_JSON" ] || die "MISSING_RELEASE_IDENTITY — $RELEASE_JSON"
   ok "frozen release identity present"
