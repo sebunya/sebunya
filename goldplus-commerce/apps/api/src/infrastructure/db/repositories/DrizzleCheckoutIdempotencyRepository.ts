@@ -1,6 +1,13 @@
 import { and, eq, lt, sql } from 'drizzle-orm';
+import { randomBytes } from 'node:crypto';
 import { db } from '../client';
 import { checkoutIdempotency } from '../schema/commerce';
+import {
+  ClaimResult,
+  ICheckoutIdempotencyRepository,
+  LeaseToken,
+  CheckoutSagaStage,
+} from '../../../application/ports/ICheckoutIdempotencyRepository';
 import {
   IdempotencyRecord,
   IdempotencyState,
@@ -21,9 +28,10 @@ import {
  * the database arbitrates. Exactly one caller inserts; every other caller reads
  * back the existing row and is told what to do about it.
  */
-export interface ClaimResult {
-  claimed: boolean;
-  record: IdempotencyRecord;
+export const LEASE_DURATION_SECONDS = 120;
+
+function newClaimToken(): string {
+  return randomBytes(24).toString('hex');
 }
 
 function toRecord(row: typeof checkoutIdempotency.$inferSelect): IdempotencyRecord {
@@ -40,7 +48,7 @@ function toRecord(row: typeof checkoutIdempotency.$inferSelect): IdempotencyReco
   };
 }
 
-export class DrizzleCheckoutIdempotencyRepository {
+export class DrizzleCheckoutIdempotencyRepository implements ICheckoutIdempotencyRepository {
   /**
    * Claims the identity, or returns the row that already holds it.
    *
@@ -58,6 +66,9 @@ export class DrizzleCheckoutIdempotencyRepository {
     const now = args.now ?? new Date();
     const expiresAt = new Date(now.getTime() + IDEMPOTENCY_RECORD_TTL_SECONDS * 1000);
 
+    const claimToken = newClaimToken();
+    const leaseExpiresAt = new Date(now.getTime() + LEASE_DURATION_SECONDS * 1000);
+
     const inserted = await db
       .insert(checkoutIdempotency)
       .values({
@@ -65,6 +76,12 @@ export class DrizzleCheckoutIdempotencyRepository {
         principalKey: args.principalKey,
         fingerprint: args.fingerprint,
         state: 'IN_PROGRESS',
+        stage: 'CLAIMED',
+        claimToken,
+        fencingNumber: 1,
+        attemptNumber: 1,
+        leaseExpiresAt,
+        lastHeartbeatAt: now,
         createdAt: now,
         updatedAt: now,
         expiresAt,
@@ -72,29 +89,60 @@ export class DrizzleCheckoutIdempotencyRepository {
       .onConflictDoNothing()
       .returning();
 
-    if (inserted.length === 1) return { claimed: true, record: toRecord(inserted[0]) };
+    if (inserted.length === 1) {
+      return {
+        claimed: true,
+        record: toRecord(inserted[0]),
+        lease: { identity: args.identity, claimToken, fencingNumber: 1 },
+      };
+    }
 
     // Someone else holds it. Try to take over only if their claim is genuinely
     // dead: the lease lapsed, or they recorded a retryable failure. Matching the
     // fingerprint here means a conflicting request never steals a live claim —
     // it is refused by the caller's decision logic instead.
-    const leaseCutoff = new Date(now.getTime() - IDEMPOTENCY_LEASE_SECONDS * 1000);
+    // The lease extension is part of THIS statement, not a follow-up. Verified
+    // against a real PostgreSQL: without it the row still satisfies
+    // `lease_expires_at < now()` after the first takeover commits, so every
+    // subsequent contender also takes over and the fence cascades — six
+    // concurrent requests produced six owners.
     const takenOver = await db
       .update(checkoutIdempotency)
-      .set({ state: 'IN_PROGRESS', updatedAt: now, failureReason: null, expiresAt })
+      .set({
+        state: 'IN_PROGRESS',
+        claimToken,
+        fencingNumber: sql`${checkoutIdempotency.fencingNumber} + 1`,
+        attemptNumber: sql`${checkoutIdempotency.attemptNumber} + 1`,
+        leaseExpiresAt,
+        lastHeartbeatAt: now,
+        updatedAt: now,
+        failureReason: null,
+        expiresAt,
+      })
       .where(
         and(
           eq(checkoutIdempotency.identity, args.identity),
           eq(checkoutIdempotency.fingerprint, args.fingerprint),
           sql`(
-            (${checkoutIdempotency.state} = 'IN_PROGRESS' AND ${checkoutIdempotency.updatedAt} < ${leaseCutoff})
+            (${checkoutIdempotency.state} = 'IN_PROGRESS'
+              AND (${checkoutIdempotency.leaseExpiresAt} IS NULL OR ${checkoutIdempotency.leaseExpiresAt} < ${now}))
             OR ${checkoutIdempotency.state} = 'FAILED_RETRYABLE'
           )`,
         ),
       )
       .returning();
 
-    if (takenOver.length === 1) return { claimed: true, record: toRecord(takenOver[0]) };
+    if (takenOver.length === 1) {
+      return {
+        claimed: true,
+        record: toRecord(takenOver[0]),
+        lease: {
+          identity: args.identity,
+          claimToken,
+          fencingNumber: takenOver[0].fencingNumber,
+        },
+      };
+    }
 
     const [existing] = await db
       .select()
@@ -109,45 +157,107 @@ export class DrizzleCheckoutIdempotencyRepository {
     return { claimed: false, record: toRecord(existing) };
   }
 
-  /** Marks the operation completed. Guarded so only the current claim may. */
-  async complete(identity: string, orderId: string): Promise<boolean> {
+  /**
+   * Every mutation must present the lease. Identity alone is not ownership: after
+   * a takeover the row is IN_PROGRESS again, so a worker returning late from a
+   * slow call matched a state-only predicate and could overwrite its successor.
+   * Proven against real PostgreSQL: the stale worker now updates zero rows.
+   */
+  private fenced(lease: LeaseToken) {
+    return and(
+      eq(checkoutIdempotency.identity, lease.identity),
+      eq(checkoutIdempotency.claimToken, lease.claimToken),
+      eq(checkoutIdempotency.fencingNumber, lease.fencingNumber),
+      eq(checkoutIdempotency.state, 'IN_PROGRESS'),
+    );
+  }
+
+  /**
+   * Links the order to the claim the moment the order exists.
+   *
+   * The route used to save the order and then complete the record in a separate
+   * statement. A crash in that window left a committed order and an IN_PROGRESS
+   * record with order_id NULL, so a later takeover re-priced, re-reserved and
+   * re-created — duplicating the order the customer already had. Recording the
+   * order at ORDER_CREATED means a retry resumes instead of restarting.
+   */
+  async linkOrder(lease: LeaseToken, orderId: string): Promise<boolean> {
     const updated = await db
       .update(checkoutIdempotency)
-      .set({ state: 'COMPLETED', orderId, updatedAt: new Date(), failureReason: null })
-      .where(
-        and(
-          eq(checkoutIdempotency.identity, identity),
-          eq(checkoutIdempotency.state, 'IN_PROGRESS'),
-        ),
-      )
+      .set({ orderId, stage: 'ORDER_CREATED', updatedAt: new Date() })
+      .where(this.fenced(lease))
+      .returning({ identity: checkoutIdempotency.identity });
+    return updated.length === 1;
+  }
+
+  /** Advances the durable saga stage under the active fence. */
+  async advanceStage(
+    lease: LeaseToken,
+    stage: CheckoutSagaStage,
+  ): Promise<boolean> {
+    const updated = await db
+      .update(checkoutIdempotency)
+      .set({ stage, updatedAt: new Date() })
+      .where(this.fenced(lease))
       .returning({ identity: checkoutIdempotency.identity });
     return updated.length === 1;
   }
 
   /**
-   * Records a failure.
+   * Renews the lease while legitimate work continues, so a slow-but-alive
+   * request is not evicted mid-checkout by a contender.
+   */
+  async heartbeat(lease: LeaseToken, now: Date = new Date()): Promise<boolean> {
+    const updated = await db
+      .update(checkoutIdempotency)
+      .set({
+        lastHeartbeatAt: now,
+        leaseExpiresAt: new Date(now.getTime() + LEASE_DURATION_SECONDS * 1000),
+        updatedAt: now,
+      })
+      .where(this.fenced(lease))
+      .returning({ identity: checkoutIdempotency.identity });
+    return updated.length === 1;
+  }
+
+  /** Marks the operation completed. Requires the active lease. */
+  async complete(lease: LeaseToken, orderId: string): Promise<boolean> {
+    const updated = await db
+      .update(checkoutIdempotency)
+      .set({
+        state: 'COMPLETED',
+        stage: 'COMPLETED',
+        orderId,
+        updatedAt: new Date(),
+        failureReason: null,
+        leaseExpiresAt: null,
+      })
+      .where(this.fenced(lease))
+      .returning({ identity: checkoutIdempotency.identity });
+    return updated.length === 1;
+  }
+
+  /**
+   * Records a failure. Requires the active lease.
    *
    * `retryable` decides whether the customer may try the same key again. A
    * transient database fault must not permanently poison a key; a rejected
    * request (bad coupon, unavailable product) must not be retried into the same
    * failure forever.
    */
-  async fail(identity: string, reason: string, retryable: boolean): Promise<boolean> {
+  async fail(lease: LeaseToken, reason: string, retryable: boolean): Promise<boolean> {
     const updated = await db
       .update(checkoutIdempotency)
       .set({
         state: retryable ? 'FAILED_RETRYABLE' : 'FAILED_FINAL',
+        stage: retryable ? 'FAILED_RETRYABLE' : 'FAILED_FINAL',
         // Truncated to the column width, and never the raw error object, which
         // can carry query text or customer data.
         failureReason: reason.slice(0, 200),
         updatedAt: new Date(),
+        leaseExpiresAt: null,
       })
-      .where(
-        and(
-          eq(checkoutIdempotency.identity, identity),
-          eq(checkoutIdempotency.state, 'IN_PROGRESS'),
-        ),
-      )
+      .where(this.fenced(lease))
       .returning({ identity: checkoutIdempotency.identity });
     return updated.length === 1;
   }

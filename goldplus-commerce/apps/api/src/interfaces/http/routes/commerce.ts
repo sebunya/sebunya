@@ -10,10 +10,14 @@ import {
   CHECKOUT_POLICY_VERSION,
   checkoutFingerprint,
   decideIdempotency,
-  idempotencyIdentity,
-  principalKey,
 } from '../../../domain/commerce/CheckoutPrincipal';
-import { resolveCheckoutPrincipal, checkoutIdempotencyRepo } from '../middleware/checkoutPrincipal';
+import { checkoutIdempotencyRepo } from '../middleware/checkoutPrincipal';
+import {
+  applyOptionalCustomerSession,
+  resolveCheckoutIntent,
+} from '../middleware/checkoutIntent';
+import { intentIdempotencyIdentity, intentPrincipalKey } from '@goldplus/shared';
+import type { LeaseToken } from '../../../application/ports/ICheckoutIdempotencyRepository';
 import { toCheckoutResponseDto } from '../../../application/mappers/toCheckoutResponseDto';
 
 // Slice 3B: server-authoritative checkout input. Client prices/sku/names are
@@ -152,7 +156,8 @@ routes.get('/carts/:id', async (c) => {
 
 routes.post('/orders/create', async (c) => {
   // Declared outside the try so the catch can release a claim this request took.
-  let claimedIdentity: string | null = null;
+  // The lease, not just the identity: every mutation must prove ownership.
+  let lease: LeaseToken | null = null;
   try {
     const raw = await c.req.json().catch(() => null);
     const parsed = checkoutBodySchema.safeParse(raw);
@@ -163,27 +168,34 @@ routes.post('/orders/create', async (c) => {
     }
     const body = parsed.data;
 
-    // Trusted principal. Ownership of a checkout cannot come from the request
-    // body: email and phone are caller-supplied, so anyone could adopt any
-    // identity by typing it. An authenticated customer uses their server-side
-    // user id; a guest gets a signed, expiring, server-issued cookie.
-    const resolved = resolveCheckoutPrincipal(c);
-    if (!resolved.ok) {
+    // Verified optional authentication first, so an authenticated principal wins
+    // over any intent that claims to be a guest.
+    await applyOptionalCustomerSession(c);
+
+    // Verify the BFF-issued checkout intent. This route NEVER mints one: silent
+    // minting turns a lost or expired identity into a NEW operation, which is
+    // exactly how a lost HTTP response becomes a duplicate order.
+    const intent = resolveCheckoutIntent(c);
+    if (!intent.ok) {
+      const status = intent.code === 'CHECKOUT_SESSION_UNAVAILABLE' ? 503 : 409;
       return c.json({
         success: false,
         error: {
-          code: 'CHECKOUT_SESSION_UNAVAILABLE',
-          message: 'Checkout is temporarily unavailable. Please try again.',
+          code: intent.code,
+          message:
+            intent.code === 'CHECKOUT_SESSION_UNAVAILABLE'
+              ? 'Checkout is temporarily unavailable. Please try again.'
+              : 'Your checkout session is no longer valid. Please reload the checkout page.',
         },
-      }, 503);
+      }, status);
     }
-    const principal = resolved.principal;
+    const claims = intent.claims;
 
     // Canonical fingerprint of what was actually asked for, so reusing a key for
     // a materially different basket is a conflict rather than being silently
     // answered with the earlier order.
     const fingerprint = checkoutFingerprint({
-      principal,
+      principal: { kind: claims.kind, id: claims.principalId },
       items: body.items,
       buyerType: body.buyerType,
       couponCode: body.couponCode ?? null,
@@ -192,14 +204,17 @@ routes.post('/orders/create', async (c) => {
       acceptedQuoteId: body.previewQuoteId ?? null,
       policyVersion: CHECKOUT_POLICY_VERSION,
     });
-    const identity = idempotencyIdentity(principal, body.clientOrderKey);
+    // Bound to the INTENT, not merely the principal: a genuine second order gets
+    // a new intent and therefore a new identity, while every retry of the same
+    // intended purchase collapses onto one.
+    const identity = intentIdempotencyIdentity(claims, body.clientOrderKey);
     const idem = checkoutIdempotencyRepo();
 
     // Atomic claim. The previous read-then-write let two concurrent submissions
     // both perform pricing, capacity reservation and order creation, with only
     // the unique index catching the second INSERT after the work was done.
-    const claim = await idem.claim({ identity, principalKey: principalKey(principal), fingerprint });
-    if (claim.claimed) claimedIdentity = identity;
+    const claim = await idem.claim({ identity, principalKey: intentPrincipalKey(claims), fingerprint });
+    if (claim.claimed && claim.lease) lease = claim.lease;
     if (!claim.claimed) {
       const decision = decideIdempotency(claim.record, fingerprint);
       if (decision.action === 'CONFLICT') {
@@ -257,6 +272,12 @@ routes.post('/orders/create', async (c) => {
       acceptPriceChange: body.acceptPriceChange ?? false,
     });
 
+    // Link the order to the claim NOW, before any side effect. A crash between
+    // order creation and this link left a committed order with an IN_PROGRESS
+    // record holding no order id, so a later takeover re-priced, re-reserved and
+    // re-created — duplicating the order the customer already had.
+    if (lease) await idem.linkOrder(lease, result.order.id);
+
     // Section 12: reserve stock for the order (idempotent, all-or-nothing,
     // oversell-safe).
     //
@@ -267,10 +288,25 @@ routes.post('/orders/create', async (c) => {
     // policy permits it can reach BACKORDERED; a stock-controlled line that
     // could not be held leaves the order UNRESERVED_BLOCKED.
     const reservation = await registry.reserveInventoryForOrderUseCase.execute(result.order);
-    const backorderWarnings = reservation.warnings;
-    const reservationState = reservation.state;
-    const stockHeld = !reservation.fullyReserved;
-    const mayProgress = mayProgressToPayment(reservationState);
+    // One canonical decision object. `stockHeld = !fullyReserved` was an inverse
+    // name, and an inverted boolean is where a reader's mental model and the
+    // code's silently diverge — every downstream branch then has to be re-derived
+    // by negation.
+    const decision = {
+      reservationState: reservation.state,
+      outcome: reservation.code,
+      fullyReserved: reservation.fullyReserved,
+      stockConfirmed: reservation.fullyReserved,
+      isBackordered: reservation.code === 'BACKORDERED',
+      requiresHold: !reservation.fullyReserved,
+      mayProgressToPayment: mayProgressToPayment(reservation.state),
+      mayCreateFulfilment: mayCreateFulfilment(reservation.state),
+      warnings: reservation.warnings,
+    } as const;
+
+    const backorderWarnings = decision.warnings;
+    const reservationState = decision.reservationState;
+    const mayProgress = decision.mayProgressToPayment;
 
     // Section 9.3: every successfully placed order creates exactly one idempotent
     // admin fulfilment alert (the internal "New Orders" work item). This never
@@ -281,11 +317,11 @@ routes.post('/orders/create', async (c) => {
     // An order whose stock could not be confirmed gets NO fulfilment task at
     // all. Creating one — even ON_HOLD — puts unfulfillable work into the
     // operator's queue and asserts a stock position nobody established.
-    if (mayCreateFulfilment(reservationState)) {
+    if (decision.mayCreateFulfilment) {
       try {
         await registry.createFulfilmentTaskOnOrderPlacedUseCase.execute(result.order, {
           extraWarnings: backorderWarnings,
-          hold: stockHeld,
+          hold: decision.requiresHold,
         });
       } catch (fulfilErr: any) {
         console.error('[API_ERROR] Fulfilment task creation failed (order persisted):', fulfilErr?.message);
@@ -300,7 +336,7 @@ routes.post('/orders/create', async (c) => {
         await registry.enqueueAdminOrderEmailUseCase.execute({
           order: result.order,
           event: 'placed',
-          stockConfirmed: !stockHeld,
+          stockConfirmed: decision.stockConfirmed,
         });
       } catch (emailErr: any) {
         console.error('[API_ERROR] Admin order email enqueue failed (order persisted):', emailErr?.message);
@@ -314,7 +350,10 @@ routes.post('/orders/create', async (c) => {
       // The order exists and is recorded truthfully, but it does not progress.
       // The claim is marked COMPLETED against that order, so a retry with the
       // same key returns this same blocked order rather than creating a second.
-      await idem.complete(identity, result.order.id);
+      if (lease) {
+        await idem.advanceStage(lease, 'BLOCKED_STOCK');
+        await idem.complete(lease, result.order.id);
+      }
       return c.json({
         success: false,
         error: {
@@ -333,7 +372,10 @@ routes.post('/orders/create', async (c) => {
       }, 409);
     }
 
-    await idem.complete(identity, result.order.id);
+    if (lease) {
+      await idem.advanceStage(lease, 'AWAITING_PAYMENT');
+      await idem.complete(lease, result.order.id);
+    }
 
     // A dedicated response DTO, not `{ ...result.order }`. Spreading the domain
     // order published the customer's full name, phone, email and delivery
@@ -357,9 +399,9 @@ routes.post('/orders/create', async (c) => {
     // must not permanently poison the customer's checkout key.
     const known = ['PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE', 'PRICE_CHANGED', 'PROMOTION_CHANGED']
       .find((k) => String(err?.message ?? '').startsWith(k));
-    if (claimedIdentity) {
+    if (lease) {
       try {
-        await checkoutIdempotencyRepo().fail(claimedIdentity, known ?? 'CHECKOUT_ERROR', !known);
+        await checkoutIdempotencyRepo().fail(lease, known ?? 'CHECKOUT_ERROR', !known);
       } catch {
         // The claim expires on its own lease; failing to release it must not
         // replace the real error with a bookkeeping one.

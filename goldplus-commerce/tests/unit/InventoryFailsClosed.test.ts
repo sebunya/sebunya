@@ -297,7 +297,10 @@ describe('checkout route contract', () => {
     expect(start).toBeGreaterThan(-1);
     const window = text.slice(start - 400, start + 200);
     expect(window).not.toContain('catch (invErr');
-    expect(text).toContain('mayCreateFulfilment(reservationState)');
+    // Renamed to one canonical decision object; `stockHeld = !fullyReserved` was
+    // an inverse name that forced every branch to be re-derived by negation.
+    expect(text).toContain('decision.mayCreateFulfilment');
+    expect(text).not.toMatch(/const stockHeld =/);
     expect(text).toContain("code: 'STOCK_NOT_RESERVED'");
   });
 });

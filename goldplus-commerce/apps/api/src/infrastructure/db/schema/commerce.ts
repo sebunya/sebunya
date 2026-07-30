@@ -189,6 +189,15 @@ export const checkoutIdempotency = pgTable('checkout_idempotency', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  // Fenced lease (migration 0058). updated_at is not proof of ownership: after a
+  // takeover the row is IN_PROGRESS again, so a late worker matched the old
+  // predicate and could complete an operation it no longer owned.
+  claimToken: varchar('claim_token', { length: 64 }),
+  fencingNumber: integer('fencing_number').default(1).notNull(),
+  leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+  attemptNumber: integer('attempt_number').default(1).notNull(),
+  lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
+  stage: varchar('stage', { length: 24 }).default('CLAIMED').notNull(),
 }, (table) => ({
   inProgressIdx: index('checkout_idempotency_in_progress_idx').on(table.updatedAt),
   principalIdx: index('checkout_idempotency_principal_idx').on(table.principalKey, table.createdAt),

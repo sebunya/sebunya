@@ -176,20 +176,17 @@ describe('CheckoutUseCase (Slice 3B server-authoritative)', () => {
     expect(result.order.totalUgx).toBe(10_000);
   });
 
-  it('is idempotent on clientOrderKey — a resubmission returns the same order', async () => {
-    const orders = fakeOrders();
-    const uc = new CheckoutUseCase(orders, fakeProducts([fakeProduct('p1', 10_000)]), fakeZones([]));
-    const input = {
-      customerDetails: customer,
-      buyerType: 'retail' as const,
-      items: [{ productId: 'p1', quantity: 1 }],
-      clientOrderKey: 'ck-abc-123-xyz',
-    };
-    const first = await uc.execute(input);
-    const second = await uc.execute(input);
-    expect(second.idempotentReplay).toBe(true);
-    expect(second.order.id).toBe(first.order.id);
-    expect(orders.saved.length).toBe(1);
+  it('no longer performs its own idempotency lookup', async () => {
+    // Idempotency moved OUT of this use case to the fenced checkout_idempotency
+    // claim, which is bound to a verified principal rather than to the caller's
+    // own email or phone. Two competing mechanisms were the defect; asserting
+    // this one still dedupes would re-assert it.
+    const source = await (await import('node:fs/promises')).readFile(
+      new URL('../../apps/api/src/application/use-cases/commerce/CheckoutUseCase.ts', import.meta.url),
+      'utf8',
+    );
+    expect(source).not.toContain('findByClientKey');
+    expect(source).toContain('Idempotency is NOT handled here');
   });
 
   it('still routes wholesale and corporate orders to owner review', async () => {

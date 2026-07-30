@@ -3,7 +3,6 @@
   "repository": "sebunya/sebunya",
   "branch": "claude/amazon-grade-module-hardening-20260729",
   "baseCommit": "5e6d4ea37d5f181fbf0ab3a69a8cdb29ad6ca465",
-  "currentHead": "a263d2cccb16e0ebd5f8dab1e985ff963f1a93bc",
   "currentWave": 1,
   "currentModule": "checkout",
   "completedModules": [
@@ -15,11 +14,25 @@
     "outbox",
     "webhooks-payments",
     "inventory",
-    "checkout",
     "notifications-outbound-gating",
     "loyalty-ledger-integrity"
   ],
-  "inProgressModules": [],
+  "inProgressModules": [
+    {
+      "module": "checkout",
+      "reason": "Component-level work is proven, but the end-to-end browser path is not. Strong components are not a completed customer journey.",
+      "remaining": [
+        "Playwright end-to-end through the real Astro SSR path",
+        "twenty-concurrent-request checkout proof",
+        "crash-after-order-create recovery proof",
+        "lost-response retry proof through the BFF",
+        "PesaPal handoff contract proof",
+        "fingerprint coverage of delivery destination and contact intent (contract \u00a710)",
+        "state-aware retention model (contract \u00a711)",
+        "orchestration moved out of the route into an application use case (contract \u00a76)"
+      ]
+    }
+  ],
   "blockedModules": [
     {
       "module": "release-readiness",
@@ -37,12 +50,6 @@
   "openCriticalFindings": [],
   "openHighFindings": [
     {
-      "id": "H-01",
-      "module": "inventory",
-      "summary": "products_reserved_within_stock remains NOT VALID until the readiness gate is run against production data.",
-      "gate": "scripts/db/inventory-constraint-readiness.sh"
-    },
-    {
       "id": "H-02",
       "module": "cart",
       "summary": "Cart routes not yet audited for object-level authorization; a caller may read or mutate a cart by knowing its id."
@@ -51,6 +58,27 @@
       "id": "H-03",
       "module": "outbound-delivery",
       "summary": "No single typed outbound-delivery policy; each provider interprets environment flags independently."
+    },
+    {
+      "id": "H-01",
+      "module": "inventory",
+      "summary": "products_reserved_within_stock remains NOT VALID until the readiness gate is run against production data.",
+      "gate": "scripts/db/inventory-constraint-readiness.sh"
+    },
+    {
+      "id": "H-04",
+      "module": "checkout",
+      "summary": "Fingerprint does not yet cover delivery destination, normalized contact or payment path (contract \u00a710)."
+    },
+    {
+      "id": "H-05",
+      "module": "checkout",
+      "summary": "Idempotency orchestration still lives in the HTTP route rather than an application use case (contract \u00a76)."
+    },
+    {
+      "id": "H-06",
+      "module": "checkout",
+      "summary": "Retention is a generic TTL; not yet state-aware, so a sweep could remove an unresolved order link (contract \u00a711)."
     }
   ],
   "resolvedFindings": [
@@ -73,15 +101,26 @@
     "checkout ownership derived from caller-supplied email/phone",
     "checkout idempotency was read-then-write; concurrent submissions both did commerce work",
     "checkout response spread the domain order, publishing customer PII",
-    "notification safety preflight returned PASS while unsafe"
+    "notification safety preflight returned PASS while unsafe",
+    "checkout principal was minted by the API, whose Set-Cookie never reaches the browser through SSR \u2014 every request got a new identity so the claim could never dedupe",
+    "authenticated customer session was never applied to the Commerce checkout route",
+    "legacy contact-scoped idempotency ran alongside the principal-scoped claim (two contradictory ownership models)",
+    "idempotency lease had no fencing token; a stale worker could overwrite its successor",
+    "order was persisted before any durable link to the idempotency record",
+    "checkout page read res.data.id while the DTO returned orderId \u2014 PesaPal handoff silently never started",
+    "checkout key was regenerated on every render, so only a same-render double-click was protected",
+    "reservation used an inverted stockHeld variable",
+    "migration 0058 initially used gen_random_bytes (pgcrypto), leaving the migration part-applied",
+    "takeover did not extend the lease in the same statement, so six concurrent takeovers produced six owners",
+    "route imported a repository type directly, violating the architecture boundary"
   ],
-  "migrationCeiling": "0057",
+  "migrationCeiling": "0058",
   "testTotals": {
     "files": 244,
     "passed": 4536,
     "skipped": 11,
     "nonArtifactGuardFailures": 0,
-    "note": "12 reported failures are Slice-09 artifact-scope guards that assert a clean worktree; they pass once committed. Verified: clean-tree suite exit 0."
+    "note": "12 reported failures are Slice-09 artifact-scope guards asserting a clean worktree; they pass once committed."
   },
   "lastCleanSuiteCommit": "a263d2cccb16e0ebd5f8dab1e985ff963f1a93bc",
   "latestReleaseIdentity": null,
@@ -92,6 +131,19 @@
     "status": "AWAITING_MAC_RAIL_B_VALIDATION",
     "note": "Not merged into this branch. Its scope, candidate, tag and approval marker are untouched."
   },
-  "nextExactAction": "Audit cart routes for object-level authorization and input validation (finding H-02), then build the single typed outbound-delivery policy with three-axis status (finding H-03).",
-  "lastUpdatedAt": "2026-07-29T23:45:00Z"
+  "nextExactAction": "Complete checkout: move orchestration into ExecuteCheckoutIntentUseCase (H-05), extend the fingerprint to delivery/contact/payment intent (H-04), add state-aware retention (H-06), then Playwright the real SSR path. Then cart object-level authorization (H-02) and the central outbound-delivery policy (H-03).",
+  "lastUpdatedAt": "2026-07-30T00:00:00Z",
+  "codeHead": "d977e0e8105ce0d7fca836394029409e751ccc9e",
+  "stateBasedOnHead": "d977e0e8105ce0d7fca836394029409e751ccc9e",
+  "stateCommit": "PENDING",
+  "headResolutionRule": "Always resolve the LIVE remote branch head first. Never reset to codeHead: it is the commit this state described, not necessarily the newest commit.",
+  "moduleCompletionCriteria": [
+    "real caller path works",
+    "security boundary works",
+    "retry path works",
+    "failure path works",
+    "recovery path works",
+    "UI contract works",
+    "production acceptance is defined"
+  ]
 }

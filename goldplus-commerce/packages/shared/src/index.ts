@@ -25,3 +25,5 @@ export * from './events/telemetry';
 export * from './events/consent';
 export * from './events/zero-party';
 export * from './control-centre/module-registry';
+export * from './types/checkout';
+export * from './checkout-intent';

@@ -49,13 +49,6 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       : null;
   }
 
-  async findByClientKey(clientOrderKey: string): Promise<Order | null> {
-    const row = await db.query.orders.findFirst({
-      where: eq(orders.clientOrderKey, clientOrderKey),
-    });
-    if (!row) return null;
-    return this.findById(row.id);
-  }
 
   async findAll(): Promise<Order[]> {
     const results = await db.query.orders.findMany({

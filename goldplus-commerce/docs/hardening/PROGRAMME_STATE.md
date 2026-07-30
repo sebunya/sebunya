@@ -12,7 +12,7 @@ is now the memory.
 |---|---|
 | Branch | `claude/amazon-grade-module-hardening-20260729` |
 | Base | `5e6d4ea` |
-| Migration ceiling | `0057` |
+| Migration ceiling | `0058` |
 | Wave | 1 |
 | Clean-tree suite | 4547 passed, 0 failed, 11 skipped |
 
@@ -22,8 +22,28 @@ Each carries a committed fix, tests, and — where the claim is about persistenc
 or concurrency — a proof against a real PostgreSQL 16 or a real `redis-server`.
 
 authentication · authorization · audit · health/liveness/readiness ·
-database resilience · outbox · webhooks & payments · inventory · checkout ·
+database resilience · outbox · webhooks & payments · inventory ·
 notification outbound gating · loyalty ledger integrity
+
+## Checkout is IN PROGRESS, not complete
+
+It was listed as complete after its components passed unit and PostgreSQL tests.
+That was wrong, and the reason is worth recording: **a strong component
+implementation is not a completed customer journey.**
+
+The real storefront path is browser → Astro SSR → server-side fetch → API. The
+API was minting the guest principal, but its `Set-Cookie` lands on the Astro
+server's fetch response and never reaches the browser. So every request minted a
+fresh identity, and the atomic claim — correct in isolation, proven against real
+PostgreSQL — could never match a retry in the path that actually runs.
+
+The same gap hid a second break: the API returned `orderId` while the page read
+`res.data.id`, so the PesaPal handoff silently never started and the customer saw
+the offline-review message instead of a payment page. Nothing failed loudly.
+
+A module is now only complete when the real caller path, the security boundary,
+the retry path, the failure path, the recovery path, the UI contract and a defined
+production acceptance all hold.
 
 ## What is still open
 

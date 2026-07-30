@@ -73,30 +73,34 @@ describe('the idempotency key is scoped to the customer', () => {
   });
 });
 
-describe('checkout applies the scoped key on both sides', () => {
-  const source = readFileSync(
+describe('the legacy contact-scoped idempotency is gone', () => {
+  const useCase = readFileSync(
     join(__dirname, '../../apps/api/src/application/use-cases/commerce/CheckoutUseCase.ts'),
     'utf8',
   );
 
-  it('scopes before the lookup', () => {
-    const scoping = source.indexOf('scopeClientOrderKey(rawClientOrderKey');
-    const lookup = source.indexOf('findByClientKey(clientOrderKey)');
-    expect(scoping).toBeGreaterThan(-1);
-    expect(lookup).toBeGreaterThan(-1);
-    expect(scoping).toBeLessThan(lookup);
+  it('no longer runs its own idempotency lookup', () => {
+    // Checkout briefly had TWO idempotency systems: this one keyed on the
+    // caller's email or phone, and the fenced checkout_idempotency claim keyed on
+    // a verified principal. Two mechanisms disagreeing about who owns an
+    // operation is worse than either alone, because which one answers depends on
+    // call order. The claim is now the single authority.
+    expect(useCase).not.toContain('scopeClientOrderKey');
+    expect(useCase).not.toContain('findByClientKey');
   });
 
-  it('never hands the raw key to the repository', () => {
-    expect(source).not.toMatch(/findByClientKey\(rawClientOrderKey\)/);
-    expect(source).not.toMatch(/clientOrderKey:\s*rawClientOrderKey/);
-    expect(source).not.toMatch(/clientOrderKey:\s*dto\.clientOrderKey/);
+  it('keeps the customer scope for pricing only, never for ownership', () => {
+    expect(useCase).toContain('customerScopeKey');
+    expect(useCase).toContain('used only for pricing, never for ownership');
   });
 
-  it('reuses one customer scope for pricing and idempotency', () => {
-    // Two independently-derived scopes would drift apart and silently break
-    // idempotency for customers whose email and phone disagree in case.
-    expect(source).toContain('customerScopeKey,');
-    expect(source.match(/const customerScopeKey =/g)).toHaveLength(1);
+  it('leaves the scoping helper unused rather than silently re-wired', () => {
+    // The primitive survives in the domain for reference, but nothing in the
+    // checkout path may call it.
+    const order = readFileSync(
+      join(__dirname, '../../apps/api/src/domain/commerce/Order.ts'),
+      'utf8',
+    );
+    expect(order).toContain('scopeClientOrderKey');
   });
 });

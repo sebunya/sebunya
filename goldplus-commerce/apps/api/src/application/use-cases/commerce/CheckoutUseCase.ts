@@ -6,13 +6,11 @@ import { EvaluateCartPricingUseCase } from '../pricing/EvaluateCartPricingUseCas
 import { ManagePromotionCapacityUseCase } from '../pricing/ManagePromotionCapacityUseCase';
 import { IPricingQuoteRepository } from '../../ports/IPricingQuoteRepository';
 import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
-import { scopeClientOrderKey } from '../../../domain/commerce/Order';
 
 export interface IOrderRepository {
   save(order: Order, opts?: { clientOrderKey?: string | null }): Promise<void>;
   findById(id: string): Promise<Order | null>;
   /** Idempotency: find an order previously created with this client key. */
-  findByClientKey?(clientOrderKey: string): Promise<Order | null>;
 }
 
 export interface ITransactionalPricedOrderRepository extends IOrderRepository {
@@ -78,28 +76,21 @@ export class CheckoutUseCase {
       throw new Error(`Too many line items (max ${MAX_LINE_ITEMS})`);
     }
 
-    // Idempotent replay: a repeated submission must not create a second order.
+    // Idempotency is NOT handled here.
     //
-    // The key is scoped to the customer BEFORE it is used, for both the lookup
-    // and the write. The raw key is caller-chosen and carries a GLOBAL unique
-    // index, so looking it up directly returned whichever customer's order held
-    // that string — including their name, phone, email and delivery address, all
-    // of which the checkout response returns in full. A plausible guess was
-    // enough. Scoping only the write would leave the disclosure in place;
-    // scoping only the lookup would break idempotency entirely.
+    // This use case used to run its own lookup keyed on the caller's email or
+    // phone plus the client order key. That was a second, contradictory
+    // ownership model living alongside the checkout_idempotency record: one
+    // keyed on caller-supplied contact details, the other on a verified
+    // principal. Two mechanisms disagreeing about who owns an operation is worse
+    // than either alone, because which one answers depends on call order.
+    //
+    // The single authoritative mechanism is the fenced checkout_idempotency
+    // claim, taken before this use case is invoked. The customer scope below is
+    // used only for pricing, never for ownership.
     const customerScopeKey =
       dto.customerDetails.email?.trim().toLowerCase() || dto.customerDetails.phone.trim();
-    const rawClientOrderKey = dto.clientOrderKey?.trim() || null;
-    const clientOrderKey = rawClientOrderKey
-      ? scopeClientOrderKey(rawClientOrderKey, customerScopeKey)
-      : null;
-
-    if (clientOrderKey && this.orderRepo.findByClientKey) {
-      const existing = await this.orderRepo.findByClientKey(clientOrderKey);
-      if (existing) {
-        return { order: existing, deliveryFeeConfirmed: existing.deliveryFeeConfirmed, idempotentReplay: true };
-      }
-    }
+    const clientOrderKey = dto.clientOrderKey?.trim() || null;
 
     for (const item of dto.items) {
       if (!item.productId || typeof item.productId !== 'string') {

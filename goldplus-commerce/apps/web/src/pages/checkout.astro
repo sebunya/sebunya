@@ -8,6 +8,10 @@ import { apiBase, postJson } from '../lib/api';
 import { readCartSessionId } from '../lib/cart-session';
 import { prepareCheckoutPayload, validateCheckoutPayload } from '../lib/checkout';
 import { parseLocalCartCookie } from '../lib/cart';
+import { resolveCheckoutIntent, clearCheckoutIntent } from '../lib/checkoutIntent';
+import { submitCheckout, customerMessageFor } from '../lib/checkoutClient';
+import { mayStartPayment } from '@goldplus/shared';
+import { createHash } from 'node:crypto';
 import type { ApiEnvelope } from '@goldplus/shared';
 
 interface CartItem {
@@ -83,6 +87,22 @@ if (Astro.request.method === 'POST') {
     deliveryAddress: String(formData.get('deliveryAddress') || '').trim(),
   };
 
+  // The checkout intent is resolved ONCE per render and reused across retries.
+  // It is issued here, in the layer that owns the browser connection: the API's
+  // Set-Cookie would land on this server's fetch response and never reach the
+  // browser, so an API-minted cookie is not a browser identity at all.
+  const checkoutIntent = resolveCheckoutIntent(Astro.cookies, null);
+  if (!checkoutIntent) {
+    // Signing configuration absent: refuse rather than fall back to an unsigned
+    // identity, which would make every retry a new operation.
+    throw new Error('CHECKOUT_INTENT_SECRET is not configured');
+  }
+  // Stable per-intent key, so a re-render cannot change the operation identity.
+  const checkoutOrderKey = createHash('sha256')
+    .update(`order-key:${checkoutIntent.token}`)
+    .digest('hex')
+    .slice(0, 40);
+
   // Simple validation checks
   if (!values.name) errors.name = 'Full name is required.';
   if (!values.phone) errors.phone = 'Contact phone number is required.';
@@ -95,46 +115,75 @@ if (Astro.request.method === 'POST') {
      const payload = prepareCheckoutPayload(formData, normalizedItems as any);
      const paymentMethod = String(formData.get('paymentMethod') || 'offline').trim();
      
-     let res;
-     let serverError = false;
-     try {
-        res = await postJson('/commerce/orders/create', {
+     // Typed BFF call. The generic postJson helper returned `data: unknown` and
+     // dropped every response header, which is how the API's move to a minimal
+     // DTO returning `orderId` went unnoticed while this page read `res.data.id`:
+     // the value was simply undefined, the PesaPal branch was skipped, and the
+     // customer saw the offline-review message instead of being sent to pay.
+     const result = await submitCheckout({
+        request: {
            customerDetails: payload.customerDetails,
            buyerType: payload.buyerType,
            items: payload.items,
-           clientOrderKey: payload.clientOrderKey
-        });
-     } catch (err) {
-        console.warn('[ORDER_OFFLINE] Server checkout failed/offline:', err);
-        serverError = true;
-     }
+           clientOrderKey: payload.clientOrderKey,
+        },
+        intentToken: checkoutIntent.token,
+        sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null,
+     });
 
-     if (!serverError && res && res.ok) {
-        const orderId = res.data?.id;
-        
-        if (paymentMethod === 'pesapal' && orderId) {
+     const outcome = customerMessageFor(result);
+
+     if (result.ok) {
+        const dto = result.data;
+        reference = dto.orderNumber || dto.orderId;
+
+        // Payment starts ONLY when the server says the order is payable. The
+        // previous condition was just "we have an order id", which would start a
+        // payment for a stock-blocked or already-paid order.
+        if (paymentMethod === 'pesapal' && mayStartPayment(dto)) {
            try {
-              const payRes = await postJson('/commerce/payments/pesapal/start', { orderId });
-              if (payRes && payRes.ok && payRes.data?.redirectUrl) {
-                 return Astro.redirect(payRes.data.redirectUrl, 303);
-              } else {
-                 status = 'error';
-                 message = payRes?.message || 'We could not start payment. Please try again or contact support.';
-                 reference = res.data?.orderNumber || orderId;
+              const payRes = await postJson('/commerce/payments/pesapal/start', { orderId: dto.orderId });
+              if (payRes && payRes.ok && (payRes.data as any)?.redirectUrl) {
+                 // The intent is consumed only once the order is durably placed
+                 // and handed to payment, so a retry before this point still
+                 // collapses onto the same order.
+                 clearCheckoutIntent(Astro.cookies);
+                 Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+                 return Astro.redirect((payRes.data as any).redirectUrl, 303);
               }
-           } catch (payErr: any) {
               status = 'error';
-              message = `We could not start payment. Please try again or contact support.`;
-              reference = res.data?.orderNumber || orderId;
+              message = payRes?.ok === false
+                 ? payRes.message
+                 : 'We could not start payment. Please try again or contact support.';
+           } catch {
+              status = 'error';
+              message = 'We could not start payment. Please try again or contact support.';
            }
-        } else {
+        } else if (outcome.status === 'awaiting_payment') {
+           // Payable, but the customer chose the offline path.
            status = 'received';
            message = 'Order successfully created for review. Our logistics team will contact you with final pricing.';
-           reference = res.data?.orderNumber || orderId;
-           
-           // Successfully submitted, clear browser cart cookie contents
+           clearCheckoutIntent(Astro.cookies);
            Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+        } else {
+           status = outcome.status === 'error' ? 'error' : 'received';
+           message = outcome.message;
+           if (outcome.status !== 'error') {
+              clearCheckoutIntent(Astro.cookies);
+              Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+           }
         }
+     } else if (result.code === 'STOCK_NOT_RESERVED' && result.details) {
+        // The order exists and is recorded truthfully; it simply cannot be paid.
+        status = 'error';
+        message = outcome.message;
+        reference = result.details.orderNumber || result.details.orderId;
+     } else if (outcome.status === 'retry') {
+        // NETWORK or CHECKOUT_IN_PROGRESS: the intent cookie is deliberately
+        // KEPT, so retrying reaches the same operation instead of creating a
+        // second order.
+        status = 'error';
+        message = outcome.message;
      } else {
         const allowDraft = String(formData.get('allowOfflineDraft') || '') === 'true';
         if (allowDraft) {
@@ -205,7 +254,14 @@ const formatUgx = (n: number): string =>
           
           <form method="POST" action="/checkout" novalidate class="space-y-6 mt-4">
             <!-- Slice 3B: idempotency key — a resubmitted/double-clicked form returns the same order -->
-            <input type="hidden" name="clientOrderKey" value={crypto.randomUUID()} />
+            {/*
+              Derived from the server-issued checkout intent, NOT regenerated per
+              render. A fresh UUID each render protects a same-render double-click
+              and nothing else: a failed POST followed by a re-render, a refresh,
+              a back-navigation, a mobile reconnect or a payment return each
+              produced a new key and therefore a new operation.
+            */}
+            <input type="hidden" name="clientOrderKey" value={checkoutOrderKey} />
             <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80 shadow-xs">
               <h2 class="text-base md:text-lg font-black text-gray-900 mb-6 flex items-center gap-2.5">
                 <span aria-hidden="true" class="w-6 h-6 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-black">1</span>
