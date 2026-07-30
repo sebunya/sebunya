@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { db } from './db/client';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
@@ -650,6 +651,11 @@ export class Registry {
   public readonly executeCheckoutIntentUseCase = new ExecuteCheckoutIntentUseCase({
     idempotency: this.checkoutIdempotencyRepo,
     sideEffectRecorder: this.checkoutSideEffectRecorder,
+    // Derived through a labelled HMAC so the digest key is unrelated to the session,
+    // checkout-intent and cart-credential key streams even from one root secret.
+    fingerprintDigestKey: createHmac('sha256', 'goldplus-checkout-fingerprint-v1')
+      .update((process.env.CHECKOUT_INTENT_SECRET || process.env.JWT_SECRET || '').trim())
+      .digest('hex'),
     orders: {
       execute: (input) => this.checkoutUseCase.execute(input as never),
     },

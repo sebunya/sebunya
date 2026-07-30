@@ -66,6 +66,12 @@ const checkoutBodySchema = z.object({
   couponCode: z.string().trim().min(3).max(40).nullish(),
   previewQuoteId: z.string().uuid().nullish(),
   acceptPriceChange: z.boolean().optional(),
+  // Fingerprint inputs, all optional so an older client is not rejected. They cannot be
+  // used to influence WHAT is bought — that is still items + quantities only — but they
+  // do make "same key, different intent" detectable in three more ways.
+  paymentMethod: z.enum(['pesapal', 'offline']).nullish(),
+  cartId: z.string().uuid().nullish(),
+  cartVersion: z.number().int().min(1).nullish(),
 });
 
 const routes = new Hono();
@@ -343,6 +349,12 @@ routes.post('/orders/create', async (c) => {
     couponCode: body.couponCode ?? null,
     previewQuoteId: body.previewQuoteId ?? null,
     acceptPriceChange: body.acceptPriceChange ?? false,
+    // Fingerprint inputs. The payment method matters because online and offline are
+    // materially different operations; the basket id and version pin which basket state
+    // was priced, which the item list alone cannot express.
+    paymentMethod: body.paymentMethod ?? null,
+    cartId: body.cartId ?? null,
+    cartVersion: body.cartVersion ?? null,
     traceId,
   });
 

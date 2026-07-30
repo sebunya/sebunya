@@ -134,15 +134,74 @@ describe('field boundaries cannot be shifted', () => {
 });
 
 describe('the policy version retires old fingerprints', () => {
-  it('names the version that includes delivery and contact coverage', () => {
-    // Every stored v2 fingerprint was computed over strictly less data. Because
-    // the version is itself an input, bumping it makes old and new values
-    // unmatchable by construction rather than by hoping the hash differs.
-    expect(CHECKOUT_POLICY_VERSION).toBe('checkout-v3-full-fingerprint');
+  it('names the version that includes keyed digests and the basket', () => {
+    // Every stored fingerprint from an earlier version was computed over strictly less
+    // data, and v3's personal-data digests were unkeyed. Because the version is itself an
+    // input, bumping it makes old and new values unmatchable by construction rather than
+    // by hoping the hash differs.
+    expect(CHECKOUT_POLICY_VERSION).toBe('checkout-v4-keyed-fingerprint');
   });
 
   it('changes the fingerprint when the version changes', () => {
     expect(fp({ policyVersion: 'checkout-v2-trusted-principal' })).not.toBe(fp());
+  });
+});
+
+describe('the basket, the payment method and the rule versions all count', () => {
+  it('detects a different basket version', () => {
+    // The item list alone cannot distinguish the basket the customer is looking at from
+    // one that has since moved on.
+    expect(fp({ cartId: 'cart-1', cartVersion: 4 })).not.toBe(fp({ cartId: 'cart-1', cartVersion: 5 }));
+  });
+
+  it('detects a different basket entirely', () => {
+    expect(fp({ cartId: 'cart-1' })).not.toBe(fp({ cartId: 'cart-2' }));
+  });
+
+  it('detects a switch between online and offline payment', () => {
+    // A materially different operation with a different fulfilment path. Reusing one key
+    // across both silently returned the first.
+    expect(fp({ paymentMethod: 'pesapal' })).not.toBe(fp({ paymentMethod: 'offline' }));
+  });
+
+  it('ignores payment-method casing', () => {
+    expect(fp({ paymentMethod: 'PesaPal' })).toBe(fp({ paymentMethod: 'pesapal' }));
+  });
+
+  it('detects a change in any rule version that produced the price', () => {
+    for (const field of ['pricingVersion', 'promotionVersion', 'stockPolicyVersion', 'deliveryPolicyVersion'] as const) {
+      expect(fp({ [field]: 'a' }), field).not.toBe(fp({ [field]: 'b' }));
+    }
+  });
+});
+
+describe('personal data is digested under a key, not merely hashed', () => {
+  const KEY = 'k'.repeat(32);
+
+  it('produces a different fingerprint with and without a key', () => {
+    expect(fp({ digestKey: KEY })).not.toBe(fp({ digestKey: null }));
+  });
+
+  it('produces a different fingerprint under a different key', () => {
+    expect(fp({ digestKey: KEY })).not.toBe(fp({ digestKey: 'j'.repeat(32) }));
+  });
+
+  it('still detects a changed address under a key', () => {
+    // Keying must not flatten the field into a constant.
+    expect(fp({ digestKey: KEY, deliveryAddress: '12 Main' }))
+      .not.toBe(fp({ digestKey: KEY, deliveryAddress: '14 Main' }));
+  });
+
+  it('still ignores cosmetic differences under a key', () => {
+    expect(fp({ digestKey: KEY, deliveryAddress: '  12  MAIN   street, Nakawa ' }))
+      .toBe(fp({ digestKey: KEY }));
+  });
+
+  it('does not make an absent field indistinguishable from a present one', () => {
+    // An empty value digests to the empty string rather than to a hash of "", so "no
+    // email given" stays one fact however it arrived.
+    expect(fp({ digestKey: KEY, contactEmail: null }))
+      .not.toBe(fp({ digestKey: KEY, contactEmail: 'a@b.test' }));
   });
 });
 

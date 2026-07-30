@@ -110,6 +110,14 @@ export interface CheckoutRequestDto {
   couponCode?: string | null;
   previewQuoteId?: string | null;
   acceptPriceChange?: boolean;
+  /**
+   * Fingerprint inputs. None of them influences WHAT is bought — that is still items and
+   * quantities only, priced server-side — but each makes "same key, different intent"
+   * detectable where it previously was not.
+   */
+  paymentMethod?: 'pesapal' | 'offline' | null;
+  cartId?: string | null;
+  cartVersion?: number | null;
 }
 
 export interface PaymentStartRequestDto {

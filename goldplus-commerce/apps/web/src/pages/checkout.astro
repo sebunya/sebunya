@@ -167,6 +167,12 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            customerDetails: payload.customerDetails,
            buyerType: payload.buyerType,
            items: payload.items,
+           // Fingerprint inputs: switching between paying online and ordering offline is
+           // a different operation, and the basket version pins which basket state the
+           // customer was actually looking at.
+           paymentMethod: paymentMethod === 'pesapal' ? 'pesapal' : 'offline',
+           cartId: serverCart.ok ? serverCart.cart.id : null,
+           cartVersion: serverCart.ok ? serverCart.cart.version : null,
         },
         intentToken: checkoutIntent.token,
         sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null,

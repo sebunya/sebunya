@@ -110,6 +110,16 @@ export interface CheckoutCommand {
   couponCode?: string | null;
   previewQuoteId?: string | null;
   acceptPriceChange?: boolean;
+  /**
+   * The basket this checkout was raised against, and its version.
+   *
+   * Part of the fingerprint: the item list alone cannot distinguish the basket the
+   * customer is looking at from one that has since moved on.
+   */
+  cartId?: string | null;
+  cartVersion?: number | null;
+  /** Online versus offline is a materially different operation, not a presentation choice. */
+  paymentMethod?: string | null;
   traceId: string;
 }
 
@@ -159,6 +169,13 @@ export interface ExecuteCheckoutIntentDeps {
   orders: CheckoutOrderCreator;
   reservations: CheckoutReservationRunner;
   orderReader: CheckoutOrderReader;
+  /**
+   * Key for the fingerprint's personal-data digests.
+   *
+   * Injected rather than read from the environment here, so the domain stays pure and a
+   * test can prove the keyed and unkeyed behaviours without touching process.env.
+   */
+  fingerprintDigestKey?: string | null;
   observer?: CheckoutObserver;
 }
 
@@ -184,6 +201,14 @@ export class ExecuteCheckoutIntentUseCase {
       deliveryAddress: command.customerDetails.deliveryAddress,
       contactPhone: command.customerDetails.phone,
       contactEmail: command.customerDetails.email ?? null,
+      // Personal data is digested under a server-held key. Without one, an unkeyed hash
+      // of a phone number is guessable — the input space is small — so the stored
+      // digests would allow re-identification of data we deliberately chose not to store.
+      digestKey: this.deps.fingerprintDigestKey ?? null,
+      // Which basket, at which version, and how they intend to pay.
+      cartId: command.cartId ?? null,
+      cartVersion: command.cartVersion ?? null,
+      paymentMethod: command.paymentMethod ?? null,
     });
 
     const claim = await this.deps.idempotency.claim({
