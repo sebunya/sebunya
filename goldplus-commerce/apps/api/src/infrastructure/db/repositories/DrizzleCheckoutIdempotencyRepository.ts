@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, eq, inArray, lt, notInArray, sql } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import { db } from '../client';
 import { checkoutIdempotency } from '../schema/commerce';
@@ -30,6 +30,26 @@ import {
  * back the existing row and is told what to do about it.
  */
 export const LEASE_DURATION_SECONDS = 120;
+
+/**
+ * Stages that hold unresolved commerce, and therefore block deletion.
+ *
+ * Matches the `checkout_idempotency_unresolved_idx` partial index in migration
+ * 0059 exactly. A stage that appears in one and not the other would either scan
+ * the whole table or, worse, let the sweep delete something the index was created
+ * to protect — so the two lists must be changed together.
+ */
+export const UNRESOLVED_STAGES: readonly CheckoutSagaStage[] = [
+  'ORDER_CREATED',
+  'INVENTORY_RESERVED',
+  'BLOCKED_STOCK',
+  'FULFILMENT_QUEUED',
+  'NOTIFICATION_QUEUED',
+  'PAYMENT_READY',
+  'PAYMENT_STARTED',
+  'PAYMENT_PENDING',
+  'PAYMENT_REVIEW',
+];
 
 function newClaimToken(): string {
   return randomBytes(24).toString('hex');
@@ -338,13 +358,58 @@ export class DrizzleCheckoutIdempotencyRepository implements ICheckoutIdempotenc
     return row ? toRecord(row) : null;
   }
 
-  /** Expiry sweep. Never removes a COMPLETED record before its TTL. */
-  async purgeExpired(now: Date = new Date()): Promise<number> {
+  /**
+   * State-aware expiry sweep.
+   *
+   * WHAT WAS WRONG
+   * The sweep deleted every row whose `expires_at` had passed, consulting nothing
+   * else. A checkout that reached PAYMENT_STARTED and sat there — a customer who
+   * opened the bank page and took longer than the 24-hour TTV, or a provider that
+   * had not yet confirmed — was deleted along with everything it was the only
+   * record of:
+   *
+   *   - WHO OWNS THE ORDER. Payment start authorizes against this row. Deleting it
+   *     does not merely lose history; it makes the order unpayable by its owner
+   *     while the provider transaction is still live.
+   *   - WHICH SIDE EFFECTS ARE OWED, and the identity a retry would collapse onto.
+   *   - The idempotency guarantee itself: with the row gone, a resubmission with
+   *     the same key creates a SECOND order.
+   *
+   * An expiry policy is about reclaiming space, and it must never be the mechanism
+   * that discards live commerce. Retention is therefore a function of state, not of
+   * a timestamp: a row is removable only when its saga holds nothing unresolved.
+   *
+   * The unresolved stages match migration 0059's partial index, so this predicate
+   * is index-backed rather than a full scan.
+   */
+  async purgeExpired(now: Date = new Date()): Promise<{
+    removed: number;
+    retainedUnresolved: number;
+  }> {
     const removed = await db
       .delete(checkoutIdempotency)
-      .where(lt(checkoutIdempotency.expiresAt, now))
+      .where(
+        and(
+          lt(checkoutIdempotency.expiresAt, now),
+          notInArray(checkoutIdempotency.stage, [...UNRESOLVED_STAGES]),
+        ),
+      )
       .returning({ identity: checkoutIdempotency.identity });
-    return removed.length;
+
+    // Reported rather than silently skipped: a growing number here is an
+    // operational fact — checkouts stuck mid-saga — and an operator who cannot see
+    // it will read the sweep's falling delete count as everything being fine.
+    const [retained] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(checkoutIdempotency)
+      .where(
+        and(
+          lt(checkoutIdempotency.expiresAt, now),
+          inArray(checkoutIdempotency.stage, [...UNRESOLVED_STAGES]),
+        ),
+      );
+
+    return { removed: removed.length, retainedUnresolved: retained?.n ?? 0 };
   }
 
   /** Operator signal: claims that never completed. */

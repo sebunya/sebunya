@@ -178,6 +178,12 @@ export class ExecuteCheckoutIntentUseCase {
       currency: 'UGX',
       acceptedQuoteId: command.previewQuoteId ?? null,
       policyVersion: CHECKOUT_POLICY_VERSION,
+      // Where the goods go and how the customer is reached. Omitting these meant a
+      // resubmission with a corrected address was answered with the earlier order,
+      // bound for the address the customer had just corrected away from.
+      deliveryAddress: command.customerDetails.deliveryAddress,
+      contactPhone: command.customerDetails.phone,
+      contactEmail: command.customerDetails.email ?? null,
     });
 
     const claim = await this.deps.idempotency.claim({

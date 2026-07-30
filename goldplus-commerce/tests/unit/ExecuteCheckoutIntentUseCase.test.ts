@@ -62,6 +62,12 @@ const COMMAND_FINGERPRINT = checkoutFingerprint({
   currency: 'UGX',
   acceptedQuoteId: null,
   policyVersion: CHECKOUT_POLICY_VERSION,
+  // Must mirror `command` exactly, including the delivery and contact fields the
+  // fingerprint now covers. A stale fixture here would make every existing-record
+  // case collapse into IDEMPOTENCY_CONFLICT and hide the branches under test.
+  deliveryAddress: 'X',
+  contactPhone: '+256700000000',
+  contactEmail: null,
 });
 
 const record = (over: Partial<IdempotencyRecord> = {}): IdempotencyRecord => ({

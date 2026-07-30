@@ -239,6 +239,53 @@ async function main(): Promise<void> {
   const forwards = await idem.advancePaymentStage(payOrderId, 'PAYMENT_PENDING', ['PAYMENT_STARTED']);
   check('the next real transition applies', forwards, true);
 
+  // -- 8. Retention must never delete live commerce -------------------------
+  // The sweep deleted every row whose expires_at had passed, consulting nothing
+  // else. A checkout at PAYMENT_STARTED — a customer who took longer at the bank
+  // page than the 24-hour TTL — was deleted along with the only record of who owns
+  // the order, which side effects are owed, and the idempotency guarantee itself.
+  const past = new Date(Date.now() - 60_000);
+
+  const liveIdentity = randomUUID().replace(/-/g, '');
+  const liveOrderId = randomUUID();
+  await db.insert(checkoutIdempotency).values({
+    identity: liveIdentity,
+    principalKey: `g:${randomUUID()}`,
+    fingerprint: randomUUID().replace(/-/g, ''),
+    state: 'COMPLETED',
+    operationState: 'TERMINAL',
+    stage: 'PAYMENT_STARTED',
+    orderId: liveOrderId,
+    expiresAt: past,
+  });
+
+  const settledIdentity = randomUUID().replace(/-/g, '');
+  await db.insert(checkoutIdempotency).values({
+    identity: settledIdentity,
+    principalKey: `g:${randomUUID()}`,
+    fingerprint: randomUUID().replace(/-/g, ''),
+    state: 'COMPLETED',
+    operationState: 'TERMINAL',
+    stage: 'ORDER_CONFIRMED',
+    orderId: randomUUID(),
+    expiresAt: past,
+  });
+
+  const swept = await idem.purgeExpired(new Date());
+
+  const liveStill = await idem.findByOrderId(liveOrderId);
+  // The whole point: an expired-but-unresolved checkout survives.
+  check('an expired checkout mid-payment is RETAINED', liveStill?.identity, liveIdentity);
+  check('the retained row is reported to the operator', swept.retainedUnresolved >= 1, true);
+
+  const settledStill = await db
+    .select({ identity: checkoutIdempotency.identity })
+    .from(checkoutIdempotency)
+    .where(eq(checkoutIdempotency.identity, settledIdentity));
+  // A genuinely resolved checkout is still reclaimed, so the sweep is not a no-op.
+  check('an expired RESOLVED checkout is removed', settledStill.length, 0);
+  check('the sweep reports at least that removal', swept.removed >= 1, true);
+
   console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);
 }
 
