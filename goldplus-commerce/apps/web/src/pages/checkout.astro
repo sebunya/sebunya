@@ -10,6 +10,7 @@ import { prepareCheckoutPayload, validateCheckoutPayload } from '../lib/checkout
 import { parseLocalCartCookie } from '../lib/cart';
 import { resolveCheckoutIntent, clearCheckoutIntent } from '../lib/checkoutIntent';
 import { resolveAuthenticatedUserId } from '../lib/customerAuth';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 import {
   submitCheckout,
   customerMessageFor,
@@ -91,15 +92,35 @@ let isOfflineDraft = false;
 // is the only one that can own the cookie: the API's Set-Cookie lands on this
 // server's fetch response and never reaches the browser.
 const authenticatedUserId = await resolveAuthenticatedUserId(Astro.cookies);
-const checkoutIntent = resolveCheckoutIntent(Astro.cookies, authenticatedUserId);
-if (!checkoutIntent) {
+
+// Cross-site refusal comes BEFORE the intent is resolved, because resolving it can
+// MINT one. A cross-site POST arrives without the SameSite=Lax cookie, and the
+// response to a missing cookie was to manufacture a fresh guest identity and place
+// an order under it — a request the browser had already labelled cross-site was
+// answered by inventing an identity for it.
+const originDecision =
+  Astro.request.method === 'POST'
+    ? checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>)
+    : ({ allowed: true, basis: 'SEC_FETCH_SITE' } as const);
+
+if (!originDecision.allowed) {
+  status = 'error';
+  message = CROSS_SITE_MESSAGE;
+}
+
+// Not resolved at all on a refused request: resolving MINTS, and a cross-site POST
+// has no business being issued a checkout identity.
+const checkoutIntent = originDecision.allowed
+  ? resolveCheckoutIntent(Astro.cookies, authenticatedUserId)
+  : null;
+if (originDecision.allowed && !checkoutIntent) {
   // Refuse rather than fall back to an unsigned identity, which would make every
   // retry a new operation and therefore a new order.
   throw new Error('CHECKOUT_INTENT_SECRET is not configured');
 }
 
 // Handle Form Submission (RESTORED FEATURE)
-if (Astro.request.method === 'POST') {
+if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent) {
   const formData = await Astro.request.formData();
   
   // Extract raw strings for re-populating inputs on errors

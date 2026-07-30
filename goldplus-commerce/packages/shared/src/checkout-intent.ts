@@ -54,10 +54,56 @@ export interface IntentKey {
  * a rotation that logs out every mid-checkout customer is a rotation nobody
  * performs.
  */
+export const MIN_INTENT_ROOT_SECRET_LENGTH = 32;
+
+/** Key ids appear in the token, so they must be unambiguous and printable. */
+const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+
 export function deriveIntentKey(rootSecret: string, keyId = '1'): IntentKey {
   if (!rootSecret) throw new Error('CHECKOUT_INTENT_SECRET_MISSING');
+  // A short root is refused rather than derived from. The KDF makes the derived key
+  // 32 bytes wide whatever it is given, which hides a weak root behind a
+  // healthy-looking key — a deployment with an eight-character secret would look
+  // exactly like a correct one, and the intent token is what authorizes payment.
+  if (rootSecret.length < MIN_INTENT_ROOT_SECRET_LENGTH) {
+    throw new Error('CHECKOUT_INTENT_SECRET_TOO_SHORT');
+  }
+  // The key id is part of the signed payload and is echoed in the token. An id
+  // containing the payload separator would let one key's token be read as
+  // another's, which is the one thing a key id must never allow.
+  if (!KEY_ID_PATTERN.test(keyId)) throw new Error('CHECKOUT_INTENT_KEY_ID_INVALID');
   const secret = createHmac('sha256', `${KDF_LABEL}:${keyId}`).update(rootSecret).digest('hex');
   return { keyId, secret };
+}
+
+/**
+ * Builds the accepted keyring: current first, then the previous key if rotating.
+ *
+ * Extracted so the API and the storefront cannot drift. They each assembled this
+ * list independently from the same environment variables, and a keyring that
+ * differs between the issuer and the verifier rejects every token — the failure
+ * would appear as customers unable to check out, with nothing pointing at the
+ * rotation as the cause.
+ *
+ * Verification order matters: the current key is tried first, so the common case
+ * costs one HMAC and only a token from the rotation window costs two.
+ */
+export function buildIntentKeyring(input: {
+  rootSecret: string;
+  currentKeyId?: string;
+  previousKeyId?: string;
+}): IntentKey[] {
+  const currentId = (input.currentKeyId || '1').trim();
+  const keys = [deriveIntentKey(input.rootSecret, currentId)];
+
+  const previousId = (input.previousKeyId || '').trim();
+  // A previous id equal to the current one is a configuration mistake, not a
+  // rotation. Silently adding it would double every verification cost and make the
+  // logs claim a rotation was in progress when none was.
+  if (previousId && previousId !== currentId) {
+    keys.push(deriveIntentKey(input.rootSecret, previousId));
+  }
+  return keys;
 }
 
 function sign(secret: string, payload: string): string {

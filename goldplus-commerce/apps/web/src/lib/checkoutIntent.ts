@@ -3,7 +3,7 @@ import {
   CHECKOUT_INTENT_HEADER,
   CHECKOUT_INTENT_TTL_SECONDS,
   checkoutIntentCookieName,
-  deriveIntentKey,
+  buildIntentKeyring,
   issueCheckoutIntent,
   verifyCheckoutIntent,
   type IntentKey,
@@ -36,16 +36,23 @@ function keys(): IntentKey[] | null {
   ).trim();
   if (!root) return null;
 
-  const currentId = (import.meta.env.CHECKOUT_INTENT_KEY_ID || process.env.CHECKOUT_INTENT_KEY_ID || '1').trim();
-  const previousId = (
-    import.meta.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID ||
-    process.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID ||
-    ''
-  ).trim();
-
-  const list = [deriveIntentKey(root, currentId)];
-  if (previousId && previousId !== currentId) list.push(deriveIntentKey(root, previousId));
-  return list;
+  // The SAME builder the API verifies with. Assembling the keyring twice is how an
+  // issuer and a verifier drift apart, and the symptom is every customer being
+  // unable to check out with nothing naming the rotation as the cause.
+  try {
+    return buildIntentKeyring({
+      rootSecret: root,
+      currentKeyId: import.meta.env.CHECKOUT_INTENT_KEY_ID || process.env.CHECKOUT_INTENT_KEY_ID,
+      previousKeyId:
+        import.meta.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID ||
+        process.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID,
+    });
+  } catch {
+    // Misconfigured rather than absent. Returning null makes the page refuse, which
+    // is correct: minting under a weak key would produce tokens the API is right to
+    // reject, and issuing them anyway would look like a working checkout.
+    return null;
+  }
 }
 
 export interface ResolvedIntent {

@@ -3,7 +3,7 @@ import {
   CHECKOUT_INTENT_HEADER,
   CheckoutIntentClaims,
   IntentKey,
-  deriveIntentKey,
+  buildIntentKeyring,
   verifyCheckoutIntent,
 } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
@@ -50,12 +50,22 @@ export function intentKeys(): IntentKey[] | null {
   const source = root || fallback;
   if (!source) return null;
 
-  const currentId = (process.env.CHECKOUT_INTENT_KEY_ID || '1').trim();
-  const previousId = (process.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID || '').trim();
-
-  const keys = [deriveIntentKey(source, currentId)];
-  if (previousId && previousId !== currentId) keys.push(deriveIntentKey(source, previousId));
-  return keys;
+  // Assembled by the shared builder, not here. The API and the storefront each
+  // built this list from the same environment variables, and a keyring that differs
+  // between the issuer and the verifier rejects every token — which surfaces as
+  // customers unable to check out, with nothing pointing at the rotation.
+  try {
+    return buildIntentKeyring({
+      rootSecret: source,
+      currentKeyId: process.env.CHECKOUT_INTENT_KEY_ID,
+      previousKeyId: process.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID,
+    });
+  } catch {
+    // A secret too short or a malformed key id is a misconfiguration. Reported as
+    // "no keys", which the caller turns into a refusal — never a fallback to an
+    // unsigned or weakly signed identity.
+    return null;
+  }
 }
 
 export function resolveCheckoutIntent(c: Context): IntentResolution {

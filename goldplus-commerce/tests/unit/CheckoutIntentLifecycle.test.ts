@@ -31,10 +31,13 @@ describe('the intent is issued on the GET path, not only on POST', () => {
     // key was a ReferenceError — the page was broken on first load while
     // `pnpm build` passed throughout.
     const resolveAt = frontmatter.indexOf('resolveCheckoutIntent(Astro.cookies');
-    const postBranchAt = frontmatter.indexOf("Astro.request.method === 'POST'");
+    // Anchored on the SUBMISSION branch, not merely the first mention of POST: the
+    // cross-site check reads the method earlier on purpose, since it must refuse
+    // before anything can mint an intent.
+    const submitBranchAt = frontmatter.indexOf("Astro.request.method === 'POST' && originDecision.allowed");
     expect(resolveAt).toBeGreaterThan(-1);
-    expect(postBranchAt).toBeGreaterThan(-1);
-    expect(resolveAt).toBeLessThan(postBranchAt);
+    expect(submitBranchAt).toBeGreaterThan(-1);
+    expect(resolveAt).toBeLessThan(submitBranchAt);
   });
 
   it('refuses to start without signing configuration rather than issuing an unsigned identity', () => {
