@@ -53,6 +53,20 @@ REMOTE="goldplus-prod"
 REMOTE_APP="/opt/goldplus/app/goldplus-commerce"
 COMPOSE="docker compose --env-file .env.production -f docker-compose.production.yml"
 
+# This release verifies against ITS OWN scope, not Track A's.
+#
+# Exported, because the gates that check it — verify-claude-release-scope.mjs inside
+# mac-rail-b-preapproval.sh and mac-rail-b-production.sh, and rail-b-selftest.sh — are
+# invoked as subprocesses and inherit the environment. That is deliberate: it means those
+# scripts stay byte-identical for Track A, whose invocation simply does not set this
+# variable and therefore still reads CLAUDE_RELEASE_SCOPE.json.
+#
+# Pointing both release lines at one scope file is not an option. Track A is frozen at
+# 38d26fdcc, which predates migrations 0050-0060, so making its scope match this working
+# tree would assert that its candidate contains migrations it does not contain — a lie
+# about a frozen release, not a resync.
+export GOLDPLUS_RELEASE_SCOPE_FILE="${APP_ROOT}/docs/platform/releases/claude/CLAUDE_HARDENING_RELEASE_SCOPE.json"
+
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 GIT_ROOT="$(git -C "$APP_ROOT" rev-parse --show-toplevel)"
 EVIDENCE_ROOT="${GOLDPLUS_EVIDENCE_ROOT:-$(dirname "$GIT_ROOT")/goldplus-hardening-milestone-${TS}}"
@@ -120,7 +134,15 @@ assert_environment() {
   ok "candidate still reachable on the remote branch"
 
   [ -f "$RELEASE_JSON" ] || die "MISSING_RELEASE_IDENTITY — $RELEASE_JSON"
-  ok "frozen release identity present"
+  [ -f "$GOLDPLUS_RELEASE_SCOPE_FILE" ] || die "MISSING_RELEASE_SCOPE — $GOLDPLUS_RELEASE_SCOPE_FILE"
+  ok "frozen release identity and scope present"
+
+  # The scope must be a fixed point of this working tree BEFORE any image is built.
+  # mac-rail-b-preapproval.sh and mac-rail-b-production.sh both assert it later; failing
+  # here costs seconds, failing there costs a full image build and a rehearsal.
+  ( cd "$APP_ROOT" && node scripts/release/claude/verify-claude-release-scope.mjs >/dev/null ) \
+    || die "SCOPE_DRIFT — the release scope does not match this tree; resync before releasing"
+  ok "release scope is a fixed point of the tree"
 
   mkdir -p "$EVIDENCE_ROOT"
   printf '  evidence: %s\n' "$EVIDENCE_ROOT"

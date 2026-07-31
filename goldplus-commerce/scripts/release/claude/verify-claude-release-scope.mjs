@@ -17,7 +17,18 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
 
-const SCOPE_PATH = 'docs/platform/releases/claude/CLAUDE_RELEASE_SCOPE.json';
+// The scope file this verifier asserts against.
+//
+// Defaults to the Track A scope, so Track A's invocation is byte-identical in behaviour
+// and nothing about that release line changes. A SECOND release line — the hardening
+// milestone — runs on its own branch with its own migrations and its own operator
+// scripts, and it needs its own scope: pointing both at one file would force the two to
+// agree about a migration set they genuinely do not share, and the only way to make
+// Track A's scope "match" this tree would be to assert that its candidate contains
+// migrations it does not contain. That is a lie about a frozen release, not a resync.
+const SCOPE_PATH =
+  process.env.GOLDPLUS_RELEASE_SCOPE_FILE ||
+  'docs/platform/releases/claude/CLAUDE_RELEASE_SCOPE.json';
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 const fileSha = (p) => sha256(fs.readFileSync(p));
 
