@@ -1,16 +1,16 @@
 {
   "$comment": "Cloud-side frozen release identity for the Amazon-grade hardening milestone. Generated once, from a clean tree at the candidate, after all ten cloud gates passed with exit code 0. The image digests, backup hash and Playwright evidence are DELIBERATELY absent: they are physical artifacts produced on the Mac, and recording placeholders for them here would be fabricated evidence.",
-  "releaseId": "goldplus-hardening-milestone-20260730-02320bb0bdc3",
-  "tag": "goldplus-hardening-milestone-20260730-02320bb0bdc3",
+  "releaseId": "goldplus-hardening-milestone-20260730-1167b3db3055",
+  "tag": "goldplus-hardening-milestone-20260730-1167b3db3055",
   "targetBranch": "claude/amazon-grade-module-hardening-20260729",
-  "executableCandidate": "02320bb0bdc3df32a42e2060b9f9093c2498e6cb",
-  "executableTree": "796acc826d4a7287cfd8911eb0a956fa15027ace",
+  "executableCandidate": "1167b3db30557185b6371df64bad96c67bac3432",
+  "executableTree": "bdb37fa75ca1e64d0c9d28f056be22c7de9f105b",
   "migrationCeiling": "0060_cart_ownership_and_version.sql",
-  "cloudScopeSha256": "5f49f5bb00d7d772af75b7111f8344456e235d8dbd2607aeeba276488b26c9b4",
+  "cloudScopeSha256": "2c8268bc8a901c7bd018f009517eb69e0793372b468ac39c5e062fdedbd336fc",
   "scopeInputs": {
     "targetBranch": "claude/amazon-grade-module-hardening-20260729",
-    "executableCommit": "02320bb0bdc3df32a42e2060b9f9093c2498e6cb",
-    "executableTree": "796acc826d4a7287cfd8911eb0a956fa15027ace",
+    "executableCommit": "1167b3db30557185b6371df64bad96c67bac3432",
+    "executableTree": "bdb37fa75ca1e64d0c9d28f056be22c7de9f105b",
     "migrationCeiling": "0060_cart_ownership_and_version.sql",
     "migrationCount": 61,
     "migrations": [
@@ -267,15 +267,15 @@
   },
   "expectedImages": {
     "$comment": "Tags are inputs. The DIGESTS are frozen on the Mac after the exact build.",
-    "apiTag": "goldplus-api:hardening-02320bb0bdc3",
-    "webTag": "goldplus-web:hardening-02320bb0bdc3",
+    "apiTag": "goldplus-api:hardening-1167b3db3055",
+    "webTag": "goldplus-web:hardening-1167b3db3055",
     "apiDigest": null,
     "webDigest": null
   },
   "approvalMarker": {
     "$comment": "A NEW marker identity, never reused. Claude must never create it; the command below is for the human operator and is deliberately not run by any script here.",
-    "path": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_HARDENING_MILESTONE_20260730_02320bb0bdc3",
-    "content": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_HARDENING_MILESTONE_20260730_02320bb0bdc3",
+    "path": "/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_HARDENING_MILESTONE_20260730_1167b3db3055",
+    "content": "APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_HARDENING_MILESTONE_20260730_1167b3db3055",
     "requiredMetadata": "root:root 600 1"
   },
   "retiredMarkersRemainProhibited": [
@@ -296,10 +296,13 @@
     "lint": "exit 0 (0 errors; warnings only)",
     "unitSuite": "exit 0 \u2014 4692 passed, 238 files, clean tree",
     "architectureSuite": "exit 0 \u2014 90 passed",
-    "secretScan": "exit 0 \u2014 1359 files checked, no values printed",
+    "secretScan": "exit 0 \u2014 1360 files checked, no values printed",
     "checkoutDurabilityRealPostgres": "exit 0 \u2014 38/38",
     "cartAuthorizationRealPostgres": "exit 0 \u2014 25/25",
-    "endToEndHarness": "exit 0 \u2014 43/43"
+    "endToEndHarness": "exit 0 \u2014 43/43",
+    "railBSelftest": "exit 0 \u2014 131/131 fault matrix",
+    "bash32Compatibility": "exit 0 \u2014 0 unsupported constructs",
+    "releaseScopeFixedPoint": "exit 0 \u2014 scope inputs verified against working tree"
   },
   "rollback": {
     "$comment": "Rollback targets the CURRENTLY DEPLOYED images, which only the Mac can read from production before the deploy. Captured there, not guessed here.",
@@ -318,5 +321,7 @@
   "candidateReachability": {
     "$comment": "The controller asserts the candidate is REACHABLE on the target branch, not that the branch head equals it. The release package is itself a commit on the same branch, so an equality check would make the branch fail its own release the moment the package was pushed. What matters is that the candidate has not been rewritten, reverted or force-pushed away. The deployed tree is the candidate's; later commits on the branch are release metadata and are not deployed.",
     "rule": "git merge-base --is-ancestor <candidate> origin/<targetBranch>"
-  }
+  },
+  "releaseScopeFile": "docs/platform/releases/claude/CLAUDE_HARDENING_RELEASE_SCOPE.json",
+  "reFreezeNote": "Re-frozen at this commit after a demonstrated failing gate was fixed. The first freeze (02320bb) was superseded because rail-b-selftest and the release-scope verifier \u2014 both run by the Mac pre-approval gate \u2014 failed on scope drift. Fixing that changed source, so the full gate was re-run rather than carried over."
 }

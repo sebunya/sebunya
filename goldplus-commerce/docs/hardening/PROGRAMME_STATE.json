@@ -142,16 +142,18 @@
   },
   "lastCleanSuiteCommit": "2912482d34187c5aaad02c7c58590ba5dfe69624",
   "latestReleaseIdentity": {
-    "releaseId": "goldplus-hardening-milestone-20260730-02320bb0bdc3",
-    "executableCandidate": "02320bb0bdc3df32a42e2060b9f9093c2498e6cb",
+    "releaseId": "goldplus-hardening-milestone-20260730-1167b3db3055",
+    "executableCandidate": "1167b3db30557185b6371df64bad96c67bac3432",
     "targetBranch": "claude/amazon-grade-module-hardening-20260729",
     "migrationCeiling": "0060_cart_ownership_and_version.sql",
-    "cloudScopeSha256": "5f49f5bb00d7d772af75b7111f8344456e235d8dbd2607aeeba276488b26c9b4",
-    "cloudGate": "PASSED \u2014 all ten commands exit 0 on a clean tree at the candidate",
+    "cloudScopeSha256": "2c8268bc8a901c7bd018f009517eb69e0793372b468ac39c5e062fdedbd336fc",
+    "releaseScopeFile": "docs/platform/releases/claude/CLAUDE_HARDENING_RELEASE_SCOPE.json",
+    "cloudGate": "PASSED \u2014 thirteen commands, each exit 0, on a clean tree at the candidate",
     "state": "FROZEN_AWAITING_MAC_RAIL_B",
     "controller": "scripts/release/claude/mac-rail-b-hardening-milestone.sh",
     "identity": "docs/platform/releases/claude/HARDENING_MILESTONE_RELEASE.json",
-    "note": "Cloud-side packaging is complete. Image digests, the production backup hash, Playwright evidence and the rollback image ids are absent by design: they are physical artifacts of the Mac and of production, and recording placeholders for them would be fabricated evidence."
+    "supersedes": "02320bb0bdc3df32a42e2060b9f9093c2498e6cb \u2014 re-frozen after a demonstrated failing Mac gate (release-scope drift) was fixed",
+    "note": "Image digests, the production backup hash, Playwright evidence and rollback image ids are absent by design: they are physical artifacts of the Mac and of production, and placeholders would be fabricated evidence."
   },
   "trackA": {
     "branch": "claude/control-centre-full-activation-20260729",
@@ -160,7 +162,7 @@
     "status": "AWAITING_MAC_RAIL_B_VALIDATION",
     "note": "Not merged into this branch. Its scope, candidate, tag and approval marker are untouched."
   },
-  "nextExactAction": "Run scripts/release/claude/mac-rail-b-hardening-milestone.sh preflight on the actual Mac, from a clean dedicated worktree at 02320bb0bdc3df32a42e2060b9f9093c2498e6cb. Then h01, finalise, marker-command, and deploy. Nothing further can proceed in the cloud environment.",
+  "nextExactAction": "On the actual Mac, from a clean dedicated worktree: git checkout 1167b3db30557185b6371df64bad96c67bac3432 && scripts/release/claude/mac-rail-b-hardening-milestone.sh preflight. Then h01, h01-validate (only on a zero-violation report), finalise, marker-command, deploy. Nothing further is possible in the Linux cloud container: no Darwin, no Docker daemon, no ssh binary.",
   "lastUpdatedAt": "2026-07-30",
   "codeHead": "2912482d34187c5aaad02c7c58590ba5dfe69624",
   "stateBasedOnHead": "2912482d34187c5aaad02c7c58590ba5dfe69624",

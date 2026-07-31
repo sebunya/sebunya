@@ -1,7 +1,7 @@
 {
   "branch": "claude/amazon-grade-module-hardening-20260729",
-  "executableCommit": "02320bb0bdc3df32a42e2060b9f9093c2498e6cb",
-  "executableTree": "796acc826d4a7287cfd8911eb0a956fa15027ace",
+  "executableCommit": "1167b3db30557185b6371df64bad96c67bac3432",
+  "executableTree": "bdb37fa75ca1e64d0c9d28f056be22c7de9f105b",
   "pnpmLockSha256": "0a750b72d4ec2bc1c5506d35d962b921881d7e580ae2dbc004d3b0c771b6874a",
   "apiDockerfileSha256": "66acf6b6d47a5172598c4469f014d9309f5d03dac6f413157652308e22bf7f48",
   "webDockerfileSha256": "bd93666f7f40b860e5e0f1304f0e7e1f6a2c93c1836934f94229e274d4ba1b4e",
@@ -265,7 +265,7 @@
     "claude/build-final-scope.mjs": "f1e0b33ba34c0dce8314e107d3d673e13f06c3fbe65e2564c3d1d4bc76e4c80b",
     "claude/build-module-inventory.mjs": "1c345e0111bdde6556288f92c3a0b5a466b4866e52c96f4f45234fd010b2a621",
     "claude/mac-rail-b-finalise-release.sh": "c2bfeb0a5901313ac75bf78e9f9cc98239279301aad74bf75661e33dc455ee26",
-    "claude/mac-rail-b-hardening-milestone.sh": "21321dff6534562870fea560be3c89430320bea1a3f9bcdd780da45d76e308f4",
+    "claude/mac-rail-b-hardening-milestone.sh": "cc24c6a6c1eb2b533515c77091e88d9c49c0e81dc2f2205ba08c71ce9bb74203",
     "claude/mac-rail-b-preapproval.sh": "e461e435fad415e05f26a221f1fa17d29e195a0c680912d776f2d552e4df4fa9",
     "claude/mac-rail-b-production.sh": "dad0c0afe37ace15c9ac9300dcf42e43e3c075b57cd4101a8e9e56b560a60a7d",
     "claude/mac-rail-b-rollback.sh": "2a3acdf51434190c1c23d5da6711cde16243313da1b0cae5dac84d521675cccf",

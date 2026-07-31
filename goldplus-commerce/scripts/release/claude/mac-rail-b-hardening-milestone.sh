@@ -43,11 +43,11 @@ RELEASE_JSON="${APP_ROOT}/docs/platform/releases/claude/HARDENING_MILESTONE_RELE
 # Read from the committed file, never retyped here. A controller carrying its own
 # copy of the candidate SHA is a second source of truth, and the two would
 # eventually disagree about which commit is being released.
-RELEASE_ID="goldplus-hardening-milestone-20260730-02320bb0bdc3"
-CANDIDATE="02320bb0bdc3df32a42e2060b9f9093c2498e6cb"
+RELEASE_ID="goldplus-hardening-milestone-20260730-1167b3db3055"
+CANDIDATE="1167b3db30557185b6371df64bad96c67bac3432"
 TARGET_BRANCH="claude/amazon-grade-module-hardening-20260729"
 MIGRATION_CEILING="0060_cart_ownership_and_version.sql"
-MARKER="/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_HARDENING_MILESTONE_20260730_02320bb0bdc3"
+MARKER="/root/APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_HARDENING_MILESTONE_20260730_1167b3db3055"
 
 REMOTE="goldplus-prod"
 REMOTE_APP="/opt/goldplus/app/goldplus-commerce"
@@ -155,13 +155,13 @@ cmd_preflight() {
   step "1. Exact image builds"
   # Built from the candidate tree, tagged by candidate. Not :latest — a floating tag
   # cannot be rolled back to, and cannot be proven to be what was tested.
-  docker build -f "${APP_ROOT}/Dockerfile.api" -t "goldplus-api:hardening-02320bb0bdc3" "$APP_ROOT" \
+  docker build -f "${APP_ROOT}/Dockerfile.api" -t "goldplus-api:hardening-1167b3db3055" "$APP_ROOT" \
     || die "API_IMAGE_BUILD_FAILED"
-  docker build -f "${APP_ROOT}/Dockerfile.web" -t "goldplus-web:hardening-02320bb0bdc3" "$APP_ROOT" \
+  docker build -f "${APP_ROOT}/Dockerfile.web" -t "goldplus-web:hardening-1167b3db3055" "$APP_ROOT" \
     || die "WEB_IMAGE_BUILD_FAILED"
-  docker image inspect "goldplus-api:hardening-02320bb0bdc3" --format '{{.Id}}' \
+  docker image inspect "goldplus-api:hardening-1167b3db3055" --format '{{.Id}}' \
     > "${EVIDENCE_ROOT}/api-image-id.txt"
-  docker image inspect "goldplus-web:hardening-02320bb0bdc3" --format '{{.Id}}' \
+  docker image inspect "goldplus-web:hardening-1167b3db3055" --format '{{.Id}}' \
     > "${EVIDENCE_ROOT}/web-image-id.txt"
   ok "exact images built and their ids captured"
 
@@ -276,7 +276,7 @@ The operator runs this on ${REMOTE}, as root. Claude must not run it.
   ssh ${REMOTE}
   sudo -i
   umask 077
-  printf '%s\\n' 'APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_HARDENING_MILESTONE_20260730_02320bb0bdc3' \\
+  printf '%s\\n' 'APPROVE_GOLDPLUS_PROGRAMME_DEPLOY_HARDENING_MILESTONE_20260730_1167b3db3055' \\
     > ${MARKER}.tmp && \\
     chown root:root ${MARKER}.tmp && \\
     chmod 600 ${MARKER}.tmp && \\
