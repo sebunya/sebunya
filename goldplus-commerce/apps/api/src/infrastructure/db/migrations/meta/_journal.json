@@ -365,6 +365,69 @@
       "when": 1785297600000,
       "tag": "0051_loyalty_daily_control_totals",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "5",
+      "when": 1785384000000,
+      "tag": "0052_inventory_stock_invariants",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "5",
+      "when": 1785470400000,
+      "tag": "0053_inventory_policy_and_reservation_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "5",
+      "when": 1785556800000,
+      "tag": "0054_outbox_lease_and_dead_letter",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "5",
+      "when": 1785643200000,
+      "tag": "0055_audit_log_immutability",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "5",
+      "when": 1785729600000,
+      "tag": "0056_payment_signature_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "5",
+      "when": 1785816000000,
+      "tag": "0057_checkout_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "5",
+      "when": 1785902400000,
+      "tag": "0058_checkout_fenced_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "5",
+      "when": 1785988800000,
+      "tag": "0059_checkout_saga_and_durable_side_effects",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "5",
+      "when": 1786075200000,
+      "tag": "0060_cart_ownership_and_version",
+      "breakpoints": true
     }
   ]
 }
