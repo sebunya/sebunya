@@ -108,7 +108,7 @@ record_gate boundary.runtimeSource "$GATE_PASS" "git diff --name-only ${EXEC_CAN
 # ─── 2b. Migration/journal parity recurrence guard ──────────────────────────
 # Migrations 0052-0060 once shipped as SQL files while the drizzle journal silently
 # stopped registering entries at 0051; drizzle only applies what the journal lists,
-# so that release looked complete while six migrations would never run in
+# so that release looked complete while nine migrations would never run in
 # production. This must fail before dependency installation, image builds, the
 # production backup or the migration rehearsal below ever start.
 step "2b. Migration/journal parity"

@@ -589,7 +589,7 @@ expect_refusal "failed-run" "VERIFIER_FAILED run refused" "FAILED_RUN_PERMANENTL
 # ─── Class: migration/journal parity recurrence guard ───────────────────────
 # Migrations 0052-0060 once shipped as SQL files while the drizzle journal
 # silently stopped registering entries at 0051 — drizzle only ever applies what
-# the journal lists, so that release looked complete while six migrations would
+# the journal lists, so that release looked complete while nine migrations would
 # never run. This proves the recurrence guard actually refuses that class of
 # drift. The fixture lives entirely under $SANDBOX; the tracked migrations
 # directory and its journal are never read or written here.

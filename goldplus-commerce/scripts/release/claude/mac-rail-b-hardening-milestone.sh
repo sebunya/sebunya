@@ -141,7 +141,7 @@ assert_environment() {
   # before any image build, backup or rehearsal. Migrations 0052-0060 once shipped
   # as SQL files while the drizzle journal silently stopped registering entries at
   # 0051 — drizzle only ever applies what the journal lists, so that release looked
-  # complete while six migrations would never run. This makes that drift, or a
+  # complete while nine migrations would never run. This makes that drift, or a
   # mismatch against this release's declared migrationCeiling, a named failure here
   # rather than a silent gap discovered on production.
   ( cd "$APP_ROOT" && node scripts/release/claude/verify-migration-parity.mjs --scope "$GOLDPLUS_RELEASE_SCOPE_FILE" >/dev/null ) \

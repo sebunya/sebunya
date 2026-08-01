@@ -4,7 +4,7 @@
  *
  * Migrations 0052-0060 once shipped as SQL files while the drizzle journal silently
  * stopped registering entries at 0051 — drizzle only ever applies what the journal
- * lists, so the release looked complete while six migrations would never run. This
+ * lists, so the release looked complete while nine migrations would never run. This
  * verifier makes that class of drift a named, non-zero-exit failure instead of a
  * silent gap, and it is meant to run on every checkout, not just this one.
  *
