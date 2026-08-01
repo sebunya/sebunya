@@ -137,6 +137,17 @@ assert_environment() {
   [ -f "$GOLDPLUS_RELEASE_SCOPE_FILE" ] || die "MISSING_RELEASE_SCOPE — $GOLDPLUS_RELEASE_SCOPE_FILE"
   ok "frozen release identity and scope present"
 
+  # Migration/journal parity recurrence guard, BEFORE the scope check below and
+  # before any image build, backup or rehearsal. Migrations 0052-0060 once shipped
+  # as SQL files while the drizzle journal silently stopped registering entries at
+  # 0051 — drizzle only ever applies what the journal lists, so that release looked
+  # complete while six migrations would never run. This makes that drift, or a
+  # mismatch against this release's declared migrationCeiling, a named failure here
+  # rather than a silent gap discovered on production.
+  ( cd "$APP_ROOT" && node scripts/release/claude/verify-migration-parity.mjs --scope "$GOLDPLUS_RELEASE_SCOPE_FILE" >/dev/null ) \
+    || die "MIGRATION_JOURNAL_PARITY_DRIFT — SQL migrations, the drizzle journal or the declared release ceiling have diverged; fix before releasing"
+  ok "SQL migrations, drizzle journal and declared release ceiling agree"
+
   # The scope must be a fixed point of this working tree BEFORE any image is built.
   # mac-rail-b-preapproval.sh and mac-rail-b-production.sh both assert it later; failing
   # here costs seconds, failing there costs a full image build and a rehearsal.

@@ -586,6 +586,76 @@ expect_refusal "failed-run" "ABORTED_SCRIPT_ERROR run refused" "FAILED_RUN_PERMA
 expect_refusal "failed-run" "VERIFIER_FAILED run refused" "FAILED_RUN_PERMANENTLY_INELIGIBLE" \
   bash "$FIN" --validation-run "$(mkv vf.json '{"runState":"VALIDATED","eligibleForFinalisation":true,"classification":"VERIFIER_FAILED"}')"
 
+# ─── Class: migration/journal parity recurrence guard ───────────────────────
+# Migrations 0052-0060 once shipped as SQL files while the drizzle journal
+# silently stopped registering entries at 0051 — drizzle only ever applies what
+# the journal lists, so that release looked complete while six migrations would
+# never run. This proves the recurrence guard actually refuses that class of
+# drift. The fixture lives entirely under $SANDBOX; the tracked migrations
+# directory and its journal are never read or written here.
+MPARITY="$LIB_DIR/verify-migration-parity.mjs"
+MP_FIXTURE="$SANDBOX/migration-parity"
+mkdir -p "$MP_FIXTURE/meta"
+
+mp_write_sql() { # <count>
+  rm -f "$MP_FIXTURE"/*.sql
+  local n="$1" i=0 tag
+  while [[ $i -lt $n ]]; do
+    tag="$(printf '%04d_migration_%d' "$i" "$i")"
+    : > "$MP_FIXTURE/$tag.sql"
+    i=$((i+1))
+  done
+}
+mp_journal_entries() { # <count> -> comma-joined entry objects for tags 0..count-1
+  local n="$1" i=0 out=""
+  while [[ $i -lt $n ]]; do
+    [[ -n "$out" ]] && out+=","
+    out+=$(printf '{"idx":%d,"version":"5","when":1,"tag":"%04d_migration_%d","breakpoints":true}' "$i" "$i" "$i")
+    i=$((i+1))
+  done
+  printf '%s' "$out"
+}
+mp_write_journal_raw() { printf '%s' "$1" > "$MP_FIXTURE/meta/_journal.json"; }
+mp_write_journal_entries() { # <count>
+  mp_write_journal_raw "$(printf '{"version":"5","dialect":"postgresql","entries":[%s]}' "$(mp_journal_entries "$1")")"
+}
+
+mp_write_sql 61
+mp_write_journal_entries 61
+expect_success "migration-parity" "valid 61-file journal passes" \
+  node "$MPARITY" --sql-dir "$MP_FIXTURE"
+
+mp_write_journal_entries 60
+expect_refusal "migration-parity" "missing final journal entry refused" "SQL_JOURNAL_COUNT_MISMATCH" \
+  node "$MPARITY" --sql-dir "$MP_FIXTURE"
+
+mp_write_journal_entries 62
+expect_refusal "migration-parity" "extra journal entry beyond the sql ceiling refused" "SQL_JOURNAL_COUNT_MISMATCH" \
+  node "$MPARITY" --sql-dir "$MP_FIXTURE"
+
+mp_write_sql 60
+mp_write_journal_entries 61
+expect_refusal "migration-parity" "missing sql file refused" "SQL_JOURNAL_COUNT_MISMATCH" \
+  node "$MPARITY" --sql-dir "$MP_FIXTURE"
+
+mp_write_sql 61
+mp_write_journal_raw "$(printf '{"version":"5","dialect":"postgresql","entries":[%s,{"idx":61,"version":"5","when":1,"tag":"0000_migration_0","breakpoints":true}]}' "$(mp_journal_entries 61)")"
+expect_refusal "migration-parity" "duplicate journal tag refused" "DUPLICATE_JOURNAL_TAG" \
+  node "$MPARITY" --sql-dir "$MP_FIXTURE"
+
+mp_write_journal_raw '{"version":"5","dialect":"postgresql","entries": this is not json'
+expect_refusal "migration-parity" "malformed journal JSON refused" "JOURNAL_MALFORMED_JSON" \
+  node "$MPARITY" --sql-dir "$MP_FIXTURE"
+
+mp_write_journal_entries 61
+expect_refusal "migration-parity" "release-scope ceiling mismatch refused" "RELEASE_SCOPE_CEILING_MISMATCH" \
+  node "$MPARITY" --sql-dir "$MP_FIXTURE" --scope "$(mkv mp-scope.json '{"migrationCeiling":"0049_wrong"}')"
+
+expect_success "migration-parity" "matching release-scope ceiling passes" \
+  node "$MPARITY" --sql-dir "$MP_FIXTURE" --scope "$(mkv mp-scope-ok.json '{"migrationCeiling":"0060_migration_60"}')"
+
+rm -rf "$MP_FIXTURE"
+
 # ─── Summary ────────────────────────────────────────────────────────────────
 TOTAL=$((PASS+FAIL))
 printf '\nfault matrix: %d/%d passed\n' "$PASS" "$TOTAL"
