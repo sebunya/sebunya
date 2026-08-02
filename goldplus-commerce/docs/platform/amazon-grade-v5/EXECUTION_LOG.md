@@ -1,0 +1,4 @@
+# V5 Execution Log
+
+- 2026-08-02 · Slice 0: base verified (head+tree exact); worktree created; Lane B recorded REMOTE_RELEASE_LANE_UNAVAILABLE (no ssh binary); memory bootstrap complete — HISTORIC_128_SOURCE_UNAVAILABLE recorded, five historic commits verified as ancestors (fulfilment F1-F5 wins already in this line).
+- 2026-08-02 · Slice 1: all 14 stop-ship findings re-verified against current source (register with per-finding evidence). One live defect found and fixed: four measurement admin pages called the API client-side with a phantom localStorage token nothing ever set — every DLQ replay/refresh/audit failed 401. Fix: allowlisted same-origin session-cookie proxy + all gp_auth_token references removed; 6 regression tests pin auth, allowlist, method binding, query filtering and honest upstream failure.

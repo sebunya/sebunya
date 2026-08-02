@@ -547,11 +547,6 @@ if (!token) {
     ? __GP_API_BASE__
     : (window as any).__GP_API_BASE__ || '';
 
-  function getAuthHeader(): Record<string, string> {
-    const token = localStorage.getItem('gp_auth_token');
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
-  }
-
   async function loadDashboard() {
     const refreshedEl = document.getElementById('last-refreshed');
     const statusPill  = document.getElementById('status-pill');
@@ -561,8 +556,8 @@ if (!token) {
 
     try {
       const [overviewRes, matchRes] = await Promise.all([
-        fetch(`${API_BASE}/admin/measurement/overview`, { headers: getAuthHeader() }),
-        fetch(`${API_BASE}/admin/measurement/match-quality?days=7`, { headers: getAuthHeader() }),
+        fetch('/api/admin/measurement/overview', { credentials: 'same-origin' }),
+        fetch('/api/admin/measurement/match-quality?days=7', { credentials: 'same-origin' }),
       ]);
 
       const [overview, matchQuality] = await Promise.all([

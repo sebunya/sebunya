@@ -230,10 +230,8 @@ if (!token) {
     ? __GP_API_BASE__
     : (window as any).__GP_API_BASE__ || '';
 
-  function authHeader() {
-    const t = localStorage.getItem('gp_auth_token');
-    return t ? { 'Authorization': `Bearer ${t}` } : {};
-  }
+  // Session lives in an HttpOnly cookie; calls go through the same-origin
+  // proxy which attaches the bearer token server-side.
 
   function showAlert(msg: string, type: 'success' | 'error') {
     const el = document.getElementById('dlq-alert')!;
@@ -246,9 +244,9 @@ if (!token) {
     btn.disabled = true;
     btn.textContent = 'Replaying…';
     try {
-      const res = await fetch(`${API_BASE}/admin/measurement/dlq/${id}/replay`, {
+      const res = await fetch(`/api/admin/measurement/dlq/${id}/replay`, {
         method: 'POST',
-        headers: authHeader(),
+        credentials: 'same-origin',
       });
       const json = await res.json();
       if (json.success) {
@@ -270,7 +268,7 @@ if (!token) {
     if (meta) meta.textContent = 'Loading…';
 
     try {
-      const res  = await fetch(`${API_BASE}/admin/measurement/dlq`, { headers: authHeader() });
+      const res  = await fetch('/api/admin/measurement/dlq', { credentials: 'same-origin' });
       const json = await res.json();
 
       if (!json.success) throw new Error('API error');

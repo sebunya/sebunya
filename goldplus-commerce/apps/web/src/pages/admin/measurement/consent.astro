@@ -240,10 +240,6 @@ if (!token) {
     ? __GP_API_BASE__
     : (window as any).__GP_API_BASE__ || '';
 
-  function authHeader() {
-    const t = localStorage.getItem('gp_auth_token');
-    return t ? { 'Authorization': `Bearer ${t}` } : {};
-  }
 
   function grantBadge(grantType: string): string {
     const map: Record<string, string> = {
@@ -268,8 +264,8 @@ if (!token) {
     if (loadingEl) loadingEl.textContent = 'Loading…';
 
     try {
-      const res = await fetch(`${API_BASE}/admin/measurement/consent-audit?limit=200`, {
-        headers: authHeader(),
+      const res = await fetch('/api/admin/measurement/consent-audit?limit=200', {
+        credentials: 'same-origin',
       });
       const json = await res.json();
 
