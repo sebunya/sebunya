@@ -348,6 +348,8 @@ import { DrizzleSessionRepository } from './db/repositories/DrizzleSessionReposi
 import { SessionService } from './security/SessionService';
 import { DrizzleMfaRepository } from './db/repositories/DrizzleMfaRepository';
 import { MfaService } from './security/MfaService';
+import { DrizzleCommerceReconciliationRepository } from './db/repositories/DrizzleCommerceReconciliationRepository';
+import { ScanCommerceIntegrityUseCase } from '../application/use-cases/commerce/ScanCommerceIntegrityUseCase';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
@@ -589,6 +591,9 @@ export class Registry {
   // Slice 3C: privileged MFA + step-up.
   public readonly mfaRepository = new DrizzleMfaRepository();
   public readonly mfaService = new MfaService(this.mfaRepository);
+  // Slice 4: commerce data-integrity reconciliation (money + inventory).
+  public readonly commerceReconciliationRepository = new DrizzleCommerceReconciliationRepository();
+  public readonly scanCommerceIntegrityUseCase = new ScanCommerceIntegrityUseCase(this.commerceReconciliationRepository);
   public readonly evaluateCartPricingUseCase = new EvaluateCartPricingUseCase(
     this.productRepo,
     this.pricingRepo,

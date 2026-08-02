@@ -47,11 +47,14 @@ describe('Order Domain Entity', () => {
     expect(order.orderStatus).toBe('pending_owner_review');
   });
 
-  test('Should handle status transitions', () => {
+  test('Should handle a legal status transition and reject an illegal one', () => {
     const order = Order.create('o3', {
       name: 'J', phone: '1', deliveryArea: 'Kla', deliveryAddress: 'Adr'
     }, 'retail', [], 0);
-    const updated = order.transitionStatus('completed');
-    expect(updated.orderStatus).toBe('completed');
+    // received -> processing is legal; the entity now enforces the state machine.
+    const processing = order.transitionStatus('processing');
+    expect(processing.orderStatus).toBe('processing');
+    // received -> completed skips the machine and must be rejected.
+    expect(() => order.transitionStatus('completed')).toThrow(/not allowed/i);
   });
 });

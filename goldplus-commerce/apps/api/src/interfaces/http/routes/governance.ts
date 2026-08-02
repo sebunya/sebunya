@@ -10,6 +10,8 @@ import { authMiddleware } from '../middleware/auth';
 import { requirePermissions } from '../middleware/permissions';
 import { NotificationTemplateRenderer } from '../../../application/use-cases/notifications/NotificationTemplateRenderer';
 import { clientIp } from '../clientAddress';
+import { canTransitionOrder } from '../../../domain/commerce/OrderStateMachine';
+import type { OrderStatus } from '../../../domain/commerce/Order';
 
 
 const routes = new Hono();
@@ -357,41 +359,12 @@ routes.patch('/admin/orders/:id/fulfillment', requirePermissions([PERMISSIONS.OR
       return c.json({ success: true, message: `Status is already set to ${nextStatus}`, data: order });
     }
 
-    // Enforce allowed transitions
-    let allowed = false;
-    
-    if (currentStatus === 'received') {
-      if (nextStatus === 'processing' || nextStatus === 'cancelled') allowed = true;
-    } else if (currentStatus === 'pending_payment') {
-      if (nextStatus === 'cancelled') {
-        allowed = true;
-      } else if (nextStatus === 'processing') {
-        if (order.paymentStatus === 'paid') {
-          allowed = true;
-        } else {
-          return c.json({ 
-            success: false, 
-            error: { 
-              code: 'TRANSITION_BLOCKED', 
-              message: 'Cannot process an unpaid order that is pending payment.' 
-            } 
-          }, 400);
-        }
-      }
-    } else if (currentStatus === 'pending_owner_review') {
-      if (nextStatus === 'processing' || nextStatus === 'cancelled') allowed = true;
-    } else if (currentStatus === 'processing') {
-      if (nextStatus === 'completed' || nextStatus === 'cancelled') allowed = true;
-    }
-
-    if (!allowed) {
-      return c.json({ 
-        success: false, 
-        error: { 
-          code: 'TRANSITION_BLOCKED', 
-          message: `Operational transition from '${currentStatus}' to '${nextStatus}' is not allowed.` 
-        } 
-      }, 400);
+    // Enforce allowed transitions via the domain state machine (single source of
+    // truth; the entity enforces the same rules, so nothing can persist an
+    // illegal transition from any caller).
+    const decision = canTransitionOrder(currentStatus, nextStatus as OrderStatus, { paymentStatus: order.paymentStatus });
+    if (!decision.allowed) {
+      return c.json({ success: false, error: { code: 'TRANSITION_BLOCKED', message: decision.message } }, 400);
     }
 
     // Mutate state using domain model

@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { canTransitionOrder } from './OrderStateMachine';
+import { DomainError } from '../errors/DomainError';
 
 export type OrderStatus = 'received' | 'pending_payment' | 'pending_owner_review' | 'processing' | 'completed' | 'cancelled' | 'failed';
 export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'failed';
@@ -120,7 +122,17 @@ export class Order {
     );
   }
 
+  /**
+   * Move to a new status, enforcing the order state machine. Throws a typed
+   * DomainError on an illegal transition so no caller — route, worker or test —
+   * can persist an order into a state it cannot legally reach.
+   */
   public transitionStatus(newStatus: OrderStatus): Order {
+    const decision = canTransitionOrder(this.orderStatus, newStatus, { paymentStatus: this.paymentStatus });
+    if (!decision.allowed) {
+      const category = decision.code === 'UNPAID' ? 'FORBIDDEN' : 'CONFLICT';
+      throw new DomainError(`ORDER_TRANSITION_${decision.code}`, category, decision.message, { clientSafe: true });
+    }
     return new Order(
       this.id, this.orderNumber, this.customerName, this.customerPhone, this.customerEmail,
       this.deliveryArea, this.deliveryAddress, this.buyerType, this.items,

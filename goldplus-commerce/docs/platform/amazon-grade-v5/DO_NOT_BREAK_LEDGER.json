@@ -106,6 +106,18 @@
       "statement": "During shutdown, readiness (/health/ready) goes 503 BEFORE sockets close, while liveness (/health/live) stays 200, so the load balancer drains the instance instead of racing a request into a closing socket.",
       "guard": "tests/unit/ReadinessDrain.test.ts + interfaces/http/lifecycle.ts",
       "since": "Slice 3F"
+    },
+    {
+      "id": "ORDER-SM-1",
+      "statement": "Order status changes go through the OrderStateMachine: terminal states (completed/cancelled/failed) cannot transition out; you cannot skip states (e.g. received→completed); pending_payment→processing requires payment_status=paid. Enforced in the domain entity (throws) and the governance route.",
+      "guard": "tests/unit/OrderStateMachine.test.ts + Commerce.test.ts + domain/commerce/OrderStateMachine.ts",
+      "since": "Slice 4"
+    },
+    {
+      "id": "RECON-1",
+      "statement": "Commerce integrity reconciliation SURFACES money/inventory drift and never mutates: order total=subtotal+delivery, subtotal=Σ(line finalLineTotal), product.reserved=Σ(active reservation ledger), reserved≤stock.",
+      "guard": "tests/unit/CommerceIntegrity.test.ts + tests/integration/CommerceIntegrity.integration.test.ts (real PG, 2/2)",
+      "since": "Slice 4"
     }
   ]
 }

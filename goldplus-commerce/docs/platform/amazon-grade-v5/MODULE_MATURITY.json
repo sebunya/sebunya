@@ -20,19 +20,96 @@
   "updated": "2026-08-02 (V7 resume — baseline before Slice 3)",
   "note": "Levels are current honest assessments from source, not aspirations. Raised only with evidence (tests + integration + browser proof where operated via UI).",
   "platformFoundations": {
-    "distributed-abuse-control": {"level": 4, "target": 4, "slice": "3A", "status": "DONE", "note": "One authoritative Redis-backed layer keyed on stable route-family across all public endpoint families; family-collapse + cross-replica sharing proven on real Redis; per-family outage policy + Retry-After."},
-    "trusted-proxy-identity": {"level": 4, "target": 4, "slice": "3A", "status": "DONE", "note": "Topology-aware resolver (CADDY_EDGE/CLOUDFLARE_EDGE/DIRECT, fail-closed in prod) feeds the single authoritative abuse-control layer; confidence buckets prevent unattributed claims consuming a real client's budget."},
-    "sessions-revocation": {"level": 4, "target": 4, "slice": "3B", "status": "DONE", "note": "Durable PostgreSQL-backed revocable sessions: refresh rotation, reuse detection (family revoke, atomic/single-use under concurrency), logout/logout-all, inventory, cleanup, immediate hard-revocation cutoff; CSRF Origin validation for cookie-auth mutations. Real-PG 8/8 + unit 24/24."},
-    "privileged-mfa": {"level": 4, "target": 4, "slice": "3C", "status": "DONE", "note": "RFC 6238 TOTP (vector-verified), AES-256-GCM secret at rest, single-use recovery codes, 5-min step-up freshness, self-bypass denial; requireStepUp wired to pricing approve/activate + reusable for the rest. Unit 10/10 + real-PG 4/4. Broad route roll-out is mechanical follow-on."},
-    "configuration-boundary": {"level": 4, "target": 4, "slice": "3D", "status": "DONE", "note": "Zod configSchema boundary with z.infer-derived type + redactedConfig() secret masking; env-specific rules; unit 7/7. process.env sweep is mechanical follow-on."},
-    "typed-errors-safe-logs": {"level": 4, "target": 4, "slice": "3E", "status": "DONE", "note": "DomainError base + central mapErrorToHttp (categories + SQLSTATE classification, never message-matching, no err.message leak) wired to app.onError; pino PII/secret redaction. Unit 5/5. console.* sweep (mostly scripts) is follow-on."},
-    "db-client-composition-shutdown": {"level": 4, "target": 4, "slice": "3F", "status": "DONE", "note": "Transaction retry (40001/40P01) outside failed tx, bounded jittered backoff, statement/connect timeouts, Prometheus pool metrics, slow-query fingerprint without values, ordered graceful shutdown, startup config validation ALL already present and verified; added readiness-false-before-drain (lifecycle flag → /health/ready 503 while liveness stays 200). Unit 4/4. Modular-lazy composition of the eager Registry singleton deferred as an acceptable design (it is testable via getInstance and startup-validated)."}
+    "distributed-abuse-control": {
+      "level": 4,
+      "target": 4,
+      "slice": "3A",
+      "status": "DONE",
+      "note": "One authoritative Redis-backed layer keyed on stable route-family across all public endpoint families; family-collapse + cross-replica sharing proven on real Redis; per-family outage policy + Retry-After."
+    },
+    "trusted-proxy-identity": {
+      "level": 4,
+      "target": 4,
+      "slice": "3A",
+      "status": "DONE",
+      "note": "Topology-aware resolver (CADDY_EDGE/CLOUDFLARE_EDGE/DIRECT, fail-closed in prod) feeds the single authoritative abuse-control layer; confidence buckets prevent unattributed claims consuming a real client's budget."
+    },
+    "sessions-revocation": {
+      "level": 4,
+      "target": 4,
+      "slice": "3B",
+      "status": "DONE",
+      "note": "Durable PostgreSQL-backed revocable sessions: refresh rotation, reuse detection (family revoke, atomic/single-use under concurrency), logout/logout-all, inventory, cleanup, immediate hard-revocation cutoff; CSRF Origin validation for cookie-auth mutations. Real-PG 8/8 + unit 24/24."
+    },
+    "privileged-mfa": {
+      "level": 4,
+      "target": 4,
+      "slice": "3C",
+      "status": "DONE",
+      "note": "RFC 6238 TOTP (vector-verified), AES-256-GCM secret at rest, single-use recovery codes, 5-min step-up freshness, self-bypass denial; requireStepUp wired to pricing approve/activate + reusable for the rest. Unit 10/10 + real-PG 4/4. Broad route roll-out is mechanical follow-on."
+    },
+    "configuration-boundary": {
+      "level": 4,
+      "target": 4,
+      "slice": "3D",
+      "status": "DONE",
+      "note": "Zod configSchema boundary with z.infer-derived type + redactedConfig() secret masking; env-specific rules; unit 7/7. process.env sweep is mechanical follow-on."
+    },
+    "typed-errors-safe-logs": {
+      "level": 4,
+      "target": 4,
+      "slice": "3E",
+      "status": "DONE",
+      "note": "DomainError base + central mapErrorToHttp (categories + SQLSTATE classification, never message-matching, no err.message leak) wired to app.onError; pino PII/secret redaction. Unit 5/5. console.* sweep (mostly scripts) is follow-on."
+    },
+    "db-client-composition-shutdown": {
+      "level": 4,
+      "target": 4,
+      "slice": "3F",
+      "status": "DONE",
+      "note": "Transaction retry (40001/40P01) outside failed tx, bounded jittered backoff, statement/connect timeouts, Prometheus pool metrics, slow-query fingerprint without values, ordered graceful shutdown, startup config validation ALL already present and verified; added readiness-false-before-drain (lifecycle flag → /health/ready 503 while liveness stays 200). Unit 4/4. Modular-lazy composition of the eager Registry singleton deferred as an acceptable design (it is testable via getInstance and startup-validated)."
+    }
   },
   "acceptedWins": {
-    "advanced-analytics-v2": {"level": 5, "note": "Kampala-time semantics, canonical catalogue, metric states, saved views, alert rules (no delivery), bounded exports, golden datasets proven on real PostgreSQL."},
-    "checkout-hardening": {"level": 4, "note": "fenced lease 0058, durable side effects/saga 0059, ownership/version 0060; durability 38/38, cart-auth 25/25, e2e 43/43."},
-    "fulfilment-F1-F5": {"level": 4, "note": "SLA, packing, partial fulfilment, dispatch, delivery confirmation, reporting (migrations 0029-0036)."},
-    "money-bigint": {"level": 3, "note": "repository-complete (0062); production migration is a Lane B gate."},
-    "measurement-control-tower-proxy": {"level": 3, "target": 4, "note": "same-origin session-cookie proxy repaired; hostile review pending (§12)."}
+    "advanced-analytics-v2": {
+      "level": 5,
+      "note": "Kampala-time semantics, canonical catalogue, metric states, saved views, alert rules (no delivery), bounded exports, golden datasets proven on real PostgreSQL."
+    },
+    "checkout-hardening": {
+      "level": 4,
+      "note": "fenced lease 0058, durable side effects/saga 0059, ownership/version 0060; durability 38/38, cart-auth 25/25, e2e 43/43."
+    },
+    "fulfilment-F1-F5": {
+      "level": 4,
+      "note": "SLA, packing, partial fulfilment, dispatch, delivery confirmation, reporting (migrations 0029-0036)."
+    },
+    "money-bigint": {
+      "level": 3,
+      "note": "repository-complete (0062); production migration is a Lane B gate."
+    },
+    "measurement-control-tower-proxy": {
+      "level": 3,
+      "target": 4,
+      "note": "same-origin session-cookie proxy repaired; hostile review pending (§12)."
+    }
+  },
+  "commerceCore": {
+    "order-state-machine": {
+      "level": 4,
+      "slice": "4",
+      "status": "DONE",
+      "note": "Extracted pure OrderStateMachine (allowed transitions + pending_payment→processing requires paid); enforced in Order.transitionStatus (throws typed DomainError) and delegated from the governance route (removed duplicated inline matrix). Unit 10/10."
+    },
+    "commerce-integrity-reconciliation": {
+      "level": 4,
+      "slice": "4",
+      "status": "DONE",
+      "note": "§8 scanner surfaces order money drift (total≠subtotal+delivery, subtotal≠Σ line totals) and inventory drift (product.reserved≠active ledger sum, reserved>stock) — read-only, never fixes. Unit 8/8 + real-PG 2/2. Complements existing order↔payment reconciliation."
+    },
+    "accepted-wins-verified": {
+      "level": 4,
+      "slice": "4",
+      "note": "Checkout idempotency/saga/fenced-lease, F1–F5 fulfilment state machine, stock reservation/oversell, payment idempotency, pricing snapshot all confirmed present; full 52/52 integration green on a freshly re-migrated real PG."
+    }
   }
 }
