@@ -1,3 +1,4 @@
+import './logging/appLoggerBinding';
 import { createHmac } from 'node:crypto';
 import { db } from './db/client';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';

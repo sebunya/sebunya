@@ -1,3 +1,4 @@
+import { appLogger } from '../../logging/appLogger';
 import { randomUUID } from 'crypto';
 import {
   DEFAULT_DECISION_POLICIES, DecisionPolicy, DecisionSignalType, evaluatePolicy,
@@ -62,7 +63,7 @@ export class EvaluateDecisionSignalsBatchUseCase {
         }, now);
         r[up.kind] += 1;
       } catch (e: any) {
-        console.error({ signalType, err: e?.message }, '[DI_EVAL_ERROR]');
+        appLogger.error({ signalType, err: e?.message }, '[DI_EVAL_ERROR]');
         r.failed += 1;
       }
     }

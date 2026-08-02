@@ -1,3 +1,4 @@
+import { appLogger } from '../../logging/appLogger';
 import { randomUUID } from 'node:crypto';
 import * as path from 'path';
 import { IProductImageRepository, PersistedProductImage } from '../../ports/IProductImageRepository';
@@ -76,7 +77,7 @@ export class UploadProductImagesUseCase {
 
     } catch (err) {
       // Phase 3: Cleanup failure atomic states
-      console.error({ err }, '[UploadProductImagesUseCase] Failure encountered. Cleaning up partially written images.');
+      appLogger.error({ err }, '[UploadProductImagesUseCase] Failure encountered. Cleaning up partially written images.');
       
       // Purge from disk
       for (const physicalPath of writtenPhysicalPaths) {
