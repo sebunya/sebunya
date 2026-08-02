@@ -2,30 +2,33 @@
   "schema_version": 1,
   "execution_id": "advanced-analytics-v2-20260802",
   "started_at": "2026-08-02T09:45:00Z",
-  "updated_at": "2026-08-02T10:05:00Z",
+  "updated_at": "2026-08-02T10:25:00Z",
   "git_root": "<worktree>/",
   "app_root": "goldplus-commerce",
   "starting_branch": "gpt/advanced-control-centre-analytics-20260802",
   "starting_head": "e28a327f1fb281bbf82d29026112b9924f56de52",
   "current_branch": "claude/advanced-analytics-command-centre-v2-20260802",
-  "current_phase": "SLICE_2_SERVER_SIDE_API",
+  "current_phase": "SLICE_4_COMPLETE_HANDOFF",
   "completed_phases": [
     "BASELINE_HOSTILE_REVIEW",
-    "SLICE_1_SEMANTIC_CORRECTION"
-  ],
-  "remaining_phases": [
+    "SLICE_1_SEMANTIC_CORRECTION",
     "SLICE_2_SERVER_SIDE_API",
     "SLICE_3_UI_ON_DEDICATED_API",
-    "SLICE_4_GOLDEN_DATASET_AND_FULL_GATE",
-    "SLICE_5_SAVED_VIEWS_ALERTS_EXPORTS (not started — requires migration allocation)",
-    "SLICE_6_FULL_MODULE_DEPTH (not started)",
-    "SLICE_7_HARDENING_AND_HANDOFF (partially covered by slice 4)"
+    "SLICE_4_GOLDEN_DATASET_AND_FULL_GATE"
   ],
-  "executed_tests": [
-    "tests/unit/AnalyticsKampalaTime.test.ts (9 passed)",
-    "tests/unit/AnalyticsMetricCatalogue.test.ts (12 passed)",
-    "tests/unit/CommerceAnalytics.test.ts (11 passed)",
-    "pnpm typecheck (shared, api, web — clean)"
+  "remaining_phases": [
+    "SLICE_5_SAVED_VIEWS_ALERTS_EXPORTS (requires next migration + audit wiring)",
+    "SLICE_6_FULL_MODULE_DEPTH (payment-attempt ledger, cohorts, segments, experiments, support)",
+    "SLICE_7_PLAYWRIGHT_AND_PERFORMANCE (UI e2e, EXPLAIN on heaviest queries)"
   ],
-  "last_safe_resume_instruction": "Continue with Slice 2: build /admin/analytics API (domain + IAnalyticsReadRepository + use cases + Drizzle bounded aggregates + routes + PERMISSIONS.ANALYTICS_READ) following the patterns in apps/api/src/interfaces/http/routes/admin/search-demand.ts and Registry.ts; then Slice 3 makes apps/web/src/pages/admin/analytics/index.astro consume it."
+  "executed_gates": {
+    "typecheck": 0,
+    "lint": 0,
+    "test": "0 (258 files passed, 4897 tests passed, 17 skipped, 0 failed)",
+    "build": 0,
+    "migration_parity": "0 (61/61, ceiling 0060, PASSED)",
+    "integration_real_postgres": "0 (6/6, ANALYTICS_TEST_DATABASE_URL, PostgreSQL 16.13)"
+  },
+  "migrations_added": [],
+  "last_safe_resume_instruction": "All four slices are committed on claude/advanced-analytics-command-centre-v2-20260802. To continue: implement Slice 5 (analytics_saved_views + analytics_alert_rules tables as migration 0061 with journal entry, ownership + audit + permission tests) following the V2 specification sections 7-8; the canonical metric/action semantics live in packages/shared/src/analytics and must not be duplicated."
 }
