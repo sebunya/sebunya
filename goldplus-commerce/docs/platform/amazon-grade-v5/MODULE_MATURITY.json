@@ -20,8 +20,8 @@
   "updated": "2026-08-02 (V7 resume — baseline before Slice 3)",
   "note": "Levels are current honest assessments from source, not aspirations. Raised only with evidence (tests + integration + browser proof where operated via UI).",
   "platformFoundations": {
-    "distributed-abuse-control": {"level": 2, "target": 4, "slice": "3A", "note": "Redis limiter proven for auth paths only; public-endpoint families pending."},
-    "trusted-proxy-identity": {"level": 3, "target": 4, "slice": "3A", "note": "topology-aware resolver exists; extend to all limiter call-sites."},
+    "distributed-abuse-control": {"level": 4, "target": 4, "slice": "3A", "status": "DONE", "note": "One authoritative Redis-backed layer keyed on stable route-family across all public endpoint families; family-collapse + cross-replica sharing proven on real Redis; per-family outage policy + Retry-After."},
+    "trusted-proxy-identity": {"level": 4, "target": 4, "slice": "3A", "status": "DONE", "note": "Topology-aware resolver (CADDY_EDGE/CLOUDFLARE_EDGE/DIRECT, fail-closed in prod) feeds the single authoritative abuse-control layer; confidence buckets prevent unattributed claims consuming a real client's budget."},
     "sessions-revocation": {"level": 1, "target": 4, "slice": "3B", "note": "stateless JWT only; no revocation/refresh/CSRF yet."},
     "privileged-mfa": {"level": 0, "target": 4, "slice": "3C", "note": "not enforced."},
     "configuration-boundary": {"level": 2, "target": 4, "slice": "3D", "note": "hand-rolled validator; no Zod; scattered process.env."},

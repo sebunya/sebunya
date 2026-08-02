@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { rateLimiter } from './middleware/rateLimiter';
+import { publicAbuseControl } from './middleware/publicAbuseControl';
 import { logger as pinoLogger } from 'hono-pino';
 import { ApiResponse } from '@goldplus/shared';
 import { logger } from '../../infrastructure/logging/logger';
@@ -106,19 +106,15 @@ app.use('*', pinoLogger({
   },
 }));
 
-app.use('/telemetry/collect', rateLimiter({ limit: 100, windowMs: 1000 }));
-app.use('*', rateLimiter({ limit: 1000, windowMs: 60 * 1000 }));
-// Slice 1B: credential endpoints get a much tighter per-IP budget than the
-// global limiter — brute force is bounded even before the account lockout.
-// Basket mutations are cheap for a caller and not free for us: each one reads the
-// catalogue and writes two tables. The global 1000/min ceiling above is far too loose
-// to bound a script hammering add-to-basket, and the previous routes had no per-path
-// limit at all. Generous enough for real shopping — a customer adjusting quantities
-// clicks a few times a second at most.
-app.use('/commerce/cart', rateLimiter({ limit: 120, windowMs: 60 * 1000 }));
-app.use('/commerce/cart/*', rateLimiter({ limit: 120, windowMs: 60 * 1000 }));
-app.use('/auth/login', rateLimiter({ limit: 10, windowMs: 60 * 1000 }));
-app.use('/auth/admin/login', rateLimiter({ limit: 10, windowMs: 60 * 1000 }));
+// Slice 3A: one authoritative Redis-backed abuse-control layer for every public
+// endpoint family. It classifies each request into a stable route family and
+// keys the counter on that family — never the raw path — so attacker path
+// variation cannot mint unbounded budgets, which the previous per-path `global`
+// limiter allowed. Per-family limits (login 10/min, cart 120/min, telemetry
+// 100/s, the public forms, provider webhooks, and a single shared global) live
+// in domain/security/PublicEndpointPolicy.ts, along with each family's Redis-
+// outage risk policy and a correct Retry-After.
+app.use('*', publicAbuseControl());
 app.use('*', maintenanceMode);
 
 // Shadow Traffic Middleware

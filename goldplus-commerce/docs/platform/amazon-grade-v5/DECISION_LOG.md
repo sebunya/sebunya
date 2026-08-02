@@ -11,4 +11,7 @@ Design decisions taken during the programme. Format: date · decision · rationa
 
 ## Slice 3 decisions
 
-_(appended as each sub-slice is implemented)_
+- **D-3A-1 · One authoritative abuse-control layer keyed on route family, not path.** The prior design stacked several per-path `rateLimiter` mounts and a `global` limiter keyed on `c.req.path`, so a caller minted a fresh budget per invented URL. Chose one `publicAbuseControl` middleware + a pure `classifyPublicEndpoint` that collapses every request into a closed family set. Preferred additive change (kept the proven `RedisAbuseControlStore`, `limitFor`, confidence buckets and trusted-proxy resolver) over a rewrite. *Reversible: the middleware is a single `app.use`; families are data.*
+- **D-3A-2 · Per-family Redis-outage policy.** Added an additive `outagePolicy` to `consume`: STRICT (÷4 local) for human forms/reads, GENEROUS (full local budget) for HMAC-authenticated provider webhooks — dropping a real payment confirmation during a Redis blip is worse than allowing the configured rate per replica. *Backward-compatible (defaults STRICT).*
+- **D-3A-3 · Removed dead `rateLimiter.ts`** once superseded, to avoid a duplicate-limiter finding in the §20 hostile review. Confirmed no other references. *Reversible via git.*
+- **D-3A-4 · Ran the real-Redis proof against a local ephemeral `redis-server` (brew, port 6399, no persistence)** because the Lima docker VM was stopped and heavy on a disk-constrained host. Honest evidence over a skipped suite. *N/A.*
