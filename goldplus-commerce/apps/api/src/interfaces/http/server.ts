@@ -19,6 +19,7 @@ import { startOutboxTicker, gracefulStopOutboxTicker } from '../../infrastructur
 import { endDbConnection } from '../../infrastructure/db/client';
 import { QueueService } from '../../infrastructure/queues/QueueService';
 import { registerAllWorkers } from '../../infrastructure/queues/QueueWorkers';
+import { beginDraining } from './lifecycle';
 
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -46,6 +47,16 @@ async function gracefulShutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
   logger.info(`\n[Process] Received ${signal}. Initiating graceful shutdown...`);
+
+  // Slice 3F: flip readiness to false FIRST, then pause briefly so at least one
+  // load-balancer health poll observes 503 and drains this instance before we
+  // start closing sockets. Liveness stays true throughout.
+  beginDraining();
+  const drainMs = Number(process.env.SHUTDOWN_DRAIN_MS ?? 3000);
+  if (drainMs > 0) {
+    logger.info(`[Process] Draining: readiness is now false. Waiting ${drainMs}ms for load balancer.`);
+    await new Promise((resolve) => setTimeout(resolve, drainMs));
+  }
 
   // Wait for HTTP connections to close and outbox batch to finish
   const timeoutId = setTimeout(() => {

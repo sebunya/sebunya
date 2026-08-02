@@ -7,8 +7,8 @@
   "observedTreeAtResume": "e870b7caa46909acf0f6708a98a6cd5beb06f255",
   "lastGreenEngineeringCommit": "02644aa (Slice 3A — route-family distributed abuse control, real-Redis proven)",
   "localInfraGate": "ENV-01: no local PostgreSQL server; Docker blocked by qemu->pinned-glib; operator protects pins. Real-PG proofs deferred to CI/Lane B. Real Redis was available and used for 3A.",
-  "currentSlice": "SLICE_3_PLATFORM_FOUNDATIONS",
-  "currentModule": "Slice 3F — db-client + composition-root + graceful-shutdown hardening (3A-3E DONE)",
+  "currentSlice": "SLICE_4_COMMERCE_CORE",
+  "currentModule": "Slice 4 — Commerce Core (Slice 3 Platform Foundations COMPLETE: 3A-3F)",
   "resumeEnvironment": {
     "host": "MacBook (Darwin), uid 501, non-root",
     "sshBinary": "present",
@@ -23,11 +23,11 @@
     "SLICE_3A_DISTRIBUTED_ABUSE_CONTROL (commit 02644aa, pushed: one authoritative Redis-backed layer keyed on stable route family; per-family outage policy STRICT/GENEROUS; Retry-After; closes stop-ship 7.13; proof unit 11/11 + real-Redis 16/16; typecheck+lint clean; removed dead rateLimiter.ts)"
   ],
   "completedThisSession": [
-    "Cleared a hard disk blocker (320MB->~7.7GB free) with operator authorization (rebuildable caches only)",
-    "Frozen dependency install; green baseline (unit+architecture, 4861 real passes; only clean-tree scope guards were transiently red on the uncommitted tree)",
-    "Durable-state repair exactly once (NEXT_RESUME->Slice 3; money finding repository-vs-production; observedBranchHeadAtResume/stateSnapshotParent/lastGreenEngineeringCommit; environment attestation corrected to MacBook; created FINDINGS_REGISTER, MODULE_MATURITY, DECISION_LOG, DO_NOT_BREAK_LEDGER)",
-    "Slice 3A implemented, unit+real-Redis proven, committed and pushed",
-    "Recorded infra finding ENV-01 (no local Postgres server; Docker/qemu blocked by protected brew pins)"
+    "Cleared a hard disk blocker (320MB->~7.7GB) with operator authorization (rebuildable caches only)",
+    "Resolved ENV-01: real PostgreSQL 18.4 via embedded-postgres (no brew/pin impact) + real Redis; DB proofs run locally",
+    "Durable-state repair exactly once + created the four missing ledgers",
+    "Slice 3 Platform Foundations COMPLETE and pushed: 3A distributed abuse control (real-Redis), 3B durable sessions+CSRF (real-PG), 3C privileged MFA/TOTP (RFC vectors+real-PG), 3D Zod config boundary, 3E typed errors+leak-proof mapper+log redaction, 3F readiness-drain (+verified existing db-client/shutdown hardening)",
+    "Migrations 0063 (sessions) + 0064 (MFA) added; parity 65/65 clean on real PG"
   ],
   "openStopShipFindings": [
     "7.1-external: credential rotations (operator; EXTERNAL_SECRET_ROTATION_REGISTER.md)",
@@ -36,7 +36,6 @@
     "7.8-residual: durable revocable sessions, refresh rotation, CSRF, MFA enforcement audit (Slice 3B/3C)"
   ],
   "remainingSlices": [
-    "SLICE_3_PLATFORM_FOUNDATIONS (3A trusted-proxy+distributed abuse; 3B durable sessions+CSRF; 3C MFA/step-up; 3D config; 3E typed errors+safe logs; 3F db client+composition+shutdown)",
     "SLICE_4_COMMERCE_CORE",
     "SLICE_5_PRODUCT_DISCOVERY",
     "SLICE_6_CUSTOMER_AND_GROWTH",
@@ -55,9 +54,9 @@
   "migrationCeiling": "0064_privileged_mfa (65/65 parity, applied clean on real PG)",
   "laneB": "SSH lane available on this MacBook; remote attestation runs only after applicable Lane A gates pass; production untouched",
   "localProofEnv": "Real PostgreSQL 18.4 via embedded-postgres on 127.0.0.1:5433 (goldplus_test migrated 65/65, goldplus_it empty); real Redis on 127.0.0.1:6399. Env for DB suites: AUTH_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5433/goldplus_test, ANALYTICS_TEST_DATABASE_URL=...goldplus_it, REDIS_TEST_URL=redis://127.0.0.1:6399.",
-  "nextExactCommand": "cd goldplus-commerce && pnpm -F @goldplus/api typecheck && pnpm vitest run tests/unit (Slice 3E: typed errors + central HTTP mapping + PII-safe logs; remove application console.*)",
-  "nextExactFile": "apps/api/src/interfaces/http (central error mapper) + domain error base + infrastructure/logging/logger.ts (redaction). Slice 3E.",
-  "nextAcceptanceTest": "Slice 3E: an unexpected error returns a generic typed HTTP error (no err.message / no DB-message string matching leaked); logs redact PII/secrets and carry request+trace id; no application console.*",
+  "nextExactCommand": "cd goldplus-commerce && start real PG (embedded-postgres :5433) + Redis (:6399); then implement Slice 4 Commerce Core hardening with real-PG integration proofs",
+  "nextExactFile": "apps/api/src/interfaces/http/routes/commerce.ts + checkout/order/payment state machines (Slice 4). Re-test accepted fulfilment F1-F5.",
+  "nextAcceptanceTest": "Slice 4: server quote authoritative; order+payment state machines; payment idempotency; stock reservation/oversell; reconciliation exceptions surfaced; F1-F5 re-proven on real PG.",
   "fullGateOnCleanTreeAtResume": {
     "typecheck": 0,
     "lint": 0,

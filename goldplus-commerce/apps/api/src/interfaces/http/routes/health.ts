@@ -5,6 +5,7 @@ import { ApiResponse } from '@goldplus/shared';
 import { QueueService } from '../../../infrastructure/queues/QueueService';
 import { proxyConfig } from '../clientAddress';
 import { abuseControlStore } from '../../../infrastructure/security/RedisAbuseControlStore';
+import { isDraining } from '../lifecycle';
 
 const routes = new Hono();
 
@@ -42,6 +43,15 @@ routes.get('/live', (c) => {
 // 2. READINESS — /health/ready
 // ------------------------------------------------------------------------------
 routes.get('/ready', async (c) => {
+  // Slice 3F: once draining, this instance is NOT ready — answered before any
+  // subsystem probe so the load balancer stops routing immediately, and without
+  // a database round-trip that is about to be torn down anyway.
+  if (isDraining()) {
+    return c.json(
+      { status: 'draining', ready: false, subsystems: { lifecycle: { status: 'draining' } } },
+      503,
+    );
+  }
   const subsystems: Record<string, { status: string; latency_ms?: number; error?: string }> = {};
   // Two distinct questions, deliberately not collapsed into one flag:
   //   overallHealthy — can this instance serve at all? (false ⇒ take it out)

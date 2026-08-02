@@ -100,6 +100,12 @@
       "statement": "An unexpected (non-domain) error never returns err.message to the client and is a generic INTERNAL_SERVER_ERROR; DB failures are classified by SQLSTATE code, never by matching the message text; logs redact PII/secrets.",
       "guard": "tests/unit/ErrorMapping.test.ts + interfaces/http/errorMapping.ts + logger redact",
       "since": "Slice 3E"
+    },
+    {
+      "id": "DRAIN-1",
+      "statement": "During shutdown, readiness (/health/ready) goes 503 BEFORE sockets close, while liveness (/health/live) stays 200, so the load balancer drains the instance instead of racing a request into a closing socket.",
+      "guard": "tests/unit/ReadinessDrain.test.ts + interfaces/http/lifecycle.ts",
+      "since": "Slice 3F"
     }
   ]
 }
