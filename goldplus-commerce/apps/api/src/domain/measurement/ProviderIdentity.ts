@@ -22,7 +22,7 @@ const DIGITS = /\D+/g;
  */
 export function toE164Uganda(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  let s = raw.trim();
+  const s = raw.trim();
   // International escape prefixes -> nothing; keep a leading + only to detect it.
   const hadPlus = s.startsWith('+');
   let digits = s.replace(DIGITS, '');
