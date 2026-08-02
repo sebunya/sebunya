@@ -41,7 +41,7 @@
     "0063_durable_revocable_sessions",
     "0064_privileged_mfa"
   ],
-  "migrationCeiling": "0064_privileged_mfa (65/65 parity, applied clean on real PG)",
+  "migrationCeiling": "0065_measurement_gtm_plans (66/66 parity)",
   "laneB": "REACHABLE + read-only attested (ubuntu-4gb-fsn1-1, Docker 29.5.1, healthy stack). RELEASE_BLOCKED: backup 18 days stale + no restore evidence (§17.4) + bigint prod-safety on a clone (§11) + secret rotations unverified (§18). No production write/migrate/traffic-shift performed.",
   "localProofEnv": "Real PostgreSQL 18.4 via embedded-postgres :5433. DB ASSIGNMENT (§9 isolation): migrated schema suites use goldplus_test (AUTH_TEST_DATABASE_URL, COMMERCE_TEST_DATABASE_URL); the self-contained analytics suites use goldplus_it (ANALYTICS_TEST_DATABASE_URL) which they drop/recreate. NEVER point ANALYTICS_TEST_DATABASE_URL at goldplus_test — the analytics suite runs unscoped DROP TABLE and will clobber the migrated orders/products (happened once; recovered by drop+recreate+re-migrate). Redis :6399.",
   "nextExactCommand": "Slice 5: map product discovery (catalogue mapper, PIM import, search index/ranking, product-finder, recommendations); implement genuine gaps with real-PG proofs on goldplus_test.",
@@ -67,5 +67,27 @@
     "migration_parity": "65/65 clean apply on fresh real PG",
     "postgres_integration": "PASS (CommerceIntegrity, DurableSessions, PrivilegedMfa, CustomerRfm, ExplorerQuery, Money, Analytics)",
     "redis_integration": "PASS (PublicAbuseControl, RedisAbuseControl)"
+  },
+  "postPrWorkUnit": {
+    "terminal": "GOLDPLUS_POST_PR_HARDENING_PARTIAL",
+    "finalHead": "3dcf27a",
+    "closed": [
+      "§2 logging boundary",
+      "§3 GTM durable persistence (0065)",
+      "§7 CI relocation+gates",
+      "§14 JWT dual-key rotation"
+    ],
+    "deferred": [
+      "§4 cursor pagination",
+      "§5 scheduled alert evaluator",
+      "§6 cohort/retention"
+    ],
+    "operatorGated": [
+      "fresh backup",
+      "isolated restore",
+      "prod-volume 0062 rehearsal",
+      "external rotations"
+    ],
+    "finalGate": "5100/5100 tests, typecheck/lint(0)/build/secret-scan PASS, parity 66/66"
   }
 }
