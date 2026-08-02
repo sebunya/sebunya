@@ -1,4 +1,3 @@
-import { logger } from '../../../infrastructure/logging/logger';
 import { randomUUID } from 'crypto';
 import { IReleaseReadinessRepository, ReleaseReadinessGateResult } from '../../ports/release/ReleaseReadinessRepository';
 import { IReleaseReadinessCheckRunner } from '../../ports/release/ReleaseReadinessCheckRunner';
@@ -24,7 +23,7 @@ export class RunReleaseReadinessChecksUseCase {
 
     // Run checks asynchronously to avoid blocking
     this.runChecksAsync(runId, adminUserId).catch(err => {
-      logger.error({ runId, err }, 'Failed to complete readiness run');
+      console.error({ runId, err }, 'Failed to complete readiness run');
     });
 
     return runId;
@@ -61,7 +60,7 @@ export class RunReleaseReadinessChecksUseCase {
       await this.repository.saveGateResults(gateResults);
       await this.repository.updateReadinessRun(runId, overallStatus);
     } catch (error) {
-      logger.error({ runId, err: error }, 'Error during readiness checks');
+      console.error({ runId, err: error }, 'Error during readiness checks');
       overallStatus = 'FAIL';
       await this.repository.updateReadinessRun(runId, overallStatus);
     } finally {

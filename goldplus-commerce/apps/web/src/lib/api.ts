@@ -13,7 +13,7 @@ export type AdminListResult<T> =
 
 /**
  * Slice 10 (§7 simplification): this used to return fabricated `fallback` sample
- * rows whenever the API was unreachable, presenting "API unavailable" as a
+ * rows whenever the API was unreachable, presenting an unreachable API as a
  * product state. It now returns an HONEST degraded state — an empty list plus a
  * reason — and never invents records. The `fallback` parameter is retained for
  * call-site compatibility but is intentionally ignored; callers render an honest
