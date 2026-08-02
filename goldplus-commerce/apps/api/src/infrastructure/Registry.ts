@@ -350,6 +350,8 @@ import { DrizzleMfaRepository } from './db/repositories/DrizzleMfaRepository';
 import { MfaService } from './security/MfaService';
 import { DrizzleCommerceReconciliationRepository } from './db/repositories/DrizzleCommerceReconciliationRepository';
 import { ScanCommerceIntegrityUseCase } from '../application/use-cases/commerce/ScanCommerceIntegrityUseCase';
+import { DrizzleProductQualityRepository } from './db/repositories/DrizzleProductQualityRepository';
+import { ScoreProductQualityUseCase } from '../application/use-cases/products/ScoreProductQualityUseCase';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
@@ -594,6 +596,9 @@ export class Registry {
   // Slice 4: commerce data-integrity reconciliation (money + inventory).
   public readonly commerceReconciliationRepository = new DrizzleCommerceReconciliationRepository();
   public readonly scanCommerceIntegrityUseCase = new ScanCommerceIntegrityUseCase(this.commerceReconciliationRepository);
+  // Slice 5: product data-quality scoring.
+  public readonly productQualityRepository = new DrizzleProductQualityRepository();
+  public readonly scoreProductQualityUseCase = new ScoreProductQualityUseCase(this.productQualityRepository);
   public readonly evaluateCartPricingUseCase = new EvaluateCartPricingUseCase(
     this.productRepo,
     this.pricingRepo,

@@ -118,6 +118,12 @@
       "statement": "Commerce integrity reconciliation SURFACES money/inventory drift and never mutates: order total=subtotal+delivery, subtotal=Σ(line finalLineTotal), product.reserved=Σ(active reservation ledger), reserved≤stock.",
       "guard": "tests/unit/CommerceIntegrity.test.ts + tests/integration/CommerceIntegrity.integration.test.ts (real PG, 2/2)",
       "since": "Slice 4"
+    },
+    {
+      "id": "PQUAL-1",
+      "statement": "Product data-quality scores are deterministic and transparent: each 0-100 sub-score (completeness/feed/SEO/AEO/assistant) lists its concrete missing signals; feed eligibility is all-or-nothing over required fields; no score is fabricated for empty data.",
+      "guard": "tests/unit/ProductQuality.test.ts + tests/integration/ProductQuality.integration.test.ts (real PG, 2/2)",
+      "since": "Slice 5"
     }
   ]
 }

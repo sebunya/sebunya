@@ -111,5 +111,18 @@
       "slice": "4",
       "note": "Checkout idempotency/saga/fenced-lease, F1–F5 fulfilment state machine, stock reservation/oversell, payment idempotency, pricing snapshot all confirmed present; full 52/52 integration green on a freshly re-migrated real PG."
     }
+  },
+  "productDiscovery": {
+    "product-data-quality-scoring": {
+      "level": 4,
+      "slice": "5",
+      "status": "DONE",
+      "note": "§37A.32 items 45-50: pure scoreProductQuality → completeness/feed-eligibility/SEO/AEO/assistant-readiness sub-scores + concrete missing signals, deterministic; ScoreProductQualityUseCase surfaces feed-ineligible + below-threshold products. Unit 5/5 + real-PG 2/2 (reads jsonb specifications). Complements existing deterministic rankSuggestions."
+    },
+    "search-ranking": {
+      "level": 4,
+      "slice": "5",
+      "note": "Existing deterministic rankSuggestions (name-prefix > word-prefix > sku/model > substring; localeCompare tie-break) verified present."
+    }
   }
 }
