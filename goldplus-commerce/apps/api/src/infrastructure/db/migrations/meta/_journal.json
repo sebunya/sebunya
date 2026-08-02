@@ -442,6 +442,13 @@
       "when": 1786248000000,
       "tag": "0062_money_bigint_and_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "5",
+      "when": 1786334400000,
+      "tag": "0063_durable_revocable_sessions",
+      "breakpoints": true
     }
   ]
 }

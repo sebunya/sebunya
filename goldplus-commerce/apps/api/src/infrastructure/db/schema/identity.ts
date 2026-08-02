@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, boolean, primaryKey, integer, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, primaryKey, integer, index, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -7,7 +7,47 @@ export const users = pgTable('users', {
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  // Slice 3B: immediate hard-revocation cutoff. Any access token issued at or
+  // before this instant is rejected. Set on password change, disable or an
+  // admin "log out everywhere". Null means no forced invalidation.
+  sessionsInvalidatedAfter: timestamp('sessions_invalidated_after', { withTimezone: true }),
 });
+
+/**
+ * Slice 3B — durable, revocable sessions. Each row is one refresh credential in
+ * a family (the durable session). Rotation marks a row consumed (rotatedAt) and
+ * inserts a new row in the same familyId; a presented credential whose row is
+ * already consumed is reuse, and the whole family is revoked. The refresh token
+ * is stored only as a SHA-256 hash.
+ */
+export const authSessions = pgTable(
+  'auth_sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    familyId: uuid('family_id').notNull(),
+    refreshHash: varchar('refresh_hash', { length: 64 }).notNull(),
+    jti: uuid('jti').notNull(),
+    keyVersion: integer('key_version').notNull().default(1),
+    permissionVersion: integer('permission_version').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }).defaultNow().notNull(),
+    accessExpiresAt: timestamp('access_expires_at', { withTimezone: true }).notNull(),
+    refreshExpiresAt: timestamp('refresh_expires_at', { withTimezone: true }).notNull(),
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedReason: varchar('revoked_reason', { length: 48 }),
+    userAgentHash: varchar('user_agent_hash', { length: 64 }),
+    ipHash: varchar('ip_hash', { length: 64 }),
+  },
+  (table) => ({
+    refreshHashUq: uniqueIndex('auth_sessions_refresh_hash_uq').on(table.refreshHash),
+    familyIdx: index('auth_sessions_family_idx').on(table.familyId),
+    refreshExpiryIdx: index('auth_sessions_refresh_expiry_idx').on(table.refreshExpiresAt),
+  }),
+);
 
 export const roles = pgTable('roles', {
   id: uuid('id').defaultRandom().primaryKey(),

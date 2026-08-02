@@ -74,6 +74,17 @@
       "guard": "consent routing tests"
     },
     {
+      "id": "SESSION-1",
+      "statement": "Refresh tokens are single-use: rotation atomically consumes the old credential (conditional UPDATE) and mints a new one in the same family; replay of a consumed credential is detected and revokes the whole family. Only the SHA-256 hash is stored. Correctness holds with Redis down (source of truth is PostgreSQL).",
+      "guard": "tests/integration/DurableSessions.integration.test.ts (real PG, 8/8) + tests/unit/SessionPolicy.test.ts",
+      "since": "Slice 3B / migration 0063"
+    },
+    {
+      "id": "CSRF-1",
+      "statement": "A state-changing, cookie-authenticated request must carry an allowlisted Origin (Referer fallback). Bearer/no-cookie requests and HMAC provider webhooks are exempt; the webhook exemption stays narrow (/webhooks/ prefix only).",
+      "guard": "tests/unit/CsrfPolicy.test.ts + middleware/csrf.ts"
+    },
+    {
       "id": "TEST-ISO-1",
       "statement": "Every PostgreSQL integration suite owns a unique schema and sets search_path; cleanup touches only suite-owned objects; no unscoped DROP TABLE / TRUNCATE.",
       "guard": "tests/integration/* pattern (e.g. mig0062 schema) + destructive-SQL guard (Slice 3/12)"

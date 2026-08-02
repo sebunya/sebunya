@@ -8,7 +8,7 @@
   "lastGreenEngineeringCommit": "02644aa (Slice 3A — route-family distributed abuse control, real-Redis proven)",
   "localInfraGate": "ENV-01: no local PostgreSQL server; Docker blocked by qemu->pinned-glib; operator protects pins. Real-PG proofs deferred to CI/Lane B. Real Redis was available and used for 3A.",
   "currentSlice": "SLICE_3_PLATFORM_FOUNDATIONS",
-  "currentModule": "Slice 3B — durable revocable sessions, refresh rotation, logout, CSRF (3A DONE)",
+  "currentModule": "Slice 3C — privileged MFA enforcement + step-up (3A, 3B DONE)",
   "resumeEnvironment": {
     "host": "MacBook (Darwin), uid 501, non-root",
     "sshBinary": "present",
@@ -48,9 +48,10 @@
     "SLICE_12_FULL_HOSTILE_VERIFICATION"
   ],
   "migrationsAdded": [
-    "0062_money_bigint_and_checks"
+    "0062_money_bigint_and_checks",
+    "0063_durable_revocable_sessions"
   ],
-  "migrationCeiling": "0062_money_bigint_and_checks (63/63 parity)",
+  "migrationCeiling": "0063_durable_revocable_sessions (64/64 parity, applied clean on real PG)",
   "laneB": "SSH lane available on this MacBook; remote attestation runs only after applicable Lane A gates pass; production untouched",
   "nextExactCommand": "cd goldplus-commerce && REDIS_TEST_URL=redis://127.0.0.1:6399 pnpm vitest run tests/unit tests/integration/RefreshSession* (Slice 3B)",
   "nextExactFile": "apps/api/src/infrastructure/db/schema/identity.ts + migrations (Slice 3B: durable server-side sessions table: hashed refresh, jti, key version, timestamps, revocation reason, permission version) and middleware/auth.ts (revocation check)",

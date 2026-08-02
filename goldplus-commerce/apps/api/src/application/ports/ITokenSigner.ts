@@ -2,6 +2,13 @@ export interface VerifiedToken {
   subject: string;
   email: string;
   expiresAt: Date;
+  /**
+   * When the token was issued. Optional so existing signers/doubles stay valid;
+   * used by the auth middleware to enforce an immediate hard-revocation cutoff
+   * (Slice 3B) — a token issued at or before users.sessions_invalidated_after is
+   * rejected without waiting for the access TTL.
+   */
+  issuedAt?: Date;
 }
 
 export interface ITokenSigner {

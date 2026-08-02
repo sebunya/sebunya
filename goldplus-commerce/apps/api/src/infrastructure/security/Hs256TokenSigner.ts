@@ -80,6 +80,7 @@ export class Hs256TokenSigner implements ITokenSigner {
       subject: payload.sub,
       email: payload.email,
       expiresAt: new Date(payload.exp * 1000),
+      issuedAt: new Date(payload.iat * 1000),
     };
   }
 }

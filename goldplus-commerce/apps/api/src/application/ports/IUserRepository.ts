@@ -5,6 +5,8 @@ export interface PersistedUser {
   passwordHash: string;
   isActive: boolean;
   createdAt: Date;
+  /** Slice 3B immediate hard-revocation cutoff; null means none. */
+  sessionsInvalidatedAfter?: Date | null;
 }
 
 export interface IUserRepository {

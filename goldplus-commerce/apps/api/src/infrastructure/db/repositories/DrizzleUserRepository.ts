@@ -11,6 +11,7 @@ function rowToUser(row: typeof users.$inferSelect): PersistedUser {
     passwordHash: row.passwordHash,
     isActive: row.isActive,
     createdAt: row.createdAt,
+    sessionsInvalidatedAfter: row.sessionsInvalidatedAfter ?? null,
   };
 }
 

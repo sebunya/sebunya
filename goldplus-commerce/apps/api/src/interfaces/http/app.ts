@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { publicAbuseControl } from './middleware/publicAbuseControl';
+import { csrf } from './middleware/csrf';
 import { logger as pinoLogger } from 'hono-pino';
 import { ApiResponse } from '@goldplus/shared';
 import { logger } from '../../infrastructure/logging/logger';
@@ -115,6 +116,11 @@ app.use('*', pinoLogger({
 // in domain/security/PublicEndpointPolicy.ts, along with each family's Redis-
 // outage risk policy and a correct Retry-After.
 app.use('*', publicAbuseControl());
+// Slice 3B: CSRF defence for cookie-authenticated mutations. No-ops for safe
+// methods, Bearer/no-cookie requests and provider webhooks; blocks a
+// state-changing cookie-authenticated request whose Origin/Referer is not an
+// allowlisted web origin. See domain/security/CsrfPolicy.ts.
+app.use('*', csrf());
 app.use('*', maintenanceMode);
 
 // Shadow Traffic Middleware

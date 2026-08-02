@@ -344,6 +344,8 @@ import {
 } from '../application/use-cases/fulfilment/PackingUseCases';
 import { logger } from './logging/logger';
 import { RedisLoginAttemptStore } from './security/RedisLoginAttemptStore';
+import { DrizzleSessionRepository } from './db/repositories/DrizzleSessionRepository';
+import { SessionService } from './security/SessionService';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
@@ -579,6 +581,9 @@ export class Registry {
   public readonly lifecycleReadRepo = new DrizzleLifecycleReadRepository();
   public readonly getLifecycleSegmentsUseCase = new GetLifecycleSegmentsUseCase(this.lifecycleReadRepo);
   public readonly loginAttemptStore = new RedisLoginAttemptStore();
+  // Slice 3B: durable, revocable sessions (PostgreSQL source of truth).
+  public readonly sessionRepository = new DrizzleSessionRepository();
+  public readonly sessionService = new SessionService(this.sessionRepository);
   public readonly evaluateCartPricingUseCase = new EvaluateCartPricingUseCase(
     this.productRepo,
     this.pricingRepo,
