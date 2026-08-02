@@ -21,6 +21,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Unified administration oversight and system-wide statuses.'
   },
   {
+    label: 'Commerce Analytics',
+    href: '/admin/analytics',
+    group: 'Dashboard',
+    status: 'working',
+    description: 'Decision-grade business metrics, trends, actions and data quality from the canonical metric catalogue.'
+  },
+  {
     label: 'Products',
     href: '/admin/products',
     group: 'Commerce',
@@ -78,7 +85,7 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Manage product recommendations shown across the store.'
   },
   {
-    label: 'Analytics',
+    label: 'Recommendation Analytics',
     href: '/admin/recommendations/analytics',
     group: 'Recommendations',
     status: 'working',

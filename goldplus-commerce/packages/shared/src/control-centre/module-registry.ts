@@ -133,6 +133,7 @@ const P = {
   PIM_READ: 'PIM_READ',
   INVENTORY_READ: 'INVENTORY_READ',
   AUDIT_READ: 'AUDIT_READ',
+  ANALYTICS_READ: 'ANALYTICS_READ',
 } as const;
 
 export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
