@@ -28,3 +28,4 @@ export * from './control-centre/module-registry';
 export * from './types/checkout';
 export * from './checkout-intent';
 export * from './cart-credential';
+export * from './analytics';

@@ -76,6 +76,7 @@ export const PERMISSIONS = {
   INTERVENTIONS_MANAGE: 'interventions.manage',
   INTERVENTIONS_APPROVE: 'interventions.approve',
   INTERVENTIONS_ACTIVATE: 'interventions.activate',
+  ANALYTICS_READ: 'analytics.read',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
