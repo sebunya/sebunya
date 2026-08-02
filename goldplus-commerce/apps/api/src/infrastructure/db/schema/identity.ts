@@ -49,6 +49,37 @@ export const authSessions = pgTable(
   }),
 );
 
+/** Slice 3C — privileged MFA. The TOTP secret is stored encrypted. */
+export const userMfa = pgTable('user_mfa', {
+  userId: uuid('user_id')
+    .references(() => users.id, { onDelete: 'cascade' })
+    .primaryKey(),
+  secretCiphertext: varchar('secret_ciphertext', { length: 512 }).notNull(),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  lastVerifiedAt: timestamp('last_verified_at', { withTimezone: true }),
+  failedAttempts: integer('failed_attempts').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Slice 3C — single-use break-glass codes, stored only as SHA-256 hashes. */
+export const userMfaRecoveryCodes = pgTable(
+  'user_mfa_recovery_codes',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    codeHash: varchar('code_hash', { length: 64 }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    codeHashUq: uniqueIndex('user_mfa_recovery_code_hash_uq').on(table.codeHash),
+    userIdx: index('user_mfa_recovery_codes_user_idx').on(table.userId),
+  }),
+);
+
 export const roles = pgTable('roles', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: varchar('name', { length: 50 }).unique().notNull(),

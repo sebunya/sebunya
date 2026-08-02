@@ -80,6 +80,12 @@
       "since": "Slice 3B / migration 0063"
     },
     {
+      "id": "MFA-1",
+      "statement": "Privileged actions require a fresh MFA step-up (5-min window); an enrolled-but-stale or non-enrolled user is denied, not downgraded (self-bypass denial). TOTP is RFC 6238; the secret is AES-256-GCM encrypted at rest; recovery codes are SHA-256 hashed and single-use.",
+      "guard": "tests/unit/Totp.test.ts (RFC vectors) + tests/integration/PrivilegedMfa.integration.test.ts (real PG, 4/4) + domain/identity/MfaPolicy.ts",
+      "since": "Slice 3C / migration 0064"
+    },
+    {
       "id": "CSRF-1",
       "statement": "A state-changing, cookie-authenticated request must carry an allowlisted Origin (Referer fallback). Bearer/no-cookie requests and HMAC provider webhooks are exempt; the webhook exemption stays narrow (/webhooks/ prefix only).",
       "guard": "tests/unit/CsrfPolicy.test.ts + middleware/csrf.ts"

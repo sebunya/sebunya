@@ -271,5 +271,70 @@ routes.get('/sessions', async (c) => {
   });
 });
 
+// ---- Slice 3C: privileged MFA management ------------------------------------
+
+/** Begin TOTP enrolment — returns the secret + otpauth URI to show as a QR. */
+routes.post('/mfa/enrol', async (c) => {
+  const user = await bearerUser(c);
+  if (!user) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
+  }
+  const start = await Registry.getInstance().mfaService.beginEnrolment(user.id, user.email);
+  return c.json({ success: true, data: { secret: start.secret, otpauthUri: start.otpauthUri } });
+});
+
+/** Confirm enrolment with the first code; returns one-time recovery codes. */
+routes.post('/mfa/confirm', async (c) => {
+  const user = await bearerUser(c);
+  if (!user) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
+  }
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
+  const result = await Registry.getInstance().mfaService.confirmEnrolment(user.id, String(body?.code ?? ''));
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: 'MFA_CODE_INVALID', message: 'That code was not valid.' } }, 400);
+  }
+  const audit = new CreateAuditLogUseCase(Registry.getInstance().auditRepo);
+  await audit.execute({ actorId: user.id, action: 'MFA_ENROLLED', entity: 'user', entityId: user.id, newState: { confirmed: true } });
+  return c.json({ success: true, data: { recoveryCodes: result.recoveryCodes } });
+});
+
+/** Step-up: prove a TOTP code (or a recovery code) to refresh assurance. */
+routes.post('/mfa/verify', async (c) => {
+  const user = await bearerUser(c);
+  if (!user) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
+  }
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
+  const svc = Registry.getInstance().mfaService;
+  const code = String(body?.code ?? '');
+  const verified =
+    (await svc.verify(user.id, code)) || (body?.recovery ? await svc.useRecoveryCode(user.id, code) : false);
+  if (!verified) {
+    return c.json({ success: false, error: { code: 'MFA_CODE_INVALID', message: 'That code was not valid.' } }, 400);
+  }
+  return c.json({ success: true, data: { verified: true } });
+});
+
+/** Whether the caller has MFA enrolled/confirmed (drives the UI). */
+routes.get('/mfa/status', async (c) => {
+  const user = await bearerUser(c);
+  if (!user) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
+  }
+  const status = await Registry.getInstance().mfaService.status(user.id);
+  return c.json({ success: true, data: status });
+});
+
 export default routes;
 

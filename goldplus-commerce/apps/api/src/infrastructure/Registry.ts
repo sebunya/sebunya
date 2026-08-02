@@ -346,6 +346,8 @@ import { logger } from './logging/logger';
 import { RedisLoginAttemptStore } from './security/RedisLoginAttemptStore';
 import { DrizzleSessionRepository } from './db/repositories/DrizzleSessionRepository';
 import { SessionService } from './security/SessionService';
+import { DrizzleMfaRepository } from './db/repositories/DrizzleMfaRepository';
+import { MfaService } from './security/MfaService';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
@@ -584,6 +586,9 @@ export class Registry {
   // Slice 3B: durable, revocable sessions (PostgreSQL source of truth).
   public readonly sessionRepository = new DrizzleSessionRepository();
   public readonly sessionService = new SessionService(this.sessionRepository);
+  // Slice 3C: privileged MFA + step-up.
+  public readonly mfaRepository = new DrizzleMfaRepository();
+  public readonly mfaService = new MfaService(this.mfaRepository);
   public readonly evaluateCartPricingUseCase = new EvaluateCartPricingUseCase(
     this.productRepo,
     this.pricingRepo,

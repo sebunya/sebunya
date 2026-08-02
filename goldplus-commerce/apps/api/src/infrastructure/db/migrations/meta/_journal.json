@@ -449,6 +449,13 @@
       "when": 1786334400000,
       "tag": "0063_durable_revocable_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "5",
+      "when": 1786420800000,
+      "tag": "0064_privileged_mfa",
+      "breakpoints": true
     }
   ]
 }

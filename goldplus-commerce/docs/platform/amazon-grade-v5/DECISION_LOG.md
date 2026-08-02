@@ -9,6 +9,13 @@ Design decisions taken during the programme. Format: date · decision · rationa
 - **D-03 · Environment is the MacBook; Lane B SSH lane is available.** Verified Darwin, uid 501, `git/ssh/node/pnpm/docker` all present. Lane B attestation is attempted only after applicable Lane A gates pass. *N/A.*
 - **D-04 · Cleared rebuildable dev/app caches (pnpm store, npm cache, ~/Library/Caches ≈ 8.7 GB) with explicit user authorization** because the MacBook was at 100% disk (320 MB free), which blocked dependency install and the whole build. Reclaimed to ~6.8 GB free. No user documents touched; caches regenerate. *Reversible (caches rebuild on demand).*
 
+## Slice 3C decisions
+
+- **D-3C-1 · Built TOTP in-house (RFC 6238) rather than adding a dependency**, verified against the official RFC test vectors. Keeps the second factor offline-verifiable and dependency-free. *Reversible.*
+- **D-3C-2 · Encrypt the TOTP secret at rest (AES-256-GCM); hash recovery codes (SHA-256, single-use).** A DB read or leaked backup must not yield a working factor. Key from `MFA_ENCRYPTION_KEY`, derived from `JWT_SECRET` in dev/test. *Additive.*
+- **D-3C-3 · Step-up requires FRESH proof (5-min), and privileged users cannot self-bypass** (no confirmed MFA on a privileged action → ENROL_REQUIRED, not a downgrade). *Domain rule, proven.*
+- **D-3C-4 · `requireStepUp` gated in test env and wired to pricing approve/activate first.** Consistent with the abuse-control/CSRF gating so the 4,900-test admin suite stays green; broad roll-out to the remaining privileged routes is a mechanical one-line follow-on, recorded in FINDINGS. *Additive.*
+
 ## Slice 3 decisions
 
 - **D-3A-1 · One authoritative abuse-control layer keyed on route family, not path.** The prior design stacked several per-path `rateLimiter` mounts and a `global` limiter keyed on `c.req.path`, so a caller minted a fresh budget per invented URL. Chose one `publicAbuseControl` middleware + a pure `classifyPublicEndpoint` that collapses every request into a closed family set. Preferred additive change (kept the proven `RedisAbuseControlStore`, `limitFor`, confidence buckets and trusted-proxy resolver) over a rewrite. *Reversible: the middleware is a single `app.use`; families are data.*

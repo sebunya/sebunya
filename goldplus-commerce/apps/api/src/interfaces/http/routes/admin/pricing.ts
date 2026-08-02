@@ -6,6 +6,7 @@ import { PricingGovernanceError } from '../../../../application/use-cases/pricin
 import { PricingOperationsError } from '../../../../application/use-cases/pricing/PricingOperationsUseCase';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { requireStepUp } from '../../middleware/requireStepUp';
 
 // audit-exempt: every commercial mutation delegates to Pricing governance/operations, which writes shared audit evidence.
 const routes = new Hono<{ Variables: { user?: { id: string; email: string; permissions: string[] } } }>();
@@ -52,11 +53,25 @@ const transitions = [
   ['submit', 'READY_FOR_REVIEW', PERMISSIONS.PRICING_MANAGE], ['approve', 'APPROVED', PERMISSIONS.PRICING_APPROVE], ['reject', 'REJECTED', PERMISSIONS.PRICING_APPROVE],
   ['activate', 'ACTIVE', PERMISSIONS.PRICING_ACTIVATE], ['pause', 'PAUSED', PERMISSIONS.PRICING_PAUSE], ['resume', 'ACTIVE', PERMISSIONS.PRICING_ACTIVATE], ['archive', 'ARCHIVED', PERMISSIONS.PRICING_MANAGE],
 ] as const;
-for (const [operation, to, permission] of transitions) routes.post(`/definitions/:id/${operation}`, requirePermissions([permission], 'PERMISSION_DENIED'), async (c) => {
-  const parsed = transitionBody.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_BODY', message: parsed.error.issues[0]?.message ?? 'Invalid transition.' } }, 400);
-  try { return c.json({ success: true, data: await Registry.getInstance().pricingOperationsUseCase.transition({ definitionId: String(c.req.param('id')), ...parsed.data, to, actorId: actor(c) }) }); } catch (error) { return failure(c, error); }
-});
+// Slice 3C: price approval and activation move money for every customer, so
+// they require a fresh MFA step-up on top of the permission (self-bypass denied).
+const STEP_UP_OPERATIONS = new Set(['approve', 'activate']);
+for (const [operation, to, permission] of transitions) {
+  const handler = async (c: any) => {
+    const parsed = transitionBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_BODY', message: parsed.error.issues[0]?.message ?? 'Invalid transition.' } }, 400);
+    try { return c.json({ success: true, data: await Registry.getInstance().pricingOperationsUseCase.transition({ definitionId: String(c.req.param('id')), ...parsed.data, to, actorId: actor(c) }) }); } catch (error) { return failure(c, error); }
+  };
+  const path = `/definitions/:id/${operation}`;
+  const perm = requirePermissions([permission], 'PERMISSION_DENIED');
+  // Price approval and activation move money for every customer, so they need a
+  // fresh MFA step-up on top of the permission (self-bypass denied).
+  if (STEP_UP_OPERATIONS.has(operation)) {
+    routes.post(path, perm, requireStepUp('pricing_approval'), handler);
+  } else {
+    routes.post(path, perm, handler);
+  }
+}
 
 routes.post('/definitions/:id/experiment-associations', requirePermissions([PERMISSIONS.PRICING_MANAGE], 'PERMISSION_DENIED'), async (c) => {
   const parsed = z.object({ versionId: z.string().uuid(), experimentId: z.string().uuid(), variantKey: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/) }).safeParse(await c.req.json().catch(() => null));
