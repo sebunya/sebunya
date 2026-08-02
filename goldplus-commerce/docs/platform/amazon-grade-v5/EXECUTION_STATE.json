@@ -8,7 +8,7 @@
   "lastGreenEngineeringCommit": "02644aa (Slice 3A — route-family distributed abuse control, real-Redis proven)",
   "localInfraGate": "ENV-01: no local PostgreSQL server; Docker blocked by qemu->pinned-glib; operator protects pins. Real-PG proofs deferred to CI/Lane B. Real Redis was available and used for 3A.",
   "currentSlice": "SLICE_3_PLATFORM_FOUNDATIONS",
-  "currentModule": "Slice 3E — typed errors + PII-safe observability (3A-3D DONE)",
+  "currentModule": "Slice 3F — db-client + composition-root + graceful-shutdown hardening (3A-3E DONE)",
   "resumeEnvironment": {
     "host": "MacBook (Darwin), uid 501, non-root",
     "sshBinary": "present",

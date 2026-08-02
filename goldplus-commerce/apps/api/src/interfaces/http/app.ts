@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { publicAbuseControl } from './middleware/publicAbuseControl';
 import { csrf } from './middleware/csrf';
+import { mapErrorToHttp } from './errorMapping';
 import { logger as pinoLogger } from 'hono-pino';
 import { ApiResponse } from '@goldplus/shared';
 import { logger } from '../../infrastructure/logging/logger';
@@ -221,37 +222,15 @@ app.route('/account/behavioural-interventions', behaviouralInterventionRoutes);
 
 // Error Handling
 app.onError((err, c) => {
-  logger.error({ err }, `[ERROR] ${err.message}`);
+  // Server-side: keep the full error for diagnosis (the logger redacts PII/
+  // secrets). Client-side: the central mapper decides the status and a SAFE
+  // message — an unexpected error never returns err.message, and DB failures are
+  // classified by SQLSTATE code, not by matching the message string.
+  const requestId = c.get('requestId') as string | undefined;
+  logger.error({ err, requestId }, '[ERROR] request failed');
   Sentry.captureException(err);
-  
-  // Detect database connection issues to deliver typed fallback requirement
-  const isDbError = err.message?.includes('ECONNREFUSED') || err.message?.includes('DATABASE_URL') || !process.env.DATABASE_URL;
-  
-  if (isDbError) {
-    const dbRes: ApiResponse<never> = {
-      success: false,
-      error: {
-        code: 'DB_NOT_CONFIGURED',
-        message: 'Service temporarily offline: The persistent layer is unconfigured.',
-      },
-      meta: {
-        requestId: c.get('requestId') as string,
-      }
-    };
-    return c.json(dbRes, 503);
-  }
-
-  const res: ApiResponse<never> = {
-    success: false,
-    error: {
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'An unexpected error occurred.',
-    },
-    meta: {
-      requestId: c.get('requestId') as string,
-    }
-  };
-  return c.json(res, 500);
+  const mapped = mapErrorToHttp(err, requestId);
+  return c.json(mapped.body as ApiResponse<never>, mapped.status);
 });
 
 // Not Found

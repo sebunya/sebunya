@@ -94,6 +94,12 @@
       "id": "TEST-ISO-1",
       "statement": "Every PostgreSQL integration suite owns a unique schema and sets search_path; cleanup touches only suite-owned objects; no unscoped DROP TABLE / TRUNCATE.",
       "guard": "tests/integration/* pattern (e.g. mig0062 schema) + destructive-SQL guard (Slice 3/12)"
+    },
+    {
+      "id": "ERRLEAK-1",
+      "statement": "An unexpected (non-domain) error never returns err.message to the client and is a generic INTERNAL_SERVER_ERROR; DB failures are classified by SQLSTATE code, never by matching the message text; logs redact PII/secrets.",
+      "guard": "tests/unit/ErrorMapping.test.ts + interfaces/http/errorMapping.ts + logger redact",
+      "since": "Slice 3E"
     }
   ]
 }
