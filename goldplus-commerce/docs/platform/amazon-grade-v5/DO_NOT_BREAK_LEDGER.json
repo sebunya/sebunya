@@ -1,0 +1,82 @@
+{
+  "purpose": "Invariants proven by accepted work. Any change that regresses one of these is a stop-ship. Each has a guarding test or artifact.",
+  "updated": "2026-08-02 (V7 resume, Slice 3 start)",
+  "invariants": [
+    {
+      "id": "MONEY-1",
+      "statement": "All monetary columns are bigint; DB CHECKs reject negative money and non-positive quantity.",
+      "guard": "migration 0062 + tests/integration/*MoneyBigintMigration* (real PostgreSQL, mig0062 schema)",
+      "since": "2f426b1"
+    },
+    {
+      "id": "MONEY-2",
+      "statement": "No unsafe Number coercion of bigint money across TS/JSON/CSV/UI/provider boundaries (Lane B §11 review pending, but no regression may be introduced).",
+      "guard": "Slice 3+ code review; §11 boundary scan"
+    },
+    {
+      "id": "MIGRATE-1",
+      "statement": "Migration parity 63/63; every migration registered; no unregistered migration.",
+      "guard": "pnpm -F @goldplus/api db:migrate parity check"
+    },
+    {
+      "id": "AUTH-1",
+      "statement": "Every admin API mount is behind authMiddleware + requirePermissions; deny-by-default; only login is unauthenticated.",
+      "guard": "tests/architecture/admin-route-authentication.test.ts"
+    },
+    {
+      "id": "AUTH-2",
+      "statement": "Session token is validated by signature (Hs256TokenSigner) with clock-skew tolerance; disabled users (isActive=false) are rejected 403.",
+      "guard": "middleware/auth.ts + unit tests"
+    },
+    {
+      "id": "PRICE-1",
+      "statement": "Checkout/quote never trusts client-supplied price/sku/name; server quote is authoritative and snapshotted (migration 0042 provenance).",
+      "guard": "routes/commerce.ts + checkout e2e proof"
+    },
+    {
+      "id": "OWN-1",
+      "statement": "Cart/order ownership enforced (owner_kind/owner_id/version, 0060); NOT_OWNED reported as CART_NOT_FOUND; guest carts use a signed credential.",
+      "guard": "cart-authorization-proof.ts (25 checks)"
+    },
+    {
+      "id": "WEBHOOK-1",
+      "statement": "Payment webhooks verify HMAC over raw body with timingSafeEqual; 401 on bad signature when secret set, 503 NOT_CONFIGURED when absent; amount compared to authoritative order total; replay blocked by idempotency; signature rejections logged without payload.",
+      "guard": "routes/webhooks.ts + webhook tests"
+    },
+    {
+      "id": "OUTBOX-1",
+      "statement": "Outbox uses fenced lease (claim_token/fencing_number, 0058/0059); cross-consumer claim prevented; durable side effects.",
+      "guard": "checkout durability proof (38 checks)"
+    },
+    {
+      "id": "ABUSE-1",
+      "statement": "Login/abuse limits are Redis-backed and shared across replicas; in-memory store is an explicit degraded fallback only (1/4 budget), never distributed correctness.",
+      "guard": "tests/integration/RedisAbuseControl.integration.test.ts (11 passing)"
+    },
+    {
+      "id": "PROXY-1",
+      "statement": "Client IP resolved via configured trusted-proxy topology (CADDY_EDGE/CLOUDFLARE_EDGE/DIRECT), fails closed in production; untrusted X-Forwarded-For / CF headers are not trusted outside the configured edge; unattributable claims bucket to x:unattributed and cannot consume a real client's quota.",
+      "guard": "domain/identity/ClientAddress.ts + interfaces/http/clientAddress.ts + unit tests"
+    },
+    {
+      "id": "MEASURE-1",
+      "statement": "Measurement admin pages call the API only through the same-origin allowlisted proxy that attaches the bearer token server-side from the HttpOnly session cookie; no phantom localStorage token; exact path+method allowlist.",
+      "guard": "apps/web/src/pages/api/admin/measurement/[...path].ts + regression tests"
+    },
+    {
+      "id": "RESERVE-1",
+      "statement": "Stock reservation via reserved_quantity + ledger (0053); available-to-promise clamps at zero; oversell prevented.",
+      "guard": "inventory vertical tests"
+    },
+    {
+      "id": "CONSENT-1",
+      "statement": "Consent routing is canonical (single consent-operating layer); no hardcoded consent_satisfied; destination routing respects consent.",
+      "guard": "consent routing tests"
+    },
+    {
+      "id": "TEST-ISO-1",
+      "statement": "Every PostgreSQL integration suite owns a unique schema and sets search_path; cleanup touches only suite-owned objects; no unscoped DROP TABLE / TRUNCATE.",
+      "guard": "tests/integration/* pattern (e.g. mig0062 schema) + destructive-SQL guard (Slice 3/12)"
+    }
+  ]
+}

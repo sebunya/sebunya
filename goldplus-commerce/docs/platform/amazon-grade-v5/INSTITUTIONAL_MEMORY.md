@@ -54,9 +54,17 @@ first query to degrade (16.18 ms @ 50k orders, seq-scan join).
 
 ## Environment attestation (recorded openly)
 
-This session runs in the Claude Code remote Linux container (`uname -s` =
-Linux, uid 0), not the MacBook named in §2.1 — executing on the user's
-explicit instruction, as with the prior V2 cycle in this same environment.
-Lane B: `ssh` binary absent → **REMOTE_RELEASE_LANE_UNAVAILABLE** per §0C.1;
-Lane A continues at full strength and no local gate is weakened. No
-production system is reachable or touched from here.
+**V2/Slice-0 cycle (historical):** ran in the Claude Code remote Linux
+container (`uname -s` = Linux, uid 0), `ssh` absent →
+`REMOTE_RELEASE_LANE_UNAVAILABLE`.
+
+**V7 continuation (current — supersedes the above):** verified running in
+local Claude Code on Robert Sebunya's MacBook — `uname -s` = **Darwin**, uid
+**501** (non-root), branch
+`claude/amazon-grade-goldplus-commerce-os-v5-production-20260802`, HEAD
+`6205dd0` (tree `e870b7c`, exact match). `git`, `ssh`, `node` (v20.20.2),
+`pnpm` (10.17.1) and `docker` are all present, so the **Lane B SSH lane is
+available** and the `goldplus-prod` attestation is attempted only after the
+applicable Lane A gates pass. Lane A continues at full strength; no local gate
+is weakened. No production system is touched except through the read-only /
+reversible protocol in §17.

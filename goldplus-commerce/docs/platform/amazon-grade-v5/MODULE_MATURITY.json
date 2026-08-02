@@ -1,0 +1,38 @@
+{
+  "scale": {
+    "0": "placeholder",
+    "1": "presentational",
+    "2": "basic operational",
+    "3": "production operational",
+    "4": "decision-grade (workflow, state, exceptions, diagnostics, drilldown, governance, audit, health, permissions, failure states, tests, integration proof, browser proof when UI)",
+    "5": "closed-loop optimising"
+  },
+  "minimums": {
+    "all_visible_engineering_controlled": 4,
+    "decision-intelligence": 5,
+    "advanced-analytics": 5,
+    "action-centre": 5,
+    "automation": 4,
+    "experiments": 4,
+    "measurement-control-tower": 4,
+    "customer-dna": 4
+  },
+  "updated": "2026-08-02 (V7 resume — baseline before Slice 3)",
+  "note": "Levels are current honest assessments from source, not aspirations. Raised only with evidence (tests + integration + browser proof where operated via UI).",
+  "platformFoundations": {
+    "distributed-abuse-control": {"level": 2, "target": 4, "slice": "3A", "note": "Redis limiter proven for auth paths only; public-endpoint families pending."},
+    "trusted-proxy-identity": {"level": 3, "target": 4, "slice": "3A", "note": "topology-aware resolver exists; extend to all limiter call-sites."},
+    "sessions-revocation": {"level": 1, "target": 4, "slice": "3B", "note": "stateless JWT only; no revocation/refresh/CSRF yet."},
+    "privileged-mfa": {"level": 0, "target": 4, "slice": "3C", "note": "not enforced."},
+    "configuration-boundary": {"level": 2, "target": 4, "slice": "3D", "note": "hand-rolled validator; no Zod; scattered process.env."},
+    "typed-errors-safe-logs": {"level": 2, "target": 4, "slice": "3E", "note": "per-route mapping; console.* present."},
+    "db-client-composition-shutdown": {"level": 3, "target": 4, "slice": "3F", "note": "retry/timeouts/metrics/shutdown exist; eager monolithic registry."}
+  },
+  "acceptedWins": {
+    "advanced-analytics-v2": {"level": 5, "note": "Kampala-time semantics, canonical catalogue, metric states, saved views, alert rules (no delivery), bounded exports, golden datasets proven on real PostgreSQL."},
+    "checkout-hardening": {"level": 4, "note": "fenced lease 0058, durable side effects/saga 0059, ownership/version 0060; durability 38/38, cart-auth 25/25, e2e 43/43."},
+    "fulfilment-F1-F5": {"level": 4, "note": "SLA, packing, partial fulfilment, dispatch, delivery confirmation, reporting (migrations 0029-0036)."},
+    "money-bigint": {"level": 3, "note": "repository-complete (0062); production migration is a Lane B gate."},
+    "measurement-control-tower-proxy": {"level": 3, "target": 4, "note": "same-origin session-cookie proxy repaired; hostile review pending (§12)."}
+  }
+}
