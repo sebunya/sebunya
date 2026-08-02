@@ -132,5 +132,17 @@
       "status": "DONE",
       "note": "Pure RFM: population-quintile R/F/M scores + standard R×F segment grid (Champions..Lost); computed from PAID orders only (unpaid never inflates M / resets recency); never-purchased scored honestly at the bottom. Unit 5/5 + real-PG 2/2. Complements existing CustomerLifecycle/CustomerDNA."
     }
+  },
+  "intelligence": {
+    "advanced-analytics-v2": {
+      "level": 5,
+      "note": "Accepted win (Kampala-time, canonical catalogue, metric states, saved views, alert rules, bounded exports, golden datasets on real PG)."
+    },
+    "self-service-explorer": {
+      "level": 4,
+      "slice": "7",
+      "status": "DONE",
+      "note": "Closed 'explorer absent': pure ExplorerCatalogue (metrics incl. GMV-not-revenue, dimensions, filter allowlists) + injection-proof QueryCompiler (only catalogue keys reach SQL; filter values always bound params; row cap) + RunExplorerQueryUseCase. Unit 5/5 + real-PG 2/2 (executes; injection value is data)."
+    }
   }
 }

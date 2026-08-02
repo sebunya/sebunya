@@ -354,6 +354,8 @@ import { DrizzleProductQualityRepository } from './db/repositories/DrizzleProduc
 import { ScoreProductQualityUseCase } from '../application/use-cases/products/ScoreProductQualityUseCase';
 import { DrizzleCustomerRfmRepository } from './db/repositories/DrizzleCustomerRfmRepository';
 import { ScoreCustomerRfmUseCase } from '../application/use-cases/customer-dna/ScoreCustomerRfmUseCase';
+import { DrizzleExplorerQueryRepository } from './db/repositories/DrizzleExplorerQueryRepository';
+import { RunExplorerQueryUseCase } from '../application/use-cases/analytics/RunExplorerQueryUseCase';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
@@ -604,6 +606,9 @@ export class Registry {
   // Slice 6: customer RFM scoring + segmentation.
   public readonly customerRfmRepository = new DrizzleCustomerRfmRepository();
   public readonly scoreCustomerRfmUseCase = new ScoreCustomerRfmUseCase(this.customerRfmRepository);
+  // Slice 7: self-service explorer (catalogue-approved query compiler).
+  public readonly explorerQueryRepository = new DrizzleExplorerQueryRepository();
+  public readonly runExplorerQueryUseCase = new RunExplorerQueryUseCase(this.explorerQueryRepository);
   public readonly evaluateCartPricingUseCase = new EvaluateCartPricingUseCase(
     this.productRepo,
     this.pricingRepo,

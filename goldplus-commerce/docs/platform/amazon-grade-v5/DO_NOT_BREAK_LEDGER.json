@@ -130,6 +130,12 @@
       "statement": "RFM scores are quintiles within the real customer population (not magic thresholds), computed from PAID orders only; unpaid/failed orders never inflate monetary or reset recency; a never-purchased customer scores at the bottom, not hidden.",
       "guard": "tests/unit/Rfm.test.ts + tests/integration/CustomerRfm.integration.test.ts (real PG, 2/2)",
       "since": "Slice 6"
+    },
+    {
+      "id": "EXPLORER-1",
+      "statement": "The self-service explorer can only query catalogue-approved metrics/dimensions/filters; any unknown key is rejected before the DB; filter VALUES are always bound parameters (never concatenated into SQL); text filters honour a value allowlist; row count is capped. Money metric is labelled GMV, never revenue.",
+      "guard": "tests/unit/QueryCompiler.test.ts + tests/integration/ExplorerQuery.integration.test.ts (real PG, 2/2)",
+      "since": "Slice 7"
     }
   ]
 }
