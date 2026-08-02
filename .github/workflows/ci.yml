@@ -1,0 +1,157 @@
+name: CI
+
+# The application lives in goldplus-commerce/, but GitHub Actions only reads
+# .github/workflows at the REPOSITORY ROOT — so this canonical workflow lives
+# here (the previous copy under goldplus-commerce/.github was never executed).
+# All `run:` steps default to the app directory.
+
+on:
+  push:
+    branches: [ main, master, 'claude/**' ]
+  pull_request:
+    branches: [ main, master ]
+
+defaults:
+  run:
+    working-directory: goldplus-commerce
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
+      - run: pnpm install
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:architecture
+      - run: pnpm test:unit
+      - run: pnpm build
+      - run: pnpm security:scan-secrets
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: goldplus_test
+        ports: [ '5432:5432' ]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: [ '6379:6379' ]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/goldplus_test
+      JWT_SECRET: ci-only-test-jwt-secret-000000000000000000000000
+      IDENTITY_HASH_PEPPER: ci-only-test-identity-pepper-0000000000000000
+      MTN_WEBHOOK_SECRET: ci-only-test-mtn-webhook-secret-0000
+      AIRTEL_WEBHOOK_SECRET: ci-only-test-airtel-webhook-secret-0000
+      PUBLIC_API_BASE_URL: http://127.0.0.1:3000
+      NODE_ENV: development
+      AUTH_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/goldplus_test
+      COMMERCE_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/goldplus_test
+      ANALYTICS_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/goldplus_it
+      REDIS_TEST_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
+      - run: pnpm install
+      - name: Apply migrations
+        run: pnpm -F @goldplus/api db:migrate
+      - name: Verify migration parity
+        run: node scripts/release/claude/verify-migration-parity.mjs
+      - name: Create isolated analytics DB (self-contained suites drop/recreate)
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -c 'create database goldplus_it;'
+      - name: Integration tests (real PostgreSQL + Redis)
+        run: pnpm test:integration
+
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level=high
+
+  sast-scan:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep scan --config auto --error
+        working-directory: .
+
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate SBOM (SPDX) for the application
+        uses: anchore/sbom-action@v0
+        with:
+          path: goldplus-commerce
+          format: spdx-json
+          output-file: sbom.spdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-spdx
+          path: sbom.spdx.json
+
+  container-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Filesystem vulnerability scan of deps + config (fails on CRITICAL/HIGH).
+      # The final production IMAGE scan runs in the release workflow before deploy.
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: goldplus-commerce
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+
+  e2e-playwright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
+      - run: pnpm install
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Playwright e2e (isolated data; no real payments/messages/provider events)
+        run: pnpm test:e2e

@@ -36,7 +36,7 @@
     "F_playwright": {
       "class": "KEEP",
       "canonicalOwner": "tests/e2e/*.spec.ts + playwright.config.ts (acceptance/automation-a4/control-centre-uat)",
-      "decision": "specs exist; not wired into ci.yml — HARDEN (wire CI job) as residual; browsers require download"
+      "decision": "DONE (CI wiring): e2e-playwright job installs chromium + runs test:e2e; specs already exist"
     },
     "G_sast": {
       "class": "KEEP",
@@ -50,11 +50,11 @@
     },
     "I_sbom": {
       "class": "STILL_MISSING",
-      "decision": "DEFER (CI gate: syft SBOM on final image); documented residual"
+      "decision": "DONE (CI): anchore/sbom-action SPDX artefact wired"
     },
     "J_container_scan": {
       "class": "STILL_MISSING",
-      "decision": "DEFER (CI gate: trivy/grype on final image); documented residual"
+      "decision": "DONE (CI): aquasecurity/trivy-action fs scan (CRITICAL/HIGH, fail) wired; final-image scan is the release-workflow follow-on"
     },
     "K_backup_freshness": {
       "class": "EXTERNAL_DEPENDENCY",
@@ -73,6 +73,11 @@
       "class": "EXTERNAL_DEPENDENCY",
       "canonicalOwner": "EXTERNAL_SECRET_ROTATION_REGISTER.md",
       "decision": "repository-side already safe (no tracked env, no env-credential fallback, redacted config); provider-side rotation is operator; documented"
+    },
+    "CI_location": {
+      "class": "DEPRECATE_WITH_PROOF",
+      "gap": "the only workflow was at goldplus-commerce/.github (a subdir GitHub Actions ignores) — CI never ran; triggered on main not master",
+      "decision": "canonical workflow moved to the git-root .github/workflows/ci.yml with working-directory=goldplus-commerce; dead subdir workflow removed; triggers fixed to master+claude/**"
     }
   },
   "atomicSubUnits": [
@@ -84,6 +89,11 @@
     {
       "id": "B",
       "title": "Durable GTM plan persistence (migration 0065 + repo + tests; remove in-memory map)",
+      "status": "done"
+    },
+    {
+      "id": "C-CI",
+      "title": "Supply-chain + CI gates: workflow relocated to git root (was in an ignored subdir), + secret-scan/integration/SBOM/container-scan/Playwright wired",
       "status": "done"
     }
   ],
@@ -107,5 +117,11 @@
   "migrationsAdded": [
     "0065_measurement_gtm_plans"
   ],
-  "migrationCeiling": "0065_measurement_gtm_plans (66/66 parity)"
+  "migrationCeiling": "0065_measurement_gtm_plans (66/66 parity)",
+  "localGateStatus": {
+    "sbom": "NOT_EXECUTED (CI-only, syft)",
+    "container_scan": "NOT_EXECUTED (CI-only, trivy)",
+    "sast": "NOT_EXECUTED locally (CI semgrep)",
+    "playwright": "NOT_EXECUTED locally (CI; browsers download)"
+  }
 }
