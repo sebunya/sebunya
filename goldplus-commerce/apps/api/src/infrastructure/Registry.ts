@@ -396,6 +396,16 @@ import { DrizzleDecisionEvidenceReader } from './db/repositories/DrizzleDecision
 import { DrizzleDecisionInsightRepository } from './db/repositories/DrizzleDecisionInsightRepository';
 import { DrizzleAnalyticsReadRepository } from './db/repositories/DrizzleAnalyticsReadRepository';
 import {
+  DrizzleAnalyticsAlertRuleRepository,
+  DrizzleAnalyticsSavedViewRepository,
+} from './db/repositories/DrizzleAnalyticsConfigRepositories';
+import {
+  EvaluateAnalyticsAlertRulesUseCase,
+  ExportAnalyticsUseCase,
+  ManageAnalyticsAlertRulesUseCase,
+  ManageAnalyticsSavedViewsUseCase,
+} from '../application/use-cases/analytics/AnalyticsConfigUseCases';
+import {
   GetAnalyticsDataQualityUseCase,
   GetAnalyticsMetricSeriesUseCase,
   GetAnalyticsOverviewUseCase,
@@ -754,6 +764,17 @@ export class Registry {
   );
   public readonly getAnalyticsMetricSeriesUseCase = new GetAnalyticsMetricSeriesUseCase(this.analyticsReadRepo);
   public readonly getAnalyticsDataQualityUseCase = new GetAnalyticsDataQualityUseCase(this.analyticsReadRepo);
+  // Operator configuration. Alert evaluation raises internal actions only —
+  // there is no destination column and no delivery path.
+  public readonly analyticsSavedViewRepo = new DrizzleAnalyticsSavedViewRepository();
+  public readonly analyticsAlertRuleRepo = new DrizzleAnalyticsAlertRuleRepository();
+  public readonly manageAnalyticsSavedViewsUseCase = new ManageAnalyticsSavedViewsUseCase(this.analyticsSavedViewRepo);
+  public readonly manageAnalyticsAlertRulesUseCase = new ManageAnalyticsAlertRulesUseCase(this.analyticsAlertRuleRepo);
+  public readonly evaluateAnalyticsAlertRulesUseCase = new EvaluateAnalyticsAlertRulesUseCase(
+    this.analyticsAlertRuleRepo,
+    this.getAnalyticsOverviewUseCase,
+  );
+  public readonly exportAnalyticsUseCase = new ExportAnalyticsUseCase(this.getAnalyticsOverviewUseCase);
 
   // Automation A2/A3: planning, deterministic gates, native internal effects,
   // and atomic existing-outbox intents. Providers remain behind the outbox.

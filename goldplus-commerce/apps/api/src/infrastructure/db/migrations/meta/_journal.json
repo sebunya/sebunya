@@ -428,6 +428,13 @@
       "when": 1786075200000,
       "tag": "0060_cart_ownership_and_version",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "5",
+      "when": 1786161600000,
+      "tag": "0061_analytics_saved_views_and_alert_rules",
+      "breakpoints": true
     }
   ]
 }
