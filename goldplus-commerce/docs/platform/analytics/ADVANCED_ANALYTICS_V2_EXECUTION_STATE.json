@@ -29,7 +29,7 @@
   "executed_gates": {
     "typecheck": 0,
     "lint": 0,
-    "test": "0 on the committed tree (4920 passed, 29 skipped, 0 failed)",
+    "test": "0 on the committed tree (260 files, 4929 passed, 29 skipped, 0 failed)",
     "build": 0,
     "migration_parity": "0 (62/62, ceiling 0061, PASSED)",
     "integration_real_postgres": "0 (18 tests across two suites, PostgreSQL 16.13)",

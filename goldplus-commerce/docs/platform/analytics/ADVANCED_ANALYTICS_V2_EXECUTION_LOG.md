@@ -32,5 +32,5 @@
   9 unit + 3 integration + 2 API tests.
 - 2026-08-02 · Slice 7: EXPLAIN ANALYZE measurement script and report on
   50 000 seeded orders; security review, UAT, implementation and test reports
-  refreshed; final gate — typecheck 0, lint 0, test 0 (4920 passed), build 0,
+  refreshed; final gate — typecheck 0, lint 0, test 0 (4929 passed), build 0,
   parity 62/62 PASSED.

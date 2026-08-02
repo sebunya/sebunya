@@ -10,7 +10,7 @@ exit codes are as recorded. Nothing here ran against production.
 |---|---|---|
 | `pnpm typecheck` | 0 | shared, api, web clean |
 | `pnpm lint` | 0 | passes (pre-existing warnings only) |
-| `pnpm test` | 0 | 251 files passed, 3 skipped · 4920 tests passed, 29 skipped, 0 failed (final clean-tree run below) |
+| `pnpm test` | 0 | 260 files passed, 3 skipped · 4929 tests passed, 29 skipped, 0 failed (clean-tree run) |
 | `pnpm build` | 0 | shared, web (Astro), api build complete |
 | `node scripts/release/claude/verify-migration-parity.mjs` | 0 | 62 SQL / 62 journal, ceiling 0061, PARITY PASSED |
 | `node scripts/qa/analytics-query-performance.mjs --rows 50000` | 0 | EXPLAIN ANALYZE on 50 000 orders — see the performance report |
@@ -47,7 +47,7 @@ exit codes are as recorded. Nothing here ran against production.
 
 - The Slice-09 artifact-scope guard tests fail by design on any dirty working
   tree; on the committed tree the full suite passes (they are part of the
-  4920 passing tests above). They fired during this pass whenever handoff
+  4929 passing tests above). They fired during this pass whenever handoff
   documents were uncommitted, and passed again once committed.
 - The base branch had left the deny-by-default admin sweep failing (84th page
   unclassified); this pass classified it.
