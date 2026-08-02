@@ -156,5 +156,17 @@
       "status": "DONE",
       "note": "Canonical pure contract: toE164Uganda (all equivalent forms → one E.164), SHA-256 hashed identifiers, provider field ALLOWLIST (drops non-allowlisted fields), consent-gating (nothing without consent), match-quality fraction; RAW PII never emitted. No real send. Unit 7/7."
     }
+  },
+  "activationAndRelease": {
+    "controlled-activation": {
+      "level": 4,
+      "note": "Mature: authenticated activation, actor-from-session, readiness gates, dry-run, evidence pack, live canary + kill-switch, live review — all present."
+    },
+    "separation-of-duties": {
+      "level": 4,
+      "slice": "9",
+      "status": "DONE",
+      "note": "Closed a real gap: the activation approval gate recorded the approver but never checked they differ from the requester (a maker could approve their own change). New pure authorizeActivationApproval denies self-approval + missing approver, wired into RecordControlledActivationApprovalUseCase. Unit 4/4."
+    }
   }
 }
