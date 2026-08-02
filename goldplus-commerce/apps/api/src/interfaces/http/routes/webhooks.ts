@@ -6,7 +6,7 @@ import { enqueuePurchaseEvent } from '../../../application/use-cases/telemetry/E
 import { ApiResponse } from '@goldplus/shared';
 import { logger } from '../../../infrastructure/logging/logger';
 import { clientIp } from '../clientAddress';
-import { graceEnabledFor } from '../../../domain/payments/WebhookVerificationPolicy';
+import { graceEnabledFor, isWebhookTimestampFresh } from '../../../domain/payments/WebhookVerificationPolicy';
 
 const routes = new Hono();
 
@@ -18,11 +18,11 @@ function envSecretFor(provider: string): string | undefined {
   return undefined;
 }
 
-function verifySignature(rawBody: string, header: string | undefined, secret: string | undefined): boolean {
+function verifySignature(signedInput: string, header: string | undefined, secret: string | undefined): boolean {
   if (!secret) return false;
   if (!header) return false;
   try {
-    const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
+    const expected = createHmac('sha256', secret).update(signedInput).digest('hex');
     const a = Buffer.from(expected, 'utf8');
     const b = Buffer.from(header.trim().toLowerCase(), 'utf8');
     return a.length === b.length && timingSafeEqual(a, b);
@@ -55,8 +55,28 @@ routes.post('/payment/:provider', async (c) => {
 
   const signatureHeader = c.req.header('x-goldplus-signature');
   const secret = envSecretFor(provider);
-  const signatureVerified = verifySignature(rawBody, signatureHeader, secret);
   const secretConfigured = !!secret;
+
+  // P0-1 §1 — signed-timestamp replay window. When the provider sends
+  // x-goldplus-timestamp, the signature must cover `${timestamp}.${rawBody}` and
+  // the timestamp must be within the freshness window, so a captured webhook
+  // cannot be replayed later. Absent a timestamp, the legacy raw-body signature
+  // is honoured for backward compatibility (replay is then bounded by
+  // idempotency); operators enforce timestamps provider-side once adopted.
+  const timestampHeader = c.req.header('x-goldplus-timestamp');
+  let signedInput = rawBody;
+  if (timestampHeader !== undefined) {
+    if (!isWebhookTimestampFresh(Number(timestampHeader), Date.now())) {
+      logger.warn({ provider, reason: 'STALE_TIMESTAMP' }, 'PAYMENT_WEBHOOK_SIGNATURE_REJECTED');
+      const res: ApiResponse<never> = {
+        success: false,
+        error: { code: 'STALE_TIMESTAMP', message: 'Webhook timestamp is outside the accepted window.' },
+      };
+      return c.json(res, 401);
+    }
+    signedInput = `${timestampHeader}.${rawBody}`;
+  }
+  const signatureVerified = verifySignature(signedInput, signatureHeader, secret);
 
   // Verify the provider-reported amount against the order total. The signature
   // proves who sent the payload, not that the figure in it is correct.

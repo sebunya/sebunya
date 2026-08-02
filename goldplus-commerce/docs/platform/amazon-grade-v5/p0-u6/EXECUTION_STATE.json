@@ -1,0 +1,18 @@
+{
+  "programme": "GOLDPLUS_P0_U6",
+  "phase": "VERIFYING_P0_2",
+  "pr": 9,
+  "startingHead": "40e1f9b",
+  "p0_1": "11/11 VERIFIED",
+  "p0_2": "8/9 VERIFIED (AC2/AC3 order_events OPEN)",
+  "unitsPending": [
+    "U1",
+    "U2",
+    "U3",
+    "U4",
+    "U5",
+    "U6"
+  ],
+  "nextExactWork": "Build order_events append-only ledger (migration + domain event written in the same tx as each OrderStateMachine transition + repo + backfill + test) to close P0-2 AC2/AC3, then U1 pricing engine reconciliation.",
+  "terminal": "GOLDPLUS_P0_U6_PARTIAL"
+}

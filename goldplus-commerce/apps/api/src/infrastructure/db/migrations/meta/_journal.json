@@ -463,6 +463,13 @@
       "when": 1786507200000,
       "tag": "0065_measurement_gtm_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "5",
+      "when": 1786593600000,
+      "tag": "0066_foreign_key_indexes",
+      "breakpoints": true
     }
   ]
 }

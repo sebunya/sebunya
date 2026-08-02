@@ -1,0 +1,20 @@
+{
+  "records": [
+    {
+      "unit": "P0-1",
+      "criterion": "AC2",
+      "gate": "unit",
+      "command": "vitest WebhookTimestampReplay",
+      "artifactPath": "evidence/p0-1/webhook-timestamp.txt",
+      "result": "6/6 PASS"
+    },
+    {
+      "unit": "P0-2",
+      "criterion": "AC9",
+      "gate": "integration",
+      "command": "vitest OrderItemsIndex (real PG)",
+      "artifactPath": "evidence/p0-2/order-items-index.txt",
+      "result": "1/1 PASS"
+    }
+  ]
+}

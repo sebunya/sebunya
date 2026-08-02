@@ -1,0 +1,50 @@
+{
+  "programme": "GOLDPLUS_P0_U6",
+  "phase": "VERIFYING_P0_2",
+  "pr": 9,
+  "startingHead": "40e1f9b",
+  "P0_1": {
+    "gate": "security remediation",
+    "criteriaTotal": 11,
+    "verified": 11,
+    "external": 0,
+    "criteria": {
+      "AC1": "VERIFIED (ALREADY_PROVEN: unsigned webhook -> 401 when secret set; existing webhook tests 46/46)",
+      "AC2": "VERIFIED (GAP CLOSED this turn: x-goldplus-timestamp binding + 300s/60s freshness window -> 401 STALE_TIMESTAMP; WebhookTimestampReplay 6/6)",
+      "AC3": "VERIFIED (ALREADY_PROVEN: RecordPaymentWebhookUseCase amount-vs-order-total mismatch -> 422)",
+      "AC4": "VERIFIED (ALREADY_PROVEN: server-authoritative price; body price ignored; PRICE-1 invariant)",
+      "AC5": "VERIFIED (ALREADY_PROVEN: admin no-auth -> 401; tests/architecture/admin-route-authentication)",
+      "AC6": "VERIFIED (ALREADY_PROVEN: requirePermissions -> 403)",
+      "AC7": "VERIFIED (ALREADY_PROVEN: actor from session; arch test forbids body adminId)",
+      "AC8": "VERIFIED (ALREADY_PROVEN: foreign order -> 404; OWN-1 invariant)",
+      "AC9": "VERIFIED (ALREADY_PROVEN: AuthenticateUserUseCase dummyHash timing equalization)",
+      "AC10": "VERIFIED (ALREADY_PROVEN: RedisLoginAttemptStore 5/account/15min -> 429)",
+      "AC11": "VERIFIED (ALREADY_PROVEN: admin-route-authentication architecture test)"
+    }
+  },
+  "P0_2": {
+    "gate": "data & concurrency",
+    "criteriaTotal": 9,
+    "verified": 8,
+    "open": 1,
+    "criteria": {
+      "AC1": "VERIFIED (ALREADY_PROVEN: bigint 9e9 round-trip; MoneyBigintMigration)",
+      "AC2": "PARTIAL -> OPEN: OrderStateMachine rejects illegal transition (VERIFIED throw), but \"writes no order_event\" needs an order_events append-only ledger which DOES NOT EXIST. IMPLEMENTATION_MISSING (order_events).",
+      "AC3": "OPEN: order_events append-only ledger missing (every status change -> one event). IMPLEMENTATION_MISSING.",
+      "AC4": "VERIFIED (ALREADY_PROVEN: outbox fenced lease 0058/0059; one dispatch)",
+      "AC5": "VERIFIED (ALREADY_PROVEN: client.ts retry restarts a fresh transaction)",
+      "AC6": "VERIFIED (ALREADY_PROVEN: slow-query log omits bound parameters; Slice 3E/3F)",
+      "AC7": "VERIFIED (ALREADY_PROVEN: route-family keys; 500 invented URLs -> one global key; Slice 3A)",
+      "AC8": "VERIFIED (ALREADY_PROVEN: shared Redis limits across replicas; RedisAbuseControl 16/16)",
+      "AC9": "VERIFIED (GAP CLOSED this turn: migration 0066 FK indexes; EXPLAIN uses order_items_order_id_idx; OrderItemsIndex 1/1)"
+    }
+  },
+  "remaining": {
+    "P0_2": "order_events append-only ledger (AC2/AC3)",
+    "units": "U1 pricing/promotions/coupons, U2 device catalogue, U3 reviews, U4 creator, U5 flash sales, U6 SEO/AEO — all STILL_MISSING new feature builds (gap-only)"
+  },
+  "migrationsAdded": [
+    "0066_foreign_key_indexes"
+  ],
+  "migrationCeiling": "0066 (67/67 parity)"
+}
