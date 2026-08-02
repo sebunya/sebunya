@@ -5,7 +5,8 @@
   "stateSnapshotParent": "6205dd0e290941746e795ad50472f116f9081df3",
   "observedBranchHeadAtResume": "6205dd0e290941746e795ad50472f116f9081df3",
   "observedTreeAtResume": "e870b7caa46909acf0f6708a98a6cd5beb06f255",
-  "lastGreenEngineeringCommit": "2f426b175994eb8c39a5a085026bb053960ffc36",
+  "lastGreenEngineeringCommit": "02644aa (Slice 3A — route-family distributed abuse control, real-Redis proven)",
+  "localInfraGate": "ENV-01: no local PostgreSQL server; Docker blocked by qemu->pinned-glib; operator protects pins. Real-PG proofs deferred to CI/Lane B. Real Redis was available and used for 3A.",
   "currentSlice": "SLICE_3_PLATFORM_FOUNDATIONS",
   "currentModule": "Slice 3B — durable revocable sessions, refresh rotation, logout, CSRF (3A DONE)",
   "resumeEnvironment": {
@@ -18,7 +19,15 @@
     "SLICE_0_ATTESTATION (base head+tree verified; worktree; memory bootstrap; HISTORIC_128_SOURCE_UNAVAILABLE; five historic commits verified as ancestors)",
     "SLICE_1_STOP_SHIP_VERIFICATION (all 14 findings re-verified with current-source evidence; STOP_SHIP_REGISTER.md)",
     "SLICE_1_FIX_7.8 (phantom localStorage gp_auth_token removed; same-origin allowlisted session-cookie proxy for measurement pages)",
-    "SLICE_2_MONEY (migration 0062: money int4->bigint + non-negative money & positive-quantity CHECKs NOT VALID/VALIDATE; drizzle schema widened; parity 63/63; real-PostgreSQL proofs incl. >int4 round-trip and loud VALIDATE failure; Redis abuse-control 11/11)"
+    "SLICE_2_MONEY (migration 0062: money int4->bigint + non-negative money & positive-quantity CHECKs NOT VALID/VALIDATE; drizzle schema widened; parity 63/63; real-PostgreSQL proofs incl. >int4 round-trip and loud VALIDATE failure; Redis abuse-control 11/11)",
+    "SLICE_3A_DISTRIBUTED_ABUSE_CONTROL (commit 02644aa, pushed: one authoritative Redis-backed layer keyed on stable route family; per-family outage policy STRICT/GENEROUS; Retry-After; closes stop-ship 7.13; proof unit 11/11 + real-Redis 16/16; typecheck+lint clean; removed dead rateLimiter.ts)"
+  ],
+  "completedThisSession": [
+    "Cleared a hard disk blocker (320MB->~7.7GB free) with operator authorization (rebuildable caches only)",
+    "Frozen dependency install; green baseline (unit+architecture, 4861 real passes; only clean-tree scope guards were transiently red on the uncommitted tree)",
+    "Durable-state repair exactly once (NEXT_RESUME->Slice 3; money finding repository-vs-production; observedBranchHeadAtResume/stateSnapshotParent/lastGreenEngineeringCommit; environment attestation corrected to MacBook; created FINDINGS_REGISTER, MODULE_MATURITY, DECISION_LOG, DO_NOT_BREAK_LEDGER)",
+    "Slice 3A implemented, unit+real-Redis proven, committed and pushed",
+    "Recorded infra finding ENV-01 (no local Postgres server; Docker/qemu blocked by protected brew pins)"
   ],
   "openStopShipFindings": [
     "7.1-external: credential rotations (operator; EXTERNAL_SECRET_ROTATION_REGISTER.md)",

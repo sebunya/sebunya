@@ -1,6 +1,14 @@
 # Next resume
 
-Read `EXECUTION_STATE.json` first. **Resume point: Slice 3 (Platform Foundations).**
+Read `EXECUTION_STATE.json` first. **Resume point: Slice 3B (Slice 3A is DONE).**
+
+## Slice 3A — DONE (commit `02644aa`, pushed)
+One authoritative Redis-backed route-family distributed abuse-control layer closes stop-ship 7.13. Keyed on a stable route family (never the raw path), per-family Redis-outage policy, correct `Retry-After`. Proven on **real Redis** (16/16 integration) + 11 unit; typecheck/lint clean.
+
+## Infra gate for DB-dependent work (finding ENV-01)
+This MacBook has **no PostgreSQL server** (only `libpq` client tools), and Docker is unavailable because both the Lima x86 VM and colima need `qemu`, whose install would upgrade the operator's **pinned** toolchain (`glib`/`pkgconf`/`sqlite`/`python@3.14`/`meson`). The operator elected to protect those pins. So the **real-PostgreSQL integration proofs** the programme mandates for durable sessions (3B), MFA persistence (3C), db-client (3F) and Slices 4/7 must run in **CI or the Lane B environment** (where Docker/Postgres exists). A local real-Redis was available and used for 3A. To resume DB-dependent slices locally, an operator must either provide a reachable PostgreSQL (`ANALYTICS_TEST_DATABASE_URL` / project DB URL) or accept a one-off toolchain upgrade.
+
+## Original Slice 3 plan (resume in a DB-capable environment)
 
 Slice 2 (bigint money + non-negative/positive CHECKs, migration 0062) is repository-complete at commit `2f426b1`, parity 63/63, proven on real PostgreSQL. Migration 0062 is **repository-complete, not production-proven** — the §11 bigint production-safety evidence (table-size scan, ALTER lock behaviour on a production-like clone, backup/restore evidence) is a Lane B gate, not remaining repository work.
 
