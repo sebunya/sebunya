@@ -10,6 +10,7 @@
 import { apiBase, type ApiEnvelope } from './api';
 import type { AnalyticsOverviewResponse } from '@goldplus/shared';
 
+
 export interface CommerceAnalyticsResult {
   ok: boolean;
   status: number | null;
@@ -48,5 +49,37 @@ export async function getCommerceAnalyticsOverview(
       message: error instanceof Error ? error.message : 'Commerce Analytics API is unreachable.',
       data: null,
     };
+  }
+}
+
+export interface PaymentIntelligenceResult {
+  ok: boolean;
+  status: number | null;
+  message: string | null;
+  data: any | null;
+}
+
+/** Attempt-level payment truth. Separate endpoint, separate denominator. */
+export async function getPaymentIntelligence(
+  token: string,
+  params: { startDate?: string | null; endDate?: string | null; days?: number | null },
+): Promise<PaymentIntelligenceResult> {
+  const query = new URLSearchParams();
+  if (params.startDate) query.set('startDate', params.startDate);
+  if (params.endDate) query.set('endDate', params.endDate);
+  if (params.days) query.set('days', String(params.days));
+  const suffix = query.size > 0 ? `?${query.toString()}` : '';
+  try {
+    const response = await fetch(`${apiBase}/admin/analytics/payments${suffix}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const envelope = await response.json().catch(() => null) as ApiEnvelope<any> | null;
+    if (!response.ok || !envelope?.success) {
+      return { ok: false, status: response.status, message: envelope?.error?.message ?? `HTTP ${response.status}`, data: null };
+    }
+    return { ok: true, status: response.status, message: null, data: envelope.data };
+  } catch (error) {
+    return { ok: false, status: null, message: error instanceof Error ? error.message : 'Payment intelligence is unreachable.', data: null };
   }
 }

@@ -400,6 +400,11 @@ import {
   DrizzleAnalyticsSavedViewRepository,
 } from './db/repositories/DrizzleAnalyticsConfigRepositories';
 import {
+  GetAnalyticsBreakdownUseCase,
+  GetAnalyticsExceptionDrilldownUseCase,
+  GetPaymentIntelligenceUseCase,
+} from '../application/use-cases/analytics/PaymentIntelligenceUseCases';
+import {
   EvaluateAnalyticsAlertRulesUseCase,
   ExportAnalyticsUseCase,
   ManageAnalyticsAlertRulesUseCase,
@@ -775,6 +780,9 @@ export class Registry {
     this.getAnalyticsOverviewUseCase,
   );
   public readonly exportAnalyticsUseCase = new ExportAnalyticsUseCase(this.getAnalyticsOverviewUseCase);
+  public readonly getPaymentIntelligenceUseCase = new GetPaymentIntelligenceUseCase(this.analyticsReadRepo);
+  public readonly getAnalyticsBreakdownUseCase = new GetAnalyticsBreakdownUseCase(this.analyticsReadRepo);
+  public readonly getAnalyticsExceptionDrilldownUseCase = new GetAnalyticsExceptionDrilldownUseCase(this.analyticsReadRepo);
 
   // Automation A2/A3: planning, deterministic gates, native internal effects,
   // and atomic existing-outbox intents. Providers remain behind the outbox.

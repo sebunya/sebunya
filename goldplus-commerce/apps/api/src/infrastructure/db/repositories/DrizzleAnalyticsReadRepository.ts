@@ -2,7 +2,9 @@ import { sql } from 'drizzle-orm';
 import { db } from '../client';
 import {
   AnalyticsDailyBucket,
+  AnalyticsFulfilmentExceptionRow,
   AnalyticsOrderAggregates,
+  AnalyticsPaymentAggregates,
   AnalyticsSearchSummary,
   AnalyticsSourceRecency,
   IAnalyticsReadRepository,
@@ -97,6 +99,126 @@ export class DrizzleAnalyticsReadRepository implements IAnalyticsReadRepository 
       zeroResultSearches: Number(row.zeroResultSearches ?? 0),
       lastSignalAt: row.lastSignalAt ? new Date(row.lastSignalAt) : null,
     };
+  }
+
+  /**
+   * Payment-attempt ledger aggregates.
+   *
+   * The status vocabulary mirrors ReconcileOrderPaymentUseCase exactly —
+   * confirmed/failed/pending allowlists, everything else counted as
+   * `unrecognised` rather than silently folded into a bucket it does not
+   * belong in. A rising unrecognised count is how a provider changing its
+   * status strings becomes visible instead of quietly distorting the rate.
+   */
+  async paymentAggregates(start: Date, end: Date): Promise<AnalyticsPaymentAggregates> {
+    const totals: any = await db.execute(sql`
+      select
+        count(*)::int as "attempts",
+        count(*) filter (where lower(pa.status) in ('completed', 'paid', 'success'))::int as "confirmed",
+        count(*) filter (where lower(pa.status) in ('failed', 'cancelled', 'invalid', 'reversed'))::int as "failed",
+        count(*) filter (where lower(pa.status) in ('pending', 'verification_pending', 'processing', 'not_started'))::int as "pending",
+        count(*) filter (where lower(pa.status) not in (
+          'completed', 'paid', 'success',
+          'failed', 'cancelled', 'invalid', 'reversed',
+          'pending', 'verification_pending', 'processing', 'not_started'
+        ))::int as "unrecognised",
+        count(*) filter (where pa.callback_received_at is not null)::int as "callbackReceived",
+        count(*) filter (where pa.ipn_received_at is not null)::int as "ipnReceived",
+        count(*) filter (where o.payment_status = 'paid')::int as "reconciled"
+      from payment_attempts pa
+      left join orders o on o.id = pa.order_id
+      where pa.created_at >= ${start} and pa.created_at <= ${end}
+    `);
+    const row = rowsOf(totals)[0] ?? {};
+
+    const statuses: any = await db.execute(sql`
+      select lower(status) as "status", count(*)::int as "count"
+      from payment_attempts
+      where created_at >= ${start} and created_at <= ${end}
+      group by 1
+      order by 2 desc
+      limit 50
+    `);
+
+    const providers: any = await db.execute(sql`
+      select
+        lower(provider) as "provider",
+        count(*)::int as "attempts",
+        count(*) filter (where lower(status) in ('completed', 'paid', 'success'))::int as "confirmed"
+      from payment_attempts
+      where created_at >= ${start} and created_at <= ${end}
+      group by 1
+      order by 2 desc
+      limit 20
+    `);
+
+    return {
+      attempts: Number(row.attempts ?? 0),
+      confirmed: Number(row.confirmed ?? 0),
+      failed: Number(row.failed ?? 0),
+      pending: Number(row.pending ?? 0),
+      unrecognised: Number(row.unrecognised ?? 0),
+      callbackReceived: Number(row.callbackReceived ?? 0),
+      ipnReceived: Number(row.ipnReceived ?? 0),
+      reconciled: Number(row.reconciled ?? 0),
+      byStatus: rowsOf(statuses).map((s) => ({ status: String(s.status), count: Number(s.count) })),
+      byProvider: rowsOf(providers).map((p) => ({
+        provider: String(p.provider),
+        attempts: Number(p.attempts),
+        confirmed: Number(p.confirmed),
+      })),
+    };
+  }
+
+  /**
+   * Paid orders that never reached processing. Deliberately projects the order
+   * number and state only: the drilldown exists to route an operator to the
+   * order module, not to become a second customer-data surface.
+   */
+  async paidNotProcessingOrders(start: Date, end: Date, limit: number, now: Date): Promise<AnalyticsFulfilmentExceptionRow[]> {
+    const bounded = Math.max(1, Math.min(limit, 200));
+    const result: any = await db.execute(sql`
+      select
+        order_number as "orderNumber",
+        status as "orderStatus",
+        payment_status as "paymentStatus",
+        extract(epoch from (${now}::timestamptz - created_at)) / 3600 as "ageHours",
+        total_amount as "totalAmount"
+      from orders
+      where created_at >= ${start} and created_at <= ${end}
+        and payment_status = 'paid'
+        and status in ('received', 'pending')
+      order by created_at asc
+      limit ${bounded}
+    `);
+    return rowsOf(result).map((row) => ({
+      orderNumber: String(row.orderNumber),
+      orderStatus: String(row.orderStatus),
+      paymentStatus: String(row.paymentStatus),
+      ageHours: Math.round(Number(row.ageHours ?? 0) * 10) / 10,
+      totalAmount: Number(row.totalAmount ?? 0),
+    }));
+  }
+
+  /** Bounded breakdown. The dimension is an allowlisted column, never free text. */
+  async ordersByDimension(start: Date, end: Date, dimension: 'payment_status' | 'status') {
+    const column = dimension === 'payment_status' ? sql`payment_status` : sql`status`;
+    const result: any = await db.execute(sql`
+      select
+        ${column} as "value",
+        count(*)::int as "orders",
+        coalesce(sum(total_amount) filter (where payment_status = 'paid'), 0)::bigint as "paidOrderValueUgx"
+      from orders
+      where created_at >= ${start} and created_at <= ${end}
+      group by 1
+      order by 2 desc
+      limit 50
+    `);
+    return rowsOf(result).map((row) => ({
+      value: String(row.value),
+      orders: Number(row.orders ?? 0),
+      paidOrderValueUgx: Number(row.paidOrderValueUgx ?? 0),
+    }));
   }
 
   async sourceRecency(): Promise<AnalyticsSourceRecency> {

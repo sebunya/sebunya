@@ -102,6 +102,56 @@ routes.get('/catalogue', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async
   return c.json({ success: true, data: ANALYTICS_METRIC_CATALOGUE } satisfies ApiResponse<typeof ANALYTICS_METRIC_CATALOGUE>);
 });
 
+// ─── Payment intelligence, breakdowns and bounded drilldowns ────────────────
+
+routes.get('/payments', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => {
+  const parsed = parsePeriod(c);
+  if (!parsed.success) return c.json(invalidQuery('startDate/endDate must be YYYY-MM-DD and days must be 1-366.'), 400);
+  try {
+    const data = await Registry.getInstance().getPaymentIntelligenceUseCase.execute(parsed.data);
+    return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+  } catch (error) {
+    if (error instanceof Error && (error.message === 'END_BEFORE_START' || error.message === 'PERIOD_TOO_LONG')) {
+      return c.json(invalidQuery('Invalid period.'), 400);
+    }
+    throw error;
+  }
+});
+
+routes.get('/breakdowns/:dimension', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => {
+  const parsed = parsePeriod(c);
+  if (!parsed.success) return c.json(invalidQuery('startDate/endDate must be YYYY-MM-DD and days must be 1-366.'), 400);
+  const dimension = String(c.req.param('dimension') ?? '');
+  try {
+    const result = await Registry.getInstance().getAnalyticsBreakdownUseCase.execute(dimension, parsed.data);
+    if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 404);
+    return c.json({ success: true, data: result.data } satisfies ApiResponse<typeof result.data>);
+  } catch (error) {
+    if (error instanceof Error && (error.message === 'END_BEFORE_START' || error.message === 'PERIOD_TOO_LONG')) {
+      return c.json(invalidQuery('Invalid period.'), 400);
+    }
+    throw error;
+  }
+});
+
+routes.get('/exceptions/:exception', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => {
+  const parsed = parsePeriod(c);
+  if (!parsed.success) return c.json(invalidQuery('startDate/endDate must be YYYY-MM-DD and days must be 1-366.'), 400);
+  const exception = String(c.req.param('exception') ?? '');
+  const limitRaw = Number(c.req.query('limit') ?? 50);
+  if (!Number.isFinite(limitRaw) || limitRaw < 1) return c.json(invalidQuery('limit must be a positive integer.'), 400);
+  try {
+    const result = await Registry.getInstance().getAnalyticsExceptionDrilldownUseCase.execute(exception, { ...parsed.data, limit: limitRaw });
+    if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 404);
+    return c.json({ success: true, data: result.data } satisfies ApiResponse<typeof result.data>);
+  } catch (error) {
+    if (error instanceof Error && (error.message === 'END_BEFORE_START' || error.message === 'PERIOD_TOO_LONG')) {
+      return c.json(invalidQuery('Invalid period.'), 400);
+    }
+    throw error;
+  }
+});
+
 // ─── Saved views, alert rules and exports ────────────────────────────────────
 //
 // Reading configuration needs analytics.read; changing it needs a separate

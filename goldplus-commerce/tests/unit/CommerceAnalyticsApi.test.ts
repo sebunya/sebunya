@@ -10,6 +10,9 @@ const registry = vi.hoisted(() => ({
   getAnalyticsOverviewUseCase: { execute: vi.fn() },
   getAnalyticsMetricSeriesUseCase: { execute: vi.fn() },
   getAnalyticsDataQualityUseCase: { execute: vi.fn() },
+  getPaymentIntelligenceUseCase: { execute: vi.fn() },
+  getAnalyticsBreakdownUseCase: { execute: vi.fn() },
+  getAnalyticsExceptionDrilldownUseCase: { execute: vi.fn() },
 }));
 
 vi.mock('../../apps/api/src/infrastructure/Registry', () => ({
@@ -38,6 +41,9 @@ describe('Commerce Analytics protected API', () => {
     registry.getAnalyticsOverviewUseCase.execute.mockResolvedValue({ generatedAt: 'x', period: {}, actions: [] });
     registry.getAnalyticsMetricSeriesUseCase.execute.mockResolvedValue({ ok: true, data: { points: [] } });
     registry.getAnalyticsDataQualityUseCase.execute.mockResolvedValue({ sources: [] });
+    registry.getPaymentIntelligenceUseCase.execute.mockResolvedValue({ attempts: 0 });
+    registry.getAnalyticsBreakdownUseCase.execute.mockResolvedValue({ ok: true, data: { rows: [] } });
+    registry.getAnalyticsExceptionDrilldownUseCase.execute.mockResolvedValue({ ok: true, data: { rows: [] } });
   });
 
   it('requires authentication and the exact analytics.read permission', async () => {
@@ -52,6 +58,9 @@ describe('Commerce Analytics protected API', () => {
       '/admin/analytics/quality',
       '/admin/analytics/actions',
       '/admin/analytics/catalogue',
+      '/admin/analytics/payments',
+      '/admin/analytics/breakdowns/payment_status',
+      '/admin/analytics/exceptions/paid_not_processing',
     ]) {
       expect((await app.request(path)).status, path).toBe(401);
       expect((await app.request(path, { headers: { Authorization: 'Bearer none' } })).status, path).toBe(403);
@@ -91,6 +100,19 @@ describe('Commerce Analytics protected API', () => {
       headers: { Authorization: 'Bearer analytics' },
     });
     expect(response.status).toBe(404);
+  });
+
+  it('returns 404 for a dimension or exception outside the allowlist', async () => {
+    registry.getAnalyticsBreakdownUseCase.execute.mockResolvedValue({ ok: false, code: 'UNKNOWN_DIMENSION', message: 'no' });
+    expect((await app.request('/admin/analytics/breakdowns/customer_email', { headers: { Authorization: 'Bearer analytics' } })).status).toBe(404);
+    registry.getAnalyticsExceptionDrilldownUseCase.execute.mockResolvedValue({ ok: false, code: 'UNKNOWN_EXCEPTION', message: 'no' });
+    expect((await app.request('/admin/analytics/exceptions/everything', { headers: { Authorization: 'Bearer analytics' } })).status).toBe(404);
+  });
+
+  it('rejects a non-positive drilldown limit', async () => {
+    const response = await app.request('/admin/analytics/exceptions/paid_not_processing?limit=0', { headers: { Authorization: 'Bearer analytics' } });
+    expect(response.status).toBe(400);
+    expect(registry.getAnalyticsExceptionDrilldownUseCase.execute).not.toHaveBeenCalled();
   });
 
   it('serves the canonical catalogue', async () => {

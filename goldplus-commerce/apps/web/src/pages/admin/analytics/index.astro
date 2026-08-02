@@ -2,7 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { getRecommendationAnalytics } from "../../../lib/admin-analytics";
-import { getCommerceAnalyticsOverview } from "../../../lib/admin-commerce-analytics";
+import { getCommerceAnalyticsOverview, getPaymentIntelligence } from "../../../lib/admin-commerce-analytics";
 import { resolveAnalyticsPeriod, type MetricValue } from "../../../lib/commerce-analytics";
 
 const token = readSessionToken(Astro.request);
@@ -27,13 +27,14 @@ try {
 // The dedicated server-side analytics API computes every commerce metric from
 // bounded PostgreSQL aggregates. The recommendation engagement panel keeps its
 // own source module. No order ledger is downloaded here.
-const [overviewResult, recommendationResult] = await Promise.all([
+const [overviewResult, recommendationResult, paymentResult] = await Promise.all([
   getCommerceAnalyticsOverview(token, {
     startDate: period.startDay,
     endDate: period.endDay,
     days: period.days,
   }),
   getRecommendationAnalytics(token, { startDate: period.startDay, endDate: period.endDay }),
+  getPaymentIntelligence(token, { startDate: period.startDay, endDate: period.endDay, days: period.days }),
 ]);
 
 const analytics = overviewResult.data;
@@ -41,6 +42,7 @@ const apiUnavailable = !overviewResult.ok || !analytics;
 const permissionDenied = overviewResult.status === 403;
 
 const recSummary: any = recommendationResult.ok ? (recommendationResult.data as any)?.summary ?? null : null;
+const payments: any = paymentResult.ok ? paymentResult.data : null;
 
 const fmtNumber = (value: number) => new Intl.NumberFormat("en-UG", { maximumFractionDigits: 1 }).format(value);
 const fmtMoney = (value: number) => new Intl.NumberFormat("en-UG", { style: "currency", currency: "UGX", maximumFractionDigits: 0 }).format(value);
@@ -272,6 +274,82 @@ const maxTrendValue = Math.max(1, ...(analytics?.trend ?? []).map((point) => poi
               ))}
             </dl>
           </div>
+        </section>
+
+        <section class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="analytics-payments">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="max-w-2xl">
+              <h2 id="analytics-payments" class="text-lg font-black text-brand-dark">Payment intelligence</h2>
+              <p class="mt-1 text-xs text-slate-500">Attempt-level truth from the payment ledger. The denominator is provider attempts, not orders, so this rate can legitimately differ from the order-level payment success rate above.</p>
+            </div>
+            <a href="/admin/measurement/payments" class="text-xs font-black text-brand-dark">Open payment reconciliation →</a>
+          </div>
+
+          {!payments && (
+            <p class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">
+              {paymentResult.message ?? "The payment intelligence endpoint did not answer."} No attempt figures are shown.
+            </p>
+          )}
+
+          {payments && (
+            <>
+              <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ["Attempts", payments.attempts],
+                  ["Confirmed", payments.confirmed],
+                  ["Failed", payments.failed],
+                  ["Pending", payments.pending],
+                  ["Unrecognised status", payments.unrecognised],
+                  ["Callbacks received", payments.callbackReceived],
+                  ["IPNs received", payments.ipnReceived],
+                  ["Reconciled to paid orders", payments.reconciled],
+                ].map(([label, value]) => (
+                  <div class="rounded-xl border border-slate-200 p-4">
+                    <p class="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p>
+                    <p class="mt-1 text-xl font-black text-brand-dark">{fmtNumber(Number(value ?? 0))}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div class="mt-5 grid gap-4 sm:grid-cols-2">
+                {[
+                  ["Attempt success rate", payments.attemptSuccessRate],
+                  ["Callback completeness", payments.callbackCompleteness],
+                ].map(([label, metric]: any) => (
+                  <div class="rounded-xl border border-slate-200 p-4">
+                    <p class="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p>
+                    <p class="mt-1 text-xl font-black text-brand-dark">
+                      {metric?.value === null || metric?.value === undefined ? STATE_LABELS[metric?.state] ?? "Unavailable" : fmtRate(metric.value)}
+                    </p>
+                    <p class="mt-1 text-[10px] text-slate-400">Denominator: {metric?.denominator} (n = {fmtNumber(Number(metric?.sampleSize ?? 0))})</p>
+                  </div>
+                ))}
+              </div>
+
+              {payments.byProvider?.length > 0 && (
+                <div class="mt-5 overflow-x-auto">
+                  <table class="w-full text-left text-xs">
+                    <caption class="sr-only">Payment attempts by provider</caption>
+                    <thead><tr class="border-b border-slate-200 text-slate-500"><th scope="col" class="py-1 pr-3">Provider</th><th scope="col" class="py-1 pr-3">Attempts</th><th scope="col" class="py-1 pr-3">Confirmed</th><th scope="col" class="py-1">Success rate</th></tr></thead>
+                    <tbody>
+                      {payments.byProvider.map((provider: any) => (
+                        <tr class="border-b border-slate-100">
+                          <td class="py-1 pr-3">{provider.provider}</td>
+                          <td class="py-1 pr-3">{fmtNumber(provider.attempts)}</td>
+                          <td class="py-1 pr-3">{fmtNumber(provider.confirmed)}</td>
+                          <td class="py-1">{provider.successRate === null ? "Insufficient evidence" : fmtRate(provider.successRate)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <ul class="mt-5 list-disc space-y-1 pl-5 text-[11px] text-slate-500">
+                {payments.notes?.map((note: string) => <li>{note}</li>)}
+              </ul>
+            </>
+          )}
         </section>
 
         <section class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="analytics-quality">
