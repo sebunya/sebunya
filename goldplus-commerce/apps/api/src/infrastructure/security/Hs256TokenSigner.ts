@@ -19,9 +19,32 @@ interface JwtPayload {
 
 export class Hs256TokenSigner implements ITokenSigner {
   private readonly secret: string | null;
-  constructor(secret: string | undefined = process.env.JWT_SECRET) {
+  /**
+   * Optional previous signing secret, honoured only for VERIFY (never sign).
+   * This is the safe JWT-rotation window (§14): after rotating JWT_SECRET, live
+   * sessions signed with the old secret keep verifying until they expire, so a
+   * rotation does not force every user to re-login at once. Remove
+   * JWT_SECRET_PREVIOUS once the access-token TTL has elapsed to close the window.
+   */
+  private readonly previousSecret: string | null;
+  constructor(
+    secret: string | undefined = process.env.JWT_SECRET,
+    previousSecret: string | undefined = process.env.JWT_SECRET_PREVIOUS,
+  ) {
     const trimmed = (secret ?? '').trim();
     this.secret = trimmed.length >= 32 ? trimmed : null;
+    const prev = (previousSecret ?? '').trim();
+    this.previousSecret = prev.length >= 32 ? prev : null;
+  }
+
+  /** Whether the signature matches the current OR the previous secret. */
+  private signatureMatches(signingInput: string, provided: Buffer): boolean {
+    for (const secret of [this.secret, this.previousSecret]) {
+      if (!secret) continue;
+      const expected = createHmac('sha256', secret).update(signingInput).digest();
+      if (provided.length === expected.length && timingSafeEqual(provided, expected)) return true;
+    }
+    return false;
   }
 
   isConfigured(): boolean {
@@ -59,9 +82,8 @@ export class Hs256TokenSigner implements ITokenSigner {
       return null;
     }
 
-    const expected = createHmac('sha256', this.secret).update(`${headerB64}.${payloadB64}`).digest();
-    if (signatureProvided.length !== expected.length) return null;
-    if (!timingSafeEqual(signatureProvided, expected)) return null;
+    // Verify against the current OR the previous secret (rotation window).
+    if (!this.signatureMatches(`${headerB64}.${payloadB64}`, signatureProvided)) return null;
 
     let payload: JwtPayload;
     try {

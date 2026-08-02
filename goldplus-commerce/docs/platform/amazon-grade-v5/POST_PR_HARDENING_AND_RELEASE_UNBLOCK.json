@@ -72,7 +72,7 @@
     "N_credential_rotations": {
       "class": "EXTERNAL_DEPENDENCY",
       "canonicalOwner": "EXTERNAL_SECRET_ROTATION_REGISTER.md",
-      "decision": "repository-side already safe (no tracked env, no env-credential fallback, redacted config); provider-side rotation is operator; documented"
+      "decision": "Repository-side rotation support HARDENED: JWT dual-key verify window (JWT_SECRET_PREVIOUS); startup validation (11 checks), no env-credential fallback, no tracked .env, redacted config already present. Provider-side rotation remains EXTERNAL."
     },
     "CI_location": {
       "class": "DEPRECATE_WITH_PROOF",
@@ -94,6 +94,11 @@
     {
       "id": "C-CI",
       "title": "Supply-chain + CI gates: workflow relocated to git root (was in an ignored subdir), + secret-scan/integration/SBOM/container-scan/Playwright wired",
+      "status": "done"
+    },
+    {
+      "id": "D-JWT",
+      "title": "JWT dual-key rotation window (repository-side §14 rotation support)",
       "status": "done"
     }
   ],

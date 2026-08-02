@@ -11,6 +11,8 @@ reports `EXTERNAL_SECRET_ROTATIONS_VERIFIED=false` and
 | ZeptoMail token | transactional email | rotate token | rotation timestamp |
 | SMS provider key | OTP/SMS | rotate key | rotation timestamp |
 | JWT signing secret | API sessions | rotate; invalidates sessions — schedule window | rotation timestamp + forced re-login confirmation |
+
+**Repository-side rotation support (post-PR §14):** `Hs256TokenSigner` now honours an optional `JWT_SECRET_PREVIOUS` for VERIFY only (never sign) — a safe dual-key rotation window so live sessions signed with the old secret keep verifying until they expire. Rotate: set `JWT_SECRET_PREVIOUS=<old>`, set `JWT_SECRET=<new>`, deploy; after the access-token TTL (15 min) elapses, remove `JWT_SECRET_PREVIOUS`. Proven by `tests/unit/Hs256TokenSignerRotation.test.ts` (4/4). Provider-side/operator rotation remains EXTERNAL.
 | MTN / Airtel webhook secrets | payment webhooks | rotate; update provider portal + env | first verified webhook after rotation |
 | Database password | PostgreSQL | rotate via managed change | rotation timestamp |
 | Identity hash pepper | PII digests | rotate only with migration plan (re-hash) — do NOT rotate blindly | operator decision record |
