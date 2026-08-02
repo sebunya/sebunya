@@ -456,6 +456,13 @@
       "when": 1786420800000,
       "tag": "0064_privileged_mfa",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "5",
+      "when": 1786507200000,
+      "tag": "0065_measurement_gtm_plans",
+      "breakpoints": true
     }
   ]
 }

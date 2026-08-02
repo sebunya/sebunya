@@ -1,29 +1,64 @@
+import { createHash } from 'node:crypto';
 import { logger } from '../logging/logger';
 import { GtmPlanRepository } from '../../application/ports/measurement/GtmPlanRepository';
 import { db } from '../db/client';
-import { measurementGtmSyncLogs } from '../db/schema';
-import { desc } from 'drizzle-orm';
+import { measurementGtmSyncLogs, measurementGtmPlans } from '../db/schema';
+import { desc, eq, sql } from 'drizzle-orm';
 
+/**
+ * Durable GTM plan repository (post-PR §3). Plans and diffs are persisted in
+ * PostgreSQL (`measurement_gtm_plans`) rather than a process-local Map, so a
+ * planned (dry-run) GTM change survives a restart and is consistent across
+ * instances. Sync logs were already durable. GTM publication stays disabled.
+ */
 export class DrizzleGtmPlanRepository implements GtmPlanRepository {
-  // We use an in-memory map for plans as the measurement_gtm_plans table does not exist
-  // We rely on measurementGtmSyncLogs for durable sync logging
-  private plans = new Map<string, any>();
-  private diffs = new Map<string, any>();
+  private checksum(plan: unknown): string {
+    return createHash('sha256').update(JSON.stringify(plan ?? null)).digest('hex');
+  }
 
   async savePlan(id: string, plan: any): Promise<void> {
-    this.plans.set(id, plan);
+    await db
+      .insert(measurementGtmPlans)
+      .values({ id, plan, planChecksum: this.checksum(plan) })
+      .onConflictDoUpdate({
+        target: measurementGtmPlans.id,
+        // Optimistic version bump on overwrite; audit history stays via the row's
+        // updated_at and the append-only sync logs.
+        set: {
+          plan,
+          planChecksum: this.checksum(plan),
+          version: sql`${measurementGtmPlans.version} + 1`,
+          updatedAt: new Date(),
+        },
+      });
   }
 
   async getPlan(id: string): Promise<any | null> {
-    return this.plans.get(id) || null;
+    const row = await db.query.measurementGtmPlans.findFirst({
+      where: eq(measurementGtmPlans.id, id),
+    });
+    return row?.plan ?? null;
   }
 
   async listRecentPlans(limit: number): Promise<any[]> {
-    return Array.from(this.plans.values()).slice(0, limit);
+    const rows = await db
+      .select({ plan: measurementGtmPlans.plan })
+      .from(measurementGtmPlans)
+      .orderBy(desc(measurementGtmPlans.createdAt))
+      .limit(Math.max(1, Math.min(limit, 200)));
+    return rows.map((r) => r.plan).filter((p) => p != null);
   }
 
   async saveDiff(id: string, diff: any): Promise<void> {
-    this.diffs.set(id, diff);
+    // A diff belongs to a plan id; upsert so a diff can be recorded even before
+    // the plan row exists.
+    await db
+      .insert(measurementGtmPlans)
+      .values({ id, diff })
+      .onConflictDoUpdate({
+        target: measurementGtmPlans.id,
+        set: { diff, updatedAt: new Date() },
+      });
   }
 
   async saveSyncLog(id: string, log: any): Promise<void> {
@@ -32,23 +67,21 @@ export class DrizzleGtmPlanRepository implements GtmPlanRepository {
         containerId: log.containerId || 'default',
         action: log.action || 'SYNC',
         status: log.status || 'STARTED',
-        details: log.details || {}
+        details: log.details || {},
       });
-    } catch (e) {
-      // Fallback for local
-      logger.warn('[GtmPlan] DB not configured, falling back to local for saveSyncLog');
+    } catch (err) {
+      // Sync logs are non-critical telemetry; never fail the caller, but record
+      // the loss loudly rather than pretending a local fallback exists.
+      logger.warn({ err: (err as Error)?.message }, '[GtmPlan] Failed to persist sync log');
     }
   }
 
   async listSyncLogs(limit: number): Promise<any[]> {
-    try {
-      const logs = await db.select()
-        .from(measurementGtmSyncLogs)
-        .orderBy(desc(measurementGtmSyncLogs.createdAt))
-        .limit(limit);
-      return logs;
-    } catch (e) {
-      return [];
-    }
+    const logs = await db
+      .select()
+      .from(measurementGtmSyncLogs)
+      .orderBy(desc(measurementGtmSyncLogs.createdAt))
+      .limit(Math.max(1, Math.min(limit, 200)));
+    return logs;
   }
 }

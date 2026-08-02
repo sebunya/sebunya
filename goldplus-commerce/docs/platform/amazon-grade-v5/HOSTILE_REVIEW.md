@@ -14,13 +14,13 @@ programme ("Correct or document a justified, tested exception").
 | H-4 | Unregistered self-approval (separation of duties) | controlled activation approval | Fixed in Slice 9 — `authorizeActivationApproval` denies a requester approving their own activation. |
 | H-7 | Sample operational data / "API unavailable" / "Coming Soon" as product states | apps/web `api.ts`, `sample-data.ts`, `Notice.astro`, ProductCard/CategoryAwareRail/inventory | **CORRECTED (Slice 10)**: `tryFetchAdminList` no longer returns fabricated fallback rows — it returns an honest empty list + a degraded reason and never invents records; all `SAMPLE_*` arrays emptied; `Notice` copy changed to "Live data unavailable"; the image-placeholder "Coming Soon" (a missing IMAGE, not an unavailable product) relabelled "Image pending"; the inventory "coming soon" replaced with an honest read-only statement. |
 | H-8 | `console.*` | INFRASTRUCTURE files (PreferenceProductFinderUpdater, DrizzleGtmPlanRepository, LocalProductImageStorage) | **CORRECTED (Slice 11)**: routed through the structured `logger`. **Architecture constraint discovered**: the `boundaries` test forbids the APPLICATION layer from importing infrastructure (the logger lives in infrastructure), so the 4 application-layer sites now log through a new application `ILogger` port (`appLogger`), bound to pino at the composition root — closing the boundary constraint properly (post-PR §2). An architecture test (`no-runtime-console`) fails if runtime domain/application code reintroduces `console.*`. Bootstrap (`config/env.ts`, `otel.ts`) and CLI migration scripts keep `console` legitimately. |
+| H-6 | In-memory correctness map | `DrizzleGtmPlanRepository` (plans in a process-local Map) | **CORRECTED (post-PR §3)**: migration 0065 `measurement_gtm_plans` + the canonical repo now persists plans/diffs/checksum/version to PostgreSQL; the Map is removed. Multi-instance + restart safe. Real-PG 4/4. GTM publication stays disabled. |
 
 ## Documented justified exceptions / recorded follow-ons
 
 | # | Anti-pattern | Where | Verdict |
 |---|---|---|---|
 | H-5 | Unbounded `findAll()` | admin list use cases (products/orders/users/roles/support; ListAuditLogs already bounded by `limit`) | **Justified for a single-shop deployment**: these are admin lists over intrinsically bounded operational data (one shop's catalogue, users, roles, open tickets). Not customer-facing, not unbounded by attacker input. **Follow-on**: cursor pagination for products/orders as volume grows (recorded, not a stop-ship). |
-| H-6 | In-memory correctness map | `DrizzleGtmPlanRepository` (plans held in-memory because `measurement_gtm_plans` does not exist) | **Real durability gap, but not production-critical yet**: GTM publication is DISABLED (no real send per the programme boundary), so plans are not on a live path. **Follow-on**: add a `measurement_gtm_plans` migration before GTM activation. Recorded. |
 
 ## Clean (no findings)
 

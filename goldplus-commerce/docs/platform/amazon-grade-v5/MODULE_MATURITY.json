@@ -187,5 +187,17 @@
       "slice": "12",
       "note": "§20 sweep complete (docs/.../HOSTILE_REVIEW.md): H-1 err.message leak (9 sites), H-3 dup limiter/matrix, H-4 self-approval, H-7 sample data, H-8 console CORRECTED; H-5 findAll (justified single-shop, cursor follow-on) + H-6 GTM in-memory (GTM disabled, migration follow-on) documented. No security stop-ship residual."
     }
+  },
+  "postPrHardening": {
+    "application-logging-boundary": {
+      "level": 4,
+      "status": "DONE",
+      "note": "ILogger port + appLogger (no infra import) + pino binding; 4 app-layer console.* wired; no-runtime-console arch test. §2."
+    },
+    "gtm-plan-persistence": {
+      "level": 4,
+      "status": "DONE",
+      "note": "migration 0065 measurement_gtm_plans; canonical DrizzleGtmPlanRepository persists plans/diffs durably (in-memory Map removed); restart+multi-instance safe; real-PG 4/4. §3. GTM publication disabled."
+    }
   }
 }

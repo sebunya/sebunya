@@ -189,6 +189,22 @@ export const measurementGtmSyncLogs = pgTable('measurement_gtm_sync_logs', {
   ...auditColumns,
 });
 
+/**
+ * Durable GTM plans (post-PR §3). Replaces a process-local in-memory Map — a
+ * forbidden in-memory correctness map — so a planned (dry-run) GTM change
+ * survives a restart and is consistent across instances. GTM publication stays
+ * disabled; this only persists the plan/diff and a checksum for audit.
+ */
+export const measurementGtmPlans = pgTable('measurement_gtm_plans', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  plan: jsonb('plan'),
+  diff: jsonb('diff'),
+  planChecksum: varchar('plan_checksum', { length: 64 }),
+  status: varchar('status', { length: 32 }).notNull().default('DRY_RUN'),
+  version: integer('version').notNull().default(1),
+  ...auditColumns,
+});
+
 // -----------------------------------------------------------------------------
 // 4. Release & QA Manager
 // -----------------------------------------------------------------------------

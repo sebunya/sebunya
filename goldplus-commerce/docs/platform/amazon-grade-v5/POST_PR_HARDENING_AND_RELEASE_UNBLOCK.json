@@ -6,26 +6,106 @@
   "startingHead": "d298320724192caba83fcb19688ac148c405517c",
   "startingTree": "4c605ccc439ee8442a26ae9b47dcf1ab63a395f5",
   "reconciliation": {
-    "A_logging_boundary": {"class": "HARDEN", "canonicalOwner": "infrastructure/logging/logger.ts (pino)", "gap": "4 application-layer files use console.* because the boundaries arch test forbids app->infra logger import; no ILogger port exists", "decision": "add application/ports/ILogger + application/logging/appLogger (settable), pino adapter set at bootstrap; wire the 4 sites; add arch test forbidding runtime console.* in domain/application"},
-    "B_gtm_plan_persistence": {"class": "REPLACE_WITH_PROOF", "canonicalOwner": "infrastructure/measurement/DrizzleGtmPlanRepository.ts", "gap": "plans held in a process-local in-memory Map (a §10 forbidden in-memory correctness map); measurement_gtm_plans table does not exist", "decision": "migration 0065 measurement_gtm_plans + persist in the canonical repo; remove the in-memory map; real-PG + restart-persistence tests"},
-    "C_cursor_pagination": {"class": "HARDEN", "gap": "several admin findAll are unbounded over growing operational data (orders/payments/audit)", "decision": "DEFER to a dedicated sub-unit (large, per-list); documented residual"},
-    "D_scheduled_alert_evaluator": {"class": "STILL_MISSING", "canonicalOwner": "analytics alert rules exist (migration 0061); no scheduler evaluates them", "decision": "DEFER (large; worker + lease/fence + idempotency); documented residual"},
-    "E_cohort_retention": {"class": "STILL_MISSING", "canonicalOwner": "canonical analytics + Customer DNA; RFM done Slice 6", "decision": "DEFER (large; golden fixtures + real-PG); documented residual"},
-    "F_playwright": {"class": "KEEP", "canonicalOwner": "tests/e2e/*.spec.ts + playwright.config.ts (acceptance/automation-a4/control-centre-uat)", "decision": "specs exist; not wired into ci.yml — HARDEN (wire CI job) as residual; browsers require download"},
-    "G_sast": {"class": "KEEP", "canonicalOwner": "ci.yml semgrep scan --config auto --error", "decision": "already a CI gate; remove from build scope"},
-    "H_dependency_review": {"class": "KEEP", "canonicalOwner": "ci.yml pnpm audit --audit-level=high", "decision": "already a CI gate; remove from build scope"},
-    "I_sbom": {"class": "STILL_MISSING", "decision": "DEFER (CI gate: syft SBOM on final image); documented residual"},
-    "J_container_scan": {"class": "STILL_MISSING", "decision": "DEFER (CI gate: trivy/grype on final image); documented residual"},
-    "K_backup_freshness": {"class": "EXTERNAL_DEPENDENCY", "canonicalOwner": "scripts/release/anti-gravity/all-modules-backup-rehearsal.sh", "decision": "prod backup is 18 days stale; a fresh backup writes to prod + involves prod PII/server load — operator-gated; documented"},
-    "L_isolated_restore_proof": {"class": "EXTERNAL_DEPENDENCY", "decision": "requires K; restoring prod PII to a clone is an operator/privacy decision; documented"},
-    "M_migration_0062_rehearsal": {"class": "EXTERNAL_DEPENDENCY", "decision": "repository rehearsal already proven (MoneyBigintMigration.integration.test on fresh PG: clean apply, >int4 round-trip, negative rejected, corrupt VALIDATE loud); PRODUCTION-DATA-VOLUME rehearsal requires the restored clone (K/L); documented"},
-    "N_credential_rotations": {"class": "EXTERNAL_DEPENDENCY", "canonicalOwner": "EXTERNAL_SECRET_ROTATION_REGISTER.md", "decision": "repository-side already safe (no tracked env, no env-credential fallback, redacted config); provider-side rotation is operator; documented"}
+    "A_logging_boundary": {
+      "class": "HARDEN",
+      "canonicalOwner": "infrastructure/logging/logger.ts (pino)",
+      "gap": "4 application-layer files use console.* because the boundaries arch test forbids app->infra logger import; no ILogger port exists",
+      "decision": "add application/ports/ILogger + application/logging/appLogger (settable), pino adapter set at bootstrap; wire the 4 sites; add arch test forbidding runtime console.* in domain/application"
+    },
+    "B_gtm_plan_persistence": {
+      "class": "REPLACE_WITH_PROOF",
+      "canonicalOwner": "infrastructure/measurement/DrizzleGtmPlanRepository.ts",
+      "gap": "plans held in a process-local in-memory Map (a §10 forbidden in-memory correctness map); measurement_gtm_plans table does not exist",
+      "decision": "migration 0065 measurement_gtm_plans + persist in the canonical repo; remove the in-memory map; real-PG + restart-persistence tests"
+    },
+    "C_cursor_pagination": {
+      "class": "HARDEN",
+      "gap": "several admin findAll are unbounded over growing operational data (orders/payments/audit)",
+      "decision": "DEFER to a dedicated sub-unit (large, per-list); documented residual"
+    },
+    "D_scheduled_alert_evaluator": {
+      "class": "STILL_MISSING",
+      "canonicalOwner": "analytics alert rules exist (migration 0061); no scheduler evaluates them",
+      "decision": "DEFER (large; worker + lease/fence + idempotency); documented residual"
+    },
+    "E_cohort_retention": {
+      "class": "STILL_MISSING",
+      "canonicalOwner": "canonical analytics + Customer DNA; RFM done Slice 6",
+      "decision": "DEFER (large; golden fixtures + real-PG); documented residual"
+    },
+    "F_playwright": {
+      "class": "KEEP",
+      "canonicalOwner": "tests/e2e/*.spec.ts + playwright.config.ts (acceptance/automation-a4/control-centre-uat)",
+      "decision": "specs exist; not wired into ci.yml — HARDEN (wire CI job) as residual; browsers require download"
+    },
+    "G_sast": {
+      "class": "KEEP",
+      "canonicalOwner": "ci.yml semgrep scan --config auto --error",
+      "decision": "already a CI gate; remove from build scope"
+    },
+    "H_dependency_review": {
+      "class": "KEEP",
+      "canonicalOwner": "ci.yml pnpm audit --audit-level=high",
+      "decision": "already a CI gate; remove from build scope"
+    },
+    "I_sbom": {
+      "class": "STILL_MISSING",
+      "decision": "DEFER (CI gate: syft SBOM on final image); documented residual"
+    },
+    "J_container_scan": {
+      "class": "STILL_MISSING",
+      "decision": "DEFER (CI gate: trivy/grype on final image); documented residual"
+    },
+    "K_backup_freshness": {
+      "class": "EXTERNAL_DEPENDENCY",
+      "canonicalOwner": "scripts/release/anti-gravity/all-modules-backup-rehearsal.sh",
+      "decision": "prod backup is 18 days stale; a fresh backup writes to prod + involves prod PII/server load — operator-gated; documented"
+    },
+    "L_isolated_restore_proof": {
+      "class": "EXTERNAL_DEPENDENCY",
+      "decision": "requires K; restoring prod PII to a clone is an operator/privacy decision; documented"
+    },
+    "M_migration_0062_rehearsal": {
+      "class": "EXTERNAL_DEPENDENCY",
+      "decision": "repository rehearsal already proven (MoneyBigintMigration.integration.test on fresh PG: clean apply, >int4 round-trip, negative rejected, corrupt VALIDATE loud); PRODUCTION-DATA-VOLUME rehearsal requires the restored clone (K/L); documented"
+    },
+    "N_credential_rotations": {
+      "class": "EXTERNAL_DEPENDENCY",
+      "canonicalOwner": "EXTERNAL_SECRET_ROTATION_REGISTER.md",
+      "decision": "repository-side already safe (no tracked env, no env-credential fallback, redacted config); provider-side rotation is operator; documented"
+    }
   },
   "atomicSubUnits": [
-    {"id": "A", "title": "Application logging boundary (ILogger port + adapter + wire 4 sites + arch test)", "status": "in-progress"},
-    {"id": "B", "title": "Durable GTM plan persistence (migration 0065 + repo + tests; remove in-memory map)", "status": "pending"}
+    {
+      "id": "A",
+      "title": "Application logging boundary (ILogger port + adapter + wire 4 sites + arch test)",
+      "status": "done (commit 6a61c3e)"
+    },
+    {
+      "id": "B",
+      "title": "Durable GTM plan persistence (migration 0065 + repo + tests; remove in-memory map)",
+      "status": "done"
+    }
   ],
-  "deferredResiduals": ["C cursor pagination", "D scheduled alert evaluator", "E cohort/retention", "F Playwright CI wiring", "I SBOM CI", "J container-scan CI", "K/L/M prod backup+restore+prod-volume rehearsal (operator/privacy)", "N external rotations (operator)"],
-  "openExternalActions": ["fresh prod backup", "isolated restore proof", "prod-volume 0062 rehearsal", "external credential rotations"],
-  "guardrails": "no branch/PR creation, no merge, no deploy, no live migration, no provider activation, no production traffic change, no destructive cleanup"
+  "deferredResiduals": [
+    "C cursor pagination",
+    "D scheduled alert evaluator",
+    "E cohort/retention",
+    "F Playwright CI wiring",
+    "I SBOM CI",
+    "J container-scan CI",
+    "K/L/M prod backup+restore+prod-volume rehearsal (operator/privacy)",
+    "N external rotations (operator)"
+  ],
+  "openExternalActions": [
+    "fresh prod backup",
+    "isolated restore proof",
+    "prod-volume 0062 rehearsal",
+    "external credential rotations"
+  ],
+  "guardrails": "no branch/PR creation, no merge, no deploy, no live migration, no provider activation, no production traffic change, no destructive cleanup",
+  "migrationsAdded": [
+    "0065_measurement_gtm_plans"
+  ],
+  "migrationCeiling": "0065_measurement_gtm_plans (66/66 parity)"
 }
