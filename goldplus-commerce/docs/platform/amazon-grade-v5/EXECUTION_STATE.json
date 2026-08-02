@@ -8,7 +8,7 @@
   "lastGreenEngineeringCommit": "02644aa (Slice 3A — route-family distributed abuse control, real-Redis proven)",
   "localInfraGate": "ENV-01: no local PostgreSQL server; Docker blocked by qemu->pinned-glib; operator protects pins. Real-PG proofs deferred to CI/Lane B. Real Redis was available and used for 3A.",
   "currentSlice": "SLICE_3_PLATFORM_FOUNDATIONS",
-  "currentModule": "Slice 3D — validated configuration (3A, 3B, 3C DONE)",
+  "currentModule": "Slice 3E — typed errors + PII-safe observability (3A-3D DONE)",
   "resumeEnvironment": {
     "host": "MacBook (Darwin), uid 501, non-root",
     "sshBinary": "present",
@@ -54,9 +54,10 @@
   ],
   "migrationCeiling": "0064_privileged_mfa (65/65 parity, applied clean on real PG)",
   "laneB": "SSH lane available on this MacBook; remote attestation runs only after applicable Lane A gates pass; production untouched",
-  "nextExactCommand": "cd goldplus-commerce && REDIS_TEST_URL=redis://127.0.0.1:6399 pnpm vitest run tests/unit tests/integration/RefreshSession* (Slice 3B)",
-  "nextExactFile": "apps/api/src/infrastructure/db/schema/identity.ts + migrations (Slice 3B: durable server-side sessions table: hashed refresh, jti, key version, timestamps, revocation reason, permission version) and middleware/auth.ts (revocation check)",
-  "nextAcceptanceTest": "Slice 3B: refresh rotates + reuse is detected and revokes the family; logout current/all revokes; correctness survives Redis loss (durable in PostgreSQL); CSRF blocks a cross-site cookie-authenticated mutation while Origin-valid ones pass",
+  "localProofEnv": "Real PostgreSQL 18.4 via embedded-postgres on 127.0.0.1:5433 (goldplus_test migrated 65/65, goldplus_it empty); real Redis on 127.0.0.1:6399. Env for DB suites: AUTH_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5433/goldplus_test, ANALYTICS_TEST_DATABASE_URL=...goldplus_it, REDIS_TEST_URL=redis://127.0.0.1:6399.",
+  "nextExactCommand": "cd goldplus-commerce && pnpm -F @goldplus/api typecheck && pnpm vitest run tests/unit (Slice 3E: typed errors + central HTTP mapping + PII-safe logs; remove application console.*)",
+  "nextExactFile": "apps/api/src/interfaces/http (central error mapper) + domain error base + infrastructure/logging/logger.ts (redaction). Slice 3E.",
+  "nextAcceptanceTest": "Slice 3E: an unexpected error returns a generic typed HTTP error (no err.message / no DB-message string matching leaked); logs redact PII/secrets and carry request+trace id; no application console.*",
   "fullGateOnCleanTreeAtResume": {
     "typecheck": 0,
     "lint": 0,

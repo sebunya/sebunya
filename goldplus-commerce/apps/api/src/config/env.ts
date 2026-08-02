@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { z } from 'zod';
 
 // Load .env in non-test/non-production environments with a zero-dependency robust loader using bulletproof __dirname path resolution
 if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
@@ -77,6 +78,104 @@ export interface Config {
   };
 }
 
+/**
+ * Slice 3D — the one Zod-backed configuration boundary.
+ *
+ * Every assembled config must satisfy this schema before it is exported, so the
+ * shape and the invariants (secret min-lengths, a valid measurement block, a
+ * URL-shaped base) are enforced in one authoritative place and the TypeScript
+ * type is DERIVED from it rather than hand-maintained alongside it. The
+ * environment-specific assembly (prod required-and-strong, test safe defaults)
+ * stays in validateEnv; this schema is the invariant every path must meet.
+ */
+export const configSchema = z.object({
+  nodeEnv: z.string().min(1),
+  databaseUrl: z.string().min(1),
+  jwtSecret: z.string().min(32),
+  publicApiBaseUrl: z.string().url(),
+  bootstrapAdminEmail: z.string().optional(),
+  bootstrapAdminPassword: z.string().optional(),
+  bootstrapAdminPhone: z.string().optional(),
+  whatsappSupportNumber: z.string().optional(),
+  whatsappSupportLabel: z.string().optional(),
+  mtnWebhookSecret: z.string().min(24),
+  airtelWebhookSecret: z.string().min(24),
+  identityHashPepper: z.string().min(32),
+  pesapalEnv: z.string().optional(),
+  pesapalBaseUrl: z.string().optional(),
+  pesapalConsumerKey: z.string().optional(),
+  pesapalConsumerSecret: z.string().optional(),
+  pesapalIpnId: z.string().optional(),
+  pesapalCurrency: z.string().optional(),
+  pesapalCountryCode: z.string().optional(),
+  pesapalBranch: z.string().optional(),
+  pesapalCallbackUrl: z.string().optional(),
+  pesapalCancellationUrl: z.string().optional(),
+  pesapalIpnUrl: z.string().optional(),
+  pesapalRedirectMode: z.string().optional(),
+  metricsInternalUrl: z.string().min(1),
+  gtmAccountId: z.string().optional(),
+  gtmWebContainerId: z.string().optional(),
+  gtmServerContainerId: z.string().optional(),
+  gtmApiClientId: z.string().optional(),
+  gtmApiClientSecret: z.string().optional(),
+  gtmApiRefreshToken: z.string().optional(),
+  ga4MeasurementId: z.string().optional(),
+  ga4ApiSecret: z.string().optional(),
+  googleAdsConversionId: z.string().optional(),
+  metaPixelId: z.string().optional(),
+  metaAccessToken: z.string().optional(),
+  tiktokPixelId: z.string().optional(),
+  tiktokAccessToken: z.string().optional(),
+  posthogProjectApiKey: z.string().optional(),
+  measurement: z
+    .object({
+      dryRun: z.boolean(),
+      liveDestinationsEnabled: z.boolean(),
+      paidSocialQueueEnabled: z.boolean(),
+      qaAllowNetwork: z.boolean(),
+    })
+    .optional(),
+});
+
+/** Type derived from the schema — the single source of truth for the shape. */
+export type ValidatedConfig = z.infer<typeof configSchema>;
+
+/** Field names whose values must never appear in a log or diagnostic. */
+const SECRET_KEYS = new Set<keyof Config>([
+  'jwtSecret',
+  'identityHashPepper',
+  'mtnWebhookSecret',
+  'airtelWebhookSecret',
+  'bootstrapAdminPassword',
+  'pesapalConsumerKey',
+  'pesapalConsumerSecret',
+  'gtmApiClientSecret',
+  'gtmApiRefreshToken',
+  'ga4ApiSecret',
+  'metaAccessToken',
+  'tiktokAccessToken',
+  'posthogProjectApiKey',
+  'databaseUrl', // contains the DB password
+]);
+
+/**
+ * A copy of the config safe to print. Secrets become `set(<len>)`/`unset` so an
+ * operator can confirm a value is present and roughly right without the value
+ * ever reaching a log line, a health endpoint or an error.
+ */
+export function redactedConfig(cfg: Config = env): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(cfg)) {
+    if (SECRET_KEYS.has(key as keyof Config)) {
+      out[key] = typeof value === 'string' && value.length > 0 ? `set(${value.length})` : 'unset';
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 const obviousLocalPatterns = [
   'local-dev',
   'localhost',
@@ -97,7 +196,7 @@ export function validateEnv(): Config {
 
   // In test environment, gracefully bypass strict check restrictions to keep tests green
   if (nodeEnv === 'test') {
-    return {
+    return configSchema.parse({
       nodeEnv,
       databaseUrl: process.env.DATABASE_URL || 'postgres://localhost:5432/goldplus',
       jwtSecret: process.env.JWT_SECRET || 'test-secret-at-least-32-characters-long-for-tests',
@@ -126,7 +225,7 @@ export function validateEnv(): Config {
         paidSocialQueueEnabled: process.env.PAID_SOCIAL_QUEUE_ENABLED === 'true',
         qaAllowNetwork: process.env.MEASUREMENT_QA_ALLOW_NETWORK === 'true',
       }
-    };
+    }) as Config;
   }
 
   const errors: string[] = [];
@@ -183,7 +282,7 @@ export function validateEnv(): Config {
     throw new Error('Environment variable validation failed');
   }
 
-  return {
+  return configSchema.parse({
     nodeEnv,
     databaseUrl,
     jwtSecret,
@@ -229,7 +328,7 @@ export function validateEnv(): Config {
       paidSocialQueueEnabled: process.env.PAID_SOCIAL_QUEUE_ENABLED === 'true',
       qaAllowNetwork: process.env.MEASUREMENT_QA_ALLOW_NETWORK === 'true',
     }
-  };
+  }) as Config;
 }
 
 export const env = validateEnv();
