@@ -136,6 +136,12 @@
       "statement": "The self-service explorer can only query catalogue-approved metrics/dimensions/filters; any unknown key is rejected before the DB; filter VALUES are always bound parameters (never concatenated into SQL); text filters honour a value allowlist; row count is capped. Money metric is labelled GMV, never revenue.",
       "guard": "tests/unit/QueryCompiler.test.ts + tests/integration/ExplorerQuery.integration.test.ts (real PG, 2/2)",
       "since": "Slice 7"
+    },
+    {
+      "id": "PROVIDER-ID-1",
+      "statement": "Provider match identity: phone normalised to E.164 before hashing (equivalent forms hash identically); only SHA-256 hashed, allowlisted fields are emitted; nothing is emitted without consent; RAW PII (email/phone) never appears in the payload. This is a readiness contract — no real provider send.",
+      "guard": "tests/unit/ProviderIdentity.test.ts + domain/measurement/ProviderIdentity.ts",
+      "since": "Slice 8"
     }
   ]
 }

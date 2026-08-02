@@ -144,5 +144,17 @@
       "status": "DONE",
       "note": "Closed 'explorer absent': pure ExplorerCatalogue (metrics incl. GMV-not-revenue, dimensions, filter allowlists) + injection-proof QueryCompiler (only catalogue keys reach SQL; filter values always bound params; row cap) + RunExplorerQueryUseCase. Unit 5/5 + real-PG 2/2 (executes; injection value is data)."
     }
+  },
+  "measurementAndProviders": {
+    "measurement-control-tower": {
+      "level": 4,
+      "note": "Accepted win — same-origin session-cookie proxy repaired (Slice 1); consent router, credential vault (write-only/redacted), paid-social redactor, match-quality summary present."
+    },
+    "provider-match-identity": {
+      "level": 4,
+      "slice": "8",
+      "status": "DONE",
+      "note": "Canonical pure contract: toE164Uganda (all equivalent forms → one E.164), SHA-256 hashed identifiers, provider field ALLOWLIST (drops non-allowlisted fields), consent-gating (nothing without consent), match-quality fraction; RAW PII never emitted. No real send. Unit 7/7."
+    }
   }
 }

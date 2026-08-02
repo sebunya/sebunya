@@ -7,8 +7,8 @@
   "observedTreeAtResume": "e870b7caa46909acf0f6708a98a6cd5beb06f255",
   "lastGreenEngineeringCommit": "02644aa (Slice 3A — route-family distributed abuse control, real-Redis proven)",
   "localInfraGate": "ENV-01: no local PostgreSQL server; Docker blocked by qemu->pinned-glib; operator protects pins. Real-PG proofs deferred to CI/Lane B. Real Redis was available and used for 3A.",
-  "currentSlice": "SLICE_8_MEASUREMENT_AND_PROVIDERS",
-  "currentModule": "Slice 8 — Measurement and Providers (Slices 3-7 DONE)",
+  "currentSlice": "SLICE_9_ACTIVATION_AND_RELEASE",
+  "currentModule": "Slice 9 — Activation and Release (Slices 3-8 DONE)",
   "resumeEnvironment": {
     "host": "MacBook (Darwin), uid 501, non-root",
     "sshBinary": "present",
@@ -36,7 +36,6 @@
     "7.8-residual: durable revocable sessions, refresh rotation, CSRF, MFA enforcement audit (Slice 3B/3C)"
   ],
   "remainingSlices": [
-    "SLICE_8_MEASUREMENT_AND_PROVIDERS",
     "SLICE_9_ACTIVATION_AND_RELEASE",
     "SLICE_10_WEB_SIMPLIFICATION",
     "SLICE_11_OPERATIONS",
