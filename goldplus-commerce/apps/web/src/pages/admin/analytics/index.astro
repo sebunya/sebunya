@@ -1,0 +1,241 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { getRecommendationAnalytics } from "../../../lib/admin-analytics";
+import {
+  buildCommerceAnalytics,
+  fetchAnalyticsSource,
+  resolveAnalyticsPeriod,
+  type OrderAnalyticsRecord,
+} from "../../../lib/commerce-analytics";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/analytics", 303);
+}
+
+const startDate = Astro.url.searchParams.get("startDate");
+const endDate = Astro.url.searchParams.get("endDate");
+const daysParam = Number(Astro.url.searchParams.get("days") ?? 30);
+let periodError = "";
+let period;
+try {
+  period = resolveAnalyticsPeriod({ startDate, endDate, days: Number.isFinite(daysParam) ? daysParam : 30 });
+} catch {
+  periodError = "The end date cannot be earlier than the start date.";
+  period = resolveAnalyticsPeriod({ days: 30 });
+}
+
+const dateOnly = (value: Date) => value.toISOString().slice(0, 10);
+const recommendationResult = await getRecommendationAnalytics(token, {
+  startDate: dateOnly(period.start),
+  endDate: dateOnly(period.end),
+});
+
+const [orders, search, inventory, decisions, measurement, measurementWarnings] = await Promise.all([
+  fetchAnalyticsSource<OrderAnalyticsRecord[]>("orders", "/governance/admin/orders", token),
+  fetchAnalyticsSource<any>("search", "/admin/search-demand/insights?limit=200", token),
+  fetchAnalyticsSource<any[]>("inventory", "/admin/inventory/low-stock?limit=200", token),
+  fetchAnalyticsSource<any>("decisions", "/admin/decision-intelligence/overview", token),
+  fetchAnalyticsSource<any>("measurement", "/admin/measurement-control-tower/summary", token),
+  fetchAnalyticsSource<any[]>("measurement", "/admin/measurement-control-tower/warnings?limit=200", token),
+]);
+
+const recommendations = {
+  key: "recommendations" as const,
+  ok: recommendationResult.ok,
+  data: recommendationResult.ok ? recommendationResult.data : null,
+  status: recommendationResult.ok ? 200 : null,
+  message: recommendationResult.ok ? null : recommendationResult.message,
+  checkedAt: new Date().toISOString(),
+};
+
+const analytics = buildCommerceAnalytics({
+  period,
+  orders,
+  recommendations,
+  search,
+  inventory,
+  decisions,
+  measurement,
+  measurementWarnings,
+});
+
+const fmtNumber = (value: number) => new Intl.NumberFormat("en-UG", { maximumFractionDigits: 1 }).format(value);
+const fmtMoney = (value: number) => new Intl.NumberFormat("en-UG", { style: "currency", currency: "UGX", maximumFractionDigits: 0 }).format(value);
+const fmtPercent = (value: number | null) => value === null ? "No data" : new Intl.NumberFormat("en-UG", { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+const fmtMetric = (metric: typeof analytics.metrics[number]) => metric.unit === "UGX" ? fmtMoney(metric.value) : metric.unit === "percent" ? fmtPercent(metric.value) : fmtNumber(metric.value);
+const fmtChange = (metric: typeof analytics.metrics[number]) => metric.relativeChange === null ? "No comparison" : `${metric.relativeChange >= 0 ? "+" : ""}${fmtPercent(metric.relativeChange)}`;
+const changeTone = (metric: typeof analytics.metrics[number]) => metric.relativeChange === null ? "text-slate-400" : metric.relativeChange >= 0 ? "text-emerald-700" : "text-red-700";
+const severityTone = (severity: string) => ({ CRITICAL: "border-red-300 bg-red-50 text-red-800", HIGH: "border-orange-300 bg-orange-50 text-orange-800", MEDIUM: "border-amber-300 bg-amber-50 text-amber-800", LOW: "border-blue-200 bg-blue-50 text-blue-800" } as Record<string, string>)[severity] ?? "border-slate-200 bg-slate-50 text-slate-700";
+const qualityTone = analytics.quality.status === "HEALTHY" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : analytics.quality.status === "PARTIAL" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-800";
+const maxTrendValue = Math.max(1, ...analytics.trend.map((point) => point.paidOrderValueUgx));
+---
+
+<AdminLayout title="Commerce Analytics" description="Decision-grade business intelligence across revenue, customers, catalogue, payments, inventory and measurement.">
+  <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <header class="border-b border-slate-200 pb-7">
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-3xl">
+          <p class="text-[10px] font-black uppercase tracking-[0.2em] text-brand-primary">Commerce intelligence</p>
+          <h1 class="mt-2 text-3xl font-black tracking-tight text-brand-dark">GoldPlus Analytics</h1>
+          <p class="mt-3 text-sm leading-relaxed text-slate-600">Understand what changed, why it matters and what the operator should do next. Metrics are connected to real operational records; unavailable sources are shown as data-quality gaps, never replaced with sample values.</p>
+        </div>
+        <div class={`rounded-xl border px-4 py-3 text-xs font-black ${qualityTone}`} role="status">
+          {analytics.quality.status} · {analytics.quality.availableSources}/{analytics.quality.totalSources} sources available
+        </div>
+      </div>
+
+      <form method="GET" class="mt-6 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div>
+          <label for="analytics-start" class="block text-[10px] font-black uppercase tracking-wider text-slate-500">Start date</label>
+          <input id="analytics-start" type="date" name="startDate" value={dateOnly(period.start)} class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label for="analytics-end" class="block text-[10px] font-black uppercase tracking-wider text-slate-500">End date</label>
+          <input id="analytics-end" type="date" name="endDate" value={dateOnly(period.end)} class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label for="analytics-days" class="block text-[10px] font-black uppercase tracking-wider text-slate-500">Quick range</label>
+          <select id="analytics-days" name="days" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            {[7, 30, 90, 180, 365].map((days) => <option value={days} selected={period.days === days}>{days} days</option>)}
+          </select>
+        </div>
+        <div class="flex items-end">
+          <button class="w-full rounded-lg bg-brand-dark px-4 py-2.5 text-xs font-black text-white">Apply period</button>
+        </div>
+        <div class="flex items-end">
+          <a href="/admin/analytics" class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-center text-xs font-black text-slate-700">Reset</a>
+        </div>
+      </form>
+      {periodError && <p class="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">{periodError}</p>}
+      <p class="mt-3 text-xs text-slate-500">Current: {dateOnly(period.start)}–{dateOnly(period.end)} · comparison: {dateOnly(period.previousStart)}–{dateOnly(period.previousEnd)} · timezone {period.timezone}</p>
+    </header>
+
+    <section class="mt-8" aria-labelledby="analytics-scorecard">
+      <div class="flex items-end justify-between gap-4">
+        <div>
+          <h2 id="analytics-scorecard" class="text-xl font-black text-brand-dark">Business scorecard</h2>
+          <p class="mt-1 text-sm text-slate-500">Every metric includes a precise definition, period comparison and operational drill-through.</p>
+        </div>
+      </div>
+      <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {analytics.metrics.map((metric) => (
+          <a href={metric.drillHref} class="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-brand-primary" title={metric.definition}>
+            <div class="flex items-start justify-between gap-2">
+              <p class="text-[10px] font-black uppercase tracking-wider text-slate-500">{metric.label}</p>
+              <span class={`rounded-md px-2 py-1 text-[9px] font-black ${metric.quality === "VERIFIED" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{metric.quality}</span>
+            </div>
+            <p class="mt-2 text-2xl font-black text-brand-dark">{fmtMetric(metric)}</p>
+            <div class="mt-2 flex items-center justify-between gap-3 text-xs">
+              <span class={changeTone(metric)}>{fmtChange(metric)}</span>
+              <span class="text-slate-400 group-hover:text-brand-dark">Open records →</span>
+            </div>
+            <p class="mt-3 text-[11px] leading-relaxed text-slate-500">{metric.definition}</p>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="mt-10 grid gap-6 xl:grid-cols-[1.4fr_1fr]" aria-label="Performance and actions">
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h2 class="text-lg font-black text-brand-dark">Paid order value trend</h2>
+            <p class="mt-1 text-xs text-slate-500">Operational paid order value by UTC day. This is not recognised accounting revenue.</p>
+          </div>
+          <a href="/admin/orders?paymentStatus=paid" class="text-xs font-black text-brand-dark">Drill into orders →</a>
+        </div>
+        <div class="mt-6 flex h-64 items-end gap-1 overflow-x-auto border-b border-l border-slate-200 px-2 pt-4" aria-label="Paid order value bar chart">
+          {analytics.trend.map((point) => (
+            <div class="group flex min-w-[18px] flex-1 flex-col items-center justify-end" title={`${point.date}: ${fmtMoney(point.paidOrderValueUgx)}, ${point.orders} orders`}>
+              <div class="w-full rounded-t bg-brand-primary/80 transition-all group-hover:bg-brand-dark" style={`height:${Math.max(point.paidOrderValueUgx > 0 ? 4 : 1, Math.round((point.paidOrderValueUgx / maxTrendValue) * 210))}px`}></div>
+              <span class="sr-only">{point.date}: {fmtMoney(point.paidOrderValueUgx)}, {point.orders} orders</span>
+            </div>
+          ))}
+        </div>
+        <div class="mt-3 flex justify-between text-[10px] text-slate-400"><span>{analytics.trend[0]?.date ?? "No data"}</span><span>{analytics.trend.at(-1)?.date ?? "No data"}</span></div>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-black">Action Centre</h2>
+            <p class="mt-1 text-xs text-slate-300">Ranked exceptions and opportunities generated from operational evidence.</p>
+          </div>
+          <span class="rounded-full bg-white/10 px-3 py-1 text-xs font-black">{analytics.actions.length}</span>
+        </div>
+        <div class="mt-5 space-y-3">
+          {analytics.actions.map((item) => (
+            <a href={item.href} class={`block rounded-xl border p-4 ${severityTone(item.severity)}`}>
+              <div class="flex items-start justify-between gap-3">
+                <p class="text-sm font-black">{item.title}</p>
+                <span class="text-[9px] font-black uppercase tracking-wider">{item.severity}</span>
+              </div>
+              <p class="mt-2 text-xs leading-relaxed">{item.reason}</p>
+              <p class="mt-2 text-[11px] font-bold">Evidence: {item.evidence}</p>
+              <p class="mt-1 text-[11px]">Next: {item.recommendedAction}</p>
+            </a>
+          ))}
+          {analytics.actions.length === 0 && <div class="rounded-xl border border-white/10 bg-white/5 p-5 text-sm text-slate-300">No threshold-based actions are open for the selected period. Review source coverage before interpreting this as “all clear.”</div>}
+        </div>
+      </div>
+    </section>
+
+    <section class="mt-10 grid gap-6 lg:grid-cols-2">
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 class="text-lg font-black text-brand-dark">Recommendation-to-order funnel</h2>
+        <p class="mt-1 text-xs text-slate-500">Recommendation signals and all paid orders are deliberately labelled separately; this is directional, not causal attribution.</p>
+        <ol class="mt-5 space-y-3">
+          {analytics.funnel.map((step, index) => (
+            <li class="rounded-xl border border-slate-200 p-4">
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3"><span class="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900 text-xs font-black text-white">{index + 1}</span><span class="text-sm font-bold text-brand-dark">{step.label}</span></div>
+                <div class="text-right"><div class="text-lg font-black text-brand-dark">{fmtNumber(step.value)}</div><div class="text-[10px] text-slate-500">{step.conversionFromPrevious === null ? "Start" : `${fmtPercent(step.conversionFromPrevious)} from previous`}</div></div>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 class="text-lg font-black text-brand-dark">Diagnostic health</h2>
+        <p class="mt-1 text-xs text-slate-500">Signals that explain where commercial performance may be constrained.</p>
+        <dl class="mt-5 divide-y divide-slate-100 text-sm">
+          {[
+            ["Payment failure rate", fmtPercent(analytics.diagnostics.paymentFailureRate), "/admin/measurement/payments"],
+            ["Search zero-result rate", fmtPercent(analytics.diagnostics.zeroResultRate), "/admin/demand"],
+            ["Recommendation CTR", fmtPercent(analytics.diagnostics.recommendationCtr), "/admin/recommendations/analytics"],
+            ["Recommendation add-to-cart rate", fmtPercent(analytics.diagnostics.recommendationAddToCartRate), "/admin/recommendations/analytics"],
+            ["Low-stock products", fmtNumber(analytics.diagnostics.lowStockCount), "/admin/inventory"],
+            ["Critical/high decision insights", fmtNumber(analytics.diagnostics.criticalHighInsights), "/admin/decision-intelligence"],
+            ["Measurement warnings", fmtNumber(analytics.diagnostics.measurementWarningCount), "/admin/measurement-control-tower"],
+          ].map(([label, value, href]) => (
+            <div class="flex items-center justify-between gap-4 py-3"><dt class="text-slate-600">{label}</dt><dd><a href={href} class="font-black text-brand-dark hover:underline">{value} →</a></dd></div>
+          ))}
+        </dl>
+      </div>
+    </section>
+
+    <section class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="analytics-quality">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 id="analytics-quality" class="text-lg font-black text-brand-dark">Data quality and source coverage</h2>
+          <p class="mt-1 text-xs text-slate-500">Freshness and availability are part of every analytical conclusion.</p>
+        </div>
+        <span class={`rounded-lg border px-3 py-2 text-xs font-black ${qualityTone}`}>{fmtPercent(analytics.quality.coverageRate)} coverage</span>
+      </div>
+      <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {analytics.sourceStates.map((source) => (
+          <div class={`rounded-xl border p-4 ${source.ok ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+            <div class="flex items-center justify-between gap-3"><p class="text-xs font-black uppercase tracking-wider text-brand-dark">{source.key}</p><span class={`text-[9px] font-black ${source.ok ? "text-emerald-700" : "text-red-700"}`}>{source.ok ? "AVAILABLE" : "UNAVAILABLE"}</span></div>
+            <p class="mt-2 text-[11px] text-slate-600">Checked {new Date(source.checkedAt).toLocaleString("en-UG")}</p>
+            {!source.ok && <p class="mt-2 text-[11px] font-bold text-red-700">{source.message}</p>}
+          </div>
+        ))}
+      </div>
+      {analytics.quality.warnings.length > 0 && <ul class="mt-5 list-disc space-y-1 pl-5 text-xs text-red-700">{analytics.quality.warnings.map((warning) => <li>{warning}</li>)}</ul>}
+      <p class="mt-5 text-[11px] leading-relaxed text-slate-500">Generated {new Date(analytics.generatedAt).toLocaleString("en-UG")}. Paid order value is an operational metric. Marketing attribution, recognised revenue, gross margin and customer lifetime value are not shown until their required source data and canonical definitions are available.</p>
+    </section>
+  </div>
+</AdminLayout>
