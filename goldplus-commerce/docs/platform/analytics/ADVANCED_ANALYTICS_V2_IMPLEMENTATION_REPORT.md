@@ -5,10 +5,11 @@
 - Starting branch: `gpt/advanced-control-centre-analytics-20260802`
 - Starting commit: `e28a327f1fb281bbf82d29026112b9924f56de52`
 - Final branch: `claude/advanced-analytics-command-centre-v2-20260802`
-- Commits created: 5 (semantic correction · server-side API · UI/navigation ·
-  golden dataset/docs · reports/state) — see `git log e28a327..HEAD`
-- Migrations added: none (this pass adds no persistence; ceiling remains
-  `0060_cart_ownership_and_version`, parity 61/61 verified)
+- Commits created: 8 (semantic correction · server-side API · UI/navigation ·
+  golden dataset · reports · saved views/alerts/exports · payment
+  intelligence · performance and final handoff) — see `git log e28a327..HEAD`
+- Migrations added: 1 — `0061_analytics_saved_views_and_alert_rules`
+  (journal registered, parity 62/62 verified)
 - Production impact: none. No production system, database, provider or
   credential was touched. No real messages sent.
 
@@ -65,6 +66,30 @@ Web:
 6. Order-ledger download in Astro → bounded SQL aggregation server-side.
 7. Metric definitions embedded in page code → canonical shared catalogue.
 
+## Operator configuration (slice 5)
+
+Saved views and alert rules persisted behind migration 0061 with real CHECK
+constraints; ownership enforced in the query; four separated permissions
+(`analytics.read` / `.manage` / `.alerts.manage` / `.export`); every mutation
+and export audited. Alert evaluation raises internal actions only and the
+table has no destination column to make outbound delivery configurable.
+Exports are bounded at 5 000 rows and carry aggregates plus definitions.
+
+## Payment intelligence and drilldowns (slice 6)
+
+Attempt-level payment truth against the attempt denominator, using the same
+status allowlists as ReconcileOrderPaymentUseCase, with statuses outside that
+vocabulary surfaced as `unrecognised` rather than absorbed. Breakdowns by an
+allowlisted dimension and a bounded paid-but-unprocessed drilldown that
+projects order numbers and states only.
+
+## Measured performance (slice 7)
+
+EXPLAIN ANALYZE on 50 000 seeded orders: order aggregates 1.55 ms, Kampala
+buckets 3.72 ms, breakdown 1.60 ms, drilldown 1.33 ms, low-stock 0.45 ms, and
+the payment-attempt join 16.18 ms — the one query that will degrade first, and
+the report says so.
+
 ## Metrics delivered (15)
 
 orders, paid_orders, paid_order_value, average_paid_order_value,
@@ -86,11 +111,14 @@ a minimum-volume rule, required permission and deep link.
 
 ## Remaining work (honest)
 
-- Saved views, alert rules and exports (require the next migration + audit
-  wiring) — designed in the V2 specification, not implemented in this pass.
-- Drill-down/breakdown/segment endpoints beyond the daily series.
-- Payment-attempt-ledger metrics (attempt-level success, callback/IPN
-  completeness) — the repository exposes recency only so far.
-- Playwright coverage for the analytics page.
-- Deeper module intelligence families (customer, cohort, experiment,
-  support) per §5 of the specification.
+- Playwright coverage for the analytics page (no browser E2E in this pass).
+- Customer, cohort, retention and experiment analytics families per §5.7-5.10
+  and §5.16 of the specification — these need consented-identity and
+  experiment-exposure sources this pass did not wire.
+- Segment definitions and a self-service explorer (§5C.22).
+- A scheduled evaluator for alert rules: evaluation is implemented and
+  exposed, but nothing runs it on a timer yet — an operator or a future job
+  must call it.
+- Caching and pre-aggregation: none exists, so there is nothing to claim
+  about cache correctness. The payment-attempt join is the first query that
+  would justify a summary table.

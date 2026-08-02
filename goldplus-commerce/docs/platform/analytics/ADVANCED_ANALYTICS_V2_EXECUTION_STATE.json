@@ -2,33 +2,41 @@
   "schema_version": 1,
   "execution_id": "advanced-analytics-v2-20260802",
   "started_at": "2026-08-02T09:45:00Z",
-  "updated_at": "2026-08-02T10:25:00Z",
+  "updated_at": "2026-08-02T11:05:00Z",
   "git_root": "<worktree>/",
   "app_root": "goldplus-commerce",
   "starting_branch": "gpt/advanced-control-centre-analytics-20260802",
   "starting_head": "e28a327f1fb281bbf82d29026112b9924f56de52",
   "current_branch": "claude/advanced-analytics-command-centre-v2-20260802",
-  "current_phase": "SLICE_4_COMPLETE_HANDOFF",
+  "current_phase": "SLICE_7_COMPLETE_HANDOFF",
   "completed_phases": [
     "BASELINE_HOSTILE_REVIEW",
     "SLICE_1_SEMANTIC_CORRECTION",
     "SLICE_2_SERVER_SIDE_API",
     "SLICE_3_UI_ON_DEDICATED_API",
-    "SLICE_4_GOLDEN_DATASET_AND_FULL_GATE"
+    "SLICE_4_GOLDEN_DATASET_AND_FULL_GATE",
+    "SLICE_5_SAVED_VIEWS_ALERTS_EXPORTS",
+    "SLICE_6_PAYMENT_INTELLIGENCE_AND_DRILLDOWNS",
+    "SLICE_7_MEASURED_PERFORMANCE_AND_HANDOFF"
   ],
   "remaining_phases": [
-    "SLICE_5_SAVED_VIEWS_ALERTS_EXPORTS (requires next migration + audit wiring)",
-    "SLICE_6_FULL_MODULE_DEPTH (payment-attempt ledger, cohorts, segments, experiments, support)",
-    "SLICE_7_PLAYWRIGHT_AND_PERFORMANCE (UI e2e, EXPLAIN on heaviest queries)"
+    "PLAYWRIGHT_UI_COVERAGE",
+    "CUSTOMER_COHORT_EXPERIMENT_FAMILIES (need consented identity and exposure sources)",
+    "SELF_SERVICE_EXPLORER_AND_SEGMENTS",
+    "SCHEDULED_ALERT_EVALUATION_JOB",
+    "CACHING_AND_PRE_AGGREGATION (justified first by the payment-attempt join)"
   ],
   "executed_gates": {
     "typecheck": 0,
     "lint": 0,
-    "test": "0 (258 files passed, 4897 tests passed, 17 skipped, 0 failed)",
+    "test": "0 on the committed tree (4920 passed, 29 skipped, 0 failed)",
     "build": 0,
-    "migration_parity": "0 (61/61, ceiling 0060, PASSED)",
-    "integration_real_postgres": "0 (6/6, ANALYTICS_TEST_DATABASE_URL, PostgreSQL 16.13)"
+    "migration_parity": "0 (62/62, ceiling 0061, PASSED)",
+    "integration_real_postgres": "0 (18 tests across two suites, PostgreSQL 16.13)",
+    "query_performance": "0 (EXPLAIN ANALYZE, 50 000 orders; slowest 16.18 ms)"
   },
-  "migrations_added": [],
-  "last_safe_resume_instruction": "All four slices are committed on claude/advanced-analytics-command-centre-v2-20260802. To continue: implement Slice 5 (analytics_saved_views + analytics_alert_rules tables as migration 0061 with journal entry, ownership + audit + permission tests) following the V2 specification sections 7-8; the canonical metric/action semantics live in packages/shared/src/analytics and must not be duplicated."
+  "migrations_added": [
+    "0061_analytics_saved_views_and_alert_rules"
+  ],
+  "last_safe_resume_instruction": "Slices 1-7 are committed on claude/advanced-analytics-command-centre-v2-20260802. Canonical metric, action and period semantics live in packages/shared/src/analytics and must not be duplicated. Next: Playwright coverage of the analytics page states, then the customer/cohort/experiment families once consented-identity and experiment-exposure read models exist."
 }

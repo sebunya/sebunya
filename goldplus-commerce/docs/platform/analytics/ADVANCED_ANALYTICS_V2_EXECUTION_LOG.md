@@ -22,3 +22,15 @@
   deny-by-default sweep classification of the analytics page; handoff docs;
   full gate — typecheck 0, lint 0, test 0 (4897 passed), build 0, migration
   parity PASSED.
+- 2026-08-02 · Slice 5 (commit `f5129ea`): migration 0061 (saved views, alert
+  rules) with real CHECK constraints, owner-scoped repositories, four
+  separated permissions, audited mutations, bounded exports, alert evaluation
+  that raises internal actions only. 21 unit + 9 real-PostgreSQL tests.
+- 2026-08-02 · Slice 6 (commit `9046262`): payment-attempt intelligence with
+  an explicit unrecognised bucket, allowlisted breakdowns, bounded
+  paid-not-processing drilldown, and a payments panel on the page.
+  9 unit + 3 integration + 2 API tests.
+- 2026-08-02 · Slice 7: EXPLAIN ANALYZE measurement script and report on
+  50 000 seeded orders; security review, UAT, implementation and test reports
+  refreshed; final gate — typecheck 0, lint 0, test 0 (4920 passed), build 0,
+  parity 62/62 PASSED.

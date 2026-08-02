@@ -48,3 +48,31 @@ and web apps running.
 | Trend chart | data table alternative under "Data table for this chart" |
 | Sidebar | "Commerce Analytics" → /admin/analytics; "Recommendation Analytics" → /admin/recommendations/analytics |
 | Control Centre | commerce-analytics card present, LOW risk, opens /admin/analytics |
+
+## 6. Saved views, alert rules and exports
+
+| Step | Expect |
+|---|---|
+| As a user with analytics.read only, POST /admin/analytics/saved-views | 403; nothing created |
+| With analytics.manage, create a view naming a metric that does not exist | 400 naming the unknown key |
+| Create two views with the same name as the same operator | second is 409 DUPLICATE_NAME |
+| Create a view with no periodDays and no start/end day | 400 |
+| Share a view (scope SHARED) | another operator sees it in GET /saved-views |
+| Keep a view PRIVATE | another operator does NOT see it, and PATCHing its id returns 404 |
+| Create an alert rule with minimumSample 1 on payment_failure_rate | stored with minimumSample 5 (catalogue floor), not 1 |
+| Create an alert rule with threshold 4 on a rate metric | 400 |
+| GET /admin/analytics/alert-rules/evaluations | each rule reports FIRED / WITHIN_THRESHOLD / INSUFFICIENT_SAMPLE / NO_VALUE / IN_COOLDOWN; no message is sent anywhere |
+| Fire a rule, then evaluate again inside the cooldown | second evaluation reports IN_COOLDOWN, no duplicate action |
+| POST /admin/analytics/exports with analytics.manage but not analytics.export | 403 |
+| POST /admin/analytics/exports with analytics.export | CSV of daily aggregates plus definitions; an audit entry exists |
+
+## 7. Payment intelligence and drilldowns
+
+| Step | Expect |
+|---|---|
+| GET /admin/analytics/payments | attempt counts, and an attempt success rate labelled with the attempt denominator |
+| Period with fewer than 5 attempts | rate shows Insufficient evidence, not 0% or 100% |
+| A provider status the reconciliation vocabulary does not know | counted under "Unrecognised status" and called out in notes; not counted as success or failure |
+| GET /admin/analytics/breakdowns/customer_email | 404 UNKNOWN_DIMENSION |
+| GET /admin/analytics/exceptions/paid_not_processing?limit=0 | 400 |
+| GET /admin/analytics/exceptions/paid_not_processing | order numbers, states, age and amount only — no customer name, phone, email or address |
