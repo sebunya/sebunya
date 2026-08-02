@@ -435,6 +435,13 @@
       "when": 1786161600000,
       "tag": "0061_analytics_saved_views_and_alert_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "5",
+      "when": 1786248000000,
+      "tag": "0062_money_bigint_and_checks",
+      "breakpoints": true
     }
   ]
 }

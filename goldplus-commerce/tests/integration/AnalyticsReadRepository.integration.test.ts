@@ -44,7 +44,7 @@ suite('DrizzleAnalyticsReadRepository (real PostgreSQL)', () => {
     closeDb = async () => { await client.end({ timeout: 5 }); };
 
     // Production column subset used by the repository's queries.
-    await client`drop table if exists orders`;
+    await client`drop table if exists orders cascade`;
     await client`create table if not exists orders (
       id text primary key,
       order_number varchar(20),
@@ -68,7 +68,7 @@ suite('DrizzleAnalyticsReadRepository (real PostgreSQL)', () => {
       zero_result_count integer not null default 0,
       last_searched_at timestamptz not null default now()
     )`;
-    await client`drop table if exists payment_attempts`;
+    await client`drop table if exists payment_attempts cascade`;
     await client`create table if not exists payment_attempts (
       id serial primary key,
       order_id text,

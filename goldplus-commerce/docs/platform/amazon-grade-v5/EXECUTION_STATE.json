@@ -4,17 +4,17 @@
   "startingTree": "2928dd9a62598be21052bd5c471ef0320f8f063a",
   "currentHead": "SET_ON_COMMIT",
   "lastGreenCommit": "e99a96a0f322affec9c831dd67067ac10fb58311",
-  "currentSlice": "SLICE_1_STOP_SHIP",
+  "currentSlice": "SLICE_2_CONCURRENCY_AND_MONEY",
   "currentModule": "measurement-control-tower (admin page auth wiring)",
   "completedThisSession": [
-    "SLICE_0_ATTESTATION (base verified head+tree; worktree created; Lane B recorded REMOTE_RELEASE_LANE_UNAVAILABLE — no ssh binary)",
+    "SLICE_0_ATTESTATION (base verified head+tree; worktree created; Lane B recorded REMOTE_RELEASE_LANE_UNAVAILABLE \u2014 no ssh binary)",
     "SLICE_0_MEMORY_BOOTSTRAP (sources read; HISTORIC_128_SOURCE_UNAVAILABLE recorded; five historic commits verified as ancestors)",
     "SLICE_1_STOP_SHIP_VERIFICATION (all 14 findings re-verified with current-source evidence; see STOP_SHIP_REGISTER.md)",
-    "SLICE_1_FIX_7.8 (phantom localStorage gp_auth_token removed; same-origin allowlisted session-cookie proxy for measurement pages)"
+    "SLICE_1_FIX_7.8 (phantom localStorage gp_auth_token removed; same-origin allowlisted session-cookie proxy for measurement pages)",
+    "SLICE_2_MONEY (migration 0062: all money columns int4->bigint with documented lock risk; NOT VALID + VALIDATE non-negative CHECKs on orders/order_items/payments/payment_attempts/delivery_zones + positive quantity; drizzle schema widened, parity 63/63; 4 real-PostgreSQL tests incl. >int4 round-trip and loud VALIDATE failure on a corrupt row; Redis abuse-control integration re-executed 11/11)"
   ],
   "openStopShipFindings": [
     "7.1-external: credential rotations (operator; register created)",
-    "7.12-partial: bigint money migration + non-negative CHECKs (Slice 2)",
     "7.13-partial: distributed limiter beyond auth paths + trusted-proxy IP (Slice 3)",
     "7.8-residual: session revocation inventory, shorter admin sessions, MFA enforcement audit (Slice 3)"
   ],
@@ -31,10 +31,12 @@
     "SLICE_11_OPERATIONS",
     "SLICE_12_FULL_HOSTILE_VERIFICATION"
   ],
-  "migrationsAdded": [],
-  "migrationCeiling": "0061_analytics_saved_views_and_alert_rules (62/62 parity)",
+  "migrationsAdded": [
+    "0062_money_bigint_and_checks"
+  ],
+  "migrationCeiling": "0062_money_bigint_and_checks (63/63 parity)",
   "laneB": "REMOTE_RELEASE_LANE_UNAVAILABLE (no ssh binary in this environment; production untouched)",
-  "nextExactCommand": "cd goldplus-commerce && pnpm vitest run tests/unit/AdminMeasurementProxy.test.ts tests/architecture",
-  "nextExactFile": "apps/api/src/infrastructure/db/migrations/0062_money_bigint_and_checks.sql (Slice 2, inspect journal first — never assume the number)",
-  "nextAcceptanceTest": "Slice 2: an order with total_amount > 2^31-1 round-trips; negative money rejected by CHECK; parity 63/63"
+  "nextExactCommand": "cd goldplus-commerce && pnpm vitest run tests/unit tests/architecture",
+  "nextExactFile": "apps/api/src/interfaces/http/middleware (Slice 3: extend Redis limiter to public endpoint families with trusted-proxy IP resolution)",
+  "nextAcceptanceTest": "Slice 3: two limiter instances share one budget on a public endpoint family; cf-connecting-ip honoured only from trusted edge"
 }

@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, integer, index, jsonb, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, integer, bigint, index, jsonb, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { products } from './products';
 import { users } from './identity';
@@ -47,16 +47,16 @@ export const orders = pgTable('orders', {
   deliveryAddress: varchar('delivery_address', { length: 255 }).notNull(),
   status: varchar('status', { length: 30 }).default('received').notNull(),
   paymentStatus: varchar('payment_status', { length: 30 }).default('unpaid').notNull(),
-  subtotalAmount: integer('subtotal_amount').notNull(),
-  deliveryFee: integer('delivery_fee').notNull().default(0),
-  totalAmount: integer('total_amount').notNull(),
+  subtotalAmount: bigint('subtotal_amount', { mode: 'number' }).notNull(),
+  deliveryFee: bigint('delivery_fee', { mode: 'number' }).notNull().default(0),
+  totalAmount: bigint('total_amount', { mode: 'number' }).notNull(),
   // Pricing 0042: immutable authoritative quote provenance. Existing orders are
   // backfilled as unadjusted UGX snapshots; new checkout writes the exact quote.
   pricingQuoteId: uuid('pricing_quote_id'),
   pricingCurrency: varchar('pricing_currency', { length: 3 }).default('UGX').notNull(),
-  pricingBaseSubtotal: integer('pricing_base_subtotal').default(0).notNull(),
-  pricingDiscountTotal: integer('pricing_discount_total').default(0).notNull(),
-  pricingTaxTotal: integer('pricing_tax_total').default(0).notNull(),
+  pricingBaseSubtotal: bigint('pricing_base_subtotal', { mode: 'number' }).default(0).notNull(),
+  pricingDiscountTotal: bigint('pricing_discount_total', { mode: 'number' }).default(0).notNull(),
+  pricingTaxTotal: bigint('pricing_tax_total', { mode: 'number' }).default(0).notNull(),
   pricingCalculationVersion: varchar('pricing_calculation_version', { length: 40 }).default('legacy-unadjusted-v1').notNull(),
   pricingSnapshot: jsonb('pricing_snapshot'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -97,11 +97,11 @@ export const orderItems = pgTable('order_items', {
   sku: varchar('sku', { length: 50 }).notNull(),
   productName: varchar('product_name', { length: 255 }).notNull(),
   quantity: integer('quantity').notNull(),
-  unitPrice: integer('unit_price').notNull(),
-  canonicalUnitPrice: integer('canonical_unit_price').default(0).notNull(),
-  baseSubtotal: integer('base_subtotal').default(0).notNull(),
-  discountAmount: integer('discount_amount').default(0).notNull(),
-  finalLineTotal: integer('final_line_total').default(0).notNull(),
+  unitPrice: bigint('unit_price', { mode: 'number' }).notNull(),
+  canonicalUnitPrice: bigint('canonical_unit_price', { mode: 'number' }).default(0).notNull(),
+  baseSubtotal: bigint('base_subtotal', { mode: 'number' }).default(0).notNull(),
+  discountAmount: bigint('discount_amount', { mode: 'number' }).default(0).notNull(),
+  finalLineTotal: bigint('final_line_total', { mode: 'number' }).default(0).notNull(),
 });
 
 export const cartsRelations = relations(carts, ({ many }) => ({
@@ -141,7 +141,7 @@ export const payments = pgTable('payments', {
   idempotencyKey: varchar('idempotency_key', { length: 255 }).unique().notNull(),
   provider: varchar('provider', { length: 50 }).notNull(),
   providerReference: varchar('provider_reference', { length: 255 }),
-  amount: integer('amount').notNull(),
+  amount: bigint('amount', { mode: 'number' }).notNull(),
   status: varchar('status', { length: 30 }).default('PENDING').notNull(),
   paidAt: timestamp('paid_at', { withTimezone: true }),
   // Was the webhook that created this payment authenticated? (migration 0056)
@@ -158,7 +158,7 @@ export const paymentAttempts = pgTable('payment_attempts', {
   orderId: uuid('order_id').references(() => orders.id).notNull(),
   merchantReference: varchar('merchant_reference', { length: 255 }).unique().notNull(),
   orderTrackingId: varchar('order_tracking_id', { length: 255 }),
-  amount: integer('amount').notNull(),
+  amount: bigint('amount', { mode: 'number' }).notNull(),
   currency: varchar('currency', { length: 10 }).default('UGX').notNull(),
   status: varchar('status', { length: 30 }).default('not_started').notNull(),
   redirectUrl: varchar('redirect_url', { length: 512 }),
@@ -178,7 +178,7 @@ export const paymentAttempts = pgTable('payment_attempts', {
 export const deliveryZones = pgTable('delivery_zones', {
   id: uuid('id').defaultRandom().primaryKey(),
   district: varchar('district', { length: 100 }).notNull(),
-  feeUgx: integer('fee_ugx').notNull(),
+  feeUgx: bigint('fee_ugx', { mode: 'number' }).notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
