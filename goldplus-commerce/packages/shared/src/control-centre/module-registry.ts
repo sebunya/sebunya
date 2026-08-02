@@ -289,6 +289,27 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
 
   // ─── Commerce OS ──────────────────────────────────────────────────────────
   {
+    key: 'commerce-analytics',
+    displayName: 'Commerce Analytics',
+    description: 'Decision-grade business metrics, trends, comparisons, actions and data quality from the canonical metric catalogue.',
+    category: 'COMMERCE_OS',
+    adminRoute: '/admin/analytics',
+    apiMount: '/admin/analytics',
+    primaryApiEndpoints: ['/admin/analytics/overview', '/admin/analytics/quality', '/admin/analytics/actions', '/admin/analytics/catalogue'],
+    requiredPermissions: [P.ANALYTICS_READ],
+    optionalPermissions: [],
+    dataDependencies: [{ name: 'postgres' }],
+    providerDependencies: [],
+    activationPolicy: 'AUTOMATIC',
+    supportedActions: [
+      { key: 'open', label: 'Open commerce analytics', target: '/admin/analytics', requiredPermission: P.ANALYTICS_READ, kind: 'READ' },
+    ],
+    riskClass: 'LOW',
+    liveMode: false,
+    owner: 'intelligence',
+    runbookLink: '/docs/handover/claude/CONTROL_CENTRE_PRODUCTION_RUNBOOK.md',
+  },
+  {
     key: 'decision-intelligence',
     displayName: 'Decision Intelligence',
     description: 'Decision requests, outputs, reason codes, input snapshots and manual review.',

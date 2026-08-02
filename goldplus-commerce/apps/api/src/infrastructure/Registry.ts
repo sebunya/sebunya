@@ -394,6 +394,12 @@ import {
 } from '../application/use-cases/customer-dna/CustomerDnaUseCases';
 import { DrizzleDecisionEvidenceReader } from './db/repositories/DrizzleDecisionEvidenceReader';
 import { DrizzleDecisionInsightRepository } from './db/repositories/DrizzleDecisionInsightRepository';
+import { DrizzleAnalyticsReadRepository } from './db/repositories/DrizzleAnalyticsReadRepository';
+import {
+  GetAnalyticsDataQualityUseCase,
+  GetAnalyticsMetricSeriesUseCase,
+  GetAnalyticsOverviewUseCase,
+} from '../application/use-cases/analytics/CommerceAnalyticsUseCases';
 import {
   EvaluateDecisionSignalsBatchUseCase,
   GetDecisionInsightUseCase,
@@ -739,6 +745,15 @@ export class Registry {
   public readonly getDecisionOverviewUseCase = new GetDecisionOverviewUseCase(this.decisionInsightRepo);
   public readonly transitionDecisionInsightUseCase = new TransitionDecisionInsightUseCase(this.decisionInsightRepo, this.auditRepo);
   public readonly recomputeDecisionInsightUseCase = new RecomputeDecisionInsightUseCase(this.decisionInsightRepo, this.evaluateDecisionSignalsBatchUseCase);
+
+  // Commerce Analytics: bounded server-side aggregation behind analytics.read.
+  public readonly analyticsReadRepo = new DrizzleAnalyticsReadRepository();
+  public readonly getAnalyticsOverviewUseCase = new GetAnalyticsOverviewUseCase(
+    this.analyticsReadRepo,
+    () => this.getDecisionOverviewUseCase.execute(),
+  );
+  public readonly getAnalyticsMetricSeriesUseCase = new GetAnalyticsMetricSeriesUseCase(this.analyticsReadRepo);
+  public readonly getAnalyticsDataQualityUseCase = new GetAnalyticsDataQualityUseCase(this.analyticsReadRepo);
 
   // Automation A2/A3: planning, deterministic gates, native internal effects,
   // and atomic existing-outbox intents. Providers remain behind the outbox.

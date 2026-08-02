@@ -25,6 +25,7 @@ import adminQueuesRoutes from './routes/admin/queues';
 import adminDeploymentRoutes from './routes/admin/deployment';
 import adminDeliveryZonesRoutes from './routes/admin/delivery-zones';
 import adminSearchDemandRoutes from './routes/admin/search-demand';
+import adminAnalyticsRoutes from './routes/admin/analytics';
 import adminCompatibilityRoutes from './routes/admin/compatibility';
 import adminLoyaltyRoutes from './routes/admin/loyalty';
 import adminFulfilmentRoutes from './routes/admin/fulfilment';
@@ -175,6 +176,7 @@ app.route('/admin/queues', adminQueuesRoutes);
 app.route('/admin/deployment', adminDeploymentRoutes);
 app.route('/admin/delivery-zones', adminDeliveryZonesRoutes);
 app.route('/admin/search-demand', adminSearchDemandRoutes);
+app.route('/admin/analytics', adminAnalyticsRoutes);
 app.route('/admin/compatibility', adminCompatibilityRoutes);
 app.route('/admin/loyalty', adminLoyaltyRoutes);
 app.route('/admin/fulfilment', adminFulfilmentRoutes);
@@ -281,6 +283,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/account/behavioural-interventions',
   '/account/consent-operating',
   '/account/surveys',
+  '/admin/analytics',
   '/admin/audit',
   '/admin/automation',
   '/admin/behavioural-interventions',

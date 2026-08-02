@@ -22,6 +22,7 @@ import {
   type MetricValue,
   type SourceFreshness,
   buildMetricValue,
+  deriveCommerceActions,
   kampalaDayOf,
   rateState,
   requireMetricDefinition,
@@ -249,13 +250,6 @@ function buildEngagement(
   };
 }
 
-function action(input: Omit<AnalyticsActionItem, 'id'>): AnalyticsActionItem {
-  return {
-    ...input,
-    id: `${input.source}:${input.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`,
-  };
-}
-
 export function buildCommerceAnalytics(input: {
   period: AnalyticsPeriod;
   orders: AnalyticsSourceState<OrderAnalyticsRecord[]>;
@@ -375,99 +369,24 @@ export function buildCommerceAnalytics(input: {
     }),
   ];
 
-  const paymentFailureRate = boundedRate(current.failedPayments, current.orders);
-  const zeroResultRate = typeof search?.zeroResultRate === 'number'
-    ? Math.max(0, Math.min(1, search.zeroResultRate))
-    : boundedRate(zeroResultSearches, totalSearches);
-  const recommendationCtr = typeof recommendationSummary?.ctr === 'number'
-    ? recommendationSummary.ctr
-    : boundedRate(clicks, impressions);
-
-  const actions: AnalyticsActionItem[] = [];
-  if (input.inventory.ok && lowStock > 0) {
-    actions.push(action({
-      source: 'inventory',
-      severity: lowStock >= 10 ? 'HIGH' : 'MEDIUM',
-      title: 'Replenishment attention required',
-      reason: 'Products are at or below their configured reorder point.',
-      evidence: `${lowStock} low-stock product${lowStock === 1 ? '' : 's'}.`,
-      sampleSize: lowStock,
-      recommendedAction: 'Review available-to-promise and create a replenishment decision.',
-      requiredPermission: 'inventory.read',
-      drilldownRoute: '/admin/inventory',
-      priority: 90 + Math.min(lowStock, 9),
-    }));
-  }
-  if (paymentFailureRate !== null && current.orders >= 5 && paymentFailureRate >= 0.15) {
-    actions.push(action({
-      source: 'payments',
-      severity: paymentFailureRate >= 0.3 ? 'CRITICAL' : 'HIGH',
-      title: 'Payment failures are suppressing conversion',
-      reason: 'The failure share is above the operational review threshold.',
-      evidence: `${current.failedPayments} failed or rejected payment states across ${current.orders} orders (${Math.round(paymentFailureRate * 1000) / 10}%).`,
-      sampleSize: current.orders,
-      recommendedAction: 'Inspect payment reconciliation, provider errors and callback completeness.',
-      requiredPermission: 'payments.read',
-      drilldownRoute: '/admin/measurement/payments',
-      priority: 96,
-    }));
-  }
-  if (zeroResultRate !== null && totalSearches >= 10 && zeroResultRate >= 0.1) {
-    actions.push(action({
-      source: 'search',
-      severity: zeroResultRate >= 0.25 ? 'HIGH' : 'MEDIUM',
-      title: 'Search demand is not being served',
-      reason: 'A material share of tracked searches returns no products.',
-      evidence: `${zeroResultSearches} zero-result searches from ${totalSearches} tracked searches.`,
-      sampleSize: totalSearches,
-      recommendedAction: 'Review demand gaps, synonyms, catalogue coverage and merchandising rules.',
-      requiredPermission: 'reports.read',
-      drilldownRoute: '/admin/demand',
-      priority: 86,
-    }));
-  }
-  if (input.decisions.ok && criticalHighInsights > 0) {
-    actions.push(action({
-      source: 'decision_intelligence',
-      severity: 'HIGH',
-      title: 'Critical decision insights require ownership',
-      reason: 'Decision Intelligence has unresolved critical or high-severity findings.',
-      evidence: `${criticalHighInsights} critical/high insight${criticalHighInsights === 1 ? '' : 's'}.`,
-      sampleSize: criticalHighInsights,
-      recommendedAction: 'Assign an owner, verify the evidence and record a governed resolution.',
-      requiredPermission: 'decision_intelligence.read',
-      drilldownRoute: '/admin/decision-intelligence?severity=HIGH',
-      priority: 94,
-    }));
-  }
-  if (input.measurementWarnings.ok && measurementWarnings > 0) {
-    actions.push(action({
-      source: 'measurement_warnings',
-      severity: measurementWarnings >= 10 ? 'HIGH' : 'MEDIUM',
-      title: 'Measurement quality needs investigation',
-      reason: 'The Measurement Control Tower reports active warnings.',
-      evidence: `${measurementWarnings} warning${measurementWarnings === 1 ? '' : 's'} in the current operational view.`,
-      sampleSize: measurementWarnings,
-      recommendedAction: 'Inspect freshness, consent, queue, destination and reconciliation warnings.',
-      requiredPermission: 'reports.read',
-      drilldownRoute: '/admin/measurement-control-tower',
-      priority: 88,
-    }));
-  }
-  if (recommendationCtr !== null && impressions >= 100 && recommendationCtr < 0.02) {
-    actions.push(action({
-      source: 'recommendations',
-      severity: 'MEDIUM',
-      title: 'Recommendation relevance is weak',
-      reason: 'Recommendation click-through is below the review threshold at meaningful volume.',
-      evidence: `${clicks} clicks from ${impressions} impressions (${Math.round(recommendationCtr * 1000) / 10}%).`,
-      sampleSize: impressions,
-      recommendedAction: 'Compare placements and rules, inspect eligibility exclusions and run an experiment.',
-      requiredPermission: 'recommendations.read',
-      drilldownRoute: '/admin/recommendations/analytics',
-      priority: 75,
-    }));
-  }
+  const actions = deriveCommerceActions({
+    orders: { available: ordersOk, orders: current.orders, failedPayments: current.failedPayments },
+    search: {
+      available: input.search.ok,
+      totalSearches,
+      zeroResultSearches,
+      zeroResultRate: typeof search?.zeroResultRate === 'number' ? search.zeroResultRate : null,
+    },
+    inventory: { available: input.inventory.ok, lowStockCount: lowStock },
+    decisions: { available: input.decisions.ok, criticalHighInsights },
+    measurementWarnings: { available: input.measurementWarnings.ok, warningCount: measurementWarnings },
+    recommendations: {
+      available: input.recommendations.ok,
+      impressions,
+      clicks,
+      ctr: typeof recommendationSummary?.ctr === 'number' ? recommendationSummary.ctr : null,
+    },
+  });
 
   const sourceStates: AnalyticsSourceState[] = [
     input.orders,
@@ -510,7 +429,7 @@ export function buildCommerceAnalytics(input: {
     metrics,
     trend: buildTrend(orders, input.period),
     engagement: buildEngagement(input.recommendations, ordersOk, current),
-    actions: actions.sort((a, b) => b.priority - a.priority || a.title.localeCompare(b.title)),
+    actions,
     sourceStates,
     sourceFreshness,
     quality: {
