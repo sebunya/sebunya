@@ -352,6 +352,8 @@ import { DrizzleCommerceReconciliationRepository } from './db/repositories/Drizz
 import { ScanCommerceIntegrityUseCase } from '../application/use-cases/commerce/ScanCommerceIntegrityUseCase';
 import { DrizzleProductQualityRepository } from './db/repositories/DrizzleProductQualityRepository';
 import { ScoreProductQualityUseCase } from '../application/use-cases/products/ScoreProductQualityUseCase';
+import { DrizzleCustomerRfmRepository } from './db/repositories/DrizzleCustomerRfmRepository';
+import { ScoreCustomerRfmUseCase } from '../application/use-cases/customer-dna/ScoreCustomerRfmUseCase';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
@@ -599,6 +601,9 @@ export class Registry {
   // Slice 5: product data-quality scoring.
   public readonly productQualityRepository = new DrizzleProductQualityRepository();
   public readonly scoreProductQualityUseCase = new ScoreProductQualityUseCase(this.productQualityRepository);
+  // Slice 6: customer RFM scoring + segmentation.
+  public readonly customerRfmRepository = new DrizzleCustomerRfmRepository();
+  public readonly scoreCustomerRfmUseCase = new ScoreCustomerRfmUseCase(this.customerRfmRepository);
   public readonly evaluateCartPricingUseCase = new EvaluateCartPricingUseCase(
     this.productRepo,
     this.pricingRepo,

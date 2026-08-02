@@ -124,6 +124,12 @@
       "statement": "Product data-quality scores are deterministic and transparent: each 0-100 sub-score (completeness/feed/SEO/AEO/assistant) lists its concrete missing signals; feed eligibility is all-or-nothing over required fields; no score is fabricated for empty data.",
       "guard": "tests/unit/ProductQuality.test.ts + tests/integration/ProductQuality.integration.test.ts (real PG, 2/2)",
       "since": "Slice 5"
+    },
+    {
+      "id": "RFM-1",
+      "statement": "RFM scores are quintiles within the real customer population (not magic thresholds), computed from PAID orders only; unpaid/failed orders never inflate monetary or reset recency; a never-purchased customer scores at the bottom, not hidden.",
+      "guard": "tests/unit/Rfm.test.ts + tests/integration/CustomerRfm.integration.test.ts (real PG, 2/2)",
+      "since": "Slice 6"
     }
   ]
 }
