@@ -23,7 +23,7 @@ routes.get('/', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
     };
     return c.json(res);
   } catch (err: any) {
-    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } }, 500);
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } }, 500);
   }
 });
 
@@ -43,7 +43,7 @@ routes.get('/:orderId', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c
     };
     return c.json(res);
   } catch (err: any) {
-    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } }, 500);
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } }, 500);
   }
 });
 
@@ -73,7 +73,7 @@ routes.post('/:orderId/retry', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), 
     return c.json(res);
   } catch (err: any) {
     const status = err.message.includes('NOT_FOUND') ? 404 : 400;
-    return c.json({ success: false, error: { code: 'RETRY_FAILED', message: err.message } }, status);
+    return c.json({ success: false, error: { code: 'RETRY_FAILED', message: 'An unexpected error occurred.' } }, status);
   }
 });
 

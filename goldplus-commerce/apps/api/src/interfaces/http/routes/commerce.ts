@@ -632,7 +632,7 @@ routes.get('/orders/:id', customerSessionMiddleware, async (c) => {
     if (err.message.includes('DATABASE_URL') || err.message.includes('relation "orders" does not exist')) {
       return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured yet' } }, 503);
     }
-    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } }, 500);
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } }, 500);
   }
 });
 

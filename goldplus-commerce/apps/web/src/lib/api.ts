@@ -11,10 +11,18 @@ export type AdminListResult<T> =
   | { items: T[]; isSample: false }
   | { items: T[]; isSample: true; reason: string };
 
+/**
+ * Slice 10 (§7 simplification): this used to return fabricated `fallback` sample
+ * rows whenever the API was unreachable, presenting "API unavailable" as a
+ * product state. It now returns an HONEST degraded state — an empty list plus a
+ * reason — and never invents records. The `fallback` parameter is retained for
+ * call-site compatibility but is intentionally ignored; callers render an honest
+ * empty/degraded state from `isSample` + `reason`.
+ */
 export async function tryFetchAdminList<T>(
   path: string,
-  fallback: T[],
-  reasonPrefix = 'Sample data shown until the GET endpoint is wired.',
+  _fallback: T[] = [],
+  reasonPrefix = 'Live data could not be loaded from the API.',
   token?: string | null,
 ): Promise<AdminListResult<T>> {
   try {
@@ -27,15 +35,15 @@ export async function tryFetchAdminList<T>(
       headers,
     });
     if (!res.ok) {
-      return { items: fallback, isSample: true, reason: `${reasonPrefix} (API ${res.status})` };
+      return { items: [], isSample: true, reason: `${reasonPrefix} (API ${res.status})` };
     }
     const json = (await res.json().catch(() => null)) as ApiEnvelope<T[]> | null;
     if (!json || !json.success || !Array.isArray(json.data)) {
-      return { items: fallback, isSample: true, reason: `${reasonPrefix} (unexpected response)` };
+      return { items: [], isSample: true, reason: `${reasonPrefix} (unexpected response)` };
     }
     return { items: json.data, isSample: false };
   } catch {
-    return { items: fallback, isSample: true, reason: `${reasonPrefix} (API unreachable)` };
+    return { items: [], isSample: true, reason: `${reasonPrefix} (API unreachable)` };
   }
 }
 

@@ -168,5 +168,24 @@
       "status": "DONE",
       "note": "Closed a real gap: the activation approval gate recorded the approver but never checked they differ from the requester (a maker could approve their own change). New pure authorizeActivationApproval denies self-approval + missing approver, wired into RecordControlledActivationApprovalUseCase. Unit 4/4."
     }
+  },
+  "simplificationOpsVerification": {
+    "web-simplification": {
+      "level": 4,
+      "slice": "10",
+      "status": "DONE",
+      "note": "§7: removed fabricated sample operational data — tryFetchAdminList returns honest empty+degraded state (never fallback); SAMPLE_* arrays emptied; 'Sample data' notice → 'Live data unavailable'; image-placeholder 'Coming Soon' → 'Image pending'; inventory 'coming soon' → honest read-only copy."
+    },
+    "log-hygiene": {
+      "level": 4,
+      "slice": "11",
+      "status": "DONE",
+      "note": "§20/§3E: 8 runtime console.* routed through the structured logger with preserved context; bootstrap/CLI console retained legitimately."
+    },
+    "hostile-review": {
+      "level": 4,
+      "slice": "12",
+      "note": "§20 sweep complete (docs/.../HOSTILE_REVIEW.md): H-1 err.message leak (9 sites), H-3 dup limiter/matrix, H-4 self-approval, H-7 sample data, H-8 console CORRECTED; H-5 findAll (justified single-shop, cursor follow-on) + H-6 GTM in-memory (GTM disabled, migration follow-on) documented. No security stop-ship residual."
+    }
   }
 }

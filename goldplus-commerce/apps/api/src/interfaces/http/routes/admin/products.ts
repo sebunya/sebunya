@@ -104,7 +104,7 @@ routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE
       success: false,
       error: {
         code: 'BAD_INPUT',
-        message: err.message || 'Failed to upload images.'
+        message: 'Failed to upload images.'
       }
     }, 400);
   }
@@ -209,7 +209,7 @@ routes.get('/categories', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async
     const cats = await registry.productRepo.getCategories();
     return c.json({ success: true, data: cats });
   } catch (err: any) {
-    return c.json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } }, 500);
+    return c.json({ success: false, error: { code: 'SERVER_ERROR', message: 'An unexpected error occurred.' } }, 500);
   }
 });
 
@@ -334,7 +334,7 @@ routes.post('/', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => 
 
     return c.json({ success: true, data: { id: productId } }, 201);
   } catch (err: any) {
-    return c.json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } }, 500);
+    return c.json({ success: false, error: { code: 'SERVER_ERROR', message: 'An unexpected error occurred.' } }, 500);
   }
 });
 
@@ -494,7 +494,7 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
 
     return c.json({ success: true, message: 'Product properties saved.' });
   } catch (err: any) {
-    return c.json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } }, 500);
+    return c.json({ success: false, error: { code: 'SERVER_ERROR', message: 'An unexpected error occurred.' } }, 500);
   }
 });
 

@@ -1,3 +1,4 @@
+import { logger } from '../logging/logger';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { IProductImageStorage, StoredImageResult } from '../../application/ports/IProductImageStorage';
@@ -44,7 +45,7 @@ export class LocalProductImageStorage implements IProductImageStorage {
         await fs.unlink(physicalPath);
       }
     } catch (e) {
-      console.error(`[LocalProductImageStorage] Failed to cleanup partial file ${physicalPath}:`, e);
+      logger.error({ physicalPath, err: e }, '[LocalProductImageStorage] Failed to cleanup partial file');
     }
   }
 }

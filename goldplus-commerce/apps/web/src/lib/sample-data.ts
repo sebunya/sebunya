@@ -1,5 +1,10 @@
-// Sample data shown ONLY when the corresponding admin GET endpoint is unreachable.
-// Every visible string makes the placeholder origin obvious. Never used to claim records exist.
+// Slice 10 (§7 simplification): sample operational data has been REMOVED.
+//
+// These arrays are now empty. Fabricated rows must never appear in an admin
+// surface — a disconnected API renders an honest empty/degraded state (see
+// tryFetchAdminList in lib/api.ts), never invented records. The type exports and
+// empty-array exports are retained only so existing call sites compile while the
+// pages are migrated to fetch live data with honest empty states.
 
 export type SampleQuote = {
   id: string;
@@ -11,19 +16,7 @@ export type SampleQuote = {
   status: 'new' | 'quoted' | 'lost' | 'won';
   createdAt: string;
 };
-
-export const SAMPLE_QUOTES: SampleQuote[] = [
-  {
-    id: 'sample-quote-001',
-    customerName: 'Sample data. Replace with production records.',
-    productName: 'Missing. Requires admin review.',
-    quantity: 'Missing. Requires admin review.',
-    email: 'sample@example.com',
-    phone: '+256-000-000-000',
-    status: 'new',
-    createdAt: new Date().toISOString(),
-  },
-];
+export const SAMPLE_QUOTES: SampleQuote[] = [];
 
 export type SampleSupportTicket = {
   id: string;
@@ -33,17 +26,7 @@ export type SampleSupportTicket = {
   status: 'open' | 'in-progress' | 'resolved' | 'closed';
   createdAt: string;
 };
-
-export const SAMPLE_SUPPORT_TICKETS: SampleSupportTicket[] = [
-  {
-    id: 'sample-ticket-001',
-    subject: 'Sample data. Replace with production records.',
-    type: 'issue',
-    priority: 'medium',
-    status: 'open',
-    createdAt: new Date().toISOString(),
-  },
-];
+export const SAMPLE_SUPPORT_TICKETS: SampleSupportTicket[] = [];
 
 export type SampleFakeReport = {
   id: string;
@@ -52,16 +35,7 @@ export type SampleFakeReport = {
   status: 'new' | 'investigating' | 'verified_fake' | 'dismissed';
   createdAt: string;
 };
-
-export const SAMPLE_FAKE_REPORTS: SampleFakeReport[] = [
-  {
-    id: 'sample-fake-001',
-    locationFound: 'Sample data. Replace with production records.',
-    hologramCode: null,
-    status: 'new',
-    createdAt: new Date().toISOString(),
-  },
-];
+export const SAMPLE_FAKE_REPORTS: SampleFakeReport[] = [];
 
 export type SamplePayment = {
   id: string;
@@ -72,18 +46,7 @@ export type SamplePayment = {
   status: 'SUCCESS' | 'FAILED' | 'PENDING';
   createdAt: string;
 };
-
-export const SAMPLE_PAYMENTS: SamplePayment[] = [
-  {
-    id: 'sample-pay-001',
-    provider: 'mtn',
-    orderId: 'sample-order-001',
-    amount: 0,
-    currency: 'UGX',
-    status: 'PENDING',
-    createdAt: new Date().toISOString(),
-  },
-];
+export const SAMPLE_PAYMENTS: SamplePayment[] = [];
 
 export type SampleAuditLog = {
   id: string;
@@ -93,17 +56,7 @@ export type SampleAuditLog = {
   ipAddress: string;
   createdAt: string;
 };
-
-export const SAMPLE_AUDIT_LOGS: SampleAuditLog[] = [
-  {
-    id: 'sample-audit-001',
-    actor: 'System Monitor',
-    action: 'BOOT_COMPLETED',
-    resource: 'APP_SERVER',
-    ipAddress: '127.0.0.1',
-    createdAt: new Date().toISOString(),
-  },
-];
+export const SAMPLE_AUDIT_LOGS: SampleAuditLog[] = [];
 
 export type SampleCategory = {
   id: string;
@@ -112,16 +65,7 @@ export type SampleCategory = {
   productCount: number;
   isActive: boolean;
 };
-
-export const SAMPLE_CATEGORIES: SampleCategory[] = [
-  {
-    id: 'sample-cat-001',
-    name: 'Sample Category',
-    slug: 'sample-category',
-    productCount: 0,
-    isActive: true,
-  },
-];
+export const SAMPLE_CATEGORIES: SampleCategory[] = [];
 
 export type SampleCampaign = {
   id: string;
@@ -130,14 +74,4 @@ export type SampleCampaign = {
   status: 'active' | 'paused' | 'scheduled';
   conversionRate: string;
 };
-
-export const SAMPLE_CAMPAIGNS: SampleCampaign[] = [
-  {
-    id: 'sample-camp-001',
-    name: 'Sample Campaign. Not Active.',
-    channel: 'Direct',
-    status: 'paused',
-    conversionRate: '0%',
-  },
-];
-
+export const SAMPLE_CAMPAIGNS: SampleCampaign[] = [];

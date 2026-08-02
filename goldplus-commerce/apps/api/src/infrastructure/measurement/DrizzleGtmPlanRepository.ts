@@ -1,3 +1,4 @@
+import { logger } from '../logging/logger';
 import { GtmPlanRepository } from '../../application/ports/measurement/GtmPlanRepository';
 import { db } from '../db/client';
 import { measurementGtmSyncLogs } from '../db/schema';
@@ -35,7 +36,7 @@ export class DrizzleGtmPlanRepository implements GtmPlanRepository {
       });
     } catch (e) {
       // Fallback for local
-      console.warn('DB not configured, falling back to local for saveSyncLog');
+      logger.warn('[GtmPlan] DB not configured, falling back to local for saveSyncLog');
     }
   }
 

@@ -1,3 +1,4 @@
+import { logger } from '../../../infrastructure/logging/logger';
 import { IPaymentAttributionRepository, AttributionSummary } from '../../ports/measurement/PaymentAttributionRepository';
 
 export interface LinkPaymentToAttributionTouchpointsInput {
@@ -19,7 +20,7 @@ export class LinkPaymentToAttributionTouchpointsUseCase {
       return await this.attributionRepo.getAttributionSummaryForPayment(input.orderId, input.paymentReference);
     } catch (err: any) {
       // Must not break purchase capture if attribution linking fails
-      console.warn(`[Measurement] Failed to link attribution for order ${input.orderId}:`, err.message);
+      logger.warn({ orderId: input.orderId, err: (err as any)?.message }, '[Measurement] Failed to link attribution for order');
       return {
         orderId: input.orderId,
         paymentReference: input.paymentReference,

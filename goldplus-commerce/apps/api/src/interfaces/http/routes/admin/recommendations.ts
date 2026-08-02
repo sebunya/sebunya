@@ -245,7 +245,7 @@ routes.get("/analytics", async (c) => {
       success: false, 
       error: { 
         code: "ANALYTICS_QUERY_FAILED", 
-        message: err.message || "Failed to fetch analytics." 
+        message: "Failed to fetch analytics." 
       } 
     }, 400);
   }
