@@ -69,3 +69,12 @@ SHA `473ede0` · 2026-08-03. Sources: live capability matrix (docs/production-re
 | DAM / media library | NOT BUILT + storage write-only black hole in prod | ENGINEERING GREEN (d074c36), releasing: durable volume + edge serving + library (dedup, metadata, variants best-effort, usage graph, safe delete, assign-to-product repair, picker) | unit 4/4, arch 101/101 |
 | Product image repair | impossible (no storage, no tooling) | UNBLOCKED: missing-images worklist + assign flow; actual photography = operator task | /admin/media |
 Remaining INCOMPLETE_INTERNAL_GAP (unchanged this wave): legal CMS §2C, PIM control room §2D, capability hub §2D, abandonment pipeline §2E, order/fraud/fulfilment/comms/inventory/pricing actions §2E, campaigns §2F, automation depth §2F, analytics depth §2G, loyalty/gamification §2H.
+
+## Wave 2C/2D/2E-1 updates (2026-08-03 evening)
+| Module | Was | Now | Evidence |
+|---|---|---|---|
+| Legal CMS | NOT BUILT (static registry + hardcoded bodies) | WORKING (RELEASED 5c15118): 12 policies, draft→review→approve(maker/checker, live-403-proven)→publish/schedule(lazy)→rollback-by-repoint; public pages render PUBLISHED with truthful static fallback | live E2E |
+| /admin/legal static page | read-only registry table | DEPRECATED_WITH_PROOF (zero inbound links; superseded by CMS workspace) | 86-page sweep green |
+| Abandonment pipeline | queue declared, no producer/worker, no definition | WORKING v1 (RELEASED 3daa238): cart_abandonments single definition, hourly evaluator cron (3rd repeat job in redis), queue alive producer+worker, admin read surface; RECOVERED deferred honestly (no checkout↔cart linkage exists) | endpoint 200, redis zcard 3 |
+| Capability hub | generic modules page | WORKING (9709116, rolling): honest-counts hub cards + truthful INCOMPLETE_INTERNAL_GAP labels + workspace links; working sections preserved below | arch 101/101 incl. nav-link guard |
+Remaining INCOMPLETE_INTERNAL_GAP: PIM control-room depth, order/fraud/fulfilment/comms/inventory/pricing ACTIONS, campaign engine, automation workflow builder, analytics/recommendation-analytics depth, search/visitor intelligence depth, loyalty activation, gamification, DAM real-photo repair (operator), reviewer account for legal publishing (§6 user management).
