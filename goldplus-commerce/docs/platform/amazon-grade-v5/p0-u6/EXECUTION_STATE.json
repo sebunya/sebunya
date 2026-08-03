@@ -11,9 +11,11 @@
   "p0_2_baselineCorrection": "Prior record claimed 8/9 but listed BOTH AC2 and AC3 as open — inconsistent. Honest pre-work baseline was 7/9; AC2 and AC3 both closed to reach a genuine 9/9.",
   "u2": "AC1/AC2/AC3/AC5 CLOSED with real proofs (migration 0070 devices + product_device_compatibility; alias resolution with ambiguity detection; bulk CSV import validate-all-before-commit + per-row errors + bounds; device-page query fit_type-then-popularity no-N+1; ≤3 accessory suggestions excluding cart/inactive/unapproved/out-of-stock; import CLI + seed manifest; NO invented specs, production seed EMPTY, verified requires actor+evidence+time). AC4 (product-finder consumes device table): DELIBERATE FOLLOW-ON — the device-compat data source is delivered+proven, but the existing guided product-finder has no selected-device in its input model; wiring requires a product-flow change done against its existing tests, not a rushed rewrite that regresses a working subsystem. 14 tests, parity 71/71.",
   "migrationCeiling_u2": "0070 (71/71 parity)",
+  "u3": "ALL 5 ACs closed (migration 0071 reviews + review_media + review_votes + product_rating_aggregate). AC1 different-customer order line rejected; AC2 aggregate exactly consistent after 100 randomised publish/unpublish (full recompute in the status-change tx); AC3 AggregateRating JSON-LD only when count>=1 AND in stock (domain proven); AC4 aggregate = one-row read (no N+1); AC5 phone/email flagged, never auto-published. Verified purchase computed (order line→delivered order same phone identity, never from input); one review per identity per product at DB boundary. REVIEWS_MODERATE added. 12 tests, parity 72/72. Follow-ons: moderation admin route, AC3 ProductJsonLd.astro wiring, delivery-triggered review-request via outbox.",
+  "migrationCeiling_u3": "0071 (72/72 parity)",
   "unitsPending": [
     "U2_AC4_followon",
-    "U3",
+    "U3_followons(moderation-route,jsonld-astro,review-request-outbox)",
     "U4",
     "U5",
     "U6"
