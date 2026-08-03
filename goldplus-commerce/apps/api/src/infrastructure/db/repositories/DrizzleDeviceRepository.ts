@@ -1,4 +1,4 @@
-import { and, eq, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, notInArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { devices, productDeviceCompatibility } from '../schema/devices';
 import { products } from '../schema/products';
@@ -37,6 +37,19 @@ export class DrizzleDeviceRepository implements IDeviceRepository {
       })
       .returning({ id: devices.id, slug: devices.slug });
     return row;
+  }
+
+  /** Admin overview: recent devices with a compatibility count. */
+  async adminList(limit = 100): Promise<Array<{ id: string; brand: string; model: string; slug: string; isActive: boolean; compatibleCount: number }>> {
+    const rows = await db
+      .select({
+        id: devices.id, brand: devices.brand, model: devices.model, slug: devices.slug, isActive: devices.isActive,
+        compatibleCount: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.device_id = ${devices.id})::int`,
+      })
+      .from(devices)
+      .orderBy(desc(devices.createdAt))
+      .limit(Math.min(limit, 500));
+    return rows;
   }
 
   async resolveDeviceQuery(query: string) {

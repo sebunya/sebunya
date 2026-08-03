@@ -1,6 +1,6 @@
-import { and, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../client';
-import { creatorAttributions, creatorCommissions, creatorContentAssets, creatorPayouts } from '../schema/creators';
+import { creators, creatorAttributions, creatorCommissions, creatorContentAssets, creatorPayouts } from '../schema/creators';
 import { couponCodes, couponRedemptions } from '../schema/pricing';
 import { AttributionMechanism, computeWithholding } from '../../../domain/creators/Commission';
 
@@ -29,6 +29,16 @@ export interface RecordAttributionCommissionInput {
 }
 
 export class DrizzleCreatorRepository {
+  /** Admin overview: creators, commission totals by status, recent payouts. */
+  async adminOverview(): Promise<{ creators: Array<{ id: string; handle: string; status: string; tier: string | null }>; commissionsByStatus: Record<string, { count: number; amountUgx: number }>; payouts: Array<{ id: string; status: string; grossAmountUgx: number; withholdingTaxUgx: number; netAmountUgx: number; periodStart: string; periodEnd: string }> }> {
+    const creatorRows = await db.select({ id: creators.id, handle: creators.handle, status: creators.status, tier: creators.tier }).from(creators).orderBy(desc(creators.createdAt)).limit(50);
+    const commRows = await db.select({ status: creatorCommissions.status, count: sql<number>`count(*)::int`, amount: sql<number>`coalesce(sum(${creatorCommissions.commissionAmountUgx}),0)::bigint` }).from(creatorCommissions).groupBy(creatorCommissions.status);
+    const commissionsByStatus: Record<string, { count: number; amountUgx: number }> = {};
+    for (const r of commRows) commissionsByStatus[r.status] = { count: r.count, amountUgx: Number(r.amount) };
+    const payoutRows = await db.select({ id: creatorPayouts.id, status: creatorPayouts.status, grossAmountUgx: creatorPayouts.grossAmountUgx, withholdingTaxUgx: creatorPayouts.withholdingTaxUgx, netAmountUgx: creatorPayouts.netAmountUgx, periodStart: creatorPayouts.periodStart, periodEnd: creatorPayouts.periodEnd }).from(creatorPayouts).orderBy(desc(creatorPayouts.createdAt)).limit(50);
+    return { creators: creatorRows, commissionsByStatus, payouts: payoutRows };
+  }
+
   /** AC1/AC3/AC5 — record the primary attribution and (optionally) the commission
    * in ONE transaction. Unique (order, creator) means at most one commission and a
    * retried call is idempotent. */

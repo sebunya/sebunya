@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { flashSaleItems, flashSaleReservations, flashSales } from '../schema/flashSales';
 import { products } from '../schema/products';
@@ -14,6 +14,23 @@ export type FlashReserveResult =
  * the same row lock so a second session cannot bypass them.
  */
 export class DrizzleFlashSaleRepository {
+  /** Admin overview: recent sales with allocation roll-up across their items. */
+  async adminList(limit = 50): Promise<Array<{ id: string; name: string; status: string; startsAt: Date; endsAt: Date; unitsAllocated: number; unitsSold: number; unitsReserved: number }>> {
+    const rows = await db
+      .select({
+        id: flashSales.id, name: flashSales.name, status: flashSales.status, startsAt: flashSales.startsAt, endsAt: flashSales.endsAt,
+        unitsAllocated: sql<number>`coalesce(sum(${flashSaleItems.unitsAllocated}),0)::int`,
+        unitsSold: sql<number>`coalesce(sum(${flashSaleItems.unitsSold}),0)::int`,
+        unitsReserved: sql<number>`coalesce(sum(${flashSaleItems.unitsReserved}),0)::int`,
+      })
+      .from(flashSales)
+      .leftJoin(flashSaleItems, eq(flashSaleItems.flashSaleId, flashSales.id))
+      .groupBy(flashSales.id)
+      .orderBy(desc(flashSales.startsAt))
+      .limit(Math.min(limit, 200));
+    return rows;
+  }
+
   async reserve(input: {
     flashSaleItemId: string;
     customerIdentityHash: string;

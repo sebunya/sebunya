@@ -35,6 +35,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Manage physical catalogue items, definitions and specs.'
   },
   {
+    label: 'Platform Modules',
+    href: '/admin/platform-modules',
+    group: 'Commerce',
+    status: 'working',
+    description: 'P0–U6 modules live: coupons/promotions, device catalogue, review moderation, creator platform, flash sales and SEO/redirects.'
+  },
+  {
     label: 'PIM Imports',
     href: '/admin/pim-imports',
     group: 'Commerce',

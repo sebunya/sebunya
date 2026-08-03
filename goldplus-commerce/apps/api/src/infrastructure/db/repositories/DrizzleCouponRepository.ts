@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { couponCodes, couponRedemptions } from '../schema/pricing';
 import {
@@ -65,6 +65,18 @@ export class DrizzleCouponRepository implements ICouponRepository {
       }
     }
     return { batchId, requested: target, inserted: collected.size, codes: Array.from(collected) };
+  }
+
+  /** Admin overview: totals + recent codes with per-code redemption counts. */
+  async adminOverview(limit = 50): Promise<{ totalCodes: number; totalRedemptions: number; recent: Array<{ id: string; code: string; codeType: string; maxRedemptions: number | null; redemptionCount: number; isActive: boolean; createdAt: Date }> }> {
+    const [tot] = await db.select({ n: sql<number>`count(*)::int` }).from(couponCodes);
+    const [red] = await db.select({ n: sql<number>`count(*)::int` }).from(couponRedemptions).where(eq(couponRedemptions.wasReversed, false));
+    const recent = await db
+      .select({ id: couponCodes.id, code: couponCodes.code, codeType: couponCodes.codeType, maxRedemptions: couponCodes.maxRedemptions, redemptionCount: couponCodes.redemptionCount, isActive: couponCodes.isActive, createdAt: couponCodes.createdAt })
+      .from(couponCodes)
+      .orderBy(desc(couponCodes.createdAt))
+      .limit(Math.min(limit, 200));
+    return { totalCodes: tot?.n ?? 0, totalRedemptions: red?.n ?? 0, recent };
   }
 
   async findByNormalisedCode(codeNormalised: string): Promise<CouponRecord | null> {

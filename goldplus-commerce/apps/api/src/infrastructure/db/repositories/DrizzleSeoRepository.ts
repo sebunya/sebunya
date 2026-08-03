@@ -1,4 +1,4 @@
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { redirects, gscPerformance } from '../schema/seo';
 import { products } from '../schema/products';
@@ -43,6 +43,10 @@ export class DrizzleSeoRepository {
       .limit(Math.min(limit, 50_000))
       .offset(offset);
     return rows;
+  }
+
+  async listRedirects(limit = 100): Promise<Array<{ id: string; fromPath: string; toPath: string; statusCode: number; hitCount: number; reason: string | null }>> {
+    return db.select({ id: redirects.id, fromPath: redirects.fromPath, toPath: redirects.toPath, statusCode: redirects.statusCode, hitCount: redirects.hitCount, reason: redirects.reason }).from(redirects).orderBy(desc(redirects.createdAt)).limit(Math.min(limit, 500));
   }
 
   async countSitemapProducts(): Promise<number> {

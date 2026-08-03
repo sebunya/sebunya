@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { reviews, productRatingAggregate } from '../schema/reviews';
 import { orders, orderItems } from '../schema/commerce';
@@ -81,6 +81,24 @@ export class DrizzleReviewRepository implements IReviewRepository {
           lastRecomputedAt: now,
         },
       });
+  }
+
+  /** Admin moderation queue: recent reviews of a given status. */
+  async listByStatus(status: ReviewStatus, limit = 100): Promise<Array<{ id: string; productId: string; rating: number; title: string | null; body: string | null; status: string; isVerifiedPurchase: boolean; flagReason: string | null; createdAt: Date }>> {
+    const rows = await db
+      .select({ id: reviews.id, productId: reviews.productId, rating: reviews.rating, title: reviews.title, body: reviews.body, status: reviews.status, isVerifiedPurchase: reviews.isVerifiedPurchase, flagReason: reviews.flagReason, createdAt: reviews.createdAt })
+      .from(reviews)
+      .where(eq(reviews.status, status))
+      .orderBy(desc(reviews.createdAt))
+      .limit(Math.min(limit, 500));
+    return rows;
+  }
+
+  async countByStatus(): Promise<Record<string, number>> {
+    const rows = await db.select({ status: reviews.status, n: sql<number>`count(*)::int` }).from(reviews).groupBy(reviews.status);
+    const out: Record<string, number> = { pending: 0, published: 0, rejected: 0, flagged: 0 };
+    for (const r of rows) out[r.status] = r.n;
+    return out;
   }
 
   async getAggregate(productId: string): Promise<RatingAggregate | null> {
