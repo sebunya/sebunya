@@ -1,4 +1,6 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /**
  * Platform-wide route-contract browser suite (production recovery §13/§14).
@@ -26,18 +28,37 @@ const FAILURE_BANNERS = [
   /API unreachable/i,
 ];
 
-const PUBLIC_ROUTES = ['/', '/shop', '/product-finder', '/track-order', '/cart', '/returns', '/quotes'];
-
-const ADMIN_ROUTES = [
-  '/admin', '/admin/analytics', '/admin/commerce-os', '/admin/platform-modules',
-  '/admin/pim-imports', '/admin/orders', '/admin/inventory', '/admin/pricing',
-  '/admin/fraud', '/admin/fulfilment', '/admin/customer-dna', '/admin/decision-intelligence',
-  '/admin/measurement-control-tower', '/admin/measurement', '/admin/consent-operations',
-  '/admin/automation', '/admin/merchandising', '/admin/notifications', '/admin/carts',
-  '/admin/audit', '/admin/compatibility', '/admin/categories', '/admin/dealers',
-  '/admin/experiments', '/admin/feeds', '/admin/governance', '/admin/loyalty',
-  '/admin/lifecycle', '/admin/demand', '/admin/campaigns', '/admin/copy-quality',
+const PUBLIC_ROUTES = [
+  '/', '/shop', '/product-finder', '/track-order', '/cart', '/returns', '/quotes',
+  '/support/issue', '/support/fake', '/warranty', '/compare', '/loyalty', '/preferences',
+  '/login', '/privacy', '/terms',
 ];
+
+/**
+ * Wave 2A completeness: admin coverage is DERIVED from the pages directory, so a new
+ * admin page is covered the day it exists and a hand-kept list can never silently
+ * lag the platform. Dynamic ([param]) pages are skipped — they need fixture ids.
+ */
+function discoverAdminRoutes(): string[] {
+  const pagesDir = path.resolve(__dirname, '../../apps/web/src/pages/admin');
+  const routes = new Set<string>(['/admin']);
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!entry.name.endsWith('.astro')) continue;
+      let rel = path.relative(pagesDir, full).replace(/\.astro$/, '');
+      if (rel.split('/').some((seg) => seg.startsWith('['))) continue;
+      if (rel.endsWith('/index') || rel === 'index') rel = rel.replace(/\/?index$/, '');
+      if (rel.includes('login')) continue; // covered unauthenticated by design
+      routes.add(rel === '' ? '/admin' : `/admin/${rel}`);
+    }
+  };
+  walk(pagesDir);
+  return [...routes].sort();
+}
+
+const ADMIN_ROUTES = discoverAdminRoutes();
 
 let sessionCookie: { name: string; value: string; domain: string; path: string } | null = null;
 
@@ -74,6 +95,17 @@ test.describe('public routes render without shared-failure banners', () => {
   for (const path of PUBLIC_ROUTES) {
     test(`public ${path}`, async ({ page }) => { await assertNoBanner(page, path); });
   }
+});
+
+test('cart mints its credential cookie (do-not-break ledger #2)', async () => {
+  const ctx = await pwRequest.newContext();
+  const res = await ctx.get(`${WEB}/cart`);
+  const setCookies = res.headersArray().filter((h) => h.name.toLowerCase() === 'set-cookie');
+  expect(
+    setCookies.some((h) => /gp_cart=/.test(h.value)),
+    'GET /cart must mint the gp_cart credential cookie — its absence is the RC-3 failure mode',
+  ).toBe(true);
+  await ctx.dispose();
 });
 
 test.describe('admin routes (authenticated) render without shared-failure banners', () => {

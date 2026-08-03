@@ -282,7 +282,7 @@ const maxTrendValue = Math.max(1, ...(analytics?.trend ?? []).map((point) => poi
               <h2 id="analytics-payments" class="text-lg font-black text-brand-dark">Payment intelligence</h2>
               <p class="mt-1 text-xs text-slate-500">Attempt-level truth from the payment ledger. The denominator is provider attempts, not orders, so this rate can legitimately differ from the order-level payment success rate above.</p>
             </div>
-            <a href="/admin/measurement/payments" class="text-xs font-black text-brand-dark">Open payment reconciliation →</a>
+            <a href="/admin/measurement-control-tower" class="text-xs font-black text-brand-dark">Open payment reconciliation →</a>
           </div>
 
           {!payments && (

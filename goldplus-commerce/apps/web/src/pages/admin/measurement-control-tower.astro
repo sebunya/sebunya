@@ -13,6 +13,7 @@ import DataQualityWarningsTable from '../../components/admin/measurement-control
 import RecentEventsTable from '../../components/admin/measurement-control-tower/RecentEventsTable.astro';
 import AdminEmptyState from '../../components/admin/AdminEmptyState.astro';
 import { readSessionToken } from '../../lib/session';
+import { apiBase } from '../../lib/api';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -20,20 +21,27 @@ if (!token) {
 }
 
 // Existing API permissions remain authoritative; this page only improves safe UI states.
-const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
+//
+// This frontmatter previously read a PUBLIC_API_* variable no deployment sets — so
+// SSR always fetched localhost:3000, always threw, and the page reported
+// SERVICE_UNAVAILABLE forever while returning 200. It also forwarded the browser's
+// Cookie header, but the API authenticates with `Authorization: Bearer` only, so even
+// a correct origin would have shown ACCESS_DENIED. Canonical origin + bearer + a
+// status-shaped classification make the three states truthful.
 let summaryData = null;
 let errorMsg = '';
 
 try {
-  const cookieHeader = Astro.request.headers.get('cookie');
-  const res = await fetch(`${apiUrl}/admin/measurement-control-tower/summary`, {
-    headers: {
-      'cookie': cookieHeader || '',
-    }
+  const res = await fetch(`${apiBase}/admin/measurement-control-tower/summary`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    signal: AbortSignal.timeout(10_000),
   });
-  
+
   if (res.status === 401 || res.status === 403) {
     errorMsg = 'ACCESS_DENIED';
+  } else if (!res.ok) {
+    // The API answered — this is a server/contract fault, not unavailability.
+    errorMsg = 'LOAD_FAILED';
   } else {
     const json = await res.json();
     if (json.success) {
@@ -43,6 +51,7 @@ try {
     }
   }
 } catch {
+  // Only an unreachable/timed-out API lands here now.
   errorMsg = 'SERVICE_UNAVAILABLE';
 }
 ---

@@ -14,7 +14,7 @@ const configGroups = [
     id: 'grp-store-setup',
     title: 'Store setup',
     items: [
-      { label: 'Public API Connection', key: 'PUBLIC_API_URL', value: apiBase || 'UNCONFIGURED', desc: 'The core connection address resolving backend API queries.', source: 'Deployment setting' },
+      { label: 'Public API Connection', key: 'PUBLIC_API_BASE_URL', value: apiBase || 'UNCONFIGURED', desc: 'The core connection address resolving backend API queries.', source: 'Deployment setting' },
       { label: 'Primary Currency', key: 'CURRENCY_DEFAULT', value: 'UGX', desc: 'The presentation monetary unit utilized on storefront layouts.', source: 'Deployment setting' },
       { label: 'Default Language / Locale', key: 'DEFAULT_LOCALE', value: 'en-UG', desc: 'Language format determining number presentation.', source: 'Deployment setting' },
       { label: 'Maintenance Status', key: 'MAINTENANCE_MODE', value: 'INACTIVE', desc: 'System toggle allowing store closure during scheduled maintenance.', source: 'Deployment setting' }
