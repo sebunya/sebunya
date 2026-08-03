@@ -505,6 +505,13 @@
       "when": 1787025600000,
       "tag": "0071_reviews",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "5",
+      "when": 1787112000000,
+      "tag": "0072_creator_platform",
+      "breakpoints": true
     }
   ]
 }
