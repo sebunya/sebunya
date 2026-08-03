@@ -31,6 +31,7 @@ import { LegalCmsUseCase } from '../application/use-cases/legal/LegalCmsUseCase'
 import { DrizzleAbandonmentRepository } from './db/repositories/DrizzleAbandonmentRepository';
 import { DrizzleStockAdjustmentRepository } from './db/repositories/DrizzleStockAdjustmentRepository';
 import { DrizzleNotificationTemplateRepository } from './db/repositories/DrizzleNotificationTemplateRepository';
+import { DrizzleCampaignRepository } from './db/repositories/DrizzleCampaignRepository';
 import { AdjustStockUseCase } from '../application/use-cases/inventory/AdjustStockUseCase';
 import { AbandonmentUseCase } from '../application/use-cases/abandonment/AbandonmentUseCase';
 import { QueueService, QUEUES } from './queues/QueueService';
@@ -523,6 +524,9 @@ export class Registry {
   // Wave 2C — legal policy CMS.
   public readonly legalCmsRepo = new DrizzleLegalCmsRepository();
   public readonly legalCmsUseCase = new LegalCmsUseCase(this.legalCmsRepo);
+
+  // Wave 2F — campaign scaffold (no-send): first owner of campaigns/utm_links.
+  public readonly campaignRepo = new DrizzleCampaignRepository();
 
   // Wave 2E-3 — notification wording overrides.
   public readonly notificationTemplateRepo = new DrizzleNotificationTemplateRepository();

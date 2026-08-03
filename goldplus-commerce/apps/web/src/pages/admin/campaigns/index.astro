@@ -1,96 +1,166 @@
 ---
-import AdminLayout from '../../../layouts/AdminLayout.astro';
-import EmptyState from '../../../components/EmptyState.astro';
-import Notice from '../../../components/Notice.astro';
-import { tryFetchAdminList } from '../../../lib/api';
-import { readSessionToken } from '../../../lib/session';
-import { type SampleCampaign } from '../../../lib/sample-data';
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/campaigns", 303);
 }
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
-// Truthful state: no campaign API exists yet, so this page reports
-// "not configured" instead of rendering fabricated campaign rows.
-const result = await tryFetchAdminList<SampleCampaign>(
-  '/governance/admin/campaigns',
-  [],
-  'Campaign management is not configured yet. No campaign engine is wired to this console; rows will appear when the campaign API ships.',
-  token,
-);
+// Wave 2F: campaign scaffold — definitions, UTM links, count-only audience preview.
+// This replaced the truthful "not configured" placeholder the moment a real campaign
+// API existed. There is NO send path from this workspace; the banner says so plainly.
+let notice: { kind: "success" | "error"; text: string } | null = null;
+if (Astro.request.method === "POST") {
+  try {
+    const form = await Astro.request.formData();
+    const action = String(form.get("action") || "");
+    if (action === "create") {
+      const res = await fetch(`${apiBase}/admin/campaigns`, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          name: form.get("name"), objective: form.get("objective"),
+          channel: form.get("channel"), targetUrl: form.get("targetUrl") || null,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: "success", text: `Campaign “${json.data.name}” created as DRAFT.` }
+        : { kind: "error", text: json?.error?.message || "Create refused." };
+    } else if (action === "status") {
+      const id = String(form.get("id") || "");
+      const res = await fetch(`${apiBase}/admin/campaigns/${encodeURIComponent(id)}/status`, {
+        method: "POST", headers, body: JSON.stringify({ status: form.get("status") }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: "success", text: `Campaign is now ${json.data.status}.` }
+        : { kind: "error", text: json?.error?.message || "Status change refused." };
+    } else if (action === "utm") {
+      const id = String(form.get("id") || "");
+      const res = await fetch(`${apiBase}/admin/campaigns/${encodeURIComponent(id)}/utm-links`, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          source: form.get("source"), medium: form.get("medium"),
+          campaignName: form.get("campaignName"), content: form.get("content") || null,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: "success", text: `UTM link added (${json.data.shortUrl}).` }
+        : { kind: "error", text: json?.error?.message || "UTM link refused." };
+    }
+  } catch {
+    notice = { kind: "error", text: "Campaign service is unreachable right now." };
+  }
+}
 
-const statusToBadge: Record<SampleCampaign['status'], { variant: 'pending' | 'info' | 'success' | 'neutral'; label: string }> = {
-  active: { variant: 'success', label: 'Running' },
-  paused: { variant: 'neutral', label: 'Paused' },
-  scheduled: { variant: 'info', label: 'Queueing' },
+let campaigns: any[] = [];
+let audience: any = null;
+let loadError = "";
+try {
+  const [listRes, audRes] = await Promise.all([
+    fetch(`${apiBase}/admin/campaigns`, { headers, signal: AbortSignal.timeout(5000) }),
+    fetch(`${apiBase}/admin/campaigns/audience-preview`, { headers, signal: AbortSignal.timeout(5000) }),
+  ]);
+  const listJson = await listRes.json().catch(() => null);
+  const audJson = await audRes.json().catch(() => null);
+  if (listJson?.success) campaigns = listJson.data.campaigns;
+  else loadError = listJson?.error?.message || "Could not load campaigns.";
+  if (audJson?.success) audience = audJson.data;
+} catch {
+  loadError = "Campaign service is unreachable right now.";
+}
+const fmtUgx = (n: number) => `USh ${Number(n || 0).toLocaleString()}`;
+const STATUS_STYLE: Record<string, string> = {
+  DRAFT: "bg-slate-100 text-slate-700 border-slate-200",
+  APPROVED: "bg-emerald-50 text-emerald-800 border-emerald-300",
+  PAUSED: "bg-amber-50 text-amber-800 border-amber-300",
+  ARCHIVED: "bg-gray-100 text-gray-500 border-gray-200",
 };
 ---
 
-<AdminLayout 
-  title="Marketing Campaigns" 
-  description="Review public campaign performance and promotional status."
->
-  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
-      <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Active Campaigns</h2>
-        <p class="text-sm text-gray-500 mt-1">Track conversion rates and delivery vectors of public promotional links.</p>
-      </div>
+<AdminLayout title="Campaigns" description="Campaign definitions, UTM links and audience preview — the send engine ships in a later wave and no message can be sent from here.">
+  <div class="space-y-8">
+    <div class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">
+      No-send scaffold: definitions, UTM links and count-only audience preview. Consent, suppression,
+      frequency and recency gates — and any actual sending — ship with the send wave. Nothing here can
+      message a customer.
     </div>
 
-    {result.isSample && (
-      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4">
-        
-        <div class="text-xs leading-relaxed"><strong>System note:</strong> {result.reason}</div>
-      </div>
+    {notice && (
+      <div class={`rounded-xl px-4 py-3 text-sm font-semibold ${notice.kind === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{notice.text}</div>
+    )}
+    {loadError && (
+      <div class="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{loadError}</div>
     )}
 
-    {result.items.length === 0 ? (
-      <EmptyState
-        title="No Campaigns Live"
-        message="Historical reach analytics do not possess active triggers."
-      />
-    ) : (
-      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse">
-            <thead>
-              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
-                <th class="p-6">Campaign Name</th>
-                <th class="p-6">Distribution Vector</th>
-                <th class="p-6 text-center">State</th>
-                <th class="p-6 text-right">Avg C.V.R</th>
-              </tr>
-            </thead>
-            <tbody class="text-xs divide-y divide-gray-50">
-              {result.items.map((camp) => (
-                <tr class="hover:bg-gray-50 transition-colors">
-                  <td class="p-6">
-                    <div class="font-bold text-brand-dark text-sm">{camp.name}</div>
-                  </td>
-                  <td class="p-6 text-gray-600 font-medium uppercase tracking-wider text-[10px]">
-                    {camp.channel}
-                  </td>
-                  <td class="p-6 text-center">
-                    <span class={`inline-block px-2.5 py-1 rounded-lg font-black text-[9px] uppercase tracking-wide border ${
-                      statusToBadge[camp.status].variant === 'success' ? 'bg-green-50 text-green-700 border-green-100' :
-                      statusToBadge[camp.status].variant === 'info' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                      'bg-gray-50 text-gray-700 border-gray-100'
-                    }`}>
-                      {statusToBadge[camp.status].label}
-                    </span>
-                  </td>
-                  <td class="p-6 text-right font-black font-mono text-brand-dark text-sm">
-                    {camp.conversionRate}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    {audience && (
+      <section class="rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Audience preview — abandoned carts</h2>
+        <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3"><p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Open abandonments</p><p class="mt-1 text-lg font-black text-slate-800">{audience.openAbandonments}</p></div>
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3"><p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Known identity</p><p class="mt-1 text-lg font-black text-slate-800">{audience.withKnownIdentity}</p></div>
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3"><p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Guest only</p><p class="mt-1 text-lg font-black text-slate-800">{audience.guestOnly}</p></div>
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3"><p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Basket value</p><p class="mt-1 text-lg font-black text-slate-800">{fmtUgx(audience.totalValueUgx)}</p></div>
         </div>
-      </div>
+        <p class="mt-3 text-[11px] text-slate-500">{audience.consentNote}</p>
+      </section>
     )}
+
+    <section class="rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">New campaign</h2>
+      <form method="POST" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
+        <input type="hidden" name="action" value="create" />
+        <input name="name" required maxlength="255" placeholder="Name" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+        <input name="objective" required maxlength="50" placeholder="Objective (e.g. recover-carts)" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+        <select name="channel" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none focus:border-brand-gold">
+          <option value="email">email</option><option value="sms">sms</option>
+          <option value="whatsapp">whatsapp</option><option value="internal">internal</option>
+        </select>
+        <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Create draft</button>
+        <input name="targetUrl" placeholder="Target URL (https://shopgoldplus.com/…)" class="sm:col-span-5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+      </form>
+    </section>
+
+    <section class="rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Campaigns</h2>
+      {campaigns.length === 0 ? (
+        <p class="mt-4 text-sm font-medium text-slate-500">No campaigns defined yet. Create the first draft above — nothing goes live from this workspace.</p>
+      ) : (
+        <div class="mt-4 space-y-4">
+          {campaigns.map((cmp) => (
+            <div class="rounded-xl border border-slate-200 p-4">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-black text-slate-800">{cmp.name}</span>
+                <span class={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase ${STATUS_STYLE[cmp.status] ?? STATUS_STYLE.DRAFT}`}>{cmp.status}</span>
+                <span class="text-[11px] font-bold text-slate-500">{cmp.channel} · {cmp.objective} · {cmp.utmLinkCount} UTM link(s)</span>
+              </div>
+              {cmp.targetUrl && <p class="mt-1 text-[11px] font-medium text-slate-500">{cmp.targetUrl}</p>}
+              <div class="mt-3 flex flex-wrap items-end gap-3">
+                <form method="POST" class="flex items-center gap-2">
+                  <input type="hidden" name="action" value="status" />
+                  <input type="hidden" name="id" value={cmp.id} />
+                  <select name="status" class="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-bold outline-none">
+                    <option value="APPROVED">APPROVED</option><option value="PAUSED">PAUSED</option><option value="ARCHIVED">ARCHIVED</option>
+                  </select>
+                  <button type="submit" class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-gray-700 hover:bg-gray-50">Set status</button>
+                </form>
+                <form method="POST" class="flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="action" value="utm" />
+                  <input type="hidden" name="id" value={cmp.id} />
+                  <input name="source" required placeholder="utm_source" class="w-28 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-medium outline-none" />
+                  <input name="medium" required placeholder="utm_medium" class="w-28 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-medium outline-none" />
+                  <input name="campaignName" required placeholder="utm_campaign" class="w-32 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-medium outline-none" />
+                  <button type="submit" class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-gray-700 hover:bg-gray-50">Add UTM link</button>
+                </form>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   </div>
 </AdminLayout>
