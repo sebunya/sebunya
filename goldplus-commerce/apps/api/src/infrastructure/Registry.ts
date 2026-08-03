@@ -5,6 +5,7 @@ import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
+import { DrizzleDeviceRepository } from './db/repositories/DrizzleDeviceRepository';
 import { DrizzlePricingRepository } from './db/repositories/DrizzlePricingRepository';
 import { DrizzlePricingQuoteRepository } from './db/repositories/DrizzlePricingQuoteRepository';
 import { DrizzlePricingCapacityRepository } from './db/repositories/DrizzlePricingCapacityRepository';
@@ -461,6 +462,7 @@ export class Registry {
   public readonly cartQueryRepo = new DrizzleCartQueryRepository();
   public readonly orderRepo = new DrizzleOrderRepository();
   public readonly productRepo = new DrizzleProductRepository();
+  public readonly deviceRepo = new DrizzleDeviceRepository();
   public readonly pricingRepo = new DrizzlePricingRepository();
   public readonly pricingQuoteRepo = new DrizzlePricingQuoteRepository();
   public readonly pricingCapacityRepo = new DrizzlePricingCapacityRepository();
