@@ -17,6 +17,47 @@ routes.use('*', authMiddleware);
 const ok = <T>(c: any, data: T) => c.json({ success: true, data } satisfies ApiResponse<T>);
 const bad = (c: any, code: string, message: string, status = 400) => c.json({ success: false, error: { code, message } } satisfies ApiResponse<never>, status);
 
+// ---- Wave 2D: capability hub ------------------------------------------
+// One honest snapshot for the orientation hub: real row counts, no derived
+// health theatre. A capability with a schema but no code reports exactly that.
+routes.get('/hub', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const { db } = await import('../../../../infrastructure/db/client');
+  const { sql } = await import('drizzle-orm');
+  const count = async (query: string): Promise<number> => {
+    try {
+      const result: any = await db.execute(sql.raw(query));
+      const rows = Array.isArray(result) ? result : result.rows ?? [];
+      return Number(rows[0]?.n ?? 0);
+    } catch {
+      return -1; // table absent/unreadable: reported as unknown, never zero
+    }
+  };
+  const [
+    products, productsMissingImages, orders, mediaAssets, legalPublished, legalDrafts,
+    abandonmentOpen, reviewsPending, flashSales, redirects, devices, campaignsRows,
+  ] = await Promise.all([
+    count("select count(*)::int as n from products"),
+    count("select count(*)::int as n from products where has_image = false or image_url is null or image_url = ''"),
+    count('select count(*)::int as n from orders'),
+    count("select count(*)::int as n from media_assets where status = 'ACTIVE'"),
+    count("select count(*)::int as n from legal_policy_versions where status = 'PUBLISHED'"),
+    count("select count(*)::int as n from legal_policy_versions where status in ('DRAFT','IN_REVIEW')"),
+    count("select count(*)::int as n from cart_abandonments where status = 'OPEN'"),
+    count("select count(*)::int as n from reviews where status = 'pending'"),
+    count('select count(*)::int as n from flash_sales'),
+    count('select count(*)::int as n from redirects'),
+    count('select count(*)::int as n from devices'),
+    count('select count(*)::int as n from campaigns'),
+  ]);
+  return ok(c, {
+    generatedAt: new Date().toISOString(),
+    counts: {
+      products, productsMissingImages, orders, mediaAssets, legalPublished, legalDrafts,
+      abandonmentOpen, reviewsPending, flashSales, redirects, devices, campaignsRows,
+    },
+  });
+});
+
 // ---- U1: coupons -------------------------------------------------------
 routes.get('/coupons', requirePermissions([PERMISSIONS.PROMOTIONS_READ]), async (c) => {
   return ok(c, await Registry.getInstance().couponRepo.adminOverview());

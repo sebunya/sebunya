@@ -48,10 +48,44 @@ const [coupons, devices, reviews, creators, flashSales, seo] = await Promise.all
   load("seo"),
 ]);
 const fmt = (n: number | null | undefined) => (n == null ? "—" : Number(n).toLocaleString());
+
+// Wave 2D: capability hub — one honest snapshot (real row counts; -1 renders as
+// "unknown"; a schema-only capability says so instead of pretending).
+const hub = await load("hub");
+const hc = (n: number | undefined) => (n == null || n < 0 ? "unknown" : Number(n).toLocaleString());
+const HUB_CARDS = hub?.counts
+  ? [
+      { title: "Catalogue", metric: `${hc(hub.counts.products)} products`, note: hub.counts.productsMissingImages > 0 ? `${hc(hub.counts.productsMissingImages)} missing images` : "images complete", href: "/admin/pim-imports", state: "WORKING" },
+      { title: "Media library", metric: `${hc(hub.counts.mediaAssets)} assets`, note: "upload · variants · usage graph", href: "/admin/media", state: "WORKING" },
+      { title: "Orders", metric: `${hc(hub.counts.orders)} orders`, note: "operations actions arrive in a later wave", href: "/admin/orders", state: "WORKING" },
+      { title: "Legal CMS", metric: `${hc(hub.counts.legalPublished)} published`, note: `${hc(hub.counts.legalDrafts)} in draft/review · maker/checker enforced`, href: "/admin/legal", state: "WORKING" },
+      { title: "Cart abandonment", metric: `${hc(hub.counts.abandonmentOpen)} open`, note: "hourly evaluator · campaign feed in a later wave", href: "/admin/carts", state: "WORKING" },
+      { title: "Reviews", metric: `${hc(hub.counts.reviewsPending)} pending`, note: "moderation below", href: "/admin/platform-modules", state: "WORKING" },
+      { title: "Flash sales", metric: `${hc(hub.counts.flashSales)} defined`, note: "canonical pricing path", href: "/admin/platform-modules", state: "WORKING" },
+      { title: "SEO redirects", metric: `${hc(hub.counts.redirects)} rules`, note: "crawl policy · sitemap live", href: "/admin/platform-modules", state: "WORKING" },
+      { title: "Devices", metric: `${hc(hub.counts.devices)} devices`, note: "compatibility catalogue", href: "/admin/compatibility", state: "WORKING" },
+      { title: "Campaigns", metric: hub.counts.campaignsRows === 0 ? "not built" : hc(hub.counts.campaignsRows), note: "schema exists; engine is a later wave — nothing is pretended here", href: "/admin/campaigns", state: "INCOMPLETE_INTERNAL_GAP" },
+    ]
+  : null;
 ---
 
 <AdminLayout title="Platform Modules" description="P0–U6 commerce modules: coupons, devices, reviews, creators, flash sales and SEO — live from the canonical backends.">
   <div class="space-y-8">
+    {HUB_CARDS && (
+      <section class="rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Capability hub</h2>
+        <p class="mt-1 text-xs text-slate-500">Live counts from the canonical backends. A capability that is not built says so.</p>
+        <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {HUB_CARDS.map((card) => (
+            <a href={card.href} class={`block rounded-xl border p-3 transition hover:shadow-sm ${card.state === "INCOMPLETE_INTERNAL_GAP" ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-slate-50 hover:bg-white"}`}>
+              <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">{card.title}</p>
+              <p class="mt-1 text-sm font-black text-slate-800">{card.metric}</p>
+              <p class="mt-1 text-[11px] leading-snug text-slate-500">{card.note}</p>
+            </a>
+          ))}
+        </div>
+      </section>
+    )}
     {notice && (
       <div class={`rounded-xl px-4 py-3 text-sm font-semibold ${notice.kind === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{notice.text}</div>
     )}
