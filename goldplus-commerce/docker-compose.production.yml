@@ -32,10 +32,11 @@ services:
       start_period: 5s
 
   pgbouncer:
-    # Pinned: `latest` drifted to a build whose default listen_port is 5432, which
-    # made the :6432 healthcheck fail and (via depends_on) blocked the API from
-    # starting even though the API connects to postgres directly.
-    image: edoburu/pgbouncer:1.25.2
+    # Pinned by digest: `latest` drifted to a build whose default listen_port is 5432,
+    # which made the :6432 healthcheck fail and (via depends_on) blocked the API from
+    # starting even though the API connects to postgres directly. Digest = PgBouncer
+    # 1.25.2 (edoburu has no matching semver tag), re-pointed to 6432 via LISTEN_PORT.
+    image: edoburu/pgbouncer@sha256:4c1ca296ef525f108f5d3552cc337c0c09587cf8dae7f0067fd93349e47dc1cd
     restart: always
     environment:
       - DB_HOST=postgres
