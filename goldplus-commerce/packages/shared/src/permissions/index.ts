@@ -95,6 +95,8 @@ export const PERMISSIONS = {
   LEGAL_READ: 'legal.read',
   LEGAL_MANAGE: 'legal.manage',
   LEGAL_APPROVE: 'legal.approve',
+  // Wave 2E-3 — notification template wording overrides (draft/publish/revert).
+  NOTIFICATIONS_MANAGE: 'notifications.manage',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

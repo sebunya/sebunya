@@ -17,6 +17,7 @@ import app from './app';
 
 import { startOutboxTicker, gracefulStopOutboxTicker } from '../../infrastructure/scheduler/OutboxTicker';
 import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
+import { templateOverrideCache } from '../../infrastructure/notifications/TemplateOverrideCache';
 import { endDbConnection } from '../../infrastructure/db/client';
 import { QueueService } from '../../infrastructure/queues/QueueService';
 import { registerAllWorkers } from '../../infrastructure/queues/QueueWorkers';
@@ -37,6 +38,8 @@ const server = serve({
     registerAllWorkers();
     // Converge DB permissions on the code registry (advisory-locked, add-only).
     void runPermissionRegistrySyncAtBoot();
+    // Notification wording overrides: load published rows now, refresh every minute.
+    templateOverrideCache.start();
   }
 });
 

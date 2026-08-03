@@ -7,6 +7,36 @@ export type NotificationTemplateKey =
   | 'ORDER_FULFILLMENT_PROCESSING'
   | 'ORDER_FULFILLMENT_COMPLETED';
 
+export const NOTIFICATION_TEMPLATE_KEYS: NotificationTemplateKey[] = [
+  'ORDER_RECEIVED_UNPAID',
+  'ORDER_PAYMENT_PENDING',
+  'ORDER_PAYMENT_SUCCESS',
+  'ORDER_PAYMENT_FAILED',
+  'ORDER_PAYMENT_CANCELLED',
+  'ORDER_FULFILLMENT_PROCESSING',
+  'ORDER_FULFILLMENT_COMPLETED',
+];
+
+/**
+ * Wave 2E-3: operator wording overrides. The provider is INJECTED by
+ * infrastructure at boot (a cached read of published override rows) so this
+ * application-layer renderer stays free of database imports. Fields fall through
+ * individually — a published override with only a subject changes only the
+ * subject. Code strings below remain the canonical fallback; wording can never
+ * render blank because of a missing row.
+ */
+export interface TemplateWordingOverride {
+  subject?: string | null;
+  preheader?: string | null;
+  headline?: string | null;
+}
+export type TemplateOverrideProvider = (key: NotificationTemplateKey) => TemplateWordingOverride | undefined;
+
+let overrideProvider: TemplateOverrideProvider | null = null;
+export function setTemplateOverrideProvider(provider: TemplateOverrideProvider | null): void {
+  overrideProvider = provider;
+}
+
 export interface EmailRenderResult {
   subject: string;
   preheader: string;
@@ -37,6 +67,8 @@ export class NotificationTemplateRenderer {
    * Safe subject line mapping according to template type
    */
   public getSubject(template: NotificationTemplateKey): string {
+    const override = overrideProvider?.(template)?.subject;
+    if (override) return override;
     switch (template) {
       case 'ORDER_RECEIVED_UNPAID':
         return 'We received your GoldPlus order';
@@ -61,6 +93,8 @@ export class NotificationTemplateRenderer {
    * Safe preheader text mapping according to template type
    */
   public getPreheader(template: NotificationTemplateKey): string {
+    const override = overrideProvider?.(template)?.preheader;
+    if (override) return override;
     switch (template) {
       case 'ORDER_RECEIVED_UNPAID':
         return 'Complete payment to move your order forward.';
@@ -85,6 +119,8 @@ export class NotificationTemplateRenderer {
    * Safe headline text mapping according to template type
    */
   private getHeadline(template: NotificationTemplateKey): string {
+    const override = overrideProvider?.(template)?.headline;
+    if (override) return override;
     switch (template) {
       case 'ORDER_RECEIVED_UNPAID':
         return 'Order received. Payment is still pending.';

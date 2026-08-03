@@ -554,6 +554,13 @@
       "when": 1787630400000,
       "tag": "0078_cart_abandonment",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "5",
+      "when": 1787716800000,
+      "tag": "0079_notification_template_overrides",
+      "breakpoints": true
     }
   ]
 }
