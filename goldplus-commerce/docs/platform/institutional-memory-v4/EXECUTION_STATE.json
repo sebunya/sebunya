@@ -13,8 +13,8 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "3daa238",
-  "phase": "Wave 2: 2A/2B/2C/2E-1 RELEASED; next 2D capability hub",
+  "lastGreenHead": "9709116",
+  "phase": "Wave 2 session complete: 2A/2B/2C/2D/2E-1 RELEASED; remaining: 2D-PIM depth, 2E ops actions, 2F campaigns/automation, 2G intelligence, 2H measurement/loyalty depth",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -141,6 +141,12 @@
       "module": "abandonment-pipeline",
       "status": "RELEASED",
       "evidence": "3daa238: 0078 rehearsed+live, endpoint 200 empty, 3 crons in redis"
+    },
+    {
+      "id": "W2D",
+      "module": "capability-hub",
+      "status": "RELEASED",
+      "evidence": "9709116: hub counts live (13 orders, 3 open abandonments), truthful not-built labels, page section renders"
     }
   ],
   "constraints": [
@@ -151,9 +157,9 @@
     "principal-only: Registry/permissions/app.ts/compose/Caddy/journal"
   ],
   "nextExact": {
-    "file": "apps/web/src/pages/admin/platform-modules.astro",
-    "command": "Wave 2D: hub aggregator endpoint (/admin/modules/hub, honest counts via one read repo) + rebuild page as orientation hub with workspace links + truthful maturity labels",
-    "expected": "hub live; then honest terminal report or continue 2D-PIM/2E-ops as context allows"
+    "file": "docs/platform/institutional-memory-v4/MODULE_MATURITY_MATRIX.md",
+    "command": "resume with Wave 2E ops actions (orders verify/assign/hold with reason+audit \u2014 mirror new-modules pattern) or 2D PIM control room; same checkpoint ritual; release recipe in NEXT_RESUME.md",
+    "expected": "continue wave order to terminal COMPLETE"
   },
-  "releasedHead": "3daa238"
+  "releasedHead": "9709116"
 }
