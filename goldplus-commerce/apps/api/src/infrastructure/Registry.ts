@@ -8,6 +8,7 @@ import { DrizzleProductRepository } from './db/repositories/DrizzleProductReposi
 import { DrizzlePricingRepository } from './db/repositories/DrizzlePricingRepository';
 import { DrizzlePricingQuoteRepository } from './db/repositories/DrizzlePricingQuoteRepository';
 import { DrizzlePricingCapacityRepository } from './db/repositories/DrizzlePricingCapacityRepository';
+import { DrizzleCouponRepository } from './db/repositories/DrizzleCouponRepository';
 import { DrizzlePricingOperationsRepository } from './db/repositories/DrizzlePricingOperationsRepository';
 import { DrizzleDealerRepository } from './db/repositories/DrizzleDealerRepository';
 import { DrizzleSupportRepository } from './db/repositories/DrizzleSupportRepository';
@@ -103,6 +104,7 @@ import { GetCartByIdUseCase } from '../application/use-cases/commerce/GetCartByI
 import { CheckoutUseCase } from '../application/use-cases/commerce/CheckoutUseCase';
 import { EvaluateCartPricingUseCase } from '../application/use-cases/pricing/EvaluateCartPricingUseCase';
 import { ManagePromotionCapacityUseCase } from '../application/use-cases/pricing/ManagePromotionCapacityUseCase';
+import { RedeemCouponUseCase } from '../application/use-cases/pricing/RedeemCouponUseCase';
 import { PricingGovernanceUseCase } from '../application/use-cases/pricing/PricingGovernanceUseCase';
 import { PricingOperationsUseCase } from '../application/use-cases/pricing/PricingOperationsUseCase';
 import { DrizzleDeliveryZoneRepository } from './db/repositories/DrizzleDeliveryZoneRepository';
@@ -461,6 +463,7 @@ export class Registry {
   public readonly pricingRepo = new DrizzlePricingRepository();
   public readonly pricingQuoteRepo = new DrizzlePricingQuoteRepository();
   public readonly pricingCapacityRepo = new DrizzlePricingCapacityRepository();
+  public readonly couponRepo = new DrizzleCouponRepository();
   public readonly pricingOperationsRepo = new DrizzlePricingOperationsRepository();
   public readonly dealerRepo = new DrizzleDealerRepository();
   public readonly supportRepo = new DrizzleSupportRepository();
@@ -619,6 +622,7 @@ export class Registry {
     this.pricingQuoteRepo,
   );
   public readonly managePromotionCapacityUseCase = new ManagePromotionCapacityUseCase(this.pricingCapacityRepo);
+  public readonly redeemCouponUseCase = new RedeemCouponUseCase(this.couponRepo);
   public readonly pricingGovernanceUseCase = new PricingGovernanceUseCase(this.pricingRepo, this.createAuditLogUseCase);
   public readonly pricingOperationsUseCase = new PricingOperationsUseCase(
     this.pricingGovernanceUseCase,

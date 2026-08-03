@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { orders, orderItems } from './commerce';
 import { experiments } from './experiments';
 
@@ -125,6 +125,45 @@ export const promotionRedemptions = pgTable('promotion_redemptions', {
 }, (table) => ({
   reservationIdx: uniqueIndex('promotion_redemptions_reservation_idx').on(table.reservationId),
   orderVersionIdx: uniqueIndex('promotion_redemptions_order_reservation_idx').on(table.orderId, table.reservationId),
+}));
+
+// U1 — first-class coupon-code inventory. The promotion_versions.couponCode
+// field holds ONE code per version; a bulk batch of thousands of single-use
+// codes needs its own inventory with a per-code redemption counter. A coupon
+// belongs to a promotion (definition); redemption resolves the active version.
+export const couponCodes = pgTable('coupon_codes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  promotionDefinitionId: uuid('promotion_definition_id').notNull().references(() => promotionDefinitions.id),
+  code: varchar('code', { length: 60 }).notNull(),
+  codeNormalised: varchar('code_normalised', { length: 60 }).notNull(),
+  codeType: varchar('code_type', { length: 24 }).notNull().default('bulk_batch'),
+  batchId: uuid('batch_id'),
+  assignedToCustomerId: uuid('assigned_to_customer_id'),
+  assignedToCreatorId: uuid('assigned_to_creator_id'), // forward-compat: U4 creator codes
+  maxRedemptions: integer('max_redemptions'), // null = unlimited
+  redemptionCount: integer('redemption_count').notNull().default(0),
+  startsAt: timestamp('starts_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  codeNormalisedIdx: uniqueIndex('coupon_codes_code_normalised_idx').on(table.codeNormalised),
+  promotionActiveIdx: index('coupon_codes_promotion_active_idx').on(table.promotionDefinitionId, table.isActive),
+  batchIdx: index('coupon_codes_batch_idx').on(table.batchId),
+}));
+
+export const couponRedemptions = pgTable('coupon_redemptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  couponId: uuid('coupon_id').notNull().references(() => couponCodes.id),
+  orderId: uuid('order_id').notNull().references(() => orders.id),
+  customerIdentityHash: varchar('customer_identity_hash', { length: 64 }).notNull(),
+  discountAmountUgx: bigint('discount_amount_ugx', { mode: 'number' }).notNull(),
+  redeemedAt: timestamp('redeemed_at', { withTimezone: true }).notNull().defaultNow(),
+  wasReversed: boolean('was_reversed').notNull().default(false),
+  reversedAt: timestamp('reversed_at', { withTimezone: true }),
+}, (table) => ({
+  couponOrderIdx: uniqueIndex('coupon_redemptions_coupon_order_idx').on(table.couponId, table.orderId),
+  identityIdx: index('coupon_redemptions_identity_idx').on(table.customerIdentityHash, table.redeemedAt),
 }));
 
 export const pricingExperimentAssociations = pgTable('pricing_experiment_associations', {

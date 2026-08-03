@@ -477,6 +477,13 @@
       "when": 1786680000000,
       "tag": "0067_order_events_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "5",
+      "when": 1786766400000,
+      "tag": "0068_coupon_inventory",
+      "breakpoints": true
     }
   ]
 }
