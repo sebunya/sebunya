@@ -484,6 +484,13 @@
       "when": 1786766400000,
       "tag": "0068_coupon_inventory",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "5",
+      "when": 1786852800000,
+      "tag": "0069_promotion_budget_margin",
+      "breakpoints": true
     }
   ]
 }

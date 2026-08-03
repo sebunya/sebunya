@@ -36,6 +36,12 @@ export const promotionVersions = pgTable('promotion_versions', {
   stackable: boolean('stackable').notNull().default(false),
   couponCode: varchar('coupon_code', { length: 40 }),
   priceFloorUgx: integer('price_floor_ugx').notNull().default(0),
+  // U1 AC4 — UGX budget cap and running consumption; when consumed reaches the
+  // cap the version auto-pauses (see DrizzlePricingCapacityRepository.redeemQuote).
+  budgetCapUgx: bigint('budget_cap_ugx', { mode: 'number' }),
+  budgetConsumedUgx: bigint('budget_consumed_ugx', { mode: 'number' }).notNull().default(0),
+  // U1 AC5 — order margin floor in basis points (null = no floor).
+  minMarginBpsFloor: integer('min_margin_bps_floor'),
   createdBy: uuid('created_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   submittedAt: timestamp('submitted_at', { withTimezone: true }),

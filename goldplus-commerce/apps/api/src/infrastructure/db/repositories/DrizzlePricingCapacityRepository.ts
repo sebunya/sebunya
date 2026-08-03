@@ -60,6 +60,28 @@ export class DrizzlePricingCapacityRepository implements IPricingCapacityReposit
       if (refreshed.some((row) => row.status !== 'RESERVED' || row.expiresAt <= input.now)) throw new Error('PRICING_RESERVATION_NOT_REDEEMABLE');
       await tx.insert(promotionRedemptions).values(refreshed.map((row) => ({ reservationId: row.id, orderId: input.orderId, redeemedAt: input.now })));
       await tx.update(promotionReservations).set({ status: 'REDEEMED', updatedAt: input.now }).where(inArray(promotionReservations.id, refreshed.map((row) => row.id)));
+
+      // AC4 — consume UGX budget atomically with redemption and auto-pause the
+      // version when the cap is reached. The version rows are already serialised
+      // by the advisory locks above, so the read-modify-write is race-free. Once
+      // paused, the ACTIVE-only reservation guard and candidate loader stop
+      // offering it, so the order past the budget does not receive it.
+      const redeemedVersionIds = [...new Set(refreshed.map((row) => row.promotionVersionId))];
+      for (const versionId of redeemedVersionIds) {
+        const [agg] = await tx
+          .select({ delta: sql<number>`coalesce(sum(${pricingAdjustments.amountUgx}), 0)::bigint` })
+          .from(pricingAdjustments)
+          .where(and(eq(pricingAdjustments.quoteId, input.quoteId), eq(pricingAdjustments.promotionVersionId, versionId)));
+        const delta = Number(agg?.delta ?? 0);
+        if (delta <= 0) continue;
+        await tx
+          .update(promotionVersions)
+          .set({
+            budgetConsumedUgx: sql`${promotionVersions.budgetConsumedUgx} + ${delta}`,
+            status: sql`CASE WHEN ${promotionVersions.budgetCapUgx} IS NOT NULL AND ${promotionVersions.budgetConsumedUgx} + ${delta} >= ${promotionVersions.budgetCapUgx} THEN 'PAUSED' ELSE ${promotionVersions.status} END`,
+          })
+          .where(eq(promotionVersions.id, versionId));
+      }
       return { reservationIds: refreshed.map((row) => row.id), duplicate: false };
     });
   }
