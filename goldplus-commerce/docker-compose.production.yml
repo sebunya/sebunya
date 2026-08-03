@@ -32,7 +32,10 @@ services:
       start_period: 5s
 
   pgbouncer:
-    image: edoburu/pgbouncer:latest
+    # Pinned: `latest` drifted to a build whose default listen_port is 5432, which
+    # made the :6432 healthcheck fail and (via depends_on) blocked the API from
+    # starting even though the API connects to postgres directly.
+    image: edoburu/pgbouncer:1.25.2
     restart: always
     environment:
       - DB_HOST=postgres
@@ -40,6 +43,9 @@ services:
       - DB_USER=${POSTGRES_USER}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_DATABASE=${POSTGRES_DB}
+      # Listen on the intended pooling port so the healthcheck and the published
+      # 6432 mapping agree with the process.
+      - LISTEN_PORT=6432
       - POOL_MODE=transaction
       - MAX_CLIENT_CONN=1000
       - DEFAULT_POOL_SIZE=20
@@ -62,8 +68,12 @@ services:
       context: .
       dockerfile: Dockerfile.api
     restart: always
+    # The API connects to postgres directly (DATABASE_URL=postgres:5432), so it gates
+    # its startup on postgres + redis — the services it actually uses — not on
+    # pgbouncer. Gating on an unused pooler is what let a pgbouncer image drift take
+    # the whole API down.
     depends_on:
-      pgbouncer:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy

@@ -67,3 +67,28 @@ live basket is invalidated because the storefront had never successfully minted 
 **Release impact:** compose env + `.env.production` only (no rebuild strictly needed —
 runtime env). Reversible by reverting the compose env lines. Rolled together with the
 RC-2 web image.
+
+**Verified live (end-to-end):** `GET /cart` now sets `__Host-gp_cart`
+(HttpOnly/Secure/SameSite=Lax); a web-minted credential presented to the API no longer
+returns `401 CART_CREDENTIAL_REQUIRED` (signature verifies); the real BFF flow
+`POST /cart action=add` → 303 and a subsequent `GET /cart` shows the product persisted
+in the SERVER cart (Quantity/Subtotal, no error banner).
+
+## RC-4 (INFRA, HIGH) — pgbouncer `:latest` drift blocked the API via depends_on
+**Discovered during the RC-3 rollout.** `up -d api web` re-pulled
+`edoburu/pgbouncer:latest`, whose default `listen_port` is now 5432. The compose
+healthcheck and published port both target 6432, so pgbouncer reported **unhealthy**,
+and the API's `depends_on: pgbouncer: service_healthy` left both API replicas stuck in
+`Created` — a full API outage — even though the API connects to `postgres:5432`
+**directly** and never uses pgbouncer.
+
+**Immediate recovery:** `docker start` the already-created API containers (they held the
+RC-3 secrets) to bypass the dependency gate; API healthy in ~10s.
+
+**Canonical fix:** (1) pin `edoburu/pgbouncer:1.25.2`; (2) set `LISTEN_PORT=6432` so the
+process, healthcheck and mapping agree; (3) point the API's `depends_on` at
+postgres+redis (what it actually uses), not the unused pooler.
+
+**Observation (not changed during recovery):** `DATABASE_URL` bypasses pgbouncer and
+hits postgres directly, so the connection pooler provides no benefit today. Rerouting
+through pgbouncer (transaction pooling) is a deliberate follow-up, not a recovery step.
