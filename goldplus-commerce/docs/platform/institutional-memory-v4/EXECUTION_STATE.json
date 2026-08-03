@@ -13,8 +13,8 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "9709116",
-  "phase": "Wave 2 session complete: 2A/2B/2C/2D/2E-1 RELEASED; remaining: 2D-PIM depth, 2E ops actions, 2F campaigns/automation, 2G intelligence, 2H measurement/loyalty depth",
+  "lastGreenHead": "f533012",
+  "phase": "Wave 2: 2A/2B/2C/2D/2E-1/2E-2 RELEASED",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -147,6 +147,12 @@
       "module": "capability-hub",
       "status": "RELEASED",
       "evidence": "9709116: hub counts live (13 orders, 3 open abandonments), truthful not-built labels, page section renders"
+    },
+    {
+      "id": "W2E2",
+      "module": "ops-actions",
+      "status": "RELEASED",
+      "evidence": "f533012: illegal-move 409 with machine message on real order; note audited; stock 50\u219251\u219250 + NEGATIVE_STOCK refusal"
     }
   ],
   "constraints": [
@@ -158,8 +164,8 @@
   ],
   "nextExact": {
     "file": "docs/platform/institutional-memory-v4/MODULE_MATURITY_MATRIX.md",
-    "command": "resume with Wave 2E ops actions (orders verify/assign/hold with reason+audit \u2014 mirror new-modules pattern) or 2D PIM control room; same checkpoint ritual; release recipe in NEXT_RESUME.md",
-    "expected": "continue wave order to terminal COMPLETE"
+    "command": "next slices in order: 2E-3 order communications template surface OR 2D PIM control room OR 2F campaign engine scaffold (no-send). Same ritual.",
+    "expected": "continue toward terminal COMPLETE"
   },
-  "releasedHead": "9709116"
+  "releasedHead": "f533012"
 }
