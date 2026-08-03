@@ -15,6 +15,10 @@ export const PERMISSIONS = {
   PRICING_ACTIVATE: 'pricing.activate',
   PRICING_SIMULATE: 'pricing.simulate',
   PRICING_PAUSE: 'pricing.pause',
+  // U1 — promotions & coupons admin surface (the promotions domain is the
+  // canonical pricing path; these gate the promotions/coupons admin routes).
+  PROMOTIONS_READ: 'promotions.read',
+  PROMOTIONS_MANAGE: 'promotions.manage',
   INVENTORY_READ: 'inventory.read',
   INVENTORY_ADJUST: 'inventory.adjust',
   ORDERS_READ: 'orders.read',
