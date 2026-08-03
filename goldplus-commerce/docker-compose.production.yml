@@ -76,6 +76,12 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - JWT_SECRET=${JWT_SECRET}
+      # Cart/checkout identity is signed by the storefront (BFF) and verified here.
+      # Dedicated secrets (not JWT_SECRET) keep the cart/intent key streams isolated
+      # from the session-token stream. Web and API MUST share the same values or every
+      # shopper loses their basket / cannot check out.
+      - CART_CREDENTIAL_SECRET=${CART_CREDENTIAL_SECRET}
+      - CHECKOUT_INTENT_SECRET=${CHECKOUT_INTENT_SECRET}
       - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - COOKIE_SECURE=${COOKIE_SECURE}
@@ -168,6 +174,12 @@ services:
       # SSR calls the API over the internal compose network (never the public
       # edge). Default to the api service; overridable per environment.
       - INTERNAL_API_ORIGIN=${INTERNAL_API_ORIGIN:-http://api:3000}
+      # The storefront is the Backend-for-Frontend that MINTS the signed cart and
+      # checkout-intent credentials the API verifies. Without these the storefront
+      # cannot mint a credential (keys() returns null), every shopper degrades to a
+      # local-only basket, and the checkout funnel is dead. MUST match the API's values.
+      - CART_CREDENTIAL_SECRET=${CART_CREDENTIAL_SECRET}
+      - CHECKOUT_INTENT_SECRET=${CHECKOUT_INTENT_SECRET}
       - NODE_OPTIONS=--max-old-space-size=400
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4321').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]

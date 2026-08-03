@@ -29,7 +29,41 @@ admin data-plane routes; container test web→`http://api:3000/health` = 200.
 **Release impact:** web image rebuild only (no schema change). Reversible by
 redeploying the prior web image.
 
-## RC-2 (to verify) — browser client-side `/api/*` same-origin fetches
-5 files fetch `/api/admin/measurement/*` client-side (browser) with same-origin;
-requires a Caddy `/api/*` → API route. Verify Caddy has it; if not, those
-client-side calls fail in the browser. Investigate after RC-1.
+## RC-2 (fixed, deployed with RC-3) — measurement SSR proxy origin
+`apps/web/src/pages/api/admin/measurement/[...path].ts` resolved its upstream from
+`PUBLIC_API_BASE_URL ?? localhost` — a public-edge hairpin. Made it prefer
+`INTERNAL_API_ORIGIN`, empty-safe, mirroring `lib/api.ts`. Commit `706dfaa`.
+(The client-side `/api/admin/measurement/*` calls are same-origin to the storefront,
+handled by this Astro route — no Caddy `/api` rule needed. Verified: overview 200.)
+
+## RC-3 (SHARED, CRITICAL) — WEB BFF SIGNING SECRETS MISSING → cart + checkout dead
+**Symptom the page-render sweep MISSED:** `/cart` renders HTTP 200 but the *write*
+path is dead. Live proof: `GET https://shopgoldplus.com/cart` returns **no
+`Set-Cookie`** — the storefront never mints `__Host-gp_cart`. `POST /commerce/cart/add`
+returns `401 CART_CREDENTIAL_REQUIRED`. The scheduled `SyntheticMonitor` fails every
+15s at `add_to_cart` (surfaced the thread, though its own 401 is a separate monitor
+gap — it presents no signed credential).
+
+**Root cause:** the web container's environment contained only NODE_ENV, PORT, HOST,
+`PUBLIC_API_BASE_URL`, `INTERNAL_API_ORIGIN`, NODE_OPTIONS. The storefront is the
+Backend-for-Frontend that MINTS the signed cart credential and checkout intent
+(`apps/web/src/lib/cartCredential.ts`, `checkoutIntent.ts`). Both derive their keyring
+from `CART_CREDENTIAL_SECRET|CHECKOUT_INTENT_SECRET → JWT_SECRET`. **None of the three
+was present in the web container**, so `keys()`/`intentKeys()` returned `null`, the
+storefront degraded to a local-only basket, and the API (verifying with its own real
+`JWT_SECRET`) rejected everything. Secret hashes confirmed: web CART/JWT = empty-string
+hash; API JWT = real. → entire add-to-cart → checkout → payment funnel non-functional.
+
+**Canonical fix:** introduce dedicated `CART_CREDENTIAL_SECRET` + `CHECKOUT_INTENT_SECRET`
+(distinct from JWT_SECRET so the cart/intent key streams stay isolated from the
+session-token stream), wired to BOTH the `web` and `api` services in
+`docker-compose.production.yml`, values in gitignored `.env.production` (generated on
+host, 32 bytes each). Web mints; API verifies; both from the same explicit secret. No
+live basket is invalidated because the storefront had never successfully minted one.
+
+**Regression test:** route-contract asserts `/cart` responds with a `__Host-gp_cart`
+`Set-Cookie`; browser proof adds a product and reads it back from the server cart.
+
+**Release impact:** compose env + `.env.production` only (no rebuild strictly needed —
+runtime env). Reversible by reverting the compose env lines. Rolled together with the
+RC-2 web image.
