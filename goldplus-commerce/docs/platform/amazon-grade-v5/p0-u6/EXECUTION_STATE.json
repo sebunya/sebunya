@@ -15,11 +15,13 @@
   "migrationCeiling_u3": "0071 (72/72 parity)",
   "u4": "9/10 ACs closed (migration 0072 creator platform; creator coupon codes extend U1 coupon_codes; identity peppered hashes only). AC1 one primary attribution + one commission (idempotent); AC2 refund reverses commission+coupon redemption in one tx; AC3 uncollected COD → no commission; AC5 self-purchase held; AC6 maker≠checker (app + DB CHECK); AC7 payout idempotency-key unique → no double-pay; AC8 gross-withholding=net (config rate, not fabricated); AC9 90-day repeat cohort; AC10 rights-expiry excludes approved-for-ads. IMobileMoneyDisbursement NO-SEND. 20 tests, parity 73/73. AC4 (/r/:code p95 redirect) + creator portal = web/presentation follow-ons.",
   "migrationCeiling_u4": "0072 (73/73 parity)",
+  "u5": "4/6 ACs closed (migration 0073 flash_sales + items + reservations; extends U1). AC2 100 units 1000-concurrent → exactly 100 (conditional decrement, item row lock); AC4 per-customer limit race-safe across sessions; AC5 cancel restores unsold allocation to general stock + reverts atomically, idempotent; AC6 TTL expiry returns units. 4 tests, parity 74/74. AC1 (500-RPS load) + AC3 (edge-cache) = infra-evidence follow-ons (no fabricated load results).",
+  "migrationCeiling_u5": "0073 (74/74 parity)",
   "unitsPending": [
     "U2_AC4_followon",
     "U3_followons(moderation-route,jsonld-astro,review-request-outbox)",
     "U4_followons(r-code-route,creator-portal)",
-    "U5",
+    "U5_followons(load-test-evidence,edge-cache,redis-front)",
     "U6"
   ],
   "nextExactWork": "Reconcile U3 (reviews/ratings/verified purchase) against existing review capability, then build gaps. U1 complete (11/11). U2 4/5 (AC4 follow-on).",
