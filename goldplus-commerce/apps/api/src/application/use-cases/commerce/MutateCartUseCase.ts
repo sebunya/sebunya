@@ -91,6 +91,14 @@ export interface CartRecord {
 export interface ICartAuthorizedRepository {
   find(cartId: string): Promise<CartRecord | null>;
   /**
+   * Creates the cart row for a cartId the caller's signed credential already names,
+   * owned by that credential. Idempotent (no-op if it already exists) so a race
+   * between two first-adds cannot fail. Without this, the first add to a freshly
+   * minted credential found no row and returned CART_NOT_FOUND — the server cart was
+   * never created for anyone.
+   */
+  create(cartId: string, owner: CartOwner): Promise<void>;
+  /**
    * Claims an unowned cart for this owner, but only while it is still unowned.
    *
    * Conditional so two concurrent first-touches cannot both claim it. Returns false
@@ -159,8 +167,19 @@ export class MutateCartUseCase {
     mutation: CartMutationKind;
     traceId: string;
   }): Promise<CartOutcome> {
-    const authorized = await this.authorize(args.cartId, args.owner, args.traceId);
-    if ('refusal' in authorized) return authorized.refusal;
+    let authorized = await this.authorize(args.cartId, args.owner, args.traceId);
+    if ('refusal' in authorized) {
+      // First write to a cart the credential already authorizes: the storefront mints a
+      // signed credential naming this cartId + owner but never creates the row, so the
+      // first ADD would otherwise fail CART_NOT_FOUND and the shopper would silently run
+      // on a browser-only basket. Create it (idempotently) for ADD, then authorize.
+      // REMOVE/UPDATE/CLEAR on a non-existent cart remain genuine not-founds.
+      if (authorized.refusal.kind === 'CART_NOT_FOUND' && args.mutation.kind === 'ADD') {
+        await this.deps.carts.create(args.cartId, args.owner);
+        authorized = await this.authorize(args.cartId, args.owner, args.traceId);
+      }
+      if ('refusal' in authorized) return authorized.refusal;
+    }
     const record = authorized.record;
 
     // A caller that names a version must be holding the current one. Omitting the

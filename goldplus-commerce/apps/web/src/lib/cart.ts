@@ -5,6 +5,14 @@ export interface CartItem {
   priceUgx: number;
   quantity: number;
   category?: string;
+  /**
+   * The cart page writes/reads its lines with `unitPriceUgx` and `slug`. Carrying both
+   * names here keeps the local-cookie fallback in sync with that consumer: reading only
+   * `priceUgx` there rendered every price as `UShNaN` and every PDP link as
+   * `/products/` (undefined slug).
+   */
+  unitPriceUgx?: number;
+  slug?: string;
 }
 
 export function calculateLineTotal(priceUgx: number, quantity: number): number {
@@ -48,14 +56,22 @@ export function parseLocalCartCookie(cookieValue: string | undefined): CartItem[
   try {
     const parsed = JSON.parse(cookieValue);
     if (Array.isArray(parsed)) {
-      return parsed.map(item => ({
-        productId: String(item.productId || ''),
-        sku: String(item.sku || ''),
-        name: String(item.name || ''),
-        priceUgx: Number(item.priceUgx || item.unitPriceUgx || 0),
-        quantity: validateQuantity(Number(item.quantity || 1)),
-        category: item.category ? String(item.category) : undefined
-      }));
+      return parsed.map(item => {
+        const price = Number(item.priceUgx || item.unitPriceUgx || 0);
+        return {
+          productId: String(item.productId || ''),
+          sku: String(item.sku || ''),
+          name: String(item.name || ''),
+          priceUgx: price,
+          // Alias for the cart page, which reads `unitPriceUgx`. Without it the fallback
+          // render produced `UShNaN`.
+          unitPriceUgx: price,
+          quantity: validateQuantity(Number(item.quantity || 1)),
+          category: item.category ? String(item.category) : undefined,
+          // Preserved so the fallback line still links to its product page.
+          slug: item.slug ? String(item.slug) : undefined,
+        };
+      });
     }
   } catch {
     // Ignore invalid JSON parsing errors

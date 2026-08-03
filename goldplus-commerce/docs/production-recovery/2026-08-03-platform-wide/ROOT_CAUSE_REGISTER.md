@@ -92,3 +92,59 @@ postgres+redis (what it actually uses), not the unused pooler.
 **Observation (not changed during recovery):** `DATABASE_URL` bypasses pgbouncer and
 hits postgres directly, so the connection pooler provides no benefit today. Rerouting
 through pgbouncer (transaction pooling) is a deliberate follow-up, not a recovery step.
+
+**Fixed live:** pgbouncer pinned by digest, `LISTEN_PORT=6432`, healthy; API depends on
+postgres+redis only. Full API recreate now succeeds cleanly (verified with RC-5 roll).
+
+## RC-5 (MONITOR, MEDIUM) — synthetic monitor: false CRITICAL + prod-pollution risk
+**Symptom:** `[SyntheticMonitor] CRITICAL: Synthetic commerce check failed` every run,
+failing at `add_to_cart` with 401. The monitor's cart call used the **pre-credential**
+contract (`{cartId, item}` body, no `x-goldplus-cart` header), so it could never pass —
+alert-fatigue noise that masks real incidents.
+
+**The deeper hazard:** had the cart stage been "fixed" to pass, the monitor would have
+run its full write journey — `/commerce/checkout` (creates a REAL order),
+`/webhooks/payment/mtn` (marks it paid), notification outbox — **every run**, flooding
+production with synthetic paid orders and real notification sends. Its failure was
+accidentally shielding production.
+
+**Fix:** gate the mutating stages behind `SYNTHETIC_MONITOR_WRITE_STAGES_ENABLED`
+(default false; compose passes it explicitly). With it off, the read-only journey
+(storefront HTML, catalogue parity, PDP, recommendations) runs and is the health signal;
+the monitor returns success on the read path. Verified live: CRITICAL failures dropped
+to 0 after the RC-5 roll. Classification: write journey **DORMANT** (intentional,
+opt-in), read journey **WORKING**.
+
+## RC-6 (WEB, HIGH — found via browser proof) — cart price renders `UShNaN`
+**Symptom:** after adding to cart, the cart line, subtotal and total all render
+**`UShNaN`**; PDP links on those lines point to `/products/` (undefined slug). Seen in a
+real Chrome session and reproduced with a clean curl session.
+
+**Root cause:** `apps/web/src/lib/cart.ts` `parseLocalCartCookie()` returns each item
+with the field `priceUgx`, but `apps/web/src/pages/cart.astro` reads `item.unitPriceUgx`
+(and `item.slug`). On the local-cookie fallback render path those are `undefined`, so
+`formatUgx(undefined)` → `Intl.NumberFormat.format(NaN)` → `UShNaN`, and the subtotal
+`Σ unitPriceUgx*qty` is `NaN`.
+
+**Fix:** `parseLocalCartCookie` now also emits `unitPriceUgx` (= the resolved price) and
+preserves `slug`, keeping the fallback item shape in sync with its only cart-page
+consumer. Additive; the shared `priceUgx` field other callers use is unchanged.
+
+## RC-7 (API, MEDIUM) — server cart never created → add returns CART_NOT_FOUND
+**Symptom:** `GET /commerce/cart` with a valid, signature-verified credential returns
+`CART_NOT_FOUND`; the storefront silently runs on the browser-only local basket.
+
+**Root cause:** the storefront mints a signed credential naming a `cartId` + owner but
+never creates the DB row, and `MutateCartUseCase.authorize()` refuses a missing cart.
+`ICartAuthorizedRepository.create()` existed on the Drizzle repo but had **zero callers**
+— so no server cart was ever created, for anyone. Not funnel-fatal only because
+`/orders/create` prices `body.items` sent by the client, not the server cart; the local
+basket + client-item checkout is the actual working path, and the failed server add is
+swallowed behind the POST's 303 (never shown).
+
+**Fix:** add `create()` to the repository interface and, in `mutate()`, create the cart
+(idempotent, `onConflictDoNothing`) on the first `ADD` when it is missing, then
+authorize. REMOVE/UPDATE/CLEAR on a missing cart remain genuine not-founds. This lifts
+the server-cart capability from BROKEN to WORKING and makes `cart.astro`'s server render
+path (correctly priced by the use case) the primary path, with the RC-6 fallback behind
+it.
