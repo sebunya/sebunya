@@ -78,3 +78,12 @@ Remaining INCOMPLETE_INTERNAL_GAP (unchanged this wave): legal CMS §2C, PIM con
 | Abandonment pipeline | queue declared, no producer/worker, no definition | WORKING v1 (RELEASED 3daa238): cart_abandonments single definition, hourly evaluator cron (3rd repeat job in redis), queue alive producer+worker, admin read surface; RECOVERED deferred honestly (no checkout↔cart linkage exists) | endpoint 200, redis zcard 3 |
 | Capability hub | generic modules page | WORKING (9709116, rolling): honest-counts hub cards + truthful INCOMPLETE_INTERNAL_GAP labels + workspace links; working sections preserved below | arch 101/101 incl. nav-link guard |
 Remaining INCOMPLETE_INTERNAL_GAP: PIM control-room depth, order/fraud/fulfilment/comms/inventory/pricing ACTIONS, campaign engine, automation workflow builder, analytics/recommendation-analytics depth, search/visitor intelligence depth, loyalty activation, gamification, DAM real-photo repair (operator), reviewer account for legal publishing (§6 user management).
+
+## Wave 2F/2G/2H sweep (2026-08-03 night)
+| Module | State | Evidence |
+|---|---|---|
+| Campaign scaffold | WORKING (RELEASED a829f9a, NO-SEND enforced: 409 SEND_STATE_FORBIDDEN live) | E2E create/UTM/approve/refusal; audience preview from real abandonment rows |
+| Recommendation analytics/preview/rules | WORKING (KEEP — pre-existing, live-verified) | analytics 11 real events honest split; preview ranked; rules 200 |
+| Loyalty core | DORMANT_BY_BUSINESS_DECISION (ledger/expiry/reversal built; enabled:false honest) | config/operations 200 live |
+| Gamification | INCOMPLETE_INTERNAL_GAP | not built; do not present |
+| Campaign send engine | INCOMPLETE_INTERNAL_GAP (by design this wave) | scaffold refuses send states |

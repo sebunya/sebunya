@@ -14,7 +14,7 @@
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
   "lastGreenHead": "a829f9a",
-  "phase": "Wave 2: 2A/2B/2C/2D/2E-1/2E-2/2E-3/2F-scaffold RELEASED",
+  "phase": "Wave 2 sweep complete: 2A-2F released; 2G/2H-core verified-KEEP; remaining = send engine, gamification, PIM/analytics depth, DAM photos, 2nd reviewer",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -165,6 +165,18 @@
       "module": "campaign-scaffold-no-send",
       "status": "RELEASED",
       "evidence": "a829f9a: SEND_STATE_FORBIDDEN 409 live; UTM mint; real audience preview (3/255k); hub 0\u21921"
+    },
+    {
+      "id": "W2G",
+      "module": "rec-analytics-preview",
+      "status": "GREEN",
+      "evidence": "live-verified KEEP; no rebuild"
+    },
+    {
+      "id": "W2H-loyalty",
+      "module": "loyalty-core",
+      "status": "GREEN",
+      "evidence": "DORMANT honest (enabled:false); reversal route exists"
     }
   ],
   "constraints": [
@@ -176,8 +188,8 @@
   ],
   "nextExact": {
     "file": "docs/platform/institutional-memory-v4/MODULE_MATURITY_MATRIX.md",
-    "command": "next: 2G recommendation analytics + preview depth (read-only over canonical engine) OR 2H loyalty activation scaffold. Same ritual, keep velocity.",
-    "expected": "continue toward terminal COMPLETE"
+    "command": "remaining INCOMPLETE_INTERNAL in order: campaign SEND engine (no-send verification, consent/suppression/frequency/quiet-hours) > gamification > PIM UX depth > analytics depth metrics. Operator items: gh auth login; 2nd reviewer account; product photography via /admin/media.",
+    "expected": "resume ritual unchanged"
   },
   "releasedHead": "a829f9a"
 }
