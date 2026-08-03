@@ -86,6 +86,40 @@ export class DrizzlePricingCapacityRepository implements IPricingCapacityReposit
     });
   }
 
+  async reverseRedemption(input: { quoteId: string; now: Date }) {
+    return db.transaction(async (tx) => {
+      const reservations = await tx.select().from(promotionReservations).where(eq(promotionReservations.quoteId, input.quoteId));
+      if (!reservations.length) return { reversed: false };
+      const versionIds = [...new Set(reservations.map((row) => row.promotionVersionId))].sort();
+      for (const versionId of versionIds) await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${versionId}, 0))`);
+      const refreshed = await tx.select().from(promotionReservations).where(eq(promotionReservations.quoteId, input.quoteId));
+      // Only a fully-redeemed quote can be reversed; anything else (already
+      // released/reversed, or never redeemed) is an idempotent no-op.
+      if (!refreshed.length || !refreshed.every((row) => row.status === 'REDEEMED')) return { reversed: false };
+
+      // AC6 — restore each version's consumed budget by the discount it took on
+      // this quote (floored at zero). Auto-pause is deliberately NOT lifted: a
+      // refund frees budget but should not silently reactivate a paused promotion.
+      for (const versionId of versionIds) {
+        const [agg] = await tx
+          .select({ delta: sql<number>`coalesce(sum(${pricingAdjustments.amountUgx}), 0)::bigint` })
+          .from(pricingAdjustments)
+          .where(and(eq(pricingAdjustments.quoteId, input.quoteId), eq(pricingAdjustments.promotionVersionId, versionId)));
+        const delta = Number(agg?.delta ?? 0);
+        if (delta > 0) {
+          await tx
+            .update(promotionVersions)
+            .set({ budgetConsumedUgx: sql`GREATEST(${promotionVersions.budgetConsumedUgx} - ${delta}, 0)` })
+            .where(eq(promotionVersions.id, versionId));
+        }
+      }
+      // Undo the redemption and free the reservation slot.
+      await tx.delete(promotionRedemptions).where(inArray(promotionRedemptions.reservationId, refreshed.map((row) => row.id)));
+      await tx.update(promotionReservations).set({ status: 'RELEASED', releasedAt: input.now, updatedAt: input.now }).where(inArray(promotionReservations.id, refreshed.map((row) => row.id)));
+      return { reversed: true };
+    });
+  }
+
   async releaseQuote(input: { quoteId: string; now: Date }) {
     return db.transaction(async (tx) => {
       const reservations = await tx.select().from(promotionReservations).where(eq(promotionReservations.quoteId, input.quoteId));

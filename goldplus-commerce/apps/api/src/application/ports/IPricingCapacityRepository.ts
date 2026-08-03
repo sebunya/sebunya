@@ -13,4 +13,7 @@ export interface IPricingCapacityRepository {
   reserveQuote(input: { quoteId: string; idempotencyKey: string; now: Date }): Promise<{ reservations: PromotionReservationRecord[]; duplicate: boolean }>;
   redeemQuote(input: { quoteId: string; orderId: string; now: Date }): Promise<{ reservationIds: string[]; duplicate: boolean }>;
   releaseQuote(input: { quoteId: string; now: Date }): Promise<{ reservationIds: string[]; duplicate: boolean }>;
+  /** AC6 — on refund, reverse a redeemed quote: restore each version's consumed
+   * UGX budget and mark the redemption undone, in one transaction. Idempotent. */
+  reverseRedemption(input: { quoteId: string; now: Date }): Promise<{ reversed: boolean }>;
 }
