@@ -166,17 +166,15 @@ routes.get('/admin-order-emails', requirePermissions([PERMISSIONS.NOTIFICATIONS_
 });
 
 // ---- Wave 2E-3: template wording overrides ------------------------------
-// Draft → publish → revert, per template key. Code strings are the canonical
-// fallback; publish replaces the previous published row in one transaction and
-// the sender-side cache picks it up within a minute (or immediately after the
-// route's explicit refresh). All mutations audited.
+// Draft -> publish -> revert, per template key, through the Registry repository
+// (routes stay schema-free per the architecture boundary). Code strings are the
+// canonical fallback; publish swaps rows atomically and the sender cache refreshes
+// immediately here and every minute otherwise. All mutations audited.
 
 routes.get('/templates', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
   const { NOTIFICATION_TEMPLATE_KEYS, NotificationTemplateRenderer } = await import('../../../../application/use-cases/notifications/NotificationTemplateRenderer');
-  const { db } = await import('../../../../infrastructure/db/client');
-  const { notificationTemplateOverrides } = await import('../../../../infrastructure/db/schema/notificationTemplates');
   const renderer = new NotificationTemplateRenderer();
-  const rows = await db.select().from(notificationTemplateOverrides);
+  const rows = await Registry.getInstance().notificationTemplateRepo.listAll();
   const templates = NOTIFICATION_TEMPLATE_KEYS.map((key) => ({
     key,
     defaults: { subject: renderer.getSubject(key), preheader: renderer.getPreheader(key) },
@@ -190,61 +188,37 @@ routes.get('/templates', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), a
 routes.post('/templates/:key/draft', requirePermissions([PERMISSIONS.NOTIFICATIONS_MANAGE]), async (c) => {
   const { NOTIFICATION_TEMPLATE_KEYS } = await import('../../../../application/use-cases/notifications/NotificationTemplateRenderer');
   const key = c.req.param('key') ?? '';
-  if (!NOTIFICATION_TEMPLATE_KEYS.includes(key as any)) {
+  if (!NOTIFICATION_TEMPLATE_KEYS.includes(key as never)) {
     return c.json({ success: false, error: { code: 'UNKNOWN_TEMPLATE', message: 'Unknown template key.' } } satisfies ApiResponse<never>, 404);
   }
   const body = await c.req.json().catch(() => null);
   const clean = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
-  const subject = clean(body?.subject, 200);
-  const preheader = clean(body?.preheader, 300);
-  const headline = clean(body?.headline, 200);
-  if (!subject && !preheader && !headline) {
+  const patch = { subject: clean(body?.subject, 200), preheader: clean(body?.preheader, 300), headline: clean(body?.headline, 200) };
+  if (!patch.subject && !patch.preheader && !patch.headline) {
     return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'At least one of subject/preheader/headline is required.' } } satisfies ApiResponse<never>, 400);
   }
-  const { db } = await import('../../../../infrastructure/db/client');
-  const { notificationTemplateOverrides } = await import('../../../../infrastructure/db/schema/notificationTemplates');
-  const { and, eq } = await import('drizzle-orm');
+  const registry = Registry.getInstance();
   const actorId = (c.get('user') as { id: string }).id;
-  const [existing] = await db.select().from(notificationTemplateOverrides)
-    .where(and(eq(notificationTemplateOverrides.templateKey, key), eq(notificationTemplateOverrides.status, 'DRAFT'))).limit(1);
-  const [row] = existing
-    ? await db.update(notificationTemplateOverrides)
-        .set({ subject, preheader, headline, updatedBy: actorId, updatedAt: new Date(), version: existing.version + 1 })
-        .where(eq(notificationTemplateOverrides.id, existing.id)).returning()
-    : await db.insert(notificationTemplateOverrides)
-        .values({ templateKey: key, subject, preheader, headline, updatedBy: actorId }).returning();
+  const row = await registry.notificationTemplateRepo.upsertDraft(key, patch, actorId);
   const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
-  await new CreateAuditLogUseCase(Registry.getInstance().auditRepo).execute({
-    actorId, action: 'NOTIFICATION_TEMPLATE_DRAFTED', entity: 'notification_template', entityId: row.id,
-    newState: { key, subject, preheader, headline },
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId, action: 'NOTIFICATION_TEMPLATE_DRAFTED', entity: 'notification_template', entityId: row.id, newState: { key, ...patch },
   });
   return c.json({ success: true, data: row } satisfies ApiResponse<typeof row>);
 });
 
 routes.post('/templates/:key/publish', requirePermissions([PERMISSIONS.NOTIFICATIONS_MANAGE]), async (c) => {
   const key = c.req.param('key') ?? '';
-  const { db } = await import('../../../../infrastructure/db/client');
-  const { notificationTemplateOverrides } = await import('../../../../infrastructure/db/schema/notificationTemplates');
-  const { and, eq } = await import('drizzle-orm');
+  const registry = Registry.getInstance();
   const actorId = (c.get('user') as { id: string }).id;
-  const published = await db.transaction(async (tx) => {
-    const [draft] = await tx.select().from(notificationTemplateOverrides)
-      .where(and(eq(notificationTemplateOverrides.templateKey, key), eq(notificationTemplateOverrides.status, 'DRAFT'))).limit(1);
-    if (!draft) return null;
-    await tx.delete(notificationTemplateOverrides)
-      .where(and(eq(notificationTemplateOverrides.templateKey, key), eq(notificationTemplateOverrides.status, 'PUBLISHED')));
-    const [row] = await tx.update(notificationTemplateOverrides)
-      .set({ status: 'PUBLISHED', updatedBy: actorId, updatedAt: new Date() })
-      .where(eq(notificationTemplateOverrides.id, draft.id)).returning();
-    return row;
-  });
+  const published = await registry.notificationTemplateRepo.publishDraft(key, actorId);
   if (!published) {
     return c.json({ success: false, error: { code: 'NO_DRAFT', message: 'Nothing to publish — create a draft first.' } } satisfies ApiResponse<never>, 409);
   }
   const { templateOverrideCache } = await import('../../../../infrastructure/notifications/TemplateOverrideCache');
   await templateOverrideCache.refresh();
   const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
-  await new CreateAuditLogUseCase(Registry.getInstance().auditRepo).execute({
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
     actorId, action: 'NOTIFICATION_TEMPLATE_PUBLISHED', entity: 'notification_template', entityId: published.id,
     newState: { key, subject: published.subject, preheader: published.preheader, headline: published.headline },
   });
@@ -253,21 +227,17 @@ routes.post('/templates/:key/publish', requirePermissions([PERMISSIONS.NOTIFICAT
 
 routes.post('/templates/:key/revert', requirePermissions([PERMISSIONS.NOTIFICATIONS_MANAGE]), async (c) => {
   const key = c.req.param('key') ?? '';
-  const { db } = await import('../../../../infrastructure/db/client');
-  const { notificationTemplateOverrides } = await import('../../../../infrastructure/db/schema/notificationTemplates');
-  const { and, eq } = await import('drizzle-orm');
+  const registry = Registry.getInstance();
   const actorId = (c.get('user') as { id: string }).id;
-  const deleted = await db.delete(notificationTemplateOverrides)
-    .where(and(eq(notificationTemplateOverrides.templateKey, key), eq(notificationTemplateOverrides.status, 'PUBLISHED')))
-    .returning({ id: notificationTemplateOverrides.id });
-  if (deleted.length === 0) {
+  const deletedId = await registry.notificationTemplateRepo.revertPublished(key);
+  if (!deletedId) {
     return c.json({ success: false, error: { code: 'NO_OVERRIDE', message: 'No published override — code defaults already apply.' } } satisfies ApiResponse<never>, 409);
   }
   const { templateOverrideCache } = await import('../../../../infrastructure/notifications/TemplateOverrideCache');
   await templateOverrideCache.refresh();
   const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
-  await new CreateAuditLogUseCase(Registry.getInstance().auditRepo).execute({
-    actorId, action: 'NOTIFICATION_TEMPLATE_REVERTED', entity: 'notification_template', entityId: deleted[0].id,
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId, action: 'NOTIFICATION_TEMPLATE_REVERTED', entity: 'notification_template', entityId: deletedId,
     newState: { key, revertedToCodeDefaults: true },
   });
   return c.json({ success: true, data: { key, reverted: true } } satisfies ApiResponse<{ key: string; reverted: boolean }>);
