@@ -13,8 +13,8 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "7f7b07a",
-  "phase": "Wave 2: 2A/2B/2C/2D/2E-1/2E-2/2E-3 RELEASED",
+  "lastGreenHead": "a829f9a",
+  "phase": "Wave 2: 2A/2B/2C/2D/2E-1/2E-2/2E-3/2F-scaffold RELEASED",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -159,6 +159,12 @@
       "module": "notification-wording-overrides",
       "status": "RELEASED",
       "evidence": "7f7b07a: draft/publish/revert net-zero proven; DISTINCT defaults display; boundary refactor to Registry repo"
+    },
+    {
+      "id": "W2F",
+      "module": "campaign-scaffold-no-send",
+      "status": "RELEASED",
+      "evidence": "a829f9a: SEND_STATE_FORBIDDEN 409 live; UTM mint; real audience preview (3/255k); hub 0\u21921"
     }
   ],
   "constraints": [
@@ -170,8 +176,8 @@
   ],
   "nextExact": {
     "file": "docs/platform/institutional-memory-v4/MODULE_MATURITY_MATRIX.md",
-    "command": "next: 2F campaign-engine scaffold (no-send: definitions CRUD + consent-gated audience preview over abandonment/DNA) OR 2G recommendation-analytics depth. Same ritual.",
+    "command": "next: 2G recommendation analytics + preview depth (read-only over canonical engine) OR 2H loyalty activation scaffold. Same ritual, keep velocity.",
     "expected": "continue toward terminal COMPLETE"
   },
-  "releasedHead": "7f7b07a"
+  "releasedHead": "a829f9a"
 }
