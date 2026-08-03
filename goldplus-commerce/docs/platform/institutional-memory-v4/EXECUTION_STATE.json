@@ -13,8 +13,8 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "d074c36",
-  "phase": "Wave 2 (gap-only continuation): 2A RELEASED, 2B releasing",
+  "lastGreenHead": "3daa238",
+  "phase": "Wave 2: 2A/2B/2C/2E-1 RELEASED; next 2D capability hub",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -129,6 +129,18 @@
       "module": "dam-media-library",
       "status": "IN_REVIEW->RELEASING",
       "evidence": "d074c36: volume+caddy serving; 0076 tables; use case+routes+UI; gates green; release in progress (backup taken, builds running)"
+    },
+    {
+      "id": "W2C",
+      "module": "legal-cms",
+      "status": "RELEASED",
+      "evidence": "5c15118: maker/checker live-proven (403), drafts never public, fallback intact"
+    },
+    {
+      "id": "W2E1",
+      "module": "abandonment-pipeline",
+      "status": "RELEASED",
+      "evidence": "3daa238: 0078 rehearsed+live, endpoint 200 empty, 3 crons in redis"
     }
   ],
   "constraints": [
@@ -139,9 +151,9 @@
     "principal-only: Registry/permissions/app.ts/compose/Caddy/journal"
   ],
   "nextExact": {
-    "file": "docs/platform/institutional-memory-v4/EXECUTION_STATE.json",
-    "command": "after W2B release proof: Wave 2C legal CMS scaffold OR 2E abandonment queue wiring (dependency-free)",
-    "expected": "continue wave order 2C/2D/2E"
+    "file": "apps/web/src/pages/admin/platform-modules.astro",
+    "command": "Wave 2D: hub aggregator endpoint (/admin/modules/hub, honest counts via one read repo) + rebuild page as orientation hub with workspace links + truthful maturity labels",
+    "expected": "hub live; then honest terminal report or continue 2D-PIM/2E-ops as context allows"
   },
-  "releasedHead": "473ede0"
+  "releasedHead": "3daa238"
 }
