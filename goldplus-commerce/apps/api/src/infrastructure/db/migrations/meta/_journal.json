@@ -498,6 +498,13 @@
       "when": 1786939200000,
       "tag": "0070_device_catalogue",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "5",
+      "when": 1787025600000,
+      "tag": "0071_reviews",
+      "breakpoints": true
     }
   ]
 }

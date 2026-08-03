@@ -19,6 +19,8 @@ export const PERMISSIONS = {
   // canonical pricing path; these gate the promotions/coupons admin routes).
   PROMOTIONS_READ: 'promotions.read',
   PROMOTIONS_MANAGE: 'promotions.manage',
+  // U3 — review moderation queue (approve / reject / flagged view).
+  REVIEWS_MODERATE: 'reviews.moderate',
   INVENTORY_READ: 'inventory.read',
   INVENTORY_ADJUST: 'inventory.adjust',
   ORDERS_READ: 'orders.read',

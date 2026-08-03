@@ -10,6 +10,8 @@ import { DrizzlePricingRepository } from './db/repositories/DrizzlePricingReposi
 import { DrizzlePricingQuoteRepository } from './db/repositories/DrizzlePricingQuoteRepository';
 import { DrizzlePricingCapacityRepository } from './db/repositories/DrizzlePricingCapacityRepository';
 import { DrizzleCouponRepository } from './db/repositories/DrizzleCouponRepository';
+import { DrizzleReviewRepository } from './db/repositories/DrizzleReviewRepository';
+import { SubmitReviewUseCase } from '../application/use-cases/reviews/SubmitReviewUseCase';
 import { DrizzlePricingOperationsRepository } from './db/repositories/DrizzlePricingOperationsRepository';
 import { DrizzleDealerRepository } from './db/repositories/DrizzleDealerRepository';
 import { DrizzleSupportRepository } from './db/repositories/DrizzleSupportRepository';
@@ -467,6 +469,8 @@ export class Registry {
   public readonly pricingQuoteRepo = new DrizzlePricingQuoteRepository();
   public readonly pricingCapacityRepo = new DrizzlePricingCapacityRepository();
   public readonly couponRepo = new DrizzleCouponRepository();
+  public readonly reviewRepo = new DrizzleReviewRepository();
+  public readonly submitReviewUseCase = new SubmitReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly pricingOperationsRepo = new DrizzlePricingOperationsRepository();
   public readonly dealerRepo = new DrizzleDealerRepository();
   public readonly supportRepo = new DrizzleSupportRepository();
