@@ -13,8 +13,8 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "f533012",
-  "phase": "Wave 2: 2A/2B/2C/2D/2E-1/2E-2 RELEASED",
+  "lastGreenHead": "7f7b07a",
+  "phase": "Wave 2: 2A/2B/2C/2D/2E-1/2E-2/2E-3 RELEASED",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -153,6 +153,12 @@
       "module": "ops-actions",
       "status": "RELEASED",
       "evidence": "f533012: illegal-move 409 with machine message on real order; note audited; stock 50\u219251\u219250 + NEGATIVE_STOCK refusal"
+    },
+    {
+      "id": "W2E3",
+      "module": "notification-wording-overrides",
+      "status": "RELEASED",
+      "evidence": "7f7b07a: draft/publish/revert net-zero proven; DISTINCT defaults display; boundary refactor to Registry repo"
     }
   ],
   "constraints": [
@@ -164,8 +170,8 @@
   ],
   "nextExact": {
     "file": "docs/platform/institutional-memory-v4/MODULE_MATURITY_MATRIX.md",
-    "command": "next slices in order: 2E-3 order communications template surface OR 2D PIM control room OR 2F campaign engine scaffold (no-send). Same ritual.",
+    "command": "next: 2F campaign-engine scaffold (no-send: definitions CRUD + consent-gated audience preview over abandonment/DNA) OR 2G recommendation-analytics depth. Same ritual.",
     "expected": "continue toward terminal COMPLETE"
   },
-  "releasedHead": "f533012"
+  "releasedHead": "7f7b07a"
 }
