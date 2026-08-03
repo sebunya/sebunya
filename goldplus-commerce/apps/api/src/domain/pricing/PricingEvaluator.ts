@@ -93,6 +93,50 @@ function qualificationFailure(rule: PricingRule, input: EvaluatePricingInput, ba
   return null;
 }
 
+/**
+ * The standalone customer benefit (total discount UGX) a single rule would
+ * produce on the base cart, ignoring other rules. Read-only — used only to
+ * choose between competing exclusive promotions (AC2). Mirrors the application
+ * math but mutates nothing.
+ */
+function estimateRuleBenefitUgx(
+  rule: PricingRule,
+  sortedLines: CanonicalPricingLine[],
+  baseByProduct: Map<string, number>,
+  shippingUgx: number,
+): number {
+  let total = 0;
+  let shippingRemaining = shippingUgx;
+  const localDiscount = new Map<string, number>(sortedLines.map((line) => [line.productId, 0]));
+  for (const benefit of rule.benefits) {
+    if (benefit.type === 'FREE_SHIPPING') {
+      total += shippingRemaining;
+      shippingRemaining = 0;
+      continue;
+    }
+    const targets = sortedLines.filter((line) => !benefit.targetProductIds?.length || benefit.targetProductIds.includes(line.productId));
+    let remainingCap = benefit.maximumDiscountUgx ?? Number.MAX_SAFE_INTEGER;
+    let remainingFixed = benefit.type === 'FIXED_AMOUNT_OFF' ? benefit.value : Number.MAX_SAFE_INTEGER;
+    for (const line of targets) {
+      const base = baseByProduct.get(line.productId)!;
+      const prior = localDiscount.get(line.productId)!;
+      const available = Math.max(0, base - prior - rule.priceFloorUgx * line.quantity);
+      let desired = 0;
+      if (benefit.type === 'PERCENTAGE_OFF') desired = Math.floor(base * benefit.value / 10_000);
+      if (benefit.type === 'FIXED_AMOUNT_OFF') desired = remainingFixed;
+      if (benefit.type === 'FIXED_PRICE') desired = Math.max(0, line.canonicalUnitPriceUgx - benefit.value) * line.quantity;
+      const amount = Math.min(available, desired, remainingCap);
+      if (amount <= 0) continue;
+      localDiscount.set(line.productId, prior + amount);
+      total += amount;
+      remainingCap -= amount;
+      if (benefit.type === 'FIXED_AMOUNT_OFF') remainingFixed -= amount;
+      if (remainingCap <= 0 || remainingFixed <= 0) break;
+    }
+  }
+  return total;
+}
+
 export function evaluatePricing(input: EvaluatePricingInput): PricingQuote {
   if (!input.lines.length) throw new Error('Pricing requires at least one canonical line.');
   if (!Number.isInteger(input.shippingUgx) || input.shippingUgx < 0 || !Number.isInteger(input.taxUgx) || input.taxUgx < 0) throw new Error('Shipping and tax must be non-negative integer UGX amounts.');
@@ -114,10 +158,36 @@ export function evaluatePricing(input: EvaluatePricingInput): PricingQuote {
   let shippingDiscountUgx = 0;
   let stackingOpen = true;
 
+  // AC2 — exclusive tie-break. Two exclusive (non-stackable) promotions that both
+  // qualify cannot co-apply; keep the one producing the LARGER customer benefit
+  // and record every other qualifying exclusive as EXCLUSIVE_SUPERSEDED. This is
+  // decided before application so the winner is applied even when it is not the
+  // highest-priority exclusive. Stackable rules suppressed by a closed stack keep
+  // their STACKING_CONFLICT reason — this pass only touches competing exclusives.
+  const qualifiedExclusives = rules.filter(
+    (rule) => !rule.stackable && qualificationFailure(rule, input, baseSubtotalUgx) === null,
+  );
+  const supersededExclusiveIds = new Set<string>();
+  if (qualifiedExclusives.length >= 2) {
+    const benefit = new Map(qualifiedExclusives.map((rule) => [rule.versionId, estimateRuleBenefitUgx(rule, sortedLines, baseByProduct, input.shippingUgx)]));
+    const winner = [...qualifiedExclusives].sort(
+      (a, b) => (benefit.get(b.versionId)! - benefit.get(a.versionId)!) || (b.priority - a.priority) || a.definitionId.localeCompare(b.definitionId),
+    )[0];
+    for (const rule of qualifiedExclusives) {
+      if (rule.versionId !== winner.versionId) supersededExclusiveIds.add(rule.versionId);
+    }
+  }
+
   for (const rule of rules) {
     const excluded = qualificationFailure(rule, input, baseSubtotalUgx);
     if (excluded) {
       decisionTrace.push({ promotionDefinitionId: rule.definitionId, promotionVersionId: rule.versionId, outcome: 'EXCLUDED', reason: excluded });
+      continue;
+    }
+    if (supersededExclusiveIds.has(rule.versionId)) {
+      // A qualifying exclusive that lost the larger-benefit tie-break. It does not
+      // close stacking; it is simply superseded by the winning exclusive.
+      decisionTrace.push({ promotionDefinitionId: rule.definitionId, promotionVersionId: rule.versionId, outcome: 'EXCLUDED', reason: 'EXCLUSIVE_SUPERSEDED' });
       continue;
     }
     if (!stackingOpen || appliedPromotionVersions.length >= MAX_APPLIED_PROMOTIONS) {
