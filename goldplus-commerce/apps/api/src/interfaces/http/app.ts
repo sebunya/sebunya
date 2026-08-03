@@ -32,6 +32,7 @@ import adminCompatibilityRoutes from './routes/admin/compatibility';
 import adminNewModulesRoutes from './routes/admin/new-modules';
 import adminMediaRoutes from './routes/admin/media';
 import adminLegalRoutes from './routes/admin/legal';
+import adminCartsRoutes from './routes/admin/carts';
 import publicLegalRoutes from './routes/legal';
 import adminLoyaltyRoutes from './routes/admin/loyalty';
 import adminFulfilmentRoutes from './routes/admin/fulfilment';
@@ -188,6 +189,7 @@ app.route('/admin/compatibility', adminCompatibilityRoutes);
 app.route('/admin/modules', adminNewModulesRoutes);
 app.route('/admin/media', adminMediaRoutes);
 app.route('/admin/legal', adminLegalRoutes);
+app.route('/admin/carts', adminCartsRoutes);
 app.route('/legal', publicLegalRoutes);
 app.route('/admin/loyalty', adminLoyaltyRoutes);
 app.route('/admin/fulfilment', adminFulfilmentRoutes);
@@ -276,6 +278,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/audit',
   '/admin/automation',
   '/admin/behavioural-interventions',
+  '/admin/carts',
   '/admin/compatibility',
   '/admin/consent-operating',
   '/admin/control-centre',

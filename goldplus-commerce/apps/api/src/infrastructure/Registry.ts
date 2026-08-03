@@ -28,6 +28,9 @@ import { LocalProductImageStorage } from './storage/LocalProductImageStorage';
 import { DrizzleMediaLibraryRepository } from './db/repositories/DrizzleMediaLibraryRepository';
 import { DrizzleLegalCmsRepository } from './db/repositories/DrizzleLegalCmsRepository';
 import { LegalCmsUseCase } from '../application/use-cases/legal/LegalCmsUseCase';
+import { DrizzleAbandonmentRepository } from './db/repositories/DrizzleAbandonmentRepository';
+import { AbandonmentUseCase } from '../application/use-cases/abandonment/AbandonmentUseCase';
+import { QueueService, QUEUES } from './queues/QueueService';
 import { MediaLibraryUseCase } from '../application/use-cases/media/MediaLibraryUseCase';
 import { SharpVariantGenerator } from './media/SharpVariantGenerator';
 import * as path from 'path';
@@ -517,6 +520,22 @@ export class Registry {
   // Wave 2C — legal policy CMS.
   public readonly legalCmsRepo = new DrizzleLegalCmsRepository();
   public readonly legalCmsUseCase = new LegalCmsUseCase(this.legalCmsRepo);
+
+  // Wave 2E-1 — abandonment pipeline: hourly evaluator + queue announcement.
+  public readonly abandonmentRepo = new DrizzleAbandonmentRepository();
+  public readonly abandonmentUseCase = new AbandonmentUseCase(this.abandonmentRepo, {
+    publish: async (record) => {
+      const queue = QueueService.getInstance().getQueue(QUEUES.ABANDONED_CART_EVENTS);
+      if (!queue) return; // queue backend absent (dev without Redis): classification still recorded
+      await queue.add('abandonment-classified', {
+        recordId: record.id,
+        cartId: record.cartId,
+        itemCount: record.itemCount,
+        subtotalUgx: record.subtotalUgx,
+        classifiedAt: record.classifiedAt.toISOString(),
+      });
+    },
+  });
 
   // Wave 2B — media library (DAM) on the same storage owner.
   public readonly mediaLibraryRepo = new DrizzleMediaLibraryRepository();

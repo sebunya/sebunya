@@ -42,3 +42,4 @@ export * from './flashSales';
 export * from './seo';
 export * from './media';
 export * from './legal';
+export * from './abandonment';

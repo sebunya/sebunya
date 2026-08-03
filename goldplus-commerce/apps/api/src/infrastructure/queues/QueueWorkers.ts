@@ -168,6 +168,11 @@ export function registerAllWorkers(): void {
         if (!result.success) {
           throw new Error('Recommendation materialization failed');
         }
+      } else if (job.name === 'abandonment-scan-cron') {
+        // Wave 2E-1: the hourly evaluator is the ONLY writer of abandonment
+        // classifications; each new one is announced on ABANDONED_CART_EVENTS.
+        const result = await registry.abandonmentUseCase.scan();
+        logger.info({ ...result }, '[QueueWorker] Abandonment scan completed');
       } else {
         logger.info('[QueueWorker] Analytics fanout / Synthetic monitor task started');
         const result = await registry.syntheticMonitor.execute();
@@ -175,6 +180,21 @@ export function registerAllWorkers(): void {
           throw new Error('Synthetic commerce check failed');
         }
       }
+    });
+  });
+
+  // 6. Abandoned-cart events (Wave 2E-1). This queue existed with neither producer
+  // nor worker; it now carries each NEW abandonment classification. The v1 consumer
+  // acknowledges and logs — campaign eligibility (consent/suppression/frequency
+  // gated) attaches here in the campaign wave without touching the producer.
+  queueService.registerWorker(QUEUES.ABANDONED_CART_EVENTS, async (job: Job) => {
+    const ctx = getContext(job);
+    return traceLocalStorage.run(ctx, async () => {
+      const { recordId, cartId, itemCount, subtotalUgx } = job.data ?? {};
+      logger.info(
+        { recordId, cartId, itemCount, subtotalUgx },
+        '[QueueWorker] Abandonment classification received',
+      );
     });
   });
 
@@ -192,6 +212,18 @@ export function registerAllWorkers(): void {
         jobId: 'synthetic-cron-job',
       }
     ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule synthetic cron job'));
+
+    // Hourly abandonment scan (Wave 2E-1)
+    syntheticQueue.add(
+      'abandonment-scan-cron',
+      {},
+      {
+        repeat: {
+          pattern: '30 * * * *',
+        },
+        jobId: 'abandonment-scan-job',
+      }
+    ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule abandonment scan cron'));
 
     // Hourly recommendation materialization
     syntheticQueue.add(
