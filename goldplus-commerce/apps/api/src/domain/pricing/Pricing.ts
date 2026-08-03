@@ -37,6 +37,31 @@ export interface PromotionBenefit {
   maximumDiscountUgx?: number | null;
 }
 
+/**
+ * AC10 — approval policy. A promotion whose discount exceeds a configured
+ * threshold must be activated by an approver DISTINCT from its creator. The
+ * thresholds are configuration (not hidden constants) and each activation audits
+ * which threshold applied. Percentage benefits are compared in basis points;
+ * fixed-amount / fixed-price benefits in UGX. Pure domain.
+ */
+export interface PromotionApprovalPolicy {
+  percentBpsThreshold: number;
+  fixedUgxThreshold: number;
+}
+
+export const DEFAULT_PROMOTION_APPROVAL_POLICY: PromotionApprovalPolicy = {
+  percentBpsThreshold: 2000, // 20%
+  fixedUgxThreshold: 100_000,
+};
+
+export function requiresDistinctApprover(benefits: PromotionBenefit[], policy: PromotionApprovalPolicy): boolean {
+  return benefits.some((benefit) => {
+    if (benefit.type === 'PERCENTAGE_OFF') return benefit.value > policy.percentBpsThreshold;
+    if (benefit.type === 'FIXED_AMOUNT_OFF' || benefit.type === 'FIXED_PRICE') return benefit.value > policy.fixedUgxThreshold;
+    return false; // FREE_SHIPPING is not discount-value gated
+  });
+}
+
 export interface PromotionExclusion {
   type: PromotionExclusionType;
   value: string;

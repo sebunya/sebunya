@@ -64,4 +64,9 @@ export interface ICouponRepository {
   /** Reverse a redemption on refund: restore the counter and flag the row, in
    * one transaction. Idempotent (a second reverse is a no-op). */
   reverse(couponId: string, orderId: string): Promise<{ reversed: boolean }>;
+  /** AC11 — has this customer identity already redeemed ANY (non-reversed)
+   * coupon of this promotion? The identity hash is derived from the phone, so two
+   * accounts sharing a phone collapse to one identity and cannot both claim a
+   * first-order promotion. */
+  hasRedeemedPromotionByIdentity(promotionDefinitionId: string, customerIdentityHash: string): Promise<boolean>;
 }

@@ -105,6 +105,7 @@ import { CheckoutUseCase } from '../application/use-cases/commerce/CheckoutUseCa
 import { EvaluateCartPricingUseCase } from '../application/use-cases/pricing/EvaluateCartPricingUseCase';
 import { ManagePromotionCapacityUseCase } from '../application/use-cases/pricing/ManagePromotionCapacityUseCase';
 import { RedeemCouponUseCase } from '../application/use-cases/pricing/RedeemCouponUseCase';
+import { FirstOrderEligibilityUseCase } from '../application/use-cases/pricing/FirstOrderEligibilityUseCase';
 import { PricingGovernanceUseCase } from '../application/use-cases/pricing/PricingGovernanceUseCase';
 import { PricingOperationsUseCase } from '../application/use-cases/pricing/PricingOperationsUseCase';
 import { DrizzleDeliveryZoneRepository } from './db/repositories/DrizzleDeliveryZoneRepository';
@@ -623,7 +624,12 @@ export class Registry {
   );
   public readonly managePromotionCapacityUseCase = new ManagePromotionCapacityUseCase(this.pricingCapacityRepo);
   public readonly redeemCouponUseCase = new RedeemCouponUseCase(this.couponRepo);
-  public readonly pricingGovernanceUseCase = new PricingGovernanceUseCase(this.pricingRepo, this.createAuditLogUseCase);
+  public readonly firstOrderEligibilityUseCase = new FirstOrderEligibilityUseCase(this.couponRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
+  public readonly pricingGovernanceUseCase = new PricingGovernanceUseCase(this.pricingRepo, this.createAuditLogUseCase, {
+    // AC10 — configurable (not hidden constants); each activation audits which threshold applied.
+    percentBpsThreshold: Number(process.env.PROMOTION_APPROVAL_PERCENT_BPS_THRESHOLD ?? 2000),
+    fixedUgxThreshold: Number(process.env.PROMOTION_APPROVAL_FIXED_UGX_THRESHOLD ?? 100_000),
+  });
   public readonly pricingOperationsUseCase = new PricingOperationsUseCase(
     this.pricingGovernanceUseCase,
     this.evaluateCartPricingUseCase,

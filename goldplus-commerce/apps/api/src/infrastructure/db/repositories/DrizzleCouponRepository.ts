@@ -146,6 +146,22 @@ export class DrizzleCouponRepository implements ICouponRepository {
     return 'COUPON_EXHAUSTED';
   }
 
+  async hasRedeemedPromotionByIdentity(promotionDefinitionId: string, customerIdentityHash: string): Promise<boolean> {
+    const rows = await db
+      .select({ id: couponRedemptions.id })
+      .from(couponRedemptions)
+      .innerJoin(couponCodes, eq(couponCodes.id, couponRedemptions.couponId))
+      .where(
+        and(
+          eq(couponCodes.promotionDefinitionId, promotionDefinitionId),
+          eq(couponRedemptions.customerIdentityHash, customerIdentityHash),
+          eq(couponRedemptions.wasReversed, false),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
   async reverse(couponId: string, orderId: string): Promise<{ reversed: boolean }> {
     return db.transaction(async (tx) => {
       const reversed = await tx
