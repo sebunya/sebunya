@@ -48,4 +48,42 @@ export class LocalProductImageStorage implements IProductImageStorage {
       logger.error({ physicalPath, err: e }, '[LocalProductImageStorage] Failed to cleanup partial file');
     }
   }
+
+  /**
+   * Wave 2B: library-asset writes on the SAME storage owner. Assets live under
+   * `<base>/<relativeDir>/<filename>` and are served by the edge at the same
+   * `/<relativeDir>/<filename>` URL (Caddy maps /uploads/* onto the shared media
+   * volume). `relativeDir` is caller-controlled but sanitised segment-by-segment so
+   * a crafted checksum/filename can never traverse out of the base tree.
+   */
+  async saveAsset(
+    relativeDir: string,
+    filename: string,
+    buffer: Buffer,
+  ): Promise<{ url: string; storageKey: string; physicalPath: string }> {
+    const safeDir = relativeDir
+      .split('/')
+      .map((seg) => seg.replace(/[^a-z0-9-_]/gi, ''))
+      .filter(Boolean)
+      .join('/');
+    const safeName = filename.replace(/[^A-Za-z0-9._-]/g, '_') || 'file';
+    const targetDir = path.join(this.basePublicPath, safeDir);
+    await fs.mkdir(targetDir, { recursive: true });
+    const physicalPath = path.join(targetDir, safeName);
+    await fs.writeFile(physicalPath, buffer);
+    const storageKey = `${safeDir}/${safeName}`;
+    return { url: `/${storageKey}`, storageKey, physicalPath };
+  }
+
+  /** Deletes a library asset by its storage key, confined to the base tree. */
+  async deleteByKey(storageKey: string): Promise<void> {
+    const physicalPath = path.join(this.basePublicPath, storageKey);
+    const resolved = path.resolve(physicalPath);
+    if (!resolved.startsWith(path.resolve(this.basePublicPath))) return;
+    try {
+      await fs.unlink(resolved);
+    } catch (e) {
+      logger.warn({ storageKey, err: e }, '[LocalProductImageStorage] asset delete skipped');
+    }
+  }
 }

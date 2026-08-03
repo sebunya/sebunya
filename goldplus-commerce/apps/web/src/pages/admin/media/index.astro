@@ -1,0 +1,520 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { apiBase } from "../../../lib/api";
+import { readSessionToken } from "../../../lib/session";
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/media", 303);
+
+const headers = { Authorization: `Bearer ${token}` };
+const jsonHeaders = { ...headers, "Content-Type": "application/json" };
+
+// ---------------------------------------------------------------------------
+// Mutations: POST → API call → 303 redirect back to /admin/media (PRG).
+// The outcome notice travels in the query string so a refresh never
+// re-submits the form; filters and picker params are preserved.
+// ---------------------------------------------------------------------------
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const action = String(form.get("action") || "");
+  const id = String(form.get("id") || form.get("assetId") || "").trim();
+
+  const finish = (kind: "success" | "error", text: string, extra: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(Astro.url.searchParams);
+    qs.delete("notice");
+    qs.delete("noticeKind");
+    qs.delete("dedup");
+    qs.set("noticeKind", kind);
+    qs.set("notice", text.slice(0, 400));
+    for (const [key, val] of Object.entries(extra)) qs.set(key, val);
+    return Astro.redirect(`/admin/media?${qs.toString()}`, 303);
+  };
+
+  try {
+    if (action === "upload") {
+      const files = form.getAll("files").filter((f): f is File => typeof f !== "string" && f.size > 0);
+      if (files.length === 0) return finish("error", "Choose at least one image to upload.");
+      const body = new FormData();
+      for (const file of files) body.append("files", file, file.name);
+      const altText = String(form.get("altText") || "").trim();
+      if (altText) body.append("altText", altText);
+      // No manual Content-Type header: fetch must set the multipart boundary itself.
+      const res = await fetch(`${apiBase}/admin/media/upload`, { method: "POST", headers, body });
+      const json = await res.json().catch(() => null);
+      if (!json?.success) return finish("error", json?.error?.message || "Upload failed.");
+      const uploaded: Array<{ id: string; url: string; deduplicated: boolean }> = json.data?.uploaded ?? [];
+      const dedup = uploaded.filter((u) => u.deduplicated);
+      const text = dedup.length > 0
+        ? `Uploaded ${uploaded.length} image${uploaded.length === 1 ? "" : "s"} — ${dedup.length} matched existing assets and ${dedup.length === 1 ? "was" : "were"} deduplicated.`
+        : `Uploaded ${uploaded.length} image${uploaded.length === 1 ? "" : "s"}.`;
+      return finish("success", text, dedup.length > 0 ? { dedup: dedup.map((u) => u.id).join(",") } : {});
+    }
+
+    if (!id) return finish("error", "Missing asset id.");
+
+    if (action === "metadata") {
+      const res = await fetch(`${apiBase}/admin/media/${encodeURIComponent(id)}/metadata`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          altText: String(form.get("altText") || "").trim() || null,
+          caption: String(form.get("caption") || "").trim() || null,
+          rights: String(form.get("rights") || "").trim() || null,
+          rightsExpiresAt: String(form.get("rightsExpiresAt") || "").trim() || null,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      return json?.success
+        ? finish("success", "Metadata saved.")
+        : finish("error", json?.error?.message || "Could not save metadata.");
+    }
+
+    if (action === "archive" || action === "restore") {
+      const res = await fetch(`${apiBase}/admin/media/${encodeURIComponent(id)}/${action}`, { method: "POST", headers });
+      const json = await res.json().catch(() => null);
+      return json?.success
+        ? finish("success", action === "archive" ? "Asset archived." : "Asset restored.")
+        : finish("error", json?.error?.message || `Could not ${action} the asset.`);
+    }
+
+    if (action === "delete") {
+      const reason = String(form.get("reason") || "").trim();
+      if (!reason) return finish("error", "A deletion reason is required.");
+      const res = await fetch(`${apiBase}/admin/media/${encodeURIComponent(id)}/delete`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ reason }),
+      });
+      const json = await res.json().catch(() => null);
+      if (json?.success) return finish("success", "Asset deleted.");
+      if (json?.error?.code === "ASSET_IN_USE") {
+        return finish("error", json.error.message || "This asset is still in use and cannot be deleted.");
+      }
+      return finish("error", json?.error?.message || "Could not delete the asset.");
+    }
+
+    if (action === "assign-product") {
+      const productId = String(form.get("productId") || "").trim();
+      if (!productId) return finish("error", "A product id is required.");
+      const res = await fetch(`${apiBase}/admin/media/${encodeURIComponent(id)}/assign-product`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ productId }),
+      });
+      const json = await res.json().catch(() => null);
+      return json?.success
+        ? finish("success", `Set as primary image for product ${json.data?.productId ?? productId}.`)
+        : finish("error", json?.error?.message || "Could not assign the asset to the product.");
+    }
+
+    return finish("error", "Unknown action.");
+  } catch {
+    return finish("error", "Media service is unreachable right now.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Read side (GET, SSR).
+// ---------------------------------------------------------------------------
+type MediaVariant = { purpose: string; format: string; width: number; url: string };
+type MediaAsset = {
+  id: string;
+  filename: string;
+  mime: string;
+  byteSize: number;
+  width: number | null;
+  height: number | null;
+  url: string;
+  altText: string | null;
+  caption: string | null;
+  rights: string | null;
+  rightsExpiresAt: string | null;
+  status: "ACTIVE" | "ARCHIVED";
+  checksum: string;
+  createdAt: string;
+  usageCount: number;
+  variants: MediaVariant[];
+};
+
+const url = Astro.url;
+const query = (url.searchParams.get("query") || "").trim();
+const statusRaw = url.searchParams.get("status");
+const status = statusRaw === null ? "ACTIVE" : statusRaw; // "" = All
+const page = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10) || 1);
+const limit = 24;
+
+// Picker mode: reached via MediaPicker's "Browse library →" link. Only local
+// return paths are honoured (never protocol-relative or absolute origins).
+const pickerReturnRaw = url.searchParams.get("return") || "";
+const pickerField = url.searchParams.get("field") || "";
+const pickerReturn = pickerReturnRaw.startsWith("/") && !pickerReturnRaw.startsWith("//") ? pickerReturnRaw : "";
+const isPicker = url.searchParams.get("picker") === "1" && pickerReturn !== "" && pickerField !== "";
+const selectHref = (assetUrl: string) => `${pickerReturn}?${encodeURIComponent(pickerField)}=${encodeURIComponent(assetUrl)}`;
+
+// Notice carried over from the PRG redirect (rendered escaped by Astro).
+const noticeText = url.searchParams.get("notice") || "";
+const notice = noticeText
+  ? { kind: url.searchParams.get("noticeKind") === "error" ? ("error" as const) : ("success" as const), text: noticeText }
+  : null;
+// Assets flagged as deduplicated by the upload that just redirected here.
+const dedupIds = new Set((url.searchParams.get("dedup") || "").split(",").filter(Boolean));
+
+const listParams = new URLSearchParams();
+if (query) listParams.set("query", query);
+if (status === "ACTIVE" || status === "ARCHIVED") listParams.set("status", status);
+listParams.set("page", String(page));
+listParams.set("limit", String(limit));
+
+let assets: MediaAsset[] = [];
+let total = 0;
+let loadFailed = false;
+try {
+  const res = await fetch(`${apiBase}/admin/media?${listParams.toString()}`, { headers, signal: AbortSignal.timeout(5000) });
+  const json = await res.json().catch(() => null);
+  if (json?.success && json.data) {
+    assets = json.data.items ?? [];
+    total = Number(json.data.total ?? assets.length);
+  } else {
+    loadFailed = true;
+  }
+} catch {
+  loadFailed = true;
+}
+
+let missing: { products: Array<{ id: string; name: string; slug: string }>; total: number } | null = null;
+let missingFailed = false;
+if (!isPicker) {
+  try {
+    const res = await fetch(`${apiBase}/admin/media/missing-product-images`, { headers, signal: AbortSignal.timeout(5000) });
+    const json = await res.json().catch(() => null);
+    if (json?.success && json.data) {
+      missing = { products: json.data.products ?? [], total: Number(json.data.total ?? 0) };
+    } else {
+      missingFailed = true;
+    }
+  } catch {
+    missingFailed = true;
+  }
+}
+
+const totalPages = Math.max(1, Math.ceil(total / limit));
+const pageHref = (p: number) => {
+  const qs = new URLSearchParams(url.searchParams);
+  qs.delete("notice");
+  qs.delete("noticeKind");
+  qs.delete("dedup");
+  qs.set("page", String(p));
+  return `/admin/media?${qs.toString()}`;
+};
+const formatSize = (bytes: number) => `${(Number(bytes || 0) / 1024).toFixed(1)} KB`;
+const formatDims = (a: MediaAsset) => (a.width && a.height ? `${a.width}×${a.height}` : "—");
+const filtersApplied = query !== "" || status !== "ACTIVE";
+---
+
+<AdminLayout
+  title="Media Library"
+  description="Upload, curate and assign product imagery — served live from the media service."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl space-y-8">
+    <div class="pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Media Library</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+        Central store for product and content imagery. Uploads are checksum-deduplicated by the
+        media service; assets in use cannot be deleted.
+      </p>
+    </div>
+
+    {notice && (
+      <div
+        class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}
+        role="status"
+      >
+        {notice.text}
+      </div>
+    )}
+
+    {isPicker && (
+      <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <span class="font-black">Picker mode:</span>
+        choosing an image for field <code class="font-mono text-xs">{pickerField}</code>. Selecting an
+        asset returns you to <code class="font-mono text-xs">{pickerReturn}</code>.
+        <a href={pickerReturn} class="ml-2 font-black underline underline-offset-2">Cancel</a>
+      </div>
+    )}
+
+    <!-- Upload -->
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+      <h3 class="text-lg font-black text-brand-dark">Upload images</h3>
+      <p class="text-xs text-gray-500 mt-1">PNG, JPEG, WebP or AVIF. Files identical to an existing asset are deduplicated, not stored twice.</p>
+      <form method="POST" enctype="multipart/form-data" class="mt-4 flex flex-wrap items-end gap-3">
+        <input type="hidden" name="action" value="upload" />
+        <label class="block">
+          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Images</span>
+          <input
+            type="file"
+            name="files"
+            multiple
+            required
+            accept="image/png,image/jpeg,image/webp,image/avif"
+            class="mt-1 block w-full max-w-xs text-xs text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-primary file:px-3 file:py-2 file:text-[10px] file:font-black file:uppercase file:tracking-widest file:text-white hover:file:opacity-90"
+          />
+        </label>
+        <label class="block flex-1 min-w-[14rem]">
+          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Alt text (optional, applied to every file)</span>
+          <input name="altText" maxlength="300" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. 65W GaN charger, front view" />
+        </label>
+        <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:opacity-90">Upload</button>
+      </form>
+    </section>
+
+    <!-- Filters -->
+    <form method="GET" action="/admin/media" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 flex flex-wrap items-end gap-3">
+      {isPicker && <input type="hidden" name="picker" value="1" />}
+      {isPicker && <input type="hidden" name="return" value={pickerReturn} />}
+      {isPicker && <input type="hidden" name="field" value={pickerField} />}
+      <label class="block flex-1 min-w-[12rem]">
+        <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Search</span>
+        <input name="query" value={query} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="filename, alt text…" />
+      </label>
+      <label class="block">
+        <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Status</span>
+        <select name="status" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <option value="ACTIVE" selected={status === "ACTIVE"}>Active</option>
+          <option value="ARCHIVED" selected={status === "ARCHIVED"}>Archived</option>
+          <option value="" selected={status === ""}>All</option>
+        </select>
+      </label>
+      <button type="submit" class="bg-gray-900 text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:opacity-90">Filter</button>
+    </form>
+
+    <!-- Asset grid -->
+    <section>
+      {loadFailed && (
+        <div class="bg-white border border-red-200 rounded-2xl p-12 text-center text-red-500 italic">
+          Media library could not be loaded (service unavailable or permission denied).
+        </div>
+      )}
+
+      {!loadFailed && assets.length === 0 && (
+        <div class="bg-white border border-dashed border-gray-300 rounded-2xl p-12 text-center">
+          {filtersApplied ? (
+            <p class="text-sm font-bold text-gray-600">No assets match the current filters.</p>
+          ) : (
+            <>
+              <p class="text-sm font-bold text-gray-600">No active assets in the library yet.</p>
+              <p class="text-xs text-gray-400 mt-2">
+                Upload PNG, JPEG, WebP or AVIF images with the form above, or switch the status
+                filter to “All” to include archived assets.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {!loadFailed && assets.length > 0 && (
+        <div class="grid gap-5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+          {assets.map((asset) => (
+            <article class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+              <img
+                src={asset.url}
+                alt={asset.altText ?? asset.filename}
+                loading="lazy"
+                class="w-full object-cover bg-gray-100"
+                style="aspect-ratio: 1 / 1;"
+              />
+              <div class="p-4 flex-1 flex flex-col">
+                <p class="text-sm font-bold text-brand-dark truncate" title={asset.filename}>{asset.filename}</p>
+                <p class="text-xs text-gray-500 mt-0.5">{formatDims(asset)} · {formatSize(asset.byteSize)} · {asset.mime}</p>
+                <p class="font-mono text-[10px] text-gray-400 truncate mt-0.5" title={asset.id}>{asset.id}</p>
+
+                <div class="flex flex-wrap items-center gap-1.5 mt-2">
+                  <span class={`text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border ${asset.status === "ACTIVE" ? "border-green-200 bg-green-50 text-green-700" : "border-gray-200 bg-gray-50 text-gray-500"}`}>
+                    {asset.status === "ACTIVE" ? "Active" : "Archived"}
+                  </span>
+                  <span class={`text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border ${asset.usageCount > 0 ? "border-blue-200 bg-blue-50 text-blue-700" : "border-gray-200 bg-gray-50 text-gray-500"}`}>
+                    {asset.usageCount > 0 ? `In use ×${asset.usageCount}` : "Unused"}
+                  </span>
+                  {dedupIds.has(asset.id) && (
+                    <span class="text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border border-amber-200 bg-amber-50 text-amber-700">
+                      Deduplicated
+                    </span>
+                  )}
+                </div>
+
+                {asset.rights && (
+                  <p class="text-[10px] text-gray-400 mt-2 truncate" title={asset.rights}>
+                    Rights: {asset.rights}{asset.rightsExpiresAt ? ` (until ${String(asset.rightsExpiresAt).slice(0, 10)})` : ""}
+                  </p>
+                )}
+
+                {isPicker ? (
+                  <a
+                    href={selectHref(asset.url)}
+                    class="mt-4 block rounded-lg bg-brand-primary px-3 py-2 text-center text-[10px] font-black uppercase tracking-widest text-white hover:opacity-90"
+                  >
+                    Select
+                  </a>
+                ) : (
+                  <div class="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                    <div class="flex items-center gap-3">
+                      <form method="POST" class="inline">
+                        <input type="hidden" name="action" value={asset.status === "ACTIVE" ? "archive" : "restore"} />
+                        <input type="hidden" name="id" value={asset.id} />
+                        <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-800">
+                          {asset.status === "ACTIVE" ? "Archive" : "Restore"}
+                        </button>
+                      </form>
+                      <button type="button" data-copy-url={asset.url} class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-800">
+                        Copy URL
+                      </button>
+                    </div>
+
+                    <details>
+                      <summary class="cursor-pointer text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-800">Edit details</summary>
+                      <form method="POST" class="mt-2 space-y-2">
+                        <input type="hidden" name="action" value="metadata" />
+                        <input type="hidden" name="id" value={asset.id} />
+                        <label class="block">
+                          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Alt text</span>
+                          <input name="altText" value={asset.altText ?? ""} maxlength="300" class="mt-1 w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs" />
+                        </label>
+                        <label class="block">
+                          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Caption</span>
+                          <input name="caption" value={asset.caption ?? ""} maxlength="300" class="mt-1 w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs" />
+                        </label>
+                        <label class="block">
+                          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Rights / licence</span>
+                          <input name="rights" value={asset.rights ?? ""} maxlength="300" class="mt-1 w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs" placeholder="e.g. Supplier press kit" />
+                        </label>
+                        <label class="block">
+                          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Rights expire</span>
+                          <input type="date" name="rightsExpiresAt" value={asset.rightsExpiresAt ? String(asset.rightsExpiresAt).slice(0, 10) : ""} class="mt-1 w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs" />
+                        </label>
+                        <button type="submit" class="bg-gray-900 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg hover:opacity-90">Save details</button>
+                      </form>
+                    </details>
+
+                    <details>
+                      <summary class="cursor-pointer text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-800">Assign to product</summary>
+                      <form method="POST" class="mt-2 space-y-2">
+                        <input type="hidden" name="action" value="assign-product" />
+                        <input type="hidden" name="id" value={asset.id} />
+                        <label class="block">
+                          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Product ID</span>
+                          <input name="productId" required class="mt-1 w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-mono" placeholder="product uuid" />
+                        </label>
+                        <p class="text-[10px] text-gray-400">Sets this image as that product's primary image.</p>
+                        <button type="submit" class="bg-gray-900 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg hover:opacity-90">Assign</button>
+                      </form>
+                    </details>
+
+                    <details>
+                      <summary class="cursor-pointer text-[10px] font-black uppercase tracking-widest text-red-600 hover:text-red-800">Delete</summary>
+                      <form method="POST" class="mt-2 flex items-center gap-2">
+                        <input type="hidden" name="action" value="delete" />
+                        <input type="hidden" name="id" value={asset.id} />
+                        <input name="reason" required maxlength="300" class="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs" placeholder="Reason (required)" />
+                        <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-red-600 hover:text-red-800">Delete</button>
+                      </form>
+                      {asset.usageCount > 0 && (
+                        <p class="text-[10px] text-gray-400 mt-1">
+                          In use by {asset.usageCount} record{asset.usageCount === 1 ? "" : "s"} — the service refuses deletion while usages exist.
+                        </p>
+                      )}
+                    </details>
+                  </div>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {!loadFailed && total > 0 && (
+        <nav class="mt-6 flex items-center justify-between" aria-label="Pagination">
+          <p class="text-xs text-gray-500">Page {page} of {totalPages} · {total} asset{total === 1 ? "" : "s"}</p>
+          <div class="flex gap-2">
+            {page > 1 ? (
+              <a href={pageHref(page - 1)} class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-gray-700 hover:bg-gray-50">← Prev</a>
+            ) : (
+              <span class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-gray-300">← Prev</span>
+            )}
+            {page < totalPages ? (
+              <a href={pageHref(page + 1)} class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-gray-700 hover:bg-gray-50">Next →</a>
+            ) : (
+              <span class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-gray-300">Next →</span>
+            )}
+          </div>
+        </nav>
+      )}
+    </section>
+
+    <!-- Missing product images -->
+    {!isPicker && (
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+        <h3 class="text-lg font-black text-brand-dark">
+          Missing product images{missing ? ` (${missing.total})` : ""}
+        </h3>
+        <p class="text-xs text-gray-500 mt-1">
+          Products without a primary image. Paste an asset id from a card above to assign one.
+        </p>
+        {missingFailed && (
+          <p class="mt-3 text-sm text-red-500 italic">The missing-images report is unavailable right now.</p>
+        )}
+        {missing && missing.products.length === 0 && (
+          <p class="mt-3 text-sm text-gray-500">No products are missing a primary image.</p>
+        )}
+        {missing && missing.products.length > 0 && (
+          <div class="mt-3 overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+                  <th class="p-3">Product</th>
+                  <th class="p-3">Slug</th>
+                  <th class="p-3 text-right">Assign asset</th>
+                </tr>
+              </thead>
+              <tbody class="text-xs">
+                {missing.products.map((p) => (
+                  <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                    <td class="p-3 font-bold text-brand-dark">{p.name}</td>
+                    <td class="p-3 font-mono text-gray-500">{p.slug}</td>
+                    <td class="p-3">
+                      <form method="POST" class="flex items-center justify-end gap-2">
+                        <input type="hidden" name="action" value="assign-product" />
+                        <input type="hidden" name="productId" value={p.id} />
+                        <input name="assetId" required class="w-56 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-mono" placeholder="asset id" />
+                        <button type="submit" class="bg-gray-900 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg hover:opacity-90">Assign</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    )}
+  </div>
+
+  <script>
+    // Copy-URL: the only client-side behaviour on this page.
+    document.addEventListener("click", (event) => {
+      const el = event.target instanceof Element ? event.target.closest("[data-copy-url]") : null;
+      if (!el) return;
+      const url = el.getAttribute("data-copy-url");
+      if (!url || !navigator.clipboard) return;
+      const absolute = url.startsWith("http") ? url : window.location.origin + url;
+      navigator.clipboard
+        .writeText(absolute)
+        .then(() => {
+          const previous = el.textContent;
+          el.textContent = "Copied";
+          window.setTimeout(() => {
+            el.textContent = previous;
+          }, 1500);
+        })
+        .catch(() => {});
+    });
+  </script>
+</AdminLayout>

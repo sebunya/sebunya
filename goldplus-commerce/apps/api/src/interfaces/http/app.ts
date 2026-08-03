@@ -30,6 +30,7 @@ import adminSearchDemandRoutes from './routes/admin/search-demand';
 import adminAnalyticsRoutes from './routes/admin/analytics';
 import adminCompatibilityRoutes from './routes/admin/compatibility';
 import adminNewModulesRoutes from './routes/admin/new-modules';
+import adminMediaRoutes from './routes/admin/media';
 import adminLoyaltyRoutes from './routes/admin/loyalty';
 import adminFulfilmentRoutes from './routes/admin/fulfilment';
 import adminControlCentreRoutes, { registerMountedPrefixes } from './routes/admin/control-centre';
@@ -183,6 +184,7 @@ app.route('/admin/search-demand', adminSearchDemandRoutes);
 app.route('/admin/analytics', adminAnalyticsRoutes);
 app.route('/admin/compatibility', adminCompatibilityRoutes);
 app.route('/admin/modules', adminNewModulesRoutes);
+app.route('/admin/media', adminMediaRoutes);
 app.route('/admin/loyalty', adminLoyaltyRoutes);
 app.route('/admin/fulfilment', adminFulfilmentRoutes);
 app.route('/admin/inventory', adminInventoryRoutes);
@@ -292,6 +294,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/measurement/gtm',
   '/admin/measurement/paid-social',
   '/admin/measurement/payments',
+  '/admin/media',
   '/admin/modules',
   '/admin/notifications',
   '/admin/pim-imports',

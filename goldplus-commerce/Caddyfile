@@ -37,11 +37,22 @@ shopgoldplus.com, www.shopgoldplus.com {
 
   encode gzip
 
-  reverse_proxy web:4321 {
-    header_up Host              {host}
-    header_up X-Real-IP         {remote_host}
-    header_up X-Forwarded-For  {remote_host}
-    header_up X-Forwarded-Proto {scheme}
+  # Media library assets (Wave 2B): the api container writes into the shared media
+  # volume; the edge serves it directly so image delivery never hops through SSR.
+  # Same-origin, so the existing img-src 'self' CSP already permits it.
+  handle /uploads/* {
+    root * /srv/media
+    header Cache-Control "public, max-age=31536000, immutable"
+    file_server
+  }
+
+  handle {
+    reverse_proxy web:4321 {
+      header_up Host              {host}
+      header_up X-Real-IP         {remote_host}
+      header_up X-Forwarded-For  {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+    }
   }
 
   handle_errors {

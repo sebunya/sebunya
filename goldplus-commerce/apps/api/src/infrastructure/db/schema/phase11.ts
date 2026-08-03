@@ -12,6 +12,8 @@ import { users } from './identity';
  * - notification_attempts: append-only log of every send through any channel
  */
 
+import { mediaAssets } from './media';
+
 export const productImages = pgTable('product_images', {
   id: uuid('id').defaultRandom().primaryKey(),
   productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }).notNull(),
@@ -19,6 +21,8 @@ export const productImages = pgTable('product_images', {
   altText: varchar('alt_text', { length: 255 }),
   displayOrder: integer('display_order').default(0).notNull(),
   isPrimary: boolean('is_primary').default(false).notNull(),
+  // Wave 2B: gallery rows created from the media library link back to their asset.
+  assetId: uuid('asset_id').references(() => mediaAssets.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

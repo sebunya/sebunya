@@ -1,0 +1,54 @@
+---
+/**
+ * Reusable media picker field for admin forms.
+ *
+ * Renders the current selection (if any), a plain text input carrying the
+ * asset URL so the surrounding <form> still submits it, and a "Browse
+ * library →" link into /admin/media picker mode. The library page links back
+ * to this page with `?<name>=<encoded asset url>` when an asset is selected;
+ * the embedding page pre-fills `value` from that query parameter.
+ */
+interface Props {
+  name: string;
+  value?: string | null;
+  label?: string;
+}
+
+const { name, value = null, label = "Image" } = Astro.props;
+const browseHref = `/admin/media?picker=1&return=${encodeURIComponent(Astro.url.pathname)}&field=${encodeURIComponent(name)}`;
+---
+
+<div class="block">
+  <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">{label}</span>
+  <div class="mt-1 flex items-start gap-3">
+    {value ? (
+      <img
+        src={value}
+        alt={`Current ${label} selection`}
+        loading="lazy"
+        class="h-16 w-16 flex-shrink-0 rounded-lg border border-gray-200 bg-gray-50 object-cover"
+        style="aspect-ratio: 1 / 1;"
+      />
+    ) : (
+      <div class="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 text-center text-[9px] font-bold uppercase tracking-widest text-gray-400">
+        No image
+      </div>
+    )}
+    <div class="min-w-0 flex-1">
+      <input
+        type="text"
+        name={name}
+        value={value ?? ""}
+        aria-label={label}
+        placeholder="/media/… or paste an asset URL"
+        class="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-mono"
+      />
+      <a
+        href={browseHref}
+        class="mt-1.5 inline-block text-[10px] font-black uppercase tracking-widest text-brand-primary hover:underline"
+      >
+        Browse library →
+      </a>
+    </div>
+  </div>
+</div>

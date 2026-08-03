@@ -25,6 +25,9 @@ import { DrizzleAuditRepository } from './db/repositories/DrizzleAuditRepository
 import { DrizzlePaymentRepository } from './db/repositories/DrizzlePaymentRepository';
 import { DrizzleUserRepository } from './db/repositories/DrizzleUserRepository';
 import { LocalProductImageStorage } from './storage/LocalProductImageStorage';
+import { DrizzleMediaLibraryRepository } from './db/repositories/DrizzleMediaLibraryRepository';
+import { MediaLibraryUseCase } from '../application/use-cases/media/MediaLibraryUseCase';
+import { SharpVariantGenerator } from './media/SharpVariantGenerator';
 import * as path from 'path';
 import { DrizzleAddressRepository } from './db/repositories/DrizzleAddressRepository';
 import { DrizzleRoleRepository } from './db/repositories/DrizzleRoleRepository';
@@ -501,9 +504,20 @@ export class Registry {
   public readonly pesapalClient: IPesaPalClient = new PesaPalClient(env);
   public readonly systemHealthRepo = new DrizzleSystemHealthRepository();
 
-  // Storage
+  // Storage. In production MEDIA_STORAGE_ROOT points at the shared media volume the
+  // edge serves (/uploads/* -> volume); the dev fallback keeps writing into
+  // web/public so local Astro serves the same URLs.
   private readonly productImageStorage = new LocalProductImageStorage(
-    path.join(process.cwd().endsWith('apps/api') ? process.cwd() : path.join(process.cwd(), 'apps', 'api'), '..', 'web', 'public')
+    process.env.MEDIA_STORAGE_ROOT ||
+      path.join(process.cwd().endsWith('apps/api') ? process.cwd() : path.join(process.cwd(), 'apps', 'api'), '..', 'web', 'public')
+  );
+
+  // Wave 2B — media library (DAM) on the same storage owner.
+  public readonly mediaLibraryRepo = new DrizzleMediaLibraryRepository();
+  public readonly mediaLibraryUseCase = new MediaLibraryUseCase(
+    this.mediaLibraryRepo,
+    this.productImageStorage,
+    new SharpVariantGenerator(),
   );
 
   public readonly adminUserReadRepo = new DrizzleAdminUserReadRepository();

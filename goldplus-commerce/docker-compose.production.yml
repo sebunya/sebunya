@@ -140,9 +140,15 @@ services:
       - ZEPTOMAIL_API_BASE_URL=${ZEPTOMAIL_API_BASE_URL}
       - NOTIFICATIONS_PROVIDER_TIMEOUT_MS=${NOTIFICATIONS_PROVIDER_TIMEOUT_MS}
       - METRICS_INTERNAL_URL=${METRICS_INTERNAL_URL:-http://sgtm-production:8080}
+      # Wave 2B: durable media storage on the shared volume the edge serves. Without
+      # this the api wrote uploads into its own ephemeral filesystem (write-only
+      # black hole — the original broken-images root cause).
+      - MEDIA_STORAGE_ROOT=/data/media
       - SHADOW_TRAFFIC_URL=${SHADOW_TRAFFIC_URL:-}
       - SHADOW_TRAFFIC_RATIO=${SHADOW_TRAFFIC_RATIO:-0}
       - NODE_OPTIONS=--max-old-space-size=400
+    volumes:
+      - media_uploads:/data/media
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health/live').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
       interval: 10s
@@ -237,6 +243,7 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./ops/caddy-fallback:/srv/caddy-fallback:ro
+      - media_uploads:/srv/media:ro
       - caddy_data:/data
       - caddy_config:/config
 
@@ -309,6 +316,7 @@ services:
     mem_limit: 512m
 
 volumes:
+  media_uploads:
   pg_prod_data:
   caddy_data:
   caddy_config:

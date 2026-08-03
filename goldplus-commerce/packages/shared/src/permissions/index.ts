@@ -86,6 +86,10 @@ export const PERMISSIONS = {
   ANALYTICS_MANAGE: 'analytics.manage',
   ANALYTICS_EXPORT: 'analytics.export',
   ANALYTICS_ALERTS_MANAGE: 'analytics.alerts.manage',
+  // Wave 2B — media library (DAM). Granted to PLATFORM_ADMINISTRATOR automatically by
+  // the boot-time registry sync.
+  MEDIA_READ: 'media.read',
+  MEDIA_MANAGE: 'media.manage',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
