@@ -13,8 +13,8 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "a829f9a",
-  "phase": "Wave 2 sweep complete: 2A-2F released; 2G/2H-core verified-KEEP; remaining = send engine, gamification, PIM/analytics depth, DAM photos, 2nd reviewer",
+  "lastGreenHead": "74c9c1b",
+  "phase": "Waves released: 2A-2F + SEND(dry-run). Verified-KEEP: 2G, 2H-loyalty. Remaining: live-send activation (business decision + provider evidence), gamification, PIM/analytics depth.",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -177,6 +177,12 @@
       "module": "loyalty-core",
       "status": "GREEN",
       "evidence": "DORMANT honest (enabled:false); reversal route exists"
+    },
+    {
+      "id": "W-SEND",
+      "module": "send-engine-dry-run",
+      "status": "RELEASED",
+      "evidence": "74c9c1b: real-audience dry-run 3\u21920 all NO_IDENTITY; quiet-hours live-correct; ledger queryable; LIVE unreachable \u00d73"
     }
   ],
   "constraints": [
@@ -188,8 +194,8 @@
   ],
   "nextExact": {
     "file": "docs/platform/institutional-memory-v4/MODULE_MATURITY_MATRIX.md",
-    "command": "remaining INCOMPLETE_INTERNAL in order: campaign SEND engine (no-send verification, consent/suppression/frequency/quiet-hours) > gamification > PIM UX depth > analytics depth metrics. Operator items: gh auth login; 2nd reviewer account; product photography via /admin/media.",
-    "expected": "resume ritual unchanged"
+    "command": "remaining in order: gamification scaffold OR PIM UX depth OR analytics depth. Live-send activation is EXPLICITLY a business decision + provider-credential evidence \u2014 never automatic.",
+    "expected": "ritual unchanged"
   },
-  "releasedHead": "a829f9a"
+  "releasedHead": "74c9c1b"
 }

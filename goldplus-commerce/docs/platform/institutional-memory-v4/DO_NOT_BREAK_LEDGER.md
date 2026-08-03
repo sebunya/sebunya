@@ -24,3 +24,4 @@ SHA `707876d` · 2026-08-03. Each row = a proven behaviour with its guard. Break
 | 19 | `/uploads/*` is served by the edge from the shared media volume; api writes only under MEDIA_STORAGE_ROOT; asset URLs are immutable-cached | W2B live proof (upload→serve E2E) | route-contract may add an asset-serve probe |
 | 20 | Media deletion refuses while `media_usages` rows exist (409 ASSET_IN_USE); uploads deduplicate by sha256 | unit suite 4/4 | keep |
 | 21 | media_uploads volume owned by uid 1000 (api user `node`); recreating the VOLUME (not container) requires re-chown | W2B EACCES incident + fix | note in release recipe |
+| 22 | Campaign LIVE sending is unreachable: no schema vocabulary, use-case LIVE_FORBIDDEN, zero provider imports in the send pipeline; consent gate FAIL-CLOSED | W-SEND live proof + engine suite | any future activation wave must add its own verification evidence before touching this triple lock |
