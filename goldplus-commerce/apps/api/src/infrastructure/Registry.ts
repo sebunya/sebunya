@@ -351,6 +351,7 @@ import { DrizzleMfaRepository } from './db/repositories/DrizzleMfaRepository';
 import { MfaService } from './security/MfaService';
 import { DrizzleCommerceReconciliationRepository } from './db/repositories/DrizzleCommerceReconciliationRepository';
 import { ScanCommerceIntegrityUseCase } from '../application/use-cases/commerce/ScanCommerceIntegrityUseCase';
+import { OrderTransitionService } from './orders/OrderTransitionService';
 import { DrizzleProductQualityRepository } from './db/repositories/DrizzleProductQualityRepository';
 import { ScoreProductQualityUseCase } from '../application/use-cases/products/ScoreProductQualityUseCase';
 import { DrizzleCustomerRfmRepository } from './db/repositories/DrizzleCustomerRfmRepository';
@@ -601,6 +602,8 @@ export class Registry {
   // Slice 4: commerce data-integrity reconciliation (money + inventory).
   public readonly commerceReconciliationRepository = new DrizzleCommerceReconciliationRepository();
   public readonly scanCommerceIntegrityUseCase = new ScanCommerceIntegrityUseCase(this.commerceReconciliationRepository);
+  // P0-2: canonical transactional order-status transition + append-only ledger.
+  public readonly orderTransitionService = new OrderTransitionService();
   // Slice 5: product data-quality scoring.
   public readonly productQualityRepository = new DrizzleProductQualityRepository();
   public readonly scoreProductQualityUseCase = new ScoreProductQualityUseCase(this.productQualityRepository);
@@ -956,7 +959,8 @@ export class Registry {
 
   public readonly verifyPesaPalPaymentUseCase = new VerifyPesaPalPaymentUseCase(
     this.pesapalPaymentRepo,
-    this.pesapalClient
+    this.pesapalClient,
+    this.orderTransitionService
   );
 
   /**

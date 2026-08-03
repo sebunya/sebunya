@@ -367,9 +367,18 @@ routes.patch('/admin/orders/:id/fulfillment', requirePermissions([PERMISSIONS.OR
       return c.json({ success: false, error: { code: 'TRANSITION_BLOCKED', message: decision.message } }, 400);
     }
 
-    // Mutate state using domain model
+    // Canonical transactional transition: the status update AND exactly one
+    // append-only order_event commit in one transaction. Actor is the session
+    // user, never a body field. The pure domain object is kept only for the
+    // response DTO; persistence goes through the canonical service.
     const updatedOrder = order.transitionStatus(nextStatus as any);
-    await registry.orderRepo.save(updatedOrder);
+    await registry.orderTransitionService.transition(order.id, nextStatus as OrderStatus, {
+      actorId: (c.get('user') as { id: string }).id,
+      actorType: 'administrator',
+      source: 'admin_api',
+      reasonCode: 'admin_transition',
+      idempotencyKey: `admin:${order.id}:${nextStatus}`,
+    });
 
     // Audit log
     const auditUc = new CreateAuditLogUseCase(registry.auditRepo);

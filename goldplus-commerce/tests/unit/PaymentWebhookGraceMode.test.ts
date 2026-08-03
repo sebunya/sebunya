@@ -149,7 +149,12 @@ describe('an unreviewed payment does not move the order', () => {
     const text = await (await import('node:fs/promises')).readFile(source, 'utf8');
     expect(text).toContain('if (!requiresReview) {');
     const guarded = text.slice(text.indexOf('if (!requiresReview) {'));
-    expect(guarded.slice(0, 400)).toContain('paymentStatus');
+    // The order is moved ONLY inside the !requiresReview guard: a successful
+    // payment transitions it through the canonical service; a failed one records
+    // payment status. Both order-side writes live within this block.
+    const block = guarded.slice(0, 900);
+    expect(block).toContain('transitionWithin');
+    expect(block).toContain('paymentStatus');
   });
 
   it('emits no PAYMENT_SUCCESS domain event while review is pending', async () => {

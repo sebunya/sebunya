@@ -37,10 +37,15 @@ export interface IPesaPalPaymentRepository {
     callbackReceivedAt?: Date | null;
   }): Promise<RecordedPaymentAttempt>;
 
+  /**
+   * Record ONLY the payment status of an order. This deliberately cannot write
+   * the lifecycle `status`: every order-status transition must go through the
+   * canonical OrderTransitionService (P0-2), which records an order_event. A
+   * failed/invalid payment is a payment-status fact with no legal lifecycle move.
+   */
   updateOrderPaymentStatusSafely(
     orderId: string,
-    status: 'paid' | 'failed' | 'reversed' | 'unpaid',
-    orderStatus?: 'processing' | 'received' | 'pending_payment' | 'cancelled'
+    status: 'paid' | 'failed' | 'reversed' | 'unpaid'
   ): Promise<void>;
 
   findAttemptsByOrderId(orderId: string): Promise<RecordedPaymentAttempt[]>;

@@ -1,0 +1,10 @@
+
+ RUN  v1.6.1 /Users/robertsebunya/Documents/GitHub_Projects/goldplus-v5-production-20260802/goldplus-commerce
+
+ ✓ tests/architecture/order-transition-canonical.test.ts  (3 tests) 185ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  04:58:15
+   Duration  493ms (transform 34ms, setup 1ms, collect 39ms, tests 185ms, environment 0ms, prepare 96ms)
+

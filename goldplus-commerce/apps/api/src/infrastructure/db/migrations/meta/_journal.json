@@ -470,6 +470,13 @@
       "when": 1786593600000,
       "tag": "0066_foreign_key_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "5",
+      "when": 1786680000000,
+      "tag": "0067_order_events_ledger",
+      "breakpoints": true
     }
   ]
 }

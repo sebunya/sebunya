@@ -1,0 +1,32 @@
+# P0-2 order-events ledger — independent pre-work re-assessment
+
+Re-assessed AC2/AC3 from evidence (not from the prior "8/9" claim), per the
+continuation's instruction to not assume the count.
+
+FINDING: the prior durable record was internally inconsistent. It listed BOTH
+AC2 as "PARTIAL -> OPEN" AND AC3 as "OPEN", yet counted P0-2 as 8/9 (verified:8,
+open:1). Two open criteria cannot leave a 8/9. The honest pre-work count is 7/9:
+
+  AC2 (illegal transition writes NO event): UNVERIFIED.
+      The OrderStateMachine.canTransitionOrder throws on an illegal transition
+      (that half was proven), but "writes zero events" was unprovable because
+      there was no event ledger at all. Half-proven is not verified.
+
+  AC3 (every successful transition writes exactly ONE event): UNVERIFIED.
+      No order_events table existed. `grep -rn "order_events"` over apps/api/src
+      returned nothing before this work. Order status was written directly by
+      three separate paths, none of which recorded a transition event:
+        - interfaces/http/routes/governance.ts  (admin fulfilment PATCH)
+        - application/use-cases/payments/VerifyPesaPalPaymentUseCase.ts
+            -> DrizzlePaymentAttemptRepository.updateOrderPaymentStatusSafely
+        - infrastructure/db/repositories/DrizzlePaymentRepository.ts
+            (mobile-money webhook settlement)
+
+CORRECTED BASELINE: P0-2 = 7/9 (AC2 and AC3 both open).
+This work closes both to reach a genuine 9/9.
+
+Two of those direct writers also drove the order to `pending_payment` on a failed
+payment — a transition the state machine does NOT permit from `received`
+(ALLOWED[received] = ['processing','cancelled']). That latent divergence between
+the direct-write world and the state-machine world is exactly what a canonical
+ledgered path removes.

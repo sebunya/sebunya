@@ -15,6 +15,38 @@
       "command": "vitest OrderItemsIndex (real PG)",
       "artifactPath": "evidence/p0-2/order-items-index.txt",
       "result": "1/1 PASS"
+    },
+    {
+      "unit": "P0-2",
+      "criterion": "AC2+AC3",
+      "gate": "integration",
+      "command": "vitest OrderEventsLedger.integration (real PG + concurrency)",
+      "artifactPath": "evidence/P0-2-order-events/03-ac2-ac3-atomicity-concurrency.txt",
+      "result": "9/9 PASS"
+    },
+    {
+      "unit": "P0-2",
+      "criterion": "AC2+AC3 (backfill+index)",
+      "gate": "integration",
+      "command": "vitest OrderEventsBackfill.integration (real PG + EXPLAIN)",
+      "artifactPath": "evidence/P0-2-order-events/04-backfill-and-explain.txt",
+      "result": "4/4 PASS"
+    },
+    {
+      "unit": "P0-2",
+      "criterion": "AC3 (canonical-writer guard)",
+      "gate": "architecture",
+      "command": "vitest order-transition-canonical",
+      "artifactPath": "evidence/P0-2-order-events/05-architecture-guard.txt",
+      "result": "3/3 PASS"
+    },
+    {
+      "unit": "P0-2",
+      "criterion": "AC2+AC3 (writer migration)",
+      "gate": "unit",
+      "command": "vitest pesapal-payment + OrderStateTransitions + PaymentWebhookGraceMode",
+      "artifactPath": "evidence/P0-2-order-events/06-writer-migration-unit.txt",
+      "result": "41/41 PASS"
     }
   ]
 }

@@ -84,14 +84,14 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
 
   async updateOrderPaymentStatusSafely(
     orderId: string,
-    status: 'paid' | 'failed' | 'reversed' | 'unpaid',
-    orderStatus?: 'processing' | 'received' | 'pending_payment' | 'cancelled'
+    status: 'paid' | 'failed' | 'reversed' | 'unpaid'
   ): Promise<void> {
+    // Payment status ONLY. The lifecycle `status` is never written here — that is
+    // the exclusive job of OrderTransitionService, which records an order_event.
     await db
       .update(orders)
       .set({
         paymentStatus: status,
-        status: orderStatus !== undefined ? orderStatus : undefined,
         updatedAt: new Date(),
       })
       .where(eq(orders.id, orderId));

@@ -1,0 +1,10 @@
+
+ RUN  v1.6.1 /Users/robertsebunya/Documents/GitHub_Projects/goldplus-v5-production-20260802/goldplus-commerce
+
+ ✓ tests/integration/OrderEventsBackfill.integration.test.ts  (4 tests) 161ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  07:30:16
+   Duration  917ms (transform 76ms, setup 0ms, collect 57ms, tests 161ms, environment 0ms, prepare 239ms)
+

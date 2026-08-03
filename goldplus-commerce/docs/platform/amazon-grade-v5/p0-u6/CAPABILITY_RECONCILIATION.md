@@ -10,14 +10,27 @@ order 404, login timing dummy-hash, login 429, admin-auth arch test) + 1 GAP CLO
 signature (`${ts}.${rawBody}`) with a 300s/60s freshness window (→401 STALE_TIMESTAMP),
 additive/backward-compatible. This closes the last stop-ship residual (7.2).
 
-## P0-2 (data & concurrency): 8/9 VERIFIED, 1 OPEN
+## P0-2 (data & concurrency): 9/9 VERIFIED
+
+Baseline correction: the prior record said "8/9" while marking BOTH AC2 and AC3
+open — internally inconsistent. The honest pre-work baseline was **7/9**. Both are
+now closed for a genuine **9/9**.
+
 7 ALREADY_PROVEN (bigint 0062, outbox fencing, tx retry, slow-query redaction,
-route-family keys, shared Redis limits) + 1 GAP CLOSED: **AC9 FK indexes** (migration
-0066: order_items.order_id, cart_items.cart_id, product_prices.product_id,
-products.category_id; EXPLAIN confirms index scan). **OPEN: AC2/AC3 order_events
-append-only ledger** — the OrderStateMachine rejects illegal transitions (proven) but
-there is no order_events table recording each transition in-transaction. This is the
-one remaining internally-controllable P0 gap.
+route-family keys, shared Redis limits) + AC9 FK indexes (migration 0066) + **AC2/AC3
+GAP CLOSED this turn**: one canonical, transactional, **append-only order_events
+ledger** (migration `0067`, `OrderTransitionService` implementing
+`IOrderTransitionPort`). Every successful transition writes exactly one event in the
+same transaction as the status change; an illegal transition writes nothing; the
+`OrderStateMachine` was reused (not recreated). All three prior direct status writers
+— the admin fulfilment route, `VerifyPesaPalPaymentUseCase`, and the mobile-money
+webhook settlement (`DrizzlePaymentRepository`, atomic with the payment row + outbox
+via `transitionWithin`) — now route through the canonical path; a failed payment no
+longer forces the illegal `received → pending_payment`. Proven on real PostgreSQL
+with atomicity (rollback), concurrency (FOR UPDATE + idempotency key → one event),
+truthful synthetic backfill, indexed history (EXPLAIN), and architecture guards
+(canonical-writer-only + append-only). Evidence: `evidence/P0-2-order-events/`
+(parity 68/68).
 
 ## Units U1–U6: STILL_MISSING (gap-only new feature builds)
 U1 pricing engine/promotions/coupons · U2 device catalogue/compatibility · U3 reviews/

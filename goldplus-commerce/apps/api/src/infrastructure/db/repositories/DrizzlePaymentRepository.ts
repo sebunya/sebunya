@@ -3,6 +3,7 @@ import { db } from '../client';
 import { orders, payments } from '../schema/commerce';
 import { outboxEvents } from '../schema/system';
 import { IPaymentRepository, PaymentWebhookOutcome, RecordedPayment } from '../../../application/ports/IPaymentRepository';
+import { OrderTransitionService } from '../../orders/OrderTransitionService';
 import { DOMAIN_EVENTS } from '@goldplus/shared';
 
 function rowToPayment(row: typeof payments.$inferSelect): RecordedPayment {
@@ -20,6 +21,11 @@ function rowToPayment(row: typeof payments.$inferSelect): RecordedPayment {
 }
 
 export class DrizzlePaymentRepository implements IPaymentRepository {
+  // Infra-to-infra composition: a successful settlement transitions the order
+  // through the ONE canonical path, enlisted in THIS repository's transaction so
+  // payment + status + order_event + outbox commit together.
+  constructor(private readonly orderTransition: OrderTransitionService = new OrderTransitionService()) {}
+
   async findByIdempotencyKey(idempotencyKey: string): Promise<RecordedPayment | null> {
     const row = await db.query.payments.findFirst({
       where: eq(payments.idempotencyKey, idempotencyKey),
@@ -82,13 +88,27 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
         // the order would progress to fulfilment exactly as if the payment were
         // proven. The order advances when a human confirms the payment.
         if (!requiresReview) {
-          await tx
-            .update(orders)
-            .set({
-              paymentStatus: input.outcome === 'SUCCESS' ? 'paid' : 'failed',
-              status: input.outcome === 'SUCCESS' ? 'processing' : 'pending_payment'
-            })
-            .where(eq(orders.id, input.orderId));
+          if (input.outcome === 'SUCCESS') {
+            // Legal lifecycle move to processing, through the ONE canonical path,
+            // enlisted in this transaction: payment status + status + exactly one
+            // order_event commit atomically with the payment row and outbox event.
+            await this.orderTransition.transitionWithin(tx, input.orderId, 'processing', {
+              actorType: 'payment_provider',
+              source: 'payment',
+              reasonCode: `${input.provider}_payment_success`,
+              paymentStatus: 'paid',
+              idempotencyKey: `payment:success:${input.idempotencyKey}`,
+              correlationId: input.providerReference ?? undefined,
+            });
+          } else {
+            // A failed payment authorises NO lifecycle move (received ->
+            // pending_payment is not a legal transition). Record the payment
+            // status only; no order_event is invented.
+            await tx
+              .update(orders)
+              .set({ paymentStatus: 'failed', updatedAt: new Date() })
+              .where(eq(orders.id, input.orderId));
+          }
         }
 
         // No domain event for an unreviewed payment either: PAYMENT_SUCCESS is

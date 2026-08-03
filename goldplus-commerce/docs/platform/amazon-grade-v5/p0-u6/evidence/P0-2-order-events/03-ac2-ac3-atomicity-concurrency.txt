@@ -1,0 +1,22 @@
+
+ RUN  v1.6.1 /Users/robertsebunya/Documents/GitHub_Projects/goldplus-v5-production-20260802/goldplus-commerce
+
+[04:58:13.815] WARN (19127): [DB] Transaction rolled back/failed
+    workerInstance: "api-node-1"
+    durationMs: 1
+    err: "Operational transition from 'completed' to 'received' is not allowed."
+[04:58:13.821] WARN (19127): [DB] Transaction rolled back/failed
+    workerInstance: "api-node-1"
+    durationMs: 2
+    err: "Cannot process an unpaid order that is pending payment."
+[04:58:13.829] WARN (19127): [DB] Transaction rolled back/failed
+    workerInstance: "api-node-1"
+    durationMs: 4
+    err: "new row for relation \"order_events\" violates check constraint \"order_events_source_chk\""
+ ✓ tests/integration/OrderEventsLedger.integration.test.ts  (9 tests) 482ms
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  04:58:11
+   Duration  2.54s (transform 539ms, setup 0ms, collect 1.11s, tests 482ms, environment 0ms, prepare 253ms)
+

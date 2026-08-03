@@ -1,0 +1,36 @@
+# order_events schema (real PostgreSQL, goldplus_test)
+
+COLUMNS:
+  id uuid NOT NULL
+  order_id uuid NOT NULL
+  from_status character varying
+  to_status character varying NOT NULL
+  actor_id uuid
+  actor_type character varying NOT NULL
+  reason_code character varying
+  source character varying NOT NULL
+  note character varying
+  idempotency_key character varying
+  correlation_id character varying
+  is_synthetic boolean NOT NULL
+  occurred_at timestamp with time zone NOT NULL
+  created_at timestamp with time zone NOT NULL
+
+INDEXES:
+  CREATE UNIQUE INDEX order_events_idempotency_uq ON public.order_events USING btree (idempotency_key) WHERE (idempotency_key IS NOT NULL)
+  CREATE INDEX order_events_order_occurred_idx ON public.order_events USING btree (order_id, occurred_at)
+  CREATE UNIQUE INDEX order_events_pkey ON public.order_events USING btree (id)
+
+CONSTRAINTS:
+  order_events_actor_type_chk: CHECK (((actor_type)::text = ANY ((ARRAY['customer'::character varying, 'administrator'::character varying, 'system'::character varying, 'payment_provider'::character varying, 'fulfilment_worker'::character varying, 'migration'::character varying])::text[])))
+  order_events_actor_type_not_null: NOT NULL actor_type
+  order_events_created_at_not_null: NOT NULL created_at
+  order_events_id_not_null: NOT NULL id
+  order_events_is_synthetic_not_null: NOT NULL is_synthetic
+  order_events_occurred_at_not_null: NOT NULL occurred_at
+  order_events_order_id_fkey: FOREIGN KEY (order_id) REFERENCES orders(id)
+  order_events_order_id_not_null: NOT NULL order_id
+  order_events_pkey: PRIMARY KEY (id)
+  order_events_source_chk: CHECK (((source)::text = ANY ((ARRAY['admin_api'::character varying, 'payment'::character varying, 'fulfilment'::character varying, 'customer'::character varying, 'system'::character varying, 'migration'::character varying])::text[])))
+  order_events_source_not_null: NOT NULL source
+  order_events_to_status_not_null: NOT NULL to_status

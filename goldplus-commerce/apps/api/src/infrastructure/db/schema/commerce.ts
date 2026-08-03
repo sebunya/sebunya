@@ -248,3 +248,37 @@ export const checkoutSideEffects = pgTable('checkout_side_effects', {
   ),
   orderIdx: index('checkout_side_effects_order_idx').on(table.orderId),
 }));
+
+/**
+ * P0-2 §5 — canonical append-only order-transition ledger.
+ *
+ * Exactly one row per committed status transition, written in the SAME
+ * transaction as the order-status update. Append-only: no application update or
+ * delete path exists, and an architecture test forbids one. Actor identity comes
+ * from trusted context, never a request body. Backfill writes one explicit
+ * synthetic snapshot per pre-existing order (is_synthetic=true), which asserts
+ * the order HAD this stored state when history began — not that every transition
+ * was observed. No raw PII / provider payloads / tokens are stored.
+ */
+export const orderEvents = pgTable(
+  'order_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    orderId: uuid('order_id').references(() => orders.id).notNull(),
+    fromStatus: varchar('from_status', { length: 30 }),
+    toStatus: varchar('to_status', { length: 30 }).notNull(),
+    actorId: uuid('actor_id'),
+    actorType: varchar('actor_type', { length: 24 }).notNull(),
+    reasonCode: varchar('reason_code', { length: 48 }),
+    source: varchar('source', { length: 24 }).notNull(),
+    note: varchar('note', { length: 500 }),
+    idempotencyKey: varchar('idempotency_key', { length: 120 }),
+    correlationId: varchar('correlation_id', { length: 120 }),
+    isSynthetic: boolean('is_synthetic').notNull().default(false),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orderOccurredIdx: index('order_events_order_occurred_idx').on(t.orderId, t.occurredAt),
+  }),
+);

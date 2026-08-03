@@ -1,6 +1,6 @@
 {
   "programme": "GOLDPLUS_P0_U6",
-  "phase": "VERIFYING_P0_2",
+  "phase": "P0_2_COMPLETE_STARTING_U1",
   "pr": 9,
   "startingHead": "40e1f9b",
   "P0_1": {
@@ -25,26 +25,28 @@
   "P0_2": {
     "gate": "data & concurrency",
     "criteriaTotal": 9,
-    "verified": 8,
-    "open": 1,
+    "verified": 9,
+    "open": 0,
+    "baselineCorrection": "Prior record counted 8/9 while listing AC2 and AC3 both open (inconsistent). Honest pre-work baseline: 7/9. Both closed this turn.",
     "criteria": {
       "AC1": "VERIFIED (ALREADY_PROVEN: bigint 9e9 round-trip; MoneyBigintMigration)",
-      "AC2": "PARTIAL -> OPEN: OrderStateMachine rejects illegal transition (VERIFIED throw), but \"writes no order_event\" needs an order_events append-only ledger which DOES NOT EXIST. IMPLEMENTATION_MISSING (order_events).",
-      "AC3": "OPEN: order_events append-only ledger missing (every status change -> one event). IMPLEMENTATION_MISSING.",
+      "AC2": "VERIFIED (GAP CLOSED this turn: illegal transition throws AND writes zero events + no status change, proven on real PostgreSQL; OrderEventsLedger.integration 9/9). Evidence: P0-2-order-events/03,05,23.",
+      "AC3": "VERIFIED (GAP CLOSED this turn: one canonical append-only order_events ledger — every successful transition writes EXACTLY ONE event with correct from/to/actor/source, atomic, concurrency-safe (FOR UPDATE + idempotency key). All three status writers (admin route, PesaPal, mobile-money webhook) migrated. Real PostgreSQL + concurrency + backfill + EXPLAIN. Arch guard forbids bypass + enforces append-only.). Evidence: P0-2-order-events/01-06,23.",
       "AC4": "VERIFIED (ALREADY_PROVEN: outbox fenced lease 0058/0059; one dispatch)",
       "AC5": "VERIFIED (ALREADY_PROVEN: client.ts retry restarts a fresh transaction)",
       "AC6": "VERIFIED (ALREADY_PROVEN: slow-query log omits bound parameters; Slice 3E/3F)",
       "AC7": "VERIFIED (ALREADY_PROVEN: route-family keys; 500 invented URLs -> one global key; Slice 3A)",
       "AC8": "VERIFIED (ALREADY_PROVEN: shared Redis limits across replicas; RedisAbuseControl 16/16)",
-      "AC9": "VERIFIED (GAP CLOSED this turn: migration 0066 FK indexes; EXPLAIN uses order_items_order_id_idx; OrderItemsIndex 1/1)"
+      "AC9": "VERIFIED (GAP CLOSED prior turn: migration 0066 FK indexes; EXPLAIN uses order_items_order_id_idx; OrderItemsIndex 1/1)"
     }
   },
   "remaining": {
-    "P0_2": "order_events append-only ledger (AC2/AC3)",
+    "P0_2": "NONE — 9/9 closed",
     "units": "U1 pricing/promotions/coupons, U2 device catalogue, U3 reviews, U4 creator, U5 flash sales, U6 SEO/AEO — all STILL_MISSING new feature builds (gap-only)"
   },
   "migrationsAdded": [
-    "0066_foreign_key_indexes"
+    "0066_foreign_key_indexes",
+    "0067_order_events_ledger"
   ],
-  "migrationCeiling": "0066 (67/67 parity)"
+  "migrationCeiling": "0067 (68/68 parity)"
 }

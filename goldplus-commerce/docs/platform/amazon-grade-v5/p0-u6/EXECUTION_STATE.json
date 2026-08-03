@@ -1,10 +1,11 @@
 {
   "programme": "GOLDPLUS_P0_U6",
-  "phase": "VERIFYING_P0_2",
+  "phase": "P0_2_COMPLETE_STARTING_U1",
   "pr": 9,
   "startingHead": "40e1f9b",
   "p0_1": "11/11 VERIFIED",
-  "p0_2": "8/9 VERIFIED (AC2/AC3 order_events OPEN)",
+  "p0_2": "9/9 VERIFIED (AC2/AC3 order_events ledger CLOSED this turn on real PostgreSQL + concurrency)",
+  "p0_2_baselineCorrection": "Prior record claimed 8/9 but listed BOTH AC2 and AC3 as open — inconsistent. Honest pre-work baseline was 7/9; AC2 and AC3 both closed to reach a genuine 9/9.",
   "unitsPending": [
     "U1",
     "U2",
@@ -13,6 +14,7 @@
     "U5",
     "U6"
   ],
-  "nextExactWork": "Build order_events append-only ledger (migration + domain event written in the same tx as each OrderStateMachine transition + repo + backfill + test) to close P0-2 AC2/AC3, then U1 pricing engine reconciliation.",
+  "nextExactWork": "Compile U1 acceptance criteria (pricing/promotions/coupons) and reconcile against the canonical PricingEngine — do NOT create a second PricingEngine. Then build only the true gaps.",
+  "migrationCeiling": "0067_order_events_ledger (68/68 parity)",
   "terminal": "GOLDPLUS_P0_U6_PARTIAL"
 }

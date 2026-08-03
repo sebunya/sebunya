@@ -4,11 +4,13 @@ import { StartPesaPalPaymentUseCase } from '../../apps/api/src/application/use-c
 import { VerifyPesaPalPaymentUseCase } from '../../apps/api/src/application/use-cases/payments/VerifyPesaPalPaymentUseCase';
 import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../apps/api/src/application/ports/IPesaPalPaymentRepository';
 import { ICustomerOrderRepository } from '../../apps/api/src/application/ports/ICustomerOrderRepository';
+import { IOrderTransitionPort } from '../../apps/api/src/application/ports/IOrderTransitionPort';
 import { Order } from '../../apps/api/src/domain/commerce/Order';
 
 describe('PesaPal Payment Integration Unit Tests', () => {
   let mockPaymentRepo: IPesaPalPaymentRepository;
   let mockOrderRepo: ICustomerOrderRepository;
+  let mockOrderTransition: IOrderTransitionPort;
   let client: PesaPalClient;
   let config: any;
 
@@ -41,6 +43,15 @@ describe('PesaPal Payment Integration Unit Tests', () => {
     mockOrderRepo = {
       findById: vi.fn(),
       findAll: vi.fn(),
+    } as any;
+
+    // Canonical transition port: default success returning a synthetic event id.
+    mockOrderTransition = {
+      transition: vi.fn().mockResolvedValue({
+        orderId: 'order-123', fromStatus: 'received', toStatus: 'processing',
+        eventId: 'evt-1', idempotentReplay: false,
+      }),
+      history: vi.fn().mockResolvedValue([]),
     } as any;
 
     vi.spyOn(global, 'fetch').mockImplementation(() => Promise.resolve(new Response()));
@@ -176,13 +187,22 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       amount: 50000, currency: 'UGX', status_code: 1, payment_status_description: 'COMPLETED'
     });
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'callback' });
 
     expect(output.ok).toBe(true);
     expect(output.status).toBe('completed');
     expect(client.getTransactionStatus).toHaveBeenCalledWith('track-123');
-    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'paid', 'processing');
+    // Completed => the ONE canonical transition commits status + payment + event
+    // atomically. Actor is the verified provider, never a request field.
+    expect(mockOrderTransition.transition).toHaveBeenCalledWith('order-123', 'processing', expect.objectContaining({
+      actorType: 'payment_provider',
+      source: 'payment',
+      paymentStatus: 'paid',
+      idempotencyKey: 'pesapal:completed:track-123',
+    }));
+    // No direct payment-only order write on the happy path.
+    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).not.toHaveBeenCalled();
   });
 
   // 9. COMPLETED maps to completed/paid only after amount/currency/reference verification.
@@ -197,7 +217,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       createdAt: new Date(), updatedAt: new Date()
     };
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
 
     // Map 2 = FAILED
     vi.spyOn(mockPaymentRepo, 'findByTrackingId').mockResolvedValue(attempt);
@@ -207,25 +227,33 @@ describe('PesaPal Payment Integration Unit Tests', () => {
     });
     let output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
     expect(output.status).toBe('failed');
-    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed', 'pending_payment');
+    // Failed authorises NO lifecycle move (received -> pending_payment is illegal).
+    // Only the payment status is recorded; no order_event is written.
+    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed');
+    expect(mockOrderTransition.transition).not.toHaveBeenCalled();
 
-    // Map 3 = REVERSED
+    // Map 3 = REVERSED => a legal lifecycle move to cancelled, via the ledger.
     vi.spyOn(client, 'getTransactionStatus').mockResolvedValue({
       order_tracking_id: 'track-123', merchant_reference: 'ref-123',
       amount: 50000, currency: 'UGX', status_code: 3, payment_status_description: 'REVERSED'
     });
     output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
     expect(output.status).toBe('reversed');
-    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'reversed', 'cancelled');
+    expect(mockOrderTransition.transition).toHaveBeenCalledWith('order-123', 'cancelled', expect.objectContaining({
+      actorType: 'payment_provider',
+      source: 'payment',
+      paymentStatus: 'reversed',
+      idempotencyKey: 'pesapal:reversed:track-123',
+    }));
 
-    // Map 0 = INVALID
+    // Map 0 = INVALID => payment-only, like FAILED.
     vi.spyOn(client, 'getTransactionStatus').mockResolvedValue({
       order_tracking_id: 'track-123', merchant_reference: 'ref-123',
       amount: 50000, currency: 'UGX', status_code: 0, payment_status_description: 'INVALID'
     });
     output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
     expect(output.status).toBe('invalid');
-    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed', 'pending_payment');
+    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed');
   });
 
   // 13. amount mismatch does not mark paid.
@@ -244,7 +272,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       currency: 'UGX', status_code: 1, payment_status_description: 'COMPLETED'
     });
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'callback' });
 
     expect(output.ok).toBe(false);
@@ -269,7 +297,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       status_code: 1, payment_status_description: 'COMPLETED'
     });
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'callback' });
 
     expect(output.ok).toBe(false);
@@ -293,7 +321,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       amount: 50000, currency: 'UGX', status_code: 1, payment_status_description: 'COMPLETED'
     });
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'callback' });
 
     expect(output.ok).toBe(false);
@@ -313,7 +341,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
     vi.spyOn(mockPaymentRepo, 'findByTrackingId').mockResolvedValue(attempt);
     const spyStatus = vi.spyOn(client, 'getTransactionStatus');
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
 
     expect(output.ok).toBe(true);
@@ -325,7 +353,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
   // 17. missing OrderTrackingId rejected safely.
   // 18. missing OrderMerchantReference rejected safely.
   it('should fail safely if tracking ID or merchant reference is empty', async () => {
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     let output = await useCase.execute({ orderTrackingId: '', merchantReference: 'ref-123', source: 'callback' });
     expect(output.ok).toBe(false);
     expect(output.status).toBe('verification_failed');
@@ -356,12 +384,13 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       amount: 50000, currency: 'UGX', status_code: 0, payment_status_description: 'CANCELLED'
     });
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'callback' });
 
     expect(output.ok).toBe(false);
     expect(output.status).toBe('invalid');
-    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed', 'pending_payment');
+    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed');
+    expect(mockOrderTransition.transition).not.toHaveBeenCalled();
   });
 
   // 21. no secrets in frontend responses.
