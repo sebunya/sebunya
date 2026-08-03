@@ -1,6 +1,7 @@
 {
   "programme": "GOLDPLUS_P0_U6",
-  "phase": "P0_2_COMPLETE_STARTING_U1",
+  "phase": "IMPLEMENTING_U1",
+  "u1": "RECONCILED — canonical pricing-v1 path reused. Gaps: coupon-code inventory+bulk gen (AC3/AC7/AC8), budget UGX cap+auto-pause (AC4), margin-bps floor+fallback (AC5), EXCLUSIVE_SUPERSEDED+tie-break (AC2), distinct-approver+threshold (AC10), first-order identity-graph eligibility (AC11). See U1_RECONCILIATION.md.",
   "pr": 9,
   "startingHead": "40e1f9b",
   "p0_1": "11/11 VERIFIED",
