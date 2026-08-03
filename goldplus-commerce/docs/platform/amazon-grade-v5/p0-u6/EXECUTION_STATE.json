@@ -13,10 +13,12 @@
   "migrationCeiling_u2": "0070 (71/71 parity)",
   "u3": "ALL 5 ACs closed (migration 0071 reviews + review_media + review_votes + product_rating_aggregate). AC1 different-customer order line rejected; AC2 aggregate exactly consistent after 100 randomised publish/unpublish (full recompute in the status-change tx); AC3 AggregateRating JSON-LD only when count>=1 AND in stock (domain proven); AC4 aggregate = one-row read (no N+1); AC5 phone/email flagged, never auto-published. Verified purchase computed (order line→delivered order same phone identity, never from input); one review per identity per product at DB boundary. REVIEWS_MODERATE added. 12 tests, parity 72/72. Follow-ons: moderation admin route, AC3 ProductJsonLd.astro wiring, delivery-triggered review-request via outbox.",
   "migrationCeiling_u3": "0071 (72/72 parity)",
+  "u4": "9/10 ACs closed (migration 0072 creator platform; creator coupon codes extend U1 coupon_codes; identity peppered hashes only). AC1 one primary attribution + one commission (idempotent); AC2 refund reverses commission+coupon redemption in one tx; AC3 uncollected COD → no commission; AC5 self-purchase held; AC6 maker≠checker (app + DB CHECK); AC7 payout idempotency-key unique → no double-pay; AC8 gross-withholding=net (config rate, not fabricated); AC9 90-day repeat cohort; AC10 rights-expiry excludes approved-for-ads. IMobileMoneyDisbursement NO-SEND. 20 tests, parity 73/73. AC4 (/r/:code p95 redirect) + creator portal = web/presentation follow-ons.",
+  "migrationCeiling_u4": "0072 (73/73 parity)",
   "unitsPending": [
     "U2_AC4_followon",
     "U3_followons(moderation-route,jsonld-astro,review-request-outbox)",
-    "U4",
+    "U4_followons(r-code-route,creator-portal)",
     "U5",
     "U6"
   ],
