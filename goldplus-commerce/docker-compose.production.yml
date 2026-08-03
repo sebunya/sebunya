@@ -69,6 +69,9 @@ services:
         condition: service_healthy
     environment:
       - NODE_ENV=production
+      # Explicit proxy topology is REQUIRED in production (clientAddress guard):
+      # Caddy is the edge here, so trusted client IP comes from its forwarded header.
+      - PROXY_TOPOLOGY_MODE=${PROXY_TOPOLOGY_MODE:-CADDY_EDGE}
       - PORT=3000
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
