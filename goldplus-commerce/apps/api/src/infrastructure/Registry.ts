@@ -33,6 +33,7 @@ import { DrizzleStockAdjustmentRepository } from './db/repositories/DrizzleStock
 import { DrizzleNotificationTemplateRepository } from './db/repositories/DrizzleNotificationTemplateRepository';
 import { DrizzleCampaignRepository } from './db/repositories/DrizzleCampaignRepository';
 import { DrizzleCampaignSendRepository } from './db/repositories/DrizzleCampaignSendRepository';
+import { DrizzleGamificationRepository } from './db/repositories/DrizzleGamificationRepository';
 import { CampaignSendEngineUseCase } from '../application/use-cases/campaigns/CampaignSendEngineUseCase';
 import { AdjustStockUseCase } from '../application/use-cases/inventory/AdjustStockUseCase';
 import { AbandonmentUseCase } from '../application/use-cases/abandonment/AbandonmentUseCase';
@@ -530,6 +531,7 @@ export class Registry {
   // Wave 2F — campaign scaffold (no-send): first owner of campaigns/utm_links.
   public readonly campaignRepo = new DrizzleCampaignRepository();
   public readonly campaignSendRepo = new DrizzleCampaignSendRepository();
+  public readonly gamificationRepo = new DrizzleGamificationRepository();
   public readonly campaignSendEngine = new CampaignSendEngineUseCase(this.campaignSendRepo, this.campaignSendRepo);
 
   // Wave 2E-3 — notification wording overrides.

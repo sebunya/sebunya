@@ -45,3 +45,4 @@ export * from './legal';
 export * from './abandonment';
 export * from './notificationTemplates';
 export * from './campaignSendRuns';
+export * from './gamification';

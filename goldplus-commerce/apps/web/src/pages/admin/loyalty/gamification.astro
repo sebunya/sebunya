@@ -1,0 +1,141 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/loyalty/gamification", 303);
+}
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+// Gamification scaffold on the DORMANT loyalty core: definitions + dry evaluation.
+// The award ledger stays empty until loyalty activation — the banner says so.
+let notice: { kind: "success" | "error"; text: string } | null = null;
+if (Astro.request.method === "POST") {
+  try {
+    const form = await Astro.request.formData();
+    const action = String(form.get("action") || "");
+    if (action === "mission") {
+      const res = await fetch(`${apiBase}/admin/loyalty/gamification/missions`, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          key: form.get("key"), title: form.get("title"), kind: form.get("kind"),
+          threshold: Number(form.get("threshold")), rewardPoints: Number(form.get("rewardPoints") || 0),
+          description: form.get("description") || null,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: "success", text: `Mission “${json.data.title}” created (${json.data.status}).` }
+        : { kind: "error", text: json?.error?.message || "Mission refused." };
+    } else if (action === "badge") {
+      const res = await fetch(`${apiBase}/admin/loyalty/gamification/badges`, {
+        method: "POST", headers,
+        body: JSON.stringify({ key: form.get("key"), title: form.get("title"), missionId: form.get("missionId") || null, description: form.get("description") || null }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: "success", text: `Badge “${json.data.title}” created.` }
+        : { kind: "error", text: json?.error?.message || "Badge refused." };
+    } else if (action === "evaluate") {
+      const id = String(form.get("id") || "");
+      const res = await fetch(`${apiBase}/admin/loyalty/gamification/missions/${encodeURIComponent(id)}/dry-evaluate`, { method: "POST", headers });
+      const json = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: "success", text: json.data.evaluable
+            ? `Dry evaluation: ${json.data.wouldQualify} of ${json.data.population} would qualify. ${json.data.note} Awards: blocked (${json.data.awardsBlockedReason}) — 0 written.`
+            : `Not evaluable: ${json.data.note}` }
+        : { kind: "error", text: json?.error?.message || "Evaluation refused." };
+    }
+  } catch {
+    notice = { kind: "error", text: "Gamification service is unreachable right now." };
+  }
+}
+
+let data: any = null;
+let loadError = "";
+try {
+  const res = await fetch(`${apiBase}/admin/loyalty/gamification`, { headers, signal: AbortSignal.timeout(5000) });
+  const json = await res.json().catch(() => null);
+  if (json?.success) data = json.data;
+  else loadError = json?.error?.message || "Could not load gamification data.";
+} catch {
+  loadError = "Gamification service is unreachable right now.";
+}
+---
+
+<AdminLayout title="Gamification" description="Missions and badges on the loyalty core — definitions and dry evaluation only while loyalty remains dormant.">
+  <div class="space-y-8">
+    <div class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">
+      Loyalty is {data?.loyaltyEnabled ? "ACTIVE" : "DORMANT"}. Missions and badges are definitions with dry
+      evaluation over real commerce data; the award ledger has {data?.awardedBadges ?? 0} row(s) and stays
+      empty until activation — no points, no badges, no value is granted from this page.
+    </div>
+
+    {notice && (
+      <div class={`rounded-xl px-4 py-3 text-sm font-semibold ${notice.kind === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{notice.text}</div>
+    )}
+    {loadError && <div class="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{loadError}</div>}
+
+    <section class="rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">New mission</h2>
+      <form method="POST" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-6">
+        <input type="hidden" name="action" value="mission" />
+        <input name="key" required placeholder="key (a-z0-9_-)" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+        <input name="title" required placeholder="Title" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+        <select name="kind" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
+          <option value="PURCHASE_COUNT">PURCHASE_COUNT</option>
+          <option value="REVIEW_COUNT">REVIEW_COUNT</option>
+          <option value="STREAK_DAYS">STREAK_DAYS</option>
+          <option value="REFERRAL_COUNT">REFERRAL_COUNT</option>
+        </select>
+        <input name="threshold" required type="number" min="1" step="1" placeholder="Threshold" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none" />
+        <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Create</button>
+      </form>
+    </section>
+
+    <section class="rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Missions</h2>
+      {(!data || data.missions.length === 0) ? (
+        <p class="mt-4 text-sm font-medium text-slate-500">No missions defined yet — truthfully empty.</p>
+      ) : (
+        <div class="mt-4 space-y-3">
+          {data.missions.map((m: any) => (
+            <div class="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 p-3">
+              <span class="text-sm font-black text-slate-800">{m.title}</span>
+              <span class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-black uppercase">{m.kind} ≥ {m.threshold}</span>
+              <span class="text-[11px] font-bold text-slate-500">{m.rewardPoints} pts · {m.status} · {m.key}</span>
+              <form method="POST" class="ml-auto">
+                <input type="hidden" name="action" value="evaluate" />
+                <input type="hidden" name="id" value={m.id} />
+                <button type="submit" class="rounded-lg bg-brand-dark px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-black">Dry-evaluate</button>
+              </form>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+
+    <section class="rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Badges</h2>
+      <form method="POST" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
+        <input type="hidden" name="action" value="badge" />
+        <input name="key" required placeholder="key" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none" />
+        <input name="title" required placeholder="Title" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none" />
+        <select name="missionId" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
+          <option value="">No linked mission</option>
+          {data?.missions.map((m: any) => <option value={m.id}>{m.title}</option>)}
+        </select>
+        <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Create badge</button>
+      </form>
+      {data && data.badges.length > 0 && (
+        <div class="mt-4 flex flex-wrap gap-2">
+          {data.badges.map((b: any) => (
+            <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-700">{b.title} <span class="font-mono text-[10px] text-slate-400">{b.key}</span></span>
+          ))}
+        </div>
+      )}
+    </section>
+  </div>
+</AdminLayout>
