@@ -83,6 +83,10 @@ services:
       # Explicit proxy topology is REQUIRED in production (clientAddress guard):
       # Caddy is the edge here, so trusted client IP comes from its forwarded header.
       - PROXY_TOPOLOGY_MODE=${PROXY_TOPOLOGY_MODE:-CADDY_EDGE}
+      # Synthetic monitor mutating stages (place a real order + payment webhook) are OFF
+      # in production; the read-only journey remains the health signal. Only a dedicated
+      # synthetic-safe environment should set this true.
+      - SYNTHETIC_MONITOR_WRITE_STAGES_ENABLED=${SYNTHETIC_MONITOR_WRITE_STAGES_ENABLED:-false}
       - PORT=3000
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}

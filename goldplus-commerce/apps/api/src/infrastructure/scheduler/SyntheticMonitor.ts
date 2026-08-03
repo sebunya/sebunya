@@ -388,6 +388,15 @@ export class SyntheticMonitor {
     const baseUrl = env.publicApiBaseUrl || 'http://localhost:3000';
     let isDegraded = false;
 
+    // The mutating stages below place a REAL order, inject a REAL payment webhook and
+    // generate REAL notification outbox rows. Against production that means a synthetic
+    // paid order (and its emails/SMS) on every run, so they are OFF unless a dedicated
+    // synthetic-safe environment explicitly opts in. When off, the read-only journey
+    // (storefront, catalogue parity, PDP, recommendations) still runs and is the health
+    // signal. This also stops the pre-credential cart-add call from emitting a false
+    // CRITICAL every run.
+    const writeStagesEnabled = process.env.SYNTHETIC_MONITOR_WRITE_STAGES_ENABLED === 'true';
+
     try {
       // Stage 0: Storefront Uptime & HTML Structure Check
       stages.push('storefront_html_check');
@@ -467,6 +476,21 @@ export class SyntheticMonitor {
       if (pdpDuration > 1500) {
         isDegraded = true;
         logger.warn({ pdpDuration }, '[SyntheticMonitor] PDP load exceeded P95 response window (1.5s)');
+      }
+
+      // Read-only journey complete. The mutating stages that follow are gated: in any
+      // environment that has not explicitly opted in, return success on the read path
+      // rather than driving a synthetic purchase through production.
+      if (!writeStagesEnabled) {
+        const durationMs = Date.now() - start;
+        syntheticDuration.observe(durationMs / 1000);
+        syntheticUptimeGauge.set(1);
+        syntheticDegradedGauge.set(isDegraded ? 1 : 0);
+        logger.info(
+          { durationMs, stages, isDegraded, writeStagesSkipped: true },
+          '[SyntheticMonitor] Read-only commerce journey completed; mutating stages disabled in this environment',
+        );
+        return { success: true, durationMs, stages };
       }
 
       // Stage 2b: Add Item to Cart Simulation
