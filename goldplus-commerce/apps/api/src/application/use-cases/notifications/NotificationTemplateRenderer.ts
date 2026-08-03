@@ -69,6 +69,11 @@ export class NotificationTemplateRenderer {
   public getSubject(template: NotificationTemplateKey): string {
     const override = overrideProvider?.(template)?.subject;
     if (override) return override;
+    return this.getDefaultSubject(template);
+  }
+
+  /** The code-canonical subject, bypassing any operator override (admin display). */
+  public getDefaultSubject(template: NotificationTemplateKey): string {
     switch (template) {
       case 'ORDER_RECEIVED_UNPAID':
         return 'We received your GoldPlus order';
@@ -95,6 +100,11 @@ export class NotificationTemplateRenderer {
   public getPreheader(template: NotificationTemplateKey): string {
     const override = overrideProvider?.(template)?.preheader;
     if (override) return override;
+    return this.getDefaultPreheader(template);
+  }
+
+  /** The code-canonical preheader, bypassing any operator override (admin display). */
+  public getDefaultPreheader(template: NotificationTemplateKey): string {
     switch (template) {
       case 'ORDER_RECEIVED_UNPAID':
         return 'Complete payment to move your order forward.';

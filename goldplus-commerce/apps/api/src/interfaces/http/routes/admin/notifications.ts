@@ -177,7 +177,7 @@ routes.get('/templates', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), a
   const rows = await Registry.getInstance().notificationTemplateRepo.listAll();
   const templates = NOTIFICATION_TEMPLATE_KEYS.map((key) => ({
     key,
-    defaults: { subject: renderer.getSubject(key), preheader: renderer.getPreheader(key) },
+    defaults: { subject: renderer.getDefaultSubject(key), preheader: renderer.getDefaultPreheader(key) },
     draft: rows.find((r) => r.templateKey === key && r.status === 'DRAFT') ?? null,
     published: rows.find((r) => r.templateKey === key && r.status === 'PUBLISHED') ?? null,
   }));
