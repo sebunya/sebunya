@@ -39,3 +39,4 @@ export * from './devices';
 export * from './reviews';
 export * from './creators';
 export * from './flashSales';
+export * from './seo';

@@ -45,6 +45,8 @@ export const products = pgTable('products', {
     .default('STOCK_CONTROLLED')
     .notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  // U6 — real modification time for sitemap lastmod (AC2). Added by migration 0075.
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const productPrices = pgTable('product_prices', {
