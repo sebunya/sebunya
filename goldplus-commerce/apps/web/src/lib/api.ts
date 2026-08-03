@@ -1,4 +1,30 @@
-const API_BASE = (import.meta.env.PUBLIC_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
+/**
+ * Canonical API origin resolution.
+ *
+ * Two origins, one rule: never hairpin SSR through the public edge, and never
+ * emit a relative URL to Node's fetch (which throws "Failed to parse URL").
+ *
+ * - Browser: the PUBLIC origin (build-inlined PUBLIC_API_BASE_URL). Empty is
+ *   treated as UNSET (|| not ??) so a missing build arg falls back rather than
+ *   producing a relative request.
+ * - SSR (Node, web container): an absolute INTERNAL origin read at RUNTIME from
+ *   process.env.INTERNAL_API_ORIGIN (e.g. http://api:3000, the API service on the
+ *   compose network). Read via globalThis.process so it is not baked at build.
+ */
+const PUBLIC_API_ORIGIN =
+  ((import.meta.env.PUBLIC_API_BASE_URL as string | undefined) || 'http://localhost:3000');
+
+function resolveApiOrigin(): string {
+  if (import.meta.env.SSR) {
+    const internal = (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } })
+      ?.process?.env?.INTERNAL_API_ORIGIN;
+    if (typeof internal === 'string' && internal.length > 0) return internal.replace(/\/+$/, '');
+    return PUBLIC_API_ORIGIN.replace(/\/+$/, '');
+  }
+  return PUBLIC_API_ORIGIN.replace(/\/+$/, '');
+}
+
+const API_BASE = resolveApiOrigin();
 
 export type ApiEnvelope<T> = {
   success: boolean;
