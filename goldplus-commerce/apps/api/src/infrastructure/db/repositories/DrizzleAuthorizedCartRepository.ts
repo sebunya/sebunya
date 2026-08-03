@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { CartOwnerKind } from '@goldplus/shared';
+import { CartOwnerKind, CART_RETENTION_DAYS } from '@goldplus/shared';
 import { db } from '../client';
 import { carts, cartItems } from '../schema/commerce';
 import { products, productPrices } from '../schema/products';
@@ -25,7 +25,8 @@ import {
  * and the caller is told, rather than the write landing on whatever state it finds.
  */
 
-const CART_TTL_DAYS = 30;
+// Same constant the credential cookie uses — cookie lifetime and row expiry move together.
+const CART_TTL_DAYS = CART_RETENTION_DAYS;
 
 export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepository {
   async find(cartId: string): Promise<CartRecord | null> {

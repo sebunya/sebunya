@@ -1,0 +1,1600 @@
+{
+ "generatedAt": "2026-08-03",
+ "gitSha": "707876d",
+ "sourcePaths": [
+  "packages/shared/src/permissions/index.ts",
+  "apps/api/src/interfaces/http/middleware/permissions.ts",
+  "apps/api/src/interfaces/http/middleware/auth.ts",
+  "apps/api/src/interfaces/http/routes/**",
+  "apps/api/src/scripts/acceptance-bootstrap.ts",
+  "apps/api/src/infrastructure/db/repositories/DrizzleRoleRepository.ts",
+  "apps/api/src/infrastructure/db/schema/identity.ts",
+  "apps/api/src/infrastructure/db/migrations/0000_fuzzy_switch.sql",
+  "apps/api/src/infrastructure/db/migrations/0002_outstanding_the_order.sql",
+  "scripts/seed.ts"
+ ],
+ "permissionConstants": [
+  "auth.manage",
+  "roles.manage",
+  "permissions.manage",
+  "audit.read",
+  "audit.export",
+  "products.read",
+  "products.write",
+  "products.publish",
+  "categories.manage",
+  "pricing.manage",
+  "pricing.read",
+  "pricing.create",
+  "pricing.approve",
+  "pricing.activate",
+  "pricing.simulate",
+  "pricing.pause",
+  "promotions.read",
+  "promotions.manage",
+  "reviews.moderate",
+  "inventory.read",
+  "inventory.adjust",
+  "orders.read",
+  "orders.manage",
+  "payments.read",
+  "payments.confirm",
+  "dealer.approve",
+  "dealer.read_private",
+  "quotes.manage",
+  "leads.assign",
+  "campaigns.manage",
+  "creatives.approve",
+  "feeds.publish",
+  "attribution.read",
+  "reports.read",
+  "settings.manage",
+  "notifications.read",
+  "recommendations.read",
+  "recommendations.manage",
+  "customer_dna.read",
+  "customer_dna.manage",
+  "nba.read",
+  "nba.recompute",
+  "identity.review",
+  "decision_intelligence.read",
+  "decision_intelligence.evaluate",
+  "decision_intelligence.assign",
+  "decision_intelligence.manage",
+  "automation.read",
+  "automation.create",
+  "automation.manage",
+  "automation.approve",
+  "automation.execute",
+  "automation.replay",
+  "automation.reconcile",
+  "experiments.read",
+  "experiments.manage",
+  "experiments.assign",
+  "fraud.read",
+  "fraud.signal",
+  "fraud.assign",
+  "fraud.decide",
+  "pim.read",
+  "pim.create",
+  "pim.map",
+  "pim.approve",
+  "pim.apply",
+  "pim.rollback",
+  "surveys.read",
+  "surveys.create",
+  "surveys.manage",
+  "surveys.approve",
+  "surveys.activate",
+  "surveys.export",
+  "copy_quality.read",
+  "copy_quality.export",
+  "interventions.read",
+  "interventions.create",
+  "interventions.manage",
+  "interventions.approve",
+  "interventions.activate",
+  "analytics.read",
+  "analytics.manage",
+  "analytics.export",
+  "analytics.alerts.manage"
+ ],
+ "permissionConstantsByKey": {
+  "AUTH_MANAGE": "auth.manage",
+  "ROLES_MANAGE": "roles.manage",
+  "PERMISSIONS_MANAGE": "permissions.manage",
+  "AUDIT_READ": "audit.read",
+  "AUDIT_EXPORT": "audit.export",
+  "PRODUCTS_READ": "products.read",
+  "PRODUCTS_WRITE": "products.write",
+  "PRODUCTS_PUBLISH": "products.publish",
+  "CATEGORIES_MANAGE": "categories.manage",
+  "PRICING_MANAGE": "pricing.manage",
+  "PRICING_READ": "pricing.read",
+  "PRICING_CREATE": "pricing.create",
+  "PRICING_APPROVE": "pricing.approve",
+  "PRICING_ACTIVATE": "pricing.activate",
+  "PRICING_SIMULATE": "pricing.simulate",
+  "PRICING_PAUSE": "pricing.pause",
+  "PROMOTIONS_READ": "promotions.read",
+  "PROMOTIONS_MANAGE": "promotions.manage",
+  "REVIEWS_MODERATE": "reviews.moderate",
+  "INVENTORY_READ": "inventory.read",
+  "INVENTORY_ADJUST": "inventory.adjust",
+  "ORDERS_READ": "orders.read",
+  "ORDERS_MANAGE": "orders.manage",
+  "PAYMENTS_READ": "payments.read",
+  "PAYMENTS_CONFIRM": "payments.confirm",
+  "DEALER_APPROVE": "dealer.approve",
+  "DEALER_READ_PRIVATE": "dealer.read_private",
+  "QUOTES_MANAGE": "quotes.manage",
+  "LEADS_ASSIGN": "leads.assign",
+  "CAMPAIGNS_MANAGE": "campaigns.manage",
+  "CREATIVES_APPROVE": "creatives.approve",
+  "FEEDS_PUBLISH": "feeds.publish",
+  "ATTRIBUTION_READ": "attribution.read",
+  "REPORTS_READ": "reports.read",
+  "SETTINGS_MANAGE": "settings.manage",
+  "NOTIFICATIONS_READ": "notifications.read",
+  "RECOMMENDATIONS_READ": "recommendations.read",
+  "RECOMMENDATIONS_MANAGE": "recommendations.manage",
+  "CUSTOMER_DNA_READ": "customer_dna.read",
+  "CUSTOMER_DNA_MANAGE": "customer_dna.manage",
+  "NBA_READ": "nba.read",
+  "NBA_RECOMPUTE": "nba.recompute",
+  "IDENTITY_REVIEW": "identity.review",
+  "DECISION_INTELLIGENCE_READ": "decision_intelligence.read",
+  "DECISION_INTELLIGENCE_EVALUATE": "decision_intelligence.evaluate",
+  "DECISION_INTELLIGENCE_ASSIGN": "decision_intelligence.assign",
+  "DECISION_INTELLIGENCE_MANAGE": "decision_intelligence.manage",
+  "AUTOMATION_READ": "automation.read",
+  "AUTOMATION_CREATE": "automation.create",
+  "AUTOMATION_MANAGE": "automation.manage",
+  "AUTOMATION_APPROVE": "automation.approve",
+  "AUTOMATION_EXECUTE": "automation.execute",
+  "AUTOMATION_REPLAY": "automation.replay",
+  "AUTOMATION_RECONCILE": "automation.reconcile",
+  "EXPERIMENTS_READ": "experiments.read",
+  "EXPERIMENTS_MANAGE": "experiments.manage",
+  "EXPERIMENTS_ASSIGN": "experiments.assign",
+  "FRAUD_READ": "fraud.read",
+  "FRAUD_SIGNAL": "fraud.signal",
+  "FRAUD_ASSIGN": "fraud.assign",
+  "FRAUD_DECIDE": "fraud.decide",
+  "PIM_READ": "pim.read",
+  "PIM_CREATE": "pim.create",
+  "PIM_MAP": "pim.map",
+  "PIM_APPROVE": "pim.approve",
+  "PIM_APPLY": "pim.apply",
+  "PIM_ROLLBACK": "pim.rollback",
+  "SURVEYS_READ": "surveys.read",
+  "SURVEYS_CREATE": "surveys.create",
+  "SURVEYS_MANAGE": "surveys.manage",
+  "SURVEYS_APPROVE": "surveys.approve",
+  "SURVEYS_ACTIVATE": "surveys.activate",
+  "SURVEYS_EXPORT": "surveys.export",
+  "COPY_QUALITY_READ": "copy_quality.read",
+  "COPY_QUALITY_EXPORT": "copy_quality.export",
+  "INTERVENTIONS_READ": "interventions.read",
+  "INTERVENTIONS_CREATE": "interventions.create",
+  "INTERVENTIONS_MANAGE": "interventions.manage",
+  "INTERVENTIONS_APPROVE": "interventions.approve",
+  "INTERVENTIONS_ACTIVATE": "interventions.activate",
+  "ANALYTICS_READ": "analytics.read",
+  "ANALYTICS_MANAGE": "analytics.manage",
+  "ANALYTICS_EXPORT": "analytics.export",
+  "ANALYTICS_ALERTS_MANAGE": "analytics.alerts.manage"
+ },
+ "enforcement": {
+  "middleware": "apps/api/src/interfaces/http/middleware/permissions.ts",
+  "model": "requirePermissions(required[], errorCode='FORBIDDEN'|'PERMISSION_DENIED') reads c.get('user').permissions (set by authMiddleware from DrizzleRoleRepository.findPermissionsForUser: user_roles -> role_permissions -> permissions, code = `${action}.${resource}`). Fail-closed; denials logged (AUTHZ_DENIED) never audited-to-DB; 401 if no user, 403 with generic message if missing perms.",
+  "adminGate": "apps/api/src/interfaces/http/middleware/auth.ts:38-41 — authMiddleware itself refuses (403 FORBIDDEN) any authenticated user whose resolved permission list is empty, so admin surfaces require at least one role-granted permission before requirePermissions runs."
+ },
+ "rolesBootstrap": [
+  {
+   "file": "apps/api/src/infrastructure/db/migrations/0000_fuzzy_switch.sql",
+   "line": 7,
+   "what": "CREATE TABLE roles (line 7) and user_roles (line 13). Schema only — no seed rows."
+  },
+  {
+   "file": "apps/api/src/infrastructure/db/migrations/0002_outstanding_the_order.sql",
+   "line": 1,
+   "what": "CREATE TABLE role_permissions (and permissions). Schema only — no seed rows."
+  },
+  {
+   "file": "apps/api/src/infrastructure/db/schema/identity.ts",
+   "line": 83,
+   "what": "Drizzle table definitions: roles (83), permissions (88), user_roles (94), role_permissions (99)."
+  },
+  {
+   "file": "apps/api/src/scripts/acceptance-bootstrap.ts",
+   "line": 12,
+   "what": "ONLY code path that seeds roles/permissions: creates users 'acceptance-owner@fixture.local' + 'acceptance-customer@fixture.local', role 'acceptance_owner' (fixed UUID bbbbbbbb-...-000000000001), inserts every PERMISSIONS code into permissions (split at FIRST dot: action=code.slice(0,dot), resource=rest — e.g. analytics.alerts.manage => action 'analytics', resource 'alerts.manage'), grants all to the role via role_permissions, assigns role to owner via user_roles. Line 13: throws if NODE_ENV=production — acceptance/local/staging only, never a production sequence."
+  },
+  {
+   "file": "apps/api/src/scripts/automation-control-room-proof.ts",
+   "line": 42,
+   "what": "Proof-script-only ad-hoc role insert (db.insert(roles).values({name:`a4-...`})) for automation acceptance evidence; not a bootstrap path."
+  },
+  {
+   "file": "scripts/seed.ts",
+   "line": 1,
+   "what": "Root `npm run seed` seeds categories/products only — creates NO users, roles or permissions."
+  },
+  {
+   "file": "apps/api/src/interfaces/http/routes/admin/roles.ts",
+   "line": 11,
+   "what": "GET / (ROLES_MANAGE) only — lists roles via DrizzleAdminRoleReadRepository. No HTTP endpoint creates roles, grants permissions, or assigns user_roles anywhere in the API."
+  },
+  {
+   "file": "apps/api/src/interfaces/http/routes/admin/users.ts",
+   "line": 11,
+   "what": "GET / (AUTH_MANAGE) only — lists users. No user-role assignment endpoint."
+  },
+  {
+   "file": "apps/api/src/infrastructure/db/repositories/DrizzleRoleRepository.ts",
+   "line": 7,
+   "what": "Runtime resolution only: findPermissionsForUser(userId) joins user_roles -> role_permissions -> permissions and returns sorted unique `${action}.${resource}` codes; empty list => authMiddleware 403."
+  }
+ ],
+ "productionBootstrapConclusion": "No production bootstrap code exists: production roles/permissions/user_roles rows must be created out-of-band (manual SQL). The only automated seeder (acceptance-bootstrap.ts) hard-refuses NODE_ENV=production.",
+ "routePermissionMap": [
+  {
+   "route": "GET /governance/admin/stats",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /governance/admin/orders",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /governance/admin/orders/:id",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /governance/admin/carts/:id",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /governance/admin/orders/:id/communication-preview",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "PATCH /governance/admin/orders/:id/fulfillment",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /governance/admin/products",
+   "permissionCode": "products.read",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /governance/admin/payments",
+   "permissionCode": "payments.read",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /governance/admin/payments/reconciliation",
+   "permissionCode": "payments.read",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /governance/admin/quotes",
+   "permissionCode": "quotes.manage",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /governance/admin/support",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /governance/admin/lifecycle",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "PATCH /governance/admin/support/:id",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /governance/admin/dealers",
+   "permissionCode": "dealer.read_private",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts"
+  },
+  {
+   "route": "GET /admin/audit",
+   "permissionCode": "audit.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/audit.ts"
+  },
+  {
+   "route": "GET /admin/users",
+   "permissionCode": "auth.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/users.ts"
+  },
+  {
+   "route": "GET /admin/roles",
+   "permissionCode": "roles.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/roles.ts"
+  },
+  {
+   "route": "POST /admin/products/:id/images",
+   "permissionCode": "products.write",
+   "file": "apps/api/src/interfaces/http/routes/admin/products.ts"
+  },
+  {
+   "route": "POST /admin/products/:id/images/upload",
+   "permissionCode": "products.write",
+   "file": "apps/api/src/interfaces/http/routes/admin/products.ts"
+  },
+  {
+   "route": "DELETE /admin/products/images/:imageId",
+   "permissionCode": "products.write",
+   "file": "apps/api/src/interfaces/http/routes/admin/products.ts"
+  },
+  {
+   "route": "POST /admin/products/:id/attribute-values",
+   "permissionCode": "products.write",
+   "file": "apps/api/src/interfaces/http/routes/admin/products.ts"
+  },
+  {
+   "route": "POST /admin/products/attributes",
+   "permissionCode": "products.write",
+   "file": "apps/api/src/interfaces/http/routes/admin/products.ts"
+  },
+  {
+   "route": "GET /admin/products/categories",
+   "permissionCode": "products.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/products.ts"
+  },
+  {
+   "route": "GET /admin/products/:id",
+   "permissionCode": "products.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/products.ts"
+  },
+  {
+   "route": "POST /admin/products",
+   "permissionCode": "products.write",
+   "file": "apps/api/src/interfaces/http/routes/admin/products.ts"
+  },
+  {
+   "route": "PUT /admin/products/:id",
+   "permissionCode": "products.write",
+   "file": "apps/api/src/interfaces/http/routes/admin/products.ts"
+  },
+  {
+   "route": "GET /admin/notifications",
+   "permissionCode": "notifications.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/notifications.ts"
+  },
+  {
+   "route": "GET /admin/notifications/order/:orderId/timeline",
+   "permissionCode": "notifications.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/notifications.ts"
+  },
+  {
+   "route": "GET /admin/notifications/health-check",
+   "permissionCode": "notifications.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/notifications.ts"
+  },
+  {
+   "route": "GET /admin/notifications/admin-order-emails",
+   "permissionCode": "notifications.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/notifications.ts"
+  },
+  {
+   "route": "POST /admin/notifications/admin-order-emails/:id/replay",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/notifications.ts"
+  },
+  {
+   "route": "GET /admin/recommendations/rules",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/recommendations.ts"
+  },
+  {
+   "route": "POST /admin/recommendations/rules",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/recommendations.ts"
+  },
+  {
+   "route": "GET /admin/recommendations/rules/:id",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/recommendations.ts"
+  },
+  {
+   "route": "PUT /admin/recommendations/rules/:id",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/recommendations.ts"
+  },
+  {
+   "route": "POST /admin/recommendations/rules/:id/status",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/recommendations.ts"
+  },
+  {
+   "route": "POST /admin/recommendations/rules/:id/archive",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/recommendations.ts"
+  },
+  {
+   "route": "GET /admin/recommendations/rules/:id/audit-log",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/recommendations.ts"
+  },
+  {
+   "route": "POST /admin/recommendations/preview",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/recommendations.ts"
+  },
+  {
+   "route": "GET /admin/recommendations/analytics",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/recommendations.ts"
+  },
+  {
+   "route": "GET /admin/customer-dna",
+   "permissionCode": "customer_dna.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/customer-dna.ts"
+  },
+  {
+   "route": "GET /admin/customer-dna/conflicts",
+   "permissionCode": "identity.review",
+   "file": "apps/api/src/interfaces/http/routes/admin/customer-dna.ts"
+  },
+  {
+   "route": "GET /admin/customer-dna/:id",
+   "permissionCode": "customer_dna.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/customer-dna.ts"
+  },
+  {
+   "route": "POST /admin/customer-dna/:id/recompute",
+   "permissionCode": "customer_dna.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/customer-dna.ts"
+  },
+  {
+   "route": "POST /admin/customer-dna/:id/nba",
+   "permissionCode": "nba.recompute",
+   "file": "apps/api/src/interfaces/http/routes/admin/customer-dna.ts"
+  },
+  {
+   "route": "GET /admin/decision-intelligence/overview",
+   "permissionCode": "decision_intelligence.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/decision-intelligence.ts"
+  },
+  {
+   "route": "GET /admin/decision-intelligence/insights",
+   "permissionCode": "decision_intelligence.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/decision-intelligence.ts"
+  },
+  {
+   "route": "GET /admin/decision-intelligence/insights/:id",
+   "permissionCode": "decision_intelligence.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/decision-intelligence.ts"
+  },
+  {
+   "route": "POST /admin/decision-intelligence/evaluate",
+   "permissionCode": "decision_intelligence.evaluate",
+   "file": "apps/api/src/interfaces/http/routes/admin/decision-intelligence.ts"
+  },
+  {
+   "route": "POST /admin/decision-intelligence/insights/:id/acknowledge",
+   "permissionCode": "decision_intelligence.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/decision-intelligence.ts"
+  },
+  {
+   "route": "POST /admin/decision-intelligence/insights/:id/assign",
+   "permissionCode": "decision_intelligence.assign",
+   "file": "apps/api/src/interfaces/http/routes/admin/decision-intelligence.ts"
+  },
+  {
+   "route": "POST /admin/decision-intelligence/insights/:id/start",
+   "permissionCode": "decision_intelligence.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/decision-intelligence.ts"
+  },
+  {
+   "route": "POST /admin/decision-intelligence/insights/:id/resolve",
+   "permissionCode": "decision_intelligence.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/decision-intelligence.ts"
+  },
+  {
+   "route": "POST /admin/decision-intelligence/insights/:id/dismiss",
+   "permissionCode": "decision_intelligence.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/decision-intelligence.ts"
+  },
+  {
+   "route": "POST /admin/decision-intelligence/insights/:id/recompute",
+   "permissionCode": "decision_intelligence.evaluate",
+   "file": "apps/api/src/interfaces/http/routes/admin/decision-intelligence.ts"
+  },
+  {
+   "route": "GET /admin/queues/status",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/queues.ts"
+  },
+  {
+   "route": "POST /admin/queues/replay",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/queues.ts"
+  },
+  {
+   "route": "POST /admin/queues/concurrency",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/queues.ts"
+  },
+  {
+   "route": "GET /admin/deployment/status",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/deployment.ts"
+  },
+  {
+   "route": "POST /admin/deployment/maintenance",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/deployment.ts"
+  },
+  {
+   "route": "POST /admin/deployment/health-score",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/deployment.ts"
+  },
+  {
+   "route": "POST /admin/deployment/shadow-traffic",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/deployment.ts"
+  },
+  {
+   "route": "GET /admin/delivery-zones",
+   "permissionCode": "pricing.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/delivery-zones.ts"
+  },
+  {
+   "route": "PUT /admin/delivery-zones",
+   "permissionCode": "pricing.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/delivery-zones.ts"
+  },
+  {
+   "route": "DELETE /admin/delivery-zones/:id",
+   "permissionCode": "pricing.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/delivery-zones.ts"
+  },
+  {
+   "route": "GET /admin/search-demand",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/search-demand.ts"
+  },
+  {
+   "route": "GET /admin/search-demand/insights",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/search-demand.ts"
+  },
+  {
+   "route": "PATCH /admin/search-demand/:id",
+   "permissionCode": "leads.assign",
+   "file": "apps/api/src/interfaces/http/routes/admin/search-demand.ts"
+  },
+  {
+   "route": "GET /admin/analytics/overview",
+   "permissionCode": "analytics.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "GET /admin/analytics/metrics/:metricKey/series",
+   "permissionCode": "analytics.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "GET /admin/analytics/quality",
+   "permissionCode": "analytics.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "GET /admin/analytics/actions",
+   "permissionCode": "analytics.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "GET /admin/analytics/catalogue",
+   "permissionCode": "analytics.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "GET /admin/analytics/payments",
+   "permissionCode": "analytics.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "GET /admin/analytics/breakdowns/:dimension",
+   "permissionCode": "analytics.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "GET /admin/analytics/exceptions/:exception",
+   "permissionCode": "analytics.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "GET /admin/analytics/saved-views",
+   "permissionCode": "analytics.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "POST /admin/analytics/saved-views",
+   "permissionCode": "analytics.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "PATCH /admin/analytics/saved-views/:id",
+   "permissionCode": "analytics.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "DELETE /admin/analytics/saved-views/:id",
+   "permissionCode": "analytics.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "GET /admin/analytics/alert-rules",
+   "permissionCode": "analytics.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "POST /admin/analytics/alert-rules",
+   "permissionCode": "analytics.alerts.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "PATCH /admin/analytics/alert-rules/:id",
+   "permissionCode": "analytics.alerts.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "DELETE /admin/analytics/alert-rules/:id",
+   "permissionCode": "analytics.alerts.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "GET /admin/analytics/alert-rules/evaluations",
+   "permissionCode": "analytics.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "POST /admin/analytics/exports",
+   "permissionCode": "analytics.export",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts"
+  },
+  {
+   "route": "GET /admin/compatibility",
+   "permissionCode": "products.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/compatibility.ts"
+  },
+  {
+   "route": "PUT /admin/compatibility",
+   "permissionCode": "products.write",
+   "file": "apps/api/src/interfaces/http/routes/admin/compatibility.ts"
+  },
+  {
+   "route": "DELETE /admin/compatibility/:id",
+   "permissionCode": "products.write",
+   "file": "apps/api/src/interfaces/http/routes/admin/compatibility.ts"
+  },
+  {
+   "route": "GET /admin/modules/coupons",
+   "permissionCode": "promotions.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/new-modules.ts"
+  },
+  {
+   "route": "POST /admin/modules/coupons/batch",
+   "permissionCode": "promotions.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/new-modules.ts"
+  },
+  {
+   "route": "GET /admin/modules/devices",
+   "permissionCode": "products.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/new-modules.ts"
+  },
+  {
+   "route": "GET /admin/modules/reviews",
+   "permissionCode": "reviews.moderate",
+   "file": "apps/api/src/interfaces/http/routes/admin/new-modules.ts"
+  },
+  {
+   "route": "POST /admin/modules/reviews/:id/moderate",
+   "permissionCode": "reviews.moderate",
+   "file": "apps/api/src/interfaces/http/routes/admin/new-modules.ts"
+  },
+  {
+   "route": "GET /admin/modules/creators",
+   "permissionCode": "pricing.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/new-modules.ts"
+  },
+  {
+   "route": "GET /admin/modules/flash-sales",
+   "permissionCode": "pricing.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/new-modules.ts"
+  },
+  {
+   "route": "GET /admin/modules/seo",
+   "permissionCode": "products.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/new-modules.ts"
+  },
+  {
+   "route": "GET /admin/loyalty/config",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/loyalty.ts"
+  },
+  {
+   "route": "GET /admin/loyalty/operations",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/loyalty.ts"
+  },
+  {
+   "route": "POST /admin/loyalty/accounts/:id/expire",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/loyalty.ts"
+  },
+  {
+   "route": "PUT /admin/loyalty/config",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/loyalty.ts"
+  },
+  {
+   "route": "POST /admin/loyalty/entries/:id/reverse",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/loyalty.ts"
+  },
+  {
+   "route": "GET /admin/fulfilment",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "GET /admin/fulfilment/badge",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "GET /admin/fulfilment/report",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "GET /admin/fulfilment/:id",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "PATCH /admin/fulfilment/:id/status",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "PATCH /admin/fulfilment/:id/assign",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "PATCH /admin/fulfilment/:id/priority",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "GET /admin/fulfilment/teams",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "POST /admin/fulfilment/teams",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "POST /admin/fulfilment/teams/:teamId/members",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "PATCH /admin/fulfilment/:id/claim",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "PATCH /admin/fulfilment/:id/team",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "POST /admin/fulfilment/bulk-assign",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "GET /admin/fulfilment/:id/packing",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "POST /admin/fulfilment/:id/packing/start",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "PATCH /admin/fulfilment/:id/packing/packed",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "POST /admin/fulfilment/:id/packing/backorder",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "POST /admin/fulfilment/:id/packing/cancel-remainder",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "POST /admin/fulfilment/:id/packing/complete",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "POST /admin/fulfilment/:id/packing/exception",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "GET /admin/fulfilment/:id/dispatch",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "POST /admin/fulfilment/:id/dispatch",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "PATCH /admin/fulfilment/:id/dispatch/tracking",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "GET /admin/fulfilment/:id/delivery",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "POST /admin/fulfilment/:id/delivery",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "GET /admin/fulfilment/sla/summary",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "POST /admin/fulfilment/sla/evaluate",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts"
+  },
+  {
+   "route": "GET /admin/inventory/low-stock",
+   "permissionCode": "inventory.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/inventory.ts"
+  },
+  {
+   "route": "GET /admin/inventory/availability",
+   "permissionCode": "inventory.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/inventory.ts"
+  },
+  {
+   "route": "GET /admin/control-centre/modules",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/control-centre.ts"
+  },
+  {
+   "route": "GET /admin/control-centre/registry",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/control-centre.ts"
+  },
+  {
+   "route": "GET /admin/control-centre/approvals",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/control-centre.ts"
+  },
+  {
+   "route": "POST /admin/control-centre/approvals",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/control-centre.ts"
+  },
+  {
+   "route": "POST /admin/control-centre/approvals/revoke",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/control-centre.ts"
+  },
+  {
+   "route": "GET /admin/measurement/overview",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement.ts"
+  },
+  {
+   "route": "GET /admin/measurement/dlq",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement.ts"
+  },
+  {
+   "route": "POST /admin/measurement/dlq/:id/replay",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement.ts"
+  },
+  {
+   "route": "GET /admin/measurement/consent-audit",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement.ts"
+  },
+  {
+   "route": "GET /admin/measurement/match-quality",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement.ts"
+  },
+  {
+   "route": "GET /admin/measurement/attribution/:orderId",
+   "permissionCode": "orders.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement.ts"
+  },
+  {
+   "route": "GET /admin/measurement/gtm/status",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-gtm.ts"
+  },
+  {
+   "route": "POST /admin/measurement/gtm/plan",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-gtm.ts"
+  },
+  {
+   "route": "POST /admin/measurement/gtm/validate",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-gtm.ts"
+  },
+  {
+   "route": "POST /admin/measurement/gtm/diff",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-gtm.ts"
+  },
+  {
+   "route": "POST /admin/measurement/gtm/workspace",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-gtm.ts"
+  },
+  {
+   "route": "POST /admin/measurement/gtm/version-draft",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-gtm.ts"
+  },
+  {
+   "route": "GET /admin/measurement/gtm/sync-logs",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-gtm.ts"
+  },
+  {
+   "route": "GET /admin/measurement/paid-social/destinations",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-paid-social.ts"
+  },
+  {
+   "route": "GET /admin/measurement/paid-social/health",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-paid-social.ts"
+  },
+  {
+   "route": "POST /admin/measurement/paid-social/destinations/:id/update",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-paid-social.ts"
+  },
+  {
+   "route": "POST /admin/measurement/paid-social/delivery/:eventId/retry",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-paid-social.ts"
+  },
+  {
+   "route": "GET /admin/measurement/payments",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-payments.ts"
+  },
+  {
+   "route": "GET /admin/measurement/payments/:orderId",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-payments.ts"
+  },
+  {
+   "route": "POST /admin/measurement/payments/:orderId/retry",
+   "permissionCode": "orders.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-payments.ts"
+  },
+  {
+   "route": "GET /admin/measurement-control-tower/summary",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-control-tower.ts"
+  },
+  {
+   "route": "GET /admin/measurement-control-tower/sections/:sectionKey",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-control-tower.ts"
+  },
+  {
+   "route": "GET /admin/measurement-control-tower/warnings",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-control-tower.ts"
+  },
+  {
+   "route": "GET /admin/measurement-control-tower/events",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-control-tower.ts"
+  },
+  {
+   "route": "POST /admin/measurement-control-tower/viewed",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-control-tower.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation-dry-run/execution-plans",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/presentation/routes/controlled-activation-dry-run.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation-dry-run/dry-runs",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/presentation/routes/controlled-activation-dry-run.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation-dry-run/dry-runs/:id/previews",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/presentation/routes/controlled-activation-dry-run.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation-dry-run/canary-plans/validate",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/presentation/routes/controlled-activation-dry-run.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation-dry-run/dry-runs/:id/evidence",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/presentation/routes/controlled-activation-dry-run.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation-dry-run/execution-plans/:id/ready-for-review",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/presentation/routes/controlled-activation-dry-run.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation-dry-run/dry-runs/:id/cancel",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/presentation/routes/controlled-activation-dry-run.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/live-canaries",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/presentation/routes/controlled-live-canary.ts"
+  },
+  {
+   "route": "GET /admin/controlled-activation/live-canaries",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/presentation/routes/controlled-live-canary.ts"
+  },
+  {
+   "route": "GET /admin/controlled-activation/live-canaries/:id",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/presentation/routes/controlled-live-canary.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/live-canaries/:id/eligibility",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/presentation/routes/controlled-live-canary.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/live-canaries/:id/start",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/presentation/routes/controlled-live-canary.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/live-canaries/:id/pause",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/presentation/routes/controlled-live-canary.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/live-canaries/:id/rollback",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/presentation/routes/controlled-live-canary.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/live-canaries/:id/evidence-pack",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/presentation/routes/controlled-live-canary.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/live-canaries/:id/complete",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/presentation/routes/controlled-live-canary.ts"
+  },
+  {
+   "route": "GET /admin/controlled-activation/summary",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/controlled-activation.ts"
+  },
+  {
+   "route": "GET /admin/controlled-activation/requests",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/controlled-activation.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/requests",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/controlled-activation.ts"
+  },
+  {
+   "route": "GET /admin/controlled-activation/requests/:requestId",
+   "permissionCode": "reports.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/controlled-activation.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/requests/:requestId/checks",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/controlled-activation.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/requests/:requestId/approve",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/controlled-activation.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/requests/:requestId/reject",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/controlled-activation.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/requests/:requestId/cancel",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/controlled-activation.ts"
+  },
+  {
+   "route": "POST /admin/controlled-activation/requests/:requestId/blockers/:gateId/acknowledge",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/controlled-activation.ts"
+  },
+  {
+   "route": "GET /admin/consent-operating/readiness",
+   "permissionCode": "audit.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "GET /admin/consent-operating/overview",
+   "permissionCode": "audit.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "GET /admin/consent-operating/timeline/:customerRef",
+   "permissionCode": "audit.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "GET /admin/consent-operating/support/requests",
+   "permissionCode": "audit.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "POST /admin/consent-operating/support/requests",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "POST /admin/consent-operating/conflicts/preview",
+   "permissionCode": "audit.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "POST /admin/consent-operating/conflicts/resolve",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "POST /admin/consent-operating/manual-corrections",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "POST /admin/consent-operating/legacy-migration/dry-run",
+   "permissionCode": "audit.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "GET /admin/consent-operating/suppressions",
+   "permissionCode": "audit.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "POST /admin/consent-operating/provider-suppressions",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "POST /admin/consent-operating/provider-eligibility/dry-run",
+   "permissionCode": "audit.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
+   "route": "GET /api/admin/consent/operations/summary",
+   "permissionCode": "audit.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operations.ts"
+  },
+  {
+   "route": "GET /admin/automation/overview",
+   "permissionCode": "automation.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "GET /admin/automation/definitions",
+   "permissionCode": "automation.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/definitions",
+   "permissionCode": "automation.create",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "GET /admin/automation/definitions/:id",
+   "permissionCode": "automation.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/definitions/:id/versions",
+   "permissionCode": "automation.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/definitions/:id/submit",
+   "permissionCode": "automation.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/definitions/:id/approve",
+   "permissionCode": "automation.approve",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/definitions/:id/reject",
+   "permissionCode": "automation.approve",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/definitions/:id/activate",
+   "permissionCode": "automation.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/definitions/:id/pause",
+   "permissionCode": "automation.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/definitions/:id/resume",
+   "permissionCode": "automation.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/definitions/:id/archive",
+   "permissionCode": "automation.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/definitions/:id/dry-run",
+   "permissionCode": "automation.execute",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/definitions/:id/execute",
+   "permissionCode": "automation.execute",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "GET /admin/automation/executions",
+   "permissionCode": "automation.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "GET /admin/automation/executions/:id",
+   "permissionCode": "automation.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/executions/:id/replay",
+   "permissionCode": "automation.replay",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "POST /admin/automation/executions/:id/reconcile",
+   "permissionCode": "automation.reconcile",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts"
+  },
+  {
+   "route": "GET /admin/experiments",
+   "permissionCode": "experiments.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/experiments.ts"
+  },
+  {
+   "route": "POST /admin/experiments",
+   "permissionCode": "experiments.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/experiments.ts"
+  },
+  {
+   "route": "GET /admin/experiments/:id",
+   "permissionCode": "experiments.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/experiments.ts"
+  },
+  {
+   "route": "POST /admin/experiments/:id/transition",
+   "permissionCode": "experiments.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/experiments.ts"
+  },
+  {
+   "route": "POST /admin/experiments/:id/exposures",
+   "permissionCode": "experiments.assign",
+   "file": "apps/api/src/interfaces/http/routes/admin/experiments.ts"
+  },
+  {
+   "route": "GET /admin/pricing/overview",
+   "permissionCode": "pricing.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "GET /admin/pricing/definitions",
+   "permissionCode": "pricing.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "GET /admin/pricing/definitions/:id",
+   "permissionCode": "pricing.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "POST /admin/pricing/definitions",
+   "permissionCode": "pricing.create",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "POST /admin/pricing/definitions/:id/versions",
+   "permissionCode": "pricing.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "POST /admin/pricing/definitions/:id/experiment-associations",
+   "permissionCode": "pricing.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "POST /admin/pricing/simulate",
+   "permissionCode": "pricing.simulate",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "POST /admin/pricing/definitions/:id/submit",
+   "permissionCode": "pricing.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "POST /admin/pricing/definitions/:id/approve",
+   "permissionCode": "pricing.approve",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts",
+   "stepUp": "pricing_approval"
+  },
+  {
+   "route": "POST /admin/pricing/definitions/:id/reject",
+   "permissionCode": "pricing.approve",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "POST /admin/pricing/definitions/:id/activate",
+   "permissionCode": "pricing.activate",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts",
+   "stepUp": "pricing_approval"
+  },
+  {
+   "route": "POST /admin/pricing/definitions/:id/pause",
+   "permissionCode": "pricing.pause",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "POST /admin/pricing/definitions/:id/resume",
+   "permissionCode": "pricing.activate",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "POST /admin/pricing/definitions/:id/archive",
+   "permissionCode": "pricing.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts"
+  },
+  {
+   "route": "GET /admin/fraud/overview",
+   "permissionCode": "fraud.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fraud.ts"
+  },
+  {
+   "route": "GET /admin/fraud/cases",
+   "permissionCode": "fraud.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fraud.ts"
+  },
+  {
+   "route": "GET /admin/fraud/cases/:id",
+   "permissionCode": "fraud.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/fraud.ts"
+  },
+  {
+   "route": "POST /admin/fraud/signals",
+   "permissionCode": "fraud.signal",
+   "file": "apps/api/src/interfaces/http/routes/admin/fraud.ts"
+  },
+  {
+   "route": "POST /admin/fraud/cases/:id/assign",
+   "permissionCode": "fraud.assign",
+   "file": "apps/api/src/interfaces/http/routes/admin/fraud.ts"
+  },
+  {
+   "route": "POST /admin/fraud/cases/:id/decision",
+   "permissionCode": "fraud.decide",
+   "file": "apps/api/src/interfaces/http/routes/admin/fraud.ts"
+  },
+  {
+   "route": "GET /admin/pim-imports",
+   "permissionCode": "pim.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/pim-imports.ts"
+  },
+  {
+   "route": "GET /admin/pim-imports/mapping-fields",
+   "permissionCode": "pim.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/pim-imports.ts"
+  },
+  {
+   "route": "POST /admin/pim-imports",
+   "permissionCode": "pim.create",
+   "file": "apps/api/src/interfaces/http/routes/admin/pim-imports.ts"
+  },
+  {
+   "route": "GET /admin/pim-imports/:id",
+   "permissionCode": "pim.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/pim-imports.ts"
+  },
+  {
+   "route": "POST /admin/pim-imports/:id/mapping",
+   "permissionCode": "pim.map",
+   "file": "apps/api/src/interfaces/http/routes/admin/pim-imports.ts"
+  },
+  {
+   "route": "POST /admin/pim-imports/:id/preview",
+   "permissionCode": "pim.map",
+   "file": "apps/api/src/interfaces/http/routes/admin/pim-imports.ts"
+  },
+  {
+   "route": "POST /admin/pim-imports/:id/approval",
+   "permissionCode": "pim.approve",
+   "file": "apps/api/src/interfaces/http/routes/admin/pim-imports.ts"
+  },
+  {
+   "route": "POST /admin/pim-imports/:id/apply",
+   "permissionCode": "pim.apply",
+   "file": "apps/api/src/interfaces/http/routes/admin/pim-imports.ts"
+  },
+  {
+   "route": "POST /admin/pim-imports/:id/rollback",
+   "permissionCode": "pim.rollback",
+   "file": "apps/api/src/interfaces/http/routes/admin/pim-imports.ts"
+  },
+  {
+   "route": "GET /admin/surveys",
+   "permissionCode": "surveys.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/surveys.ts"
+  },
+  {
+   "route": "POST /admin/surveys",
+   "permissionCode": "surveys.create",
+   "file": "apps/api/src/interfaces/http/routes/admin/surveys.ts"
+  },
+  {
+   "route": "GET /admin/surveys/:id",
+   "permissionCode": "surveys.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/surveys.ts"
+  },
+  {
+   "route": "GET /admin/surveys/:id/analysis",
+   "permissionCode": "surveys.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/surveys.ts"
+  },
+  {
+   "route": "GET /admin/surveys/:id/export",
+   "permissionCode": "surveys.export",
+   "file": "apps/api/src/interfaces/http/routes/admin/surveys.ts"
+  },
+  {
+   "route": "POST /admin/surveys/:id/submit",
+   "permissionCode": "surveys.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/surveys.ts"
+  },
+  {
+   "route": "POST /admin/surveys/:id/approve",
+   "permissionCode": "surveys.approve",
+   "file": "apps/api/src/interfaces/http/routes/admin/surveys.ts"
+  },
+  {
+   "route": "POST /admin/surveys/:id/activate",
+   "permissionCode": "surveys.activate",
+   "file": "apps/api/src/interfaces/http/routes/admin/surveys.ts"
+  },
+  {
+   "route": "POST /admin/surveys/:id/pause",
+   "permissionCode": "surveys.activate",
+   "file": "apps/api/src/interfaces/http/routes/admin/surveys.ts"
+  },
+  {
+   "route": "POST /admin/surveys/:id/close",
+   "permissionCode": "surveys.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/surveys.ts"
+  },
+  {
+   "route": "GET /admin/copy-quality",
+   "permissionCode": "copy_quality.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/copy-quality.ts"
+  },
+  {
+   "route": "GET /admin/copy-quality/export",
+   "permissionCode": "copy_quality.export",
+   "file": "apps/api/src/interfaces/http/routes/admin/copy-quality.ts"
+  },
+  {
+   "route": "GET /admin/behavioural-interventions",
+   "permissionCode": "interventions.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/behavioural-interventions.ts"
+  },
+  {
+   "route": "POST /admin/behavioural-interventions",
+   "permissionCode": "interventions.create",
+   "file": "apps/api/src/interfaces/http/routes/admin/behavioural-interventions.ts"
+  },
+  {
+   "route": "GET /admin/behavioural-interventions/:id",
+   "permissionCode": "interventions.read",
+   "file": "apps/api/src/interfaces/http/routes/admin/behavioural-interventions.ts"
+  },
+  {
+   "route": "POST /admin/behavioural-interventions/:id/submit",
+   "permissionCode": "interventions.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/behavioural-interventions.ts"
+  },
+  {
+   "route": "POST /admin/behavioural-interventions/:id/approve",
+   "permissionCode": "interventions.approve",
+   "file": "apps/api/src/interfaces/http/routes/admin/behavioural-interventions.ts"
+  },
+  {
+   "route": "POST /admin/behavioural-interventions/:id/activate",
+   "permissionCode": "interventions.activate",
+   "file": "apps/api/src/interfaces/http/routes/admin/behavioural-interventions.ts"
+  },
+  {
+   "route": "POST /admin/behavioural-interventions/:id/pause",
+   "permissionCode": "interventions.activate",
+   "file": "apps/api/src/interfaces/http/routes/admin/behavioural-interventions.ts"
+  },
+  {
+   "route": "POST /admin/behavioural-interventions/:id/complete",
+   "permissionCode": "interventions.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/behavioural-interventions.ts"
+  }
+ ]
+}

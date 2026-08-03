@@ -1,0 +1,42 @@
+{
+  "programme": "GOLDPLUS_PLATFORM_INSTITUTIONAL_MEMORY_ADVANCEMENT_V4",
+  "kernel": "V5",
+  "attestation": {
+    "modelRequested": "Fable 5",
+    "effortRequested": "max",
+    "thinkingRequested": true,
+    "runtimeModelId": "claude-fable-5",
+    "operatorEvidence": "/model -> Fable 5; /effort max (session outputs 2026-08-03)",
+    "sessionDate": "2026-08-03"
+  },
+  "branch": "claude/amazon-grade-goldplus-commerce-os-v5-production-20260802",
+  "pr": 9,
+  "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
+  "startingHead": "707876d",
+  "lastGreenHead": "707876d",
+  "phase": "0-institutional-memory",
+  "phaseStatus": {
+    "0-attestation-memory": "IN_PROGRESS",
+    "1-shared-foundations": "READY",
+    "2-dam-pim-catalogue": "BLOCKED(large-build)",
+    "3-core-commerce": "READY(hardening-slices)",
+    "4-pricing-promos-recs": "READY(hardening-slices)",
+    "5-customer-intelligence": "READY(hardening-slices)",
+    "6-campaigns-automation": "BLOCKED(no-send-design-first)",
+    "7-measurement-consent-dlq": "READY(hardening-slices)",
+    "8-legal-loyalty": "BLOCKED(large-build)",
+    "9-integration-simplification": "BLOCKED(depends 1-8)",
+    "10-adversarial-full-gate": "BLOCKED",
+    "11-candidate-release-proof": "BLOCKED"
+  },
+  "workUnits": [
+    {"id": "S0", "module": "institutional-memory", "objective": "memory+ownership+ledger+indexes+graph", "conflictGroup": "PLATFORM_INFRA_RELEASE", "owner": "principal", "status": "IN_PROGRESS", "evidence": "docs/platform/institutional-memory-v4/*"},
+    {"id": "S1", "module": "governed-admin", "objective": "role model + idempotent code-driven permission sync for PLATFORM_ADMINISTRATOR; audited assignment; replaces ad-hoc SQL grants", "conflictGroup": "ADMIN_LEGAL_ACCESS", "owner": "principal", "status": "READY", "schemaImpact": "roles seed rows only (no DDL expected)", "permissionImpact": "full-registry sync", "tests": "unit: sync builds exact registry set; integration optional", "productionImpact": "api image roll", "dependencies": ["S0"]},
+    {"id": "S2", "module": "carts", "objective": "guest cart retention 30d->180d (credential TTL + DB expiry) per V4 §11", "conflictGroup": "CORE_COMMERCE", "owner": "principal", "status": "READY", "files": ["packages/shared/src/cart-credential.ts", "apps/api/src/infrastructure/db/repositories/DrizzleAuthorizedCartRepository.ts"], "tests": "unit TTL constants + credential verify window", "productionImpact": "web+api roll", "dependencies": ["S0"]},
+    {"id": "S3", "module": "regression-guards", "objective": "unit tests for MutateCartUseCase (create-on-first-ADD, not-found semantics, catalogue pricing) + parseLocalCartCookie alias + architecture guard for SSR origin empty-safety", "conflictGroup": "CORE_COMMERCE", "owner": "principal", "status": "READY", "tests": "new unit+architecture", "productionImpact": "none", "dependencies": ["S0"]},
+    {"id": "S4", "module": "maturity-matrix", "objective": "full module reconciliation rows (KEEP/HARDEN/MERGE/...) from indexes + capability matrix", "conflictGroup": "PLATFORM_INFRA_RELEASE", "owner": "principal", "status": "BLOCKED(waiting recon agents)", "dependencies": ["S0-recon"]},
+    {"id": "S5", "module": "release", "objective": "roll S1+S2 to prod (build with env-file, up -d api web), verify readiness+funnel+admin sweep", "conflictGroup": "PLATFORM_INFRA_RELEASE", "owner": "principal", "status": "BLOCKED", "dependencies": ["S1", "S2", "S3"]}
+  ],
+  "constraints": ["no real provider events", "no destructive prod load tests", "no secrets printed", "single migration writer", "principal-only: Registry/permissions/app.ts/compose/Caddy/journal"],
+  "nextExact": {"file": "packages/shared/src/permissions/index.ts", "command": "read registry then implement S1 sync module", "expected": "idempotent PLATFORM_ADMINISTRATOR full-grant sync"}
+}

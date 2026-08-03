@@ -16,6 +16,7 @@ import { serve } from '@hono/node-server';
 import app from './app';
 
 import { startOutboxTicker, gracefulStopOutboxTicker } from '../../infrastructure/scheduler/OutboxTicker';
+import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
 import { endDbConnection } from '../../infrastructure/db/client';
 import { QueueService } from '../../infrastructure/queues/QueueService';
 import { registerAllWorkers } from '../../infrastructure/queues/QueueWorkers';
@@ -34,6 +35,8 @@ const server = serve({
   if (process.env.NODE_ENV !== 'test') {
     startOutboxTicker();
     registerAllWorkers();
+    // Converge DB permissions on the code registry (advisory-locked, add-only).
+    void runPermissionRegistrySyncAtBoot();
   }
 });
 

@@ -1,0 +1,4122 @@
+{
+ "generatedAt": "2026-08-03",
+ "gitSha": "707876d",
+ "sourcePaths": [
+  "apps/api/src/interfaces/http/app.ts",
+  "apps/api/src/interfaces/http/routes/**",
+  "apps/api/src/presentation/routes/**",
+  "apps/api/src/interfaces/http/middleware/**",
+  "apps/web/src/pages/**"
+ ],
+ "mountedPrefixDeclarationMismatch": {
+  "appRouteCalls": 55,
+  "declaredMountedApiPrefixes": 54,
+  "mountedButNotDeclared": [
+   "/admin/modules"
+  ]
+ },
+ "globalMiddleware": [
+  "cors()",
+  "requestId+trace",
+  "pino logger",
+  "publicAbuseControl() (Redis per-family abuse limits, all routes)",
+  "csrf() (cookie-authenticated mutations)",
+  "maintenanceMode",
+  "shadow-traffic mirror (exempt: /health, /metrics, */admin/deployment, */admin/queues)"
+ ],
+ "mounts": [
+  {
+   "mount": "/auth",
+   "file": "apps/api/src/interfaces/http/routes/auth.ts",
+   "authMiddleware": "public",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/login"
+    },
+    {
+     "method": "POST",
+     "path": "/admin/login"
+    },
+    {
+     "method": "POST",
+     "path": "/refresh"
+    },
+    {
+     "method": "POST",
+     "path": "/logout"
+    },
+    {
+     "method": "POST",
+     "path": "/logout-all"
+    },
+    {
+     "method": "GET",
+     "path": "/sessions"
+    },
+    {
+     "method": "POST",
+     "path": "/mfa/enrol"
+    },
+    {
+     "method": "POST",
+     "path": "/mfa/confirm"
+    },
+    {
+     "method": "POST",
+     "path": "/mfa/verify"
+    },
+    {
+     "method": "GET",
+     "path": "/mfa/status"
+    }
+   ]
+  },
+  {
+   "mount": "/products",
+   "file": "apps/api/src/interfaces/http/routes/products.ts",
+   "authMiddleware": "public",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/"
+    },
+    {
+     "method": "GET",
+     "path": "/suggest"
+    },
+    {
+     "method": "POST",
+     "path": "/search-events"
+    },
+    {
+     "method": "POST",
+     "path": "/search-interactions"
+    },
+    {
+     "method": "GET",
+     "path": "/:slug/compatibility"
+    },
+    {
+     "method": "GET",
+     "path": "/:slug"
+    }
+   ]
+  },
+  {
+   "mount": "/commerce",
+   "file": "apps/api/src/interfaces/http/routes/commerce.ts",
+   "authMiddleware": "public with per-route middleware (customerSessionMiddleware)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/cart"
+    },
+    {
+     "method": "POST",
+     "path": "/cart/add"
+    },
+    {
+     "method": "POST",
+     "path": "/cart/update"
+    },
+    {
+     "method": "POST",
+     "path": "/cart/remove"
+    },
+    {
+     "method": "POST",
+     "path": "/cart/clear"
+    },
+    {
+     "method": "POST",
+     "path": "/orders/create"
+    },
+    {
+     "method": "POST",
+     "path": "/orders/lookup"
+    },
+    {
+     "method": "GET",
+     "path": "/orders/:id",
+     "middleware": [
+      "customerSessionMiddleware"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/payments/pesapal/start"
+    },
+    {
+     "method": "GET",
+     "path": "/payments/pesapal/callback"
+    },
+    {
+     "method": "POST",
+     "path": "/payments/pesapal/ipn"
+    },
+    {
+     "method": "GET",
+     "path": "/payments/pesapal/ipn"
+    }
+   ]
+  },
+  {
+   "mount": "/governance",
+   "file": "apps/api/src/interfaces/http/routes/governance.ts",
+   "authMiddleware": "mixed: public + admin auth on '/admin/*'",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/dealers/apply"
+    },
+    {
+     "method": "POST",
+     "path": "/quotes/request"
+    },
+    {
+     "method": "POST",
+     "path": "/support/report-issue"
+    },
+    {
+     "method": "POST",
+     "path": "/support/report-fake"
+    },
+    {
+     "method": "POST",
+     "path": "/verification/check"
+    },
+    {
+     "method": "GET",
+     "path": "/admin/stats",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin/orders",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin/orders/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin/carts/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin/orders/:id/communication-preview",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/admin/orders/:id/fulfillment",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin/products",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin/payments",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "payments.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin/payments/reconciliation",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "payments.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin/quotes",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "quotes.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin/support",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin/lifecycle",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/admin/support/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin/dealers",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "dealer.read_private"
+     ]
+    }
+   ],
+   "notes": "Split surface: public quote/dealer/support/track endpoints; routes.use('/admin/*', authMiddleware) guards only the /governance/admin/* sub-tree (per-route requirePermissions)."
+  },
+  {
+   "mount": "/webhooks",
+   "file": "apps/api/src/interfaces/http/routes/webhooks.ts",
+   "authMiddleware": "webhook-signature (HMAC-SHA256 x-goldplus-signature per provider; no session)",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/payment/:provider"
+    }
+   ],
+   "notes": "POST /payment/:provider verifies HMAC-SHA256 x-goldplus-signature (timestamped `${ts}.${rawBody}` or legacy raw-body) against per-provider env secret; unconfigured secret => 503 NOT_CONFIGURED; mandatory idempotency via payment_webhook_events."
+  },
+  {
+   "mount": "/account",
+   "file": "apps/api/src/interfaces/http/routes/account.ts",
+   "authMiddleware": "customer session (customerSessionMiddleware: Bearer access token)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/loyalty"
+    },
+    {
+     "method": "GET",
+     "path": "/me"
+    },
+    {
+     "method": "GET",
+     "path": "/orders"
+    },
+    {
+     "method": "GET",
+     "path": "/orders/:id"
+    },
+    {
+     "method": "GET",
+     "path": "/addresses"
+    },
+    {
+     "method": "POST",
+     "path": "/addresses"
+    },
+    {
+     "method": "GET",
+     "path": "/preferences"
+    },
+    {
+     "method": "PUT",
+     "path": "/preferences"
+    },
+    {
+     "method": "GET",
+     "path": "/preferences/audit"
+    }
+   ]
+  },
+  {
+   "mount": "/admin/audit",
+   "file": "apps/api/src/interfaces/http/routes/admin/audit.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "audit.read"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/users",
+   "file": "apps/api/src/interfaces/http/routes/admin/users.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "auth.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/roles",
+   "file": "apps/api/src/interfaces/http/routes/admin/roles.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "roles.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/products",
+   "file": "apps/api/src/interfaces/http/routes/admin/products.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/:id/images",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.write"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/images/upload",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.write"
+     ]
+    },
+    {
+     "method": "DELETE",
+     "path": "/images/:imageId",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.write"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/attribute-values",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.write"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/attributes",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.write"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/categories",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.write"
+     ]
+    },
+    {
+     "method": "PUT",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.write"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/notifications",
+   "file": "apps/api/src/interfaces/http/routes/admin/notifications.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "notifications.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/order/:orderId/timeline",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "notifications.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/health-check",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "notifications.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/admin-order-emails",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "notifications.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/admin-order-emails/:id/replay",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/recommendations",
+   "file": "apps/api/src/interfaces/http/routes/admin/recommendations.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/rules",
+     "middleware": [
+      "requirePermissions(router-level)"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/rules",
+     "middleware": [
+      "requirePermissions(router-level)"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/rules/:id",
+     "middleware": [
+      "requirePermissions(router-level)"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "PUT",
+     "path": "/rules/:id",
+     "middleware": [
+      "requirePermissions(router-level)"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/rules/:id/status",
+     "middleware": [
+      "requirePermissions(router-level)"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/rules/:id/archive",
+     "middleware": [
+      "requirePermissions(router-level)"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/rules/:id/audit-log",
+     "middleware": [
+      "requirePermissions(router-level)"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/preview",
+     "middleware": [
+      "requirePermissions(router-level)"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/analytics",
+     "middleware": [
+      "requirePermissions(router-level)"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/customer-dna",
+   "file": "apps/api/src/interfaces/http/routes/admin/customer-dna.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "customer_dna.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/conflicts",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "identity.review"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "customer_dna.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/recompute",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "customer_dna.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/nba",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "nba.recompute"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/decision-intelligence",
+   "file": "apps/api/src/interfaces/http/routes/admin/decision-intelligence.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/overview",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "decision_intelligence.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/insights",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "decision_intelligence.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/insights/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "decision_intelligence.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/evaluate",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "decision_intelligence.evaluate"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/insights/:id/acknowledge",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "decision_intelligence.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/insights/:id/assign",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "decision_intelligence.assign"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/insights/:id/start",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "decision_intelligence.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/insights/:id/resolve",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "decision_intelligence.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/insights/:id/dismiss",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "decision_intelligence.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/insights/:id/recompute",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "decision_intelligence.evaluate"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/queues",
+   "file": "apps/api/src/interfaces/http/routes/admin/queues.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/status",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/replay",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/concurrency",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/deployment",
+   "file": "apps/api/src/interfaces/http/routes/admin/deployment.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/status",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/maintenance",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/health-score",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/shadow-traffic",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/delivery-zones",
+   "file": "apps/api/src/interfaces/http/routes/admin/delivery-zones.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.manage"
+     ]
+    },
+    {
+     "method": "PUT",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.manage"
+     ]
+    },
+    {
+     "method": "DELETE",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/search-demand",
+   "file": "apps/api/src/interfaces/http/routes/admin/search-demand.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/insights",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "leads.assign"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/analytics",
+   "file": "apps/api/src/interfaces/http/routes/admin/analytics.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/overview",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/metrics/:metricKey/series",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/quality",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/actions",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/catalogue",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/payments",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/breakdowns/:dimension",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/exceptions/:exception",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/saved-views",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/saved-views",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.manage"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/saved-views/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.manage"
+     ]
+    },
+    {
+     "method": "DELETE",
+     "path": "/saved-views/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/alert-rules",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/alert-rules",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.alerts.manage"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/alert-rules/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.alerts.manage"
+     ]
+    },
+    {
+     "method": "DELETE",
+     "path": "/alert-rules/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.alerts.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/alert-rules/evaluations",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/exports",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "analytics.export"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/compatibility",
+   "file": "apps/api/src/interfaces/http/routes/admin/compatibility.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.read"
+     ]
+    },
+    {
+     "method": "PUT",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.write"
+     ]
+    },
+    {
+     "method": "DELETE",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.write"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/modules",
+   "file": "apps/api/src/interfaces/http/routes/admin/new-modules.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/coupons",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "promotions.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/coupons/batch",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "promotions.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/devices",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/reviews",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reviews.moderate"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/reviews/:id/moderate",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reviews.moderate"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/creators",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/flash-sales",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/seo",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "products.read"
+     ]
+    }
+   ],
+   "notes": "Mounted in app.ts but ABSENT from MOUNTED_API_PREFIXES declared list (54 declared vs 55 app.route calls)."
+  },
+  {
+   "mount": "/admin/loyalty",
+   "file": "apps/api/src/interfaces/http/routes/admin/loyalty.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/config",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/operations",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/accounts/:id/expire",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "PUT",
+     "path": "/config",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/entries/:id/reverse",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/fulfilment",
+   "file": "apps/api/src/interfaces/http/routes/admin/fulfilment.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/badge",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/report",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/:id/status",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/:id/assign",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/:id/priority",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/teams",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/teams",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/teams/:teamId/members",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/:id/claim",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/:id/team",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/bulk-assign",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id/packing",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/packing/start",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/:id/packing/packed",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/packing/backorder",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/packing/cancel-remainder",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/packing/complete",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/packing/exception",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id/dispatch",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/dispatch",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "PATCH",
+     "path": "/:id/dispatch/tracking",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id/delivery",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/delivery",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/sla/summary",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/sla/evaluate",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/inventory",
+   "file": "apps/api/src/interfaces/http/routes/admin/inventory.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/low-stock",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "inventory.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/availability",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "inventory.read"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/control-centre",
+   "file": "apps/api/src/interfaces/http/routes/admin/control-centre.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/modules",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/registry",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/approvals",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/approvals",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/approvals/revoke",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/recommendations",
+   "file": "apps/api/src/interfaces/http/routes/recommendations.ts",
+   "authMiddleware": "public",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/events"
+    },
+    {
+     "method": "GET",
+     "path": "/"
+    },
+    {
+     "method": "GET",
+     "path": "/recently-viewed"
+    }
+   ]
+  },
+  {
+   "mount": "/telemetry",
+   "file": "apps/api/src/interfaces/http/routes/telemetry.ts",
+   "authMiddleware": "public with per-route middleware (botDetectionMiddleware)",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/collect",
+     "middleware": [
+      "botDetectionMiddleware"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/collect/batch",
+     "middleware": [
+      "botDetectionMiddleware"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/identity"
+    }
+   ],
+   "notes": "Anonymous collection guarded by botDetectionMiddleware + abuse-control family limits; no session required."
+  },
+  {
+   "mount": "/health",
+   "file": "apps/api/src/interfaces/http/routes/health.ts",
+   "authMiddleware": "public",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/"
+    },
+    {
+     "method": "GET",
+     "path": "/live"
+    },
+    {
+     "method": "GET",
+     "path": "/ready"
+    },
+    {
+     "method": "GET",
+     "path": "/deep"
+    }
+   ],
+   "notes": "Liveness/readiness; exempt from shadow-traffic mirroring."
+  },
+  {
+   "mount": "/metrics",
+   "file": "apps/api/src/interfaces/http/routes/metrics.ts",
+   "authMiddleware": "public",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/"
+    }
+   ],
+   "notes": "Prometheus scrape endpoint; exempt from shadow-traffic mirroring."
+  },
+  {
+   "mount": "/consent",
+   "file": "apps/api/src/interfaces/http/routes/consent.ts",
+   "authMiddleware": "public",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/signal"
+    },
+    {
+     "method": "GET",
+     "path": "/status"
+    },
+    {
+     "method": "POST",
+     "path": "/withdraw"
+    }
+   ]
+  },
+  {
+   "mount": "/measurement",
+   "file": "apps/api/src/interfaces/http/routes/measurement.ts",
+   "authMiddleware": "public",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/zero-party"
+    },
+    {
+     "method": "GET",
+     "path": "/attribution/:orderId"
+    },
+    {
+     "method": "GET",
+     "path": "/match-quality"
+    }
+   ]
+  },
+  {
+   "mount": "/admin/measurement",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/overview",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/dlq",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/dlq/:id/replay",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/consent-audit",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/match-quality",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/attribution/:orderId",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.read"
+     ]
+    }
+   ],
+   "notes": "Also nests measurementPaymentsRoutes at /payments (routes.route), duplicating the /admin/measurement/payments top-level mount."
+  },
+  {
+   "mount": "/admin/measurement/gtm",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-gtm.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/status",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/plan",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/validate",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/diff",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/workspace",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/version-draft",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/sync-logs",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/measurement/paid-social",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-paid-social.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/destinations",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/health",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/destinations/:id/update",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/delivery/:eventId/retry",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/measurement/payments",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-payments.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:orderId",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:orderId/retry",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "orders.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/measurement-control-tower",
+   "file": "apps/api/src/interfaces/http/routes/admin/measurement-control-tower.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/summary",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/sections/:sectionKey",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/warnings",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/events",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/viewed",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/release-readiness",
+   "file": "apps/api/src/interfaces/http/routes/admin/release-readiness.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/summary"
+    },
+    {
+     "method": "POST",
+     "path": "/runs"
+    },
+    {
+     "method": "GET",
+     "path": "/runs"
+    },
+    {
+     "method": "GET",
+     "path": "/runs/:runId"
+    },
+    {
+     "method": "POST",
+     "path": "/decisions"
+    },
+    {
+     "method": "POST",
+     "path": "/gates/:gateId/acknowledge"
+    }
+   ]
+  },
+  {
+   "mount": "/admin/controlled-activation-dry-run",
+   "file": "apps/api/src/presentation/routes/controlled-activation-dry-run.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/execution-plans",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/dry-runs",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/dry-runs/:id/previews",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/canary-plans/validate",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/dry-runs/:id/evidence",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/execution-plans/:id/ready-for-review",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/dry-runs/:id/cancel",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/controlled-activation-live-review",
+   "file": "apps/api/src/presentation/routes/controlled-activation-live-review.ts",
+   "authMiddleware": "none mounted — handlers self-check c.get('adminId') which no middleware ever sets; effectively fail-closed 401 for all callers",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/dry-runs/:dryRunId/live-review-candidate"
+    },
+    {
+     "method": "GET",
+     "path": "/live-review-candidates"
+    },
+    {
+     "method": "GET",
+     "path": "/live-review-candidates/:candidateId"
+    },
+    {
+     "method": "POST",
+     "path": "/live-review-candidates/:candidateId/checks"
+    },
+    {
+     "method": "POST",
+     "path": "/live-review-candidates/:candidateId/runbook"
+    },
+    {
+     "method": "POST",
+     "path": "/live-review-candidates/:candidateId/stakeholder-approval"
+    },
+    {
+     "method": "POST",
+     "path": "/live-review-candidates/:candidateId/operator-acknowledgement"
+    },
+    {
+     "method": "POST",
+     "path": "/live-review-candidates/:candidateId/cancel"
+    },
+    {
+     "method": "POST",
+     "path": "/live-review-candidates/:candidateId/expire"
+    }
+   ],
+   "notes": "No auth middleware mounted; every handler requires c.get('adminId') which no middleware sets => effectively fail-closed 401 (dead surface unless a proxy injects the variable)."
+  },
+  {
+   "mount": "/admin/controlled-activation/live-canaries",
+   "file": "apps/api/src/presentation/routes/controlled-live-canary.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/eligibility",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/start",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/pause",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/rollback",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/evidence-pack",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/complete",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/controlled-activation",
+   "file": "apps/api/src/interfaces/http/routes/admin/controlled-activation.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/summary",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/requests",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/requests",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/requests/:requestId",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "reports.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/requests/:requestId/checks",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/requests/:requestId/approve",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/requests/:requestId/reject",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/requests/:requestId/cancel",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/requests/:requestId/blockers/:gateId/acknowledge",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/product-finder",
+   "file": "apps/api/src/interfaces/http/routes/product-finder.ts",
+   "authMiddleware": "public",
+   "handlers": [
+    {
+     "method": "POST",
+     "path": "/sessions"
+    },
+    {
+     "method": "PUT",
+     "path": "/sessions/:sessionId/answers"
+    },
+    {
+     "method": "POST",
+     "path": "/sessions/:sessionId/complete"
+    },
+    {
+     "method": "GET",
+     "path": "/sessions/:sessionId/recommendations"
+    },
+    {
+     "method": "POST",
+     "path": "/sessions/:sessionId/actions"
+    }
+   ]
+  },
+  {
+   "mount": "/account/consent-operating",
+   "file": "apps/api/src/interfaces/http/routes/consent-operating.ts",
+   "authMiddleware": "customer session (customerSessionMiddleware: Bearer access token)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/current"
+    },
+    {
+     "method": "POST",
+     "path": "/preferences"
+    }
+   ]
+  },
+  {
+   "mount": "/admin/consent-operating",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/readiness",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "audit.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/overview",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "audit.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/timeline/:customerRef",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "audit.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/support/requests",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "audit.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/support/requests",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/conflicts/preview",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "audit.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/conflicts/resolve",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/manual-corrections",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/legacy-migration/dry-run",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "audit.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/suppressions",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "audit.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/provider-suppressions",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/provider-eligibility/dry-run",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "audit.read"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/api/admin/consent/operations",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operations.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/summary",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "audit.read"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/automation",
+   "file": "apps/api/src/interfaces/http/routes/admin/automation.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/overview",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/definitions",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.create"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/definitions/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/versions",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/submit",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/approve",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.approve"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/reject",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.approve"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/activate",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/pause",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/resume",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/archive",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/dry-run",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.execute"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/execute",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.execute"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/executions",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/executions/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/executions/:id/replay",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.replay"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/executions/:id/reconcile",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "automation.reconcile"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/experiments",
+   "file": "apps/api/src/interfaces/http/routes/admin/experiments.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "experiments.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "experiments.manage"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "experiments.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/transition",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "experiments.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/exposures",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "experiments.assign"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/pricing",
+   "file": "apps/api/src/interfaces/http/routes/admin/pricing.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/overview",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/definitions",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/definitions/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.create"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/versions",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/experiment-associations",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/simulate",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.simulate"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/submit",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/approve",
+     "middleware": [
+      "requirePermissions",
+      "requireStepUp"
+     ],
+     "permissions": [
+      "pricing.approve"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/reject",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.approve"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/activate",
+     "middleware": [
+      "requirePermissions",
+      "requireStepUp"
+     ],
+     "permissions": [
+      "pricing.activate"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/pause",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.pause"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/resume",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.activate"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/definitions/:id/archive",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pricing.manage"
+     ]
+    }
+   ],
+   "notes": "Transition loop registers POST /definitions/:id/{submit,approve,reject,activate,pause,resume,archive}; approve+activate additionally require requireStepUp('pricing_approval') fresh-MFA."
+  },
+  {
+   "mount": "/admin/fraud",
+   "file": "apps/api/src/interfaces/http/routes/admin/fraud.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/overview",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "fraud.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/cases",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "fraud.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/cases/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "fraud.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/signals",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "fraud.signal"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/cases/:id/assign",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "fraud.assign"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/cases/:id/decision",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "fraud.decide"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/pim-imports",
+   "file": "apps/api/src/interfaces/http/routes/admin/pim-imports.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pim.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/mapping-fields",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pim.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pim.create"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pim.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/mapping",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pim.map"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/preview",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pim.map"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/approval",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pim.approve"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/apply",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pim.apply"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/rollback",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "pim.rollback"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/surveys",
+   "file": "apps/api/src/interfaces/http/routes/admin/surveys.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "surveys.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "surveys.create"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "surveys.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id/analysis",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "surveys.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id/export",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "surveys.export"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/submit",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "surveys.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/approve",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "surveys.approve"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/activate",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "surveys.activate"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/pause",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "surveys.activate"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/close",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "surveys.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/account/surveys",
+   "file": "apps/api/src/interfaces/http/routes/surveys.ts",
+   "authMiddleware": "customer session (customerSessionMiddleware: Bearer access token)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/"
+    },
+    {
+     "method": "POST",
+     "path": "/:id/start"
+    },
+    {
+     "method": "PUT",
+     "path": "/responses/:id"
+    },
+    {
+     "method": "POST",
+     "path": "/responses/:id/complete"
+    }
+   ]
+  },
+  {
+   "mount": "/admin/copy-quality",
+   "file": "apps/api/src/interfaces/http/routes/admin/copy-quality.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "copy_quality.read"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/export",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "copy_quality.export"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/admin/behavioural-interventions",
+   "file": "apps/api/src/interfaces/http/routes/admin/behavioural-interventions.ts",
+   "authMiddleware": "admin auth (authMiddleware: Bearer access token -> active user -> non-empty role permissions; + per-route requirePermissions)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "interventions.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "interventions.create"
+     ]
+    },
+    {
+     "method": "GET",
+     "path": "/:id",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "interventions.read"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/submit",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "interventions.manage"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/approve",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "interventions.approve"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/activate",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "interventions.activate"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/pause",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "interventions.activate"
+     ]
+    },
+    {
+     "method": "POST",
+     "path": "/:id/complete",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "interventions.manage"
+     ]
+    }
+   ]
+  },
+  {
+   "mount": "/account/behavioural-interventions",
+   "file": "apps/api/src/interfaces/http/routes/behavioural-interventions.ts",
+   "authMiddleware": "customer session (customerSessionMiddleware: Bearer access token)",
+   "handlers": [
+    {
+     "method": "GET",
+     "path": "/"
+    },
+    {
+     "method": "POST",
+     "path": "/:id/exposures"
+    },
+    {
+     "method": "POST",
+     "path": "/exposures/:id/outcomes"
+    }
+   ]
+  }
+ ],
+ "webPages": [
+  {
+   "route": "/404",
+   "file": "apps/web/src/pages/404.astro",
+   "access": "public"
+  },
+  {
+   "route": "/500",
+   "file": "apps/web/src/pages/500.astro",
+   "access": "public"
+  },
+  {
+   "route": "/account/behavioural-interventions",
+   "file": "apps/web/src/pages/account/behavioural-interventions.astro",
+   "access": "customer"
+  },
+  {
+   "route": "/account",
+   "file": "apps/web/src/pages/account/index.astro",
+   "access": "customer"
+  },
+  {
+   "route": "/account/preferences",
+   "file": "apps/web/src/pages/account/preferences.astro",
+   "access": "customer"
+  },
+  {
+   "route": "/account/surveys",
+   "file": "apps/web/src/pages/account/surveys.astro",
+   "access": "customer"
+  },
+  {
+   "route": "/admin/analytics",
+   "file": "apps/web/src/pages/admin/analytics/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/audit",
+   "file": "apps/web/src/pages/admin/audit/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/automation/:id",
+   "file": "apps/web/src/pages/admin/automation/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/automation/executions/:id",
+   "file": "apps/web/src/pages/admin/automation/executions/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/automation",
+   "file": "apps/web/src/pages/admin/automation/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/behavioural-interventions/:id",
+   "file": "apps/web/src/pages/admin/behavioural-interventions/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/behavioural-interventions",
+   "file": "apps/web/src/pages/admin/behavioural-interventions/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/campaigns",
+   "file": "apps/web/src/pages/admin/campaigns/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/carts",
+   "file": "apps/web/src/pages/admin/carts/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/categories",
+   "file": "apps/web/src/pages/admin/categories/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/commerce-os",
+   "file": "apps/web/src/pages/admin/commerce-os.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/compatibility",
+   "file": "apps/web/src/pages/admin/compatibility.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/consent-operating",
+   "file": "apps/web/src/pages/admin/consent-operating.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/consent-operations",
+   "file": "apps/web/src/pages/admin/consent-operations.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/control-centre-approvals",
+   "file": "apps/web/src/pages/admin/control-centre-approvals.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/controlled-activation-dry-run",
+   "file": "apps/web/src/pages/admin/controlled-activation-dry-run.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/controlled-activation",
+   "file": "apps/web/src/pages/admin/controlled-activation.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/controlled-live-canary",
+   "file": "apps/web/src/pages/admin/controlled-live-canary.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/copy-quality",
+   "file": "apps/web/src/pages/admin/copy-quality.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/customer-dna/:id",
+   "file": "apps/web/src/pages/admin/customer-dna/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/customer-dna",
+   "file": "apps/web/src/pages/admin/customer-dna/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/dealers",
+   "file": "apps/web/src/pages/admin/dealers/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/decision-intelligence/:id",
+   "file": "apps/web/src/pages/admin/decision-intelligence/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/decision-intelligence",
+   "file": "apps/web/src/pages/admin/decision-intelligence/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/demand",
+   "file": "apps/web/src/pages/admin/demand/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/experiments/:id",
+   "file": "apps/web/src/pages/admin/experiments/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/experiments",
+   "file": "apps/web/src/pages/admin/experiments/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/feeds",
+   "file": "apps/web/src/pages/admin/feeds/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/fraud/:id",
+   "file": "apps/web/src/pages/admin/fraud/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/fraud",
+   "file": "apps/web/src/pages/admin/fraud/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/fulfilment/:id/delivery",
+   "file": "apps/web/src/pages/admin/fulfilment/[id]/delivery.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/fulfilment/:id/dispatch",
+   "file": "apps/web/src/pages/admin/fulfilment/[id]/dispatch.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/fulfilment/:id/packing",
+   "file": "apps/web/src/pages/admin/fulfilment/[id]/packing.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/fulfilment",
+   "file": "apps/web/src/pages/admin/fulfilment/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/fulfilment/report",
+   "file": "apps/web/src/pages/admin/fulfilment/report.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/governance",
+   "file": "apps/web/src/pages/admin/governance/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin",
+   "file": "apps/web/src/pages/admin/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/inventory",
+   "file": "apps/web/src/pages/admin/inventory/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/legal",
+   "file": "apps/web/src/pages/admin/legal.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/lifecycle",
+   "file": "apps/web/src/pages/admin/lifecycle.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/login",
+   "file": "apps/web/src/pages/admin/login.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/loyalty",
+   "file": "apps/web/src/pages/admin/loyalty.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/measurement-control-tower",
+   "file": "apps/web/src/pages/admin/measurement-control-tower.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/measurement-handover",
+   "file": "apps/web/src/pages/admin/measurement-handover.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/measurement/attribution",
+   "file": "apps/web/src/pages/admin/measurement/attribution.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/measurement/consent",
+   "file": "apps/web/src/pages/admin/measurement/consent.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/measurement/control-tower/controlled-activation/live-review/:id",
+   "file": "apps/web/src/pages/admin/measurement/control-tower/controlled-activation/live-review/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/measurement/control-tower/controlled-activation/live-review",
+   "file": "apps/web/src/pages/admin/measurement/control-tower/controlled-activation/live-review/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/measurement/dlq",
+   "file": "apps/web/src/pages/admin/measurement/dlq.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/measurement",
+   "file": "apps/web/src/pages/admin/measurement/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/merchandising",
+   "file": "apps/web/src/pages/admin/merchandising/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/notifications",
+   "file": "apps/web/src/pages/admin/notifications/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/notifications/order-emails",
+   "file": "apps/web/src/pages/admin/notifications/order-emails.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/orders/:id",
+   "file": "apps/web/src/pages/admin/orders/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/orders",
+   "file": "apps/web/src/pages/admin/orders/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/payments",
+   "file": "apps/web/src/pages/admin/payments/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/pim-imports/:id",
+   "file": "apps/web/src/pages/admin/pim-imports/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/pim-imports",
+   "file": "apps/web/src/pages/admin/pim-imports/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/platform-modules",
+   "file": "apps/web/src/pages/admin/platform-modules.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/pricing/:id",
+   "file": "apps/web/src/pages/admin/pricing/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/pricing/delivery-zones",
+   "file": "apps/web/src/pages/admin/pricing/delivery-zones.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/pricing",
+   "file": "apps/web/src/pages/admin/pricing/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/products/:id",
+   "file": "apps/web/src/pages/admin/products/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/products/:id/edit-properties",
+   "file": "apps/web/src/pages/admin/products/[id]/edit-properties.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/products/:id/edit",
+   "file": "apps/web/src/pages/admin/products/[id]/edit.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/products",
+   "file": "apps/web/src/pages/admin/products/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/products/new",
+   "file": "apps/web/src/pages/admin/products/new.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/quotes",
+   "file": "apps/web/src/pages/admin/quotes/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/recommendations/analytics",
+   "file": "apps/web/src/pages/admin/recommendations/analytics.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/recommendations",
+   "file": "apps/web/src/pages/admin/recommendations/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/recommendations/preview",
+   "file": "apps/web/src/pages/admin/recommendations/preview.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/recommendations/rules/:id",
+   "file": "apps/web/src/pages/admin/recommendations/rules/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/recommendations/rules",
+   "file": "apps/web/src/pages/admin/recommendations/rules/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/recommendations/rules/new",
+   "file": "apps/web/src/pages/admin/recommendations/rules/new.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/release-readiness",
+   "file": "apps/web/src/pages/admin/release-readiness.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/reports",
+   "file": "apps/web/src/pages/admin/reports/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/roles",
+   "file": "apps/web/src/pages/admin/roles/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/settings",
+   "file": "apps/web/src/pages/admin/settings/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/support",
+   "file": "apps/web/src/pages/admin/support/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/surveys/:id",
+   "file": "apps/web/src/pages/admin/surveys/[id].astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/surveys",
+   "file": "apps/web/src/pages/admin/surveys/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/system",
+   "file": "apps/web/src/pages/admin/system/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/users",
+   "file": "apps/web/src/pages/admin/users/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/utm-builder",
+   "file": "apps/web/src/pages/admin/utm-builder/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/admin/verification",
+   "file": "apps/web/src/pages/admin/verification/index.astro",
+   "access": "admin"
+  },
+  {
+   "route": "/api/admin/measurement/:path*",
+   "file": "apps/web/src/pages/api/admin/measurement/[...path].ts",
+   "access": "admin"
+  },
+  {
+   "route": "/cart",
+   "file": "apps/web/src/pages/cart.astro",
+   "access": "public"
+  },
+  {
+   "route": "/checkout",
+   "file": "apps/web/src/pages/checkout.astro",
+   "access": "public"
+  },
+  {
+   "route": "/checkout/pesapal/callback",
+   "file": "apps/web/src/pages/checkout/pesapal/callback.astro",
+   "access": "public"
+  },
+  {
+   "route": "/checkout/pesapal/cancelled",
+   "file": "apps/web/src/pages/checkout/pesapal/cancelled.astro",
+   "access": "public"
+  },
+  {
+   "route": "/compare",
+   "file": "apps/web/src/pages/compare.astro",
+   "access": "public"
+  },
+  {
+   "route": "/consent",
+   "file": "apps/web/src/pages/consent.astro",
+   "access": "public"
+  },
+  {
+   "route": "/cookies",
+   "file": "apps/web/src/pages/cookies.astro",
+   "access": "public"
+  },
+  {
+   "route": "/dealers/apply",
+   "file": "apps/web/src/pages/dealers/apply.astro",
+   "access": "public"
+  },
+  {
+   "route": "/dealers/dashboard",
+   "file": "apps/web/src/pages/dealers/dashboard.astro",
+   "access": "public"
+  },
+  {
+   "route": "/",
+   "file": "apps/web/src/pages/index.astro",
+   "access": "public"
+  },
+  {
+   "route": "/login",
+   "file": "apps/web/src/pages/login.astro",
+   "access": "public"
+  },
+  {
+   "route": "/logout",
+   "file": "apps/web/src/pages/logout.ts",
+   "access": "public"
+  },
+  {
+   "route": "/loyalty",
+   "file": "apps/web/src/pages/loyalty.astro",
+   "access": "public"
+  },
+  {
+   "route": "/offline",
+   "file": "apps/web/src/pages/offline.astro",
+   "access": "public"
+  },
+  {
+   "route": "/orders/:id",
+   "file": "apps/web/src/pages/orders/[id].astro",
+   "access": "public"
+  },
+  {
+   "route": "/preferences",
+   "file": "apps/web/src/pages/preferences.astro",
+   "access": "public"
+  },
+  {
+   "route": "/privacy",
+   "file": "apps/web/src/pages/privacy.astro",
+   "access": "public"
+  },
+  {
+   "route": "/product-finder",
+   "file": "apps/web/src/pages/product-finder.astro",
+   "access": "public"
+  },
+  {
+   "route": "/products/:slug",
+   "file": "apps/web/src/pages/products/[slug].astro",
+   "access": "public"
+  },
+  {
+   "route": "/quote-request",
+   "file": "apps/web/src/pages/quote-request.astro",
+   "access": "public"
+  },
+  {
+   "route": "/quotes",
+   "file": "apps/web/src/pages/quotes.astro",
+   "access": "public"
+  },
+  {
+   "route": "/returns",
+   "file": "apps/web/src/pages/returns.astro",
+   "access": "public"
+  },
+  {
+   "route": "/robots.txt",
+   "file": "apps/web/src/pages/robots.txt.ts",
+   "access": "public"
+  },
+  {
+   "route": "/shop",
+   "file": "apps/web/src/pages/shop.astro",
+   "access": "public"
+  },
+  {
+   "route": "/sitemap.xml",
+   "file": "apps/web/src/pages/sitemap.xml.ts",
+   "access": "public"
+  },
+  {
+   "route": "/support/fake",
+   "file": "apps/web/src/pages/support/fake.astro",
+   "access": "public"
+  },
+  {
+   "route": "/support",
+   "file": "apps/web/src/pages/support/index.astro",
+   "access": "public"
+  },
+  {
+   "route": "/support/issue",
+   "file": "apps/web/src/pages/support/issue.astro",
+   "access": "public"
+  },
+  {
+   "route": "/terms",
+   "file": "apps/web/src/pages/terms.astro",
+   "access": "public"
+  },
+  {
+   "route": "/track-order",
+   "file": "apps/web/src/pages/track-order.astro",
+   "access": "public"
+  },
+  {
+   "route": "/verification",
+   "file": "apps/web/src/pages/verification/index.astro",
+   "access": "public"
+  },
+  {
+   "route": "/warranty",
+   "file": "apps/web/src/pages/warranty.astro",
+   "access": "public"
+  }
+ ]
+}
