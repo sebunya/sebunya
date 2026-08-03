@@ -13,11 +13,11 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "707876d",
-  "phase": "0-institutional-memory",
+  "lastGreenHead": "473ede0",
+  "phase": "1-shared-foundations COMPLETE (this session); next scheduled phase per graph",
   "phaseStatus": {
-    "0-attestation-memory": "IN_PROGRESS",
-    "1-shared-foundations": "READY",
+    "0-attestation-memory": "GREEN",
+    "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
     "2-dam-pim-catalogue": "BLOCKED(large-build)",
     "3-core-commerce": "READY(hardening-slices)",
     "4-pricing-promos-recs": "READY(hardening-slices)",
@@ -30,13 +30,106 @@
     "11-candidate-release-proof": "BLOCKED"
   },
   "workUnits": [
-    {"id": "S0", "module": "institutional-memory", "objective": "memory+ownership+ledger+indexes+graph", "conflictGroup": "PLATFORM_INFRA_RELEASE", "owner": "principal", "status": "IN_PROGRESS", "evidence": "docs/platform/institutional-memory-v4/*"},
-    {"id": "S1", "module": "governed-admin", "objective": "role model + idempotent code-driven permission sync for PLATFORM_ADMINISTRATOR; audited assignment; replaces ad-hoc SQL grants", "conflictGroup": "ADMIN_LEGAL_ACCESS", "owner": "principal", "status": "READY", "schemaImpact": "roles seed rows only (no DDL expected)", "permissionImpact": "full-registry sync", "tests": "unit: sync builds exact registry set; integration optional", "productionImpact": "api image roll", "dependencies": ["S0"]},
-    {"id": "S2", "module": "carts", "objective": "guest cart retention 30d->180d (credential TTL + DB expiry) per V4 §11", "conflictGroup": "CORE_COMMERCE", "owner": "principal", "status": "READY", "files": ["packages/shared/src/cart-credential.ts", "apps/api/src/infrastructure/db/repositories/DrizzleAuthorizedCartRepository.ts"], "tests": "unit TTL constants + credential verify window", "productionImpact": "web+api roll", "dependencies": ["S0"]},
-    {"id": "S3", "module": "regression-guards", "objective": "unit tests for MutateCartUseCase (create-on-first-ADD, not-found semantics, catalogue pricing) + parseLocalCartCookie alias + architecture guard for SSR origin empty-safety", "conflictGroup": "CORE_COMMERCE", "owner": "principal", "status": "READY", "tests": "new unit+architecture", "productionImpact": "none", "dependencies": ["S0"]},
-    {"id": "S4", "module": "maturity-matrix", "objective": "full module reconciliation rows (KEEP/HARDEN/MERGE/...) from indexes + capability matrix", "conflictGroup": "PLATFORM_INFRA_RELEASE", "owner": "principal", "status": "BLOCKED(waiting recon agents)", "dependencies": ["S0-recon"]},
-    {"id": "S5", "module": "release", "objective": "roll S1+S2 to prod (build with env-file, up -d api web), verify readiness+funnel+admin sweep", "conflictGroup": "PLATFORM_INFRA_RELEASE", "owner": "principal", "status": "BLOCKED", "dependencies": ["S1", "S2", "S3"]}
+    {
+      "id": "S0",
+      "module": "institutional-memory",
+      "objective": "memory+ownership+ledger+indexes+graph",
+      "conflictGroup": "PLATFORM_INFRA_RELEASE",
+      "owner": "principal",
+      "status": "GREEN",
+      "evidence": "docs/platform/institutional-memory-v4/*"
+    },
+    {
+      "id": "S1",
+      "module": "governed-admin",
+      "objective": "role model + idempotent code-driven permission sync for PLATFORM_ADMINISTRATOR; audited assignment; replaces ad-hoc SQL grants",
+      "conflictGroup": "ADMIN_LEGAL_ACCESS",
+      "owner": "principal",
+      "status": "RELEASED",
+      "schemaImpact": "roles seed rows only (no DDL expected)",
+      "permissionImpact": "full-registry sync",
+      "tests": "unit: sync builds exact registry set; integration optional",
+      "productionImpact": "api image roll",
+      "dependencies": [
+        "S0"
+      ]
+    },
+    {
+      "id": "S2",
+      "module": "carts",
+      "objective": "guest cart retention 30d->180d (credential TTL + DB expiry) per V4 \u00a711",
+      "conflictGroup": "CORE_COMMERCE",
+      "owner": "principal",
+      "status": "RELEASED",
+      "files": [
+        "packages/shared/src/cart-credential.ts",
+        "apps/api/src/infrastructure/db/repositories/DrizzleAuthorizedCartRepository.ts"
+      ],
+      "tests": "unit TTL constants + credential verify window",
+      "productionImpact": "web+api roll",
+      "dependencies": [
+        "S0"
+      ]
+    },
+    {
+      "id": "S3",
+      "module": "regression-guards",
+      "objective": "unit tests for MutateCartUseCase (create-on-first-ADD, not-found semantics, catalogue pricing) + parseLocalCartCookie alias + architecture guard for SSR origin empty-safety",
+      "conflictGroup": "CORE_COMMERCE",
+      "owner": "principal",
+      "status": "GREEN",
+      "tests": "new unit+architecture",
+      "productionImpact": "none",
+      "dependencies": [
+        "S0"
+      ]
+    },
+    {
+      "id": "S4",
+      "module": "maturity-matrix",
+      "objective": "full module reconciliation rows (KEEP/HARDEN/MERGE/...) from indexes + capability matrix",
+      "conflictGroup": "PLATFORM_INFRA_RELEASE",
+      "owner": "principal",
+      "status": "GREEN",
+      "dependencies": [
+        "S0-recon"
+      ]
+    },
+    {
+      "id": "S5",
+      "module": "release",
+      "objective": "roll S1+S2 to prod (build with env-file, up -d api web), verify readiness+funnel+admin sweep",
+      "conflictGroup": "PLATFORM_INFRA_RELEASE",
+      "owner": "principal",
+      "status": "RELEASED",
+      "dependencies": [
+        "S1",
+        "S2",
+        "S3"
+      ],
+      "evidence": "473ede0 rolled: 4 replicas healthy, ready=200, sync converged (+1 perm, 11 roles, 84 grants, admin assigned, 8 beyond-registry reported), cookie Max-Age=15552000, sweep 0/12 fails, live-review 401/200, payments root 200, funnel add 303 + price OK"
+    },
+    {
+      "id": "S6",
+      "module": "route-layer-hardening",
+      "objective": "revive live-review auth chain; dedupe payments mount; declare /admin/modules",
+      "conflictGroup": "PLATFORM_INFRA_RELEASE",
+      "owner": "principal",
+      "status": "RELEASED",
+      "evidence": "unauth 401 / authed 200 live; arch suite 97/97"
+    }
   ],
-  "constraints": ["no real provider events", "no destructive prod load tests", "no secrets printed", "single migration writer", "principal-only: Registry/permissions/app.ts/compose/Caddy/journal"],
-  "nextExact": {"file": "packages/shared/src/permissions/index.ts", "command": "read registry then implement S1 sync module", "expected": "idempotent PLATFORM_ADMINISTRATOR full-grant sync"}
+  "constraints": [
+    "no real provider events",
+    "no destructive prod load tests",
+    "no secrets printed",
+    "single migration writer",
+    "principal-only: Registry/permissions/app.ts/compose/Caddy/journal"
+  ],
+  "nextExact": {
+    "file": "docs/platform/institutional-memory-v4/MODULE_MATURITY_MATRIX.md",
+    "command": "pick next BUILD_GAP_ONLY phase from the graph (candidates: \u00a79 capability hub, measurement-control-tower apiBase HARDEN, abandonment queue wiring)",
+    "expected": "next coherent slice under the same checkpoint ritual"
+  },
+  "releasedHead": "473ede0"
 }

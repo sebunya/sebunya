@@ -1,0 +1,61 @@
+# Module maturity matrix — reconciliation rows (gap-only contract, F7)
+SHA `473ede0` · 2026-08-03. Sources: live capability matrix (docs/production-recovery/2026-08-03-platform-wide/MODULE_CAPABILITY_MATRIX.md), the 7 recon indexes in this directory, and the do-not-break ledger. CLASSIFICATION vocabulary: KEEP / HARDEN / MERGE / BUILD_GAP_ONLY / REPLACE_WITH_PROOF / DEPRECATE_WITH_PROOF / EXTERNAL. States: WORKING / TRUTHFULLY_EMPTY / PROTECTED_BY_POLICY / DORMANT_BY_BUSINESS_DECISION / EXTERNAL_BLOCKED.
+
+## Core commerce (conflict group CORE_COMMERCE)
+| Module | Current state | Classification | Gap → chosen action |
+|---|---|---|---|
+| Storefront (home/shop/PDP/finder) | WORKING (live-verified) | KEEP | regression protection only (route-contract) |
+| Cart (server, BFF credential) | WORKING (RC-3..7 fixed; 180d retention this programme) | HARDEN → done S2 | ✅ 180d single constant; unit suite S3; residual: local-cookie fallback dual-path — deliberate resilience, keep, documented |
+| Checkout + payment verification | WORKING (server-side pricing, idempotent webhooks) | KEEP | preserved; synthetic write journey stays DORMANT in prod |
+| Orders admin | WORKING (page+API 200) | HARDEN (later phase) | §12 control-tower actions (verify/assign/hold/refund with reason+audit) not yet built — BUILD_GAP_ONLY when scheduled |
+| Fulfilment | WORKING (list/badge/SLA endpoints live) | HARDEN (later) | §14 batch/pick/pack workflow missing |
+| Inventory | WORKING (page 200) | HARDEN (later) | §16 ledger/adjustment UI partial |
+| Fraud | WORKING (page 200) | HARDEN (later) | §13 workbench actions partial |
+| Order communications | PARTIAL (email outbox exists: ADMIN_ORDER_EMAIL) | HARDEN (later) | §15 template editor/versioning missing |
+
+## Access & governance (ADMIN_LEGAL_ACCESS)
+| Module | Current state | Classification | Gap → chosen action |
+|---|---|---|---|
+| Permission registry + enforcement | WORKING (84 constants, 271 guarded routes, 2 step-up MFA) | KEEP + HARDEN → done S1 | ✅ code-driven idempotent sync (advisory-locked, add-only, audited); 14 constants guard no route — recorded, business wiring later |
+| Role model | Was: single Owner via out-of-band SQL | HARDEN → done S1 | ✅ PLATFORM_ADMINISTRATOR full-grant + 10-role vocabulary (empty by policy decision) + bootstrap-admin assignment. Remaining §6: maker/checker grant flow, MFA surfacing, access review UI — BUILD_GAP_ONLY later |
+| Controlled activation (live-review) | Was: fail-closed DEAD (no auth chain) | HARDEN → done S6 | ✅ revived with auth + method-shaped permission gate |
+| Audit | WORKING | KEEP | S1 writes system audit rows |
+| Legal pages | Static (registry) | BUILD_GAP_ONLY (§7 CMS) — later phase | large build; not started |
+
+## Catalogue & content (CATALOGUE_DAM_PIM)
+| Module | Current state | Classification | Gap |
+|---|---|---|---|
+| Products/categories/PIM imports | WORKING (U-programme) | KEEP | §10 control-room UX depth later |
+| DAM/images | NOT BUILT (catalogue URLs only) | BUILD_GAP_ONLY (§8) — later phase | large build |
+| SEO/redirects | WORKING (U6 backend) | KEEP | — |
+| Reviews moderation | WORKING | KEEP | review_media/votes tables orphaned — wire or defer |
+
+## Growth & intelligence (CUSTOMER_MARKETING / RECOMMENDATIONS_MERCHANDISING)
+| Module | Current state | Classification | Gap |
+|---|---|---|---|
+| Recommendations engine | WORKING (canonical strength; hourly materializer cron) | KEEP | §18-20 rules/analytics/preview depth later |
+| Merchandising | WORKING (page 200) | HARDEN later | §21 homepage workspace |
+| Customer DNA | WORKING (live endpoints 200) | KEEP | §24 depth later |
+| Decision intelligence | WORKING | KEEP | — |
+| Campaigns | SCHEMA ONLY (campaigns/utm_links tables orphaned — no reader/writer) | BUILD_GAP_ONLY (§26) — later, no-send design first | honest state: not a module yet, do not present as one |
+| Automation | WORKING (AUTOMATION_ACTION_REQUESTED outbox type + admin surface) | HARDEN later | §27 workflow builder |
+| Loyalty | PARTIAL (3 tables, U-programme backend) | HARDEN later | §32 activation gated |
+| Abandoned carts | QUEUE DECLARED, NO WORKER (abandoned-cart-events) | BUILD_GAP_ONLY (§11 tail) later | wire worker + consent-gated segments |
+
+## Measurement & consent (MEASUREMENT_CONSENT_ATTRIBUTION)
+| Module | Current state | Classification | Gap |
+|---|---|---|---|
+| Measurement control tower + DLQ | WORKING (telemetry_dlq replayable, partitioned outbox) | KEEP | provider delivery = EXTERNAL_BLOCKED without credentials |
+| Consent | WORKING | KEEP | — |
+| Attribution | WORKING (foundations) | HARDEN later | §30 models depth |
+| sGTM | RUNNING (2 containers) | KEEP | preview-server config unverified — check at release |
+
+## Platform infra (PLATFORM_INFRA_RELEASE)
+| Module | Current state | Classification | Gap |
+|---|---|---|---|
+| Compose/Caddy/topology | WORKING (RC-4 pinned) | KEEP | pgbouncer unused by API — deliberate follow-up decision, NOT a defect |
+| Queues/workers/outbox | WORKING (9 queues; 4 declared without worker/producer: telemetry-replay, inventory-sync, abandoned-cart-events, recommendation-materialization*) | HARDEN later | wire or prune declared-only queues (*materialization runs via cron on analytics-fanout) |
+| Synthetic monitor | read=WORKING, write=DORMANT_BY_BUSINESS_DECISION | KEEP | — |
+| Orphaned tables (36) | schema without code | recorded | per-table decision when its module is scheduled; never silently drop |
+
+## Engineering-complete this session: S1, S2, S3, S6 (+ this memory kernel). Released: pending S5 roll at `473ede0`.
