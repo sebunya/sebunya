@@ -1,7 +1,8 @@
 {
   "programme": "GOLDPLUS_P0_U6",
   "phase": "IMPLEMENTING_U1",
-  "u1": "RECONCILED — canonical pricing-v1 path reused. Gaps: coupon-code inventory+bulk gen (AC3/AC7/AC8), budget UGX cap+auto-pause (AC4), margin-bps floor+fallback (AC5), EXCLUSIVE_SUPERSEDED+tie-break (AC2), distinct-approver+threshold (AC10), first-order identity-graph eligibility (AC11). See U1_RECONCILIATION.md.",
+  "u1": "IN PROGRESS — 6/11 ACs closed with real proofs (extend canonical pricing-v1, no second engine). DONE: AC3 coupon exactly-once 20-way concurrency + AC7 normalisation + AC8 bulk 10k (migration 0068); AC2 exclusive larger-benefit tie-break/EXCLUSIVE_SUPERSEDED; AC5 margin-bps floor + iterative fallback (domain proven); AC4 UGX budget cap + auto-pause (migration 0069, real reserve→redeem). REMAINING: AC5 wiring (min_margin_bps_floor→rule + cost plumbing), AC1 confirm (100k→90k engine==order), AC6 refund reverses redemption+budget, AC9 PriceQuote replay reproduces total, AC10 distinct-approver+threshold, AC11 first-order identity-graph eligibility; then admin promotions surface (list/create/simulate/approval/batch-CSV formula-injection-guard/redemption-report + PROMOTIONS_READ/MANAGE), cross-unit integration, hostile review, full gate. See U1_RECONCILIATION.md.",
+  "migrationCeiling_u1": "0069 (70/70 parity)",
   "pr": 9,
   "startingHead": "40e1f9b",
   "p0_1": "11/11 VERIFIED",
