@@ -126,8 +126,9 @@ routes.get('/attribution/:orderId', requirePermissions([PERMISSIONS.ORDERS_READ]
   }
 });
 
-import measurementPaymentsRoutes from './measurement-payments';
-
-routes.route('/payments', measurementPaymentsRoutes);
+// The payments router is mounted ONCE, in app.ts at '/admin/measurement/payments',
+// alongside its gtm/paid-social siblings. A second mount here registered the same
+// handlers at the same final path; Hono served the first registration and the inner
+// one was dead weight that made ownership of the path ambiguous.
 
 export default routes;

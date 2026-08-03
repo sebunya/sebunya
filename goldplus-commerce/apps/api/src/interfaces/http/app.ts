@@ -292,6 +292,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/measurement/gtm',
   '/admin/measurement/paid-social',
   '/admin/measurement/payments',
+  '/admin/modules',
   '/admin/notifications',
   '/admin/pim-imports',
   '/admin/pricing',
