@@ -33,6 +33,7 @@ import adminNewModulesRoutes from './routes/admin/new-modules';
 import adminMediaRoutes from './routes/admin/media';
 import adminLegalRoutes from './routes/admin/legal';
 import adminCartsRoutes from './routes/admin/carts';
+import adminOrdersActionRoutes from './routes/admin/orders';
 import publicLegalRoutes from './routes/legal';
 import adminLoyaltyRoutes from './routes/admin/loyalty';
 import adminFulfilmentRoutes from './routes/admin/fulfilment';
@@ -190,6 +191,7 @@ app.route('/admin/modules', adminNewModulesRoutes);
 app.route('/admin/media', adminMediaRoutes);
 app.route('/admin/legal', adminLegalRoutes);
 app.route('/admin/carts', adminCartsRoutes);
+app.route('/admin/orders', adminOrdersActionRoutes);
 app.route('/legal', publicLegalRoutes);
 app.route('/admin/loyalty', adminLoyaltyRoutes);
 app.route('/admin/fulfilment', adminFulfilmentRoutes);
@@ -305,6 +307,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/media',
   '/admin/modules',
   '/admin/notifications',
+  '/admin/orders',
   '/admin/pim-imports',
   '/admin/pricing',
   '/admin/products',

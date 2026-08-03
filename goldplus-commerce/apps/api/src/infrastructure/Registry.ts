@@ -29,6 +29,8 @@ import { DrizzleMediaLibraryRepository } from './db/repositories/DrizzleMediaLib
 import { DrizzleLegalCmsRepository } from './db/repositories/DrizzleLegalCmsRepository';
 import { LegalCmsUseCase } from '../application/use-cases/legal/LegalCmsUseCase';
 import { DrizzleAbandonmentRepository } from './db/repositories/DrizzleAbandonmentRepository';
+import { DrizzleStockAdjustmentRepository } from './db/repositories/DrizzleStockAdjustmentRepository';
+import { AdjustStockUseCase } from '../application/use-cases/inventory/AdjustStockUseCase';
 import { AbandonmentUseCase } from '../application/use-cases/abandonment/AbandonmentUseCase';
 import { QueueService, QUEUES } from './queues/QueueService';
 import { MediaLibraryUseCase } from '../application/use-cases/media/MediaLibraryUseCase';
@@ -520,6 +522,9 @@ export class Registry {
   // Wave 2C — legal policy CMS.
   public readonly legalCmsRepo = new DrizzleLegalCmsRepository();
   public readonly legalCmsUseCase = new LegalCmsUseCase(this.legalCmsRepo);
+
+  // Wave 2E-2 — governed manual stock adjustments.
+  public readonly adjustStockUseCase = new AdjustStockUseCase(new DrizzleStockAdjustmentRepository());
 
   // Wave 2E-1 — abandonment pipeline: hourly evaluator + queue announcement.
   public readonly abandonmentRepo = new DrizzleAbandonmentRepository();

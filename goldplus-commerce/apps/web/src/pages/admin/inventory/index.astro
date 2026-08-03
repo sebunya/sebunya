@@ -8,6 +8,32 @@ if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/inventory", 303);
 }
 
+// Wave 2E-2: governed stock adjustment — the first write on this surface. Reason
+// mandatory; the backend refuses negatives and anything below reserved holds, and
+// its exact refusal is shown.
+let adjustNotice: { kind: "success" | "error"; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  try {
+    const form = await Astro.request.formData();
+    const res = await fetch(`${apiBase}/admin/inventory/adjust`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        productId: form.get('productId')?.toString().trim(),
+        mode: form.get('mode')?.toString() === 'delta' ? 'delta' : 'set',
+        value: Number(form.get('value')),
+        reason: form.get('reason')?.toString().trim(),
+      }),
+    });
+    const json = await res.json().catch(() => null);
+    adjustNotice = res.ok && json?.success
+      ? { kind: 'success', text: `Stock adjusted: ${json.data.before} → ${json.data.after} (reserved ${json.data.reserved}). Audited.` }
+      : { kind: 'error', text: json?.error?.message || 'Adjustment refused.' };
+  } catch {
+    adjustNotice = { kind: 'error', text: 'Inventory service is unreachable right now.' };
+  }
+}
+
 // Fetch authentic system data to render real inventory status
 const result = await tryFetchAdminList<any>('/governance/admin/products', [], 'Live catalogue data is unavailable right now (service unreachable or permission denied). No sample data is shown.', token);
 const products = result.items;
@@ -36,6 +62,23 @@ try {
   description="Auditing active catalog stock levels and availability markers."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    {adjustNotice && (
+      <div class={`mb-6 rounded-xl px-4 py-3 text-sm font-semibold ${adjustNotice.kind === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{adjustNotice.text}</div>
+    )}
+    <section class="mb-8 rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Stock adjustment</h2>
+      <p class="mt-1 text-xs text-slate-500">Row-locked; refused below zero or below reserved holds; before/after audited with your reason.</p>
+      <form method="POST" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
+        <input name="productId" required placeholder="Product ID (uuid)" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+        <select name="mode" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none focus:border-brand-gold">
+          <option value="set">Set to</option>
+          <option value="delta">Adjust by</option>
+        </select>
+        <input name="value" required type="number" step="1" placeholder="Quantity" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+        <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Apply</button>
+        <input name="reason" required maxlength="300" placeholder="Reason (required — audited)" class="sm:col-span-5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+      </form>
+    </section>
     
     <div class="mb-8 pb-6 border-b border-gray-200 flex flex-col md:flex-row justify-between md:items-center gap-4">
       <div>

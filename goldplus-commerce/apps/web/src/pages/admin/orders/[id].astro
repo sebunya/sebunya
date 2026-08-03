@@ -19,6 +19,36 @@ let actionSuccess = '';
 if (Astro.request.method === 'POST') {
   try {
     const formData = await Astro.request.formData();
+    const action = formData.get('action')?.toString() || 'fulfillment';
+
+    if (action === 'lifecycle') {
+      // Wave 2E-2: lifecycle transitions ride the canonical OrderTransitionService —
+      // a refused move surfaces the state machine's own message (409/403), never a
+      // generic failure. Reason is mandatory and lands in the order_events ledger.
+      const toStatus = formData.get('toStatus')?.toString().trim() || '';
+      const reason = formData.get('reason')?.toString().trim() || '';
+      const res = await fetch(`${apiBase}/admin/orders/${id}/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ toStatus, reason }),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) {
+        actionSuccess = `Order moved ${json.data.fromStatus} → ${json.data.toStatus}${json.data.idempotentReplay ? ' (idempotent replay)' : ''}.`;
+      } else {
+        actionError = json?.error?.message || 'Transition refused by backend validation.';
+      }
+    } else if (action === 'note') {
+      const note = formData.get('note')?.toString().trim() || '';
+      const res = await fetch(`${apiBase}/admin/orders/${id}/note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ note }),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) actionSuccess = 'Note recorded in the audit trail.';
+      else actionError = json?.error?.message || 'Note refused.';
+    } else {
     const nextStatus = formData.get('status')?.toString().trim() || '';
 
     const patchRes = await fetch(`${apiBase}/governance/admin/orders/${id}/fulfillment`, {
@@ -36,8 +66,9 @@ if (Astro.request.method === 'POST') {
     } else {
       actionError = patchJson?.error?.message || 'Transition blocked by backend validation controls.';
     }
+    }
   } catch {
-    actionError = 'Unreachable: Network error when submitting fulfillment change.';
+    actionError = 'Unreachable: Network error when submitting the order action.';
   }
 }
 
@@ -853,6 +884,32 @@ if (currentStatus === 'received') {
                 Fulfillment workflow completed, failed, or cancelled. Operational status cannot be updated in this phase.
               </div>
             )}
+
+            {/* Wave 2E-2: order LIFECYCLE transition (state-machine governed) */}
+            <div class="border-t border-gray-100 pt-4">
+              <p class="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Order lifecycle</p>
+              <form method="POST" class="space-y-3">
+                <input type="hidden" name="action" value="lifecycle" />
+                <select name="toStatus" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold appearance-none">
+                  <option value="" disabled selected>Move order to…</option>
+                  <option value="processing">processing</option>
+                  <option value="completed">completed</option>
+                  <option value="cancelled">cancelled</option>
+                </select>
+                <input name="reason" required maxlength="500" placeholder="Reason (required — recorded in the order ledger)" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+                <button type="submit" class="w-full bg-brand-dark hover:bg-black text-white text-xs font-black py-3 rounded-xl transition-colors tracking-wide">Apply lifecycle transition</button>
+              </form>
+              <p class="mt-2 text-[9px] leading-relaxed text-gray-400 font-medium">Illegal moves and unpaid-order processing are refused by the state machine with the exact reason shown above.</p>
+            </div>
+
+            <div class="border-t border-gray-100 pt-4">
+              <p class="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Operator note</p>
+              <form method="POST" class="space-y-3">
+                <input type="hidden" name="action" value="note" />
+                <textarea name="note" required maxlength="1000" rows="2" placeholder="Note for the audit trail…" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold"></textarea>
+                <button type="submit" class="w-full bg-white border border-gray-200 hover:border-brand-gold text-brand-dark text-xs font-black py-3 rounded-xl transition-colors tracking-wide">Record note</button>
+              </form>
+            </div>
 
             <div class="border-t border-gray-100 pt-4 text-[9px] leading-relaxed text-gray-400 font-medium">
               <strong>Control Rule:</strong> Logistical operations are completely decoupled from payment settlement workflows. Manual override of payment status is strictly blocked to maintain system data truthfulness.
