@@ -26,3 +26,6 @@ SHA `707876d` · 2026-08-03. A capability's owner is the ONLY place its rules li
 
 ## Single-writer rules (F4)
 Only the principal session edits: Registry, permissions registry, shared route composition (`app.ts`), global runtime config, migration journal, production Compose, Caddyfile. Subagents implement bounded slices and return diffs for integration.
+
+## Wave 2B addition
+| Media library (DAM) | `MediaLibraryUseCase` + `DrizzleMediaLibraryRepository` + `LocalProductImageStorage` (SAME storage owner as product images) + `/admin/media` routes + `apps/web/src/pages/admin/media` | Variants via SharpVariantGenerator (best-effort). Adding any second media store/uploader requires MERGE with this owner. |

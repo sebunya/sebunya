@@ -21,3 +21,6 @@ SHA `707876d` · 2026-08-03. Each row = a proven behaviour with its guard. Break
 | 16 | PWA cache excludes checkout/admin/dealer routes | CLAUDE.md rule | verify on web build changes |
 | 17 | Migration journal append-only; prod at 82; migration container may need `--user root` (EACCES lesson) | recovery record | migration-writer discipline |
 | 18 | Real provider events are NEVER sent during verification (`NOTIFICATIONS_LIVE_SEND_ENABLED` gating, no-send verification) | env + programme constraint | keep in release gate |
+| 19 | `/uploads/*` is served by the edge from the shared media volume; api writes only under MEDIA_STORAGE_ROOT; asset URLs are immutable-cached | W2B live proof (upload→serve E2E) | route-contract may add an asset-serve probe |
+| 20 | Media deletion refuses while `media_usages` rows exist (409 ASSET_IN_USE); uploads deduplicate by sha256 | unit suite 4/4 | keep |
+| 21 | media_uploads volume owned by uid 1000 (api user `node`); recreating the VOLUME (not container) requires re-chown | W2B EACCES incident + fix | note in release recipe |

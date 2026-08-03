@@ -13,8 +13,8 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "473ede0",
-  "phase": "1-shared-foundations COMPLETE (this session); next scheduled phase per graph",
+  "lastGreenHead": "d074c36",
+  "phase": "Wave 2 (gap-only continuation): 2A RELEASED, 2B releasing",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -117,6 +117,18 @@
       "owner": "principal",
       "status": "RELEASED",
       "evidence": "unauth 401 / authed 200 live; arch suite 97/97"
+    },
+    {
+      "id": "W2A",
+      "module": "shared-runtime-correctness",
+      "status": "RELEASED",
+      "evidence": "8d06197: control-tower repaired live; 3 arch guards; dead links fixed; route-contract derived+cookie assert; Playwright vs prod exit 0"
+    },
+    {
+      "id": "W2B",
+      "module": "dam-media-library",
+      "status": "IN_REVIEW->RELEASING",
+      "evidence": "d074c36: volume+caddy serving; 0076 tables; use case+routes+UI; gates green; release in progress (backup taken, builds running)"
     }
   ],
   "constraints": [
@@ -127,9 +139,9 @@
     "principal-only: Registry/permissions/app.ts/compose/Caddy/journal"
   ],
   "nextExact": {
-    "file": "docs/platform/institutional-memory-v4/MODULE_MATURITY_MATRIX.md",
-    "command": "pick next BUILD_GAP_ONLY phase from the graph (candidates: \u00a79 capability hub, measurement-control-tower apiBase HARDEN, abandonment queue wiring)",
-    "expected": "next coherent slice under the same checkpoint ritual"
+    "file": "docs/platform/institutional-memory-v4/EXECUTION_STATE.json",
+    "command": "after W2B release proof: Wave 2C legal CMS scaffold OR 2E abandonment queue wiring (dependency-free)",
+    "expected": "continue wave order 2C/2D/2E"
   },
   "releasedHead": "473ede0"
 }

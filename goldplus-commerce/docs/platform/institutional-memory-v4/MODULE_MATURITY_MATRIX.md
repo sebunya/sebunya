@@ -59,3 +59,13 @@ SHA `473ede0` · 2026-08-03. Sources: live capability matrix (docs/production-re
 | Orphaned tables (36) | schema without code | recorded | per-table decision when its module is scheduled; never silently drop |
 
 ## Engineering-complete this session: S1, S2, S3, S6 (+ this memory kernel). Released: pending S5 roll at `473ede0`.
+
+## Wave 2 updates (2026-08-03, continuation)
+| Module | Was | Now | Evidence |
+|---|---|---|---|
+| Measurement control tower (page) | BROKEN (silent SERVICE_UNAVAILABLE behind 200 — rogue env var + cookie auth to Bearer-only API) | WORKING (RELEASED 8d06197) | live render of data panels |
+| Web nav integrity | 3 dead links (2 customer-facing PDP) | WORKING + architecture-guarded | nav-resolution test green |
+| Web→API contract | unverified | 100% of ${apiBase} calls target mounted prefixes, architecture-guarded | mapping test green |
+| DAM / media library | NOT BUILT + storage write-only black hole in prod | ENGINEERING GREEN (d074c36), releasing: durable volume + edge serving + library (dedup, metadata, variants best-effort, usage graph, safe delete, assign-to-product repair, picker) | unit 4/4, arch 101/101 |
+| Product image repair | impossible (no storage, no tooling) | UNBLOCKED: missing-images worklist + assign flow; actual photography = operator task | /admin/media |
+Remaining INCOMPLETE_INTERNAL_GAP (unchanged this wave): legal CMS §2C, PIM control room §2D, capability hub §2D, abandonment pipeline §2E, order/fraud/fulfilment/comms/inventory/pricing actions §2E, campaigns §2F, automation depth §2F, analytics depth §2G, loyalty/gamification §2H.
