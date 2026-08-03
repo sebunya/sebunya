@@ -38,6 +38,13 @@ if (Astro.request.method === "POST") {
       notice = res.ok && json?.success
         ? { kind: "success", text: `Campaign is now ${json.data.status}.` }
         : { kind: "error", text: json?.error?.message || "Status change refused." };
+    } else if (action === "dryrun") {
+      const id = String(form.get("id") || "");
+      const res = await fetch(`${apiBase}/admin/campaigns/${encodeURIComponent(id)}/dry-run`, { method: "POST", headers });
+      const json = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: "success", text: `Dry run complete: ${json.data.counts.candidates} candidates → ${json.data.counts.eligible} would be eligible (no identity ${json.data.counts.noIdentity}, no consent ${json.data.counts.noConsent}, suppressed ${json.data.counts.suppressed}, frequency-capped ${json.data.counts.frequency})${json.data.quietHoursAtRun ? " — quiet hours right now, a live send would wait" : ""}. Nothing was sent.` }
+        : { kind: "error", text: json?.error?.message || "Dry run refused." };
     } else if (action === "utm") {
       const id = String(form.get("id") || "");
       const res = await fetch(`${apiBase}/admin/campaigns/${encodeURIComponent(id)}/utm-links`, {
@@ -85,9 +92,9 @@ const STATUS_STYLE: Record<string, string> = {
 <AdminLayout title="Campaigns" description="Campaign definitions, UTM links and audience preview — the send engine ships in a later wave and no message can be sent from here.">
   <div class="space-y-8">
     <div class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">
-      No-send scaffold: definitions, UTM links and count-only audience preview. Consent, suppression,
-      frequency and recency gates — and any actual sending — ship with the send wave. Nothing here can
-      message a customer.
+      No-send workspace: definitions, UTM links, audience preview and DRY-RUN eligibility analysis
+      (identity → consent → suppression → frequency → quiet hours, decision ledger recorded). Live
+      sending does not exist here — nothing on this page can message a customer.
     </div>
 
     {notice && (
@@ -147,6 +154,11 @@ const STATUS_STYLE: Record<string, string> = {
                     <option value="APPROVED">APPROVED</option><option value="PAUSED">PAUSED</option><option value="ARCHIVED">ARCHIVED</option>
                   </select>
                   <button type="submit" class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-gray-700 hover:bg-gray-50">Set status</button>
+                </form>
+                <form method="POST" class="flex items-center gap-2">
+                  <input type="hidden" name="action" value="dryrun" />
+                  <input type="hidden" name="id" value={cmp.id} />
+                  <button type="submit" class="rounded-lg bg-brand-dark px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-black">Dry-run eligibility</button>
                 </form>
                 <form method="POST" class="flex flex-wrap items-center gap-2">
                   <input type="hidden" name="action" value="utm" />

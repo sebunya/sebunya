@@ -99,4 +99,39 @@ routes.post('/:id/utm-links', requirePermissions([PERMISSIONS.CAMPAIGNS_MANAGE])
   return ok(c, row);
 });
 
+
+// ---- Send wave (DRY-RUN ONLY) -------------------------------------------
+// The eligibility pipeline with a persisted decision ledger. LIVE does not exist:
+// the use case refuses any other mode and no provider adapter is reachable.
+
+routes.post('/:id/dry-run', requirePermissions([PERMISSIONS.CAMPAIGNS_MANAGE]), async (c) => {
+  const id = c.req.param('id') ?? '';
+  const registry = Registry.getInstance();
+  const campaign = await registry.campaignRepo.findById(id);
+  if (!campaign) return bad(c, 'NOT_FOUND', 'Campaign not found.', 404);
+  const audience = await registry.campaignSendRepo.audienceFromOpenAbandonments();
+  const outcome = await registry.campaignSendEngine.dryRun({
+    campaign: { id: campaign.id, status: campaign.status, channel: campaign.channel },
+    mode: 'DRY_RUN',
+    audience,
+    actorId: actor(c),
+  });
+  if (!outcome.ok) return bad(c, outcome.code, outcome.message, outcome.code === 'LIVE_FORBIDDEN' ? 403 : 409);
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: actor(c), action: 'CAMPAIGN_DRY_RUN_EXECUTED', entity: 'campaign', entityId: id,
+    newState: { runId: outcome.runId, ...outcome.counts, quietHoursAtRun: outcome.quietHoursAtRun },
+  });
+  return ok(c, outcome);
+});
+
+routes.get('/:id/runs', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  return ok(c, { runs: await Registry.getInstance().campaignSendRepo.listRuns(c.req.param('id') ?? '') });
+});
+
+routes.get('/runs/:runId/decisions', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const detail = await Registry.getInstance().campaignSendRepo.runDecisions(c.req.param('runId') ?? '');
+  if (!detail) return bad(c, 'NOT_FOUND', 'Run not found.', 404);
+  return ok(c, detail);
+});
+
 export default routes;

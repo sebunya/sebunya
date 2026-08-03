@@ -44,3 +44,4 @@ export * from './media';
 export * from './legal';
 export * from './abandonment';
 export * from './notificationTemplates';
+export * from './campaignSendRuns';
