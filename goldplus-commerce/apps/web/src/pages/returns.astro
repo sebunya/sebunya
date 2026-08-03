@@ -2,10 +2,16 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { policyBySlug, POLICY_STATUS_LABEL } from '../lib/legal-policies';
 const policy = policyBySlug('returns')!;
+import CmsPolicyDocument from '../components/CmsPolicyDocument.astro';
+import { fetchPublishedPolicy } from '../lib/legalCms';
+// Wave 2C: a PUBLISHED CMS version replaces the interim static wording below;
+// until one exists this page keeps its truthful interim content unchanged.
+const cms = await fetchPublishedPolicy('returns');
 ---
 
 <BaseLayout title="Returns policy | GoldPlus">
   <main id="main-content">
+    {cms ? <CmsPolicyDocument policy={cms} /> : <>
     <header class="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
       <div class="container mx-auto max-w-4xl px-4 lg:px-8">
         <p class="text-xs font-black uppercase tracking-[0.18em] text-brand-primary">Customer policy</p>
@@ -41,5 +47,6 @@ const policy = policyBySlug('returns')!;
         </section>
       </div>
     </div>
+  </>}
   </main>
 </BaseLayout>

@@ -1,0 +1,35 @@
+---
+import { policyParagraphs, type PublishedPolicy } from '../lib/legalCms';
+
+interface Props {
+  policy: PublishedPolicy;
+  eyebrow?: string;
+}
+const { policy, eyebrow = 'Customer policy' } = Astro.props;
+const paragraphs = policyParagraphs(policy.bodyMarkdown);
+const effective = policy.effectiveAt ? new Date(policy.effectiveAt).toISOString().slice(0, 10) : null;
+---
+
+{/* Governed CMS rendering (Wave 2C): shown only for a PUBLISHED version. Body text
+    is interpolated (escaped) — the CMS stores wording, never markup. */}
+<header class="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
+  <div class="container mx-auto max-w-4xl px-4 lg:px-8">
+    <p class="text-xs font-black uppercase tracking-[0.18em] text-brand-primary">{eyebrow}</p>
+    <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">{policy.title}</h1>
+    <p class="mt-4 inline-flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
+      <span class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-emerald-800">Published policy</span>
+      <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Version {policy.version}</span>
+      <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+        Effective date: {effective ?? 'on publication'}
+      </span>
+    </p>
+  </div>
+</header>
+
+<div class="container mx-auto max-w-4xl px-4 py-10 sm:py-14 lg:px-8">
+  <article class="space-y-5">
+    {paragraphs.map((paragraph) => (
+      <p class="text-sm leading-relaxed text-slate-700 sm:text-base whitespace-pre-line">{paragraph}</p>
+    ))}
+  </article>
+</div>

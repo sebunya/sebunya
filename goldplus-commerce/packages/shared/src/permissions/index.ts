@@ -90,6 +90,11 @@ export const PERMISSIONS = {
   // the boot-time registry sync.
   MEDIA_READ: 'media.read',
   MEDIA_MANAGE: 'media.manage',
+  // Wave 2C — legal policy CMS. approve is deliberately separate from manage so
+  // maker/checker can be enforced at the role level as well as in the use case.
+  LEGAL_READ: 'legal.read',
+  LEGAL_MANAGE: 'legal.manage',
+  LEGAL_APPROVE: 'legal.approve',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

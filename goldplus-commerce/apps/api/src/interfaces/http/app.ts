@@ -31,6 +31,8 @@ import adminAnalyticsRoutes from './routes/admin/analytics';
 import adminCompatibilityRoutes from './routes/admin/compatibility';
 import adminNewModulesRoutes from './routes/admin/new-modules';
 import adminMediaRoutes from './routes/admin/media';
+import adminLegalRoutes from './routes/admin/legal';
+import publicLegalRoutes from './routes/legal';
 import adminLoyaltyRoutes from './routes/admin/loyalty';
 import adminFulfilmentRoutes from './routes/admin/fulfilment';
 import adminControlCentreRoutes, { registerMountedPrefixes } from './routes/admin/control-centre';
@@ -185,6 +187,8 @@ app.route('/admin/analytics', adminAnalyticsRoutes);
 app.route('/admin/compatibility', adminCompatibilityRoutes);
 app.route('/admin/modules', adminNewModulesRoutes);
 app.route('/admin/media', adminMediaRoutes);
+app.route('/admin/legal', adminLegalRoutes);
+app.route('/legal', publicLegalRoutes);
 app.route('/admin/loyalty', adminLoyaltyRoutes);
 app.route('/admin/fulfilment', adminFulfilmentRoutes);
 app.route('/admin/inventory', adminInventoryRoutes);
@@ -288,6 +292,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/fraud',
   '/admin/fulfilment',
   '/admin/inventory',
+  '/admin/legal',
   '/admin/loyalty',
   '/admin/measurement',
   '/admin/measurement-control-tower',
@@ -313,6 +318,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/consent',
   '/governance',
   '/health',
+  '/legal',
   '/measurement',
   '/metrics',
   '/product-finder',

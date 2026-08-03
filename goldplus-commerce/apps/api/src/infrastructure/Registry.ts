@@ -26,6 +26,8 @@ import { DrizzlePaymentRepository } from './db/repositories/DrizzlePaymentReposi
 import { DrizzleUserRepository } from './db/repositories/DrizzleUserRepository';
 import { LocalProductImageStorage } from './storage/LocalProductImageStorage';
 import { DrizzleMediaLibraryRepository } from './db/repositories/DrizzleMediaLibraryRepository';
+import { DrizzleLegalCmsRepository } from './db/repositories/DrizzleLegalCmsRepository';
+import { LegalCmsUseCase } from '../application/use-cases/legal/LegalCmsUseCase';
 import { MediaLibraryUseCase } from '../application/use-cases/media/MediaLibraryUseCase';
 import { SharpVariantGenerator } from './media/SharpVariantGenerator';
 import * as path from 'path';
@@ -511,6 +513,10 @@ export class Registry {
     process.env.MEDIA_STORAGE_ROOT ||
       path.join(process.cwd().endsWith('apps/api') ? process.cwd() : path.join(process.cwd(), 'apps', 'api'), '..', 'web', 'public')
   );
+
+  // Wave 2C — legal policy CMS.
+  public readonly legalCmsRepo = new DrizzleLegalCmsRepository();
+  public readonly legalCmsUseCase = new LegalCmsUseCase(this.legalCmsRepo);
 
   // Wave 2B — media library (DAM) on the same storage owner.
   public readonly mediaLibraryRepo = new DrizzleMediaLibraryRepository();
