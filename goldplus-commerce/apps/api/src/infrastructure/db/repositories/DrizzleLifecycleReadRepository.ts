@@ -34,11 +34,15 @@ export class DrizzleLifecycleReadRepository implements ILifecycleReadRepository 
     // and 'user:<id>' refs. Any state other than an unexpired grant stays as
     // written; absence stays 'unknown' (which downstream treats as no consent).
     const refs = userIds.flatMap((id) => [id, `user:${id}`]);
+    // Parameterised, not hand-escaped: the previous form built the IN list with
+    // manual quote-doubling inside sql.raw — the exact identifier-escaping
+    // pattern the drizzle advisory warns about, and needless when the driver can
+    // bind the values.
     const result: any = await db.execute(sql`
       select customer_identity_ref as ref, state
       from customer_consent_states
       where purpose_key = 'personalization'
-        and customer_identity_ref in ${sql.raw(`(${refs.map((r) => `'${r.replace(/'/g, "''")}'`).join(',')})`)}
+        and customer_identity_ref in (${sql.join(refs.map((r) => sql`${r}`), sql`, `)})
         and (expires_at is null or expires_at > now())
         and superseded_by is null
     `);

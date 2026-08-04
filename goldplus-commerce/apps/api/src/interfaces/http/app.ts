@@ -86,8 +86,27 @@ function createRequestId(): string {
   return randomUUID ? randomUUID() : Math.random().toString(36).substring(2, 15);
 }
 
-// Global Middleware
-app.use('*', cors());
+// Global Middleware.
+//
+// CORS honours CORS_ORIGIN (the deployment already sets it) instead of the
+// wide-open default: the API was replying `Access-Control-Allow-Origin: *` to
+// every origin while the operator's configured allowlist sat unread — a config
+// that lies. Requests without an Origin header (server-to-server, provider
+// webhooks, curl) are unaffected; the www. counterpart of each configured origin
+// is accepted so an edge redirect cannot strand the storefront. With no
+// CORS_ORIGIN set, no cross-origin browser access is granted.
+const CORS_ALLOWLIST: string[] = (process.env.CORS_ORIGIN ?? '')
+  .split(',')
+  .map((o) => o.trim().replace(/\/+$/, ''))
+  .filter(Boolean)
+  .flatMap((o) => (/^https?:\/\/www\./.test(o) ? [o] : [o, o.replace(/^(https?:\/\/)/, '$1www.')]));
+
+app.use(
+  '*',
+  cors({
+    origin: (origin) => (CORS_ALLOWLIST.includes(origin) ? origin : null),
+  }),
+);
 
 // Request ID & Tracing Context Middleware
 app.use('*', async (c, next) => {
