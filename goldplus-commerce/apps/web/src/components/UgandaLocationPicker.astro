@@ -132,7 +132,11 @@ if (defaultValue && defaultValue.startsWith('{')) {
 </div>
 
 <script>
-  import { UGANDA_DISTRICTS, UGANDA_PLACE_ALIASES } from '@goldplus/shared';
+  // Deep import of the pure-data module, NOT '@goldplus/shared': this script is
+  // bundled for the BROWSER, and the shared package index pulls in modules that
+  // import node:crypto (cart-credential, checkout-intent), which kills the
+  // client build. The frontmatter (SSR) may use the package root; this may not.
+  import { UGANDA_DISTRICTS, UGANDA_PLACE_ALIASES } from '../../../../packages/shared/src/locations/uganda';
 
   interface PlaceOption {
     /** What the customer sees and typed toward. */
