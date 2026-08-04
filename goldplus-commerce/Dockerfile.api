@@ -23,12 +23,20 @@ COPY apps/api ./apps/api
 RUN pnpm exec tsc -p packages/shared/tsconfig.json
 RUN pnpm -F @goldplus/api build
 
-# Prune dev dependencies for production runtime
+# Prune dev dependencies for production runtime. NOTE: this rewrites the reachable
+# graph but pnpm's virtual store (node_modules/.pnpm) physically retains every
+# package it ever linked — which is how the whole web/build toolchain (esbuild's
+# Go binaries, vite, rollup) was still shipping inside the API runtime image and
+# dominating its vulnerability scan. `pnpm deploy` below produces a self-contained
+# production-only tree instead.
 RUN pnpm install --prod --frozen-lockfile
 
 # The workspace package points at TypeScript for local tooling. Runtime Node must
 # load the compiled CommonJS entrypoint copied into the final image.
 RUN node -e "const fs=require('fs');const p='packages/shared/package.json';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));pkg.main='dist/index.js';fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\\n')"
+
+# Self-contained production dependency tree (no dev toolchain, no virtual store).
+RUN pnpm deploy --filter=@goldplus/api --prod /app/deploy
 
 FROM base AS runner
 # Set production environment
@@ -38,10 +46,9 @@ ENV PORT=3000
 WORKDIR /app
 
 # Copy built code and node_modules
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/deploy/node_modules ./node_modules
 COPY --from=builder /app/packages/shared ./packages/shared
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 
 # Use non-root node user
