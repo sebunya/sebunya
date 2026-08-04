@@ -33,6 +33,7 @@ export type RouteFamily =
   | 'consent-mutation'
   | 'surveys'
   | 'product-finder'
+  | 'location-search'
   | 'telemetry'
   | 'payment-webhook'
   | 'cart'
@@ -85,6 +86,12 @@ const POLICIES: Record<RouteFamily, FamilyPolicy> = {
   'surveys': { family: 'surveys', limit: 60, windowMs: MINUTE, class: 'HUMAN_FORM', outage: 'STRICT' },
   // Product finder / shopping-assistant flow: interactive, so higher.
   'product-finder': { family: 'product-finder', limit: 120, windowMs: MINUTE, class: 'GENERAL', outage: 'STRICT' },
+  // Address autocomplete fires per debounced keystroke burst (~2-4/s while a
+  // customer types), well above product-finder's step cadence — 300/min covers
+  // honest typing with headroom while still capping scripted scraping of the
+  // gazetteer. STRICT on Redis outage: search degrades to the offline metro
+  // index / district select, so failing closed costs nothing.
+  'location-search': { family: 'location-search', limit: 300, windowMs: MINUTE, class: 'READ', outage: 'STRICT' },
   // High-volume, low-value beacons. Per-second window matches the prior control.
   'telemetry': { family: 'telemetry', limit: 100, windowMs: 1_000, class: 'TELEMETRY', outage: 'STRICT' },
   // Provider callbacks / IPN. HMAC-authenticated separately, low volume, high
@@ -162,6 +169,8 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
 
   // Product finder / shopping assistant.
   if (isUnder(path, '/product-finder')) return 'product-finder';
+
+  if (isUnder(path, '/locations')) return 'location-search';
 
   // Cart mutations.
   if (isUnder(path, '/commerce/cart')) return 'cart';
