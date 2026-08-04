@@ -278,7 +278,7 @@ const filtersApplied = query !== "" || status !== "ACTIVE";
       </label>
       <label class="block">
         <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Status</span>
-        <select name="status" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <select name="status" aria-label="Filter assets by status" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
           <option value="ACTIVE" selected={status === "ACTIVE"}>Active</option>
           <option value="ARCHIVED" selected={status === "ARCHIVED"}>Archived</option>
           <option value="" selected={status === ""}>All</option>

@@ -84,7 +84,7 @@ try {
         <input type="hidden" name="action" value="mission" />
         <input name="key" required placeholder="key (a-z0-9_-)" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
         <input name="title" required placeholder="Title" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
-        <select name="kind" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
+        <select name="kind" aria-label="Mission kind" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
           <option value="PURCHASE_COUNT">PURCHASE_COUNT</option>
           <option value="REVIEW_COUNT">REVIEW_COUNT</option>
           <option value="STREAK_DAYS">STREAK_DAYS</option>
@@ -123,7 +123,7 @@ try {
         <input type="hidden" name="action" value="badge" />
         <input name="key" required placeholder="key" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none" />
         <input name="title" required placeholder="Title" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none" />
-        <select name="missionId" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
+        <select name="missionId" aria-label="Mission this badge is linked to" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
           <option value="">No linked mission</option>
           {data?.missions.map((m: any) => <option value={m.id}>{m.title}</option>)}
         </select>

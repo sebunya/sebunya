@@ -70,7 +70,7 @@ try {
       <p class="mt-1 text-xs text-slate-500">Row-locked; refused below zero or below reserved holds; before/after audited with your reason.</p>
       <form method="POST" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
         <input name="productId" required placeholder="Product ID (uuid)" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
-        <select name="mode" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none focus:border-brand-gold">
+        <select name="mode" aria-label="Adjustment mode: set to, or adjust by" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none focus:border-brand-gold">
           <option value="set">Set to</option>
           <option value="delta">Adjust by</option>
         </select>

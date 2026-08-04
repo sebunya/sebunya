@@ -170,7 +170,7 @@ try {
         <input type="hidden" name="action" value="create-user" />
         <input name="email" type="email" required placeholder="email@shopgoldplus.com" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
         <input name="initialPassword" type="password" required minlength="12" placeholder="Initial password (min 12)" autocomplete="new-password" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
-        <select name="roleName" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
+        <select name="roleName" aria-label="Governance role for the new user" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
           <option value="LEGAL_REVIEWER">LEGAL_REVIEWER</option>
           <option value="ANALYST">ANALYST</option>
           <option value="SUPPORT_OPERATOR">SUPPORT_OPERATOR</option>
@@ -195,7 +195,7 @@ try {
                 <form method="POST" class="ml-auto flex items-center gap-2">
                   <input type="hidden" name="action" value="decide-grant" />
                   <input type="hidden" name="id" value={r.id} />
-                  <select name="decision" class="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-bold outline-none"><option value="APPROVED">APPROVE</option><option value="REJECTED">REJECT</option></select>
+                  <select name="decision" aria-label="Decision on this role grant request" class="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-bold outline-none"><option value="APPROVED">APPROVE</option><option value="REJECTED">REJECT</option></select>
                   <button type="submit" class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-gray-700 hover:bg-gray-50">Decide</button>
                 </form>
               )}

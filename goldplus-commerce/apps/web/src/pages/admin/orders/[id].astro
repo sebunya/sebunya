@@ -890,7 +890,7 @@ if (currentStatus === 'received') {
               <p class="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Order lifecycle</p>
               <form method="POST" class="space-y-3">
                 <input type="hidden" name="action" value="lifecycle" />
-                <select name="toStatus" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold appearance-none">
+                <select name="toStatus" aria-label="Move order to status" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold appearance-none">
                   <option value="" disabled selected>Move order to…</option>
                   <option value="processing">processing</option>
                   <option value="completed">completed</option>

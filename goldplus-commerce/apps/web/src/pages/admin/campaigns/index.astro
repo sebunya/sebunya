@@ -123,7 +123,7 @@ const STATUS_STYLE: Record<string, string> = {
         <input type="hidden" name="action" value="create" />
         <input name="name" required maxlength="255" placeholder="Name" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
         <input name="objective" required maxlength="50" placeholder="Objective (e.g. recover-carts)" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
-        <select name="channel" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none focus:border-brand-gold">
+        <select name="channel" aria-label="Campaign channel" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none focus:border-brand-gold">
           <option value="email">email</option><option value="sms">sms</option>
           <option value="whatsapp">whatsapp</option><option value="internal">internal</option>
         </select>
@@ -150,7 +150,7 @@ const STATUS_STYLE: Record<string, string> = {
                 <form method="POST" class="flex items-center gap-2">
                   <input type="hidden" name="action" value="status" />
                   <input type="hidden" name="id" value={cmp.id} />
-                  <select name="status" class="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-bold outline-none">
+                  <select name="status" aria-label="New campaign status" class="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-bold outline-none">
                     <option value="APPROVED">APPROVED</option><option value="PAUSED">PAUSED</option><option value="ARCHIVED">ARCHIVED</option>
                   </select>
                   <button type="submit" class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-gray-700 hover:bg-gray-50">Set status</button>

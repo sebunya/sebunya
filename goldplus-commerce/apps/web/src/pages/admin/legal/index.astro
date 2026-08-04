@@ -417,7 +417,7 @@ const linkButtonClass = "text-[10px] font-black uppercase tracking-widest text-g
                     <input type="hidden" name="id" value={detail.id} />
                     <label class="block">
                       <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Go-live date &amp; time</span>
-                      <input type="datetime-local" name="effectiveAt" required class="mt-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs" />
+                      <input type="datetime-local" name="effectiveAt" required aria-label="Effective date and time for scheduled publication" class="mt-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs" />
                     </label>
                     <button type="submit" class={buttonClass}>Schedule</button>
                   </form>
@@ -599,7 +599,7 @@ const linkButtonClass = "text-[10px] font-black uppercase tracking-widest text-g
                               <form method="POST" class="flex items-center justify-end gap-1.5">
                                 <input type="hidden" name="action" value="publish" />
                                 <input type="hidden" name="id" value={v.id} />
-                                <input type="datetime-local" name="effectiveAt" required class="rounded-lg border border-gray-300 px-2 py-1 text-[10px]" />
+                                <input type="datetime-local" name="effectiveAt" required aria-label="Effective date and time for scheduled publication" class="rounded-lg border border-gray-300 px-2 py-1 text-[10px]" />
                                 <button type="submit" class={linkButtonClass}>Schedule</button>
                               </form>
                             </>
