@@ -42,3 +42,42 @@ an answer — they are never resolved silently in code.
   PART D were not on this machine at audit time (only the brief and the source
   PDF exist in ~/Downloads). Checksums cannot be verified until they arrive;
   stages 2+ are blocked on them. Nothing was fabricated in their place.
+
+## Resolved by Rob (2026-08-04, stage 1 approval)
+
+- **Decision #7 — fee ownership (Option A, APPROVED):** The existing engine
+  (per-district `delivery_zones` → observed medians → band model) remains the
+  single owner of every delivery FEE in the codebase; the brief's `delivery_zone`
+  Z1–Z4 table owns only non-fee policy (SLA, COD allowance/limits, free-delivery
+  threshold, carrier) plus a nullable district-inherited fallback fee — and no
+  fee, SLA or COD limit is ever hardcoded or defaulted: unset means unset, and
+  unset blocks zone activation.
+- **Decision #8 — district count:** RESOLVED. The gap is Terego (created
+  1 Jul 2020 from Arua; the 2019 source omits the whole county — recorded in the
+  exceptions file as DISTRICT_NOT_REPRESENTED / SOURCE_OMITS_WHOLE_COUNTY).
+  `UGANDA_DISTRICTS` keeps 136 including Terego; Terego has zero areas, resolves
+  to the PART H manual path, and a guard test asserts exactly one zero-area
+  district and that it is Terego.
+- **Permissions:** the stage-1 guard table approved as proposed (existing
+  vocabulary only; all four mutating Locations views take mutating permissions).
+- **Scope additions authorised:** order lifecycle delivery states +
+  `fulfilment_deliveries` population (stage 2); address edit endpoint with full
+  audit (stage 4); dedicated abuse-control family for public search; offline
+  index on a dedicated cached asset URL (SENSITIVE_ROUTES untouched); loyalty
+  two-key flag pattern; no UI framework.
+
+## Assumptions (continued)
+
+- 2026-08-04 — **Data files still absent at stage-2 start.** `data/locations/v1/`
+  does not exist and Spotlight finds none of the six filenames anywhere on this
+  machine (the Downloads `zone-files*.zip` archives are unrelated DNS zone
+  files). Proceeding with every file-independent deliverable; the import script
+  carries ALL brief assertions plus the MD5 gate and refuses to run without
+  verified files. Nothing data-dependent is faked or stubbed with sample rows.
+- 2026-08-04 — **`customer_address` = additive evolution of `addresses`** (the
+  existing table keeps its name; brief's name is spec-speak). Orders never
+  reference address rows today, so widening is zero-risk.
+- 2026-08-04 — **Z1–Z4 `zone_name` seeded equal to its code** ("Z1"…): the brief
+  says to seed codes and names but the names live in `uganda_districts_lookup.csv`
+  which has not arrived; the import updates names from the file when present.
+  No fee/SLA/COD value is seeded — all NULL, activation blocked.
