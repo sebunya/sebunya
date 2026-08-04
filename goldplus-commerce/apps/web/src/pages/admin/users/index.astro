@@ -20,10 +20,6 @@ if (!token) {
   return Astro.redirect('/admin/login?returnTo=/admin/users', 303);
 }
 
-let rows: UserRow[] = [];
-let fetchError: string | null = null;
-
-try {
   // §6: governed user creation + maker/checker decisions. Initial passwords are
   // typed by the creating administrator and communicated out-of-band — they are
   // posted to the API and never echoed back or logged.
@@ -69,6 +65,10 @@ try {
     if (grJson?.success) grantRequests = grJson.data.requests;
   } catch { /* list stays empty; the section shows a truthful empty state */ }
 
+let rows: UserRow[] = [];
+let fetchError: string | null = null;
+
+try {
   const res = await fetch(`${apiBase}/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
   if (res.status === 401 || res.status === 403) {
     Astro.response.headers.set('Set-Cookie', clearSessionCookie());
