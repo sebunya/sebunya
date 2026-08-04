@@ -4,7 +4,7 @@ import AccountNav from '../../components/AccountNav.astro';
 import EmptyState from '../../components/EmptyState.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
-import { readSessionToken, clearSessionCookie } from '../../lib/session';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -34,7 +34,7 @@ try {
 }
 
 if (unauthorised) {
-  Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+  Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
   return Astro.redirect('/login?returnTo=/account', 303);
 }
 

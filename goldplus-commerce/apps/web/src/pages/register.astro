@@ -4,7 +4,7 @@ import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
-import { sessionCookieValue } from '../lib/session';
+import { SESSION_COOKIE_NAME } from '../lib/session';
 
 // Already signed in? Registration has nothing to offer — go to the account.
 if (Astro.cookies.get('goldplus_session')?.value && Astro.request.method !== 'POST') {
@@ -46,7 +46,15 @@ if (Astro.request.method === 'POST') {
       if (res.ok && json?.success && json.data?.token) {
         // Registration IS a login: the session cookie is set immediately, so the
         // very next page is their signed-in account (or the checkout they came from).
-        Astro.response.headers.set('Set-Cookie', sessionCookieValue(json.data.token));
+        // Via Astro.cookies — a raw Set-Cookie header on Astro.response is DROPPED
+        // when the return value is Astro.redirect(), which is exactly this path.
+        Astro.cookies.set(SESSION_COOKIE_NAME, json.data.token, {
+          path: '/',
+          httpOnly: true,
+          sameSite: 'lax',
+          maxAge: 604800,
+          secure: import.meta.env.PROD,
+        });
         return Astro.redirect(returnTo, 303);
       }
 

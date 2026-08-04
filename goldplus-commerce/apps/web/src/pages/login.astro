@@ -4,7 +4,7 @@ import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
-import { sessionCookieValue } from '../lib/session';
+import { SESSION_COOKIE_NAME } from '../lib/session';
 
 let status: 'success' | 'error' | null = null;
 let message: string | undefined;
@@ -30,7 +30,18 @@ if (Astro.request.method === 'POST') {
       const json: any = await res.json().catch(() => null);
 
       if (res.ok && json?.success && json.data?.token) {
-        Astro.response.headers.set('Set-Cookie', sessionCookieValue(json.data.token));
+        // Via Astro.cookies, NOT a raw Set-Cookie header: Astro drops headers set
+        // on Astro.response when the frontmatter returns Astro.redirect(), so the
+        // raw-header version signed nobody in — the customer bounced straight
+        // back to this page. Admin login always used Astro.cookies and worked,
+        // which is why the breakage hid on the customer side only.
+        Astro.cookies.set(SESSION_COOKIE_NAME, json.data.token, {
+          path: '/',
+          httpOnly: true,
+          sameSite: 'lax',
+          maxAge: 604800,
+          secure: import.meta.env.PROD,
+        });
         const returnTo = Astro.url.searchParams.get('returnTo');
         const safe = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/account';
         return Astro.redirect(safe, 303);

@@ -4,7 +4,7 @@ import AccountNav from '../../components/AccountNav.astro';
 import EmptyState from '../../components/EmptyState.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
-import { readSessionToken, clearSessionCookie } from '../../lib/session';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -19,7 +19,7 @@ try {
     signal: AbortSignal.timeout(6000),
   });
   if (res.status === 401) {
-    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
     return Astro.redirect('/login?returnTo=/account/rewards', 303);
   }
   const json: any = await res.json().catch(() => null);

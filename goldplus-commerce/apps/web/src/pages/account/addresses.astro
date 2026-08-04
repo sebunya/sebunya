@@ -6,7 +6,7 @@ import Notice from '../../components/Notice.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
 import { apiBase } from '../../lib/api';
-import { readSessionToken, clearSessionCookie } from '../../lib/session';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../lib/requestOrigin';
 import type { AddressDto } from '@goldplus/shared';
 
@@ -81,7 +81,7 @@ try {
     signal: AbortSignal.timeout(6000),
   });
   if (res.status === 401) {
-    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
     return Astro.redirect('/login?returnTo=/account/addresses', 303);
   }
   const json: any = await res.json().catch(() => null);
