@@ -13,8 +13,8 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "9fe2da4",
-  "phase": "ENGINEERING GRAPH COMPLETE: 2A-2F, SEND(dry), GAMIFY, PIM-report, REC-DEPTH all RELEASED; 2G/2H verified-KEEP. Open: activations (business), operator items, full accessibility/perf gates.",
+  "lastGreenHead": "fde5fde",
+  "phase": "\u00a76 CLOSED (user mgmt + maker/checker live-proven; reviewer account exists). Engineering graph empty again. Open: final-gate tier (accessibility/perf/visual/scans), activations (business), operator items (gh auth, photography, reviewer password rotation + legal publish).",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -201,6 +201,12 @@
       "module": "rec-analytics-depth",
       "status": "RELEASED",
       "evidence": "9fe2da4: live withheld-percentage proof on 13 real events; safeShare purity suite 3/3"
+    },
+    {
+      "id": "W-USERMGMT",
+      "module": "governed-user-management",
+      "status": "RELEASED",
+      "evidence": "fde5fde: reviewer created+logged-in+approved legal draft (two-human maker/checker E2E); admin-grant self-decide 403; withdraw verb added from proof; ledger #23/#24 lessons"
     }
   ],
   "constraints": [
@@ -212,8 +218,8 @@
   ],
   "nextExact": {
     "file": "docs/platform/institutional-memory-v4/EXECUTION_STATE.json",
-    "command": "No READY engineering slices remain in the graph. Resume points: (a) loyalty/live-send activation waves ON EXPLICIT BUSINESS DECISION with their evidence bars; (b) accessibility+performance+visual-regression full-gate tier; (c) operator items. Ritual unchanged.",
-    "expected": "programme idles honestly at engineering-complete-for-scheduled-graph"
+    "command": "Next engineering option: final-gate tier (axe accessibility on key pages, Lighthouse, container scan/SBOM, adversarial pass). Operator: retrieve /root/goldplus-reviewer-credentials.txt, rotate password, publish legal drafts as desired.",
+    "expected": "ritual unchanged"
   },
-  "releasedHead": "9fe2da4"
+  "releasedHead": "fde5fde"
 }
