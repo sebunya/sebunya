@@ -134,6 +134,10 @@ services:
       - NOTIFICATIONS_DRY_RUN=${NOTIFICATIONS_DRY_RUN}
       - NOTIFICATIONS_LIVE_SEND_ENABLED=${NOTIFICATIONS_LIVE_SEND_ENABLED}
       - NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS=${NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS}
+      # Internal recipients for new-order operations alerts. Without this the
+      # ADMIN_ORDER_EMAIL intent routes to zero targets and is marked unroutable —
+      # the alert silently never sends however many delivery flags are on.
+      - ADMIN_ORDER_NOTIFICATION_EMAILS=${ADMIN_ORDER_NOTIFICATION_EMAILS}
       - ZEPTOMAIL_BASE_URL=${ZEPTOMAIL_BASE_URL}
       - ZEPTOMAIL_API_TOKEN=${ZEPTOMAIL_API_TOKEN}
       - ZEPTOMAIL_FROM_ADDRESS=${ZEPTOMAIL_FROM_ADDRESS}
