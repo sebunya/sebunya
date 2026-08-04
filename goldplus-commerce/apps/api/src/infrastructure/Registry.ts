@@ -151,6 +151,9 @@ import { DrizzleLocationAdminRepository } from './db/repositories/DrizzleLocatio
 import { CodPolicyReader, CheckoutVelocitySignal } from './locations/CodPolicyReader';
 import { DrizzleLoyaltyCompletionRepository } from './db/repositories/DrizzleLoyaltyCompletionRepository';
 import { LoyaltyOutboxNotifier } from './loyalty/LoyaltyOutboxNotifier';
+import { RequestPhoneVerificationUseCase, VerifyPhoneUseCase, BackfillGuestOrdersUseCase, MergeLoyaltyAccountsUseCase } from '../application/use-cases/loyalty/LoyaltyIdentityUseCases';
+import { EarnForVerificationScanUseCase, ManualAdjustLoyaltyUseCase, EvaluateTiersUseCase } from '../application/use-cases/loyalty/LoyaltyProgrammeUseCases';
+import { DrizzleLoyaltyIdentityRepository, DrizzleLoyaltyTierRepository, LoyaltyProgrammeConfigWriter, OutboxOtpSender, otpHash, otpRandom } from './loyalty/LoyaltyIdentityInfrastructure';
 import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { ListSearchMissesUseCase, PromoteSearchMissToAliasUseCase, ListAddressReviewQueueUseCase, ResolveAddressUseCase, ManageLandmarksUseCase, ManagePickupPointsUseCase, GetZonePoliciesUseCase, SaveZonePolicyUseCase, ListDataExceptionsUseCase } from '../application/use-cases/locations/LocationAdminUseCases';
 import {
@@ -1000,7 +1003,43 @@ export class Registry {
   public readonly consumeRedemptionUseCase = new ConsumeRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
   public readonly releaseRedemptionUseCase = new ReleaseRedemptionUseCase(this.loyaltyCompletionRepo);
   public readonly reverseRedemptionUseCase = new ReverseRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
-  public readonly runLoyaltyDailySweepUseCase = new RunLoyaltyDailySweepUseCase(
+  public readonly loyaltyIdentityRepo = new DrizzleLoyaltyIdentityRepository();
+  public readonly loyaltyTierRepo = new DrizzleLoyaltyTierRepository();
+  public readonly loyaltyProgrammeConfigWriter = new LoyaltyProgrammeConfigWriter();
+  public readonly backfillGuestOrdersUseCase = new BackfillGuestOrdersUseCase(
+    this.loyaltyIdentityRepo,
+    this.loyaltyRepo,
+    this.loyaltyCompletionRepo,
+    this.auditRepo,
+  );
+  public readonly requestPhoneVerificationUseCase = new RequestPhoneVerificationUseCase(
+    this.loyaltyIdentityRepo,
+    new OutboxOtpSender(),
+    otpHash,
+    otpRandom,
+  );
+  public readonly verifyPhoneUseCase = new VerifyPhoneUseCase(
+    this.loyaltyIdentityRepo,
+    otpHash,
+    this.backfillGuestOrdersUseCase,
+    this.auditRepo,
+  );
+  public readonly mergeLoyaltyAccountsUseCase = new MergeLoyaltyAccountsUseCase(this.loyaltyIdentityRepo, this.auditRepo);
+  public readonly earnForVerificationScanUseCase = new EarnForVerificationScanUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
+  public readonly manualAdjustLoyaltyUseCase = new ManualAdjustLoyaltyUseCase(this.loyaltyRepo, this.auditRepo);
+  public readonly evaluateTiersUseCase = new EvaluateTiersUseCase(
+    this.loyaltyRepo,
+    this.loyaltyCompletionRepo,
+    this.loyaltyTierRepo,
+    async ({ userId, tierCode, tierName }) =>
+      this.loyaltyOutboxNotifier.enqueue({
+        userId,
+        eventType: 'LOYALTY_TIER_CHANGED',
+        idempotencyKey: `tier:${userId}:${tierCode}`,
+        data: { tierCode, tierName },
+      }),
+  );
+    public readonly runLoyaltyDailySweepUseCase = new RunLoyaltyDailySweepUseCase(
     this.loyaltyRepo,
     this.loyaltyCompletionRepo,
     async ({ userId, earnEntryId, kind, pointsExpiring, expiresAt }) =>
@@ -1491,6 +1530,20 @@ export class Registry {
       if (toStatus === 'delivered' || toStatus === 'completed') {
         await this.vestLoyaltyOnDeliveryUseCase.execute(orderId);
         await this.consumeRedemptionUseCase.execute({ orderId }).catch(() => undefined);
+        // PART M: earn confirmation when points VEST, not when the order is
+        // placed. Enqueued only when an earn actually landed for this order.
+        const earn = await this.loyaltyCompletionRepo.findEarnEntryForOrder(orderId).catch(() => null);
+        const source = earn ? await this.orderRepo.findLoyaltyEarnSource(orderId).catch(() => null) : null;
+        if (earn && source) {
+          await this.loyaltyOutboxNotifier
+            .enqueue({
+              userId: source.userId,
+              eventType: 'LOYALTY_POINTS_EARNED',
+              idempotencyKey: `earned:${earn.id}`,
+              data: { points: earn.points, orderId },
+            })
+            .catch(() => undefined);
+        }
       }
       if (toStatus === 'cancelled') {
         await this.releaseRedemptionUseCase.execute({ orderId }).catch(() => undefined);

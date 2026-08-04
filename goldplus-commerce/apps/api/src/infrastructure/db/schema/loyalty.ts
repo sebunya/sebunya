@@ -153,3 +153,43 @@ export const loyaltyFraudSignals = pgTable('loyalty_fraud_signals', {
 }, (table) => ({
   accountIdx: index('loyalty_fraud_signals_account_idx').on(table.accountId),
 }));
+
+
+export const loyaltyAccountMerges = pgTable('loyalty_account_merges', {
+  mergedAccountId: uuid('merged_account_id').primaryKey(),
+  survivorAccountId: uuid('survivor_account_id').notNull(),
+  actorId: uuid('actor_id'),
+  note: varchar('note', { length: 300 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const loyaltyTiers = pgTable('loyalty_tiers', {
+  code: varchar('code', { length: 20 }).primaryKey(),
+  name: varchar('name', { length: 60 }).notNull(),
+  thresholdLifetimePoints: integer('threshold_lifetime_points'),
+  benefits: jsonb('benefits'),
+  rank: integer('rank').notNull(),
+  active: boolean('active').default(false).notNull(),
+  updatedBy: uuid('updated_by'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const loyaltyTierAssignments = pgTable('loyalty_tier_assignments', {
+  accountId: uuid('account_id').primaryKey(),
+  tierCode: varchar('tier_code', { length: 20 }).notNull(),
+  assignedAt: timestamp('assigned_at', { withTimezone: true }).defaultNow().notNull(),
+  notifiedAt: timestamp('notified_at', { withTimezone: true }),
+});
+
+export const phoneVerificationCodes = pgTable('phone_verification_codes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull(),
+  phoneE164: varchar('phone_e164', { length: 20 }).notNull(),
+  codeHash: varchar('code_hash', { length: 64 }).notNull(),
+  attempts: integer('attempts').default(0).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  userIdx: index('phone_verification_user_idx').on(table.userId),
+}));

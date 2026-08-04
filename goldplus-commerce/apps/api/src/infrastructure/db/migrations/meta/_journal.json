@@ -603,6 +603,13 @@
       "when": 1788235200000,
       "tag": "0085_loyalty_completion",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "5",
+      "when": 1788321600000,
+      "tag": "0086_loyalty_identity_tiers",
+      "breakpoints": true
     }
   ]
 }

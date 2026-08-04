@@ -236,6 +236,33 @@ routes.delete('/addresses/:id', async (c) => {
   return c.json({ success: true, data: { deleted: true } });
 });
 
+// ── Phone verification (loyalty brief PART I: the identity spine) ─────────
+routes.post('/phone/request-verification', async (c) => {
+  const userId = c.get('userId') as string;
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().requestPhoneVerificationUseCase.execute({
+    userId,
+    phone: String(body?.phone ?? ''),
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } as const, 400);
+  }
+  return c.json({ success: true, data: { sent: true } });
+});
+
+routes.post('/phone/verify', async (c) => {
+  const userId = c.get('userId') as string;
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().verifyPhoneUseCase.execute({
+    userId,
+    code: String(body?.code ?? ''),
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } as const, 400);
+  }
+  return c.json({ success: true, data: { verified: true, backfilledPoints: result.backfilledPoints } });
+});
+
 routes.get('/preferences', async (c) => {
   const userId = c.get('userId') as string;
   const uc = Registry.getInstance().getCustomerPreferenceCentreUseCase;

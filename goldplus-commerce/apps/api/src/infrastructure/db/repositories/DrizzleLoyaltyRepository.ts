@@ -1,4 +1,4 @@
-import { eq, asc, and, desc, sql } from 'drizzle-orm';
+import { eq, asc, inArray, and, desc, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { loyaltyAccounts, loyaltyLedgerEntries, loyaltyConfig } from '../schema/loyalty';
 import {
@@ -97,8 +97,15 @@ export class DrizzleLoyaltyRepository implements ILoyaltyRepository {
   }
 
   async listEntries(accountId: string): Promise<LoyaltyLedgerEntry[]> {
+    // Account merges (0086, loyalty PART I): entries are never moved — the
+    // survivor's balance aggregates its own entries plus every merged source's,
+    // original earn/expiry dates intact.
+    const merged = (await db.execute(
+      sql`select merged_account_id from loyalty_account_merges where survivor_account_id = ${accountId}`,
+    )) as unknown as Array<{ merged_account_id: string }>;
+    const ids = [accountId, ...merged.map((m) => m.merged_account_id)];
     const rows = await db.query.loyaltyLedgerEntries.findMany({
-      where: eq(loyaltyLedgerEntries.accountId, accountId),
+      where: inArray(loyaltyLedgerEntries.accountId, ids),
       orderBy: [asc(loyaltyLedgerEntries.createdAt)],
     });
     return rows.map(toDomain);

@@ -136,12 +136,27 @@ routes.post('/verification/check', async (c) => {
   const body = await c.req.json();
   const ip = clientIp(c);
   const ua = c.req.header('user-agent') || '';
-  
+
   const result = await registry.verificationCheckUseCase.execute(body.code, ip, ua);
-  
+
+  // Loyalty PART J: a signed-in scan is attributable and may earn — through
+  // the versioned 'verification_scan' rule, which is INACTIVE until activated.
+  // Anonymous scans stay anonymous; a loyalty failure never fails the check.
+  let loyaltyPoints = 0;
+  const header = c.req.header('Authorization');
+  if (header?.startsWith('Bearer ')) {
+    const verified = await registry.tokenSigner.verify(header.slice(7).trim()).catch(() => null);
+    if (verified?.subject) {
+      const earn = await registry.earnForVerificationScanUseCase
+        .execute({ userId: verified.subject, code: String(body.code ?? ''), successful: Boolean((result as { isSuccessful?: boolean }).isSuccessful) })
+        .catch(() => null);
+      if (earn?.ok) loyaltyPoints = earn.points;
+    }
+  }
+
   const res: ApiResponse<any> = {
     success: true,
-    data: result,
+    data: { ...result, loyaltyPoints },
   };
   return c.json(res);
 });

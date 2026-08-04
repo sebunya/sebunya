@@ -44,8 +44,13 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       userId: orders.userId,
       totalUgx: orders.totalAmount,
       paymentStatus: orders.paymentStatus,
+      buyerType: orders.buyerType,
     }).from(orders).where(eq(orders.id, id)).limit(1);
-    return row?.userId && row.paymentStatus === 'paid'
+    // Wholesale/corporate volume is EXCLUDED from consumer earning pending the
+    // PART V #10 dealer decision — consumer points on wholesale volume would
+    // blow the liability model (loyalty brief PART K). Conservative default,
+    // recorded in the decisions file; flips by config when Rob decides.
+    return row?.userId && row.paymentStatus === 'paid' && row.buyerType === 'retail'
       ? { userId: row.userId, totalUgx: row.totalUgx }
       : null;
   }
