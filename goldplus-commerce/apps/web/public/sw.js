@@ -1,4 +1,4 @@
-const CACHE_NAME = 'goldplus-v2';
+const CACHE_NAME = 'goldplus-v3';
 
 const ALLOWED_CACHE_ROUTES = [
   '/',
@@ -8,7 +8,7 @@ const ALLOWED_CACHE_ROUTES = [
   '/icon-192.svg',
   '/icon-512.svg',
   '/maskable-icon.svg',
-];
+, '/locations-index-v1.json'];
 
 // Strictly NO CACHE list — must mirror robots.txt Disallow list.
 const SENSITIVE_ROUTES = [

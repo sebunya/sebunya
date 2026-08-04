@@ -148,6 +148,7 @@ import { DrizzleAddressAuditRepository } from './db/repositories/DrizzleAddressA
 import { DrizzleLocationSearchRepository, DrizzleLocationOrderDensityReader, DrizzleSearchMissRecorder, DrizzleCustomerLocationContextReader } from './db/repositories/DrizzleLocationSearchRepository';
 import { HttpShortLinkResolver } from './locations/HttpShortLinkResolver';
 import { DrizzleLocationAdminRepository } from './db/repositories/DrizzleLocationAdminRepository';
+import { CodPolicyReader, CheckoutVelocitySignal } from './locations/CodPolicyReader';
 import { DrizzleLoyaltyCompletionRepository } from './db/repositories/DrizzleLoyaltyCompletionRepository';
 import { LoyaltyOutboxNotifier } from './loyalty/LoyaltyOutboxNotifier';
 import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
@@ -744,6 +745,8 @@ export class Registry {
       quotes: this.pricingQuoteRepo,
       orders: this.orderRepo,
     },
+    new CodPolicyReader(),
+    new CheckoutVelocitySignal(),
     // Lazy closures: the loyalty completion services are constructed later in
     // this class body; resolving through the singleton avoids field-order
     // coupling while keeping the use case pure against its port shape.

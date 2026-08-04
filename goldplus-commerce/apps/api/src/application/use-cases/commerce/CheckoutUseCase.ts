@@ -58,6 +58,8 @@ export interface CheckoutDto {
    * signed checkout-intent claims.
    */
   principal?: { kind: 'USER' | 'GUEST'; id: string } | null;
+  /** 'offline' = pay on delivery/collection — gates the PART I.2 COD rules. */
+  paymentMethod?: 'pesapal' | 'offline' | null;
   /**
    * Loyalty points to redeem against this order (loyalty brief PART G).
    * Signed-in customers only; validated and reserved through the redemption
@@ -88,6 +90,18 @@ export class CheckoutUseCase {
       capacity: ManagePromotionCapacityUseCase;
       quotes: IPricingQuoteRepository;
       orders: ITransactionalPricedOrderRepository;
+    } | null = null,
+    private readonly codPolicy: {
+      forDistrict(district: string): Promise<{
+        zoneCode: string;
+        active: boolean;
+        codAllowed: boolean | null;
+        codMaxOrderValueUgx: number | null;
+        prepayRequiredAboveUgx: number | null;
+      } | null>;
+    } | null = null,
+    private readonly checkoutSignals: {
+      velocity(input: { phone: string; orderId: string }): Promise<void>;
     } | null = null,
     private readonly loyaltyRedemption: {
       reserve(input: { userId: string; points: number; orderGoodsTotalUgx: number; idempotencyKey: string }): Promise<
@@ -137,6 +151,19 @@ export class CheckoutUseCase {
       : null;
     const zone = district && this.deliveryZones ? await this.deliveryZones.findByDistrict(district) : null;
     const fee = resolveDeliveryFee(zone);
+
+    // COD controls (location brief I.2): eligibility is a ZONE attribute. Only
+    // an ACTIVE zone policy gates — an unset policy blocks nothing (and cannot
+    // be active with unset values). Above the zone's COD ceiling, prepayment is
+    // required: refused with a clear message, never silently converted.
+    if (dto.paymentMethod === 'offline' && district && this.codPolicy) {
+      const policy = await this.codPolicy.forDistrict(district);
+      if (policy?.active) {
+        if (policy.codAllowed === false) {
+          throw new Error('COD_NOT_AVAILABLE: Pay on delivery is not available for this destination — pay online to order.');
+        }
+      }
+    }
 
     if (this.authoritativePricing) {
       const quote = await this.authoritativePricing.evaluator.execute({
@@ -196,6 +223,16 @@ export class CheckoutUseCase {
         evaluatedAt: quote.evaluatedAt,
       };
       const pricedItems: OrderItem[] = quote.lines.map((line) => ({ productId: line.productId, sku: line.sku, name: line.name, price: line.canonicalUnitPriceUgx, quantity: line.quantity, canonicalUnitPrice: line.canonicalUnitPriceUgx, baseSubtotal: line.baseSubtotalUgx, discountAmount: line.discountUgx, finalLineTotal: line.finalSubtotalUgx }));
+      if (dto.paymentMethod === 'offline' && district && this.codPolicy) {
+        const policy = await this.codPolicy.forDistrict(district);
+        const payable = quote.finalTotalUgx - (loyaltyReservation?.valueUgx ?? 0);
+        if (policy?.active && policy.codMaxOrderValueUgx !== null && payable > policy.codMaxOrderValueUgx) {
+          throw new Error(
+            `COD_LIMIT_EXCEEDED: Orders above ${policy.codMaxOrderValueUgx.toLocaleString('en-UG')} UGX to this zone must be paid online.`,
+          );
+        }
+      }
+
       const order = Order.create(
         crypto.randomUUID(),
         dto.customerDetails,
@@ -218,6 +255,13 @@ export class CheckoutUseCase {
           } else {
             await this.loyaltyRedemption.attach(loyaltyReservation.reservationId, saved.order.id);
           }
+        }
+        if (!saved.duplicate && this.checkoutSignals) {
+          // Fraud velocity (location brief I.3 / loyalty brief PART N):
+          // fire-and-forget — a signal write can never fail a checkout.
+          void this.checkoutSignals
+            .velocity({ phone: dto.customerDetails.phone, orderId: saved.order.id })
+            .catch(() => undefined);
         }
         return { order: saved.order, deliveryFeeConfirmed: saved.order.deliveryFeeConfirmed, idempotentReplay: saved.duplicate };
       } catch (error) {

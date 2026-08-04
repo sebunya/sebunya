@@ -137,6 +137,7 @@ export interface CheckoutOrderCreator {
     /** Verified principal from the signed intent — USER links the order to the account. */
     principal: { kind: 'USER' | 'GUEST'; id: string };
     redeemPoints?: number | null;
+    paymentMethod?: 'pesapal' | 'offline' | null;
   }): Promise<{ order: Order; deliveryFeeConfirmed: boolean; idempotentReplay: boolean }>;
 }
 
@@ -294,6 +295,7 @@ export class ExecuteCheckoutIntentUseCase {
       previewQuoteId: command.previewQuoteId ?? null,
       acceptPriceChange: command.acceptPriceChange ?? false,
       redeemPoints: command.redeemPoints ?? null,
+      paymentMethod: command.paymentMethod === 'pesapal' || command.paymentMethod === 'offline' ? command.paymentMethod : null,
       checkoutLink: lease,
       principal: { kind: command.claims.kind, id: command.claims.principalId },
     });

@@ -202,11 +202,31 @@ if (defaultValue && defaultValue.startsWith('{')) {
     gpsSource: 'device' | 'pasted_link';
   }
 
-  // Local fallback index — always available offline.
+  // Local fallback index — always available offline. Starts from the bundled
+  // verified vocabulary; the service-worker-cached metro index (brief F.5,
+  // /locations-index-v1.json — gazetteer-sourced once imported) merges in on
+  // load so metro search keeps working with zero network after first visit.
   const LOCAL_OPTIONS: PlaceOption[] = [
     ...UGANDA_PLACE_ALIASES.map((a) => ({ label: a.area, district: a.district, area: a.area })),
     ...UGANDA_DISTRICTS.map((d) => ({ label: d, district: d })),
   ];
+  void (async () => {
+    try {
+      const res = await fetch('/locations-index-v1.json');
+      const idx = await res.json();
+      if (Array.isArray(idx?.entries)) {
+        const seen = new Set(LOCAL_OPTIONS.map((o) => `${o.label}|${o.district}`.toLowerCase()));
+        for (const e of idx.entries as Array<{ l: string; d: string; a?: string; s?: string }>) {
+          const key = `${e.l}|${e.d}`.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          LOCAL_OPTIONS.push({ label: e.l, district: e.d, area: e.a, areaSlug: e.s });
+        }
+      }
+    } catch {
+      /* bundled vocabulary already covers the essentials */
+    }
+  })();
 
   function rankLocal(query: string, limit = 8): PlaceOption[] {
     const q = query.trim().toLowerCase();

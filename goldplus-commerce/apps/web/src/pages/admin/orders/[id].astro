@@ -506,6 +506,45 @@ if (currentStatus === 'received') {
           </div>
         </div>
 
+        {/* Rider delivery card (location-module brief I.1): printable slip,
+            WhatsApp copy block, wa.me deep link. COD amount = what the rider
+            actually collects (total already net of any loyalty discount). */}
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden" id="rider-card">
+          <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+            <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Rider Delivery Card</h3>
+            <div class="flex gap-2 print:hidden">
+              <button type="button" id="rider-print" class="text-[10px] font-black uppercase tracking-wide border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50">Print slip</button>
+              <button type="button" id="rider-copy" class="text-[10px] font-black uppercase tracking-wide border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50">Copy for WhatsApp</button>
+              {String(order.customerPhone || '').trim() && (
+                <a
+                  id="rider-wa"
+                  class="text-[10px] font-black uppercase tracking-wide bg-[#25D366] text-white rounded px-3 py-1.5"
+                  target="_blank"
+                  rel="noopener"
+                  href={`https://wa.me/${String(order.customerPhone).replace(/[^0-9]/g, '').replace(/^0/, '256')}?text=${encodeURIComponent(`Hello ${order.customerName}, this is GoldPlus. Your order ${order.orderNumber} is on its way. The rider will call you shortly.`)}`}
+                >WhatsApp customer</a>
+              )}
+            </div>
+          </div>
+          <div class="p-6">
+            <pre id="rider-card-text" class="whitespace-pre-wrap text-sm font-mono bg-gray-50 border border-gray-200 rounded-xl p-4">{[
+              `ORDER ${order.orderNumber}`,
+              `Recipient: ${order.customerName}`,
+              `Phone: ${order.customerPhone}`,
+              `Area: ${order.deliveryArea}`,
+              `Landmark/directions: ${order.deliveryAddress}`,
+              (order.deliveryLocation && typeof order.deliveryLocation === 'object' && (order.deliveryLocation as any).gpsLat)
+                ? `Map pin: https://maps.google.com/?q=${(order.deliveryLocation as any).gpsLat},${(order.deliveryLocation as any).gpsLng}`
+                : null,
+              `Items: ${(order.items || []).reduce((n: number, i: any) => n + (Number(i.quantity) || 0), 0)}`,
+              order.paymentStatus === 'paid'
+                ? 'Payment: PAID — collect nothing'
+                : `COLLECT ON DELIVERY: UGX ${Number(order.totalUgx ?? order.totalAmount ?? 0).toLocaleString('en-UG')}`,
+            ].filter(Boolean).join('\n')}</pre>
+            <p class="text-[10px] text-gray-400 mt-2 print:hidden">The copy button places this block on the clipboard, formatted for WhatsApp.</p>
+          </div>
+        </div>
+
         {/* Order Line Items */}
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
           <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
@@ -927,4 +966,15 @@ if (currentStatus === 'received') {
     </div>
 
   </div>
+<script>
+  document.getElementById('rider-copy')?.addEventListener('click', async () => {
+    const text = document.getElementById('rider-card-text')?.textContent ?? '';
+    try {
+      await navigator.clipboard.writeText(text);
+      const btn = document.getElementById('rider-copy');
+      if (btn) btn.textContent = 'Copied ✓';
+    } catch { /* clipboard blocked — the text stays selectable */ }
+  });
+  document.getElementById('rider-print')?.addEventListener('click', () => window.print());
+</script>
 </AdminLayout>
