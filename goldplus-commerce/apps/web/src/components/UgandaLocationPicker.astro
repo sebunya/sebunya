@@ -2,27 +2,30 @@
 import { UGANDA_DISTRICTS } from '@goldplus/shared';
 
 /**
- * UgandaLocationPicker — capture WHERE a delivery goes in the way Ugandans
- * actually give directions.
+ * UgandaLocationPicker v2 — capture WHERE a delivery goes in the way Ugandans
+ * actually give directions (location-module brief PARTs F–H).
  *
- * Two layers, nothing else:
- *   1. A structured layer that is always verifiably correct: the customer types
- *      the place they know ("Najjera", "Seeta", "Fort Portal") and lands on a
- *      curated alias mapped to its REAL district — or picks the district
- *      directly from the official list, which stays visible as a fallback.
- *   2. Free text for everything finer (estate, road, landmark) lives OUTSIDE
- *      this component, because last-mile delivery here runs on landmarks and a
- *      phone call — not parishes or postcodes.
+ * Layers, in order:
+ *   1. SERVER search over the verified gazetteer (5,805 areas + aliases +
+ *      groups + landmarks + pickup points) — folded orthography, ranked,
+ *      provenance-tagged. Falls back seamlessly to layer 2 offline.
+ *   2. LOCAL index: curated aliases + the official 136 districts — always
+ *      available with zero network (the metro set that matters most).
+ *   3. District select — the always-visible structural fallback.
+ *   4. "I can't find my area" — the PART H manual path. A missing gazetteer
+ *      row must never block a sale: free text + optional district proceed to
+ *      checkout with the fee honestly unconfirmed and land in the ops queue.
  *
- * The previous version searched a 5,700-row postcode gazetteer that had Wakiso
- * missing entirely, Kireka and Nansana filed under Mukono, and no Najjera or
- * Bugolobi at all — structured wrongness that mis-zoned real orders. This one
- * would rather say less and be right. The dead GPS button (raw coordinates
- * captured into a field nothing consumed) is gone with it.
+ * Optional pin capture (PART G.1, `withPin`): device GPS or a pasted
+ * Google-Maps/WhatsApp link (parsed client-side; short links resolved
+ * server-side). Coordinates ride in the payload; no area is ever fabricated
+ * from them (no centroids — the gap is flagged, not approximated).
  *
- * Payload emitted (hidden input, JSON): { district, area?, displayLabel }.
- * Legacy payloads (parishWard/postcode shapes) are still accepted as
- * defaultValue and re-rendered faithfully so in-flight sessions keep working.
+ * Payload (hidden input, JSON):
+ *   { district, area?, displayLabel, areaSlug?, gpsLat?, gpsLng?,
+ *     gpsAccuracyM?, gpsSource? }                      — structured selection
+ *   { manual: true, rawAddressText, district? }        — manual fallback
+ * Legacy payloads are still accepted as defaultValue.
  */
 interface Props {
   id?: string;
@@ -31,8 +34,10 @@ interface Props {
   placeholder?: string;
   helperText?: string;
   required?: boolean;
-  defaultValue?: string; // JSON payload from prior state (new or legacy shape)
+  defaultValue?: string;
   errorMessage?: string;
+  /** Show the GPS / pasted-link pin capture section. */
+  withPin?: boolean;
 }
 
 const {
@@ -44,18 +49,20 @@ const {
   required = false,
   defaultValue = '',
   errorMessage = '',
+  withPin = false,
 } = Astro.props;
 
 const helperId = helperText ? `${id}_helper` : undefined;
 
-// Rehydrate a prior selection (new lean shape or the legacy gazetteer shape)
-// so re-rendered forms show what was chosen.
 let initialPrimary = '';
 let initialSecondary = '';
 if (defaultValue && defaultValue.startsWith('{')) {
   try {
     const prior = JSON.parse(defaultValue);
-    if (prior?.district) {
+    if (prior?.manual && prior?.rawAddressText) {
+      initialPrimary = String(prior.rawAddressText).slice(0, 60);
+      initialSecondary = prior.district ? `District: ${prior.district} · written directions` : 'Written directions — our team confirms';
+    } else if (prior?.district) {
       initialPrimary = String(prior.area || prior.parishWard || prior.district);
       initialSecondary = `District: ${prior.district} · Uganda`;
     }
@@ -65,7 +72,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
 }
 ---
 
-<div class="js-uganda-location-picker space-y-2 relative" data-id={id}>
+<div class="js-uganda-location-picker space-y-2 relative" data-id={id} data-with-pin={withPin ? '1' : ''}>
   <label for={`${id}_input`} class="block text-sm font-bold text-brand-charcoal">
     {label} {required && <span class="text-red-500" aria-hidden="true">*</span>}
   </label>
@@ -81,6 +88,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
       <div>
         <p class="font-bold text-brand-charcoal text-base leading-tight js-card-primary">{initialPrimary}</p>
         <p class="text-sm text-gray-700 js-card-secondary">{initialSecondary}</p>
+        <p class="text-xs text-green-700 mt-0.5 hidden js-card-pin">📍 Location pin attached</p>
       </div>
     </div>
     <button type="button" class="text-xs font-black text-brand-charcoal uppercase tracking-wider hover:bg-white px-3 py-1.5 rounded-lg border border-green-200 transition-colors js-change-btn">
@@ -97,6 +105,8 @@ if (defaultValue && defaultValue.startsWith('{')) {
         class="w-full px-4 py-4 bg-white border border-brand-borderGrey rounded-xl shadow-sm focus:ring-2 focus:ring-brand-primary focus:border-transparent outline-none transition-all font-medium"
         placeholder={placeholder}
         autocomplete="off"
+        inputmode="search"
+        enterkeyhint="search"
         aria-autocomplete="list"
         aria-haspopup="listbox"
         role="combobox"
@@ -112,10 +122,11 @@ if (defaultValue && defaultValue.startsWith('{')) {
         class="absolute z-50 top-full left-0 right-0 bg-white border border-gray-200 rounded-xl mt-2 shadow-2xl max-h-64 overflow-y-auto hidden js-results-dropdown divide-y divide-gray-100"
       >
       </ul>
+      <p class="sr-only js-result-announce" role="status" aria-live="polite"></p>
     </div>
 
     <div class="flex items-center gap-3">
-      <span class="text-[11px] font-bold uppercase tracking-widest text-brand-mutedGrey whitespace-nowrap">Can't find it?</span>
+      <span class="text-[11px] font-bold uppercase tracking-widest text-brand-mutedGrey whitespace-nowrap">Browse by district</span>
       <select
         aria-label="Pick your district from the official list"
         class="js-district-select flex-1 bg-white border border-brand-borderGrey px-3 py-2.5 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primary"
@@ -124,7 +135,46 @@ if (defaultValue && defaultValue.startsWith('{')) {
         {UGANDA_DISTRICTS.map((d) => <option value={d}>{d}</option>)}
       </select>
     </div>
+
+    {/* PART H: the sale never blocks on a data gap — always visible */}
+    <button type="button" class="js-manual-toggle text-sm font-bold text-brand-charcoal underline underline-offset-4 decoration-brand-primary">
+      I can't find my area — write directions instead
+    </button>
+
+    <div class="js-manual-mode hidden space-y-2 bg-amber-50 border border-amber-200 rounded-xl p-4">
+      <label class="block text-sm font-bold text-brand-charcoal" for={`${id}_manual`}>
+        Describe where the delivery should go
+      </label>
+      <textarea
+        id={`${id}_manual`}
+        rows="2"
+        maxlength="400"
+        class="js-manual-text w-full px-3 py-2.5 bg-white border border-brand-borderGrey rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-primary"
+        placeholder="e.g. Kyanamukaaka trading centre, past the mosque, ask for Ssalongo's shop"></textarea>
+      <p class="text-xs text-amber-800">Our team will confirm the delivery details with a phone call before dispatch.</p>
+      <button type="button" class="js-manual-commit bg-brand-charcoal text-white text-sm font-bold px-4 py-2 rounded-lg">
+        Use these directions
+      </button>
+    </div>
   </div>
+
+  {withPin && (
+    <div class="js-pin-section border border-gray-200 rounded-xl p-4 space-y-3">
+      <p class="text-sm font-bold text-brand-charcoal">Location pin <span class="font-normal text-gray-500">(optional — helps the rider find you)</span></p>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="js-pin-gps text-sm font-bold bg-white border border-brand-borderGrey px-4 py-2.5 rounded-lg hover:border-brand-primary">
+          📍 Use my current location
+        </button>
+      </div>
+      <input
+        type="text"
+        class="js-pin-link w-full px-3 py-2.5 bg-white border border-brand-borderGrey rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-primary"
+        placeholder="…or paste a WhatsApp / Google Maps location link"
+        autocomplete="off"
+      />
+      <p class="js-pin-status text-xs text-gray-500"></p>
+    </div>
+  )}
 
   {errorMessage && <p class="text-xs text-red-600 mt-1 font-bold js-err-box">{errorMessage}</p>}
 
@@ -132,34 +182,38 @@ if (defaultValue && defaultValue.startsWith('{')) {
 </div>
 
 <script>
-  // Deep import of the pure-data module, NOT '@goldplus/shared': this script is
-  // bundled for the BROWSER, and the shared package index pulls in modules that
-  // import node:crypto (cart-credential, checkout-intent), which kills the
-  // client build. The frontmatter (SSR) may use the package root; this may not.
+  // Deep import of pure-data modules, NOT '@goldplus/shared' (its index pulls
+  // node:crypto and kills the client build — ledger #30).
   import { UGANDA_DISTRICTS, UGANDA_PLACE_ALIASES } from '../../../../packages/shared/src/locations/uganda';
+  import { publicApiBase } from '../lib/api';
 
   interface PlaceOption {
-    /** What the customer sees and typed toward. */
     label: string;
-    /** Canonical district the option resolves to. */
     district: string;
-    /** Area label when the option is a neighbourhood/town; absent for bare districts. */
     area?: string;
+    areaSlug?: string;
+    provenance?: string;
   }
 
-  // One flat, tiny index: curated aliases first (they are what people type),
-  // then every district itself. No fetch, no external dataset.
-  const OPTIONS: PlaceOption[] = [
+  interface PinState {
+    gpsLat: number;
+    gpsLng: number;
+    gpsAccuracyM?: number;
+    gpsSource: 'device' | 'pasted_link';
+  }
+
+  // Local fallback index — always available offline.
+  const LOCAL_OPTIONS: PlaceOption[] = [
     ...UGANDA_PLACE_ALIASES.map((a) => ({ label: a.area, district: a.district, area: a.area })),
     ...UGANDA_DISTRICTS.map((d) => ({ label: d, district: d })),
   ];
 
-  function rank(query: string, limit = 8): PlaceOption[] {
+  function rankLocal(query: string, limit = 8): PlaceOption[] {
     const q = query.trim().toLowerCase();
     if (q.length < 2) return [];
     const starts: PlaceOption[] = [];
     const contains: PlaceOption[] = [];
-    for (const opt of OPTIONS) {
+    for (const opt of LOCAL_OPTIONS) {
       const l = opt.label.toLowerCase();
       if (l.startsWith(q)) starts.push(opt);
       else if (l.includes(q)) contains.push(opt);
@@ -167,8 +221,21 @@ if (defaultValue && defaultValue.startsWith('{')) {
     return [...starts, ...contains].slice(0, limit);
   }
 
+  /** Client-side pin parsing for the common shapes; short links go server-side. */
+  function parsePinLocally(raw: string): PinState | null {
+    const text = raw.trim();
+    const m = text.match(/(-?\d{1,2}(?:\.\d{1,10})?)\s*,\s*(-?\d{1,3}(?:\.\d{1,10})?)/);
+    const fromAt = text.match(/@(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/);
+    const pair = fromAt ?? m;
+    if (!pair) return null;
+    const lat = Number(pair[1]);
+    const lng = Number(pair[2]);
+    if (lat < -2.5 || lat > 5.5 || lng < 28 || lng > 36.5) return null;
+    return { gpsLat: lat, gpsLng: lng, gpsSource: 'pasted_link' };
+  }
+
   function setupWidget(el: HTMLElement) {
-    const input = el.querySelector('.js-search-mode input') as HTMLInputElement | null;
+    const input = el.querySelector('.js-search-mode input[type="text"]') as HTMLInputElement | null;
     const dropdown = el.querySelector('.js-results-dropdown') as HTMLUListElement | null;
     const payloadInput = el.querySelector('.js-final-payload') as HTMLInputElement | null;
     const selectedCard = el.querySelector('.js-selected-card') as HTMLElement | null;
@@ -176,44 +243,94 @@ if (defaultValue && defaultValue.startsWith('{')) {
     const changeBtn = el.querySelector('.js-change-btn') as HTMLButtonElement | null;
     const cardPrimary = el.querySelector('.js-card-primary') as HTMLElement | null;
     const cardSecondary = el.querySelector('.js-card-secondary') as HTMLElement | null;
+    const cardPin = el.querySelector('.js-card-pin') as HTMLElement | null;
     const districtSelect = el.querySelector('.js-district-select') as HTMLSelectElement | null;
     const errBox = el.querySelector('.js-err-box') as HTMLElement | null;
+    const announce = el.querySelector('.js-result-announce') as HTMLElement | null;
+    const manualToggle = el.querySelector('.js-manual-toggle') as HTMLButtonElement | null;
+    const manualMode = el.querySelector('.js-manual-mode') as HTMLElement | null;
+    const manualText = el.querySelector('.js-manual-text') as HTMLTextAreaElement | null;
+    const manualCommit = el.querySelector('.js-manual-commit') as HTMLButtonElement | null;
+    const pinGps = el.querySelector('.js-pin-gps') as HTMLButtonElement | null;
+    const pinLink = el.querySelector('.js-pin-link') as HTMLInputElement | null;
+    const pinStatus = el.querySelector('.js-pin-status') as HTMLElement | null;
     if (!input || !dropdown || !payloadInput || !selectedCard || !searchContainer) return;
 
     let current: PlaceOption[] = [];
     let activeIndex = -1;
+    let searchSeq = 0;
+    let debounceTimer: number | undefined;
+    let pin: PinState | null = null;
+
+    function payloadWithPin(base: Record<string, unknown>): string {
+      return JSON.stringify({ ...base, ...(pin ?? {}) });
+    }
 
     function commit(opt: PlaceOption) {
       const hasArea = Boolean(opt.area && opt.area !== opt.district);
-      payloadInput!.value = JSON.stringify({
+      payloadInput!.value = payloadWithPin({
         district: opt.district,
         ...(hasArea ? { area: opt.area } : {}),
+        ...(opt.areaSlug ? { areaSlug: opt.areaSlug } : {}),
         displayLabel: hasArea ? `${opt.area}, ${opt.district}` : opt.district,
       });
       if (cardPrimary) cardPrimary.textContent = opt.area ?? opt.district;
       if (cardSecondary) cardSecondary.textContent = `District: ${opt.district} · Uganda`;
+      finishCommit();
+    }
+
+    function commitManual() {
+      const text = manualText?.value.trim() ?? '';
+      if (text.length < 5) {
+        if (pinStatus) pinStatus.textContent = '';
+        manualText?.focus();
+        return;
+      }
+      const district = districtSelect?.value || undefined;
+      payloadInput!.value = payloadWithPin({
+        manual: true,
+        rawAddressText: text,
+        ...(district ? { district } : {}),
+      });
+      if (cardPrimary) cardPrimary.textContent = text.slice(0, 60);
+      if (cardSecondary) cardSecondary.textContent = district ? `District: ${district} · written directions` : 'Written directions — our team confirms by phone';
+      finishCommit();
+      // The learning loop: what the customer typed and could not find.
+      const missed = input!.value.trim();
+      if (missed.length >= 2 && publicApiBase) {
+        void fetch(`${publicApiBase}/locations/search-events`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ rawQuery: missed, resolvedVia: 'manual_entry' }),
+        }).catch(() => undefined);
+      }
+    }
+
+    function finishCommit() {
       dropdown!.classList.add('hidden');
       input!.setAttribute('aria-expanded', 'false');
       searchContainer!.classList.add('hidden');
       selectedCard!.classList.remove('hidden');
       errBox?.classList.add('hidden');
+      cardPin?.classList.toggle('hidden', !pin);
       payloadInput!.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     function renderResults(list: PlaceOption[]) {
       dropdown!.innerHTML = '';
       activeIndex = -1;
+      if (announce) announce.textContent = `${list.length} matching place${list.length === 1 ? '' : 's'}`;
       if (list.length === 0) {
         const li = document.createElement('li');
         li.className = 'px-4 py-3 text-sm text-gray-500';
-        li.textContent = 'No match — pick your district from the list below.';
+        li.textContent = 'No match — pick your district below, or write directions instead.';
         dropdown!.appendChild(li);
       } else {
         list.forEach((opt, i) => {
           const li = document.createElement('li');
           li.setAttribute('role', 'option');
           li.setAttribute('id', `${el.dataset.id}_opt_${i}`);
-          li.className = 'px-4 py-3 cursor-pointer hover:bg-amber-50 flex items-baseline justify-between gap-3';
+          li.className = 'px-4 py-3 cursor-pointer hover:bg-amber-50 flex items-baseline justify-between gap-3 min-h-[44px]';
           const nameSpan = document.createElement('span');
           nameSpan.className = 'font-bold text-brand-charcoal text-sm';
           nameSpan.textContent = opt.label;
@@ -222,8 +339,6 @@ if (defaultValue && defaultValue.startsWith('{')) {
           distSpan.textContent = opt.area ? `${opt.district} District` : 'District';
           li.appendChild(nameSpan);
           li.appendChild(distSpan);
-          // mousedown, not click: the input's blur handler hides the list before
-          // a click would land.
           li.addEventListener('mousedown', (e) => {
             e.preventDefault();
             commit(opt);
@@ -234,6 +349,55 @@ if (defaultValue && defaultValue.startsWith('{')) {
       dropdown!.classList.remove('hidden');
       input!.setAttribute('aria-expanded', 'true');
     }
+
+    /** Server search first (the full gazetteer), local index as offline fallback. */
+    async function runSearch(query: string) {
+      const seq = ++searchSeq;
+      const local = rankLocal(query);
+      if (!publicApiBase) {
+        current = local;
+        renderResults(current);
+        return;
+      }
+      try {
+        const res = await fetch(`${publicApiBase}/locations/search?q=${encodeURIComponent(query)}`, {
+          signal: AbortSignal.timeout(2500),
+        });
+        const json = await res.json().catch(() => null);
+        if (seq !== searchSeq) return; // stale response
+        const hits: PlaceOption[] = Array.isArray(json?.data?.hits)
+          ? json.data.hits
+              .filter((h: { kind: string }) => h.kind === 'area')
+              .map((h: { displayLabel: string; areaName: string; currentDistrict: string; areaSlug: string; matchType: string }) => ({
+                label: h.displayLabel,
+                district: h.currentDistrict,
+                area: h.areaName !== h.currentDistrict ? h.areaName : undefined,
+                areaSlug: h.areaSlug,
+                provenance: h.matchType,
+              }))
+          : [];
+        // Server hits lead; local fills gaps (dedupe by label+district).
+        const seen = new Set(hits.map((h) => `${h.label}|${h.district}`.toLowerCase()));
+        current = [...hits, ...local.filter((l) => !seen.has(`${l.label}|${l.district}`.toLowerCase()))].slice(0, 8);
+      } catch {
+        if (seq !== searchSeq) return;
+        current = local; // offline: the metro set that matters most still works
+      }
+      renderResults(current);
+    }
+
+    input.addEventListener('input', () => {
+      payloadInput.value = '';
+      const q = input.value.trim();
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      if (q.length < 2) {
+        dropdown.classList.add('hidden');
+        input.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      // 150ms debounce (brief F.4) — never one request per keystroke.
+      debounceTimer = window.setTimeout(() => void runSearch(q), 150);
+    });
 
     function highlight(delta: number) {
       const items = Array.from(dropdown!.querySelectorAll('[role="option"]')) as HTMLElement[];
@@ -247,19 +411,6 @@ if (defaultValue && defaultValue.startsWith('{')) {
         }
       });
     }
-
-    input.addEventListener('input', () => {
-      // A changed query invalidates any committed payload so a stale selection
-      // cannot ride along under fresher-looking text.
-      payloadInput.value = '';
-      current = rank(input.value);
-      if (input.value.trim().length < 2) {
-        dropdown.classList.add('hidden');
-        input.setAttribute('aria-expanded', 'false');
-        return;
-      }
-      renderResults(current);
-    });
 
     input.addEventListener('keydown', (e) => {
       if (dropdown.classList.contains('hidden')) return;
@@ -283,8 +434,90 @@ if (defaultValue && defaultValue.startsWith('{')) {
 
     districtSelect?.addEventListener('change', () => {
       const district = districtSelect.value;
+      if (district && !manualMode?.classList.contains('hidden')) return; // manual mode uses it as context
       if (district) commit({ label: district, district });
     });
+
+    manualToggle?.addEventListener('click', () => {
+      manualMode?.classList.toggle('hidden');
+      manualText?.focus();
+    });
+    manualCommit?.addEventListener('click', commitManual);
+
+    // ── Pin capture (PART G.1) ─────────────────────────────────────────────
+    pinGps?.addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        if (pinStatus) pinStatus.textContent = 'Location is not available on this device.';
+        return;
+      }
+      if (pinStatus) pinStatus.textContent = 'Getting your location…';
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          pin = {
+            gpsLat: Number(pos.coords.latitude.toFixed(6)),
+            gpsLng: Number(pos.coords.longitude.toFixed(6)),
+            gpsAccuracyM: Math.round(pos.coords.accuracy),
+            gpsSource: 'device',
+          };
+          if (pinStatus) {
+            pinStatus.textContent =
+              pos.coords.accuracy > 100
+                ? `Pin captured, but accuracy is about ${Math.round(pos.coords.accuracy)} m — keep it if the area looks right.`
+                : 'Pin captured ✓';
+          }
+          refreshPayloadPin();
+        },
+        () => {
+          if (pinStatus) pinStatus.textContent = 'Could not get your location — you can paste a maps link instead.';
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+      );
+    });
+
+    async function handlePinLink() {
+      const raw = pinLink?.value.trim() ?? '';
+      if (!raw) return;
+      let parsed = parsePinLocally(raw);
+      if (!parsed && publicApiBase && /goo\.gl|g\.co/.test(raw)) {
+        if (pinStatus) pinStatus.textContent = 'Reading the link…';
+        try {
+          const res = await fetch(`${publicApiBase}/locations/resolve-link`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ url: raw }),
+            signal: AbortSignal.timeout(6000),
+          });
+          const json = await res.json().catch(() => null);
+          if (json?.data?.pin) {
+            parsed = { gpsLat: json.data.pin.lat, gpsLng: json.data.pin.lng, gpsSource: 'pasted_link' };
+          }
+        } catch {
+          /* fall through to the honest failure message */
+        }
+      }
+      if (parsed) {
+        pin = parsed;
+        if (pinStatus) pinStatus.textContent = 'Pin captured from the link ✓';
+        refreshPayloadPin();
+      } else if (pinStatus) {
+        pinStatus.textContent = 'That link has no readable location — the order still works without a pin.';
+      }
+    }
+    pinLink?.addEventListener('change', () => void handlePinLink());
+    pinLink?.addEventListener('paste', () => window.setTimeout(() => void handlePinLink(), 50));
+
+    /** A pin captured after selection joins the already-committed payload. */
+    function refreshPayloadPin() {
+      cardPin?.classList.toggle('hidden', !pin);
+      if (!payloadInput!.value) return;
+      try {
+        const existing = JSON.parse(payloadInput!.value);
+        payloadInput!.value = JSON.stringify({ ...existing, ...(pin ?? {}) });
+        payloadInput!.dispatchEvent(new Event('change', { bubbles: true }));
+      } catch {
+        /* uncommitted payload — pin joins at commit time */
+      }
+    }
 
     changeBtn?.addEventListener('click', () => {
       selectedCard.classList.add('hidden');

@@ -69,10 +69,15 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
 
     {history && (
       <div class="space-y-6">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div class="bg-white border border-brand-borderGrey rounded-2xl p-5">
             <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Available</p>
             <p class="text-2xl font-black text-brand-charcoal mt-1">{history.balance.available.toLocaleString('en-UG')}</p>
+          </div>
+          <div class="bg-white border border-brand-borderGrey rounded-2xl p-5">
+            <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Pending</p>
+            <p class="text-2xl font-black text-brand-charcoal mt-1">{Number((history as any).pendingPoints ?? 0).toLocaleString('en-UG')}</p>
+            <p class="text-[10px] text-brand-mutedGrey mt-0.5">available on delivery</p>
           </div>
           <div class="bg-white border border-brand-borderGrey rounded-2xl p-5">
             <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Lifetime earned</p>
@@ -92,7 +97,7 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
           <div class="rounded-2xl border border-amber-200/70 bg-amber-50 px-5 py-4">
             <p class="text-sm font-bold text-amber-900">How earning works</p>
             <p class="text-xs text-amber-800 mt-1 leading-relaxed">
-              Every paid order earns <strong>{programme.earnRatePer1000Ugx} points per 1,000 UGX</strong> of the order total.
+              Every order earns <strong>{programme.earnRatePer1000Ugx} points per 1,000 UGX</strong> of the order total — points move from pending to available when the order is delivered.
               Points expire <strong>{programme.expiryDays} days</strong> after they are earned. Orders must be placed while
               signed in to earn — guest orders cannot be credited to an account.
             </p>

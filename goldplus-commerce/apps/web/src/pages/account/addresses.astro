@@ -35,16 +35,29 @@ if (Astro.request.method === 'POST') {
         // was chosen ("Najjera, Buwaate Road" reads exactly how a rider needs it).
         let district = '';
         let knownArea = '';
+        let areaSlug = '';
+        let rawAddressText = '';
+        let gps: { gpsLat?: number; gpsLng?: number; gpsAccuracyM?: number; gpsSource?: string } = {};
         const locationJson = String(form.get('locationJson') || '');
         if (locationJson.startsWith('{')) {
           try {
             const loc = JSON.parse(locationJson);
             district = String(loc.district || '').trim();
             knownArea = String(loc.area || '').trim();
+            areaSlug = String(loc.areaSlug || '').trim();
+            if (loc.manual && loc.rawAddressText) rawAddressText = String(loc.rawAddressText).trim();
+            if (typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number') {
+              gps = {
+                gpsLat: loc.gpsLat,
+                gpsLng: loc.gpsLng,
+                ...(typeof loc.gpsAccuracyM === 'number' ? { gpsAccuracyM: loc.gpsAccuracyM } : {}),
+                ...(loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link' ? { gpsSource: loc.gpsSource } : {}),
+              };
+            }
           } catch { /* handled below as a missing location */ }
         }
         const typedDetails = String(form.get('areaDetails') || '').trim();
-        const areaDetails = [knownArea, typedDetails].filter(Boolean).join(', ');
+        const areaDetails = [knownArea, typedDetails].filter(Boolean).join(', ') || rawAddressText;
         const res = await fetch(`${apiBase}/account/addresses`, {
           method: 'POST',
           headers: authHeaders,
@@ -53,9 +66,17 @@ if (Astro.request.method === 'POST') {
             label: String(form.get('label') || ''),
             recipientName: String(form.get('recipientName') || ''),
             phone: String(form.get('phone') || ''),
+            // A saved address must carry a real district (it feeds checkout
+            // verbatim) — the manual no-district path exists at CHECKOUT, not
+            // in the address book; the API refuses with a clear message here.
             district,
             areaDetails,
             makeDefault: String(form.get('makeDefault') || '') === 'true',
+            ...(areaSlug ? { areaSlug } : {}),
+            landmarkText: typedDetails || rawAddressText,
+            ...(rawAddressText && !district ? { rawAddressText } : {}),
+            ...(String(form.get('phoneSecondary') || '').trim() ? { phoneSecondary: String(form.get('phoneSecondary')).trim() } : {}),
+            ...gps,
           }),
         });
         const json: any = await res.json().catch(() => null);
@@ -163,13 +184,15 @@ try {
           <FormField id="label" name="label" label="Label (e.g. Home, Shop)" required />
           <FormField id="recipientName" name="recipientName" label="Recipient name" required autocomplete="name" />
           <FormField id="phone" name="phone" label="Phone" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel" />
+          <FormField id="phoneSecondary" name="phoneSecondary" label="Alternative phone (optional — a second number the rider can try)" type="tel" inputmode="tel" placeholder="07XX XXX XXX" />
           <UgandaLocationPicker
             name="locationJson"
             label="Location"
             helperText="Type the area, town or district — e.g. Najjera, Seeta, Mbarara."
             required={true}
+            withPin={true}
           />
-          <FormField id="areaDetails" name="areaDetails" label="Exact address — estate, road, building or landmark" required placeholder="e.g. Kigoowa Road, gate after Capital Shoppers" />
+          <FormField id="areaDetails" name="areaDetails" label="What is nearby? A shop, stage, church or school the rider will know" required placeholder="e.g. Kigoowa Road, gate after Capital Shoppers" />
           <label class="flex items-center gap-2.5 text-sm text-brand-mutedGrey cursor-pointer select-none">
             <input type="checkbox" name="makeDefault" value="true" class="w-4 h-4 rounded border-brand-borderGrey text-brand-primary focus:ring-brand-primary cursor-pointer" />
             <span>Use as my default delivery address</span>

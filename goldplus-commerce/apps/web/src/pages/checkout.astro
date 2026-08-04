@@ -153,15 +153,48 @@ const defaultAddress = savedAddresses.find((a) => a.isDefault) ?? savedAddresses
 
 // Live programme terms for the earn preview. Zero when inactive or unreachable —
 // the preview line simply does not render rather than promising points.
-let loyaltyProgramme: { active: boolean; earnRatePer1000Ugx: number } = { active: false, earnRatePer1000Ugx: 0 };
+let loyaltyProgramme: {
+  active: boolean;
+  earnRatePer1000Ugx: number;
+  redemption: { configured: boolean; pointValueUgx?: number; minPoints?: number; maxShareBps?: number };
+} = { active: false, earnRatePer1000Ugx: 0, redemption: { configured: false } };
 try {
   const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2500) });
   const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
   if (lpJson?.success && lpJson.data?.active) {
-    loyaltyProgramme = { active: true, earnRatePer1000Ugx: Number(lpJson.data.earnRatePer1000Ugx) || 0 };
+    loyaltyProgramme = {
+      active: true,
+      earnRatePer1000Ugx: Number(lpJson.data.earnRatePer1000Ugx) || 0,
+      redemption: lpJson.data.redemption ?? { configured: false },
+    };
   }
 } catch {
   /* preview only */
+}
+
+// Available points for the redemption control (signed-in only, tolerant).
+let loyaltyAvailablePoints = 0;
+if (authenticatedUserId && sessionToken && loyaltyProgramme.active && loyaltyProgramme.redemption.configured) {
+  try {
+    const lbRes = await fetch(`${apiBase}/account/loyalty`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+      signal: AbortSignal.timeout(2500),
+    });
+    const lbJson: any = lbRes.ok ? await lbRes.json().catch(() => null) : null;
+    if (lbJson?.success) loyaltyAvailablePoints = Number(lbJson.data?.balance?.available ?? 0);
+  } catch {
+    /* redemption control simply hides */
+  }
+}
+
+// Active pickup points (PART G field 1) — collection is a first-class method.
+let pickupPoints: Array<{ id: string; name: string; operator: string; physicalAddress: string | null }> = [];
+try {
+  const ppRes = await fetch(`${apiBase}/locations/pickup-points`, { signal: AbortSignal.timeout(2500) });
+  const ppJson: any = ppRes.ok ? await ppRes.json().catch(() => null) : null;
+  if (ppJson?.success && Array.isArray(ppJson.data)) pickupPoints = ppJson.data;
+} catch {
+  /* door delivery remains the default */
 }
 
 // Guest memory: details from their last completed checkout, held in an
@@ -275,6 +308,10 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            paymentMethod: paymentMethod === 'pesapal' ? 'pesapal' : 'offline',
            cartId: serverCart.ok ? serverCart.cart.id : null,
            cartVersion: serverCart.ok ? serverCart.cart.version : null,
+           // Loyalty redemption (PART G): points to convert to a discount.
+           // Server-validated and reserved — a bad value fails the checkout
+           // with a clear message rather than a silent trim.
+           ...( (() => { const rp = parseInt(String(formData.get('redeemPoints') || ''), 10); return Number.isInteger(rp) && rp > 0 ? { redeemPoints: rp } : {}; })() ),
         },
         intentToken: checkoutIntent.token,
         sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null,
@@ -442,9 +479,10 @@ if (Astro.request.method !== 'POST') {
   }
 }
 
-// Same deterministic rule the ledger applies (floor per 1,000 UGX × rate),
-// previewed on the subtotal. Points are credited when the order is PAID —
-// the copy says so; this is a preview, not a promise of unpaid points.
+// Same deterministic rule the ledger applies (floor per 1,000 UGX × rate).
+// The ledger's basis is the ORDER TOTAL (incl. delivery fee) — previewing on
+// the subtotal makes this an honest LOWER BOUND, and the copy says "at least".
+// Points VEST ON DELIVERY (loyalty completion, PART F) — the copy says so.
 const potentialPoints = loyaltyProgramme.active
   ? Math.floor(cart.subtotalUgx / 1000) * loyaltyProgramme.earnRatePer1000Ugx
   : 0;
@@ -531,7 +569,7 @@ const formatUgx = (n: number): string =>
         <div class="w-full lg:w-2/3">
           <FormFeedback status={status} message={message} />
           
-          <form method="POST" action="/checkout" novalidate class="space-y-6 mt-4">
+          <form id="checkout-form" method="POST" action="/checkout" novalidate class="space-y-6 mt-4">
             <!-- Slice 3B: idempotency key — a resubmitted/double-clicked form returns the same order -->
             {/*
               No hidden order key. A hidden field is caller-controlled, so it can
@@ -579,7 +617,23 @@ const formatUgx = (n: number): string =>
                      </fieldset>
                    )}
                    <div id="new-address-fields" class="space-y-4">
-                     <UgandaLocationPicker
+                     {pickupPoints.length > 0 && (
+              <div class="space-y-2" id="delivery-method-block">
+                <span class="block text-sm font-bold text-brand-charcoal">How should you get this order?</span>
+                <div class="flex gap-3">
+                  <label class="flex items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="door" checked class="js-method-radio" /> Deliver to me</label>
+                  <label class="flex items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="pickup" class="js-method-radio" /> I'll collect from a pickup point</label>
+                </div>
+                <select id="pickupPointSelect" name="pickupPointId" class="hidden w-full bg-white border border-brand-borderGrey px-3 py-2.5 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primary" aria-label="Choose a pickup point">
+                  <option value="">Choose a pickup point…</option>
+                  {pickupPoints.map((p) => (
+                    <option value={p.id} data-name={p.name} data-address={p.physicalAddress ?? ''}>{p.name} ({p.operator.replace(/_/g, ' ')})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <UgandaLocationPicker
+              withPin={true}
                        name="locationJson"
                        label="Delivery location"
                        helperText="Type the area, town or district you know — e.g. Najjera, Seeta, Mbarara."
@@ -698,10 +752,34 @@ const formatUgx = (n: number): string =>
                 </dd>
               </div>
             </dl>
+            {loyaltyProgramme.active && loyaltyProgramme.redemption.configured && loyaltyAvailablePoints >= (loyaltyProgramme.redemption.minPoints ?? 1) && (
+              <div class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 space-y-2">
+                <label for="redeemPoints" class="block text-xs font-black uppercase tracking-wider text-slate-600">
+                  Use your points — balance {loyaltyAvailablePoints.toLocaleString('en-UG')} (worth {formatUgx(loyaltyAvailablePoints * (loyaltyProgramme.redemption.pointValueUgx ?? 0))})
+                </label>
+                <div class="flex items-center gap-2">
+                  <input
+                    type="number"
+                    id="redeemPoints"
+                    name="redeemPoints"
+                    form="checkout-form"
+                    min={loyaltyProgramme.redemption.minPoints}
+                    max={loyaltyAvailablePoints}
+                    step="1"
+                    inputmode="numeric"
+                    placeholder={`min ${loyaltyProgramme.redemption.minPoints}`}
+                    class="w-32 px-3 py-2 bg-white border border-brand-borderGrey rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-primary"
+                    data-point-value={loyaltyProgramme.redemption.pointValueUgx}
+                  />
+                  <span class="text-xs font-semibold text-slate-500" id="redeem-value-preview">points → discount shown at confirmation</span>
+                </div>
+                <p class="text-[11px] text-slate-500">Points can cover up to {Math.floor((loyaltyProgramme.redemption.maxShareBps ?? 0) / 100)}% of the goods total. The exact discount is confirmed when you place the order.</p>
+              </div>
+            )}
             {potentialPoints > 0 && (
               authenticatedUserId ? (
                 <p class="mt-4 rounded-xl bg-amber-50 border border-amber-200/60 px-3.5 py-2.5 text-xs font-semibold text-amber-900">
-                  You'll earn <strong>{potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> when this order is paid.
+                  You'll earn at least <strong>{potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> when this order is delivered.
                 </p>
               ) : (
                 <p class="mt-4 rounded-xl bg-amber-50 border border-amber-200/60 px-3.5 py-2.5 text-xs font-semibold text-amber-900">
@@ -835,6 +913,88 @@ const formatUgx = (n: number): string =>
       } catch {
         renderEstimate(null);
       }
+    });
+
+    // ── offline draft persistence (brief F.5): a dropped connection must not
+    // eat a half-typed address. Saved locally, restored when fields are empty,
+    // cleared on successful submission (success page has no form).
+    const DRAFT_KEY = 'gp_checkout_draft_v1';
+    const draftFields = ['name', 'email', 'phone', 'deliveryAddress'] as const;
+    const formEl = document.getElementById('checkout-form') as HTMLFormElement | null;
+    function saveDraft() {
+      try {
+        const data: Record<string, string> = {};
+        for (const f of draftFields) {
+          const el = document.getElementById(f) as HTMLInputElement | null;
+          if (el?.value) data[f] = el.value;
+        }
+        const payloadEl = formEl?.querySelector('.js-final-payload') as HTMLInputElement | null;
+        if (payloadEl?.value) data.locationJson = payloadEl.value;
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+      } catch { /* storage full/blocked — drafts are a convenience */ }
+    }
+    function restoreDraft() {
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw) as Record<string, string>;
+        for (const f of draftFields) {
+          const el = document.getElementById(f) as HTMLInputElement | null;
+          if (el && !el.value && data[f]) el.value = data[f];
+        }
+      } catch { /* corrupt draft = ignore */ }
+    }
+    restoreDraft();
+    formEl?.addEventListener('input', () => saveDraft());
+    formEl?.addEventListener('submit', () => {
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    });
+
+    // ── live redemption value preview (PART G: value shown WITH the points) ──
+    const redeemInput = document.getElementById('redeemPoints') as HTMLInputElement | null;
+    const redeemPreview = document.getElementById('redeem-value-preview');
+    redeemInput?.addEventListener('input', () => {
+      const pv = Number(redeemInput.dataset.pointValue ?? 0);
+      const pts = parseInt(redeemInput.value, 10);
+      if (redeemPreview) {
+        redeemPreview.textContent =
+          Number.isInteger(pts) && pts > 0 && pv > 0 ? `= ${ugx(pts * pv)} off this order` : 'points → discount shown at confirmation';
+      }
+    });
+
+    // ── pickup point method toggle (PART G field 1) ──────────────────────────
+    const methodRadios2 = document.querySelectorAll<HTMLInputElement>('input.js-method-radio');
+    const pickupSelect = document.getElementById('pickupPointSelect') as HTMLSelectElement | null;
+    const pickerBlock = formEl?.querySelector('.js-uganda-location-picker') as HTMLElement | null;
+    const landmarkField = document.getElementById('deliveryAddress')?.closest('div');
+    function syncMethod() {
+      const pickup = document.querySelector<HTMLInputElement>('input.js-method-radio:checked')?.value === 'pickup';
+      pickupSelect?.classList.toggle('hidden', !pickup);
+      pickerBlock?.classList.toggle('hidden', pickup);
+      (landmarkField as HTMLElement | undefined)?.classList.toggle('hidden', pickup);
+      if (pickup) applyPickupSelection();
+    }
+    function applyPickupSelection() {
+      const opt = pickupSelect?.selectedOptions?.[0];
+      const payloadEl = formEl?.querySelector('.js-final-payload') as HTMLInputElement | null;
+      if (!payloadEl) return;
+      if (opt && opt.value) {
+        payloadEl.value = JSON.stringify({
+          manual: true,
+          rawAddressText: `Pickup point: ${opt.dataset.name}${opt.dataset.address ? ' — ' + opt.dataset.address : ''}`,
+        });
+        payloadEl.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+    methodRadios2.forEach((r) => r.addEventListener('change', syncMethod));
+    pickupSelect?.addEventListener('change', applyPickupSelection);
+
+    // ── add_shipping_info: the address step becomes visible in the funnel ────
+    let shippingTracked = false;
+    pickerPayload?.addEventListener('change', () => {
+      if (shippingTracked || !pickerPayload.value) return;
+      shippingTracked = true;
+      track('add_shipping_info', { ecommerce: { value: subtotal, currency: 'UGX', items } });
     });
 
     // ── add_payment_info — fires when user submits the checkout form ──────────

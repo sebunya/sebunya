@@ -71,6 +71,26 @@ routes.post('/search-events', async (c) => {
   return c.json({ success: true, data: { recorded: true } } satisfies ApiResponse<{ recorded: boolean }>);
 });
 
+routes.get('/pickup-points', async (c) => {
+  // Active pickup points only — upcountry delivery runs on bus parcel offices
+  // and agents (brief PART B reality 2). No PII: operator-published data only.
+  const all = await Registry.getInstance().managePickupPointsUseCase.list();
+  const data = all
+    .filter((p) => p.active)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      operator: p.operator,
+      areaSlug: p.areaSlug,
+      physicalAddress: p.physicalAddress,
+      landmarkText: p.landmarkText,
+      phone: p.phone,
+      openingHours: p.openingHours,
+      servesDistricts: p.servesDistricts,
+    }));
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
 routes.post('/resolve-link', async (c) => {
   const body = await c.req.json().catch(() => null);
   const raw = typeof body?.url === 'string' ? body.url.slice(0, 500) : '';

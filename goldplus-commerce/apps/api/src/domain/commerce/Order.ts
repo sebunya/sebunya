@@ -48,6 +48,12 @@ export interface OrderCustomerDetails {
 export interface OrderDeliveryLocation {
   district: string;
   region?: string;
+  /** Structured area link + optional customer pin (location module PART G). */
+  areaSlug?: string;
+  gpsLat?: number;
+  gpsLng?: number;
+  gpsAccuracyM?: number;
+  gpsSource?: 'device' | 'pasted_link';
   countyOrMunicipality?: string;
   subcountyDivisionTc?: string;
   parishWard?: string;

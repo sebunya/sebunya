@@ -118,6 +118,8 @@ export interface CheckoutRequestDto {
   paymentMethod?: 'pesapal' | 'offline' | null;
   cartId?: string | null;
   cartVersion?: number | null;
+  /** Loyalty redemption (PART G): points to convert to a discount, server-validated. */
+  redeemPoints?: number;
 }
 
 export interface PaymentStartRequestDto {

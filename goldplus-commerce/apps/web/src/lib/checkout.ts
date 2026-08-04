@@ -31,6 +31,12 @@ export interface StructuredDeliveryLocation {
   parishWard?: string;
   postcode?: string;
   displayLabel?: string;
+  /** Location module (PART G): structured area link + optional customer pin. */
+  areaSlug?: string;
+  gpsLat?: number;
+  gpsLng?: number;
+  gpsAccuracyM?: number;
+  gpsSource?: 'device' | 'pasted_link';
 }
 
 export function validateCheckoutPayload(payload: Partial<CheckoutPayload>): { valid: boolean; errors: string[] } {
@@ -71,7 +77,35 @@ export function prepareCheckoutPayload(formData: FormData, cartItems: CartItem[]
     try {
       const loc = JSON.parse(locationJson);
 
-      // Lean picker shape (2026 rework): { district, area?, displayLabel }.
+      // Manual PART H path (picker v2): { manual: true, rawAddressText,
+      // district? }. The sale never blocks on a data gap — free text proceeds
+      // with the fee honestly unconfirmed; a canonical district still rides
+      // along when the customer picked one.
+      if (loc.manual && loc.rawAddressText) {
+        const manualDistrict = loc.district ? String(loc.district).trim() : '';
+        deliveryArea = manualDistrict ? `${String(loc.rawAddressText).slice(0, 200)}, ${manualDistrict}` : String(loc.rawAddressText).slice(0, 255);
+        const rawDetails = String(formData.get('deliveryAddress') || '').trim();
+        deliveryAddress = rawDetails || deliveryArea;
+        deliveryLocation = manualDistrict ? { district: manualDistrict, displayLabel: deliveryArea.slice(0, 200) } : null;
+        return {
+          customerDetails: {
+            name: (formData.get('name') as string) || '',
+            email: (formData.get('email') as string) || undefined,
+            phone: (formData.get('phone') as string) || '',
+            deliveryArea,
+            deliveryAddress,
+            deliveryLocation,
+          },
+          buyerType: (formData.get('buyerType') as string) || 'retail',
+          items: cartItems.map(item => ({
+            productId: item.productId,
+            quantity: Number(item.quantity) || 1
+          }))
+        };
+      }
+
+      // Lean picker shape (2026 rework): { district, area?, displayLabel } +
+      // optional pin fields from PART G.1 capture.
       // The structured layer stops at the verified district + known area; the
       // fine detail is the customer's own free-text address line. Checked
       // FIRST so the legacy gazetteer parsing below never mangles it.
@@ -84,6 +118,15 @@ export function prepareCheckoutPayload(formData: FormData, cartItems: CartItem[]
         deliveryLocation = {
           district,
           displayLabel: loc.displayLabel ? String(loc.displayLabel) : deliveryArea,
+          ...(loc.areaSlug ? { areaSlug: String(loc.areaSlug) } : {}),
+          ...(typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number'
+            ? {
+                gpsLat: loc.gpsLat,
+                gpsLng: loc.gpsLng,
+                ...(typeof loc.gpsAccuracyM === 'number' ? { gpsAccuracyM: loc.gpsAccuracyM } : {}),
+                ...(loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link' ? { gpsSource: loc.gpsSource } : {}),
+              }
+            : {}),
         };
         return {
           customerDetails: {

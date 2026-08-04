@@ -19,8 +19,19 @@ routes.use('*', customerSessionMiddleware);
 // operator-approved activation; entries exist only from real orders/adjustments.
 routes.get('/loyalty', async (c) => {
   const userId = c.get('userId') as string;
-  const data = await Registry.getInstance().getLoyaltyHistoryUseCase.execute({ userId });
-  return c.json({ success: true, data });
+  const registry = Registry.getInstance();
+  const [data, pendingOrders, config] = await Promise.all([
+    registry.getLoyaltyHistoryUseCase.execute({ userId }),
+    registry.loyaltyCompletionRepo.pendingEarnOrders(userId),
+    registry.loyaltyRepo.getConfig(),
+  ]);
+  // PART F: pending vs available shown separately. Pending is a projection
+  // over paid-but-undelivered orders — the ledger records only vested facts.
+  const pendingPoints = pendingOrders.reduce(
+    (sum, o) => sum + Math.floor(o.totalUgx / 1000) * config.earnRatePer1000Ugx,
+    0,
+  );
+  return c.json({ success: true, data: { ...data, pendingPoints, pendingOrders: pendingOrders.length } });
 });
 
 // The account hub's single read: everything the landing page shows, one call.

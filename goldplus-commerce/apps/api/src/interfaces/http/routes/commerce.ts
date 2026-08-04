@@ -61,6 +61,11 @@ const checkoutBodySchema = z.object({
             return canonical;
           }),
         region: z.string().trim().max(100).optional(),
+        areaSlug: z.string().trim().max(160).optional(),
+        gpsLat: z.number().min(-2.5).max(5.5).optional(),
+        gpsLng: z.number().min(28).max(36.5).optional(),
+        gpsAccuracyM: z.number().min(0).max(100000).optional(),
+        gpsSource: z.enum(['device', 'pasted_link']).optional(),
         countyOrMunicipality: z.string().trim().max(150).optional(),
         subcountyDivisionTc: z.string().trim().max(150).optional(),
         parishWard: z.string().trim().max(150).optional(),
@@ -129,16 +134,31 @@ routes.get('/delivery-estimate', async (c) => {
 // Public programme terms so checkout can show a truthful earn preview. Terms
 // only — the same numbers the marketing page states; never balances or ledgers.
 routes.get('/loyalty-programme', async (c) => {
-  const [active, config] = await Promise.all([
+  const [active, config, programme] = await Promise.all([
     registry.loyaltyGate.isActive(),
     registry.loyaltyRepo.getConfig(),
+    registry.loyaltyCompletionRepo.getProgrammeConfig(),
   ]);
+  const redemptionConfigured =
+    programme.pointValueUgx !== null && programme.redemptionMinPoints !== null && programme.redemptionMaxShareBps !== null;
   return c.json({
     success: true,
     data: {
       active,
       earnRatePer1000Ugx: active ? config.earnRatePer1000Ugx : 0,
       expiryDays: active ? config.expiryDays : 0,
+      // PART G customer surface: value and limits shown WITH the balance —
+      // absent config is stated as not-yet-configured, never defaulted.
+      redemption: active && redemptionConfigured && !programme.killSwitch
+        ? {
+            configured: true as const,
+            pointValueUgx: programme.pointValueUgx,
+            minPoints: programme.redemptionMinPoints,
+            maxShareBps: programme.redemptionMaxShareBps,
+          }
+        : { configured: false as const },
+      // Vesting truth for customer copy: points vest on delivery.
+      vesting: 'on_delivery' as const,
     },
   });
 });
