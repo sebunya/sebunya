@@ -87,6 +87,10 @@ services:
       # in production; the read-only journey remains the health signal. Only a dedicated
       # synthetic-safe environment should set this true.
       - SYNTHETIC_MONITOR_WRITE_STAGES_ENABLED=${SYNTHETIC_MONITOR_WRITE_STAGES_ENABLED:-false}
+      # Loyalty programme master switch. Points carry monetary value, so activation
+      # is deliberately two-key: this deployment flag AND the audited admin config
+      # (enabled + earn rate + expiry). Either one off means no points are issued.
+      - LOYALTY_PROGRAMME_ENABLED=${LOYALTY_PROGRAMME_ENABLED:-false}
       - PORT=3000
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
