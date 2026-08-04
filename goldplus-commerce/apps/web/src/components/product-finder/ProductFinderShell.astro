@@ -128,7 +128,19 @@ const { apiBase, compatibleWith = null } = Astro.props;
       const card = document.createElement('article'); card.className = 'border rounded-lg p-6 mb-5';
       card.append(text('div', rec.category, 'text-sm text-[#659000] font-medium'), text('h3', rec.name, 'text-xl font-bold'), text('div', `UGX ${rec.price.toLocaleString()}`, 'text-lg my-2'));
       const evidence = text('ul', '', 'text-sm text-gray-600 my-3 list-disc list-inside');
-      for (const item of [...rec.reasons, rec.availabilityEvidence, rec.compatibilityEvidence, rec.pricingEvidence]) evidence.append(text('li', item));
+      // Machine evidence codes → honest shopper copy. NOT_REQUESTED is omitted
+      // (compatibility was not part of this session — nothing to claim).
+      const humanEvidence = (value: string): string | null => {
+        if (value === 'NOT_REQUESTED') return null;
+        if (value === 'CANONICAL_CATALOGUE_PRICE') return 'Current catalogue price — revalidated at checkout';
+        if (value === 'APPROVED_NON_PERSISTENT_PRICING_SIMULATION') return 'Includes an approved promotion — final price confirmed at checkout';
+        if (value.startsWith('DECLARED_')) return `Compatibility on record: ${value.slice('DECLARED_'.length).toLowerCase().replace(/_/g, ' ')}`;
+        return value;
+      };
+      for (const item of [...rec.reasons, rec.availabilityEvidence, rec.compatibilityEvidence, rec.pricingEvidence]) {
+        const line = humanEvidence(item);
+        if (line) evidence.append(text('li', line));
+      }
       card.append(evidence);
       const view = text('a', rec.primaryCta, 'inline-block px-5 py-2 bg-gray-900 text-white rounded mr-3') as HTMLAnchorElement; view.href = rec.productUrl; view.addEventListener('click', () => void recordIntent('recommendation_clicked', rec.productId));
       const interest = text('button', rec.secondaryCta, 'px-5 py-2 border rounded') as HTMLButtonElement; interest.addEventListener('click', () => void recordIntent('add_to_cart_intent', rec.productId));
