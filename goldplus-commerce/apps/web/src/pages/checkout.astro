@@ -238,6 +238,9 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
   // A chosen saved address IS the delivery location; the picker is only
   // required when delivering somewhere new.
   if (!selectedAddress && !values.locationJson) errors.locationJson = 'Please select a delivery location.';
+  // The landmark line is what the rider actually navigates by — required for a
+  // new address; a saved address already carries its area details.
+  if (!selectedAddress && !values.deliveryAddress) errors.deliveryAddress = 'Add the estate, road, building or landmark our rider should look for.';
 
   if (Object.keys(errors).length === 0) {
      // Prepare mapped payload compatible with Commerce API
@@ -554,7 +557,7 @@ const formatUgx = (n: number): string =>
                      <UgandaLocationPicker
                        name="locationJson"
                        label="Delivery location"
-                       helperText="Search the parish, ward, town, or district where the order should be delivered."
+                       helperText="Type the area, town or district you know — e.g. Najjera, Seeta, Mbarara."
                        required={savedAddresses.length === 0}
                        defaultValue={values.locationJson}
                        errorMessage={errors.locationJson}
@@ -562,9 +565,11 @@ const formatUgx = (n: number): string =>
                      <FormField
                        id="deliveryAddress"
                        name="deliveryAddress"
-                       label="Additional address details"
-                       placeholder="House, road, estate, building, shop, or nearby landmark"
+                       label="Exact address — estate, road, building or landmark"
+                       placeholder="e.g. Kigoowa Road, gate after Capital Shoppers"
+                       required
                        defaultValue={values.deliveryAddress}
+                       errorMessage={errors.deliveryAddress}
                      />
                      {authenticatedUserId && (
                        <label class="flex items-center gap-2.5 text-sm text-slate-600 cursor-pointer select-none">

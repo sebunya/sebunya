@@ -1,5 +1,5 @@
 import { IAddressRepository } from '../../ports/IAddressRepository';
-import { AddressDto } from '@goldplus/shared';
+import { AddressDto, normalizeUgandaDistrict } from '@goldplus/shared';
 
 export class ListMyAddressesUseCase {
   constructor(private readonly addresses: IAddressRepository) {}
@@ -32,12 +32,18 @@ export class AddAddressUseCase {
       if (!value) return { ok: false, code: 'BAD_INPUT', message: `Field "${key}" is required.` };
       if (value.length > 200) return { ok: false, code: 'BAD_INPUT', message: `Field "${key}" is too long.` };
     }
+    // A saved address feeds checkout's deliveryLocation verbatim, so a junk
+    // district here becomes a mis-zoned order later. Canonicalise or refuse.
+    const district = normalizeUgandaDistrict(input.district);
+    if (!district) {
+      return { ok: false, code: 'BAD_INPUT', message: `"${input.district.trim()}" is not a Uganda district. Pick the district from the list.` };
+    }
     const address = await this.addresses.createForUser({
       userId: input.userId,
       label: input.label.trim(),
       recipientName: input.recipientName.trim(),
       phone: input.phone.trim(),
-      district: input.district.trim(),
+      district,
       areaDetails: input.areaDetails.trim(),
       makeDefault: input.makeDefault,
     });

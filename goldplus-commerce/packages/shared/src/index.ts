@@ -29,3 +29,4 @@ export * from './types/checkout';
 export * from './checkout-intent';
 export * from './cart-credential';
 export * from './analytics';
+export * from './locations/uganda';

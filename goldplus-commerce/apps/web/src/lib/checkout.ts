@@ -71,6 +71,38 @@ export function prepareCheckoutPayload(formData: FormData, cartItems: CartItem[]
     try {
       const loc = JSON.parse(locationJson);
 
+      // Lean picker shape (2026 rework): { district, area?, displayLabel }.
+      // The structured layer stops at the verified district + known area; the
+      // fine detail is the customer's own free-text address line. Checked
+      // FIRST so the legacy gazetteer parsing below never mangles it.
+      if (loc.district && !loc.parishWard && !loc.parish) {
+        const district = String(loc.district).trim();
+        const area = loc.area ? String(loc.area).trim() : '';
+        deliveryArea = area ? `${area}, ${district}` : district;
+        const rawDetails = String(formData.get('deliveryAddress') || '').trim();
+        deliveryAddress = rawDetails || deliveryArea;
+        deliveryLocation = {
+          district,
+          displayLabel: loc.displayLabel ? String(loc.displayLabel) : deliveryArea,
+        };
+        return {
+          customerDetails: {
+            name: (formData.get('name') as string) || '',
+            email: (formData.get('email') as string) || undefined,
+            phone: (formData.get('phone') as string) || '',
+            deliveryArea,
+            deliveryAddress,
+            deliveryLocation,
+          },
+          buyerType: (formData.get('buyerType') as string) || 'retail',
+          items: cartItems.map(item => ({
+            productId: item.productId,
+            quantity: Number(item.quantity) || 1
+          })),
+          clientOrderKey: String(formData.get('clientOrderKey') || '').trim() || undefined
+        };
+      }
+
       // Composed from the parts that are actually PRESENT.
       //
       // Both strings were built by interpolating optional fields directly, so a

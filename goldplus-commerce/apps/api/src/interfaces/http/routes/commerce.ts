@@ -23,7 +23,7 @@ import {
   applyOptionalCustomerSession,
   resolveCheckoutIntent,
 } from '../middleware/checkoutIntent';
-import { checkoutOperationIdentity, intentPrincipalKey } from '@goldplus/shared';
+import { checkoutOperationIdentity, intentPrincipalKey, normalizeUgandaDistrict } from '@goldplus/shared';
 import type { PaymentStartResponseDto } from '@goldplus/shared';
 import { logger } from '../../../infrastructure/logging/logger';
 import { toCheckoutResponseDto } from '../../../application/mappers/toCheckoutResponseDto';
@@ -40,7 +40,26 @@ const checkoutBodySchema = z.object({
     deliveryAddress: z.string().trim().min(1).max(255),
     deliveryLocation: z
       .object({
-        district: z.string().trim().min(1).max(100),
+        // Canonicalised against the official district list. The old location
+        // dataset shipped wrong districts (Kireka/Nansana under Mukono) and
+        // that wrongness became order rows; the boundary now refuses what the
+        // vocabulary cannot verify, and stores the canonical spelling.
+        district: z
+          .string()
+          .trim()
+          .min(1)
+          .max(100)
+          .transform((value, ctx) => {
+            const canonical = normalizeUgandaDistrict(value);
+            if (!canonical) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `"${value}" is not a Uganda district. Pick the district from the list.`,
+              });
+              return z.NEVER;
+            }
+            return canonical;
+          }),
         region: z.string().trim().max(100).optional(),
         countyOrMunicipality: z.string().trim().max(150).optional(),
         subcountyDivisionTc: z.string().trim().max(150).optional(),

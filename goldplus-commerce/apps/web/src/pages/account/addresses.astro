@@ -5,6 +5,7 @@ import EmptyState from '../../components/EmptyState.astro';
 import Notice from '../../components/Notice.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
+import UgandaLocationPicker from '../../components/UgandaLocationPicker.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../lib/requestOrigin';
@@ -29,6 +30,21 @@ if (Astro.request.method === 'POST') {
       const form = await Astro.request.formData();
       const action = String(form.get('action') || '');
       if (action === 'add') {
+        // The picker guarantees a canonical district; the customer's typed
+        // detail rides in areaDetails, prefixed with the known area when one
+        // was chosen ("Najjera, Buwaate Road" reads exactly how a rider needs it).
+        let district = '';
+        let knownArea = '';
+        const locationJson = String(form.get('locationJson') || '');
+        if (locationJson.startsWith('{')) {
+          try {
+            const loc = JSON.parse(locationJson);
+            district = String(loc.district || '').trim();
+            knownArea = String(loc.area || '').trim();
+          } catch { /* handled below as a missing location */ }
+        }
+        const typedDetails = String(form.get('areaDetails') || '').trim();
+        const areaDetails = [knownArea, typedDetails].filter(Boolean).join(', ');
         const res = await fetch(`${apiBase}/account/addresses`, {
           method: 'POST',
           headers: authHeaders,
@@ -37,8 +53,8 @@ if (Astro.request.method === 'POST') {
             label: String(form.get('label') || ''),
             recipientName: String(form.get('recipientName') || ''),
             phone: String(form.get('phone') || ''),
-            district: String(form.get('district') || ''),
-            areaDetails: String(form.get('areaDetails') || ''),
+            district,
+            areaDetails,
             makeDefault: String(form.get('makeDefault') || '') === 'true',
           }),
         });
@@ -147,8 +163,13 @@ try {
           <FormField id="label" name="label" label="Label (e.g. Home, Shop)" required />
           <FormField id="recipientName" name="recipientName" label="Recipient name" required autocomplete="name" />
           <FormField id="phone" name="phone" label="Phone" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel" />
-          <FormField id="district" name="district" label="District" required placeholder="e.g. Kampala" />
-          <FormField id="areaDetails" name="areaDetails" label="Area details" required placeholder="Parish/ward, road, building or landmark" />
+          <UgandaLocationPicker
+            name="locationJson"
+            label="Location"
+            helperText="Type the area, town or district — e.g. Najjera, Seeta, Mbarara."
+            required={true}
+          />
+          <FormField id="areaDetails" name="areaDetails" label="Exact address — estate, road, building or landmark" required placeholder="e.g. Kigoowa Road, gate after Capital Shoppers" />
           <label class="flex items-center gap-2.5 text-sm text-brand-mutedGrey cursor-pointer select-none">
             <input type="checkbox" name="makeDefault" value="true" class="w-4 h-4 rounded border-brand-borderGrey text-brand-primary focus:ring-brand-primary cursor-pointer" />
             <span>Use as my default delivery address</span>
