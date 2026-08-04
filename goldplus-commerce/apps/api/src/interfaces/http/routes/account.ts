@@ -5,6 +5,7 @@ import { ListMyOrdersUseCase, GetMyOrderUseCase } from '../../../application/use
 import {
   ListMyAddressesUseCase,
   AddAddressUseCase,
+  UpdateAddressUseCase,
   SetDefaultAddressUseCase,
   DeleteAddressUseCase,
 } from '../../../application/use-cases/addresses/AddressUseCases';
@@ -133,7 +134,8 @@ routes.post('/addresses', async (c) => {
     const res: ApiResponse<never> = { success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } };
     return c.json(res, 400);
   }
-  const uc = new AddAddressUseCase(Registry.getInstance().addressRepo);
+  const registry = Registry.getInstance();
+  const uc = new AddAddressUseCase(registry.addressRepo, registry.addressAuditRepo);
   const result = await uc.execute({
     userId,
     label: String(body.label ?? ''),
@@ -142,18 +144,66 @@ routes.post('/addresses', async (c) => {
     district: String(body.district ?? ''),
     areaDetails: String(body.areaDetails ?? ''),
     makeDefault: Boolean(body.makeDefault),
+    // Location-module structured fields (all optional; brief PART G)
+    areaSlug: body.areaSlug ? String(body.areaSlug) : undefined,
+    landmarkText: body.landmarkText !== undefined ? String(body.landmarkText ?? '') : undefined,
+    additionalDirections: body.additionalDirections ? String(body.additionalDirections) : undefined,
+    phoneSecondary: body.phoneSecondary ? String(body.phoneSecondary) : undefined,
+    gpsLat: typeof body.gpsLat === 'number' ? body.gpsLat : undefined,
+    gpsLng: typeof body.gpsLng === 'number' ? body.gpsLng : undefined,
+    gpsAccuracyM: typeof body.gpsAccuracyM === 'number' ? body.gpsAccuracyM : undefined,
+    gpsSource: body.gpsSource === 'device' || body.gpsSource === 'pasted_link' ? body.gpsSource : undefined,
+    rawAddressText: body.rawAddressText ? String(body.rawAddressText) : undefined,
+    deliveryMethod: body.deliveryMethod === 'pickup_point' ? 'pickup_point' : undefined,
+    pickupPointId: body.pickupPointId ? String(body.pickupPointId) : undefined,
+    snapshotAreaLabel: body.snapshotAreaLabel ? String(body.snapshotAreaLabel) : undefined,
+    snapshotDistrict: body.snapshotDistrict ? String(body.snapshotDistrict) : undefined,
+    snapshotPostcode: body.snapshotPostcode ? String(body.snapshotPostcode) : undefined,
+    snapshotDataVersion: typeof body.snapshotDataVersion === 'number' ? body.snapshotDataVersion : undefined,
   });
   if (!result.ok) {
     const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
     return c.json(res, 400);
   }
-  const res: ApiResponse<AddressDto> = { success: true, data: result.address };
+  const res: ApiResponse<AddressDto> = { success: true, data: result.address, meta: result.phoneWarning ? { phoneWarning: result.phoneWarning } : undefined };
   return c.json(res, 201);
+});
+
+// Location module stage 4 (authorised scope): post-placement address edits are
+// exactly what generates disputes — full before/after audit in the use case.
+routes.put('/addresses/:id', async (c) => {
+  const userId = c.get('userId') as string;
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } };
+    return c.json(res, 400);
+  }
+  const registry = Registry.getInstance();
+  const uc = new UpdateAddressUseCase(registry.addressRepo, registry.addressAuditRepo);
+  const patch: Record<string, unknown> = {};
+  for (const k of ['label','recipientName','phone','district','areaDetails','areaSlug','landmarkText','additionalDirections','phoneSecondary','rawAddressText','pickupPointId','snapshotAreaLabel','snapshotDistrict','snapshotPostcode'] as const) {
+    if (body[k] !== undefined) patch[k] = body[k] === null ? null : String(body[k]);
+  }
+  for (const k of ['gpsLat','gpsLng','gpsAccuracyM','snapshotDataVersion'] as const) {
+    if (typeof body[k] === 'number') patch[k] = body[k];
+  }
+  if (body.gpsSource === 'device' || body.gpsSource === 'pasted_link') patch.gpsSource = body.gpsSource;
+  if (body.deliveryMethod === 'door' || body.deliveryMethod === 'pickup_point') patch.deliveryMethod = body.deliveryMethod;
+  const result = await uc.execute(userId, c.req.param('id'), patch);
+  if (!result.ok) {
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, result.code === 'NOT_FOUND' ? 404 : 400);
+  }
+  const res: ApiResponse<AddressDto> = { success: true, data: result.address, meta: result.phoneWarning ? { phoneWarning: result.phoneWarning } : undefined };
+  return c.json(res);
 });
 
 routes.post('/addresses/:id/default', async (c) => {
   const userId = c.get('userId') as string;
-  const uc = new SetDefaultAddressUseCase(Registry.getInstance().addressRepo);
+  const registry = Registry.getInstance();
+  const uc = new SetDefaultAddressUseCase(registry.addressRepo, registry.addressAuditRepo);
   const address = await uc.execute(userId, c.req.param('id'));
   if (!address) {
     const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'Address not found.' } };
@@ -165,7 +215,8 @@ routes.post('/addresses/:id/default', async (c) => {
 
 routes.delete('/addresses/:id', async (c) => {
   const userId = c.get('userId') as string;
-  const uc = new DeleteAddressUseCase(Registry.getInstance().addressRepo);
+  const registry = Registry.getInstance();
+  const uc = new DeleteAddressUseCase(registry.addressRepo, registry.addressAuditRepo);
   const removed = await uc.execute(userId, c.req.param('id'));
   if (!removed) {
     const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'Address not found.' } };

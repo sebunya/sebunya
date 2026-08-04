@@ -66,22 +66,24 @@ export class LocationSearchService {
       ]);
 
     // Union in F.1 layer order; first (best) provenance per area wins. A group
-    // hit REPLACES its member fragments: "nsambya" is one entry, not four.
-    const byArea = new Map<string, AreaSearchHit>();
-    const groupedAreas = new Set<string>();
+    // hit REPLACES its member fragments: "nsambya" is one entry, not four —
+    // every member slug of a matched group is shadowed from the bare layers.
+    const shadowed = new Set<string>();
     for (const g of groupExact) {
-      if (g.groupId) groupedAreas.add(g.areaSlug);
+      const members = (g as AreaSearchHit & { memberSlugs?: string[] }).memberSlugs ?? [g.areaSlug];
+      for (const m of members) shadowed.add(m);
     }
+    const byArea = new Map<string, AreaSearchHit>();
     const take = (hits: AreaSearchHit[]) => {
       for (const h of hits) {
         const key = h.groupId ? `group:${h.groupId}` : h.areaSlug;
-        if (h.groupId === undefined && this.isGroupMemberShadowed(h, byArea)) continue;
+        if (!h.groupId && shadowed.has(h.areaSlug)) continue;
         if (!byArea.has(key)) byArea.set(key, h);
       }
     };
+    take(groupExact);
     take(aliasExact);
     take(areaExact);
-    take(groupExact);
     take(prefix);
     take(trigram);
     take(landmark);
@@ -115,15 +117,4 @@ export class LocationSearchService {
     return { hits, zeroResult: hits.length === 0 };
   }
 
-  /** A bare area hit is shadowed when a group covering it already matched. */
-  private isGroupMemberShadowed(h: AreaSearchHit, byArea: Map<string, AreaSearchHit>): boolean {
-    for (const existing of byArea.values()) {
-      if (existing.groupId && existing.groupName && h.areaSlug !== existing.areaSlug) {
-        // group hits enumerate member slugs via groupMemberSlugs when provided
-        const members = (existing as AreaSearchHit & { memberSlugs?: string[] }).memberSlugs;
-        if (members?.includes(h.areaSlug)) return true;
-      }
-    }
-    return false;
-  }
 }

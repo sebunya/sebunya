@@ -172,6 +172,8 @@ export class DrizzleSearchMissRecorder implements ISearchMissRecorder {
     customerId?: string | null;
     resultCount: number;
     deviceHint?: string | null;
+    resolvedAreaSlug?: string | null;
+    resolvedVia?: string | null;
   }): Promise<void> {
     await db.insert(ugSearchMiss).values({
       rawQuery: input.rawQuery.slice(0, 200),
@@ -180,6 +182,33 @@ export class DrizzleSearchMissRecorder implements ISearchMissRecorder {
       customerId: input.customerId ?? null,
       resultCount: input.resultCount,
       deviceHint: input.deviceHint?.slice(0, 120) ?? null,
+      resolvedAreaSlug: input.resolvedAreaSlug ?? null,
+      resolvedVia: input.resolvedVia ?? null,
     });
+  }
+}
+
+export class DrizzleCustomerLocationContextReader {
+  /**
+   * Personalised ranking context (F.3 ranks 1–2): the caller's own saved-address
+   * areas and areas they have ordered to. Own-user only — customerId comes from
+   * a verified token, never a query param.
+   */
+  async forCustomer(customerId: string): Promise<{
+    savedAreaSlugs: ReadonlySet<string>;
+    orderedAreaSlugs: ReadonlySet<string>;
+  }> {
+    const saved = (await db.execute(sql`
+      select area_slug from addresses
+      where user_id = ${customerId} and area_slug is not null and deleted_at is null`)) as unknown as Array<{ area_slug: string }>;
+    const ordered = (await db.execute(sql`
+      select distinct ad.area_slug
+      from orders o
+      join addresses ad on ad.user_id = o.user_id and ad.area_slug is not null
+      where o.user_id = ${customerId} and o.status not in ('cancelled','failed')`)) as unknown as Array<{ area_slug: string }>;
+    return {
+      savedAreaSlugs: new Set(saved.map((r) => r.area_slug)),
+      orderedAreaSlugs: new Set(ordered.map((r) => r.area_slug)),
+    };
   }
 }

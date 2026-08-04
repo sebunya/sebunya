@@ -54,6 +54,8 @@ import measurementPaymentsRoutes from './routes/admin/measurement-payments';
 import measurementControlTowerRoutes from './routes/admin/measurement-control-tower';
 import { releaseReadinessAdminRouter } from './routes/admin/release-readiness';
 import { productFinderRoutes } from './routes/product-finder';
+import locationRoutes from './routes/locations';
+import adminLocationRoutes from './routes/admin/locations';
 import { maintenanceMode } from './middleware/maintenance';
 import { deploymentService } from '../../infrastructure/deployment/DeploymentService';
 import { controlledActivationDryRunRouter } from '../../presentation/routes/controlled-activation-dry-run.js';
@@ -236,6 +238,8 @@ app.route('/admin/controlled-activation/live-canaries', controlledLiveCanaryRout
 // Registered after /live-canaries so the more specific mount keeps priority.
 app.route('/admin/controlled-activation', controlledActivationRoutes);
 app.route('/product-finder', productFinderRoutes);
+app.route('/locations', locationRoutes);
+app.route('/admin/locations', adminLocationRoutes);
 app.route('/account/consent-operating', consentOperatingRoutes);
 app.route('/admin/consent-operating', adminConsentOperatingRoutes);
 app.route('/api/admin/consent/operations', adminConsentOperationsRoutes);
@@ -350,6 +354,8 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/measurement',
   '/metrics',
   '/product-finder',
+  '/locations',
+  '/admin/locations',
   '/products',
   '/recommendations',
   '/telemetry',

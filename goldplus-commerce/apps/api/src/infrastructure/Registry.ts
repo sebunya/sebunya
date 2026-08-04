@@ -142,6 +142,13 @@ import {
   GetDeliveryIntelligenceUseCase,
   SaveDeliveryPricingPolicyUseCase,
 } from '../application/use-cases/commerce/DeliveryIntelligenceUseCases';
+import { LocationSearchService } from '../application/services/locations/LocationSearchService';
+import { SearchLocationsUseCase, RecordLocationSearchEventUseCase, ResolveMapLinkUseCase } from '../application/use-cases/locations/LocationUseCases';
+import { DrizzleAddressAuditRepository } from './db/repositories/DrizzleAddressAuditRepository';
+import { DrizzleLocationSearchRepository, DrizzleLocationOrderDensityReader, DrizzleSearchMissRecorder, DrizzleCustomerLocationContextReader } from './db/repositories/DrizzleLocationSearchRepository';
+import { HttpShortLinkResolver } from './locations/HttpShortLinkResolver';
+import { DrizzleLocationAdminRepository } from './db/repositories/DrizzleLocationAdminRepository';
+import { ListSearchMissesUseCase, PromoteSearchMissToAliasUseCase, ListAddressReviewQueueUseCase, ResolveAddressUseCase, ManageLandmarksUseCase, ManagePickupPointsUseCase, GetZonePoliciesUseCase, SaveZonePolicyUseCase, ListDataExceptionsUseCase } from '../application/use-cases/locations/LocationAdminUseCases';
 import {
   ListDeliveryZonesUseCase,
   UpsertDeliveryZoneUseCase,
@@ -515,6 +522,7 @@ export class Registry {
   public readonly paymentRepo = new DrizzlePaymentRepository();
   public readonly userRepo = new DrizzleUserRepository();
   public readonly addressRepo = new DrizzleAddressRepository();
+  public readonly addressAuditRepo = new DrizzleAddressAuditRepository();
   public readonly roleRepo = new DrizzleRoleRepository();
   public readonly fakeReportRepo = new DrizzleFakeReportRepository();
   public readonly adminRoleReadRepo = new DrizzleAdminRoleReadRepository();
@@ -944,6 +952,26 @@ export class Registry {
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);
+
+  // ── Location module (brief PART F) ──────────────────────────────────────
+  public readonly locationSearchRepo = new DrizzleLocationSearchRepository();
+  public readonly locationOrderDensityReader = new DrizzleLocationOrderDensityReader();
+  public readonly searchMissRecorder = new DrizzleSearchMissRecorder();
+  public readonly customerLocationContextReader = new DrizzleCustomerLocationContextReader();
+  public readonly locationSearchService = new LocationSearchService(this.locationSearchRepo, this.locationOrderDensityReader);
+  public readonly searchLocationsUseCase = new SearchLocationsUseCase(this.locationSearchService, this.searchMissRecorder);
+  public readonly recordLocationSearchEventUseCase = new RecordLocationSearchEventUseCase(this.searchMissRecorder);
+  public readonly resolveMapLinkUseCase = new ResolveMapLinkUseCase(new HttpShortLinkResolver());
+  public readonly locationAdminRepo = new DrizzleLocationAdminRepository();
+  public readonly listSearchMissesUseCase = new ListSearchMissesUseCase(this.locationAdminRepo);
+  public readonly promoteSearchMissToAliasUseCase = new PromoteSearchMissToAliasUseCase(this.locationAdminRepo);
+  public readonly listAddressReviewQueueUseCase = new ListAddressReviewQueueUseCase(this.locationAdminRepo, this.addressAuditRepo);
+  public readonly resolveAddressUseCase = new ResolveAddressUseCase(this.locationAdminRepo, this.addressAuditRepo);
+  public readonly manageLandmarksUseCase = new ManageLandmarksUseCase(this.locationAdminRepo);
+  public readonly managePickupPointsUseCase = new ManagePickupPointsUseCase(this.locationAdminRepo);
+  public readonly getZonePoliciesUseCase = new GetZonePoliciesUseCase(this.locationAdminRepo);
+  public readonly saveZonePolicyUseCase = new SaveZonePolicyUseCase(this.locationAdminRepo);
+  public readonly listDataExceptionsUseCase = new ListDataExceptionsUseCase(this.locationAdminRepo);
   // Delivery intelligence: geography prior + order-book posterior; zones stay
   // the only source of CONFIRMED fees.
   public readonly deliveryPricingPolicyRepo = new DrizzleDeliveryPricingPolicyRepository();

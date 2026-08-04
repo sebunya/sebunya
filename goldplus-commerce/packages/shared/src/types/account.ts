@@ -52,4 +52,14 @@ export interface AddressDto {
   district: string;
   areaDetails: string;
   isDefault: boolean;
+  // Location module (brief E.2) — optional so pre-module rows stay valid.
+  areaSlug?: string | null;
+  landmarkText?: string | null;
+  additionalDirections?: string | null;
+  phoneSecondary?: string | null;
+  deliveryMethod?: 'door' | 'pickup_point';
+  pickupPointId?: string | null;
+  resolutionStatus?: 'resolved' | 'needs_ops_review' | 'ops_confirmed' | 'undeliverable';
+  hasPin?: boolean;
+  snapshotAreaLabel?: string | null;
 }

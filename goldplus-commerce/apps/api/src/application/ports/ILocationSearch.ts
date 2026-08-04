@@ -84,5 +84,7 @@ export interface ISearchMissRecorder {
     customerId?: string | null;
     resultCount: number;
     deviceHint?: string | null;
+    resolvedAreaSlug?: string | null;
+    resolvedVia?: string | null;
   }): Promise<void>;
 }
