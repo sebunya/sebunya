@@ -138,6 +138,15 @@ services:
       # ADMIN_ORDER_EMAIL intent routes to zero targets and is marked unroutable —
       # the alert silently never sends however many delivery flags are on.
       - ADMIN_ORDER_NOTIFICATION_EMAILS=${ADMIN_ORDER_NOTIFICATION_EMAILS}
+      # Outbound governance gates (domain/notifications/OutboundGovernancePolicy).
+      # Each defaults to false — silence must never read as permission — and every
+      # one must be true before a real message reaches a provider. They were
+      # enforced by the policy but never passed to the container, so live delivery
+      # was unreachable no matter what the other flags said.
+      - PROVIDER_DELIVERY_ENABLED=${PROVIDER_DELIVERY_ENABLED:-false}
+      - NOTIFICATION_DELIVERY_ENABLED=${NOTIFICATION_DELIVERY_ENABLED:-false}
+      - CUSTOMER_COMMUNICATIONS_ENABLED=${CUSTOMER_COMMUNICATIONS_ENABLED:-false}
+      - NOTIFICATIONS_OPERATOR_APPROVED=${NOTIFICATIONS_OPERATOR_APPROVED:-false}
       - ZEPTOMAIL_BASE_URL=${ZEPTOMAIL_BASE_URL}
       - ZEPTOMAIL_API_TOKEN=${ZEPTOMAIL_API_TOKEN}
       - ZEPTOMAIL_FROM_ADDRESS=${ZEPTOMAIL_FROM_ADDRESS}
