@@ -785,7 +785,6 @@ const formatUgx = (n: number): string =>
     const estimateEl = document.getElementById('delivery-estimate-value');
     const totalEl = document.getElementById('grand-total-value');
     const totalLabelEl = document.getElementById('grand-total-label');
-    const subtotal = Number(totalEl?.dataset.subtotal ?? '0');
     const ugx = (n: number) =>
       new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
 
