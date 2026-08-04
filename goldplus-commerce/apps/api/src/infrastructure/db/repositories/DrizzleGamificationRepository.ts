@@ -113,4 +113,89 @@ export class DrizzleGamificationRepository {
       note: `${mission.kind} has no data source yet (streak/referral tracking is unbuilt) — reported as not evaluable rather than zero.`,
     };
   }
+
+  /**
+   * One customer's view of the programme: earned badges plus progress against
+   * every ACTIVE mission. Progress is only reported where the data genuinely
+   * attributes to this account — PURCHASE_COUNT from their paid orders; the
+   * other kinds say why they cannot be counted rather than showing a fake 0%.
+   */
+  async customerSnapshot(userId: string): Promise<{
+    badges: Array<{ id: string; key: string; title: string; description: string | null; awardedAt: Date }>;
+    missions: Array<{
+      id: string;
+      key: string;
+      title: string;
+      description: string | null;
+      kind: string;
+      threshold: number;
+      rewardPoints: number;
+      progress: number | null;
+      progressNote: string | null;
+      completed: boolean;
+    }>;
+  }> {
+    const earned = await db
+      .select({
+        id: gamificationBadges.id,
+        key: gamificationBadges.key,
+        title: gamificationBadges.title,
+        description: gamificationBadges.description,
+        awardedAt: customerBadges.awardedAt,
+      })
+      .from(customerBadges)
+      .innerJoin(gamificationBadges, eq(customerBadges.badgeId, gamificationBadges.id))
+      .where(eq(customerBadges.userId, userId))
+      .orderBy(desc(customerBadges.awardedAt));
+
+    const activeMissions = await db
+      .select()
+      .from(gamificationMissions)
+      .where(eq(gamificationMissions.status, 'ACTIVE'))
+      .orderBy(desc(gamificationMissions.createdAt));
+
+    let paidOrderCount: number | null = null;
+    if (activeMissions.some((m) => m.kind === 'PURCHASE_COUNT')) {
+      const [row] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(orders)
+        .where(sql`${orders.userId} = ${userId} and ${orders.paymentStatus} = 'paid'`);
+      paidOrderCount = row?.n ?? 0;
+    }
+
+    const missions = activeMissions.map((m) => {
+      if (m.kind === 'PURCHASE_COUNT') {
+        const progress = paidOrderCount ?? 0;
+        return {
+          id: m.id,
+          key: m.key,
+          title: m.title,
+          description: m.description,
+          kind: m.kind,
+          threshold: m.threshold,
+          rewardPoints: m.rewardPoints,
+          progress,
+          progressNote: null,
+          completed: progress >= m.threshold,
+        };
+      }
+      return {
+        id: m.id,
+        key: m.key,
+        title: m.title,
+        description: m.description,
+        kind: m.kind,
+        threshold: m.threshold,
+        rewardPoints: m.rewardPoints,
+        progress: null,
+        progressNote:
+          m.kind === 'REVIEW_COUNT'
+            ? 'Reviews are recorded under a separate identity and cannot be counted toward your account yet.'
+            : 'This mission type is not tracked yet.',
+        completed: false,
+      };
+    });
+
+    return { badges: earned, missions };
+  }
 }

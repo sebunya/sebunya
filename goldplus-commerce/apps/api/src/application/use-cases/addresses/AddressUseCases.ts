@@ -44,3 +44,19 @@ export class AddAddressUseCase {
     return { ok: true, address };
   }
 }
+
+export class SetDefaultAddressUseCase {
+  constructor(private readonly addresses: IAddressRepository) {}
+  async execute(userId: string, addressId: string): Promise<AddressDto | null> {
+    if (!addressId.trim()) return null;
+    return this.addresses.setDefaultForUser(userId, addressId.trim());
+  }
+}
+
+export class DeleteAddressUseCase {
+  constructor(private readonly addresses: IAddressRepository) {}
+  async execute(userId: string, addressId: string): Promise<boolean> {
+    if (!addressId.trim()) return false;
+    return this.addresses.deleteForUser(userId, addressId.trim());
+  }
+}

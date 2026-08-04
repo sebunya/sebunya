@@ -90,6 +90,23 @@ async function earnDormantLoyaltyForVerifiedOrder(orderId: string): Promise<void
   }
 }
 
+// Public programme terms so checkout can show a truthful earn preview. Terms
+// only — the same numbers the marketing page states; never balances or ledgers.
+routes.get('/loyalty-programme', async (c) => {
+  const [active, config] = await Promise.all([
+    registry.loyaltyGate.isActive(),
+    registry.loyaltyRepo.getConfig(),
+  ]);
+  return c.json({
+    success: true,
+    data: {
+      active,
+      earnRatePer1000Ugx: active ? config.earnRatePer1000Ugx : 0,
+      expiryDays: active ? config.expiryDays : 0,
+    },
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Cart
 //

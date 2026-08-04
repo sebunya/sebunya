@@ -2,7 +2,12 @@ import { Hono } from 'hono';
 import { customerSessionMiddleware } from '../middleware/customerSession';
 import { Registry } from '../../../infrastructure/Registry';
 import { ListMyOrdersUseCase, GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
-import { ListMyAddressesUseCase, AddAddressUseCase } from '../../../application/use-cases/addresses/AddressUseCases';
+import {
+  ListMyAddressesUseCase,
+  AddAddressUseCase,
+  SetDefaultAddressUseCase,
+  DeleteAddressUseCase,
+} from '../../../application/use-cases/addresses/AddressUseCases';
 import { ApiResponse, MeDto, OrderSummaryDto, OrderDetailDto, AddressDto } from '@goldplus/shared';
 import { clientIp } from '../clientAddress';
 
@@ -15,6 +20,63 @@ routes.get('/loyalty', async (c) => {
   const userId = c.get('userId') as string;
   const data = await Registry.getInstance().getLoyaltyHistoryUseCase.execute({ userId });
   return c.json({ success: true, data });
+});
+
+// The account hub's single read: everything the landing page shows, one call.
+// Composed from the same use cases the dedicated endpoints use, so the hub can
+// never drift from what the detail pages report.
+routes.get('/overview', async (c) => {
+  const userId = c.get('userId') as string;
+  const registry = Registry.getInstance();
+  const [user, loyalty, rewards, orderList, addressList] = await Promise.all([
+    registry.userRepo.findById(userId),
+    registry.getLoyaltyHistoryUseCase.execute({ userId }),
+    registry.gamificationRepo.customerSnapshot(userId),
+    new ListMyOrdersUseCase(registry.orderRepo).execute(userId),
+    new ListMyAddressesUseCase(registry.addressRepo).execute(userId),
+  ]);
+  if (!user) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } };
+    return c.json(res, 404);
+  }
+  const now = Date.now();
+  const soonestExpiry = loyalty.entries
+    .filter((e) => e.type === 'earn' && e.expiresAt && new Date(e.expiresAt).getTime() > now)
+    .map((e) => new Date(e.expiresAt as unknown as string).getTime())
+    .sort((a, b) => a - b)[0];
+  return c.json({
+    success: true,
+    data: {
+      profile: { id: user.id, email: user.email, phone: user.phone, createdAt: user.createdAt.toISOString() },
+      loyalty: {
+        programmeActive: loyalty.programmeActive,
+        balance: loyalty.balance,
+        entryCount: loyalty.entries.length,
+        soonestExpiry: soonestExpiry ? new Date(soonestExpiry).toISOString() : null,
+      },
+      rewards: {
+        badgeCount: rewards.badges.length,
+        missionCount: rewards.missions.length,
+        missionsCompleted: rewards.missions.filter((m) => m.completed).length,
+      },
+      recentOrders: orderList.slice(0, 3),
+      orderCount: orderList.length,
+      defaultAddress: addressList.find((a) => a.isDefault) ?? null,
+      addressCount: addressList.length,
+    },
+  });
+});
+
+// Missions and badges as THIS customer sees them: earned badges plus honest
+// per-mission progress (only where the data attributes to their account).
+routes.get('/gamification', async (c) => {
+  const userId = c.get('userId') as string;
+  const registry = Registry.getInstance();
+  const [snapshot, programmeActive] = await Promise.all([
+    registry.gamificationRepo.customerSnapshot(userId),
+    registry.gamificationRepo.loyaltyEnabled(),
+  ]);
+  return c.json({ success: true, data: { programmeActive, ...snapshot } });
 });
 
 routes.get('/me', async (c) => {
@@ -87,6 +149,29 @@ routes.post('/addresses', async (c) => {
   }
   const res: ApiResponse<AddressDto> = { success: true, data: result.address };
   return c.json(res, 201);
+});
+
+routes.post('/addresses/:id/default', async (c) => {
+  const userId = c.get('userId') as string;
+  const uc = new SetDefaultAddressUseCase(Registry.getInstance().addressRepo);
+  const address = await uc.execute(userId, c.req.param('id'));
+  if (!address) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'Address not found.' } };
+    return c.json(res, 404);
+  }
+  const res: ApiResponse<AddressDto> = { success: true, data: address };
+  return c.json(res);
+});
+
+routes.delete('/addresses/:id', async (c) => {
+  const userId = c.get('userId') as string;
+  const uc = new DeleteAddressUseCase(Registry.getInstance().addressRepo);
+  const removed = await uc.execute(userId, c.req.param('id'));
+  if (!removed) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'Address not found.' } };
+    return c.json(res, 404);
+  }
+  return c.json({ success: true, data: { deleted: true } });
 });
 
 routes.get('/preferences', async (c) => {

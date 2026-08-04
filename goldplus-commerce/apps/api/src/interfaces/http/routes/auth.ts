@@ -2,6 +2,7 @@ import { Hono, Context } from 'hono';
 import { createHash } from 'node:crypto';
 import { Registry } from '../../../infrastructure/Registry';
 import { AuthenticateUserUseCase } from '../../../application/use-cases/identity/AuthenticateUserUseCase';
+import { RegisterCustomerUseCase } from '../../../application/use-cases/identity/RegisterCustomerUseCase';
 import { ApiResponse } from '@goldplus/shared';
 import { clientIp } from '../clientAddress';
 import { SESSION_LIFETIMES } from '../../../domain/identity/SessionPolicy';
@@ -94,6 +95,54 @@ routes.post('/login', async (c) => {
     },
   };
   return c.json(res);
+});
+
+routes.post('/register', async (c) => {
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } };
+    return c.json(res, 400);
+  }
+
+  const registry = Registry.getInstance();
+  const uc = new RegisterCustomerUseCase(registry.userRepo, registry.passwordHasher, registry.tokenSigner);
+  const result = await uc.execute({
+    email: String(body.email ?? ''),
+    phone: String(body.phone ?? ''),
+    password: String(body.password ?? ''),
+  });
+
+  if (!result.ok) {
+    const statusCode =
+      result.code === 'BAD_INPUT' ? 400 :
+      result.code === 'AUTH_NOT_CONFIGURED' ? 503 :
+      409; // ALREADY_REGISTERED
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, statusCode);
+  }
+
+  // Registration IS a login: same durable session, same response shape, so the
+  // storefront handles both flows with one code path.
+  const refresh = await issueSessionSafely(registry, result.user.id, c);
+
+  const res: ApiResponse<{
+    token: string;
+    expiresAt: string;
+    refreshToken?: string;
+    refreshExpiresAt?: string;
+    user: { id: string; email: string; phone: string | null };
+  }> = {
+    success: true,
+    data: {
+      token: result.token,
+      expiresAt: result.expiresAt.toISOString(),
+      ...(refresh ? { refreshToken: refresh.refreshToken, refreshExpiresAt: refresh.refreshExpiresAt } : {}),
+      user: result.user,
+    },
+  };
+  return c.json(res, 201);
 });
 
 routes.post('/admin/login', async (c) => {

@@ -54,4 +54,39 @@ export class DrizzleAddressRepository implements IAddressRepository {
       return rowToDto(row);
     });
   }
+
+  async setDefaultForUser(userId: string, addressId: string): Promise<AddressDto | null> {
+    return db.transaction(async (tx) => {
+      const target = await tx.query.addresses.findFirst({
+        where: and(eq(addresses.id, addressId), eq(addresses.userId, userId)),
+      });
+      if (!target) return null;
+      await tx.update(addresses).set({ isDefault: false }).where(eq(addresses.userId, userId));
+      const [row] = await tx
+        .update(addresses)
+        .set({ isDefault: true })
+        .where(and(eq(addresses.id, addressId), eq(addresses.userId, userId)))
+        .returning();
+      return row ? rowToDto(row) : null;
+    });
+  }
+
+  async deleteForUser(userId: string, addressId: string): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      const [removed] = await tx
+        .delete(addresses)
+        .where(and(eq(addresses.id, addressId), eq(addresses.userId, userId)))
+        .returning();
+      if (!removed) return false;
+      // Deleting the default must not leave the book default-less while other
+      // addresses remain — checkout preselects the default.
+      if (removed.isDefault) {
+        const remaining = await tx.query.addresses.findMany({ where: eq(addresses.userId, userId) });
+        if (remaining.length > 0) {
+          await tx.update(addresses).set({ isDefault: true }).where(eq(addresses.id, remaining[0].id));
+        }
+      }
+      return true;
+    });
+  }
 }
