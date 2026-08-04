@@ -135,4 +135,17 @@ describe('AdminUserManagementUseCase (§6 governance)', () => {
     expect(await useCase.createUser({ email: 'A@b.co', initialPassword: 'a-strong-initial-secret2', roleName: 'LEGAL_REVIEWER', actorId: 'a' }))
       .toMatchObject({ ok: false, code: 'DUPLICATE_EMAIL', status: 409 });
   });
+
+  it('the requester may withdraw a PENDING request; others may not', async () => {
+    const { repo, useCase } = setup();
+    await useCase.grantRole({ userId: 'u-x', roleName: 'PLATFORM_ADMINISTRATOR', actorId: 'admin-1' });
+    const requestId = [...repo.requests.keys()][0];
+    expect(await useCase.withdrawGrant({ requestId, actorId: 'admin-2' }))
+      .toMatchObject({ ok: false, code: 'NOT_REQUESTER', status: 403 });
+    expect(await useCase.withdrawGrant({ requestId, actorId: 'admin-1' }))
+      .toMatchObject({ ok: true, value: { withdrawn: true } });
+    expect(await repo.userHasRole('u-x', 'PLATFORM_ADMINISTRATOR')).toBe(false);
+    expect(repo.requests.get(requestId)!.status).toBe('REJECTED');
+  });
+
 });

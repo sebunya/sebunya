@@ -99,5 +99,18 @@ routes.post('/:id/roles/revoke', requirePermissions([PERMISSIONS.AUTH_MANAGE]), 
   return c.json({ success: true, data: outcome.value });
 });
 
+routes.post('/grant-requests/:id/withdraw', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as { id: string }).id;
+  const outcome = await registry.adminUserManagementUseCase.withdrawGrant({ requestId: c.req.param('id') ?? '', actorId });
+  if (!outcome.ok) return c.json({ success: false, error: { code: outcome.code, message: outcome.message } }, outcome.status as any);
+  const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId, action: 'ADMIN_ROLE_GRANT_WITHDRAWN', entity: 'role_grant_request', entityId: c.req.param('id') ?? '', newState: { withdrawn: true },
+  });
+  return c.json({ success: true, data: outcome.value });
+});
+
 export default routes;
+
 

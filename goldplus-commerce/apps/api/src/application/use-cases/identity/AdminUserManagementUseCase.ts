@@ -112,4 +112,17 @@ export class AdminUserManagementUseCase {
     const revoked = await this.repo.revokeRole(args.userId, args.roleName);
     return { ok: true, value: { revoked } };
   }
+
+  /** The REQUESTER may withdraw their own PENDING request (withdraw ≠ decide). */
+  async withdrawGrant(args: { requestId: string; actorId: string }): Promise<UmOutcome<{ withdrawn: true }>> {
+    const request = await this.repo.findGrantRequest(args.requestId);
+    if (!request) return refuse('NOT_FOUND', 'Grant request not found.', 404);
+    if (request.status !== 'PENDING') return refuse('ALREADY_DECIDED', `Request is already ${request.status}.`, 409);
+    if (request.requestedBy !== args.actorId) {
+      return refuse('NOT_REQUESTER', 'Only the requester may withdraw their own request.', 403);
+    }
+    await this.repo.decideGrantRequest(args.requestId, { status: 'REJECTED', decidedBy: args.actorId, reason: 'WITHDRAWN_BY_REQUESTER' });
+    return { ok: true, value: { withdrawn: true } };
+  }
+
 }
