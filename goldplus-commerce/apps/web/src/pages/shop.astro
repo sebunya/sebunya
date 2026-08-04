@@ -2,7 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import ProductCard from '../components/ProductCard.astro';
 import Notice from '../components/Notice.astro';
-import { apiBase } from '../lib/api';
+import { apiBase, publicApiBase } from '../lib/api';
 import { LOCAL_SEED_PRODUCTS, getCleanCatalog } from '../lib/catalog/catalog';
 import {
   DISCOVERY_TAXONOMY,
@@ -192,7 +192,7 @@ const activeFilters = [
     )}
   </main>
 
-  <script is:inline define:vars={{ apiBase }}>
+  <script is:inline define:vars={{ apiBase: publicApiBase }}>
     // Slice 4: progressive autocomplete. The form works without JavaScript;
     // this only fills the datalist with catalogue names on capable browsers.
     (function () {

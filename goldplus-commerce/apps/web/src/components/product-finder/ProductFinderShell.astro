@@ -41,7 +41,12 @@ const { apiBase, compatibleWith = null } = Astro.props;
   const btnSubmit = document.getElementById('pf-submit') as HTMLButtonElement;
   const stepText = document.getElementById('pf-step-text') as HTMLElement;
   const progressBar = document.getElementById('pf-progress-bar') as HTMLElement;
-  const api = shell.dataset.apiBase ?? '';
+  // Browser-side origin resolution: the build-inlined PUBLIC base wins so a
+  // caller accidentally passing the SSR-internal origin (http://api:3000 —
+  // unresolvable from a browser) can never take the assistant down again.
+  const api = (
+    ((import.meta.env.PUBLIC_API_BASE_URL as string | undefined) || shell.dataset.apiBase || '')
+  ).replace(/\/+$/, '');
   let currentStep = 0;
   let sessionId = '';
   let accessToken = '';

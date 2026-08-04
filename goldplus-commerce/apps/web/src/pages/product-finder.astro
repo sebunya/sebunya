@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import ProductFinderShell from '../components/product-finder/ProductFinderShell.astro';
-import { apiBase } from '../lib/api';
+import { publicApiBase } from '../lib/api';
 const rawReference = Astro.url.searchParams.get('compatibleWith');
 const compatibleWith = rawReference && /^[0-9a-f-]{36}$/i.test(rawReference) ? rawReference : null;
 ---
@@ -12,7 +12,7 @@ const compatibleWith = rawReference && /^[0-9a-f-]{36}$/i.test(rawReference) ? r
       <h1 class="text-3xl font-bold text-gray-900 mb-2">Find the Right GoldPlus Product</h1>
       <p class="text-gray-600 mb-8">Answer a few quick questions and we'll recommend products that fit what you need.</p>
       
-      <ProductFinderShell apiBase={apiBase} compatibleWith={compatibleWith} />
+      <ProductFinderShell apiBase={publicApiBase} compatibleWith={compatibleWith} />
     </div>
   </div>
 </BaseLayout>
