@@ -58,7 +58,10 @@ describe("Slice 8-A quest concepts", () => {
   it("includes all ten safe quest concepts", () => expect(QUEST_CONCEPTS).toHaveLength(10));
   it("requires approved rules before a future quest benefit", () => expect(JSON.stringify(QUEST_CONCEPTS)).toMatch(/approved|policy/i));
   it("renders no quest completion or claim control", () => expect(publicPage).not.toMatch(/<button[^>]*>[^<]*(complete|claim|unlock)/i));
-  it("does not persist quest progress", () => expect(publicPage).not.toMatch(/localStorage|document\.cookie|setCookie|fetch\(/));
+  // Loyalty ACTIVATION made the public page read the live programme config via
+  // an SSR fetch — that is reading, not persisting. The guard keeps its intent:
+  // no client-side persistence of quest progress.
+  it("does not persist quest progress", () => expect(publicPage).not.toMatch(/localStorage|document\.cookie|setCookie/));
 });
 
 describe("Slice 8-A badges, tiers, progress and Memory Lane", () => {
@@ -89,7 +92,9 @@ describe("Slice 8-A utilisation-aware offer matrix", () => {
   });
 
   it("contains exactly the required eight planning signals", () => expect(UTILISATION_OFFER_RULES).toHaveLength(8));
-  it("uses no live order, inventory or customer reader", () => expect(publicPage).not.toMatch(/apiBase|fetch\(|\/orders|\/inventory|customerId/));
+  // Activation authorised the page to read the loyalty PROGRAMME config; it
+  // must still never read orders, inventory or anything customer-identifying.
+  it("uses no live order, inventory or customer reader", () => expect(publicPage).not.toMatch(/\/orders|\/inventory|customerId/));
   it("creates no discount or personalised price", () => expect(loyaltyFoundationSafetySummary().liveOffers).toBe(false));
   it("generates no coupon", () => expect(loyaltyFoundationSafetySummary().couponGeneration).toBe(false));
   it("keeps every scorecard row inactive or approval-gated", () => expect(UTILISATION_READINESS_SCORECARD.every((row) => ["Not active", "Needs approval", "Preview only"].includes(row.status))).toBe(true));

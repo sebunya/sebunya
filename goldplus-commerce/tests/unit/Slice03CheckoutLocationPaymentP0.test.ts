@@ -19,7 +19,11 @@ describe('Slice 03 checkout location and payment P0 protected contract', () => {
 
   it('uses the server cart subtotal as the displayed checkout total', () => {
     expect(checkout).toContain('{formatUgx(cart.subtotalUgx)}');
-    expect(checkout).toContain('Calculated post-zone');
+    // Delivery wave replaced the static "Calculated post-zone" copy with the
+    // live estimate row. The protected part of the contract is unchanged: only
+    // a CONFIRMED operator-zone fee may join the total the customer commits to.
+    expect(checkout).toContain('id="delivery-estimate-value"');
+    expect(checkout).toMatch(/kind === 'CONFIRMED'[\s\S]*?\? est\.feeUgx : 0|CONFIRMED' \? \(initialDeliveryEstimate\.feeUgx \?\? 0\) : 0|initialDeliveryEstimate\?\.kind === 'CONFIRMED' \? initialDeliveryEstimate\.feeUgx \?\? 0 : 0/);
   });
 
   it('keeps offline drafts unmistakably separate from submitted orders', () => {
@@ -29,7 +33,11 @@ describe('Slice 03 checkout location and payment P0 protected contract', () => {
   });
 
   it('does not claim a payment succeeded or an order is paid', () => {
-    expect(checkout).not.toMatch(/payment (?:complete|successful)|order (?:is|was) paid|paid in full/i);
+    // The loyalty preview honestly says points arrive "when this order is paid"
+    // — a conditional future, not a success claim. The guard forbids CLAIMS of
+    // completed payment, so the conditional form is carved out explicitly.
+    expect(checkout).not.toMatch(/payment (?:complete|successful)|paid in full/i);
+    expect(checkout).not.toMatch(/(?<!when (?:the|this) )order (?:is|was) paid/i);
   });
 
   it('tells the customer payment failed via a mapped code, not the API message', () => {

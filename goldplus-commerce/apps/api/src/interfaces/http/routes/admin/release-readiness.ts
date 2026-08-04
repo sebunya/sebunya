@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { PERMISSIONS } from '@goldplus/shared';
 
 type Variables = {
   adminUserId: string;
@@ -11,7 +12,21 @@ type Variables = {
 export const releaseReadinessAdminRouter = new Hono<{ Variables: Variables }>();
 
 releaseReadinessAdminRouter.use('*', authMiddleware);
-releaseReadinessAdminRouter.use('*', requirePermissions(['RELEASE_READINESS_VIEW']));
+// Floor gate on the REAL vocabulary. The original guard required the phantom
+// string 'RELEASE_READINESS_VIEW', which exists in no permission table — the
+// whole module was structurally forbidden to every account including Owner.
+// reports.read is the read floor; the access policy holds the per-action bar.
+releaseReadinessAdminRouter.use('*', requirePermissions([PERMISSIONS.REPORTS_READ]));
+// Handlers read adminUserId/adminPermissions; authMiddleware sets `user`.
+// Without this mapping every handler saw undefined and denied or 500'd.
+releaseReadinessAdminRouter.use('*', async (c, next) => {
+  const user = c.get('user' as never) as unknown as { id: string; permissions: string[] } | undefined;
+  if (user) {
+    c.set('adminUserId', user.id);
+    c.set('adminPermissions', user.permissions);
+  }
+  await next();
+});
 
 releaseReadinessAdminRouter.get('/summary', async (c) => {
   const adminUserId = c.get('adminUserId');
