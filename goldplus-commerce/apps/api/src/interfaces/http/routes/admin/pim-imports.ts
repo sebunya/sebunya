@@ -236,4 +236,20 @@ routes.post(
     }
   },
 );
+// §10 — downloadable error report (CSV). Row numbers, exact messages, and the
+// source snippet; derived from stored validation state, never recomputed.
+routes.get("/:id/error-report", requirePermissions([PERMISSIONS.PIM_READ]), async (c) => {
+  const id = c.req.param("id") ?? "";
+  const report = await Registry.getInstance().pimImportOperationsUseCase.errorReport(id);
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = ["row_number,errors,source_json"];
+  for (const row of report.rows) {
+    lines.push([row.rowNumber, esc(row.errors.join(" | ")), esc(JSON.stringify(row.source))].join(","));
+  }
+  c.header("Content-Type", "text/csv; charset=utf-8");
+  c.header("Content-Disposition", `attachment; filename="pim-import-${id}-errors.csv"`);
+  return c.body(lines.join("\n") + "\n");
+});
+
 export default routes;
+

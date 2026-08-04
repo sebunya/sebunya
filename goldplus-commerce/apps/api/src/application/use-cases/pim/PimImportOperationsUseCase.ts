@@ -103,6 +103,27 @@ export class PimImportOperationsUseCase {
       },
     };
   }
+  /**
+   * §10 downloadable error report: every row that failed validation (or errored on
+   * apply), with its row number, the exact messages, and the source snippet the
+   * operator needs to fix the file. Derived from stored state — never recomputed —
+   * so the report matches what the preview refused.
+   */
+  async errorReport(id: string): Promise<{ sessionId: string; rows: Array<{ rowNumber: number; errors: string[]; source: Record<string, unknown> }> }> {
+    const rows = await this.repo.rows(id);
+    const bad = rows
+      .filter((r: any) => (Array.isArray(r.validationErrors) && r.validationErrors.length > 0) || r.error)
+      .map((r: any) => ({
+        rowNumber: r.rowNumber,
+        errors: [
+          ...(Array.isArray(r.validationErrors) ? r.validationErrors.map((e: unknown) => String(typeof e === 'object' && e !== null && 'message' in (e as any) ? (e as any).message : e)) : []),
+          ...(r.error ? [String(r.error)] : []),
+        ],
+        source: (r.sourceData ?? {}) as Record<string, unknown>,
+      }));
+    return { sessionId: id, rows: bad };
+  }
+
   async saveMapping(input: {
     id: string;
     expectedVersion: number;
