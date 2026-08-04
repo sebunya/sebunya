@@ -13,8 +13,8 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "8418b01",
-  "phase": "Released: 2A-2F + SEND(dry) + GAMIFY(scaffold). Verified-KEEP: 2G, 2H-loyalty. Remaining: PIM UX depth, analytics depth, live-send/loyalty activation (business decisions).",
+  "lastGreenHead": "76423b1",
+  "phase": "Released: 2A-2F + SEND(dry) + GAMIFY + PIM-error-report. Remaining engineering: analytics depth metrics. Activations = business decisions.",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -189,6 +189,12 @@
       "module": "gamification-scaffold",
       "status": "RELEASED",
       "evidence": "8418b01: real-data dry-eval with honest identity exclusion; LOYALTY_DORMANT block; NOT_EVALUABLE truthfulness; ledger empty"
+    },
+    {
+      "id": "W-PIM",
+      "module": "pim-error-report",
+      "status": "RELEASED",
+      "evidence": "76423b1: real invalid row \u2192 exact-message CSV via API + cookie proxy; unauth 401"
     }
   ],
   "constraints": [
@@ -200,8 +206,8 @@
   ],
   "nextExact": {
     "file": "docs/platform/institutional-memory-v4/MODULE_MATURITY_MATRIX.md",
-    "command": "remaining engineering: PIM UX depth OR analytics depth metrics. Activations (live-send, loyalty) are business decisions with their own evidence bars.",
+    "command": "last engineering slice: recommendation-analytics depth metrics (coverage/fallback-rate/unknown-placement \u2014 honest denominators, no unsafe percentages). Then adversarial pass + honest terminal report.",
     "expected": "ritual unchanged"
   },
-  "releasedHead": "8418b01"
+  "releasedHead": "76423b1"
 }
