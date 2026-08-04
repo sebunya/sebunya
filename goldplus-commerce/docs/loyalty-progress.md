@@ -98,3 +98,19 @@ backfill (0 entries) — rule v1 is created as the version future entries cite.
   Suite: 305 files / 5,185 green.
 - Retirement note: none deleted; two assertions in ModuleLoyaltyCompletion
   relocated with intent preserved (recorded above).
+
+## Stages 5–14 machinery (2026-08-04) ✅ (commits df4da4b, ec254b2, deploying)
+Identity: OTP phone verification via the existing SMS outbox; verified phone
+= the loyalty identity spine; guest-order backfill (config-gated off until
+PART V #11, retail-only, delivered+paid, once-ever per order); account merge
+as a recorded fact over an immutable ledger (dates intact, both records
+audited). Verification earning: attributed scans + INACTIVE versioned rule —
+engine live, zero unapproved liability; per-code once-ever, daily cap, fraud
+signal. Tiers T1–T4 seeded inactive with NULL thresholds; evaluation +
+change notices ready. Manual adjustment with mandatory reason + audit.
+Dealer default pending PART V #10: wholesale/corporate EXCLUDED from consumer
+earning at the source (conservative; recorded). Finance: liability view +
+CSV export + daily snapshots. Comms: earn-on-vest, redemption confirmations,
+tier changes, expiry warnings — all through the existing outbox/router.
+Customer surfaces: page rebuild (PART Q), checkout redemption + honest earn
+preview, account pending-vs-available.

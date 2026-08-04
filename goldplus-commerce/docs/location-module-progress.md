@@ -57,3 +57,28 @@ routed — the gap was only that nothing bridged outcomes to the ORDER lifecycle
 commit, as designed.
 **Assumption recorded**: delivery_zone (brief) → delivery_zone_policy (repo has
 a delivery_zones fee table already; decision #7 keeps fees there).
+
+## Stages 3–4 — search pipeline + APIs (2026-08-04) ✅ (commit 443e5a0, deployed)
+F.1 pipeline + F.3 ranking as a pure service (19 tests incl. group collapse,
+provenance dedupe, duplicate-name disambiguation, cap 8); F.2 folding proven
+both ways with the three negative traps; G.1 link parsing (all documented
+shapes, Uganda bounding box, SSRF-contained goo.gl resolver); strict E.164
+phone normalisation (warn-never-block). Public /locations under a dedicated
+300/min family (never global); admin /admin/locations per the approved
+permission table; PUT address edit with before/after audit; soft-delete
+addresses. LIVE: /locations/search returns honest zeroResult until the data
+files arrive — and logs each miss (the learning loop is running in production
+before the gazetteer even lands).
+
+## Stages 6–9 — form, offline, rider handoff, admin (2026-08-04) ✅ (commits df4da4b, 14b82d7, deployed)
+Picker v2 on all six call sites (server search + offline fallback + manual
+PART H path + pin capture); checkout gains pickup-point method, redemption
+control, honest lower-bound earn preview, draft persistence, add_shipping_info;
+offline index generator (2.5KB gz vs 60KB budget; gazetteer-mode after import)
+precached by SW v3 on a dedicated URL — SENSITIVE_ROUTES untouched; rider
+delivery card (print/WhatsApp-copy/wa.me/map-pin/net-COD); COD zone gating +
+order-velocity fraud signal; /admin/locations workspace with all six J.1 views.
+**Test count**: 305 files / 5,185 (+1 honest data-gated skip). Admin census
+87→88 (named change: new admin page, fails closed).
+**Blocked on data files**: import run, EXPLAIN ANALYZE p95 proof, stage 5
+match-rate report, gazetteer-mode offline index, most PART N proofs.

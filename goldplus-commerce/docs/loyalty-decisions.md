@@ -22,3 +22,20 @@ derived-balance reader — not a mutable balance column.
 - 2026-08-04 — The public /loyalty page's "Step 3 Identity, ledger and fraud
   controls: Not built" is STALE COPY: the ledger exists and is the live earn
   path. Contradiction one resolves as "page is stale", to be fixed in PART Q.
+
+## Assumptions (build phase)
+
+- 2026-08-04 — **Wholesale/corporate orders excluded from consumer earning**
+  (PART K): conservative default pending PART V #10 — consumer points on
+  wholesale volume would blow the liability model. One-line change when decided.
+- 2026-08-04 — **Verification-scan rule shipped INACTIVE** (rule_code
+  'verification_scan' absent until activated): the differentiator engine exists
+  with zero unapproved liability. Activation = inserting an active rule row
+  (PART V #7).
+- 2026-08-04 — **Expiry-warning consent**: warnings are transactional (like
+  order emails) and ride the same outbound-governance gates as every customer
+  message; marketing-category loyalty messaging stays off until the preference
+  centre distinction is wired in a future pass.
+- 2026-08-04 — **Earn-basis defect resolved on the honest side**: checkout
+  preview now shows a LOWER BOUND ("at least N… when delivered"); the ledger
+  keeps the audited v1 basis (order_total) until PART V #6 decides.
