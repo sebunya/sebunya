@@ -13,8 +13,8 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "74c9c1b",
-  "phase": "Waves released: 2A-2F + SEND(dry-run). Verified-KEEP: 2G, 2H-loyalty. Remaining: live-send activation (business decision + provider evidence), gamification, PIM/analytics depth.",
+  "lastGreenHead": "8418b01",
+  "phase": "Released: 2A-2F + SEND(dry) + GAMIFY(scaffold). Verified-KEEP: 2G, 2H-loyalty. Remaining: PIM UX depth, analytics depth, live-send/loyalty activation (business decisions).",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -183,6 +183,12 @@
       "module": "send-engine-dry-run",
       "status": "RELEASED",
       "evidence": "74c9c1b: real-audience dry-run 3\u21920 all NO_IDENTITY; quiet-hours live-correct; ledger queryable; LIVE unreachable \u00d73"
+    },
+    {
+      "id": "W-GAMIFY",
+      "module": "gamification-scaffold",
+      "status": "RELEASED",
+      "evidence": "8418b01: real-data dry-eval with honest identity exclusion; LOYALTY_DORMANT block; NOT_EVALUABLE truthfulness; ledger empty"
     }
   ],
   "constraints": [
@@ -194,8 +200,8 @@
   ],
   "nextExact": {
     "file": "docs/platform/institutional-memory-v4/MODULE_MATURITY_MATRIX.md",
-    "command": "remaining in order: gamification scaffold OR PIM UX depth OR analytics depth. Live-send activation is EXPLICITLY a business decision + provider-credential evidence \u2014 never automatic.",
+    "command": "remaining engineering: PIM UX depth OR analytics depth metrics. Activations (live-send, loyalty) are business decisions with their own evidence bars.",
     "expected": "ritual unchanged"
   },
-  "releasedHead": "74c9c1b"
+  "releasedHead": "8418b01"
 }
