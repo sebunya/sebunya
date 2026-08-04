@@ -110,6 +110,7 @@ export interface CheckoutCommand {
   couponCode?: string | null;
   previewQuoteId?: string | null;
   acceptPriceChange?: boolean;
+  redeemPoints?: number | null;
   /**
    * The basket this checkout was raised against, and its version.
    *
@@ -135,6 +136,7 @@ export interface CheckoutOrderCreator {
     checkoutLink?: LeaseToken;
     /** Verified principal from the signed intent — USER links the order to the account. */
     principal: { kind: 'USER' | 'GUEST'; id: string };
+    redeemPoints?: number | null;
   }): Promise<{ order: Order; deliveryFeeConfirmed: boolean; idempotentReplay: boolean }>;
 }
 
@@ -291,6 +293,7 @@ export class ExecuteCheckoutIntentUseCase {
       couponCode: command.couponCode ?? null,
       previewQuoteId: command.previewQuoteId ?? null,
       acceptPriceChange: command.acceptPriceChange ?? false,
+      redeemPoints: command.redeemPoints ?? null,
       checkoutLink: lease,
       principal: { kind: command.claims.kind, id: command.claims.principalId },
     });

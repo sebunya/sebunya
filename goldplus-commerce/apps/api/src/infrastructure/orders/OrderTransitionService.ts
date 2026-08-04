@@ -29,13 +29,47 @@ import {
  * status + event + outbox together). Kept out of the application port. */
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+export type OrderTransitionSubscriber = (event: {
+  orderId: string;
+  toStatus: OrderStatus;
+  ctx: OrderTransitionContext;
+}) => Promise<void>;
+
 export class OrderTransitionService implements IOrderTransitionPort {
+  /**
+   * Post-commit subscribers (loyalty vesting, redemption consumption, …).
+   * Fired AFTER the transition transaction commits — a subscriber failure can
+   * never roll back a real state change, and each subscriber is isolated.
+   */
+  private readonly subscribers: OrderTransitionSubscriber[] = [];
+
+  onTransition(subscriber: OrderTransitionSubscriber): void {
+    this.subscribers.push(subscriber);
+  }
+
+  private async notify(orderId: string, toStatus: OrderStatus, ctx: OrderTransitionContext): Promise<void> {
+    for (const subscriber of this.subscribers) {
+      try {
+        await subscriber({ orderId, toStatus, ctx });
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('order transition subscriber failed', { orderId, toStatus, error: (error as Error).message });
+      }
+    }
+  }
+
   async transition(
     orderId: string,
     toStatus: OrderStatus,
     ctx: OrderTransitionContext,
   ): Promise<OrderTransitionResult> {
-    return db.transaction((tx) => this.apply(tx, orderId, toStatus, ctx));
+    const result = await db.transaction((tx) => this.apply(tx, orderId, toStatus, ctx));
+    // Idempotent replays already notified once — vesting/consumption hooks are
+    // themselves idempotent, but there is no reason to re-fire them.
+    if (!result.idempotentReplay) {
+      await this.notify(orderId, toStatus, ctx);
+    }
+    return result;
   }
 
   /**

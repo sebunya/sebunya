@@ -165,3 +165,86 @@ export function validateRedeem(points: number, balance: LoyaltyBalance): EntryVa
   }
   return { ok: true };
 }
+
+/* ── Loyalty completion (brief PARTs F–H, stage 2-4) ─────────────────────── */
+
+/**
+ * Programme configuration beyond the earn switch. EVERY value is null until
+ * Rob sets it (PART V) — null blocks the mechanic it governs. Nothing here
+ * ever defaults to a number.
+ */
+export interface LoyaltyProgrammeConfig extends LoyaltyConfig {
+  pointValueUgx: number | null;
+  redemptionMinPoints: number | null;
+  redemptionMaxShareBps: number | null;
+  budgetCapPoints: number | null;
+  killSwitch: boolean;
+  guestBackfillLookbackDays: number | null;
+  guestBackfillCapPoints: number | null;
+}
+
+export type RedemptionPlan =
+  | { ok: true; points: number; valueUgx: number; pointValueUgx: number }
+  | { ok: false; code: 'REDEMPTION_UNAVAILABLE' | 'BELOW_MINIMUM' | 'EXCEEDS_MAX_SHARE' | 'INSUFFICIENT_BALANCE' | 'INVALID_POINTS'; message: string };
+
+/**
+ * Plan a redemption against an order (PART G). Points convert to a discount at
+ * the configured value — never cash. Unset config = the mechanic is OFF with
+ * an explicit reason, never a silent default.
+ */
+export function planRedemption(input: {
+  points: number;
+  balanceAvailable: number;
+  orderGoodsTotalUgx: number;
+  config: LoyaltyProgrammeConfig;
+}): RedemptionPlan {
+  const { config } = input;
+  if (config.pointValueUgx === null || config.redemptionMinPoints === null || config.redemptionMaxShareBps === null) {
+    return { ok: false, code: 'REDEMPTION_UNAVAILABLE', message: 'Redemption is not configured yet — point value, minimum and maximum share must be set first.' };
+  }
+  if (!Number.isInteger(input.points) || input.points <= 0 || input.points > MAX_POINTS_PER_ENTRY) {
+    return { ok: false, code: 'INVALID_POINTS', message: 'Redeemed points must be a positive whole number.' };
+  }
+  if (input.points < config.redemptionMinPoints) {
+    return { ok: false, code: 'BELOW_MINIMUM', message: `Redeem at least ${config.redemptionMinPoints} points.` };
+  }
+  if (input.points > input.balanceAvailable) {
+    return { ok: false, code: 'INSUFFICIENT_BALANCE', message: 'Redemption exceeds the available balance.' };
+  }
+  const valueUgx = input.points * config.pointValueUgx;
+  const maxValueUgx = Math.floor((input.orderGoodsTotalUgx * config.redemptionMaxShareBps) / 10_000);
+  if (valueUgx > maxValueUgx) {
+    return { ok: false, code: 'EXCEEDS_MAX_SHARE', message: `Points can cover at most ${Math.floor(config.redemptionMaxShareBps / 100)}% of this order.` };
+  }
+  return { ok: true, points: input.points, valueUgx, pointValueUgx: config.pointValueUgx };
+}
+
+/** Pro-rata clawback of an earn on partial refund: floor, never over-claw. */
+export function computeProRataClawback(earnPoints: number, refundShareBps: number): number {
+  if (!Number.isInteger(earnPoints) || earnPoints <= 0) return 0;
+  const share = Math.min(Math.max(refundShareBps, 0), 10_000);
+  return Math.floor((earnPoints * share) / 10_000);
+}
+
+/**
+ * Budget cap (PART N): when lifetime issued points reach the cap, earning
+ * pauses and an alert fires. Null cap = no cap configured (earning allowed,
+ * liability visible in the daily snapshot either way).
+ */
+export function budgetCapReached(lifetimeIssuedPoints: number, budgetCapPoints: number | null): boolean {
+  return budgetCapPoints !== null && lifetimeIssuedPoints >= budgetCapPoints;
+}
+
+/** Expiry-warning schedule (PART H): which notices are due for an earn. */
+export const EXPIRY_NOTICE_KINDS = [
+  { kind: '30d', daysBefore: 30 },
+  { kind: '7d', daysBefore: 7 },
+  { kind: '1d', daysBefore: 1 },
+] as const;
+
+export function dueExpiryNotices(earn: LoyaltyLedgerEntry, now: Date): string[] {
+  if (!earn.expiresAt || earn.type !== 'earn') return [];
+  const msLeft = earn.expiresAt.getTime() - now.getTime();
+  if (msLeft <= 0) return [];
+  return EXPIRY_NOTICE_KINDS.filter((n) => msLeft <= n.daysBefore * 24 * 3600 * 1000).map((n) => n.kind);
+}

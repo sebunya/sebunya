@@ -58,6 +58,13 @@ export interface CheckoutDto {
    * signed checkout-intent claims.
    */
   principal?: { kind: 'USER' | 'GUEST'; id: string } | null;
+  /**
+   * Loyalty points to redeem against this order (loyalty brief PART G).
+   * Signed-in customers only; validated and reserved through the redemption
+   * engine — unset programme config refuses with a clear message, never a
+   * silent default.
+   */
+  redeemPoints?: number | null;
 }
 
 export interface CheckoutResult {
@@ -81,6 +88,13 @@ export class CheckoutUseCase {
       capacity: ManagePromotionCapacityUseCase;
       quotes: IPricingQuoteRepository;
       orders: ITransactionalPricedOrderRepository;
+    } | null = null,
+    private readonly loyaltyRedemption: {
+      reserve(input: { userId: string; points: number; orderGoodsTotalUgx: number; idempotencyKey: string }): Promise<
+        { ok: true; reservationId: string; valueUgx: number } | { ok: false; code: string; message: string }
+      >;
+      attach(reservationId: string, orderId: string): Promise<void>;
+      release(input: { reservationId: string }): Promise<unknown>;
     } | null = null
   ) {}
 
@@ -143,6 +157,28 @@ export class CheckoutUseCase {
         if (!dto.acceptPriceChange && (baseChanged || promotionChanged)) throw new Error(`${baseChanged ? 'PRICE_CHANGED' : 'PROMOTION_CHANGED'}: The authoritative checkout total differs from the preview. Review and confirm the revised breakdown.`);
       }
       const checkoutKey = clientOrderKey ?? `quote:${quote.id}`;
+
+      // Loyalty redemption (PART G): reserve BEFORE the order exists so an
+      // insufficient balance or unset programme config fails the checkout with
+      // a clear message instead of an order carrying a broken discount.
+      let loyaltyReservation: { reservationId: string; valueUgx: number } | null = null;
+      if (dto.redeemPoints && dto.redeemPoints > 0) {
+        if (!this.loyaltyRedemption || dto.principal?.kind !== 'USER') {
+          throw new Error('REDEMPTION_UNAVAILABLE: Sign in to redeem points.');
+        }
+        const goodsTotalUgx = quote.finalTotalUgx - quote.shippingUgx - quote.taxUgx;
+        const reserveResult = await this.loyaltyRedemption.reserve({
+          userId: dto.principal.id,
+          points: dto.redeemPoints,
+          orderGoodsTotalUgx: goodsTotalUgx,
+          idempotencyKey: checkoutKey,
+        });
+        if (!reserveResult.ok) {
+          throw new Error(`${reserveResult.code}: ${reserveResult.message}`);
+        }
+        loyaltyReservation = { reservationId: reserveResult.reservationId, valueUgx: reserveResult.valueUgx };
+      }
+
       const reservation = await this.authoritativePricing.capacity.reserve({ quoteId: quote.id, checkoutKey });
       const snapshot: OrderPricingSnapshot = {
         quoteId: quote.id,
@@ -169,13 +205,26 @@ export class CheckoutUseCase {
         fee.confirmed,
         snapshot,
         dto.principal?.kind === 'USER' ? dto.principal.id : null,
+        loyaltyReservation ? { discountUgx: loyaltyReservation.valueUgx, redemptionId: loyaltyReservation.reservationId } : null,
       );
       try {
         const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink });
         if (saved.duplicate && reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id });
+        if (loyaltyReservation && this.loyaltyRedemption) {
+          if (saved.duplicate) {
+            // The replayed order already carries (or never had) a redemption —
+            // this fresh reservation must not linger against the balance.
+            await this.loyaltyRedemption.release({ reservationId: loyaltyReservation.reservationId }).catch(() => undefined);
+          } else {
+            await this.loyaltyRedemption.attach(loyaltyReservation.reservationId, saved.order.id);
+          }
+        }
         return { order: saved.order, deliveryFeeConfirmed: saved.order.deliveryFeeConfirmed, idempotentReplay: saved.duplicate };
       } catch (error) {
         if (reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id }).catch(() => undefined);
+        if (loyaltyReservation && this.loyaltyRedemption) {
+          await this.loyaltyRedemption.release({ reservationId: loyaltyReservation.reservationId }).catch(() => undefined);
+        }
         throw error;
       }
     }

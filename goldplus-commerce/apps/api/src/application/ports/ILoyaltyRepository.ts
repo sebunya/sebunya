@@ -9,6 +9,9 @@ export interface AppendEntryInput {
   idempotencyKey: string;
   expiresAt: Date | null;
   reversedEntryId: string | null;
+  /** 0085: the rule version that granted the entry (append-only provenance). */
+  ruleCode?: string | null;
+  ruleVersion?: number | null;
 }
 
 export type DebitResult =

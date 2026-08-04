@@ -87,7 +87,15 @@ export class Order {
      * customers saw an empty order history and loyalty could never credit a
      * point to the very customers the programme was activated for.
      */
-    public readonly userId: string | null = null
+    public readonly userId: string | null = null,
+    /**
+     * Loyalty redemption applied at checkout (loyalty brief PART G): points
+     * convert to a discount INSIDE the order total so payment initiation and
+     * provider amount verification all see one truth. The pricing snapshot
+     * keeps the pre-redemption quote; the pair records the difference.
+     */
+    public readonly loyaltyDiscountUgx: number = 0,
+    public readonly loyaltyRedemptionId: string | null = null
   ) {}
 
   public static create(
@@ -98,12 +106,15 @@ export class Order {
     deliveryFeeUgx: number = 0,
     deliveryFeeConfirmed: boolean = false,
     pricingSnapshot: OrderPricingSnapshot | null = null,
-    userId: string | null = null
+    userId: string | null = null,
+    loyaltyRedemption: { discountUgx: number; redemptionId: string } | null = null
   ): Order {
     const subtotal = pricingSnapshot?.finalTotalUgx != null
       ? pricingSnapshot.finalTotalUgx - pricingSnapshot.shippingUgx - pricingSnapshot.taxUgx
       : items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const total = pricingSnapshot?.finalTotalUgx ?? subtotal + deliveryFeeUgx;
+    const grossTotal = pricingSnapshot?.finalTotalUgx ?? subtotal + deliveryFeeUgx;
+    const loyaltyDiscount = Math.min(Math.max(loyaltyRedemption?.discountUgx ?? 0, 0), grossTotal);
+    const total = grossTotal - loyaltyDiscount;
     const timestamp = new Date();
     
     // Business Rule: wholesale/corporate require pending_owner_review
@@ -131,7 +142,9 @@ export class Order {
       customer.deliveryLocation ?? null,
       deliveryFeeConfirmed,
       pricingSnapshot,
-      userId
+      userId,
+      loyaltyDiscount,
+      loyaltyRedemption?.redemptionId ?? null
     );
   }
 
@@ -151,7 +164,7 @@ export class Order {
       this.deliveryArea, this.deliveryAddress, this.buyerType, this.items,
       this.subtotalUgx, this.deliveryFeeUgx, this.totalUgx, this.paymentStatus,
       newStatus, this.createdAt, new Date(), this.deliveryLocation, this.deliveryFeeConfirmed, this.pricingSnapshot,
-      this.userId
+      this.userId, this.loyaltyDiscountUgx, this.loyaltyRedemptionId
     );
   }
 }

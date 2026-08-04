@@ -7,6 +7,8 @@ export const users = pgTable('users', {
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  /** 0085: verified phone is the loyalty identity spine (loyalty brief PART I). */
+  phoneVerifiedAt: timestamp('phone_verified_at', { withTimezone: true }),
   // Slice 3B: immediate hard-revocation cutoff. Any access token issued at or
   // before this instant is rejected. Set on password change, disable or an
   // admin "log out everywhere". Null means no forced invalidation.

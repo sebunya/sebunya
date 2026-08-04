@@ -43,7 +43,7 @@ export class EarnLoyaltyPointsUseCase {
   ) {}
 
   /** Earn from a real paid order only; idempotent per order. */
-  async execute(input: { userId: string; orderId: string; orderTotalUgx: number }): Promise<LoyaltyResult<LoyaltyLedgerEntry>> {
+  async execute(input: { userId: string; orderId: string; orderTotalUgx: number; ruleVersion?: number }): Promise<LoyaltyResult<LoyaltyLedgerEntry>> {
     if (!(await this.gate.isActive())) return DISABLED;
     const config = await this.repo.getConfig();
     const points = computeEarnPoints(input.orderTotalUgx, config);
@@ -67,10 +67,13 @@ export class EarnLoyaltyPointsUseCase {
         type: 'earn',
         points,
         orderId: input.orderId,
-        reason: `Earned on order (rate ${config.earnRatePer1000Ugx}/1000 UGX)`,
+        // The basis amount is recorded so the row alone re-derives the maths.
+        reason: `Earned on order total ${input.orderTotalUgx.toLocaleString('en-UG')} UGX (rate ${config.earnRatePer1000Ugx}/1000 UGX)`.slice(0, 300),
         idempotencyKey,
         expiresAt,
         reversedEntryId: null,
+        ruleCode: 'order_earn',
+        ruleVersion: input.ruleVersion ?? 1,
       });
       return { ok: true, value: entry };
     } catch (error) {

@@ -67,6 +67,8 @@ export const verificationAttempts = pgTable('verification_attempts', {
   isSuccessful: boolean('is_successful').notNull(),
   ipAddress: varchar('ip_address', { length: 100 }),
   userAgent: text('user_agent'),
+  /** 0085: optional signed-in attribution for verification-linked earning (loyalty PART J). */
+  userId: uuid('user_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

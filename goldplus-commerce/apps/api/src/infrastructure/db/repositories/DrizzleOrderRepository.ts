@@ -20,7 +20,8 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       result.items.map((item) => ({ productId: item.productId, sku: item.sku, name: item.productName, price: item.unitPrice, quantity: item.quantity, canonicalUnitPrice: item.canonicalUnitPrice, baseSubtotal: item.baseSubtotal, discountAmount: item.discountAmount, finalLineTotal: item.finalLineTotal })),
       result.subtotalAmount, result.deliveryFee, result.totalAmount, result.paymentStatus as PaymentStatus,
       result.status as DomainOrderStatus, result.createdAt, result.updatedAt, (result.deliveryLocation as any) ?? null,
-      result.deliveryFeeConfirmed ?? false, pricing, result.userId ?? null
+      result.deliveryFeeConfirmed ?? false, pricing, result.userId ?? null,
+      (result as { loyaltyDiscountUgx?: number }).loyaltyDiscountUgx ?? 0, (result as { loyaltyRedemptionId?: string | null }).loyaltyRedemptionId ?? null
     );
   }
   async findById(id: string): Promise<Order | null> {
@@ -139,7 +140,9 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
     clientOrderKey: string | null;
     checkoutLink?: { identity: string; claimToken: string; fencingNumber: number };
   }): Promise<{ order: Order; duplicate: boolean }> {
-    if (!input.order.pricingSnapshot || input.order.pricingSnapshot.quoteId !== input.quote.id || input.order.totalUgx !== input.quote.finalTotalUgx) throw new Error('PRICING_ORDER_SNAPSHOT_MISMATCH');
+    // The order total may sit BELOW the quote total by exactly the loyalty
+    // redemption discount (0085) — any other divergence is still a mismatch.
+    if (!input.order.pricingSnapshot || input.order.pricingSnapshot.quoteId !== input.quote.id || input.order.totalUgx + (input.order.loyaltyDiscountUgx ?? 0) !== input.quote.finalTotalUgx) throw new Error('PRICING_ORDER_SNAPSHOT_MISMATCH');
     return db.transaction(async (tx) => {
       if (input.clientOrderKey) await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.clientOrderKey}, 0))`);
       if (input.clientOrderKey) {
@@ -162,6 +165,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
         paymentStatus: input.order.paymentStatus, subtotalAmount: input.order.subtotalUgx, deliveryFee: input.order.deliveryFeeUgx,
         totalAmount: input.order.totalUgx, createdAt: input.order.createdAt, updatedAt: input.order.updatedAt,
         deliveryLocation: input.order.deliveryLocation ?? null, deliveryFeeConfirmed: input.order.deliveryFeeConfirmed,
+        loyaltyDiscountUgx: input.order.loyaltyDiscountUgx ?? 0, loyaltyRedemptionId: input.order.loyaltyRedemptionId ?? null,
         clientOrderKey: input.clientOrderKey, pricingQuoteId: input.quote.id, pricingCurrency: input.quote.currency,
         pricingBaseSubtotal: input.quote.baseSubtotalUgx, pricingDiscountTotal: input.quote.discountTotalUgx,
         pricingTaxTotal: input.quote.taxUgx, pricingCalculationVersion: input.quote.calculationVersion,

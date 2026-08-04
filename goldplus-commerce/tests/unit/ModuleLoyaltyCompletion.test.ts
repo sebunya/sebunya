@@ -24,15 +24,26 @@ describe('Loyalty completion boundary', () => {
     expect(route).toContain("routes.post('/entries/:id/reverse'");
   });
 
-  it('uses only server-owned paid-order identity and totals for earning', () => {
-    expect(commerce).toContain('findLoyaltyEarnSource(orderId)');
-    expect(commerce).toContain('orderTotalUgx: source.totalUgx');
-    expect(commerce).not.toMatch(/body\.(?:price|subtotal|discount|total).*earnLoyalty/s);
+  // Loyalty completion (2026-08-04): earning moved from payment confirmation to
+  // DELIVERY confirmation (vesting, loyalty brief PART F). The invariants keep
+  // their intent at the new location: server-owned identity/totals only, and
+  // every earn passes through the double-gated EarnLoyaltyPointsUseCase.
+  const vesting = read('apps/api/src/application/use-cases/loyalty/LoyaltyCompletionUseCases.ts');
+  const registryFile = read('apps/api/src/infrastructure/Registry.ts');
+
+  it('uses only server-owned paid-order identity and totals for earning (vesting path)', () => {
+    expect(vesting).toContain('findLoyaltyEarnSource(orderId)');
+    expect(vesting).toContain('orderTotalUgx: source.totalUgx');
+    // commerce routes no longer earn at payment time — they only settle a
+    // prepaid redemption reservation.
+    expect(commerce).not.toContain('earnLoyaltyPointsUseCase');
+    expect(commerce).toContain('consumeRedemptionUseCase');
   });
 
-  it('keeps paid-order earning behind the dormant dual gate', () => {
-    expect(commerce).toContain("result.code !== 'PROGRAMME_DISABLED'");
-    expect(commerce.match(/earnDormantLoyaltyForVerifiedOrder\(result\.orderId\)/g)).toHaveLength(2);
+  it('keeps earning behind the gated use case, vested on delivered/completed', () => {
+    expect(vesting).toContain("result.code !== 'PROGRAMME_DISABLED'");
+    expect(registryFile).toContain("toStatus === 'delivered' || toStatus === 'completed'");
+    expect(registryFile).toContain('vestLoyaltyOnDeliveryUseCase.execute(orderId)');
   });
 
   it('serializes all account liability writes with PostgreSQL transaction locks', () => {

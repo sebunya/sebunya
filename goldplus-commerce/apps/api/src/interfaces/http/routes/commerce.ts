@@ -85,6 +85,7 @@ const checkoutBodySchema = z.object({
   couponCode: z.string().trim().min(3).max(40).nullish(),
   previewQuoteId: z.string().uuid().nullish(),
   acceptPriceChange: z.boolean().optional(),
+  redeemPoints: z.number().int().positive().max(1_000_000).optional(),
   // Fingerprint inputs, all optional so an older client is not rejected. They cannot be
   // used to influence WHAT is bought — that is still items + quantities only — but they
   // do make "same key, different intent" detectable in three more ways.
@@ -96,16 +97,18 @@ const checkoutBodySchema = z.object({
 const routes = new Hono();
 const registry = Registry.getInstance();
 
-async function earnDormantLoyaltyForVerifiedOrder(orderId: string): Promise<void> {
-  const source = await registry.orderRepo.findLoyaltyEarnSource(orderId);
-  if (!source) return;
-  const result = await registry.earnLoyaltyPointsUseCase.execute({
-    userId: source.userId,
-    orderId,
-    orderTotalUgx: source.totalUgx,
-  });
-  if (!result.ok && result.code !== 'PROGRAMME_DISABLED') {
-    throw new Error(`${result.code}: ${result.message}`);
+/**
+ * Loyalty at payment time (loyalty brief PART F): points no longer vest here —
+ * vesting moved to DELIVERY confirmation via the order-transition subscriber,
+ * which closes the refused-COD earn hole structurally. What payment
+ * confirmation DOES settle is a prepaid redemption reservation: the discount
+ * was honoured in the paid amount, so the points are consumed now.
+ */
+async function settleLoyaltyOnPaymentConfirmed(orderId: string): Promise<void> {
+  const result = await registry.consumeRedemptionUseCase.execute({ orderId });
+  if (!result.ok && result.code !== 'NOT_FOUND') {
+    // eslint-disable-next-line no-console
+    console.error('redemption consume on payment failed', { orderId, code: result.code });
   }
 }
 
@@ -399,6 +402,7 @@ routes.post('/orders/create', async (c) => {
     couponCode: body.couponCode ?? null,
     previewQuoteId: body.previewQuoteId ?? null,
     acceptPriceChange: body.acceptPriceChange ?? false,
+    redeemPoints: body.redeemPoints ?? null,
     // Fingerprint inputs. The payment method matters because online and offline are
     // materially different operations; the basket id and version pin which basket state
     // was priced, which the item list alone cannot express.
@@ -798,7 +802,7 @@ routes.get('/payments/pesapal/callback', async (c) => {
         console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
       }
       try {
-        await earnDormantLoyaltyForVerifiedOrder(result.orderId);
+        await settleLoyaltyOnPaymentConfirmed(result.orderId);
       } catch (loyaltyErr: any) {
         console.error('[API_ERROR] Loyalty paid-order earn failed:', loyaltyErr?.message);
       }
@@ -918,7 +922,7 @@ const handleIpn = async (c: any) => {
         console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
       }
       try {
-        await earnDormantLoyaltyForVerifiedOrder(result.orderId);
+        await settleLoyaltyOnPaymentConfirmed(result.orderId);
       } catch (loyaltyErr: any) {
         console.error('[API_ERROR] Loyalty paid-order earn failed:', loyaltyErr?.message);
       }

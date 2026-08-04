@@ -148,6 +148,9 @@ import { DrizzleAddressAuditRepository } from './db/repositories/DrizzleAddressA
 import { DrizzleLocationSearchRepository, DrizzleLocationOrderDensityReader, DrizzleSearchMissRecorder, DrizzleCustomerLocationContextReader } from './db/repositories/DrizzleLocationSearchRepository';
 import { HttpShortLinkResolver } from './locations/HttpShortLinkResolver';
 import { DrizzleLocationAdminRepository } from './db/repositories/DrizzleLocationAdminRepository';
+import { DrizzleLoyaltyCompletionRepository } from './db/repositories/DrizzleLoyaltyCompletionRepository';
+import { LoyaltyOutboxNotifier } from './loyalty/LoyaltyOutboxNotifier';
+import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { ListSearchMissesUseCase, PromoteSearchMissToAliasUseCase, ListAddressReviewQueueUseCase, ResolveAddressUseCase, ManageLandmarksUseCase, ManagePickupPointsUseCase, GetZonePoliciesUseCase, SaveZonePolicyUseCase, ListDataExceptionsUseCase } from '../application/use-cases/locations/LocationAdminUseCases';
 import {
   ListDeliveryZonesUseCase,
@@ -741,6 +744,14 @@ export class Registry {
       quotes: this.pricingQuoteRepo,
       orders: this.orderRepo,
     },
+    // Lazy closures: the loyalty completion services are constructed later in
+    // this class body; resolving through the singleton avoids field-order
+    // coupling while keeping the use case pure against its port shape.
+    {
+      reserve: (input) => Registry.getInstance().reserveRedemptionUseCase.execute(input),
+      attach: (reservationId, orderId) => Registry.getInstance().loyaltyCompletionRepo.attachReservationToOrder(reservationId, orderId),
+      release: (input) => Registry.getInstance().releaseRedemptionUseCase.execute({ reservationId: input.reservationId }),
+    },
   );
   // Launch Phase 1 (Section 9.3): order-to-admin fulfilment alerts.
   public readonly fulfilmentRepo = new DrizzleFulfilmentRepository();
@@ -972,6 +983,31 @@ export class Registry {
   public readonly getZonePoliciesUseCase = new GetZonePoliciesUseCase(this.locationAdminRepo);
   public readonly saveZonePolicyUseCase = new SaveZonePolicyUseCase(this.locationAdminRepo);
   public readonly listDataExceptionsUseCase = new ListDataExceptionsUseCase(this.locationAdminRepo);
+
+  // ── Loyalty completion (loyalty brief stages 2–4) ───────────────────────
+  public readonly loyaltyCompletionRepo = new DrizzleLoyaltyCompletionRepository();
+  public readonly loyaltyOutboxNotifier = new LoyaltyOutboxNotifier();
+  public readonly vestLoyaltyOnDeliveryUseCase = new VestLoyaltyOnDeliveryUseCase(
+    this.earnLoyaltyPointsUseCase,
+    this.orderRepo,
+    this.loyaltyCompletionRepo,
+  );
+  public readonly clawbackOrderEarnUseCase = new ClawbackOrderEarnUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.auditRepo);
+  public readonly reserveRedemptionUseCase = new ReserveRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.loyaltyGate);
+  public readonly consumeRedemptionUseCase = new ConsumeRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
+  public readonly releaseRedemptionUseCase = new ReleaseRedemptionUseCase(this.loyaltyCompletionRepo);
+  public readonly reverseRedemptionUseCase = new ReverseRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
+  public readonly runLoyaltyDailySweepUseCase = new RunLoyaltyDailySweepUseCase(
+    this.loyaltyRepo,
+    this.loyaltyCompletionRepo,
+    async ({ userId, earnEntryId, kind, pointsExpiring, expiresAt }) =>
+      this.loyaltyOutboxNotifier.enqueue({
+        userId,
+        eventType: 'LOYALTY_EXPIRY_WARNING',
+        idempotencyKey: `loyexp:${earnEntryId}:${kind}`,
+        data: { kind, pointsExpiring, expiresAt: expiresAt.toISOString() },
+      }),
+  );
   // Delivery intelligence: geography prior + order-book posterior; zones stay
   // the only source of CONFIRMED fees.
   public readonly deliveryPricingPolicyRepo = new DrizzleDeliveryPricingPolicyRepository();
@@ -1433,7 +1469,35 @@ export class Registry {
   public static getInstance(): Registry {
     if (!Registry._instance) {
       Registry._instance = new Registry();
+      Registry._instance.registerOrderTransitionSubscribers();
     }
     return Registry._instance;
+  }
+
+  /**
+   * Loyalty ↔ order lifecycle wiring (loyalty brief PARTs F–G), registered
+   * once at construction. Post-commit, isolated, idempotent:
+   *  - delivered/completed → vest points (paid + signed-in orders only) and
+   *    consume any COD redemption reservation attached to the order
+   *  - cancelled → release any open reservation (points never eaten)
+   *  - payment reversed (chargeback/refund) → claw back the earn in full and
+   *    reverse an applied redemption, points returning with original expiry.
+   */
+  private registerOrderTransitionSubscribers(): void {
+    this.orderTransitionService.onTransition(async ({ orderId, toStatus, ctx }) => {
+      if (toStatus === 'delivered' || toStatus === 'completed') {
+        await this.vestLoyaltyOnDeliveryUseCase.execute(orderId);
+        await this.consumeRedemptionUseCase.execute({ orderId }).catch(() => undefined);
+      }
+      if (toStatus === 'cancelled') {
+        await this.releaseRedemptionUseCase.execute({ orderId }).catch(() => undefined);
+      }
+      if (ctx.paymentStatus === 'reversed') {
+        await this.clawbackOrderEarnUseCase
+          .execute({ orderId, actorId: null, actorType: 'system', reason: 'Payment reversed by provider' })
+          .catch(() => undefined);
+        await this.reverseRedemptionUseCase.execute({ orderId, reason: 'Payment reversed by provider' }).catch(() => undefined);
+      }
+    });
   }
 }

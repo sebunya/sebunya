@@ -16,6 +16,7 @@ import { serve } from '@hono/node-server';
 import app from './app';
 
 import { startOutboxTicker, gracefulStopOutboxTicker } from '../../infrastructure/scheduler/OutboxTicker';
+import { startLoyaltyDailyTicker, stopLoyaltyDailyTicker } from '../../infrastructure/scheduler/LoyaltyDailyTicker';
 import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
 import { templateOverrideCache } from '../../infrastructure/notifications/TemplateOverrideCache';
 import { endDbConnection } from '../../infrastructure/db/client';
@@ -35,6 +36,7 @@ const server = serve({
 
   if (process.env.NODE_ENV !== 'test') {
     startOutboxTicker();
+    startLoyaltyDailyTicker();
     registerAllWorkers();
     // Converge DB permissions on the code registry (advisory-locked, add-only).
     void runPermissionRegistrySyncAtBoot();
@@ -84,6 +86,7 @@ async function gracefulShutdown(signal: string) {
     });
 
     logger.info('[Process] Waiting for background tasks to finish...');
+    stopLoyaltyDailyTicker();
     await gracefulStopOutboxTicker(10000);
 
     logger.info('[Process] Closing database connections...');

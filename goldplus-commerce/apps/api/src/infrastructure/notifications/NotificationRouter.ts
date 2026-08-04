@@ -147,6 +147,44 @@ export class DefaultNotificationRouter implements INotificationRouter {
         }
         break;
 
+      // ── Customer loyalty messaging (loyalty brief PART M) ────────────────
+      // Transactional, consent-gated at enqueue time. Channel order for this
+      // market: SMS ahead of email (WhatsApp API is a deferred channel).
+      case 'LOYALTY_EXPIRY_WARNING':
+      case 'LOYALTY_POINTS_EARNED':
+      case 'LOYALTY_REDEMPTION_CONFIRMED':
+      case 'LOYALTY_REDEMPTION_REVERSED':
+      case 'LOYALTY_TIER_CHANGED': {
+        const customerPhone = typeof payload.customerPhone === 'string' ? payload.customerPhone : '';
+        const customerEmail = typeof payload.customerEmail === 'string' ? payload.customerEmail : '';
+        if (customerPhone) {
+          targets.push({
+            channel: 'sms',
+            provider: this.smsProvider,
+            payload: {
+              recipient: customerPhone,
+              template: eventType,
+              data: payload,
+              relatedEntity: 'loyalty',
+              relatedEntityId,
+            },
+          });
+        } else if (customerEmail) {
+          targets.push({
+            channel: 'email',
+            provider: this.emailProvider,
+            payload: {
+              recipient: customerEmail,
+              template: eventType,
+              data: payload,
+              relatedEntity: 'loyalty',
+              relatedEntityId,
+            },
+          });
+        }
+        break;
+      }
+
       case 'FAKE_PRODUCT_REPORTED':
         if (opsEmail) {
           targets.push({
