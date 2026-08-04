@@ -25,3 +25,6 @@ Welcome, future AI agent. When working in this repository, you MUST follow these
 - Mobile-first, accessible, and simplified.
 - Ethical behavioural economics only. Do not use dark patterns or fake urgency.
 - Global benchmark websites are for inspiration only, do NOT copy them.
+
+## Location Module
+- The location/address module build is governed by `docs/location-module-brief.md` (verified Ministry of ICT 2019 postcode dataset, PARTs A–P). Read it before touching location, address, or delivery-zone code. Decisions and assumptions live in `docs/location-module-decisions.md`.
