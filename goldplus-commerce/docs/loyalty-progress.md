@@ -64,3 +64,37 @@ config, history surfaces. Stage 2 therefore = rule versioning + programme
 config (all nulls) + redemptions/notices/snapshots/fraud tables + control-
 totals implementation + cascade fix, NOT a ledger rebuild. Backfill: nothing to
 backfill (0 entries) — rule v1 is created as the version future entries cite.
+
+## Stages 2–4 core — ledger hardening, integrity, redemption engine (2026-08-04) ✅ (commit f126b10)
+- Migration 0085 (rehearse→live discipline): CASCADE→RESTRICT on the two ledger
+  FKs; loyalty_rules with v1 = the live behaviour (10/1000 on order_total —
+  recorded, not chosen; basis is PART V #6); programme config all-NULL
+  (point value, redemption min/max share, budget cap, kill switch, guest
+  backfill); loyalty_redemptions; expiry notices (unique per earn+kind);
+  liability snapshots; fraud signals; users.phone_verified_at;
+  verification_attempts.user_id; orders.loyalty_discount_ugx/redemption_id.
+- VESTING: earn moved payment→delivery via post-commit order-transition
+  subscribers (delivered/completed). Refused COD never earns — the fraud hole
+  closes structurally. Pending points = honest projection over paid-undelivered
+  orders (no ledger mutation, append-only preserved).
+- CLAWBACK: full/pro-rata reversal pointing at the earn; spent points go
+  negative and carry; payment 'reversed' (chargeback) auto-claws + reverses
+  redemption. Idempotent (one reversal per earn by partial-unique index).
+- REDEMPTION: reserve (gated on config non-null + balance minus open
+  reservations + max-share ceiling) → discount INSIDE order totals (repository
+  mismatch guard now: total + discount == quote total) → consume at payment
+  (prepaid) / delivered (COD) → release on cancel/TTL → reverse on refund with
+  ORIGINAL expiry (FIFO re-free proven in tests). Reservations never eat points.
+- Daily sweep ticker (6h, idempotent): FIFO expiry ledger entries, reservation
+  TTL releases, 30d/7d/1d expiry warnings once-per-cohort through the EXISTING
+  outbox/NotificationRouter (SMS→email; no parallel messaging path), liability
+  snapshot with observed breakage + redemption rate.
+- Controls: budget cap pauses earning with a high-severity fraud signal; kill
+  switch halts earn+reserve without a deploy.
+- Tests: +14 engine tests (planRedemption edges, pro-rata clawback, budget cap,
+  notice windows, FIFO reversal-of-redeem, negative-balance carry). Era-pinned
+  boundary test updated to the vesting contract (earning no longer in commerce
+  routes — pinned at the vesting use case + Registry subscriber instead).
+  Suite: 305 files / 5,185 green.
+- Retirement note: none deleted; two assertions in ModuleLoyaltyCompletion
+  relocated with intent preserved (recorded above).
