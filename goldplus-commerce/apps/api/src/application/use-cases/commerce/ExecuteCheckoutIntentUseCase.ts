@@ -133,6 +133,8 @@ export interface CheckoutOrderCreator {
     previewQuoteId: string | null;
     acceptPriceChange: boolean;
     checkoutLink?: LeaseToken;
+    /** Verified principal from the signed intent — USER links the order to the account. */
+    principal: { kind: 'USER' | 'GUEST'; id: string };
   }): Promise<{ order: Order; deliveryFeeConfirmed: boolean; idempotentReplay: boolean }>;
 }
 
@@ -290,6 +292,7 @@ export class ExecuteCheckoutIntentUseCase {
       previewQuoteId: command.previewQuoteId ?? null,
       acceptPriceChange: command.acceptPriceChange ?? false,
       checkoutLink: lease,
+      principal: { kind: command.claims.kind, id: command.claims.principalId },
     });
 
     return this.afterOrder(command, lease, created.order, {

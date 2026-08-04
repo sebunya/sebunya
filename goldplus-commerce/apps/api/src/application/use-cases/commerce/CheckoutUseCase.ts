@@ -51,6 +51,13 @@ export interface CheckoutDto {
   couponCode?: string | null;
   previewQuoteId?: string | null;
   acceptPriceChange?: boolean;
+  /**
+   * The verified checkout principal. USER links the order to that account —
+   * the anchor for "my orders" and loyalty attribution; GUEST (or absent)
+   * stores no identity. Never trusted from the client: it comes from the
+   * signed checkout-intent claims.
+   */
+  principal?: { kind: 'USER' | 'GUEST'; id: string } | null;
 }
 
 export interface CheckoutResult {
@@ -153,7 +160,16 @@ export class CheckoutUseCase {
         evaluatedAt: quote.evaluatedAt,
       };
       const pricedItems: OrderItem[] = quote.lines.map((line) => ({ productId: line.productId, sku: line.sku, name: line.name, price: line.canonicalUnitPriceUgx, quantity: line.quantity, canonicalUnitPrice: line.canonicalUnitPriceUgx, baseSubtotal: line.baseSubtotalUgx, discountAmount: line.discountUgx, finalLineTotal: line.finalSubtotalUgx }));
-      const order = Order.create(crypto.randomUUID(), dto.customerDetails, dto.buyerType, pricedItems, quote.shippingUgx, fee.confirmed, snapshot);
+      const order = Order.create(
+        crypto.randomUUID(),
+        dto.customerDetails,
+        dto.buyerType,
+        pricedItems,
+        quote.shippingUgx,
+        fee.confirmed,
+        snapshot,
+        dto.principal?.kind === 'USER' ? dto.principal.id : null,
+      );
       try {
         const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink });
         if (saved.duplicate && reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id });

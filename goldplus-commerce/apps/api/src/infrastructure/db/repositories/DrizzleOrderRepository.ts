@@ -20,7 +20,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       result.items.map((item) => ({ productId: item.productId, sku: item.sku, name: item.productName, price: item.unitPrice, quantity: item.quantity, canonicalUnitPrice: item.canonicalUnitPrice, baseSubtotal: item.baseSubtotal, discountAmount: item.discountAmount, finalLineTotal: item.finalLineTotal })),
       result.subtotalAmount, result.deliveryFee, result.totalAmount, result.paymentStatus as PaymentStatus,
       result.status as DomainOrderStatus, result.createdAt, result.updatedAt, (result.deliveryLocation as any) ?? null,
-      result.deliveryFeeConfirmed ?? false, pricing
+      result.deliveryFeeConfirmed ?? false, pricing, result.userId ?? null
     );
   }
   async findById(id: string): Promise<Order | null> {
@@ -66,6 +66,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       await tx.insert(orders).values({
         id: order.id,
         orderNumber: order.orderNumber,
+        userId: order.userId ?? null,
         buyerType: order.buyerType,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
@@ -155,7 +156,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       const reservations = input.reservationIds.length ? await tx.select().from(promotionReservations).where(inArray(promotionReservations.id, input.reservationIds)) : [];
       if (reservations.length !== input.reservationIds.length || reservations.some((row) => row.quoteId !== input.quote.id || row.status !== 'RESERVED' || row.expiresAt <= new Date())) throw new Error('PRICING_RESERVATION_COMMIT_MISMATCH');
       await tx.insert(orders).values({
-        id: input.order.id, orderNumber: input.order.orderNumber, buyerType: input.order.buyerType,
+        id: input.order.id, orderNumber: input.order.orderNumber, userId: input.order.userId ?? null, buyerType: input.order.buyerType,
         customerName: input.order.customerName, customerPhone: input.order.customerPhone, customerEmail: input.order.customerEmail,
         deliveryArea: input.order.deliveryArea, deliveryAddress: input.order.deliveryAddress, status: input.order.orderStatus,
         paymentStatus: input.order.paymentStatus, subtotalAmount: input.order.subtotalUgx, deliveryFee: input.order.deliveryFeeUgx,

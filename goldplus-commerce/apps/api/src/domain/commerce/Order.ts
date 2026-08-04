@@ -76,7 +76,18 @@ export class Order {
     public readonly deliveryLocation: OrderDeliveryLocation | null = null,
     /** True only when the fee came from an enabled configured delivery zone. */
     public readonly deliveryFeeConfirmed: boolean = false,
-    public readonly pricingSnapshot: OrderPricingSnapshot | null = null
+    public readonly pricingSnapshot: OrderPricingSnapshot | null = null,
+    /**
+     * The account this order belongs to, or null for a guest.
+     *
+     * This is the identity link everything account-facing hangs off: "my
+     * orders", and the loyalty earn boundary, which attributes points by
+     * orders.userId. Until this existed the entity silently dropped the
+     * checkout principal, so no order ever belonged to anyone — signed-in
+     * customers saw an empty order history and loyalty could never credit a
+     * point to the very customers the programme was activated for.
+     */
+    public readonly userId: string | null = null
   ) {}
 
   public static create(
@@ -86,7 +97,8 @@ export class Order {
     items: OrderItem[],
     deliveryFeeUgx: number = 0,
     deliveryFeeConfirmed: boolean = false,
-    pricingSnapshot: OrderPricingSnapshot | null = null
+    pricingSnapshot: OrderPricingSnapshot | null = null,
+    userId: string | null = null
   ): Order {
     const subtotal = pricingSnapshot?.finalTotalUgx != null
       ? pricingSnapshot.finalTotalUgx - pricingSnapshot.shippingUgx - pricingSnapshot.taxUgx
@@ -118,7 +130,8 @@ export class Order {
       timestamp,
       customer.deliveryLocation ?? null,
       deliveryFeeConfirmed,
-      pricingSnapshot
+      pricingSnapshot,
+      userId
     );
   }
 
@@ -137,7 +150,8 @@ export class Order {
       this.id, this.orderNumber, this.customerName, this.customerPhone, this.customerEmail,
       this.deliveryArea, this.deliveryAddress, this.buyerType, this.items,
       this.subtotalUgx, this.deliveryFeeUgx, this.totalUgx, this.paymentStatus,
-      newStatus, this.createdAt, new Date(), this.deliveryLocation, this.deliveryFeeConfirmed, this.pricingSnapshot
+      newStatus, this.createdAt, new Date(), this.deliveryLocation, this.deliveryFeeConfirmed, this.pricingSnapshot,
+      this.userId
     );
   }
 }
