@@ -30,3 +30,4 @@ export * from './checkout-intent';
 export * from './cart-credential';
 export * from './analytics';
 export * from './locations/uganda';
+export * from './locations/uganda-geo';

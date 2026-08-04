@@ -16,7 +16,39 @@ if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const intent = String(form.get("intent") || "save");
   try {
-    if (intent === "delete") {
+    if (intent === "policy") {
+      const fee = (name: string) => Number(String(form.get(name) || "").replace(/[,\s]/g, ""));
+      const res = await fetch(`${apiBase}/admin/delivery-zones/policy`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          coreFeeUgx: fee("coreFeeUgx"),
+          cityFeeUgx: fee("cityFeeUgx"),
+          metroFeeUgx: fee("metroFeeUgx"),
+          metroEdgeFeeUgx: fee("metroEdgeFeeUgx"),
+          nearFeeUgx: fee("nearFeeUgx"),
+          midFeeUgx: fee("midFeeUgx"),
+          farFeeUgx: fee("farFeeUgx"),
+          remoteFeeUgx: fee("remoteFeeUgx"),
+          enabled: String(form.get("policyEnabled") || "") === "on",
+          note: String(form.get("note") || "").trim() || null,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: "Band pricing policy saved — every unconfirmed district now estimates from it." }
+        : { kind: "error", text: json?.error?.message || "Could not save the policy." };
+    } else if (intent === "adopt") {
+      const res = await fetch(`${apiBase}/admin/delivery-zones/adopt`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ district: String(form.get("district") || "") }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: `Adopted the estimate: ${json.data.district} is now a CONFIRMED zone at ${json.data.feeUgx.toLocaleString("en-UG")} UGX.` }
+        : { kind: "error", text: json?.error?.message || "Could not adopt the estimate." };
+    } else if (intent === "delete") {
       const id = String(form.get("id") || "");
       const res = await fetch(`${apiBase}/admin/delivery-zones/${encodeURIComponent(id)}`, {
         method: "DELETE",
@@ -58,6 +90,26 @@ try {
   loadFailed = true;
 }
 
+// The intelligence read: every district with geography, model estimate,
+// observed median from confirmed order fees, and which source answers today.
+let intel: any = null;
+try {
+  const res = await fetch(`${apiBase}/admin/delivery-zones/intelligence`, { headers, signal: AbortSignal.timeout(8000) });
+  const json = await res.json().catch(() => null);
+  if (json?.success) intel = json.data;
+} catch {
+  /* the classic zones UI still works without it */
+}
+const intelRows = intel
+  ? [...intel.rows].sort((a: any, b: any) => (a.km ?? 9_999) - (b.km ?? 9_999))
+  : [];
+
+const sourceBadge: Record<string, string> = {
+  ZONE: "border-green-200 bg-green-50 text-green-700",
+  OBSERVED: "border-blue-200 bg-blue-50 text-blue-700",
+  MODEL: "border-amber-200 bg-amber-50 text-amber-800",
+};
+
 const formatter = new Intl.NumberFormat("en-UG", { style: "currency", currency: "UGX", maximumFractionDigits: 0 });
 ---
 
@@ -79,6 +131,51 @@ const formatter = new Intl.NumberFormat("en-UG", { style: "currency", currency: 
       <div class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status">
         {notice.text}
       </div>
+    )}
+
+    {intel && (
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+        <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Band pricing policy</h3>
+          <span class="text-[10px] font-bold text-gray-400">{intel.policy.stored ? "Operator-saved" : "Seed defaults — review and save to own these numbers"}</span>
+        </div>
+        <p class="text-xs text-gray-500 mb-4 max-w-3xl">
+          Eight numbers price the whole country as <strong>estimates</strong>: boda rings inside Greater Kampala,
+          bus-parcel bands upcountry, driven by each district's road distance from Kampala. Confirmed zones below
+          always override; estimates are never added to an order total.
+        </p>
+        <form method="POST" class="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+          <input type="hidden" name="intent" value="policy" />
+          {([
+            ["coreFeeUgx", "Core ≤6 km", intel.policy.coreFeeUgx],
+            ["cityFeeUgx", "City ≤12 km", intel.policy.cityFeeUgx],
+            ["metroFeeUgx", "Metro ≤25 km", intel.policy.metroFeeUgx],
+            ["metroEdgeFeeUgx", "Metro edge ≤45 km", intel.policy.metroEdgeFeeUgx],
+            ["nearFeeUgx", "Near ≤160 km", intel.policy.nearFeeUgx],
+            ["midFeeUgx", "Mid ≤340 km", intel.policy.midFeeUgx],
+            ["farFeeUgx", "Far ≤520 km", intel.policy.farFeeUgx],
+            ["remoteFeeUgx", "Remote 520+ km", intel.policy.remoteFeeUgx],
+          ] as Array<[string, string, number]>).map(([name, label, value]) => (
+            <label class="block">
+              <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">{label}</span>
+              <input name={name} required inputmode="numeric" value={String(value)}
+                class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+            </label>
+          ))}
+          <label class="block col-span-2">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Note (why these numbers)</span>
+            <input name="note" maxlength="300" value={intel.policy.note ?? ""}
+              class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+          </label>
+          <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-600">
+            <input type="checkbox" name="policyEnabled" checked={intel.policy.enabled} class="w-4 h-4 text-brand-primary border-gray-300 rounded" />
+            Show estimates to customers
+          </label>
+          <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">
+            Save policy
+          </button>
+        </form>
+      </section>
     )}
 
     <form method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8 grid gap-4 md:grid-cols-4 items-end">
@@ -152,5 +249,69 @@ const formatter = new Intl.NumberFormat("en-UG", { style: "currency", currency: 
         </tbody>
       </table>
     </div>
+
+    {intel && (
+      <section class="mt-8 bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <div class="p-6 border-b border-gray-100">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">District intelligence — all {intelRows.length} districts</h3>
+          <p class="text-xs text-gray-500 mt-1 max-w-3xl">
+            What each district would be quoted today and where the number comes from:
+            <span class="font-bold text-green-700">ZONE</span> = your confirmed promise ·
+            <span class="font-bold text-blue-700">OBSERVED</span> = median of fees your team actually confirmed on orders ·
+            <span class="font-bold text-amber-800">MODEL</span> = distance-band estimate.
+            <strong>Adopt</strong> turns today's estimate into a confirmed zone in one click. Drift ⚠ means confirmed
+            reality disagrees with the model by over 25% — tune the band or adopt the observed number.
+          </p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse min-w-[880px]">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+                <th class="px-5 py-3">District</th>
+                <th class="px-5 py-3 text-right">Road km</th>
+                <th class="px-5 py-3">Band</th>
+                <th class="px-5 py-3 text-right">Model</th>
+                <th class="px-5 py-3 text-right">Observed (n)</th>
+                <th class="px-5 py-3 text-right">Zone</th>
+                <th class="px-5 py-3 text-right">Customer sees</th>
+                <th class="px-5 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody class="text-xs">
+              {intelRows.map((r: any) => (
+                <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                  <td class="px-5 py-2.5 font-bold text-brand-dark whitespace-nowrap">
+                    {r.district}{r.effective.observedDisagreesWithModel && <span title="Confirmed fees disagree with the model by over 25%" class="ml-1.5 text-amber-600" aria-label="Drift warning">⚠</span>}
+                  </td>
+                  <td class="px-5 py-2.5 text-right text-gray-500">{r.km ?? "—"}</td>
+                  <td class="px-5 py-2.5 text-gray-500">{r.band ?? "—"}</td>
+                  <td class="px-5 py-2.5 text-right text-gray-600">{r.modelFeeUgx !== null ? formatter.format(r.modelFeeUgx) : "—"}</td>
+                  <td class="px-5 py-2.5 text-right text-gray-600">{r.observedMedianUgx !== null ? `${formatter.format(r.observedMedianUgx)} (${r.observedCount})` : "—"}</td>
+                  <td class="px-5 py-2.5 text-right text-gray-600">{r.zoneFeeUgx !== null ? `${formatter.format(r.zoneFeeUgx)}${r.zoneEnabled ? "" : " (off)"}` : "—"}</td>
+                  <td class="px-5 py-2.5 text-right whitespace-nowrap">
+                    {r.effective.feeUgx !== null ? (
+                      <span class={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-black ${sourceBadge[r.effective.source] ?? "border-gray-200 bg-gray-50 text-gray-500"}`}>
+                        {formatter.format(r.effective.feeUgx)} · {r.effective.source}
+                      </span>
+                    ) : (
+                      <span class="text-gray-400 italic">no quote</span>
+                    )}
+                  </td>
+                  <td class="px-5 py-2.5 text-right">
+                    {r.effective.kind === "ESTIMATED" && (
+                      <form method="POST" class="inline">
+                        <input type="hidden" name="intent" value="adopt" />
+                        <input type="hidden" name="district" value={r.district} />
+                        <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-brand-dark hover:underline">Adopt</button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
   </div>
 </AdminLayout>

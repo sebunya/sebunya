@@ -187,6 +187,32 @@ export const deliveryZones = pgTable('delivery_zones', {
 }));
 
 /**
+ * Delivery intelligence (migration 0083): the single band-pricing policy that
+ * turns embedded road geography into countrywide fee ESTIMATES. Confirmed
+ * zones above always override; estimates never enter order totals. Single-row
+ * by construction — the fixed "singleton" key is unique.
+ */
+export const deliveryPricingPolicy = pgTable('delivery_pricing_policy', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  singleton: varchar('singleton', { length: 10 }).default('policy').notNull(),
+  coreFeeUgx: bigint('core_fee_ugx', { mode: 'number' }).notNull(),
+  cityFeeUgx: bigint('city_fee_ugx', { mode: 'number' }).notNull(),
+  metroFeeUgx: bigint('metro_fee_ugx', { mode: 'number' }).notNull(),
+  metroEdgeFeeUgx: bigint('metro_edge_fee_ugx', { mode: 'number' }).notNull(),
+  nearFeeUgx: bigint('near_fee_ugx', { mode: 'number' }).notNull(),
+  midFeeUgx: bigint('mid_fee_ugx', { mode: 'number' }).notNull(),
+  farFeeUgx: bigint('far_fee_ugx', { mode: 'number' }).notNull(),
+  remoteFeeUgx: bigint('remote_fee_ugx', { mode: 'number' }).notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  note: varchar('note', { length: 300 }),
+  updatedBy: uuid('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  singletonIdx: uniqueIndex('delivery_pricing_policy_singleton_idx').on(table.singleton),
+}));
+
+/**
  * Checkout idempotency (migration 0057).
  *
  * One row per (trusted principal, client order key), claimed atomically with

@@ -449,6 +449,30 @@ const potentialPoints = loyaltyProgramme.active
   ? Math.floor(cart.subtotalUgx / 1000) * loyaltyProgramme.earnRatePer1000Ugx
   : 0;
 
+// Initial delivery estimate for the preselected saved address, so a returning
+// customer sees a delivery figure without touching anything. Guests get one
+// the moment they pick a location (client-side, same public endpoint).
+// CONFIRMED comes only from an operator zone and IS charged on the order;
+// ESTIMATED is advisory and never added to the total shown here.
+interface DeliveryEstimateView {
+  kind: 'CONFIRMED' | 'ESTIMATED' | 'UNAVAILABLE';
+  feeUgx: number | null;
+  km: number | null;
+}
+let initialDeliveryEstimate: DeliveryEstimateView | null = null;
+if (defaultAddress) {
+  try {
+    const deRes = await fetch(
+      `${apiBase}/commerce/delivery-estimate?district=${encodeURIComponent(defaultAddress.district)}`,
+      { signal: AbortSignal.timeout(2500) },
+    );
+    const deJson: any = deRes.ok ? await deRes.json().catch(() => null) : null;
+    if (deJson?.success) initialDeliveryEstimate = deJson.data.estimate;
+  } catch {
+    /* estimate is advisory */
+  }
+}
+
 const formatUgx = (n: number): string =>
   new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
 ---
@@ -536,6 +560,7 @@ const formatUgx = (n: number): string =>
                              type="radio"
                              name="addressId"
                              value={a.id}
+                             data-district={a.district}
                              checked={a.id === defaultAddress?.id}
                              class="mt-1 w-4 h-4 text-brand-primary border-slate-250 focus:ring-brand-primary cursor-pointer js-address-choice"
                            />
@@ -654,13 +679,23 @@ const formatUgx = (n: number): string =>
                 <dt class="text-slate-550">Subtotal</dt>
                 <dd class="font-bold text-gray-900">{formatUgx(cart.subtotalUgx)}</dd>
               </div>
-              <div class="flex items-center justify-between">
-                <dt class="text-slate-550">Delivery estimate</dt>
-                <dd class="text-brand-primary font-black uppercase text-[10px] tracking-wider">Calculated post-zone</dd>
+              <div class="flex items-start justify-between gap-3" id="delivery-estimate-row">
+                <dt class="text-slate-550">Delivery</dt>
+                <dd class="text-right" id="delivery-estimate-value" data-state={initialDeliveryEstimate?.kind ?? 'NONE'}>
+                  {initialDeliveryEstimate?.kind === 'CONFIRMED' && initialDeliveryEstimate.feeUgx !== null ? (
+                    <span class="font-bold text-gray-900">{formatUgx(initialDeliveryEstimate.feeUgx)}</span>
+                  ) : initialDeliveryEstimate?.kind === 'ESTIMATED' && initialDeliveryEstimate.feeUgx !== null ? (
+                    <span class="font-bold text-gray-900">≈ {formatUgx(initialDeliveryEstimate.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">estimate — confirmed before dispatch</span></span>
+                  ) : (
+                    <span class="text-[11px] font-bold text-slate-400">Shown when you pick a location</span>
+                  )}
+                </dd>
               </div>
               <div class="flex items-center justify-between pt-3 border-t border-slate-100">
-                <dt class="font-bold text-gray-900 text-sm">Grand total</dt>
-                <dd class="font-black text-gray-900 text-lg">{formatUgx(cart.subtotalUgx)}</dd>
+                <dt class="font-bold text-gray-900 text-sm" id="grand-total-label">{initialDeliveryEstimate?.kind === 'CONFIRMED' ? 'Grand total (incl. delivery)' : 'Grand total (excl. delivery)'}</dt>
+                <dd class="font-black text-gray-900 text-lg" id="grand-total-value" data-subtotal={cart.subtotalUgx}>
+                  {formatUgx(cart.subtotalUgx + (initialDeliveryEstimate?.kind === 'CONFIRMED' ? initialDeliveryEstimate.feeUgx ?? 0 : 0))}
+                </dd>
               </div>
             </dl>
             {potentialPoints > 0 && (
@@ -740,6 +775,67 @@ const formatUgx = (n: number): string =>
     };
     addressRadios.forEach((r) => r.addEventListener('change', syncAddressBlock));
     syncAddressBlock();
+
+    // ── live delivery estimate ────────────────────────────────────────────────
+    // Re-quotes whenever the destination changes: a saved-address radio (its
+    // district travels on data-district) or a fresh picker selection. CONFIRMED
+    // fees (operator zones — actually charged) join the grand total; ESTIMATES
+    // stay advisory and never inflate the number the customer commits to.
+    const API_BASE = (import.meta.env.PUBLIC_API_BASE_URL ?? '').replace(/\/+$/, '');
+    const estimateEl = document.getElementById('delivery-estimate-value');
+    const totalEl = document.getElementById('grand-total-value');
+    const totalLabelEl = document.getElementById('grand-total-label');
+    const subtotal = Number(totalEl?.dataset.subtotal ?? '0');
+    const ugx = (n: number) =>
+      new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
+
+    function renderEstimate(est: { kind: string; feeUgx: number | null } | null) {
+      if (!estimateEl || !totalEl || !totalLabelEl) return;
+      if (est && est.kind === 'CONFIRMED' && est.feeUgx !== null) {
+        estimateEl.innerHTML = `<span class="font-bold text-gray-900">${ugx(est.feeUgx)}</span>`;
+        totalLabelEl.textContent = 'Grand total (incl. delivery)';
+        totalEl.textContent = ugx(subtotal + est.feeUgx);
+      } else if (est && est.kind === 'ESTIMATED' && est.feeUgx !== null) {
+        estimateEl.innerHTML = `<span class="font-bold text-gray-900">≈ ${ugx(est.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">estimate — confirmed before dispatch</span></span>`;
+        totalLabelEl.textContent = 'Grand total (excl. delivery)';
+        totalEl.textContent = ugx(subtotal);
+      } else {
+        estimateEl.innerHTML = '<span class="text-[11px] font-bold text-slate-400">Confirmed by our team after ordering</span>';
+        totalLabelEl.textContent = 'Grand total (excl. delivery)';
+        totalEl.textContent = ugx(subtotal);
+      }
+    }
+
+    let estimateSeq = 0;
+    async function refreshEstimate(district: string | null, area: string | null) {
+      if (!district || !API_BASE) { renderEstimate(null); return; }
+      const seq = ++estimateSeq;
+      try {
+        const qs = new URLSearchParams({ district, ...(area ? { area } : {}) });
+        const res = await fetch(`${API_BASE}/commerce/delivery-estimate?${qs}`, { signal: AbortSignal.timeout(4000) });
+        const json = await res.json().catch(() => null);
+        if (seq !== estimateSeq) return; // a newer destination superseded this quote
+        renderEstimate(json?.success ? json.data.estimate : null);
+      } catch {
+        if (seq === estimateSeq) renderEstimate(null);
+      }
+    }
+
+    addressRadios.forEach((r) =>
+      r.addEventListener('change', () => {
+        if (r.checked && r.value !== '') refreshEstimate(r.dataset.district ?? null, null);
+        else if (r.checked) renderEstimate(null);
+      }),
+    );
+    const pickerPayload = document.querySelector<HTMLInputElement>('form[action="/checkout"] .js-final-payload');
+    pickerPayload?.addEventListener('change', () => {
+      try {
+        const loc = JSON.parse(pickerPayload.value || '{}');
+        refreshEstimate(loc.district ?? null, loc.area ?? null);
+      } catch {
+        renderEstimate(null);
+      }
+    });
 
     // ── add_payment_info — fires when user submits the checkout form ──────────
     const form = document.querySelector<HTMLFormElement>('form[action="/checkout"]');

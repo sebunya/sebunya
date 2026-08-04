@@ -109,6 +109,20 @@ async function earnDormantLoyaltyForVerifiedOrder(orderId: string): Promise<void
   }
 }
 
+// Public delivery-fee estimate for a destination. Returns CONFIRMED only when
+// an enabled zone exists (the operator's standing promise); otherwise a
+// clearly-labelled ESTIMATE from the geographic band model / observed medians,
+// or UNAVAILABLE — never a guess dressed as a price.
+routes.get('/delivery-estimate', async (c) => {
+  const district = c.req.query('district') ?? '';
+  const area = c.req.query('area') ?? null;
+  const result = await registry.getDeliveryEstimateUseCase.execute({ district, area });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } }, 400);
+  }
+  return c.json({ success: true, data: result });
+});
+
 // Public programme terms so checkout can show a truthful earn preview. Terms
 // only — the same numbers the marketing page states; never balances or ledgers.
 routes.get('/loyalty-programme', async (c) => {

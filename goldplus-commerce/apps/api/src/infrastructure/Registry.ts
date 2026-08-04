@@ -134,6 +134,15 @@ import { PricingGovernanceUseCase } from '../application/use-cases/pricing/Prici
 import { PricingOperationsUseCase } from '../application/use-cases/pricing/PricingOperationsUseCase';
 import { DrizzleDeliveryZoneRepository } from './db/repositories/DrizzleDeliveryZoneRepository';
 import {
+  DrizzleDeliveryPricingPolicyRepository,
+  DrizzleDeliveryFeeObservationReader,
+} from './db/repositories/DrizzleDeliveryIntelligenceRepositories';
+import {
+  GetDeliveryEstimateUseCase,
+  GetDeliveryIntelligenceUseCase,
+  SaveDeliveryPricingPolicyUseCase,
+} from '../application/use-cases/commerce/DeliveryIntelligenceUseCases';
+import {
   ListDeliveryZonesUseCase,
   UpsertDeliveryZoneUseCase,
   DeleteDeliveryZoneUseCase,
@@ -935,6 +944,21 @@ export class Registry {
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);
+  // Delivery intelligence: geography prior + order-book posterior; zones stay
+  // the only source of CONFIRMED fees.
+  public readonly deliveryPricingPolicyRepo = new DrizzleDeliveryPricingPolicyRepository();
+  public readonly deliveryFeeObservationReader = new DrizzleDeliveryFeeObservationReader();
+  public readonly getDeliveryEstimateUseCase = new GetDeliveryEstimateUseCase({
+    zones: this.deliveryZoneRepo,
+    policy: this.deliveryPricingPolicyRepo,
+    observations: this.deliveryFeeObservationReader,
+  });
+  public readonly getDeliveryIntelligenceUseCase = new GetDeliveryIntelligenceUseCase({
+    zones: this.deliveryZoneRepo,
+    policy: this.deliveryPricingPolicyRepo,
+    observations: this.deliveryFeeObservationReader,
+  });
+  public readonly saveDeliveryPricingPolicyUseCase = new SaveDeliveryPricingPolicyUseCase(this.deliveryPricingPolicyRepo);
   public readonly getProductListUseCase = new GetProductListUseCase(this.productRepo);
   public readonly getOrderListUseCase = new GetOrderListUseCase(this.orderRepo);
   public readonly getOrderByIdUseCase = new GetOrderByIdUseCase(this.orderRepo);
