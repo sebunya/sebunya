@@ -120,6 +120,15 @@ try {
 }
 
 const formatUgx = (amount: number): string =>
+
+// Loyalty earn preview (loyalty brief PART G: visibility at the point of
+// decision). Lower bound, vests on delivery — absent when the programme is off.
+let loyaltyRate = 0;
+try {
+  const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2000) });
+  const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
+  if (lpJson?.success && lpJson.data?.active) loyaltyRate = Number(lpJson.data.earnRatePer1000Ugx) || 0;
+} catch { /* preview only */ }
   new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(amount);
 
 const availabilityLabel: Record<ProductPublicDto['availability']['kind'], string> = {
@@ -288,7 +297,12 @@ const canonical = Astro.url.toString();
 
             <div class="flex items-baseline gap-3 mb-4 flex-wrap">
               {product.retailPriceUgx !== null ? (
+                <>
                 <p class="text-3xl font-black text-gray-900">{formatUgx(product.retailPriceUgx)}</p>
+                {loyaltyRate > 0 && Math.floor(product.retailPriceUgx / 1000) * loyaltyRate > 0 && (
+                  <p class="text-xs font-bold text-amber-700 mt-1">Earn at least {(Math.floor(product.retailPriceUgx / 1000) * loyaltyRate).toLocaleString('en-UG')} GoldPlus points when delivered</p>
+                )}
+                </>
               ) : (
                 <p class="text-base text-slate-400 italic">Price on request.</p>
               )}

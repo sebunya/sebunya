@@ -221,6 +221,15 @@ if (items.length === 0) {
 const cartProductIds = items.map(i => i.productId);
 const subtotal = items.reduce((acc, item) => acc + (item.unitPriceUgx * item.quantity), 0);
 
+// Loyalty earn preview at the point of decision (loyalty brief PART G).
+let cartLoyaltyRate = 0;
+try {
+  const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2000) });
+  const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
+  if (lpJson?.success && lpJson.data?.active) cartLoyaltyRate = Number(lpJson.data.earnRatePer1000Ugx) || 0;
+} catch { /* preview only */ }
+const cartPotentialPoints = cartLoyaltyRate > 0 ? Math.floor(subtotal / 1000) * cartLoyaltyRate : 0;
+
 const formatUgx = (n: number): string =>
   new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
 ---
@@ -367,6 +376,11 @@ const formatUgx = (n: number): string =>
                 <dt class="font-black text-gray-900 text-base">Total</dt>
                 <dd class="font-black text-brand-primary text-xl tracking-tight">{formatUgx(subtotal)}</dd>
               </div>
+              {cartPotentialPoints > 0 && (
+                <div class="pt-1">
+                  <p class="text-[11px] font-bold text-amber-700">Earn at least {cartPotentialPoints.toLocaleString('en-UG')} GoldPlus points when delivered (sign in to collect them)</p>
+                </div>
+              )}
             </dl>
 
             <a
