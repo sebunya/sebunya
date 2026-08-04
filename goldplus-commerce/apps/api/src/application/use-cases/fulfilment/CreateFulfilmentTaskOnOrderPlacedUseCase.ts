@@ -25,7 +25,12 @@ function toFulfilmentPaymentStatus(status: string): FulfilmentPaymentStatus {
 function buildDeliverySummary(order: Order): string {
   const loc = order.deliveryLocation;
   if (loc) {
-    const parts = [loc.district, loc.subcountyDivisionTc, loc.parishWard, order.deliveryArea]
+    // Lean payloads (post gazetteer replacement) carry displayLabel/area;
+    // legacy rows carry subcountyDivisionTc/parishWard. Read both so neither
+    // era degrades to bare district text.
+    const leanLabel = (loc as { displayLabel?: string }).displayLabel;
+    const leanArea = (loc as { area?: string }).area;
+    const parts = [leanLabel, leanArea, loc.district, loc.subcountyDivisionTc, loc.parishWard, order.deliveryArea]
       .map((p) => (p ?? '').trim())
       .filter(Boolean);
     const unique = [...new Set(parts)];

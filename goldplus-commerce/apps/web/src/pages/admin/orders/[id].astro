@@ -428,7 +428,11 @@ if (currentStatus === 'received') {
 } else if (currentStatus === 'pending_owner_review') {
   transitionOptions.push('processing', 'cancelled');
 } else if (currentStatus === 'processing') {
-  transitionOptions.push('completed', 'cancelled');
+  transitionOptions.push('dispatched', 'completed', 'cancelled');
+} else if (currentStatus === 'dispatched') {
+  transitionOptions.push('delivered', 'delivery_failed');
+} else if (currentStatus === 'delivery_failed') {
+  transitionOptions.push('dispatched', 'completed', 'cancelled');
 }
 ---
 

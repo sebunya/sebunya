@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { canTransitionOrder } from './OrderStateMachine';
 import { DomainError } from '../errors/DomainError';
 
-export type OrderStatus = 'received' | 'pending_payment' | 'pending_owner_review' | 'processing' | 'completed' | 'cancelled' | 'failed';
+export type OrderStatus = 'received' | 'pending_payment' | 'pending_owner_review' | 'processing' | 'dispatched' | 'delivered' | 'delivery_failed' | 'completed' | 'cancelled' | 'failed';
 export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'failed';
 export type BuyerType = 'retail' | 'wholesale' | 'corporate';
 

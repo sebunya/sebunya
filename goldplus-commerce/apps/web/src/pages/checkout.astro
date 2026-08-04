@@ -735,6 +735,7 @@ const formatUgx = (n: number): string =>
 
 <script>
   import { track, captureClickIdsServerSide } from '../lib/telemetry';
+  import { publicApiBase } from '../lib/api';
 
   document.addEventListener('DOMContentLoaded', () => {
     const dataEl  = document.getElementById('checkout-telemetry-data');
@@ -781,7 +782,7 @@ const formatUgx = (n: number): string =>
     // district travels on data-district) or a fresh picker selection. CONFIRMED
     // fees (operator zones — actually charged) join the grand total; ESTIMATES
     // stay advisory and never inflate the number the customer commits to.
-    const API_BASE = (import.meta.env.PUBLIC_API_BASE_URL ?? '').replace(/\/+$/, '');
+    const API_BASE = publicApiBase;
     const estimateEl = document.getElementById('delivery-estimate-value');
     const totalEl = document.getElementById('grand-total-value');
     const totalLabelEl = document.getElementById('grand-total-label');

@@ -17,7 +17,16 @@ const ALLOWED: Record<OrderStatus, OrderStatus[]> = {
   received: ['processing', 'cancelled'],
   pending_payment: ['processing', 'cancelled'],
   pending_owner_review: ['processing', 'cancelled'],
-  processing: ['completed', 'cancelled'],
+  // Location module stage 2: the delivery leg. `completed` stays reachable
+  // directly for non-delivery closure (collection at the counter, historical
+  // flows); dispatched orders resolve through a recorded delivery outcome.
+  processing: ['dispatched', 'completed', 'cancelled'],
+  dispatched: ['delivered', 'delivery_failed'],
+  // A failed attempt is NOT terminal: re-dispatch for another attempt, close
+  // out via completed (e.g. customer collected after a failed attempt), or
+  // cancel. Every hop is ledgered by OrderTransitionService like any other.
+  delivery_failed: ['dispatched', 'completed', 'cancelled'],
+  delivered: [], // terminal — the success state failed-delivery metrics count against
   completed: [], // terminal
   cancelled: [], // terminal
   failed: [], // terminal — set internally by checkout/payment failure, not transitioned out of

@@ -18,7 +18,6 @@ export const DOMAIN_EVENTS = {
 export * from './types/product';
 export * from './types/account';
 export * from './permissions';
-export * from './types/locations';
 export * from './recommendations';
 export * from './date-validation';
 export * from './events/telemetry';
@@ -31,3 +30,4 @@ export * from './cart-credential';
 export * from './analytics';
 export * from './locations/uganda';
 export * from './locations/uganda-geo';
+export * from './locations/folding';

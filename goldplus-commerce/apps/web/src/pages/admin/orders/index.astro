@@ -135,6 +135,9 @@ function getStatusColor(status: string) {
             <option value="pending_payment" selected={statusFilter === 'pending_payment'}>Pending Payment</option>
             <option value="pending_owner_review" selected={statusFilter === 'pending_owner_review'}>Pending Owner Review</option>
             <option value="processing" selected={statusFilter === 'processing'}>Processing</option>
+            <option value="dispatched" selected={statusFilter === 'dispatched'}>Dispatched</option>
+            <option value="delivered" selected={statusFilter === 'delivered'}>Delivered</option>
+            <option value="delivery_failed" selected={statusFilter === 'delivery_failed'}>Delivery failed</option>
             <option value="completed" selected={statusFilter === 'completed'}>Completed</option>
             <option value="cancelled" selected={statusFilter === 'cancelled'}>Cancelled</option>
             <option value="failed" selected={statusFilter === 'failed'}>Failed</option>

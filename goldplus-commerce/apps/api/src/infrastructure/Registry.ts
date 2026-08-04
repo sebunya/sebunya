@@ -738,7 +738,7 @@ export class Registry {
   public readonly fulfilmentRepo = new DrizzleFulfilmentRepository();
   public readonly createFulfilmentTaskOnOrderPlacedUseCase = new CreateFulfilmentTaskOnOrderPlacedUseCase(this.fulfilmentRepo);
   public readonly markFulfilmentPaymentConfirmedUseCase = new MarkFulfilmentPaymentConfirmedUseCase(this.fulfilmentRepo);
-  public readonly transitionFulfilmentTaskUseCase = new TransitionFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo);
+  public readonly transitionFulfilmentTaskUseCase = new TransitionFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, this.orderTransitionService);
   public readonly listFulfilmentQueueUseCase = new ListFulfilmentQueueUseCase(this.fulfilmentRepo);
   public readonly fulfilmentSlaEventRepo = new DrizzleFulfilmentSlaEventRepository();
   public readonly getFulfilmentOverviewUseCase = new GetFulfilmentOverviewUseCase(this.fulfilmentRepo, this.fulfilmentSlaEventRepo);
@@ -867,7 +867,7 @@ export class Registry {
   public readonly fulfilmentDeliveryRepo = new DrizzleFulfilmentDeliveryRepository();
   public readonly fulfilmentReportRepo = new DrizzleFulfilmentReportRepository();
   public readonly getDeliveryHistoryUseCase = new GetDeliveryHistoryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo);
-  public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo);
+  public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService);
   public readonly getFulfilmentReportUseCase = new GetFulfilmentReportUseCase(this.fulfilmentReportRepo);
 
   // Customer DNA & NBA: canonical profile projection + next-best action.

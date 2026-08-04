@@ -22,6 +22,7 @@ const { apiBase, compatibleWith = null } = Astro.props;
 </div>
 
 <script>
+  import { publicApiBase } from '../../lib/api';
   type Question = { id: string; title: string; options: string[] };
   type Recommendation = { productId: string; name: string; category: string; price: number; productUrl: string; imageUrl: string; reasons: string[]; primaryCta: string; secondaryCta: string; availabilityEvidence: string; compatibilityEvidence: string; pricingEvidence: string };
   const questions: Question[] = [
@@ -41,12 +42,10 @@ const { apiBase, compatibleWith = null } = Astro.props;
   const btnSubmit = document.getElementById('pf-submit') as HTMLButtonElement;
   const stepText = document.getElementById('pf-step-text') as HTMLElement;
   const progressBar = document.getElementById('pf-progress-bar') as HTMLElement;
-  // Browser-side origin resolution: the build-inlined PUBLIC base wins so a
+  // Browser-side origin resolution: the canonical publicApiBase wins so a
   // caller accidentally passing the SSR-internal origin (http://api:3000 —
   // unresolvable from a browser) can never take the assistant down again.
-  const api = (
-    ((import.meta.env.PUBLIC_API_BASE_URL as string | undefined) || shell.dataset.apiBase || '')
-  ).replace(/\/+$/, '');
+  const api = (publicApiBase || shell.dataset.apiBase || '').replace(/\/+$/, '');
   let currentStep = 0;
   let sessionId = '';
   let accessToken = '';

@@ -589,6 +589,13 @@
       "when": 1788062400000,
       "tag": "0083_delivery_pricing_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "5",
+      "when": 1788148800000,
+      "tag": "0084_location_module_foundation",
+      "breakpoints": true
     }
   ]
 }

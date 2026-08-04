@@ -11,6 +11,7 @@ import { IFulfilmentRepository } from '../../ports/IFulfilmentRepository';
 import { IFulfilmentDeliveryRepository } from '../../ports/IFulfilmentDeliveryRepository';
 import { IFulfilmentReportRepository, FulfilmentReport } from '../../ports/IFulfilmentReportRepository';
 import { IAuditRepository } from '../../ports/IAuditRepository';
+import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 
 export type DeliveryError =
@@ -46,7 +47,15 @@ export class RecordDeliveryUseCase {
   constructor(
     private readonly tasks: IFulfilmentRepository,
     private readonly deliveries: IFulfilmentDeliveryRepository,
-    private readonly audit: IAuditRepository
+    private readonly audit: IAuditRepository,
+    /**
+     * Location module stage 2: a recorded outcome now also moves the ORDER
+     * lifecycle (dispatched → delivered / delivery_failed) through the one
+     * canonical ledgered path, so failed-delivery metrics are derivable from
+     * order history. Optional so existing tests and callers stay valid; when
+     * absent, only the fulfilment task moves (pre-stage-2 behaviour).
+     */
+    private readonly orderTransitions?: IOrderTransitionPort
   ) {}
 
   async execute(input: {
@@ -125,12 +134,39 @@ export class RecordDeliveryUseCase {
       }
     }
 
+    // Mirror the outcome onto the order lifecycle. Best-effort by design: a
+    // legacy order that never entered `dispatched` (or was closed manually)
+    // refuses the transition in the state machine, and that refusal must not
+    // void a truthfully recorded physical delivery attempt.
+    let orderTransition: 'delivered' | 'delivery_failed' | 'skipped' | 'not_wired' = 'not_wired';
+    if (this.orderTransitions) {
+      const target =
+        deliveryCompletesTask(input.outcome) ? ('delivered' as const)
+        : input.outcome === 'DELIVERY_FAILED' ? ('delivery_failed' as const)
+        : null; // RESCHEDULED and partials leave the order dispatched
+      orderTransition = 'skipped';
+      if (target) {
+        try {
+          await this.orderTransitions.transition(snapshot.orderId, target, {
+            actorId: input.actorId,
+            actorType: 'administrator',
+            source: 'fulfilment',
+            reasonCode: 'delivery_outcome',
+            note: `Fulfilment attempt ${attempt}: ${input.outcome}`,
+          });
+          orderTransition = target;
+        } catch {
+          orderTransition = 'skipped';
+        }
+      }
+    }
+
     await new CreateAuditLogUseCase(this.audit).execute({
       actorId: input.actorId,
       action: 'FULFILMENT_DELIVERY_RECORDED',
       entity: 'fulfilment_delivery',
       entityId: input.taskId,
-      newState: { attempt, outcome: input.outcome, completed, deliveredQuantity, returnedQuantity },
+      newState: { attempt, outcome: input.outcome, completed, deliveredQuantity, returnedQuantity, orderTransition },
     });
     return { ok: true, delivery, completed };
   }

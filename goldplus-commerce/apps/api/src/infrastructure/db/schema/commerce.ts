@@ -1,5 +1,22 @@
-import { pgTable, uuid, varchar, timestamp, integer, bigint, index, jsonb, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { pgTable, uuid, varchar, timestamp, integer, bigint, index, jsonb, boolean, uniqueIndex, customType } from 'drizzle-orm/pg-core';
+import { relations, sql } from 'drizzle-orm';
+
+/**
+ * jsonb that survives the postgres-js driver. drizzle 0.29 + postgres-js
+ * serialises a JS object into a JSON *string* parameter, which lands as a jsonb
+ * STRING (jsonb_typeof = 'string') — the double-encoding defect live rows carry.
+ * This type casts explicitly so objects land as objects. Scoped to
+ * delivery_location only; other jsonb columns keep their historical behaviour
+ * until their readers are audited.
+ */
+const jsonbStrict = customType<{ data: unknown; driverData: string }>({
+  dataType() {
+    return 'jsonb';
+  },
+  toDriver(value: unknown) {
+    return sql`${JSON.stringify(value)}::jsonb` as unknown as string;
+  },
+});
 import { products } from './products';
 import { users } from './identity';
 
@@ -70,8 +87,11 @@ export const orders = pgTable('orders', {
   attributionId: uuid('attribution_id'),
 
   // Slice 3B: structured Uganda delivery location + fee provenance + idempotency
-  deliveryLocation: jsonb('delivery_location'),
+  deliveryLocation: jsonbStrict('delivery_location'),
   deliveryFeeConfirmed: boolean('delivery_fee_confirmed').default(false).notNull(),
+  // 0084: verbatim pre-normalisation copy of rows the double-encoding backfill
+  // rewrote — reversibility for the encoding fix, never read by application code.
+  deliveryLocationRaw: jsonb('delivery_location_raw'),
   clientOrderKey: varchar('client_order_key', { length: 80 }),
   // What actually happened to stock for this order (migration 0053). Recorded on
   // the order rather than inferred from a fulfilment task, so payment and
