@@ -74,7 +74,8 @@ if (Astro.request.method === 'POST') {
           Sign in
         </button>
         <p class="text-xs text-slate-400 text-center leading-relaxed">
-          Don't have an account? Customer registration is being rolled out — please contact support to get set up.
+          New to GoldPlus?
+          <a href={`/register${Astro.url.searchParams.get('returnTo') ? `?returnTo=${encodeURIComponent(Astro.url.searchParams.get('returnTo') ?? '')}` : ''}`} class="font-bold text-slate-600 underline hover:text-gray-900">Create your account</a>
         </p>
       </form>
     </div>

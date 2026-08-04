@@ -1,0 +1,161 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
+import EmptyState from '../../components/EmptyState.astro';
+import Notice from '../../components/Notice.astro';
+import FormField from '../../components/FormField.astro';
+import FormFeedback from '../../components/FormFeedback.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken, clearSessionCookie } from '../../lib/session';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../lib/requestOrigin';
+import type { AddressDto } from '@goldplus/shared';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/login?returnTo=/account/addresses', 303);
+}
+const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+let status: 'success' | 'error' | null = null;
+let message: string | undefined;
+
+if (Astro.request.method === 'POST') {
+  const origin = checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>);
+  if (!origin.allowed) {
+    status = 'error';
+    message = CROSS_SITE_MESSAGE;
+  } else {
+    try {
+      const form = await Astro.request.formData();
+      const action = String(form.get('action') || '');
+      if (action === 'add') {
+        const res = await fetch(`${apiBase}/account/addresses`, {
+          method: 'POST',
+          headers: authHeaders,
+          signal: AbortSignal.timeout(6000),
+          body: JSON.stringify({
+            label: String(form.get('label') || ''),
+            recipientName: String(form.get('recipientName') || ''),
+            phone: String(form.get('phone') || ''),
+            district: String(form.get('district') || ''),
+            areaDetails: String(form.get('areaDetails') || ''),
+            makeDefault: String(form.get('makeDefault') || '') === 'true',
+          }),
+        });
+        const json: any = await res.json().catch(() => null);
+        status = res.ok && json?.success ? 'success' : 'error';
+        message = status === 'success' ? 'Address saved. Checkout will offer it from now on.' : json?.error?.message ?? 'Could not save the address.';
+      } else if (action === 'default') {
+        const id = encodeURIComponent(String(form.get('id') || ''));
+        const res = await fetch(`${apiBase}/account/addresses/${id}/default`, {
+          method: 'POST',
+          headers: authHeaders,
+          signal: AbortSignal.timeout(6000),
+        });
+        const json: any = await res.json().catch(() => null);
+        status = res.ok && json?.success ? 'success' : 'error';
+        message = status === 'success' ? 'Default address updated.' : json?.error?.message ?? 'Could not update the default.';
+      } else if (action === 'delete') {
+        const id = encodeURIComponent(String(form.get('id') || ''));
+        const res = await fetch(`${apiBase}/account/addresses/${id}`, {
+          method: 'DELETE',
+          headers: authHeaders,
+          signal: AbortSignal.timeout(6000),
+        });
+        const json: any = await res.json().catch(() => null);
+        status = res.ok && json?.success ? 'success' : 'error';
+        message = status === 'success' ? 'Address removed.' : json?.error?.message ?? 'Could not remove the address.';
+      }
+    } catch {
+      status = 'error';
+      message = 'The account service is unreachable right now.';
+    }
+  }
+}
+
+let addresses: AddressDto[] = [];
+let loadError = '';
+try {
+  const res = await fetch(`${apiBase}/account/addresses`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(6000),
+  });
+  if (res.status === 401) {
+    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    return Astro.redirect('/login?returnTo=/account/addresses', 303);
+  }
+  const json: any = await res.json().catch(() => null);
+  if (json?.success) addresses = json.data ?? [];
+  else loadError = json?.error?.message ?? 'Could not load your addresses.';
+} catch {
+  loadError = 'The account service is unreachable right now.';
+}
+---
+
+<BaseLayout title="Delivery addresses">
+  <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 pb-6 border-b border-brand-borderGrey">
+      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">Delivery addresses</h1>
+      <a href="/logout" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">Sign out &rarr;</a>
+    </div>
+
+    <AccountNav active="addresses" />
+
+    <FormFeedback status={status} message={message} />
+    {loadError && <Notice kind="not-configured" title="Addresses unavailable" message={loadError} />}
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+      <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+        <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Saved addresses</h2>
+        {addresses.length === 0 ? (
+          <EmptyState title="No addresses saved" message="Save one and checkout opens pre-filled — no retyping." />
+        ) : (
+          <ul class="space-y-4">
+            {addresses.map((a) => (
+              <li class="border border-brand-borderGrey rounded-xl p-4">
+                <div class="flex items-center justify-between mb-1">
+                  <p class="font-bold text-brand-charcoal">{a.label}</p>
+                  {a.isDefault && <span class="text-[10px] font-bold uppercase tracking-widest text-brand-primary">Default</span>}
+                </div>
+                <p class="text-sm text-brand-charcoal">{a.recipientName}</p>
+                <p class="text-sm text-brand-mutedGrey">{a.areaDetails}, {a.district}</p>
+                <p class="text-xs text-brand-mutedGrey mt-1">{a.phone}</p>
+                <div class="flex items-center gap-2 mt-3">
+                  {!a.isDefault && (
+                    <form method="POST">
+                      <input type="hidden" name="action" value="default" />
+                      <input type="hidden" name="id" value={a.id} />
+                      <button type="submit" class="rounded-full border border-brand-borderGrey px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-brand-mutedGrey hover:text-brand-charcoal hover:border-brand-charcoal cursor-pointer">Make default</button>
+                    </form>
+                  )}
+                  <form method="POST">
+                    <input type="hidden" name="action" value="delete" />
+                    <input type="hidden" name="id" value={a.id} />
+                    <button type="submit" class="rounded-full border border-red-200 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-red-600 hover:bg-red-50 cursor-pointer">Remove</button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+        <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Add an address</h2>
+        <form method="POST" novalidate class="space-y-4">
+          <input type="hidden" name="action" value="add" />
+          <FormField id="label" name="label" label="Label (e.g. Home, Shop)" required />
+          <FormField id="recipientName" name="recipientName" label="Recipient name" required autocomplete="name" />
+          <FormField id="phone" name="phone" label="Phone" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel" />
+          <FormField id="district" name="district" label="District" required placeholder="e.g. Kampala" />
+          <FormField id="areaDetails" name="areaDetails" label="Area details" required placeholder="Parish/ward, road, building or landmark" />
+          <label class="flex items-center gap-2.5 text-sm text-brand-mutedGrey cursor-pointer select-none">
+            <input type="checkbox" name="makeDefault" value="true" class="w-4 h-4 rounded border-brand-borderGrey text-brand-primary focus:ring-brand-primary cursor-pointer" />
+            <span>Use as my default delivery address</span>
+          </label>
+          <button type="submit" class="w-full bg-brand-charcoal text-white py-2.5 rounded-full font-bold text-xs tracking-wider uppercase hover:bg-black transition-all cursor-pointer">Save address</button>
+        </form>
+      </section>
+    </div>
+  </div>
+</BaseLayout>

@@ -1,0 +1,106 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
+import EmptyState from '../../components/EmptyState.astro';
+import Notice from '../../components/Notice.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken, clearSessionCookie } from '../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/login?returnTo=/account/rewards', 303);
+}
+
+let data: any = null;
+let loadError = '';
+try {
+  const res = await fetch(`${apiBase}/account/gamification`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(6000),
+  });
+  if (res.status === 401) {
+    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    return Astro.redirect('/login?returnTo=/account/rewards', 303);
+  }
+  const json: any = await res.json().catch(() => null);
+  if (json?.success) data = json.data;
+  else loadError = json?.error?.message ?? 'Could not load your rewards.';
+} catch {
+  loadError = 'The rewards service is unreachable right now.';
+}
+
+const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
+const pct = (progress: number, threshold: number) =>
+  Math.max(0, Math.min(100, Math.round((progress / Math.max(1, threshold)) * 100)));
+---
+
+<BaseLayout title="Rewards">
+  <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 pb-6 border-b border-brand-borderGrey">
+      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">Rewards</h1>
+      <a href="/logout" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">Sign out &rarr;</a>
+    </div>
+
+    <AccountNav active="rewards" />
+
+    {loadError && <Notice kind="not-configured" title="Rewards unavailable" message={loadError} />}
+
+    {data && (
+      <div class="space-y-6">
+        <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+          <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Badges earned</h2>
+          {data.badges.length === 0 ? (
+            <EmptyState title="No badges yet" message="Complete missions below to earn badges." />
+          ) : (
+            <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {data.badges.map((b: any) => (
+                <li class="border border-brand-borderGrey rounded-xl p-4">
+                  <p class="font-bold text-brand-charcoal">{b.title}</p>
+                  {b.description && <p class="text-xs text-brand-mutedGrey mt-1 leading-relaxed">{b.description}</p>}
+                  <p class="text-[11px] text-brand-mutedGrey mt-2">Awarded {formatDate(b.awardedAt)}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+          <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Missions</h2>
+          {data.missions.length === 0 ? (
+            <EmptyState title="No missions running" message="When missions launch, your progress toward each will show here." />
+          ) : (
+            <ul class="space-y-4">
+              {data.missions.map((m: any) => (
+                <li class="border border-brand-borderGrey rounded-xl p-4">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="font-bold text-brand-charcoal">{m.title}</p>
+                    {m.rewardPoints > 0 && (
+                      <span class="text-[10px] font-black uppercase tracking-widest text-brand-primary">{m.rewardPoints} pts</span>
+                    )}
+                  </div>
+                  {m.description && <p class="text-xs text-brand-mutedGrey mt-1 leading-relaxed">{m.description}</p>}
+                  {m.progress !== null ? (
+                    <div class="mt-3">
+                      <div class="flex items-center justify-between text-[11px] font-bold text-brand-mutedGrey mb-1">
+                        <span>{m.completed ? 'Complete' : `${m.progress} of ${m.threshold}`}</span>
+                        <span>{pct(m.progress, m.threshold)}%</span>
+                      </div>
+                      <div class="h-2 rounded-full bg-brand-borderGrey/60 overflow-hidden">
+                        <div
+                          class={`h-full rounded-full ${m.completed ? 'bg-green-500' : 'bg-brand-primary'}`}
+                          style={`width: ${pct(m.progress, m.threshold)}%`}
+                        ></div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p class="text-[11px] text-brand-mutedGrey mt-2 italic">{m.progressNote}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    )}
+  </div>
+</BaseLayout>

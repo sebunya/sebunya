@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
 import PreferenceCentreForm from '../../components/preferences/PreferenceCentreForm.astro';
 import CanonicalConsentForm from '../../components/preferences/CanonicalConsentForm.astro';
 import { apiBase } from '../../lib/api';
@@ -123,6 +124,8 @@ try {
       </div>
       <a href="/account" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">&larr; Back to Account</a>
     </div>
+
+    <AccountNav active="preferences" />
 
     {saveSuccess && (
       <div class="bg-green-50 border border-green-200 text-green-800 rounded-xl p-4 mb-8 font-bold flex items-center gap-3">

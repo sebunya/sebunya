@@ -18,31 +18,67 @@ import {
 } from "../lib/loyalty-foundation";
 
 const statusClass = "inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-amber-900";
+
+// The status section states what the programme IS, from the API, not from copy
+// frozen at authoring time. If the programme is off (or unreachable) the page
+// falls back to the honest dormant messaging it always carried.
+import { apiBase } from "../lib/api";
+let programme: { active: boolean; earnRatePer1000Ugx: number; expiryDays: number } | null = null;
+try {
+  const res = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(3000) });
+  const json: any = res.ok ? await res.json().catch(() => null) : null;
+  if (json?.success && json.data?.active) programme = json.data;
+} catch {
+  /* dormant messaging is the safe fallback */
+}
 ---
 
 <BaseLayout
-  title="GoldPlus Rewards preview | Loyalty foundation"
-  description="A transparent preview of future GoldPlus quests, badges, Memory Lane and governed offers. The programme is not active."
+  title={programme ? "GoldPlus Rewards | Earn points on every paid order" : "GoldPlus Rewards preview | Loyalty foundation"}
+  description={programme
+    ? `GoldPlus Rewards is live: earn ${programme.earnRatePer1000Ugx} points per 1,000 UGX on every paid order placed while signed in.`
+    : "A transparent preview of future GoldPlus quests, badges, Memory Lane and governed offers. The programme is not active."}
 >
   <main data-loyalty-foundation>
     <section class="relative overflow-hidden border-b border-slate-200 bg-slate-950 text-white">
       <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(150,204,6,0.18),transparent_38%)]"></div>
       <div class="container relative mx-auto px-4 py-16 sm:py-20 lg:px-8 lg:py-24">
         <div class="max-w-4xl">
-          <span class="inline-flex rounded-full border border-brand-primary/40 bg-brand-primary/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-brand-primary">Foundation preview · not active</span>
-          <h1 class="mt-6 text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">GoldPlus Rewards is being prepared.</h1>
-          <p class="mt-5 max-w-3xl text-base leading-relaxed text-slate-300 sm:text-lg">
-            A future programme may help customers buy smarter, care for devices and explore useful product knowledge. Benefits and rules will be confirmed before launch.
-          </p>
-          <div class="mt-8 rounded-2xl border border-amber-300/30 bg-amber-100/10 p-5" role="status" aria-label="GoldPlus Rewards current status">
-            <p class="font-black text-amber-200">Programme status: {LOYALTY_PROGRAMME_STATUS.label}</p>
-            <p class="mt-2 text-sm leading-relaxed text-slate-200">{LOYALTY_PROGRAMME_STATUS.truthMessage}</p>
-            <p class="mt-1 text-sm leading-relaxed text-slate-300">{LOYALTY_PROGRAMME_STATUS.termsMessage}</p>
-          </div>
-          <div class="mt-8 flex flex-wrap gap-3">
-            <a href="#foundation-preview" class="inline-flex min-h-11 items-center rounded-full bg-brand-primary px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-white">Explore the preview</a>
-            <a href="/support" class="inline-flex min-h-11 items-center rounded-full border border-slate-600 px-6 py-3 text-xs font-black uppercase tracking-wider text-white outline-none hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-brand-primary">Confirm current offers</a>
-          </div>
+          {programme ? (
+            <>
+              <span class="inline-flex rounded-full border border-brand-primary/40 bg-brand-primary/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-brand-primary">Live programme</span>
+              <h1 class="mt-6 text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">GoldPlus Rewards is live.</h1>
+              <p class="mt-5 max-w-3xl text-base leading-relaxed text-slate-300 sm:text-lg">
+                Every paid order placed while signed in earns <strong class="text-white">{programme.earnRatePer1000Ugx} points per 1,000 UGX</strong> of the order total.
+                Points stay valid for <strong class="text-white">{programme.expiryDays} days</strong> from the day they are earned.
+              </p>
+              <div class="mt-8 rounded-2xl border border-brand-primary/30 bg-brand-primary/10 p-5" role="status" aria-label="GoldPlus Rewards current status">
+                <p class="font-black text-brand-primary">Programme status: Active</p>
+                <p class="mt-2 text-sm leading-relaxed text-slate-200">Create a free account and sign in before you check out — guest orders cannot be credited with points. Your balance and full points history live in your account.</p>
+              </div>
+              <div class="mt-8 flex flex-wrap gap-3">
+                <a href="/register?returnTo=/account/loyalty" class="inline-flex min-h-11 items-center rounded-full bg-brand-primary px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-white">Create your account</a>
+                <a href="/account/loyalty" class="inline-flex min-h-11 items-center rounded-full border border-slate-600 px-6 py-3 text-xs font-black uppercase tracking-wider text-white outline-none hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-brand-primary">View my points</a>
+              </div>
+            </>
+          ) : (
+            <>
+              <span class="inline-flex rounded-full border border-brand-primary/40 bg-brand-primary/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-brand-primary">Foundation preview · not active</span>
+              <h1 class="mt-6 text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">GoldPlus Rewards is being prepared.</h1>
+              <p class="mt-5 max-w-3xl text-base leading-relaxed text-slate-300 sm:text-lg">
+                A future programme may help customers buy smarter, care for devices and explore useful product knowledge. Benefits and rules will be confirmed before launch.
+              </p>
+              <div class="mt-8 rounded-2xl border border-amber-300/30 bg-amber-100/10 p-5" role="status" aria-label="GoldPlus Rewards current status">
+                <p class="font-black text-amber-200">Programme status: {LOYALTY_PROGRAMME_STATUS.label}</p>
+                <p class="mt-2 text-sm leading-relaxed text-slate-200">{LOYALTY_PROGRAMME_STATUS.truthMessage}</p>
+                <p class="mt-1 text-sm leading-relaxed text-slate-300">{LOYALTY_PROGRAMME_STATUS.termsMessage}</p>
+              </div>
+              <div class="mt-8 flex flex-wrap gap-3">
+                <a href="#foundation-preview" class="inline-flex min-h-11 items-center rounded-full bg-brand-primary px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-white">Explore the preview</a>
+                <a href="/support" class="inline-flex min-h-11 items-center rounded-full border border-slate-600 px-6 py-3 text-xs font-black uppercase tracking-wider text-white outline-none hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-brand-primary">Confirm current offers</a>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </section>

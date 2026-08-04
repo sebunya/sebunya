@@ -168,7 +168,11 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
         });
       }
 
-      return Astro.redirect('/cart', 303);
+      // Buy Now goes straight to checkout — the cart page is a detour when the
+      // customer has already decided. Only for a successful add: on a failed
+      // server write the cart page is where the problem is explained.
+      const buyNow = action === 'add' && formData.get('buyNow')?.toString() === '1' && !cartNotice;
+      return Astro.redirect(buyNow ? '/checkout' : '/cart', 303);
     }
   } catch (err) {
     console.error('[CART_POST_ERROR] Failed to handle cart post:', err);

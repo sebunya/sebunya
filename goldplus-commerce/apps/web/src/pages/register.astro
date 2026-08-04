@@ -1,0 +1,99 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import FormField from '../components/FormField.astro';
+import FormFeedback from '../components/FormFeedback.astro';
+import Notice from '../components/Notice.astro';
+import { apiBase } from '../lib/api';
+import { sessionCookieValue } from '../lib/session';
+
+// Already signed in? Registration has nothing to offer — go to the account.
+if (Astro.cookies.get('goldplus_session')?.value && Astro.request.method !== 'POST') {
+  return Astro.redirect('/account', 303);
+}
+
+let status: 'success' | 'error' | null = null;
+let message: string | undefined;
+let values: { email?: string; phone?: string } = {};
+let notConfigured = false;
+
+const returnToParam = Astro.url.searchParams.get('returnTo');
+const returnTo =
+  returnToParam && returnToParam.startsWith('/') && !returnToParam.startsWith('//') ? returnToParam : '/account';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const email = String(form.get('email') ?? '').trim();
+  const phone = String(form.get('phone') ?? '').trim();
+  const password = String(form.get('password') ?? '');
+  const confirm = String(form.get('confirmPassword') ?? '');
+  values = { email, phone };
+
+  if (!email || !phone || !password) {
+    status = 'error';
+    message = 'Email, phone and password are all required.';
+  } else if (password !== confirm) {
+    status = 'error';
+    message = 'Passwords do not match.';
+  } else {
+    try {
+      const res = await fetch(`${apiBase}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, phone, password }),
+      });
+      const json: any = await res.json().catch(() => null);
+
+      if (res.ok && json?.success && json.data?.token) {
+        // Registration IS a login: the session cookie is set immediately, so the
+        // very next page is their signed-in account (or the checkout they came from).
+        Astro.response.headers.set('Set-Cookie', sessionCookieValue(json.data.token));
+        return Astro.redirect(returnTo, 303);
+      }
+
+      if (json?.error?.code === 'AUTH_NOT_CONFIGURED') {
+        notConfigured = true;
+        message = json.error.message;
+      } else {
+        status = 'error';
+        message = json?.error?.message ?? `Registration failed (HTTP ${res.status}).`;
+      }
+    } catch {
+      status = 'error';
+      message = 'Cannot reach the registration service right now. Please try again shortly.';
+    }
+  }
+}
+---
+
+<BaseLayout title="Create your account" description="Create a free GoldPlus account to track orders, save addresses and earn loyalty points.">
+  <div class="container mx-auto px-4 lg:px-8 py-12 md:py-20">
+    <div class="max-w-md mx-auto">
+      <h1 class="text-2xl md:text-3xl font-black text-gray-900 mb-2 tracking-tight">Create your account</h1>
+      <p class="text-slate-500 mb-6 text-sm leading-relaxed">Track orders in one place, check out faster with saved addresses, and earn GoldPlus points on every paid order.</p>
+
+      {notConfigured && (
+        <div class="mb-6">
+          <Notice kind="not-configured" title="Registration not configured" message={message} />
+        </div>
+      )}
+      {!notConfigured && <FormFeedback status={status} message={message} />}
+
+      <form method="POST" novalidate class="bg-white p-8 rounded-2xl border border-slate-200/80 shadow-xs space-y-5">
+        <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" defaultValue={values.email} />
+        <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel" defaultValue={values.phone} />
+        <FormField id="password" name="password" label="Password (at least 8 characters)" type="password" required autocomplete="new-password" />
+        <FormField id="confirmPassword" name="confirmPassword" label="Confirm password" type="password" required autocomplete="new-password" />
+        <button
+          type="submit"
+          class="w-full bg-brand-primary text-gray-955 py-2.5 rounded-full font-bold text-xs tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985]"
+        >
+          Create account
+        </button>
+        <p class="text-xs text-slate-400 text-center leading-relaxed">
+          Already have an account?
+          <a href={`/login${returnToParam ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`} class="font-bold text-slate-600 underline hover:text-gray-900">Sign in</a>
+        </p>
+      </form>
+    </div>
+  </div>
+</BaseLayout>

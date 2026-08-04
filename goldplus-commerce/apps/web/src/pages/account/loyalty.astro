@@ -1,0 +1,136 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
+import EmptyState from '../../components/EmptyState.astro';
+import Notice from '../../components/Notice.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken, clearSessionCookie } from '../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/login?returnTo=/account/loyalty', 303);
+}
+
+let history: any = null;
+let programme: any = null;
+let loadError = '';
+try {
+  const [historyRes, programmeRes] = await Promise.all([
+    fetch(`${apiBase}/account/loyalty`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(6000),
+    }),
+    fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(4000) }),
+  ]);
+  if (historyRes.status === 401) {
+    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    return Astro.redirect('/login?returnTo=/account/loyalty', 303);
+  }
+  const historyJson: any = await historyRes.json().catch(() => null);
+  const programmeJson: any = await programmeRes.json().catch(() => null);
+  if (historyJson?.success) history = historyJson.data;
+  else loadError = historyJson?.error?.message ?? 'Could not load your points.';
+  if (programmeJson?.success) programme = programmeJson.data;
+} catch {
+  loadError = 'The loyalty service is unreachable right now.';
+}
+
+const typeLabel: Record<string, string> = {
+  earn: 'Earned',
+  redeem: 'Redeemed',
+  reversal: 'Reversed',
+  expiry: 'Expired',
+  adjustment: 'Adjustment',
+};
+const typeTone: Record<string, string> = {
+  earn: 'text-green-700',
+  redeem: 'text-blue-700',
+  reversal: 'text-red-700',
+  expiry: 'text-gray-500',
+  adjustment: 'text-brand-charcoal',
+};
+const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
+---
+
+<BaseLayout title="GoldPlus points">
+  <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 pb-6 border-b border-brand-borderGrey">
+      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">GoldPlus points</h1>
+      <a href="/logout" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">Sign out &rarr;</a>
+    </div>
+
+    <AccountNav active="loyalty" />
+
+    {loadError && <Notice kind="not-configured" title="Points unavailable" message={loadError} />}
+
+    {history && !history.programmeActive && (
+      <Notice kind="not-configured" title="Programme not active" message="The loyalty programme is not running right now. Any points shown below keep their history and become usable if it is reactivated." />
+    )}
+
+    {history && (
+      <div class="space-y-6">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="bg-white border border-brand-borderGrey rounded-2xl p-5">
+            <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Available</p>
+            <p class="text-2xl font-black text-brand-charcoal mt-1">{history.balance.available.toLocaleString('en-UG')}</p>
+          </div>
+          <div class="bg-white border border-brand-borderGrey rounded-2xl p-5">
+            <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Lifetime earned</p>
+            <p class="text-2xl font-black text-brand-charcoal mt-1">{history.balance.lifetimeEarned.toLocaleString('en-UG')}</p>
+          </div>
+          <div class="bg-white border border-brand-borderGrey rounded-2xl p-5">
+            <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Lifetime redeemed</p>
+            <p class="text-2xl font-black text-brand-charcoal mt-1">{history.balance.lifetimeRedeemed.toLocaleString('en-UG')}</p>
+          </div>
+          <div class="bg-white border border-brand-borderGrey rounded-2xl p-5">
+            <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Pending expiry</p>
+            <p class="text-2xl font-black text-brand-charcoal mt-1">{history.balance.pendingExpiry.toLocaleString('en-UG')}</p>
+          </div>
+        </div>
+
+        {programme?.active && (
+          <div class="rounded-2xl border border-amber-200/70 bg-amber-50 px-5 py-4">
+            <p class="text-sm font-bold text-amber-900">How earning works</p>
+            <p class="text-xs text-amber-800 mt-1 leading-relaxed">
+              Every paid order earns <strong>{programme.earnRatePer1000Ugx} points per 1,000 UGX</strong> of the order total.
+              Points expire <strong>{programme.expiryDays} days</strong> after they are earned. Orders must be placed while
+              signed in to earn — guest orders cannot be credited to an account.
+            </p>
+          </div>
+        )}
+
+        <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+          <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Points history</h2>
+          {history.entries.length === 0 ? (
+            <EmptyState title="No points activity yet" message="Place an order while signed in — points are credited when the order is paid." />
+          ) : (
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-[10px] font-bold uppercase tracking-widest text-brand-mutedGrey border-b border-brand-borderGrey">
+                    <th class="py-2 pr-4">Date</th>
+                    <th class="py-2 pr-4">Activity</th>
+                    <th class="py-2 pr-4">Points</th>
+                    <th class="py-2 pr-4">Expires</th>
+                    <th class="py-2">Detail</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-brand-borderGrey">
+                  {history.entries.map((e: any) => (
+                    <tr>
+                      <td class="py-2.5 pr-4 whitespace-nowrap text-brand-mutedGrey">{formatDate(e.createdAt)}</td>
+                      <td class={`py-2.5 pr-4 font-bold ${typeTone[e.type] ?? 'text-brand-charcoal'}`}>{typeLabel[e.type] ?? e.type}</td>
+                      <td class="py-2.5 pr-4 font-bold text-brand-charcoal whitespace-nowrap">{e.points > 0 ? `+${e.points.toLocaleString('en-UG')}` : e.points.toLocaleString('en-UG')}</td>
+                      <td class="py-2.5 pr-4 whitespace-nowrap text-brand-mutedGrey">{e.expiresAt ? formatDate(e.expiresAt) : '—'}</td>
+                      <td class="py-2.5 text-brand-mutedGrey">{e.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    )}
+  </div>
+</BaseLayout>

@@ -38,10 +38,15 @@ interface CartResponse {
   subtotalUgx: number;
 }
 
+// Resolved ONCE for the whole render: the cart credential, the account-context
+// prefill and the POST branch all need the same answer, and this call costs a
+// round-trip to the API.
+const authenticatedUserId = await resolveAuthenticatedUserId(Astro.cookies);
+
 // The basket is read through the SIGNED CREDENTIAL, not a cart id in the URL. The
 // credential also names the owner, so a signed-in customer cannot be served a guest
 // basket and vice versa.
-const cartCredential = resolveCartCredential(Astro.cookies, await resolveAuthenticatedUserId(Astro.cookies));
+const cartCredential = resolveCartCredential(Astro.cookies, authenticatedUserId);
 if (!cartCredential) {
   return Astro.redirect('/cart', 303);
 }
@@ -89,6 +94,7 @@ if (!cart || cart.items.length === 0) {
 let status: 'success' | 'error' | 'received' | null = null;
 let message: string | undefined;
 let reference: string | undefined;
+let createdOrderId: string | undefined;
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
 let isOfflineDraft = false;
@@ -104,7 +110,80 @@ let isOfflineDraft = false;
 // It is issued in this layer because the layer that owns the browser connection
 // is the only one that can own the cookie: the API's Set-Cookie lands on this
 // server's fetch response and never reaches the browser.
-const authenticatedUserId = await resolveAuthenticatedUserId(Astro.cookies);
+
+// ---------------------------------------------------------------------------
+// Account context: everything the platform already knows about this customer.
+// A returning customer should CONFIRM a checkout, not retype it. Every fetch
+// here is timeout-guarded and failure-tolerant — prefill going missing must
+// degrade to the blank form, never to a broken page.
+// ---------------------------------------------------------------------------
+interface SavedAddress {
+  id: string;
+  label: string;
+  recipientName: string;
+  phone: string;
+  district: string;
+  areaDetails: string;
+  isDefault: boolean;
+}
+const sessionToken = Astro.cookies.get('goldplus_session')?.value ?? null;
+let savedAddresses: SavedAddress[] = [];
+let accountEmail = '';
+if (authenticatedUserId && sessionToken) {
+  try {
+    const [addrRes, meRes] = await Promise.all([
+      fetch(`${apiBase}/account/addresses`, {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+        signal: AbortSignal.timeout(3000),
+      }),
+      fetch(`${apiBase}/account/me`, {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+        signal: AbortSignal.timeout(3000),
+      }),
+    ]);
+    const addrJson: any = addrRes.ok ? await addrRes.json().catch(() => null) : null;
+    const meJson: any = meRes.ok ? await meRes.json().catch(() => null) : null;
+    if (addrJson?.success && Array.isArray(addrJson.data)) savedAddresses = addrJson.data;
+    if (meJson?.success) accountEmail = meJson.data?.email ?? '';
+  } catch {
+    /* prefill is a convenience, never a dependency */
+  }
+}
+const defaultAddress = savedAddresses.find((a) => a.isDefault) ?? savedAddresses[0] ?? null;
+
+// Live programme terms for the earn preview. Zero when inactive or unreachable —
+// the preview line simply does not render rather than promising points.
+let loyaltyProgramme: { active: boolean; earnRatePer1000Ugx: number } = { active: false, earnRatePer1000Ugx: 0 };
+try {
+  const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2500) });
+  const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
+  if (lpJson?.success && lpJson.data?.active) {
+    loyaltyProgramme = { active: true, earnRatePer1000Ugx: Number(lpJson.data.earnRatePer1000Ugx) || 0 };
+  }
+} catch {
+  /* preview only */
+}
+
+// Guest memory: details from their last completed checkout, held in an
+// httpOnly cookie on their own device so a repeat guest confirms instead of
+// retyping. Signed-in customers use their address book instead.
+const GUEST_PREFILL_COOKIE = 'gp_checkout_prefill';
+let guestPrefill: Record<string, string> = {};
+if (!authenticatedUserId) {
+  try {
+    const raw = Astro.cookies.get(GUEST_PREFILL_COOKIE)?.value;
+    if (raw) {
+      const parsed = JSON.parse(decodeURIComponent(raw));
+      if (parsed && typeof parsed === 'object') {
+        for (const k of ['name', 'email', 'phone', 'locationJson', 'deliveryAddress']) {
+          if (typeof parsed[k] === 'string' && parsed[k].length <= 600) guestPrefill[k] = parsed[k];
+        }
+      }
+    }
+  } catch {
+    /* stale/corrupt cookie = no prefill */
+  }
+}
 
 // Cross-site refusal comes BEFORE the intent is resolved, because resolving it can
 // MINT one. A cross-site POST arrives without the SameSite=Lax cookie, and the
@@ -145,16 +224,36 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
     deliveryAddress: String(formData.get('deliveryAddress') || '').trim(),
   };
 
+  // A saved-address id is only meaningful for a signed-in customer; the id is
+  // re-fetched server-side below, so a tampered value can select nothing but
+  // that customer's own addresses.
+  const selectedAddressId = authenticatedUserId ? String(formData.get('addressId') || '').trim() : '';
+  const selectedAddress = selectedAddressId
+    ? savedAddresses.find((a) => a.id === selectedAddressId) ?? null
+    : null;
+
   // Simple validation checks
   if (!values.name) errors.name = 'Full name is required.';
   if (!values.phone) errors.phone = 'Contact phone number is required.';
-  if (!values.locationJson) errors.locationJson = 'Please select a delivery location.';
+  // A chosen saved address IS the delivery location; the picker is only
+  // required when delivering somewhere new.
+  if (!selectedAddress && !values.locationJson) errors.locationJson = 'Please select a delivery location.';
 
   if (Object.keys(errors).length === 0) {
      // Prepare mapped payload compatible with Commerce API
      // Map priceUgx field since interface varies slightly between cart api and checkout lib
      const normalizedItems = cart.items.map(i => ({ ...i, priceUgx: i.priceUgx || i.unitPriceUgx }));
      const payload = prepareCheckoutPayload(formData, normalizedItems as any);
+     if (selectedAddress) {
+       payload.customerDetails = {
+         name: values.name,
+         email: values.email || undefined,
+         phone: values.phone,
+         deliveryArea: `${selectedAddress.areaDetails}, ${selectedAddress.district}`,
+         deliveryAddress: [selectedAddress.areaDetails, values.deliveryAddress].filter(Boolean).join(' | '),
+         deliveryLocation: { district: selectedAddress.district },
+       };
+     }
      const paymentMethod = String(formData.get('paymentMethod') || 'offline').trim();
      
      // Typed BFF call. The generic postJson helper returned `data: unknown` and
@@ -183,6 +282,46 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
      if (result.ok) {
         const dto = result.data;
         reference = dto.orderNumber || dto.orderId;
+        createdOrderId = dto.orderId;
+
+        // The order exists from this point on whatever the payment path does,
+        // so the "remember for next time" work happens here, before any
+        // redirect can end the render.
+        if (!authenticatedUserId) {
+          try {
+            Astro.cookies.set(
+              GUEST_PREFILL_COOKIE,
+              encodeURIComponent(JSON.stringify({
+                name: values.name,
+                email: values.email,
+                phone: values.phone,
+                locationJson: values.locationJson,
+                deliveryAddress: values.deliveryAddress,
+              })),
+              { path: '/checkout', maxAge: 60 * 60 * 24 * 180, httpOnly: true, sameSite: 'lax', secure: import.meta.env.PROD },
+            );
+          } catch { /* memory is a convenience */ }
+        } else if (!selectedAddress && sessionToken && String(formData.get('saveAddress') || '') === 'true') {
+          // Best-effort: a failed save must never disturb an order that succeeded.
+          const district = payload.customerDetails.deliveryLocation?.district;
+          if (district) {
+            try {
+              await fetch(`${apiBase}/account/addresses`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
+                signal: AbortSignal.timeout(3000),
+                body: JSON.stringify({
+                  label: district,
+                  recipientName: values.name,
+                  phone: values.phone,
+                  district,
+                  areaDetails: payload.customerDetails.deliveryArea,
+                  makeDefault: savedAddresses.length === 0,
+                }),
+              });
+            } catch { /* best-effort */ }
+          }
+        }
 
         // Payment starts ONLY when the server says the order is payable. The
         // previous condition was just "we have an order id", which would start a
@@ -277,6 +416,36 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
   }
 }
 
+// Initial GET: the form opens already filled with what the platform knows —
+// account holders from their address book, returning guests from their own
+// last checkout. Confirming beats retyping; everything stays editable.
+if (Astro.request.method !== 'POST') {
+  if (authenticatedUserId) {
+    values = {
+      name: defaultAddress?.recipientName ?? '',
+      email: accountEmail,
+      phone: defaultAddress?.phone ?? '',
+      locationJson: '',
+      deliveryAddress: '',
+    };
+  } else {
+    values = {
+      name: guestPrefill.name ?? '',
+      email: guestPrefill.email ?? '',
+      phone: guestPrefill.phone ?? '',
+      locationJson: guestPrefill.locationJson ?? '',
+      deliveryAddress: guestPrefill.deliveryAddress ?? '',
+    };
+  }
+}
+
+// Same deterministic rule the ledger applies (floor per 1,000 UGX × rate),
+// previewed on the subtotal. Points are credited when the order is PAID —
+// the copy says so; this is a preview, not a promise of unpaid points.
+const potentialPoints = loyaltyProgramme.active
+  ? Math.floor(cart.subtotalUgx / 1000) * loyaltyProgramme.earnRatePer1000Ugx
+  : 0;
+
 const formatUgx = (n: number): string =>
   new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
 ---
@@ -315,7 +484,19 @@ const formatUgx = (n: number): string =>
              <p class="text-slate-500 max-w-md mx-auto mb-10 leading-relaxed text-sm">Our distribution center will evaluate transit routing and contact you soon to confirm final delivery logistics.</p>
            </>
          )}
-         <a href="/shop" class="inline-block bg-slate-900 text-white px-8 py-2.5 rounded-full font-bold hover:bg-slate-950 transition-all text-xs tracking-wider uppercase cursor-pointer hover:scale-[1.01] active:scale-95">Continue shopping</a>
+         <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+           {!isOfflineDraft && createdOrderId && (
+             <a href={`/orders/${createdOrderId}`} class="inline-block bg-brand-primary text-gray-950 px-8 py-2.5 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 transition-all text-xs tracking-wider uppercase cursor-pointer hover:scale-[1.01] active:scale-95">View &amp; track this order</a>
+           )}
+           <a href="/shop" class="inline-block bg-slate-900 text-white px-8 py-2.5 rounded-full font-bold hover:bg-slate-950 transition-all text-xs tracking-wider uppercase cursor-pointer hover:scale-[1.01] active:scale-95">Continue shopping</a>
+         </div>
+         {!isOfflineDraft && !authenticatedUserId && (
+           <div class="mt-8 mx-auto max-w-md rounded-xl border border-amber-200/60 bg-amber-50 px-5 py-4 text-left">
+             <p class="text-sm font-bold text-amber-900">Create a free account to get more from GoldPlus</p>
+             <p class="text-xs text-amber-800 mt-1.5 leading-relaxed">Track orders in one place, save delivery addresses for one-tap checkout, and earn GoldPlus points on every paid order.</p>
+             <a href="/register?returnTo=/account" class="inline-block mt-3 rounded-full bg-brand-dark px-5 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:bg-black">Create account</a>
+           </div>
+         )}
       </div>
     ) : (
       <div class="flex flex-col lg:flex-row gap-10">
@@ -343,21 +524,55 @@ const formatUgx = (n: number): string =>
                 <FormField id="email" name="email" label="Email" type="email" autocomplete="email" defaultValue={values.email} />
                 <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" defaultValue={values.phone} errorMessage={errors.phone} />
                 <div class="md:col-span-2 space-y-4">
-                   <UgandaLocationPicker 
-                     name="locationJson" 
-                     label="Delivery location" 
-                     helperText="Search the parish, ward, town, or district where the order should be delivered."
-                     required={true} 
-                     defaultValue={values.locationJson} 
-                     errorMessage={errors.locationJson} 
-                   />
-                   <FormField 
-                     id="deliveryAddress" 
-                     name="deliveryAddress" 
-                     label="Additional address details" 
-                     placeholder="House, road, estate, building, shop, or nearby landmark"
-                     defaultValue={values.deliveryAddress}
-                   />
+                   {savedAddresses.length > 0 && (
+                     <fieldset class="space-y-2">
+                       <legend class="text-sm font-bold text-gray-900 mb-2">Deliver to</legend>
+                       {savedAddresses.map((a) => (
+                         <label class="flex items-start gap-3 p-3.5 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all has-[:checked]:border-brand-primary has-[:checked]:bg-brand-primary/5">
+                           <input
+                             type="radio"
+                             name="addressId"
+                             value={a.id}
+                             checked={a.id === defaultAddress?.id}
+                             class="mt-1 w-4 h-4 text-brand-primary border-slate-250 focus:ring-brand-primary cursor-pointer js-address-choice"
+                           />
+                           <span class="min-w-0">
+                             <span class="font-bold text-gray-900 text-sm">{a.label}</span>
+                             {a.isDefault && <span class="ml-2 text-[10px] font-black uppercase tracking-widest text-brand-primary">Default</span>}
+                             <span class="block text-xs text-slate-500 mt-0.5">{a.recipientName} · {a.phone}</span>
+                             <span class="block text-xs text-slate-500">{a.areaDetails}, {a.district}</span>
+                           </span>
+                         </label>
+                       ))}
+                       <label class="flex items-center gap-3 p-3.5 border border-dashed border-slate-300 rounded-xl hover:border-brand-primary cursor-pointer select-none transition-all has-[:checked]:border-brand-primary">
+                         <input type="radio" name="addressId" value="" class="w-4 h-4 text-brand-primary border-slate-250 focus:ring-brand-primary cursor-pointer js-address-choice" />
+                         <span class="font-bold text-gray-900 text-sm">Deliver somewhere else</span>
+                       </label>
+                     </fieldset>
+                   )}
+                   <div id="new-address-fields" class="space-y-4">
+                     <UgandaLocationPicker
+                       name="locationJson"
+                       label="Delivery location"
+                       helperText="Search the parish, ward, town, or district where the order should be delivered."
+                       required={savedAddresses.length === 0}
+                       defaultValue={values.locationJson}
+                       errorMessage={errors.locationJson}
+                     />
+                     <FormField
+                       id="deliveryAddress"
+                       name="deliveryAddress"
+                       label="Additional address details"
+                       placeholder="House, road, estate, building, shop, or nearby landmark"
+                       defaultValue={values.deliveryAddress}
+                     />
+                     {authenticatedUserId && (
+                       <label class="flex items-center gap-2.5 text-sm text-slate-600 cursor-pointer select-none">
+                         <input type="checkbox" name="saveAddress" value="true" checked class="w-4 h-4 rounded border-slate-300 text-brand-primary focus:ring-brand-primary cursor-pointer" />
+                         <span>Save this address to my account for faster checkout next time</span>
+                       </label>
+                     )}
+                   </div>
                 </div>
               </div>
             </div>
@@ -396,13 +611,19 @@ const formatUgx = (n: number): string =>
             )}
 
             <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              {/*
+                The button says what pressing it DOES. It used to read "Pay Online"
+                while the preselected method was the offline invoice — the wrong
+                promise at the most decisive moment of the whole funnel.
+              */}
               <button
                 type="submit"
                 id="submitBtn"
-                onclick="this.innerText = 'Starting secure payment…'; this.classList.add('opacity-80', 'cursor-not-allowed')"
+                data-label-offline="Place order"
+                data-label-pesapal="Pay securely now"
                 class="bg-brand-primary text-gray-955 px-8 py-2.5 rounded-full font-bold text-sm tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985] shadow-sm"
               >
-                Pay Online
+                Place order
               </button>
               <p class="text-xs text-slate-400 italic max-w-xs">Location verification safeguards delivery times.</p>
             </div>
@@ -437,6 +658,19 @@ const formatUgx = (n: number): string =>
                 <dd class="font-black text-gray-900 text-lg">{formatUgx(cart.subtotalUgx)}</dd>
               </div>
             </dl>
+            {potentialPoints > 0 && (
+              authenticatedUserId ? (
+                <p class="mt-4 rounded-xl bg-amber-50 border border-amber-200/60 px-3.5 py-2.5 text-xs font-semibold text-amber-900">
+                  You'll earn <strong>{potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> when this order is paid.
+                </p>
+              ) : (
+                <p class="mt-4 rounded-xl bg-amber-50 border border-amber-200/60 px-3.5 py-2.5 text-xs font-semibold text-amber-900">
+                  <a href="/login?returnTo=/checkout" class="underline font-bold">Sign in</a> or
+                  <a href="/register?returnTo=/checkout" class="underline font-bold">create an account</a> to earn
+                  <strong> {potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> on this order.
+                </p>
+              )
+            )}
           </div>
         </aside>
       </div>
@@ -478,8 +712,38 @@ const formatUgx = (n: number): string =>
       ecommerce: { value: subtotal, currency: 'UGX', items },
     });
 
+    // ── fast-checkout interactions (progressive enhancement only) ─────────────
+    // Without JS everything still works: the new-address block stays visible and
+    // the server decides between saved address and typed location.
+    const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement | null;
+    const methodRadios = document.querySelectorAll<HTMLInputElement>('input[name="paymentMethod"]');
+    const syncSubmitLabel = () => {
+      if (!submitBtn) return;
+      const method = document.querySelector<HTMLInputElement>('input[name="paymentMethod"]:checked')?.value ?? 'offline';
+      submitBtn.textContent = (method === 'pesapal' ? submitBtn.dataset.labelPesapal : submitBtn.dataset.labelOffline) ?? 'Place order';
+    };
+    methodRadios.forEach((r) => r.addEventListener('change', syncSubmitLabel));
+    syncSubmitLabel();
+
+    const addressRadios = document.querySelectorAll<HTMLInputElement>('input.js-address-choice');
+    const newAddressBlock = document.getElementById('new-address-fields');
+    const syncAddressBlock = () => {
+      if (!newAddressBlock || addressRadios.length === 0) return;
+      const chosen = document.querySelector<HTMLInputElement>('input.js-address-choice:checked');
+      const usingSaved = Boolean(chosen && chosen.value !== '');
+      newAddressBlock.classList.toggle('hidden', usingSaved);
+    };
+    addressRadios.forEach((r) => r.addEventListener('change', syncAddressBlock));
+    syncAddressBlock();
+
     // ── add_payment_info — fires when user submits the checkout form ──────────
     const form = document.querySelector<HTMLFormElement>('form[action="/checkout"]');
+    form?.addEventListener('submit', () => {
+      if (submitBtn) {
+        submitBtn.textContent = 'Processing…';
+        submitBtn.classList.add('opacity-80', 'cursor-not-allowed');
+      }
+    });
     form?.addEventListener('submit', () => {
       const paymentMethod = (
         form.querySelector<HTMLInputElement>('input[name="paymentMethod"]:checked')?.value ?? 'unknown'
