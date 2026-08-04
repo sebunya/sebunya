@@ -34,6 +34,8 @@ import { DrizzleNotificationTemplateRepository } from './db/repositories/Drizzle
 import { DrizzleCampaignRepository } from './db/repositories/DrizzleCampaignRepository';
 import { DrizzleCampaignSendRepository } from './db/repositories/DrizzleCampaignSendRepository';
 import { DrizzleGamificationRepository } from './db/repositories/DrizzleGamificationRepository';
+import { DrizzleAdminUserWriteRepository } from './db/repositories/DrizzleAdminUserWriteRepository';
+import { AdminUserManagementUseCase } from '../application/use-cases/identity/AdminUserManagementUseCase';
 import { CampaignSendEngineUseCase } from '../application/use-cases/campaigns/CampaignSendEngineUseCase';
 import { AdjustStockUseCase } from '../application/use-cases/inventory/AdjustStockUseCase';
 import { AbandonmentUseCase } from '../application/use-cases/abandonment/AbandonmentUseCase';
@@ -532,6 +534,10 @@ export class Registry {
   public readonly campaignRepo = new DrizzleCampaignRepository();
   public readonly campaignSendRepo = new DrizzleCampaignSendRepository();
   public readonly gamificationRepo = new DrizzleGamificationRepository();
+  public readonly adminUserWriteRepo = new DrizzleAdminUserWriteRepository();
+  // Stateless hasher constructed inline: the shared field is declared later in the
+  // class and TS rightly refuses use-before-initialization.
+  public readonly adminUserManagementUseCase = new AdminUserManagementUseCase(this.adminUserWriteRepo, new ScryptPasswordHasher());
   public readonly campaignSendEngine = new CampaignSendEngineUseCase(this.campaignSendRepo, this.campaignSendRepo);
 
   // Wave 2E-3 — notification wording overrides.

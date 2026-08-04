@@ -1,4 +1,5 @@
 import { PERMISSIONS } from '@goldplus/shared';
+export { GOVERNANCE_ROLES, LEGACY_FULL_ACCESS_ROLE, PLATFORM_ADMINISTRATOR_ROLE } from '@goldplus/shared';
 
 /**
  * Pure contract for the permission-registry sync — no database imports, so the split
@@ -44,32 +45,5 @@ export function registryPermissionRows(): Array<{ code: string; action: string; 
   return rows.sort((a, b) => a.code.localeCompare(b.code));
 }
 
-/** The role that must always hold the complete registry. */
-export const PLATFORM_ADMINISTRATOR_ROLE = 'PLATFORM_ADMINISTRATOR';
 
-/**
- * Governance role vocabulary (V4 §6). Only PLATFORM_ADMINISTRATOR receives grants from
- * the sync; the others are created empty because their permission subsets are a
- * business policy decision, assigned through the existing roles surfaces — inventing
- * those subsets in code would be policy by accident.
- */
-export const GOVERNANCE_ROLES = [
-  PLATFORM_ADMINISTRATOR_ROLE,
-  'PLATFORM_OPERATOR',
-  'COMMERCIAL_MANAGER',
-  'MERCHANDISING_MANAGER',
-  'FULFILMENT_MANAGER',
-  'MARKETING_MANAGER',
-  'ANALYST',
-  'SUPPORT_OPERATOR',
-  'LEGAL_REVIEWER',
-  'SECURITY_ADMIN',
-  'READ_ONLY_AUDITOR',
-] as const;
 
-/**
- * The pre-programme role the bootstrap administrator actually holds today. It is
- * topped up (never trimmed) so governance work can migrate assignments off it without
- * a flag-day. Removing it requires DEPRECATE_WITH_PROOF.
- */
-export const LEGACY_FULL_ACCESS_ROLE = 'Owner';

@@ -46,3 +46,4 @@ export * from './abandonment';
 export * from './notificationTemplates';
 export * from './campaignSendRuns';
 export * from './gamification';
+export * from './roleGrants';

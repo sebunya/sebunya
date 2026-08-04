@@ -100,3 +100,24 @@ export const PERMISSIONS = {
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
+
+/**
+ * Governance role vocabulary (§6). PLATFORM_ADMINISTRATOR receives the full
+ * registry from the boot sync; LEGAL_REVIEWER carries the legal review/approve
+ * baseline; the rest are named-but-empty pending business decisions.
+ */
+export const PLATFORM_ADMINISTRATOR_ROLE = 'PLATFORM_ADMINISTRATOR';
+export const LEGACY_FULL_ACCESS_ROLE = 'Owner';
+export const GOVERNANCE_ROLES = [
+  PLATFORM_ADMINISTRATOR_ROLE,
+  'PLATFORM_OPERATOR',
+  'COMMERCIAL_MANAGER',
+  'MERCHANDISING_MANAGER',
+  'FULFILMENT_MANAGER',
+  'MARKETING_MANAGER',
+  'ANALYST',
+  'SUPPORT_OPERATOR',
+  'LEGAL_REVIEWER',
+  'SECURITY_ADMIN',
+  'READ_ONLY_AUDITOR',
+] as const;

@@ -33,6 +33,7 @@ export interface PermissionSyncSummary {
   rolesCreated: number;
   adminGrantsAdded: number;
   legacyGrantsAdded: number;
+  legalReviewerGrantsAdded: number;
   bootstrapAdminAssigned: boolean;
   permissionsBeyondRegistry: number;
 }
@@ -83,6 +84,25 @@ export async function syncPermissionRegistry(): Promise<PermissionSyncSummary> {
 
     const adminGrantsAdded = await grantAll(adminRoleId);
 
+
+    // §6/§7 alignment: LEGAL_REVIEWER's function is defined by its name — reviewing
+    // and approving legal wording. Baseline grants are add-only, like everything in
+    // this sync; other vocabulary roles stay empty pending business decisions.
+    const legalReviewerId = await findRoleId('LEGAL_REVIEWER');
+    let legalReviewerGrantsAdded = 0;
+    if (legalReviewerId) {
+      const baselineCodes = ['legal.read', 'legal.approve'];
+      const baselineIds = baselineCodes.map((code) => existingByCode.get(code)).filter((v): v is string => Boolean(v));
+      if (baselineIds.length > 0) {
+        const granted = await tx
+          .insert(rolePermissions)
+          .values(baselineIds.map((permissionId) => ({ roleId: legalReviewerId, permissionId })))
+          .onConflictDoNothing()
+          .returning({ permissionId: rolePermissions.permissionId });
+        legalReviewerGrantsAdded = granted.length;
+      }
+    }
+
     // Top up (never trim) the legacy full-access role the bootstrap admin holds today.
     const legacyRoleId = await findRoleId(LEGACY_FULL_ACCESS_ROLE);
     const legacyGrantsAdded = legacyRoleId ? await grantAll(legacyRoleId) : 0;
@@ -111,6 +131,7 @@ export async function syncPermissionRegistry(): Promise<PermissionSyncSummary> {
       rolesCreated,
       adminGrantsAdded,
       legacyGrantsAdded,
+      legalReviewerGrantsAdded,
       bootstrapAdminAssigned,
       permissionsBeyondRegistry: existing.filter((p) => !registry.some((r) => r.code === `${p.action}.${p.resource}`)).length,
     };
@@ -120,6 +141,7 @@ export async function syncPermissionRegistry(): Promise<PermissionSyncSummary> {
       summary.rolesCreated > 0 ||
       summary.adminGrantsAdded > 0 ||
       summary.legacyGrantsAdded > 0 ||
+      summary.legalReviewerGrantsAdded > 0 ||
       summary.bootstrapAdminAssigned;
 
     if (changed) {
