@@ -68,7 +68,20 @@ export interface IdentityHealthMetrics {
   anonymousToCustomerLinks: number;
 }
 
+
+export interface DepthMetricsRaw {
+  totalEvents: number;
+  distinctRecommendedProducts: number;
+  activeProducts: number;
+  nullPlacementEvents: number;
+  invalidPlacementEvents: number;
+  topProducts: Array<{ productId: string; events: number }>;
+  sourceBreakdown: Array<{ source: string; events: number }>;
+}
+
 export interface IRecommendationAnalyticsRepository {
+  /** Raw counts for §19 depth metrics over a window; percentages are computed (and gated) in the service. */
+  depthMetricsRaw(windowDays: number): Promise<DepthMetricsRaw>;
   getSummaryMetrics(query: Omit<RecommendationAnalyticsQuery, "startDate" | "endDate"> & { startDate: Date; endDate: Date }): Promise<AnalyticsSummary>;
   getPlacementPerformance(query: Omit<RecommendationAnalyticsQuery, "startDate" | "endDate"> & { startDate: Date; endDate: Date }): Promise<PlacementPerformanceRecord[]>;
   getRulePerformance(query: Omit<RecommendationAnalyticsQuery, "startDate" | "endDate"> & { startDate: Date; endDate: Date }): Promise<RulePerformanceRecord[]>;

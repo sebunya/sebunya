@@ -205,6 +205,15 @@ routes.post("/preview", async (c) => {
 });
 
 // 9. ANALYTICS
+
+// §19 depth metrics — raw counts always; percentages only with safe denominators.
+routes.get("/analytics/depth", async (c) => {
+  const windowDays = Math.min(90, Math.max(1, Number(c.req.query("windowDays")) || 30));
+  const result = await Registry.getInstance().recommendationAnalyticsService.getDepthMetrics(windowDays);
+  const res: ApiResponse<typeof result> = { success: true, data: result };
+  return c.json(res);
+});
+
 routes.get("/analytics", async (c) => {
   const registry = Registry.getInstance();
   const service = registry.recommendationAnalyticsService;

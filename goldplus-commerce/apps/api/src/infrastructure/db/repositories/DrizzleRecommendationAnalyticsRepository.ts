@@ -214,4 +214,60 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
       uniqueCarts: 0
     };
   }
+
+  async depthMetricsRaw(windowDays: number) {
+    const { sql } = await import('drizzle-orm');
+    const { recommendationEvents } = await import('../schema/recommendations');
+    const { products } = await import('../schema/products');
+    const { isRecommendationPlacement } = await import('../../../application/recommendations/RecommendationValidation');
+    const since = new Date(Date.now() - windowDays * 24 * 3600_000);
+
+    const [totals] = await db
+      .select({
+        totalEvents: sql<number>`count(*)::int`,
+        distinctRecommendedProducts: sql<number>`count(distinct recommendation_product_id) filter (where recommendation_product_id is not null)::int`,
+        nullPlacementEvents: sql<number>`count(*) filter (where placement is null)::int`,
+      })
+      .from(recommendationEvents)
+      .where(sql`${recommendationEvents.createdAt} >= ${since}`);
+
+    const placements = await db
+      .select({ placement: recommendationEvents.placement, events: sql<number>`count(*)::int` })
+      .from(recommendationEvents)
+      .where(sql`${recommendationEvents.createdAt} >= ${since} and ${recommendationEvents.placement} is not null`)
+      .groupBy(recommendationEvents.placement);
+    const invalidPlacementEvents = placements
+      .filter((p) => !isRecommendationPlacement(p.placement))
+      .reduce((sum, p) => sum + p.events, 0);
+
+    const [{ activeProducts }] = await db
+      .select({ activeProducts: sql<number>`count(*)::int` })
+      .from(products);
+
+    const topProducts = await db
+      .select({ productId: recommendationEvents.recommendationProductId, events: sql<number>`count(*)::int` })
+      .from(recommendationEvents)
+      .where(sql`${recommendationEvents.createdAt} >= ${since} and ${recommendationEvents.recommendationProductId} is not null`)
+      .groupBy(recommendationEvents.recommendationProductId)
+      .orderBy(sql`count(*) desc`)
+      .limit(5);
+
+    const sourceBreakdown = await db
+      .select({ source: sql<string>`coalesce(${recommendationEvents.source}, 'unknown')`, events: sql<number>`count(*)::int` })
+      .from(recommendationEvents)
+      .where(sql`${recommendationEvents.createdAt} >= ${since}`)
+      .groupBy(sql`coalesce(${recommendationEvents.source}, 'unknown')`)
+      .orderBy(sql`count(*) desc`);
+
+    return {
+      totalEvents: totals?.totalEvents ?? 0,
+      distinctRecommendedProducts: totals?.distinctRecommendedProducts ?? 0,
+      activeProducts: activeProducts ?? 0,
+      nullPlacementEvents: totals?.nullPlacementEvents ?? 0,
+      invalidPlacementEvents,
+      topProducts: topProducts.map((t) => ({ productId: t.productId as string, events: t.events })),
+      sourceBreakdown,
+    };
+  }
+
 }

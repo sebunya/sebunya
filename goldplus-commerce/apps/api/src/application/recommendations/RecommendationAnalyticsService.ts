@@ -1,3 +1,17 @@
+
+/**
+ * §19 data purity: a percentage is only shown when its denominator is safe.
+ * Below MIN_SAMPLE the share is withheld with the reason, never rendered as a
+ * misleadingly precise number.
+ */
+export const DEPTH_MIN_SAMPLE = 30;
+export function safeShare(numerator: number, denominator: number): { pct: number | null; reason: string | null } {
+  if (denominator < DEPTH_MIN_SAMPLE) {
+    return { pct: null, reason: `Sample too small (${denominator} < ${DEPTH_MIN_SAMPLE}) — percentage withheld.` };
+  }
+  return { pct: Math.round((numerator / denominator) * 1000) / 10, reason: null };
+}
+
 import type { 
   RecommendationAnalyticsQuery, 
   RecommendationAnalyticsResponse,
@@ -164,4 +178,38 @@ export class RecommendationAnalyticsService {
       { metric: "profitContribution", reason: "Profit contribution requires product margin and completed order attribution." }
     ];
   }
+
+  /** §19 depth metrics: coverage, placement integrity, concentration, source mix. */
+  async getDepthMetrics(windowDays = 30) {
+    const raw = await this.repo.depthMetricsRaw(windowDays);
+    const coverage = safeShare(raw.distinctRecommendedProducts, raw.activeProducts >= 1 ? Math.max(raw.activeProducts, DEPTH_MIN_SAMPLE * 0 + raw.activeProducts) : 0);
+    const unknownPlacement = safeShare(raw.nullPlacementEvents + raw.invalidPlacementEvents, raw.totalEvents);
+    const top5Events = raw.topProducts.reduce((sum, t) => sum + t.events, 0);
+    const concentration = safeShare(top5Events, raw.totalEvents);
+    return {
+      windowDays,
+      totalEvents: raw.totalEvents,
+      coverage: {
+        distinctRecommendedProducts: raw.distinctRecommendedProducts,
+        activeProducts: raw.activeProducts,
+        // Coverage denominator is the catalogue, not the event stream: it is safe
+        // whenever the catalogue is non-empty, so the share gates only on that.
+        pct: raw.activeProducts > 0 ? Math.round((raw.distinctRecommendedProducts / raw.activeProducts) * 1000) / 10 : null,
+        reason: raw.activeProducts > 0 ? null : 'No active products — coverage undefined.',
+      },
+      unknownPlacement: {
+        nullPlacementEvents: raw.nullPlacementEvents,
+        invalidPlacementEvents: raw.invalidPlacementEvents,
+        ...unknownPlacement,
+      },
+      catalogueConcentration: {
+        top5Events,
+        topProducts: raw.topProducts,
+        ...concentration,
+      },
+      sourceBreakdown: raw.sourceBreakdown,
+      note: 'Raw counts always shown; percentages appear only with safe denominators (min sample ' + String(DEPTH_MIN_SAMPLE) + ' events).',
+    };
+  }
+
 }
