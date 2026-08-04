@@ -13,8 +13,8 @@
   "pr": 9,
   "prBodyEditBlocked": "gh unauthenticated on this Mac; branch pushes still update PR content. Operator assist: gh auth login.",
   "startingHead": "707876d",
-  "lastGreenHead": "76423b1",
-  "phase": "Released: 2A-2F + SEND(dry) + GAMIFY + PIM-error-report. Remaining engineering: analytics depth metrics. Activations = business decisions.",
+  "lastGreenHead": "9fe2da4",
+  "phase": "ENGINEERING GRAPH COMPLETE: 2A-2F, SEND(dry), GAMIFY, PIM-report, REC-DEPTH all RELEASED; 2G/2H verified-KEEP. Open: activations (business), operator items, full accessibility/perf gates.",
   "phaseStatus": {
     "0-attestation-memory": "GREEN",
     "1-shared-foundations": "GREEN(S1,S2,S3,S6 released)",
@@ -195,6 +195,12 @@
       "module": "pim-error-report",
       "status": "RELEASED",
       "evidence": "76423b1: real invalid row \u2192 exact-message CSV via API + cookie proxy; unauth 401"
+    },
+    {
+      "id": "W-RECDEPTH",
+      "module": "rec-analytics-depth",
+      "status": "RELEASED",
+      "evidence": "9fe2da4: live withheld-percentage proof on 13 real events; safeShare purity suite 3/3"
     }
   ],
   "constraints": [
@@ -205,9 +211,9 @@
     "principal-only: Registry/permissions/app.ts/compose/Caddy/journal"
   ],
   "nextExact": {
-    "file": "docs/platform/institutional-memory-v4/MODULE_MATURITY_MATRIX.md",
-    "command": "last engineering slice: recommendation-analytics depth metrics (coverage/fallback-rate/unknown-placement \u2014 honest denominators, no unsafe percentages). Then adversarial pass + honest terminal report.",
-    "expected": "ritual unchanged"
+    "file": "docs/platform/institutional-memory-v4/EXECUTION_STATE.json",
+    "command": "No READY engineering slices remain in the graph. Resume points: (a) loyalty/live-send activation waves ON EXPLICIT BUSINESS DECISION with their evidence bars; (b) accessibility+performance+visual-regression full-gate tier; (c) operator items. Ritual unchanged.",
+    "expected": "programme idles honestly at engineering-complete-for-scheduled-graph"
   },
-  "releasedHead": "76423b1"
+  "releasedHead": "9fe2da4"
 }
