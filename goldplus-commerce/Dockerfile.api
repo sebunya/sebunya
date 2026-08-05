@@ -38,6 +38,10 @@ RUN node -e "const fs=require('fs');const p='packages/shared/package.json';const
 # Self-contained production dependency tree (no dev toolchain, no virtual store).
 RUN pnpm deploy --filter=@goldplus/api --prod /app/deploy
 
+# COPY preserves host file modes; a root-only (600) file in the deploy checkout
+# is unreadable by the non-root runtime user and turns into MODULE_NOT_FOUND.
+RUN chmod -R a+rX /app/deploy /app/packages/shared /app/apps/api/dist /app/apps/api/package.json
+
 FROM base AS runner
 # Set production environment
 ENV NODE_ENV=production

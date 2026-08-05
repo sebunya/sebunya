@@ -30,6 +30,10 @@ RUN pnpm -F @goldplus/web build
 # Prune dev dependencies for production runtime
 RUN pnpm install --prod --frozen-lockfile
 
+# COPY preserves host file modes; a root-only (600) file in the deploy checkout
+# is unreadable by the non-root runtime user at serve time.
+RUN chmod -R a+rX /app/node_modules /app/packages/shared /app/apps/web/dist /app/apps/web/node_modules /app/apps/web/package.json
+
 FROM base AS runner
 # Set production environment
 ENV NODE_ENV=production
