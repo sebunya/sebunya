@@ -29,3 +29,8 @@ Welcome, future AI agent. When working in this repository, you MUST follow these
 ## Location Module
 - The location/address module build is governed by `docs/location-module-brief.md` (verified Ministry of ICT 2019 postcode dataset, PARTs A–P). Read it before touching location, address, or delivery-zone code. Decisions and assumptions live in `docs/location-module-decisions.md`.
 - The loyalty/gamification completion build is governed by `docs/loyalty-completion-brief.md` (PARTs A–V). Read it before touching loyalty, points, quests, badges, tiers, or the loyalty page. Decisions live in `docs/loyalty-decisions.md`.
+
+## Delivery Estimation
+- **`docs/delivery/CONTRACT.md` is the contract for delivery quoting — read it before touching any delivery fee, delivery window, or quoting code, and hold it in context for the whole run.** Ten guarantees, one page. The two that catch people out: there is exactly ONE quoting service, and the fee and the window come from the SAME expected-minutes number.
+- The model and calibration are in `docs/delivery/MODEL.md`. Operations, the Control Centre, phases, guardrails and the definition of done are in `docs/delivery/OPERATIONS.md`.
+- `goldplus_locations_seed.sql` is RETIRED. It creates a conflicting `ug_area` shape and must never run; the CSVs are the only import path.
