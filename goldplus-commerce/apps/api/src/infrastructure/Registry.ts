@@ -168,6 +168,13 @@ import {
   PlayDrawTokenUseCase,
 } from '../application/use-cases/loyalty/LoyaltyDrawUseCases';
 import { DrizzleLoyaltyDrawRepository } from './db/repositories/DrizzleLoyaltyDrawRepository';
+import { DrizzleDeliveryCaptureRepository } from './db/repositories/DrizzleDeliveryCaptureRepository';
+import { DeliveryConfigReader } from './delivery/DeliveryConfigReader';
+import {
+  CaptureQuoteUseCase,
+  ListDeliveriesAwaitingCostUseCase,
+  RecordActualRiderCostUseCase,
+} from '../application/use-cases/delivery/DeliveryCaptureUseCases';
 import { DrizzleLoyaltyIdentityRepository, DrizzleLoyaltyTierRepository, LoyaltyProgrammeConfigWriter, OutboxOtpSender, otpHash, otpRandom } from './loyalty/LoyaltyIdentityInfrastructure';
 import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { ListSearchMissesUseCase, PromoteSearchMissToAliasUseCase, ListAddressReviewQueueUseCase, ResolveAddressUseCase, ManageLandmarksUseCase, ManagePickupPointsUseCase, GetZonePoliciesUseCase, SaveZonePolicyUseCase, ListDataExceptionsUseCase } from '../application/use-cases/locations/LocationAdminUseCases';
@@ -1084,6 +1091,18 @@ export class Registry {
   // ── Reward draw / chance mechanic (0088) ─────────────────────────────────
   // The roll is cryptographic and server-side. randomInt is imported from
   // node:crypto — Math.random must never appear in a prize path.
+  // ── Delivery estimation (brief v7, stages A–B) ───────────────────────────
+  // The capture path exists from day one because a model cannot fit margin
+  // against a cost it never saw, and rider cost was recorded nowhere at all.
+  public readonly deliveryCaptureRepo = new DrizzleDeliveryCaptureRepository();
+  public readonly deliveryConfigReader = new DeliveryConfigReader();
+  public readonly recordActualRiderCostUseCase = new RecordActualRiderCostUseCase(
+    this.deliveryCaptureRepo,
+    this.auditRepo,
+  );
+  public readonly captureQuoteUseCase = new CaptureQuoteUseCase(this.deliveryCaptureRepo);
+  public readonly listDeliveriesAwaitingCostUseCase = new ListDeliveriesAwaitingCostUseCase(this.deliveryCaptureRepo);
+
   public readonly loyaltyDrawRepo = new DrizzleLoyaltyDrawRepository();
   public readonly grantDrawTokenUseCase = new GrantDrawTokenUseCase(
     this.loyaltyCompletionRepo,
