@@ -90,10 +90,17 @@ export class DrizzleLocationSearchRepository implements ILocationSearchRepositor
   }
 
   async prefix(folded: string, limit: number): Promise<AreaSearchHit[]> {
+    // Matching only the START of search_text made every term after the area
+    // name unreachable — "Entebbe" lives in the municipality field, so it sat
+    // in the text and could never be found. The second pattern matches at any
+    // WORD boundary, which is what makes a town or sub-county name searchable.
+    // Still a prefix match per word, so it does not degrade into substring
+    // soup: "bunga" cannot reach "Busanga".
     const rows = (await db.execute(sql`
       select ${AREA_COLS}, 0.9::float as score
       from ug_area a
-      where a.selectable = true and a.search_text like ${folded + '%'}
+      where a.selectable = true
+        and (a.search_text like ${folded + '%'} or a.search_text like ${'% ' + folded + '%'})
       union
       select ${AREA_COLS}, 0.9::float as score
       from ug_area_alias al join ug_area a on a.area_slug = al.area_slug
