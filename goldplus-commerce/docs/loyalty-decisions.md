@@ -39,3 +39,91 @@ derived-balance reader — not a mutable balance column.
 - 2026-08-04 — **Earn-basis defect resolved on the honest side**: checkout
   preview now shows a LOWER BOUND ("at least N… when delivered"); the ledger
   keeps the audited v1 basis (order_total) until PART V #6 decides.
+
+---
+
+# PART V DECISION SHEET (2026-08-05 — one sheet, awaiting Rob)
+
+Every item is a CONFIGURATION value; nothing activates until set, nothing needs
+a deploy.
+
+**1. Point value in UGX.** Options 10/20/50 per point → at the live 10 pts/1,000
+UGX rate that is a 1%/2%/5% return. RECOMMEND **20 UGX (2%)**. Wrong-high:
+points already promised become retroactively expensive (cutting later is a
+communication event). Wrong-low: programme reads as worthless, liability sits
+unredeemed.
+
+**2. Redemption minimum + max share.** RECOMMEND **min 500 points** (10,000 UGX
+at #1) and **max 5,000 bps (50%)** of goods total. Wrong-low min: support
+flood; wrong-high max: near-zero-revenue orders — the max-share ceiling is
+currently the margin guard.
+
+**3. Points × promo stacking.** Engine supports both (redemption applies after
+the promo-priced quote). RECOMMEND **allow stacking**, watch the liability view
+weekly. Wrong: stacked promo+points on thin-margin SKUs can breach margin.
+
+**4. First-cohort expiry.** RESOLVED BY FACTS: the clock never started (zero
+points ever issued). Just set redemption config before the first real earns
+mature.
+
+**5. Expiry window.** RECOMMEND **keep 120 days**; revisit rolling expiry with
+real redemption data. Wrong-short: complaint queue. Wrong-long: liability
+accumulates.
+
+**6. Earning basis.** Live rule v1 = order TOTAL incl. delivery fee (recorded,
+not chosen); preview shows a subtotal lower bound. RECOMMEND **rule v2 on item
+subtotal excl. delivery** — paying points on delivery fees rewards distance,
+not loyalty. Nothing breaks either way (rule versioning isolates history); new
+rule row, no code.
+
+**7. Additional earn sources.** RECOMMEND activating: verification scan (25
+pts, cap 5/day — the differentiator, engine shipped INACTIVE), confirmed
+counterfeit report (250 pts), phone verification (100 pts once). Defer
+referral/birthday/streak until fraud telemetry has volume. Wrong: any uncapped
+source is a farming target.
+
+**8. Tiers.** T1–T4 seeded inactive, thresholds NULL. RECOMMEND T1 0 / T2
+2,500 / T3 10,000 / T4 30,000 lifetime points with SERVICE benefits (priority
+support, extended warranty handling, early access), not discounts. Wrong: low
+thresholds = tier inflation; discount benefits = double liability with
+redemption.
+
+**9. Quests/badges.** RECOMMEND none until verification earning is live; then a
+verification badge track (costless recognition). Preview quests already off the
+page.
+
+**10. Dealers.** Currently EXCLUDED at the earn source (wholesale/corporate
+never earn — conservative build default). RECOMMEND keep excluded; separate
+dealer programme later if wanted. Wrong (include): wholesale volume blows any
+budget cap.
+
+**11. Guest backfill.** RECOMMEND **90-day lookback, 5,000-point cap**. Wrong
+(long/uncapped): a bulk buyer registering late mints a huge instant liability.
+
+**12. Budget cap + breakage.** RECOMMEND cap **1,000,000 points** (20M UGX at
+#1); breakage stays OBSERVED from real expiry — never assumed. Wrong (none):
+liability has no ceiling and the PART N stop rule cannot fire.
+
+**13. Chance-based mechanics.** RECOMMEND **defer indefinitely**
+(lotteries/gaming legislation exposure; marginal mechanic).
+
+**14. Account closure.** RECOMMEND **forfeit with 30-day notice**, stated in
+the loyalty terms. The new RESTRICT FK forces closure through an explicit
+audited path.
+
+**15. Channels + consent.** Built: transactional SMS→email via the governed
+outbox; WhatsApp API deferred. RECOMMEND confirming earn/expiry/redemption
+notices as transactional; marketing-category loyalty messaging stays off until
+the preference-centre distinction is explicitly wired.
+
+## PART P legal flags (readings, not resolutions)
+
+- **Programme terms**: points live without dedicated terms = the one live
+  exposure; draft before redemption opens.
+- **DPPA 2019**: ledger/behavioural history is personal data — closure handling
+  and purpose limitation need a compliance-pack entry.
+- **Chance mechanics**: legal read BEFORE any build (see #13).
+- **Cash-equivalence**: discount-only + non-transferable keeps clear of e-money
+  law.
+- **VAT on redeemed sales**: accountant question; the finance export carries
+  the data.
