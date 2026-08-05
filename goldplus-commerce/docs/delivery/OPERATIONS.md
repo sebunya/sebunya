@@ -139,7 +139,7 @@ permission.
 9. Capture layer for calibration inputs
 10. Nightly calibration jobs and the variance and margin reports
 11. The Control Centre per PART 6
-12. Shadow mode, comparison report, staged cutover per area, one-command revert
+12. Direct cutover of the metro set once stage B is green, staged per area, with the old path kept ONLY as a fallback for what the new engine refuses, and a one-command revert. **Shadow mode was dropped 2026-08-05**: with 18 orders, none delivered, and the old model returning nothing on 11 of 18, a comparison could not teach anything it cost. The stage D variance report is the safety net.
 
 ## Phase 2. Only when data unlocks it. Do not build now.
 
@@ -180,8 +180,10 @@ elsewhere. The Kampala to Sembabule mis-route was one of these. Any
 collision-resolved address is a candidate for the variance path.
 
 **The corridor file is a prior, not a price list.** No area was assigned by
-measuring a distance. Bands were assigned by judgement, 200 rows at area level
-and 162 inherited from sub-county. When measured centroids arrive, some areas
+measuring a distance. Bands were assigned by judgement. **Corrected 2026-08-05:**
+an earlier draft conflated two columns. `assignment_basis` is area_level **182**
+/ sub_county_level **180**; `assignment_confidence` is high **200** / medium
+**162**. The file wins. When measured centroids arrive, some areas
 will sit outside their band. Expected. Reband on evidence. Never show a band
 boundary to a customer as a distance.
 
@@ -277,10 +279,10 @@ boundary to a customer as a distance.
 
 **Rollout**
 
-34. The existing predictor is baselined and the new engine runs in shadow
-    before pricing anything
-35. Cutover is per area on shadow evidence, logged, attributed, revertible in
-    one command
+34. The existing predictor is baselined (coverage, not accuracy — see
+    `AUDIT.md`) before the new engine prices anything
+35. Cutover is per area, logged, attributed, revertible in one command, with
+    the old path retained only as a fallback for refusals
 36. Exactly one quoting service exists at the end
 37. Any order's quote is fully explainable in admin: origin, centroid source,
     corridor, band, factors, sample sizes, configuration version and any
