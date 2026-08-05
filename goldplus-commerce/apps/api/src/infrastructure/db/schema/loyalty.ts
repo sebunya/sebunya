@@ -209,6 +209,81 @@ export const loyaltyTierAssignments = pgTable('loyalty_tier_assignments', {
   notifiedAt: timestamp('notified_at', { withTimezone: true }),
 });
 
+/* ── 0088: reward draw (scratch / spin) ──────────────────────────────────
+ * Chance mechanic with the consideration and the losing outcome removed:
+ * tokens are granted for an ALREADY delivered order, and every prize tier
+ * awards points > 0 (CHECK-enforced). Gated by loyalty_config.chance_enabled
+ * AND the programme kill switch AND per-campaign activation.
+ */
+export const loyaltyDrawCampaigns = pgTable('loyalty_draw_campaigns', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  code: varchar('code', { length: 40 }).notNull(),
+  name: varchar('name', { length: 120 }).notNull(),
+  description: varchar('description', { length: 500 }),
+  triggerEvent: varchar('trigger_event', { length: 30 }).notNull(), // order_delivered | verification_scan
+  tokenExpiryDays: integer('token_expiry_days').notNull(),
+  budgetCapPoints: bigint('budget_cap_points', { mode: 'number' }).notNull(),
+  pointsAwarded: bigint('points_awarded', { mode: 'number' }).default(0).notNull(),
+  tokensGranted: integer('tokens_granted').default(0).notNull(),
+  active: boolean('active').default(false).notNull(),
+  startsAt: timestamp('starts_at', { withTimezone: true }),
+  endsAt: timestamp('ends_at', { withTimezone: true }),
+  createdBy: uuid('created_by'),
+  updatedBy: uuid('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  codeIdx: uniqueIndex('loyalty_draw_campaigns_code_uq').on(table.code),
+}));
+
+export const loyaltyDrawPrizes = pgTable('loyalty_draw_prizes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campaignId: uuid('campaign_id').references(() => loyaltyDrawCampaigns.id, { onDelete: 'restrict' }).notNull(),
+  label: varchar('label', { length: 80 }).notNull(),
+  pointsAwarded: integer('points_awarded').notNull(),
+  weight: integer('weight').notNull(),
+  maxAwards: integer('max_awards'),
+  awardsMade: integer('awards_made').default(0).notNull(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  campaignIdx: index('loyalty_draw_prizes_campaign_idx').on(table.campaignId),
+}));
+
+export const loyaltyDrawTokens = pgTable('loyalty_draw_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campaignId: uuid('campaign_id').references(() => loyaltyDrawCampaigns.id, { onDelete: 'restrict' }).notNull(),
+  userId: uuid('user_id').notNull(),
+  accountId: uuid('account_id'),
+  sourceType: varchar('source_type', { length: 30 }).notNull(),
+  sourceId: uuid('source_id').notNull(),
+  status: varchar('status', { length: 12 }).default('available').notNull(), // available|played|expired
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  playedAt: timestamp('played_at', { withTimezone: true }),
+}, (table) => ({
+  /** One token per qualifying event, ever — this is what makes granting idempotent. */
+  sourceIdx: uniqueIndex('loyalty_draw_tokens_source_uq').on(table.campaignId, table.sourceType, table.sourceId),
+  userIdx: index('loyalty_draw_tokens_user_idx').on(table.userId, table.status),
+}));
+
+export const loyaltyDrawResults = pgTable('loyalty_draw_results', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tokenId: uuid('token_id').references(() => loyaltyDrawTokens.id, { onDelete: 'restrict' }).notNull(),
+  campaignId: uuid('campaign_id').references(() => loyaltyDrawCampaigns.id, { onDelete: 'restrict' }).notNull(),
+  prizeId: uuid('prize_id').references(() => loyaltyDrawPrizes.id, { onDelete: 'restrict' }).notNull(),
+  userId: uuid('user_id').notNull(),
+  pointsAwarded: integer('points_awarded').notNull(),
+  ledgerEntryId: uuid('ledger_entry_id'),
+  /** The odds table in force at play time — a later weight edit cannot rewrite it. */
+  prizeSnapshot: jsonb('prize_snapshot').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  /** Structural guarantee that one token can never yield two prizes. */
+  tokenIdx: uniqueIndex('loyalty_draw_results_token_uq').on(table.tokenId),
+  userIdx: index('loyalty_draw_results_user_idx').on(table.userId),
+}));
+
 export const phoneVerificationCodes = pgTable('phone_verification_codes', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull(),

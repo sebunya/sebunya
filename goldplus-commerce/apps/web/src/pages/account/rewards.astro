@@ -16,6 +16,7 @@ if (!token) {
 // authenticate. This also means both actions work with JavaScript disabled.
 let actionStatus: '' | 'success' | 'error' = '';
 let actionMessage = '';
+let drawResult: { label: string; points: number } | null = null;
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const intent = String(form.get('intent') ?? '');
@@ -49,6 +50,17 @@ if (Astro.request.method === 'POST') {
         actionStatus = 'error';
         actionMessage = json?.error?.message ?? 'That code was not accepted.';
       }
+    } else if (intent === 'play-draw') {
+      const res = await authedPost('/account/draw/play', { tokenId: String(form.get('tokenId') ?? '') });
+      const json: any = await res.json().catch(() => null);
+      if (json?.success) {
+        actionStatus = 'success';
+        drawResult = { label: String(json.data?.label ?? ''), points: Number(json.data?.points ?? 0) };
+        actionMessage = `You won ${drawResult.points.toLocaleString('en-UG')} points — ${drawResult.label}.`;
+      } else {
+        actionStatus = 'error';
+        actionMessage = json?.error?.message ?? 'Could not play that card.';
+      }
     } else if (intent === 'date-of-birth') {
       const res = await authedPost('/account/date-of-birth', { dateOfBirth: String(form.get('dateOfBirth') ?? '') });
       const json: any = await res.json().catch(() => null);
@@ -69,14 +81,17 @@ if (Astro.request.method === 'POST') {
 let data: any = null;
 let me: any = null;
 let programme: any = null;
+let draw: any = null;
 let loadError = '';
 try {
   const authed = { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) };
-  const [res, meRes, programmeRes] = await Promise.all([
+  const [res, meRes, programmeRes, drawRes] = await Promise.all([
     fetch(`${apiBase}/account/gamification`, authed),
     // 0087: which earn actions are still open to this customer.
     fetch(`${apiBase}/account/me`, authed).catch(() => null),
     fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(4000) }).catch(() => null),
+    // 0088: scratch cards and the published odds.
+    fetch(`${apiBase}/account/draw`, authed).catch(() => null),
   ]);
   if (res.status === 401) {
     Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
@@ -89,6 +104,8 @@ try {
   if (meJson?.success) me = meJson.data;
   const programmeJson: any = programmeRes ? await programmeRes.json().catch(() => null) : null;
   if (programmeJson?.success && programmeJson.data?.active) programme = programmeJson.data;
+  const drawJson: any = drawRes ? await drawRes.json().catch(() => null) : null;
+  if (drawJson?.success && drawJson.data?.enabled) draw = drawJson.data;
 } catch {
   loadError = 'The rewards service is unreachable right now.';
 }
@@ -123,6 +140,80 @@ const pct = (progress: number, threshold: number) =>
 
     {data && (
       <div class="space-y-6">
+        {(draw?.tokens?.length > 0 || drawResult) && (
+          <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+            <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">
+              {draw?.campaign?.name ?? 'Scratch card'}
+            </h2>
+
+            {drawResult ? (
+              <div class="rounded-2xl border-2 border-brand-primary bg-brand-primary/10 p-6 text-center" role="status" aria-live="polite">
+                <p class="text-xs font-black uppercase tracking-widest text-brand-mutedGrey">You won</p>
+                <p class="mt-2 text-4xl font-black text-brand-charcoal">{drawResult.points.toLocaleString('en-UG')}</p>
+                <p class="mt-1 text-sm font-bold text-brand-charcoal">points — {drawResult.label}</p>
+                <p class="mt-3 text-xs text-brand-mutedGrey">Added to your balance. <a href="/account/loyalty" class="font-bold underline underline-offset-2">See your points</a></p>
+              </div>
+            ) : (
+              <p class="text-sm text-brand-charcoal leading-relaxed">
+                {draw?.campaign?.description ?? 'Every delivered order earns one card.'}
+                {' '}<strong>Every card wins points</strong> — only the amount varies, and playing costs nothing.
+              </p>
+            )}
+
+            {draw?.tokens?.length > 0 && (
+              <div class="mt-5" data-scratch-area>
+                <form method="POST" data-scratch-form>
+                  <input type="hidden" name="intent" value="play-draw" />
+                  <input type="hidden" name="tokenId" value={draw.tokens[0].id} />
+                  <button
+                    type="submit"
+                    class="w-full sm:w-auto min-h-11 rounded-full bg-brand-charcoal px-8 py-3 text-xs font-black uppercase tracking-wider text-white"
+                    data-scratch-play
+                  >
+                    Scratch to reveal
+                  </button>
+                </form>
+                <p class="mt-2 text-xs text-brand-mutedGrey">
+                  {draw.tokens.length === 1
+                    ? `1 card waiting · expires ${new Date(draw.tokens[0].expiresAt).toLocaleDateString('en-GB')}`
+                    : `${draw.tokens.length} cards waiting · next expires ${new Date(draw.tokens[0].expiresAt).toLocaleDateString('en-GB')}`}
+                </p>
+              </div>
+            )}
+
+            {draw?.odds?.length > 0 && (
+              <details class="mt-5 rounded-xl border border-brand-borderGrey bg-gray-50 p-4">
+                <summary class="cursor-pointer text-xs font-black uppercase tracking-widest text-brand-mutedGrey">
+                  Your chance of each prize
+                </summary>
+                <table class="mt-3 w-full text-sm">
+                  <thead>
+                    <tr class="text-left text-[10px] font-bold uppercase tracking-widest text-brand-mutedGrey border-b border-brand-borderGrey">
+                      <th class="py-2 pr-4">Prize</th>
+                      <th class="py-2">Chance</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-brand-borderGrey">
+                    {draw.odds.map((o: any) => (
+                      <tr>
+                        <td class="py-2 pr-4 font-bold text-brand-charcoal">{o.label}</td>
+                        <td class="py-2 text-brand-mutedGrey">
+                          {o.soldOut ? 'All claimed' : `${(o.oddsBps / 100).toFixed(2)}%`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p class="mt-3 text-xs text-brand-mutedGrey leading-relaxed">
+                  Odds are calculated from the live prize table and are the same for everyone. No purchase is needed to
+                  play a card you already have, and cards are not for sale. Full rules in the
+                  <a href="/loyalty-terms" class="font-bold underline underline-offset-2">rewards terms</a>.
+                </p>
+              </details>
+            )}
+          </section>
+        )}
+
         {(canVerifyPhone || canAddBirthday) && (
           <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
             <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Points you can claim now</h2>
@@ -248,4 +339,19 @@ const pct = (progress: number, threshold: number) =>
       </div>
     )}
   </div>
+
+  {/* Reveal feedback only. The outcome is decided entirely on the server —
+      this just stops a double submit and shows the card is being scratched. */}
+  <script is:inline>
+    (function () {
+      var form = document.querySelector('[data-scratch-form]');
+      if (!form) return;
+      var btn = form.querySelector('[data-scratch-play]');
+      form.addEventListener('submit', function () {
+        if (!btn) return;
+        btn.disabled = true;
+        btn.textContent = 'Scratching…';
+      });
+    })();
+  </script>
 </BaseLayout>

@@ -203,6 +203,7 @@ export class LoyaltyProgrammeConfigWriter {
     streakTargetOrders?: number | null;
     streakWindowDays?: number | null;
     streakRewardPoints?: number | null;
+    chanceEnabled?: boolean;
   }): Promise<void> {
     await db.update(loyaltyConfig).set({
       pointValueUgx: input.pointValueUgx,
@@ -218,6 +219,7 @@ export class LoyaltyProgrammeConfigWriter {
       ...(input.streakTargetOrders !== undefined ? { streakTargetOrders: input.streakTargetOrders } : {}),
       ...(input.streakWindowDays !== undefined ? { streakWindowDays: input.streakWindowDays } : {}),
       ...(input.streakRewardPoints !== undefined ? { streakRewardPoints: input.streakRewardPoints } : {}),
+      ...(input.chanceEnabled !== undefined ? { chanceEnabled: input.chanceEnabled } : {}),
       updatedAt: new Date(),
     });
   }

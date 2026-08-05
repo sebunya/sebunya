@@ -29,10 +29,17 @@ interface Programme {
 }
 
 let programme: Programme | null = null;
+let draw: { name: string; tokenExpiryDays: number; odds: Array<{ label: string; oddsBps: number; soldOut: boolean }> } | null = null;
 try {
-  const res = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(3000) });
+  const [res, drawRes] = await Promise.all([
+    fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(3000) }),
+    // Public odds disclosure — the same numbers the engine selects on.
+    fetch(`${apiBase}/commerce/reward-draw`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
+  ]);
   const json: any = res.ok ? await res.json().catch(() => null) : null;
   if (json?.success && json.data?.active) programme = json.data;
+  const drawJson: any = drawRes && drawRes.ok ? await drawRes.json().catch(() => null) : null;
+  if (drawJson?.success && drawJson.data?.enabled) draw = drawJson.data;
 } catch {
   /* an unreachable API renders the not-active version, never invented terms */
 }
@@ -178,6 +185,31 @@ const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.th
               a refund never shortens the life of your points.
             </p>
           </section>
+
+          {draw && (
+            <section>
+              <h2 class="text-lg font-black text-slate-900">6a. Scratch cards</h2>
+              <p class="mt-2">
+                A scratch card is <strong>given to you</strong> when an order is delivered. You never buy a card, and you never
+                pay anything to play one — the order that earned it is complete before the card exists.
+                <strong> Every card wins points.</strong> There is no losing card; only the number of points varies.
+              </p>
+              <p class="mt-2">Current chances, which are the same for every customer:</p>
+              <ul class="mt-2 space-y-1 pl-5">
+                {draw.odds.map((o) => (
+                  <li class="list-disc">
+                    <strong>{o.label}</strong> — {o.soldOut ? 'all claimed' : `${(o.oddsBps / 100).toFixed(2)}%`}
+                  </li>
+                ))}
+              </ul>
+              <p class="mt-2">
+                Cards expire {draw.tokenExpiryDays} days after they are issued and cannot be bought, sold, transferred or
+                exchanged for cash. The winning prize is chosen on our servers at the moment you play, and the odds table
+                in force at that moment is recorded against your result. If something goes wrong while a card is being
+                played, the card is returned to you unused.
+              </p>
+            </section>
+          )}
 
           <section>
             <h2 class="text-lg font-black text-slate-900">7. Fair use</h2>

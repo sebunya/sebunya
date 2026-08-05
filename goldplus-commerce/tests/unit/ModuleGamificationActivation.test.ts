@@ -128,6 +128,89 @@ describe('event wiring', () => {
   });
 });
 
+describe('0088 reward draw — the chance mechanic', () => {
+  const drawMigration = read('apps/api/src/infrastructure/db/migrations/0088_loyalty_reward_draw.sql');
+  const drawDomain = read('apps/api/src/domain/loyalty/RewardDraw.ts');
+  const drawUseCases = read('apps/api/src/application/use-cases/loyalty/LoyaltyDrawUseCases.ts');
+  const drawRepo = read('apps/api/src/infrastructure/db/repositories/DrizzleLoyaltyDrawRepository.ts');
+  const commerceRoutes = read('apps/api/src/interfaces/http/routes/commerce.ts');
+  const rewardsPage = read('apps/web/src/pages/account/rewards.astro');
+
+  it('is registered and additive', () => {
+    expect(journal).toContain('0088_loyalty_reward_draw');
+    const executable = drawMigration
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join('\n');
+    expect(executable).not.toMatch(/\bDROP\s+TABLE\b/i);
+    expect(executable).not.toMatch(/\bDROP\s+COLUMN\b/i);
+  });
+
+  it('forbids a losing outcome at the database, not just in code', () => {
+    expect(drawMigration).toContain('"loyalty_draw_prizes_points_check" CHECK ("points_awarded" > 0)');
+    expect(drawMigration).toContain('"loyalty_draw_results_points_check" CHECK ("points_awarded" > 0)');
+  });
+
+  it('makes one-card-per-event and one-prize-per-card structural', () => {
+    expect(drawMigration).toContain('"loyalty_draw_tokens_source_uq"');
+    expect(drawMigration).toContain('"loyalty_draw_results_token_uq"');
+  });
+
+  it('seeds the launch campaign INACTIVE — activation is a deliberate act', () => {
+    expect(drawMigration).toMatch(/'order_delivered', 30, 200000, false\)/);
+  });
+
+  it('never uses Math.random anywhere in the prize path', () => {
+    // Strip comments first — the files say "no Math.random" in prose, and the
+    // assertion is about executable code.
+    const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    for (const source of [drawDomain, drawUseCases, drawRepo]) {
+      expect(stripComments(source)).not.toMatch(/Math\.random/);
+    }
+    expect(registry).toContain("randomInt as nodeRandomInt } from 'node:crypto'");
+    expect(registry).toContain('nodeRandomInt(maxExclusive)');
+  });
+
+  it('decides the prize on the server and never trusts a client-supplied outcome', () => {
+    // The play route accepts only a token id — no prize, points or seed.
+    expect(account).toContain("routes.post('/draw/play'");
+    expect(account).toContain('const tokenId = String(body?.tokenId ?? \'\')');
+    expect(account).not.toMatch(/body\?\.(prize|points|outcome|seed)/);
+  });
+
+  it('gates on chance_enabled AND the kill switch in every draw path', () => {
+    expect((drawUseCases.match(/config\.chanceEnabled/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect((drawUseCases.match(/!config\.enabled \|\| config\.killSwitch/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('claims a card with a conditional update so it cannot be played twice', () => {
+    expect(drawRepo).toContain("eq(loyaltyDrawTokens.status, 'available')");
+    expect(drawRepo).toContain(".set({ status: 'played'");
+  });
+
+  it('returns the card to the customer if the award fails', () => {
+    expect(drawUseCases).toContain('this.draws.releaseToken(input.tokenId)');
+  });
+
+  it('routes the prize through the append-only ledger, once per card', () => {
+    expect(drawUseCases).toContain('idempotencyKey: `draw:${claimed.id}`');
+    expect(drawUseCases).toContain("ruleCode: 'reward_draw'");
+  });
+
+  it('publishes the odds from the same weights the engine selects on', () => {
+    expect(commerceRoutes).toContain("routes.get('/reward-draw'");
+    expect(commerceRoutes).toContain('publishedOdds(prizes)');
+    expect(rewardsPage).toContain('Your chance of each prize');
+    expect(terms.replace(/\s+/g, ' ')).toMatch(/Every card wins points/i);
+  });
+
+  it('states the no-purchase and no-cash position in the customer terms', () => {
+    const prose = terms.replace(/\s+/g, ' ');
+    expect(prose).toMatch(/never buy a card, and you never pay anything to play/i);
+    expect(prose).toMatch(/cannot be bought, sold, transferred or exchanged for cash/i);
+  });
+});
+
 describe('customer copy honesty', () => {
   it('renders the loyalty terms from live programme config, not hardcoded numbers', () => {
     expect(terms).toContain('/commerce/loyalty-programme');

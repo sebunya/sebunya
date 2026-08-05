@@ -280,6 +280,31 @@ routes.post('/phone/verify', async (c) => {
   });
 });
 
+// ── Reward draw (0088): the customer's cards and the published odds ─────────
+// Playing is free and requires a card that was granted for an already
+// delivered order, so there is no purchase-to-play path to rate limit; the
+// card itself is the quota, and it is single-use at the database.
+routes.get('/draw', async (c) => {
+  const userId = c.get('userId') as string;
+  const state = await Registry.getInstance().getDrawStateUseCase.execute({ userId });
+  return c.json({ success: true, data: state });
+});
+
+routes.post('/draw/play', async (c) => {
+  const userId = c.get('userId') as string;
+  const body = await c.req.json().catch(() => null);
+  const tokenId = String(body?.tokenId ?? '');
+  if (!/^[0-9a-f-]{36}$/i.test(tokenId)) {
+    return c.json({ success: false, error: { code: 'BAD_TOKEN', message: 'A valid card id is required.' } } as const, 400);
+  }
+  const result = await Registry.getInstance().playDrawTokenUseCase.execute({ userId, tokenId });
+  if (!result.ok) {
+    const status = result.code === 'TOKEN_NOT_FOUND' ? 404 : 400;
+    return c.json({ success: false, error: { code: result.code, message: result.message } } as const, status);
+  }
+  return c.json({ success: true, data: { label: result.label, points: result.points, replay: result.replay } });
+});
+
 // ── Gamification (0087): referral code + share stats ────────────────────────
 routes.get('/referral', async (c) => {
   const userId = c.get('userId') as string;

@@ -1,5 +1,5 @@
 import './logging/appLoggerBinding';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomInt as nodeRandomInt } from 'node:crypto';
 import { db } from './db/client';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
@@ -162,6 +162,12 @@ import {
   RecordReferralUseCase,
 } from '../application/use-cases/loyalty/LoyaltyGamificationUseCases';
 import { DrizzleBirthdayUserSource, DrizzleLoyaltyReferralRepository } from './db/repositories/DrizzleLoyaltyReferralRepository';
+import {
+  GetDrawStateUseCase,
+  GrantDrawTokenUseCase,
+  PlayDrawTokenUseCase,
+} from '../application/use-cases/loyalty/LoyaltyDrawUseCases';
+import { DrizzleLoyaltyDrawRepository } from './db/repositories/DrizzleLoyaltyDrawRepository';
 import { DrizzleLoyaltyIdentityRepository, DrizzleLoyaltyTierRepository, LoyaltyProgrammeConfigWriter, OutboxOtpSender, otpHash, otpRandom } from './loyalty/LoyaltyIdentityInfrastructure';
 import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { ListSearchMissesUseCase, PromoteSearchMissToAliasUseCase, ListAddressReviewQueueUseCase, ResolveAddressUseCase, ManageLandmarksUseCase, ManagePickupPointsUseCase, GetZonePoliciesUseCase, SaveZonePolicyUseCase, ListDataExceptionsUseCase } from '../application/use-cases/locations/LocationAdminUseCases';
@@ -1074,6 +1080,30 @@ export class Registry {
     this.loyaltyCompletionRepo,
     this.gamificationRepo,
   );
+
+  // ── Reward draw / chance mechanic (0088) ─────────────────────────────────
+  // The roll is cryptographic and server-side. randomInt is imported from
+  // node:crypto — Math.random must never appear in a prize path.
+  public readonly loyaltyDrawRepo = new DrizzleLoyaltyDrawRepository();
+  public readonly grantDrawTokenUseCase = new GrantDrawTokenUseCase(
+    this.loyaltyCompletionRepo,
+    this.loyaltyDrawRepo,
+    this.loyaltyRepo,
+  );
+  public readonly playDrawTokenUseCase = new PlayDrawTokenUseCase(
+    this.loyaltyCompletionRepo,
+    this.loyaltyDrawRepo,
+    this.loyaltyRepo,
+    (maxExclusive: number) => nodeRandomInt(maxExclusive),
+    async ({ userId, points, label }) =>
+      this.loyaltyOutboxNotifier.enqueue({
+        userId,
+        eventType: 'LOYALTY_POINTS_EARNED',
+        idempotencyKey: `draw-notify:${userId}:${label}:${points}`,
+        data: { points, source: 'reward_draw', label },
+      }),
+  );
+  public readonly getDrawStateUseCase = new GetDrawStateUseCase(this.loyaltyCompletionRepo, this.loyaltyDrawRepo);
   public readonly evaluateTiersUseCase = new EvaluateTiersUseCase(
     this.loyaltyRepo,
     this.loyaltyCompletionRepo,
@@ -1599,6 +1629,11 @@ export class Registry {
           await this.gamificationRepo.awardBadgeByKey(source.userId, 'first_order').catch(() => undefined);
           await this.evaluateGamificationForUserUseCase.execute({ userId: source.userId }).catch(() => undefined);
           await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: source.userId }).catch(() => undefined);
+          // 0088: a delivered order grants ONE scratch card. Idempotent on the
+          // order id, so a replayed transition never mints a second card.
+          await this.grantDrawTokenUseCase
+            .execute({ trigger: 'order_delivered', userId: source.userId, sourceType: 'order', sourceId: orderId })
+            .catch(() => undefined);
         }
       }
       if (toStatus === 'cancelled') {

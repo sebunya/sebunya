@@ -185,6 +185,9 @@ routes.put('/programme-config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
     streakTargetOrders: num(body.streakTargetOrders),
     streakWindowDays: num(body.streakWindowDays),
     streakRewardPoints: num(body.streakRewardPoints),
+    // 0088: the master switch for chance mechanics. Independent of any
+    // individual campaign's active flag — either one off means no draws.
+    chanceEnabled: Boolean(body.chanceEnabled),
   };
   for (const [k, v] of Object.entries(values)) {
     if (v !== null && typeof v === 'number' && (!Number.isInteger(v) || v < 0 || (k === 'redemptionMaxShareBps' && v > 10_000))) {
@@ -201,6 +204,53 @@ routes.put('/programme-config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
     newState: values,
   });
   return c.json({ success: true, data: values });
+});
+
+// 0088: reward-draw oversight. Campaigns, live prize table with published
+// odds, outstanding-card liability and spend against the budget cap.
+routes.get('/draws', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const campaigns = await registry.loyaltyDrawRepo.listCampaignsWithStats();
+  const config = await registry.loyaltyCompletionRepo.getProgrammeConfig();
+  const { publishedOdds, maxPrizePoints, availablePrizes } = await import('../../../../domain/loyalty/RewardDraw');
+  return c.json({
+    success: true,
+    data: {
+      chanceEnabled: config.chanceEnabled,
+      programmeEnabled: config.enabled && !config.killSwitch,
+      campaigns: campaigns.map((camp) => ({
+        id: camp.id,
+        code: camp.code,
+        name: camp.name,
+        active: camp.active,
+        triggerEvent: (camp as unknown as { triggerEvent?: string }).triggerEvent ?? null,
+        budgetCapPoints: camp.budgetCapPoints,
+        pointsAwarded: camp.pointsAwarded,
+        outstandingTokens: camp.outstandingTokens,
+        // Worst-case liability if every outstanding card wins the top prize.
+        outstandingLiabilityPoints: maxPrizePoints(availablePrizes(camp.prizes)) * camp.outstandingTokens,
+        odds: publishedOdds(camp.prizes),
+      })),
+    },
+  });
+});
+
+// Activation is explicit and audited, and still requires chance_enabled on the
+// programme config — two independent switches, either of which stops the draw.
+routes.post('/draws/:id/activation', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const active = Boolean(body?.active);
+  const registry = Registry.getInstance();
+  const campaign = await registry.loyaltyDrawRepo.setCampaignActive(c.req.param('id') ?? '', active, (c.get('user') as any).id);
+  if (!campaign) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Campaign not found.' } } satisfies ApiResponse<never>, 404);
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: (c.get('user') as any).id,
+    action: active ? 'LOYALTY_DRAW_ACTIVATED' : 'LOYALTY_DRAW_PAUSED',
+    entity: 'loyalty_draw_campaign',
+    entityId: campaign.id,
+    newState: { code: campaign.code, active },
+  });
+  return c.json({ success: true, data: { id: campaign.id, code: campaign.code, active: campaign.active } });
 });
 
 // 0087: referral oversight — the ring/self-referral fraud surface.

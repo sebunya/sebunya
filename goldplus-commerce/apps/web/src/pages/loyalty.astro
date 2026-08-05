@@ -117,6 +117,25 @@ if (src?.birthday) {
     points: `${src.birthday} pts`,
   });
 }
+// 0088: the scratch card is listed only when draws are actually running, and
+// described honestly — it is a bonus ON TOP of the points the order already
+// earned, it costs nothing, and every card wins.
+let drawInfo: { name: string; tokenExpiryDays: number } | null = null;
+try {
+  const res = await fetch(`${apiBase}/commerce/reward-draw`, { signal: AbortSignal.timeout(2500) });
+  const json: any = res.ok ? await res.json().catch(() => null) : null;
+  if (json?.success && json.data?.enabled) drawInfo = json.data;
+} catch {
+  /* the card simply isn't advertised */
+}
+if (drawInfo) {
+  earnWays.push({
+    label: "A scratch card with every delivery",
+    detail: `Free, on top of the points the order already earned. Every card wins — only the amount varies, and the odds are published. Cards expire after ${drawInfo.tokenExpiryDays} days.`,
+    points: "Bonus points",
+  });
+}
+
 const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.threshold);
 const BENEFIT_LABELS: Record<string, string> = {
   prioritySupport: "Priority support queue",
