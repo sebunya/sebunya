@@ -289,3 +289,45 @@ concurrency. Suite: **341 files / 5,439 tests green** (was 340 / 5,402).
   `campaign_active=false`, and `/commerce/reward-draw` returns
   `{"enabled":false}` — the mechanic is complete and proven but issues nothing
   until Rob turns it on.
+
+## Reward draw ACTIVATED (2026-08-05) ✅ — migration 0089, commit 86187ca
+Rob: "keep the budget UGX 500,000 instead of UGX 4,000,000. Proceed to
+implement."
+
+- **Budget UGX 500,000 = 25,000 points** at the live 20 UGX point value (the
+  seeded 0088 figure of 200,000 points would have been UGX 4,000,000). The cap
+  is enforced in POINTS; the UGX figure is the intent and must be re-derived if
+  the point value ever changes.
+- **Top-prize ceiling 200 → 10 awards.** At 1,000 points each, 200 awards was
+  200,000 points — eight times the whole budget, so the cap could never bind.
+  Against ~490 funded cards at 0.50% odds, 2–3 top prizes are expected, so 10
+  is a generous ceiling that still caps tail risk.
+- **Both switches ON**: `loyalty_config.chance_enabled` and campaign `active`.
+- **New admin control**: `PUT /admin/loyalty/draws/:id/budget` makes the budget
+  a configuration value (audited, echoes the UGX equivalent, refuses a cap
+  below points already awarded) — no deploy needed to change it again.
+- **Throughput note pinned by test**: the pessimistic budget guard permits 25
+  unplayed cards in flight at this cap (25,000 ÷ 1,000-point top prize).
+  Cards stop counting as outstanding once played, so at current order volume
+  this never binds. The trade-off buys the guarantee that an issued card can
+  always be paid.
+
+### Deployment proof
+- Backup `pre-0089-20260805-154935.dump` (720K) → clone `rehearse_0089` →
+  **REHEARSE_OK duration_ms=90** → clone verified (budget 25,000, active true,
+  chance_enabled true, top-prize cap 10) → applied live (**Migrations
+  complete!**) → rolled, 4/4 containers healthy → clone dropped.
+- **Production verified**: `budget_points=25000 (UGX 500000) active=true`,
+  `chance_enabled=true kill_switch=false`, `top_prize_cap=10`.
+- **Live on the site**: `/commerce/reward-draw` returns `enabled:true` with the
+  full odds table; `/loyalty` lists "A scratch card with every delivery";
+  `/loyalty-terms` renders section 6a with 60.00% / 25.00% / 0.50% and the
+  30-day card expiry — all generated from the live prize weights.
+- Admin `draws`, `draws/:id/budget` and `draws/:id/activation` all answer 401
+  (mounted and permission-guarded).
+- Daily sweep now reports draw-token expiry:
+  `{...,"tiers":{...},"drawTokensExpired":0}`.
+- Suite: **341 files / 5,445 tests green**.
+
+**The mechanic is now running.** The next delivered order placed by a signed-in
+retail customer will grant that customer a scratch card.
