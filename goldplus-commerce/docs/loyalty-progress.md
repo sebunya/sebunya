@@ -227,3 +227,65 @@ flagged here rather than quietly skipped.
   `{"accountsSwept":0,...,"birthdays":{"awarded":0},"tiers":{"evaluated":0,"changed":0}}`.
 - Suite on a clean tree: **340 files / 5,402 tests green** (315 passed + 25
   skipped files; 5,290 passed + 112 skipped tests), up from 338 / 5,362.
+
+## Reward draw / chance mechanic (2026-08-05) ✅ — migration 0088, commit a199875
+Rob instructed the build after the first gamification pass deferred it.
+Shipped as a scratch card with consideration and the losing outcome designed
+out (see docs/loyalty-decisions.md for the full rationale).
+
+**0088 (additive)**: `loyalty_draw_campaigns`, `loyalty_draw_prizes`,
+`loyalty_draw_tokens`, `loyalty_draw_results`. One card per qualifying event
+(`loyalty_draw_tokens_source_uq`) and one prize per card
+(`loyalty_draw_results_token_uq`) are UNIQUE indexes; `points_awarded > 0` is a
+CHECK on both the prize and result tables, so "no losing card" is a database
+guarantee. Launch campaign `delivery_scratch_v1` seeded INACTIVE: 30-day cards,
+200,000-point budget, five tiers weighted 6000/2500/1200/250/50 summing to
+10,000, top tier capped at 200 awards.
+
+**Domain** (`RewardDraw.ts`, pure): weighted selection from one integer,
+published odds in basis points, per-prize availability, and a pessimistic
+budget guard — granting stops while outstanding cards could still exceed the
+cap at the top prize, so an issued card is always honourable.
+
+**Use cases**: grant (idempotent on the source event), play (atomic claim →
+crypto roll → ledger append under `draw:<tokenId>` → result with odds
+snapshot), state read. A failed award releases the card back to the customer.
+RNG is `node:crypto` `randomInt`; `Math.random` appears nowhere in the prize
+path and the client sends only a card id.
+
+**Controls**: `loyalty_config.chance_enabled` (master) AND per-campaign
+`active` AND the programme kill switch — any one of the three stops all draws.
+Admin `GET /admin/loyalty/draws` shows spend, outstanding-card liability and
+live odds; `POST /admin/loyalty/draws/:id/activation` toggles with an audit
+entry. Unplayed cards expire on the daily sweep.
+
+**Surfaces**: scratch card on `/account/rewards` as a real form post (works
+without JavaScript), odds disclosed in place, a 6a section in `/loyalty-terms`
+rendered from the live odds, the card listed on `/loyalty` only while draws are
+running, and a public unauthenticated `/commerce/reward-draw` odds endpoint.
+
+**Tests**: +32. Includes an exhaustive pass over all 10,000 possible rolls
+asserting each prize is selected exactly as often as its weight, sold-out
+redistribution, odds summing to 10,000 bps, budget-edge granting, and
+concurrency. Suite: **341 files / 5,439 tests green** (was 340 / 5,402).
+
+### Deployment proof (2026-08-05)
+- Backup `pre-0088-20260805-153146.dump` (708K) → clone `rehearse_0088` →
+  **REHEARSE_OK duration_ms=154** → clone verified (campaign inactive,
+  chance_enabled false, weights total 10,000) → applied live
+  (**Migrations complete!**) → rolled, 4/4 containers healthy.
+- **End-to-end functional proof** run against a disposable API container
+  pointed at the clone, so production data was never involved:
+  odds published over HTTP; a card granted and visible to the customer; then
+  **three simultaneous plays of the same card returned exactly one win
+  (50 points) and two TOKEN_USED refusals**, leaving exactly one ledger entry
+  (`draw:<cardId>`, rule `reward_draw`), one result row, card status `played`,
+  campaign spend 50, and the customer balance reading 50. A later replay
+  returned the same outcome with `replay:true` rather than an error, and the
+  odds table in force was recorded on the result. Container and clone
+  destroyed afterwards; production verified at 0 ledger entries, 0 tokens,
+  0 test users.
+- **Production state: both switches OFF.** `chance_enabled=false`,
+  `campaign_active=false`, and `/commerce/reward-draw` returns
+  `{"enabled":false}` — the mechanic is complete and proven but issues nothing
+  until Rob turns it on.

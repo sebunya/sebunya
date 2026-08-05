@@ -140,7 +140,7 @@ none of them is now a code change.
 | 10 | Dealers | **Excluded** from the consumer programme |
 | 11 | Guest backfill | **90 days / 5,000-point cap** |
 | 12 | Budget cap | **1,000,000 points**; breakage stays observed |
-| 13 | Chance mechanics | **NOT BUILT.** `chance_enabled` column exists, defaults false. The brief's own hard stop ("get a legal read before a single line of that is built") is the one instruction I did not override — this is a legal gate, not a build backlog item. |
+| 13 | Chance mechanics | **BUILT (0088), ships OFF.** See the section below — Rob instructed the build on 2026-08-05 after the first pass deferred it. |
 | 14 | Account closure | **Forfeit with 30-day notice**, stated in the live terms |
 | 15 | Channels | Transactional SMS→email through the governed outbox |
 
@@ -159,3 +159,75 @@ streak 3 orders within 90 days for 300 points.
   law.
 - **VAT on redeemed sales**: accountant question; the finance export carries
   the data.
+
+---
+
+# Chance mechanics — built 2026-08-05 (migration 0088)
+
+Rob instructed the build ("build the chance based mechanics too, implement it
+and work on logic for it to run too") after the first gamification pass
+deferred it under PART P. Built as a **scratch card**, deliberately shaped to
+avoid the exposure the brief was worried about.
+
+## The design, and why it is shaped this way
+
+A prize promotion generally becomes a regulated lottery when three things are
+present together: a **prize**, an element of **chance**, and **consideration**
+(paying, or buying, to enter). This build removes consideration and removes the
+losing outcome:
+
+1. **Nobody pays to play.** A card is *granted* when an order is delivered —
+   the purchase is complete and the points for it are already earned before the
+   card exists. Cards cannot be bought, sold or transferred, and no extra
+   purchase is ever required to play one.
+2. **Every card wins.** `points_awarded > 0` is a CHECK constraint on both the
+   prize table and the results table. There is no "you lost" segment; only the
+   amount varies. This is a graduated bonus, not a gamble.
+3. **The prize is a discount, never cash.** Points are already discount-only,
+   non-transferable and explicitly not cash-equivalent in the live terms.
+4. **The odds are published**, computed from the same weights the engine
+   selects on, shown on the rewards page and in the rewards terms.
+
+This is my engineering judgement on how to reduce exposure, **not a legal
+opinion, and it does not replace the legal read the brief asked for.** If that
+read comes back negative, the mechanic stops with a single config flag and no
+deploy.
+
+## Controls
+
+- Two independent switches, either of which stops all draws:
+  `loyalty_config.chance_enabled` (master, default **false**) and the
+  per-campaign `active` flag (launch campaign seeded **inactive**). The
+  programme kill switch also halts it.
+- **Budget**: 200,000-point cap on the launch campaign. Granting stops while
+  the outstanding cards could still exceed the cap at the top prize, so an
+  issued card is always honourable — a customer is never told "you won, but
+  the budget ran out".
+- **Fairness**: server-side selection from `node:crypto` `randomInt`;
+  `Math.random` appears nowhere in the prize path; the client sends only a
+  card id. The odds table in force is snapshotted onto every result, so a
+  later weight edit cannot rewrite what a customer was actually offered.
+- **Single use**: one card per delivered order and one prize per card are both
+  UNIQUE indexes, and the card is claimed with a conditional UPDATE, so
+  concurrent submits produce exactly one prize.
+- **Failure safety**: if the ledger write fails, the card is returned to the
+  customer unused.
+- Cards expire 30 days after issue; the daily sweep expires them.
+
+## Launch prize table (odds published, sum to 100%)
+
+| Prize | Weight | Chance |
+|---|---|---|
+| 25 points | 6,000 | 60.00% |
+| 50 points | 2,500 | 25.00% |
+| 100 points | 1,200 | 12.00% |
+| 250 points | 250 | 2.50% |
+| 1,000 points | 50 (max 200 awards) | 0.50% |
+
+Expected cost ≈ 51 points per card (≈ 1,020 UGX at the 20 UGX point value).
+
+## To switch it on
+
+`PUT /admin/loyalty/programme-config` with `chanceEnabled: true`, then
+`POST /admin/loyalty/draws/:id/activation` with `{"active": true}`. Both are
+audited. Reverse either one to stop it instantly.
