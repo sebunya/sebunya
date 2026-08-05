@@ -81,3 +81,37 @@ an answer — they are never resolved silently in code.
   says to seed codes and names but the names live in `uganda_districts_lookup.csv`
   which has not arrived; the import updates names from the file when present.
   No fee/SLA/COD value is seeded — all NULL, activation blocked.
+
+---
+
+# PART P DECISION SHEET (2026-08-05 — one sheet, awaiting Rob)
+
+**1. Zone fees, SLAs, COD limits, carrier (Z1–Z4).** All NULL, activation blocked.
+RECOMMEND starting with Z1/Z2 only: Z1 SLA 4–24h own_rider, Z2 24–48h
+third_party_rider, COD allowed with a 1,000,000 UGX Z1 / 500,000 UGX Z2 ceiling;
+Z3/Z4 stay inactive until pickup-point coverage exists. Per-district FEES stay in
+the delivery-zones cockpit (decision #7); the Z fallback fee only catches districts
+without a finer price. Wrong: an over-generous COD ceiling turns refused deliveries
+into direct losses — the entire premise of the module.
+
+**2. Coordinate retention.** RECOMMEND **180 days for pins vs indefinite for the
+address text**, deletion job in a follow-up pass once you confirm. Wrong-long:
+DPPA 2019 exposure for precise location data with no delivery purpose left.
+
+**3. Pickup points at launch.** RECOMMEND **yes for Z3/Z4** the moment ops can
+name real bus-parcel offices — the manager ships ready, points create inactive.
+Wrong-no: upcountry customers get door-delivery promises nobody can keep.
+
+**4. Kabale / Moroto / Nakasongola zoning.** RECOMMEND **keep in Z3** until their
+operational status settles; a zone move is one lookup-file cell at the next data
+version, never a code change.
+
+**5. Paid geocoder behind the flag.** RECOMMEND **no** — the alias learning loop
+is already live in production and compounds with every miss; third-party coverage
+of Ugandan informal areas is weaker than this will become. Revisit only if the
+zero-result rate stays high after the gazetteer import + one month of promotion.
+
+**6. Metro localities: alias → full area promotion.** Wait for volume: the
+unresolved-searches view ranks candidates by real frequency. RECOMMEND promoting
+any locality that clears ~25 orders/month; promotion is an ops action in the
+workspace, not a release.
