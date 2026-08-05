@@ -305,6 +305,25 @@ routes.post('/draw/play', async (c) => {
   return c.json({ success: true, data: { label: result.label, points: result.points, replay: result.replay } });
 });
 
+// 0090 self-exclusion: a customer can permanently opt out of chance mechanics
+// while keeping every other part of the loyalty programme. Opting back IN is
+// deliberately not self-service — it goes through support, which is the
+// standard shape for a responsible-play control.
+routes.post('/draw/self-exclude', async (c) => {
+  const userId = c.get('userId') as string;
+  const registry = Registry.getInstance();
+  await registry.loyaltyDrawRepo.setSelfExclusion(userId, true);
+  const { CreateAuditLogUseCase } = await import('../../../application/use-cases/audit/CreateAuditLogUseCase');
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: userId,
+    action: 'LOYALTY_DRAW_SELF_EXCLUDED',
+    entity: 'user',
+    entityId: userId,
+    newState: { selfExcluded: true },
+  });
+  return c.json({ success: true, data: { selfExcluded: true } });
+});
+
 // ── Gamification (0087): referral code + share stats ────────────────────────
 routes.get('/referral', async (c) => {
   const userId = c.get('userId') as string;

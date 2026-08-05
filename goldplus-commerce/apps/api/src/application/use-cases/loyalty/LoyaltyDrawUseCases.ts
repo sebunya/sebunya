@@ -2,8 +2,11 @@ import { ILoyaltyRepository } from '../../ports/ILoyaltyRepository';
 import { ILoyaltyCompletionRepository } from '../../ports/ILoyaltyCompletion';
 import {
   DrawCampaignState,
+  DrawComplianceState,
   DrawPrize,
   canGrantToken,
+  canRunDraw,
+  isAgeEligible,
   prizeSnapshot,
   publishedOdds,
   selectPrize,
@@ -60,6 +63,10 @@ export interface ILoyaltyDrawRepository {
   incrementCampaignTotals(campaignId: string, pointsAwarded: number, tokensGranted: number): Promise<void>;
   findResultByToken(tokenId: string): Promise<{ pointsAwarded: number; prizeId: string } | null>;
   expireTokensDueBefore(now: Date): Promise<number>;
+  /** 0090: the recorded legal basis on which draws may operate. */
+  getCompliance(): Promise<DrawComplianceState>;
+  /** 0090: the participant facts the compliance gates need. */
+  participantEligibility(userId: string): Promise<{ dateOfBirth: string | null; selfExcludedAt: Date | null }>;
 }
 
 /** Cryptographic roll in [0, max). Injected so tests can be exact. */
@@ -90,6 +97,18 @@ export class GrantDrawTokenUseCase {
     const config = await this.completion.getProgrammeConfig();
     if (!config.enabled || config.killSwitch) return fail('PROGRAMME_DISABLED', 'Programme inactive.');
     if (!config.chanceEnabled) return fail('CHANCE_DISABLED', 'Reward draws are not enabled.');
+
+    // 0090 compliance gates, checked BEFORE anything is issued.
+    const compliance = await this.draws.getCompliance();
+    const permitted = canRunDraw(compliance, now);
+    if (!permitted.ok) return fail(permitted.reason, 'Reward draws are not permitted to run.');
+
+    const participant = await this.draws.participantEligibility(input.userId);
+    if (participant.selfExcludedAt) return fail('SELF_EXCLUDED', 'This account has opted out of prize draws.');
+    if (!isAgeEligible(participant.dateOfBirth, compliance.minAge, now)) {
+      // Fail closed: an unknown age is not an eligible age.
+      return fail('AGE_NOT_ELIGIBLE', `Prize draws are limited to customers aged ${compliance.minAge} and over.`);
+    }
 
     const campaign = await this.draws.findActiveCampaignByTrigger(input.trigger);
     if (!campaign) return { ok: true, granted: false };
@@ -144,6 +163,17 @@ export class PlayDrawTokenUseCase {
     const config = await this.completion.getProgrammeConfig();
     if (!config.enabled || config.killSwitch) return fail('PROGRAMME_DISABLED', 'Programme inactive.');
     if (!config.chanceEnabled) return fail('CHANCE_DISABLED', 'Reward draws are not enabled.');
+
+    // Re-checked at play time, not just at grant: a licence can lapse or an
+    // exclusion be requested between issuing a card and playing it.
+    const compliance = await this.draws.getCompliance();
+    const permitted = canRunDraw(compliance, now);
+    if (!permitted.ok) return fail(permitted.reason, 'Reward draws are not permitted to run.');
+    const participant = await this.draws.participantEligibility(input.userId);
+    if (participant.selfExcludedAt) return fail('SELF_EXCLUDED', 'This account has opted out of prize draws.');
+    if (!isAgeEligible(participant.dateOfBirth, compliance.minAge, now)) {
+      return fail('AGE_NOT_ELIGIBLE', `Prize draws are limited to customers aged ${compliance.minAge} and over.`);
+    }
 
     const existing = await this.draws.findToken(input.tokenId);
     if (!existing || existing.userId !== input.userId) {
@@ -231,11 +261,39 @@ export class GetDrawStateUseCase {
     tokens: Array<{ id: string; expiresAt: string }>;
     campaign: { code: string; name: string; description: string | null } | null;
     odds: ReturnType<typeof publishedOdds>;
+    /** Why this customer cannot take part, when that is the case. */
+    ineligible?: { reason: string; message: string };
   }> {
     const now = input.now ?? new Date();
     const config = await this.completion.getProgrammeConfig();
     if (!config.enabled || config.killSwitch || !config.chanceEnabled) {
       return { enabled: false, tokens: [], campaign: null, odds: [] };
+    }
+    const compliance = await this.draws.getCompliance();
+    if (!canRunDraw(compliance, now).ok) return { enabled: false, tokens: [], campaign: null, odds: [] };
+    const participant = await this.draws.participantEligibility(input.userId);
+    if (participant.selfExcludedAt) {
+      return {
+        enabled: false,
+        tokens: [],
+        campaign: null,
+        odds: [],
+        ineligible: { reason: 'SELF_EXCLUDED', message: 'You have opted out of prize draws. Contact support if you want that changed.' },
+      };
+    }
+    if (!isAgeEligible(participant.dateOfBirth, compliance.minAge, now)) {
+      return {
+        enabled: false,
+        tokens: [],
+        campaign: null,
+        odds: [],
+        ineligible: {
+          reason: 'AGE_NOT_ELIGIBLE',
+          message: participant.dateOfBirth
+            ? `Prize draws are limited to customers aged ${compliance.minAge} and over.`
+            : `Add your date of birth to your account to take part — prize draws are limited to customers aged ${compliance.minAge} and over.`,
+        },
+      };
     }
     const tokens = await this.draws.listAvailableTokens(input.userId, now);
     const campaign = await this.draws.findActiveCampaignByTrigger('order_delivered');

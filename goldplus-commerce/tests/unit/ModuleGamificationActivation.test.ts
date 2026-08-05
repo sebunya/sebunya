@@ -248,6 +248,81 @@ describe('0089 draw activation and budget', () => {
   });
 });
 
+describe('0090 compliance controls', () => {
+  const compliance = read('apps/api/src/infrastructure/db/migrations/0090_draw_compliance_controls.sql');
+  const drawDomain2 = read('apps/api/src/domain/loyalty/RewardDraw.ts');
+  const drawUseCases2 = read('apps/api/src/application/use-cases/loyalty/LoyaltyDrawUseCases.ts');
+  const adminRoutes2 = read('apps/api/src/interfaces/http/routes/admin/loyalty.ts');
+  const brief = read('docs/loyalty-legal-brief.md');
+
+  it('is registered and additive', () => {
+    expect(journal).toContain('0090_draw_compliance_controls');
+    const executable = compliance
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join('\n');
+    expect(executable).not.toMatch(/\bDROP\s+TABLE\b/i);
+    expect(executable).not.toMatch(/\bDROP\s+COLUMN\b/i);
+  });
+
+  it('pauses the draw as part of the migration', () => {
+    expect(compliance).toMatch(/UPDATE "loyalty_config" SET "chance_enabled" = false/);
+  });
+
+  it('records WHY, citing the statutory definition that prompted it', () => {
+    const prose = compliance.replace(/\s+/g, ' ');
+    expect(prose).toMatch(/promotional competition/i);
+    expect(prose).toMatch(/Lotteries and Gaming Act 2016/i);
+    expect(prose).toMatch(/no consideration element/i);
+  });
+
+  it('seeds the honest state — no basis, so draws cannot run', () => {
+    expect(compliance).toMatch(/INSERT INTO "loyalty_draw_compliance" \("basis"[\s\S]*VALUES\s*\('none', 25, 'UG'/);
+  });
+
+  it('makes a claimed basis unusable unless it is evidenced, at the database', () => {
+    expect(compliance).toContain('loyalty_draw_compliance_licensed_check');
+    expect(compliance).toContain('loyalty_draw_compliance_counsel_check');
+    expect(compliance).toContain('loyalty_draw_compliance_ack_check');
+  });
+
+  it('defaults the minimum age to the Act’s 25-year minor threshold', () => {
+    expect(compliance).toContain('"min_age" integer DEFAULT 25 NOT NULL');
+  });
+
+  it('fails closed on an unknown age and an unset basis', () => {
+    expect(drawDomain2).toContain("if (!dateOfBirth) return false");
+    expect(drawDomain2).toContain("if (compliance.basis === 'none') return { ok: false, reason: 'COMPLIANCE_BASIS_MISSING' }");
+    expect(drawDomain2).toMatch(/LICENCE_EXPIRED/);
+  });
+
+  it('checks compliance on BOTH granting and paying out, not just granting', () => {
+    expect((drawUseCases2.match(/canRunDraw\(compliance, now\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((drawUseCases2.match(/isAgeEligible\(/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((drawUseCases2.match(/SELF_EXCLUDED/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('refuses to activate a campaign while no compliance basis is recorded', () => {
+    expect(adminRoutes2).toContain('Record a compliance basis first');
+    expect(adminRoutes2).toContain("routes.put('/draws/compliance'");
+    expect(adminRoutes2).toContain("action: 'LOYALTY_DRAW_COMPLIANCE_RECORDED'");
+  });
+
+  it('offers a regulatory export and customer self-exclusion', () => {
+    expect(adminRoutes2).toContain("routes.get('/draws/regulatory-export.csv'");
+    expect(account).toContain("routes.post('/draw/self-exclude'");
+  });
+
+  it('ships a counsel brief that states the question rather than answering it', () => {
+    const prose = brief.replace(/\s+/g, ' ');
+    expect(prose).toMatch(/not legal advice/i);
+    expect(prose).toMatch(/promotional competition/i);
+    expect(prose).toMatch(/section 64/i);
+    // It must carry the finding that overturned the original design assumption.
+    expect(prose).toMatch(/consideration/i);
+  });
+});
+
 describe('customer copy honesty', () => {
   it('renders the loyalty terms from live programme config, not hardcoded numbers', () => {
     expect(terms).toContain('/commerce/loyalty-programme');

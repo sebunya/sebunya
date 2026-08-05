@@ -235,12 +235,112 @@ routes.get('/draws', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c
   });
 });
 
+// 0090: the recorded legal basis for running draws. Reading it is how anyone
+// checks whether the mechanic is permitted; writing it is how Rob records a
+// licence or counsel's opinion. Draws refuse to run while the basis is 'none'.
+routes.get('/draws/compliance', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const record = await registry.loyaltyDrawRepo.getComplianceRecord();
+  const state = await registry.loyaltyDrawRepo.getCompliance();
+  const { canRunDraw } = await import('../../../../domain/loyalty/RewardDraw');
+  const permitted = canRunDraw(state, new Date());
+  return c.json({
+    success: true,
+    data: {
+      ...record,
+      permittedToRun: permitted.ok,
+      blockedReason: permitted.ok ? null : permitted.reason,
+    },
+  });
+});
+
+routes.put('/draws/compliance', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const basis = String(body?.basis ?? '');
+  if (!['none', 'licensed', 'counsel_advised_exempt'].includes(basis)) {
+    return c.json({ success: false, error: { code: 'BAD_BASIS', message: 'basis must be none, licensed or counsel_advised_exempt.' } } satisfies ApiResponse<never>, 400);
+  }
+  const str = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
+  const isoDate = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const licenceReference = str(body?.licenceReference, 120);
+  const licenceExpiresAt = isoDate(body?.licenceExpiresAt);
+  const counselReference = str(body?.counselReference, 300);
+  const counselOpinionDate = isoDate(body?.counselOpinionDate);
+  const minAge = Number.isInteger(Number(body?.minAge)) ? Number(body.minAge) : 25;
+  // The same conditions the database CHECKs enforce, refused here with a
+  // message that says which field is missing rather than a constraint error.
+  if (basis === 'licensed' && (!licenceReference || !licenceExpiresAt)) {
+    return c.json({ success: false, error: { code: 'LICENCE_INCOMPLETE', message: 'A licensed basis requires licenceReference and licenceExpiresAt (YYYY-MM-DD).' } } satisfies ApiResponse<never>, 400);
+  }
+  if (basis === 'counsel_advised_exempt' && (!counselReference || !counselOpinionDate)) {
+    return c.json({ success: false, error: { code: 'OPINION_INCOMPLETE', message: 'An exemption basis requires counselReference and counselOpinionDate (YYYY-MM-DD).' } } satisfies ApiResponse<never>, 400);
+  }
+  if (minAge < 18 || minAge > 30) {
+    return c.json({ success: false, error: { code: 'BAD_MIN_AGE', message: 'minAge must be between 18 and 30.' } } satisfies ApiResponse<never>, 400);
+  }
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as any).id;
+  const previous = await registry.loyaltyDrawRepo.getComplianceRecord();
+  const saved = await registry.loyaltyDrawRepo.saveCompliance({
+    basis,
+    licenceReference,
+    licenceIssuer: str(body?.licenceIssuer, 160),
+    licenceExpiresAt,
+    counselReference,
+    counselOpinionDate,
+    minAge,
+    notes: str(body?.notes, 1000),
+    acknowledgedBy: actorId,
+  });
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId,
+    action: 'LOYALTY_DRAW_COMPLIANCE_RECORDED',
+    entity: 'loyalty_draw_compliance',
+    entityId: saved?.id ?? 'compliance',
+    previousState: { basis: previous?.basis ?? 'none' },
+    newState: { basis, licenceReference, licenceExpiresAt, counselReference, counselOpinionDate, minAge },
+  });
+  return c.json({ success: true, data: saved });
+});
+
+// Every play, for the Board or an auditor.
+routes.get('/draws/regulatory-export.csv', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const rows = await Registry.getInstance().loyaltyDrawRepo.regulatoryExport();
+  const headers = ['created_at', 'result_id', 'campaign_code', 'prize_label', 'weight', 'points_awarded', 'user_id', 'token_id', 'source_type', 'source_id', 'card_granted_at', 'ledger_entry_id'];
+  const escape = (v: unknown) => {
+    const s = v === null || v === undefined ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [headers.join(','), ...rows.map((r) => headers.map((h) => escape(r[h])).join(','))].join('\n');
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header('Content-Disposition', 'attachment; filename="goldplus-draw-regulatory-export.csv"');
+  return c.body(csv);
+});
+
 // Activation is explicit and audited, and still requires chance_enabled on the
 // programme config — two independent switches, either of which stops the draw.
+// 0090 adds a third precondition: a recorded compliance basis.
 routes.post('/draws/:id/activation', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
   const active = Boolean(body?.active);
   const registry = Registry.getInstance();
+  if (active) {
+    const state = await registry.loyaltyDrawRepo.getCompliance();
+    const { canRunDraw } = await import('../../../../domain/loyalty/RewardDraw');
+    const permitted = canRunDraw(state, new Date());
+    if (!permitted.ok) {
+      return c.json({
+        success: false,
+        error: {
+          code: permitted.reason,
+          message:
+            permitted.reason === 'COMPLIANCE_BASIS_MISSING'
+              ? 'Record a compliance basis first (PUT /admin/loyalty/draws/compliance) — either an LGRB licence or a written opinion from counsel.'
+              : 'The recorded licence has expired. Update it before activating.',
+        },
+      } satisfies ApiResponse<never>, 409);
+    }
+  }
   const campaign = await registry.loyaltyDrawRepo.setCampaignActive(c.req.param('id') ?? '', active, (c.get('user') as any).id);
   if (!campaign) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Campaign not found.' } } satisfies ApiResponse<never>, 404);
   await new CreateAuditLogUseCase(registry.auditRepo).execute({

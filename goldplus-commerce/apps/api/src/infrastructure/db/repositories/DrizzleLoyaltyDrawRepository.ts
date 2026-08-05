@@ -2,11 +2,13 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '../client';
 import {
   loyaltyDrawCampaigns,
+  loyaltyDrawCompliance,
   loyaltyDrawPrizes,
   loyaltyDrawResults,
   loyaltyDrawTokens,
 } from '../schema/loyalty';
-import { DrawCampaignState, DrawPrize } from '../../../domain/loyalty/RewardDraw';
+import { users } from '../schema/identity';
+import { DrawCampaignState, DrawComplianceState, DrawPrize } from '../../../domain/loyalty/RewardDraw';
 import { DrawTokenRow, ILoyaltyDrawRepository } from '../../../application/use-cases/loyalty/LoyaltyDrawUseCases';
 
 type CampaignRow = typeof loyaltyDrawCampaigns.$inferSelect;
@@ -192,6 +194,84 @@ export class DrizzleLoyaltyDrawRepository implements ILoyaltyDrawRepository {
       .where(and(eq(loyaltyDrawTokens.status, 'available'), sql`${loyaltyDrawTokens.expiresAt} <= ${now}`))
       .returning({ id: loyaltyDrawTokens.id });
     return rows.length;
+  }
+
+  /* ── Compliance (0090) ─────────────────────────────────────────────────── */
+
+  async getCompliance(): Promise<DrawComplianceState> {
+    const row = await db.query.loyaltyDrawCompliance.findFirst();
+    // No row at all is the same as no basis: fail closed.
+    return {
+      basis: (row?.basis as DrawComplianceState['basis']) ?? 'none',
+      licenceReference: row?.licenceReference ?? null,
+      licenceExpiresAt: row?.licenceExpiresAt ? new Date(`${row.licenceExpiresAt}T23:59:59Z`) : null,
+      counselReference: row?.counselReference ?? null,
+      minAge: row?.minAge ?? 25,
+      jurisdiction: row?.jurisdiction ?? 'UG',
+    };
+  }
+
+  async getComplianceRecord() {
+    return db.query.loyaltyDrawCompliance.findFirst();
+  }
+
+  async saveCompliance(input: {
+    basis: string;
+    licenceReference: string | null;
+    licenceIssuer: string | null;
+    licenceExpiresAt: string | null;
+    counselReference: string | null;
+    counselOpinionDate: string | null;
+    minAge: number;
+    notes: string | null;
+    acknowledgedBy: string;
+  }) {
+    const rows = await db
+      .update(loyaltyDrawCompliance)
+      .set({
+        basis: input.basis,
+        licenceReference: input.licenceReference,
+        licenceIssuer: input.licenceIssuer,
+        licenceExpiresAt: input.licenceExpiresAt,
+        counselReference: input.counselReference,
+        counselOpinionDate: input.counselOpinionDate,
+        minAge: input.minAge,
+        notes: input.notes,
+        // 'none' clears the acknowledgement; any other basis records who accepted it.
+        acknowledgedBy: input.basis === 'none' ? null : input.acknowledgedBy,
+        acknowledgedAt: input.basis === 'none' ? null : new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(loyaltyDrawCompliance.singleton, 'compliance'))
+      .returning();
+    return rows[0] ?? null;
+  }
+
+  async participantEligibility(userId: string): Promise<{ dateOfBirth: string | null; selfExcludedAt: Date | null }> {
+    const row = await db.query.users.findFirst({ where: eq(users.id, userId) });
+    const typed = row as { dateOfBirth?: string | null; chanceSelfExcludedAt?: Date | null } | undefined;
+    return { dateOfBirth: typed?.dateOfBirth ?? null, selfExcludedAt: typed?.chanceSelfExcludedAt ?? null };
+  }
+
+  async setSelfExclusion(userId: string, excluded: boolean): Promise<void> {
+    await db
+      .update(users)
+      .set({ chanceSelfExcludedAt: excluded ? new Date() : null })
+      .where(eq(users.id, userId));
+  }
+
+  /** Every play, for a regulator or an auditor. */
+  async regulatoryExport(): Promise<Array<Record<string, unknown>>> {
+    const rows = (await db.execute(sql`
+      select r.created_at, r.id as result_id, r.token_id, r.user_id, r.points_awarded,
+             r.ledger_entry_id, p.label as prize_label, p.weight, c.code as campaign_code,
+             t.source_type, t.source_id, t.created_at as card_granted_at
+      from loyalty_draw_results r
+      join loyalty_draw_prizes p on p.id = r.prize_id
+      join loyalty_draw_campaigns c on c.id = r.campaign_id
+      join loyalty_draw_tokens t on t.id = r.token_id
+      order by r.created_at desc`)) as unknown as Array<Record<string, unknown>>;
+    return rows;
   }
 
   /* ── Admin reads ───────────────────────────────────────────────────────── */

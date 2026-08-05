@@ -3,6 +3,8 @@ import {
   DrawPrize,
   availablePrizes,
   canGrantToken,
+  canRunDraw,
+  isAgeEligible,
   isPrizeAvailable,
   maxPrizePoints,
   prizeSnapshot,
@@ -315,6 +317,25 @@ class FakeDraws {
   async expireTokensDueBefore() {
     return 0;
   }
+
+  /* 0090 defaults: a valid licence and an eligible adult, so the tests above
+     exercise the MECHANIC. The compliance gates get their own suite below,
+     which overrides these. */
+  compliance: any = {
+    basis: 'licensed',
+    licenceReference: 'LGRB/TEST',
+    licenceExpiresAt: new Date('2030-01-01'),
+    counselReference: null,
+    minAge: 25,
+    jurisdiction: 'UG',
+  };
+  participant: any = { dateOfBirth: '1990-01-01', selfExcludedAt: null };
+  async getCompliance() {
+    return this.compliance;
+  }
+  async participantEligibility() {
+    return this.participant;
+  }
 }
 
 let ledger: FakeLedger;
@@ -425,5 +446,128 @@ describe('playing a card', () => {
     await playUc(9999).execute({ userId: 'u1', tokenId });
     expect(draws.campaign.pointsAwarded).toBe(1000);
     expect(draws.prizes.find((p) => p.id === 'p1000')!.awardsMade).toBe(1);
+  });
+});
+
+/* ── Compliance gates (0090) ──────────────────────────────────────────────── */
+
+describe('compliance basis governs whether the draw may run at all', () => {
+  const now = new Date('2026-08-05T00:00:00Z');
+  const base = { licenceReference: null, licenceExpiresAt: null, counselReference: null, minAge: 25, jurisdiction: 'UG' };
+
+  it('refuses to run with no recorded basis — the default state', () => {
+    expect(canRunDraw({ ...base, basis: 'none' }, now)).toMatchObject({ ok: false, reason: 'COMPLIANCE_BASIS_MISSING' });
+  });
+
+  it('runs on a valid licence', () => {
+    expect(canRunDraw({ ...base, basis: 'licensed', licenceReference: 'LGRB/123', licenceExpiresAt: new Date('2027-01-01') }, now)).toEqual({ ok: true });
+  });
+
+  it('stops on an expired licence rather than running on a lapsed permission', () => {
+    expect(canRunDraw({ ...base, basis: 'licensed', licenceReference: 'LGRB/123', licenceExpiresAt: new Date('2026-01-01') }, now))
+      .toMatchObject({ ok: false, reason: 'LICENCE_EXPIRED' });
+  });
+
+  it('stops on a licensed basis with no expiry recorded', () => {
+    expect(canRunDraw({ ...base, basis: 'licensed', licenceReference: 'LGRB/123' }, now))
+      .toMatchObject({ ok: false, reason: 'LICENCE_EXPIRED' });
+  });
+
+  it('runs on a written counsel opinion', () => {
+    expect(canRunDraw({ ...base, basis: 'counsel_advised_exempt', counselReference: 'Firm X opinion 2026-08-10' }, now)).toEqual({ ok: true });
+  });
+});
+
+describe('age eligibility fails closed at the Act’s 25-year minor threshold', () => {
+  const now = new Date('2026-08-05T00:00:00Z');
+
+  it('treats an unknown date of birth as ineligible, never as probably fine', () => {
+    expect(isAgeEligible(null, 25, now)).toBe(false);
+    expect(isAgeEligible('', 25, now)).toBe(false);
+    expect(isAgeEligible('not-a-date', 25, now)).toBe(false);
+  });
+
+  it('admits someone who has reached the minimum age', () => {
+    expect(isAgeEligible('2001-08-05', 25, now)).toBe(true); // exactly 25 today
+    expect(isAgeEligible('1990-01-01', 25, now)).toBe(true);
+  });
+
+  it('refuses someone one day short of the minimum age', () => {
+    expect(isAgeEligible('2001-08-06', 25, now)).toBe(false);
+    expect(isAgeEligible('2005-01-01', 25, now)).toBe(false);
+  });
+
+  it('honours a different configured minimum', () => {
+    expect(isAgeEligible('2006-01-01', 18, now)).toBe(true);
+    expect(isAgeEligible('2006-01-01', 25, now)).toBe(false);
+  });
+});
+
+describe('the gates are enforced in the granting path, not just available', () => {
+  const eligibleParticipant = { dateOfBirth: '1990-01-01', selfExcludedAt: null };
+  const licensed = {
+    basis: 'licensed' as const,
+    licenceReference: 'LGRB/123',
+    licenceExpiresAt: new Date('2027-01-01'),
+    counselReference: null,
+    minAge: 25,
+    jurisdiction: 'UG',
+  };
+
+  const withCompliance = (compliance: any, participant: any) => {
+    const draws = new FakeDraws() as any;
+    draws.getCompliance = async () => compliance;
+    draws.participantEligibility = async () => participant;
+    return draws;
+  };
+
+  it('grants nothing while no compliance basis is recorded', async () => {
+    const draws = withCompliance({ ...licensed, basis: 'none' }, eligibleParticipant);
+    const uc = new GrantDrawTokenUseCase(completion as any, draws, ledger as any);
+    expect(await uc.execute({ trigger: 'order_delivered', userId: 'u1', sourceType: 'order', sourceId: 'o1' }))
+      .toMatchObject({ ok: false, code: 'COMPLIANCE_BASIS_MISSING' });
+    expect(draws.tokens.size).toBe(0);
+  });
+
+  it('grants nothing to a customer below the minimum age', async () => {
+    const draws = withCompliance(licensed, { dateOfBirth: '2010-01-01', selfExcludedAt: null });
+    const uc = new GrantDrawTokenUseCase(completion as any, draws, ledger as any);
+    expect(await uc.execute({ trigger: 'order_delivered', userId: 'u1', sourceType: 'order', sourceId: 'o1' }))
+      .toMatchObject({ ok: false, code: 'AGE_NOT_ELIGIBLE' });
+    expect(draws.tokens.size).toBe(0);
+  });
+
+  it('grants nothing to a customer with no date of birth on file', async () => {
+    const draws = withCompliance(licensed, { dateOfBirth: null, selfExcludedAt: null });
+    const uc = new GrantDrawTokenUseCase(completion as any, draws, ledger as any);
+    expect(await uc.execute({ trigger: 'order_delivered', userId: 'u1', sourceType: 'order', sourceId: 'o1' }))
+      .toMatchObject({ ok: false, code: 'AGE_NOT_ELIGIBLE' });
+  });
+
+  it('grants nothing to a self-excluded customer', async () => {
+    const draws = withCompliance(licensed, { dateOfBirth: '1990-01-01', selfExcludedAt: new Date('2026-07-01') });
+    const uc = new GrantDrawTokenUseCase(completion as any, draws, ledger as any);
+    expect(await uc.execute({ trigger: 'order_delivered', userId: 'u1', sourceType: 'order', sourceId: 'o1' }))
+      .toMatchObject({ ok: false, code: 'SELF_EXCLUDED' });
+  });
+
+  it('grants normally when every gate is satisfied', async () => {
+    const draws = withCompliance(licensed, eligibleParticipant);
+    const uc = new GrantDrawTokenUseCase(completion as any, draws, ledger as any);
+    expect(await uc.execute({ trigger: 'order_delivered', userId: 'u1', sourceType: 'order', sourceId: 'o1' }))
+      .toMatchObject({ ok: true, granted: true });
+  });
+
+  it('refuses to PAY OUT if the licence lapses between granting and playing', async () => {
+    const draws = withCompliance(licensed, eligibleParticipant);
+    const grant = new GrantDrawTokenUseCase(completion as any, draws, ledger as any);
+    await grant.execute({ trigger: 'order_delivered', userId: 'u1', sourceType: 'order', sourceId: 'o1' });
+    const tokenId = [...draws.tokens.values()][0].id;
+    draws.getCompliance = async () => ({ ...licensed, licenceExpiresAt: new Date('2026-01-01') });
+    const play = new PlayDrawTokenUseCase(completion as any, draws, ledger as any, () => 0, async () => undefined);
+    expect(await play.execute({ userId: 'u1', tokenId })).toMatchObject({ ok: false, code: 'LICENCE_EXPIRED' });
+    // The card is untouched, so it is still playable once the licence is renewed.
+    expect(draws.tokens.get(tokenId).status).toBe('available');
+    expect(ledger.entries).toHaveLength(0);
   });
 });

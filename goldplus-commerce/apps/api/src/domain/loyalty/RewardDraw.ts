@@ -100,6 +100,60 @@ export function publishedOdds(prizes: readonly DrawPrize[]): Array<{
   }));
 }
 
+/* ── Compliance (0090) ────────────────────────────────────────────────────
+ * Uganda's Lotteries and Gaming Act 2016 defines "lottery" to include a
+ * "promotional competition" — "a lottery, game or contest conducted for the
+ * purpose of promoting the sale or use of any goods or services" — with no
+ * consideration element on the face of the definition. So a free-to-enter
+ * design does not obviously escape the licensing regime, and the mechanic may
+ * need an LGRB licence. Rather than encode a legal conclusion, the system
+ * requires a recorded BASIS before it will run: either a licence, or a written
+ * opinion from counsel. See docs/loyalty-legal-brief.md.
+ */
+export interface DrawComplianceState {
+  basis: 'none' | 'licensed' | 'counsel_advised_exempt';
+  licenceReference: string | null;
+  licenceExpiresAt: Date | null;
+  counselReference: string | null;
+  minAge: number;
+  jurisdiction: string;
+}
+
+export type ComplianceRefusal = 'COMPLIANCE_BASIS_MISSING' | 'LICENCE_EXPIRED';
+
+/**
+ * Whether the draw is permitted to operate at all. Fails closed: an unset
+ * basis stops the mechanic, and an expired licence stops it too rather than
+ * quietly running on a lapsed permission.
+ */
+export function canRunDraw(compliance: DrawComplianceState, now: Date): { ok: true } | { ok: false; reason: ComplianceRefusal } {
+  if (compliance.basis === 'none') return { ok: false, reason: 'COMPLIANCE_BASIS_MISSING' };
+  if (compliance.basis === 'licensed') {
+    if (!compliance.licenceExpiresAt || compliance.licenceExpiresAt < now) {
+      return { ok: false, reason: 'LICENCE_EXPIRED' };
+    }
+  }
+  return { ok: true };
+}
+
+/**
+ * Age eligibility, FAIL CLOSED.
+ *
+ * The Act treats a person under 25 as a minor for gaming purposes and
+ * restricts their participation, so an unknown age is treated as ineligible —
+ * never as "probably fine". `dateOfBirth` is the ISO date the customer
+ * supplied on their own account.
+ */
+export function isAgeEligible(dateOfBirth: string | null, minAge: number, now: Date): boolean {
+  if (!dateOfBirth) return false;
+  const dob = new Date(`${dateOfBirth.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(dob.getTime())) return false;
+  let age = now.getUTCFullYear() - dob.getUTCFullYear();
+  const monthDelta = now.getUTCMonth() - dob.getUTCMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && now.getUTCDate() < dob.getUTCDate())) age -= 1;
+  return age >= minAge;
+}
+
 export type GrantRefusal =
   | 'CAMPAIGN_INACTIVE'
   | 'CAMPAIGN_NOT_STARTED'

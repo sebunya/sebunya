@@ -11,8 +11,10 @@ export const users = pgTable('users', {
   phoneVerifiedAt: timestamp('phone_verified_at', { withTimezone: true }),
   /** 0087: shareable referral code, generated lazily on first request. */
   referralCode: varchar('referral_code', { length: 12 }),
-  /** 0087: customer-supplied, powers the birthday earn source only. */
+  /** 0087: customer-supplied; powers birthday points and the 0090 age gate. */
   dateOfBirth: date('date_of_birth'),
+  /** 0090: opted out of chance mechanics; the rest of loyalty is unaffected. */
+  chanceSelfExcludedAt: timestamp('chance_self_excluded_at', { withTimezone: true }),
   // Slice 3B: immediate hard-revocation cutoff. Any access token issued at or
   // before this instant is rejected. Set on password change, disable or an
   // admin "log out everywhere". Null means no forced invalidation.

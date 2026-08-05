@@ -284,6 +284,36 @@ export const loyaltyDrawResults = pgTable('loyalty_draw_results', {
   userIdx: index('loyalty_draw_results_user_idx').on(table.userId),
 }));
 
+/**
+ * 0090: the recorded legal basis on which reward draws may operate.
+ *
+ * Uganda's Lotteries and Gaming Act 2016 defines "lottery" to include a
+ * "promotional competition" with no consideration element, so a free-to-enter
+ * design does not obviously escape licensing. Rather than encode a legal
+ * conclusion in code, draws refuse to run until a basis is recorded here —
+ * either an LGRB licence or a written opinion from counsel.
+ */
+export const loyaltyDrawCompliance = pgTable('loyalty_draw_compliance', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  basis: varchar('basis', { length: 30 }).default('none').notNull(), // none|licensed|counsel_advised_exempt
+  licenceReference: varchar('licence_reference', { length: 120 }),
+  licenceIssuer: varchar('licence_issuer', { length: 160 }),
+  licenceExpiresAt: date('licence_expires_at'),
+  counselReference: varchar('counsel_reference', { length: 300 }),
+  counselOpinionDate: date('counsel_opinion_date'),
+  /** 25 = the Act's definition of a "minor" for gaming purposes. */
+  minAge: integer('min_age').default(25).notNull(),
+  jurisdiction: varchar('jurisdiction', { length: 8 }).default('UG').notNull(),
+  acknowledgedBy: uuid('acknowledged_by'),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+  notes: varchar('notes', { length: 1000 }),
+  singleton: varchar('singleton', { length: 12 }).default('compliance').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  singletonIdx: uniqueIndex('loyalty_draw_compliance_singleton_uq').on(table.singleton),
+}));
+
 export const phoneVerificationCodes = pgTable('phone_verification_codes', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull(),
