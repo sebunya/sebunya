@@ -66,6 +66,12 @@ const DISTRICT_SPELLING_VARIANTS: Record<string, string> = {
   NTUGAMO: 'Ntungamo',
   'MADI OKOLLO': 'Madi-Okollo',
   MADIOKOLLO: 'Madi-Okollo',
+  // The 2019 Ministry of ICT postcode source spells these two districts with a
+  // single consonant/vowel where the current official list doubles it. Same
+  // districts, different orthography — mapping them here keeps the district
+  // vocabulary closed while letting the gazetteer import resolve cleanly.
+  KASANDA: 'Kassanda',
+  KIKUBE: 'Kikuube',
   LUBAGA: 'Kampala',
   'FORT PORTAL': 'Kabarole',
   'KAMPALA CITY': 'Kampala',

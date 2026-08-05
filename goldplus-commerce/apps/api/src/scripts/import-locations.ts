@@ -154,9 +154,14 @@ async function main() {
       district2019Source: district2019,
       districtChanged: toBool(col(r, ['district_changed', 'changed'], 'master', false)),
       region: col(r, ['region'], 'master', false) || null,
-      countyOrMunicipality: col(r, ['county_or_municipality', 'county'], 'master', false) || null,
-      subcountyOrDivision: col(r, ['subcounty_or_division', 'subcounty', 'sub_county'], 'master', false) || null,
-      deliveryZoneCode: districtZone.get(district.toUpperCase()) ?? null,
+      countyOrMunicipality: col(r, ['county_or_division', 'county_or_municipality', 'county'], 'master', false) || null,
+      subcountyOrDivision:
+        col(r, ['sub_county_clean', 'subcounty_or_division', 'subcounty', 'sub_county'], 'master', false) || null,
+      // The row's own zone is the source of truth; the district lookup is the
+      // fallback. They agree in v1, and preferring the row keeps a future
+      // per-area zone override working without a code change.
+      deliveryZoneCode:
+        (col(r, ['delivery_zone', 'zone'], 'master', false) || districtZone.get(district.toUpperCase()) || '').toUpperCase() || null,
       selectable: 'selectable' in r ? toBool(r['selectable']) : true,
       isMetro: false,
       searchText: buildSearchText([clean, source, district]),
@@ -206,16 +211,20 @@ async function main() {
   type AliasRow = typeof ugAreaAlias.$inferInsert;
   const aliasRows: AliasRow[] = [];
   for (const a of aliases) {
-    const aliasName = col(a, ['alias', 'name', 'alias_name'], 'aliases');
-    const anchor = col(a, ['area_slug', 'anchor_area_slug', 'anchor', 'slug'], 'aliases');
+    const aliasName = col(a, ['alias_or_missing_name', 'alias', 'name', 'alias_name'], 'aliases');
+    const anchor = col(a, ['anchor_area_slug', 'area_slug', 'anchor', 'slug'], 'aliases');
     if (!bySlug.has(anchor)) fail(`alias "${aliasName}" anchors to unknown area_slug "${anchor}"`);
     aliasRows.push({
       alias: aliasName,
       normalisedAlias: foldUgandanOrthography(aliasName),
       areaSlug: anchor,
-      confidence: col(a, ['confidence', 'confidence_label'], 'aliases', false) || 'strong',
+      confidence: col(a, ['attribution_confidence', 'confidence', 'confidence_label'], 'aliases', false) || 'strong',
       source: 'seeded',
-      note: col(a, ['note', 'notes', 'comment'], 'aliases', false) || null,
+      // The alias TYPE (spelling variant / colloquial umbrella / not in source)
+      // is the most useful thing an ops reviewer can see, so keep it with the note.
+      note: [col(a, ['type', 'alias_type'], 'aliases', false), col(a, ['note', 'notes', 'comment'], 'aliases', false)]
+        .filter(Boolean)
+        .join(' — ') || null,
     });
   }
 
@@ -260,11 +269,11 @@ async function main() {
     await tx.delete(ugDataException).where(eq(ugDataException.dataVersion, DATA_VERSION));
     for (const ex of exceptions) {
       await tx.insert(ugDataException).values({
-        exceptionType: col(ex, ['exception_type', 'type', 'code'], 'exceptions'),
-        district: col(ex, ['district', 'current_district'], 'exceptions', false) || null,
+        exceptionType: col(ex, ['issue_type', 'exception_type', 'type', 'code'], 'exceptions'),
+        district: col(ex, ['current_district', 'district'], 'exceptions', false) || null,
         postcode: col(ex, ['postcode', 'code'], 'exceptions', false) || null,
-        areaRef: col(ex, ['area_slug', 'area', 'area_ref'], 'exceptions', false) || null,
-        description: col(ex, ['description', 'note', 'detail'], 'exceptions', false) || null,
+        areaRef: col(ex, ['area_slug', 'parish_clean', 'area', 'area_ref'], 'exceptions', false) || null,
+        description: col(ex, ['treatment', 'description', 'note', 'detail'], 'exceptions', false) || null,
         sourceRow: ex,
         dataVersion: DATA_VERSION,
       });

@@ -37,3 +37,8 @@ scratch/
 *.zip
 *.tgz
 *.tar.gz
+
+# Location gazetteer source data (verified Ministry of ICT 2019 dataset).
+# MD5-gated by apps/api/src/scripts/import-locations.ts; distributed separately.
+data/locations/v1/*.csv
+data/locations/v1/*.sql
