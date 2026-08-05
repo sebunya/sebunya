@@ -206,7 +206,8 @@ export class DrizzleLoyaltyDrawRepository implements ILoyaltyDrawRepository {
       licenceReference: row?.licenceReference ?? null,
       licenceExpiresAt: row?.licenceExpiresAt ? new Date(`${row.licenceExpiresAt}T23:59:59Z`) : null,
       counselReference: row?.counselReference ?? null,
-      minAge: row?.minAge ?? 25,
+      // null = no age restriction on this promotion (0091 default).
+      minAge: row?.minAge ?? null,
       jurisdiction: row?.jurisdiction ?? 'UG',
     };
   }
@@ -222,7 +223,7 @@ export class DrizzleLoyaltyDrawRepository implements ILoyaltyDrawRepository {
     licenceExpiresAt: string | null;
     counselReference: string | null;
     counselOpinionDate: string | null;
-    minAge: number;
+    minAge: number | null;
     notes: string | null;
     acknowledgedBy: string;
   }) {

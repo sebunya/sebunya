@@ -257,8 +257,8 @@ routes.get('/draws/compliance', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
 routes.put('/draws/compliance', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
   const basis = String(body?.basis ?? '');
-  if (!['none', 'licensed', 'counsel_advised_exempt'].includes(basis)) {
-    return c.json({ success: false, error: { code: 'BAD_BASIS', message: 'basis must be none, licensed or counsel_advised_exempt.' } } satisfies ApiResponse<never>, 400);
+  if (!['none', 'licensed', 'counsel_advised_exempt', 'business_accepted'].includes(basis)) {
+    return c.json({ success: false, error: { code: 'BAD_BASIS', message: 'basis must be none, licensed, counsel_advised_exempt or business_accepted.' } } satisfies ApiResponse<never>, 400);
   }
   const str = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
   const isoDate = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
@@ -266,7 +266,11 @@ routes.put('/draws/compliance', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
   const licenceExpiresAt = isoDate(body?.licenceExpiresAt);
   const counselReference = str(body?.counselReference, 300);
   const counselOpinionDate = isoDate(body?.counselOpinionDate);
-  const minAge = Number.isInteger(Number(body?.minAge)) ? Number(body.minAge) : 25;
+  // null / absent = no age restriction on this promotion (the default).
+  const minAge =
+    body?.minAge === null || body?.minAge === undefined || body?.minAge === ''
+      ? null
+      : Number(body.minAge);
   // The same conditions the database CHECKs enforce, refused here with a
   // message that says which field is missing rather than a constraint error.
   if (basis === 'licensed' && (!licenceReference || !licenceExpiresAt)) {
@@ -275,8 +279,12 @@ routes.put('/draws/compliance', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
   if (basis === 'counsel_advised_exempt' && (!counselReference || !counselOpinionDate)) {
     return c.json({ success: false, error: { code: 'OPINION_INCOMPLETE', message: 'An exemption basis requires counselReference and counselOpinionDate (YYYY-MM-DD).' } } satisfies ApiResponse<never>, 400);
   }
-  if (minAge < 18 || minAge > 30) {
-    return c.json({ success: false, error: { code: 'BAD_MIN_AGE', message: 'minAge must be between 18 and 30.' } } satisfies ApiResponse<never>, 400);
+  if (minAge !== null && (!Number.isInteger(minAge) || minAge < 13 || minAge > 30)) {
+    return c.json({ success: false, error: { code: 'BAD_MIN_AGE', message: 'minAge must be null (no restriction) or a whole number between 13 and 30.' } } satisfies ApiResponse<never>, 400);
+  }
+  // A business acceptance must say what was accepted and why.
+  if (basis === 'business_accepted' && !str(body?.notes, 1000)) {
+    return c.json({ success: false, error: { code: 'NOTES_REQUIRED', message: 'A business_accepted basis requires notes recording the decision.' } } satisfies ApiResponse<never>, 400);
   }
   const registry = Registry.getInstance();
   const actorId = (c.get('user') as any).id;

@@ -323,6 +323,60 @@ describe('0090 compliance controls', () => {
   });
 });
 
+describe('0091 relaxed controls and activation', () => {
+  const activation91 = read('apps/api/src/infrastructure/db/migrations/0091_draw_activation_business_basis.sql');
+  const drawDomain3 = read('apps/api/src/domain/loyalty/RewardDraw.ts');
+
+  it('is registered and additive', () => {
+    expect(journal).toContain('0091_draw_activation_business_basis');
+    const executable = activation91
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join('\n');
+    expect(executable).not.toMatch(/\bDROP\s+TABLE\b/i);
+    expect(executable).not.toMatch(/\bDROP\s+COLUMN\b/i);
+    expect(executable).not.toMatch(/\bDELETE\s+FROM\b/i);
+  });
+
+  it('adds the business-decision basis and switches the mechanic on', () => {
+    expect(activation91).toMatch(/'none', 'licensed', 'counsel_advised_exempt', 'business_accepted'/);
+    expect(activation91).toMatch(/SET "basis" = 'business_accepted'/);
+    expect(activation91).toMatch(/UPDATE "loyalty_config" SET "chance_enabled" = true/);
+    expect(activation91).toMatch(/UPDATE "loyalty_draw_campaigns" SET "active" = true/);
+  });
+
+  it('still requires a basis to be RECORDED — the audit trail survives the relaxation', () => {
+    // 'none' must remain a blocking state, and any other basis must carry a
+    // timestamp and a written reason.
+    expect(drawDomain3).toContain("if (compliance.basis === 'none') return { ok: false, reason: 'COMPLIANCE_BASIS_MISSING' }");
+    expect(activation91).toMatch(/"acknowledged_at" IS NOT NULL AND "notes" IS NOT NULL/);
+    expect(activation91).toMatch(/SET[\s\S]{0,200}"notes" = 'Business decision recorded/);
+  });
+
+  it('makes the age restriction optional and switches it off', () => {
+    expect(activation91).toContain('ALTER COLUMN "min_age" DROP NOT NULL');
+    expect(activation91).toMatch(/"min_age" = NULL/);
+    // The capability remains, so a minimum can be reinstated as config.
+    expect(drawDomain3).toContain('if (minAge === null) return true;');
+    expect(drawDomain3).toContain('if (!dateOfBirth) return false;');
+  });
+
+  it('keeps every control that does not restrict a customer', () => {
+    const prose = activation91.replace(/\s+/g, ' ');
+    expect(prose).toMatch(/published odds/i);
+    expect(prose).toMatch(/every card wins/i);
+    expect(prose).toMatch(/self-exclusion/i);
+    expect(prose).toMatch(/budget cap/i);
+    // And they are still actually in the code, not just in a comment.
+    expect(drawDomain3).toContain('export function publishedOdds');
+    expect(drawDomain3).toContain('export function canGrantToken');
+  });
+
+  it('keeps the legal brief on record rather than deleting it', () => {
+    expect(read('docs/loyalty-legal-brief.md')).toMatch(/promotional competition/i);
+  });
+});
+
 describe('customer copy honesty', () => {
   it('renders the loyalty terms from live programme config, not hardcoded numbers', () => {
     expect(terms).toContain('/commerce/loyalty-programme');

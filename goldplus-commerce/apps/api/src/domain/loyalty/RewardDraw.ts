@@ -111,11 +111,18 @@ export function publishedOdds(prizes: readonly DrawPrize[]): Array<{
  * opinion from counsel. See docs/loyalty-legal-brief.md.
  */
 export interface DrawComplianceState {
-  basis: 'none' | 'licensed' | 'counsel_advised_exempt';
+  /**
+   * 'business_accepted' (0091) is an explicit, dated, written acceptance by the
+   * business owner — the campaign is run as an internal promotion on their own
+   * decision. It keeps the audit trail without requiring a lawyer's reference
+   * before the feature can operate.
+   */
+  basis: 'none' | 'licensed' | 'counsel_advised_exempt' | 'business_accepted';
   licenceReference: string | null;
   licenceExpiresAt: Date | null;
   counselReference: string | null;
-  minAge: number;
+  /** null = no age restriction applied to this promotion (the default). */
+  minAge: number | null;
   jurisdiction: string;
 }
 
@@ -137,14 +144,16 @@ export function canRunDraw(compliance: DrawComplianceState, now: Date): { ok: tr
 }
 
 /**
- * Age eligibility, FAIL CLOSED.
+ * Age eligibility.
  *
- * The Act treats a person under 25 as a minor for gaming purposes and
- * restricts their participation, so an unknown age is treated as ineligible —
- * never as "probably fine". `dateOfBirth` is the ISO date the customer
- * supplied on their own account.
+ * `minAge` of null means NO age restriction is applied — the default for this
+ * promotion, which is a bonus on an already-completed purchase rather than a
+ * gaming product. When a minimum IS configured the check fails closed: an
+ * unknown date of birth is not an eligible date of birth, because the point of
+ * setting a minimum is to be sure, not to guess.
  */
-export function isAgeEligible(dateOfBirth: string | null, minAge: number, now: Date): boolean {
+export function isAgeEligible(dateOfBirth: string | null, minAge: number | null, now: Date): boolean {
+  if (minAge === null) return true;
   if (!dateOfBirth) return false;
   const dob = new Date(`${dateOfBirth.slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(dob.getTime())) return false;

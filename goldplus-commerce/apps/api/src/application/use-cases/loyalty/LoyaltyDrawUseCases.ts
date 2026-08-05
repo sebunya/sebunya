@@ -105,9 +105,9 @@ export class GrantDrawTokenUseCase {
 
     const participant = await this.draws.participantEligibility(input.userId);
     if (participant.selfExcludedAt) return fail('SELF_EXCLUDED', 'This account has opted out of prize draws.');
+    // No age restriction is configured by default; when one is, it fails closed.
     if (!isAgeEligible(participant.dateOfBirth, compliance.minAge, now)) {
-      // Fail closed: an unknown age is not an eligible age.
-      return fail('AGE_NOT_ELIGIBLE', `Prize draws are limited to customers aged ${compliance.minAge} and over.`);
+      return fail('AGE_NOT_ELIGIBLE', `This campaign is limited to customers aged ${compliance.minAge} and over.`);
     }
 
     const campaign = await this.draws.findActiveCampaignByTrigger(input.trigger);
@@ -172,7 +172,7 @@ export class PlayDrawTokenUseCase {
     const participant = await this.draws.participantEligibility(input.userId);
     if (participant.selfExcludedAt) return fail('SELF_EXCLUDED', 'This account has opted out of prize draws.');
     if (!isAgeEligible(participant.dateOfBirth, compliance.minAge, now)) {
-      return fail('AGE_NOT_ELIGIBLE', `Prize draws are limited to customers aged ${compliance.minAge} and over.`);
+      return fail('AGE_NOT_ELIGIBLE', `This campaign is limited to customers aged ${compliance.minAge} and over.`);
     }
 
     const existing = await this.draws.findToken(input.tokenId);
@@ -290,8 +290,8 @@ export class GetDrawStateUseCase {
         ineligible: {
           reason: 'AGE_NOT_ELIGIBLE',
           message: participant.dateOfBirth
-            ? `Prize draws are limited to customers aged ${compliance.minAge} and over.`
-            : `Add your date of birth to your account to take part — prize draws are limited to customers aged ${compliance.minAge} and over.`,
+            ? `This campaign is limited to customers aged ${compliance.minAge} and over.`
+            : `Add your date of birth to your account to take part — this campaign is limited to customers aged ${compliance.minAge} and over.`,
         },
       };
     }

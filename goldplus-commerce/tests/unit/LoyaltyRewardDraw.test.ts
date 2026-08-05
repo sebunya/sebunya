@@ -571,3 +571,72 @@ describe('the gates are enforced in the granting path, not just available', () =
     expect(ledger.entries).toHaveLength(0);
   });
 });
+
+/* ── Relaxed controls (0091) ──────────────────────────────────────────────── */
+
+describe('the campaign runs as an internal promotion (0091)', () => {
+  const now = new Date('2026-08-05T00:00:00Z');
+  const businessBasis = {
+    basis: 'business_accepted' as const,
+    licenceReference: null,
+    licenceExpiresAt: null,
+    counselReference: null,
+    minAge: null,
+    jurisdiction: 'UG',
+  };
+
+  it('a recorded business acceptance permits the draw to run', () => {
+    expect(canRunDraw(businessBasis, now)).toEqual({ ok: true });
+  });
+
+  it('an unrecorded basis still stops it — the audit trail is kept', () => {
+    expect(canRunDraw({ ...businessBasis, basis: 'none' }, now)).toMatchObject({
+      ok: false,
+      reason: 'COMPLIANCE_BASIS_MISSING',
+    });
+  });
+
+  it('no configured minimum age means every customer is eligible', () => {
+    // This is the fix for the 0090 design error: date of birth is an optional
+    // field, so a fail-closed age gate excluded nearly everyone and made the
+    // feature look broken.
+    expect(isAgeEligible(null, null, now)).toBe(true);
+    expect(isAgeEligible('2015-01-01', null, now)).toBe(true);
+    expect(isAgeEligible('1990-01-01', null, now)).toBe(true);
+  });
+
+  it('the age capability still works when a minimum IS configured', () => {
+    expect(isAgeEligible(null, 25, now)).toBe(false);
+    expect(isAgeEligible('1990-01-01', 25, now)).toBe(true);
+  });
+
+  it('grants a card to a customer with no date of birth on file', async () => {
+    const draws = new FakeDraws() as any;
+    draws.compliance = businessBasis;
+    draws.participant = { dateOfBirth: null, selfExcludedAt: null };
+    const uc = new GrantDrawTokenUseCase(completion as any, draws, ledger as any);
+    expect(await uc.execute({ trigger: 'order_delivered', userId: 'u1', sourceType: 'order', sourceId: 'o1' }))
+      .toMatchObject({ ok: true, granted: true });
+  });
+
+  it('still honours a customer who has self-excluded', async () => {
+    const draws = new FakeDraws() as any;
+    draws.compliance = businessBasis;
+    draws.participant = { dateOfBirth: null, selfExcludedAt: new Date('2026-07-01') };
+    const uc = new GrantDrawTokenUseCase(completion as any, draws, ledger as any);
+    expect(await uc.execute({ trigger: 'order_delivered', userId: 'u1', sourceType: 'order', sourceId: 'o1' }))
+      .toMatchObject({ ok: false, code: 'SELF_EXCLUDED' });
+  });
+
+  it('plays end to end with the relaxed controls', async () => {
+    const draws = new FakeDraws() as any;
+    draws.compliance = businessBasis;
+    draws.participant = { dateOfBirth: null, selfExcludedAt: null };
+    const grant = new GrantDrawTokenUseCase(completion as any, draws, ledger as any);
+    await grant.execute({ trigger: 'order_delivered', userId: 'u1', sourceType: 'order', sourceId: 'o1' });
+    const tokenId = [...draws.tokens.values()][0].id;
+    const play = new PlayDrawTokenUseCase(completion as any, draws, ledger as any, () => 9999, async () => undefined);
+    expect(await play.execute({ userId: 'u1', tokenId })).toMatchObject({ ok: true, points: 1000 });
+    expect(ledger.pointsFor('u1')).toBe(1000);
+  });
+});

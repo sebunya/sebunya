@@ -301,8 +301,8 @@ export const loyaltyDrawCompliance = pgTable('loyalty_draw_compliance', {
   licenceExpiresAt: date('licence_expires_at'),
   counselReference: varchar('counsel_reference', { length: 300 }),
   counselOpinionDate: date('counsel_opinion_date'),
-  /** 25 = the Act's definition of a "minor" for gaming purposes. */
-  minAge: integer('min_age').default(25).notNull(),
+  /** 0091: null = no age restriction on this promotion (the default). */
+  minAge: integer('min_age'),
   jurisdiction: varchar('jurisdiction', { length: 8 }).default('UG').notNull(),
   acknowledgedBy: uuid('acknowledged_by'),
   acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
