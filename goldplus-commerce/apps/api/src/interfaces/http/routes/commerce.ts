@@ -159,6 +159,29 @@ routes.get('/loyalty-programme', async (c) => {
         : { configured: false as const },
       // Vesting truth for customer copy: points vest on delivery.
       vesting: 'on_delivery' as const,
+      // 0087 gamification surface: only ACTIVE earn sources appear, with the
+      // real configured values — the page never promises an unshipped mechanic.
+      earnSources: active && !programme.killSwitch
+        ? {
+            verificationScan: (await registry.loyaltyCompletionRepo.getActiveRule('verification_scan').catch(() => null))?.rate ?? null,
+            counterfeitReport: (await registry.loyaltyCompletionRepo.getActiveRule('counterfeit_report').catch(() => null))?.rate ?? null,
+            phoneVerification: (await registry.loyaltyCompletionRepo.getActiveRule('phone_verification').catch(() => null))?.rate ?? null,
+            referral: programme.referralReferrerPoints !== null
+              ? { referrer: programme.referralReferrerPoints, referee: programme.referralRefereePoints }
+              : null,
+            birthday: programme.birthdayPoints,
+            streak: programme.streakTargetOrders !== null && programme.streakRewardPoints !== null
+              ? { orders: programme.streakTargetOrders, windowDays: programme.streakWindowDays, points: programme.streakRewardPoints }
+              : null,
+          }
+        : null,
+      // Active tiers (0087): thresholds + service benefits, public-safe fields only.
+      tiers: active
+        ? (await registry.loyaltyTierRepo.listTiers().catch(() => []))
+            .filter((t) => t.active && t.thresholdLifetimePoints !== null)
+            .map((t) => ({ code: t.code, name: t.name, threshold: t.thresholdLifetimePoints, benefits: t.benefits ?? {} }))
+        : [],
+      termsVersion: programme.termsVersion,
     },
   });
 });

@@ -118,6 +118,16 @@ routes.post('/support/report-fake', async (c) => {
     return c.json(res, 400);
   }
 
+  // Gamification (0087): a signed-in reporter is attributable — confirmation
+  // of the report later earns points. Anonymous reports stay anonymous.
+  const reporterAuth = c.req.header('Authorization');
+  if (reporterAuth?.startsWith('Bearer ')) {
+    const verified = await registry.tokenSigner.verify(reporterAuth.slice(7).trim()).catch(() => null);
+    if (verified?.subject) {
+      await registry.fakeReportRepo.attributeReporter(result.reportId, verified.subject).catch(() => undefined);
+    }
+  }
+
   const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
   await auditUc.execute({
     actorId: null,
@@ -147,10 +157,17 @@ routes.post('/verification/check', async (c) => {
   if (header?.startsWith('Bearer ')) {
     const verified = await registry.tokenSigner.verify(header.slice(7).trim()).catch(() => null);
     if (verified?.subject) {
+      const successful = Boolean((result as { isSuccessful?: boolean }).isSuccessful);
       const earn = await registry.earnForVerificationScanUseCase
-        .execute({ userId: verified.subject, code: String(body.code ?? ''), successful: Boolean((result as { isSuccessful?: boolean }).isSuccessful) })
+        .execute({ userId: verified.subject, code: String(body.code ?? ''), successful })
         .catch(() => null);
       if (earn?.ok) loyaltyPoints = earn.points;
+      // Gamification (0087): first successful scan = Authenticator badge;
+      // scan-count missions progress. Failures never fail the check.
+      if (successful) {
+        await registry.gamificationRepo.awardBadgeByKey(verified.subject, 'authenticator').catch(() => undefined);
+        await registry.evaluateGamificationForUserUseCase.execute({ userId: verified.subject }).catch(() => undefined);
+      }
     }
   }
 
@@ -162,6 +179,54 @@ routes.post('/verification/check', async (c) => {
 });
 
 routes.use('/admin/*', authMiddleware);
+
+// ---------- Fake-report resolution (0087: confirmation is the loyalty earn
+// event — "points and a support pathway for a confirmed counterfeit report").
+// Mutating loyalty liability ⇒ mutating permission + audit, like every other
+// point-granting admin action. ----------
+routes.patch('/admin/fake-reports/:id/status', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const status = String(body?.status ?? '');
+  if (!['investigating', 'verified_fake', 'dismissed'].includes(status)) {
+    return c.json({ success: false, error: { code: 'BAD_STATUS', message: 'status must be investigating, verified_fake or dismissed.' } }, 400);
+  }
+  const report = await registry.fakeReportRepo.findByIdRaw(c.req.param('id') ?? '');
+  if (!report) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Report not found.' } }, 404);
+
+  let loyalty: { points: number } | null = null;
+  if (status === 'verified_fake' && report.reporterUserId && !report.loyaltyEntryId) {
+    const earn = await registry.earnForCounterfeitConfirmationUseCase
+      .execute({ reportId: report.id, reporterUserId: report.reporterUserId })
+      .catch(() => null);
+    if (earn && 'points' in earn) {
+      loyalty = { points: earn.points };
+      await registry.fakeReportRepo.setStatus(report.id, status, earn.entryId);
+      // Support pathway: the confirmed reporter gets a follow-up message.
+      await registry.loyaltyOutboxNotifier
+        .enqueue({
+          userId: report.reporterUserId,
+          eventType: 'LOYALTY_POINTS_EARNED',
+          idempotencyKey: `counterfeit-confirmed:${report.id}`,
+          data: { points: earn.points, source: 'counterfeit_report' },
+        })
+        .catch(() => undefined);
+    } else {
+      await registry.fakeReportRepo.setStatus(report.id, status);
+    }
+  } else {
+    await registry.fakeReportRepo.setStatus(report.id, status);
+  }
+
+  const confirmAuditUc = new CreateAuditLogUseCase(registry.auditRepo);
+  await confirmAuditUc.execute({
+    actorId: (c.get('user') as { id: string }).id,
+    action: 'FAKE_REPORT_STATUS_CHANGED',
+    entity: 'fake_report',
+    entityId: report.id,
+    newState: { status, loyaltyPointsAwarded: loyalty?.points ?? 0 },
+  });
+  return c.json({ success: true, data: { id: report.id, status, loyalty } });
+});
 
 // ---------- Admin dashboard stats ----------
 routes.get('/admin/stats', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {

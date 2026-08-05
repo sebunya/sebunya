@@ -21,6 +21,14 @@ const CONFIG: LoyaltyProgrammeConfig = {
   killSwitch: false,
   guestBackfillLookbackDays: null,
   guestBackfillCapPoints: null,
+  referralReferrerPoints: null,
+  referralRefereePoints: null,
+  birthdayPoints: null,
+  streakTargetOrders: null,
+  streakWindowDays: null,
+  streakRewardPoints: null,
+  chanceEnabled: false,
+  termsVersion: null,
 };
 
 function entry(over: Partial<LoyaltyLedgerEntry>): LoyaltyLedgerEntry {

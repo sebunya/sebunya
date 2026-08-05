@@ -153,6 +153,15 @@ import { DrizzleLoyaltyCompletionRepository } from './db/repositories/DrizzleLoy
 import { LoyaltyOutboxNotifier } from './loyalty/LoyaltyOutboxNotifier';
 import { RequestPhoneVerificationUseCase, VerifyPhoneUseCase, BackfillGuestOrdersUseCase, MergeLoyaltyAccountsUseCase } from '../application/use-cases/loyalty/LoyaltyIdentityUseCases';
 import { EarnForVerificationScanUseCase, ManualAdjustLoyaltyUseCase, EvaluateTiersUseCase } from '../application/use-cases/loyalty/LoyaltyProgrammeUseCases';
+import {
+  AwardBirthdayPointsUseCase,
+  EarnForCounterfeitConfirmationUseCase,
+  EarnForPhoneVerificationUseCase,
+  EvaluateGamificationForUserUseCase,
+  QualifyReferralOnDeliveryUseCase,
+  RecordReferralUseCase,
+} from '../application/use-cases/loyalty/LoyaltyGamificationUseCases';
+import { DrizzleBirthdayUserSource, DrizzleLoyaltyReferralRepository } from './db/repositories/DrizzleLoyaltyReferralRepository';
 import { DrizzleLoyaltyIdentityRepository, DrizzleLoyaltyTierRepository, LoyaltyProgrammeConfigWriter, OutboxOtpSender, otpHash, otpRandom } from './loyalty/LoyaltyIdentityInfrastructure';
 import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { ListSearchMissesUseCase, PromoteSearchMissToAliasUseCase, ListAddressReviewQueueUseCase, ResolveAddressUseCase, ManageLandmarksUseCase, ManagePickupPointsUseCase, GetZonePoliciesUseCase, SaveZonePolicyUseCase, ListDataExceptionsUseCase } from '../application/use-cases/locations/LocationAdminUseCases';
@@ -1027,6 +1036,44 @@ export class Registry {
   public readonly mergeLoyaltyAccountsUseCase = new MergeLoyaltyAccountsUseCase(this.loyaltyIdentityRepo, this.auditRepo);
   public readonly earnForVerificationScanUseCase = new EarnForVerificationScanUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
   public readonly manualAdjustLoyaltyUseCase = new ManualAdjustLoyaltyUseCase(this.loyaltyRepo, this.auditRepo);
+
+  // ── Gamification LIVE (0087, activated 2026-08-05) ────────────────────────
+  public readonly loyaltyReferralRepo = new DrizzleLoyaltyReferralRepository();
+  public readonly birthdayUserSource = new DrizzleBirthdayUserSource();
+  public readonly evaluateGamificationForUserUseCase = new EvaluateGamificationForUserUseCase(
+    this.loyaltyRepo,
+    this.loyaltyCompletionRepo,
+    this.gamificationRepo,
+  );
+  public readonly recordReferralUseCase = new RecordReferralUseCase(this.loyaltyCompletionRepo, this.loyaltyReferralRepo);
+  public readonly qualifyReferralOnDeliveryUseCase = new QualifyReferralOnDeliveryUseCase(
+    this.loyaltyRepo,
+    this.loyaltyCompletionRepo,
+    this.loyaltyReferralRepo,
+    this.gamificationRepo,
+    async ({ userId, points, kind }) =>
+      this.loyaltyOutboxNotifier.enqueue({
+        userId,
+        eventType: 'LOYALTY_POINTS_EARNED',
+        idempotencyKey: `referral-notify:${userId}:${kind}`,
+        data: { points, source: kind === 'referrer' ? 'referral' : 'referral_welcome' },
+      }),
+  );
+  public readonly awardBirthdayPointsUseCase = new AwardBirthdayPointsUseCase(
+    this.loyaltyRepo,
+    this.loyaltyCompletionRepo,
+    this.birthdayUserSource,
+  );
+  public readonly earnForCounterfeitConfirmationUseCase = new EarnForCounterfeitConfirmationUseCase(
+    this.loyaltyRepo,
+    this.loyaltyCompletionRepo,
+    this.gamificationRepo,
+  );
+  public readonly earnForPhoneVerificationUseCase = new EarnForPhoneVerificationUseCase(
+    this.loyaltyRepo,
+    this.loyaltyCompletionRepo,
+    this.gamificationRepo,
+  );
   public readonly evaluateTiersUseCase = new EvaluateTiersUseCase(
     this.loyaltyRepo,
     this.loyaltyCompletionRepo,
@@ -1543,6 +1590,15 @@ export class Registry {
               data: { points: earn.points, orderId },
             })
             .catch(() => undefined);
+        }
+        // Gamification (0087): a delivery is the verified completion event —
+        // first-order badge, mission progress, referral qualification. Every
+        // award inside is idempotent; a gamification failure never fails the
+        // order transition.
+        if (source) {
+          await this.gamificationRepo.awardBadgeByKey(source.userId, 'first_order').catch(() => undefined);
+          await this.evaluateGamificationForUserUseCase.execute({ userId: source.userId }).catch(() => undefined);
+          await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: source.userId }).catch(() => undefined);
         }
       }
       if (toStatus === 'cancelled') {

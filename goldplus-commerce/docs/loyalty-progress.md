@@ -133,3 +133,69 @@ Deploy hygiene fallout fixed during close: .dockerignore (4641791) and image
 chmod normalisation (43d01ea) — build-context poisoning from host node_modules
 and root-only 600 file modes; brief API outage during the roll, restored same
 hour with --env-file corrected.
+
+## Gamification activation (2026-08-05) ✅ — migration 0087
+Rob's instruction: implement the deferred gamification modules, "don't leave
+anything undone or debated". Everything previously held behind PART V is now
+live configuration.
+
+**Migration 0087 (additive, journal idx 87)**: `loyalty_referrals` (DB-level
+self-referral CHECK + one-referral-per-referee UNIQUE), `users.referral_code`
+(unique) + `users.date_of_birth`, `fake_product_reports.reporter_user_id` +
+`loyalty_entry_id`, seven `loyalty_config` columns (referral/birthday/streak/
+chance_enabled/terms_version). Applies the approved config: 20 UGX per point,
+500 min / 50% max redemption, 1M budget cap, 90d/5,000 guest backfill,
+referral 200/100, birthday 150, streak 3-in-90-days for 300. Activates rules
+verification_scan 25 (cap 5/day), counterfeit_report 250, phone_verification
+100. Activates tiers T1 0 / T2 2,500 / T3 10,000 / T4 30,000 with SERVICE
+benefits. Seeds 6 badges and 3 ACTIVE missions.
+
+**Engine** (`LoyaltyGamificationUseCases.ts`): mission evaluation + badge
+award, referral record/qualify, birthday sweep, counterfeit-confirmation earn,
+phone-verification earn. Every award is an append-only `adjustment` with a
+deterministic once-ever idempotency key (`mission:`, `referral:`, `birthday:`,
+`counterfeit:`, `phoneverify:`); every path checks enabled + killSwitch; every
+entry records ruleCode/ruleVersion. Anti-gaming: self-referral refused at the
+use case AND the database, shared-phone referral refused with a fraud signal,
+one referral per referee ever, referrer capped at 10 awarded/30 days (held +
+signalled, never silently paid), referral pays only on the referee's FIRST
+delivered retail order, DOB set-once, verification capped per day and per code.
+
+**Wiring**: delivery transition awards first_order, evaluates missions, and
+qualifies referrals (all `.catch(() => undefined)` — gamification never fails
+an order transition). Verification check awards the Authenticator badge on a
+successful scan. Registration accepts `referralCode`. Daily ticker gained the
+birthday sweep and tier evaluation.
+
+**Real progress sources**: PURCHASE_COUNT and STREAK_ORDERS from delivered+paid
+retail orders, VERIFICATION_COUNT from successful attributed scans,
+REFERRAL_COUNT from awarded referrals. REVIEW_COUNT still returns null
+(separate identity space) — reported honestly, never a fake zero.
+
+**Surfaces**: /loyalty gained the complete ways-to-earn table (built from live
+config only), membership levels, and the badge set; /loyalty-terms is NEW and
+renders every figure from live programme config so terms cannot drift from the
+engine (closes PART U #29, the one item left open at stage 15);
+/account/loyalty gained the referral share card (code, copy link, WhatsApp) and
+badges; /account/rewards gained server-side phone-verification and birthday
+claim forms (session token is httpOnly, so these are form posts, not fetch —
+they also work without JavaScript); /register accepts ?ref= codes.
+
+**Admin**: mission kinds extended with VERIFICATION_COUNT and STREAK_ORDERS,
+`GET /admin/loyalty/referrals` oversight view, programme-config now writes the
+six gamification values, `PATCH /governance/admin/fake-reports/:id/status`
+confirms a counterfeit and triggers the earn + support message (SETTINGS_MANAGE
++ audit entry).
+
+**Tests**: +40 (20 behavioural engine tests against in-memory fakes covering
+idempotency, every anti-gaming refusal and every unset-means-off case; 20
+activation boundary tests covering migration additivity, service-only tier
+benefits, chance-mechanics absence, award provenance and copy honesty).
+Nothing deleted.
+
+**Deliberately NOT built**: chance-based mechanics (scratch/spin/wheel). The
+brief's hard stop — "get a legal read before a single line of that is built" —
+is a legal gate on Uganda's lotteries and gaming legislation, not a backlog
+item, so the `chance_enabled` flag ships false and no mechanic exists behind
+it. This is the single item from the instruction I did not implement, and it is
+flagged here rather than quietly skipped.

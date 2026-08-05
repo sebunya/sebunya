@@ -108,7 +108,7 @@ routes.post('/gamification/missions', requirePermissions([PERMISSIONS.SETTINGS_M
   const kind = clean(body?.kind, 30);
   const threshold = Number(body?.threshold);
   const rewardPoints = Number(body?.rewardPoints) || 0;
-  if (!key || !title || !['PURCHASE_COUNT','REVIEW_COUNT','STREAK_DAYS','REFERRAL_COUNT'].includes(kind) || !Number.isInteger(threshold) || threshold < 1) {
+  if (!key || !title || !['PURCHASE_COUNT','REVIEW_COUNT','STREAK_DAYS','REFERRAL_COUNT','VERIFICATION_COUNT','STREAK_ORDERS'].includes(kind) || !Number.isInteger(threshold) || threshold < 1) {
     return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'key, title, valid kind and integer threshold >= 1 are required.' } }, 400);
   }
   const registry = Registry.getInstance();
@@ -178,6 +178,13 @@ routes.put('/programme-config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
     killSwitch: Boolean(body.killSwitch),
     guestBackfillLookbackDays: num(body.guestBackfillLookbackDays),
     guestBackfillCapPoints: num(body.guestBackfillCapPoints),
+    // 0087 gamification values — null switches that earn source off.
+    referralReferrerPoints: num(body.referralReferrerPoints),
+    referralRefereePoints: num(body.referralRefereePoints),
+    birthdayPoints: num(body.birthdayPoints),
+    streakTargetOrders: num(body.streakTargetOrders),
+    streakWindowDays: num(body.streakWindowDays),
+    streakRewardPoints: num(body.streakRewardPoints),
   };
   for (const [k, v] of Object.entries(values)) {
     if (v !== null && typeof v === 'number' && (!Number.isInteger(v) || v < 0 || (k === 'redemptionMaxShareBps' && v > 10_000))) {
@@ -194,6 +201,20 @@ routes.put('/programme-config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
     newState: values,
   });
   return c.json({ success: true, data: values });
+});
+
+// 0087: referral oversight — the ring/self-referral fraud surface.
+routes.get('/referrals', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const rows = (await (await import('../../../../infrastructure/db/client')).db.execute(
+    (await import('drizzle-orm')).sql`
+      select r.id, r.code, r.status, r.rejection_reason, r.created_at, r.updated_at,
+             ref.email as referrer_email, ree.email as referee_email
+      from loyalty_referrals r
+      left join users ref on ref.id = r.referrer_user_id
+      left join users ree on ree.id = r.referee_user_id
+      order by r.created_at desc limit 200`,
+  )) as unknown as unknown[];
+  return c.json({ success: true, data: rows });
 });
 
 routes.get('/fraud-signals', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {

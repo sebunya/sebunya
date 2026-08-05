@@ -89,6 +89,23 @@ export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityReposit
     const rows = await db.query.loyaltyAccountMerges.findMany({ where: eq(loyaltyAccountMerges.survivorAccountId, survivorAccountId) });
     return rows.map((r) => r.mergedAccountId);
   }
+
+  /** 0087: the two profile facts the gamification surfaces branch on. */
+  async identityFacts(userId: string): Promise<{ phoneVerifiedAt: Date | null; dateOfBirth: string | null }> {
+    const row = await db.query.users.findFirst({ where: eq(users.id, userId) });
+    const typed = row as { phoneVerifiedAt?: Date | null; dateOfBirth?: string | null } | undefined;
+    return { phoneVerifiedAt: typed?.phoneVerifiedAt ?? null, dateOfBirth: typed?.dateOfBirth ?? null };
+  }
+
+  /** 0087: DOB is set-once — the birthday earn source cannot be gamed by cycling dates. */
+  async setDateOfBirthOnce(userId: string, isoDate: string): Promise<{ ok: boolean }> {
+    const rows = await db
+      .update(users)
+      .set({ dateOfBirth: isoDate })
+      .where(and(eq(users.id, userId), isNull(users.dateOfBirth)))
+      .returning({ id: users.id });
+    return { ok: rows.length > 0 };
+  }
 }
 
 /** OTP through the existing outbox → SMS path — never a parallel sender. */
@@ -180,6 +197,12 @@ export class LoyaltyProgrammeConfigWriter {
     killSwitch: boolean;
     guestBackfillLookbackDays: number | null;
     guestBackfillCapPoints: number | null;
+    referralReferrerPoints?: number | null;
+    referralRefereePoints?: number | null;
+    birthdayPoints?: number | null;
+    streakTargetOrders?: number | null;
+    streakWindowDays?: number | null;
+    streakRewardPoints?: number | null;
   }): Promise<void> {
     await db.update(loyaltyConfig).set({
       pointValueUgx: input.pointValueUgx,
@@ -189,6 +212,12 @@ export class LoyaltyProgrammeConfigWriter {
       killSwitch: input.killSwitch,
       guestBackfillLookbackDays: input.guestBackfillLookbackDays,
       guestBackfillCapPoints: input.guestBackfillCapPoints,
+      ...(input.referralReferrerPoints !== undefined ? { referralReferrerPoints: input.referralReferrerPoints } : {}),
+      ...(input.referralRefereePoints !== undefined ? { referralRefereePoints: input.referralRefereePoints } : {}),
+      ...(input.birthdayPoints !== undefined ? { birthdayPoints: input.birthdayPoints } : {}),
+      ...(input.streakTargetOrders !== undefined ? { streakTargetOrders: input.streakTargetOrders } : {}),
+      ...(input.streakWindowDays !== undefined ? { streakWindowDays: input.streakWindowDays } : {}),
+      ...(input.streakRewardPoints !== undefined ? { streakRewardPoints: input.streakRewardPoints } : {}),
       updatedAt: new Date(),
     });
   }

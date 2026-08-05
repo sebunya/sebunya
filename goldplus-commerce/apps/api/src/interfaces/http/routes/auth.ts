@@ -123,6 +123,18 @@ routes.post('/register', async (c) => {
     return c.json(res, statusCode);
   }
 
+  // Gamification (0087): an optional referral code links the new account to
+  // its referrer as a PENDING fact — nothing is paid until the referee's
+  // first order is delivered. A bad code never fails registration; the
+  // response says what happened so the UI can tell the customer.
+  let referral: { applied: boolean; reason?: string } | undefined;
+  if (typeof body.referralCode === 'string' && body.referralCode.trim()) {
+    const outcome = await registry.recordReferralUseCase
+      .execute({ refereeUserId: result.user.id, code: String(body.referralCode) })
+      .catch(() => null);
+    referral = outcome && 'status' in outcome ? { applied: true } : { applied: false, reason: outcome?.code ?? 'REFERRAL_FAILED' };
+  }
+
   // Registration IS a login: same durable session, same response shape, so the
   // storefront handles both flows with one code path.
   const refresh = await issueSessionSafely(registry, result.user.id, c);
@@ -133,6 +145,7 @@ routes.post('/register', async (c) => {
     refreshToken?: string;
     refreshExpiresAt?: string;
     user: { id: string; email: string; phone: string | null };
+    referral?: { applied: boolean; reason?: string };
   }> = {
     success: true,
     data: {
@@ -140,6 +153,7 @@ routes.post('/register', async (c) => {
       expiresAt: result.expiresAt.toISOString(),
       ...(refresh ? { refreshToken: refresh.refreshToken, refreshExpiresAt: refresh.refreshExpiresAt } : {}),
       user: result.user,
+      ...(referral ? { referral } : {}),
     },
   };
   return c.json(res, 201);

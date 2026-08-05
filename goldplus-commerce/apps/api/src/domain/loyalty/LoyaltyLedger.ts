@@ -181,6 +181,16 @@ export interface LoyaltyProgrammeConfig extends LoyaltyConfig {
   killSwitch: boolean;
   guestBackfillLookbackDays: number | null;
   guestBackfillCapPoints: number | null;
+  // 0087 gamification values — null means that earn source is off.
+  referralReferrerPoints: number | null;
+  referralRefereePoints: number | null;
+  birthdayPoints: number | null;
+  streakTargetOrders: number | null;
+  streakWindowDays: number | null;
+  streakRewardPoints: number | null;
+  /** Chance mechanics: reserved, stays false until the PART P legal read. */
+  chanceEnabled: boolean;
+  termsVersion: string | null;
 }
 
 export type RedemptionPlan =

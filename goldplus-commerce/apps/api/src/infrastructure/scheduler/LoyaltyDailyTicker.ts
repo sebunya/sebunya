@@ -17,9 +17,14 @@ async function runOnce(): Promise<void> {
   if (running) return;
   running = true;
   try {
-    const result = await Registry.getInstance().runLoyaltyDailySweepUseCase.execute(new Date());
+    const registry = Registry.getInstance();
+    const result = await registry.runLoyaltyDailySweepUseCase.execute(new Date());
+    // 0087: birthday awards (idempotent per user+year) and tier evaluation
+    // ride the same sweep — each isolated so one failure never stops the rest.
+    const birthdays = await registry.awardBirthdayPointsUseCase.execute(new Date()).catch(() => ({ awarded: -1 }));
+    const tiers = await registry.evaluateTiersUseCase.execute().catch(() => ({ evaluated: -1, changed: -1 }));
     // eslint-disable-next-line no-console
-    console.log('[loyalty-sweep]', JSON.stringify(result));
+    console.log('[loyalty-sweep]', JSON.stringify({ ...result, birthdays, tiers }));
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('[loyalty-sweep] failed', (error as Error).message);

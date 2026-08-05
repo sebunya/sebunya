@@ -1,4 +1,4 @@
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '../client';
 import { fakeProductReports } from '../schema/governance';
 import { FakeReport, FakeReportStatus } from '../../../domain/fakeReports/FakeReport';
@@ -45,5 +45,28 @@ export class DrizzleFakeReportRepository implements IFakeReportRepository {
       limit: 200,
     });
     return rows.map(rowToEntity);
+  }
+
+  /* ── 0087 gamification: attribution + audited confirmation ─────────────── */
+
+  async attributeReporter(reportId: string, userId: string): Promise<void> {
+    await db
+      .update(fakeProductReports)
+      .set({ reporterUserId: userId })
+      .where(eq(fakeProductReports.id, reportId));
+  }
+
+  async findByIdRaw(reportId: string): Promise<{ id: string; status: string; reporterUserId: string | null; loyaltyEntryId: string | null } | null> {
+    const row = await db.query.fakeProductReports.findFirst({ where: eq(fakeProductReports.id, reportId) });
+    return row
+      ? { id: row.id, status: row.status, reporterUserId: row.reporterUserId ?? null, loyaltyEntryId: row.loyaltyEntryId ?? null }
+      : null;
+  }
+
+  async setStatus(reportId: string, status: string, loyaltyEntryId?: string | null): Promise<void> {
+    await db
+      .update(fakeProductReports)
+      .set({ status, ...(loyaltyEntryId !== undefined ? { loyaltyEntryId } : {}) })
+      .where(eq(fakeProductReports.id, reportId));
   }
 }

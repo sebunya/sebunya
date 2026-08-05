@@ -78,5 +78,8 @@ export const fakeProductReports = pgTable('fake_product_reports', {
   hologramCode: varchar('hologram_code', { length: 100 }),
   evidenceUrls: jsonb('evidence_urls').$type<string[]>().default([]),
   status: varchar('status', { length: 50 }).default('new').notNull(), // new, investigating, verified_fake, dismissed
+  /** 0087: a signed-in reporter is attributable and earns on confirmation. */
+  reporterUserId: uuid('reporter_user_id'),
+  loyaltyEntryId: uuid('loyalty_entry_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });

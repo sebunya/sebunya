@@ -104,7 +104,13 @@ routes.get('/me', async (c) => {
     phone: user.phone,
     createdAt: user.createdAt.toISOString(),
   };
-  const res: ApiResponse<MeDto> = { success: true, data: me };
+  // 0087: the two profile facts the earn sources depend on, so the account
+  // surface can show "verify your phone / add your birthday" only when true.
+  const identity = await Registry.getInstance().loyaltyIdentityRepo.identityFacts(userId).catch(() => null);
+  const res: ApiResponse<MeDto & { phoneVerified?: boolean; dateOfBirthSet?: boolean }> = {
+    success: true,
+    data: { ...me, phoneVerified: Boolean(identity?.phoneVerifiedAt), dateOfBirthSet: Boolean(identity?.dateOfBirth) },
+  };
   return c.json(res);
 });
 
@@ -253,14 +259,73 @@ routes.post('/phone/request-verification', async (c) => {
 routes.post('/phone/verify', async (c) => {
   const userId = c.get('userId') as string;
   const body = await c.req.json().catch(() => null);
-  const result = await Registry.getInstance().verifyPhoneUseCase.execute({
+  const registry = Registry.getInstance();
+  const result = await registry.verifyPhoneUseCase.execute({
     userId,
     code: String(body?.code ?? ''),
   });
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } } as const, 400);
   }
-  return c.json({ success: true, data: { verified: true, backfilledPoints: result.backfilledPoints } });
+  // Gamification (0087): a verified phone earns once (rule-gated) and awards
+  // the Verified Buyer badge. Never fails the verification itself.
+  const phoneEarn = await registry.earnForPhoneVerificationUseCase.execute({ userId }).catch(() => null);
+  return c.json({
+    success: true,
+    data: {
+      verified: true,
+      backfilledPoints: result.backfilledPoints,
+      loyaltyPoints: phoneEarn && 'points' in phoneEarn ? phoneEarn.points : 0,
+    },
+  });
+});
+
+// ── Gamification (0087): referral code + share stats ────────────────────────
+routes.get('/referral', async (c) => {
+  const userId = c.get('userId') as string;
+  const registry = Registry.getInstance();
+  const config = await registry.loyaltyCompletionRepo.getProgrammeConfig();
+  if (!config.enabled || config.referralReferrerPoints === null) {
+    return c.json({ success: true, data: { active: false } });
+  }
+  const [code, referrals] = await Promise.all([
+    registry.loyaltyReferralRepo.getOrCreateCode(userId),
+    registry.loyaltyReferralRepo.listForReferrer(userId),
+  ]);
+  return c.json({
+    success: true,
+    data: {
+      active: true,
+      code,
+      referrerPoints: config.referralReferrerPoints,
+      refereePoints: config.referralRefereePoints,
+      referred: referrals.length,
+      awarded: referrals.filter((r) => r.status === 'awarded').length,
+      pending: referrals.filter((r) => r.status === 'pending').length,
+    },
+  });
+});
+
+// ── Gamification (0087): birthday opt-in. Set-once (correction goes through
+// support so the earn source cannot be gamed by cycling dates). ─────────────
+routes.put('/date-of-birth', async (c) => {
+  const userId = c.get('userId') as string;
+  const body = await c.req.json().catch(() => null);
+  const raw = String(body?.dateOfBirth ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return c.json({ success: false, error: { code: 'BAD_DATE', message: 'dateOfBirth must be YYYY-MM-DD.' } } as const, 400);
+  }
+  const dob = new Date(raw + 'T00:00:00Z');
+  const age = (Date.now() - dob.getTime()) / (365.25 * 86_400_000);
+  if (Number.isNaN(dob.getTime()) || age < 13 || age > 120) {
+    return c.json({ success: false, error: { code: 'BAD_DATE', message: 'That date of birth is not plausible.' } } as const, 400);
+  }
+  const registry = Registry.getInstance();
+  const result = await registry.loyaltyIdentityRepo.setDateOfBirthOnce(userId, raw);
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: 'ALREADY_SET', message: 'Date of birth is already set — contact support to correct it.' } } as const, 409);
+  }
+  return c.json({ success: true, data: { dateOfBirth: raw } });
 });
 
 routes.get('/preferences', async (c) => {

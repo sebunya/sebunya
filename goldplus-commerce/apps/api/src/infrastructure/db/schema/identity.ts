@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, boolean, primaryKey, integer, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, primaryKey, integer, index, uniqueIndex, date } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -9,6 +9,10 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   /** 0085: verified phone is the loyalty identity spine (loyalty brief PART I). */
   phoneVerifiedAt: timestamp('phone_verified_at', { withTimezone: true }),
+  /** 0087: shareable referral code, generated lazily on first request. */
+  referralCode: varchar('referral_code', { length: 12 }),
+  /** 0087: customer-supplied, powers the birthday earn source only. */
+  dateOfBirth: date('date_of_birth'),
   // Slice 3B: immediate hard-revocation cutoff. Any access token issued at or
   // before this instant is rejected. Set on password change, disable or an
   // admin "log out everywhere". Null means no forced invalidation.

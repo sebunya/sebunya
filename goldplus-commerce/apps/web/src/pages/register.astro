@@ -20,12 +20,20 @@ const returnToParam = Astro.url.searchParams.get('returnTo');
 const returnTo =
   returnToParam && returnToParam.startsWith('/') && !returnToParam.startsWith('//') ? returnToParam : '/account';
 
+// 0087 referrals: ?ref=CODE arrives from a shared invite link and rides the
+// form through registration. An invalid code never blocks the signup — the API
+// records the link as a pending fact and pays nothing until first delivery.
+const refParam = Astro.url.searchParams.get('ref');
+const referralCodeFromUrl = refParam && /^[A-Za-z0-9]{4,12}$/.test(refParam) ? refParam.toUpperCase() : '';
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const email = String(form.get('email') ?? '').trim();
   const phone = String(form.get('phone') ?? '').trim();
   const password = String(form.get('password') ?? '');
   const confirm = String(form.get('confirmPassword') ?? '');
+  const referralCodeRaw = String(form.get('referralCode') ?? '').trim().toUpperCase();
+  const referralCode = /^[A-Z0-9]{4,12}$/.test(referralCodeRaw) ? referralCodeRaw : '';
   values = { email, phone };
 
   if (!email || !phone || !password) {
@@ -39,7 +47,7 @@ if (Astro.request.method === 'POST') {
       const res = await fetch(`${apiBase}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, phone, password }),
+        body: JSON.stringify({ email, phone, password, ...(referralCode ? { referralCode } : {}) }),
       });
       const json: any = await res.json().catch(() => null);
 
@@ -91,6 +99,15 @@ if (Astro.request.method === 'POST') {
         <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel" defaultValue={values.phone} />
         <FormField id="password" name="password" label="Password (at least 8 characters)" type="password" required autocomplete="new-password" />
         <FormField id="confirmPassword" name="confirmPassword" label="Confirm password" type="password" required autocomplete="new-password" />
+        <FormField
+          id="referralCode"
+          name="referralCode"
+          label="Referral code (optional)"
+          type="text"
+          autocomplete="off"
+          placeholder="GPXXXXXX"
+          defaultValue={referralCodeFromUrl}
+        />
         <button
           type="submit"
           class="w-full bg-brand-primary text-gray-955 py-2.5 rounded-full font-bold text-xs tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985]"

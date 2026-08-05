@@ -61,6 +61,14 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
       killSwitch: row?.killSwitch ?? false,
       guestBackfillLookbackDays: row?.guestBackfillLookbackDays ?? null,
       guestBackfillCapPoints: row?.guestBackfillCapPoints ?? null,
+      referralReferrerPoints: row?.referralReferrerPoints ?? null,
+      referralRefereePoints: row?.referralRefereePoints ?? null,
+      birthdayPoints: row?.birthdayPoints ?? null,
+      streakTargetOrders: row?.streakTargetOrders ?? null,
+      streakWindowDays: row?.streakWindowDays ?? null,
+      streakRewardPoints: row?.streakRewardPoints ?? null,
+      chanceEnabled: row?.chanceEnabled ?? false,
+      termsVersion: row?.termsVersion ?? null,
     };
   }
 

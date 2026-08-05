@@ -4,6 +4,7 @@ import { customerBadges, gamificationBadges, gamificationMissions } from '../sch
 import { orders } from '../schema/commerce';
 import { reviews } from '../schema/reviews';
 import { loyaltyConfig } from '../schema/loyalty';
+import { ActiveMission, IGamificationLiveRepository } from '../../../application/use-cases/loyalty/LoyaltyGamificationUseCases';
 
 /**
  * Gamification definitions + dry evaluation over REAL commerce data.
@@ -16,7 +17,79 @@ import { loyaltyConfig } from '../schema/loyalty';
  * NOT_EVALUABLE. Awards are never written here — the award ledger stays empty
  * until loyalty activation.
  */
-export class DrizzleGamificationRepository {
+export class DrizzleGamificationRepository implements IGamificationLiveRepository {
+  /* ── Live engine (0087): active missions with verified data sources ────── */
+
+  async listActiveMissions(): Promise<ActiveMission[]> {
+    const missions = await db.select().from(gamificationMissions).where(eq(gamificationMissions.status, 'ACTIVE'));
+    const badges = await db.select().from(gamificationBadges);
+    return missions.map((m) => ({
+      id: m.id,
+      key: m.key,
+      title: m.title,
+      kind: m.kind,
+      threshold: m.threshold,
+      rewardPoints: m.rewardPoints,
+      badgeKey: badges.find((b) => b.missionId === m.id)?.key ?? null,
+    }));
+  }
+
+  /**
+   * Verified progress only. Delivered+paid retail orders for PURCHASE_COUNT
+   * and STREAK_ORDERS; successful attributed scans for VERIFICATION_COUNT;
+   * awarded referrals for REFERRAL_COUNT. REVIEW_COUNT stays unattributable
+   * (separate identity space) and returns null, never a fake zero.
+   */
+  async missionProgress(userId: string, mission: ActiveMission, opts: { streakWindowDays: number | null }): Promise<number | null> {
+    if (mission.kind === 'PURCHASE_COUNT') {
+      const rows = (await db.execute(sql`
+        select count(*)::int as n from orders
+        where user_id = ${userId} and payment_status = 'paid'
+          and status in ('delivered','completed') and buyer_type = 'retail'`)) as unknown as Array<{ n: number }>;
+      return Number(rows[0]?.n ?? 0);
+    }
+    if (mission.kind === 'VERIFICATION_COUNT') {
+      const rows = (await db.execute(sql`
+        select count(*)::int as n from verification_attempts
+        where user_id = ${userId} and is_successful = true`)) as unknown as Array<{ n: number }>;
+      return Number(rows[0]?.n ?? 0);
+    }
+    if (mission.kind === 'STREAK_ORDERS') {
+      const windowDays = opts.streakWindowDays;
+      if (windowDays === null) return null; // streak window unset = streaks off
+      const rows = (await db.execute(sql`
+        select created_at from orders
+        where user_id = ${userId} and payment_status = 'paid'
+          and status in ('delivered','completed') and buyer_type = 'retail'
+        order by created_at asc`)) as unknown as Array<{ created_at: string | Date }>;
+      const dates = rows.map((r) => new Date(r.created_at).getTime());
+      let run = 0;
+      for (let i = 0; i < dates.length; i++) {
+        if (i === 0 || dates[i] - dates[i - 1] <= windowDays * 86_400_000) run += 1;
+        else run = 1;
+      }
+      return run;
+    }
+    if (mission.kind === 'REFERRAL_COUNT') {
+      const rows = (await db.execute(sql`
+        select count(*)::int as n from loyalty_referrals
+        where referrer_user_id = ${userId} and status = 'awarded'`)) as unknown as Array<{ n: number }>;
+      return Number(rows[0]?.n ?? 0);
+    }
+    return null; // REVIEW_COUNT and unknown kinds: no attributable source
+  }
+
+  async awardBadgeByKey(userId: string, badgeKey: string): Promise<boolean> {
+    const [badge] = await db.select().from(gamificationBadges).where(eq(gamificationBadges.key, badgeKey)).limit(1);
+    if (!badge) return false;
+    const inserted = await db
+      .insert(customerBadges)
+      .values({ userId, badgeId: badge.id })
+      .onConflictDoNothing()
+      .returning();
+    return inserted.length > 0;
+  }
+
   async loyaltyEnabled(): Promise<boolean> {
     try {
       const [row] = await db.select().from(loyaltyConfig).limit(1);
@@ -154,18 +227,24 @@ export class DrizzleGamificationRepository {
       .where(eq(gamificationMissions.status, 'ACTIVE'))
       .orderBy(desc(gamificationMissions.createdAt));
 
-    let paidOrderCount: number | null = null;
-    if (activeMissions.some((m) => m.kind === 'PURCHASE_COUNT')) {
-      const [row] = await db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(orders)
-        .where(sql`${orders.userId} = ${userId} and ${orders.paymentStatus} = 'paid'`);
-      paidOrderCount = row?.n ?? 0;
-    }
+    // 0087: every live kind reports real progress through the same source the
+    // award engine uses; only REVIEW_COUNT stays honestly unattributable.
+    const [configRow] = await db.select().from(loyaltyConfig).limit(1);
+    const streakWindowDays = (configRow as { streakWindowDays?: number | null } | undefined)?.streakWindowDays ?? null;
+    const badgeRows = await db.select().from(gamificationBadges);
 
-    const missions = activeMissions.map((m) => {
-      if (m.kind === 'PURCHASE_COUNT') {
-        const progress = paidOrderCount ?? 0;
+    const missions = await Promise.all(
+      activeMissions.map(async (m) => {
+        const mission: ActiveMission = {
+          id: m.id,
+          key: m.key,
+          title: m.title,
+          kind: m.kind,
+          threshold: m.threshold,
+          rewardPoints: m.rewardPoints,
+          badgeKey: badgeRows.find((b) => b.missionId === m.id)?.key ?? null,
+        };
+        const progress = await this.missionProgress(userId, mission, { streakWindowDays });
         return {
           id: m.id,
           key: m.key,
@@ -175,26 +254,16 @@ export class DrizzleGamificationRepository {
           threshold: m.threshold,
           rewardPoints: m.rewardPoints,
           progress,
-          progressNote: null,
-          completed: progress >= m.threshold,
+          progressNote:
+            progress !== null
+              ? null
+              : m.kind === 'REVIEW_COUNT'
+                ? 'Reviews are recorded under a separate identity and cannot be counted toward your account yet.'
+                : 'This mission type is not tracked yet.',
+          completed: progress !== null && progress >= m.threshold,
         };
-      }
-      return {
-        id: m.id,
-        key: m.key,
-        title: m.title,
-        description: m.description,
-        kind: m.kind,
-        threshold: m.threshold,
-        rewardPoints: m.rewardPoints,
-        progress: null,
-        progressNote:
-          m.kind === 'REVIEW_COUNT'
-            ? 'Reviews are recorded under a separate identity and cannot be counted toward your account yet.'
-            : 'This mission type is not tracked yet.',
-        completed: false,
-      };
-    });
+      }),
+    );
 
     return { badges: earned, missions };
   }

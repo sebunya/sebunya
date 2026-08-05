@@ -1,0 +1,228 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { apiBase } from "../lib/api";
+
+/**
+ * GoldPlus Rewards terms (loyalty brief PART U #29: "Loyalty terms exist, are
+ * linked, and match what the code does").
+ *
+ * Every number on this page is READ FROM THE LIVE PROGRAMME CONFIG, not typed
+ * into the copy — so the terms cannot drift from the engine. If a value is not
+ * configured, the clause says the mechanic is not active rather than stating a
+ * number that would not pay out.
+ */
+interface Programme {
+  active: boolean;
+  earnRatePer1000Ugx: number;
+  expiryDays: number;
+  redemption: { configured: boolean; pointValueUgx?: number; minPoints?: number; maxShareBps?: number };
+  earnSources?: {
+    verificationScan: number | null;
+    counterfeitReport: number | null;
+    phoneVerification: number | null;
+    referral: { referrer: number | null; referee: number | null } | null;
+    birthday: number | null;
+    streak: { orders: number; windowDays: number | null; points: number } | null;
+  } | null;
+  tiers?: Array<{ code: string; name: string; threshold: number }>;
+  termsVersion?: string | null;
+}
+
+let programme: Programme | null = null;
+try {
+  const res = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(3000) });
+  const json: any = res.ok ? await res.json().catch(() => null) : null;
+  if (json?.success && json.data?.active) programme = json.data;
+} catch {
+  /* an unreachable API renders the not-active version, never invented terms */
+}
+
+const fmtUgx = (n: number) => new Intl.NumberFormat("en-UG", { style: "currency", currency: "UGX", maximumFractionDigits: 0 }).format(n);
+const src = programme?.earnSources ?? null;
+const pointValue = programme?.redemption.configured ? programme.redemption.pointValueUgx ?? null : null;
+const maxSharePct = programme?.redemption.maxShareBps ? Math.floor(programme.redemption.maxShareBps / 100) : null;
+const version = programme?.termsVersion ?? null;
+const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.threshold);
+---
+
+<BaseLayout
+  title="GoldPlus Rewards terms"
+  description="The terms of the GoldPlus Rewards programme: how points are earned, what they are worth, when they expire, and how they are protected."
+>
+  <main class="container mx-auto px-4 py-12 lg:px-8">
+    <div class="max-w-3xl">
+      <a href="/loyalty" class="text-xs font-black uppercase tracking-wider text-brand-mutedGrey underline underline-offset-4">← GoldPlus Rewards</a>
+      <h1 class="mt-4 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">GoldPlus Rewards terms</h1>
+      {version && (
+        <p class="mt-2 text-xs font-bold uppercase tracking-wider text-brand-mutedGrey">Version {version}</p>
+      )}
+      <p class="mt-4 text-sm leading-relaxed text-gray-600">
+        Every figure below is read live from the programme itself, so these terms always match what the system actually does.
+      </p>
+
+      {!programme ? (
+        <section class="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-6">
+          <h2 class="text-lg font-black text-slate-900">The programme is not active</h2>
+          <p class="mt-2 text-sm leading-relaxed text-gray-700">
+            GoldPlus Rewards is not currently issuing or redeeming points. No terms apply because no points are being created.
+            When the programme starts, this page will state the exact rules in force.
+          </p>
+        </section>
+      ) : (
+        <div class="mt-8 space-y-8 text-sm leading-relaxed text-gray-700">
+          <section>
+            <h2 class="text-lg font-black text-slate-900">1. Who can join</h2>
+            <p class="mt-2">
+              GoldPlus Rewards is open to retail customers with a GoldPlus account. You must be signed in when you place an order
+              for that order to earn points. Wholesale, dealer and corporate accounts are not part of this programme; their pricing
+              is negotiated separately.
+            </p>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-black text-slate-900">2. How points are earned</h2>
+            <p class="mt-2">
+              You earn <strong>{programme.earnRatePer1000Ugx} points for every 1,000 UGX</strong> of an order's total.
+              Points are <strong>earned when the order is delivered</strong>, not when it is placed or paid for. An order that is
+              never delivered — cancelled, refused at the door, or returned — does not earn points.
+            </p>
+            {(src?.verificationScan || src?.counterfeitReport || src?.phoneVerification || src?.referral?.referrer || src?.birthday || src?.streak) && (
+              <>
+                <p class="mt-3">Points are also awarded for:</p>
+                <ul class="mt-2 space-y-1 pl-5">
+                  {src?.verificationScan && (
+                    <li class="list-disc">
+                      <strong>{src.verificationScan} points</strong> for verifying a genuine GoldPlus product, limited to five verifications per day.
+                      Each verification code can earn points once only, ever, by one account.
+                    </li>
+                  )}
+                  {src?.counterfeitReport && (
+                    <li class="list-disc">
+                      <strong>{src.counterfeitReport} points</strong> for a counterfeit report that our team confirms. Reports we cannot confirm do not earn points.
+                    </li>
+                  )}
+                  {src?.phoneVerification && (
+                    <li class="list-disc"><strong>{src.phoneVerification} points</strong> for verifying your phone number, once per account.</li>
+                  )}
+                  {src?.referral?.referrer && (
+                    <li class="list-disc">
+                      <strong>{src.referral.referrer} points</strong> when someone you referred has their first order delivered
+                      {src.referral.referee ? `, and ${src.referral.referee} points for them` : ""}. You cannot refer yourself,
+                      an account can only be referred once, and referral rewards are capped per month.
+                    </li>
+                  )}
+                  {src?.streak && (
+                    <li class="list-disc">
+                      <strong>{src.streak.points} points</strong> for {src.streak.orders} delivered orders in a row, each placed within {src.streak.windowDays ?? 90} days of the previous one.
+                    </li>
+                  )}
+                  {src?.birthday && (
+                    <li class="list-disc"><strong>{src.birthday} points</strong> on your birthday, once per year, if you have added your date of birth.</li>
+                  )}
+                </ul>
+              </>
+            )}
+          </section>
+
+          <section>
+            <h2 class="text-lg font-black text-slate-900">3. What points are worth</h2>
+            {programme.redemption.configured ? (
+              <p class="mt-2">
+                Each point is worth <strong>{fmtUgx(pointValue ?? 0)}</strong> as a discount on a GoldPlus order.
+                You can redeem from <strong>{programme.redemption.minPoints?.toLocaleString("en-UG")} points</strong> in one order, and points may cover
+                up to <strong>{maxSharePct}%</strong> of the goods total. Points are not cash, cannot be exchanged for cash, cannot be
+                transferred or sold, and have no value outside a GoldPlus order.
+              </p>
+            ) : (
+              <p class="mt-2">
+                The redemption value is not configured yet, so points cannot currently be spent. Every point you have earned is recorded
+                and will remain valid; redemption opens for all members at the same time.
+              </p>
+            )}
+          </section>
+
+          <section>
+            <h2 class="text-lg font-black text-slate-900">4. Expiry</h2>
+            <p class="mt-2">
+              Points expire <strong>{programme.expiryDays} days</strong> after the day they are earned. When you redeem, your
+              oldest points are always used first. We notify you 30 days, 7 days and 1 day before a batch of points expires.
+              Expired points cannot be reinstated except through support where we have made an error.
+            </p>
+          </section>
+
+          {tiers.length > 0 && (
+            <section>
+              <h2 class="text-lg font-black text-slate-900">5. Membership levels</h2>
+              <p class="mt-2">
+                Levels are based on the total points you have <em>earned</em> over the life of your account, not your current balance —
+                spending points never reduces your level. Current thresholds:
+              </p>
+              <ul class="mt-2 space-y-1 pl-5">
+                {tiers.map((t) => (
+                  <li class="list-disc">
+                    <strong>{t.name}</strong> — {t.threshold === 0 ? "on joining" : `${t.threshold.toLocaleString("en-UG")} lifetime points`}
+                  </li>
+                ))}
+              </ul>
+              <p class="mt-2">
+                Level benefits are service benefits — how your orders and support requests are handled. They are not additional discounts.
+              </p>
+            </section>
+          )}
+
+          <section>
+            <h2 class="text-lg font-black text-slate-900">6. Refunds, cancellations and reversals</h2>
+            <p class="mt-2">
+              If an order is refunded, the points it earned are reversed. A partial refund reverses points in proportion to the amount refunded.
+              If you had redeemed points against a refunded order, those points are returned to you with their original expiry dates intact —
+              a refund never shortens the life of your points.
+            </p>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-black text-slate-900">7. Fair use</h2>
+            <p class="mt-2">
+              This programme rewards real purchases and real product verification. We may withhold or reverse points, and where necessary
+              suspend an account from the programme, where we identify duplicate accounts for the same person, self-referral, referral rings,
+              automated or bulk verification attempts, or reports made in bad faith. Any adjustment we make is recorded with a reason and
+              is visible in your points history.
+            </p>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-black text-slate-900">8. Your account and your data</h2>
+            <p class="mt-2">
+              Your points belong to your account and cannot be transferred to another person. If you have more than one account,
+              contact support and we will merge them — your earning history and expiry dates are preserved exactly as they were.
+              If you close your account, any outstanding points are forfeited; we will tell you 30 days before closure takes effect
+              so you have the opportunity to use them. How we handle your personal data is described in our
+              <a href="/privacy" class="font-bold underline underline-offset-2">Privacy Policy</a>.
+            </p>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-black text-slate-900">9. Changes to the programme</h2>
+            <p class="mt-2">
+              We may change the earning rate, point value, expiry period or the ways to earn. Changes apply to points earned after the change —
+              points you have already earned keep the rules that were in force when you earned them, because each entry records the rule version
+              that granted it. If we end the programme, we will give at least 30 days' notice so you can redeem your balance.
+            </p>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-black text-slate-900">10. Contact</h2>
+            <p class="mt-2">
+              Questions about your points, or something that looks wrong? Contact
+              <a href="/support" class="font-bold underline underline-offset-2">GoldPlus support</a> and we will look at the entries in your history with you.
+            </p>
+          </section>
+
+          <p class="border-t border-gray-200 pt-6 text-xs text-gray-500">
+            These terms apply alongside our <a href="/terms" class="font-bold underline underline-offset-2">Terms of sale</a>.
+            GoldPlus Rewards points are a promotional discount mechanism, not a financial product, and are governed by the laws of Uganda.
+          </p>
+        </div>
+      )}
+    </div>
+  </main>
+</BaseLayout>

@@ -13,14 +13,18 @@ if (!token) {
 
 let history: any = null;
 let programme: any = null;
+let gamification: any = null;
+let referral: any = null;
 let loadError = '';
 try {
-  const [historyRes, programmeRes] = await Promise.all([
-    fetch(`${apiBase}/account/loyalty`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(6000),
-    }),
+  const authed = { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) };
+  const [historyRes, programmeRes, gamificationRes, referralRes] = await Promise.all([
+    fetch(`${apiBase}/account/loyalty`, authed),
     fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(4000) }),
+    // 0087: badges + mission progress and the referral card. Neither is
+    // load-bearing for the balance, so both fail quietly.
+    fetch(`${apiBase}/account/gamification`, authed).catch(() => null),
+    fetch(`${apiBase}/account/referral`, authed).catch(() => null),
   ]);
   if (historyRes.status === 401) {
     Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
@@ -31,9 +35,15 @@ try {
   if (historyJson?.success) history = historyJson.data;
   else loadError = historyJson?.error?.message ?? 'Could not load your points.';
   if (programmeJson?.success) programme = programmeJson.data;
+  const gamificationJson: any = gamificationRes ? await gamificationRes.json().catch(() => null) : null;
+  if (gamificationJson?.success) gamification = gamificationJson.data;
+  const referralJson: any = referralRes ? await referralRes.json().catch(() => null) : null;
+  if (referralJson?.success && referralJson.data?.active) referral = referralJson.data;
 } catch {
   loadError = 'The loyalty service is unreachable right now.';
 }
+
+const shareUrl = referral ? `https://shopgoldplus.com/register?ref=${referral.code}` : '';
 
 const typeLabel: Record<string, string> = {
   earn: 'Earned',
@@ -104,6 +114,38 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
           </div>
         )}
 
+        {referral && (
+          <section class="bg-white border border-brand-borderGrey rounded-2xl p-6" data-referral-card>
+            <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Introduce a friend</h2>
+            <p class="text-sm text-brand-charcoal leading-relaxed">
+              Share your code. You earn <strong>{referral.referrerPoints.toLocaleString('en-UG')} points</strong> when their first
+              order is delivered{referral.refereePoints ? <> — and they start with <strong>{referral.refereePoints.toLocaleString('en-UG')} points</strong></> : null}.
+              Nothing is paid before that delivery.
+            </p>
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+              <code class="rounded-xl border border-brand-borderGrey bg-gray-50 px-4 py-2.5 text-base font-black tracking-widest text-brand-charcoal" data-referral-code>{referral.code}</code>
+              <button type="button" class="min-h-11 rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white" data-copy-referral data-share-url={shareUrl}>Copy invite link</button>
+              <a class="min-h-11 inline-flex items-center rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-black uppercase tracking-wider text-brand-charcoal" href={`https://wa.me/?text=${encodeURIComponent(`Get genuine electronics from GoldPlus — use my code ${referral.code} when you sign up: ${shareUrl}`)}`} target="_blank" rel="noopener noreferrer">Share on WhatsApp</a>
+              <span class="text-xs text-brand-mutedGrey" data-copy-status role="status" aria-live="polite"></span>
+            </div>
+            <p class="mt-3 text-xs text-brand-mutedGrey">
+              {referral.referred.toLocaleString('en-UG')} signed up with your code · {referral.awarded.toLocaleString('en-UG')} delivered and paid out · {referral.pending.toLocaleString('en-UG')} waiting on a first delivery.
+            </p>
+          </section>
+        )}
+
+        {gamification?.badges?.length > 0 && (
+          <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+            <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Your badges</h2>
+            <div class="flex flex-wrap gap-2">
+              {gamification.badges.map((b: any) => (
+                <span class="rounded-full border border-brand-primary/40 bg-brand-primary/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-brand-charcoal" title={b.description ?? ''}>{b.title}</span>
+              ))}
+            </div>
+            <a href="/account/rewards" class="mt-4 inline-block text-sm font-bold text-brand-charcoal underline underline-offset-4">Missions and progress &rarr;</a>
+          </section>
+        )}
+
         <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
           <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Points history</h2>
           {history.entries.length === 0 ? (
@@ -138,4 +180,27 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
       </div>
     )}
   </div>
+
+  {/* Referral copy — plain progressive enhancement, no framework (single-digit KB budget). */}
+  <script is:inline>
+    (function () {
+      var btn = document.querySelector('[data-copy-referral]');
+      if (!btn) return;
+      var status = document.querySelector('[data-copy-status]');
+      btn.addEventListener('click', function () {
+        var url = btn.getAttribute('data-share-url') || '';
+        var done = function (msg) {
+          if (status) {
+            status.textContent = msg;
+            setTimeout(function () { status.textContent = ''; }, 4000);
+          }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(function () { done('Invite link copied.'); }, function () { done(url); });
+        } else {
+          done(url);
+        }
+      });
+    })();
+  </script>
 </BaseLayout>

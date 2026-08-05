@@ -116,6 +116,38 @@ outbox; WhatsApp API deferred. RECOMMEND confirming earn/expiry/redemption
 notices as transactional; marketing-category loyalty messaging stays off until
 the preference-centre distinction is explicitly wired.
 
+---
+
+# PART V RESOLVED — Rob's activation instruction, 2026-08-05
+
+Rob: *"proceed to implement they are gamification modules you refused to build
+and a lot of other features for loyalty… don't leave anything undone or
+debated."* The recommendations above were therefore APPLIED as live
+configuration in migration 0087. Every one remains an admin-editable value —
+none of them is now a code change.
+
+| # | Decision | Applied value |
+|---|---|---|
+| 1 | Point value | **20 UGX** (2% return) |
+| 2 | Redemption min / max share | **500 points / 5,000 bps (50%)** |
+| 3 | Promo stacking | **Allowed** (redemption applies after the promo-priced quote) |
+| 4 | First-cohort expiry | Moot — clock never started |
+| 5 | Expiry window | **120 days** kept |
+| 6 | Earning basis | **Rule v1 retained** (order total). A v2 on subtotal is a new rule row whenever Rob wants it; changing it now would split history for zero live entries and no customer benefit. |
+| 7 | Additional earn sources | **verification_scan 25 (cap 5/day), counterfeit_report 250, phone_verification 100** — all ACTIVE |
+| 8 | Tiers | **T1 0 / T2 2,500 / T3 10,000 / T4 30,000**, service benefits only, ACTIVE |
+| 9 | Quests / badges | **3 missions** (five_deliveries, verify_ten, order_streak_3) + **6 badges**. Chance mechanics excluded. |
+| 10 | Dealers | **Excluded** from the consumer programme |
+| 11 | Guest backfill | **90 days / 5,000-point cap** |
+| 12 | Budget cap | **1,000,000 points**; breakage stays observed |
+| 13 | Chance mechanics | **NOT BUILT.** `chance_enabled` column exists, defaults false. The brief's own hard stop ("get a legal read before a single line of that is built") is the one instruction I did not override — this is a legal gate, not a build backlog item. |
+| 14 | Account closure | **Forfeit with 30-day notice**, stated in the live terms |
+| 15 | Channels | Transactional SMS→email through the governed outbox |
+
+**New gamification values set by 0087** (not in the original PART V list, needed
+to make the mechanics real): referral 200 referrer / 100 referee, birthday 150,
+streak 3 orders within 90 days for 300 points.
+
 ## PART P legal flags (readings, not resolutions)
 
 - **Programme terms**: points live without dedicated terms = the one live

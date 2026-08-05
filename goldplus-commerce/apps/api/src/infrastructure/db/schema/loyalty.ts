@@ -69,8 +69,36 @@ export const loyaltyConfig = pgTable('loyalty_config', {
   killSwitch: boolean('kill_switch').default(false).notNull(),
   guestBackfillLookbackDays: integer('guest_backfill_lookback_days'),
   guestBackfillCapPoints: integer('guest_backfill_cap_points'),
+  // ── 0087 gamification values (Rob activated the programme 2026-08-05).
+  referralReferrerPoints: integer('referral_referrer_points'),
+  referralRefereePoints: integer('referral_referee_points'),
+  birthdayPoints: integer('birthday_points'),
+  streakTargetOrders: integer('streak_target_orders'),
+  streakWindowDays: integer('streak_window_days'),
+  streakRewardPoints: integer('streak_reward_points'),
+  /** Chance mechanics stay OFF pending the PART P legal read — flag reserved. */
+  chanceEnabled: boolean('chance_enabled').default(false).notNull(),
+  termsVersion: varchar('terms_version', { length: 20 }),
   singleton: varchar('singleton', { length: 10 }).default('config').notNull(),
 });
+
+/** 0087: referral facts. One row per referee ever; awards reference ledger entries. */
+export const loyaltyReferrals = pgTable('loyalty_referrals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  code: varchar('code', { length: 12 }).notNull(),
+  referrerUserId: uuid('referrer_user_id').notNull(),
+  refereeUserId: uuid('referee_user_id').notNull(),
+  status: varchar('status', { length: 12 }).default('pending').notNull(), // pending|awarded|rejected
+  qualifyingOrderId: uuid('qualifying_order_id'),
+  referrerEntryId: uuid('referrer_entry_id'),
+  refereeEntryId: uuid('referee_entry_id'),
+  rejectionReason: varchar('rejection_reason', { length: 120 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  refereeIdx: uniqueIndex('loyalty_referrals_referee_uq').on(table.refereeUserId),
+  referrerIdx: index('loyalty_referrals_referrer_idx').on(table.referrerUserId),
+}));
 
 export const loyaltyRules = pgTable('loyalty_rules', {
   id: uuid('id').defaultRandom().primaryKey(),
