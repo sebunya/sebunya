@@ -328,3 +328,110 @@ the database after writing.
   `delivery_config_value` = 0 rows. The six launch values are unset and the
   module will return `fee_unavailable` until they are.
 - Suite: **345 files / 5,534 tests green** (+70 this stage).
+
+---
+
+## 7. Stage B — the one model (2026-08-05)
+
+**One equation, proven by arithmetic.** B2 midpoint 7km → round trip 14km → at
+20 km/h = 42 minutes travel → +15 handling = 57 expected minutes → × 100 UGX ×
+1.3 = 7,410 → rounded to **7,500**. The fee and the window are produced by one
+call from one number, so contract #2 is structural rather than a convention.
+
+**Band midpoints are computed** from the published edges, and a test asserts
+each equals `(low + high) / 2` and that the edges are contiguous — so the table
+cannot drift from the arithmetic.
+
+**One shrinkage formula**, `(n × observed + k × prior) / (n + k)`, applied to
+every learned value with no per-parameter special cases. A value with no sample
+IS its prior; at the pseudo-count it is exactly half evidence.
+
+**Rounding** is applied after the margin and **before** the floor, so the floor
+always wins — proven by a case where the rounded fee lands under a raised
+minimum. Raw, step and rounded are recorded separately.
+
+### The reason enum caught a real modelling gap
+Running the 18 orders through the first cut reported the three upcountry orders
+as `AREA_UNRESOLVED`. They had resolved **perfectly** — they are simply outside
+the metro corridor set. Telling an Adjumani customer we could not find their
+address would have been false and would have put them in the wrong ops queue.
+`AreaInput` now carries a nullable corridor/band, and the refusal order asks
+each question only once the one above it can be answered: an area with no
+corridor row has no serviceability flag either, so claiming it unserviceable
+would invent a fact.
+
+### Reason for each of the 18 historical orders
+| Reason | Count | Which |
+|---|---|---|
+| `CONFIG_INCOMPLETE` | **15** | every metro order — waiting only on the six launch numbers |
+| `AREA_NOT_METRO` | **3** | Esia→Adjumani, Atunga→Abim, Lazebu→Arua — manual path |
+
+No order reports `AREA_UNRESOLVED`, `AREA_UNSERVICEABLE`, `WATER_ACCESS` or
+`NO_ACTIVE_ORIGIN`. The moment the six numbers land, 15 of 18 quote.
+
+### The window
+No hour window is offered anywhere. It requires **both** an on-time target
+(PART 10 #1, unset) **and** a sample large enough for percentiles (none exist).
+Day level therefore falls out of two absent values rather than a threshold
+anyone invented, and the hour window is earned when both arrive. Nothing is
+widened to look cautious.
+
+### The pin nudge
+Ships with **no time claim**. A test asserts the copy contains no number,
+because zero deliveries have completed with a pin and the with/without split
+cannot be fitted. The claim gets added later, from data, as a Tier 1 string.
+
+### PART 9 #9 — no redundant test
+`corridor` and `distance_band` are NOT NULL in `delivery_corridor`, so a metro
+area without them is **unreachable** rather than checked. Recorded here rather
+than duplicated as a test that could never fail.
+
+---
+
+## 8. Verification: is dispatched → delivered actually reachable?
+
+**Yes — proven end to end on a restored clone, and the answer is more precise
+than a yes.**
+
+The first attempt FAILED in an instructive way: setting the fulfilment task to
+`OUT_FOR_DELIVERY` directly by SQL recorded the delivery but left the order at
+`received`, with `order_events` empty. The mirroring is wired but wrapped in a
+`catch` that is deliberately non-fatal — a legacy order not in `processing`
+refuses the transition, and that refusal must not void a truthfully recorded
+physical delivery. So a mis-sequenced order silently does not reach `delivered`;
+the audit records `orderTransition: 'skipped'`, which is observable but quiet.
+
+Walking the **real** state machine works:
+
+```
+order processing/paid
+  task NEW -> PICKING            order=processing
+  task -> PACKED                 order=processing
+  task -> READY_FOR_DISPATCH     order=processing
+  task -> OUT_FOR_DELIVERY       order=dispatched   <- mirrors
+  delivery recorded DELIVERED    ORDER STATUS = delivered
+  rider cost recorded            = 6,500 UGX
+  order_events: dispatched -> delivered
+```
+
+**What ops need in practice**, stated plainly:
+1. the order must be **paid** and in `processing` — an unpaid order cannot
+   dispatch, which is correct and not a bug;
+2. the fulfilment task must walk `NEW → PICKING → PACKED → READY_FOR_DISPATCH
+   → OUT_FOR_DELIVERY` (no skipping — backward moves are excluded so the audit
+   stays honest);
+3. then `DELIVERED` mirrors the order to `delivered`.
+
+**The gap that was real:** `actual_rider_cost_ugx` had a column and no way to
+write it. Stage B adds `POST /admin/delivery/orders/:orderId/actual-cost`
+(ORDERS_MANAGE, audited with before/after, refuses a figure above 5,000,000
+UGX as a typo) plus `GET /admin/delivery/awaiting-cost` as the ops queue. Both
+proven: cost 6,500 recorded, implausible figure refused with `IMPLAUSIBLE_COST`.
+
+All 18 production orders are unpaid, so **no real order can reach `delivered`
+today** — the blocker is payment, not the delivery machinery.
+
+Proof environment destroyed; production verified `captures=0 deliveries=0
+delivered_orders=0`.
+
+- Suite: **346 files / 5,580 tests green** (+46 this stage).
