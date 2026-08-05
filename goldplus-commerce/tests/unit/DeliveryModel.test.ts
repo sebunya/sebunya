@@ -263,9 +263,18 @@ describe('the six refusals', () => {
     expect(r).toMatchObject({ available: false, reason: 'WATER_ACCESS' });
   });
 
-  it('can produce every one of the six reasons', () => {
+  it('refuses a district-only resolution as TOO COARSE, not as a failure', () => {
+    // "Kampala" resolved correctly. It is simply not precise enough to price,
+    // and the customer is one choice away from a fee.
+    const r = quoteDelivery(inputs({ area: area({ districtOnly: true, district: 'Kampala' }) }));
+    expect(r).toMatchObject({ available: false, reason: 'AREA_TOO_COARSE' });
+    expect(r.available === false && r.explanation.rawFeeUgx).toBeNull();
+  });
+
+  it('can produce every one of the seven reasons', () => {
     const produced = new Set<string>();
     produced.add((quoteDelivery(inputs({ area: null })) as any).reason);
+    produced.add((quoteDelivery(inputs({ area: area({ districtOnly: true }) })) as any).reason);
     produced.add((quoteDelivery(inputs({ area: area({ corridor: null, band: null, accessMode: null }) })) as any).reason);
     produced.add((quoteDelivery(inputs({ area: area({ serviceable: false }) })) as any).reason);
     produced.add((quoteDelivery(inputs({ area: area({ accessMode: 'water' }) })) as any).reason);
