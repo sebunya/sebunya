@@ -49,8 +49,12 @@ describe('the retired seed script', () => {
     const tracked = execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })
       .split('\n')
       .filter((f) => /\.(ts|tsx|js|mjs|cjs|json|sh|ya?ml)$/.test(f));
+    // This file is the enforcement, so it necessarily names the thing it bans.
+    // Excluding it is the difference between a guard and a paradox.
+    const SELF = 'tests/unit/DeliverySeedRetirement.test.ts';
     const offenders: string[] = [];
     for (const file of tracked) {
+      if (file === SELF) continue;
       const full = resolve(root, file);
       if (!existsSync(full)) continue;
       if (readFileSync(full, 'utf8').includes('goldplus_locations_seed')) offenders.push(file);
