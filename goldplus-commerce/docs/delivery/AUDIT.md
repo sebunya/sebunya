@@ -270,3 +270,61 @@ depends on C's capture points. Stage E can start in parallel with D once the
 registry shape is fixed in B. The only hard external dependency is the missing
 collisions file, which blocks part of Stage A and all of the collision tests in
 Stage C.
+
+---
+
+## 6. Stage A — complete (2026-08-05, migrations 0092)
+
+**East Africa Time**, built as a primitive before anything used it.
+`packages/shared/src/time/eat.ts`. Uganda is UTC+3 year-round with no daylight
+saving, so a fixed offset is exactly representable — no tz database, no
+ambiguity windows. Nothing reads the system clock or host timezone, so a
+server in any region computes the same cutoff. **17 tests**, concentrated where
+it actually breaks: evenings after 21:00 UTC when EAT and UTC disagree about
+the date, month and year rollovers, and weekends judged in EAT rather than UTC
+(a Friday 21:30 UTC is already Saturday in Kampala).
+
+**Origin guard.** `apps/api/src/domain/delivery/DeliveryOrigin.ts` +
+**13 tests**. Fixes the class, not the instance: the test asserts
+`34/60 + 39/3600 === 0.5775` to record that the whole-degrees component was
+dropped, so this is reproducible rather than a typo. The same bounding box
+catches `(0,0)`, which is what a missing origin row degrades into, and reports
+`NULL_ISLAND` separately from `OUTSIDE_UGANDA` because they are different bugs.
+
+**Seed retirement.** `goldplus_locations_seed.sql` now carries an abort guard
+before its first DDL and is renamed `.RETIRED`. Deleting it would have been
+weaker — it was supplied as a data artifact and may be re-supplied — so the
+enforced rule is that no executable copy may exist and nothing in the tracked
+tree references it. **3 tests.**
+
+**Schema (0092).** Origins, corridors, alias corridors, name collisions, the
+config registry with immutable versions, learned factors, and the calibration
+capture. **The migration contains not one INSERT** — a test pins that, because
+"no invented numbers" has to be structural. `corridor` and `distance_band` are
+NOT NULL, making PART 9 #9 unreachable rather than merely checked. Bands are
+constrained to B0–B6 and a test asserts the retired CORE–REMOTE names cannot
+reappear. Coordinates are `numeric`, not float, so 32.57750 round-trips.
+
+**Rider cost capture shipped in stage A**, per Rob's instruction:
+`delivery_quote_capture.actual_rider_cost_ugx` exists from day one. NULL means
+not known; zero would be a measurement.
+
+**Import.** MD5-gated on all four files, row assertions 1/362/28/84 all fatal,
+origin coordinate validated through the Uganda guard before it can reach the
+database, every slug checked against the gazetteer, counts re-asserted against
+the database after writing.
+
+### Deployment proof
+- Backup `pre-0092-20260805-183636.dump` → clone → **REHEARSE_OK
+  duration_ms=179** → import into clone → **DELIVERY_IMPORT_OK added=362** →
+  **re-run: `added=0 changed=0 unchanged=362`** (PART 9 #12) → applied live →
+  **Migrations complete!** → live import → rolled, 4/4 healthy → clone dropped.
+- **Production**: origins=1, corridors=362, aliases=28, collisions=84, water=12,
+  collision classes 38/18/28 exactly.
+- **Origin live**: `HUB-CBD-WILSON 0.313330,32.577500 active=true`, landmarks
+  "Next to Uhuru Restaurant / Opposite the Pioneer Mall parking area" — Uhuru
+  first.
+- **No invented numbers**: `delivery_learned_factor` = 0 rows,
+  `delivery_config_value` = 0 rows. The six launch values are unset and the
+  module will return `fee_unavailable` until they are.
+- Suite: **345 files / 5,534 tests green** (+70 this stage).
