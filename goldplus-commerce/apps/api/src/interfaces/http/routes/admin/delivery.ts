@@ -99,10 +99,30 @@ routes.post('/orders/:orderId/actual-cost', requirePermissions([PERMISSIONS.ORDE
   return c.json({ success: true, data: result.row });
 });
 
-/** The queue: delivered orders nobody has costed yet. */
+/**
+ * The ops queue. Two lists that both mean "an observation the model will not
+ * get unless someone acts", which is why they sit together rather than in
+ * separate corners of the back office.
+ */
 routes.get('/awaiting-cost', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
-  const rows = await Registry.getInstance().listDeliveriesAwaitingCostUseCase.execute(100);
-  return c.json({ success: true, data: rows });
+  const registry = Registry.getInstance();
+  const [awaitingCost, skippedMirrors] = await Promise.all([
+    registry.listDeliveriesAwaitingCostUseCase.execute(100),
+    // Not fatal, never auto-retried — but loud enough to act on.
+    registry.deliveryCaptureRepo.listSkippedMirrors(100),
+  ]);
+  return c.json({
+    success: true,
+    data: {
+      awaitingCost,
+      skippedMirrors,
+      counts: { awaitingCost: awaitingCost.length, skippedMirrors: skippedMirrors.length },
+      note:
+        skippedMirrors.length > 0
+          ? 'A skipped mirror means the delivery was recorded but the order never reached "delivered" — usually because it was not dispatched through the fulfilment states. Each one is an observation the model will not get.'
+          : null,
+    },
+  });
 });
 
 /** The registry itself, so the Control Centre UI can generate from it. */

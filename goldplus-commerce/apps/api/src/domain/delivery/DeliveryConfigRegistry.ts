@@ -141,6 +141,29 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     help: 'A quote of 4,317 is unusable in a cash market and a rider needs to make change. Applied after the margin and before the minimum fee.',
   },
 
+  {
+    key: 'implausible_rider_cost_ugx',
+    tier: 1,
+    type: 'ugx',
+    unit: 'UGX',
+    mandatory: false,
+    defaultValue: 5_000_000,
+    min: 1000,
+    max: 100_000_000,
+    label: 'Reject a rider cost above',
+    help: 'A single delivery costing more than this is a typo, not a delivery. Raise it if a genuine long-haul run ever costs more.',
+  },
+  {
+    key: 'same_day_cutoff_eat',
+    tier: 1,
+    type: 'string',
+    unit: 'HH:MM East Africa Time',
+    mandatory: false,
+    defaultValue: null,
+    label: 'Same-day dispatch cutoff',
+    help: 'Orders placed before this time in Kampala go out the same day. Unset means no same-day promise is made at all.',
+  },
+
   // ── Absent by design: their absence produces an honest weaker promise ────
   {
     key: 'window_min_sample_size',
@@ -302,6 +325,28 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
       'Collect free from GoldPlus, Wilson Road — next to Uhuru Restaurant, opposite the Pioneer Mall parking area.',
     label: 'Pickup offer',
     help: 'Shown alongside every quote. Uhuru Restaurant first, Pioneer Mall as the wider fallback.',
+  },
+  {
+    key: 'copy_unavailable_area_too_coarse',
+    tier: 1,
+    type: 'string',
+    unit: null,
+    mandatory: false,
+    defaultValue:
+      'We found your district. Choose the specific area you are in and we will show your exact delivery fee.',
+    label: 'District known, area not yet chosen',
+    help: 'NOT a refusal — the address resolved correctly, it is simply not precise enough to price. The interface offers the areas in that district. Never fall back to a district average: there is no such thing.',
+  },
+  {
+    key: 'copy_variance_agreement_request',
+    tier: 1,
+    type: 'string',
+    unit: null,
+    mandatory: false,
+    defaultValue:
+      'Your delivery address turned out to be in a different area from the one selected, so the delivery fee has changed. We need your agreement before we send the rider.',
+    label: 'Asking a customer to agree a changed fee',
+    help: 'Sent only when the change is above the absorption threshold. Below it we absorb the difference silently.',
   },
   {
     key: 'copy_pin_nudge',

@@ -1099,6 +1099,12 @@ export class Registry {
   public readonly recordActualRiderCostUseCase = new RecordActualRiderCostUseCase(
     this.deliveryCaptureRepo,
     this.auditRepo,
+    async () => {
+      const v = (await this.deliveryConfigReader.numericValues()).implausible_rider_cost_ugx;
+      // The registry ships a value, so this fallback is unreachable in practice
+      // — but a missing ceiling must never mean "accept anything".
+      return Number.isFinite(v) ? v : 0;
+    },
   );
   public readonly captureQuoteUseCase = new CaptureQuoteUseCase(this.deliveryCaptureRepo);
   public readonly listDeliveriesAwaitingCostUseCase = new ListDeliveriesAwaitingCostUseCase(this.deliveryCaptureRepo);

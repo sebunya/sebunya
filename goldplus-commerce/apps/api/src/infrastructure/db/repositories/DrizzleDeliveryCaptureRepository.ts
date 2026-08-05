@@ -94,6 +94,37 @@ export class DrizzleDeliveryCaptureRepository implements IDeliveryCaptureReposit
     return rows.map((r) => ({ orderId: r.orderId, deliveredAt: r.deliveredAt ?? null, areaSlug: r.areaSlug ?? null }));
   }
 
+  /**
+   * Skipped lifecycle mirrors (Rob, 2026-08-05).
+   *
+   * When a delivery is recorded against an order that is not in a state the
+   * machine will move to `delivered`, the mirror is deliberately non-fatal —
+   * a refusal must not void a truthfully recorded physical delivery. But every
+   * skip is an order that never reaches `delivered`, and therefore an
+   * observation the model never gets. The model has none to spare.
+   *
+   * The audit already records it, so this reads rather than duplicates: no new
+   * write path, no risk of the queue and the audit disagreeing.
+   */
+  async listSkippedMirrors(limit: number) {
+    return (await db.execute(sql`
+      select a.entity_id as fulfilment_task_id,
+             a.created_at,
+             a.new_state->>'outcome'          as attempted_outcome,
+             a.new_state->>'orderTransition'  as order_transition,
+             t.order_id,
+             o.order_number,
+             o.status                         as order_status_now,
+             o.payment_status
+      from audit_logs a
+      left join fulfilment_tasks t on t.id = a.entity_id
+      left join orders o on o.id = t.order_id
+      where a.action = 'FULFILMENT_DELIVERY_RECORDED'
+        and a.new_state->>'orderTransition' = 'skipped'
+      order by a.created_at desc
+      limit ${limit}`)) as unknown as Array<Record<string, unknown>>;
+  }
+
   /** Margin report input: quoted against actual, per area. Stage D reads this. */
   async marginByArea() {
     return (await db.execute(sql`

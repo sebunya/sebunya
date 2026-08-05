@@ -71,7 +71,16 @@ export type UnavailableReason =
   | 'AREA_NOT_METRO'
   | 'AREA_UNSERVICEABLE'
   | 'WATER_ACCESS'
-  | 'AREA_UNRESOLVED';
+  | 'AREA_UNRESOLVED'
+  /**
+   * The address resolved to a DISTRICT and no further — "Kampala" is a real,
+   * correct resolution that simply is not precise enough to price, because
+   * corridor and band exist only at area granularity. This is not a refusal
+   * and must not read like one: the customer narrows to an area and gets a
+   * fee. Falling back to a district-average band would be inventing a fact
+   * that does not exist.
+   */
+  | 'AREA_TOO_COARSE';
 
 export const UNAVAILABLE_REASONS: readonly UnavailableReason[] = [
   'CONFIG_INCOMPLETE',
@@ -80,7 +89,20 @@ export const UNAVAILABLE_REASONS: readonly UnavailableReason[] = [
   'AREA_UNSERVICEABLE',
   'WATER_ACCESS',
   'AREA_UNRESOLVED',
+  'AREA_TOO_COARSE',
 ];
+
+/** Reasons where the customer can act and immediately get a quote. */
+export const ACTIONABLE_BY_CUSTOMER: readonly UnavailableReason[] = ['AREA_TOO_COARSE'];
+
+/**
+ * Reasons that route to the manual-quote ops queue rather than the
+ * address-review queue. An upcountry order needs a price from a human; an
+ * unresolved address needs someone to work out where it is. Different work,
+ * different people.
+ */
+export const MANUAL_QUOTE_REASONS: readonly UnavailableReason[] = ['AREA_NOT_METRO'];
+export const ADDRESS_REVIEW_REASONS: readonly UnavailableReason[] = ['AREA_UNRESOLVED', 'AREA_TOO_COARSE'];
 
 /** The registry key holding the customer-facing string for each reason. */
 export const REASON_COPY_KEY: Record<UnavailableReason, string> = {
@@ -90,6 +112,7 @@ export const REASON_COPY_KEY: Record<UnavailableReason, string> = {
   AREA_UNSERVICEABLE: 'copy_unavailable_area_unserviceable',
   WATER_ACCESS: 'copy_unavailable_water_access',
   AREA_UNRESOLVED: 'copy_unavailable_area_unresolved',
+  AREA_TOO_COARSE: 'copy_unavailable_area_too_coarse',
 };
 
 /* ── Rounding ───────────────────────────────────────────────────────────── */
@@ -138,6 +161,14 @@ export const NEUTRAL_FACTOR: LearnedFactor = { value: 1, sampleSize: 0 };
  */
 export interface AreaInput {
   areaSlug: string;
+  /**
+   * True when the address resolved only as far as a district. Corridor and
+   * band do not exist at that granularity, so no quote is possible — but the
+   * customer is one choice away from one.
+   */
+  districtOnly?: boolean;
+  /** The district, so the interface can offer the areas within it. */
+  district?: string | null;
   corridor: string | null;
   band: DistanceBand | null;
   /** Only known for areas in the corridor set. */
@@ -299,16 +330,19 @@ export function quoteDelivery(inputs: QuoteInputs): QuoteResult {
 
   // 1. Did the address resolve to an area at all?
   if (!inputs.area) return refuse('AREA_UNRESOLVED');
-  // 2. Is it in the metro corridor set? Nothing below this is even KNOWN for an
+  // 2. Did it resolve only as far as a district? Correct, but not priceable —
+  //    and the customer can fix it in one step, so this is not a refusal.
+  if (inputs.area.districtOnly) return refuse('AREA_TOO_COARSE');
+  // 3. Is it in the metro corridor set? Nothing below this is even KNOWN for an
   //    upcountry area — it has no corridor row, so it has no serviceability or
   //    access mode either. A Gulu order must never be priced by a model fitted
   //    on Kampala boda journeys; it goes to the manual path.
   if (!inputs.area.corridor || !inputs.area.band) return refuse('AREA_NOT_METRO');
-  // 3. Somewhere we have decided not to serve, at any price.
+  // 4. Somewhere we have decided not to serve, at any price.
   if (!inputs.area.serviceable) return refuse('AREA_UNSERVICEABLE');
-  // 4. Water areas are pickup-only. No surcharge, no coefficient, no road quote.
+  // 5. Water areas are pickup-only. No surcharge, no coefficient, no road quote.
   if (inputs.area.accessMode === 'water') return refuse('WATER_ACCESS');
-  // 5. Our own faults last, because they are not the customer's problem.
+  // 6. Our own faults last, because they are not the customer's problem.
   if (!inputs.hasActiveOrigin) return refuse('NO_ACTIVE_ORIGIN');
   const missing = missingLaunchKeys(inputs.config);
   if (missing.length > 0) return refuse('CONFIG_INCOMPLETE', missing);

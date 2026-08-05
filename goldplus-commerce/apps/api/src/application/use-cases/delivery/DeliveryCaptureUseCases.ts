@@ -55,12 +55,15 @@ export interface IDeliveryCaptureRepository {
  * and precisely the problem being fixed.
  */
 export class RecordActualRiderCostUseCase {
-  /** A cost this far above any plausible delivery is a typo, not a delivery. */
-  static readonly IMPLAUSIBLE_COST_UGX = 5_000_000;
-
   constructor(
     private readonly captures: IDeliveryCaptureRepository,
     private readonly audit: IAuditRepository,
+    /**
+     * The typo ceiling is a Tier 1 configuration value, not a literal — by this
+     * module's own rule, a number a human might reasonably want to change does
+     * not belong in code. Reads `implausible_rider_cost_ugx`.
+     */
+    private readonly ceilingUgx: () => Promise<number>,
   ) {}
 
   async execute(input: {
@@ -72,10 +75,11 @@ export class RecordActualRiderCostUseCase {
     if (!Number.isInteger(input.actualRiderCostUgx) || input.actualRiderCostUgx < 0) {
       return fail('INVALID_COST', 'The rider cost must be a whole number of shillings, and cannot be negative.');
     }
-    if (input.actualRiderCostUgx > RecordActualRiderCostUseCase.IMPLAUSIBLE_COST_UGX) {
+    const ceiling = await this.ceilingUgx();
+    if (input.actualRiderCostUgx > ceiling) {
       return fail(
         'IMPLAUSIBLE_COST',
-        `That is above ${RecordActualRiderCostUseCase.IMPLAUSIBLE_COST_UGX.toLocaleString()} UGX for one delivery — check the figure.`,
+        `That is above ${ceiling.toLocaleString()} UGX for one delivery — check the figure.`,
       );
     }
     const before = await this.captures.findByOrderId(input.orderId);
