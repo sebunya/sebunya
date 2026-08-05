@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { UGANDA_DISTRICTS, UGANDA_PLACE_ALIASES } from '../../packages/shared/src/locations/uganda';
+import { UGANDA_DISTRICTS, UGANDA_PLACE_ALIASES, normalizeUgandaDistrict } from '../../packages/shared/src/locations/uganda';
 import { canTransitionOrder, isTerminalOrderStatus } from '../../apps/api/src/domain/commerce/OrderStateMachine';
 import { prepareCheckoutPayload } from '../../apps/web/src/lib/checkout';
 
@@ -99,12 +99,21 @@ describe('gazetteer dataset gates (run once data/locations/v1 is committed)', ()
     const header = lines[0].toLowerCase().split(',').map((h) => h.trim());
     const dIdx = header.findIndex((h) => h === 'current_district' || h === 'district');
     expect(dIdx).toBeGreaterThanOrEqual(0);
-    const districtsInData = new Set(
+    const rawDistricts = new Set(
       lines.slice(1).map((l) => l.split(',')[dIdx]?.trim()).filter(Boolean),
     );
-    const zeroArea = UGANDA_DISTRICTS.filter(
-      (d) => ![...districtsInData].some((x) => x.toUpperCase() === d.toUpperCase()),
-    );
+    // The gazetteer carries 135 districts against a 136-district vocabulary.
+    expect(rawDistricts.size).toBe(135);
+    // Resolve through the SAME normaliser the import uses, so the 2019 source's
+    // spellings (Kasanda / Kikube) land on Kassanda / Kikuube rather than
+    // masquerading as missing districts.
+    const covered = new Set<string>();
+    for (const raw of rawDistricts) {
+      const canonical = normalizeUgandaDistrict(raw);
+      expect(canonical, `gazetteer district "${raw}" must resolve to the canonical vocabulary`).not.toBeNull();
+      covered.add(canonical!);
+    }
+    const zeroArea = UGANDA_DISTRICTS.filter((d) => !covered.has(d));
     expect(zeroArea).toEqual(['Terego']);
   });
 
