@@ -163,7 +163,9 @@ async function main() {
             ${JSON.stringify({ areaSlug: m.slug, via: m.via, resolvedDistrict: m.district })}::jsonb,
             ${m.via === 'cross_district_correction'
               ? `E.4 migration: DISTRICT CORRECTION — "${probe}" resolves to ${m.district}, not the ${o.district} stored on the order. The order text is preserved exactly; this audit row records the true destination.`
-              : 'E.4 migration: order destination linked'})`);
+              : m.via === 'district'
+                ? `E.4 migration: DISTRICT-LEVEL match only — the order names the district "${probe}", not an area. Linked to a representative area in ${m.district} so the delivery zone is right; the specific area is NOT known and must not be treated as confirmed.`
+                : 'E.4 migration: order destination linked'})`);
       }
       console.log(`ORDER_MATCHED ${o.order_number} "${probe}" → ${m.slug} (${m.via}${m.district !== o.district && o.district ? `, corrects district ${o.district}→${m.district}` : ''})`);
     } else {
