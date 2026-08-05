@@ -294,11 +294,20 @@ async function main() {
   // 11. Changelog.
   const stamp = new Date().toISOString();
   const line = `\n## ${stamp} · v${DATA_VERSION} import\n- added ${added}, changed ${changedRows}, unchanged ${unchanged}, de-listed ${removed.length}${removed.length ? ` (${removed.join(', ')})` : ''}\n- aliases seeded: ${aliasRows.length}; exceptions: ${exceptions.length}; metro flagged: ${metroMatched}\n`;
-  const changelogPath = path.resolve(__dirname, '../../../../docs/location-data-changelog.md');
-  if (!fs.existsSync(changelogPath)) {
-    fs.writeFileSync(changelogPath, '# Location Data Changelog\n\nAppend-only record of gazetteer imports (brief D.1).\n');
+  // The changelog is a record, not a gate: the data is already committed by
+  // this point, so a missing docs directory (the container image has no repo
+  // checkout) must not turn a successful import into a failure.
+  try {
+    const changelogPath = path.resolve(__dirname, '../../../../docs/location-data-changelog.md');
+    fs.mkdirSync(path.dirname(changelogPath), { recursive: true });
+    if (!fs.existsSync(changelogPath)) {
+      fs.writeFileSync(changelogPath, '# Location Data Changelog\n\nAppend-only record of gazetteer imports (brief D.1).\n');
+    }
+    fs.appendFileSync(changelogPath, line);
+  } catch (error) {
+    console.warn(`CHANGELOG_SKIPPED ${(error as Error).message}`);
+    console.log(`CHANGELOG_ENTRY${line}`);
   }
-  fs.appendFileSync(changelogPath, line);
 
   console.log(`IMPORT_OK added=${added} changed=${changedRows} unchanged=${unchanged} delisted=${removed.length}`);
   process.exit(0);
