@@ -1,0 +1,13 @@
+# Keep the Docker build hermetic: the deploy checkout is also the build
+# context, and host-side installs (running migration/import scripts on the
+# server) leave node_modules trees whose pnpm symlinks are dead inside the
+# image. Without this file, `COPY apps/web ./apps/web` clobbers the image's
+# freshly installed dependencies with those dead links and the build fails
+# with "Cannot find module '@astrojs/tailwind'".
+node_modules
+**/node_modules
+.git
+**/.astro
+**/dist
+**/.turbo
+*.log
