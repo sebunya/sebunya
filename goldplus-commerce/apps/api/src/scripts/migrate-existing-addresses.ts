@@ -20,7 +20,7 @@
 import '../config/env';
 import { sql } from 'drizzle-orm';
 import { db } from '../infrastructure/db/client';
-import { foldUgandanOrthography } from '@goldplus/shared';
+import { foldUgandanOrthography, normalizeUgandaDistrict } from '@goldplus/shared';
 
 const apply = process.argv.includes('--apply');
 
@@ -37,6 +37,20 @@ interface AreaRow {
 async function matchText(raw: string, district: string | null): Promise<{ slug: string; label: string; district: string; postcode: string | null; version: number; via: string } | null> {
   const folded = foldUgandanOrthography(raw);
   if (folded.length < 2) return null;
+
+  // A DISTRICT name as the probe must resolve inside that district. Without
+  // this, "Kampala" matched a parish literally called Kampala in SEMBABULE —
+  // a silent 200km mis-route on a real order.
+  const asDistrict = normalizeUgandaDistrict(raw);
+  if (asDistrict) {
+    const inDistrict = (await db.execute(sql`
+      select area_slug, parish_or_area_clean, display_label, current_district, postcode, data_version, search_text
+      from ug_area
+      where selectable = true and upper(current_district) = upper(${asDistrict})
+      order by is_metro desc, area_slug
+      limit 1`)) as unknown as AreaRow[];
+    if (inDistrict[0]) return hit(inDistrict[0], 'district');
+  }
   // alias exact → area exact → trigram (same order as the live pipeline)
   const alias = (await db.execute(sql`
     select a.area_slug, a.parish_or_area_clean, a.display_label, a.current_district, a.postcode, a.data_version, a.search_text
@@ -59,6 +73,22 @@ async function matchText(raw: string, district: string | null): Promise<{ slug: 
       and (${district}::text is null or upper(current_district) = upper(${district}))
     order by score desc limit 1`)) as unknown as AreaRow[];
   if (trigram[0]) return hit(trigram[0], 'trigram');
+
+  // Last resort: the stored district may itself be WRONG. GP-202608-DBF2 is
+  // recorded as "Kira, Mukono" but Kira is in Wakiso, so every district-filtered
+  // stage above rejects it. Retry with no district filter and flag the result as
+  // a cross-district correction — the caller records it as an audit fact and
+  // never rewrites the order.
+  if (district) {
+    const crossDistrict = (await db.execute(sql`
+      select area_slug, parish_or_area_clean, display_label, current_district, postcode, data_version, search_text
+      from ug_area
+      where selectable = true
+        and (split_part(search_text, ' ', 1) = ${folded} or search_text like ${folded + ' %'})
+      order by is_metro desc, area_slug
+      limit 1`)) as unknown as AreaRow[];
+    if (crossDistrict[0]) return hit(crossDistrict[0], 'cross_district_correction');
+  }
   return null;
 }
 
@@ -131,8 +161,8 @@ async function main() {
           insert into address_audit (order_id, actor_type, action, after, note)
           values (${o.id}, 'system', 'migration_linked',
             ${JSON.stringify({ areaSlug: m.slug, via: m.via, resolvedDistrict: m.district })}::jsonb,
-            ${o.order_number === 'GP-202608-DBF2'
-              ? 'E.4 migration: CORRECTS the old gazetteer — Kira is in ' + m.district + ', not the district stored on the order. Historical text preserved unchanged.'
+            ${m.via === 'cross_district_correction'
+              ? `E.4 migration: DISTRICT CORRECTION — "${probe}" resolves to ${m.district}, not the ${o.district} stored on the order. The order text is preserved exactly; this audit row records the true destination.`
               : 'E.4 migration: order destination linked'})`);
       }
       console.log(`ORDER_MATCHED ${o.order_number} "${probe}" → ${m.slug} (${m.via}${m.district !== o.district && o.district ? `, corrects district ${o.district}→${m.district}` : ''})`);
