@@ -19,6 +19,8 @@ import { db } from '../infrastructure/db/client';
 import {
   ugArea,
   ugAreaAlias,
+  ugAreaGroup,
+  ugAreaGroupMember,
   ugDataException,
   deliveryZonePolicy,
 } from '../infrastructure/db/schema/locations';
@@ -164,7 +166,17 @@ async function main() {
         (col(r, ['delivery_zone', 'zone'], 'master', false) || districtZone.get(district.toUpperCase()) || '').toUpperCase() || null,
       selectable: 'selectable' in r ? toBool(r['selectable']) : true,
       isMetro: false,
-      searchText: buildSearchText([clean, source, district]),
+      // The county/municipality and sub-county carry the names customers
+      // actually type. Entebbe, for example, exists in the gazetteer only as
+      // the municipality over Central/Katabi/Kigungu/Kiwafu Wards — without
+      // these, a search for "Entebbe" found nothing at all.
+      searchText: buildSearchText([
+        clean,
+        source,
+        district,
+        col(r, ['county_or_division', 'county_or_municipality', 'county'], 'master', false),
+        col(r, ['sub_county_clean', 'sub_county', 'subcounty'], 'master', false),
+      ]),
       dataVersion: DATA_VERSION,
     });
   }
@@ -228,8 +240,38 @@ async function main() {
     });
   }
 
+  // 8b. Area groups (brief F.2 / PART N #10). A colloquial umbrella like
+  // "Nsambya" covers four separate gazetteer parishes (Railway, Police
+  // Barracks, Central, Housing Estate). Presenting four near-identical rows is
+  // the "four fragments" the brief calls out, so the umbrella aliases become
+  // groups and the search returns ONE entry. Membership is derived from the
+  // data — every area in the anchor's district whose folded name contains the
+  // folded umbrella term — never a hand-typed list.
+  type GroupSeed = { groupName: string; normalisedName: string; district: string; members: string[] };
+  const groupSeeds: GroupSeed[] = [];
+  for (const a of aliases) {
+    const type = col(a, ['type', 'alias_type'], 'aliases', false).toUpperCase();
+    if (type !== 'COLLOQUIAL_UMBRELLA') continue;
+    const term = col(a, ['alias_or_missing_name', 'alias', 'name'], 'aliases');
+    const anchorSlug = col(a, ['anchor_area_slug', 'area_slug'], 'aliases');
+    const anchor = bySlug.get(anchorSlug);
+    if (!anchor) fail(`umbrella "${term}" anchors to unknown area ${anchorSlug}`);
+    const folded = foldUgandanOrthography(term);
+    const members = areaRows
+      .filter((x) => x.currentDistrict === anchor!.currentDistrict && foldUgandanOrthography(x.parishOrAreaClean).includes(folded))
+      .map((x) => x.areaSlug);
+    // A single-member "group" is just the area itself — no grouping needed.
+    if (members.length < 2) continue;
+    groupSeeds.push({
+      groupName: `${term}, ${anchor!.currentDistrict}`,
+      normalisedName: folded,
+      district: anchor!.currentDistrict,
+      members,
+    });
+  }
+
   if (dryRun) {
-    console.log(`DRY_RUN_OK areas=${areaRows.length} aliases=${aliasRows.length} exceptions=${exceptions.length} metro=${metroMatched}`);
+    console.log(`DRY_RUN_OK areas=${areaRows.length} aliases=${aliasRows.length} exceptions=${exceptions.length} metro=${metroMatched} groups=${groupSeeds.length} [${groupSeeds.map((g) => `${g.groupName}:${g.members.length}`).join(', ')}]`);
     process.exit(0);
   }
 
@@ -264,6 +306,18 @@ async function main() {
         .insert(ugAreaAlias)
         .values(al)
         .onConflictDoNothing({ target: [ugAreaAlias.normalisedAlias, ugAreaAlias.areaSlug] });
+    }
+    // Groups: rebuilt each run from the data (idempotent, no orphan members).
+    await tx.delete(ugAreaGroupMember);
+    await tx.delete(ugAreaGroup);
+    for (const g of groupSeeds) {
+      const [inserted] = await tx
+        .insert(ugAreaGroup)
+        .values({ groupName: g.groupName, normalisedName: g.normalisedName, district: g.district })
+        .returning();
+      for (const slug of g.members) {
+        await tx.insert(ugAreaGroupMember).values({ groupId: inserted.id, areaSlug: slug }).onConflictDoNothing();
+      }
     }
     // Exceptions: replace-by-version (read-only reference data, idempotent).
     await tx.delete(ugDataException).where(eq(ugDataException.dataVersion, DATA_VERSION));
