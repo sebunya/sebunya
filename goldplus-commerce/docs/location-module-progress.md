@@ -104,3 +104,76 @@ PART O prep: two-key flag ships OFF (old flow intact = rollback); canary plan
 as one sheet (docs/location-module-decisions.md, commit 98b3a01).
 Deploy hygiene fallout fixed during close: .dockerignore (4641791) + image
 chmod normalisation (43d01ea).
+
+## Stage 5 + PART N/O acceptance — DATA LANDED (2026-08-05) ✅ commit 884ac70
+Rob supplied the five gazetteer files. **All five MD5s matched the approved
+table exactly**, so the hard gate passed on the first attempt.
+
+### Row counts (PART N #1)
+5,805 areas · 28 aliases · 135 districts · 255 exceptions · 362 metro areas —
+every figure exactly as the brief specified.
+
+### Defects the real data exposed (the script was written blind)
+1. **Alias columns**: the name column is `alias_or_missing_name`, not `alias`;
+   confidence is `attribution_confidence`. Both were hard failures.
+2. **Exception columns**: type is `issue_type`, description is `treatment`.
+   Also a hard failure.
+3. **Dropped fields**: `county_or_division` and `sub_county_clean` were being
+   discarded.
+4. **District spellings**: the 2019 source writes Kasanda/Kikube where the
+   official list has Kassanda/Kikuube. Added to the spelling-variant map —
+   the CSVs were not touched and the district vocabulary stayed closed.
+   With those mapped, exactly one vocabulary district has zero areas:
+   **Terego** — the 135-vs-136 gap the brief predicted, now proven from data.
+5. **`search_text` omitted the county**, so *Entebbe* — which exists only as
+   the municipality over Central/Katabi/Kigungu/Kiwafu Wards — was completely
+   unsearchable (N#7 "ntebbe" returned nothing).
+6. **Search matched only the START of `search_text`**, so any term after the
+   first word was unreachable. Now matches at any word boundary, still as a
+   per-word prefix so the negative traps hold.
+7. **No area groups were seeded**, so "nsambya" returned four fragments
+   (N#10). COLLOQUIAL_UMBRELLA aliases now become groups with membership
+   DERIVED from the data: Nsambya/Kampala 4 members, Seeta/Mukono 2.
+8. **Changelog write failed an import that had already committed** — it now
+   logs instead of failing.
+
+### PART N acceptance — live against api.shopgoldplus.com
+- **N#1** 5,805/28/135/255 loaded, all assertions passing. **IMPORT_OK
+  added=5805**.
+- **N#2** re-run changes nothing: **added=0 changed=0 unchanged=5805
+  delisted=0**.
+- **N#3** the two non-selectable records (Shimoma malformed postcode,
+  Kiryandongo missing parish name) are excluded from every customer result.
+- **N#6/7/8** ntinda · bugolobi · lubaga · matugga · najera · kisasi · gaba ·
+  ntebbe · kalerwe · najjera · namugongo · kajjansi — **all twelve resolve**.
+- **N#9 negative traps ALL PASS**: bunga→Buziga (no Busanga),
+  kasangati→Nangabo (no Kasana), namasuba→Bunamwaya (no Namayuba).
+- **N#10** nsambya returns ONE `group_exact` entry "Nsambya, Kampala".
+- **N#12** offline index live: gazetteer mode, 390 entries, 42KB raw /
+  **8KB gzipped** vs the 60KB budget.
+- **Performance**: EXPLAIN ANALYZE on the real 5,805-row table — exact 4.3ms,
+  word-boundary prefix 0.36ms, trigram 16.7ms. End-to-end API mean **52ms**,
+  max 73ms. The 200ms gate is met with two orders of magnitude to spare.
+
+### PART O 20-address gate
+Twenty real destinations from past orders, run through the live matcher:
+**20/20 = 100%**, against an 80% gate.
+
+Two defects were caught in the dry run *before* anything was written:
+- "Kampala" matched `sembabule-kampala-32530` — a parish called Kampala in
+  Sembabule — on two real orders. A district-name probe now resolves inside
+  that district, and the audit says plainly it is a DISTRICT-LEVEL match with
+  the specific area not known.
+- **GP-202608-DBF2** stayed unmatched because the order records "Kira, Mukono"
+  while Kira is in Wakiso. A cross-district fallback now resolves it and
+  records: *"DISTRICT CORRECTION — Kira resolves to Wakiso, not the Mukono
+  stored on the order."* The order text is **unchanged**: `Kira | Kira,
+  Mukono`, district still Mukono. 20 `migration_linked` audit facts written;
+  no order was rewritten.
+
+### Still deliberately unset
+All four delivery zones remain `active=false` with SLA and COD **UNSET** —
+Option A holds: unset means unset, and nothing defaults.
+
+Suite: **341 files / 5,484 tests green** (one fewer skip — the data-gated
+Terego guard now runs for real).
