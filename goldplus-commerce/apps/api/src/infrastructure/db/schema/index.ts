@@ -48,3 +48,4 @@ export * from './campaignSendRuns';
 export * from './gamification';
 export * from './roleGrants';
 export * from './locations';
+export * from './delivery';

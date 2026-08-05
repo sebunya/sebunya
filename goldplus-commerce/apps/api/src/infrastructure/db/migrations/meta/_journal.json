@@ -645,6 +645,13 @@
       "when": 1788753600000,
       "tag": "0091_draw_activation_business_basis",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "5",
+      "when": 1788840000000,
+      "tag": "0092_delivery_estimation_foundation",
+      "breakpoints": true
     }
   ]
 }
