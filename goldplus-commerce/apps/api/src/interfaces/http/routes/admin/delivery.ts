@@ -21,6 +21,10 @@ import { missingLaunchKeys } from '../../../../domain/delivery/DeliveryModel';
  * Guard strings come from the PERMISSIONS vocabulary. Reading the setup state
  * is a report; entering a cost figure that will feed pricing is a mutation.
  */
+// audit-exempt: the one write here (actual-cost) is audited inside
+// RecordActualRiderCostUseCase, which records the before and after values —
+// auditing again at the route would double-log and would put the audit in the
+// wrong layer. The other POST validates a value without saving anything.
 const routes = new Hono();
 routes.use('*', authMiddleware);
 
