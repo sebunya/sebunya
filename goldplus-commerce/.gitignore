@@ -43,3 +43,4 @@ scratch/
 data/locations/v1/*.csv
 data/locations/v1/*.sql
 data/locations/v2/*.csv
+data/locations/v1/*.RETIRED

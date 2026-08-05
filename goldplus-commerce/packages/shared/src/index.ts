@@ -32,3 +32,4 @@ export * from './locations/uganda';
 export * from './locations/uganda-geo';
 export * from './locations/folding';
 export * from './phone/uganda';
+export * from './time/eat';
