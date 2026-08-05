@@ -114,3 +114,22 @@ CSV export + daily snapshots. Comms: earn-on-vest, redemption confirmations,
 tier changes, expiry warnings — all through the existing outbox/router.
 Customer surfaces: page rebuild (PART Q), checkout redemption + honest earn
 preview, account pending-vs-available.
+
+## Stage 15 — acceptance + close (2026-08-05) ✅ (deployed at 43d01ea)
+PART U acceptance pass: targeted cluster 7 files / 134 tests green; full suite
+338 files / 5,362 (313+25 skipped / 5,250+112 skipped) — baseline was 285 /
+5,010. Live proofs at shopgoldplus.com: /commerce/loyalty-programme returns
+{active, earnRatePer1000Ugx:10, expiryDays:120, redemption.configured:false,
+vesting:"on_delivery"}; product page renders "Earn at least N GoldPlus points
+when delivered"; /loyalty rebuilt page serving. DB invariants verified in
+production: ledger 0 rows (clock never started), config singleton all-NULL +
+kill_switch off, order_earn v1 active, tiers T1–T4 inactive/NULL, immutability
+triggers present, 0 redemptions/merges/OTP rows. PART V sheet delivered
+(docs/loyalty-decisions.md, commit 9f72ef4). NOT yet demonstrable with real
+traffic: redemption/backfill/tier flows end-to-end (config NULL by design —
+they activate when Rob sets PART V values); loyalty terms page remains to be
+drafted before redemption opens (U#29 open, flagged in PART P legal reading).
+Deploy hygiene fallout fixed during close: .dockerignore (4641791) and image
+chmod normalisation (43d01ea) — build-context poisoning from host node_modules
+and root-only 600 file modes; brief API outage during the roll, restored same
+hour with --env-file corrected.

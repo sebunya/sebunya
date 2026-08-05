@@ -82,3 +82,25 @@ order-velocity fraud signal; /admin/locations workspace with all six J.1 views.
 87→88 (named change: new admin page, fails closed).
 **Blocked on data files**: import run, EXPLAIN ANALYZE p95 proof, stage 5
 match-rate report, gazetteer-mode offline index, most PART N proofs.
+
+## Stage 10 — acceptance + rollout prep + close (2026-08-05) ✅ code-complete / ⏸ data-gated (deployed at 43d01ea)
+PART N acceptance: every file-independent item demonstrated — targeted cluster
+7 files / 110 tests + 1 data-gated skip green (folding both ways, ranking,
+duplicate-name disambiguation, group behaviour, manual fallback, link parsing,
+phone normalisation = N#27); full suite 338 files / 5,362 vs 285 / 5,010
+baseline, no deletions (retirements: era-pin relocations only, named in the
+loyalty log; admin census 87→88, COMMERCE_OS modules 15→16, both named).
+Live: /locations/search serves honest zeroResult; miss capture already logged
+1 real production miss; offline index live on its dedicated URL (9,883 B raw /
+2,574 B gz vs 60KB budget) and SW-precached; picker script 16.1KB raw / 4.8KB
+gz (single-digit budget held); zones Z1–Z4 all-NULL and activation-blocked in
+production (Option A: unset means unset).
+DATA-GATED (files never found on the machine, MD5 gate unpassable): N#1–N#5
+import + migration + match rate + GP-202608-DBF2 correction, N#6–N#11 live
+resolution proofs, PART O 20-address 80% gate, EXPLAIN ANALYZE p95. Scripts
+are ready to run the moment `data/locations/v1/` lands.
+PART O prep: two-key flag ships OFF (old flow intact = rollback); canary plan
++ weekly ops-queue review documented in the closing report. PART P delivered
+as one sheet (docs/location-module-decisions.md, commit 98b3a01).
+Deploy hygiene fallout fixed during close: .dockerignore (4641791) + image
+chmod normalisation (43d01ea).
