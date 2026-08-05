@@ -120,6 +120,7 @@ try {
 }
 
 const formatUgx = (amount: number): string =>
+  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(amount);
 
 // Loyalty earn preview (loyalty brief PART G: visibility at the point of
 // decision). Lower bound, vests on delivery — absent when the programme is off.
@@ -129,7 +130,6 @@ try {
   const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
   if (lpJson?.success && lpJson.data?.active) loyaltyRate = Number(lpJson.data.earnRatePer1000Ugx) || 0;
 } catch { /* preview only */ }
-  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(amount);
 
 const availabilityLabel: Record<ProductPublicDto['availability']['kind'], string> = {
   in_stock: 'In stock',
