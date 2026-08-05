@@ -406,3 +406,53 @@ Get the written opinion or the licence, then
 `PUT /admin/loyalty/programme-config` with `chanceEnabled: true`, and
 `POST /admin/loyalty/draws/:id/activation`. The activation call refuses with
 409 while the basis is `none`, so the order cannot be got wrong.
+
+## Scratch card RUNNING as an internal promotion (2026-08-05) ✅ — migration 0091, commit 95b162c
+Rob's decision: the delivery scratch card is an internal promotional campaign,
+not a gaming or lottery product, and the 0090 controls were too restrictive.
+The statutory research stays on record in `docs/loyalty-legal-brief.md`
+unchanged — the decision is documented, not erased.
+
+### What changed
+- **New `business_accepted` compliance basis**: an explicit, dated, written
+  acceptance by the owner. The system still records WHY draws may run, without
+  needing a lawyer's reference before the feature can operate. `none` remains a
+  blocking state, and any basis must carry a timestamp and written reason.
+- **Age gate optional and switched OFF.** The 0090 gate was not just strict, it
+  was a design error for this product: date of birth is an optional profile
+  field almost nobody fills in, and the check failed closed, so nearly every
+  customer would have been refused a card and the feature would have looked
+  dead. The capability remains in code — one config value reinstates it.
+- Draws enabled, campaign activated.
+
+### Deliberately unchanged (none of these restrict a customer)
+Published odds computed from live weights · every card wins, enforced by a
+database CHECK · one card per delivered order and one prize per card as unique
+indexes · UGX 500,000 budget cap with the honourable-card guarantee ·
+append-only ledger record of every prize · customer self-exclusion · the
+audit/regulatory CSV export · three independent kill switches.
+
+### Deployment proof
+- Backup `pre-0091-20260805-162359.dump` → clone → **REHEARSE_OK
+  duration_ms=127** → verified → applied live (**Migrations complete!**) →
+  rolled, 4/4 healthy → clone dropped.
+- **Production**: `basis=business_accepted min_age=NO RESTRICTION`,
+  `chance_enabled=true kill_switch=false`, `campaign_active=true budget=25000`.
+- `/commerce/reward-draw` returns the live odds table; `/loyalty` shows "A
+  scratch card with every delivery"; `/loyalty-terms` renders section 6a.
+
+### End-to-end proof on a disposable clone (production data never involved)
+Registered a customer **with no date of birth on file** — precisely the case
+the old gate would have refused:
+- `/account/draw` showed their card;
+- playing it returned **25 points**, wrote exactly one ledger entry
+  (`draw:<cardId>`, rule `reward_draw`), one result row, card `played`,
+  campaign spend `25/25000`, customer balance 25;
+- `/account/draw/self-exclude` then correctly made them ineligible.
+Container and clone destroyed; production verified `test_users=0 cards=0
+ledger=0`.
+
+- Suite: **341 files / 5,484 tests green**.
+
+**The scratch card is now live.** The next delivered order from a signed-in
+retail customer grants that customer a card, and any customer can play it.
