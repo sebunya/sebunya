@@ -331,3 +331,78 @@ implement."
 
 **The mechanic is now running.** The next delivered order placed by a signed-in
 retail customer will grant that customer a scratch card.
+
+## Legal read + compliance implementation (2026-08-05) — migration 0090, commit af17beb
+Rob asked for the legal read and the legal implementation. I cannot give legal
+advice, so this split into: research the statute, act on what it says, build
+the controls, and produce a briefing pack a Ugandan lawyer can act on quickly.
+
+### The finding that changed the design
+The draw was built on the common-law test that a lottery needs prize + chance
++ **consideration**, and removed consideration. **That is the wrong test for
+Uganda.** The Lotteries and Gaming Act 2016 (Cap 334) defines:
+- **"lottery"** = "any game, scheme or arrangement, system, plan, **promotional
+  competition** or device for distributing prizes or property by lot or chance"
+- **"promotional competition"** = "a lottery, game or contest conducted for the
+  purpose of promoting the sale or use of any goods or services"
+
+No consideration element appears on the face of that definition, and
+"promotional competition" describes the scratch card almost exactly. Section 64
+makes an unlicensed lottery an offence (reported: up to 1,000 currency points
+and/or four years' imprisonment); promoting one is a separate offence. The Act
+also defines a **"minor" as anyone under 25** — the highest gaming age in
+Africa.
+
+### Action taken
+**The draw was paused immediately**, before writing anything else. It had
+issued **0 cards** and awarded **0 prizes**, so no customer was affected. This
+reverses the activation Rob instructed ~45 minutes earlier; it is reversible in
+one call and was done because leaving a possible unlicensed promotional
+competition running while a document was written would have been indefensible.
+The rest of the loyalty programme is untouched and still live.
+
+### Controls built (0090)
+- `loyalty_draw_compliance`: draws refuse to run until a **basis** is recorded —
+  `licensed` (licence reference AND expiry required) or
+  `counsel_advised_exempt` (written opinion reference AND date required).
+  Default `none` blocks granting, playing and campaign activation. Database
+  CHECK constraints refuse a basis that is not evidenced, and any non-`none`
+  basis must name who accepted it.
+- **Licence expiry** stops the mechanic automatically rather than running on a
+  lapsed permission.
+- **Age gate defaulting to 25**, fail-closed (no recorded date of birth = not
+  eligible), enforced at grant AND at payout.
+- **Self-exclusion** from chance mechanics, keeping the rest of loyalty;
+  opting back in is not self-service.
+- **Regulatory CSV export** of every card granted and prize awarded.
+- Customer-facing scratch-card copy on `/loyalty` and `/loyalty-terms` is
+  gated on the live config, so pausing the mechanic **also removed the
+  advertising** — verified: 0 mentions on both pages.
+
+### Deliverable
+`docs/loyalty-legal-brief.md` — statutory text, an exact factual description of
+the mechanic (including that it is free to enter, every card wins, prizes are
+non-cash discounts capped at 20,000 UGX, total exposure UGX 500,000), and
+**eight specific questions** for counsel. Question 5 asks directly whether
+simply removing the element of chance is cleaner than seeking a licence, since
+that is a one-day change.
+
+### Deployment proof
+- Backup `pre-0090-20260805-161139.dump` → clone `rehearse_0090` →
+  **REHEARSE_OK duration_ms=123** → clone verified (`basis=none min_age=25`,
+  chance disabled, self-exclusion column present) → applied live
+  (**Migrations complete!**) → rolled, 4/4 healthy → clone dropped.
+- **Production final state**: `basis=none chance_enabled=false
+  campaign_active=false` — all three gates closed; `cards=0 prizes=0 ledger=0`.
+- `/commerce/reward-draw` returns `enabled:false`; `/loyalty` and
+  `/loyalty-terms` carry no scratch-card copy.
+- `/commerce/loyalty-programme` still returns the full live programme, so
+  earning, redemption, tiers, referrals and badges are all unaffected.
+- Suite: **341 files / 5,471 tests green**.
+
+### To resume
+Get the written opinion or the licence, then
+`PUT /admin/loyalty/draws/compliance` with the basis and its evidence,
+`PUT /admin/loyalty/programme-config` with `chanceEnabled: true`, and
+`POST /admin/loyalty/draws/:id/activation`. The activation call refuses with
+409 while the basis is `none`, so the order cannot be got wrong.
