@@ -624,6 +624,13 @@
       "when": 1788494400000,
       "tag": "0088_loyalty_reward_draw",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "5",
+      "when": 1788580800000,
+      "tag": "0089_reward_draw_activation",
+      "breakpoints": true
     }
   ]
 }

@@ -253,6 +253,47 @@ routes.post('/draws/:id/activation', requirePermissions([PERMISSIONS.SETTINGS_MA
   return c.json({ success: true, data: { id: campaign.id, code: campaign.code, active: campaign.active } });
 });
 
+// 0089: the draw budget is a configuration value, not a code change. Stated
+// in POINTS because that is what the engine enforces; the response echoes the
+// UGX equivalent at the current point value so the two never drift silently.
+routes.put('/draws/:id/budget', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const budgetCapPoints = Number(body?.budgetCapPoints);
+  if (!Number.isInteger(budgetCapPoints) || budgetCapPoints <= 0 || budgetCapPoints > 100_000_000) {
+    return c.json({ success: false, error: { code: 'INVALID_VALUE', message: 'budgetCapPoints must be a positive whole number.' } } satisfies ApiResponse<never>, 400);
+  }
+  const registry = Registry.getInstance();
+  const campaigns = await registry.loyaltyDrawRepo.listCampaignsWithStats();
+  const campaign = campaigns.find((camp) => camp.id === c.req.param('id'));
+  if (!campaign) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Campaign not found.' } } satisfies ApiResponse<never>, 404);
+  // Refusing to set a cap below what has already been paid out keeps the
+  // spent/cap relationship meaningful rather than instantly "over budget".
+  if (budgetCapPoints < campaign.pointsAwarded) {
+    return c.json({
+      success: false,
+      error: { code: 'BELOW_SPENT', message: `This campaign has already awarded ${campaign.pointsAwarded} points; the cap cannot be lower.` },
+    } satisfies ApiResponse<never>, 400);
+  }
+  await registry.loyaltyDrawRepo.setCampaignBudget(campaign.id, budgetCapPoints, (c.get('user') as any).id);
+  const config = await registry.loyaltyCompletionRepo.getProgrammeConfig();
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: (c.get('user') as any).id,
+    action: 'LOYALTY_DRAW_BUDGET_CHANGED',
+    entity: 'loyalty_draw_campaign',
+    entityId: campaign.id,
+    previousState: { budgetCapPoints: campaign.budgetCapPoints },
+    newState: { budgetCapPoints },
+  });
+  return c.json({
+    success: true,
+    data: {
+      id: campaign.id,
+      budgetCapPoints,
+      budgetCapUgx: config.pointValueUgx === null ? null : budgetCapPoints * config.pointValueUgx,
+    },
+  });
+});
+
 // 0087: referral oversight — the ring/self-referral fraud surface.
 routes.get('/referrals', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const rows = (await (await import('../../../../infrastructure/db/client')).db.execute(

@@ -170,6 +170,22 @@ describe('token granting protects the budget without stranding a card', () => {
     });
   });
 
+  it('allows 25 cards in flight at the live 25,000-point budget, and stops at 26', () => {
+    // Rob's UGX 500,000 cap / 20 UGX per point = 25,000 points. With a
+    // 1,000-point top prize the pessimistic guard permits 25 unplayed cards at
+    // once. This is the documented throughput consequence of guaranteeing that
+    // every issued card can be paid — pinned so a budget change surfaces it.
+    const live = { ...CAMPAIGN, budgetCapPoints: 25_000 };
+    expect(canGrantToken({ campaign: live, prizes: PRIZES, outstandingTokens: 24, now })).toEqual({ ok: true });
+    expect(canGrantToken({ campaign: live, prizes: PRIZES, outstandingTokens: 25, now })).toMatchObject({
+      ok: false,
+      reason: 'BUDGET_EXHAUSTED',
+    });
+    // Played cards stop being outstanding, so throughput recovers as they are
+    // used: with 12,000 already awarded and nothing in flight, granting resumes.
+    expect(canGrantToken({ campaign: { ...live, pointsAwarded: 12_000 }, prizes: PRIZES, outstandingTokens: 0, now })).toEqual({ ok: true });
+  });
+
   it('dates the card from the campaign expiry window', () => {
     expect(tokenExpiryFrom(CAMPAIGN, now).toISOString()).toBe('2026-09-04T00:00:00.000Z');
     expect(maxPrizePoints(PRIZES)).toBe(1000);

@@ -207,6 +207,15 @@ export class DrizzleLoyaltyDrawRepository implements ILoyaltyDrawRepository {
     );
   }
 
+  async setCampaignBudget(campaignId: string, budgetCapPoints: number, actorId: string) {
+    const rows = await db
+      .update(loyaltyDrawCampaigns)
+      .set({ budgetCapPoints, updatedBy: actorId, updatedAt: new Date() })
+      .where(eq(loyaltyDrawCampaigns.id, campaignId))
+      .returning();
+    return rows[0] ? toCampaign(rows[0]) : null;
+  }
+
   async setCampaignActive(campaignId: string, active: boolean, actorId: string) {
     const rows = await db
       .update(loyaltyDrawCampaigns)

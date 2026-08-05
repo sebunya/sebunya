@@ -211,6 +211,43 @@ describe('0088 reward draw — the chance mechanic', () => {
   });
 });
 
+describe('0089 draw activation and budget', () => {
+  const activation = read('apps/api/src/infrastructure/db/migrations/0089_reward_draw_activation.sql');
+  const adminRoutes = read('apps/api/src/interfaces/http/routes/admin/loyalty.ts');
+
+  it('is registered and additive', () => {
+    expect(journal).toContain('0089_reward_draw_activation');
+    const executable = activation
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join('\n');
+    expect(executable).not.toMatch(/\bDROP\b/i);
+    expect(executable).not.toMatch(/\bDELETE\s+FROM\b/i);
+  });
+
+  it('sets the budget to the points equivalent of the UGX cap Rob approved', () => {
+    // 500,000 UGX at the live 20 UGX point value = 25,000 points.
+    expect(activation).toContain('SET "budget_cap_points" = 25000');
+    expect(activation).toMatch(/500,000 UGX \/ 20 UGX per point = 25,000 points/);
+  });
+
+  it('turns on BOTH switches, so neither alone was assumed', () => {
+    expect(activation).toMatch(/UPDATE "loyalty_config" SET "chance_enabled" = true/);
+    expect(activation).toMatch(/SET "active" = true[\s\S]*WHERE "code" = 'delivery_scratch_v1'/);
+  });
+
+  it('brings the top-prize cap into a range that actually binds against the smaller budget', () => {
+    expect(activation).toContain('SET "max_awards" = 10');
+  });
+
+  it('exposes the budget as an admin configuration value, not a code change', () => {
+    expect(adminRoutes).toContain("routes.put('/draws/:id/budget'");
+    expect(adminRoutes).toContain("action: 'LOYALTY_DRAW_BUDGET_CHANGED'");
+    // A cap below what has already been paid out is refused.
+    expect(adminRoutes).toContain("code: 'BELOW_SPENT'");
+  });
+});
+
 describe('customer copy honesty', () => {
   it('renders the loyalty terms from live programme config, not hardcoded numbers', () => {
     expect(terms).toContain('/commerce/loyalty-programme');

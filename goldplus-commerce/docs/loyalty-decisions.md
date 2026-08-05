@@ -196,13 +196,20 @@ deploy.
 ## Controls
 
 - Two independent switches, either of which stops all draws:
-  `loyalty_config.chance_enabled` (master, default **false**) and the
-  per-campaign `active` flag (launch campaign seeded **inactive**). The
-  programme kill switch also halts it.
-- **Budget**: 200,000-point cap on the launch campaign. Granting stops while
-  the outstanding cards could still exceed the cap at the top prize, so an
-  issued card is always honourable — a customer is never told "you won, but
-  the budget ran out".
+  `loyalty_config.chance_enabled` (master) and the per-campaign `active` flag.
+  The programme kill switch also halts it. Both were seeded OFF in 0088 and
+  turned ON by Rob's instruction in 0089.
+- **Budget: UGX 500,000, set by Rob 2026-08-05** = **25,000 points** at the
+  live 20 UGX point value (0089; the seeded 0088 figure of 200,000 points
+  would have been UGX 4,000,000). The cap is enforced in POINTS — if the point
+  value ever changes, re-derive it. Granting stops while the outstanding cards
+  could still exceed the cap at the top prize, so an issued card is always
+  honourable: a customer is never told "you won, but the budget ran out".
+- **Throughput consequence of that guarantee** (documented, not a defect):
+  25,000 points ÷ 1,000-point top prize = **25 unplayed cards in flight at any
+  one time**. Cards stop counting as outstanding the moment they are played, so
+  at current order volume this never binds; it is pinned by a test so any
+  future budget change surfaces the trade-off.
 - **Fairness**: server-side selection from `node:crypto` `randomInt`;
   `Math.random` appears nowhere in the prize path; the client sends only a
   card id. The odds table in force is snapshotted onto every result, so a
@@ -222,12 +229,20 @@ deploy.
 | 50 points | 2,500 | 25.00% |
 | 100 points | 1,200 | 12.00% |
 | 250 points | 250 | 2.50% |
-| 1,000 points | 50 (max 200 awards) | 0.50% |
+| 1,000 points | 50 (max 10 awards) | 0.50% |
 
-Expected cost ≈ 51 points per card (≈ 1,020 UGX at the 20 UGX point value).
+Expected cost ≈ 51 points per card (≈ 1,020 UGX at the 20 UGX point value), so
+the UGX 500,000 budget funds roughly **490 cards**. At 0.50% odds that is
+about 2–3 top prizes expected; the top-prize ceiling was cut from 200 to **10**
+in 0089 because 200 × 1,000 points was eight times the whole budget and could
+never bind.
 
-## To switch it on
+## Turning it off (or changing the budget) — no deploy needed
 
-`PUT /admin/loyalty/programme-config` with `chanceEnabled: true`, then
-`POST /admin/loyalty/draws/:id/activation` with `{"active": true}`. Both are
-audited. Reverse either one to stop it instantly.
+- Stop everything: `PUT /admin/loyalty/programme-config` with
+  `chanceEnabled: false`, **or** `POST /admin/loyalty/draws/:id/activation`
+  with `{"active": false}`. Either alone is sufficient.
+- Change the budget: `PUT /admin/loyalty/draws/:id/budget` with
+  `{"budgetCapPoints": N}`. The response echoes the UGX equivalent at the
+  current point value. A cap below what has already been awarded is refused.
+- All three are audited.
