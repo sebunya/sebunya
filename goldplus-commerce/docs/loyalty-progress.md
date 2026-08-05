@@ -199,3 +199,31 @@ is a legal gate on Uganda's lotteries and gaming legislation, not a backlog
 item, so the `chance_enabled` flag ships false and no mechanic exists behind
 it. This is the single item from the instruction I did not implement, and it is
 flagged here rather than quietly skipped.
+
+### Deployment proof (2026-08-05, commit 7b09da4)
+- Backup `pre-0087-20260805-150525.dump` (704K) taken before anything ran.
+- Rehearsed on throwaway clone `rehearse_0087` restored from that dump →
+  **REHEARSE_OK duration_ms=115**. Clone verified: config pv=20 min=500
+  maxbps=5000 budget=1,000,000 ref=200/100 bday=150 streak=3/90/300
+  chance=false terms=v1; 4 active rules; 4 active tiers with service benefits;
+  3 ACTIVE missions (two pre-existing DRAFT missions correctly stayed DRAFT);
+  7 badges; ledger untouched at 0.
+- Applied live → **Migrations complete!** Same state verified on the
+  production database. Ledger still 0 entries — the migration created
+  configuration, never points.
+- Rolled api+web: 4/4 containers healthy.
+- Live proofs: `/commerce/loyalty-programme` now returns
+  `redemption.configured:true` with all six earnSources and four tiers;
+  `/loyalty` renders all seven ways to earn and the membership levels;
+  `/loyalty-terms` (new, HTTP 200) renders 25/100/150/200/250/300/500-point
+  figures and 120 days straight from live config; `/register?ref=GPTESTAB`
+  prefills the referral field; `/account/referral`, `/admin/loyalty/referrals`
+  and the fake-report confirmation route all answer 401 (mounted + guarded).
+- Anti-gaming proven at the database, not just in code: a self-referral insert
+  is refused by `loyalty_referrals_no_self_check` and a second referral of the
+  same referee by `loyalty_referrals_referee_uq` (both run inside rolled-back
+  transactions — `loyalty_referrals` still holds 0 rows).
+- Daily sweep observed in production logs carrying the new passes:
+  `{"accountsSwept":0,...,"birthdays":{"awarded":0},"tiers":{"evaluated":0,"changed":0}}`.
+- Suite on a clean tree: **340 files / 5,402 tests green** (315 passed + 25
+  skipped files; 5,290 passed + 112 skipped tests), up from 338 / 5,362.
