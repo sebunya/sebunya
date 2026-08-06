@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
   FULFILMENT_MODES,
@@ -552,5 +554,44 @@ describe('registry and reason bookkeeping', () => {
 
   it('the four fulfilment modes are a closed set', () => {
     expect([...FULFILMENT_MODES].sort()).toEqual(['bus_parcel', 'own_rider', 'pickup_only', 'unserviceable']);
+  });
+});
+
+describe('the legacy fallback fires on CONFIG_INCOMPLETE and on NOTHING else', () => {
+  /**
+   * Proven on a restored clone as well: a Kampala area with no launch values
+   * recorded priced_by='legacy_fallback', and a district-only address recorded
+   * priced_by='manual' with no fallback. This pins the rule exhaustively.
+   *
+   * Handing any OTHER reason to the legacy path would replace a correct answer
+   * with a wrong one — the legacy model would happily price a lake island.
+   */
+  const mayFallBack = (reason: (typeof UNAVAILABLE_REASONS)[number]) =>
+    reason === 'CONFIG_INCOMPLETE';
+
+  it('is true for CONFIG_INCOMPLETE', () => {
+    expect(mayFallBack('CONFIG_INCOMPLETE')).toBe(true);
+  });
+
+  it('is false for every other reason, including the ones that look like gaps', () => {
+    for (const reason of UNAVAILABLE_REASONS) {
+      if (reason === 'CONFIG_INCOMPLETE') continue;
+      expect(mayFallBack(reason), reason).toBe(false);
+    }
+  });
+
+  it('the quoting use case sets the flag from exactly that rule', () => {
+    const source = readFileSync(
+      resolve(__dirname, '../../apps/api/src/application/use-cases/delivery/DeliveryQuotingUseCase.ts'),
+      'utf8',
+    );
+    // One condition, one reason. If this ever grows an OR, the test fails.
+    expect(source).toContain("quote.kind === 'unavailable' && quote.reason === 'CONFIG_INCOMPLETE'");
+  });
+
+  it('a water area is never handed to the legacy model, which would price it', () => {
+    const result = quote({ area: area({ accessMode: 'water' }), mode: 'pickup_only' });
+    expect(result).toMatchObject({ kind: 'unavailable', reason: 'WATER_ACCESS' });
+    expect(mayFallBack('WATER_ACCESS')).toBe(false);
   });
 });

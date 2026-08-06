@@ -153,3 +153,30 @@ revert, registry-generated field list), `/admin/delivery/launch` (the wizard),
   file on disk matches the generator exactly. Drift fails the build.
 - Pending variances surface at the TOP of the Control Centre, because nothing
   dispatches on them until the customer answers.
+
+## 7. Deleting the legacy fee paths — HARD STOP
+
+**Cannot be done, and the brief names this as a hard stop.**
+
+The evidence, not an assertion. On a restored clone, a real `CheckoutUseCase`
+run against a Kampala area recorded `priced_by = legacy_fallback`, because
+`own_rider_max_band` and the five launch values are unset, so every metro quote
+is `CONFIG_INCOMPLETE`. The fallback-rate report read **1 of 2 (50%)**.
+
+Deleting the legacy paths today drops customer-visible coverage from 39% to
+zero. The condition the brief sets — "the fallback has served zero requests for
+a defined period" — is not met and cannot be met until the wizard is run.
+
+It goes cold the moment `/admin/delivery/launch` is completed. The fallback-rate
+report at `/admin/delivery/reports/fallback-rate` is the evidence, and it is
+wired to the Control Centre.
+
+## THE GATE — one real order end to end — HARD STOP
+
+**Cannot be completed by me.** It requires a genuine purchase, genuinely paid,
+genuinely ridden from Wilson Road to a real address, with real money handed to a
+rider. Those are physical acts.
+
+Everything the gate would exercise is built and proven against a restored clone
+with real production data. What has never run against real traffic is stated in
+the report, in the results.
