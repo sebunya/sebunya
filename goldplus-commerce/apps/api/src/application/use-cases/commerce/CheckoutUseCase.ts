@@ -21,6 +21,14 @@ export interface ITransactionalPricedOrderRepository extends IOrderRepository {
     clientOrderKey: string | null;
     /** Fenced link, written in the SAME transaction as the order insert. */
     checkoutLink?: { identity: string; claimToken: string; fencingNumber: number };
+    /**
+     * R3.1: provenance for commercial attribution. profileId is server-issued
+     * (resolved from the HttpOnly visit token; never client-supplied). cartId
+     * is the body-supplied basket id — uuid-validated and pinned by the
+     * checkout fingerprint, but honestly client-originated; no commercial
+     * query treats it as identity.
+     */
+    stitching?: { profileId?: string | null; cartId?: string | null } | null;
   }): Promise<{ order: Order; duplicate: boolean }>;
 }
 
@@ -60,6 +68,8 @@ export interface CheckoutDto {
   principal?: { kind: 'USER' | 'GUEST'; id: string } | null;
   /** 'offline' = pay on delivery/collection — gates the PART I.2 COD rules. */
   paymentMethod?: 'pesapal' | 'offline' | null;
+  /** R3.1 stitching (see ITransactionalPricedOrderRepository.savePricedOrder). */
+  stitching?: { profileId?: string | null; cartId?: string | null } | null;
   /**
    * Loyalty points to redeem against this order (loyalty brief PART G).
    * Signed-in customers only; validated and reserved through the redemption
@@ -295,7 +305,7 @@ export class CheckoutUseCase {
         loyaltyReservation ? { discountUgx: loyaltyReservation.valueUgx, redemptionId: loyaltyReservation.reservationId } : null,
       );
       try {
-        const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink });
+        const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink, stitching: dto.stitching ?? null });
         if (saved.duplicate && reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id });
         if (loyaltyReservation && this.loyaltyRedemption) {
           if (saved.duplicate) {

@@ -80,6 +80,10 @@ export const orders = pgTable('orders', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 
   // Pass 13A: Stitching context
+  // 0101 (R3.1): the server-issued experience profile that placed this order —
+  // the ONE identity join between the recommendation event stream and orders.
+  // Stamped at checkout from the HttpOnly visit token; never client-supplied.
+  profileId: uuid('profile_id'),
   anonymousId: varchar('anonymous_id', { length: 160 }),
   browserId: varchar('browser_id', { length: 160 }),
   sessionId: varchar('session_id', { length: 160 }),
@@ -111,6 +115,7 @@ export const orders = pgTable('orders', {
   sessionIdx: index('orders_session_idx').on(table.sessionId),
   cartIdx: index('orders_cart_idx').on(table.cartId),
   attributionIdx: index('orders_attribution_idx').on(table.attributionId),
+  profileIdx: index('orders_profile_idx').on(table.profileId),
 }));
 
 export const orderItems = pgTable('order_items', {
@@ -125,6 +130,10 @@ export const orderItems = pgTable('order_items', {
   baseSubtotal: bigint('base_subtotal', { mode: 'number' }).default(0).notNull(),
   discountAmount: bigint('discount_amount', { mode: 'number' }).default(0).notNull(),
   finalLineTotal: bigint('final_line_total', { mode: 'number' }).default(0).notNull(),
+  // 0102 (R3.1): HISTORICAL cost frozen at order creation from
+  // product_prices.cost_price. NULL = cost unknown at sale time — profit for
+  // this line is honestly PARTIAL, never derived from the current price.
+  cogsSnapshotUgx: bigint('cogs_snapshot_ugx', { mode: 'number' }),
 });
 
 export const cartsRelations = relations(carts, ({ many }) => ({

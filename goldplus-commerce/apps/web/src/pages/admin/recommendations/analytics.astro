@@ -4,10 +4,13 @@ import { readSessionToken } from "../../../lib/session";
 import { getRecommendationAnalytics } from "../../../lib/admin-analytics";
 import {
   listRecommendationRules,
+  getCommercialReport,
   getModelReadiness,
   getServingHealth,
   getLineageReport,
   getSearchIntelligence,
+  type CommercialMetric,
+  type CommercialReportPayload,
   type ModelReadinessPayload,
   type ServingHealthPayload,
   type LineageReportPayload,
@@ -30,12 +33,27 @@ const ruleId = url.searchParams.get("ruleId") || "";
 const productId = url.searchParams.get("productId") || "";
 
 // Fetch analytics data
-const [servingRes, lineageRes, searchIntelRes, readinessRes] = await Promise.all([
+const [servingRes, lineageRes, searchIntelRes, readinessRes, commercialRes] = await Promise.all([
   getServingHealth(token, 7),
   getLineageReport(token, 30),
   getSearchIntelligence(token, 10),
   getModelReadiness(token),
+  getCommercialReport(token, 30),
 ]);
+const commercial: CommercialReportPayload | null = commercialRes.ok ? commercialRes.data : null;
+
+const ugxOrState = (m: CommercialMetric | undefined): string => {
+  if (!m) return "—";
+  if (m.state === "OK" || m.state === "PARTIAL") return `UGX ${Math.round(m.value ?? 0).toLocaleString("en-UG")}`;
+  if (m.state === "NOT_ENOUGH_DATA") return "Not enough data yet";
+  return "Unavailable";
+};
+const pctOrState = (m: CommercialMetric | undefined): string => {
+  if (!m) return "—";
+  if (m.state === "OK") return `${m.value}%`;
+  if (m.state === "NOT_ENOUGH_DATA") return "Not enough data yet";
+  return "Unavailable";
+};
 const readiness: ModelReadinessPayload | null = readinessRes.ok ? readinessRes.data : null;
 const serving: ServingHealthPayload | null = servingRes.ok ? servingRes.data : null;
 const lineage: LineageReportPayload | null = lineageRes.ok ? lineageRes.data : null;
@@ -420,6 +438,175 @@ const placements = [
             </table>
           </div>
         </div>
+
+        {/* R3.1: commercial intelligence — every number carries its state; nothing unavailable renders as zero */}
+        {commercial && (
+          <div class="bg-white border-2 border-brand-dark/15 rounded-2xl shadow-sm overflow-hidden mb-8" id="revenue">
+            <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex flex-wrap items-baseline justify-between gap-2">
+              <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Revenue &amp; orders (30 days)</h3>
+              <span class="text-[10px] text-gray-400 font-bold">
+                model: {commercial.attributionModel.name} · ATC/click {commercial.attributionModel.atcWindowDays}d · view-through {commercial.attributionModel.viewThroughWindowDays}d (assist only)
+              </span>
+            </div>
+            <div class="p-6">
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                {([
+                  ["Direct attributed (net)", commercial.revenue.directAttributedNetUgx],
+                  ["Assisted (view-through)", commercial.revenue.assistedNetUgx],
+                  ["Organic paid (net)", commercial.revenue.organicPaidNetUgx],
+                  ["Incremental", commercial.revenue.incrementalRevenue],
+                ] as const).map(([label, m]) => (
+                  <div>
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}</p>
+                    <p class={`text-base font-black ${m.state === "OK" || m.state === "PARTIAL" ? "text-brand-dark" : "text-gray-400"}`}>{ugxOrState(m)}</p>
+                    {m.reason && <p class="text-[10px] text-gray-500 mt-0.5 leading-snug">{m.reason}</p>}
+                  </div>
+                ))}
+              </div>
+              <div class="grid grid-cols-2 md:grid-cols-5 gap-4 border-t border-gray-100 pt-4">
+                {([
+                  ["Paid orders", commercial.totals.paidOrders],
+                  ["With profile stamp", commercial.totals.paidOrdersWithProfile],
+                  ["Unattributable (historic)", commercial.totals.paidOrdersUnattributable],
+                  ["Attributed order items", commercial.totals.attributedOrderItems],
+                  ["Reversed (excluded)", commercial.totals.reversedOrdersExcluded],
+                ] as const).map(([label, n]) => (
+                  <div>
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}</p>
+                    <p class="text-base font-black text-brand-dark">{n}</p>
+                  </div>
+                ))}
+              </div>
+              {commercial.attributedLines.length > 0 && (
+                <div class="mt-4 overflow-x-auto">
+                  <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Attributed lines (latest)</h4>
+                  <table class="w-full text-sm">
+                    <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500">
+                      <tr><th class="text-left py-1">Order</th><th class="text-left px-2">Product</th><th class="text-right px-2">Qty</th><th class="text-right px-2">Net</th><th class="text-left px-2">Mechanism</th><th class="text-left px-2">Placement</th></tr>
+                    </thead>
+                    <tbody>
+                      {commercial.attributedLines.map((l) => (
+                        <tr class="border-t border-gray-100">
+                          <td class="py-1 font-mono text-xs">{l.orderNumber}</td>
+                          <td class="px-2">{l.productName}</td>
+                          <td class="text-right px-2">{l.quantity}</td>
+                          <td class="text-right px-2 font-black">UGX {Math.round(l.netRevenueUgx).toLocaleString("en-UG")}</td>
+                          <td class="px-2 text-xs">{l.mechanism === "RECOMMENDATION_ADD_TO_CART" ? "add-to-cart" : "click"}</td>
+                          <td class="px-2 text-xs">{l.placement ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {commercial && (
+          <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8" id="commercial-funnel">
+            <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+              <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Commercial funnel (30 days)</h3>
+            </div>
+            <div class="p-6">
+              <div class="grid grid-cols-2 md:grid-cols-7 gap-3 mb-4 text-center">
+                {([
+                  ["Impressions", commercial.funnel.raw.impressions],
+                  ["Clicks", commercial.funnel.raw.clicks],
+                  ["Add-to-carts", commercial.funnel.raw.addToCarts],
+                  ["Touched profiles", commercial.funnel.raw.profilesWithTouch],
+                  ["Paid orders", commercial.funnel.raw.paidOrdersFromTouchedProfiles],
+                  ["Fulfilled", commercial.funnel.raw.fulfilledOrdersFromTouchedProfiles],
+                  ["Completed", commercial.funnel.raw.completedOrdersFromTouchedProfiles],
+                ] as const).map(([label, n]) => (
+                  <div>
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}</p>
+                    <p class="text-lg font-black text-brand-dark">{n}</p>
+                  </div>
+                ))}
+              </div>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-gray-100 pt-4">
+                {([
+                  ["Impression → paid", commercial.funnel.impressionToPaidOrderRate],
+                  ["Click → paid", commercial.funnel.clickToPaidOrderRate],
+                  ["ATC → paid", commercial.funnel.atcToPaidOrderRate],
+                  ["Paid → completed", commercial.funnel.paidToCompletedRate],
+                ] as const).map(([label, m]) => (
+                  <div>
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}</p>
+                    <p class={`text-base font-black ${m.state === "OK" ? "text-brand-dark" : "text-gray-400"}`}>{pctOrState(m)}</p>
+                    {m.state === "NOT_ENOUGH_DATA" && <p class="text-[10px] text-gray-500">{m.denominator}/{m.minSample} minimum</p>}
+                  </div>
+                ))}
+              </div>
+              <p class="text-[10px] text-gray-500 mt-3">Paid, fulfilled and completed use the canonical order and payment states — never payment initiation.</p>
+            </div>
+          </div>
+        )}
+
+        {commercial && (
+          <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8" id="profitability">
+            <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+              <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Profitability &amp; ROAS</h3>
+            </div>
+            <div class="p-6 grid md:grid-cols-2 gap-6">
+              {([
+                ["Attributed gross margin", commercial.profit.attributedGrossMarginUgx, ugxOrState(commercial.profit.attributedGrossMarginUgx)],
+                ["Contribution profit", commercial.profit.contributionProfit, ugxOrState(commercial.profit.contributionProfit)],
+                ["Reported ROAS", commercial.roas.reportedRoas, commercial.roas.reportedRoas.state === "OK" ? `${commercial.roas.reportedRoas.value}×` : "Unavailable"],
+                ["Contribution ROAS", commercial.roas.contributionRoas, "Unavailable"],
+              ] as const).map(([label, m, display]) => (
+                <div>
+                  <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}{m.state === "PARTIAL" && <span class="ml-1 text-amber-700">partial</span>}</p>
+                  <p class={`text-base font-black ${m.state === "OK" || m.state === "PARTIAL" ? "text-brand-dark" : "text-gray-400"}`}>{display}</p>
+                  {m.reason && <p class="text-[10px] text-gray-500 mt-0.5 leading-snug">{m.reason}</p>}
+                  {m.missingComponents && m.missingComponents.length > 0 && (
+                    <ul class="mt-1 text-[10px] text-amber-800 list-disc pl-4">
+                      {m.missingComponents.map((c) => <li>{c}</li>)}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {commercial && (
+          <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8" id="customers">
+            <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+              <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Customers &amp; realised value</h3>
+            </div>
+            <div class="p-6">
+              {commercial.customers.cohorts.reason && (
+                <p class="text-xs text-gray-500 mb-3">{commercial.customers.cohorts.reason}</p>
+              )}
+              {(commercial.customers.cohorts.value ?? []).length > 0 ? (
+                <div class="overflow-x-auto">
+                  <table class="w-full text-sm">
+                    <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500">
+                      <tr><th class="text-left py-2">Cohort</th><th class="text-right px-3">Customers</th><th class="text-right px-3">Net 30d</th><th class="text-right px-3">Net 60d</th><th class="text-right px-3">Net 90d</th><th class="text-right px-3">Repeat buyers</th></tr>
+                    </thead>
+                    <tbody>
+                      {(commercial.customers.cohorts.value ?? []).map((cRow) => (
+                        <tr class="border-t border-gray-100">
+                          <td class="py-2 text-xs font-bold text-gray-700">{cRow.cohort.replace(/_/g, " ")}</td>
+                          <td class="text-right px-3 font-black">{cRow.customers}</td>
+                          <td class="text-right px-3">UGX {Math.round(cRow.netRevenue30dUgx).toLocaleString("en-UG")}</td>
+                          <td class="text-right px-3">UGX {Math.round(cRow.netRevenue60dUgx).toLocaleString("en-UG")}</td>
+                          <td class="text-right px-3">UGX {Math.round(cRow.netRevenue90dUgx).toLocaleString("en-UG")}</td>
+                          <td class="text-right px-3 font-black">{cRow.repeatPurchasers}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p class="text-sm text-gray-500">No paying customers exist yet — realised value begins with the first paid order.</p>
+              )}
+              <p class="text-[10px] text-gray-500 mt-3">Predicted CLV: {commercial.customers.predictedClv.reason}</p>
+            </div>
+          </div>
+        )}
 
         {/* R6: serving truth — the engine's own records, not browser beacons */}
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">

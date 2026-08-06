@@ -121,6 +121,8 @@ export interface CheckoutCommand {
   cartVersion?: number | null;
   /** Online versus offline is a materially different operation, not a presentation choice. */
   paymentMethod?: string | null;
+  /** R3.1: resolved server-side by the route from the HttpOnly visit token — never from the body. */
+  profileId?: string | null;
   traceId: string;
 }
 
@@ -138,6 +140,7 @@ export interface CheckoutOrderCreator {
     principal: { kind: 'USER' | 'GUEST'; id: string };
     redeemPoints?: number | null;
     paymentMethod?: 'pesapal' | 'offline' | null;
+      stitching?: { profileId?: string | null; cartId?: string | null } | null;
   }): Promise<{ order: Order; deliveryFeeConfirmed: boolean; idempotentReplay: boolean }>;
 }
 
@@ -296,6 +299,7 @@ export class ExecuteCheckoutIntentUseCase {
       acceptPriceChange: command.acceptPriceChange ?? false,
       redeemPoints: command.redeemPoints ?? null,
       paymentMethod: command.paymentMethod === 'pesapal' || command.paymentMethod === 'offline' ? command.paymentMethod : null,
+      stitching: { profileId: command.profileId ?? null, cartId: command.cartId ?? null },
       checkoutLink: lease,
       principal: { kind: command.claims.kind, id: command.claims.principalId },
     });

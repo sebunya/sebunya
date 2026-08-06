@@ -299,6 +299,9 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
      // the value was simply undefined, the PesaPal branch was skipped, and the
      // customer saw the offline-review message instead of being sent to pay.
      const result = await submitCheckout({
+        // R3.1: SSR-only visit token so the API stamps the order's experience
+        // profile — the identity join for commercial attribution.
+        visitToken: Astro.locals.gpVisit ?? null,
         request: {
            customerDetails: payload.customerDetails,
            buyerType: payload.buyerType,

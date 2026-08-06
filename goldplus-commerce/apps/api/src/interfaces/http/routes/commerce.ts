@@ -458,8 +458,23 @@ routes.post('/orders/create', async (c) => {
   const claims = intent.claims;
   const traceId = c.req.header('x-request-id') ?? crypto.randomUUID();
 
+  // R3.1: the experience profile is resolved server-side from the HttpOnly
+  // visit token the web SSR forwards — the ONE identity join that lets a paid
+  // order be attributed to the recommendations this visitor actually saw.
+  // Resolution failure never blocks checkout.
+  let checkoutProfileId: string | null = null;
+  const rawVisitToken = c.req.header('x-gp-visit');
+  if (rawVisitToken) {
+    try {
+      checkoutProfileId = (await registry.resolveExperienceProfileUseCase.execute(rawVisitToken))?.id ?? null;
+    } catch {
+      // Provenance, not correctness.
+    }
+  }
+
   const outcome = await registry.executeCheckoutIntentUseCase.execute({
     claims,
+    profileId: checkoutProfileId,
     // Derived server-side: a hidden form field would be caller-controlled.
     identity: checkoutOperationIdentity(claims, 'CREATE_ORDER', CHECKOUT_POLICY_VERSION),
     principalKey: intentPrincipalKey(claims),

@@ -60,6 +60,8 @@ import { RecommendationRuleApplicationService } from '../application/recommendat
 import { DrizzleRecommendationAnalyticsRepository } from './db/repositories/DrizzleRecommendationAnalyticsRepository';
 import { DrizzleExperienceProfileRepository } from './db/repositories/DrizzleExperienceProfileRepository';
 import { DrizzleSearchAffinityReader } from './db/repositories/DrizzleSearchAffinityReader';
+import { DrizzleRecommendationCommercialRepository } from './db/repositories/DrizzleRecommendationCommercialRepository';
+import { RecommendationCommercialService } from '../application/recommendations/RecommendationCommercialService';
 import { RecommendationAnalyticsService } from '../application/recommendations/RecommendationAnalyticsService';
 
 import { DrizzleProductRecommendationReader } from './db/repositories/DrizzleProductRecommendationReader';
@@ -610,6 +612,8 @@ export class Registry {
   public readonly recommendationAnalyticsRepo = new DrizzleRecommendationAnalyticsRepository();
   public readonly experienceProfileRepo = new DrizzleExperienceProfileRepository();
   public readonly searchAffinityReader = new DrizzleSearchAffinityReader();
+  public readonly recommendationCommercialRepo = new DrizzleRecommendationCommercialRepository();
+  public readonly recommendationCommercialService = new RecommendationCommercialService(this.recommendationCommercialRepo);
   public readonly pesapalPaymentRepo = new DrizzlePaymentAttemptRepository();
   public readonly pesapalClient: IPesaPalClient = new PesaPalClient(env);
   public readonly systemHealthRepo = new DrizzleSystemHealthRepository();

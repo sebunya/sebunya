@@ -708,6 +708,20 @@
       "when": 1789448400000,
       "tag": "0100_experience_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "5",
+      "when": 1789452000000,
+      "tag": "0101_order_profile_stitching",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "5",
+      "when": 1789455600000,
+      "tag": "0102_commercial_costs",
+      "breakpoints": true
     }
   ]
 }

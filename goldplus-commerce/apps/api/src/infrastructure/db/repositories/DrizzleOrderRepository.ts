@@ -1,7 +1,7 @@
 import { db } from '../client';
 import { orders, orderItems , checkoutIdempotency } from '../schema/commerce';
 import { pricingQuotes, promotionRedemptions, promotionReservations } from '../schema/pricing';
-import { products } from '../schema/products';
+import { products, productPrices } from '../schema/products';
 import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import { Order, OrderStatus as DomainOrderStatus, PaymentStatus, BuyerType } from '../../../domain/commerce/Order';
 import type { ITransactionalPricedOrderRepository } from '../../../application/use-cases/commerce/CheckoutUseCase';
@@ -144,6 +144,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
     reservationIds: string[];
     clientOrderKey: string | null;
     checkoutLink?: { identity: string; claimToken: string; fencingNumber: number };
+    stitching?: { profileId?: string | null; cartId?: string | null } | null;
   }): Promise<{ order: Order; duplicate: boolean }> {
     // The order total may sit BELOW the quote total by exactly the loyalty
     // redemption discount (0085) — any other divergence is still a mismatch.
@@ -170,6 +171,8 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
         paymentStatus: input.order.paymentStatus, subtotalAmount: input.order.subtotalUgx, deliveryFee: input.order.deliveryFeeUgx,
         totalAmount: input.order.totalUgx, createdAt: input.order.createdAt, updatedAt: input.order.updatedAt,
         deliveryLocation: input.order.deliveryLocation ?? null, deliveryFeeConfirmed: input.order.deliveryFeeConfirmed,
+        // R3.1: server-issued provenance for commercial attribution.
+        profileId: input.stitching?.profileId ?? null, cartId: input.stitching?.cartId ?? null,
         loyaltyDiscountUgx: input.order.loyaltyDiscountUgx ?? 0, loyaltyRedemptionId: input.order.loyaltyRedemptionId ?? null,
         clientOrderKey: input.clientOrderKey, pricingQuoteId: input.quote.id, pricingCurrency: input.quote.currency,
         pricingBaseSubtotal: input.quote.baseSubtotalUgx, pricingDiscountTotal: input.quote.discountTotalUgx,
@@ -195,7 +198,25 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
           .returning({ identity: checkoutIdempotency.identity });
         if (linked.length !== 1) throw new Error('CHECKOUT_LEASE_LOST');
       }
-      await tx.insert(orderItems).values(input.order.items.map((item) => ({ orderId: input.order.id, productId: item.productId, sku: item.sku, productName: item.name, quantity: item.quantity, unitPrice: item.price, canonicalUnitPrice: item.canonicalUnitPrice ?? item.price, baseSubtotal: item.baseSubtotal ?? item.price * item.quantity, discountAmount: item.discountAmount ?? 0, finalLineTotal: item.finalLineTotal ?? item.price * item.quantity })));
+      // R3.1 (0102): freeze the line's COST at sale time. Profit is only ever
+      // computed from this snapshot — a later cost_price edit must not rewrite
+      // sold history. NULL cost_price (all of today's catalogue) stays NULL:
+      // the line's profit reports PARTIAL, never a fabricated margin.
+      const cogsRows = await tx
+        .select({ productId: productPrices.productId, costPrice: productPrices.costPrice })
+        .from(productPrices)
+        .where(inArray(productPrices.productId, input.order.items.map((item) => item.productId)));
+      const cogsByProduct = new Map(cogsRows.map((r) => [r.productId, r.costPrice]));
+      await tx.insert(orderItems).values(input.order.items.map((item) => {
+        const cost = cogsByProduct.get(item.productId);
+        return {
+          orderId: input.order.id, productId: item.productId, sku: item.sku, productName: item.name,
+          quantity: item.quantity, unitPrice: item.price, canonicalUnitPrice: item.canonicalUnitPrice ?? item.price,
+          baseSubtotal: item.baseSubtotal ?? item.price * item.quantity, discountAmount: item.discountAmount ?? 0,
+          finalLineTotal: item.finalLineTotal ?? item.price * item.quantity,
+          cogsSnapshotUgx: typeof cost === 'number' && cost >= 0 ? cost * item.quantity : null,
+        };
+      }));
       if (reservations.length) {
         await tx.insert(promotionRedemptions).values(reservations.map((reservation) => ({ reservationId: reservation.id, orderId: input.order.id, redeemedAt: new Date() })));
         await tx.update(promotionReservations).set({ status: 'REDEEMED', updatedAt: new Date() }).where(inArray(promotionReservations.id, reservations.map((row) => row.id)));

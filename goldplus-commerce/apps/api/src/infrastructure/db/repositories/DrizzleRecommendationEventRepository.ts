@@ -33,7 +33,9 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
       impressionId: event.impressionId,
       railRenderId: event.railRenderId,
       reasonCode: event.reasonCode,
-      appliedRuleIds: event.appliedRuleIds,
+      // R3.1 (M3): same canonical-jsonb treatment as metadata — the drizzle
+      // mapping double-encoded this array on every historic row.
+      appliedRuleIds: (event.appliedRuleIds ? sql`${event.appliedRuleIds}::jsonb` : null) as never,
 
       // Context
       productId: event.productId,
@@ -71,7 +73,14 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
       gpsGeohash: event.location?.gpsGeohash,
       gpsAccuracyMeters: event.location?.gpsAccuracyMeters,
 
-      metadata: event.metadata,
+      // R3.1 (AC21): canonical JSONB at the serialization boundary. Drizzle
+      // stringifies jsonb values and postgres.js then JSON-serializes the
+      // param AGAIN — the double encoding. An SQL fragment carrying the RAW
+      // OBJECT bypasses drizzle's mapping, so postgres.js serializes exactly
+      // once and a real jsonb object lands (proven by driver probe + the
+      // real-PG round-trip test). Readers keep their transition tolerance for
+      // historic string-typed rows (AC22).
+      metadata: sql`${event.metadata ?? {}}::jsonb` as never,
       createdAt: event.createdAt,
 
       // Contract v2 (0099)

@@ -195,6 +195,59 @@ export interface ModelReadinessPayload {
   statement: string;
 }
 
+export interface CommercialMetric<T = number> {
+  state: "OK" | "NOT_ENOUGH_DATA" | "PARTIAL" | "UNAVAILABLE";
+  value?: T;
+  reason?: string;
+  numerator?: number;
+  denominator?: number;
+  minSample?: number;
+  missingComponents?: string[];
+}
+
+export interface CommercialReportPayload {
+  windowDays: number;
+  attributionModel: { name: string; clickWindowDays: number; atcWindowDays: number; viewThroughWindowDays: number };
+  totals: {
+    paidOrders: number;
+    paidOrdersWithProfile: number;
+    paidOrdersUnattributable: number;
+    reversedOrdersExcluded: number;
+    attributedOrders: number;
+    attributedOrderItems: number;
+    attributedUnits: number;
+    directAttributedNetUgx: number;
+    assistedNetUgx: number;
+    organicPaidNetUgx: number;
+  };
+  revenue: {
+    directAttributedGrossUgx: CommercialMetric;
+    directAttributedNetUgx: CommercialMetric;
+    assistedNetUgx: CommercialMetric;
+    organicPaidNetUgx: CommercialMetric;
+    incrementalRevenue: CommercialMetric;
+  };
+  funnel: {
+    raw: { impressions: number; clicks: number; addToCarts: number; profilesWithTouch: number; paidOrdersFromTouchedProfiles: number; fulfilledOrdersFromTouchedProfiles: number; completedOrdersFromTouchedProfiles: number };
+    impressionToPaidOrderRate: CommercialMetric;
+    clickToPaidOrderRate: CommercialMetric;
+    atcToPaidOrderRate: CommercialMetric;
+    paidToCompletedRate: CommercialMetric;
+  };
+  profit: { attributedGrossMarginUgx: CommercialMetric; contributionProfit: CommercialMetric };
+  customers: {
+    cohorts: CommercialMetric<Array<{ cohort: string; customers: number; netRevenue30dUgx: number; netRevenue60dUgx: number; netRevenue90dUgx: number; repeatPurchasers: number }>>;
+    predictedClv: CommercialMetric;
+  };
+  roas: { reportedRoas: CommercialMetric; contributionRoas: CommercialMetric; mediaSpendMinor: number };
+  dataQuality: { paidOrdersWithoutProfile: number; paidOrdersWithoutLines: number; atcWithoutPriorClickOrImpression: number; linesMissingCogsSnapshot: number; mediaSpendRows: number };
+  attributedLines: Array<{ orderNumber: string; productName: string; quantity: number; netRevenueUgx: number; mechanism: string; placement: string | null }>;
+}
+
+export async function getCommercialReport(token: string, windowDays = 30) {
+  return fetchAuthed<CommercialReportPayload>(`/admin/recommendations/analytics/commercial?windowDays=${windowDays}`, token);
+}
+
 export async function getModelReadiness(token: string) {
   return fetchAuthed<ModelReadinessPayload>(`/admin/recommendations/model/readiness`, token);
 }

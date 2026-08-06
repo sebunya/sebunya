@@ -52,6 +52,14 @@ rebuild goldplus_test_commerce schema
 rebuild goldplus_test_auth schema
 rebuild goldplus_test_analytics empty
 
+# The production schema snapshot predates the recommendation-programme
+# migrations; apply them so EVERY suite sees the full schema (idempotent —
+# IF NOT EXISTS throughout). Suites keep their own guarded application for
+# standalone runs.
+for m in 0099_recommendation_event_contract 0100_experience_profiles 0101_order_profile_stitching 0102_commercial_costs; do
+  sed 's/--> statement-breakpoint//' "apps/api/src/infrastructure/db/migrations/${m}.sql" | psql -q goldplus_test_commerce >/dev/null
+done
+
 export DATABASE_URL="${BASE}/goldplus_test_commerce"
 export COMMERCE_TEST_DATABASE_URL="${BASE}/goldplus_test_commerce"
 export AUTH_TEST_DATABASE_URL="${BASE}/goldplus_test_auth"

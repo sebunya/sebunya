@@ -49,6 +49,8 @@ export async function submitCheckout(args: {
   intentToken: string;
   /** Forwarded so the API can establish a verified USER principal. */
   sessionToken?: string | null;
+  /** R3.1: the HttpOnly visit token (Astro.locals.gpVisit, SSR only) — lets the API stamp the order with its experience profile for commercial attribution. */
+  visitToken?: string | null;
 }): Promise<CheckoutCallResult> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -56,6 +58,7 @@ export async function submitCheckout(args: {
     [CHECKOUT_INTENT_HEADER]: args.intentToken,
   };
   if (args.sessionToken) headers.Authorization = `Bearer ${args.sessionToken}`;
+  if (args.visitToken) headers['x-gp-visit'] = args.visitToken;
 
   let res: Response;
   try {

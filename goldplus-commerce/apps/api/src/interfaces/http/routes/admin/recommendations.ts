@@ -254,6 +254,69 @@ routes.get("/analytics/depth", requirePermissions([PERMISSIONS.RECOMMENDATIONS_R
   return c.json(res);
 });
 
+// R3.1: the commercial-intelligence report — every metric carries its state
+// (OK / NOT_ENOUGH_DATA / PARTIAL / UNAVAILABLE+reason); nothing is a bare zero.
+routes.get("/analytics/commercial", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
+  const windowDays = Math.min(365, Math.max(1, Number(c.req.query("windowDays")) || 30));
+  const result = await Registry.getInstance().recommendationCommercialService.getCommercialReport(windowDays);
+  const res: ApiResponse<typeof result> = { success: true, data: result };
+  return c.json(res);
+});
+
+// R3.1 (§12): server-side media-spend ingestion into the ONE canonical fact
+// table. Duplicate-protected by the logical key; spend is never invented.
+routes.post("/media-costs", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ success: false, error: { code: "INVALID_JSON", message: "Invalid body" } }, 400);
+
+  const errors: string[] = [];
+  // R3.1 review (minor 6): a REAL calendar date — the regex alone let
+  // 2026-99-99 through to a Postgres cast failure dressed as a 500 — and
+  // never in the future: spend that has not happened cannot be ingested.
+  const dateShape = typeof body.spendDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.spendDate);
+  const parsedDate = dateShape ? new Date(`${body.spendDate}T00:00:00Z`) : null;
+  const dateReal = parsedDate !== null && !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === body.spendDate;
+  if (!dateReal) errors.push("spendDate must be a real YYYY-MM-DD date.");
+  else if (parsedDate!.getTime() > Date.now()) errors.push("spendDate cannot be in the future.");
+  const FIELD_CAPS = { channel: 40, platform: 80, account: 120, campaign: 150, source: 120 } as const;
+  for (const field of ["channel", "platform", "account", "campaign", "source"] as const) {
+    const value = body[field];
+    if (typeof value !== "string" || !value.trim()) errors.push(`${field} is required.`);
+    else if (value.trim().length > FIELD_CAPS[field]) errors.push(`${field} exceeds ${FIELD_CAPS[field]} characters.`);
+  }
+  for (const field of ["adSetOrGroup", "adOrCreative"] as const) {
+    if (typeof body[field] === "string" && body[field].length > 150) errors.push(`${field} exceeds 150 characters.`);
+  }
+  if (typeof body.sourceReference === "string" && body.sourceReference.length > 200) errors.push("sourceReference exceeds 200 characters.");
+  const MAX_SPEND_MINOR = 10_000_000_000; // UGX 10bn per row: beyond this is a typo, not a campaign.
+  const spendMinor = Number(body.spendMinor);
+  if (!Number.isInteger(spendMinor) || spendMinor < 0 || spendMinor > MAX_SPEND_MINOR) errors.push("spendMinor must be a non-negative integer within a sane ceiling (minor units).");
+  const taxOrFeeMinor = Number(body.taxOrFeeMinor ?? 0);
+  if (!Number.isInteger(taxOrFeeMinor) || taxOrFeeMinor < 0 || taxOrFeeMinor > MAX_SPEND_MINOR) errors.push("taxOrFeeMinor must be a non-negative integer within a sane ceiling.");
+  const currency = String(body.currency ?? "UGX").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) errors.push("currency must be a 3-letter code.");
+  if (errors.length > 0) {
+    return c.json({ success: false, error: { code: "INVALID_MEDIA_COST", message: errors.join(" ") } }, 400);
+  }
+
+  const result = await Registry.getInstance().recommendationCommercialRepo.insertMediaCostFact({
+    spendDate: body.spendDate,
+    channel: body.channel.trim(),
+    platform: body.platform.trim(),
+    account: body.account.trim(),
+    campaign: body.campaign.trim(),
+    adSetOrGroup: typeof body.adSetOrGroup === "string" ? body.adSetOrGroup.trim() || null : null,
+    adOrCreative: typeof body.adOrCreative === "string" ? body.adOrCreative.trim() || null : null,
+    currency,
+    spendMinor,
+    taxOrFeeMinor,
+    source: body.source.trim(),
+    sourceReference: typeof body.sourceReference === "string" ? body.sourceReference.trim() || null : null,
+    ingestedBy: c.get("user").id,
+  });
+  return c.json({ success: true, data: { inserted: result.inserted, duplicate: !result.inserted } }, result.inserted ? 201 : 200);
+});
+
 // R8: the model-readiness decision, with its evidence beside it.
 routes.get("/model/readiness", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
   const result = await Registry.getInstance().recommendationModelReadinessUseCase.execute();

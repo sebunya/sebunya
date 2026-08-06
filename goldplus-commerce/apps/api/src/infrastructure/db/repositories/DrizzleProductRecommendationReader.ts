@@ -255,11 +255,17 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       )
     });
 
+    // R3.1 (AC21): canonical JSONB — the RAW ARRAY rides an SQL fragment, so
+    // drizzle's jsonb stringify is bypassed and postgres.js serializes exactly
+    // once (its jsonb param serializer double-encodes anything already
+    // stringified). The read path keeps its tolerance for historic
+    // string-typed rows (AC22).
+    const canonicalItems = sql`${items as never}::jsonb`;
     if (existing) {
       await db
         .update(recommendationMaterializedCache)
         .set({
-          items,
+          items: canonicalItems as never,
           updatedAt: new Date()
         })
         .where(eq(recommendationMaterializedCache.id, existing.id));
@@ -267,7 +273,7 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       await db.insert(recommendationMaterializedCache).values({
         placement,
         contextKey,
-        items,
+        items: canonicalItems as never,
         updatedAt: new Date()
       });
     }
