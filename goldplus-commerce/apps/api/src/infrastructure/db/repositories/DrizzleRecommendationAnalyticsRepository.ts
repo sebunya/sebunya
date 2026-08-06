@@ -18,6 +18,58 @@ import { db } from "../client";
 
 export class DrizzleRecommendationAnalyticsRepository implements IRecommendationAnalyticsRepository {
   /**
+   * Serving truth (R6, 2026-08-06) — computed from the engine's own
+   * RECOMMENDATION_RESPONSE events, not from browser beacons. "Is the engine
+   * serving, are placements filled, and how deep into the fallback ladder are
+   * we living?" are answerable even with zero client JavaScript.
+   */
+  async getServingHealth(sinceDays: number): Promise<{
+    windowDays: number;
+    placements: Array<{
+      placement: string;
+      responses: number;
+      empty: number;
+      fallbackServed: number;
+      lastResponseAt: Date | null;
+    }>;
+    totalResponses: number;
+  }> {
+    const rows = (await db.execute(sql`
+      select
+        placement,
+        count(*)::int as responses,
+        count(*) filter (where metadata ? 'emptyReason')::int as empty,
+        count(*) filter (where coalesce((metadata->>'fallbackLevel')::int, 0) > 0)::int as fallback_served,
+        max(created_at) as last_response_at
+      from recommendation_events
+      where event_type = 'RECOMMENDATION_RESPONSE'
+        and created_at >= now() - make_interval(days => ${sinceDays})
+        and placement is not null
+      group by placement
+      order by placement
+    `)) as unknown as Array<{
+      placement: string;
+      responses: number;
+      empty: number;
+      fallback_served: number;
+      last_response_at: Date | null;
+    }>;
+
+    const placements = rows.map((r) => ({
+      placement: r.placement,
+      responses: Number(r.responses),
+      empty: Number(r.empty),
+      fallbackServed: Number(r.fallback_served),
+      lastResponseAt: r.last_response_at,
+    }));
+    return {
+      windowDays: sinceDays,
+      placements,
+      totalResponses: placements.reduce((sum, p) => sum + p.responses, 0),
+    };
+  }
+
+  /**
    * Event lineage and data-quality classification (R4, 2026-08-06; §21).
    * Historic rows are NEVER reclassified or backfilled — schema_version NULL
    * simply means "written before the contract existed", and stays that way.

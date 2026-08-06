@@ -180,6 +180,12 @@ export class RecommendationAnalyticsService {
   }
 
   /** §19 depth metrics: coverage, placement integrity, concentration, source mix. */
+  /** R6: serving truth per placement, from server-native response events. */
+  async getServingHealth(windowDays = 7) {
+    const clamped = Math.min(90, Math.max(1, windowDays));
+    return this.repo.getServingHealth(clamped);
+  }
+
   /**
    * R4: lineage health. Distinguishes DATA problems from ENGINE problems
    * (AC22): historic pre-contract rows are a fact of history, orphan clicks

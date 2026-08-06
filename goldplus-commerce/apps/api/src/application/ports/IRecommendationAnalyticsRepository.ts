@@ -80,6 +80,18 @@ export interface DepthMetricsRaw {
 }
 
 export interface IRecommendationAnalyticsRepository {
+  getServingHealth(sinceDays: number): Promise<{
+    windowDays: number;
+    placements: Array<{
+      placement: string;
+      responses: number;
+      empty: number;
+      fallbackServed: number;
+      lastResponseAt: Date | null;
+    }>;
+    totalResponses: number;
+  }>;
+
   getLineageReport(sinceDays: number): Promise<{
     windowDays: number;
     total: number;

@@ -242,6 +242,14 @@ routes.get("/analytics/depth", requirePermissions([PERMISSIONS.RECOMMENDATIONS_R
   return c.json(res);
 });
 
+// R6: serving truth per placement — from the engine's own response events.
+routes.get("/analytics/serving", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
+  const windowDays = Math.min(90, Math.max(1, Number(c.req.query("windowDays")) || 7));
+  const result = await Registry.getInstance().recommendationAnalyticsService.getServingHealth(windowDays);
+  const res: ApiResponse<typeof result> = { success: true, data: result };
+  return c.json(res);
+});
+
 // R4: lineage/data-quality — a data problem rendered distinctly from an engine problem.
 routes.get("/analytics/lineage", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
   const windowDays = Math.min(90, Math.max(1, Number(c.req.query("windowDays")) || 30));

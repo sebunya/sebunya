@@ -2,7 +2,15 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { getRecommendationAnalytics } from "../../../lib/admin-analytics";
-import { listRecommendationRules } from "../../../lib/admin-recommendations";
+import {
+  listRecommendationRules,
+  getServingHealth,
+  getLineageReport,
+  getSearchIntelligence,
+  type ServingHealthPayload,
+  type LineageReportPayload,
+  type SearchIntelligencePayload,
+} from "../../../lib/admin-recommendations";
 import InfoTooltip from "../../../components/admin/InfoTooltip.astro";
 import StatusBadge from "../../../components/StatusBadge.astro";
 
@@ -20,6 +28,15 @@ const ruleId = url.searchParams.get("ruleId") || "";
 const productId = url.searchParams.get("productId") || "";
 
 // Fetch analytics data
+const [servingRes, lineageRes, searchIntelRes] = await Promise.all([
+  getServingHealth(token, 7),
+  getLineageReport(token, 30),
+  getSearchIntelligence(token, 10),
+]);
+const serving: ServingHealthPayload | null = servingRes.ok ? servingRes.data : null;
+const lineage: LineageReportPayload | null = lineageRes.ok ? lineageRes.data : null;
+const searchIntel: SearchIntelligencePayload | null = searchIntelRes.ok ? searchIntelRes.data : null;
+
 const res = await getRecommendationAnalytics(token, {
   startDate,
   endDate,
@@ -235,11 +252,11 @@ const placements = [
                 <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Identity Health</h3>
               </div>
               <div class="p-6 space-y-4">
-                 <div class="flex items-center justify-between">
-                  <span class="text-xs text-gray-500 font-bold">Matched Visitors</span>
-                  <span class="text-xs font-black text-brand-dark">{fmtPct(data!.identityHealth.identityLinkRate)}</span>
-                </div>
-                <p class="text-[10px] text-gray-500 leading-relaxed">Percentage of anonymous visitors successfully linked to an email or customer profile.</p>
+                <p class="text-[10px] text-gray-500 leading-relaxed">
+                  Identity links stitch anonymous browsing to server profiles and signed-in customers
+                  (written since 2026-08-06 — earlier periods are honestly zero). The old "matched
+                  visitors" percentage related two unrelated populations and was retired.
+                </p>
                 <div class="grid grid-cols-2 gap-y-3 pt-2">
                   <div>
                     <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Lead Links</p>
@@ -397,6 +414,104 @@ const placements = [
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* R6: serving truth — the engine's own records, not browser beacons */}
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
+          <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-baseline justify-between">
+            <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Serving truth (7 days)</h3>
+            <span class="text-[10px] text-gray-400 font-bold">source: engine response events</span>
+          </div>
+          <div class="p-6 overflow-x-auto">
+            {serving && serving.placements.length > 0 ? (
+              <table class="w-full text-sm">
+                <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500">
+                  <tr><th class="text-left py-2">Placement</th><th class="text-right px-3">Served</th><th class="text-right px-3">Empty</th><th class="text-right px-3">Via fallback</th><th class="text-right px-3">Last served</th></tr>
+                </thead>
+                <tbody>
+                  {serving.placements.map((p) => (
+                    <tr class="border-t border-gray-100">
+                      <td class="py-2 font-bold text-gray-700">{p.placement}</td>
+                      <td class="text-right px-3 font-black text-brand-dark">{p.responses}</td>
+                      <td class={`text-right px-3 font-black ${p.empty > 0 ? "text-red-600" : "text-brand-dark"}`}>{p.empty}</td>
+                      <td class="text-right px-3 font-black text-brand-dark">{p.fallbackServed}</td>
+                      <td class="text-right px-3 text-xs text-gray-500">{p.lastResponseAt ? new Date(p.lastResponseAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p class="text-sm text-gray-500">No serving records yet — the engine writes them from the 2026-08-06 release onward.</p>
+            )}
+          </div>
+        </div>
+
+        {/* R6: data quality / lineage — a DATA problem shown apart from an engine problem */}
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
+          <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Event data quality (30 days)</h3>
+          </div>
+          <div class="p-6">
+            {lineage ? (
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  ["All events", lineage.total, false],
+                  ["Contract v2", lineage.contractV2, false],
+                  ["Pre-contract (historic)", lineage.historicPreContract, false],
+                  ["Profile-stamped", lineage.profileStamped, false],
+                  ["Orphan clicks", lineage.orphanClicks, lineage.orphanClicks > 0],
+                  ["ATC without exposure", lineage.attributedAtcWithoutExposure, lineage.attributedAtcWithoutExposure > 0],
+                  ["Rail events, no placement", lineage.railEventsMissingPlacement, lineage.railEventsMissingPlacement > 0],
+                  ["No identity at all", lineage.identityUnavailable, false],
+                ].map(([label, n, warn]) => (
+                  <div>
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}</p>
+                    <p class={`text-lg font-black ${warn ? "text-red-600" : "text-brand-dark"}`}>{n}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p class="text-sm text-gray-500">Lineage report unavailable.</p>
+            )}
+            <p class="text-[10px] text-gray-500 mt-4 leading-relaxed">
+              Historic pre-contract rows are a fact of history, never reclassified. An orphan click has no
+              impression behind its attribution — a producer defect, counted here instead of silently
+              inflating CTR.
+            </p>
+          </div>
+        </div>
+
+        {/* R6: the search intents feeding recommendations */}
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
+          <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Search intelligence</h3>
+          </div>
+          <div class="p-6 grid md:grid-cols-3 gap-6">
+            <div>
+              <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Top queries</h4>
+              {searchIntel && searchIntel.topQueries.length > 0 ? (
+                <ul class="space-y-1">{searchIntel.topQueries.map((q) => (
+                  <li class="text-xs text-gray-700 flex justify-between border-b border-gray-100 py-1"><span>{q.query}</span><span class="font-black">{q.searchCount}</span></li>
+                ))}</ul>
+              ) : <p class="text-xs text-gray-400">Not enough data yet.</p>}
+            </div>
+            <div>
+              <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Zero-result searches</h4>
+              {searchIntel && searchIntel.zeroResultQueries.length > 0 ? (
+                <ul class="space-y-1">{searchIntel.zeroResultQueries.map((q) => (
+                  <li class="text-xs text-gray-700 flex justify-between border-b border-gray-100 py-1"><span>{q.query}</span><span class="font-black text-red-600">{q.zeroResultCount}</span></li>
+                ))}</ul>
+              ) : <p class="text-xs text-gray-400">None recorded — no catalogue gap is wearing a customer's words.</p>}
+            </div>
+            <div>
+              <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Clicked, never bought</h4>
+              {searchIntel && searchIntel.clickedNeverConverted.length > 0 ? (
+                <ul class="space-y-1">{searchIntel.clickedNeverConverted.map((q) => (
+                  <li class="text-xs text-gray-700 flex justify-between border-b border-gray-100 py-1"><span>{q.query}</span><span class="font-black">{q.clickCount}</span></li>
+                ))}</ul>
+              ) : <p class="text-xs text-gray-400">Not enough data yet.</p>}
+            </div>
           </div>
         </div>
 

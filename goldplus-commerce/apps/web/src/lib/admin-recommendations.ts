@@ -162,6 +162,42 @@ export async function getRecommendationRuleAuditLog(token: string, id: string) {
   return fetchAuthed<{ items: RecommendationRuleAuditLog[] }>(`/admin/recommendations/rules/${encodeURIComponent(id)}/audit-log`, token);
 }
 
+export interface ServingHealthPayload {
+  windowDays: number;
+  placements: Array<{ placement: string; responses: number; empty: number; fallbackServed: number; lastResponseAt: string | null }>;
+  totalResponses: number;
+}
+
+export interface LineageReportPayload {
+  windowDays: number;
+  total: number;
+  historicPreContract: number;
+  contractV2: number;
+  identityUnavailable: number;
+  railEventsMissingPlacement: number;
+  orphanClicks: number;
+  attributedAtcWithoutExposure: number;
+  profileStamped: number;
+}
+
+export interface SearchIntelligencePayload {
+  topQueries: Array<{ query: string; searchCount: number; lastResultCount: number }>;
+  zeroResultQueries: Array<{ query: string; searchCount: number; zeroResultCount: number }>;
+  clickedNeverConverted: Array<{ query: string; clickCount: number; productId: string }>;
+}
+
+export async function getServingHealth(token: string, windowDays = 7) {
+  return fetchAuthed<ServingHealthPayload>(`/admin/recommendations/analytics/serving?windowDays=${windowDays}`, token);
+}
+
+export async function getLineageReport(token: string, windowDays = 30) {
+  return fetchAuthed<LineageReportPayload>(`/admin/recommendations/analytics/lineage?windowDays=${windowDays}`, token);
+}
+
+export async function getSearchIntelligence(token: string, limit = 10) {
+  return fetchAuthed<SearchIntelligencePayload>(`/admin/recommendations/analytics/search-intelligence?limit=${limit}`, token);
+}
+
 export async function rollbackRecommendationRule(token: string, ruleId: string, auditLogId: string) {
   return fetchAuthed<RecommendationRule>(
     `/admin/recommendations/rules/${encodeURIComponent(ruleId)}/rollback/${encodeURIComponent(auditLogId)}`,
