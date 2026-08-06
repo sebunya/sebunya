@@ -13,6 +13,7 @@ import { ArchiveRecommendationRuleUseCase } from "../../../../application/recomm
 import { GetRecommendationRuleUseCase } from "../../../../application/recommendations/GetRecommendationRuleUseCase";
 import { GetRecommendationRuleAuditLogUseCase } from "../../../../application/recommendations/GetRecommendationRuleAuditLogUseCase";
 import { PreviewRecommendationRulesUseCase } from "../../../../application/recommendations/PreviewRecommendationRulesUseCase";
+import { RollbackRecommendationRuleUseCase } from "../../../../application/recommendations/RollbackRecommendationRuleUseCase";
 
 import { RecommendationRuleValidationService } from "../../../../application/recommendations/RecommendationRuleValidationService";
 import { RecommendationRuleConflictService } from "../../../../application/recommendations/RecommendationRuleConflictService";
@@ -161,6 +162,26 @@ routes.post("/rules/:id/archive", requirePermissions([PERMISSIONS.RECOMMENDATION
   }
 
   return c.json({ success: true, data: { message: "Archived successfully" } });
+});
+
+// 6b. ROLLBACK TO A PRIOR VERSION (R5, AC32)
+routes.post("/rules/:id/rollback/:auditId", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const uc = new RollbackRecommendationRuleUseCase(
+    registry.recommendationRuleRepo,
+    registry.recommendationRuleAuditRepo,
+    new RecommendationRuleValidationService(),
+  );
+  const result = await uc.execute({
+    ruleId: c.req.param("id") as string,
+    auditLogId: c.req.param("auditId") as string,
+    performedBy: c.get("user").id,
+  });
+  if (!result.ok) {
+    const status = result.code === "VALIDATION_FAILED" ? 400 : 404;
+    return c.json({ success: false, error: { code: `ROLLBACK_${result.code}`, message: "Rollback refused.", details: result.errors } }, status);
+  }
+  return c.json({ success: true, data: result.rule });
 });
 
 // 7. GET AUDIT LOG

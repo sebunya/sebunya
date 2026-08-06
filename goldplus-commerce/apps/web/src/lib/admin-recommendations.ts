@@ -36,7 +36,7 @@ export interface RecommendationRule {
 export interface RecommendationRuleAuditLog {
   id: string;
   ruleId: string;
-  action: 'CREATED' | 'UPDATED' | 'STATUS_CHANGED' | 'ARCHIVED' | 'PREVIEWED';
+  action: 'CREATED' | 'UPDATED' | 'STATUS_CHANGED' | 'ARCHIVED' | 'PREVIEWED' | 'ROLLED_BACK';
   before?: any;
   after?: any;
   performedBy?: string;
@@ -52,6 +52,13 @@ export interface PreviewResultPayload {
   suppressedProductIds: string[];
   pinnedProductIds: string[];
   warnings: string[];
+  guardrails?: {
+    emptyAfterRules: boolean;
+    itemsRemoved: Array<{ productId: string; name: string }>;
+    itemsAdded: Array<{ productId: string; name: string }>;
+    rankMoves: Array<{ productId: string; name: string; from: number; to: number }>;
+    lowStockPinned: Array<{ productId: string; name: string; stockQuantity: number }>;
+  };
 }
 
 export type ApiResponseWrapper<T> = 
@@ -153,6 +160,14 @@ export async function archiveRecommendationRule(token: string, id: string) {
 
 export async function getRecommendationRuleAuditLog(token: string, id: string) {
   return fetchAuthed<{ items: RecommendationRuleAuditLog[] }>(`/admin/recommendations/rules/${encodeURIComponent(id)}/audit-log`, token);
+}
+
+export async function rollbackRecommendationRule(token: string, ruleId: string, auditLogId: string) {
+  return fetchAuthed<RecommendationRule>(
+    `/admin/recommendations/rules/${encodeURIComponent(ruleId)}/rollback/${encodeURIComponent(auditLogId)}`,
+    token,
+    { method: 'POST' },
+  );
 }
 
 export async function previewRecommendationRules(token: string, payload: {

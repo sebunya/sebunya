@@ -22,7 +22,6 @@ const categoryRail = read('apps/web/src/components/recommendations/CategoryPopul
 const recommendationRail = read('apps/web/src/components/recommendations/RecommendationRail.astro');
 const recentlyViewedRail = read('apps/web/src/components/recommendations/RecentlyViewedRail.astro');
 const card = read('apps/web/src/components/recommendations/RecommendationCard.astro');
-const previewPanel = read('apps/web/src/components/recommendations/RecommendationRulePreviewPanel.astro');
 const previewPage = read('apps/web/src/pages/admin/recommendations/preview.astro');
 const pdp = read('apps/web/src/pages/products/[slug].astro');
 
@@ -306,21 +305,16 @@ describe('Slice 06-F elite recommendations intelligence', () => {
     expect(recentlyViewedRail).not.toContain('Coming Soon');
   });
 
-  it('shows a read-only operator preview with before/after and integrity outcomes', () => {
-    expect(previewPanel).toContain('Storefront integrity preview');
-    expect(previewPanel).toContain('Candidates before');
-    expect(previewPanel).toContain('Products after');
-    expect(previewPanel).toContain('Current product excluded');
-    expect(previewPanel).toContain('Duplicates removed');
-    expect(previewPanel).toContain('Fallback reason');
-    expect(previewPanel).toContain('Empty reason');
-    expect(previewPanel).toContain('Read-only preview.');
-  });
-
-  it('does not expose mutation controls or customer-data claims in the operator preview', () => {
-    expect(previewPanel).toContain('No customer data is used.');
-    expect(previewPanel).toContain('No rule changes are saved here.');
-    expect(previewPanel).not.toMatch(/Save rule|Activate provider|Delete product/);
-    expect(previewPage).toContain('Read-only simulation');
+  it('the SSR preview page is honest about what it is (R5: the client-side panel was retired)', () => {
+    // RecommendationRulePreviewPanel.astro was deleted 2026-08-06: its only
+    // consumer was the rule-detail client script that serialized the ADMIN
+    // BEARER TOKEN and the internal API origin into hidden inputs. The
+    // server-rendered preview page carries the honesty guarantees now.
+    expect(previewPage).toContain('nothing saved');
+    expect(previewPage).toContain('synthetic');
+    expect(previewPage).toContain('Default ranking');
+    expect(previewPage).toContain('With active rules');
+    expect(previewPage).not.toMatch(/Save rule|Activate provider|Delete product/);
+    expect(previewPage).not.toContain('session-token');
   });
 });

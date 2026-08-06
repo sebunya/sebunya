@@ -47,6 +47,17 @@ export class UpdateRecommendationRuleUseCase {
       updatedBy: performedBy,
     } as any;
 
+    // R5: the transition matrix and the two-person suppression gate live in
+    // ChangeRecommendationRuleStatusUseCase — a PUT must not smuggle a status
+    // change around them.
+    if (updates.status !== undefined && updates.status !== existing.status) {
+      return {
+        ok: false,
+        code: "VALIDATION_FAILED",
+        errors: ["Rule status is changed through the status action, not through an edit."],
+      };
+    }
+
     const errors = this.validator.validate(merged);
     if (errors.length > 0) {
       return { ok: false, code: "VALIDATION_FAILED", errors };

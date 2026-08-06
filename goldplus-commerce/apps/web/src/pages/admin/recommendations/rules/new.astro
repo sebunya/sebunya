@@ -1,507 +1,307 @@
 ---
 import AdminLayout from "../../../../layouts/AdminLayout.astro";
-import FormField from "../../../../components/FormField.astro";
-import FormFeedback from "../../../../components/FormFeedback.astro";
-import RecommendationRulePreviewPanel from "../../../../components/recommendations/RecommendationRulePreviewPanel.astro";
-import InfoTooltip from "../../../../components/admin/InfoTooltip.astro";
-
-import { createRecommendationRule } from "../../../../lib/admin-recommendations";
 import { readSessionToken } from "../../../../lib/session";
 import { apiBase } from "../../../../lib/api";
+import {
+  createRecommendationRule,
+  previewRecommendationRules,
+  type PreviewResultPayload,
+} from "../../../../lib/admin-recommendations";
+import type { ApiResponse, ProductPublicDto, RecommendationPlacement } from "@goldplus/shared";
+
+/**
+ * The rule wizard, rebuilt for operators (R5, 2026-08-06; AC25).
+ *
+ * The old form demanded raw SKUs/UUIDs in a free-text box and posted its
+ * preview from browser JavaScript against a hidden input that carried the
+ * INTERNAL container origin — broken in production by construction. This page
+ * is goal-first, selector-driven and entirely server-rendered: every product
+ * and category is chosen by NAME, and preview/save are SSR form intents.
+ */
 
 const token = readSessionToken(Astro.request);
 if (!token) return Astro.redirect("/admin/login?returnTo=/admin/recommendations/rules/new", 303);
 
-let feedback: { status: 'success' | 'error', message: string, details?: string[] } | null = null;
+const PLACEMENTS: Array<{ id: RecommendationPlacement; label: string }> = [
+  { id: "home_trending", label: "Homepage — Popular now" },
+  { id: "product_related", label: "Product page — Related products" },
+  { id: "complete_setup", label: "Product page — Complete the setup" },
+  { id: "cart_addon", label: "Cart — Useful add-ons" },
+  { id: "category_popular", label: "Category — Popular in category" },
+];
 
-let formValues = {
-  name: '',
-  placement: 'home_trending',
-  type: 'BOOST',
-  targetType: 'GLOBAL',
-  targetValue: '',
-  priority: 100,
-  startsAt: '',
-  endsAt: '',
-  boostScore: '50',
-  pinPosition: '1',
-  campBoostScore: '100',
-  campaignLabel: '',
+const GOALS = [
+  { id: "BOOST", label: "Promote", help: "Move the target up the ranking with a bounded boost. Relevance and stock rules still apply." },
+  { id: "PIN", label: "Pin to a position", help: "Hold one product at a fixed slot — only while it stays eligible (in stock, priced, approved)." },
+  { id: "SUPPRESS", label: "Suppress", help: "Remove the target from this placement. Created as a draft; a DIFFERENT admin must activate it." },
+] as const;
+
+// Product and category options by NAME. Eight products today — a dropdown is
+// the honest selector; search-as-you-type earns its place when the catalogue does.
+let products: ProductPublicDto[] = [];
+try {
+  const res = await fetch(`${apiBase}/products?limit=100`, { signal: AbortSignal.timeout(5000) });
+  const json = (await res.json()) as ApiResponse<ProductPublicDto[]>;
+  if (json.success && json.data) products = json.data;
+} catch {
+  // The form still renders; the product selector says the catalogue is unreachable.
+}
+const categoryNames = [...new Set(products.map((p) => p.categoryName).filter(Boolean))].sort();
+const CATEGORY_SLUG: Record<string, string> = {
+  "Power Devices": "power",
+  "Sound Devices": "sound",
+  "Storage Devices": "storage",
+  "Car Accessories": "car-accessories",
+  "PC Accessories": "pc-accessories",
 };
 
-if (Astro.request.method === 'POST') {
-  const form = await Astro.request.formData();
-  
-  const type = String(form.get('type'));
-  const name = String(form.get('name'));
-  const placement = String(form.get('placement'));
-  const targetType = String(form.get('targetType'));
-  const targetValue = String(form.get('targetValue') || '');
-  const priority = parseInt(String(form.get('priority') || '100'), 10);
-  const startsAt = String(form.get('startsAt') || '');
-  const endsAt = String(form.get('endsAt') || '');
-  const boostScore = String(form.get('boostScore') || '50');
-  const pinPosition = String(form.get('pinPosition') || '1');
-  const campBoostScore = String(form.get('campBoostScore') || '100');
-  const campaignLabel = String(form.get('campaignLabel') || '');
+let notice: { kind: "success" | "error"; text: string } | null = null;
+let preview: PreviewResultPayload | null = null;
+const form: Record<string, string> = {};
 
-  formValues = {
-    name,
-    placement,
+function buildRule(f: FormData) {
+  const type = String(f.get("goal") || "BOOST");
+  const targetKind = String(f.get("targetKind") || "PRODUCT");
+  const targetValue =
+    targetKind === "PRODUCT"
+      ? String(f.get("targetProduct") || "")
+      : targetKind === "CATEGORY"
+        ? CATEGORY_SLUG[String(f.get("targetCategory") || "")] ?? ""
+        : "";
+  return {
+    name: String(f.get("name") || "").trim(),
+    description: String(f.get("description") || "").trim() || undefined,
     type,
-    targetType,
-    targetValue,
-    priority,
-    startsAt,
-    endsAt,
-    boostScore,
-    pinPosition,
-    campBoostScore,
-    campaignLabel,
-  };
-
-  // Compute target action
-  const action: any = { type };
-  if (type === 'BOOST') action.boostScore = parseFloat(boostScore);
-  if (type === 'SUPPRESS') action.suppress = true;
-  if (type === 'PIN') action.pinPosition = parseInt(pinPosition, 10);
-  if (type === 'CAMPAIGN') {
-     action.boostScore = parseFloat(campBoostScore);
-     action.campaignLabel = campaignLabel;
-  }
-
-  const payload = {
-    name,
-    type: type as any,
-    placement: placement as any,
-    status: String(form.get('_submit_action') === 'save_activate' ? 'ACTIVE' : 'DRAFT') as any,
-    targetType: targetType as any,
+    status: "DRAFT",
+    priority: Number(f.get("priority")) || 100,
+    placement: String(f.get("placement") || "home_trending"),
+    targetType: targetKind,
     targetValue: targetValue || undefined,
-    priority,
-    action,
-    conditions: {}, // V1 simplistic
-    startsAt: startsAt ? (isNaN(new Date(startsAt).getTime()) ? startsAt : new Date(startsAt).toISOString()) : undefined,
-    endsAt: endsAt ? (isNaN(new Date(endsAt).getTime()) ? endsAt : new Date(endsAt).toISOString()) : undefined,
+    conditions: {},
+    action: {
+      type,
+      ...(type === "BOOST" ? { boostScore: Number(f.get("boostScore")) || 25 } : {}),
+      ...(type === "PIN" ? { pinPosition: Number(f.get("pinPosition")) || 1 } : {}),
+    },
+    startsAt: String(f.get("startsAt") || "") || undefined,
+    endsAt: String(f.get("endsAt") || "") || undefined,
   };
+}
 
-  const res = await createRecommendationRule(token, payload);
-  if (res.ok) {
-    return Astro.redirect(`/admin/recommendations/rules/${res.data.id}?created=true`, 303);
-  } else {
-    feedback = { 
-      status: 'error', 
-      message: res.message,
-      details: Array.isArray(res.details) ? res.details : undefined 
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  for (const [k, v] of f.entries()) form[k] = String(v);
+  const intent = String(f.get("_intent") || "");
+  const rule = buildRule(f);
+
+  if (intent === "preview") {
+    const res = await previewRecommendationRules(token, {
+      placement: rule.placement as RecommendationPlacement,
+      productId: ["product_related", "complete_setup"].includes(rule.placement)
+        ? String(f.get("contextProduct") || "") || undefined
+        : undefined,
+      categorySlug: rule.placement === "category_popular" ? CATEGORY_SLUG[String(f.get("targetCategory") || "")] : undefined,
+      draftRule: rule as never,
+    });
+    if (res.ok) {
+      preview = res.data;
+    } else {
+      notice = { kind: "error", text: Array.isArray(res.details) ? res.details.join(" ") : res.message || "Preview failed." };
+    }
+  } else if (intent === "save_draft" || intent === "save_activate") {
+    const status = intent === "save_activate" && rule.type !== "SUPPRESS" ? "ACTIVE" : "DRAFT";
+    const res = await createRecommendationRule(token, { ...rule, status } as never);
+    if (res.ok) {
+      const suffix = rule.type === "SUPPRESS" && intent === "save_activate" ? "&suppressDraft=true" : "";
+      return Astro.redirect(`/admin/recommendations/rules/${res.data.id}?created=${status}${suffix}`, 303);
+    }
+    notice = {
+      kind: "error",
+      text: Array.isArray(res.details) ? res.details.join(" ") : res.message || "The rule could not be saved.",
     };
   }
 }
+
+const val = (k: string, dflt = "") => form[k] ?? dflt;
+const item = (c: { productId: string; name: string; score?: number }) => c;
 ---
 
-<AdminLayout 
-  title="Create rule" 
-  description="Establish a new recommendation rule."
->
-  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
-      <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Create rule</h2>
-        <p class="text-sm text-gray-500 mt-1">Establish a new recommendation rule.</p>
-      </div>
-      <a href="/admin/recommendations/rules" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
-        &larr; View rules
-      </a>
+<AdminLayout title="New rule" description="Influence a placement's default ranking — by name, with a preview.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-4xl pb-16">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <a href="/admin/recommendations/rules" class="text-xs font-black uppercase tracking-widest text-gray-400 hover:text-gray-700">← Rules</a>
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight mt-2">Create a rule</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+        Recommendations already run on safe defaults. A rule is a business override on top of them — it can
+        never surface an out-of-stock, unpriced or unapproved product.
+      </p>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-      {/* Main Form Left */}
-      <div class="lg:col-span-7 space-y-6">
-        {feedback && <FormFeedback status={feedback.status} message={feedback.message} />}
-        {feedback?.details && (
-          <div class="bg-red-50 p-4 rounded-xl text-red-800 text-xs border border-red-100 -mt-4">
-            <p class="font-bold mb-1">Validation Failures:</p>
-            <ul class="list-disc list-inside">
-              {feedback.details.map(d => <li>{d}</li>)}
-            </ul>
+    {notice && (
+      <div class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status">{notice.text}</div>
+    )}
+
+    <form method="POST" class="space-y-6">
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">1 · Goal</h3>
+        <div class="grid sm:grid-cols-3 gap-3">
+          {GOALS.map((g) => (
+            <label class="border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-gray-400 has-[:checked]:border-brand-dark has-[:checked]:ring-2 has-[:checked]:ring-brand-dark/20">
+              <input type="radio" name="goal" value={g.id} checked={val("goal", "BOOST") === g.id} class="sr-only" />
+              <span class="block text-sm font-black text-brand-dark">{g.label}</span>
+              <span class="block text-[11px] text-gray-500 mt-1">{g.help}</span>
+            </label>
+          ))}
+        </div>
+      </section>
+
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">2 · Where and what</h3>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Placement</span>
+            <select name="placement" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              {PLACEMENTS.map((p) => <option value={p.id} selected={val("placement") === p.id}>{p.label}</option>)}
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Target</span>
+            <select name="targetKind" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <option value="PRODUCT" selected={val("targetKind", "PRODUCT") === "PRODUCT"}>A specific product</option>
+              <option value="CATEGORY" selected={val("targetKind") === "CATEGORY"}>A whole category</option>
+              <option value="GLOBAL" selected={val("targetKind") === "GLOBAL"}>Everything in the placement</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Product (by name)</span>
+            <select name="targetProduct" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              {products.length === 0 && <option value="">Catalogue unreachable — try again</option>}
+              {products.map((p) => <option value={p.id} selected={val("targetProduct") === p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Category</span>
+            <select name="targetCategory" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              {categoryNames.map((c) => <option value={c} selected={val("targetCategory") === c}>{c}</option>)}
+            </select>
+          </label>
+        </div>
+        <p class="text-[11px] text-gray-500">
+          The product selector applies when the target is a product (and for pins, which always target one
+          product). The category selector applies when the target is a category.
+        </p>
+      </section>
+
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">3 · Strength, order and schedule</h3>
+        <div class="grid sm:grid-cols-4 gap-4">
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Boost (−100…100)</span>
+            <input name="boostScore" type="number" min="-100" max="100" value={val("boostScore", "25")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Pin position (1–20)</span>
+            <input name="pinPosition" type="number" min="1" max="20" value={val("pinPosition", "1")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Priority (1 runs first)</span>
+            <input name="priority" type="number" min="1" max="1000" value={val("priority", "100")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <div></div>
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Starts (optional)</span>
+            <input name="startsAt" type="datetime-local" value={val("startsAt")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Ends (optional)</span>
+            <input name="endsAt" type="datetime-local" value={val("endsAt")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+        </div>
+      </section>
+
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">4 · Name it, preview it, save it</h3>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Rule name</span>
+            <input name="name" value={val("name")} placeholder="e.g. Promote power banks on the homepage" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Context product for preview (PDP placements)</span>
+            <select name="contextProduct" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              {products.map((p) => <option value={p.id} selected={val("contextProduct") === p.id}>{p.name}</option>)}
+            </select>
+          </label>
+        </div>
+        <label class="block">
+          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Notes (optional)</span>
+          <textarea name="description" rows="2" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{val("description")}</textarea>
+        </label>
+        <div class="flex flex-wrap gap-3 pt-2">
+          <button type="submit" name="_intent" value="preview" class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-gray-50">Preview the effect</button>
+          <button type="submit" name="_intent" value="save_draft" class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-gray-50">Save as draft</button>
+          <button type="submit" name="_intent" value="save_activate" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">Save &amp; activate</button>
+        </div>
+        <p class="text-[11px] text-gray-500">
+          Suppression rules are always saved as drafts — a different admin activates them (two-person integrity).
+        </p>
+      </section>
+    </form>
+
+    {preview && (
+      <section class="mt-8 bg-white border-2 border-brand-dark/20 rounded-2xl shadow-sm p-6">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Preview — what this rule would do</h3>
+        <p class="text-xs text-gray-500 mb-4">Real catalogue, nothing saved, nothing served to customers.</p>
+
+        {preview.guardrails?.emptyAfterRules && (
+          <div class="mb-4 rounded-xl border-2 border-red-400 bg-red-50 px-4 py-3 text-sm font-black text-red-800">
+            This rule would EMPTY the placement. It cannot be worth that.
           </div>
         )}
-
-        <form id="rule-main-form" method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-          <div class="p-6 space-y-6">
-            {/* Basic Meta */}
-            <div class="space-y-4">
-              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">Rule details</h3>
-              <FormField id="r_name" name="name" label="Rule Name" defaultValue={formValues.name} required placeholder="e.g. Summer iPhone Boost" helperText="Internal name to help you recognize this rule later.">
-                <div slot="label" class="flex items-center gap-1.5">
-                  <span>Rule Name</span>
-                  <InfoTooltip text="An internal label to help identify what this rule does." align="left" />
-                </div>
-              </FormField>
-              
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Placement</label>
-                  <select name="placement" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none focus:border-brand-green">
-                    <option value="home_trending" selected={formValues.placement === 'home_trending'}>Home Trending</option>
-                    <option value="product_related" selected={formValues.placement === 'product_related'}>Product Related</option>
-                    <option value="cart_addon" selected={formValues.placement === 'cart_addon'}>Cart Addon</option>
-                    <option value="category_popular" selected={formValues.placement === 'category_popular'}>Category Popular</option>
-                    <option value="complete_setup" selected={formValues.placement === 'complete_setup'}>Complete Setup</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-2">
-                    Rule Type
-                    <InfoTooltip text="Action this rule takes: Boost score, Pin position, or Suppress from results." align="left" />
-                  </label>
-                  <select id="type-selector" name="type" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-black text-blue-700 outline-none focus:border-brand-green">
-                    <option value="BOOST" selected={formValues.type === 'BOOST'}>Boost scored list</option>
-                    <option value="PIN" selected={formValues.type === 'PIN'}>Pin to absolute position</option>
-                    <option value="SUPPRESS" selected={formValues.type === 'SUPPRESS'}>Suppress / Remove</option>
-                    <option value="CAMPAIGN" selected={formValues.type === 'CAMPAIGN'}>Scheduled campaign</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Logic & Action Configuration */}
-            <div class="space-y-4">
-              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">Placement and target</h3>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-2">
-                    Target scope
-                    <InfoTooltip text="The level of product coverage this rule should apply to." align="left" />
-                  </label>
-                  <select name="targetType" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none focus:border-brand-green">
-                    <option value="GLOBAL" selected={formValues.targetType === 'GLOBAL'}>Entire inventory (Global)</option>
-                    <option value="PRODUCT" selected={formValues.targetType === 'PRODUCT'}>Specific product</option>
-                    <option value="CATEGORY" selected={formValues.targetType === 'CATEGORY'}>Specific category</option>
-                    <option value="BRAND" selected={formValues.targetType === 'BRAND'}>Specific brand</option>
-                  </select>
-                </div>
-                <FormField id="r_target_val" name="targetValue" label="Target identifier" defaultValue={formValues.targetValue} placeholder="Product SKU / ID" helperText="Specify the ID or SKU if applying to a specific item.">
-                  <div slot="label" class="flex items-center gap-1.5">
-                    <span>Target identifier</span>
-                    <InfoTooltip text="Enter the exact ID, SKU, or slug depending on target scope selection." align="left" />
-                  </div>
-                </FormField>
-              </div>
-
-              {/* Conditional Action Fields */}
-              <div id="action-area" class="bg-blue-50/50 border border-blue-100 p-5 rounded-2xl space-y-4">
-                
-                {/* Action: BOOST */}
-                <div class="action-variant" data-type="BOOST">
-                  <FormField id="b_score" name="boostScore" type="number" label="Score adjustment" defaultValue={formValues.boostScore} helperText="Amount added directly to the product score." />
-                </div>
-
-                {/* Action: PIN */}
-                <div class="hidden action-variant" data-type="PIN">
-                   <FormField id="p_pos" name="pinPosition" type="number" label="Fix into position" defaultValue={formValues.pinPosition} helperText="Forces this item into the specified slot (e.g. 1 for the first slot)." />
-                   <p class="text-[10px] font-bold text-amber-700 mt-3 bg-amber-50 p-2 rounded-lg border border-amber-100">Note: Pin requires a Specific product target.</p>
-                </div>
-
-                {/* Action: SUPPRESS */}
-                <div class="hidden action-variant" data-type="SUPPRESS">
-                   <div class="text-xs font-bold text-red-700 space-y-2">
-                     <div>This rule will remove the product from the recommendations completely.</div>
-                     <div class="text-[10px] text-red-500 font-bold bg-red-50/50 p-2 rounded-lg border border-red-100">Note: Ensure a proper Target scope and Identifier are set. Leave blank or choose GLOBAL carefully as it may suppress everything.</div>
-                   </div>
-                </div>
-
-                {/* Action: CAMPAIGN */}
-                <div class="hidden action-variant" data-type="CAMPAIGN">
-                   <div class="grid grid-cols-2 gap-4">
-                     <FormField id="c_score" name="campBoostScore" type="number" label="Campaign boost" defaultValue={formValues.campBoostScore} />
-                     <FormField id="c_lbl" name="campaignLabel" label="Campaign tag" defaultValue={formValues.campaignLabel} placeholder="Black Friday Campaign" />
-                   </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Schedule */}
-            <div class="space-y-4">
-               <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 pb-2">Schedule and priority</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField id="r_pri" name="priority" type="number" label="Priority" defaultValue={formValues.priority.toString()} helperText="Lower numbers run first (e.g. 10 runs before 100).">
-                    <div slot="label" class="flex items-center gap-1.5">
-                      <span>Priority</span>
-                      <InfoTooltip text="Priority level. Lower numbers run first (e.g. 10 runs before 100)." align="left" />
-                    </div>
-                  </FormField>
-                  <FormField id="r_start" name="startsAt" type="date" label="Start date" defaultValue={formValues.startsAt} placeholder="YYYY-MM-DD" helperText="Leave blank to start immediately." />
-                  <FormField id="r_end" name="endsAt" type="date" label="End date" defaultValue={formValues.endsAt} placeholder="YYYY-MM-DD" helperText="Leave blank if the rule should keep running." />
-               </div>
-            </div>
+        {preview.guardrails && preview.guardrails.lowStockPinned.length > 0 && (
+          <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">
+            Low stock behind a pin: {preview.guardrails.lowStockPinned.map((i) => `${i.name} (${i.stockQuantity} left)`).join(", ")} — the pin vanishes the moment stock runs out.
           </div>
+        )}
+        {preview.warnings.length > 0 && (
+          <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">{preview.warnings.join(" · ")}</div>
+        )}
 
-          <div class="p-6 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-end items-center gap-3">
-            <button type="button" id="btn-trigger-preview" class="w-full sm:w-auto bg-white border border-gray-200 text-brand-dark px-5 py-2.5 rounded-xl font-bold hover:bg-gray-100 shadow-sm text-xs transition-colors">
-              Preview
-            </button>
-            <button type="submit" name="_submit_action" value="save_draft" class="w-full sm:w-auto bg-gray-200 text-gray-700 px-5 py-2.5 rounded-xl font-bold hover:bg-gray-300 text-xs transition-colors">
-              Save draft
-            </button>
-            <button type="submit" name="_submit_action" value="save_activate" class="w-full sm:w-auto bg-brand-green text-white px-5 py-2.5 rounded-xl font-black hover:bg-emerald-600 text-xs shadow-sm transition-colors">
-              Save and activate
-            </button>
+        <div class="grid md:grid-cols-2 gap-6">
+          <div>
+            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-2">Before rules</h4>
+            <ol class="space-y-1">
+              {preview.before.map((c, i) => (
+                <li class="text-sm text-gray-700 flex justify-between border-b border-gray-100 py-1">
+                  <span>{i + 1}. {item(c).name}</span>
+                </li>
+              ))}
+              {preview.before.length === 0 && <li class="text-sm text-gray-400">Empty.</li>}
+            </ol>
           </div>
-          <input type="hidden" id="session-token" value={token} />
-          <input type="hidden" id="api-base-url" value={apiBase} />
-        </form>
-      </div>
-
-      {/* Preview Right */}
-      <div class="lg:col-span-5">
-         <div class="sticky top-8 space-y-4">
-            <div id="rule-summary-panel" class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden sticky top-8">
-               <div class="px-5 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                  <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Rule summary</h3>
-                  <span class="text-[9px] font-bold bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded uppercase">Draft</span>
-               </div>
-               <div class="p-5 space-y-4">
-                  <div class="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                     <span class="font-bold text-gray-400 uppercase tracking-wider text-[10px]">Placement</span>
-                     <span id="sum-placement" class="font-black text-brand-dark font-mono text-[11px]">-</span>
-                  </div>
-                  <div class="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                     <span class="font-bold text-gray-400 uppercase tracking-wider text-[10px]">Type</span>
-                     <span id="sum-type" class="font-black text-blue-600 font-mono text-[11px]">-</span>
-                  </div>
-                  <div class="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                     <span class="font-bold text-gray-400 uppercase tracking-wider text-[10px]">Target</span>
-                     <span id="sum-target" class="font-black text-brand-dark font-mono text-[11px]">-</span>
-                  </div>
-                  <div class="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                     <span class="font-bold text-gray-400 uppercase tracking-wider text-[10px]">Priority</span>
-                     <span id="sum-priority" class="font-black text-brand-dark text-[11px]">-</span>
-                  </div>
-                  <div class="flex justify-between text-xs">
-                     <span class="font-bold text-gray-400 uppercase tracking-wider text-[10px]">Dates</span>
-                     <span id="sum-dates" class="font-bold text-gray-500 text-[11px]">-</span>
-                  </div>
-                  
-                  <div id="sum-notices" class="space-y-2 mt-4 pt-4 border-t border-gray-100">
-                     <!-- Validation notes generated live by JS -->
-                  </div>
-
-                  <div class="bg-blue-50/50 border border-blue-100 rounded-xl p-4 mt-4 flex items-start gap-3">
-                     <p class="text-[10px] text-blue-700 font-medium leading-relaxed">
-                        This rule is currently a draft and is not yet visible to customers.
-                     </p>
-                  </div>
-               </div>
-            </div>
-            <RecommendationRulePreviewPanel />
-         </div>
-      </div>
-    </div>
+          <div>
+            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-2">After this rule</h4>
+            <ol class="space-y-1">
+              {preview.after.map((c, i) => {
+                const move = preview!.guardrails?.rankMoves.find((m) => m.productId === item(c).productId);
+                const added = preview!.guardrails?.itemsAdded.some((a) => a.productId === item(c).productId);
+                return (
+                  <li class="text-sm text-gray-700 flex justify-between border-b border-gray-100 py-1">
+                    <span>{i + 1}. {item(c).name}</span>
+                    <span class="text-[10px] font-black uppercase text-gray-400">
+                      {added ? "added" : move ? (move.from > move.to ? `↑ from ${move.from + 1}` : `↓ from ${move.from + 1}`) : ""}
+                    </span>
+                  </li>
+                );
+              })}
+              {preview.after.length === 0 && <li class="text-sm text-red-600 font-bold">Empty — see the warning above.</li>}
+            </ol>
+            {preview.guardrails && preview.guardrails.itemsRemoved.length > 0 && (
+              <p class="text-[11px] text-gray-500 mt-2">Removed: {preview.guardrails.itemsRemoved.map((r) => r.name).join(", ")}</p>
+            )}
+          </div>
+        </div>
+      </section>
+    )}
   </div>
 </AdminLayout>
-
-<script>
-  const form = document.getElementById('rule-main-form') as HTMLFormElement;
-  const typeSel = document.getElementById('type-selector') as HTMLSelectElement;
-  const variants = document.querySelectorAll('.action-variant');
-  const sumPanel = document.getElementById('rule-summary-panel');
-
-  // Live Summary Populators
-  const sumPlacement = document.getElementById('sum-placement')!;
-  const sumType = document.getElementById('sum-type')!;
-  const sumTarget = document.getElementById('sum-target')!;
-  const sumPriority = document.getElementById('sum-priority')!;
-  const sumDates = document.getElementById('sum-dates')!;
-  const sumNotices = document.getElementById('sum-notices')!;
-
-  function updateSummary() {
-    if (!form) return;
-    const fd = new FormData(form);
-
-    const placement = fd.get('placement') as string;
-    const type = fd.get('type') as string;
-    const targetType = fd.get('targetType') as string;
-    const targetValue = fd.get('targetValue') as string;
-    const priority = parseInt(fd.get('priority') as string || '100', 10);
-    const startsAt = fd.get('startsAt') as string;
-    const endsAt = fd.get('endsAt') as string;
-
-    // Update basic labels
-    sumPlacement.textContent = placement.toUpperCase().replace('_', ' ');
-    sumType.textContent = type;
-    
-    let scopeText = targetType;
-    if (targetValue) {
-      scopeText += ` (${targetValue})`;
-    }
-    sumTarget.textContent = scopeText;
-    sumPriority.textContent = priority.toString();
-
-    let boundsText = "Perpetual run";
-    if (startsAt && endsAt) boundsText = `${startsAt} to ${endsAt}`;
-    else if (startsAt) boundsText = `Starts ${startsAt}`;
-    else if (endsAt) boundsText = `Until ${endsAt}`;
-    sumDates.textContent = boundsText;
-
-    // Generate Warnings / Notices
-    let noticesHtml = '';
-    
-    if (targetType === 'GLOBAL') {
-      noticesHtml += `<div class="flex items-start gap-2 bg-amber-50 border border-amber-100 text-amber-800 p-2 rounded-lg text-[9px] font-bold">
-        <span>Applies to all products.</span>
-      </div>`;
-    }
-
-    if (!endsAt) {
-      noticesHtml += `<div class="flex items-start gap-2 bg-blue-50 border border-blue-100 text-blue-700 p-2 rounded-lg text-[9px] font-bold">
-        <span>No end date set.</span>
-      </div>`;
-    }
-
-    if (priority < 50) {
-      noticesHtml += `<div class="flex items-start gap-2 bg-purple-50 border border-purple-100 text-purple-700 p-2 rounded-lg text-[9px] font-bold">
-        <span><strong>High priority:</strong> This rule takes priority over standard configurations.</span>
-      </div>`;
-    }
-
-    if (type === 'PIN' && targetType !== 'PRODUCT') {
-      noticesHtml += `<div class="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 p-2 rounded-lg text-[9px] font-bold">
-        <span><strong>Incorrect target:</strong> Pinning rules require a Specific product target.</span>
-      </div>`;
-    }
-
-    if (startsAt && endsAt && new Date(startsAt) > new Date(endsAt)) {
-      noticesHtml += `<div class="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 p-2 rounded-lg text-[9px] font-bold">
-        <span><strong>Invalid window:</strong> This rule cannot end before it starts.</span>
-      </div>`;
-    }
-
-    sumNotices.innerHTML = noticesHtml || `<div class="text-[9px] text-gray-400 italic text-center py-1">Ready to preview or save.</div>`;
-  }
-
-  // Wire up interactive UI switcher & update trigger
-  typeSel?.addEventListener('change', () => {
-    const val = typeSel.value;
-    variants.forEach(v => {
-      if ((v as HTMLElement).dataset.type === val) {
-        v.classList.remove('hidden');
-      } else {
-        v.classList.add('hidden');
-      }
-    });
-    updateSummary();
-  });
-
-  // Validations before submitting or previewing
-  function validateInputs(): string[] {
-    const errors: string[] = [];
-    const nameInput = document.getElementById('r_name') as HTMLInputElement;
-    const typeInput = document.getElementById('type-selector') as HTMLSelectElement;
-    const targetTypeSelect = document.getElementsByName('targetType')[0] as HTMLSelectElement;
-    const targetValInput = document.getElementById('r_target_val') as HTMLInputElement;
-    const startInput = document.getElementById('r_start') as HTMLInputElement;
-    const endInput = document.getElementById('r_end') as HTMLInputElement;
-
-    if (!nameInput.value.trim()) {
-      errors.push("Rule name is required.");
-    }
-    if (typeInput.value === 'PIN' && targetTypeSelect.value !== 'PRODUCT') {
-      errors.push("Pin rule type requires Target Scope to be 'Specific product'.");
-    }
-    if (targetTypeSelect.value !== 'GLOBAL' && !targetValInput.value.trim()) {
-      errors.push(`Target identifier is required when Target scope is ${targetTypeSelect.value}.`);
-    }
-    if (startInput.value && endInput.value) {
-      if (new Date(startInput.value) > new Date(endInput.value)) {
-        errors.push("This rule cannot end before it starts.");
-      }
-    }
-    return errors;
-  }
-
-  // Block invalid form submit
-  form?.addEventListener('submit', (e) => {
-    const errors = validateInputs();
-    if (errors.length > 0) {
-      e.preventDefault();
-      alert("Please correct the following problems:\n- " + errors.join("\n- "));
-    }
-  });
-
-  // Bind inputs for real-time reactive sync
-  form?.querySelectorAll('input, select').forEach(el => {
-    el.addEventListener('input', updateSummary);
-    el.addEventListener('change', updateSummary);
-  });
-
-  // Run initial load synchronization
-  updateSummary();
-
-  // Async Preview Connector
-  const btnPreview = document.getElementById('btn-trigger-preview');
-  const token = (document.getElementById('session-token') as HTMLInputElement)?.value;
-
-  btnPreview?.addEventListener('click', async () => {
-    const clientErrors = validateInputs();
-    if (clientErrors.length > 0) {
-      alert("Cannot preview due to validation errors:\n- " + clientErrors.join("\n- "));
-      return;
-    }
-
-    btnPreview.textContent = "Loading...";
-    btnPreview.classList.add('opacity-50', 'pointer-events-none');
-
-    const fd = new FormData(form);
-    const type = fd.get('type') as string;
-    const action: any = { type };
-    
-    if (type === 'BOOST') action.boostScore = parseFloat(fd.get('boostScore') as string || '0');
-    if (type === 'SUPPRESS') action.suppress = true;
-    if (type === 'PIN') action.pinPosition = parseInt(fd.get('pinPosition') as string || '1', 10);
-    if (type === 'CAMPAIGN') {
-       action.boostScore = parseFloat(fd.get('campBoostScore') as string || '0');
-       action.campaignLabel = fd.get('campaignLabel') as string;
-    }
-
-    const payload = {
-      placement: fd.get('placement') as string,
-      draftRule: {
-        name: fd.get('name') as string,
-        type: type,
-        placement: fd.get('placement') as string,
-        targetType: fd.get('targetType') as string,
-        targetValue: fd.get('targetValue') as string || undefined,
-        action: action,
-        status: 'ACTIVE',
-        priority: parseInt(fd.get('priority') as string || '100', 10),
-        conditions: {}
-      }
-    };
-
-    try {
-      const apiBase = (document.getElementById('api-base-url') as HTMLInputElement)?.value || 'http://localhost:3000';
-      
-      const r = await fetch(`${apiBase}/admin/recommendations/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(payload)
-      });
-      
-      const json = await r.json();
-      
-      if (json.success && json.data) {
-        sumPanel?.classList.add('hidden');
-        if (typeof (window as any).renderRecommendationPreview === 'function') {
-          (window as any).renderRecommendationPreview(json.data);
-        }
-      } else {
-        alert("Preview failed: " + (json.error?.message || "Invalid structure"));
-      }
-    } catch (err) {
-       alert("Connectivity error blocking preview simulation.");
-    } finally {
-      btnPreview.textContent = "Preview";
-      btnPreview.classList.remove('opacity-50', 'pointer-events-none');
-    }
-  });
-</script>

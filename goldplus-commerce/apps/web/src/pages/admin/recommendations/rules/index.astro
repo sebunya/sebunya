@@ -7,6 +7,7 @@ import InfoTooltip from "../../../../components/admin/InfoTooltip.astro";
 
 import { listRecommendationRules } from "../../../../lib/admin-recommendations";
 import { readSessionToken } from "../../../../lib/session";
+import { apiBase } from "../../../../lib/api";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -37,9 +38,22 @@ function formatSchedule(starts?: string | null, ends?: string | null) {
   return `Until ${parseD(ends)}`;
 }
 
+let productNameById = new Map<string, string>();
+try {
+  const productsRes = await fetch(`${apiBase}/products?limit=100`, { signal: AbortSignal.timeout(4000) });
+  const productsJson = await productsRes.json();
+  if (productsJson?.success && Array.isArray(productsJson.data)) {
+    productNameById = new Map(productsJson.data.map((p: { id: string; name: string }) => [p.id, p.name]));
+  }
+} catch {
+  // Name resolution is cosmetic; the list renders with raw values if the catalogue is unreachable.
+}
+
 function formatTarget(type: string, value?: string | null) {
   if (type === 'GLOBAL') return 'Applies to all products';
-  if (type === 'PRODUCT') return `Prod ID: ${value ? value.slice(0,8) + '…' : '—'}`;
+  // R5: products are shown by NAME — an operator should never need to
+  // recognise a UUID stub.
+  if (type === 'PRODUCT') return `Product: ${value ? (productNameById.get(value) ?? value.slice(0, 8) + '…') : '—'}`;
   if (type === 'CATEGORY') return `Category: ${value || '—'}`;
   return `${type}: ${value || '—'}`;
 }
@@ -121,7 +135,7 @@ const placementLabels: any = {
         <p class="text-xs text-gray-500 max-w-md leading-relaxed mb-8">
           {hasActiveFilters 
             ? 'Your current filters are too restrictive. Clear your search or filters to see all rules.' 
-            : 'Start with one simple rule, such as boosting a featured product on the homepage.'}
+            : 'Recommendations are already running on safe defaults — every placement serves eligible products without any rule. Create a rule only when you need to influence that default ranking.'}
         </p>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-left max-w-3xl w-full bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-8">

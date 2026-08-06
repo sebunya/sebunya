@@ -69,8 +69,14 @@ export class RecommendationRuleApplicationService {
     // Work on a copy of candidates to avoid mutating caller's array
     let candidates = [...input.candidates];
 
+    // R5: priority is honoured WITHIN each type partition — the column, its
+    // index and the admin field always implied this; only SQL ordering
+    // happened to deliver it before.
+    const byPriority = (a: RecommendationRule, b: RecommendationRule) =>
+      (a.priority ?? 100) - (b.priority ?? 100) || a.id.localeCompare(b.id);
+
     // 3️⃣ Apply SUPPRESS rules first
-    const suppressRules = activeRules.filter((r) => r.type === "SUPPRESS");
+    const suppressRules = activeRules.filter((r) => r.type === "SUPPRESS").sort(byPriority);
     for (const rule of suppressRules) {
       const toRemove = candidates.filter((c) => matches(rule, c));
       if (toRemove.length) {
@@ -81,7 +87,7 @@ export class RecommendationRuleApplicationService {
     }
 
     // 4️⃣ Apply PIN rules next (reposition only existing eligible candidates)
-    const pinRules = activeRules.filter((r) => r.type === "PIN");
+    const pinRules = activeRules.filter((r) => r.type === "PIN").sort(byPriority);
     for (const rule of pinRules) {
       const idx = candidates.findIndex((c) => matches(rule, c));
       if (idx !== -1) {
@@ -99,7 +105,7 @@ export class RecommendationRuleApplicationService {
     }
 
     // 5️⃣ Apply BOOST (and CAMPAIGN/BUNDLE) rules
-    const boostRules = activeRules.filter((r) => r.type === "BOOST" || r.type === "CAMPAIGN" || r.type === "BUNDLE");
+    const boostRules = activeRules.filter((r) => r.type === "BOOST" || r.type === "CAMPAIGN" || r.type === "BUNDLE").sort(byPriority);
     for (const rule of boostRules) {
       const boostScore = rule.action?.boostScore ?? 0; // CAMPAIGN may also include boostScore
       const isCampaign = rule.type === "CAMPAIGN";

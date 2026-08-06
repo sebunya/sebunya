@@ -105,26 +105,21 @@ export class RecommendationRuleValidationService {
 
     if (rule.type === "SUPPRESS") {
       if (rule.targetType === "GLOBAL") {
-        // Acceptable but rare
+        // R5: a global suppression empties EVERY rail of the placement it
+        // touches — that is an outage authored through a form. Refused.
+        errors.push("A global suppression would empty the placement entirely. Suppress a specific product, category or type instead.");
       } else if (!rule.targetValue) {
         errors.push("SUPPRESS rules targeting entities must have a targetValue.");
       }
     }
 
-    // Conditions Validation
-    if (rule.conditions) {
-      const cond = rule.conditions;
-      if (cond.priceBand && !["low", "mid", "high", "premium"].includes(cond.priceBand)) {
-        errors.push(`Invalid condition priceBand: ${cond.priceBand}`);
-      }
-
-      // Check unknown fields
-      const allowedFields = ["priceBand"];
-      Object.keys(cond).forEach(key => {
-        if (!allowedFields.includes(key)) {
-          errors.push(`Unknown condition field: ${key}`);
-        }
-      });
+    // R5 (2026-08-06): `conditions` are DECLARED in the schema but the engine
+    // has never evaluated them — an admin could author cart-contains or
+    // price-band conditions that silently did nothing (the recorded
+    // authored-but-unapplied trap). Until the engine evaluates them, saving
+    // them is refused rather than accepted-and-ignored.
+    if (rule.conditions && Object.keys(rule.conditions).length > 0) {
+      errors.push("Rule conditions are not evaluated by the engine yet. Use the target, placement and schedule fields.");
     }
 
     return errors;

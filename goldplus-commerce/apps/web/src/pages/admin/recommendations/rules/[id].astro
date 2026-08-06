@@ -4,12 +4,10 @@ import FormField from "../../../../components/FormField.astro";
 import FormFeedback from "../../../../components/FormFeedback.astro";
 import Notice from "../../../../components/Notice.astro";
 import RuleStatusBadge from "../../../../components/recommendations/RuleStatusBadge.astro";
-import RecommendationRulePreviewPanel from "../../../../components/recommendations/RecommendationRulePreviewPanel.astro";
 import InfoTooltip from "../../../../components/admin/InfoTooltip.astro";
 
-import { getRecommendationRule, updateRecommendationRule, changeRecommendationRuleStatus, archiveRecommendationRule, getRecommendationRuleAuditLog } from "../../../../lib/admin-recommendations";
+import { getRecommendationRule, updateRecommendationRule, changeRecommendationRuleStatus, archiveRecommendationRule, getRecommendationRuleAuditLog , rollbackRecommendationRule } from "../../../../lib/admin-recommendations";
 import { readSessionToken } from "../../../../lib/session";
-import { apiBase } from "../../../../lib/api";
 
 const { id } = Astro.params;
 const token = readSessionToken(Astro.request);
@@ -68,6 +66,12 @@ if (Astro.request.method === 'POST') {
     const status = String(form.get('status')) as any;
     const res = await changeRecommendationRuleStatus(token, id!, status);
     feedback = res.ok ? { status: 'success', message: `Status successfully changed to ${status}.` } : { status: 'error', message: res.message };
+  } else if (actionVerb === 'rollback') {
+    const auditId = String(form.get('auditId') || '');
+    const res = await rollbackRecommendationRule(token, id!, auditId);
+    feedback = res.ok
+      ? { status: 'success', message: 'Restored the version this change replaced. The rollback itself is now in the history.' }
+      : { status: 'error', message: res.message, details: Array.isArray(res.details) ? res.details : undefined };
   } else if (actionVerb === 'archive') {
     const res = await archiveRecommendationRule(token, id!);
     feedback = res.ok ? { status: 'success', message: 'Rule has been formally archived.' } : { status: 'error', message: res.message };
@@ -222,20 +226,21 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
 
              {rule.status !== 'ARCHIVED' && (
                 <div class="p-6 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-end items-center gap-3">
-                   <button type="button" id="btn-trigger-preview" class="w-full sm:w-auto bg-white border border-gray-200 text-brand-dark px-5 py-2.5 rounded-xl font-bold hover:bg-gray-100 shadow-sm text-xs transition-colors">
-                     Preview
-                   </button>
+                   <a href={`/admin/recommendations/preview?placement=${rule.placement}`} class="w-full sm:w-auto bg-white border border-gray-200 text-brand-dark px-5 py-2.5 rounded-xl font-bold hover:bg-gray-100 shadow-sm text-xs transition-colors text-center">
+                     Preview placement
+                   </a>
                    <button type="submit" class="w-full sm:w-auto bg-brand-dark text-white px-5 py-2.5 rounded-xl font-black hover:bg-black transition-colors text-xs shadow-sm">
                      Apply Changes
                    </button>
                 </div>
              )}
-             <input type="hidden" id="session-token" value={token} />
-             <input type="hidden" id="api-base-url" value={apiBase} />
-             <input type="hidden" id="current-rule-id" value={rule.id} />
+             {/* R5: the session token and internal API origin are no longer
+                 serialized into the page — the old client-side preview shipped
+                 the ADMIN BEARER TOKEN in a hidden input and pointed the
+                 browser at the internal container origin. Preview is
+                 server-rendered on its own page now. */}
            </form>
 
-           <RecommendationRulePreviewPanel />
         </div>
 
         {/* SECONDARY CONTROL SIDEBAR */}
@@ -285,6 +290,13 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
                           <span class="text-gray-400 text-[9px] font-medium">{new Date(l.performedAt).toLocaleDateString('en-GB', {month:'short', day:'numeric'})}</span>
                        </div>
                        <div class="text-gray-400 truncate font-mono text-[8px] mt-1">ACTOR: {l.performedBy || 'System'}</div>
+                       {(l.action === 'UPDATED' || l.action === 'ROLLED_BACK') && l.before && rule.status !== 'ARCHIVED' && (
+                         <form method="POST" class="mt-2">
+                           <input type="hidden" name="_action" value="rollback" />
+                           <input type="hidden" name="auditId" value={l.id} />
+                           <button type="submit" class="text-[9px] font-black uppercase tracking-widest text-gray-500 hover:text-brand-dark underline">Restore the version before this change</button>
+                         </form>
+                       )}
                     </div>
                   ))
                 )}
@@ -296,107 +308,3 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
     )}
   </div>
 </AdminLayout>
-
-<script>
-  const btnPreview = document.getElementById('btn-trigger-preview');
-  const token = (document.getElementById('session-token') as HTMLInputElement)?.value;
-  const form = document.getElementById('rule-edit-form') as HTMLFormElement;
-
-  function validateInputs(): string[] {
-    const errors: string[] = [];
-    const nameInput = document.getElementById('r_name') as HTMLInputElement;
-    const targetTypeSelect = document.getElementsByName('targetType')[0] as HTMLSelectElement;
-    const targetValInput = document.getElementById('t_val') as HTMLInputElement;
-    const startInput = document.getElementById('st') as HTMLInputElement;
-    const endInput = document.getElementById('en') as HTMLInputElement;
-    const typeInput = document.getElementsByName('type')[0] as HTMLInputElement; // hidden input
-
-    if (nameInput && !nameInput.value.trim()) {
-      errors.push("Rule name is required.");
-    }
-    if (typeInput && typeInput.value === 'PIN' && targetTypeSelect.value !== 'PRODUCT') {
-      errors.push("Pin rule type requires Target Scope to be 'Specific product'.");
-    }
-    if (targetTypeSelect && targetTypeSelect.value !== 'GLOBAL' && targetValInput && !targetValInput.value.trim()) {
-      errors.push(`Target identifier is required when Target scope is ${targetTypeSelect.value}.`);
-    }
-    if (startInput && endInput && startInput.value && endInput.value) {
-      if (new Date(startInput.value) > new Date(endInput.value)) {
-        errors.push("This rule cannot end before it starts.");
-      }
-    }
-    return errors;
-  }
-
-  form?.addEventListener('submit', (e) => {
-    // Identify what action triggered the submit
-    const errors = validateInputs();
-    if (errors.length > 0) {
-      e.preventDefault();
-      alert("Please correct the following problems:\n- " + errors.join("\n- "));
-    }
-  });
-
-  btnPreview?.addEventListener('click', async () => {
-    const clientErrors = validateInputs();
-    if (clientErrors.length > 0) {
-      alert("Cannot preview due to validation errors:\n- " + clientErrors.join("\n- "));
-      return;
-    }
-
-    btnPreview.textContent = "Simulating...";
-    btnPreview.classList.add('opacity-50', 'pointer-events-none');
-
-    const fd = new FormData(form);
-
-    const type = fd.get('type') as string;
-    const action: any = { type };
-    if (type === 'BOOST') action.boostScore = parseFloat(fd.get('boostScore') as string || '0');
-    if (type === 'SUPPRESS') action.suppress = true;
-    if (type === 'PIN') action.pinPosition = parseInt(fd.get('pinPosition') as string || '1', 10);
-    if (type === 'CAMPAIGN') {
-       action.boostScore = parseFloat(fd.get('campBoostScore') as string || '0');
-       action.campaignLabel = fd.get('campaignLabel') as string;
-    }
-
-    const payload = {
-      placement: fd.get('placement') as string,
-      draftRule: {
-        id: (document.getElementById('current-rule-id') as HTMLInputElement)?.value,
-        name: fd.get('name') as string,
-        type,
-        placement: fd.get('placement') as string,
-        targetType: fd.get('targetType') as string,
-        targetValue: fd.get('targetValue') as string || undefined,
-        action,
-        status: 'ACTIVE',
-        priority: parseInt(fd.get('priority') as string || '100', 10),
-        conditions: {}
-      }
-    };
-
-    try {
-      const apiBase = (document.getElementById('api-base-url') as HTMLInputElement)?.value || 'http://localhost:3000';
-      const r = await fetch(`${apiBase}/admin/recommendations/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(payload)
-      });
-      
-      const json = await r.json();
-      if (json.success && json.data) {
-        if (typeof (window as any).renderRecommendationPreview === 'function') {
-          (window as any).renderRecommendationPreview(json.data);
-        }
-      } else {
-         alert("Preview Rejected: " + (json.error?.message || "Format error"));
-      }
-    } catch (err) {
-      alert("Preview runtime unavailable.");
-    } finally {
-      btnPreview.textContent = "Preview";
-      btnPreview.classList.remove('opacity-50', 'pointer-events-none');
-    }
-  });
-</script>
-

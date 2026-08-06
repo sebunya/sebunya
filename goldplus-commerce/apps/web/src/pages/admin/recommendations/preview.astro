@@ -1,305 +1,175 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
-import FormField from "../../../components/FormField.astro";
-import RecommendationRulePreviewPanel from "../../../components/recommendations/RecommendationRulePreviewPanel.astro";
-import InfoTooltip from "../../../components/admin/InfoTooltip.astro";
 import { readSessionToken } from "../../../lib/session";
 import { apiBase } from "../../../lib/api";
+import { previewRecommendationRules, type PreviewResultPayload } from "../../../lib/admin-recommendations";
+import type { ApiResponse, ProductPublicDto, RecommendationPlacement } from "@goldplus/shared";
+
+/**
+ * Placement preview for non-technical operators (R5, 2026-08-06; AC26/AC27).
+ *
+ * The old page demanded raw UUIDs behind a regex gate and fetched from browser
+ * JavaScript against the INTERNAL container origin serialized into a hidden
+ * input — unusable without a database console, broken in production. This one
+ * is selector-driven and fully server-rendered: pick a placement, pick
+ * products by name, see what a real visitor would see and WHY each product is
+ * there.
+ */
 
 const token = readSessionToken(Astro.request);
 if (!token) return Astro.redirect("/admin/login?returnTo=/admin/recommendations/preview", 303);
 
-// Allow deep-linking to instant preview settings from Rules Manager
-const url = new URL(Astro.request.url);
-const paramPlacement = url.searchParams.get('placement') || 'home_trending';
-const paramProductId = url.searchParams.get('productId') || '';
+const PLACEMENTS: Array<{ id: RecommendationPlacement; label: string; needs: "product" | "category" | "cart" | "none" }> = [
+  { id: "home_trending", label: "Homepage — Popular now", needs: "none" },
+  { id: "product_related", label: "Product page — Related products", needs: "product" },
+  { id: "complete_setup", label: "Product page — Complete the setup", needs: "product" },
+  { id: "cart_addon", label: "Cart — Useful add-ons", needs: "cart" },
+  { id: "category_popular", label: "Category — Popular in category", needs: "category" },
+];
+
+let products: ProductPublicDto[] = [];
+try {
+  const res = await fetch(`${apiBase}/products?limit=100`, { signal: AbortSignal.timeout(5000) });
+  const json = (await res.json()) as ApiResponse<ProductPublicDto[]>;
+  if (json.success && json.data) products = json.data;
+} catch {
+  // Selectors state the catalogue is unreachable; the page still renders.
+}
+const categoryNames = [...new Set(products.map((p) => p.categoryName).filter(Boolean))].sort();
+const CATEGORY_SLUG: Record<string, string> = {
+  "Power Devices": "power",
+  "Sound Devices": "sound",
+  "Storage Devices": "storage",
+  "Car Accessories": "car-accessories",
+  "PC Accessories": "pc-accessories",
+};
+
+let notice: string | null = null;
+let result: PreviewResultPayload | null = null;
+const form: Record<string, string> = {};
+let cartSelection: string[] = [];
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  for (const [k, v] of f.entries()) form[k] = String(v);
+  cartSelection = f.getAll("cartProducts").map(String).filter(Boolean);
+  const placement = String(f.get("placement") || "home_trending") as RecommendationPlacement;
+  const needs = PLACEMENTS.find((p) => p.id === placement)?.needs ?? "none";
+
+  const res = await previewRecommendationRules(token, {
+    placement,
+    productId: needs === "product" ? String(f.get("anchorProduct") || "") || undefined : undefined,
+    categorySlug: needs === "category" ? CATEGORY_SLUG[String(f.get("category") || "")] : undefined,
+    cartProductIds: needs === "cart" ? cartSelection : undefined,
+  });
+  if (res.ok) result = res.data;
+  else notice = res.message || "Preview failed.";
+}
+
+const val = (k: string, dflt = "") => form[k] ?? dflt;
+type PreviewItem = { productId: string; name: string; score?: number; reasonCodes?: string[]; displayReason?: string; candidateSource?: string };
+const why = (c: PreviewItem) =>
+  [c.displayReason, c.candidateSource?.toLowerCase().replace(/_/g, " ")].filter(Boolean).join(" · ");
 ---
 
-<AdminLayout 
-  title="Preview recommendations" 
-  description="Verify how active rules dynamically adjust catalog outputs before site publishing."
->
-  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
-      <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Preview recommendations</h2>
-        <p class="text-sm text-gray-500 mt-1">Verify how active rules dynamically adjust catalog outputs before site publishing.</p>
-      </div>
-      <a href="/admin/recommendations" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
-        &larr; Recommendations
-      </a>
+<AdminLayout title="Preview" description="What a visitor would see on any placement — and why each product is there.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-4xl pb-16">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <a href="/admin/recommendations" class="text-xs font-black uppercase tracking-widest text-gray-400 hover:text-gray-700">← Recommendations</a>
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight mt-2">Preview a placement</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+        Real catalogue, live rules, nothing saved. Synthetic context is clearly labelled — this is a
+        simulation of a visitor, not a visitor.
+      </p>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-8">
-      
-      {/* INPUT CONTROLS */}
-      <div class="lg:col-span-4 space-y-6">
-        <form id="preview-form" class="bg-white border border-gray-200 shadow-sm rounded-2xl overflow-hidden">
-           <div class="px-6 py-4 bg-gray-50 border-b border-gray-100">
-              <h3 class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Preview setup</h3>
-           </div>
-           <div class="p-6 space-y-5">
-             <div>
-               <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-2">
-                 Placement
-                 <InfoTooltip text="The page section where these recommendations will be loaded." align="left" />
-               </label>
-               <select id="s_placement" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-xs text-brand-dark outline-none focus:border-brand-gold">
-                 <option value="home_trending" selected={paramPlacement === 'home_trending'}>Homepage catalogue</option>
-                 <option value="product_related" selected={paramPlacement === 'product_related'}>Product Related</option>
-                 <option value="cart_addon" selected={paramPlacement === 'cart_addon'}>Cart Addons</option>
-                 <option value="category_popular" selected={paramPlacement === 'category_popular'}>Category products</option>
-                 <option value="complete_setup" selected={paramPlacement === 'complete_setup'}>Complete Setup</option>
-               </select>
+    {notice && <div class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700" role="status">{notice}</div>}
 
-               {/* Intelligent Dynamic Context Helper Banner */}
-               <div id="ctx-helper" class="mt-3 p-3 border rounded-xl hidden text-[10px] leading-relaxed flex items-start gap-2 font-medium transition-all">
-                  <span class="w-1.5 h-1.5 bg-current rounded-full inline-block mt-1.5 flex-shrink-0 opacity-60"></span>
-                  <span id="ctx-helper-txt"></span>
-               </div>
-             </div>
-             
-             <div class="pt-5 border-t border-dashed border-gray-200 space-y-4">
-                <h4 class="text-[10px] uppercase font-black text-gray-400 tracking-wider flex items-center gap-2">
-                   Catalogue context
-                  <InfoTooltip text="Provide identifiers required by context-dependent rules to isolate exact matching logic." align="left" />
-                </h4>
-                <FormField id="s_prod" name="productId" label="Anchor product ID" value={paramProductId} placeholder="e.g. 00000000-0000-0000-0000-000000000000">
-                  <span slot="label" class="flex justify-between items-center">
-                     <span>Anchor product ID</span>
-                     <span id="req-badge-prod" class="text-[8px] text-gray-400 font-black uppercase hidden">Required</span>
-                  </span>
-                </FormField>
-                <FormField id="s_cat" name="categorySlug" label="Category slug" placeholder="e.g. wireless-audio">
-                  <span slot="label" class="flex justify-between items-center">
-                     <span>Category slug</span>
-                     <span id="req-badge-cat" class="text-[8px] text-gray-400 font-black uppercase hidden">Required</span>
-                  </span>
-                </FormField>
-                <FormField id="s_cart" name="cartItems" label="Cart product IDs" placeholder="uuid1, uuid2" helperText="Separate multiple active IDs with commas.">
-                  <span slot="label" class="flex justify-between items-center">
-                     <span>Cart product IDs</span>
-                     <span id="req-badge-cart" class="text-[8px] text-gray-400 font-black uppercase hidden">Required</span>
-                  </span>
-                </FormField>
-             </div>
+    <form method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+      <div class="grid sm:grid-cols-2 gap-4">
+        <label class="block">
+          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Placement</span>
+          <select name="placement" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {PLACEMENTS.map((p) => <option value={p.id} selected={val("placement") === p.id}>{p.label}</option>)}
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Anchor product (product-page placements)</span>
+          <select name="anchorProduct" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {products.length === 0 && <option value="">Catalogue unreachable</option>}
+            {products.map((p) => <option value={p.id} selected={val("anchorProduct") === p.id}>{p.name}</option>)}
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Category (category placement)</span>
+          <select name="category" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {categoryNames.map((c) => <option value={c} selected={val("category") === c}>{c}</option>)}
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Cart contents (cart placement — pick any)</span>
+          <select name="cartProducts" multiple size="4" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {products.map((p) => <option value={p.id} selected={cartSelection.includes(p.id)}>{p.name}</option>)}
+          </select>
+        </label>
+      </div>
+      <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">Run preview</button>
+    </form>
 
-             <button type="submit" class="w-full bg-brand-dark text-white font-black text-xs uppercase tracking-wider py-3.5 rounded-xl shadow-sm hover:bg-black transition-colors mt-4 flex items-center justify-center gap-2">
-               Run preview
-             </button>
-           </div>
-        </form>
-
-        <div class="bg-blue-50 border border-blue-100 p-5 rounded-2xl flex items-start gap-3 shadow-xs">
-           <div>
-              <h4 class="text-xs font-bold text-blue-800">Read-only simulation</h4>
-              <p class="text-[10px] text-blue-700 leading-relaxed mt-1 font-medium">
-                Uses current catalogue and rule configuration without customer data. It does not persist configuration changes or modify storefront products.
-             </p>
-           </div>
+    {result && (
+      <section class="mt-8 bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+        <div class="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">
+            {PLACEMENTS.find((p) => p.id === result!.placement)?.label ?? result.placement} — synthetic visitor
+          </h3>
+          {result.appliedRuleIds.length > 0
+            ? <span class="text-[10px] font-black uppercase text-amber-700">{result.appliedRuleIds.length} rule(s) applied</span>
+            : <span class="text-[10px] font-black uppercase text-green-700">safe defaults only — no rules active here</span>}
         </div>
-      </div>
 
-      {/* OUTPUT PANEL */}
-      <div class="lg:col-span-8 space-y-6">
-         <div id="preview-instructions" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-center">
-             <div class="mb-4 border-b border-gray-100 pb-3">
-                <h3 class="text-base font-black text-brand-dark">Preview instructions</h3>
-                <p class="text-xs text-gray-500 leading-relaxed mt-1">
-                   Choose a target placement, fill required contextual scopes, and run preview side-by-side audit.
-                </p>
-             </div>
+        <div class="grid md:grid-cols-2 gap-6">
+          <div>
+            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-2">Default ranking</h4>
+            <ol class="space-y-1">
+              {(result.before as PreviewItem[]).map((c, i) => (
+                <li class="border-b border-gray-100 py-1.5">
+                  <span class="text-sm text-gray-800">{i + 1}. {c.name}</span>
+                  <span class="block text-[11px] text-gray-500">{why(c)}</span>
+                </li>
+              ))}
+              {result.before.length === 0 && <li class="text-sm text-gray-400">Empty.</li>}
+            </ol>
+          </div>
+          <div>
+            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-2">With active rules</h4>
+            <ol class="space-y-1">
+              {(result.after as PreviewItem[]).map((c, i) => {
+                const move = result!.guardrails?.rankMoves.find((m) => m.productId === c.productId);
+                return (
+                  <li class="border-b border-gray-100 py-1.5">
+                    <div class="flex justify-between">
+                      <span class="text-sm text-gray-800">{i + 1}. {c.name}</span>
+                      {move && <span class="text-[10px] font-black uppercase text-gray-400">{move.from > move.to ? `↑ ${move.from + 1}→${move.to + 1}` : `↓ ${move.from + 1}→${move.to + 1}`}</span>}
+                    </div>
+                    <span class="block text-[11px] text-gray-500">{why(c)}</span>
+                  </li>
+                );
+              })}
+              {result.after.length === 0 && <li class="text-sm text-red-600 font-bold">Empty after rules.</li>}
+            </ol>
+          </div>
+        </div>
 
-             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-                  <div class="font-black text-brand-dark uppercase tracking-widest text-[9px] text-gray-400 mb-1">1. Select Target</div>
-                  <div class="text-[11px] text-gray-600 leading-relaxed font-medium">Configure target zone and supply matching category/product parameters on left side.</div>
-                </div>
-                <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-                  <div class="font-black text-brand-dark uppercase tracking-widest text-[9px] text-gray-400 mb-1">2. Execute Probe</div>
-                  <div class="text-[11px] text-gray-600 leading-relaxed font-medium">Trigger "Run preview" to send real-time payloads to simulation decision logic.</div>
-                </div>
-                <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-                  <div class="font-black text-brand-dark uppercase tracking-widest text-[9px] text-gray-400 mb-1">3. Compare Results</div>
-                  <div class="text-[11px] text-gray-600 leading-relaxed font-medium">Evaluate scores pre-rule and post-rule, and inspect affected products counts.</div>
-                </div>
-             </div>
-         </div>
-
-         <div id="preview-error-box" class="hidden p-5 border border-red-200 bg-red-50 rounded-2xl max-w-2xl mx-auto shadow-sm">
-            <h4 class="text-xs font-black text-red-700 uppercase tracking-widest mb-1 flex items-center gap-2">
-              <span class="w-1.5 h-1.5 bg-red-600 rounded-full inline-block"></span>
-              Preview Fault
-            </h4>
-            <p id="preview-error-msg" class="text-xs text-red-800 leading-relaxed font-medium whitespace-pre-line font-mono"></p>
-         </div>
-
-         <RecommendationRulePreviewPanel />
-      </div>
-    </div>
-    <input type="hidden" id="session-token" value={token} />
-    <input type="hidden" id="api-base-url" value={apiBase} />
+        {result.guardrails && (result.guardrails.itemsRemoved.length > 0 || result.guardrails.itemsAdded.length > 0) && (
+          <p class="text-[11px] text-gray-500 mt-4">
+            {result.guardrails.itemsAdded.length > 0 && `Added: ${result.guardrails.itemsAdded.map((a) => a.name).join(", ")}. `}
+            {result.guardrails.itemsRemoved.length > 0 && `Removed: ${result.guardrails.itemsRemoved.map((r) => r.name).join(", ")}.`}
+          </p>
+        )}
+        {result.warnings.length > 0 && (
+          <div class="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">{result.warnings.join(" · ")}</div>
+        )}
+      </section>
+    )}
   </div>
 </AdminLayout>
-
-<script>
-  const form = document.getElementById('preview-form') as HTMLFormElement;
-  const token = (document.getElementById('session-token') as HTMLInputElement)?.value;
-  const errorBox = document.getElementById('preview-error-box');
-  const errorMsg = document.getElementById('preview-error-msg');
-  const selectPlacement = document.getElementById('s_placement') as HTMLSelectElement;
-  
-  // Context helper DOM pieces
-  const ctxHelper = document.getElementById('ctx-helper');
-  const ctxHelperTxt = document.getElementById('ctx-helper-txt');
-  const badgeProd = document.getElementById('req-badge-prod');
-  const badgeCat = document.getElementById('req-badge-cat');
-  const badgeCart = document.getElementById('req-badge-cart');
-
-  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-  function updateContextHelper() {
-    if (!selectPlacement || !ctxHelper || !ctxHelperTxt) return;
-    const val = selectPlacement.value;
-    
-    // Reset badges
-    badgeProd?.classList.add('hidden');
-    badgeCat?.classList.add('hidden');
-    badgeCart?.classList.add('hidden');
-    
-    ctxHelper.className = 'mt-3 p-3 border rounded-xl text-[10px] leading-relaxed flex items-start gap-2 font-medium transition-all';
-    
-    if (val === 'product_related' || val === 'complete_setup') {
-      ctxHelper.classList.remove('hidden');
-      ctxHelper.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-800');
-      ctxHelperTxt.textContent = 'Requires a valid Anchor Product ID. Rules will be filtered against this designated context product.';
-      badgeProd?.classList.remove('hidden');
-      badgeProd?.classList.add('text-amber-600');
-    } else if (val === 'cart_addon') {
-      ctxHelper.classList.remove('hidden');
-      ctxHelper.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-800');
-      ctxHelperTxt.textContent = 'Requires one or more comma-separated Cart Product IDs to simulate addon rules against current basket state.';
-      badgeCart?.classList.remove('hidden');
-      badgeCart?.classList.add('text-amber-600');
-    } else if (val === 'category_popular') {
-      ctxHelper.classList.remove('hidden');
-      ctxHelper.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-800');
-      ctxHelperTxt.textContent = 'Requires a Category Slug to inspect products from that catalogue category.';
-      badgeCat?.classList.remove('hidden');
-      badgeCat?.classList.add('text-amber-600');
-    } else { // home_trending
-      ctxHelper.classList.remove('hidden');
-      ctxHelper.classList.add('bg-blue-50', 'border-blue-100', 'text-blue-700');
-      ctxHelperTxt.textContent = 'Catalogue-wide preview. No popularity, trend or personalisation claim is inferred.';
-    }
-  }
-
-  selectPlacement?.addEventListener('change', updateContextHelper);
-  // Trigger initial update on page render
-  updateContextHelper();
-
-  form?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const submitBtn = form.querySelector('button[type="submit"]')!;
-    const originalText = submitBtn.innerHTML;
-    
-    if (errorBox) errorBox.classList.add('hidden');
-
-    const placement = selectPlacement.value;
-    const productIdInput = document.getElementById('s_prod') as HTMLInputElement;
-    const productId = productIdInput?.value.trim() || undefined;
-    const categorySlugInput = document.getElementById('s_cat') as HTMLInputElement;
-    const catSlug = categorySlugInput?.value.trim() || undefined;
-    const cartItemsInput = document.getElementById('s_cart') as HTMLInputElement;
-    const rawCart = cartItemsInput?.value || '';
-    const cartProductIds = rawCart ? rawCart.split(',').map(s => s.trim()).filter(Boolean) : undefined;
-
-    // --- VALIDATION GATES ---
-    const errors: string[] = [];
-
-    // 1. Required context checks
-    if ((placement === 'product_related' || placement === 'complete_setup') && !productId) {
-      errors.push(`- Missing Context: Placement "${placement}" requires an active Anchor Product ID.`);
-    }
-    if (placement === 'category_popular' && !catSlug) {
-      errors.push(`- Missing Context: Category products requires an explicit target Category Slug.`);
-    }
-    if (placement === 'cart_addon' && (!cartProductIds || cartProductIds.length === 0)) {
-      errors.push(`- Missing Context: Placement "Cart Addons" requires at least one active Cart Product ID.`);
-    }
-
-    // 2. UUID Format checks
-    if (productId && !UUID_REGEX.test(productId)) {
-      errors.push(`- Syntax Error: Anchor product ID must be a valid 36-character UUID.`);
-    }
-    if (cartProductIds && cartProductIds.length > 0) {
-      const invalidCarts = cartProductIds.filter(id => !UUID_REGEX.test(id));
-      if (invalidCarts.length > 0) {
-        errors.push(`- Syntax Error: Cart items must contain comma-separated 36-character UUID strings. Found invalid: "${invalidCarts[0]}"`);
-      }
-    }
-
-    if (errors.length > 0) {
-      if (errorBox && errorMsg) {
-        errorMsg.textContent = errors.join('\n');
-        errorBox.classList.remove('hidden');
-        errorBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-      return;
-    }
-
-    submitBtn.innerHTML = 'Executing...';
-    submitBtn.classList.add('opacity-60', 'pointer-events-none');
-
-    const payload = {
-      placement,
-      productId,
-      categorySlug: catSlug,
-      cartProductIds,
-      draftOnly: false
-    };
-
-    try {
-      const apiBaseUrl = (document.getElementById('api-base-url') as HTMLInputElement)?.value || 'http://localhost:3000';
-      const r = await fetch(`${apiBaseUrl}/admin/recommendations/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(payload)
-      });
-      
-      if (!r.ok) {
-        const txt = await r.text().catch(() => "");
-        let msg = "";
-        try {
-          const parsed = JSON.parse(txt);
-          msg = parsed.error?.message || "";
-        } catch {
-          msg = txt.slice(0, 120);
-        }
-        throw new Error(`HTTP ${r.status}${msg ? ': ' + msg : ''}`);
-      }
-
-      const json = await r.json();
-      if (json.success && json.data) {
-         if (typeof (window as any).renderRecommendationPreview === 'function') {
-           (window as any).renderRecommendationPreview(json.data);
-         } else {
-           throw new Error("Preview visual template component is missing from DOM memory.");
-         }
-      } else {
-         const errTxt = json.error?.message || "The API returned an unexpected payload contract.";
-         throw new Error(errTxt);
-      }
-    } catch(err: any) {
-       if (errorBox && errorMsg) {
-         errorMsg.textContent = `Preview could not be processed.\nReason: ${err.message || String(err)}`;
-         errorBox.classList.remove('hidden');
-         errorBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-       }
-    } finally {
-       submitBtn.innerHTML = originalText;
-       submitBtn.classList.remove('opacity-60', 'pointer-events-none');
-    }
-  });
-</script>

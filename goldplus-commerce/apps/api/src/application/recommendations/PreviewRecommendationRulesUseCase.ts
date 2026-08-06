@@ -104,6 +104,22 @@ export class PreviewRecommendationRulesUseCase {
     after = this.dedupe.dedupe(after);
     after = this.diversity.diversify(after, input.placement, limit);
 
+    // R5 guardrail preflight (§24): what this rule would DO, said before save.
+    const beforeIds = before.map((c) => c.productId);
+    const afterIds = after.map((c) => c.productId);
+    const rankMoves = after
+      .map((c, toIndex) => ({ productId: c.productId, name: c.name, from: beforeIds.indexOf(c.productId), to: toIndex }))
+      .filter((m) => m.from !== -1 && m.from !== m.to);
+    const guardrails = {
+      emptyAfterRules: after.length === 0,
+      itemsRemoved: before.filter((c) => !afterIds.includes(c.productId)).map((c) => ({ productId: c.productId, name: c.name })),
+      itemsAdded: after.filter((c) => !beforeIds.includes(c.productId)).map((c) => ({ productId: c.productId, name: c.name })),
+      rankMoves,
+      lowStockPinned: after
+        .filter((c) => ruleResult.pinnedProductIds.includes(c.productId) && (c.stockQuantity ?? 0) <= 3)
+        .map((c) => ({ productId: c.productId, name: c.name, stockQuantity: c.stockQuantity ?? 0 })),
+    };
+
     return {
       ok: true,
       data: {
@@ -114,6 +130,7 @@ export class PreviewRecommendationRulesUseCase {
         suppressedProductIds: ruleResult.suppressedProductIds,
         pinnedProductIds: ruleResult.pinnedProductIds,
         warnings: ruleResult.warnings,
+        guardrails,
       }
     };
   }

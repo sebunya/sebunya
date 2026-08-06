@@ -22,6 +22,36 @@ export class ChangeRecommendationRuleStatusUseCase {
        return { ok: true, rule: existing }; // No-op
     }
 
+    // R5 (2026-08-06): the lifecycle gets a transition matrix — PAUSED and
+    // EXPIRED were declared but unreachable, and nothing stopped ARCHIVED
+    // from resurrecting.
+    const LEGAL: Record<string, RecommendationRuleStatus[]> = {
+      DRAFT: ["ACTIVE", "ARCHIVED"],
+      ACTIVE: ["PAUSED", "EXPIRED", "ARCHIVED"],
+      PAUSED: ["ACTIVE", "ARCHIVED"],
+      EXPIRED: ["ARCHIVED"],
+      ARCHIVED: [],
+    };
+    if (!LEGAL[existing.status]?.includes(input.status)) {
+      return { ok: false, message: `A ${existing.status} rule cannot become ${input.status}.` };
+    }
+
+    // Two-person integrity for suppression (mirrors SOD-1): removing products
+    // from sale surfaces is high-impact, so the admin who authored a SUPPRESS
+    // rule cannot also be the one to activate it.
+    if (
+      input.status === "ACTIVE" &&
+      existing.type === "SUPPRESS" &&
+      existing.createdBy &&
+      input.performedBy &&
+      existing.createdBy === input.performedBy
+    ) {
+      return {
+        ok: false,
+        message: "A suppression rule must be activated by a different admin than its author (two-person integrity).",
+      };
+    }
+
     await this.ruleRepo.changeStatus(input.id, input.status);
     
     const updated = { ...existing, status: input.status, updatedAt: new Date() };
