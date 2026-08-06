@@ -30,6 +30,15 @@ function toRow(r: Row): DeliveryCaptureRow {
     distanceTravelledKm: num(r.distanceTravelledKm),
     centroidSource: r.centroidSource ?? null,
     configVersionId: r.configVersionId ?? null,
+    fulfilmentMode: r.fulfilmentMode ?? null,
+    carrier: r.carrier ?? null,
+    rateCardId: r.rateCardId ?? null,
+    rateCardVersion: r.rateCardVersion ?? null,
+    parcelClass: r.parcelClass ?? null,
+    parcelCount: r.parcelCount ?? null,
+    perParcelFeeUgx: r.perParcelFeeUgx ?? null,
+    parcelOfficeId: r.parcelOfficeId ?? null,
+    pricedBy: r.pricedBy ?? null,
   };
 }
 
@@ -69,6 +78,15 @@ export class DrizzleDeliveryCaptureRepository implements IDeliveryCaptureReposit
           : String(input.distanceTravelledKm),
       centroidSource: input.centroidSource ?? null,
       configVersionId: input.configVersionId ?? null,
+      fulfilmentMode: input.fulfilmentMode ?? null,
+      carrier: input.carrier ?? null,
+      rateCardId: input.rateCardId ?? null,
+      rateCardVersion: input.rateCardVersion ?? null,
+      parcelClass: input.parcelClass ?? null,
+      parcelCount: input.parcelCount ?? null,
+      perParcelFeeUgx: input.perParcelFeeUgx ?? null,
+      parcelOfficeId: input.parcelOfficeId ?? null,
+      pricedBy: input.pricedBy ?? null,
     };
     // Only overwrite what the caller actually supplied: a cost entry must not
     // wipe the quote explanation written when the order was placed.

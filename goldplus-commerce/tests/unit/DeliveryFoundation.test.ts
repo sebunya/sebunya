@@ -225,3 +225,48 @@ describe('CONFIGURATION.md generates from the registry', () => {
     }
   });
 });
+
+/**
+ * The capture ROW TYPE and the capture TABLE must agree.
+ *
+ * The end-to-end checkout proof found them disagreeing: migrations 0093 and
+ * 0094 added fulfilment_mode, carrier, rate_card_id, parcel_class, parcel_count
+ * and priced_by, the quoting adapter sent all of them, and the repository's
+ * upsert — which builds its values from a fixed list — silently dropped every
+ * one. A row was written and every new field was empty.
+ *
+ * A unit test could not have caught it, because both sides were individually
+ * correct. This pins the agreement itself.
+ */
+describe('the capture row type covers every capture column', () => {
+  const camel = (s: string) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+
+  it('every column added by 0093 and 0094 is in the row type AND mapped on write', () => {
+    const useCases = readFileSync(
+      resolve(__dirname, '../../apps/api/src/application/use-cases/delivery/DeliveryCaptureUseCases.ts'),
+      'utf8',
+    );
+    const repo = readFileSync(
+      resolve(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleDeliveryCaptureRepository.ts'),
+      'utf8',
+    );
+    const added = [
+      'fulfilment_mode', 'carrier', 'rate_card_id', 'rate_card_version',
+      'parcel_class', 'parcel_office_id', 'priced_by', 'parcel_count', 'per_parcel_fee_ugx',
+    ];
+    for (const column of added) {
+      const field = camel(column);
+      expect(useCases, `${column} missing from DeliveryCaptureRow`).toContain(`${field}:`);
+      // Present in BOTH directions: read into the row, and written from it.
+      expect(repo, `${column} not read into the row`).toContain(`${field}: r.${field}`);
+      expect(repo, `${column} not written on upsert`).toContain(`${field}: input.${field}`);
+    }
+  });
+
+  it('the schema declares every one of those columns', () => {
+    const schema = readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/db/schema/delivery.ts'), 'utf8');
+    for (const column of ['fulfilment_mode', 'carrier', 'rate_card_id', 'parcel_class', 'priced_by', 'parcel_count']) {
+      expect(schema, column).toContain(`'${column}'`);
+    }
+  });
+});

@@ -36,6 +36,18 @@ export interface DeliveryCaptureRow {
   distanceTravelledKm: number | null;
   centroidSource: string | null;
   configVersionId: string | null;
+  // 0093/0094 — HOW it was priced, and by what. Added to the row type at the
+  // same time as the columns; the end-to-end proof found them missing here,
+  // which silently dropped every one of them on write.
+  fulfilmentMode: string | null;
+  carrier: string | null;
+  rateCardId: string | null;
+  rateCardVersion: number | null;
+  parcelClass: string | null;
+  parcelCount: number | null;
+  perParcelFeeUgx: number | null;
+  parcelOfficeId: string | null;
+  pricedBy: string | null;
 }
 
 export interface IDeliveryCaptureRepository {

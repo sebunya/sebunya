@@ -1292,7 +1292,10 @@ export class Registry {
         pricedBy: outcome.pricedBy,
         mayFallBackToLegacy: outcome.mayFallBackToLegacy,
         capture: {
-          areaSlug: q.explanation.areaSlug,
+          // A district-only resolution carries an EMPTY slug, which is not a
+          // slug. Stored as null so "no area" reads as absence rather than as
+          // an area whose name is nothing.
+          areaSlug: q.explanation.areaSlug || null,
           corridor: q.explanation.corridor,
           distanceBand: q.explanation.band,
           quotedFeeUgx: q.kind === 'unavailable' ? null : q.feeUgx,
