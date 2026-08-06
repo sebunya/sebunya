@@ -117,8 +117,14 @@ async function main() {
         : result.kind === 'bus_shipment'
           ? `SHIPMENT ${result.feeUgx.toLocaleString('en-UG')} via ${result.shipment.carrier}`
           : `RIDER ${result.feeUgx.toLocaleString('en-UG')}`;
-    const label = `${(mode ?? 'mode-unknown').padEnd(14)} ${outcome}`;
-    counts.set(label.split(' ')[0], (counts.get(label.split(' ')[0]) ?? 0) + 1);
+    // Mode is only meaningful once the address is precise enough to have one.
+    // AREA_UNRESOLVED and AREA_TOO_COARSE are decided ABOVE mode selection, so
+    // printing a mode for them would show a fact the service never consulted.
+    const modeWasConsulted =
+      !(result.kind === 'unavailable' && (result.reason === 'AREA_TOO_COARSE' || result.reason === 'AREA_UNRESOLVED'));
+    const shown = !modeWasConsulted ? 'not-asked' : (mode ?? 'ceiling-unset');
+    const label = `${shown.padEnd(14)} ${outcome}`;
+    counts.set(shown, (counts.get(shown) ?? 0) + 1);
 
     const line = `  ${o.order_number}  ${(resolved?.label ?? o.delivery_area ?? '?').padEnd(34).slice(0, 34)}  ${label}`;
     console.log(line);

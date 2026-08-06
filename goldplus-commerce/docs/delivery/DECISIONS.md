@@ -114,6 +114,90 @@ only. No seed migration, no dev-only INSERT — the same rule that keeps migrati
 
 ---
 
+## Commercial constraint, 2026-08-06 — fulfilment modes and bus
+
+Rob established a constraint that changes the model. Recorded in full because it
+corrects a **fact**, not a preference.
+
+**The fee must never exceed the value of what is being bought.** Quoting 35,000
+to ship a 20,000 cable is a broken proposition, not an expensive delivery.
+`fee_to_value_ratio_ceiling`, Tier 1, ships unset. Above it the option is
+demoted and explained with the exact basket value that would make it
+proportionate, collection is offered, and the customer may still proceed with an
+explicit acknowledgement — never the default, never silent, **never a block**.
+
+**Upcountry goes by bus, not by boda.** Outside Kampala and the Wakiso metro it
+is not physically possible to send a rider. Bus was wrongly scheduled as phase
+two; it is the only way those customers are ever served. Three of the eighteen
+real orders — Arua, Abim, Adjumani — could not be served by any path in the
+system before this.
+
+**Fulfilment mode is first-class.** `own_rider`, `bus_parcel`, `pickup_only`,
+`unserviceable`. The mode SELECTS the pricing mechanism rather than being a flag
+a pricing function checks.
+
+**Computed pricing is unreachable outside own-rider range.** Not guarded —
+deleted. `quoteDelivery` takes `OwnRiderArea`, a type that cannot carry a bus,
+water or unserviceable state, so those branches no longer exist inside it. The
+56,000 UGX six-hour round trip is not a number we chose not to show; it is a
+number that function can no longer be asked for.
+
+**`own_rider_max_band` is mandatory, Tier 2, and ships unset.** Unset means we
+do not know where rider service ends, so NOTHING is classified `own_rider` —
+not that everything is. It is **not a seventh launch number**: it is a band
+rather than a figure, it is Tier 2 rather than Tier 1, and the wizard asks for
+it as a PLACE ("the furthest place you would send your own rider"), deriving the
+band from the gazetteer. Derived from an operator's knowledge, never invented.
+The wizard refuses a limit nearer than the anchor trip just described.
+
+**Bus is a shipment to a parcel office, not a delivery.** The customer-facing
+language says shipment and collection and never "delivery to your door", because
+that is not what happens and promising it creates the dispute. A test asserts
+the sentence contains no delivery-to-door claim.
+
+**Bus pricing is a negotiated rate card, never a model.** Two prohibitions, both
+tested: a destination with no current card returns `NO_RATE_CARD` rather than
+borrowing the next town's fee, and a missing parcel class is never interpolated
+from the class above or below. An expired card is never a fallback. Insurance
+with no declared value is null, not zero — a carrier offering no cover is a
+different fact from cover at zero percent.
+
+**Minimum order value per mode**, Tier 1, unset by default. Informative only: a
+basket below the minimum is told the minimum and the shortfall. Deliberately
+does NOT require an acknowledgement — making someone tick a box because their
+order is small would be a dark pattern.
+
+### Two new reasons, one retirement
+
+| Reason | Meaning | Routes to |
+|---|---|---|
+| `CARRIER_REQUIRED` | Served, by bus rather than by our rider | the shipment flow |
+| `NO_RATE_CARD` | Bus-served, no current card covers it | manual quote + ops queue |
+
+**`AREA_NOT_METRO` is RETIRED**, union entry and copy string both. It told an
+Arua customer where they were *not*. Nothing can produce it any more, so it is
+gone rather than left as a reason with no path to it.
+
+### The template
+
+`goldplus_bus_rate_card_template.csv`, MD5 `272c26454ac8aba9fdd748b095722476`,
+128 towns across 9 trunk routes, **every fee column deliberately blank**.
+Imported as the destination and office skeleton only; the importer REFUSES to
+run if any fee column is populated, so a negotiated price can never arrive as a
+side effect of a skeleton load.
+
+- 2026-08-06 — **Mubende appears on two routes** (R7 mid-western and R8
+  Hoima/Masindi) because two trunk roads reach it. The key is therefore
+  `(route, destination_town)` and NOT the district; a district key would have
+  silently dropped one and nobody would have noticed until a Mubende customer
+  got the wrong carrier.
+
+- 2026-08-06 — **Zero rate cards exist.** Every bus destination therefore
+  returns `NO_RATE_CARD` and the manual path handles it. That is correct, and no
+  fee has been invented to make the table look complete.
+
+---
+
 ## Assumptions (dated)
 
 - 2026-08-05 — **Origin coordinate is approximate pending on-site capture.**

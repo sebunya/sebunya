@@ -498,3 +498,111 @@ and the report must not read as though it did:
 The variance path also has **no live orders to exercise**, and no order in
 production has ever been paid, dispatched or delivered. Everything above that
 does exist is proven against fixtures and **nothing against real traffic**.
+
+---
+
+## 10. The commercial constraint — fulfilment modes and bus (2026-08-06)
+
+Rob established a constraint that changed the model mid-build. It corrected a
+**fact**, not a preference, and it is the most consequential change in the
+module so far.
+
+### What was wrong
+
+Outside Kampala and the Wakiso metro it is not physically possible to send a
+rider. Bus fulfilment was scheduled as phase two. That meant Arua, Abim and
+Adjumani — three of the eighteen real orders — could not be served by ANY path
+in this system, and the module's honest answer to them, `AREA_NOT_METRO`, told
+them where they were not.
+
+Separately, nothing prevented quoting more to ship an item than the item is
+worth. The stage-C wizard preview made that concrete: **UGX 56,000 for a 6.4
+hour round trip to B6**, arithmetically consistent and commercially absurd.
+
+### What changed, structurally
+
+`quoteDelivery` now takes `OwnRiderArea` — `AreaInput` narrowed to
+`fulfilmentMode: 'own_rider'` with a corridor and a band — reachable only
+through `narrowToOwnRider`. The bus, water, unserviceable and out-of-range
+branches inside it are **deleted, not disabled**, because its input type can no
+longer carry those states.
+
+That distinction is the whole point of the change. The 56,000 is not a number we
+chose not to show; it is a number that function can no longer be asked for. The
+type checker found every call site that had been passing an unnarrowed area —
+including the band preview and the config preview — which is precisely what a
+guard would not have done.
+
+A test proves a `bus_parcel` area returns no computed quote across six
+configurations, including a 1,000,000 minimum fee and a 1 km/h speed, and
+asserts no computed minutes leak into the explanation record.
+
+### What the three upcountry orders now resolve to
+
+Required to be reported at every stage from here.
+
+| Order | Destination | Mode | Outcome today |
+|---|---|---|---|
+| GP-202605-1941 | Lazebu, Logiri, **Arua** | `bus_parcel` | `NO_RATE_CARD` |
+| GP-202605-AC7B | Atunga, **Abim** | `bus_parcel` | `NO_RATE_CARD` |
+| GP-202605-2A8C | Esia, Adropi, **Adjumani** | `bus_parcel` | `NO_RATE_CARD` |
+
+They are no longer told where they are not. They are bus-served destinations
+awaiting a negotiated rate card, which is a fact about **us**, not about them,
+and it sits in the manual-quote ops queue for that reason.
+
+The remaining 13 report `CONFIG_INCOMPLETE` naming `own_rider_max_band`, and 2
+report `AREA_TOO_COARSE` before mode is ever consulted. **Nothing quotes**,
+because nobody has said where rider service ends — which is the designed
+consequence of an unset ceiling, not a regression.
+
+### Deployment proof
+
+- Backup `pre-0093-20260806-065804.dump` → clone → **REHEARSE_OK
+  duration_ms=172** → import → **BUS_IMPORT_OK added=128** → re-run
+  **`added=0 changed=0 unchanged=128`** → applied live → **Migrations complete!**
+  → live import → rolled, all containers healthy → clone dropped.
+- Template MD5 `272c26454ac8aba9fdd748b095722476` verified locally **and again
+  after transit to the host**. 128 rows, 9 routes, `NO_FEES_OK`.
+- Production: `bus_destinations=128 routes=9 rate_cards=0 parcel_offices=0
+  cfg_values=0 modes_overridden=0`. Nothing invented.
+- Suite: **5,583 passed | 111 skipped** across 349 files.
+
+### The 111 skips, accounted for
+
+Every one is an `.integration.test.ts` gated on `DATABASE_URL` +
+`COMMERCE_TEST_DATABASE_URL`. They are environment-gated, not disabled
+assertions. Run against the restored clone during this rehearsal, **60 of them
+executed and passed**; 50 remained skipped for want of Redis and other services;
+**1 failed** — `CommerceIntegrity.integration.test.ts`, which calls
+`useCase.execute(1000)` and scans the WHOLE database while asserting an exact
+list of three exception types. Against real production data a fourth appears.
+
+That is a test-isolation defect rather than a code defect, and it surfaced a
+real production fact worth recording separately: **five orders sit at
+`reservation_state = RESERVED` while unpaid**, and the integrity report flags a
+`RESERVED_LEDGER_MISMATCH` against real rows. Outside this brief's scope; not
+fixed; recorded here so it is not lost.
+
+### Open register
+
+| Item | Closes when |
+|---|---|
+| Origin `coord_source` is `operator_supplied_dms_converted` | An on-site GPS capture at the shop door replaces it |
+| Ntenjeru four (Mpatta, Mpunge, Ssaayi, Kabanga) marked water | An operator confirms or corrects `access_mode` |
+| Six launch values unset | The wizard is run and a version is published |
+| `own_rider_max_band` unset | An operator sets where rider service ends (wizard question 8) |
+| No bus rate cards loaded | A carrier's fees are negotiated and imported |
+| No parcel offices | A carrier's office list is captured with landmarks and phones |
+| `fee_to_value_ratio_ceiling` unset | An operator sets it |
+| Two legacy fee paths still live | The fallback has served zero requests for the defined period and both are deleted |
+| No paid order, no delivery, no rider cost | One real order completes end to end |
+| Zero GPS pins on saved addresses | First pin captured |
+| Variance path unexercised | First real variance applied |
+| Arua, Abim, Adjumani unservable | **Partially closed** — they now resolve to `bus_parcel`. Fully closes when a rate card and a named office exist |
+
+### Still true, and still unexercised
+
+No paid order, no delivery, no rider cost, no rate card, no parcel office. Every
+mechanism above is proven against fixtures and a restored clone, and **none of
+it against real traffic**.

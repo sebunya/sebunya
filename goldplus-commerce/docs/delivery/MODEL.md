@@ -134,6 +134,43 @@ nothing.
 - Any metro area or active alias with no corridor and band. Make them required
   fields and test it
 
+## 3.6a Fulfilment mode decides WHICH model — added 2026-08-06
+
+A commercial constraint corrected a fact this model had wrong: **outside Kampala
+and the Wakiso metro it is not physically possible to send a rider.** Upcountry
+goes by bus to a parcel office, where the customer collects.
+
+Every destination therefore carries a mode, and the mode selects the pricing
+mechanism rather than being a flag a pricing function checks:
+
+| Mode | Priced by | Notes |
+|---|---|---|
+| `own_rider` | the minutes model in 3.1 | Inside `own_rider_max_band` only |
+| `bus_parcel` | a negotiated carrier rate card | Never a model, never interpolated |
+| `pickup_only` | nothing — collection | The 12 lake areas |
+| `unserviceable` | nothing at any price | |
+
+`own_rider_max_band` is **mandatory and ships unset**. Unset means we do not
+know where rider service ends, so nothing is classified `own_rider` — not that
+everything is. It is not a seventh launch number: it is Tier 2, it is a band
+rather than a figure, and the wizard asks for it as a place.
+
+**The computed model is structurally unreachable outside own-rider range.** It
+takes `OwnRiderArea`, a type that cannot carry a bus, water or unserviceable
+state. The bus, water and unserviceable branches inside it are deleted, not
+guarded. A 6.4 hour round trip is not a delivery, and its fee is not a number we
+chose not to show — it is a number that function can no longer be asked for.
+
+**Bus pricing never extrapolates.** No card for a destination means
+`NO_RATE_CARD` and the manual path; it never borrows the next town's fee. A
+missing parcel class is never interpolated from the class above or below. An
+expired card is never a fallback.
+
+**Proportionality.** A fee above `fee_to_value_ratio_ceiling` × subtotal is
+demoted and explained rather than presented as normal, and a basket below the
+per-mode minimum is told the minimum and the shortfall. Both ship unset, and
+**neither ever blocks a sale**.
+
 ## 3.7 The seven reasons — added 2026-08-05, stage C
 
 The refusals above produce six machine-readable reason codes, plus one that is
@@ -144,7 +181,8 @@ list is closed and every reason owns a Tier 1 string:
 |---|---|---|
 | `CONFIG_INCOMPLETE` | Our launch values are not set | nobody — fixes itself when the numbers land |
 | `NO_ACTIVE_ORIGIN` | Our own fault. Refuse and alert | engineering |
-| `AREA_NOT_METRO` | Resolved perfectly, simply upcountry | **manual-quote queue** |
+| `CARRIER_REQUIRED` | Served, by bus rather than by our rider | **the shipment flow** |
+| `NO_RATE_CARD` | Bus-served, no current card covers it | **manual-quote queue** |
 | `AREA_UNSERVICEABLE` | We do not serve it at any price | nobody — offer pickup |
 | `WATER_ACCESS` | One of the 12 lake areas, pickup-only | nobody — offer pickup |
 | `AREA_UNRESOLVED` | We could not match the address | **address-review queue** |
@@ -156,10 +194,16 @@ and band exist only at area granularity. The customer narrows to an area and
 gets a fee. **Never fall back to a district-average band — there is no such
 thing**, and inventing one would break contract #4.
 
+**`AREA_NOT_METRO` is RETIRED (2026-08-06).** It told an Arua customer where
+they were *not*, which was accurate and useless. Upcountry is served, by bus.
+Nothing can produce it any more and it is gone from the union rather than left
+as a reason with no path to it.
+
 The checks run in that order deliberately. Each question can only be asked once
 the one above it is answerable: an upcountry area has no corridor row, so it
 has no serviceability flag or access mode either, and calling it unserviceable
-would invent a fact.
+would invent a fact. Mode is decided ABOVE every fee question, so an address
+that is unresolved or district-only never has a mode consulted at all.
 
 ---
 
