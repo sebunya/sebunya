@@ -7,6 +7,7 @@ import {
   deriveLaunchValues,
 } from '../../../domain/delivery/DeliveryLaunchWizard';
 import { DistanceBand, isDistanceBand } from '../../../domain/delivery/DeliveryModel';
+import { configEntry } from '../../../domain/delivery/DeliveryConfigRegistry';
 import { DraftConfigVersionUseCase, IDeliveryConfigRepository } from './DeliveryConfigUseCases';
 
 /**
@@ -129,9 +130,7 @@ export class DraftLaunchValuesUseCase {
     const asStrings: Record<string, string> = {};
     for (const [k, v] of Object.entries(input.values)) {
       if (!Number.isFinite(v)) return fail('NON_FINITE_VALUE', `${k} did not come out as a usable number.`);
-      // UGX values are whole shillings; ratios and speeds keep four decimals so
-      // a derived 18.666… km/h is not silently rounded into a different fee.
-      asStrings[k] = k.endsWith('_ugx') || k === 'handling_minutes' ? String(Math.round(v)) : String(Number(v.toFixed(4)));
+      asStrings[k] = formatForStorage(k, v);
     }
     const drafted = await this.drafts.execute({
       values: asStrings,
@@ -149,4 +148,21 @@ export class DraftLaunchValuesUseCase {
 /** Narrow a raw band string from a request without trusting it. */
 export function asBand(value: string): DistanceBand | null {
   return isDistanceBand(value) ? (value as DistanceBand) : null;
+}
+
+/**
+ * How a derived number is written down, decided by the REGISTRY'S declared type
+ * rather than by guessing from the key name.
+ *
+ * The wizard proof caught the guess being wrong: `rider_cost_per_minute_ugx`
+ * ends in `_ugx` but is a rate, so name-based rounding stored 111 where the
+ * operator had been shown 111.1. Asking the registry what the value IS removes
+ * the whole class of mistake rather than the one instance of it.
+ */
+export function formatForStorage(key: string, value: number): string {
+  const entry = configEntry(key);
+  if (entry?.type === 'ugx' || entry?.type === 'integer') return String(Math.round(value));
+  // Four decimals: enough that a derived 18.6667 km/h reproduces the fee the
+  // operator approved, and few enough that the number stays readable.
+  return String(Number(value.toFixed(4)));
 }

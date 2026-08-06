@@ -7,6 +7,7 @@ import {
 } from '../../apps/api/src/domain/delivery/DeliveryLaunchWizard';
 import { LAUNCH_KEYS, DELIVERY_CONFIG_REGISTRY, validateConfigValue } from '../../apps/api/src/domain/delivery/DeliveryConfigRegistry';
 import { validateConfigDraft } from '../../apps/api/src/domain/delivery/DeliveryConfigValidation';
+import { formatForStorage } from '../../apps/api/src/application/use-cases/delivery/DeliveryWizardUseCases';
 import { bandMidpointKm, missingLaunchKeys, quoteDelivery, NEUTRAL_FACTOR } from '../../apps/api/src/domain/delivery/DeliveryModel';
 
 const BOUNDS = { minKmh: DEFAULT_PLAUSIBLE_SPEED_MIN_KMH, maxKmh: DEFAULT_PLAUSIBLE_SPEED_MAX_KMH };
@@ -70,10 +71,36 @@ describe('launch wizard — the arithmetic, with the working shown', () => {
     const r = deriveLaunchValues(answers({ freeDeliveryThresholdUgx: 150_000 }), BOUNDS);
     if (!r.ok) throw new Error('expected ok');
     for (const [key, value] of Object.entries(r.values)) {
-      const rounded = key.endsWith('_ugx') || key === 'handling_minutes' ? String(Math.round(value)) : String(Number(value.toFixed(4)));
-      const check = validateConfigValue(key, rounded);
-      expect(check, `${key} = ${rounded}`).toMatchObject({ ok: true });
+      const stored = formatForStorage(key, value);
+      expect(validateConfigValue(key, stored), `${key} = ${stored}`).toMatchObject({ ok: true });
     }
+  });
+
+  /**
+   * The wizard proof against real data caught this and nothing else would have:
+   * the operator was shown "UGX 111.1 a minute" and 111 was stored, because
+   * `rider_cost_per_minute_ugx` ends in `_ugx` and the formatter guessed from
+   * the name. It is a RATE. A stored value that disagrees with the working
+   * shown to the person who approved it is the drift this module exists to
+   * prevent, however small the amount.
+   */
+  it('stores every derived value exactly as the operator was shown it', () => {
+    const r = deriveLaunchValues(answers(), BOUNDS);
+    if (!r.ok) throw new Error('expected ok');
+    const rate = formatForStorage('rider_cost_per_minute_ugx', r.values.rider_cost_per_minute_ugx);
+    expect(rate).toBe('111.1111');
+    expect(Number(rate)).not.toBe(111);
+    // And the speed keeps its decimals for the same reason.
+    expect(formatForStorage('effective_speed_kmh', r.values.effective_speed_kmh)).toBe('18.6667');
+  });
+
+  it('decides rounding from the registry type, never from the key name', () => {
+    // Whole shillings where the value really is money...
+    expect(formatForStorage('minimum_fee_ugx', 3000.7)).toBe('3001');
+    expect(formatForStorage('free_delivery_threshold_ugx', 150_000.4)).toBe('150000');
+    // ...and decimals kept where it is a rate or a ratio, despite the suffix.
+    expect(formatForStorage('rider_cost_per_minute_ugx', 111.1111)).toBe('111.1111');
+    expect(formatForStorage('margin_multiplier', 1.325)).toBe('1.325');
   });
 
   it('the derived values actually make the module quote', () => {
@@ -213,9 +240,7 @@ describe('launch wizard — it is an input surface, not a bypass', () => {
     const r = deriveLaunchValues(answers({ freeDeliveryThresholdUgx: 150_000 }), BOUNDS);
     if (!r.ok) throw new Error('expected ok');
     const asStrings: Record<string, string> = {};
-    for (const [k, v] of Object.entries(r.values)) {
-      asStrings[k] = k.endsWith('_ugx') || k === 'handling_minutes' ? String(Math.round(v)) : String(Number(v.toFixed(4)));
-    }
+    for (const [k, v] of Object.entries(r.values)) asStrings[k] = formatForStorage(k, v);
     expect(validateConfigDraft(asStrings)).toEqual([]);
   });
 

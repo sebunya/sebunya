@@ -67,16 +67,25 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     help: 'Average speed on a real run, including traffic and stops — not the speed limit. One typical Ntinda round trip is enough to work it out.',
   },
   {
+    /**
+     * A RATE, not a currency amount, and therefore `number` rather than `ugx`.
+     *
+     * The wizard proof caught this: 5,000 UGX over a 45 minute trip is 111.111
+     * a minute, the operator was shown "UGX 111.1 a minute", and the `ugx` type
+     * rounded it to 111 on the way into the database. A stored value that
+     * disagrees with the working shown to the person who approved it is exactly
+     * the drift this module exists to prevent, however small the amount.
+     */
     key: 'rider_cost_per_minute_ugx',
     tier: 1,
-    type: 'ugx',
+    type: 'number',
     unit: 'UGX per minute',
     mandatory: true,
     defaultValue: null,
-    min: 1,
+    min: 0.01,
     max: 100_000,
     label: 'What we pay a rider per minute',
-    help: 'What a rider is paid for a delivery, divided by how many minutes it takes.',
+    help: 'What a rider is paid for a delivery, divided by how many minutes it takes. Kept to the decimal, because it is a rate rather than a price.',
   },
   {
     key: 'handling_minutes',
