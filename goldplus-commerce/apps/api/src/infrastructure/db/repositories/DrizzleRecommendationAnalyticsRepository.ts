@@ -34,17 +34,28 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
     }>;
     totalResponses: number;
   }> {
+    // The metadata column carries double-encoded rows (the drizzle +
+    // postgres.js jsonb double-stringify, same as the materialized cache) —
+    // normalise a string-typed jsonb back to its object before reading keys,
+    // or fill/fallback would read zero forever against real data.
     const rows = (await db.execute(sql`
+      with responses as (
+        select
+          placement,
+          created_at,
+          case when jsonb_typeof(metadata) = 'string' then (metadata #>> '{}')::jsonb else metadata end as meta
+        from recommendation_events
+        where event_type = 'RECOMMENDATION_RESPONSE'
+          and created_at >= now() - make_interval(days => ${sinceDays})
+          and placement is not null
+      )
       select
         placement,
         count(*)::int as responses,
-        count(*) filter (where metadata ? 'emptyReason')::int as empty,
-        count(*) filter (where coalesce((metadata->>'fallbackLevel')::int, 0) > 0)::int as fallback_served,
+        count(*) filter (where meta ? 'emptyReason')::int as empty,
+        count(*) filter (where coalesce((meta->>'fallbackLevel')::int, 0) > 0)::int as fallback_served,
         max(created_at) as last_response_at
-      from recommendation_events
-      where event_type = 'RECOMMENDATION_RESPONSE'
-        and created_at >= now() - make_interval(days => ${sinceDays})
-        and placement is not null
+      from responses
       group by placement
       order by placement
     `)) as unknown as Array<{
