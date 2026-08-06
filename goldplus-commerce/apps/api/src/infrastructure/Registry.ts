@@ -68,6 +68,12 @@ import { DrizzlePaymentAttemptRepository } from './db/repositories/DrizzlePaymen
 import { SettlePaymentUseCase } from '../application/use-cases/payments/SettlePaymentUseCase';
 import { ReconcilePendingPaymentsUseCase } from '../application/use-cases/payments/ReconcilePendingPaymentsUseCase';
 import { RefundPesaPalPaymentUseCase } from '../application/use-cases/payments/RefundPesaPalPaymentUseCase';
+import {
+  AbandonStaleUnpaidOrdersUseCase,
+  AlertOnLedgerMismatchUseCase,
+  ExpireStaleReservationsUseCase,
+} from '../application/use-cases/payments/PaymentOpsSweepUseCases';
+import { isPaymentsOpsConfigKey, validatePaymentsOpsValue } from '../domain/payments/PaymentsOpsConfig';
 import { PesaPalClient } from './payments/pesapal/PesaPalClient';
 import { IPesaPalClient } from '../application/ports/IPesaPalClient';
 import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
@@ -1602,6 +1608,110 @@ export class Registry {
       abandonStartFailuresAfterHours: Number(process.env.PAYMENT_ABANDON_START_FAILURES_HOURS) > 0 ? Number(process.env.PAYMENT_ABANDON_START_FAILURES_HOURS) : 24,
       batchLimit: 100,
     },
+  );
+
+  /** Payments ops config: closed registry, ships empty, audited writes. */
+  public readonly paymentsOpsConfig = {
+    values: async (): Promise<Record<string, string>> => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const rows = (await db.execute(sql`select config_key, config_value from payments_ops_config`)) as unknown as Array<{
+        config_key: string;
+        config_value: string;
+      }>;
+      return Object.fromEntries(rows.map((r) => [r.config_key, r.config_value]));
+    },
+    set: async (input: { key: string; value: string; actorId: string }) => {
+      if (!isPaymentsOpsConfigKey(input.key)) {
+        return { ok: false as const, message: `"${input.key}" is not a payments operational setting.` };
+      }
+      const check = validatePaymentsOpsValue(input.key, input.value);
+      if (!check.ok) return { ok: false as const, message: check.message };
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const before = await this.paymentsOpsConfig.values();
+      await db.execute(sql`
+        insert into payments_ops_config (config_key, config_value, updated_by, updated_at)
+        values (${input.key}, ${String(check.value)}, ${input.actorId}, now())
+        on conflict (config_key) do update set config_value = excluded.config_value,
+          updated_by = excluded.updated_by, updated_at = now()`);
+      await this.createAuditLogUseCase.execute({
+        actorId: input.actorId,
+        action: 'PAYMENTS_OPS_CONFIG_SET',
+        entity: 'payments_ops_config',
+        entityId: input.key,
+        previousState: { value: before[input.key] ?? null },
+        newState: { value: String(check.value) },
+      });
+      return { ok: true as const };
+    },
+  };
+
+  /** Stale-order reads for the sweep. The pending-attempt exclusion is the rule. */
+  private readonly staleOrderReader = {
+    listStaleUnpaidOrders: async (olderThan: Date, limit: number) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      return (await db.execute(sql`
+        select o.id, o.order_number as "orderNumber", o.status, o.created_at as "createdAt"
+        from orders o
+        where o.payment_status in ('unpaid', 'failed')
+          and o.status in ('received', 'pending_payment')
+          and o.created_at < ${olderThan}
+          and not exists (
+            select 1 from payment_attempts a
+            where a.order_id = o.id
+              and a.status in ('pending', 'verification_pending', 'verification_failed')
+          )
+        order by o.created_at limit ${limit}`)) as unknown as Array<{
+        id: string; orderNumber: string; status: string; createdAt: Date;
+      }>;
+    },
+    listReservedUnpaidOrders: async (olderThan: Date, limit: number) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      return (await db.execute(sql`
+        select distinct o.id, o.order_number as "orderNumber", o.created_at as "createdAt"
+        from orders o join inventory_reservations r on r.order_id = o.id and r.status = 'reserved'
+        where o.payment_status in ('unpaid', 'failed')
+          and o.status in ('received', 'pending_payment')
+          and o.created_at < ${olderThan}
+          and not exists (
+            select 1 from payment_attempts a
+            where a.order_id = o.id
+              and a.status in ('pending', 'verification_pending', 'verification_failed')
+          )
+        order by o.created_at limit ${limit}`)) as unknown as Array<{
+        id: string; orderNumber: string; createdAt: Date;
+      }>;
+    },
+  };
+
+  public readonly expireStaleReservationsUseCase = new ExpireStaleReservationsUseCase(
+    this.paymentsOpsConfig,
+    this.staleOrderReader,
+    { releaseForOrder: (orderId) => this.inventoryRepo.releaseForOrder(orderId) },
+    this.auditRepo,
+  );
+
+  public readonly abandonStaleUnpaidOrdersUseCase = new AbandonStaleUnpaidOrdersUseCase(
+    this.paymentsOpsConfig,
+    this.staleOrderReader,
+    {
+      transition: (orderId, to, ctx) =>
+        Registry.getInstance().orderTransitionService.transition(orderId, to, ctx),
+    },
+    { releaseForOrder: (orderId) => this.inventoryRepo.releaseForOrder(orderId) },
+    this.auditRepo,
+  );
+
+  public readonly alertOnLedgerMismatchUseCase = new AlertOnLedgerMismatchUseCase(
+    { execute: (limit) => Registry.getInstance().scanCommerceIntegrityUseCase.execute(limit) },
+    ({ count, entityIds }) =>
+      logger.error(
+        { count, entityIds },
+        'ALERT RESERVED_LEDGER_MISMATCH — the order reservation state and the reservation ledger disagree. This was a report line nobody read; now it shouts.',
+      ),
   );
 
   /** The refund path. Exists BEFORE it is needed; unexercised against real money. */

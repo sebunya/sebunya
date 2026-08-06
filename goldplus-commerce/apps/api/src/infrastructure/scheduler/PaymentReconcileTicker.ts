@@ -36,8 +36,9 @@ let running = false;
 async function runOnce(): Promise<void> {
   if (running) return;
   running = true;
+  const registry = Registry.getInstance();
   try {
-    const result = await Registry.getInstance().reconcilePendingPaymentsUseCase.execute(new Date());
+    const result = await registry.reconcilePendingPaymentsUseCase.execute(new Date());
     if (result.polled > 0 || result.abandoned > 0 || result.errors.length > 0) {
       logger.info({ ...result }, '[payment-reconcile] sweep complete');
     }
@@ -51,9 +52,30 @@ async function runOnce(): Promise<void> {
     }
   } catch (error) {
     logger.error({ err: error }, '[payment-reconcile] sweep failed');
-  } finally {
-    running = false;
   }
+  // Each stage isolated: reconciliation failing must not stop reservations
+  // expiring, and vice versa. Every stage is a no-op-with-reason while its
+  // operator threshold is unset.
+  try {
+    const expired = await registry.expireStaleReservationsUseCase.execute(new Date());
+    if (expired.released > 0) logger.warn({ ...expired }, '[payment-ops] expired reservations released stock back to sale');
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] reservation expiry failed');
+  }
+  try {
+    const abandoned = await registry.abandonStaleUnpaidOrdersUseCase.execute(new Date());
+    if (abandoned.abandoned > 0 || abandoned.errors.length > 0) {
+      logger.warn({ ...abandoned }, '[payment-ops] stale unpaid orders abandoned');
+    }
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] abandonment failed');
+  }
+  try {
+    await registry.alertOnLedgerMismatchUseCase.execute();
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] ledger mismatch scan failed');
+  }
+  running = false;
 }
 
 export function startPaymentReconcileTicker(): void {

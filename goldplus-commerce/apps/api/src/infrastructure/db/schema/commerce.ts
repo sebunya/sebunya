@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, integer, bigint, index, jsonb, boolean, uniqueIndex, customType } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, integer, bigint, index, jsonb, boolean, uniqueIndex, customType, text } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 
 /**
@@ -331,3 +331,15 @@ export const orderEvents = pgTable(
     orderOccurredIdx: index('order_events_order_occurred_idx').on(t.orderId, t.occurredAt),
   }),
 );
+
+/**
+ * Payments operational config (0097). Keys are validated against the closed
+ * registry in PaymentsOpsConfig.ts; ships empty — every governed mechanism is
+ * OFF until an operator sets a number.
+ */
+export const paymentsOpsConfig = pgTable('payments_ops_config', {
+  configKey: varchar('config_key', { length: 64 }).primaryKey(),
+  configValue: text('config_value').notNull(),
+  updatedBy: uuid('updated_by'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});

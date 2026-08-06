@@ -147,4 +147,35 @@ routes.post('/attempts/:merchantReference/refund', requirePermissions([PERMISSIO
   return c.json({ success: true, data: { providerStatus: result.providerStatus, providerMessage: result.providerMessage } });
 });
 
+/* ── Operational configuration (TTL, abandonment, health alert) ──────────── */
+
+routes.get('/ops-config', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  const { PAYMENTS_OPS_CONFIG_REGISTRY } = await import('../../../../domain/payments/PaymentsOpsConfig');
+  const values = await Registry.getInstance().paymentsOpsConfig.values();
+  return c.json({
+    success: true,
+    data: {
+      entries: PAYMENTS_OPS_CONFIG_REGISTRY.map((e) => ({
+        ...e,
+        value: values[e.key] ?? null,
+        set: values[e.key] !== undefined,
+      })),
+      note: 'Every unset value means that mechanism is OFF. Nothing here shipped with a default.',
+    },
+  });
+});
+
+routes.put('/ops-config/:key', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().paymentsOpsConfig.set({
+    key: String(c.req.param('key') ?? ''),
+    value: String(body?.value ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: 'INVALID_CONFIG', message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: { saved: true } });
+});
+
 export default routes;

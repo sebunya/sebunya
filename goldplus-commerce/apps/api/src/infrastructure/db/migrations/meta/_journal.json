@@ -680,6 +680,13 @@
       "when": 1789185600000,
       "tag": "0096_delivery_calibration",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "5",
+      "when": 1789272000000,
+      "tag": "0097_payments_ops",
+      "breakpoints": true
     }
   ]
 }
