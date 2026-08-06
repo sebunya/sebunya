@@ -50,6 +50,13 @@ value. They are never set by hand. They are fitted from observed deliveries in
 PART 4. A factor still at 1.0 means we have not learned anything about that
 corridor or hour yet, which is true and should be visible in admin.
 
+**Sharpened 2026-08-06 (stage D rule 1): unlearned is not the same as fitted to
+1.0.** Both compute identically — that is the point of the prior — but they are
+different facts and must never be displayed as the same thing. A factor with no
+observations is *undefined*, carried as `origin='prior'` with `sample_size=0`. A
+factor that evidence put at 1.0 is `origin='fitted'` with a real sample. The
+store, the admin display and every export must keep them distinguishable.
+
 Where a measured centroid exists, `round_trip_km` uses the real straight-line
 distance instead of the band midpoint, times the detour factor. A measured
 value always beats a band midpoint.
@@ -68,8 +75,14 @@ one is something the shop already knows.
 | `minimum_fee` | UGX | The floor below which a delivery is not worth doing |
 | `free_delivery_threshold` | UGX | Optional. Ships off |
 
-Until all six mandatory values are set, the module returns `fee_unavailable`
-and the manual path handles the order. Six unset values is a message on an
+**Five of the six are mandatory.** `free_delivery_threshold` is the sixth
+number in the list and is explicitly optional — it ships off, and unset means
+the mechanic is off rather than everything qualifying. So `LAUNCH_KEYS` in code
+holds five keys, which is the same statement as "six numbers, one optional",
+not a disagreement with it.
+
+Until all five mandatory values are set, the module returns `fee_unavailable`
+and the manual path handles the order. Unset launch values are a message on an
 admin dashboard, not a blocker for a whole build.
 
 Every other parameter in this module is learned. If you find yourself asking me
@@ -120,6 +133,33 @@ nothing.
   coordinate
 - Any metro area or active alias with no corridor and band. Make them required
   fields and test it
+
+## 3.7 The seven reasons — added 2026-08-05, stage C
+
+The refusals above produce six machine-readable reason codes, plus one that is
+**not a refusal**. Ops and the customer both need to tell them apart, so the
+list is closed and every reason owns a Tier 1 string:
+
+| Reason | Meaning | Routes to |
+|---|---|---|
+| `CONFIG_INCOMPLETE` | Our launch values are not set | nobody — fixes itself when the numbers land |
+| `NO_ACTIVE_ORIGIN` | Our own fault. Refuse and alert | engineering |
+| `AREA_NOT_METRO` | Resolved perfectly, simply upcountry | **manual-quote queue** |
+| `AREA_UNSERVICEABLE` | We do not serve it at any price | nobody — offer pickup |
+| `WATER_ACCESS` | One of the 12 lake areas, pickup-only | nobody — offer pickup |
+| `AREA_UNRESOLVED` | We could not match the address | **address-review queue** |
+| `AREA_TOO_COARSE` | District known, area not chosen | **the customer**, in one step |
+
+`AREA_TOO_COARSE` is the one that must not read like a refusal. "Kampala" is a
+correct resolution that is merely not precise enough to price, because corridor
+and band exist only at area granularity. The customer narrows to an area and
+gets a fee. **Never fall back to a district-average band — there is no such
+thing**, and inventing one would break contract #4.
+
+The checks run in that order deliberately. Each question can only be asked once
+the one above it is answerable: an upcountry area has no corridor row, so it
+has no serviceability flag or access mode either, and calling it unserviceable
+would invent a fact.
 
 ---
 

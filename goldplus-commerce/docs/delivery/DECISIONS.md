@@ -49,6 +49,71 @@ alternative can be selected later without a rewrite.
 
 ---
 
+## Resolved by Rob, 2026-08-05 (stage B and stage C approvals)
+
+**Machine-readable causes for `fee_unavailable`.** One state cannot serve six
+situations. Seven reason codes, each with its own Tier 1 string and its own ops
+queue. See `MODEL.md` 3.7.
+
+**Rounding order.** Round up to the step **after** the margin and **before** the
+minimum-fee floor, so the floor always wins. Raw, step and rounded are recorded
+separately in the quote explanation.
+
+**No hour window until there is a sample.** Day level falls out of two unset
+values — the on-time target and the minimum sample — rather than a threshold
+anyone invented. Nothing is widened to look cautious.
+
+**No time-saving claim on the pin nudge.** Zero deliveries have completed with
+a pin, so the with/without split cannot be fitted and any number would be
+invented. The claim is added later, from data, as a Tier 1 string.
+
+**`AREA_TOO_COARSE` added (stage C).** A district-only resolution is correct and
+unpriceable. Not a refusal; routes to address review, not manual quoting.
+
+**The cache key includes the configuration version.** Every cached
+`CONFIG_INCOMPLETE` must die the moment the launch numbers land, or it will look
+as though they did not take. Versioning the key invalidates everything
+atomically, with no sweep and no reasoning about which keys affect which quotes.
+
+**The 5,000,000 typo ceiling became `implausible_rider_cost_ugx`,** Tier 1, same
+treatment as the 500 rounding step. The remaining literals in the delivery code
+are Uganda's bounding box, the earth radius and `SHRINKAGE_PSEUDO_COUNT` — two
+structural, one Tier 3 by the brief.
+
+**Skipped lifecycle mirrors surface in the ops queue.** Each one is an
+observation the model never gets. Read from the audit rather than duplicated, so
+the queue and the audit cannot disagree. Not fatal, never auto-retried.
+
+---
+
+## Stage D decisions, 2026-08-06
+
+**Unlearned is not fitted-to-1.0.** A factor with no observations is *undefined*.
+It computes identically to 1.0 — that is what a prior is for — but it is a
+different fact and must never display as the same thing. Carried as
+`origin='prior' sample_size=0` against `origin='fitted'` with a real sample, and
+kept distinguishable in the store, the admin display and every export.
+
+**No proposal below the minimum sample.** The nightly job emits
+`insufficient_data` rather than a proposal carrying a small number, and the
+queue *refuses* acceptance below the minimum rather than warning about it. Not
+relying on an operator noticing a sample size of two.
+
+**The minimum sample size is Tier 1 and ships unset,** the same treatment as
+`window_min_sample_size`. Shipping a figure would make it a launch number in
+disguise. Its absence means **no proposals at all** — which is honest, because
+with zero observations there is nothing to propose anyway.
+
+**Recompute statelessly from full history.** Each nightly run refits every
+factor from all observations, never incrementally from the last run. Slower and
+self-correcting: a bad night fixes itself and running twice changes nothing.
+
+**No synthetic data may reach production.** Calibration fixtures live in tests
+only. No seed migration, no dev-only INSERT — the same rule that keeps migration
+0092 free of INSERTs, pinned the same way.
+
+---
+
 ## Assumptions (dated)
 
 - 2026-08-05 — **Origin coordinate is approximate pending on-site capture.**

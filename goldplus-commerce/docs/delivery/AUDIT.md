@@ -435,3 +435,66 @@ Proof environment destroyed; production verified `captures=0 deliveries=0
 delivered_orders=0`.
 
 - Suite: **346 files / 5,580 tests green** (+46 this stage).
+
+---
+
+## 9. Stage C — commitment and the quote contract (2026-08-05)
+
+**The seventh reason.** `AREA_TOO_COARSE`. Recorded in `MODEL.md` 3.7 with the
+other six and why the ordering of the checks is what it is.
+
+**Quote caching, versioned on the configuration.** `quoteCacheKey` folds
+`configVersionId` into the key, so publishing the launch numbers invalidates
+every cached `CONFIG_INCOMPLETE` atomically. The canonical string is exposed
+separately so a cache decision is explainable in admin rather than a hash.
+
+**Free delivery ordering**, as specified: after promotions, before loyalty. All
+three orderings implemented and tested, including a case that demonstrates the
+failure the choice prevents — a customer crossing the threshold, redeeming
+points, and silently dropping back under it.
+
+**Variance decision logic.** The five reasons are a closed list.
+`decideVariance` refuses `RIDER_COVERED_MORE_GROUND` with `REASON_NOT_PERMITTED`
+(PART 9 #16), refuses a manual adjustment with no written reason, refuses any
+change after handover, and refuses with `THRESHOLD_NOT_CONFIGURED` rather than
+absorbing an unbounded amount when the threshold is unset. A fee *reduction*
+never needs the customer's agreement and is never withheld for want of a
+threshold.
+
+**Rider card COD immutability verified, not assumed.** The card is
+server-rendered with no `<input>` and no `<form>`, and the delivery fee reaches
+the collected total through `CheckoutUseCase`'s `shippingUgx: fee.feeUgx` →
+`finalTotalUgx` → `grossTotal` → `total`. That chain is pinned by a test,
+because if it breaks the rider under-collects by exactly the delivery fee.
+`riderCollectionAmount` takes no rider input at all — the strongest form the
+control can take, and a test asserts its arity.
+
+- Suite: **347 files / 5,506 passed, 111 skipped (5,617)** green.
+- Production after deploy: `config_values=0 versions=0 factors=0 captures=0`.
+  Nothing was invented, and the routes are all mounted and permission-guarded
+  (401 unauthenticated).
+
+### What stage C did NOT do, stated plainly
+
+Stage C built the **domain** of the commitment. It did not wire it to anything,
+and the report must not read as though it did:
+
+1. **`quoteDelivery` has no caller outside its own tests.** There is no HTTP
+   quoting service yet. Checkout still prices through the two legacy paths in
+   §2.1. Contract #1 — exactly one quoting service — is stage E work and is not
+   yet true.
+2. **The three disclaimer strings are in the registry and on no page.** They are
+   Tier 1, editable and read by nothing. PART 9 #15 is not met.
+3. **`CaptureQuoteUseCase` is constructed in the Registry and called by
+   nothing.** No capture row is written at quote time. This is stage D's first
+   job and it is the reason PART 4 has no inputs.
+4. **The variance *write* path does not exist.** `decideVariance` decides;
+   nothing applies. PART 9 #19 — old, new, reason, actor, timestamp and
+   agreement to the audit — has no code behind it yet.
+5. Cutoff countdown, free-delivery progress, pickup alongside every quote and
+   the pin nudge are all unbuilt surfaces. The EAT primitive and the copy exist;
+   the pages do not read them.
+
+The variance path also has **no live orders to exercise**, and no order in
+production has ever been paid, dispatched or delivered. Everything above that
+does exist is proven against fixtures and **nothing against real traffic**.
