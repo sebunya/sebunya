@@ -68,6 +68,7 @@ const PLACEMENT_LADDERS: Record<RecommendationPlacement, RecommendationCandidate
   ],
   home_trending: [
     "RECENT_PAID_ORDER_VELOCITY",
+    "SEARCH_QUERY_AFFINITY",
     "RECENT_ENGAGEMENT_VELOCITY",
     "GLOBAL_BESTSELLER",
     "NEW_AND_ELIGIBLE",
@@ -75,6 +76,7 @@ const PLACEMENT_LADDERS: Record<RecommendationPlacement, RecommendationCandidate
   ],
   category_popular: [
     "CATEGORY_BESTSELLER",
+    "SEARCH_QUERY_AFFINITY",
     "RECENT_ENGAGEMENT_VELOCITY",
     "SAME_CATEGORY_ATTRIBUTE_MATCH",
     "DETERMINISTIC_CATALOGUE_FALLBACK",
@@ -109,6 +111,8 @@ export class GetRecommendationsUseCase {
     private readonly ruleApplication: RecommendationRuleApplicationService,
     /** Server-native event writes (RECOMMENDATION_RESPONSE); absent in tests that don't care. */
     private readonly events?: IRecommendationEventRepository,
+    /** The governed search evidence bridge (R4). Absent = source reports UNSUPPORTED. */
+    private readonly searchAffinity?: import("../ports/ISearchAffinityReader").ISearchAffinityReader,
     /**
      * Degradation reporter (R1). The engine deliberately survives cache, rule
      * and event failures — but "non-fatal" and "silent" are different
@@ -170,7 +174,7 @@ export class GetRecommendationsUseCase {
 
     // ── Stages 2–5: ladder gather → enrich → score (the live path) ───────────
     if (!candidates) {
-      const gathered = await this.gatherAndScore(input, limit);
+      const gathered = await this.gatherAndScore(input, limit, serverContext?.profileId);
       candidates = gathered.candidates;
       sourceReports = [...sourceReports, ...gathered.reports];
     }
@@ -278,7 +282,11 @@ export class GetRecommendationsUseCase {
     return (await this.gatherAndScore(input, limit)).candidates;
   }
 
-  private async gatherAndScore(input: GetRecommendationsInput, limit: number): Promise<GatherResult> {
+  private async gatherAndScore(
+    input: GetRecommendationsInput,
+    limit: number,
+    profileId?: string,
+  ): Promise<GatherResult> {
     const ladder = PLACEMENT_LADDERS[input.placement];
     const reports: RecommendationSourceReport[] = [];
 
@@ -306,7 +314,7 @@ export class GetRecommendationsUseCase {
 
       const source = ladder[level];
       try {
-        const result = await this.gatherFromSource(source, input, contextProduct, excludeIds, limit);
+        const result = await this.gatherFromSource(source, input, contextProduct, excludeIds, limit, profileId);
         reports.push({ source, state: result.state, candidates: result.products.length });
 
         if (source === "RECENT_PAID_ORDER_VELOCITY" || source === "GLOBAL_BESTSELLER" || source === "CATEGORY_BESTSELLER") {
@@ -317,16 +325,21 @@ export class GetRecommendationsUseCase {
           trendingSampleSize = result.trendingSampleSize ?? 0;
         }
 
+        let ordinal = 0;
         for (const product of result.products) {
           if (pool.has(product.id)) continue;
           pool.set(product.id, {
             ...this.toCandidate(product),
             candidateSource: source,
             fallbackLevel: level,
-            // Earlier rungs are better evidence: a bounded prior keeps ladder
-            // order decisive when downstream components tie.
-            score: (ladder.length - level) * 25,
+            sourceOrdinal: ordinal,
+            // Earlier rungs are better evidence, and each source's own
+            // internal ranking (affinity by conversions, bestsellers by
+            // units) is part of that evidence: a bounded prior keeps both
+            // decisive when downstream components tie.
+            score: (ladder.length - level) * 25 + Math.max(0, 12 - ordinal),
           });
+          ordinal += 1;
         }
       } catch (err) {
         reports.push({ source, state: "DEGRADED", candidates: 0 });
@@ -357,7 +370,7 @@ export class GetRecommendationsUseCase {
     // Scoring rebuilds score from components; re-add the ladder prior so
     // provenance stays decisive, then drop hard-negative compatibility kills.
     const withPrior = scored.map((c) => {
-      const prior = (ladder.length - (c.fallbackLevel ?? 0)) * 25;
+      const prior = (ladder.length - (c.fallbackLevel ?? 0)) * 25 + Math.max(0, 12 - (c.sourceOrdinal ?? 12));
       return c.score <= -9999 ? c : { ...c, score: c.score + prior };
     });
 
@@ -375,6 +388,7 @@ export class GetRecommendationsUseCase {
     contextProduct: RecommendationProductRecord | null,
     excludeIds: string[],
     limit: number,
+    profileId?: string,
   ): Promise<{
     products: RecommendationProductRecord[];
     state: RecommendationSourceState;
@@ -460,6 +474,34 @@ export class GetRecommendationsUseCase {
         });
         const trendingRanks = new Map([...byProduct.entries()].map(([id, s]) => [id, { rank: s.rank }]));
         return { products, state: "SUPPORTED", trendingRanks, trendingSampleSize: sampleSize };
+      }
+
+      case "SEARCH_QUERY_AFFINITY": {
+        // The two evidence streams meet HERE and only here: the profile's own
+        // recent search intent (its event stream) selects rows from search's
+        // identity-free aggregates. No join ever touches the search tables
+        // with an identity (§10).
+        if (!this.searchAffinity || !this.events) return { products: [], state: "UNSUPPORTED" };
+        if (!profileId) return { products: [], state: "INSUFFICIENT_SAMPLE" };
+        const queries = await this.events.findRecentSearchQueries({ profileId, withinDays: 14, limit: 3 });
+        if (queries.length === 0) return { products: [], state: "INSUFFICIENT_SAMPLE" };
+        const affinityLists = await Promise.all(
+          queries.map((q) => this.searchAffinity!.topProductsForQuery(q, fetchLimit)),
+        );
+        const orderedIds: string[] = [];
+        for (const list of affinityLists) {
+          for (const row of list) {
+            if (!orderedIds.includes(row.productId) && !excludeIds.includes(row.productId)) {
+              orderedIds.push(row.productId);
+            }
+          }
+        }
+        if (orderedIds.length === 0) return { products: [], state: "INSUFFICIENT_SAMPLE" };
+        const products = await this.products.findPublicProducts({
+          productIds: orderedIds.slice(0, fetchLimit),
+          limit: fetchLimit,
+        });
+        return { products, state: "SUPPORTED" };
       }
 
       case "NEW_AND_ELIGIBLE": {

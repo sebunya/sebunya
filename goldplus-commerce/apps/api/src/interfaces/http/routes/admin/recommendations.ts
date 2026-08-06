@@ -221,6 +221,22 @@ routes.get("/analytics/depth", requirePermissions([PERMISSIONS.RECOMMENDATIONS_R
   return c.json(res);
 });
 
+// R4: lineage/data-quality — a data problem rendered distinctly from an engine problem.
+routes.get("/analytics/lineage", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
+  const windowDays = Math.min(90, Math.max(1, Number(c.req.query("windowDays")) || 30));
+  const result = await Registry.getInstance().recommendationAnalyticsService.getLineageReport(windowDays);
+  const res: ApiResponse<typeof result> = { success: true, data: result };
+  return c.json(res);
+});
+
+// R4: the search intents feeding recommendations (§10) — aggregate-only, identity-free.
+routes.get("/analytics/search-intelligence", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
+  const limit = Math.min(50, Math.max(1, Number(c.req.query("limit")) || 15));
+  const result = await Registry.getInstance().searchAffinityReader.searchIntelligence(limit);
+  const res: ApiResponse<typeof result> = { success: true, data: result };
+  return c.json(res);
+});
+
 routes.get("/analytics", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
   const registry = Registry.getInstance();
   const service = registry.recommendationAnalyticsService;

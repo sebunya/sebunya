@@ -1,6 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import crypto from "node:crypto";
 
 /**
@@ -33,16 +31,8 @@ suite("experience profiles on real PostgreSQL", () => {
     );
     repo = new DrizzleExperienceProfileRepository();
 
-    for (const file of ["0099_recommendation_event_contract.sql", "0100_experience_profiles.sql"]) {
-      const text = readFileSync(
-        join(__dirname, "../../apps/api/src/infrastructure/db/migrations", file),
-        "utf8",
-      );
-      for (const statement of text.split("--> statement-breakpoint")) {
-        const trimmed = statement.replace(/^--.*$/gm, "").trim();
-        if (trimmed) await pg.unsafe(trimmed);
-      }
-    }
+    const { applyRecommendationMigrations } = await import("./helpers/applyRecommendationMigrations");
+    await applyRecommendationMigrations(pg);
   });
 
   afterAll(async () => {

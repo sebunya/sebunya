@@ -35,6 +35,12 @@ suite("recommendation reader on real PostgreSQL", () => {
     );
     reader = new DrizzleProductRecommendationReader();
 
+    // The integration env rebuilds from the production-schema snapshot, which
+    // predates 0099/0100 — apply them idempotently (IF NOT EXISTS throughout),
+    // which doubles as proof they run cleanly against the production schema.
+    const { applyRecommendationMigrations } = await import("./helpers/applyRecommendationMigrations");
+    await applyRecommendationMigrations(pg);
+
     await pg`insert into categories (id, name, slug) values (${categoryId}::uuid, ${`R3 Cat ${suffix}`}, ${`r3-cat-${suffix}`})`;
 
     const mk = (id: string, name: string, slug: string, stock: number, reserved: number) => pg`
@@ -100,5 +106,77 @@ suite("recommendation reader on real PostgreSQL", () => {
   it("a 30-day window excludes nothing here (fixtures are fresh) and the query stays deterministic", async () => {
     const rows = await reader.findBestsellerProductIds({ categoryId, sinceDays: 30, limit: 10 });
     expect(rows.map((r) => r.productId)).toEqual([ids.plenty, ids.second]);
+  });
+
+  it("R4: the lineage report classifies orphan clicks and preserves historic NULLs, read-only", async () => {
+    const { DrizzleRecommendationAnalyticsRepository } = await import(
+      "../../apps/api/src/infrastructure/db/repositories/DrizzleRecommendationAnalyticsRepository"
+    );
+    const analytics = new DrizzleRecommendationAnalyticsRepository();
+    const anon = `anon_${crypto.randomBytes(12).toString("hex")}`;
+    const chained = crypto.randomUUID();
+    const orphaned = crypto.randomUUID();
+
+    try {
+      // A proper chain: impression then click on the same attribution.
+      await pg`
+        insert into recommendation_events (id, event_type, anonymous_id, recommendation_product_id, placement, attribution_id, schema_version, producer)
+        values (${crypto.randomUUID()}::uuid, 'RECOMMENDATION_IMPRESSION', ${anon}, ${ids.plenty}::uuid, 'home_trending', ${chained}::uuid, 2, 'integration-test')
+      `;
+      await pg`
+        insert into recommendation_events (id, event_type, anonymous_id, recommendation_product_id, placement, attribution_id, schema_version, producer)
+        values (${crypto.randomUUID()}::uuid, 'RECOMMENDATION_CLICKED', ${anon}, ${ids.plenty}::uuid, 'home_trending', ${chained}::uuid, 2, 'integration-test')
+      `;
+      // An orphan: a click whose attribution has no impression anywhere.
+      await pg`
+        insert into recommendation_events (id, event_type, anonymous_id, recommendation_product_id, placement, attribution_id, schema_version, producer)
+        values (${crypto.randomUUID()}::uuid, 'RECOMMENDATION_CLICKED', ${anon}, ${ids.second}::uuid, 'home_trending', ${orphaned}::uuid, 2, 'integration-test')
+      `;
+      // A pre-contract historic row: no schema_version, and it must stay that way.
+      await pg`
+        insert into recommendation_events (id, event_type, anonymous_id, placement)
+        values (${crypto.randomUUID()}::uuid, 'RECOMMENDATION_IMPRESSION', ${anon}, 'home_trending')
+      `;
+
+      const report = await analytics.getLineageReport(30);
+      expect(report.orphanClicks).toBeGreaterThanOrEqual(1);
+      expect(report.historicPreContract).toBeGreaterThanOrEqual(1);
+      expect(report.contractV2).toBeGreaterThanOrEqual(3);
+
+      // Read-only proof: the historic row still has its NULLs after reporting.
+      const rows = await pg`
+        select count(*)::int as n from recommendation_events
+        where anonymous_id = ${anon} and schema_version is null
+      `;
+      expect(rows[0].n).toBe(1);
+    } finally {
+      await pg`delete from recommendation_events where anonymous_id = ${anon}`;
+    }
+  });
+
+  it("R4: search affinity ranks by conversions then clicks, from the identity-free aggregates", async () => {
+    const { DrizzleSearchAffinityReader } = await import(
+      "../../apps/api/src/infrastructure/db/repositories/DrizzleSearchAffinityReader"
+    );
+    const affinity = new DrizzleSearchAffinityReader();
+    const query = `r4 charger ${suffix}`;
+
+    try {
+      await pg`insert into search_demand_signals (query, search_count, zero_result_count, last_result_count) values (${query}, 5, 0, 2)`;
+      await pg`
+        insert into search_product_insights (query, product_id, impression_count, click_count, conversion_count, rank_sum, last_rank)
+        values (${query}, ${ids.plenty}::uuid, 10, 4, 1, 12, 1), (${query}, ${ids.second}::uuid, 10, 6, 0, 15, 2)
+      `;
+      const rows = await affinity.topProductsForQuery(query, 10);
+      // Conversions outrank clicks: 1 conversion beats 6 clicks.
+      expect(rows.map((r) => r.productId)).toEqual([ids.plenty, ids.second]);
+
+      const intel = await affinity.searchIntelligence(50);
+      expect(intel.topQueries.some((q) => q.query === query)).toBe(true);
+      expect(intel.clickedNeverConverted.some((q) => q.query === query && q.productId === ids.second)).toBe(true);
+    } finally {
+      await pg`delete from search_product_insights where query = ${query}`;
+      await pg`delete from search_demand_signals where query = ${query}`;
+    }
   });
 });

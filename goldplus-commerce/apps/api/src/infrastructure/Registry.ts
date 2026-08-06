@@ -59,6 +59,7 @@ import { RecommendationRuleConflictService } from '../application/recommendation
 import { RecommendationRuleApplicationService } from '../application/recommendations/RecommendationRuleApplicationService';
 import { DrizzleRecommendationAnalyticsRepository } from './db/repositories/DrizzleRecommendationAnalyticsRepository';
 import { DrizzleExperienceProfileRepository } from './db/repositories/DrizzleExperienceProfileRepository';
+import { DrizzleSearchAffinityReader } from './db/repositories/DrizzleSearchAffinityReader';
 import { RecommendationAnalyticsService } from '../application/recommendations/RecommendationAnalyticsService';
 
 import { DrizzleProductRecommendationReader } from './db/repositories/DrizzleProductRecommendationReader';
@@ -606,6 +607,7 @@ export class Registry {
   public readonly productRecommendationReader = new DrizzleProductRecommendationReader();
   public readonly recommendationAnalyticsRepo = new DrizzleRecommendationAnalyticsRepository();
   public readonly experienceProfileRepo = new DrizzleExperienceProfileRepository();
+  public readonly searchAffinityReader = new DrizzleSearchAffinityReader();
   public readonly pesapalPaymentRepo = new DrizzlePaymentAttemptRepository();
   public readonly pesapalClient: IPesaPalClient = new PesaPalClient(env);
   public readonly systemHealthRepo = new DrizzleSystemHealthRepository();
@@ -1498,6 +1500,7 @@ export class Registry {
       this.recommendationDiversity,
       this.recommendationRuleApplicationService,
       this.recommendationEventRepo,
+      this.searchAffinityReader,
       (stage, placement, error) =>
         logger.error({ stage, placement, err: error instanceof Error ? error.message : String(error) }, 'RECOMMENDATION_ENGINE_DEGRADED'),
     );

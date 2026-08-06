@@ -17,6 +17,77 @@ import { products } from "../schema/products";
 import { db } from "../client";
 
 export class DrizzleRecommendationAnalyticsRepository implements IRecommendationAnalyticsRepository {
+  /**
+   * Event lineage and data-quality classification (R4, 2026-08-06; §21).
+   * Historic rows are NEVER reclassified or backfilled — schema_version NULL
+   * simply means "written before the contract existed", and stays that way.
+   * An orphan click is a click whose attribution chain has no impression:
+   * either a lost impression write or a fabricated beacon — both are facts an
+   * operator should see counted, not silently absorbed into CTR.
+   */
+  async getLineageReport(sinceDays: number): Promise<{
+    windowDays: number;
+    total: number;
+    historicPreContract: number;
+    contractV2: number;
+    identityUnavailable: number;
+    railEventsMissingPlacement: number;
+    orphanClicks: number;
+    attributedAtcWithoutExposure: number;
+    profileStamped: number;
+  }> {
+    const rows = await db.execute(sql`
+      with windowed as (
+        select * from recommendation_events
+        where created_at >= now() - make_interval(days => ${sinceDays})
+      )
+      select
+        count(*)::int as total,
+        count(*) filter (where schema_version is null)::int as historic_pre_contract,
+        count(*) filter (where schema_version = 2)::int as contract_v2,
+        count(*) filter (where anonymous_id is null and customer_id is null and profile_id is null)::int as identity_unavailable,
+        count(*) filter (
+          where event_type in ('RECOMMENDATION_IMPRESSION','RECOMMENDATION_CLICKED','RECOMMENDATION_ADD_TO_CART')
+          and placement is null
+        )::int as rail_events_missing_placement,
+        count(*) filter (
+          where event_type = 'RECOMMENDATION_CLICKED'
+          and attribution_id is not null
+          and not exists (
+            select 1 from recommendation_events i
+            where i.event_type = 'RECOMMENDATION_IMPRESSION'
+              and i.attribution_id = windowed.attribution_id
+          )
+        )::int as orphan_clicks,
+        count(*) filter (
+          where event_type = 'RECOMMENDATION_ADD_TO_CART'
+          and (
+            attribution_id is null
+            or not exists (
+              select 1 from recommendation_events e
+              where e.attribution_id = windowed.attribution_id
+                and e.event_type in ('RECOMMENDATION_IMPRESSION','RECOMMENDATION_CLICKED')
+                and e.id <> windowed.id
+            )
+          )
+        )::int as attributed_atc_without_exposure,
+        count(*) filter (where profile_id is not null)::int as profile_stamped
+      from windowed
+    `);
+    const row = (rows as unknown as Array<Record<string, number>>)[0] ?? {};
+    return {
+      windowDays: sinceDays,
+      total: Number(row.total ?? 0),
+      historicPreContract: Number(row.historic_pre_contract ?? 0),
+      contractV2: Number(row.contract_v2 ?? 0),
+      identityUnavailable: Number(row.identity_unavailable ?? 0),
+      railEventsMissingPlacement: Number(row.rail_events_missing_placement ?? 0),
+      orphanClicks: Number(row.orphan_clicks ?? 0),
+      attributedAtcWithoutExposure: Number(row.attributed_atc_without_exposure ?? 0),
+      profileStamped: Number(row.profile_stamped ?? 0),
+    };
+  }
+
   async getSummaryMetrics(query: Omit<RecommendationAnalyticsQuery, "startDate" | "endDate"> & { startDate: Date; endDate: Date }): Promise<AnalyticsSummary> {
     const filters = this.buildFilters(query);
 

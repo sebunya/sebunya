@@ -85,6 +85,8 @@ export interface RecommendationCandidate {
   candidateSource?: import("@goldplus/shared").RecommendationCandidateSource;
   /** R3: ladder depth of that source for the serving placement (0 = primary). */
   fallbackLevel?: number;
+  /** R4: position within the introducing source's own ordering (0 = its best) — sources rank internally (affinity by conversions, bestsellers by units) and that order must survive rescoring. */
+  sourceOrdinal?: number;
 }
 
 export interface RecommendationContext {

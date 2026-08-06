@@ -60,6 +60,25 @@ const filteredProducts = filterDiscoveryProducts(availableProducts, { search, ca
 const products = sortDiscoveryProducts(filteredProducts, sort);
 const browseFallback = products.length === 0 ? availableProducts.slice(0, 6) : [];
 
+// R4: the search fact enters the profile's own event stream, server-side —
+// the identity-free search aggregates stay identity-free; this is the
+// profile-attached copy that lets recommendations respond to recent intent
+// (§5A.10). Fire-and-forget: search results never wait on telemetry.
+if (search && Astro.locals.gpVisit) {
+  fetch(`${apiBase}/recommendations/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-gp-visit': Astro.locals.gpVisit },
+    body: JSON.stringify({
+      eventType: 'PRODUCT_SEARCHED',
+      searchQuery: search,
+      source: 'shop_search',
+      pagePath: '/shop',
+      metadata: { resultCount: products.length },
+    }),
+    signal: AbortSignal.timeout(2000),
+  }).catch(() => undefined);
+}
+
 // Slice 4: anonymous search telemetry — query + result count only, no identifiers.
 if (search) {
   await fetch(`${apiBase}/products/search-events`, {

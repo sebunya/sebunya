@@ -99,6 +99,10 @@ export function validateMetadata(metadata: unknown): Record<string, unknown> {
 
 export function validateTrackRecommendationEventInput(
   input: unknown,
+  options?: {
+    /** True when the transport already resolved a server-side profile (R2 visit token) — that IS the identity. */
+    hasServerIdentity?: boolean;
+  },
 ): TrackRecommendationEventInput {
   if (!input || typeof input !== "object") {
     throw new RecommendationEventValidationError("Invalid recommendation event payload.");
@@ -114,7 +118,7 @@ export function validateTrackRecommendationEventInput(
     throw new RecommendationEventValidationError("Invalid recommendation placement.");
   }
 
-  if (!body.anonymousId && !body.customerId) {
+  if (!body.anonymousId && !body.customerId && !options?.hasServerIdentity) {
     throw new RecommendationEventValidationError("anonymousId or authenticated customer context is required.");
   }
 

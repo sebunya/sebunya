@@ -11,7 +11,7 @@ export class TrackRecommendationEventUseCase {
     /** Who is writing: 'public-api' (legacy browser beacon), 'web-relay' (same-origin, identity server-stamped), 'api-engine' (server-native facts). */
     origin: { producer: string; profileId?: string } = { producer: "public-api" },
   ): Promise<{ success: true; skipped?: boolean }> {
-    const valid = validateTrackRecommendationEventInput(input);
+    const valid = validateTrackRecommendationEventInput(input, { hasServerIdentity: Boolean(origin.profileId) });
 
     // Skip logic for duplicate events
     if (valid.eventType === "PRODUCT_VIEWED" && valid.productId) {

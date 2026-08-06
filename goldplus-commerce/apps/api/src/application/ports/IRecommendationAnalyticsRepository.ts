@@ -80,6 +80,18 @@ export interface DepthMetricsRaw {
 }
 
 export interface IRecommendationAnalyticsRepository {
+  getLineageReport(sinceDays: number): Promise<{
+    windowDays: number;
+    total: number;
+    historicPreContract: number;
+    contractV2: number;
+    identityUnavailable: number;
+    railEventsMissingPlacement: number;
+    orphanClicks: number;
+    attributedAtcWithoutExposure: number;
+    profileStamped: number;
+  }>;
+
   /** Raw counts for §19 depth metrics over a window; percentages are computed (and gated) in the service. */
   depthMetricsRaw(windowDays: number): Promise<DepthMetricsRaw>;
   getSummaryMetrics(query: Omit<RecommendationAnalyticsQuery, "startDate" | "endDate"> & { startDate: Date; endDate: Date }): Promise<AnalyticsSummary>;

@@ -180,6 +180,16 @@ export class RecommendationAnalyticsService {
   }
 
   /** §19 depth metrics: coverage, placement integrity, concentration, source mix. */
+  /**
+   * R4: lineage health. Distinguishes DATA problems from ENGINE problems
+   * (AC22): historic pre-contract rows are a fact of history, orphan clicks
+   * are a producer defect, identity-unavailable rows are a capture defect.
+   */
+  async getLineageReport(windowDays = 30) {
+    const clamped = Math.min(90, Math.max(1, windowDays));
+    return this.repo.getLineageReport(clamped);
+  }
+
   async getDepthMetrics(windowDays = 30) {
     const raw = await this.repo.depthMetricsRaw(windowDays);
     const coverage = safeShare(raw.distinctRecommendedProducts, raw.activeProducts >= 1 ? Math.max(raw.activeProducts, DEPTH_MIN_SAMPLE * 0 + raw.activeProducts) : 0);

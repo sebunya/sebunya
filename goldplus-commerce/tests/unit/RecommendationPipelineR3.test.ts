@@ -123,6 +123,7 @@ function makeEngine(reader = makeReader(), events = emptyEventRepo, ruleCandidat
           },
     } as never,
     eventRepo as never,
+    undefined,
     (stage, placement) => degradations.push({ stage, placement }),
   );
   return { engine, degradations, savedEvents };

@@ -175,6 +175,31 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
     return rows.map((r) => r.productId).filter((id): id is string => typeof id === "string");
   }
 
+  async findRecentSearchQueries(input: { profileId: string; withinDays: number; limit: number }): Promise<string[]> {
+    const rows = await db
+      .select({ searchQuery: recommendationEvents.searchQuery, createdAt: recommendationEvents.createdAt })
+      .from(recommendationEvents)
+      .where(
+        and(
+          eq(recommendationEvents.profileId, input.profileId),
+          eq(recommendationEvents.eventType, "PRODUCT_SEARCHED"),
+          gte(recommendationEvents.createdAt, sql`now() - make_interval(days => ${input.withinDays})`),
+        ),
+      )
+      .orderBy(desc(recommendationEvents.createdAt))
+      .limit(input.limit * 3);
+    const seen = new Set<string>();
+    const queries: string[] = [];
+    for (const row of rows) {
+      const q = row.searchQuery?.trim();
+      if (!q || seen.has(q)) continue;
+      seen.add(q);
+      queries.push(q);
+      if (queries.length >= input.limit) break;
+    }
+    return queries;
+  }
+
   async getTrendingEvents(input: {
     since: Date;
     limit?: number;

@@ -39,6 +39,9 @@ export interface IRecommendationEventRepository {
     limit: number;
   }): Promise<string[]>;
 
+  /** The profile's own recent normalized search queries (PRODUCT_SEARCHED events), newest first, deduplicated. */
+  findRecentSearchQueries(input: { profileId: string; withinDays: number; limit: number }): Promise<string[]>;
+
   getTrendingEvents(input: {
     since: Date;
     limit?: number;
