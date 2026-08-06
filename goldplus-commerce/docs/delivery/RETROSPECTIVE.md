@@ -330,3 +330,132 @@ nobody wrote down comes back.
 **Write down what you did NOT do.** The Stage C finding — five things built in
 the domain and wired to nothing — was worth more than Stage C, and it only
 surfaced because the re-grounding asked what each stage left open.
+
+---
+
+# The payments section: how a shop ran with payments not working and nothing said so
+
+This section matters more than everything above it. The delivery module was
+built carefully and reported honestly, and none of that mattered, because the
+thing it exists to serve — a shop that takes money — had never once taken
+money, and no part of the system said so.
+
+## What was actually true, established by reconciliation
+
+Not what anyone believed. Pesapal's own records, queried transaction by
+transaction:
+
+- **Zero shillings ever collected.** Ten payment attempts in the system's
+  life: three declined by MTN at the PIN stage (two of them charging an
+  Airtel-prefix number over MTN rails — a network mismatch that fails every
+  time), five abandoned on the payment page, two that never produced a payment
+  page at all.
+- **The callback was never broken.** Pesapal delivered three IPNs on
+  2026-05-21 and the system processed all three correctly. The IPN endpoint
+  answered an unauthenticated POST from the public internet on the day of the
+  audit. The favourite hypothesis — webhook unreachable — was disproven in the
+  first ten minutes and had been false for eleven weeks.
+- **All nineteen orders were the owner and the test suite.** Seven distinct
+  phone numbers, all traceable. The "customers" who could not pay did not
+  exist.
+- **Five payment attempts sat in `pending` from May to August**, because
+  `pending` had no exit that did not depend on the provider choosing to call
+  us. Nothing ever asked.
+
+## The uncomfortable part: the system had been told, and told correctly
+
+Three separate mechanisms knew, and each one discharged its duty into a void:
+
+1. `StartOrderPaymentUseCase` durably recorded
+   `ORDER_PAYMENT_VERIFICATION_REQUIRED` on every payment start — written,
+   with a comment explaining it existed for exactly the customer-closed-the-tab
+   case. **Nothing consumed it.** The safety net was designed, documented, and
+   never hung up.
+2. `RESERVED_LEDGER_MISMATCH` appeared in the commerce integrity report.
+   **A report line nobody read is a report line that does not exist.**
+3. The `payments` table held zero rows for months. **An empty table looks
+   exactly like a table nobody queried.** Absence does not alert.
+
+The pattern across all three: **recording is not surfacing.** Every mechanism
+wrote a fact down; none of them made a human see it. The delivery module's
+skipped-mirror lesson — non-fatal and silent are different decisions — was
+learned, written into that module's retrospective, and the payment stack had
+already made the same mistake at ten times the stakes.
+
+## What monitoring should have existed, and now does
+
+The test of each of these is not "does it detect the failure" but "who is
+forced to see it, and when":
+
+- **The business-health alert.** Not "is the API up" but "has any money
+  arrived within N trading hours". Its most important behaviour is
+  distinguishing "no payment for 6 hours" from **"no payment has EVER
+  succeeded"** — the second was true for this shop's entire life and is the
+  loudest possible signal, not a quiet day.
+- **The four counters on one screen**: checkout started → payment requested →
+  payment succeeded → order paid. Nineteen / ten / zero / zero was the state
+  for months, and those four numbers side by side would have told the whole
+  story to anyone who glanced at them. A gap between adjacent counters IS the
+  outage; no log required.
+- **The provider's column beside ours**, live, per attempt. Five `pending`
+  rows against Pesapal's `INVALID` was a visible disagreement nobody could
+  see, because nobody had put the two records on one screen.
+- **The reconciliation poller** — the consumer the recorded event never had.
+  Its first production sweep resolved all five trapped attempts in one pass.
+  Eleven weeks of silence, cleared in the first ten minutes of something
+  finally asking.
+- **The synthetic probe**, proving credentials, submit, the payment page and
+  IPN reachability on a schedule, honestly labelled with what it cannot prove:
+  the PIN and the success callback need a real wallet.
+
+## What test would have caught it
+
+The one that did, eventually: `PesapalPaymentJourney.integration.test.ts`. Of
+the original 111 integration tests, **not one touched the Pesapal rail** — the
+only online payment path the shop has. The success branch had never executed
+anywhere: not in production (no payment succeeded), not in tests (none
+existed). The code that broke was precisely the code with no coverage, and it
+was no accident which code that was:
+
+**~50 of the 111 integration tests had never run anywhere, and the reason is
+the deepest finding of this audit: the migration chain cannot rebuild the
+database.** A fresh database built from the migration files produces an
+`orders` table with 8 columns; production's has 36. Whoever last tried to
+stand up a test environment hit that wall, reached for `describe.skip`, and
+the suites that would have surrounded the payment path went to sleep reading
+as green. The fix was to stop pretending: the test schema is now a committed
+snapshot of production, the environment is one script, and a skipped
+integration test fails the build with no escape hatch — the last escape hatch
+was called `describe.skip`.
+
+## What should be structurally impossible next time
+
+1. **A state that can be entered and never left.** The payment attempt state
+   machine now throws on an illegal transition and a test asserts every
+   non-terminal state has an exit that does not depend on a third party's
+   goodwill. This should be the template for every state machine in the
+   system: the exhaustiveness test costs ten lines.
+2. **A recorded fact with no consumer.** `ORDER_PAYMENT_VERIFICATION_REQUIRED`
+   sat unconsumed for the system's whole life. Every durable event type should
+   name its consumer or fail a wiring test — the same doctrine as "every
+   export names its production caller", one level down.
+3. **A timeout that decides a payment's fate.** The poller structurally cannot
+   mark a payment failed: it has no code path that writes a status of its own,
+   only the provider's answer. In a mobile-money market where the money leaves
+   the wallet before the merchant hears anything, this is the difference
+   between a late order and money taken with nothing given.
+4. **A test suite that reports green minus the tests that matter.** Zero
+   skipped integration tests, enforced by a gate that fails red and names the
+   one command to run.
+5. **A monitoring stack that measures the system and not the business.** Every
+   service was healthy for months while the shop took nothing. The first
+   dashboard anyone builds for a commerce system should be the four counters,
+   not the CPU graph.
+
+## The sentence to carry forward
+
+The shop was not broken. It was **unproven** — and unproven and broken are
+indistinguishable from the outside until the first real customer arrives, at
+which point the difference is your reputation. Everything in this section
+exists so that "no money is arriving" is a fact the system shouts on day one,
+instead of a question somebody finally asks in month four.
