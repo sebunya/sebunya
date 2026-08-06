@@ -61,7 +61,16 @@ export type OrderReservationState =
   | 'RESERVED'
   | 'BACKORDERED'
   | 'NOT_REQUIRED'
-  | 'UNRESERVED_BLOCKED';
+  | 'UNRESERVED_BLOCKED'
+  /**
+   * Terminals, added 2026-08-06. The vocabulary had no exit: an order whose
+   * stock had been released still claimed RESERVED forever — the same
+   * entered-never-left trap the payment attempts fell into, on the exact field
+   * payment initiation and fulfilment fail closed on. Seven production orders
+   * sat in it.
+   */
+  | 'RELEASED'
+  | 'CONSUMED';
 
 /**
  * Whether an order may progress to payment or fulfilment.
@@ -70,6 +79,8 @@ export type OrderReservationState =
  * progress. PENDING is not "probably fine", it is "nobody has looked yet".
  */
 export function mayProgressToPayment(state: OrderReservationState): boolean {
+  // RELEASED is deliberately absent: the stock went back on sale, so starting
+  // a payment against it would sell goods nobody is holding.
   return state === 'RESERVED' || state === 'BACKORDERED' || state === 'NOT_REQUIRED';
 }
 

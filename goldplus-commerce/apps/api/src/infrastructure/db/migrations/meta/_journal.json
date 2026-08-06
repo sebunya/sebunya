@@ -687,6 +687,13 @@
       "when": 1789272000000,
       "tag": "0097_payments_ops",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "5",
+      "when": 1789358400000,
+      "tag": "0098_reservation_state_terminals",
+      "breakpoints": true
     }
   ]
 }

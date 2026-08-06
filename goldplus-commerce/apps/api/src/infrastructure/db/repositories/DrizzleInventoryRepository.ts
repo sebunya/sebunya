@@ -1,5 +1,6 @@
 import { db } from '../client';
 import { products } from '../schema/products';
+import { orders } from '../schema/commerce';
 import { inventoryReservations } from '../schema/inventory';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
@@ -240,6 +241,13 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           .set({ status: 'released', updatedAt: new Date() })
           .where(eq(inventoryReservations.id, r.id));
       }
+      // The order's own denormalised state mirrors the ledger IN THE SAME
+      // TRANSACTION. Before 2026-08-06 it did not, and released orders claimed
+      // RESERVED forever — on the field payment and fulfilment fail closed on.
+      await tx
+        .update(orders)
+        .set({ reservationState: 'RELEASED', reservationUpdatedAt: new Date() })
+        .where(eq(orders.id, orderId));
       return { released: true };
     });
   }
@@ -267,6 +275,10 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           .set({ status: 'consumed', updatedAt: new Date() })
           .where(eq(inventoryReservations.id, r.id));
       }
+      await tx
+        .update(orders)
+        .set({ reservationState: 'CONSUMED', reservationUpdatedAt: new Date() })
+        .where(eq(orders.id, orderId));
       return { consumed: true };
     });
   }

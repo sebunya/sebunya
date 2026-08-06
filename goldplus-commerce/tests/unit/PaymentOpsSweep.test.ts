@@ -198,3 +198,46 @@ describe('the ops config registry — closed, validated, no invented defaults', 
     expect(validatePaymentsOpsValue('trading_hours_start_eat', '25:99')).toMatchObject({ ok: false });
   });
 });
+
+/**
+ * The order-level reservation state can no longer be entered and never left
+ * (2026-08-06). Seven production orders claimed RESERVED after their stock was
+ * released, because the 0053 vocabulary had no terminal — the payment-attempt
+ * trap repeated on the exact field payment and fulfilment fail closed on.
+ */
+describe('orders.reservation_state has exits', () => {
+  it('the vocabulary carries RELEASED and CONSUMED, and RELEASED may not progress to payment', async () => {
+    const { mayProgressToPayment } = await import('../../apps/api/src/domain/inventory/Inventory');
+    expect(mayProgressToPayment('RELEASED' as never)).toBe(false);
+    expect(mayProgressToPayment('CONSUMED' as never)).toBe(false);
+    expect(mayProgressToPayment('RESERVED' as never)).toBe(true);
+  });
+
+  it('releaseForOrder and consumeForOrder mirror the order row in the SAME transaction', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(
+      join(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleInventoryRepository.ts'),
+      'utf8',
+    );
+    // Both mirrors are inside the ledger transaction (tx.), not a follow-up write.
+    expect((src.match(/reservationState: 'RELEASED'/g) ?? []).length).toBe(1);
+    expect((src.match(/reservationState: 'CONSUMED'/g) ?? []).length).toBe(1);
+    const releaseBlock = src.slice(src.indexOf('async releaseForOrder'), src.indexOf('async consumeForOrder'));
+    expect(releaseBlock).toContain("reservationState: 'RELEASED'");
+    expect(releaseBlock).toMatch(/await tx\s*\n?\s*\.update\(orders\)/);
+  });
+
+  it('the widened DB constraint admits exactly the domain vocabulary', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const migration = readFileSync(
+      join(__dirname, '../../apps/api/src/infrastructure/db/migrations/0098_reservation_state_terminals.sql'),
+      'utf8',
+    );
+    for (const state of ['PENDING', 'RESERVED', 'BACKORDERED', 'NOT_REQUIRED', 'UNRESERVED_BLOCKED', 'RELEASED', 'CONSUMED']) {
+      expect(migration).toContain(`'${state}'`);
+    }
+    expect(migration).not.toMatch(/\bINSERT\s+INTO\b/i);
+  });
+});
