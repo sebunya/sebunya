@@ -244,7 +244,13 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
       .groupBy(productKey, recommendationEvents.eventType)
       // R3: LIMIT without ORDER BY made trending truncation arbitrary — which
       // (product, type) groups survived depended on the planner.
-      .orderBy(desc(sql`count(*)`), asc(recommendationEvents.productId), asc(recommendationEvents.eventType))
+      //
+      // 2026-08-07: the tiebreak must order by the SAME expression the query
+      // groups on. It ordered by the bare product_id column, which is not in
+      // the GROUP BY, so Postgres rejected the statement outright — every call
+      // threw and the engine logged RECOMMENDATION_ENGINE_DEGRADED and fell
+      // down the ladder. The trending rung had not returned a row since.
+      .orderBy(desc(sql`count(*)`), asc(productKey), asc(recommendationEvents.eventType))
       .limit(input.limit ?? 500);
 
     return rows
