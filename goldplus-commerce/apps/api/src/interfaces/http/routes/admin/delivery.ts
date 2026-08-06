@@ -9,6 +9,7 @@ import {
   validateConfigValue,
 } from '../../../../domain/delivery/DeliveryConfigRegistry';
 import { missingLaunchKeys } from '../../../../domain/delivery/DeliveryModel';
+import { VARIANCE_REASONS } from '../../../../domain/delivery/DeliveryVariance';
 
 /**
  * Delivery admin (brief v7, stages A–B).
@@ -288,6 +289,74 @@ routes.post('/config/revert', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PU
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
   }
   return c.json({ success: true, data: result.version });
+});
+
+/* ── The variance write path (brief PART 5) ──────────────────────────────── */
+
+/**
+ * Apply a fee change to a PLACED order.
+ *
+ * Its own permission, because it changes what a specific customer has already
+ * been told they will pay. The closed reason list is enforced in the domain, so
+ * a route cannot widen it — `RIDER_COVERED_MORE_GROUND` is refused here exactly
+ * as it is in a unit test.
+ */
+routes.post('/orders/:orderId/variance', requirePermissions([PERMISSIONS.DELIVERY_VARIANCE_APPLY]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const raw = Number(String(body?.newFeeUgx ?? '').replace(/[,\s]/g, ''));
+  const result = await Registry.getInstance().applyDeliveryVarianceUseCase.execute({
+    orderId: String(c.req.param('orderId') ?? ''),
+    newFeeUgx: Number.isFinite(raw) ? raw : Number.NaN,
+    reason: String(body?.reason ?? ''),
+    note: typeof body?.note === 'string' ? body.note.slice(0, 500) : null,
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: result.variance });
+});
+
+/** Record the customer's answer. A decline may cancel without penalty. */
+routes.post('/variance/:varianceId/agreement', requirePermissions([PERMISSIONS.DELIVERY_VARIANCE_APPLY]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().recordVarianceAgreementUseCase.execute({
+    varianceId: String(c.req.param('varianceId') ?? ''),
+    agreed: body?.agreed === true,
+    cancelOrder: body?.cancelOrder === true,
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: result.variance });
+});
+
+/** Ops queue: nothing dispatches on these until the customer answers. */
+routes.get('/variance/pending', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const pending = await Registry.getInstance().listPendingVarianceAgreementsUseCase.execute(100);
+  return c.json({
+    success: true,
+    data: {
+      pending,
+      count: pending.length,
+      note:
+        pending.length === 0
+          ? 'No variance is waiting on a customer. Nothing is held up.'
+          : 'These orders must not dispatch until the customer has agreed the changed fee.',
+    },
+  });
+});
+
+/** The closed list, so a UI can offer exactly the permitted reasons. */
+routes.get('/variance/reasons', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  return c.json({
+    success: true,
+    data: {
+      reasons: VARIANCE_REASONS,
+      note: 'A rider covering more ground than predicted is NOT on this list and never will be. That is a modelling error, it goes to calibration, and GoldPlus absorbs it.',
+    },
+  });
 });
 
 export default routes;

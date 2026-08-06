@@ -240,3 +240,30 @@ export const deliveryBusRateCard = pgTable('delivery_bus_rate_card', {
   uq: uniqueIndex('delivery_bus_rate_card_uq').on(t.carrier, t.destinationTown, t.destinationDistrict, t.parcelClass, t.version),
   lookupIdx: index('delivery_bus_rate_card_lookup_idx').on(t.destinationTown, t.destinationDistrict, t.parcelClass),
 }));
+
+/**
+ * Applied fee variances (0095, brief PART 5).
+ *
+ * A row here carries old, new, reason, actor, timestamp and agreement — every
+ * field the brief requires — and the audit log carries the same facts. The
+ * pairing constraint is the control: an absorbed variance can never be waiting
+ * on a customer, and one that needs agreement can never be 'not_required'.
+ */
+export const deliveryFeeVariance = pgTable('delivery_fee_variance', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orderId: uuid('order_id').notNull(),
+  oldFeeUgx: bigint('old_fee_ugx', { mode: 'number' }).notNull(),
+  newFeeUgx: bigint('new_fee_ugx', { mode: 'number' }).notNull(),
+  deltaUgx: bigint('delta_ugx', { mode: 'number' }).notNull(),
+  reason: varchar('reason', { length: 48 }).notNull(),
+  note: text('note'),
+  disposition: varchar('disposition', { length: 20 }).notNull(),
+  agreement: varchar('agreement', { length: 16 }).notNull(),
+  appliedBy: uuid('applied_by').notNull(),
+  appliedAt: timestamp('applied_at', { withTimezone: true }).defaultNow().notNull(),
+  agreementBy: uuid('agreement_by'),
+  agreementAt: timestamp('agreement_at', { withTimezone: true }),
+  cancelledOrder: boolean('cancelled_order').default(false).notNull(),
+}, (t) => ({
+  orderIdx: index('delivery_fee_variance_order_idx').on(t.orderId),
+}));

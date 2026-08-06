@@ -66,3 +66,19 @@ Asserted an exact list of exception types against a WHOLE-DATABASE scan, so it
 passed on an empty test DB and failed against a restored production clone. The
 assertion is now scoped to the entities the test creates. The scan is still
 whole-database, which is its job.
+
+## 3. Variance write path — done
+
+`ApplyDeliveryVarianceUseCase` + `RecordVarianceAgreementUseCase`, migration
+0095, `DELIVERY_VARIANCE_APPLY` wired to its own routes.
+
+The control that matters: above the threshold **the fee does not move**. The
+variance is recorded `pending`, nothing is applied, and only the customer's
+recorded agreement releases it. A decline leaves the fee alone and may cancel
+without penalty — through the real order state machine, so the cancellation is
+a proper transition with its own audit.
+
+The database enforces the pairing too: an `absorbed` variance can never be
+waiting on a customer, and a `needs_agreement` one can never be `not_required`.
+
+17 tests, all synthetic — no live order exercises this.

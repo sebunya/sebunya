@@ -177,6 +177,13 @@ import {
 } from '../application/use-cases/delivery/DeliveryCaptureUseCases';
 import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/DeliveryAreaResolver';
 import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliveryQuotingRepository';
+import { DrizzleDeliveryVarianceRepository } from './db/repositories/DrizzleDeliveryVarianceRepository';
+import {
+  ApplyDeliveryVarianceUseCase,
+  ListOrderVariancesUseCase,
+  ListPendingVarianceAgreementsUseCase,
+  RecordVarianceAgreementUseCase,
+} from '../application/use-cases/delivery/DeliveryVarianceUseCases';
 import { DeliveryQuotingUseCase } from '../application/use-cases/delivery/DeliveryQuotingUseCase';
 import { DrizzleDeliveryConfigRepository } from './db/repositories/DrizzleDeliveryConfigRepository';
 import {
@@ -1147,6 +1154,42 @@ export class Registry {
     this.draftDeliveryConfigUseCase,
     this.deliveryConfigRepo,
   );
+
+  // The variance write path (PART 5). decideVariance decides; these apply.
+  public readonly deliveryVarianceRepo = new DrizzleDeliveryVarianceRepository();
+  public readonly applyDeliveryVarianceUseCase = new ApplyDeliveryVarianceUseCase(
+    this.deliveryVarianceRepo,
+    this.auditRepo,
+    async () => {
+      const n = await this.deliveryConfigReader.numericValues();
+      // Unset stays UNSET. decideVariance then refuses with
+      // THRESHOLD_NOT_CONFIGURED rather than absorbing an unbounded amount.
+      return {
+        absoluteUgx: Number.isFinite(n.variance_absorption_threshold_ugx) ? n.variance_absorption_threshold_ugx : null,
+        shareBps: Number.isFinite(n.variance_absorption_threshold_bps) ? n.variance_absorption_threshold_bps : null,
+      };
+    },
+    this.deliveryCaptureRepo,
+  );
+  public readonly recordVarianceAgreementUseCase = new RecordVarianceAgreementUseCase(
+    this.deliveryVarianceRepo,
+    this.auditRepo,
+    this.deliveryCaptureRepo,
+    // Cancelling without penalty goes through the real order state machine, so
+    // the cancellation is a proper transition with its own audit rather than a
+    // status field being overwritten.
+    async (input) => {
+      await Registry.getInstance().orderTransitionService.transition(input.orderId, 'cancelled', {
+        actorId: input.actorId,
+        actorType: 'administrator',
+        source: 'admin_api',
+        reasonCode: 'DELIVERY_VARIANCE_DECLINED',
+        note: input.reason,
+      });
+    },
+  );
+  public readonly listPendingVarianceAgreementsUseCase = new ListPendingVarianceAgreementsUseCase(this.deliveryVarianceRepo);
+  public readonly listOrderVariancesUseCase = new ListOrderVariancesUseCase(this.deliveryVarianceRepo);
 
   // THE quoting service (contract #1). Everything else is its internals.
   public readonly deliveryQuotingRepo = new DrizzleDeliveryQuotingRepository();
