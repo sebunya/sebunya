@@ -28,12 +28,39 @@ const rules = [
   },
 ];
 
+/**
+ * `.env.example` is the ONE env file that is committed on purpose, which makes
+ * it the one env file that MUST be scanned. It was previously skipped twice
+ * over — by SECRET_LIKE_FILE and by the root-config allowlist — and a real
+ * administrative bootstrap password sat in it undetected.
+ */
+const ALWAYS_SCAN = new Set(['.env.example']);
+
 function shouldScan(file) {
-  if (SKIP_PATH.test(file) || SECRET_LIKE_FILE.test(file)) return false;
+  if (SKIP_PATH.test(file)) return false;
+  if (ALWAYS_SCAN.has(file)) return true;
+  if (SECRET_LIKE_FILE.test(file)) return false;
   if (!file.startsWith('apps/') && !file.startsWith('packages/') && !file.startsWith('scripts/') && !file.startsWith('tests/')) {
     return ROOT_CONFIGS.has(file);
   }
   return SOURCE_EXTENSIONS.has(extname(file)) || basename(file) === 'Dockerfile';
+}
+
+/**
+ * A committed env template may name a secret; it may never carry one. Anything
+ * that is not recognisably a placeholder is treated as a live credential.
+ */
+const PLACEHOLDER = /^$|example|changeme|change-me|placeholder|your[-_]|replace|todo|xxx+|\.\.\.|^<.*>$|^\$\{.*\}$/i;
+const SECRET_KEY = /(?:PASSWORD|SECRET|TOKEN|API_?KEY|PRIVATE_?KEY|CREDENTIAL|PASSPHRASE)/i;
+
+function committedEnvSecret(line, file) {
+  if (!ALWAYS_SCAN.has(file)) return false;
+  const match = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
+  if (!match) return false;
+  const [, key, rawValue] = match;
+  if (!SECRET_KEY.test(key)) return false;
+  const value = rawValue.trim().replace(/^["']|["']$/g, '');
+  return !PLACEHOLDER.test(value);
 }
 
 const tracked = execFileSync('git', ['ls-files', '-c', '-o', '--exclude-standard', '-z'], { encoding: 'utf8' })
@@ -55,6 +82,9 @@ for (const file of tracked) {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (line.includes(SAFE_MARKER)) continue;
+    if (committedEnvSecret(line, file)) {
+      findings.push({ file, line: index + 1, rule: 'committed-env-secret' });
+    }
     for (const rule of rules) {
       if (rule.pattern.test(line)) findings.push({ file, line: index + 1, rule: rule.id });
     }

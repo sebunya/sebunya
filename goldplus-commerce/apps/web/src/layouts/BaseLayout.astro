@@ -297,6 +297,27 @@ const canonical = canonicalUrl ?? Astro.url.toString();
     </footer>
 
     <script>
+      // An image whose source dies must degrade to an honest placeholder, never
+      // to the browser's broken-image glyph. Delegated on window in the capture
+      // phase because `error` does not bubble: this covers every <img> on the
+      // page including the ones rails inject after load, with no per-site
+      // onerror attributes to keep in sync.
+      const IMAGE_FALLBACK = '/products/image-unavailable.svg';
+      window.addEventListener(
+        'error',
+        (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLImageElement)) return;
+          // Guard the fallback itself, so a missing placeholder cannot loop.
+          if (target.dataset.imageFallbackApplied === 'true') return;
+          if (target.getAttribute('src') === IMAGE_FALLBACK) return;
+          target.dataset.imageFallbackApplied = 'true';
+          target.removeAttribute('srcset');
+          target.src = IMAGE_FALLBACK;
+        },
+        true,
+      );
+
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js').catch((error) => {

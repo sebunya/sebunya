@@ -72,6 +72,7 @@ import { DrizzlePaymentAttemptRepository } from './db/repositories/DrizzlePaymen
 import { SettlePaymentUseCase } from '../application/use-cases/payments/SettlePaymentUseCase';
 import { ReconcilePendingPaymentsUseCase } from '../application/use-cases/payments/ReconcilePendingPaymentsUseCase';
 import { RefundPesaPalPaymentUseCase } from '../application/use-cases/payments/RefundPesaPalPaymentUseCase';
+import { DrizzleRefundLedgerRepository } from './db/repositories/DrizzleRefundLedgerRepository';
 import {
   AbandonStaleUnpaidOrdersUseCase,
   AlertOnLedgerMismatchUseCase,
@@ -1819,11 +1820,15 @@ export class Registry {
     (message, detail) => logger.error({ ...detail }, `ALERT ${message}`),
   );
 
+  /** The ONE refund ledger: how much of a payment has already been given back. */
+  public readonly refundLedgerRepo = new DrizzleRefundLedgerRepository();
+
   /** The refund path. Exists BEFORE it is needed; unexercised against real money. */
   public readonly refundPesaPalPaymentUseCase = new RefundPesaPalPaymentUseCase(
     this.pesapalPaymentRepo,
     this.pesapalClient,
     this.auditRepo,
+    this.refundLedgerRepo,
   );
 
   /**

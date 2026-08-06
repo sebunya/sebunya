@@ -23,8 +23,11 @@ export type { AttributedLine, CommercialTotals };
  * Non-negotiables encoded here:
  * - Join identity is `recommendation_events.profile_id = orders.profile_id` —
  *   both server-issued. No name/phone/time-proximity joins exist anywhere.
- * - Paid truth: payment_status = 'paid' AND status <> 'cancelled' AND no
- *   payment attempt in 'reversed' (full-refund reversal, §18).
+ * - Paid truth: payment_status = 'paid' AND status <> 'cancelled' AND the order
+ *   is not FULLY refunded per the refund ledger (0103). Partial refunds are
+ *   subtracted from the line they were allocated against instead of deleting
+ *   the order — the old "any reversed attempt" test assumed every reversal was
+ *   total, so a delivery-fee refund erased an entire order's revenue.
  * - Precedence: ATC (7d) > click (7d); impressions (1d) are ASSISTS only and
  *   can never become a primary attribution (§5.3/§5.5).
  * - One primary per order line (DISTINCT ON with deterministic ordering) —
@@ -33,6 +36,48 @@ export type { AttributedLine, CommercialTotals };
  *   UNATTRIBUTABLE, honestly counted as such, never inferred (§17).
  */
 
+/**
+ * Refund truth, read from the ONE ledger (0103).
+ *
+ * `FULLY_REFUNDED_ORDERS` is the replacement for the old
+ * "exists(payment_attempts.status='reversed')" exclusion. That test assumed
+ * every reversal was total; the refund path has always permitted partials, so
+ * a 5,000 UGX delivery-fee refund erased a 500,000 UGX order from revenue,
+ * margin and cohorts. Now only an order whose ENTIRE collected amount has come
+ * back leaves the paid set; anything less is subtracted where it actually
+ * happened.
+ *
+ * `LINE_REFUNDS` carries only allocations an operator explicitly made against
+ * a product line. An order-level refund (delivery fee) has no line rows and so
+ * reduces order-level totals without inventing a per-product refund.
+ *
+ * Both are recomputed on every read, which is what keeps reversal exactly-once:
+ * nothing is ever "applied", only derived.
+ */
+const FULLY_REFUNDED_ORDERS = sql`
+  fully_refunded_orders as (
+    select pr.order_id
+    from payment_refunds pr
+    join payment_attempts pa on pa.id = pr.payment_attempt_id
+    where pr.status <> 'rejected'
+    group by pr.order_id, pa.id, pa.amount
+    having sum(pr.amount_ugx) >= pa.amount
+  )
+`;
+
+const LINE_REFUNDS = sql`
+  line_refunds as (
+    select prl.order_item_id, sum(prl.amount_ugx)::bigint as refunded_ugx
+    from payment_refund_lines prl
+    join payment_refunds pr on pr.id = prl.refund_id
+    where pr.status <> 'rejected'
+    group by prl.order_item_id
+  )
+`;
+
+/** Net line revenue after any explicit per-line refund, never below zero. */
+const NET_AFTER_REFUND = sql`greatest(oi.final_line_total - coalesce(lr.refunded_ugx, 0), 0)`;
+
 export class DrizzleRecommendationCommercialRepository implements IRecommendationCommercialRepository {
   /**
    * Per-line primary attribution over the window. The DISTINCT ON keeps
@@ -40,17 +85,16 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
    */
   async getAttributedLines(windowDays: number, limit = 200): Promise<AttributedLine[]> {
     const rows = (await db.execute(sql`
-      with paid_orders as (
+      with ${FULLY_REFUNDED_ORDERS},
+      ${LINE_REFUNDS},
+      paid_orders as (
         select o.id, o.order_number, o.profile_id, o.status, o.created_at
         from orders o
         where o.payment_status = 'paid'
           and o.status <> 'cancelled'
           and o.profile_id is not null
           and o.created_at >= now() - make_interval(days => ${windowDays})
-          and not exists (
-            select 1 from payment_attempts pa
-            where pa.order_id = o.id and pa.status = 'reversed'
-          )
+          and not exists (select 1 from fully_refunded_orders fr where fr.order_id = o.id)
       ),
       touches as (
         select e.id, e.profile_id, e.recommendation_product_id as product_id, e.event_type,
@@ -74,7 +118,10 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
         oi.quantity,
         oi.base_subtotal as gross_revenue_ugx,
         oi.discount_amount as discount_allocated_ugx,
-        oi.final_line_total as net_revenue_ugx,
+        -- Net of any refund allocated to THIS line. A partial refund reduces
+        -- the line it was actually made against; it no longer deletes the order.
+        ${NET_AFTER_REFUND} as net_revenue_ugx,
+        coalesce(lr.refunded_ugx, 0) as refunded_ugx,
         oi.cogs_snapshot_ugx,
         t.event_type as mechanism,
         t.placement,
@@ -85,6 +132,7 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
         o.created_at as order_created_at
       from paid_orders o
       join order_items oi on oi.order_id = o.id
+      left join line_refunds lr on lr.order_item_id = oi.id
       join touches t
         on t.profile_id = o.profile_id
        and t.product_id = oi.product_id
@@ -109,6 +157,7 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
       grossRevenueUgx: Number(r.gross_revenue_ugx),
       discountAllocatedUgx: Number(r.discount_allocated_ugx),
       netRevenueUgx: Number(r.net_revenue_ugx),
+      refundedUgx: Number(r.refunded_ugx ?? 0),
       cogsSnapshotUgx: r.cogs_snapshot_ugx === null ? null : Number(r.cogs_snapshot_ugx),
       mechanism: r.mechanism as string,
       placement: (r.placement as string) ?? null,
@@ -126,13 +175,15 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
   /** Headline totals with honest partitions (attributed / assisted / organic+unattributable). */
   async getCommercialTotals(windowDays: number): Promise<CommercialTotals> {
     const rows = (await db.execute(sql`
-      with paid_orders as (
+      with ${FULLY_REFUNDED_ORDERS},
+      ${LINE_REFUNDS},
+      paid_orders as (
         select o.id, o.profile_id, o.created_at
         from orders o
         where o.payment_status = 'paid'
           and o.status <> 'cancelled'
           and o.created_at >= now() - make_interval(days => ${windowDays})
-          and not exists (select 1 from payment_attempts pa where pa.order_id = o.id and pa.status = 'reversed')
+          and not exists (select 1 from fully_refunded_orders fr where fr.order_id = o.id)
       ),
       touches as (
         select e.id, e.profile_id, e.recommendation_product_id as product_id, e.created_at,
@@ -144,9 +195,10 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
       ),
       attributed_lines as (
         select distinct on (oi.id) oi.id, oi.order_id, oi.quantity,
-               oi.base_subtotal, oi.final_line_total, oi.cogs_snapshot_ugx
+               oi.base_subtotal, ${NET_AFTER_REFUND} as final_line_total, oi.cogs_snapshot_ugx
         from paid_orders o
         join order_items oi on oi.order_id = o.id
+        left join line_refunds lr on lr.order_item_id = oi.id
         join touches t
           on t.profile_id = o.profile_id
          and t.product_id = oi.product_id
@@ -155,9 +207,10 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
         order by oi.id, t.strength desc, t.created_at desc, t.id desc
       ),
       assisted_lines as (
-        select distinct oi.id, oi.final_line_total
+        select distinct oi.id, ${NET_AFTER_REFUND} as final_line_total
         from paid_orders o
         join order_items oi on oi.order_id = o.id
+        left join line_refunds lr on lr.order_item_id = oi.id
         join recommendation_events e
           on e.profile_id = o.profile_id
          and e.recommendation_product_id = oi.product_id
@@ -171,11 +224,17 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
         (select count(*)::int from paid_orders) as paid_orders,
         (select count(*)::int from paid_orders where profile_id is not null) as with_profile,
         (select count(*)::int from paid_orders where profile_id is null) as unattributable,
+        -- Orders whose ENTIRE collected amount came back. A partially refunded
+        -- order is NOT here: it stays in the paid set with its refund
+        -- subtracted from the line it was made against.
         (select count(distinct o2.id)::int from orders o2
           where o2.created_at >= now() - make_interval(days => ${windowDays})
             and (o2.payment_status = 'reversed'
-                 or exists (select 1 from payment_attempts pa where pa.order_id = o2.id and pa.status = 'reversed'))) as reversed_excluded,
-        (select coalesce(sum(oi.final_line_total), 0)::bigint from paid_orders o join order_items oi on oi.order_id = o.id) as paid_net_total,
+                 or exists (select 1 from fully_refunded_orders fr where fr.order_id = o2.id))) as reversed_excluded,
+        (select coalesce(sum(${NET_AFTER_REFUND}), 0)::bigint
+           from paid_orders o
+           join order_items oi on oi.order_id = o.id
+           left join line_refunds lr on lr.order_item_id = oi.id) as paid_net_total,
         (select count(distinct order_id)::int from attributed_lines) as attributed_orders,
         (select count(*)::int from attributed_lines) as attributed_items,
         (select coalesce(sum(quantity), 0)::int from attributed_lines) as attributed_units,
@@ -228,7 +287,8 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
     completedOrdersFromTouchedProfiles: number;
   }> {
     const rows = (await db.execute(sql`
-      with touched as (
+      with ${FULLY_REFUNDED_ORDERS},
+      touched as (
         select e.profile_id, min(e.created_at) as first_touch_at
         from recommendation_events e
         where e.profile_id is not null
@@ -255,7 +315,7 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
           -- An order placed BEFORE the profile's first recommendation touch
           -- cannot be a funnel outcome of it (R3.1 review, minor 5).
           and o.created_at >= t.first_touch_at
-          and not exists (select 1 from payment_attempts pa where pa.order_id = o.id and pa.status = 'reversed')
+          and not exists (select 1 from fully_refunded_orders fr where fr.order_id = o.id)
       )
       select c.impressions, c.clicks, c.atcs,
              (select count(*)::int from touched) as touched_profiles,
@@ -292,12 +352,14 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
     }>;
   }> {
     const rows = (await db.execute(sql`
-      with paying_customers as (
+      with ${FULLY_REFUNDED_ORDERS},
+      ${LINE_REFUNDS},
+      paying_customers as (
         select o.user_id,
                min(o.created_at) as first_paid_at
         from orders o
         where o.payment_status = 'paid' and o.status <> 'cancelled' and o.user_id is not null
-          and not exists (select 1 from payment_attempts pa where pa.order_id = o.id and pa.status = 'reversed')
+          and not exists (select 1 from fully_refunded_orders fr where fr.order_id = o.id)
         group by o.user_id
       ),
       exposure as (
@@ -331,15 +393,19 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
       ),
       value_windows as (
         select c.cohort, c.user_id,
-          coalesce(sum(oi.final_line_total) filter (where o.created_at < c.first_paid_at + interval '30 days'), 0) as net_30,
-          coalesce(sum(oi.final_line_total) filter (where o.created_at < c.first_paid_at + interval '60 days'), 0) as net_60,
-          coalesce(sum(oi.final_line_total) filter (where o.created_at < c.first_paid_at + interval '90 days'), 0) as net_90,
+          -- Realised value is value the customer KEPT: refunds come off the
+          -- line they were made against, so a partial refund no longer erases
+          -- a customer's whole order from their cohort.
+          coalesce(sum(${NET_AFTER_REFUND}) filter (where o.created_at < c.first_paid_at + interval '30 days'), 0) as net_30,
+          coalesce(sum(${NET_AFTER_REFUND}) filter (where o.created_at < c.first_paid_at + interval '60 days'), 0) as net_60,
+          coalesce(sum(${NET_AFTER_REFUND}) filter (where o.created_at < c.first_paid_at + interval '90 days'), 0) as net_90,
           count(distinct o.id) as paid_orders
         from classified c
         join orders o on o.user_id = c.user_id
           and o.payment_status = 'paid' and o.status <> 'cancelled'
-          and not exists (select 1 from payment_attempts pa where pa.order_id = o.id and pa.status = 'reversed')
+          and not exists (select 1 from fully_refunded_orders fr where fr.order_id = o.id)
         join order_items oi on oi.order_id = o.id
+        left join line_refunds lr on lr.order_item_id = oi.id
         group by c.cohort, c.user_id
       )
       select cohort,

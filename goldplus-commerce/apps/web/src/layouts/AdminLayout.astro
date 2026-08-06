@@ -141,13 +141,20 @@ const isPathActive = (href: string) => {
               <span class="text-xs font-bold text-gray-300">Administrator</span>
             </div>
 
-            <button
-              id="admin-logout-btn"
-              type="button"
-              class="text-xs font-bold text-gray-500 hover:text-red-400 transition-colors px-2 py-1 select-none"
-            >
-              Sign out
-            </button>
+            {/*
+              A real form POST to a real endpoint: the session cookie is
+              HttpOnly, so only the server can clear it, and only the API can
+              revoke the token behind it.
+            */}
+            <form method="POST" action="/admin/logout" class="inline">
+              <button
+                id="admin-logout-btn"
+                type="submit"
+                class="text-xs font-bold text-gray-500 hover:text-red-400 transition-colors px-2 py-1 select-none"
+              >
+                Sign out
+              </button>
+            </form>
           </div>
         </div>
 
@@ -162,14 +169,5 @@ const isPathActive = (href: string) => {
 
     </div>
 
-    <script>
-      // Handle administrative logout directly client-side by clearing authentication cookie
-      document.getElementById('admin-logout-btn')?.addEventListener('click', () => {
-        if (confirm('Confirm action: Securely terminate administrative active session?')) {
-          document.cookie = "goldplus_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-          window.location.href = '/admin/login';
-        }
-      });
-    </script>
   </body>
 </html>

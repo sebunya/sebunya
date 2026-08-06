@@ -2,13 +2,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Applies migrations 0099/0100 idempotently for suites that need the R1/R2
+ * Applies migrations 0099–0103 idempotently for suites that need the R1/R2
  * columns on top of the production-schema snapshot (which predates them).
  * Serialized under a Postgres advisory lock: CREATE INDEX IF NOT EXISTS is
  * NOT concurrency-safe (two racing creators still collide in pg_class), and
  * vitest runs suites in parallel workers.
  */
-const MIGRATIONS = ["0099_recommendation_event_contract.sql", "0100_experience_profiles.sql", "0101_order_profile_stitching.sql", "0102_commercial_costs.sql"];
+const MIGRATIONS = ["0099_recommendation_event_contract.sql", "0100_experience_profiles.sql", "0101_order_profile_stitching.sql", "0102_commercial_costs.sql", "0103_refund_ledger.sql"];
 const ADVISORY_LOCK_KEY = 209_920_260_806;
 
 type Pg = {

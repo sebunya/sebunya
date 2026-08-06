@@ -10,7 +10,10 @@ export interface AttributedLine {
   quantity: number;
   grossRevenueUgx: number;
   discountAllocatedUgx: number;
+  /** Line revenue AFTER any refund allocated to this line (never below zero). */
   netRevenueUgx: number;
+  /** How much of this line has been refunded, from the refund ledger (0103). */
+  refundedUgx: number;
   cogsSnapshotUgx: number | null;
   mechanism: string;
   placement: string | null;

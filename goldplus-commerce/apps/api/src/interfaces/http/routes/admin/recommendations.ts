@@ -314,6 +314,31 @@ routes.post("/media-costs", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANA
     sourceReference: typeof body.sourceReference === "string" ? body.sourceReference.trim() || null : null,
     ingestedBy: c.get("user").id,
   });
+  // A financial write needs an audit row of its own. The file-scoped
+  // `audit-exempt` marker at the top covers RULE mutations, which use the
+  // dedicated rule-audit stream; spend ingestion is neither, and without this
+  // a duplicate submission returned 200 leaving no trace of the attempt.
+  await Registry.getInstance().createAuditLogUseCase.execute({
+    actorId: c.get("user").id,
+    action: result.inserted ? "MEDIA_COST_INGESTED" : "MEDIA_COST_DUPLICATE_REJECTED",
+    entity: "media_cost_fact",
+    // The logical key IS the identity of a spend fact (0102's unique index).
+    entityId: `${body.spendDate}:${body.platform.trim()}:${body.account.trim()}:${body.campaign.trim()}`,
+    previousState: null,
+    newState: {
+      spendDate: body.spendDate,
+      channel: body.channel.trim(),
+      platform: body.platform.trim(),
+      account: body.account.trim(),
+      campaign: body.campaign.trim(),
+      currency,
+      spendMinor,
+      taxOrFeeMinor,
+      source: body.source.trim(),
+      inserted: result.inserted,
+    },
+  });
+
   return c.json({ success: true, data: { inserted: result.inserted, duplicate: !result.inserted } }, result.inserted ? 201 : 200);
 });
 

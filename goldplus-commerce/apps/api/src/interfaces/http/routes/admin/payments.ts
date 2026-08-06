@@ -134,17 +134,45 @@ routes.post('/attempts/:merchantReference/refund', requirePermissions([PERMISSIO
   const body = await c.req.json().catch(() => null);
   const raw = Number(String(body?.amountUgx ?? '').replace(/[,\s]/g, ''));
   const user = c.get('user') as { id: string; email?: string };
+
+  // Optional per-line allocation. Omitting it records an order-level refund
+  // (a delivery-fee variance belongs to no product line), which is honest;
+  // spreading it across lines would invent per-product refunds.
+  const rawLines = Array.isArray(body?.lines) ? body.lines : [];
+  const lines = rawLines.map((line: any) => ({
+    orderItemId: String(line?.orderItemId ?? ''),
+    amountUgx: Number(String(line?.amountUgx ?? '').replace(/[,\s]/g, '')),
+  }));
+
   const result = await Registry.getInstance().refundPesaPalPaymentUseCase.execute({
     merchantReference: String(c.req.param('merchantReference') ?? ''),
     amountUgx: Number.isFinite(raw) ? raw : Number.NaN,
     reason: typeof body?.reason === 'string' ? body.reason : '',
     actorId: user.id,
     actorUsername: user.email ?? user.id,
+    idempotencyKey: typeof body?.idempotencyKey === 'string' ? body.idempotencyKey.slice(0, 120) : undefined,
+    lines,
   });
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
   }
-  return c.json({ success: true, data: { providerStatus: result.providerStatus, providerMessage: result.providerMessage } });
+  return c.json({
+    success: true,
+    data: {
+      refundId: result.refundId,
+      alreadyProcessed: result.alreadyProcessed,
+      providerStatus: result.providerStatus,
+      providerMessage: result.providerMessage,
+    },
+  });
+});
+
+/** What has already been given back on an order — the ledger, read directly. */
+routes.get('/orders/:orderId/refunds', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  const refunds = await Registry.getInstance().refundLedgerRepo.listRefundsForOrder(
+    String(c.req.param('orderId') ?? ''),
+  );
+  return c.json({ success: true, data: { refunds } });
 });
 
 /**

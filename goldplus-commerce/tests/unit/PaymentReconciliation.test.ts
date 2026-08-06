@@ -308,8 +308,52 @@ describe('SettlePaymentUseCase — one path for callback, IPN, poller and ops', 
 
 describe('refunds — the way to give money back, built before it is needed', () => {
   const audit = { entries: [] as unknown[], async save(e: unknown) { this.entries.push(e); return e; } };
-  const makeRefund = (attemptStatus: string, opts: { confirmation?: string | null } = {}) => {
+
+  /**
+   * An in-memory stand-in for the 0103 ledger that keeps the two rules the
+   * real one exists to enforce: the balance is collected MINUS everything
+   * already refunded, and one idempotency key pays out once.
+   */
+  const makeLedger = () => {
+    const rows: Array<{ id: string; key: string; attemptId: string; amount: number; status: string }> = [];
+    return {
+      rows,
+      async reserveRefund(input: any) {
+        const existing = rows.find((r) => r.key === input.idempotencyKey);
+        if (existing) {
+          return { outcome: 'ALREADY_PROCESSED', refund: { ...existing, providerStatus: null, providerMessage: null } };
+        }
+        const already = rows
+          .filter((r) => r.attemptId === input.paymentAttemptId && r.status !== 'rejected')
+          .reduce((sum, r) => sum + r.amount, 0);
+        const refundable = input.collectedUgx - already;
+        if (input.amountUgx > refundable) {
+          return { outcome: 'EXCEEDS_REFUNDABLE_BALANCE', collectedUgx: input.collectedUgx, alreadyRefundedUgx: already, refundableUgx: Math.max(0, refundable) };
+        }
+        if (input.lines.length > 0) {
+          const allocated = input.lines.reduce((s: number, l: any) => s + l.amountUgx, 0);
+          if (allocated !== input.amountUgx) {
+            return { outcome: 'INVALID_LINE_ALLOCATION', message: 'allocation must equal the refund' };
+          }
+        }
+        const row = { id: `refund-${rows.length + 1}`, key: input.idempotencyKey, attemptId: input.paymentAttemptId, amount: input.amountUgx, status: 'requested' };
+        rows.push(row);
+        return { outcome: 'RESERVED', refund: { ...row, providerStatus: null, providerMessage: null } };
+      },
+      async recordProviderOutcome(id: string, update: any) {
+        const row = rows.find((r) => r.id === id);
+        if (row) row.status = update.status;
+      },
+      async getRefundedTotalUgx(attemptId: string) {
+        return rows.filter((r) => r.attemptId === attemptId && r.status !== 'rejected').reduce((s, r) => s + r.amount, 0);
+      },
+      async listRefundsForOrder() { return []; },
+    };
+  };
+
+  const makeRefund = (attemptStatus: string, opts: { confirmation?: string | null; ledger?: ReturnType<typeof makeLedger> } = {}) => {
     const refundCalls: unknown[] = [];
+    const ledger = opts.ledger ?? makeLedger();
     const useCase = new RefundPesaPalPaymentUseCase(
       {
         async findByMerchantReference(ref: string) {
@@ -328,8 +372,9 @@ describe('refunds — the way to give money back, built before it is needed', ()
         },
       } as never,
       audit as never,
+      ledger as never,
     );
-    return { useCase, refundCalls };
+    return { useCase, refundCalls, ledger };
   };
 
   beforeEach(() => {
@@ -351,8 +396,66 @@ describe('refunds — the way to give money back, built before it is needed', ()
 
   it('never refunds more than was collected, and permits a partial', async () => {
     const { useCase } = makeRefund('completed');
-    expect(await useCase.execute({ ...good, amountUgx: 50_001 })).toMatchObject({ ok: false, code: 'AMOUNT_EXCEEDS_COLLECTED' });
+    expect(await useCase.execute({ ...good, amountUgx: 50_001 })).toMatchObject({ ok: false, code: 'EXCEEDS_REFUNDABLE_BALANCE' });
     expect((await useCase.execute({ ...good, amountUgx: 20_000 })).ok).toBe(true);
+  });
+
+  /**
+   * The defect this ledger exists for. The old guard compared each request
+   * against the ORIGINAL collected amount, so two 60% refunds both passed it
+   * and 120% of the money could leave.
+   */
+  it('SEQUENTIAL PARTIALS CANNOT EXCEED THE COLLECTED TOTAL — the over-refund defect', async () => {
+    const ledger = makeLedger();
+    const { useCase, refundCalls } = makeRefund('completed', { ledger });
+
+    const first = await useCase.execute({ ...good, amountUgx: 30_000, idempotencyKey: 'k1' });
+    expect(first.ok).toBe(true);
+
+    // 30k + 30k = 60k against 50k collected. The old code allowed this.
+    const second = await useCase.execute({ ...good, amountUgx: 30_000, idempotencyKey: 'k2' });
+    expect(second).toMatchObject({ ok: false, code: 'EXCEEDS_REFUNDABLE_BALANCE' });
+    expect((second as { message: string }).message).toContain('20,000');
+
+    // Exactly the remaining balance is still allowed.
+    expect((await useCase.execute({ ...good, amountUgx: 20_000, idempotencyKey: 'k3' })).ok).toBe(true);
+    // One shilling beyond it is not.
+    expect(await useCase.execute({ ...good, amountUgx: 1, idempotencyKey: 'k4' })).toMatchObject({ ok: false, code: 'EXCEEDS_REFUNDABLE_BALANCE' });
+
+    // Only the two accepted refunds ever reached the provider.
+    expect(refundCalls).toHaveLength(2);
+    expect(await ledger.getRefundedTotalUgx('a1')).toBe(50_000);
+  });
+
+  it('the same idempotency key never pays out twice, and never re-calls the provider', async () => {
+    const ledger = makeLedger();
+    const { useCase, refundCalls } = makeRefund('completed', { ledger });
+
+    const first = await useCase.execute({ ...good, amountUgx: 10_000, idempotencyKey: 'retry-me' });
+    const second = await useCase.execute({ ...good, amountUgx: 10_000, idempotencyKey: 'retry-me' });
+
+    expect(first).toMatchObject({ ok: true, alreadyProcessed: false });
+    expect(second).toMatchObject({ ok: true, alreadyProcessed: true });
+    expect(refundCalls).toHaveLength(1);
+    expect(await ledger.getRefundedTotalUgx('a1')).toBe(10_000);
+  });
+
+  it('an identical request with no explicit key still collapses — the double-click case', async () => {
+    const ledger = makeLedger();
+    const { useCase, refundCalls } = makeRefund('completed', { ledger });
+    await useCase.execute({ ...good, amountUgx: 10_000 });
+    await useCase.execute({ ...good, amountUgx: 10_000 });
+    expect(refundCalls).toHaveLength(1);
+  });
+
+  it('line allocations must sum to the refund, or be omitted entirely', async () => {
+    const { useCase } = makeRefund('completed');
+    expect(
+      await useCase.execute({ ...good, amountUgx: 10_000, lines: [{ orderItemId: 'item-1', amountUgx: 4_000 }] }),
+    ).toMatchObject({ ok: false, code: 'INVALID_LINE_ALLOCATION' });
+    expect(
+      (await useCase.execute({ ...good, amountUgx: 10_000, lines: [{ orderItemId: 'item-1', amountUgx: 10_000 }] })).ok,
+    ).toBe(true);
   });
 
   it('demands a written reason and a whole positive amount', async () => {

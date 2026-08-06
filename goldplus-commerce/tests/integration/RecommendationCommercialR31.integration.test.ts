@@ -71,16 +71,29 @@ suite("commercial attribution on real PostgreSQL", () => {
     `;
     await mkItem(paidOrderId, recommendedProduct, 50_000, 30_000);
     await mkItem(paidOrderId, organicProduct, 20_000, null);
-    // The reversed order also bought the recommended product — its revenue
-    // must NEVER appear (full-refund reversal, AC6).
+    // The fully refunded order also bought the recommended product — its
+    // revenue must NEVER appear (AC6).
+    //
+    // 2026-08-07: a full refund is now recorded in the refund ledger (0103),
+    // not inferred from an attempt reading 'reversed'. That old signal could
+    // not distinguish a total reversal from a partial one, so a delivery-fee
+    // refund erased the whole order. The attempt stays 'completed' — money WAS
+    // collected — and the refund rows are what take it back.
     await mkItem(reversedOrderId, recommendedProduct, 99_000, null);
+    const reversedAttemptId = crypto.randomUUID();
     await pg`
       insert into payment_attempts (id, order_id, merchant_reference, amount, currency, status)
-      values (${crypto.randomUUID()}::uuid, ${reversedOrderId}::uuid, ${`R31-REV-${suffix}`}, 99000, 'UGX', 'reversed')
+      values (${reversedAttemptId}::uuid, ${reversedOrderId}::uuid, ${`R31-REV-${suffix}`}, 99000, 'UGX', 'completed')
+    `;
+    await pg`
+      insert into payment_refunds (payment_attempt_id, order_id, idempotency_key, amount_ugx, reason, status)
+      values (${reversedAttemptId}::uuid, ${reversedOrderId}::uuid, ${`R31-FULL-${suffix}`}, 99000, 'full refund fixture', 'settled')
     `;
   });
 
   afterAll(async () => {
+    await pg`delete from payment_refund_lines where refund_id in (select id from payment_refunds where order_id in ${pg(orderIds)})`;
+    await pg`delete from payment_refunds where order_id in ${pg(orderIds)}`;
     await pg`delete from payment_attempts where order_id in ${pg(orderIds)}`;
     await pg`delete from order_items where order_id in ${pg(orderIds)}`;
     await pg`delete from orders where id in ${pg(orderIds)}`;

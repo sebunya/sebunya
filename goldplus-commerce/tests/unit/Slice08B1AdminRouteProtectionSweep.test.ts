@@ -145,11 +145,38 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     }
   });
 
+  /**
+   * Non-Astro files under the admin page directory are endpoints, not pages,
+   * so the "redirect before you render" contract the rest of this suite
+   * enforces does not apply to them. Each one must therefore be named here
+   * with the reason it is safe. The default stays deny: anything that appears
+   * without being classified fails this test.
+   */
+  const classifiedAdminEndpoints = new Map<string, string>([
+    [
+      'logout.ts',
+      'Sign-out endpoint. Reads no admin data and renders nothing, so it has ' +
+        'no protected surface to leak; it revokes the token server-side and ' +
+        'clears the HttpOnly cookie with Set-Cookie, which page-level Astro ' +
+        'frontmatter cannot do. Unauthenticated calls are a no-op that ' +
+        'redirect to the login screen.',
+    ],
+  ]);
+
   it('contains no unclassified non-Astro page inside the admin page directory', () => {
     const allFiles = readdirSync(adminRoot, { recursive: true })
       .map((entry) => resolve(adminRoot, String(entry)))
       .filter((path) => statSync(path).isFile())
       .map((path) => basename(path));
-    expect(allFiles.every((file) => file.endsWith('.astro'))).toBe(true);
+    const unclassified = allFiles.filter(
+      (file) => !file.endsWith('.astro') && !classifiedAdminEndpoints.has(file),
+    );
+    expect(unclassified, `unclassified non-Astro admin files: ${unclassified.join(', ')}`).toEqual([]);
+  });
+
+  it('every classified admin endpoint carries the reason it is exempt', () => {
+    for (const [file, reason] of classifiedAdminEndpoints) {
+      expect(reason.length, `${file} needs a real justification`).toBeGreaterThan(80);
+    }
   });
 });

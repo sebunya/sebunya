@@ -182,11 +182,24 @@ describe("honest states — unavailable is a reason, never a zero (§16, AC8/AC1
 describe("the projection's SQL encodes the truth rules (C2/C4)", () => {
   const repo = read("apps/api/src/infrastructure/db/repositories/DrizzleRecommendationCommercialRepository.ts");
 
-  it("paid truth excludes cancelled orders and reversed payments in EVERY revenue query", () => {
+  it("paid truth excludes cancelled orders and FULLY refunded orders in EVERY revenue query", () => {
     const paidBlocks = repo.split("payment_status = 'paid'").length - 1;
-    const reversedBlocks = repo.split("pa.status = 'reversed'").length - 1;
+    // 2026-08-07: the exclusion moved from "any reversed payment attempt" to
+    // "fully refunded per the ledger". The old test assumed every reversal was
+    // total, which is exactly the assumption that let a partial refund erase a
+    // whole order's revenue. A partial now reduces the line it was made
+    // against instead of deleting the order.
+    const fullyRefundedBlocks = repo.split("fully_refunded_orders fr where fr.order_id").length - 1;
     expect(paidBlocks).toBeGreaterThanOrEqual(5);
-    expect(reversedBlocks).toBeGreaterThanOrEqual(5);
+    expect(fullyRefundedBlocks).toBeGreaterThanOrEqual(5);
+    // And the old whole-order test must not creep back in.
+    expect(repo).not.toContain("pa.status = 'reversed'");
+  });
+
+  it("a partial refund is subtracted from its own line, and never below zero", () => {
+    expect(repo).toContain("greatest(oi.final_line_total - coalesce(lr.refunded_ugx, 0), 0)");
+    // Only allocations against non-rejected refunds count.
+    expect(repo).toContain("where pr.status <> 'rejected'");
   });
 
   it("one primary per order line — DISTINCT ON with deterministic strength-then-recency ordering (AC16)", () => {

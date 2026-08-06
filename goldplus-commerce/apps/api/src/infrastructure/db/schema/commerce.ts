@@ -206,6 +206,50 @@ export const paymentAttempts = pgTable('payment_attempts', {
 
 
 
+/**
+ * The refund ledger (0103). ONE canonical record of money given back.
+ *
+ * `status` matters for arithmetic, not just display: a 'requested' refund is
+ * money already committed to the customer, so it counts against the refundable
+ * balance exactly like a settled one. Only 'rejected' releases the balance.
+ * Revenue reversal is recomputed from these rows rather than applied as a
+ * one-off subtraction, which is what makes it exactly-once.
+ */
+export const paymentRefunds = pgTable('payment_refunds', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  paymentAttemptId: uuid('payment_attempt_id').references(() => paymentAttempts.id).notNull(),
+  orderId: uuid('order_id').references(() => orders.id).notNull(),
+  idempotencyKey: varchar('idempotency_key', { length: 120 }).notNull(),
+  amountUgx: bigint('amount_ugx', { mode: 'number' }).notNull(),
+  reason: text('reason').notNull(),
+  status: varchar('status', { length: 20 }).default('requested').notNull(),
+  providerStatus: varchar('provider_status', { length: 60 }),
+  providerMessage: text('provider_message'),
+  requestedBy: uuid('requested_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  settledAt: timestamp('settled_at', { withTimezone: true }),
+}, (table) => ({
+  idempotencyUq: uniqueIndex('payment_refunds_idempotency_uq').on(table.idempotencyKey),
+  attemptIdx: index('payment_refunds_attempt_idx').on(table.paymentAttemptId),
+  orderIdx: index('payment_refunds_order_idx').on(table.orderId),
+  statusIdx: index('payment_refunds_status_idx').on(table.status),
+}));
+
+/**
+ * Optional per-line allocation. Absent rows mean the refund belongs to no
+ * product line (a delivery-fee variance); it is never smeared across lines,
+ * because a per-product refund that did not happen must not be invented.
+ */
+export const paymentRefundLines = pgTable('payment_refund_lines', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  refundId: uuid('refund_id').references(() => paymentRefunds.id, { onDelete: 'cascade' }).notNull(),
+  orderItemId: uuid('order_item_id').references(() => orderItems.id).notNull(),
+  amountUgx: bigint('amount_ugx', { mode: 'number' }).notNull(),
+}, (table) => ({
+  refundItemUq: uniqueIndex('payment_refund_lines_uq').on(table.refundId, table.orderItemId),
+  itemIdx: index('payment_refund_lines_item_idx').on(table.orderItemId),
+}));
+
 // Slice 3B: admin-configured delivery fee zones (per Ugandan district)
 export const deliveryZones = pgTable('delivery_zones', {
   id: uuid('id').defaultRandom().primaryKey(),
