@@ -303,20 +303,42 @@ const canonical = canonicalUrl ?? Astro.url.toString();
       // page including the ones rails inject after load, with no per-site
       // onerror attributes to keep in sync.
       const IMAGE_FALLBACK = '/products/image-unavailable.svg';
+
+      function applyFallback(image) {
+        // Guard the fallback itself, so a missing placeholder cannot loop.
+        if (image.dataset.imageFallbackApplied === 'true') return;
+        if (image.getAttribute('src') === IMAGE_FALLBACK) return;
+        image.dataset.imageFallbackApplied = 'true';
+        image.removeAttribute('srcset');
+        image.src = IMAGE_FALLBACK;
+      }
+
       window.addEventListener(
         'error',
         (event) => {
-          const target = event.target;
-          if (!(target instanceof HTMLImageElement)) return;
-          // Guard the fallback itself, so a missing placeholder cannot loop.
-          if (target.dataset.imageFallbackApplied === 'true') return;
-          if (target.getAttribute('src') === IMAGE_FALLBACK) return;
-          target.dataset.imageFallbackApplied = 'true';
-          target.removeAttribute('srcset');
-          target.src = IMAGE_FALLBACK;
+          if (event.target instanceof HTMLImageElement) applyFallback(event.target);
         },
         true,
       );
+
+      // The listener above only catches failures that happen AFTER this module
+      // runs, and Astro defers it — by then the images in the initial HTML have
+      // usually already failed, and `error` does not replay. So sweep for
+      // images that are finished loading with no intrinsic width, which is what
+      // a broken image looks like once the event is gone. Run at both moments:
+      // DOM ready catches most, `load` catches the stragglers.
+      function sweepBrokenImages() {
+        for (const image of document.querySelectorAll('img')) {
+          if (image.complete && image.naturalWidth === 0) applyFallback(image);
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', sweepBrokenImages);
+      } else {
+        sweepBrokenImages();
+      }
+      window.addEventListener('load', sweepBrokenImages);
 
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
