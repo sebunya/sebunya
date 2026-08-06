@@ -1,10 +1,16 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations, previewRecommendationRules, productToRecommendationItem } from "../../lib/recommendation-display";
-import { getCleanCatalog } from "../../lib/catalog/catalog";
-import { apiBase } from "../../lib/api";
-import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
+import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+
+/**
+ * R7 (2026-08-06): the rail trusts the engine. The old frontmatter re-fetched
+ * the whole catalogue and re-ranked it through a second, client-side ladder
+ * whenever the API returned nothing — exactly the case the engine's own
+ * fallback ladder (R3) now owns, with sources and typed emptiness. The
+ * display boundary still normalises every candidate (safe slug, truthful
+ * price/availability) and the title matches the evidence that actually served.
+ */
 
 interface Props {
   productId: string;
@@ -13,7 +19,7 @@ interface Props {
   subcategoryName?: string;
 }
 
-const { productId, productSlug, categoryName, subcategoryName = "" } = Astro.props;
+const { productId, productSlug, categoryName } = Astro.props;
 
 const response = await getRecommendations({
   placement: "product_related",
@@ -21,51 +27,22 @@ const response = await getRecommendations({
   limit: 8,
 }, { visitToken: Astro.locals.gpVisit });
 
-const displayItems = filterDisplayableRecommendations(response.items, {
+const finalItems = filterDisplayableRecommendations(response.items, {
   currentProductId: productId,
   currentProductSlug: productSlug,
-  currentCategory: categoryName,
-  currentSubcategory: subcategoryName,
   limit: 4,
 });
 
-let finalItems = displayItems;
-let selectionRule = "eligible_candidates";
-
-if (finalItems.length === 0) {
-  let allProducts: ProductPublicDto[] = [];
-  try {
-    const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
-      const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-      if (json.success && json.data) {
-        allProducts = json.data;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  allProducts = getCleanCatalog(allProducts);
-  
-  const preview = previewRecommendationRules(
-    allProducts.map((product) => productToRecommendationItem(product, "RELATED_FALLBACK")),
-    {
-      currentProductId: productId,
-      currentProductSlug: productSlug,
-      currentCategory: categoryName,
-      currentSubcategory: subcategoryName,
-      maxCount: 4,
-      categoryDominanceCap: 2,
-    },
-  );
-  finalItems = preview.selected;
-  selectionRule = preview.selectedRule;
-}
+const evidenceBased = finalItems.some((item) =>
+  ["EXACT_PRODUCT_COMPATIBILITY", "SAME_CATEGORY_ATTRIBUTE_MATCH", "CATEGORY_BESTSELLER"].includes(
+    (item as { candidateSource?: string }).candidateSource ?? "",
+  ),
+);
 ---
 
 <RecommendationRail
-    title={selectionRule === "same_subcategory" || selectionRule === "same_category" ? "Similar products" : "Browse available products"}
-    subtitle={selectionRule === "same_subcategory" || selectionRule === "same_category"
+    title={evidenceBased ? "Similar products" : "Browse available products"}
+    subtitle={evidenceBased
       ? `More products listed in ${categoryName}.`
       : "A catalogue fallback based only on currently listed products."}
     placement="product_related"

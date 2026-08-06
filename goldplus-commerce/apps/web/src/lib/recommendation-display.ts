@@ -479,6 +479,11 @@ export function supportedRecommendationReason(reasonCode?: string): string | und
   if (["COMPATIBLE_ACCESSORY", "MATCHING_CONNECTOR", "SIMILAR_POWER"].includes(reasonCode ?? "")) {
     return "Related by product details";
   }
+  // R7 (§27): the engine only emits POPULAR_NOW with a real evidence sample
+  // (paid orders or a sufficient engagement window) since R3 — so the badge
+  // is truthful by construction. Codes outside this allowlist render nothing.
+  if (reasonCode === "POPULAR_NOW") return "Recently popular";
+  if (reasonCode === "CART_ADDON") return "Useful add-on";
   return undefined;
 }
 

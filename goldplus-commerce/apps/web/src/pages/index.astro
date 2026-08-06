@@ -6,7 +6,6 @@ import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
 import RecentlyViewedRail from '../components/recommendations/RecentlyViewedRail.astro';
 import CartAwareRail from '../components/home/CartAwareRail.astro';
-import CategoryAwareRail from '../components/home/CategoryAwareRail.astro';
 import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
 import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
 import { getCleanCatalog } from '../lib/catalog/catalog';
@@ -174,7 +173,11 @@ const usedProductIds = [
 
   {/* Category/Search Aware Continuation Rail (Only when user history exists) */}
   <div class="container mx-auto px-4 lg:px-8">
-    <CategoryAwareRail excludeProductIds={usedProductIds} />
+    {/* R7 (2026-08-06): CategoryAwareRail retired — it read two localStorage
+        keys (goldplus_last_category / goldplus_last_search) that NOTHING ever
+        wrote, so it could never render, while serializing the entire catalogue
+        into the homepage HTML on every request. Category affinity is served
+        server-side by the engine's search-affinity source instead. */}
   </div>
 
   {/* 7. Trending Now (with Cross-Section Deduplication) */}

@@ -1,17 +1,25 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations, previewRecommendationRules, productToRecommendationItem } from "../../lib/recommendation-display";
-import { CATEGORY_SLUG_TO_NAME, getCleanCatalog } from "../../lib/catalog/catalog";
-import { apiBase } from "../../lib/api";
-import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
+import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+
+/**
+ * R7 (2026-08-06): trusts the engine's category ladder (bestsellers → search
+ * affinity → engagement → stable category listing).
+ *
+ * UNWIRED: no page mounts this rail today — the shop page IS the category
+ * listing, so a "popular in this category" rail beside it would be the same
+ * products twice. It stays because dedicated category landing pages are the
+ * obvious next storefront step; wire it there, and delete this note.
+ */
 
 interface Props {
   categoryId?: string;
   categorySlug?: string;
+  categoryName: string;
 }
 
-const { categoryId, categorySlug } = Astro.props;
+const { categoryId, categorySlug, categoryName } = Astro.props;
 
 const response = await getRecommendations({
   placement: "category_popular",
@@ -20,47 +28,13 @@ const response = await getRecommendations({
   limit: 12,
 }, { visitToken: Astro.locals.gpVisit });
 
-let displayItems = filterDisplayableRecommendations(response.items, {
-  limit: 4,
-});
-
-let finalItems = displayItems;
-
-if (finalItems.length === 0) {
-  let allProducts: ProductPublicDto[] = [];
-  try {
-    const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
-      const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-      if (json.success && json.data) {
-        allProducts = json.data;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  allProducts = getCleanCatalog(allProducts);
-  
-  // Find category name from slug
-  const targetCategory = categorySlug ? CATEGORY_SLUG_TO_NAME[categorySlug] : undefined;
-
-  // Filter products by category slug/name if present
-  let filtered = allProducts;
-  if (targetCategory) {
-    filtered = allProducts.filter(p => p.categoryName === targetCategory);
-  }
-  
-  finalItems = previewRecommendationRules(
-    filtered.map((product) => productToRecommendationItem(product, "CATEGORY_FALLBACK")),
-    { currentCategory: targetCategory, maxCount: 4, categoryDominanceCap: 4 },
-  ).selected;
-}
+const finalItems = filterDisplayableRecommendations(response.items, { limit: 4 });
 ---
 
 {finalItems.length > 0 && (
   <RecommendationRail
     title="More from this category"
-    subtitle="Products currently listed in this product family."
+    subtitle={`Products listed in ${categoryName}.`}
     placement="category_popular"
     items={finalItems}
   />

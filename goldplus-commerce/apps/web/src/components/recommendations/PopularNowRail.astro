@@ -1,73 +1,47 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations, previewRecommendationRules, productToRecommendationItem } from "../../lib/recommendation-display";
-import { getCleanCatalog } from "../../lib/catalog/catalog";
-import { apiBase } from "../../lib/api";
-import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
+import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+
+/**
+ * R7 (2026-08-06): the homepage rail trusts the engine. "Popular" is only
+ * claimed when the serving evidence is real (paid orders or a sufficient
+ * engagement sample — the engine refuses to trend without one); otherwise the
+ * title is an honest catalogue browse. Six visible items (§27 homepage 6–8).
+ */
 
 interface Props {
-  excludeProductIds?: string[];
   useContainerWrapper?: boolean;
+  /** Products already shown by adjacent homepage sections — §14: no duplicate across adjacent surfaces. */
+  excludeProductIds?: string[];
 }
 
-const { excludeProductIds = [], useContainerWrapper = false } = Astro.props;
+const { useContainerWrapper = true, excludeProductIds = [] } = Astro.props;
 
-// Fetch slightly more to ensure we can achieve a clean 4-item limit after exclusions
 const response = await getRecommendations({
   placement: "home_trending",
   limit: 12,
 }, { visitToken: Astro.locals.gpVisit });
 
-const displayItems = filterDisplayableRecommendations(response.items, {
-  excludeIds: excludeProductIds,
-  limit: 4,
-});
+const finalItems = filterDisplayableRecommendations(response.items, { excludeIds: excludeProductIds, limit: 6 });
 
-let finalItems = displayItems;
-
-if (finalItems.length === 0) {
-  let allProducts: ProductPublicDto[] = [];
-  try {
-    const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
-      const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-      if (json.success && json.data) {
-        allProducts = json.data;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  allProducts = getCleanCatalog(allProducts);
-  
-  const eligible = allProducts.filter(p => !excludeProductIds.includes(p.id));
-  
-  finalItems = previewRecommendationRules(
-    eligible.map((product) => productToRecommendationItem(product, "CATALOGUE_FALLBACK")),
-    { maxCount: 4, categoryDominanceCap: 2, preferredRule: "catalogue_fallback" },
-  ).selected;
-}
+const evidenceBased = finalItems.some((item) =>
+  ["RECENT_PAID_ORDER_VELOCITY", "RECENT_ENGAGEMENT_VELOCITY", "GLOBAL_BESTSELLER", "SEARCH_QUERY_AFFINITY"].includes(
+    (item as { candidateSource?: string }).candidateSource ?? "",
+  ),
+);
+const title = evidenceBased ? "Popular right now" : "Browse available products";
+const subtitle = evidenceBased
+  ? "What people are actually buying and engaging with."
+  : "A selection from products currently listed in the catalogue.";
 ---
 
 {finalItems.length > 0 && (
   useContainerWrapper ? (
-    <section class="bg-brand-softGrey py-16 border-t border-brand-borderGrey">
-      <div class="container mx-auto px-4 lg:px-8">
-        <RecommendationRail
-          title="Browse available products"
-          subtitle="A selection from products currently listed in the catalogue."
-          placement="home_trending"
-          items={finalItems}
-        />
-      </div>
-    </section>
+    <div class="container mx-auto px-4 sm:px-6">
+      <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={finalItems} />
+    </div>
   ) : (
-    <RecommendationRail
-      title="Browse available products"
-      subtitle="A selection from products currently listed in the catalogue."
-      placement="home_trending"
-      items={finalItems}
-    />
+    <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={finalItems} />
   )
 )}

@@ -120,29 +120,33 @@ const canonical = canonicalUrl ?? Astro.url.toString();
     <link rel="canonical" href={canonical} />
     <slot name="head" />
 
-    {/* Server-Side Google Tag Manager */}
-    <script define:vars={{ metricsUrl: import.meta.env.PUBLIC_METRICS_URL || 'https://metrics.shopgoldplus.com', gtmId: import.meta.env.PUBLIC_GTM_ID || 'GTM-MOCKID' }}>
-      (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-      new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-      j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-      metricsUrl+'/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-      })(window,document,'script','dataLayer',gtmId);
-    </script>
+    {/* Server-Side Google Tag Manager — R7 (§32): only rendered when a REAL
+        container id is configured. The old fallback shipped GTM-MOCKID in
+        production HTML: a tracking loader firing for a container that does
+        not exist, on every page, before any consent consideration. */}
+    {import.meta.env.PUBLIC_GTM_ID && (
+      <script define:vars={{ metricsUrl: import.meta.env.PUBLIC_METRICS_URL || 'https://metrics.shopgoldplus.com', gtmId: import.meta.env.PUBLIC_GTM_ID }}>
+        (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+        new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+        j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+        metricsUrl+'/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer',gtmId);
+      </script>
+    )}
 
 
-    {/* PostHog Analytics */}
-    <script>
+    {/* PostHog — R7 (§32): only loaded with a REAL key. The old version
+        loaded the SDK and connected to app.posthog.com with a mock key on
+        every page (opt-out only stopped capture, not the connection). */}
+    {import.meta.env.PUBLIC_POSTHOG_KEY && <script>
       !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys onSessionId".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
       posthog.init(
-        import.meta.env.PUBLIC_POSTHOG_KEY || 'phc_mock_key_for_telemetry',
+        import.meta.env.PUBLIC_POSTHOG_KEY,
         {
           api_host: import.meta.env.PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
-          loaded: (posthog) => {
-            if (!import.meta.env.PUBLIC_POSTHOG_KEY) posthog.opt_out_capturing();
-          }
         }
       );
-    </script>
+    </script>}
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
     <link rel="apple-touch-icon" href="/icon-192.svg" />
     <link rel="manifest" href="/manifest.json" />
@@ -153,16 +157,18 @@ const canonical = canonicalUrl ?? Astro.url.toString();
     {/* Slice 13: keyboard users skip repeated navigation. Visible on focus only. */}
     <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:bg-slate-950 focus:px-4 focus:py-2 focus:text-sm focus:font-bold focus:text-white">Skip to content</a>
 
-    {/* GTM noscript fallback — required for users with JS disabled */}
-    <noscript>
-      <iframe
-        src={`${import.meta.env.PUBLIC_METRICS_URL || 'https://metrics.shopgoldplus.com'}/ns.html?id=${import.meta.env.PUBLIC_GTM_ID || 'GTM-MOCKID'}`}
-        height="0"
-        width="0"
-        style="display:none;visibility:hidden"
-        title="Google Tag Manager"
-      ></iframe>
-    </noscript>
+    {/* GTM noscript fallback — rendered only alongside a real container id */}
+    {import.meta.env.PUBLIC_GTM_ID && (
+      <noscript>
+        <iframe
+          src={`${import.meta.env.PUBLIC_METRICS_URL || 'https://metrics.shopgoldplus.com'}/ns.html?id=${import.meta.env.PUBLIC_GTM_ID}`}
+          height="0"
+          width="0"
+          style="display:none;visibility:hidden"
+          title="Google Tag Manager"
+        ></iframe>
+      </noscript>
+    )}
 
     {/* Header */}
     <Header />

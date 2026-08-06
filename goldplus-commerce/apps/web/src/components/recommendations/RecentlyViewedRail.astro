@@ -114,6 +114,7 @@ try {
     // Unhide section now that all gating rules passed and we have data
     rail.style.display = "block";
 
+    const sharedRailRenderId = crypto.randomUUID();
     list.innerHTML = items
       .map((item) => {
         const priceLabel = (typeof item.price === "number" && item.price > 0) 
@@ -148,8 +149,10 @@ try {
 
         const priceSizeClass = (typeof item.price === 'number' && item.price > 0) ? 'text-lg text-brand-charcoal' : 'text-xs text-brand-mutedGrey font-bold';
 
-        const attributionId = "loc_" + Math.random().toString(36).substring(2, 11);
-        const railRenderId = "loc_rail_" + Date.now();
+        // R7: real UUIDs — the old "loc_"-prefixed values failed the API's
+        // uuid columns, so every event from this rail was silently rejected.
+        const attributionId = crypto.randomUUID();
+        const railRenderId = sharedRailRenderId;
 
         return `
           <li class="group list-none h-full">
@@ -178,5 +181,24 @@ try {
         `;
       })
       .join("");
+
+    // R7: this rail injects its cards AFTER the shared IntersectionObserver in
+    // RecommendationRail took its static snapshot, so its impressions never
+    // fired. It reports its own — one per rendered card, deduped by the
+    // engine's idempotent event contract.
+    import("../../lib/recommendations").then(({ trackRecommendationImpression }) => {
+      for (const el of Array.from(list.querySelectorAll("[data-recommendation-click]"))) {
+        const productId = el.getAttribute("data-product-id");
+        if (!productId) continue;
+        trackRecommendationImpression({
+          placement: "recently_viewed",
+          productId,
+          attributionId: el.getAttribute("data-attribution-id") || undefined,
+          railRenderId: el.getAttribute("data-rail-render-id") || undefined,
+          reasonCode: el.getAttribute("data-reason-code") || undefined,
+          source: "recommendation_rail",
+        });
+      }
+    }).catch(() => undefined);
   });
 </script>

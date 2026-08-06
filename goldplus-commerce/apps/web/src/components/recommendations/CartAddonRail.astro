@@ -1,10 +1,14 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations, previewRecommendationRules, productToRecommendationItem } from "../../lib/recommendation-display";
-import { getCleanCatalog } from "../../lib/catalog/catalog";
-import { apiBase } from "../../lib/api";
-import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
+import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+
+/**
+ * R7 (2026-08-06): trusts the engine's cart_addon ladder (compatibility →
+ * complementary → paid velocity → catalogue). Cart items are excluded twice —
+ * engine and display boundary — because a cart item recommended back is the
+ * one mistake this rail must never make. Three visible add-ons (§27).
+ */
 
 interface Props {
   cartProductIds: string[];
@@ -18,38 +22,10 @@ const response = await getRecommendations({
   limit: 8,
 }, { visitToken: Astro.locals.gpVisit });
 
-const displayItems = filterDisplayableRecommendations(response.items, {
+const finalItems = filterDisplayableRecommendations(response.items, {
   excludeIds: cartProductIds,
-  limit: 4,
+  limit: 3,
 });
-
-let finalItems = displayItems;
-
-if (finalItems.length === 0) {
-  let allProducts: ProductPublicDto[] = [];
-  try {
-    const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
-      const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-      if (json.success && json.data) {
-        allProducts = json.data;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  allProducts = getCleanCatalog(allProducts);
-  
-  finalItems = previewRecommendationRules(
-    allProducts.map((product) => productToRecommendationItem(product, "CATALOGUE_FALLBACK")),
-    {
-      excludeIds: cartProductIds,
-      maxCount: 4,
-      categoryDominanceCap: 2,
-      preferredRule: "catalogue_fallback",
-    },
-  ).selected;
-}
 ---
 
 {finalItems.length > 0 && (

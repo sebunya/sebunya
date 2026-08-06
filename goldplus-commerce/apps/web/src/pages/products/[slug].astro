@@ -512,6 +512,7 @@ const canonical = Astro.url.toString();
     getAndClearClickAttribution,
     trackRecommendationEvent,
   } from '../../lib/recommendations';
+  import { markSeenBefore } from '../../lib/returning-user';
 
   import {
     track,
@@ -556,6 +557,9 @@ const canonical = Astro.url.toString();
 
       // ── 3. Existing recommendation tracking ───────────────────────────────
       trackProductView(id).catch(() => {});
+      // R7: the returning-visitor marker finally gets its writer — without it,
+      // the homepage recently-viewed rail could never render for anyone.
+      markSeenBefore();
 
       saveRecentlyViewedLocal({
         productId: id,
