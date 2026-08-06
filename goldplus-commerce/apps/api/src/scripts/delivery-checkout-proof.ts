@@ -24,7 +24,7 @@ async function main() {
 
   const products = (await db.execute(sql`
     select id, name, price_ugx, shipping_class from products
-    where is_active = true and price_ugx > 0 order by created_at desc limit 1`)) as unknown as Array<{
+    where active = true and price_ugx > 0 order by created_at desc limit 1`)) as unknown as Array<{
     id: string;
     name: string;
     price_ugx: number;
