@@ -21,6 +21,25 @@ export default defineConfig({
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
-    { name: 'tablet', use: { ...devices['iPad Mini'] } },
+    /**
+     * Tablet runs the iPad Mini VIEWPORT under chromium, not WebKit.
+     *
+     * `devices['iPad Mini']` selects WebKit, which Playwright does not ship for
+     * mac12-arm64 — so this project could never launch here and failed every
+     * run while the suite still reported the two that did pass. What this
+     * project is actually for is the tablet breakpoint, and chromium proves
+     * that honestly. A real WebKit engine check needs an environment that has
+     * one; naming that is better than a permanently red third of the matrix.
+     */
+    {
+      name: 'tablet',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: devices['iPad Mini'].viewport,
+        deviceScaleFactor: devices['iPad Mini'].deviceScaleFactor,
+        isMobile: false,
+        hasTouch: true,
+      },
+    },
   ],
 });
