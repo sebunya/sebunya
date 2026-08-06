@@ -9,8 +9,11 @@ import {
   DistanceBand,
   NEUTRAL_FACTOR,
   QuoteInputs,
+  isDistanceBand,
   previewAcrossBands,
 } from '../../../domain/delivery/DeliveryModel';
+import { resolveFulfilmentMode } from '../../../domain/delivery/DeliveryFulfilmentMode';
+import { quoteFulfilment } from '../../../domain/delivery/DeliveryQuoteService';
 
 /**
  * Configuration draft → preview → publish → revert (brief PART 6).
@@ -190,22 +193,64 @@ export class PreviewConfigVersionUseCase {
       configVersionId: input.versionId,
     });
 
-    const bands = previewAcrossBands(samples, base(after));
+    // The preview must show what a CUSTOMER would see, which means going
+    // through the one quoting service rather than the computed model directly.
+    // An operator raising the rider ceiling needs to watch B5 flip from bus to
+    // rider in this table — that is the change they are actually approving.
+    const bandOf = (b: string | null): DistanceBand | null => (b && isDistanceBand(b) ? (b as DistanceBand) : null);
+    const modeFor = (area: AreaInput, config: Record<string, number>, raw: Record<string, string>) =>
+      resolveFulfilmentMode(
+        { ...area, declaredMode: null },
+        bandOf(raw.own_rider_max_band ?? null),
+      );
 
-    const { quoteDelivery } = await import('../../../domain/delivery/DeliveryModel');
+    const withModes = (area: AreaInput, raw: Record<string, string>): AreaInput => ({
+      ...area,
+      fulfilmentMode: resolveFulfilmentMode({ ...area, declaredMode: null }, bandOf(raw.own_rider_max_band ?? null)),
+    });
+
+    const bands = previewAcrossBands(
+      samples.map((s) => ({ ...s, area: withModes(s.area, effective) })),
+      base(after),
+    );
+
+    const quoteFor = (area: AreaInput, config: Record<string, number>, raw: Record<string, string>) => {
+      const mode = modeFor(area, config, raw);
+      return quoteFulfilment({
+        area: { ...area, fulfilmentMode: mode },
+        mode,
+        rider: base(config),
+        bus: {
+          // The preview never invents a rate card. A bus destination with no
+          // negotiated card reads NO_RATE_CARD here exactly as it will at
+          // checkout, which is the honest picture of coverage today.
+          cards: [],
+          office: null,
+          parcelClass: 'small',
+          parcelClassRefusal: null,
+          destinationTown: area.district ?? null,
+          destinationDistrict: area.district ?? null,
+          at: new Date(0),
+          declaredValueUgx: null,
+        },
+        subtotalUgx: 0,
+        proportionality: { feeToValueRatioCeiling: null, minOrderValueUgx: {}, freeDeliveryThresholdUgx: null },
+      });
+    };
+
     const orderRows = orders.map((o) => {
-      const b = quoteDelivery({ ...base(before), area: o.area });
-      const a = quoteDelivery({ ...base(after), area: o.area });
-      const beforeFee = b.available ? b.feeUgx : null;
-      const afterFee = a.available ? a.feeUgx : null;
+      const b = quoteFor(o.area, before, live);
+      const a = quoteFor(o.area, after, effective);
+      const beforeFee = b.kind === 'unavailable' ? null : b.feeUgx;
+      const afterFee = a.kind === 'unavailable' ? null : a.feeUgx;
       return {
         orderNumber: o.orderNumber,
         areaLabel: o.areaLabel,
         beforeFeeUgx: beforeFee,
         afterFeeUgx: afterFee,
         differenceUgx: beforeFee !== null && afterFee !== null ? afterFee - beforeFee : null,
-        beforeReason: b.available ? null : b.reason,
-        afterReason: a.available ? null : a.reason,
+        beforeReason: b.kind === 'unavailable' ? b.reason : null,
+        afterReason: a.kind === 'unavailable' ? a.reason : null,
       };
     });
 

@@ -1,4 +1,5 @@
 import { DistanceBand, bandMidpointKm } from './DeliveryModel';
+import { bandRank } from './DeliveryFulfilmentMode';
 
 /**
  * The launch wizard (brief "FINISH", PART 2).
@@ -36,6 +37,14 @@ export interface WizardAnswers {
   minimumFeeUgx: number;
   /** 7. Free delivery above this order value, or null for "not yet". */
   freeDeliveryThresholdUgx: number | null;
+  /**
+   * 8. The FURTHEST place they would send their own rider (commercial
+   * constraint, 2026-08-06). Asked as a place, never as a band code, so the
+   * ceiling is derived from an operator's knowledge rather than invented.
+   * Anything beyond it ships by bus to a parcel office.
+   */
+  riderLimitAreaLabel: string;
+  riderLimitBand: DistanceBand;
 }
 
 export type WizardRefusal =
@@ -45,7 +54,9 @@ export type WizardRefusal =
   | 'HANDLING_INVALID'
   | 'MARGIN_INVALID'
   | 'MINIMUM_FEE_INVALID'
-  | 'FREE_THRESHOLD_INVALID';
+  | 'FREE_THRESHOLD_INVALID'
+  | 'RIDER_LIMIT_NOT_CHOSEN'
+  | 'RIDER_LIMIT_NEARER_THAN_ANCHOR';
 
 /**
  * One derived value, with the working an operator can check.
@@ -75,6 +86,8 @@ export type WizardDerivation =
       ok: true;
       /** Exactly the registry keys the publish path will write. */
       values: Record<string, number>;
+      /** Registry keys whose value is a string rather than a number. */
+      stringValues: Record<string, string>;
       derived: DerivedValue[];
       warnings: PlausibilityWarning[];
       roundTripKm: number;
@@ -154,6 +167,24 @@ export function deriveLaunchValues(
     };
   }
 
+  if (!answers.riderLimitBand) {
+    return {
+      ok: false,
+      refusal: 'RIDER_LIMIT_NOT_CHOSEN',
+      message: 'Name the furthest place you would send your own rider. Anywhere beyond it is shipped by bus instead, and without that line we cannot tell the two apart.',
+    };
+  }
+  // The anchor trip is what the speed is derived FROM, so a rider limit nearer
+  // than it is self-contradictory: they have just described a rider run to a
+  // place they say a rider does not go.
+  if (bandRank(answers.riderLimitBand) < bandRank(answers.band)) {
+    return {
+      ok: false,
+      refusal: 'RIDER_LIMIT_NEARER_THAN_ANCHOR',
+      message: `You described a rider trip to ${answers.areaLabel}, but said your rider does not go past ${answers.riderLimitAreaLabel}, which is nearer. Pick a limit at least as far out as the trip you described.`,
+    };
+  }
+
   const oneWayKm = bandMidpointKm(answers.band);
   const roundTripKm = oneWayKm * 2;
   const hours = answers.roundTripMinutes / 60;
@@ -227,7 +258,23 @@ export function deriveLaunchValues(
     });
   }
 
-  return { ok: true, values, derived, warnings: plausibility(answers, speed, roundTripKm, bounds), roundTripKm };
+  derived.push({
+    key: 'own_rider_max_band',
+    label: 'How far out our own rider goes',
+    value: bandRank(answers.riderLimitBand),
+    unit: 'distance band',
+    fromAnswer: 'The furthest place you would send your own rider',
+    working: `${answers.riderLimitAreaLabel} is about ${round1(bandMidpointKm(answers.riderLimitBand))} km out, in band ${answers.riderLimitBand}. Anywhere further than that is shipped by bus to a parcel office and the customer collects it there — we never quote a rider fee for it.`,
+  });
+
+  return {
+    ok: true,
+    values,
+    stringValues: { own_rider_max_band: answers.riderLimitBand },
+    derived,
+    warnings: plausibility(answers, speed, roundTripKm, bounds),
+    roundTripKm,
+  };
 }
 
 /**

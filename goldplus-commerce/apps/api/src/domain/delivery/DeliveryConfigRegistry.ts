@@ -33,6 +33,8 @@ export interface ConfigEntry {
   defaultValue: string | number | boolean | null;
   min?: number;
   max?: number;
+  /** A closed set of permitted values, for keys like a distance band. */
+  allowedValues?: readonly string[];
   label: string;
   help: string;
 }
@@ -134,6 +136,70 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     max: 100_000_000,
     label: 'Order value that earns free delivery',
     help: 'Optional. Ships off. Tested against the goods total AFTER promotional discounts and BEFORE loyalty points are applied, because points are tender rather than a price change.',
+  },
+
+  // ── Where our own rider stops (commercial constraint, 2026-08-06) ───────
+  /**
+   * REQUIRED, and it ships unset.
+   *
+   * Above this band a destination is served by bus, not by a rider — outside
+   * Kampala and the Wakiso metro it is not physically possible to send one.
+   * Unset means we do not know where rider service ends, and the honest
+   * consequence is that NOTHING is classified as own_rider, not that
+   * everything is. The module then returns CONFIG_INCOMPLETE naming this key.
+   *
+   * Tier 2 because it is an area-serving decision rather than a price. The
+   * launch wizard asks for it as a PLACE ("the furthest you would send your own
+   * rider"), so it is derived from an operator's answer and never invented.
+   */
+  {
+    key: 'own_rider_max_band',
+    tier: 2,
+    type: 'string',
+    unit: 'distance band',
+    mandatory: true,
+    defaultValue: null,
+    allowedValues: ['B0', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6'],
+    label: 'How far out our own rider goes',
+    help: 'Anywhere further than this is shipped by bus to a parcel office instead. Set it by naming the furthest place you would send your own rider.',
+  },
+
+  // ── Proportionality (commercial constraint, 2026-08-06) ─────────────────
+  {
+    key: 'fee_to_value_ratio_ceiling',
+    tier: 1,
+    type: 'ratio',
+    unit: '× the order value',
+    mandatory: false,
+    defaultValue: null,
+    min: 0.01,
+    max: 100,
+    label: 'Warn when delivery costs more than this share of the order',
+    help: 'A 35,000 delivery on a 20,000 cable is a broken proposition, not an expensive delivery. Above this we say so plainly, offer collection, and let the customer choose it anyway on purpose. It never blocks the sale. Unset means the check is off.',
+  },
+  {
+    key: 'min_order_value_own_rider_ugx',
+    tier: 1,
+    type: 'ugx',
+    unit: 'UGX',
+    mandatory: false,
+    defaultValue: null,
+    min: 0,
+    max: 100_000_000,
+    label: 'Smallest order worth sending a rider for',
+    help: 'Below this we tell the customer the minimum and how far off it they are. It never blocks the sale. Unset means no minimum.',
+  },
+  {
+    key: 'min_order_value_bus_parcel_ugx',
+    tier: 1,
+    type: 'ugx',
+    unit: 'UGX',
+    mandatory: false,
+    defaultValue: null,
+    min: 0,
+    max: 100_000_000,
+    label: 'Smallest order worth shipping by bus',
+    help: 'A bus parcel has a floor cost whatever is in it. Below this we say what the minimum is. It never blocks the sale. Unset means no minimum.',
   },
 
   // ── Set by Rob explicitly ───────────────────────────────────────────────
@@ -315,17 +381,6 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     help: 'An internal fault. Say nothing about the cause, and never quote a default.',
   },
   {
-    key: 'copy_unavailable_area_not_metro',
-    tier: 1,
-    type: 'string',
-    unit: null,
-    mandatory: false,
-    defaultValue:
-      'We deliver to your area, but the fee is quoted by our team rather than automatically. Place your order and we will confirm the delivery fee with you before dispatch.',
-    label: 'Outside the Kampala metro area',
-    help: 'Upcountry. A Gulu order must never be priced by a model fitted on Kampala boda journeys.',
-  },
-  {
     key: 'copy_unavailable_area_unserviceable',
     tier: 1,
     type: 'string',
@@ -391,6 +446,55 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     label: 'Asking a customer to agree a changed fee',
     help: 'Sent only when the change is above the absorption threshold. Below it we absorb the difference silently.',
   },
+  /**
+   * Bus shipment copy. It says SHIPMENT and COLLECTION, never "delivery to your
+   * door", because that is not what happens and promising it creates the
+   * dispute. This is a control, in the same way the rider sentence is.
+   */
+  {
+    key: 'copy_carrier_required',
+    tier: 1,
+    type: 'string',
+    unit: null,
+    mandatory: false,
+    defaultValue:
+      'We ship to your area by bus. Your parcel travels to a parcel office in your town and you collect it from there — our rider does not come to your door outside Kampala.',
+    label: 'Served by bus rather than by our rider',
+    help: 'Never reads as a refusal: the customer IS served. Say shipment and collection, never delivery to the door.',
+  },
+  {
+    key: 'copy_unavailable_no_rate_card',
+    tier: 1,
+    type: 'string',
+    unit: null,
+    mandatory: false,
+    defaultValue:
+      'We ship to your area by bus, but we do not have a current price for this destination yet. Place your order and our team will confirm the shipping cost with you before we send it.',
+    label: 'Bus-served, no current rate card',
+    help: 'A fact about us, not the customer — a carrier negotiation nobody has closed. It appears in an ops queue so somebody knows.',
+  },
+  {
+    key: 'copy_fee_exceeds_value',
+    tier: 1,
+    type: 'string',
+    unit: null,
+    mandatory: false,
+    defaultValue:
+      'Getting this to you costs more than the items in your basket are worth. You are welcome to go ahead, but it may be worth adding to your order or collecting from our Wilson Road shop instead.',
+    label: 'Delivery costs more than the goods',
+    help: 'Shown with the exact basket value that would make it proportionate. Never blocks the sale and never the pre-selected option.',
+  },
+  {
+    key: 'copy_below_minimum_order',
+    tier: 1,
+    type: 'string',
+    unit: null,
+    mandatory: false,
+    defaultValue:
+      'This order is below our minimum for this destination. You can still place it — we will confirm the arrangement with you before we send it.',
+    label: 'Order below the minimum for its destination',
+    help: 'Informative, never a block, and shown with the minimum and the shortfall.',
+  },
   {
     key: 'copy_pin_nudge',
     tier: 1,
@@ -415,6 +519,25 @@ export function isWritableConfigKey(key: string): boolean {
   return Boolean(entry) && entry!.tier !== 3;
 }
 
+/**
+ * Every mandatory key, not only the Tier 1 launch numbers.
+ *
+ * `own_rider_max_band` is mandatory and Tier 2, so it gates activation without
+ * being a seventh launch number — the brief forbids a seventh, and this is not
+ * one: it is an area-serving decision, asked for as a place rather than typed
+ * as a figure.
+ */
+export function missingMandatoryKeys(values: Record<string, string | number | undefined>): string[] {
+  return DELIVERY_CONFIG_REGISTRY.filter((e) => e.mandatory).
+    filter((e) => {
+      const v = values[e.key];
+      if (v === undefined || v === null || v === '') return true;
+      if (e.type === 'string') return false;
+      return !Number.isFinite(Number(v));
+    })
+    .map((e) => e.key);
+}
+
 export function registryDefaults(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const e of DELIVERY_CONFIG_REGISTRY) {
@@ -430,6 +553,9 @@ export function validateConfigValue(key: string, raw: string): ConfigValidation 
   const entry = BY_KEY.get(key);
   if (!entry) return { ok: false, message: `"${key}" is not a configurable value.` };
   if (entry.tier === 3) return { ok: false, message: `"${key}" is code-only and cannot be set here.` };
+  if (entry.allowedValues && !entry.allowedValues.includes(raw.trim())) {
+    return { ok: false, message: `${entry.label} must be one of: ${entry.allowedValues.join(', ')}.` };
+  }
   if (entry.type === 'string') {
     if (!raw.trim()) return { ok: false, message: `${entry.label} cannot be empty.` };
     return { ok: true, value: raw.trim() };

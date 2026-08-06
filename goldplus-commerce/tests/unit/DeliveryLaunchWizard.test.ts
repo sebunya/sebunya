@@ -22,6 +22,10 @@ const answers = (over: Partial<WizardAnswers> = {}): WizardAnswers => ({
   marginPercent: 30,
   minimumFeeUgx: 3000,
   freeDeliveryThresholdUgx: null,
+  // The 2026-08-06 commercial constraint: where own-rider service ends. Asked
+  // as a place, so the ceiling is an operator's knowledge rather than a guess.
+  riderLimitAreaLabel: 'Kira, Wakiso',
+  riderLimitBand: 'B3',
   ...over,
 });
 
@@ -275,5 +279,26 @@ describe('launch wizard — it is an input surface, not a bypass', () => {
     const r = deriveLaunchValues(answers(), BOUNDS);
     if (!r.ok) throw new Error('expected ok');
     expect(Object.keys(r.values).sort()).toEqual([...LAUNCH_KEYS].sort());
+  });
+
+  /**
+   * own_rider_max_band is mandatory but NOT a seventh launch number. It is
+   * Tier 2, it is a string rather than a figure, and the wizard asks for it as
+   * a PLACE — "the furthest you would send your own rider" — so it is derived
+   * from an operator's knowledge exactly like the speed is.
+   */
+  it('carries the rider ceiling as a string value, derived from a place', () => {
+    const r = deriveLaunchValues(answers(), BOUNDS);
+    if (!r.ok) throw new Error('expected ok');
+    expect(r.stringValues.own_rider_max_band).toBe('B3');
+    const shown = r.derived.find((d) => d.key === 'own_rider_max_band')!;
+    expect(shown.working).toContain('Kira, Wakiso');
+    expect(shown.working).toContain('bus');
+  });
+
+  it('refuses a rider limit nearer than the trip that was just described', () => {
+    // They described a rider run to a B2 area, then said the rider stops at B0.
+    const r = deriveLaunchValues(answers({ riderLimitBand: 'B0', riderLimitAreaLabel: 'Bukesa, Kampala' }), BOUNDS);
+    expect(r).toMatchObject({ ok: false, refusal: 'RIDER_LIMIT_NEARER_THAN_ANCHOR' });
   });
 });

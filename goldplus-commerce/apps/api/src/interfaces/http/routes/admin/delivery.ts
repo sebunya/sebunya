@@ -188,6 +188,7 @@ routes.post('/wizard/derive', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PR
     marginPercent: n(body?.marginPercent),
     minimumFeeUgx: n(body?.minimumFeeUgx),
     freeDeliveryThresholdUgx: freeRaw === '' || freeRaw.toLowerCase() === 'not_yet' ? null : n(freeRaw),
+    riderLimitAreaSlug: String(body?.riderLimitAreaSlug ?? ''),
   });
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
@@ -212,8 +213,13 @@ routes.post('/config/draft', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PRO
     const parsed = Number(String(v ?? '').replace(/[,\s]/g, ''));
     if (Number.isFinite(parsed)) values[k] = parsed;
   }
+  const stringValues: Record<string, string> = {};
+  for (const [k, v] of Object.entries((body?.stringValues ?? {}) as Record<string, unknown>)) {
+    if (typeof v === 'string' && v.trim()) stringValues[k] = v.trim();
+  }
   const result = await Registry.getInstance().draftLaunchValuesUseCase.execute({
     values,
+    stringValues,
     actorId: (c.get('user') as { id: string }).id,
     reason: String(body?.reason ?? '').slice(0, 500) || 'Delivery launch values',
   });

@@ -32,9 +32,12 @@ export interface WizardDerivationResult {
   derived: DerivedValue[];
   warnings: PlausibilityWarning[];
   values: Record<string, number>;
+  stringValues: Record<string, string>;
   roundTripKm: number;
   areaLabel: string;
   band: DistanceBand;
+  riderLimitLabel: string;
+  riderLimitBand: DistanceBand;
 }
 
 /**
@@ -59,12 +62,21 @@ export class DeriveLaunchValuesUseCase {
     marginPercent: number;
     minimumFeeUgx: number;
     freeDeliveryThresholdUgx: number | null;
+    /** The 2026-08-06 constraint: where own-rider service ends. */
+    riderLimitAreaSlug: string;
   }): Promise<{ ok: true; result: WizardDerivationResult } | Fail> {
     const area = await this.areas.bandFor(input.areaSlug);
     if (!area) {
       return fail(
         'AREA_NOT_QUOTABLE',
         'That place is not in the metro area set, so it has no distance band and cannot anchor the calculation. Pick somewhere inside Greater Kampala that you deliver to often.',
+      );
+    }
+    const riderLimit = await this.areas.bandFor(input.riderLimitAreaSlug);
+    if (!riderLimit) {
+      return fail(
+        'RIDER_LIMIT_NOT_QUOTABLE',
+        'That place is not in the metro area set. Everywhere outside it already ships by bus, so pick the furthest place inside Greater Kampala that your own rider still goes to.',
       );
     }
 
@@ -86,6 +98,8 @@ export class DeriveLaunchValuesUseCase {
       marginPercent: input.marginPercent,
       minimumFeeUgx: input.minimumFeeUgx,
       freeDeliveryThresholdUgx: input.freeDeliveryThresholdUgx,
+      riderLimitAreaLabel: riderLimit.label,
+      riderLimitBand: riderLimit.band,
     };
 
     const derivation = deriveLaunchValues(answers, {
@@ -100,9 +114,12 @@ export class DeriveLaunchValuesUseCase {
         derived: derivation.derived,
         warnings: derivation.warnings,
         values: derivation.values,
+        stringValues: derivation.stringValues,
         roundTripKm: derivation.roundTripKm,
         areaLabel: area.label,
         band: area.band,
+        riderLimitLabel: riderLimit.label,
+        riderLimitBand: riderLimit.band,
       },
     };
   }
@@ -123,11 +140,13 @@ export class DraftLaunchValuesUseCase {
 
   async execute(input: {
     values: Record<string, number>;
+    /** Registry keys whose value is a string, such as own_rider_max_band. */
+    stringValues?: Record<string, string>;
     actorId: string;
     /** How these numbers were arrived at, recorded on the version. */
     reason: string;
   }): Promise<{ ok: true; versionId: string } | Fail> {
-    const asStrings: Record<string, string> = {};
+    const asStrings: Record<string, string> = { ...(input.stringValues ?? {}) };
     for (const [k, v] of Object.entries(input.values)) {
       if (!Number.isFinite(v)) return fail('NON_FINITE_VALUE', `${k} did not come out as a usable number.`);
       asStrings[k] = formatForStorage(k, v);

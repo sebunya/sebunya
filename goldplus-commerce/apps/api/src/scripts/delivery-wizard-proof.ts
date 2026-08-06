@@ -24,6 +24,8 @@ const ANSWERS = {
   marginPercent: Number(process.env.PROOF_MARGIN ?? 30),
   minimumFeeUgx: Number(process.env.PROOF_MIN_FEE ?? 3000),
   freeDeliveryThresholdUgx: process.env.PROOF_FREE ? Number(process.env.PROOF_FREE) : null,
+  /** Where own-rider service ends (commercial constraint, 2026-08-06). */
+  riderLimitQuery: process.env.PROOF_RIDER_LIMIT ?? 'kira',
 };
 
 const ugx = (n: number | null) => (n === null ? '—' : `UGX ${Math.round(n).toLocaleString('en-UG')}`);
@@ -45,6 +47,14 @@ async function main() {
   }
   const chosen = areas[0];
 
+  const limitAreas = await registry.deliveryWizardAreaReader.searchQuotableAreas(ANSWERS.riderLimitQuery, 8);
+  if (limitAreas.length === 0) {
+    console.error(`PROOF_FAILED: no quotable area matched the rider limit "${ANSWERS.riderLimitQuery}".`);
+    process.exit(1);
+  }
+  const riderLimit = limitAreas[0];
+  console.log(`  rider limit: ${riderLimit.label} (band ${riderLimit.band})`);
+
   // 2. Derive.
   const derived = await registry.deriveLaunchValuesUseCase.execute({
     areaSlug: chosen.areaSlug,
@@ -54,6 +64,7 @@ async function main() {
     marginPercent: ANSWERS.marginPercent,
     minimumFeeUgx: ANSWERS.minimumFeeUgx,
     freeDeliveryThresholdUgx: ANSWERS.freeDeliveryThresholdUgx,
+    riderLimitAreaSlug: riderLimit.areaSlug,
   });
   if (!derived.ok) {
     console.error(`PROOF_FAILED: ${derived.code} — ${derived.message}`);
@@ -71,6 +82,7 @@ async function main() {
   }
   const draft = await registry.draftLaunchValuesUseCase.execute({
     values: derived.result.values,
+    stringValues: derived.result.stringValues,
     actorId,
     reason: `Wizard proof: ${ANSWERS.roundTripMinutes} minute round trip to ${chosen.label}, rider paid ${ANSWERS.riderPayUgx}.`,
   });

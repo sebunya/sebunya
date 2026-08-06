@@ -18,6 +18,7 @@ import { sameDayCutoff, eatDateString, isEatWeekend } from '../../packages/share
 import {
   ADDRESS_REVIEW_REASONS,
   MANUAL_QUOTE_REASONS,
+  SERVED_BY_ANOTHER_MODE,
   UNAVAILABLE_REASONS,
 } from '../../apps/api/src/domain/delivery/DeliveryModel';
 
@@ -292,11 +293,19 @@ describe('the same-day cutoff countdown, in East Africa Time', () => {
 });
 
 describe('reason routing to the right ops queue', () => {
-  it('sends upcountry to manual quoting and unresolved to address review', () => {
-    expect(MANUAL_QUOTE_REASONS).toContain('AREA_NOT_METRO');
+  it('sends an unpriced carrier route to manual quoting and unresolved to address review', () => {
+    // RETIRED 2026-08-06: this asserted AREA_NOT_METRO, which no longer exists.
+    // Upcountry is served by bus, and the thing that needs a human is a route
+    // with no negotiated card — commercial work, not address work.
+    expect(MANUAL_QUOTE_REASONS).toContain('NO_RATE_CARD');
     expect(ADDRESS_REVIEW_REASONS).toContain('AREA_UNRESOLVED');
     // Different work, different people — the two lists must not overlap.
     expect(MANUAL_QUOTE_REASONS.filter((r) => ADDRESS_REVIEW_REASONS.includes(r))).toEqual([]);
+  });
+
+  it('never routes a carrier-served destination as though we refused it', () => {
+    expect(SERVED_BY_ANOTHER_MODE).toContain('CARRIER_REQUIRED');
+    expect(ADDRESS_REVIEW_REASONS).not.toContain('CARRIER_REQUIRED');
   });
 
   it('treats a district-only resolution as customer-actionable, not a refusal', () => {

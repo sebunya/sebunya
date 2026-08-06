@@ -58,6 +58,12 @@ export const deliveryCorridor = pgTable('delivery_corridor', {
   assignmentConfidence: varchar('assignment_confidence', { length: 16 }),
   assignmentBasis: varchar('assignment_basis', { length: 24 }),
   serviceable: boolean('serviceable').default(true).notNull(),
+  /**
+   * Nullable on purpose: null means DERIVE it (from the band against
+   * own_rider_max_band, from access_mode, from serviceable). A value here is an
+   * operator's explicit override and always beats the derivation.
+   */
+  fulfilmentMode: varchar('fulfilment_mode', { length: 16 }),
   centroidLat: numeric('centroid_lat', { precision: 9, scale: 6 }),
   centroidLng: numeric('centroid_lng', { precision: 9, scale: 6 }),
   centroidSource: varchar('centroid_source', { length: 24 }),
@@ -158,10 +164,76 @@ export const deliveryQuoteCapture = pgTable('delivery_quote_capture', {
   distanceTravelledKm: numeric('distance_travelled_km', { precision: 8, scale: 2 }),
   centroidSource: varchar('centroid_source', { length: 24 }),
   configVersionId: uuid('config_version_id'),
+  // 0093 — which mechanism answered, and with which negotiated card. Without
+  // this a disputed shipping charge cannot be reproduced, because the card may
+  // have been renegotiated since.
+  fulfilmentMode: varchar('fulfilment_mode', { length: 16 }),
+  carrier: varchar('carrier', { length: 80 }),
+  rateCardId: uuid('rate_card_id'),
+  rateCardVersion: integer('rate_card_version'),
+  parcelClass: varchar('parcel_class', { length: 8 }),
+  parcelOfficeId: uuid('parcel_office_id'),
+  pricedBy: varchar('priced_by', { length: 24 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   orderUq: uniqueIndex('delivery_quote_capture_order_uq').on(t.orderId),
   areaIdx: index('delivery_quote_capture_area_idx').on(t.areaSlug),
   deliveredIdx: index('delivery_quote_capture_delivered_idx').on(t.deliveredAt),
+}));
+
+/**
+ * Bus destinations (0093) — the skeleton, without a single price.
+ *
+ * 128 towns across nine trunk routes. Mubende appears on TWO routes (R7 and R8)
+ * because two trunk roads reach it, so the key is (route, town) and not the
+ * district. Fees live in `deliveryBusRateCard` and arrive per carrier as
+ * negotiations close, route by route.
+ */
+export const deliveryBusDestination = pgTable('delivery_bus_destination', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  route: varchar('route', { length: 48 }).notNull(),
+  destinationTown: varchar('destination_town', { length: 120 }).notNull(),
+  matchingDistrict: varchar('matching_district', { length: 100 }).notNull(),
+  region: varchar('region', { length: 60 }),
+  currentZone: varchar('current_zone', { length: 4 }),
+  areasInDistrict: integer('areas_in_district'),
+  notes: text('notes'),
+  dataVersion: integer('data_version').default(1).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  uq: uniqueIndex('delivery_bus_destination_uq').on(t.route, t.destinationTown),
+  districtIdx: index('delivery_bus_destination_district_idx').on(t.matchingDistrict),
+}));
+
+/**
+ * Negotiated carrier rate cards (0093). NEVER a model, never interpolated.
+ *
+ * A row exists only once a fee has actually been agreed, which is why
+ * `feeUgx` is NOT NULL: a card with a null fee would be indistinguishable from
+ * no card, and the module's answer to "no card" is to say so and use the manual
+ * path rather than borrow a neighbouring town's price.
+ */
+export const deliveryBusRateCard = pgTable('delivery_bus_rate_card', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  carrier: varchar('carrier', { length: 80 }).notNull(),
+  destinationTown: varchar('destination_town', { length: 120 }).notNull(),
+  destinationDistrict: varchar('destination_district', { length: 100 }).notNull(),
+  parcelClass: varchar('parcel_class', { length: 8 }).notNull(),
+  feeUgx: bigint('fee_ugx', { mode: 'number' }).notNull(),
+  /** Null = the carrier offers no cover, which is not zero percent cover. */
+  insurancePctOfDeclaredValue: numeric('insurance_pct_of_declared_value', { precision: 6, scale: 3 }),
+  transitDaysMin: integer('transit_days_min').notNull(),
+  transitDaysMax: integer('transit_days_max').notNull(),
+  chargedAt: varchar('charged_at', { length: 12 }).notNull(),
+  effectiveFrom: timestamp('effective_from', { withTimezone: true }).notNull(),
+  effectiveTo: timestamp('effective_to', { withTimezone: true }),
+  version: integer('version').default(1).notNull(),
+  sourceNote: text('source_note'),
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  uq: uniqueIndex('delivery_bus_rate_card_uq').on(t.carrier, t.destinationTown, t.destinationDistrict, t.parcelClass, t.version),
+  lookupIdx: index('delivery_bus_rate_card_lookup_idx').on(t.destinationTown, t.destinationDistrict, t.parcelClass),
 }));

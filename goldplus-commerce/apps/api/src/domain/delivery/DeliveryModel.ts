@@ -1,4 +1,5 @@
 import { LAUNCH_KEYS, LaunchKey } from './DeliveryConfigRegistry';
+import type { FulfilmentMode } from './DeliveryFulfilmentMode';
 
 /**
  * THE model. One equation, and the fee and the window both come out of it, so
@@ -68,7 +69,14 @@ export function shrinkToward(prior: number, observed: number | null, sampleSize:
 export type UnavailableReason =
   | 'CONFIG_INCOMPLETE'
   | 'NO_ACTIVE_ORIGIN'
-  | 'AREA_NOT_METRO'
+  /**
+   * RETIRED 2026-08-06 and deliberately kept out of this union.
+   *
+   * `AREA_NOT_METRO` said where a customer was NOT. It was accurate and
+   * useless: an Arua order is served, by bus, and the answer it now gets is
+   * CARRIER_REQUIRED or NO_RATE_CARD. Nothing can produce AREA_NOT_METRO any
+   * more, so it is gone rather than left as a reason with no path to it.
+   */
   | 'AREA_UNSERVICEABLE'
   | 'WATER_ACCESS'
   | 'AREA_UNRESOLVED'
@@ -80,16 +88,34 @@ export type UnavailableReason =
    * fee. Falling back to a district-average band would be inventing a fact
    * that does not exist.
    */
-  | 'AREA_TOO_COARSE';
+  | 'AREA_TOO_COARSE'
+  /**
+   * Served, but by bus rather than by our rider (commercial constraint,
+   * 2026-08-06). NOT a refusal to serve, and it must never read as one: it
+   * routes to the shipment flow, where the customer collects from a named
+   * parcel office in their town.
+   *
+   * This replaces AREA_NOT_METRO as the answer for upcountry, which was
+   * accurate and useless — it told an Arua customer where they were not.
+   */
+  | 'CARRIER_REQUIRED'
+  /**
+   * Bus-served, and no current rate card covers the destination. The manual
+   * path handles the order and it appears in an ops queue, because a missing
+   * card means a negotiation nobody has closed — a fact about us, not the
+   * customer.
+   */
+  | 'NO_RATE_CARD';
 
 export const UNAVAILABLE_REASONS: readonly UnavailableReason[] = [
   'CONFIG_INCOMPLETE',
   'NO_ACTIVE_ORIGIN',
-  'AREA_NOT_METRO',
   'AREA_UNSERVICEABLE',
   'WATER_ACCESS',
   'AREA_UNRESOLVED',
   'AREA_TOO_COARSE',
+  'CARRIER_REQUIRED',
+  'NO_RATE_CARD',
 ];
 
 /** Reasons where the customer can act and immediately get a quote. */
@@ -100,19 +126,29 @@ export const ACTIONABLE_BY_CUSTOMER: readonly UnavailableReason[] = ['AREA_TOO_C
  * address-review queue. An upcountry order needs a price from a human; an
  * unresolved address needs someone to work out where it is. Different work,
  * different people.
+ *
+ * NO_RATE_CARD is here because the work it implies is commercial — someone has
+ * to finish negotiating a carrier's fees for that route.
  */
-export const MANUAL_QUOTE_REASONS: readonly UnavailableReason[] = ['AREA_NOT_METRO'];
+export const MANUAL_QUOTE_REASONS: readonly UnavailableReason[] = ['NO_RATE_CARD'];
 export const ADDRESS_REVIEW_REASONS: readonly UnavailableReason[] = ['AREA_UNRESOLVED', 'AREA_TOO_COARSE'];
+
+/**
+ * Reasons that are NOT failures — the destination is served and the customer is
+ * being told how. A surface that renders these in the refusal style is a bug.
+ */
+export const SERVED_BY_ANOTHER_MODE: readonly UnavailableReason[] = ['CARRIER_REQUIRED'];
 
 /** The registry key holding the customer-facing string for each reason. */
 export const REASON_COPY_KEY: Record<UnavailableReason, string> = {
   CONFIG_INCOMPLETE: 'copy_unavailable_config_incomplete',
   NO_ACTIVE_ORIGIN: 'copy_unavailable_no_active_origin',
-  AREA_NOT_METRO: 'copy_unavailable_area_not_metro',
   AREA_UNSERVICEABLE: 'copy_unavailable_area_unserviceable',
   WATER_ACCESS: 'copy_unavailable_water_access',
   AREA_UNRESOLVED: 'copy_unavailable_area_unresolved',
   AREA_TOO_COARSE: 'copy_unavailable_area_too_coarse',
+  CARRIER_REQUIRED: 'copy_carrier_required',
+  NO_RATE_CARD: 'copy_unavailable_no_rate_card',
 };
 
 /* ── Rounding ───────────────────────────────────────────────────────────── */
@@ -162,6 +198,18 @@ export const NEUTRAL_FACTOR: LearnedFactor = { value: 1, sampleSize: 0 };
 export interface AreaInput {
   areaSlug: string;
   /**
+   * How this destination is actually served. Resolved by
+   * `resolveFulfilmentMode`; null means the rider ceiling is unset and we
+   * therefore do not know.
+   *
+   * The computed minutes model below is reachable ONLY through
+   * `OwnRiderArea`, which is this type narrowed to `fulfilmentMode:
+   * 'own_rider'`. That is a type-level restriction, not a runtime check: there
+   * is no branch inside `quoteDelivery` that a bus destination could take,
+   * because it cannot be passed in at all.
+   */
+  fulfilmentMode?: FulfilmentMode | null;
+  /**
    * True when the address resolved only as far as a district. Corridor and
    * band do not exist at that granularity, so no quote is possible — but the
    * customer is one choice away from one.
@@ -179,11 +227,40 @@ export interface AreaInput {
   centroidSource: 'delivered_pins' | 'manual' | null;
 }
 
+/**
+ * An area the computed minutes model is ALLOWED to price.
+ *
+ * The commercial constraint of 2026-08-06 says the computed model must be
+ * structurally unable to produce a fee outside own-rider range — "delete the
+ * code path rather than guarding it". This type is that deletion: the model
+ * takes `OwnRiderArea`, so there is no bus, water or unserviceable branch
+ * inside it to reach. A caller holding a bus destination cannot call it, and a
+ * caller who casts one in has left the type system deliberately, which review
+ * catches and `narrowToOwnRider` makes unnecessary.
+ */
+export type OwnRiderArea = AreaInput & {
+  fulfilmentMode: 'own_rider';
+  corridor: string;
+  band: DistanceBand;
+};
+
+/**
+ * The only supported way in. Returns null for anything the computed model may
+ * not price, so the caller must handle that case rather than forget it.
+ */
+export function narrowToOwnRider(area: AreaInput | null): OwnRiderArea | null {
+  if (!area) return null;
+  if (area.fulfilmentMode !== 'own_rider') return null;
+  if (!area.corridor || !area.band) return null;
+  return area as OwnRiderArea;
+}
+
 export interface QuoteInputs {
   config: Partial<Record<LaunchKey | 'fee_rounding_step_ugx', number>>;
   hasActiveOrigin: boolean;
   originCode: string | null;
-  area: AreaInput | null;
+  /** Narrowed: only an own-rider destination reaches the minutes model. */
+  area: OwnRiderArea | null;
   /** Per-area factor, falling back to the corridor's, falling back to 1.0. */
   corridorFactor: LearnedFactor;
   hourFactor: LearnedFactor;
@@ -325,24 +402,21 @@ export function quoteDelivery(inputs: QuoteInputs): QuoteResult {
     explanation: { ...explanation, unavailableReason: reason, missingConfigKeys: missing },
   });
 
-  // The order below is deliberate: each check can only be asked once the one
-  // above it has passed, and the customer gets the most specific true sentence.
+  // WHAT IS NOT HERE MATTERS.
+  //
+  // There is no bus branch, no water branch, no unserviceable branch and no
+  // out-of-range branch in this function, because `OwnRiderArea` cannot carry
+  // any of those states. The commercial constraint of 2026-08-06 asked for the
+  // code path to be DELETED rather than guarded, and this is that deletion:
+  // the 56,000 UGX six-hour round trip is not a number we decided not to show,
+  // it is a number this function can no longer be asked for.
+  //
+  // Mode selection happens once, above, in `quoteFulfilment`. The two checks
+  // left here are the ones an own-rider destination can still fail.
 
-  // 1. Did the address resolve to an area at all?
+  // 1. Did the address resolve to something the model may price?
   if (!inputs.area) return refuse('AREA_UNRESOLVED');
-  // 2. Did it resolve only as far as a district? Correct, but not priceable —
-  //    and the customer can fix it in one step, so this is not a refusal.
-  if (inputs.area.districtOnly) return refuse('AREA_TOO_COARSE');
-  // 3. Is it in the metro corridor set? Nothing below this is even KNOWN for an
-  //    upcountry area — it has no corridor row, so it has no serviceability or
-  //    access mode either. A Gulu order must never be priced by a model fitted
-  //    on Kampala boda journeys; it goes to the manual path.
-  if (!inputs.area.corridor || !inputs.area.band) return refuse('AREA_NOT_METRO');
-  // 4. Somewhere we have decided not to serve, at any price.
-  if (!inputs.area.serviceable) return refuse('AREA_UNSERVICEABLE');
-  // 5. Water areas are pickup-only. No surcharge, no coefficient, no road quote.
-  if (inputs.area.accessMode === 'water') return refuse('WATER_ACCESS');
-  // 6. Our own faults last, because they are not the customer's problem.
+  // 2. Our own faults, because they are not the customer's problem.
   if (!inputs.hasActiveOrigin) return refuse('NO_ACTIVE_ORIGIN');
   const missing = missingLaunchKeys(inputs.config);
   if (missing.length > 0) return refuse('CONFIG_INCOMPLETE', missing);
@@ -423,7 +497,22 @@ export function previewAcrossBands(
         unavailableReason: null,
       };
     }
-    const result = quoteDelivery({ ...base, area: sample.area });
+    // A band beyond the rider ceiling has no computed fee to preview, because
+    // the computed model cannot be asked about it. The row still appears —
+    // showing the operator that B5 and B6 go by bus is the point, not a gap.
+    const ownRider = narrowToOwnRider(sample.area);
+    if (!ownRider) {
+      return {
+        band,
+        areaSlug: sample.areaSlug,
+        areaLabel: sample.areaLabel,
+        midpointKm: bandMidpointKm(band),
+        expectedMinutes: null,
+        feeUgx: null,
+        unavailableReason: 'CARRIER_REQUIRED',
+      };
+    }
+    const result = quoteDelivery({ ...base, area: ownRider });
     return {
       band,
       areaSlug: sample.areaSlug,
