@@ -32,6 +32,8 @@ const START_DELAY_MS = 60_000;
 
 let timer: NodeJS.Timeout | null = null;
 let running = false;
+/** Throttle: the silence alert repeats at most hourly while in breach. */
+let lastSilenceAlertAt = 0;
 
 async function runOnce(): Promise<void> {
   if (running) return;
@@ -74,6 +76,27 @@ async function runOnce(): Promise<void> {
     await registry.alertOnLedgerMismatchUseCase.execute();
   } catch (error) {
     logger.error({ err: error }, '[payment-ops] ledger mismatch scan failed');
+  }
+  try {
+    const silence = await registry.checkPaymentSilenceUseCase.execute(new Date());
+    if (silence.state === 'SILENT' && Date.now() - lastSilenceAlertAt > 3_600_000) {
+      lastSilenceAlertAt = Date.now();
+      logger.error(
+        { hoursSilent: silence.hoursSilent, windowHours: silence.windowHours, lastPaymentAt: silence.lastPaymentAt },
+        silence.hoursSilent === null
+          ? 'ALERT PAYMENT_SILENCE — NO PAYMENT HAS EVER SUCCEEDED. The shop is taking no money and every system is green.'
+          : 'ALERT PAYMENT_SILENCE — no successful payment inside the configured window during trading hours.',
+      );
+    }
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] silence check failed');
+  }
+  try {
+    const probe = await registry.pesapalSyntheticProbeUseCase.execute(new Date());
+    if (probe.state === 'passed') logger.info({ trackingId: probe.trackingId }, '[payment-ops] synthetic probe passed');
+    // FAILED already alerted inside the use case.
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] synthetic probe errored');
   }
   running = false;
 }

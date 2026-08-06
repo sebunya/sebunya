@@ -147,6 +147,23 @@ routes.post('/attempts/:merchantReference/refund', requirePermissions([PERMISSIO
   return c.json({ success: true, data: { providerStatus: result.providerStatus, providerMessage: result.providerMessage } });
 });
 
+/**
+ * The four counters on one screen. checkout started -> payment requested ->
+ * payment succeeded -> order paid: a gap between any two adjacent numbers IS
+ * the outage, visible without reading a log.
+ */
+routes.get('/funnel', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const now = Date.now();
+  const [day, week, ever, silence] = await Promise.all([
+    registry.paymentHealthReader.funnel(new Date(now - 24 * 3_600_000)),
+    registry.paymentHealthReader.funnel(new Date(now - 7 * 24 * 3_600_000)),
+    registry.paymentHealthReader.funnel(new Date(0)),
+    registry.checkPaymentSilenceUseCase.execute(new Date()),
+  ]);
+  return c.json({ success: true, data: { day, week, ever, silence } });
+});
+
 /* ── Operational configuration (TTL, abandonment, health alert) ──────────── */
 
 routes.get('/ops-config', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {

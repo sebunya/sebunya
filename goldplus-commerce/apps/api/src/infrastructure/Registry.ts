@@ -74,6 +74,7 @@ import {
   ExpireStaleReservationsUseCase,
 } from '../application/use-cases/payments/PaymentOpsSweepUseCases';
 import { isPaymentsOpsConfigKey, validatePaymentsOpsValue } from '../domain/payments/PaymentsOpsConfig';
+import { CheckPaymentSilenceUseCase, PesapalSyntheticProbeUseCase } from '../application/use-cases/payments/PaymentSilenceUseCases';
 import { PesaPalClient } from './payments/pesapal/PesaPalClient';
 import { IPesaPalClient } from '../application/ports/IPesaPalClient';
 import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
@@ -1712,6 +1713,83 @@ export class Registry {
         { count, entityIds },
         'ALERT RESERVED_LEDGER_MISMATCH — the order reservation state and the reservation ledger disagree. This was a report line nobody read; now it shouts.',
       ),
+  );
+
+  /** The four funnel counters. A gap between adjacent numbers IS the outage. */
+  public readonly paymentHealthReader = {
+    lastSuccessfulPaymentAt: async (): Promise<Date | null> => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const rows = (await db.execute(sql`
+        select max(updated_at) as t from payment_attempts where status = 'completed'`)) as unknown as Array<{ t: string | null }>;
+      return rows[0]?.t ? new Date(rows[0].t) : null;
+    },
+    funnel: async (since: Date) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const [row] = (await db.execute(sql`
+        select
+          (select count(*) from checkout_idempotency where created_at >= ${since})::int as started,
+          (select count(*) from payment_attempts where created_at >= ${since})::int as requested,
+          (select count(*) from payment_attempts where status = 'completed' and updated_at >= ${since})::int as succeeded,
+          (select count(*) from orders where payment_status = 'paid' and updated_at >= ${since})::int as paid`)) as unknown as Array<{
+        started: number; requested: number; succeeded: number; paid: number;
+      }>;
+      return {
+        checkoutStarted: row?.started ?? 0,
+        paymentRequested: row?.requested ?? 0,
+        paymentSucceeded: row?.succeeded ?? 0,
+        orderPaid: row?.paid ?? 0,
+      };
+    },
+  };
+
+  public readonly checkPaymentSilenceUseCase = new CheckPaymentSilenceUseCase(
+    this.paymentsOpsConfig,
+    this.paymentHealthReader,
+  );
+
+  public readonly pesapalSyntheticProbeUseCase = new PesapalSyntheticProbeUseCase(
+    this.paymentsOpsConfig,
+    {
+      submitOrderRequest: (input) =>
+        this.pesapalClient.submitOrderRequest({
+          ...input,
+          billing_address: {
+            email_address: input.billing_address.email_address ?? '',
+            phone_number: input.billing_address.phone_number ?? '',
+            first_name: input.billing_address.first_name ?? '',
+            last_name: input.billing_address.last_name ?? '',
+          },
+        }),
+    },
+    {
+      getStatus: async (url) => (await fetch(url, { signal: AbortSignal.timeout(10_000) })).status,
+      postStatus: async (url, body) =>
+        (
+          await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(10_000),
+          })
+        ).status,
+    },
+    {
+      callbackUrl: process.env.PESAPAL_CALLBACK_URL ?? '',
+      cancellationUrl: process.env.PESAPAL_CANCELLATION_URL ?? '',
+      ipnId: process.env.PESAPAL_IPN_ID ?? '',
+      ipnUrl: process.env.PESAPAL_IPN_URL ?? '',
+    },
+    this.auditRepo,
+    async () => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const rows = (await db.execute(sql`
+        select max(created_at) as t from audit_logs where action = 'PAYMENT_SYNTHETIC_PROBE'`)) as unknown as Array<{ t: string | null }>;
+      return rows[0]?.t ? new Date(rows[0].t) : null;
+    },
+    (message, detail) => logger.error({ ...detail }, `ALERT ${message}`),
   );
 
   /** The refund path. Exists BEFORE it is needed; unexercised against real money. */

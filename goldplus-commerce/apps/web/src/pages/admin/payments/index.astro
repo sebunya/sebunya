@@ -1,163 +1,201 @@
 ---
-import AdminLayout from '../../../layouts/AdminLayout.astro';
-import EmptyState from '../../../components/EmptyState.astro';
-import Notice from '../../../components/Notice.astro';
-import { tryFetchAdminList } from '../../../lib/api';
-import { readSessionToken } from '../../../lib/session';
-import { type SamplePayment } from '../../../lib/sample-data';
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+/**
+ * The payments screen (payments brief, 2026-08-06).
+ *
+ * The durable fix for a shop that took no money for months and said nothing:
+ * the four funnel counters on one screen — checkout started, payment
+ * requested, payment succeeded, order paid — because a gap between any two
+ * adjacent numbers IS the outage, visible without reading a log. Below them:
+ * the attempt queue with OUR status beside THE PROVIDER'S, and the operational
+ * thresholds, every one shipped unset.
+ */
 
 const token = readSessionToken(Astro.request);
-if (!token) {
-  return Astro.redirect("/admin/login?returnTo=/admin/payments", 303);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/payments", 303);
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+let notice: { kind: "success" | "error"; text: string } | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") || "");
+  try {
+    if (intent === "config") {
+      const key = String(form.get("key") || "");
+      const res = await fetch(`${apiBase}/admin/payments/ops-config/${encodeURIComponent(key)}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ value: String(form.get("value") || "").trim() }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: `Saved ${key}. The mechanism it governs is now active.` }
+        : { kind: "error", text: json?.error?.message || "Could not save." };
+    } else if (intent === "reverify") {
+      const ref = String(form.get("reference") || "");
+      const res = await fetch(`${apiBase}/admin/payments/attempts/${encodeURIComponent(ref)}/reverify`, {
+        method: "POST",
+        headers,
+        body: "{}",
+      });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: `Re-verified ${ref}: provider says "${json.data.providerStatus}", settlement ${json.data.settlement}.` }
+        : { kind: "error", text: json?.error?.message || "Could not re-verify." };
+    } else if (intent === "sweep") {
+      const res = await fetch(`${apiBase}/admin/payments/reconcile/run`, { method: "POST", headers, body: "{}" });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: `Sweep complete: polled ${json.data.polled}, confirmed ${json.data.confirmed}, still pending ${json.data.stillPending}.` }
+        : { kind: "error", text: "Sweep failed." };
+    }
+  } catch {
+    notice = { kind: "error", text: "The payment service is unreachable right now." };
+  }
 }
 
-const fallbackPayments: SamplePayment[] = [];
-
-const result = await tryFetchAdminList<SamplePayment>(
-  '/governance/admin/payments',
-  fallbackPayments,
-  'Live payment data is unavailable right now (service unreachable or permission denied). No sample data is shown.',
-  token,
-);
-
-const statusToBadge: Record<SamplePayment['status'], { variant: 'pending' | 'info' | 'success' | 'neutral'; label: string }> = {
-  PENDING: { variant: 'pending', label: 'Pending' },
-  SUCCESS: { variant: 'success', label: 'Cleared' },
-  FAILED: { variant: 'neutral', label: 'Failed' },
+const get = async (path: string) => {
+  try {
+    const res = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(20000) });
+    const json = await res.json().catch(() => null);
+    return json?.success ? json.data : null;
+  } catch {
+    return null;
+  }
 };
 
-const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+const [funnel, queue, opsConfig] = await Promise.all([
+  get("/admin/payments/funnel"),
+  get("/admin/payments/queue"),
+  get("/admin/payments/ops-config"),
+]);
 
-// Slice 3C: read-only reconciliation report (order status vs payments vs attempts)
-import { apiBase } from '../../../lib/api';
-interface ReconReport {
-  healthy: boolean;
-  checkedOrders: number;
-  checkedPayments: number;
-  checkedAttempts: number;
-  findings: Array<{ type: string; orderId: string; orderNumber: string | null; detail: string }>;
-}
-let recon: ReconReport | null = null;
-let reconUnavailable = false;
-try {
-  const reconRes = await fetch(`${apiBase}/governance/admin/payments/reconciliation`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const reconJson = await reconRes.json().catch(() => null);
-  if (reconJson?.success) recon = reconJson.data;
-  else reconUnavailable = true;
-} catch {
-  reconUnavailable = true;
-}
-const findingLabel: Record<string, string> = {
-  order_paid_without_success_record: 'Order marked paid without a successful payment record',
-  success_record_order_not_paid: 'Successful payment but order not marked paid',
-  amount_mismatch: 'Payment amount differs from order total',
-  stale_pending_attempt: 'Payment attempt pending for more than 24h',
-};
+const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG")}`);
+const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
+  ["Checkout started", "checkoutStarted"],
+  ["Payment requested", "paymentRequested"],
+  ["Payment succeeded", "paymentSucceeded"],
+  ["Order paid", "orderPaid"],
+];
 ---
 
-<AdminLayout 
-  title="Payment Ledger" 
-  description="Examine webhook capture registries."
->
-  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+<AdminLayout title="Payments" description="The money funnel, the attempt queue, and the operational thresholds.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl pb-16">
+    <div class="mb-8 pb-6 border-b border-gray-200 flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Payment Streams</h2>
-        <p class="text-sm text-gray-500 mt-1">Monitor real-time webhook ingress records and idempotent capture statuses.</p>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Payments</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+          Whether money is actually arriving — beside what the provider says — on one screen.
+        </p>
       </div>
+      <form method="POST"><input type="hidden" name="intent" value="sweep" />
+        <button type="submit" class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-gray-50">Run reconcile sweep</button>
+      </form>
     </div>
 
-    <section class="mb-8" aria-labelledby="recon-heading">
-      <h3 id="recon-heading" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Reconciliation</h3>
-      {reconUnavailable && (
-        <div class="bg-gray-50 border border-gray-200 text-gray-600 px-6 py-4 rounded-2xl text-xs">
-          Reconciliation is unavailable right now (service unreachable or permission denied).
-        </div>
-      )}
-      {recon && recon.healthy && (
-        <div class="bg-green-50 border border-green-200 text-green-800 px-6 py-4 rounded-2xl text-xs font-bold">
-          No discrepancies detected across {recon.checkedOrders} orders, {recon.checkedPayments} payment records and {recon.checkedAttempts} recent attempts.
-        </div>
-      )}
-      {recon && !recon.healthy && (
-        <div class="bg-red-50 border border-red-200 rounded-2xl overflow-hidden">
-          <div class="px-6 py-3 text-xs font-black text-red-800 uppercase tracking-widest border-b border-red-100">
-            {recon.findings.length} discrepanc{recon.findings.length === 1 ? 'y' : 'ies'} need review
-          </div>
-          <ul class="divide-y divide-red-100 text-xs">
-            {recon.findings.slice(0, 50).map((f) => (
-              <li class="px-6 py-3">
-                <span class="font-black text-red-700">{findingLabel[f.type] ?? f.type}:</span>
-                <span class="text-red-900 ml-1">{f.detail}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </section>
+    {notice && (
+      <div class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status">{notice.text}</div>
+    )}
 
-    {result.isSample && (
-      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-4">
-        
-        <div class="text-xs leading-relaxed"><strong>System note:</strong> {result.reason}</div>
+    {funnel?.silence?.state === "SILENT" && (
+      <div class="mb-6 rounded-xl border-2 border-red-400 bg-red-50 px-5 py-4">
+        <p class="text-sm font-black text-red-800">
+          {funnel.silence.hoursSilent === null
+            ? "NO PAYMENT HAS EVER SUCCEEDED. The shop is taking no money."
+            : `No successful payment for ${funnel.silence.hoursSilent} hours — outside the ${funnel.silence.windowHours}-hour window.`}
+        </p>
       </div>
     )}
 
-    {result.items.length === 0 ? (
-      <EmptyState
-        title="No payment transactions yet"
-        message="Incoming transactional webhooks will form rows within this view."
-      />
-    ) : (
-      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">The funnel</h3>
+      <p class="text-xs text-gray-500 mb-4">A gap between two adjacent numbers is the outage. No log required.</p>
+      {funnel ? (
         <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse">
-            <thead>
-              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
-                <th class="p-6">Transaction Key</th>
-                <th class="p-6">Provider</th>
-                <th class="p-6">Internal Order Reference</th>
-                <th class="p-6 text-right">Value</th>
-                <th class="p-6 text-center">State</th>
-                <th class="p-6 text-right">Processed</th>
-              </tr>
+          <table class="w-full text-sm">
+            <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500">
+              <tr><th class="text-left py-2"></th>{counters.map(([label]) => <th class="text-right px-3">{label}</th>)}</tr>
             </thead>
-            <tbody class="text-xs divide-y divide-gray-50">
-              {result.items.map((p) => (
-                <tr class="hover:bg-gray-50 transition-colors">
-                  <td class="p-6 font-mono font-bold text-brand-dark text-[10px]">
-                    {p.id.substring(0, 12)}
-                  </td>
-                  <td class="p-6 uppercase font-black tracking-wide text-[9px] text-gray-600">
-                    {p.provider}
-                  </td>
-                  <td class="p-6 font-mono text-gray-500 text-[10px]">
-                    {p.orderId}
-                  </td>
-                  <td class="p-6 text-right font-black text-brand-dark text-sm font-mono">
-                    {formatter.format(p.amount)}
-                  </td>
-                  <td class="p-6 text-center">
-                    <span class={`inline-block px-2.5 py-0.5 rounded font-black text-[9px] uppercase tracking-wide border ${
-                      statusToBadge[p.status].variant === 'success' ? 'bg-green-50 text-green-700 border-green-100' :
-                      statusToBadge[p.status].variant === 'pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
-                      'bg-gray-50 text-gray-700 border-gray-100'
-                    }`}>
-                      {statusToBadge[p.status].label}
-                    </span>
-                  </td>
-                  <td class="p-6 text-right font-mono text-gray-400 text-[10px]">
-                    {new Date(p.createdAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
+            <tbody>
+              {([["Last 24 h", funnel.day], ["Last 7 days", funnel.week], ["All time", funnel.ever]] as const).map(([label, row]) => (
+                <tr class="border-t border-gray-100">
+                  <td class="py-2 text-xs font-bold text-gray-600">{label}</td>
+                  {counters.map(([, key]) => <td class="text-right px-3 font-black text-brand-dark">{row[key]}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p class="text-sm text-gray-500">The funnel is unavailable.</p>
+      )}
+    </section>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+      <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Attempts — our record beside the provider's</h3>
+        {queue && <span class="text-[10px] font-bold text-gray-400">{queue.counts.total} recent · {queue.counts.disagreements} disagreement(s)</span>}
+      </div>
+      {queue?.note && <p class={`text-xs mb-3 ${queue.counts.disagreements > 0 ? "text-red-700 font-bold" : "text-gray-500"}`}>{queue.note}</p>}
+      {!queue || queue.rows.length === 0 ? (
+        <p class="text-sm text-gray-500 border border-dashed border-gray-300 rounded-lg px-4 py-3">
+          No payment attempt has ever been made.
+        </p>
+      ) : (
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500">
+              <tr><th class="text-left py-2">Reference</th><th class="text-right px-2">Amount</th><th class="text-left px-2">Ours</th><th class="text-left px-2">Provider</th><th></th></tr>
+            </thead>
+            <tbody>
+              {queue.rows.map((r: any) => (
+                <tr class={`border-t border-gray-100 ${r.disagreement ? "bg-red-50" : ""}`}>
+                  <td class="py-2 font-mono text-xs">{r.merchantReference}</td>
+                  <td class="text-right px-2">{ugx(r.amountUgx)}</td>
+                  <td class="px-2 text-xs font-bold">{r.ourStatus}</td>
+                  <td class="px-2 text-xs">{r.provider ? `${r.provider.status}${r.provider.method ? ` · ${r.provider.method}` : ""}` : (r.providerError ? "lookup failed" : "no transaction")}</td>
+                  <td class="text-right">
+                    <form method="POST" class="inline"><input type="hidden" name="intent" value="reverify" /><input type="hidden" name="reference" value={r.merchantReference} />
+                      <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-800">Re-verify</button>
+                    </form>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+    </section>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Operational thresholds</h3>
+      <p class="text-xs text-gray-500 mb-4">
+        Every unset value means that mechanism is off. Nothing here shipped with a default — how long stock
+        may be held, when an order counts as abandoned, and when silence becomes an alert are your decisions.
+      </p>
+      <div class="space-y-3">
+        {opsConfig?.entries.map((e: any) => (
+          <form method="POST" class="flex flex-wrap items-end gap-3 border border-gray-100 rounded-lg px-3 py-2">
+            <input type="hidden" name="intent" value="config" />
+            <input type="hidden" name="key" value={e.key} />
+            <div class="flex-1 min-w-[240px]">
+              <span class="block text-sm font-bold text-gray-800">{e.label}</span>
+              <span class="block text-[11px] text-gray-500">{e.help}</span>
+            </div>
+            <label class="block">
+              <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">{e.unit}</span>
+              <input name="value" value={e.value ?? ""} placeholder="unset"
+                class="mt-0.5 w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg hover:bg-black">Save</button>
+            <span class={`text-[10px] font-black uppercase ${e.set ? "text-green-700" : "text-amber-700"}`}>{e.set ? "active" : "off"}</span>
+          </form>
+        ))}
       </div>
-    )}
+    </section>
   </div>
 </AdminLayout>

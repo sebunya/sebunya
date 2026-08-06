@@ -60,3 +60,27 @@ consumed by nothing.
   genuine MTN number fails the same way.
 - 2026-08-06 — Probe orders `GP-202608-BFDF` (payment path probe) exist in
   production, clearly labelled, unpaid, awaiting the standard abandonment sweep.
+
+## 2026-08-06 — the silence machinery
+
+- **Business-health alert**: `payment_health_alert_hours` unset = off. In
+  breach it distinguishes "no payment for N hours" from **"no payment has EVER
+  succeeded"** — the state this shop was found in, and the loudest version of
+  the alert. Trading hours (EAT, wrap-around legal) optionally scope it.
+- **Synthetic Pesapal probe**: on an operator-set cadence and amount, creates a
+  real provider transaction, proves credentials + IPN registration + submit + a
+  rendering payment page + IPN reachability, then abandons (goes INVALID,
+  costing nothing). **What it cannot prove, by design: the PIN step and the
+  success callback** — those need a real wallet. Last-run time read from the
+  audit trail; no new table.
+- **The four counters** (checkout started → payment requested → payment
+  succeeded → order paid) on `/admin/payments`, per 24h/7d/ever. A gap between
+  adjacent numbers is the outage, visible without a log.
+- **Retirement**: the read-only "Payment Ledger" page at /admin/payments
+  (measurement reconciliation view) is replaced by the operational payments
+  screen; its API route `/governance/admin/payments/reconciliation` remains.
+- **Released 2026-08-06**: the five Aug-4 reservations
+  (GP-202608-3935/C4BC/DBF2/19D9/AAAB), operator-directed per the brief after
+  reconciliation confirmed none could settle; 8 units returned to sale; audited
+  as RESERVATION_RELEASED_OPERATOR_DIRECTED. The two Aug-6 reservations (0AD8,
+  BFDF) left to the TTL.
