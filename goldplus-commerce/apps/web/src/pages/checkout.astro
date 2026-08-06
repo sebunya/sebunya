@@ -831,6 +831,11 @@ const formatUgx = (n: number): string =>
 </BaseLayout>
 
 <script>
+  // Explicit wiring (2026-08-06): the picker's behaviour used to reach this
+  // page only through Astro's implicit chunk-linking of component scripts,
+  // which no grep could audit. The page now names its dependency; init is
+  // idempotent, so double-import double-wires nothing.
+  import '../lib/locationPickerClient';
   import { track, captureClickIdsServerSide } from '../lib/telemetry';
   import { publicApiBase } from '../lib/api';
 
