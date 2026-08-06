@@ -3,6 +3,7 @@ import {
   AreaInput,
   BAND_EDGES_KM,
   DISTANCE_BANDS,
+  ADDITIVE_NEUTRAL_FACTOR,
   NEUTRAL_FACTOR,
   QuoteInputs,
   SHRINKAGE_PSEUDO_COUNT,
@@ -23,6 +24,7 @@ import {
   validateConfigValue,
 } from '../../apps/api/src/domain/delivery/DeliveryConfigRegistry';
 import { quoteFulfilment } from '../../apps/api/src/domain/delivery/DeliveryQuoteService';
+import { describeFactor, factorSampleSize, fittedFactor } from '../../apps/api/src/domain/delivery/DeliveryLearnedFactor';
 import { resolveFulfilmentMode } from '../../apps/api/src/domain/delivery/DeliveryFulfilmentMode';
 
 /**
@@ -48,8 +50,7 @@ const viaService = (over: Partial<QuoteInputs> = {}, ownRiderMaxBand: 'B0' | 'B1
     bus: {
       cards: [],
       office: null,
-      parcelClass: 'small',
-      parcelClassRefusal: null,
+      parcels: { ok: true, shippingClass: 'small', totalItems: 1, capacityItems: null, parcelCount: 1, classSetBy: { productId: 'p', source: 'product' } },
       destinationTown: i.area?.district ?? null,
       destinationDistrict: i.area?.district ?? null,
       at: new Date('2026-08-06T09:00:00Z'),
@@ -89,7 +90,12 @@ const inputs = (over: Partial<QuoteInputs> = {}): QuoteInputs => ({
   corridorFactor: NEUTRAL_FACTOR,
   hourFactor: NEUTRAL_FACTOR,
   detourFactor: NEUTRAL_FACTOR,
-  lastMileMinutes: NEUTRAL_FACTOR,
+  // The ADDITIVE prior (0 added minutes), not the multiplicative one. The old
+  // `{value:1,sampleSize:0}` shape let this fixture pass a multiplicative
+  // neutral to an additive factor; it only ever computed correctly because
+  // shrinkToward short-circuits on a zero sample. The typed states make the
+  // mismatch visible instead of harmless-by-accident.
+  lastMileMinutes: ADDITIVE_NEUTRAL_FACTOR,
   areaSampleSize: 0,
   observedMinutes: null,
   onTimeTargetBps: null,
@@ -213,16 +219,37 @@ describe('the one equation', () => {
     expect((measured as any).feeUgx).toBeLessThan((midpoint as any).feeUgx);
   });
 
-  it('a learned factor at 1.0 with no sample changes nothing', () => {
+  /**
+   * UPDATED 2026-08-06. The old shape `{ value: 3, sampleSize: 0 }` could
+   * express "a factor of 3 that nobody measured", which is the ambiguity the
+   * typed states remove: `fittedFactor` with a zero sample REFUSES and hands
+   * back a prior, so the situation is unconstructible rather than ignored.
+   */
+  it('a factor with no sample is a prior, and cannot pretend to be a value', () => {
     const neutral = quoteDelivery(inputs());
-    const explicit = quoteDelivery(inputs({ corridorFactor: { value: 3, sampleSize: 0 } }));
+    const attempted = fittedFactor({ value: 3, sampleSize: 0, prior: 1 });
+    expect(attempted.kind).toBe('prior');
+    const explicit = quoteDelivery(inputs({ corridorFactor: attempted }));
     expect((neutral as any).feeUgx).toBe((explicit as any).feeUgx);
   });
 
   it('a learned factor with a real sample does move the fee', () => {
     const neutral = quoteDelivery(inputs());
-    const slow = quoteDelivery(inputs({ corridorFactor: { value: 2, sampleSize: 500 } }));
+    const slow = quoteDelivery(inputs({ corridorFactor: fittedFactor({ value: 2, sampleSize: 500, prior: 1 }) }));
     expect((slow as any).feeUgx).toBeGreaterThan((neutral as any).feeUgx);
+  });
+
+  it('never displays an unlearned factor as though it were fitted', () => {
+    const unlearned = describeFactor(NEUTRAL_FACTOR);
+    const measured = describeFactor(fittedFactor({ value: 1, sampleSize: 40, prior: 1 }));
+    // Both compute to 1.0 — that is what a prior is for...
+    expect(unlearned.effectiveValue).toBe(measured.effectiveValue);
+    // ...and they must never read the same.
+    expect(unlearned.state).toBe('not_learned');
+    expect(measured.state).toBe('fitted');
+    expect(unlearned.learnedValue).toBeNull();
+    expect(measured.learnedValue).toBe(1);
+    expect(unlearned.label).not.toBe(measured.label);
   });
 });
 
@@ -260,7 +287,7 @@ describe('the six refusals', () => {
       area: area({ areaSlug: 'adjumani-esia-61004', district: 'Adjumani', corridor: null, band: null, accessMode: null }),
     });
     const unresolved = viaService({ area: null });
-    expect(upcountry).toMatchObject({ kind: 'unavailable', reason: 'NO_RATE_CARD', mode: 'bus_parcel' });
+    expect(upcountry).toMatchObject({ kind: 'unavailable', mode: 'bus_parcel' });
     expect(unresolved).toMatchObject({ kind: 'unavailable', reason: 'AREA_UNRESOLVED' });
     expect(upcountry.kind === 'unavailable' && upcountry.explanation.areaSlug).toBe('adjumani-esia-61004');
   });
@@ -328,8 +355,11 @@ describe('the six refusals', () => {
     // and the customer asked about a door delivery; the quoting service returns
     // a shipment in that case rather than an unavailable, so it is absent here
     // by design rather than by omission.
+    // CARRIER_REQUIRED is produced by the surface when a card exists and the
+    // customer asked about a door delivery; PARCEL_CLASS_UNKNOWN needs a basket
+    // the quoting service is not given here. Both are absent by design.
     expect([...produced].sort()).toEqual(
-      [...UNAVAILABLE_REASONS].filter((r) => r !== 'CARRIER_REQUIRED').sort(),
+      [...UNAVAILABLE_REASONS].filter((r) => r !== 'CARRIER_REQUIRED' && r !== 'PARCEL_CLASS_UNKNOWN').sort(),
     );
   });
 
@@ -498,7 +528,9 @@ describe('the explanation record', () => {
     expect(e.configVersionId).toBe('cfg-1');
     expect(e.roundingStepUgx).toBe(500);
     expect(e.factors.corridor).toEqual(NEUTRAL_FACTOR);
-    expect(e.factors.hour.sampleSize).toBe(0);
+    expect(factorSampleSize(e.factors.hour)).toBe(0);
+    // And the explanation keeps unlearned distinguishable from fitted.
+    expect(describeFactor(e.factors.corridor).state).toBe('not_learned');
     expect(e.unavailableReason).toBeNull();
   });
 
@@ -508,6 +540,6 @@ describe('the explanation record', () => {
     if (r.available) return;
     expect(r.explanation.unavailableReason).toBe('AREA_UNRESOLVED');
     expect(r.explanation.originCode).toBe('HUB-CBD-WILSON');
-    expect(r.explanation.factors.corridor.sampleSize).toBe(0);
+    expect(factorSampleSize(r.explanation.factors.corridor)).toBe(0);
   });
 });

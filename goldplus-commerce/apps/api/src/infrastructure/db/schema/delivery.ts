@@ -174,6 +174,9 @@ export const deliveryQuoteCapture = pgTable('delivery_quote_capture', {
   parcelClass: varchar('parcel_class', { length: 8 }),
   parcelOfficeId: uuid('parcel_office_id'),
   pricedBy: varchar('priced_by', { length: 24 }),
+  // 0094 — per PARCEL, because a bus office charges per parcel.
+  parcelCount: integer('parcel_count'),
+  perParcelFeeUgx: bigint('per_parcel_fee_ugx', { mode: 'number' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({

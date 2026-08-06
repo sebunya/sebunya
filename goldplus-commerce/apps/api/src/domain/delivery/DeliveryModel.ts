@@ -1,5 +1,14 @@
 import { LAUNCH_KEYS, LaunchKey } from './DeliveryConfigRegistry';
 import type { FulfilmentMode } from './DeliveryFulfilmentMode';
+import {
+  ADDITIVE_PRIOR,
+  LearnedFactorState,
+  NEUTRAL_PRIOR,
+  PriorFactor,
+  factorSampleSize,
+  factorValue,
+  priorFactor,
+} from './DeliveryLearnedFactor';
 
 /**
  * THE model. One equation, and the fee and the window both come out of it, so
@@ -59,6 +68,19 @@ export function shrinkToward(prior: number, observed: number | null, sampleSize:
   return (sampleSize * observed + k * prior) / (sampleSize + k);
 }
 
+/**
+ * The same one formula, applied to a factor STATE.
+ *
+ * A prior shrinks to itself — there is nothing to weigh against it — and a
+ * human override is used as given, because a person who set a number did not
+ * ask for it to be averaged with a guess.
+ */
+export function shrinkFactor(f: LearnedFactorState): number {
+  if (f.kind === 'prior') return f.prior;
+  if (f.kind === 'human') return f.value;
+  return shrinkToward(f.prior, f.value, f.sampleSize);
+}
+
 /* ── Refusals ───────────────────────────────────────────────────────────── */
 
 /**
@@ -105,7 +127,15 @@ export type UnavailableReason =
    * card means a negotiation nobody has closed — a fact about us, not the
    * customer.
    */
-  | 'NO_RATE_CARD';
+  | 'NO_RATE_CARD'
+  /**
+   * No shipping class could be resolved for something in the basket — no
+   * product override and no category default. A fact about OUR data, never the
+   * customer's, and never guessed: small is the cheapest class, so a guess
+   * would systematically under-charge and would only surface when a carrier
+   * refused the parcel at the counter.
+   */
+  | 'PARCEL_CLASS_UNKNOWN';
 
 export const UNAVAILABLE_REASONS: readonly UnavailableReason[] = [
   'CONFIG_INCOMPLETE',
@@ -116,6 +146,7 @@ export const UNAVAILABLE_REASONS: readonly UnavailableReason[] = [
   'AREA_TOO_COARSE',
   'CARRIER_REQUIRED',
   'NO_RATE_CARD',
+  'PARCEL_CLASS_UNKNOWN',
 ];
 
 /** Reasons where the customer can act and immediately get a quote. */
@@ -130,7 +161,7 @@ export const ACTIONABLE_BY_CUSTOMER: readonly UnavailableReason[] = ['AREA_TOO_C
  * NO_RATE_CARD is here because the work it implies is commercial — someone has
  * to finish negotiating a carrier's fees for that route.
  */
-export const MANUAL_QUOTE_REASONS: readonly UnavailableReason[] = ['NO_RATE_CARD'];
+export const MANUAL_QUOTE_REASONS: readonly UnavailableReason[] = ['NO_RATE_CARD', 'PARCEL_CLASS_UNKNOWN'];
 export const ADDRESS_REVIEW_REASONS: readonly UnavailableReason[] = ['AREA_UNRESOLVED', 'AREA_TOO_COARSE'];
 
 /**
@@ -149,6 +180,7 @@ export const REASON_COPY_KEY: Record<UnavailableReason, string> = {
   AREA_TOO_COARSE: 'copy_unavailable_area_too_coarse',
   CARRIER_REQUIRED: 'copy_carrier_required',
   NO_RATE_CARD: 'copy_unavailable_no_rate_card',
+  PARCEL_CLASS_UNKNOWN: 'copy_unavailable_parcel_class_unknown',
 };
 
 /* ── Rounding ───────────────────────────────────────────────────────────── */
@@ -176,13 +208,17 @@ export interface LaunchConfig {
   fee_rounding_step_ugx: number;
 }
 
-export interface LearnedFactor {
-  value: number;
-  sampleSize: number;
-}
+/**
+ * RETIRED SHAPE, 2026-08-06. `{ value, sampleSize }` could express a fitted 1.0
+ * and an unlearned 1.0 identically, which is the defect stage D rule 1 forbids.
+ * The model now takes `LearnedFactorState`, where a prior carries no `value` at
+ * all — see `DeliveryLearnedFactor.ts`.
+ */
+export type LearnedFactor = LearnedFactorState;
 
-/** 1.0 with sample 0 means "nothing learned yet", and admin must show it so. */
-export const NEUTRAL_FACTOR: LearnedFactor = { value: 1, sampleSize: 0 };
+/** Nothing learned. Contributes its prior and says so in every display. */
+export const NEUTRAL_FACTOR: PriorFactor = priorFactor(NEUTRAL_PRIOR);
+export const ADDITIVE_NEUTRAL_FACTOR: PriorFactor = priorFactor(ADDITIVE_PRIOR);
 
 /**
  * A destination that RESOLVED to a gazetteer area.
@@ -426,15 +462,15 @@ export function quoteDelivery(inputs: QuoteInputs): QuoteResult {
   // Distance: a measured centroid always beats a band midpoint.
   const usingMeasured = inputs.area.measuredKm !== null && Number.isFinite(inputs.area.measuredKm);
   const oneWayKm = usingMeasured ? (inputs.area.measuredKm as number) : bandMidpointKm(inputs.area.band);
-  const detour = shrinkToward(1, inputs.detourFactor.value, inputs.detourFactor.sampleSize);
+  const detour = shrinkFactor(inputs.detourFactor);
   const roundTripKm = oneWayKm * 2 * detour;
 
-  const corridorFactor = shrinkToward(1, inputs.corridorFactor.value, inputs.corridorFactor.sampleSize);
-  const hourFactor = shrinkToward(1, inputs.hourFactor.value, inputs.hourFactor.sampleSize);
+  const corridorFactor = shrinkFactor(inputs.corridorFactor);
+  const hourFactor = shrinkFactor(inputs.hourFactor);
 
   const travelMinutes = (roundTripKm / config.effective_speed_kmh) * 60 * corridorFactor * hourFactor;
   // last_mile has no prior beyond zero added minutes; it is learned per area.
-  const lastMile = shrinkToward(0, inputs.lastMileMinutes.value, inputs.lastMileMinutes.sampleSize);
+  const lastMile = shrinkFactor(inputs.lastMileMinutes);
   const expectedMinutes = config.handling_minutes + travelMinutes + lastMile;
 
   const rawFee = config.rider_cost_per_minute_ugx * expectedMinutes * config.margin_multiplier;

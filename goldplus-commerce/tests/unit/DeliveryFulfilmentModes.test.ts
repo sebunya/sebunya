@@ -5,6 +5,7 @@ import {
   resolveFulfilmentMode,
 } from '../../apps/api/src/domain/delivery/DeliveryFulfilmentMode';
 import {
+  ADDITIVE_NEUTRAL_FACTOR,
   AreaInput,
   NEUTRAL_FACTOR,
   QuoteInputs,
@@ -16,7 +17,6 @@ import {
 import { quoteFulfilment, mayBeDefaultOption } from '../../apps/api/src/domain/delivery/DeliveryQuoteService';
 import {
   BusRateCard,
-  classifyParcel,
   isCardCurrent,
   selectRateCard,
   buildShipmentQuote,
@@ -53,7 +53,7 @@ const riderBase = (): Omit<QuoteInputs, 'area'> => ({
   corridorFactor: NEUTRAL_FACTOR,
   hourFactor: NEUTRAL_FACTOR,
   detourFactor: NEUTRAL_FACTOR,
-  lastMileMinutes: { value: 0, sampleSize: 0 },
+  lastMileMinutes: ADDITIVE_NEUTRAL_FACTOR,
   areaSampleSize: 0,
   observedMinutes: null,
   onTimeTargetBps: null,
@@ -64,8 +64,7 @@ const riderBase = (): Omit<QuoteInputs, 'area'> => ({
 const busBase = (over: Partial<Parameters<typeof quoteFulfilment>[0]['bus']> = {}) => ({
   cards: [] as BusRateCard[],
   office: null,
-  parcelClass: 'small' as const,
-  parcelClassRefusal: null,
+  parcels: { ok: true as const, shippingClass: 'small' as const, totalItems: 1, capacityItems: null, parcelCount: 1, classSetBy: { productId: 'p', source: 'product' as const } },
   destinationTown: 'Arua',
   destinationDistrict: 'Arua',
   at: new Date('2026-08-06T09:00:00Z'),
@@ -319,17 +318,40 @@ describe('bus rate cards — negotiated, never modelled', () => {
     expect(r.card.id).toBe('c');
   });
 
-  it('classifies parcels by weight and refuses above 15 kg', () => {
-    expect(classifyParcel({ totalKg: 1.5 })).toMatchObject({ ok: true, parcelClass: 'small' });
-    expect(classifyParcel({ totalKg: 2 })).toMatchObject({ ok: true, parcelClass: 'small' });
-    expect(classifyParcel({ totalKg: 4 })).toMatchObject({ ok: true, parcelClass: 'medium' });
-    expect(classifyParcel({ totalKg: 15 })).toMatchObject({ ok: true, parcelClass: 'large' });
-    expect(classifyParcel({ totalKg: 15.1 })).toMatchObject({ ok: false, reason: 'ABOVE_MAX_WEIGHT' });
-    expect(classifyParcel({ totalKg: 1, irregularShape: true })).toMatchObject({ ok: false, reason: 'IRREGULAR_SHAPE' });
+  /**
+   * RETIRED 2026-08-06: the weight-band tests are gone with the weight system.
+   * Weights were never in the catalogue, so every basket resolved to
+   * WEIGHT_UNKNOWN — a data system nobody was going to populate. Shipping class
+   * is now a property of the goods; see DeliveryParcelClass.test.ts.
+   */
+  it('prices per PARCEL, because a bus office counts parcels', () => {
+    const result = quote({
+      area: area({ corridor: null, band: null, accessMode: null, district: 'Arua' }),
+      mode: 'bus_parcel',
+      bus: busBase({
+        cards: [card()],
+        parcels: { ok: true, shippingClass: 'small', totalItems: 7, capacityItems: 3, parcelCount: 3, classSetBy: { productId: 'p', source: 'product' } },
+      }),
+    });
+    expect(result.kind).toBe('bus_shipment');
+    if (result.kind !== 'bus_shipment') return;
+    expect(result.perParcelFeeUgx).toBe(25_000);
+    expect(result.parcelCount).toBe(3);
+    expect(result.feeUgx).toBe(75_000);
+    // And the customer is TOLD, before committing. Two parcels is two fees.
+    expect(result.parcelSentence).toContain('3 parcels');
   });
 
-  it('an unknown weight is a gap, never assumed to be a small parcel', () => {
-    expect(classifyParcel({ totalKg: null })).toMatchObject({ ok: false, reason: 'WEIGHT_UNKNOWN' });
+  it('refuses rather than guessing a shipping class', () => {
+    const result = quote({
+      area: area({ corridor: null, band: null, accessMode: null, district: 'Arua' }),
+      mode: 'bus_parcel',
+      bus: busBase({
+        cards: [card()],
+        parcels: { ok: false, reason: 'PARCEL_CLASS_UNKNOWN', detail: 'no class', unclassifiedProductIds: ['p'] },
+      }),
+    });
+    expect(result).toMatchObject({ kind: 'unavailable', reason: 'PARCEL_CLASS_UNKNOWN' });
   });
 
   it('insurance with no declared value is null, not zero', () => {

@@ -176,6 +176,8 @@ import {
   RecordActualRiderCostUseCase,
 } from '../application/use-cases/delivery/DeliveryCaptureUseCases';
 import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/DeliveryAreaResolver';
+import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliveryQuotingRepository';
+import { DeliveryQuotingUseCase } from '../application/use-cases/delivery/DeliveryQuotingUseCase';
 import { DrizzleDeliveryConfigRepository } from './db/repositories/DrizzleDeliveryConfigRepository';
 import {
   DraftConfigVersionUseCase,
@@ -792,6 +794,12 @@ export class Registry {
       attach: (reservationId, orderId) => Registry.getInstance().loyaltyCompletionRepo.attachReservationToOrder(reservationId, orderId),
       release: (input) => Registry.getInstance().releaseRedemptionUseCase.execute({ reservationId: input.reservationId }),
     },
+    // THE quoting service answers first; the legacy zone path above is the
+    // CONFIG_INCOMPLETE-only fallback. Lazy for the same field-order reason.
+    {
+      quote: (input) => Registry.getInstance().checkoutDeliveryQuoting.quote(input),
+      recordQuote: (orderId, capture) => Registry.getInstance().checkoutDeliveryQuoting.recordQuote(orderId, capture),
+    },
   );
   // Launch Phase 1 (Section 9.3): order-to-admin fulfilment alerts.
   public readonly fulfilmentRepo = new DrizzleFulfilmentRepository();
@@ -1139,6 +1147,59 @@ export class Registry {
     this.draftDeliveryConfigUseCase,
     this.deliveryConfigRepo,
   );
+
+  // THE quoting service (contract #1). Everything else is its internals.
+  public readonly deliveryQuotingRepo = new DrizzleDeliveryQuotingRepository();
+  public readonly deliveryQuotingUseCase = new DeliveryQuotingUseCase(
+    this.deliveryQuotingRepo,
+    this.deliveryAreaResolver,
+    this.deliveryConfigReader,
+  );
+
+  /**
+   * The adapter checkout holds. Deliberately narrow: checkout needs a fee, a
+   * confirmed flag, and whether it may fall back — not the whole quote shape.
+   */
+  public readonly checkoutDeliveryQuoting = {
+    quote: async (input: {
+      areaSlug?: string | null;
+      deliveryArea?: string | null;
+      district?: string | null;
+      items: ReadonlyArray<{ productId: string; quantity: number }>;
+    }) => {
+      const outcome = await this.deliveryQuotingUseCase.execute(input);
+      const q = outcome.quote;
+      return {
+        feeUgx: q.kind === 'unavailable' ? null : q.feeUgx,
+        // A quote we produced is CONFIRMED. A refusal is not a zero fee that
+        // happens to be right — it is an unconfirmed fee the team will settle.
+        confirmed: q.kind !== 'unavailable',
+        pricedBy: outcome.pricedBy,
+        mayFallBackToLegacy: outcome.mayFallBackToLegacy,
+        capture: {
+          areaSlug: q.explanation.areaSlug,
+          corridor: q.explanation.corridor,
+          distanceBand: q.explanation.band,
+          quotedFeeUgx: q.kind === 'unavailable' ? null : q.feeUgx,
+          expectedMinutes: q.kind === 'rider_delivery' ? q.expectedMinutes : null,
+          centroidSource: q.explanation.centroidSource,
+          configVersionId: q.explanation.configVersionId,
+          aliasUsed: outcome.resolved?.aliasUsed ?? null,
+          fulfilmentMode: q.mode ?? null,
+          carrier: q.kind === 'bus_shipment' ? q.shipment.carrier : null,
+          rateCardId: q.kind === 'bus_shipment' ? q.shipment.rateCardId : null,
+          rateCardVersion: q.kind === 'bus_shipment' ? q.shipment.rateCardVersion : null,
+          parcelClass: q.kind === 'bus_shipment' ? q.shipment.parcelClass : null,
+          parcelCount: q.kind === 'bus_shipment' ? q.parcelCount : null,
+          perParcelFeeUgx: q.kind === 'bus_shipment' ? q.perParcelFeeUgx : null,
+          unavailableReason: q.kind === 'unavailable' ? q.reason : null,
+        },
+      };
+    },
+    recordQuote: async (orderId: string, capture: Record<string, unknown>) => {
+      await this.deliveryCaptureRepo.upsert({ orderId, ...(capture as Record<string, never>) });
+    },
+  };
 
   public readonly loyaltyDrawRepo = new DrizzleLoyaltyDrawRepository();
   public readonly grantDrawTokenUseCase = new GrantDrawTokenUseCase(

@@ -13,7 +13,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../infrastructure/db/client';
 import { Registry } from '../infrastructure/Registry';
 import { resolveFulfilmentMode } from '../domain/delivery/DeliveryFulfilmentMode';
-import { isDistanceBand, DistanceBand, NEUTRAL_FACTOR } from '../domain/delivery/DeliveryModel';
+import { isDistanceBand, DistanceBand, NEUTRAL_FACTOR, ADDITIVE_NEUTRAL_FACTOR } from '../domain/delivery/DeliveryModel';
 import { quoteFulfilment } from '../domain/delivery/DeliveryQuoteService';
 
 const UPCOUNTRY_WATCHLIST = ['Arua', 'Abim', 'Adjumani'];
@@ -69,7 +69,7 @@ async function main() {
         corridorFactor: NEUTRAL_FACTOR,
         hourFactor: NEUTRAL_FACTOR,
         detourFactor: NEUTRAL_FACTOR,
-        lastMileMinutes: { value: 0, sampleSize: 0 },
+        lastMileMinutes: ADDITIVE_NEUTRAL_FACTOR,
         areaSampleSize: 0,
         observedMinutes: null,
         onTimeTargetBps: numeric.on_time_target_bps ?? null,
@@ -93,8 +93,7 @@ async function main() {
           version: Number(c.version),
         })),
         office: null,
-        parcelClass: 'small',
-        parcelClassRefusal: null,
+        parcels: { ok: true, shippingClass: 'small', totalItems: 1, capacityItems: null, parcelCount: 1, classSetBy: { productId: 'report', source: 'category' } },
         destinationTown: resolved?.input.district ?? o.district,
         destinationDistrict: resolved?.input.district ?? o.district,
         at: new Date(),

@@ -95,9 +95,26 @@ suite('commerce integrity reconciliation (real PostgreSQL)', () => {
     await raw.end();
   });
 
+  /**
+   * SCOPED TO ITS OWN FIXTURES, 2026-08-06.
+   *
+   * This asserted an EXACT list of exception types against a whole-database
+   * scan, so it passed on an empty test database and failed the moment it ran
+   * against a restored production clone — where real rows legitimately raise
+   * exceptions of their own. A test that only passes on empty data is not
+   * testing the scan, it is testing the fixture, and a failing test erodes the
+   * green boundary every gate in this programme depends on.
+   *
+   * The scan is still whole-database (that is its job). The ASSERTION is now
+   * scoped to the entities this test created and controls.
+   */
   it('surfaces every money and inventory drift, and passes the clean rows', async () => {
     const report = await useCase.execute(1000);
-    const types = report.exceptions.map((e: any) => e.type).sort();
+    const mine = new Set<string>([...ids.orders, ...ids.products]);
+    const types = report.exceptions
+      .filter((e: any) => mine.has(e.entityId))
+      .map((e: any) => e.type)
+      .sort();
     expect(types).toEqual(['ORDER_LINES_MISMATCH', 'ORDER_TOTAL_MISMATCH', 'RESERVED_LEDGER_MISMATCH'].sort());
     expect(report.clean).toBe(false);
     // The clean order/product produce no exception.

@@ -17,6 +17,7 @@ import {
   selectRateCard,
 } from './DeliveryBusRateCard';
 import { ProportionalityConfig, ProportionalityResult, assessProportionality } from './DeliveryProportionality';
+import { ParcelPlan, parcelCountSentence } from './DeliveryParcelClass';
 
 /**
  * THE quoting service (contract #1: exactly one thing answers "what does
@@ -49,9 +50,12 @@ export interface FulfilmentQuoteInputs {
   bus: {
     cards: readonly BusRateCard[];
     office: ParcelOffice | null;
-    parcelClass: ParcelClass | null;
-    /** Null when the catalogue has no weight — a gap, not a small parcel. */
-    parcelClassRefusal: 'ABOVE_MAX_WEIGHT' | 'IRREGULAR_SHAPE' | 'WEIGHT_UNKNOWN' | null;
+    /**
+     * How the basket splits into parcels. Bus parcel offices count PARCELS, so
+     * the fee is per parcel and the count is part of the quote rather than a
+     * detail discovered later.
+     */
+    parcels: ParcelPlan;
     destinationTown: string | null;
     destinationDistrict: string | null;
     at: Date;
@@ -75,7 +79,13 @@ export type FulfilmentQuote =
   | {
       kind: 'bus_shipment';
       mode: 'bus_parcel';
+      /** TOTAL across every parcel — what the customer actually pays. */
       feeUgx: number;
+      /** Per parcel, so the arithmetic is visible rather than implied. */
+      perParcelFeeUgx: number;
+      parcelCount: number;
+      /** Shown BEFORE they commit. Two parcels is two fees. */
+      parcelSentence: string;
       shipment: ShipmentQuote;
       explanation: QuoteExplanation;
       proportionality: ProportionalityResult;
@@ -160,15 +170,22 @@ export function quoteFulfilment(inputs: FulfilmentQuoteInputs): FulfilmentQuote 
     if (!inputs.bus.destinationTown || !inputs.bus.destinationDistrict) {
       return unavailable('NO_RATE_CARD', inputs.mode, explanation);
     }
-    if (!inputs.bus.parcelClass) {
-      // Too heavy, oddly shaped, or we do not know the weight. Each is a manual
-      // quote, and each is a fact about the parcel rather than the destination.
-      return unavailable('NO_RATE_CARD', inputs.mode, explanation);
+    // No shipping class, or no known capacity to split by. Both are facts about
+    // OUR data rather than about the destination, and both go to the manual
+    // queue. Never guessed: small is the cheapest class, so a guess would
+    // systematically under-charge and only surface at the carrier's counter.
+    if (!inputs.bus.parcels.ok) {
+      return unavailable(
+        inputs.bus.parcels.reason === 'PARCEL_CLASS_UNKNOWN' ? 'PARCEL_CLASS_UNKNOWN' : 'NO_RATE_CARD',
+        inputs.mode,
+        explanation,
+      );
     }
+    const plan = inputs.bus.parcels;
     const selection = selectRateCard(inputs.bus.cards, {
       destinationTown: inputs.bus.destinationTown,
       destinationDistrict: inputs.bus.destinationDistrict,
-      parcelClass: inputs.bus.parcelClass,
+      parcelClass: plan.shippingClass,
       at: inputs.bus.at,
     });
     if (!selection.ok) {
@@ -181,14 +198,19 @@ export function quoteFulfilment(inputs: FulfilmentQuoteInputs): FulfilmentQuote 
       office: inputs.bus.office,
       declaredValueUgx: inputs.bus.declaredValueUgx,
     });
+    // Per parcel, because that is how a parcel office charges.
+    const totalFee = shipment.feeUgx * plan.parcelCount;
     return {
       kind: 'bus_shipment',
       mode: 'bus_parcel',
-      feeUgx: shipment.feeUgx,
+      feeUgx: totalFee,
+      perParcelFeeUgx: shipment.feeUgx,
+      parcelCount: plan.parcelCount,
+      parcelSentence: parcelCountSentence(plan, shipment.feeUgx),
       shipment,
-      explanation: { ...explanation, rawFeeUgx: shipment.feeUgx, roundedFeeUgx: shipment.feeUgx },
+      explanation: { ...explanation, rawFeeUgx: totalFee, roundedFeeUgx: totalFee },
       proportionality: assessProportionality({
-        feeUgx: shipment.feeUgx,
+        feeUgx: totalFee,
         subtotalUgx: inputs.subtotalUgx,
         mode: 'bus_parcel',
         config: inputs.proportionality,

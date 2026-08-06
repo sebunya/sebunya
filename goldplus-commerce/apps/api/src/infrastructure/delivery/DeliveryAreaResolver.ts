@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { foldUgandanOrthography, normalizeUgandaDistrict } from '@goldplus/shared';
 import { db } from '../db/client';
 import { AreaInput, DistanceBand, isDistanceBand } from '../../domain/delivery/DeliveryModel';
+import type { IAreaResolverPort, ResolvedArea } from '../../application/use-cases/delivery/DeliveryQuotingUseCase';
 
 /**
  * Turn whatever an order actually carries into the `AreaInput` the model needs.
@@ -36,15 +37,10 @@ interface CorridorRow {
   centroid_sample_size: number;
 }
 
-export interface ResolvedArea {
-  input: AreaInput;
-  label: string;
-  /** How it was found, for the quote explanation and the capture row. */
-  via: 'area_slug' | 'alias' | 'exact' | 'trigram' | 'district_only' | 'cross_district_correction' | null;
-  aliasUsed: string | null;
-}
+/** Re-exported for existing callers; the shape is owned by the application. */
+export type { ResolvedArea } from '../../application/use-cases/delivery/DeliveryQuotingUseCase';
 
-export class DeliveryAreaResolver {
+export class DeliveryAreaResolver implements IAreaResolverPort {
   /**
    * Corridor data for an exact slug. Returns null when the slug is not in the
    * 362-area metro set — which is a fact about the area, not a failure to

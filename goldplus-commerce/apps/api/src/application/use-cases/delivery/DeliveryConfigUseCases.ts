@@ -7,6 +7,7 @@ import {
   BandPreviewRow,
   DISTANCE_BANDS,
   DistanceBand,
+  ADDITIVE_NEUTRAL_FACTOR,
   NEUTRAL_FACTOR,
   QuoteInputs,
   isDistanceBand,
@@ -185,7 +186,7 @@ export class PreviewConfigVersionUseCase {
       corridorFactor: NEUTRAL_FACTOR,
       hourFactor: NEUTRAL_FACTOR,
       detourFactor: NEUTRAL_FACTOR,
-      lastMileMinutes: { value: 0, sampleSize: 0 },
+      lastMileMinutes: ADDITIVE_NEUTRAL_FACTOR,
       areaSampleSize: 0,
       observedMinutes: null,
       onTimeTargetBps: after.on_time_target_bps ?? null,
@@ -226,8 +227,10 @@ export class PreviewConfigVersionUseCase {
           // checkout, which is the honest picture of coverage today.
           cards: [],
           office: null,
-          parcelClass: 'small',
-          parcelClassRefusal: null,
+          // The preview compares CONFIGURATION, not baskets: a synthetic
+          // one-parcel plan keeps the bus column comparable across versions
+          // without asserting anything about a real order's contents.
+          parcels: { ok: true, shippingClass: 'small', totalItems: 1, capacityItems: null, parcelCount: 1, classSetBy: { productId: 'preview', source: 'category' } },
           destinationTown: area.district ?? null,
           destinationDistrict: area.district ?? null,
           at: new Date(0),

@@ -202,6 +202,24 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     help: 'A bus parcel has a floor cost whatever is in it. Below this we say what the minimum is. It never blocks the sale. Unset means no minimum.',
   },
 
+  // ── Parcel capacity (pre-decided, 2026-08-06) ──────────────────────────
+  // How many items fit in one parcel of each class. Bus offices count PARCELS,
+  // so this decides how many FEES a customer pays. All ship unset: splitting a
+  // basket without knowing what a parcel holds would invent that number.
+  // A single-item basket is one parcel regardless, which is arithmetic.
+  ...(['small', 'medium', 'large'] as const).map((cls) => ({
+    key: `parcel_capacity_${cls}_items`,
+    tier: 1 as const,
+    type: 'integer' as const,
+    unit: 'items',
+    mandatory: false,
+    defaultValue: null,
+    min: 1,
+    max: 1000,
+    label: `Items that fit in one ${cls} parcel`,
+    help: `Above this the order ships as more than one parcel, and each parcel is charged. Unset means a multi-item ${cls} basket goes to the manual queue rather than guessing how many fees to charge.`,
+  })),
+
   // ── Set by Rob explicitly ───────────────────────────────────────────────
   {
     key: 'fee_rounding_step_ugx',
@@ -494,6 +512,27 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
       'This order is below our minimum for this destination. You can still place it — we will confirm the arrangement with you before we send it.',
     label: 'Order below the minimum for its destination',
     help: 'Informative, never a block, and shown with the minimum and the shortfall.',
+  },
+  {
+    key: 'copy_unavailable_parcel_class_unknown',
+    tier: 1,
+    type: 'string',
+    unit: null,
+    mandatory: false,
+    defaultValue:
+      'We ship to your area by bus. Place your order and our team will confirm the shipping cost with you before we send it.',
+    label: 'Shipping class not set for something in the basket',
+    help: 'A gap in OUR product data, never the customer\'s fault, so the sentence says nothing about it. Ops sees the real cause in the manual queue.',
+  },
+  {
+    key: 'copy_parcel_count_notice',
+    tier: 1,
+    type: 'string',
+    unit: null,
+    mandatory: false,
+    defaultValue: 'Bus parcels are charged per parcel, so a larger order can ship as more than one.',
+    label: 'Explaining per-parcel charging',
+    help: 'Shown with the parcel count BEFORE the customer commits. Two parcels is two fees, and a surprise there is a dispute.',
   },
   {
     key: 'copy_pin_nudge',

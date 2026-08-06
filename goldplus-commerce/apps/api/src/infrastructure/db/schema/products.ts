@@ -5,6 +5,13 @@ export const categories = pgTable('categories', {
   name: varchar('name', { length: 255 }).notNull(),
   slug: varchar('slug', { length: 255 }).unique().notNull(),
   isOther: boolean('is_other').default(false).notNull(), // Governed "Other" category
+  /**
+   * 0094 — the category's default shipping class. NULL for every category at
+   * ship: an operator sets these, and nothing is guessed in the meantime.
+   * Lives on the row rather than in the delivery config registry because it is
+   * per-category DATA, not a fixed set of keys.
+   */
+  defaultShippingClass: varchar('default_shipping_class', { length: 8 }),
 });
 
 export const products = pgTable('products', {
@@ -21,6 +28,8 @@ export const products = pgTable('products', {
   priceUgx: integer('price_ugx').default(0).notNull(),
   compareAtPriceUgx: integer('compare_at_price_ugx'),
   stockStatus: varchar('stock_status', { length: 30 }).default('in_stock').notNull(),
+  /** 0094 — product override, beating the category default. NULL = fall through. */
+  shippingClass: varchar('shipping_class', { length: 8 }),
   imageUrl: varchar('image_url', { length: 1000 }),
   features: jsonb('features').$type<string[]>().default([]).notNull(),
   warrantyPeriod: varchar('warranty_period', { length: 100 }).default('1 Year').notNull(),

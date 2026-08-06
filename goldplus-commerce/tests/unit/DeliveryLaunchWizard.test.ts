@@ -8,7 +8,7 @@ import {
 import { LAUNCH_KEYS, DELIVERY_CONFIG_REGISTRY, validateConfigValue } from '../../apps/api/src/domain/delivery/DeliveryConfigRegistry';
 import { validateConfigDraft } from '../../apps/api/src/domain/delivery/DeliveryConfigValidation';
 import { formatForStorage } from '../../apps/api/src/application/use-cases/delivery/DeliveryWizardUseCases';
-import { bandMidpointKm, missingLaunchKeys, quoteDelivery, NEUTRAL_FACTOR } from '../../apps/api/src/domain/delivery/DeliveryModel';
+import { bandMidpointKm, missingLaunchKeys, quoteDelivery, NEUTRAL_FACTOR, ADDITIVE_NEUTRAL_FACTOR } from '../../apps/api/src/domain/delivery/DeliveryModel';
 
 const BOUNDS = { minKmh: DEFAULT_PLAUSIBLE_SPEED_MIN_KMH, maxKmh: DEFAULT_PLAUSIBLE_SPEED_MAX_KMH };
 
@@ -126,7 +126,7 @@ describe('launch wizard — the arithmetic, with the working shown', () => {
       corridorFactor: NEUTRAL_FACTOR,
       hourFactor: NEUTRAL_FACTOR,
       detourFactor: NEUTRAL_FACTOR,
-      lastMileMinutes: { value: 0, sampleSize: 0 },
+      lastMileMinutes: ADDITIVE_NEUTRAL_FACTOR,
       areaSampleSize: 0,
       observedMinutes: null,
       onTimeTargetBps: null,

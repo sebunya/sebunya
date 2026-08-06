@@ -1,3 +1,5 @@
+import { SHIPPING_CLASSES, ShippingClass } from './DeliveryParcelClass';
+
 /**
  * Bus parcel pricing (commercial constraint, 2026-08-06).
  *
@@ -18,45 +20,20 @@
  * charged and the carrier would not honour.
  */
 
-export const PARCEL_CLASSES = ['small', 'medium', 'large'] as const;
-export type ParcelClass = (typeof PARCEL_CLASSES)[number];
-
 /**
- * Weight bands as the carriers quote them. The upper bound of `large` is also
- * the point at which automatic pricing stops: above 15 kg, or an awkward shape,
- * is a manual quote because the carrier prices it by inspection.
- */
-export const PARCEL_CLASS_KG: Record<ParcelClass, { minKg: number; maxKg: number }> = {
-  small: { minKg: 0, maxKg: 2 },
-  medium: { minKg: 2, maxKg: 5 },
-  large: { minKg: 5, maxKg: 15 },
-};
-
-export const MANUAL_QUOTE_ABOVE_KG = PARCEL_CLASS_KG.large.maxKg;
-
-export type ParcelClassResult =
-  | { ok: true; parcelClass: ParcelClass }
-  | { ok: false; reason: 'ABOVE_MAX_WEIGHT' | 'IRREGULAR_SHAPE' | 'WEIGHT_UNKNOWN' };
-
-/**
- * Which class a basket falls into.
+ * RETIRED 2026-08-06 (pre-decided): the weight-band system is gone.
  *
- * An unknown weight is NOT assumed to be small. A catalogue without shipping
- * weights is a data gap, and the module's rule for a data gap is to say so and
- * let the manual path handle it, never to guess in the customer's favour or
- * ours.
+ * A shipping class is now a property of the goods, resolved from a product
+ * override then a category default then not at all — see
+ * `DeliveryParcelClass.ts`. Weights were never in the catalogue, so classifying
+ * by them meant every basket resolved to WEIGHT_UNKNOWN: a data system nobody
+ * was going to populate.
+ *
+ * The rate card still prices per class and per PARCEL, because bus parcel
+ * offices count parcels.
  */
-export function classifyParcel(input: {
-  totalKg: number | null;
-  irregularShape?: boolean;
-}): ParcelClassResult {
-  if (input.irregularShape) return { ok: false, reason: 'IRREGULAR_SHAPE' };
-  if (input.totalKg === null || !Number.isFinite(input.totalKg)) return { ok: false, reason: 'WEIGHT_UNKNOWN' };
-  if (input.totalKg > MANUAL_QUOTE_ABOVE_KG) return { ok: false, reason: 'ABOVE_MAX_WEIGHT' };
-  if (input.totalKg > PARCEL_CLASS_KG.medium.maxKg) return { ok: true, parcelClass: 'large' };
-  if (input.totalKg > PARCEL_CLASS_KG.small.maxKg) return { ok: true, parcelClass: 'medium' };
-  return { ok: true, parcelClass: 'small' };
-}
+export type ParcelClass = ShippingClass;
+export const PARCEL_CLASSES = SHIPPING_CLASSES;
 
 /** Who pays the carrier, and when. Both are real arrangements in this market. */
 export type ChargedAt = 'sending' | 'collection';

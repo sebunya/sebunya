@@ -109,6 +109,33 @@ export class CheckoutUseCase {
       >;
       attach(reservationId: string, orderId: string): Promise<void>;
       release(input: { reservationId: string }): Promise<unknown>;
+    } | null = null,
+    /**
+     * THE quoting service (delivery brief, contract #1).
+     *
+     * Optional so the use case still constructs without it, but in production
+     * it is always present and it answers FIRST. The legacy zone path below is
+     * consulted only when this returns CONFIG_INCOMPLETE — every other reason
+     * is a correct answer, and handing a correct answer to the legacy model
+     * would replace it with a wrong one (it would happily price a lake island).
+     *
+     * When the fallback has served zero requests for the agreed period, both
+     * legacy paths are deleted and contract #1 becomes true.
+     */
+    private readonly deliveryQuoting: {
+      quote(input: {
+        areaSlug?: string | null;
+        deliveryArea?: string | null;
+        district?: string | null;
+        items: ReadonlyArray<{ productId: string; quantity: number }>;
+      }): Promise<{
+        feeUgx: number | null;
+        confirmed: boolean;
+        pricedBy: 'delivery_model' | 'bus_rate_card' | 'manual';
+        mayFallBackToLegacy: boolean;
+        capture: Record<string, unknown>;
+      }>;
+      recordQuote(orderId: string, capture: Record<string, unknown>): Promise<void>;
     } | null = null
   ) {}
 
@@ -150,7 +177,28 @@ export class CheckoutUseCase {
       ? normalizeDistrict(dto.customerDetails.deliveryLocation.district)
       : null;
     const zone = district && this.deliveryZones ? await this.deliveryZones.findByDistrict(district) : null;
-    const fee = resolveDeliveryFee(zone);
+
+    // THE quoting service answers first. The legacy zone path is a fallback for
+    // CONFIG_INCOMPLETE and nothing else.
+    let fee = resolveDeliveryFee(zone);
+    let deliveryCapture: Record<string, unknown> | null = null;
+    if (this.deliveryQuoting) {
+      const quoted = await this.deliveryQuoting.quote({
+        areaSlug: dto.customerDetails.deliveryLocation?.areaSlug ?? null,
+        deliveryArea: dto.customerDetails.deliveryArea ?? null,
+        district: dto.customerDetails.deliveryLocation?.district ?? null,
+        items: dto.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      });
+      deliveryCapture = { ...quoted.capture, pricedBy: quoted.pricedBy };
+      if (!quoted.mayFallBackToLegacy) {
+        // A real answer, including a truthful "we cannot price this".
+        fee = { feeUgx: quoted.feeUgx ?? 0, confirmed: quoted.confirmed, zoneId: zone?.id ?? null };
+      } else {
+        // Config incomplete: the legacy path answers THIS request only, and the
+        // capture records that it did so the fallback rate is measurable.
+        deliveryCapture = { ...deliveryCapture, pricedBy: 'legacy_fallback' };
+      }
+    }
 
     // COD controls (location brief I.2): eligibility is a ZONE attribute. Only
     // an ACTIVE zone policy gates — an unset policy blocks nothing (and cannot
@@ -263,6 +311,11 @@ export class CheckoutUseCase {
             .velocity({ phone: dto.customerDetails.phone, orderId: saved.order.id })
             .catch(() => undefined);
         }
+        if (deliveryCapture && this.deliveryQuoting) {
+          // Never fatal: a capture that fails must not void a real order. It is
+          // an observation the model loses, and the ops queue surfaces that.
+          await this.deliveryQuoting.recordQuote(saved.order.id, deliveryCapture).catch(() => undefined);
+        }
         return { order: saved.order, deliveryFeeConfirmed: saved.order.deliveryFeeConfirmed, idempotentReplay: saved.duplicate };
       } catch (error) {
         if (reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id }).catch(() => undefined);
@@ -308,6 +361,9 @@ export class CheckoutUseCase {
     // A unique index on the client key makes concurrent duplicate
     // submissions collapse to a single order.
     await this.orderRepo.save(order, clientOrderKey ? { clientOrderKey } : undefined);
+    if (deliveryCapture && this.deliveryQuoting) {
+      await this.deliveryQuoting.recordQuote(order.id, deliveryCapture).catch(() => undefined);
+    }
     return { order, deliveryFeeConfirmed: fee.confirmed, idempotentReplay: false };
   }
 }
