@@ -178,6 +178,18 @@ import {
 import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/DeliveryAreaResolver';
 import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliveryQuotingRepository';
 import { DrizzleDeliveryVarianceRepository } from './db/repositories/DrizzleDeliveryVarianceRepository';
+import { DrizzleDeliveryCalibrationRepository } from './db/repositories/DrizzleDeliveryCalibrationRepository';
+import {
+  AcceptCalibrationProposalUseCase,
+  RejectCalibrationProposalUseCase,
+  RunNightlyCalibrationUseCase,
+} from '../application/use-cases/delivery/DeliveryCalibrationUseCases';
+import {
+  DeliveryFallbackRateUseCase,
+  DeliveryMarginReportUseCase,
+  DeliveryVarianceReportUseCase,
+} from '../application/use-cases/delivery/DeliveryReportUseCases';
+import { BAND_EDGES_KM } from '../domain/delivery/DeliveryModel';
 import {
   ApplyDeliveryVarianceUseCase,
   ListOrderVariancesUseCase,
@@ -1154,6 +1166,41 @@ export class Registry {
     this.draftDeliveryConfigUseCase,
     this.deliveryConfigRepo,
   );
+
+  // The learning loop (PART 4). Proposes, never applies.
+  public readonly deliveryCalibrationRepo = new DrizzleDeliveryCalibrationRepository();
+  public readonly runNightlyCalibrationUseCase = new RunNightlyCalibrationUseCase(
+    this.deliveryCalibrationRepo,
+    this.auditRepo,
+    () => this.deliveryConfigReader.numericValues(),
+    // Band edges are Tier 3 — code only. A reband flag is a suggestion checked
+    // against the published edges, never a new band anyone invented.
+    (km: number) => {
+      for (const [band, [low, high]] of Object.entries(BAND_EDGES_KM)) {
+        if (km > low && km <= high) return band;
+      }
+      return km <= 0 ? 'B0' : null;
+    },
+    null,
+  );
+  public readonly acceptCalibrationProposalUseCase = new AcceptCalibrationProposalUseCase(
+    this.deliveryCalibrationRepo,
+    this.auditRepo,
+    () => this.deliveryConfigReader.numericValues(),
+  );
+  public readonly rejectCalibrationProposalUseCase = new RejectCalibrationProposalUseCase(
+    this.deliveryCalibrationRepo,
+    this.auditRepo,
+  );
+  public readonly deliveryMarginReportUseCase = new DeliveryMarginReportUseCase(
+    this.deliveryCalibrationRepo,
+    () => this.deliveryConfigReader.numericValues(),
+  );
+  public readonly deliveryVarianceReportUseCase = new DeliveryVarianceReportUseCase(
+    this.deliveryCalibrationRepo,
+    () => this.deliveryConfigReader.numericValues(),
+  );
+  public readonly deliveryFallbackRateUseCase = new DeliveryFallbackRateUseCase(this.deliveryCalibrationRepo);
 
   // The variance write path (PART 5). decideVariance decides; these apply.
   public readonly deliveryVarianceRepo = new DrizzleDeliveryVarianceRepository();

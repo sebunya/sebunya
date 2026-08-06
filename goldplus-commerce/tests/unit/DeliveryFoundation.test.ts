@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -76,6 +76,52 @@ describe('migration 0092', () => {
   it('seeds no fee, no factor override and none of the six launch values', () => {
     // No INSERT anywhere: this migration creates structure, never numbers.
     expect(migration).not.toMatch(/\bINSERT\s+INTO\b/i);
+  });
+});
+
+/**
+ * RULE 5, pinned the same way 0092 is: NO SYNTHETIC DATA EVER REACHES
+ * PRODUCTION.
+ *
+ * Calibration needs test data to prove the jobs work, and that data lives in
+ * fixtures only. A seed migration or a dev-only INSERT could ship and would
+ * later be indistinguishable from a real observation — which would silently
+ * corrupt every factor fitted from it.
+ */
+describe('no synthetic delivery data can ship', () => {
+  const migrationDir = resolve(__dirname, '../../apps/api/src/infrastructure/db/migrations');
+  const deliveryMigrations = readdirSync(migrationDir).filter(
+    (f) => f.endsWith('.sql') && /delivery/i.test(f),
+  );
+
+  it('covers every delivery migration, so a new one cannot slip past', () => {
+    // 0092 foundation, 0093 fulfilment modes, 0094 shipping class,
+    // 0095 variance, 0096 calibration.
+    expect(deliveryMigrations.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it.each(deliveryMigrations)('%s contains no INSERT', (file) => {
+    const sql = readFileSync(resolve(migrationDir, file), 'utf8');
+    expect(sql).not.toMatch(/\bINSERT\s+INTO\b/i);
+  });
+
+  it('no delivery source file writes an observation outside the capture path', () => {
+    const roots = ['apps/api/src/domain/delivery', 'apps/api/src/application/use-cases/delivery'];
+    for (const root of roots) {
+      const dir = resolve(__dirname, '../..', root);
+      for (const f of readdirSync(dir).filter((x) => x.endsWith('.ts'))) {
+        const src = readFileSync(resolve(dir, f), 'utf8');
+        // The domain and application layers must not reach a table at all.
+        expect(src, `${root}/${f}`).not.toMatch(/insert\s+into\s+delivery_quote_capture/i);
+        expect(src, `${root}/${f}`).not.toMatch(/insert\s+into\s+delivery_learned_factor/i);
+      }
+    }
+  });
+
+  it('has no seed or demo script for delivery observations', () => {
+    const scripts = readdirSync(resolve(__dirname, '../../apps/api/src/scripts'));
+    const suspicious = scripts.filter((f) => /delivery/i.test(f) && /(seed|demo|sample|fake|fixture)/i.test(f));
+    expect(suspicious).toEqual([]);
   });
 });
 

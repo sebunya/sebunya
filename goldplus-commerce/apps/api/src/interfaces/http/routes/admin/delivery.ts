@@ -359,4 +359,84 @@ routes.get('/variance/reasons', requirePermissions([PERMISSIONS.ORDERS_READ]), a
   });
 });
 
+/* ── The learning loop (brief PART 4) ────────────────────────────────────── */
+
+/**
+ * Run the nightly calibration on demand.
+ *
+ * PROPOSE right, because it produces proposals rather than applying anything.
+ */
+routes.post('/calibration/run', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PROPOSE]), async (c) => {
+  const result = await Registry.getInstance().runNightlyCalibrationUseCase.execute();
+  return c.json({ success: true, data: result });
+});
+
+/** The proposal queue. Empty is explained, never blank. */
+routes.get('/calibration/proposals', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const [proposals, counts] = await Promise.all([
+    registry.deliveryCalibrationRepo.listProposals(String(c.req.query('status') ?? 'pending'), 200),
+    registry.deliveryCalibrationRepo.counts(),
+  ]);
+  return c.json({
+    success: true,
+    data: {
+      proposals,
+      counts,
+      note:
+        proposals.length > 0
+          ? null
+          : counts.observations === 0
+            ? 'Nothing to propose: no order has been delivered, so the model has no observations to learn from.'
+            : 'Nothing to propose: no scope has reached the minimum sample size, or no minimum is set.',
+    },
+  });
+});
+
+/** Accept — refuses below the minimum rather than warning. */
+routes.post('/calibration/proposals/:id/accept', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const edited = body?.editedValue === undefined || body?.editedValue === null ? null : Number(body.editedValue);
+  const result = await Registry.getInstance().acceptCalibrationProposalUseCase.execute({
+    proposalId: String(c.req.param('id') ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+    editedValue: edited,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: { accepted: true } });
+});
+
+routes.post('/calibration/proposals/:id/reject', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().rejectCalibrationProposalUseCase.execute({
+    proposalId: String(c.req.param('id') ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+    reason: String(body?.reason ?? ''),
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: { rejected: true } });
+});
+
+/** Margin: quoted fee against what the rider was actually paid, per area. */
+routes.get('/reports/margin', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  return c.json({ success: true, data: await Registry.getInstance().deliveryMarginReportUseCase.execute() });
+});
+
+/** Variance: how often a quote changed after placement, and what we absorbed. */
+routes.get('/reports/variance', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  return c.json({ success: true, data: await Registry.getInstance().deliveryVarianceReportUseCase.execute() });
+});
+
+/**
+ * The fallback rate. This is the EVIDENCE for deleting the legacy paths, so it
+ * is a first-class report rather than a log line.
+ */
+routes.get('/reports/fallback-rate', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  return c.json({ success: true, data: await Registry.getInstance().deliveryFallbackRateUseCase.execute() });
+});
+
 export default routes;

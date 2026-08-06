@@ -267,3 +267,28 @@ export const deliveryFeeVariance = pgTable('delivery_fee_variance', {
 }, (t) => ({
   orderIdx: index('delivery_fee_variance_order_idx').on(t.orderId),
 }));
+
+/** Calibration proposals (0096). PROPOSED, NEVER APPLIED. */
+export const deliveryCalibrationProposal = pgTable('delivery_calibration_proposal', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  factorKind: varchar('factor_kind', { length: 24 }).notNull(),
+  scopeKey: varchar('scope_key', { length: 160 }).notNull(),
+  /** NULL when nothing was learned before — never 1.0 standing in for absence. */
+  currentValue: numeric('current_value', { precision: 10, scale: 4 }),
+  currentState: varchar('current_state', { length: 16 }).notNull(),
+  proposedValue: numeric('proposed_value', { precision: 10, scale: 4 }).notNull(),
+  sampleSize: integer('sample_size').notNull(),
+  feeImpactUgx: bigint('fee_impact_ugx', { mode: 'number' }),
+  status: varchar('status', { length: 12 }).default('pending').notNull(),
+  decidedBy: uuid('decided_by'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ statusIdx: index('delivery_calibration_proposal_status_idx').on(t.status) }));
+
+/** One-time milestones, so "fires once ever" survives restarts and replicas. */
+export const deliveryCalibrationMilestone = pgTable('delivery_calibration_milestone', {
+  milestone: varchar('milestone', { length: 48 }).primaryKey(),
+  orderId: uuid('order_id'),
+  firedAt: timestamp('fired_at', { withTimezone: true }).defaultNow().notNull(),
+  note: text('note'),
+});

@@ -305,6 +305,27 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     help: 'Until an area has this many completed deliveries we promise at day level — today, tomorrow — rather than inventing an hour range. Unset means day level everywhere.',
   },
   {
+    /**
+     * The minimum sample a calibration proposal must rest on.
+     *
+     * Tier 1 and UNSET, the same treatment `window_min_sample_size` gets.
+     * Shipping a figure would make it a launch value in disguise. Its absence
+     * means NO PROPOSALS AT ALL — which is honest, because with zero
+     * observations there is nothing to propose anyway, and it means the
+     * threshold is a decision a human makes rather than one they inherit.
+     */
+    key: 'calibration_min_sample_size',
+    tier: 1,
+    type: 'integer',
+    unit: 'deliveries',
+    mandatory: false,
+    defaultValue: null,
+    min: 1,
+    max: 10_000,
+    label: 'Deliveries needed before the model may propose a change',
+    help: 'Below this the nightly job reports "not enough data" instead of a proposal, and the queue refuses to accept one. Unset means no proposals are made at all.',
+  },
+  {
     key: 'on_time_target_bps',
     tier: 1,
     type: 'integer',

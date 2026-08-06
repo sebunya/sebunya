@@ -82,3 +82,33 @@ The database enforces the pairing too: an `absorbed` variance can never be
 waiting on a customer, and a `needs_agreement` one can never be `not_required`.
 
 17 tests, all synthetic — no live order exercises this.
+
+## 4. The learning loop — done
+
+Nightly recompute, migration 0096, five rules all holding at ZERO observations.
+
+- **Zero is undefined.** Every fit returns `insufficient_data` with a reason and
+  a count, never a small number. Proposals carry `currentState: 'not_learned'`
+  and `currentValue: null` rather than a 1.0 standing in for absence.
+- **No proposal below the minimum.** `calibration_min_sample_size` is Tier 1 and
+  UNSET, so with no minimum there are **no proposals at all**. The queue REFUSES
+  acceptance below it rather than warning — an operator should not have to
+  notice a sample of two.
+- **Every division guarded**, tested at n=0 and n=1 for every fitting function,
+  plus zero-denominator cases and percentile indices at both ends.
+- **Stateless.** Pending proposals are replaced wholesale, so two identical runs
+  leave identical rows and a bad night cannot accumulate beside a good one. An
+  idempotency test asserts it.
+- **No synthetic data.** Pinned like 0092: every delivery migration is scanned
+  for INSERT, the domain and application layers are scanned for writes to the
+  capture and factor tables, and the scripts directory is scanned for anything
+  named seed/demo/sample/fake/fixture.
+
+An EDITED proposal is recorded `origin='human'`, never laundered as a fit.
+
+Reports render emptiness in words: what exists, what is missing, what would have
+to be true. The fallback-rate report is the evidence for deleting the legacy
+paths, so it is first-class rather than a log line.
+
+First-observation alert fires once ever, backed by a milestone row so "once"
+survives restarts and both API replicas.
