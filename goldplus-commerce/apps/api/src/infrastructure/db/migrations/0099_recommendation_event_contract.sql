@@ -20,6 +20,14 @@
 --
 -- ADDITIVE AND REVERSIBLE; no INSERTs, no row mutations.
 --
+-- ORDERING: this migration must land BEFORE the application roll — the new
+-- event writer sends these columns unconditionally, so new code on an
+-- un-migrated database fails every event insert. The rollback below is only
+-- legal after rolling the application back first, for the same reason.
+-- Index creation is non-CONCURRENT (milliseconds at today's 346 rows); on a
+-- grown table, re-running these statements would block writes — use
+-- CONCURRENTLY out-of-band instead.
+--
 -- Rollback:
 --   DROP INDEX IF EXISTS recommendation_events_dedupe_key_uq;
 --   DROP INDEX IF EXISTS recommendation_events_profile_idx;

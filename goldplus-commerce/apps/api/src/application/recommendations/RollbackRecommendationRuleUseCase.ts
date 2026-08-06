@@ -37,9 +37,14 @@ export class RollbackRecommendationRuleUseCase {
     const restored = {
       ...existing,
       ...before,
-      // Identity, lifecycle and provenance stay owned by their own paths.
+      // Identity, lifecycle, TYPE and provenance stay owned by their own
+      // paths. Type is pinned for the same reason status is (R9 hostile-review
+      // fix, proven bypass): a before-image whose type was SUPPRESS would
+      // otherwise re-arm suppression on a live ACTIVE rule with no second
+      // admin — rollback must not be a side door through the two-person gate.
       id: existing.id,
       status: existing.status,
+      type: existing.type,
       createdAt: existing.createdAt,
       createdBy: existing.createdBy,
       updatedAt: new Date(),

@@ -8,6 +8,31 @@ import { telemetryDeadLetterQueue } from '../db/schema/telemetry';
 export class RecommendationMaterializer {
   async execute(): Promise<{ success: boolean; durationMs: number; processedCount: number }> {
     const start = Date.now();
+
+    // R9 (m3): every cookie-less crawler pageview upserts a profile row, and
+    // nothing pruned them. Unlinked profiles idle past the 180-day continuity
+    // window are deleted in bounded batches — a LINKED profile is customer
+    // history and is never touched here.
+    try {
+      const { db } = await import('../db/client');
+      const { sql } = await import('drizzle-orm');
+      await db.execute(sql`
+        delete from identity_links where profile_id in (
+          select id from experience_profiles
+          where customer_id is null and last_seen_at < now() - interval '180 days'
+          limit 5000
+        )
+      `);
+      await db.execute(sql`
+        delete from experience_profiles where id in (
+          select id from experience_profiles
+          where customer_id is null and last_seen_at < now() - interval '180 days'
+          limit 5000
+        )
+      `);
+    } catch (err) {
+      logger.error({ err: err instanceof Error ? err.message : String(err) }, 'EXPERIENCE_PROFILE_PRUNE_FAILED');
+    }
     logger.info('[RecommendationMaterializer] Starting pre-computation of recommendations...');
 
     // 0. Prune telemetry DLQ records older than 30 days

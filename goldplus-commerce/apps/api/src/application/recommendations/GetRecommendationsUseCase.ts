@@ -22,7 +22,7 @@ import { TrendingScoreService } from "./TrendingScoreService";
 import { RecommendationEligibilityService } from "./RecommendationEligibilityService";
 import { RecommendationDeduplicationService } from "./RecommendationDeduplicationService";
 import { RecommendationDiversityService } from "./RecommendationDiversityService";
-import { RecommendationRuleApplicationService } from "./RecommendationRuleApplicationService";
+import { RecommendationRuleApplicationService, applyPinPositions } from "./RecommendationRuleApplicationService";
 import {
   RECOMMENDATION_POLICY_VERSION,
   type RecommendationCandidate,
@@ -149,9 +149,22 @@ export class GetRecommendationsUseCase {
       const cached = await this.products.findCachedRecommendations(input.placement, cacheKey);
       if (cached && cached.items.length > 0) {
         const age = Date.now() - new Date(cached.updatedAt).getTime();
-        if (age <= CACHE_TTL_MS) {
+        // A future timestamp (clock skew) is treated as stale, not as fresh
+        // forever — beyond a 5-minute tolerance the live ladder takes over.
+        const fresh = age <= CACHE_TTL_MS && age >= -5 * 60 * 1000;
+        if (fresh) {
           const mapped = cached.items.map((item) => this.reviveCachedCandidate(item));
-          const filtered = this.eligibility.filter(mapped, {
+          // R9 (M5): availability and price are re-checked against the
+          // DATABASE, not against the cached blob — a product that sold out
+          // after materialization must not be served for up to the TTL. One
+          // indexed query; the ATP predicate lives in the reader's SQL.
+          const liveRows = await this.products.findPublicProducts({
+            productIds: mapped.map((c) => c.productId),
+            limit: mapped.length,
+          });
+          const stillEligibleIds = new Set(liveRows.map((r) => r.id));
+          const revalidated = mapped.filter((c) => stillEligibleIds.has(c.productId));
+          const filtered = this.eligibility.filter(revalidated, {
             placement: input.placement,
             contextProductId: input.productId,
             categoryId: input.categoryId,
@@ -162,6 +175,10 @@ export class GetRecommendationsUseCase {
           if (filtered.length > 0) {
             candidates = filtered;
             sourceReports = [{ source: "MATERIALIZED_CACHE", state: "SUPPORTED", candidates: filtered.length }];
+          } else {
+            // A fresh cache that filtered to nothing is a visible fact, and
+            // the live ladder takes over.
+            sourceReports.push({ source: "MATERIALIZED_CACHE", state: "SUPPORTED_WITH_LIMITATIONS", candidates: 0 });
           }
         } else {
           // A cache the cron stopped refreshing is a STALE source, not silent
@@ -182,6 +199,9 @@ export class GetRecommendationsUseCase {
     }
 
     // ── Stage 6: business rules (structural since R1 — apply or fail visibly) ─
+    let pins: Array<{ productId: string; position: number }> = [];
+    let suppressedCount = 0;
+    let postRuleCandidates: RecommendationCandidate[] = candidates;
     try {
       const ruleResult = await this.ruleApplication.apply({
         placement: input.placement,
@@ -194,6 +214,9 @@ export class GetRecommendationsUseCase {
         candidates,
       });
       candidates = ruleResult.candidates;
+      postRuleCandidates = ruleResult.candidates;
+      pins = ruleResult.pins ?? [];
+      suppressedCount = ruleResult.suppressedProductIds?.length ?? 0;
     } catch (e) {
       this.onDegraded?.("rule_application_failed", input.placement, e);
     }
@@ -238,11 +261,18 @@ export class GetRecommendationsUseCase {
     candidates = this.dedupe.dedupe(candidates);
     candidates.sort((a, b) => b.score - a.score || a.productId.localeCompare(b.productId));
     candidates = this.diversity.diversify(candidates, input.placement, limit);
+    // Pins are applied LAST (R9, proven fix): the score sort above undid the
+    // rule stage's splice, so live pins were a silent no-op while the preview
+    // — which never re-sorted — showed them working. One shared helper now
+    // finishes the ordering on both paths.
+    if (pins.length > 0) {
+      candidates = applyPinPositions(candidates, pins, postRuleCandidates, limit);
+    }
 
     // ── Stage 10: typed emptiness ────────────────────────────────────────────
     let emptyReason: RecommendationEmptyReason | undefined;
     if (candidates.length === 0) {
-      emptyReason = await this.classifyEmptiness(input, sourceReports);
+      emptyReason = await this.classifyEmptiness(input, sourceReports, suppressedCount);
     }
 
     const fallbackLevel = candidates.reduce((deepest, c) => Math.max(deepest, c.fallbackLevel ?? 0), 0);
@@ -307,8 +337,18 @@ export class GetRecommendationsUseCase {
 
     const pool = new Map<string, RecommendationCandidate>();
     let bestsellerRanks: Map<string, { rank: number }> | undefined;
+    let bestsellerSampleSize = 0;
     let trendingRanks: Map<string, { rank: number }> | undefined;
     let trendingSampleSize = 0;
+
+    const eligibilityContext = {
+      placement: input.placement,
+      contextProductId: input.productId,
+      categoryId: input.categoryId,
+      categorySlug: input.categorySlug,
+      cartProductIds: input.cartProductIds,
+      requireImage: true,
+    };
 
     for (let level = 0; level < ladder.length; level++) {
       // Enough pool to rank from — deeper rungs stay untried (reported as such
@@ -322,17 +362,26 @@ export class GetRecommendationsUseCase {
 
         if (source === "RECENT_PAID_ORDER_VELOCITY" || source === "GLOBAL_BESTSELLER" || source === "CATEGORY_BESTSELLER") {
           bestsellerRanks = result.bestsellerRanks ?? bestsellerRanks;
+          bestsellerSampleSize = Math.max(bestsellerSampleSize, result.bestsellerSampleSize ?? 0);
         }
         if (source === "RECENT_ENGAGEMENT_VELOCITY") {
           trendingRanks = result.trendingRanks;
           trendingSampleSize = result.trendingSampleSize ?? 0;
         }
 
+        // R9 (M1, proven): eligibility runs PER RUNG, before pool insertion —
+        // the pool-size stop above counts USABLE candidates, so a shallow rung
+        // full of ineligible items (no image, reserved out) can no longer
+        // starve the deeper rungs whose whole job is "never empty".
+        const rungCandidates = this.eligibility.filter(
+          result.products.map((product) => this.toCandidate(product)),
+          eligibilityContext,
+        );
         let ordinal = 0;
-        for (const product of result.products) {
-          if (pool.has(product.id)) continue;
-          pool.set(product.id, {
-            ...this.toCandidate(product),
+        for (const candidate of rungCandidates) {
+          if (pool.has(candidate.productId)) continue;
+          pool.set(candidate.productId, {
+            ...candidate,
             candidateSource: source,
             fallbackLevel: level,
             sourceOrdinal: ordinal,
@@ -350,16 +399,8 @@ export class GetRecommendationsUseCase {
       }
     }
 
-    let candidates = [...pool.values()];
-
-    candidates = this.eligibility.filter(candidates, {
-      placement: input.placement,
-      contextProductId: input.productId,
-      categoryId: input.categoryId,
-      categorySlug: input.categorySlug,
-      cartProductIds: input.cartProductIds,
-      requireImage: true,
-    });
+    // Eligibility already ran per rung — the pool holds only usable candidates.
+    const candidates = [...pool.values()];
 
     const scored = this.scoring.scoreCandidates(candidates, {
       placement: input.placement,
@@ -368,6 +409,7 @@ export class GetRecommendationsUseCase {
       trendingRanks,
       trendingSampleSize,
       bestsellerRanks,
+      bestsellerSampleSize,
     });
 
     // Scoring rebuilds score from components; re-add the ladder prior so
@@ -396,6 +438,7 @@ export class GetRecommendationsUseCase {
     products: RecommendationProductRecord[];
     state: RecommendationSourceState;
     bestsellerRanks?: Map<string, { rank: number }>;
+    bestsellerSampleSize?: number;
     trendingRanks?: Map<string, { rank: number }>;
     trendingSampleSize?: number;
   }> {
@@ -442,11 +485,17 @@ export class GetRecommendationsUseCase {
       case "RECENT_PAID_ORDER_VELOCITY":
       case "CATEGORY_BESTSELLER":
       case "GLOBAL_BESTSELLER": {
+        const bestsellerCategoryId =
+          source === "CATEGORY_BESTSELLER"
+            ? input.categoryId ?? contextProduct?.categoryId ?? undefined
+            : undefined;
+        // A category bestseller WITHOUT a category is not a global bestseller
+        // in disguise — it is an unanswerable question (R9 m12).
+        if (source === "CATEGORY_BESTSELLER" && !bestsellerCategoryId && !input.categorySlug) {
+          return { products: [], state: "UNSUPPORTED" };
+        }
         const rows = await this.products.findBestsellerProductIds({
-          categoryId:
-            source === "CATEGORY_BESTSELLER"
-              ? input.categoryId ?? contextProduct?.categoryId ?? undefined
-              : undefined,
+          categoryId: bestsellerCategoryId,
           sinceDays: source === "RECENT_PAID_ORDER_VELOCITY" ? 30 : undefined,
           limit: fetchLimit,
         });
@@ -457,7 +506,12 @@ export class GetRecommendationsUseCase {
           limit: fetchLimit,
         });
         const ranks = new Map(rows.map((r, i) => [r.productId, { rank: i + 1 }]));
-        return { products, state: "SUPPORTED", bestsellerRanks: ranks };
+        return {
+          products,
+          state: "SUPPORTED",
+          bestsellerRanks: ranks,
+          bestsellerSampleSize: rows.reduce((sum, r) => sum + r.unitsSold, 0),
+        };
       }
 
       case "RECENT_ENGAGEMENT_VELOCITY": {
@@ -538,6 +592,7 @@ export class GetRecommendationsUseCase {
   private async classifyEmptiness(
     input: GetRecommendationsInput,
     reports: RecommendationSourceReport[],
+    suppressedCount: number,
   ): Promise<RecommendationEmptyReason> {
     if (input.placement === "recently_viewed") return "NO_ELIGIBLE_PRODUCTS";
     if (reports.some((r) => r.state === "DEGRADED")) return "DEPENDENCY_UNAVAILABLE";
@@ -547,8 +602,12 @@ export class GetRecommendationsUseCase {
     } catch {
       return "DEPENDENCY_UNAVAILABLE";
     }
+    // R9: ALL_SUPPRESSED is claimed only when rules ACTUALLY suppressed
+    // something — "some source returned candidates" also covers eligibility
+    // drops, and the old order misfiled a fully-suppressed setup rail as
+    // NO_COMPATIBLE_PRODUCTS.
+    if (suppressedCount > 0) return "ALL_SUPPRESSED";
     if (input.placement === "complete_setup") return "NO_COMPATIBLE_PRODUCTS";
-    if (reports.some((r) => r.candidates > 0)) return "ALL_SUPPRESSED";
     return "NO_ELIGIBLE_PRODUCTS";
   }
 
@@ -648,6 +707,13 @@ export class GetRecommendationsUseCase {
 
       candidateSource: candidate.candidateSource,
       fallbackLevel: candidate.fallbackLevel,
+      // Every served item passed the ATP predicate in SQL on THIS request
+      // (live rungs and the revalidated cache path both) — saying "confirm
+      // availability" for stock the engine just verified was an underclaim.
+      // The quantity is the row's own number; without one, no claim is made.
+      ...(typeof candidate.stockQuantity === "number" && candidate.stockQuantity > 0
+        ? { availability: { kind: "in_stock" as const, quantity: candidate.stockQuantity } }
+        : {}),
     };
   }
 }

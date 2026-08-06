@@ -26,19 +26,38 @@ const MAX_BODY_BYTES = 8 * 1024;
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-export const POST: APIRoute = async ({ request, params, cookies }) => {
+const VISIT_TOKEN_SHAPE = /^[A-Za-z0-9_-]{44}$/;
+
+export const POST: APIRoute = async ({ request, params, cookies, clientAddress }) => {
   if ((params.path ?? "") !== "events") {
     return json(404, { success: false, error: { code: "NOT_PROXIED", message: "This endpoint is not proxied." } });
   }
 
+  // R9 (M7): the declared length is refused BEFORE the body is buffered — the
+  // old order materialised an arbitrarily large body into this SSR process
+  // first and measured it after (and measured UTF-16 code units, not bytes).
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+    return json(413, { success: false, error: { code: "EVENT_TOO_LARGE", message: "Event payload too large." } });
+  }
+
   const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES) {
+  if (Buffer.byteLength(raw, "utf8") > MAX_BODY_BYTES) {
     return json(413, { success: false, error: { code: "EVENT_TOO_LARGE", message: "Event payload too large." } });
   }
 
   const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
+  // Shape-checked before forwarding: junk cookies never ride into an upstream
+  // header, and the API's signature check does the real verification.
   const visit = cookies.get(VISIT_COOKIE_NAME)?.value;
-  if (visit) headers["x-gp-visit"] = visit;
+  if (visit && VISIT_TOKEN_SHAPE.test(visit)) headers["x-gp-visit"] = visit;
+  // The real client address travels with the request so abuse control can
+  // attribute per-visitor rather than per-web-container.
+  try {
+    if (clientAddress) headers["X-Forwarded-For"] = clientAddress;
+  } catch {
+    // clientAddress can throw in prerender contexts; the relay works without it.
+  }
 
   try {
     const response = await fetch(`${API_BASE}/recommendations/events`, {

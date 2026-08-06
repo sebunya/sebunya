@@ -17,6 +17,20 @@ import {
 const ROOT = join(__dirname, "../..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
+// R9: tokens are HMAC-signed — only tokens WE minted resolve. The suite signs
+// with a test secret exactly the way the web middleware does.
+process.env.CART_CREDENTIAL_SECRET = process.env.CART_CREDENTIAL_SECRET || "test-visit-secret";
+const crypto = await import("node:crypto");
+function signedToken(): string {
+  const random = crypto.randomBytes(16).toString("base64url");
+  const sig = crypto
+    .createHmac("sha256", process.env.CART_CREDENTIAL_SECRET!)
+    .update(random)
+    .digest("base64url")
+    .slice(0, 22);
+  return `${random}${sig}`;
+}
+
 class FakeProfiles implements IExperienceProfileRepository {
   rows = new Map<string, { id: string; customerId: string | null }>();
   observed: Array<{ profileId: string; anonymousId: string }> = [];
@@ -46,15 +60,20 @@ class FakeProfiles implements IExperienceProfileRepository {
 }
 
 describe("the opaque token contract", () => {
-  it("hashes a well-formed token to a fixed-length hex digest — the raw value never persists", () => {
-    const hash = hashVisitToken("dGhpcy1pcy1hLXRlc3QtdG9rZW4");
+  it("hashes a SIGNED token to a fixed-length hex digest — the raw value never persists", () => {
+    const hash = hashVisitToken(signedToken());
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("rejects junk before it can reach the database", () => {
+  it("rejects junk AND well-shaped-but-unsigned tokens before the database (R9 M2)", () => {
     for (const junk of ["", "short", "a".repeat(200), "has spaces here padded", "semi;colon-injection-x", "ünïcödé-tokens-rejected"]) {
       expect(hashVisitToken(junk), junk).toBeNull();
     }
+    // The R2 bypass: a random string of the right SHAPE used to mint a
+    // profile. Shape alone no longer resolves — the signature must verify.
+    expect(hashVisitToken("A".repeat(44))).toBeNull();
+    const tampered = signedToken().slice(0, 43) + (signedToken().endsWith("A") ? "B" : "A");
+    expect(hashVisitToken(tampered)).toBeNull();
   });
 
   it("resolution returns null for malformed tokens instead of throwing", async () => {
@@ -65,9 +84,11 @@ describe("the opaque token contract", () => {
   it("the same token resolves to the same profile; a new token begins a new one (AC51)", async () => {
     const repo = new FakeProfiles();
     const useCase = new ResolveExperienceProfileUseCase(repo);
-    const a1 = await useCase.execute("dGhpcy1pcy1hLXRlc3QtdG9rZW4");
-    const a2 = await useCase.execute("dGhpcy1pcy1hLXRlc3QtdG9rZW4");
-    const b = await useCase.execute("YS1jb21wbGV0ZWx5LW5ldy10b2tlbg");
+    const tokenA = signedToken();
+    const tokenB = signedToken();
+    const a1 = await useCase.execute(tokenA);
+    const a2 = await useCase.execute(tokenA);
+    const b = await useCase.execute(tokenB);
     expect(a1!.id).toBe(a2!.id);
     expect(b!.id).not.toBe(a1!.id);
   });
@@ -77,7 +98,7 @@ describe("the login merge — idempotent, never a downgrade (AC52, §5A.4)", () 
   it("links an unclaimed profile, is a no-op on repeat, and PRESERVES a different customer's claim", async () => {
     const repo = new FakeProfiles();
     const link = new LinkExperienceProfileUseCase(repo);
-    const token = "dGhpcy1pcy1hLXRlc3QtdG9rZW4";
+    const token = signedToken();
 
     expect((await link.execute({ rawToken: token, customerId: "cust-1" })).status).toBe("linked");
     expect((await link.execute({ rawToken: token, customerId: "cust-1" })).status).toBe("already_linked");
@@ -125,12 +146,15 @@ describe("migration 0100 — additive, reversible, no inserts", () => {
 });
 
 describe("the browser holds ONLY an opaque locator (AC48/AC49)", () => {
-  it("the middleware mints an HttpOnly, SameSite=Lax, 180-day cookie", () => {
+  it("the middleware mints an HttpOnly, SameSite=Lax, 180-day, SIGNED cookie", () => {
     const mw = read("apps/web/src/middleware.ts");
     expect(mw).toContain('httpOnly: true');
     expect(mw).toContain('sameSite: "lax"');
     expect(mw).toContain("180 * 24 * 60 * 60");
-    expect(mw).toContain("crypto.getRandomValues");
+    // R9 M2: minting and verification go through the signed-token lib —
+    // an unsigned or fabricated cookie is replaced, never trusted.
+    expect(mw).toContain("mintSignedVisitToken");
+    expect(mw).toContain("isSignedVisitToken");
   });
 
   it("the same-origin relay is an allowlist: one path, POST only, size-capped, token attached server-side", () => {

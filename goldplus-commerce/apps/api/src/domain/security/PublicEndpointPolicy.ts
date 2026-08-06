@@ -33,6 +33,7 @@ export type RouteFamily =
   | 'consent-mutation'
   | 'surveys'
   | 'product-finder'
+  | 'recommendations'
   | 'location-search'
   | 'telemetry'
   | 'payment-webhook'
@@ -86,6 +87,13 @@ const POLICIES: Record<RouteFamily, FamilyPolicy> = {
   'surveys': { family: 'surveys', limit: 60, windowMs: MINUTE, class: 'HUMAN_FORM', outage: 'STRICT' },
   // Product finder / shopping-assistant flow: interactive, so higher.
   'product-finder': { family: 'product-finder', limit: 120, windowMs: MINUTE, class: 'GENERAL', outage: 'STRICT' },
+  // R9 (M2/M6): recommendation reads + the unauthenticated event write get
+  // their OWN budget instead of riding the shared global family. Sized for
+  // real browsing (a page fires ~4 rail reads + a handful of beacons); the
+  // relay collapses storefront event traffic behind one container identity,
+  // so the budget must cover site-wide beacon volume without letting one
+  // client starve every other route's global allowance.
+  'recommendations': { family: 'recommendations', limit: 600, windowMs: MINUTE, class: 'GENERAL', outage: 'STRICT' },
   // Address autocomplete fires per debounced keystroke burst (~2-4/s while a
   // customer types), well above product-finder's step cadence — 300/min covers
   // honest typing with headroom while still capping scripted scraping of the
@@ -168,6 +176,7 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
   if (isUnder(path, '/account/orders')) return 'order-lookup';
 
   // Product finder / shopping assistant.
+  if (isUnder(path, '/recommendations')) return 'recommendations';
   if (isUnder(path, '/product-finder')) return 'product-finder';
 
   if (isUnder(path, '/locations')) return 'location-search';

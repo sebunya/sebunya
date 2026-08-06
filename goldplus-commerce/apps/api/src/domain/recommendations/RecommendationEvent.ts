@@ -165,9 +165,10 @@ export const RECOMMENDATION_EVENT_SCHEMA_VERSION = 2;
  *
  * The key buckets time (30 min for page views, 10 min for impressions), so an
  * exact retry — a beacon resend, a double-submit, a replay — collapses to one
- * row AT THE DATABASE, closing the SELECT-then-INSERT race the app-level
- * window check always had. The app-level check remains as the friendly
- * fast-path; this is the guarantee.
+ * row AT THE DATABASE. Precisely: the DB guarantee holds WITHIN a bucket; a
+ * replica race straddling a bucket boundary can still land twice, and the
+ * sliding app-level window check covers that remainder. Together they bound
+ * duplicates to the rare boundary-race case; neither alone is the whole story.
  */
 export function computeRecommendationEventDedupeKey(
   props: Pick<

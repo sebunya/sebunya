@@ -25,10 +25,13 @@ const response = await getRecommendations({
 
 const finalItems = filterDisplayableRecommendations(response.items, { excludeIds: excludeProductIds, limit: 6 });
 
+// R9: the title claims popularity only when an item carries the CLAIM-grade
+// POPULAR_NOW reason — which the engine now emits only past its evidence
+// thresholds (paid-unit minimum / engagement sample). Source membership alone
+// was claimable from a single sold unit, and search affinity is personal
+// intent, not popularity.
 const evidenceBased = finalItems.some((item) =>
-  ["RECENT_PAID_ORDER_VELOCITY", "RECENT_ENGAGEMENT_VELOCITY", "GLOBAL_BESTSELLER", "SEARCH_QUERY_AFFINITY"].includes(
-    (item as { candidateSource?: string }).candidateSource ?? "",
-  ),
+  ((item as { reasonCodes?: string[] }).reasonCodes ?? []).includes("POPULAR_NOW"),
 );
 const title = evidenceBased ? "Popular right now" : "Browse available products";
 const subtitle = evidenceBased

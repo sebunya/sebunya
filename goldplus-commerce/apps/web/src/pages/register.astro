@@ -64,15 +64,20 @@ if (Astro.request.method === 'POST') {
           secure: import.meta.env.PROD,
         });
 
-        // R2: merge this browser's anonymous experience profile into the
-        // signed-in customer — transactional and idempotent on the API side;
-        // a hiccup here must never fail the sign-in itself.
-        const visitToken = Astro.cookies.get('gp_visit')?.value;
-        if (visitToken) {
+
+        // R9 (M8, fixation): the visit token is ROTATED at the authentication
+        // boundary — a pre-planted cookie must never become the token that
+        // gets linked to the freshly signed-in customer. The NEW token is
+        // linked; the old one keeps only its anonymous history.
+        const { mintSignedVisitToken } = await import('../lib/visitToken');
+        const { VISIT_COOKIE_NAME, visitCookieOptions } = await import('../middleware');
+        const rotatedToken = mintSignedVisitToken();
+        if (rotatedToken) {
+          Astro.cookies.set(VISIT_COOKIE_NAME, rotatedToken, visitCookieOptions());
           try {
             await fetch(`${apiBase}/recommendations/profile/link`, {
               method: 'POST',
-              headers: { Authorization: `Bearer ${json.data.token}`, 'x-gp-visit': visitToken },
+              headers: { Authorization: `Bearer ${json.data.token}`, 'x-gp-visit': rotatedToken },
               signal: AbortSignal.timeout(3000),
             });
           } catch {

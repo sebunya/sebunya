@@ -2,6 +2,7 @@ import { RecommendationEvent } from "../../domain/recommendations/Recommendation
 import type { RecommendationEventType } from "@goldplus/shared";
 
 export interface RecentEventQuery {
+  profileId?: string;
   anonymousId?: string;
   customerId?: string;
   eventType?: RecommendationEventType;

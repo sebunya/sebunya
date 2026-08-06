@@ -59,7 +59,12 @@ describe('GetRecommendationsUseCase Cache Integration', () => {
         ],
         updatedAt: new Date(),
       }),
-      saveCachedRecommendations: vi.fn()
+      saveCachedRecommendations: vi.fn(),
+      // R9: the cache path revalidates cached ids against the DATABASE (ATP)
+      // before serving — the mock answers that one indexed query.
+      findPublicProducts: vi.fn().mockResolvedValue([
+        { id: 'prod-1', slug: 'super-charger', name: 'Super Charger' }
+      ]),
     };
 
     const mockScoring: any = {};

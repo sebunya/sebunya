@@ -19,6 +19,8 @@
 -- ADDITIVE AND REVERSIBLE; no INSERTs, no row mutations.
 --
 -- Rollback:
+--   ALTER TABLE identity_links DROP CONSTRAINT IF EXISTS identity_links_profile_fk;
+--   ALTER TABLE experience_profiles DROP CONSTRAINT IF EXISTS experience_profiles_customer_fk;
 --   DROP INDEX IF EXISTS identity_links_profile_customer_uq;
 --   DROP INDEX IF EXISTS identity_links_profile_anon_uq;
 --   DROP INDEX IF EXISTS identity_links_profile_idx;
@@ -47,3 +49,19 @@ CREATE INDEX IF NOT EXISTS "identity_links_profile_idx" ON "identity_links" ("pr
 CREATE UNIQUE INDEX IF NOT EXISTS "identity_links_profile_anon_uq" ON "identity_links" ("profile_id", "anonymous_id") WHERE "link_type" = 'PROFILE_OBSERVED';
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "identity_links_profile_customer_uq" ON "identity_links" ("profile_id", "customer_id") WHERE "link_type" = 'CUSTOMER_LOGIN';
+--> statement-breakpoint
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experience_profiles_customer_fk') THEN
+    ALTER TABLE "experience_profiles"
+      ADD CONSTRAINT "experience_profiles_customer_fk"
+      FOREIGN KEY ("customer_id") REFERENCES "users"("id") ON DELETE SET NULL;
+  END IF;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'identity_links_profile_fk') THEN
+    ALTER TABLE "identity_links"
+      ADD CONSTRAINT "identity_links_profile_fk"
+      FOREIGN KEY ("profile_id") REFERENCES "experience_profiles"("id") ON DELETE CASCADE;
+  END IF;
+END $$;

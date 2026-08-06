@@ -166,6 +166,9 @@ export interface RecommendationItemDto {
   // R3 explanation fields
   candidateSource?: RecommendationCandidateSource;
   fallbackLevel?: number;
+
+  /** R9: the engine sets { kind: "in_stock" } because the item passed available-to-promise in SQL on this request; display layers may carry the wider vocabulary. */
+  availability?: import("./types/product").ProductAvailability;
 }
 
 export interface RecommendationResponseDto {

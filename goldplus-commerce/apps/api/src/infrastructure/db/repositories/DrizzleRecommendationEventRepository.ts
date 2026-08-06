@@ -92,6 +92,7 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
     if (query.placement) conditions.push(eq(recommendationEvents.placement, query.placement));
     if (query.anonymousId) conditions.push(eq(recommendationEvents.anonymousId, query.anonymousId));
     if (query.customerId) conditions.push(eq(recommendationEvents.customerId, query.customerId));
+    if (query.profileId) conditions.push(eq(recommendationEvents.profileId, query.profileId));
 
     if (query.withinMinutes) {
       const since = new Date(Date.now() - query.withinMinutes * 60_000);
@@ -204,16 +205,34 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
     since: Date;
     limit?: number;
   }): Promise<TrendingEventAggregate[]> {
+    // R9 fixes: (1) engagement counts ONLY real engagement types — the old
+    // catch-all let the engine's own RECOMMENDATION_RESPONSE rows (and any
+    // junk type at weight 0.1) push "trending" across its evidence gate;
+    // (2) clicks/attributed ATCs write recommendation_product_id with a NULL
+    // product_id, so grouping on bare product_id silently dropped exactly the
+    // engagement the copy claims — the aggregate groups on the coalesce.
+    const productKey = sql<string>`coalesce(${recommendationEvents.recommendationProductId}, ${recommendationEvents.productId})`;
     const rows = await db
       .select({
-        productId: recommendationEvents.productId,
+        productId: productKey,
         eventType: recommendationEvents.eventType,
         count: sql<number>`count(*)::int`,
         lastSeenAt: sql<Date>`max(${recommendationEvents.createdAt})`,
       })
       .from(recommendationEvents)
-      .where(gte(recommendationEvents.createdAt, input.since))
-      .groupBy(recommendationEvents.productId, recommendationEvents.eventType)
+      .where(
+        and(
+          gte(recommendationEvents.createdAt, input.since),
+          inArray(recommendationEvents.eventType, [
+            "PRODUCT_VIEWED",
+            "PRODUCT_ADDED_TO_CART",
+            "PRODUCT_PURCHASED",
+            "RECOMMENDATION_CLICKED",
+            "RECOMMENDATION_ADD_TO_CART",
+          ]),
+        ),
+      )
+      .groupBy(productKey, recommendationEvents.eventType)
       // R3: LIMIT without ORDER BY made trending truncation arbitrary — which
       // (product, type) groups survived depended on the planner.
       .orderBy(desc(sql`count(*)`), asc(recommendationEvents.productId), asc(recommendationEvents.eventType))

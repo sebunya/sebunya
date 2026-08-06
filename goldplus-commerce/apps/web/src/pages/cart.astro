@@ -219,6 +219,25 @@ if (items.length === 0) {
 }
 
 const cartProductIds = items.map(i => i.productId);
+
+// R9 (m9): line images come from the live catalogue in ONE request — the
+// retired seed-catalogue lookup is not replaced with per-line fetches.
+let productImageById = new Map<string, string>();
+if (items.length > 0) {
+  try {
+    const imgRes = await fetch(`${apiBase}/products?limit=100`, { signal: AbortSignal.timeout(3000) });
+    const imgJson = await imgRes.json();
+    if (imgJson?.success && Array.isArray(imgJson.data)) {
+      productImageById = new Map(
+        imgJson.data
+          .filter((p: { id?: string; primaryImageUrl?: string | null }) => p?.id && p?.primaryImageUrl)
+          .map((p: { id: string; primaryImageUrl: string }) => [p.id, p.primaryImageUrl]),
+      );
+    }
+  } catch {
+    // The labelled no-image box remains the honest fallback.
+  }
+}
 const subtotal = items.reduce((acc, item) => acc + (item.unitPriceUgx * item.quantity), 0);
 
 // Loyalty earn preview at the point of decision (loyalty brief PART G).
@@ -277,10 +296,7 @@ const formatUgx = (n: number): string =>
           <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
             <ul class="divide-y divide-slate-100" aria-label="Cart items">
               {items.map((item) => {
-                // R1: the seed-catalogue image lookup is retired — it could
-                // only ever match fabricated IDs. Line images return with the
-                // live-catalogue join in R7.
-                const imageUrl = null;
+                const imageUrl = productImageById.get(item.productId) ?? null;
                 
                 return (
                   <li class="p-5 md:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">

@@ -2,7 +2,7 @@ import type { IRecommendationRuleRepository } from "../ports/IRecommendationRule
 import type { RecommendationRule } from "../../domain/recommendations/RecommendationRuleTypes";
 import type { RecommendationPlacement } from "../../domain/recommendations/RecommendationTypes";
 import { GetRecommendationsUseCase } from "./GetRecommendationsUseCase";
-import { RecommendationRuleApplicationService } from "./RecommendationRuleApplicationService";
+import { RecommendationRuleApplicationService, applyPinPositions } from "./RecommendationRuleApplicationService";
 import { RecommendationRuleValidationService } from "./RecommendationRuleValidationService";
 import { RecommendationDeduplicationService } from "./RecommendationDeduplicationService";
 import { RecommendationDiversityService } from "./RecommendationDiversityService";
@@ -55,6 +55,7 @@ export class PreviewRecommendationRulesUseCase {
     // Apply baseline dedupe/diversity to exactly mirror V1 public interface result
     let before = [...beforeCandidates];
     before = this.dedupe.dedupe(before);
+    before.sort((a, b) => b.score - a.score || a.productId.localeCompare(b.productId));
     before = this.diversity.diversify(before, input.placement, limit);
 
     // 3. Compute Active Rule set for override
@@ -99,10 +100,18 @@ export class PreviewRecommendationRulesUseCase {
       now: new Date(),
     });
 
-    // 5. Final Post-Processing to render final output
+    // 5. Final post-processing — IDENTICAL to the live engine's stages 8–9
+    // (R9, proven divergence fix): score sort, diversity, then pins LAST via
+    // the same shared helper. The old preview skipped the re-sort, so PIN
+    // looked like it worked (production ignored it) and BOOST looked inert
+    // (production applied it).
     let after = ruleResult.candidates;
     after = this.dedupe.dedupe(after);
+    after.sort((a, b) => b.score - a.score || a.productId.localeCompare(b.productId));
     after = this.diversity.diversify(after, input.placement, limit);
+    if ((ruleResult.pins ?? []).length > 0) {
+      after = applyPinPositions(after, ruleResult.pins, ruleResult.candidates, limit);
+    }
 
     // R5 guardrail preflight (§24): what this rule would DO, said before save.
     const beforeIds = before.map((c) => c.productId);

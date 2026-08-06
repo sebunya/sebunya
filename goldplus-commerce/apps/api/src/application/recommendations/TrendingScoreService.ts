@@ -74,6 +74,7 @@ export class TrendingScoreService {
       case "PRODUCT_PURCHASED":
         return 10;
       case "PRODUCT_ADDED_TO_CART":
+      case "RECOMMENDATION_ADD_TO_CART":
         return 5;
       case "RECOMMENDATION_CLICKED":
         return 2;

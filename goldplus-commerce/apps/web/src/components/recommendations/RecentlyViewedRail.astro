@@ -182,22 +182,34 @@ try {
       })
       .join("");
 
-    // R7: this rail injects its cards AFTER the shared IntersectionObserver in
-    // RecommendationRail took its static snapshot, so its impressions never
-    // fired. It reports its own — one per rendered card, deduped by the
-    // engine's idempotent event contract.
+    // R7/R9: this rail injects its cards AFTER the shared observer in
+    // RecommendationRail took its static snapshot, so it observes its own —
+    // with the SAME 0.30 visibility contract as every other rail, because an
+    // impression fired on DOM injection is not comparable to one fired on
+    // actual sight, and cross-placement CTRs must compare like with like.
     import("../../lib/recommendations").then(({ trackRecommendationImpression }) => {
+      const seen = new WeakSet<Element>();
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting || seen.has(entry.target)) continue;
+            seen.add(entry.target);
+            const productId = entry.target.getAttribute("data-product-id");
+            if (!productId) continue;
+            trackRecommendationImpression({
+              placement: "recently_viewed",
+              productId,
+              attributionId: entry.target.getAttribute("data-attribution-id") || undefined,
+              railRenderId: entry.target.getAttribute("data-rail-render-id") || undefined,
+              reasonCode: entry.target.getAttribute("data-reason-code") || undefined,
+              source: "recommendation_rail",
+            });
+          }
+        },
+        { threshold: 0.3 },
+      );
       for (const el of Array.from(list.querySelectorAll("[data-recommendation-click]"))) {
-        const productId = el.getAttribute("data-product-id");
-        if (!productId) continue;
-        trackRecommendationImpression({
-          placement: "recently_viewed",
-          productId,
-          attributionId: el.getAttribute("data-attribution-id") || undefined,
-          railRenderId: el.getAttribute("data-rail-render-id") || undefined,
-          reasonCode: el.getAttribute("data-reason-code") || undefined,
-          source: "recommendation_rail",
-        });
+        observer.observe(el);
       }
     }).catch(() => undefined);
   });

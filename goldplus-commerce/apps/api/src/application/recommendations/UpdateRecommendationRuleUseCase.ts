@@ -58,6 +58,18 @@ export class UpdateRecommendationRuleUseCase {
       };
     }
 
+    // R9 hostile-review fix (proven bypass): the two-person gate keys on TYPE,
+    // so editing a live BOOST into a SUPPRESS was one-admin suppression with a
+    // routine UPDATED audit entry. A type change into SUPPRESS is only legal
+    // on a DRAFT — where activation still needs the second admin.
+    if (updates.type === "SUPPRESS" && existing.type !== "SUPPRESS" && existing.status !== "DRAFT") {
+      return {
+        ok: false,
+        code: "VALIDATION_FAILED",
+        errors: ["A live rule cannot be edited into a suppression. Change the type on a draft, then have a different admin activate it."],
+      };
+    }
+
     const errors = this.validator.validate(merged);
     if (errors.length > 0) {
       return { ok: false, code: "VALIDATION_FAILED", errors };

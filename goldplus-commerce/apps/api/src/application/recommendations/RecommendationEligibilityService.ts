@@ -46,10 +46,11 @@ export class RecommendationEligibilityService {
           return false;
         }
         if (!options.categoryId && !options.categorySlug) {
-          // If a category rail is requested but no category is specified, that's invalid context
-          // but if it happens, we shouldn't leak everything. For safety, return true or false?
-          // The prompt says: "products with missing category data do not bypass category_popular filter when a category is requested."
-          // If options.categoryId or Slug are not provided to the rail, it shouldn't show.
+          // R9: this block was an empty if holding an unanswered question,
+          // which in practice meant "pass everything". Decided: a category
+          // rail asked without a category has no answerable question — it
+          // serves nothing rather than leaking the whole catalogue.
+          return false;
         }
       }
 

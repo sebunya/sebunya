@@ -17,11 +17,40 @@ import crypto from "node:crypto";
  *   reported, never silently overwritten (§5A.4).
  */
 
-/** Opaque token contract: 20–128 chars of base64url. Anything else is rejected before the DB. */
-const TOKEN_SHAPE = /^[A-Za-z0-9_-]{20,128}$/;
+/**
+ * Signed token contract (R9 hostile-review fix M2): `random(22) + hmac(22)`,
+ * both base64url, signed with CART_CREDENTIAL_SECRET (JWT_SECRET fallback —
+ * the same pair the web tier signs with). The R2 shape check alone let ANY
+ * random string mint a server-side profile, which made profiles, events,
+ * experiment exposures and the R8 readiness evidence writable from the public
+ * internet. Now only tokens we minted resolve; everything else is rejected
+ * before the database. No secret configured = no profiles (fail closed).
+ */
+const RANDOM_LENGTH = 22;
+const SIGNATURE_LENGTH = 22;
+const TOKEN_SHAPE = /^[A-Za-z0-9_-]{44}$/;
+
+function signingSecret(): string | null {
+  return process.env.CART_CREDENTIAL_SECRET || process.env.JWT_SECRET || null;
+}
 
 export function hashVisitToken(rawToken: string): string | null {
   if (!TOKEN_SHAPE.test(rawToken)) return null;
+  const secret = signingSecret();
+  if (!secret) return null;
+  const random = rawToken.slice(0, RANDOM_LENGTH);
+  const provided = rawToken.slice(RANDOM_LENGTH);
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(random)
+    .digest("base64url")
+    .slice(0, SIGNATURE_LENGTH);
+  if (
+    provided.length !== expected.length ||
+    !crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected))
+  ) {
+    return null;
+  }
   return crypto.createHash("sha256").update(rawToken).digest("hex");
 }
 

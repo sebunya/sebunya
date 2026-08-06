@@ -13,23 +13,31 @@ export class TrackRecommendationEventUseCase {
   ): Promise<{ success: true; skipped?: boolean }> {
     const valid = validateTrackRecommendationEventInput(input, { hasServerIdentity: Boolean(origin.profileId) });
 
-    // Skip logic for duplicate events
-    if (valid.eventType === "PRODUCT_VIEWED" && valid.productId) {
+    // Fast-path dedupe. R9 (M4, proven): the pre-check runs ONLY when it can
+    // be scoped to an identity — an identity-free query would silently drop
+    // THIS visitor's event because a DIFFERENT visitor viewed the product
+    // (one impression per product per placement, site-wide). The database
+    // dedupe_key (which includes the identity) remains the guarantee.
+    const hasIdentity = Boolean(valid.anonymousId || valid.customerId || origin.profileId);
+
+    if (hasIdentity && valid.eventType === "PRODUCT_VIEWED" && valid.productId) {
       const exists = await this.events.existsRecentSimilarEvent({
         eventType: "PRODUCT_VIEWED",
         anonymousId: valid.anonymousId,
         customerId: valid.customerId,
+        profileId: valid.anonymousId || valid.customerId ? undefined : origin.profileId,
         productId: valid.productId,
         withinMinutes: 30,
       });
       if (exists) return { success: true, skipped: true };
     }
 
-    if ((valid.eventType === "RECOMMENDATION_VIEWED" || valid.eventType === "RECOMMENDATION_IMPRESSION") && valid.recommendationProductId) {
+    if (hasIdentity && (valid.eventType === "RECOMMENDATION_VIEWED" || valid.eventType === "RECOMMENDATION_IMPRESSION") && valid.recommendationProductId) {
       const exists = await this.events.existsRecentSimilarEvent({
         eventType: valid.eventType,
         anonymousId: valid.anonymousId,
         customerId: valid.customerId,
+        profileId: valid.anonymousId || valid.customerId ? undefined : origin.profileId,
         recommendationProductId: valid.recommendationProductId,
         placement: valid.placement,
         withinMinutes: 10,

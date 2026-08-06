@@ -102,6 +102,9 @@ export interface IRecommendationAnalyticsRepository {
     orphanClicks: number;
     attributedAtcWithoutExposure: number;
     profileStamped: number;
+    totalClicks: number;
+    clientContractV2: number;
+    clientProfileStamped: number;
   }>;
 
   /** Raw counts for §19 depth metrics over a window; percentages are computed (and gated) in the service. */

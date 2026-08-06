@@ -42,11 +42,14 @@ describe("the rails trust the engine's ladder (AC33/AC36)", () => {
     expect(read(RAILS[4])).toContain("limit: 4");
   });
 
-  it("popularity copy is claimed only on real serving evidence", () => {
+  it("popularity copy is claimed only from CLAIM-grade evidence (R9)", () => {
     const popular = read(RAILS[3]);
     expect(popular).toContain('"Popular right now"');
-    expect(popular).toContain("evidenceBased");
-    expect(popular).toContain("RECENT_PAID_ORDER_VELOCITY");
+    // The title keys on the POPULAR_NOW reason — which the engine emits only
+    // past its evidence thresholds — not on mere source membership, which a
+    // single sold unit could satisfy.
+    expect(popular).toContain('includes("POPULAR_NOW")');
+    expect(popular).not.toContain('"SEARCH_QUERY_AFFINITY"');
   });
 
   it("complete_setup renders nothing rather than pretending unrelated products complete a setup", () => {

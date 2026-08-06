@@ -44,8 +44,20 @@ export function computeSrm(
   let chiSquare = 0;
   for (const v of variants) {
     const expected = (total * v.weightBp) / 10_000;
-    if (expected <= 0) continue;
     const observed = byVariant[v.key] ?? 0;
+    if (expected <= 0) {
+      // Assignments landing in a zero-weight variant are an outright anomaly,
+      // not a term to skip.
+      if (observed > 0) {
+        return {
+          total,
+          chiSquare: null,
+          srmSuspected: true,
+          note: `${observed} assignment(s) landed in zero-weight variant "${v.key}" — the split is broken outright.`,
+        };
+      }
+      continue;
+    }
     chiSquare += ((observed - expected) ** 2) / expected;
   }
   const critical = CHI2_CRITICAL[Math.max(1, variants.length - 1)] ?? 13.277;
@@ -89,16 +101,28 @@ export class RecommendationModelReadinessUseCase {
     const bestsellers = await this.products.findBestsellerProductIds({ limit: 1000 });
     const paidUnits = bestsellers.reduce((sum, b) => sum + b.unitsSold, 0);
 
-    const orphanRate = lineage.total > 0 ? lineage.orphanClicks / lineage.total : 0;
-    const profileRate = lineage.contractV2 > 0 ? lineage.profileStamped / lineage.contractV2 : 0;
+    // R9 hostile-review fixes: the orphan gate divides by CLICKS (dividing by
+    // ALL events made it a gate that could not fail — 100% broken attribution
+    // still passed), and it cannot be "met" before there are enough clicks to
+    // judge. The stamp rate is scoped to CLIENT producers: api-engine rows are
+    // auto-stamped and token-less rows never can be, so the mixed denominator
+    // measured the traffic mix, not capture quality.
+    const MIN_CLICKS_FOR_ORPHAN_GATE = 100;
+    const orphanRate = lineage.totalClicks > 0 ? lineage.orphanClicks / lineage.totalClicks : 0;
+    const profileRate = lineage.clientContractV2 > 0 ? lineage.clientProfileStamped / lineage.clientContractV2 : 0;
 
     const gates: ReadinessGate[] = [
       { gate: "contract_v2_events_90d", required: 10_000, actual: lineage.contractV2, met: lineage.contractV2 >= 10_000 },
       { gate: "paid_units_all_time", required: 500, actual: paidUnits, met: paidUnits >= 500 },
       { gate: "eligible_products", required: 50, actual: catalogue.length, met: catalogue.length >= 50 },
       { gate: "serving_responses_30d", required: 1_000, actual: serving.totalResponses, met: serving.totalResponses >= 1_000 },
-      { gate: "orphan_click_rate_below_1pct", required: 1, actual: Math.round(orphanRate * 10_000) / 100, met: orphanRate < 0.01 },
-      { gate: "profile_stamp_rate_60pct", required: 60, actual: Math.round(profileRate * 100), met: profileRate >= 0.6 },
+      {
+        gate: "orphan_share_of_clicks_below_1pct",
+        required: 1,
+        actual: Math.round(orphanRate * 10_000) / 100,
+        met: lineage.totalClicks >= MIN_CLICKS_FOR_ORPHAN_GATE && orphanRate < 0.01,
+      },
+      { gate: "client_profile_stamp_rate_60pct", required: 60, actual: Math.round(profileRate * 100), met: profileRate >= 0.6 },
     ];
 
     const blockedBy = gates.filter((g) => !g.met).map((g) => g.gate);

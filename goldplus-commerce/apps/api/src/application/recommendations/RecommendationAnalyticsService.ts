@@ -198,7 +198,6 @@ export class RecommendationAnalyticsService {
 
   async getDepthMetrics(windowDays = 30) {
     const raw = await this.repo.depthMetricsRaw(windowDays);
-    const coverage = safeShare(raw.distinctRecommendedProducts, raw.activeProducts >= 1 ? Math.max(raw.activeProducts, DEPTH_MIN_SAMPLE * 0 + raw.activeProducts) : 0);
     const unknownPlacement = safeShare(raw.nullPlacementEvents + raw.invalidPlacementEvents, raw.totalEvents);
     const top5Events = raw.topProducts.reduce((sum, t) => sum + t.events, 0);
     const concentration = safeShare(top5Events, raw.totalEvents);

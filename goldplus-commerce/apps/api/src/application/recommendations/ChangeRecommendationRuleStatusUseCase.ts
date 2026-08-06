@@ -14,9 +14,9 @@ export class ChangeRecommendationRuleStatusUseCase {
     private readonly auditRepo: IRecommendationRuleAuditRepository,
   ) {}
 
-  async execute(input: ChangeRecommendationRuleStatusInput): Promise<{ ok: boolean; message?: string; rule?: RecommendationRule }> {
+  async execute(input: ChangeRecommendationRuleStatusInput): Promise<{ ok: boolean; code?: "NOT_FOUND" | "ILLEGAL_TRANSITION" | "SECOND_ADMIN_REQUIRED"; message?: string; rule?: RecommendationRule }> {
     const existing = await this.ruleRepo.findById(input.id);
-    if (!existing) return { ok: false, message: "Rule not found." };
+    if (!existing) return { ok: false, code: "NOT_FOUND", message: "Rule not found." };
 
     if (existing.status === input.status) {
        return { ok: true, rule: existing }; // No-op
@@ -33,7 +33,7 @@ export class ChangeRecommendationRuleStatusUseCase {
       ARCHIVED: [],
     };
     if (!LEGAL[existing.status]?.includes(input.status)) {
-      return { ok: false, message: `A ${existing.status} rule cannot become ${input.status}.` };
+      return { ok: false, code: "ILLEGAL_TRANSITION", message: `A ${existing.status} rule cannot become ${input.status}.` };
     }
 
     // Two-person integrity for suppression (mirrors SOD-1): removing products
@@ -48,6 +48,7 @@ export class ChangeRecommendationRuleStatusUseCase {
     ) {
       return {
         ok: false,
+        code: "SECOND_ADMIN_REQUIRED",
         message: "A suppression rule must be activated by a different admin than its author (two-person integrity).",
       };
     }

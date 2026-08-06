@@ -31,6 +31,7 @@ export class RecommendationRuleApplicationService {
           appliedRuleIds: [],
           suppressedProductIds: [],
           pinnedProductIds: [],
+          pins: [],
           warnings: [c],
         };
       }
@@ -65,6 +66,10 @@ export class RecommendationRuleApplicationService {
     const appliedRuleIds: string[] = [];
     const suppressedProductIds: string[] = [];
     const pinnedProductIds: string[] = [];
+    // R9 (proven no-op fix): pins are returned as explicit positions because
+    // the engine sorts by score AFTER rules — an array splice here cannot
+    // survive that. Callers re-apply pins as the LAST ordering step.
+    const pins: Array<{ productId: string; position: number }> = [];
 
     // Work on a copy of candidates to avoid mutating caller's array
     let candidates = [...input.candidates];
@@ -100,6 +105,7 @@ export class RecommendationRuleApplicationService {
         candidate.appliedRuleIds = [...(candidate.appliedRuleIds ?? []), rule.id];
         
         pinnedProductIds.push(candidate.productId);
+        pins.push({ productId: candidate.productId, position: pos });
         appliedRuleIds.push(rule.id);
       }
     }
@@ -116,7 +122,9 @@ export class RecommendationRuleApplicationService {
           // Apply boost only if candidate is still eligible (checked later)
           cand.score += boostScore;
           
-          cand.ruleId = rule.id;
+          // A boost never overwrites an earlier (pin) attribution — the full
+          // set lives in appliedRuleIds.
+          cand.ruleId = cand.ruleId ?? rule.id;
           cand.appliedRuleIds = [...(cand.appliedRuleIds ?? []), rule.id];
           
           // Ensure reason code present – add MERCHANDISING_BOOST if not already there
@@ -139,9 +147,11 @@ export class RecommendationRuleApplicationService {
       requireImage: true,
     });
 
-    // 7️⃣ Ensure every candidate has at least one reason code (fallback if empty)
+    // 7️⃣ R9 fix: MERCHANDISING_BOOST is only ever stamped on candidates a
+    // rule ACTUALLY touched — fabricating it for reason-less organic items
+    // made organic results look merchandised in rule-performance analytics.
     for (const cand of candidates) {
-      if (!cand.reasonCodes || cand.reasonCodes.length === 0) {
+      if ((!cand.reasonCodes || cand.reasonCodes.length === 0) && (cand.appliedRuleIds?.length ?? 0) > 0) {
         cand.reasonCodes = ["MERCHANDISING_BOOST"];
       }
     }
@@ -151,7 +161,49 @@ export class RecommendationRuleApplicationService {
       appliedRuleIds,
       suppressedProductIds,
       pinnedProductIds,
+      pins,
       warnings: conflictWarnings,
     };
   }
+}
+
+/**
+ * The ONE final-ordering step, shared by the live engine and the operator
+ * preview so what the preview shows IS what production serves (R9, proven
+ * divergence fix). Items are assumed score-sorted; pins are then applied as
+ * positions, in priority order, clamped to the list. A pinned item that an
+ * earlier stage (diversity truncation) dropped is re-inserted — pins won the
+ * rule stage, so only ineligibility may remove them — and when that overflows
+ * the limit, the last NON-pinned item yields.
+ */
+export function applyPinPositions<T extends { productId: string }>(
+  items: T[],
+  pins: Array<{ productId: string; position: number }>,
+  allCandidates: T[],
+  limit?: number,
+): T[] {
+  let result = [...items];
+  for (const pin of pins) {
+    let idx = result.findIndex((c) => c.productId === pin.productId);
+    let item: T | undefined;
+    if (idx !== -1) {
+      [item] = result.splice(idx, 1);
+    } else {
+      item = allCandidates.find((c) => c.productId === pin.productId);
+    }
+    if (!item) continue;
+    result.splice(Math.min(Math.max(0, pin.position - 1), result.length), 0, item);
+  }
+  if (limit !== undefined && result.length > limit) {
+    const pinnedIds = new Set(pins.map((p) => p.productId));
+    while (result.length > limit) {
+      const cutIdx = [...result].reverse().findIndex((c) => !pinnedIds.has(c.productId));
+      if (cutIdx === -1) {
+        result = result.slice(0, limit);
+        break;
+      }
+      result.splice(result.length - 1 - cutIdx, 1);
+    }
+  }
+  return result;
 }

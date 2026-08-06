@@ -61,8 +61,13 @@ if (!isApiLive) {
     href: "/",
     cta: "Open the storefront",
   };
-} else if (serving && serving.placements.some((p) => p.empty > 0)) {
-  const worst = [...serving.placements].sort((a, b) => b.empty - a.empty)[0];
+} else if (serving && serving.placements.some((p) => p.empty > 0 && p.placement !== "complete_setup")) {
+  // complete_setup is EXPECTED to be empty for anchors with no verified
+  // compatibility — its honest emptiness must not permanently occupy the
+  // next-action slot.
+  const worst = [...serving.placements]
+    .filter((p) => p.placement !== "complete_setup")
+    .sort((a, b) => b.empty - a.empty)[0];
   nextAction = {
     text: `"${placements.find((x) => x.id === worst.placement)?.name ?? worst.placement}" returned empty ${worst.empty} time(s) this week. Preview it to see the typed reason.`,
     href: "/admin/recommendations/preview",

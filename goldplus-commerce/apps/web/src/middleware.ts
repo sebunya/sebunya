@@ -1,4 +1,5 @@
 import { defineMiddleware } from "astro:middleware";
+import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 
 /**
  * The opaque visit locator (R2, 2026-08-06).
@@ -15,36 +16,38 @@ import { defineMiddleware } from "astro:middleware";
  */
 
 export const VISIT_COOKIE_NAME = "gp_visit";
-const VISIT_COOKIE_MAX_AGE_SECONDS = 180 * 24 * 60 * 60;
-const TOKEN_SHAPE = /^[A-Za-z0-9_-]{20,128}$/;
+export const VISIT_COOKIE_MAX_AGE_SECONDS = 180 * 24 * 60 * 60;
 
-function mintVisitToken(): string {
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+export function visitCookieOptions() {
+  return {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: import.meta.env.PROD,
+    maxAge: VISIT_COOKIE_MAX_AGE_SECONDS,
+  } as const;
 }
 
 export const onRequest = defineMiddleware((context, next) => {
   // Asset and API-relay requests keep whatever cookie state they arrived
   // with; only document requests mint. (The relay still READS the cookie.)
+  // The extension check is anchored to the LAST path segment so a product
+  // slug containing a dot still counts as a document.
   const path = context.url.pathname;
-  const isDocument = !path.startsWith("/api/") && !path.startsWith("/_astro/") && !path.includes(".");
+  const isDocument =
+    !path.startsWith("/api/") && !path.startsWith("/_astro/") && !/\.[A-Za-z0-9]{2,8}$/.test(path);
 
   const existing = context.cookies.get(VISIT_COOKIE_NAME)?.value;
-  if (existing && TOKEN_SHAPE.test(existing)) {
+  if (isSignedVisitToken(existing)) {
+    // Only tokens WE signed resolve to continuity — a fabricated or
+    // stale-secret cookie is replaced, never trusted (R9 M2).
     context.locals.gpVisit = existing;
   } else if (isDocument) {
-    const token = mintVisitToken();
-    context.cookies.set(VISIT_COOKIE_NAME, token, {
-      path: "/",
-      httpOnly: true,
-      sameSite: "lax",
-      secure: import.meta.env.PROD,
-      maxAge: VISIT_COOKIE_MAX_AGE_SECONDS,
-    });
-    context.locals.gpVisit = token;
+    const token = mintSignedVisitToken();
+    if (token) {
+      context.cookies.set(VISIT_COOKIE_NAME, token, visitCookieOptions());
+      context.locals.gpVisit = token;
+    }
   }
 
   return next();

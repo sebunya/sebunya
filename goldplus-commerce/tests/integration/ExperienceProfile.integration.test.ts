@@ -23,6 +23,19 @@ suite("experience profiles on real PostgreSQL", () => {
 
   const mintToken = () => crypto.randomBytes(24).toString("base64url");
   const hashOf = (raw: string) => crypto.createHash("sha256").update(raw).digest("hex");
+  const createdUserIds: string[] = [];
+
+  // 0100 gained a real FK on customer_id (R9): a customer must exist to be
+  // linked, so the fixture is a real (suite-owned) users row.
+  const mintCustomer = async () => {
+    const id = crypto.randomUUID();
+    await pg`
+      insert into users (id, email, password_hash)
+      values (${id}::uuid, ${`r2-${crypto.randomBytes(8).toString("hex")}@fixture.test`}, 'not-a-real-hash')
+    `;
+    createdUserIds.push(id);
+    return id;
+  };
 
   beforeAll(async () => {
     ({ client: pg } = await import("../../apps/api/src/infrastructure/db/client"));
@@ -39,6 +52,9 @@ suite("experience profiles on real PostgreSQL", () => {
     for (const hash of createdHashes) {
       await pg`delete from identity_links where profile_id in (select id from experience_profiles where token_hash = ${hash})`;
       await pg`delete from experience_profiles where token_hash = ${hash}`;
+    }
+    if (createdUserIds.length > 0) {
+      await pg`delete from users where id in ${pg(createdUserIds.map((id) => id))}`;
     }
   });
 
@@ -59,8 +75,8 @@ suite("experience profiles on real PostgreSQL", () => {
 
   it("linkCustomer claims once, no-ops on repeat, and PRESERVES a different customer's claim", async () => {
     const raw = track(mintToken());
-    const customerA = crypto.randomUUID();
-    const customerB = crypto.randomUUID();
+    const customerA = await mintCustomer();
+    const customerB = await mintCustomer();
 
     expect(await repo.linkCustomer(hashOf(raw), customerA)).toBe("linked");
     expect(await repo.linkCustomer(hashOf(raw), customerA)).toBe("already_linked");
@@ -82,8 +98,8 @@ suite("experience profiles on real PostgreSQL", () => {
 
   it("two racing logins on one fresh profile produce exactly one owner", async () => {
     const raw = track(mintToken());
-    const customerA = crypto.randomUUID();
-    const customerB = crypto.randomUUID();
+    const customerA = await mintCustomer();
+    const customerB = await mintCustomer();
 
     const [ra, rb] = await Promise.all([
       repo.linkCustomer(hashOf(raw), customerA),

@@ -88,6 +88,8 @@ routes.post("/rules", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]), 
     if (result.code === "CONFLICT_DETECTED") {
       return c.json({ success: false, error: { code: "RECOMMENDATION_RULE_CONFLICT", message: result.message, details: result.details } }, 409);
     }
+    // R9: a refusal code this route does not know is a refusal, never a 201.
+    return c.json({ success: false, error: { code: "RECOMMENDATION_RULE_REFUSED", message: "The rule was refused." } }, 422);
   }
 
   return c.json({ success: true, data: (result as any).rule }, 201);
@@ -128,6 +130,7 @@ routes.put("/rules/:id", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]
     if (result.code === "NOT_FOUND") return c.json({ success: false, error: { code: "RECOMMENDATION_RULE_NOT_FOUND", message: result.message } }, 404);
     if (result.code === "VALIDATION_FAILED") return c.json({ success: false, error: { code: "RECOMMENDATION_RULE_VALIDATION_FAILED", message: "Validation failed.", details: result.errors } }, 400);
     if (result.code === "CONFLICT_DETECTED") return c.json({ success: false, error: { code: "RECOMMENDATION_RULE_CONFLICT", message: result.message, details: result.details } }, 409);
+    return c.json({ success: false, error: { code: "RECOMMENDATION_RULE_REFUSED", message: "The edit was refused." } }, 422);
   }
 
   return c.json({ success: true, data: (result as any).rule });
@@ -144,7 +147,15 @@ routes.post("/rules/:id/status", requirePermissions([PERMISSIONS.RECOMMENDATIONS
   
   const result = await uc.execute({ id, status: body.status as RecommendationRuleStatus, performedBy: c.get("user").id });
   if (!result.ok) {
-    return c.json({ success: false, error: { code: "RECOMMENDATION_RULE_NOT_FOUND", message: result.message } }, 404);
+    // R9: every refusal used to wear 404 — including the two-person gate and
+    // the transition matrix. The code now tells the truth.
+    if (result.code === "NOT_FOUND") {
+      return c.json({ success: false, error: { code: "RECOMMENDATION_RULE_NOT_FOUND", message: result.message } }, 404);
+    }
+    if (result.code === "SECOND_ADMIN_REQUIRED") {
+      return c.json({ success: false, error: { code: "SECOND_ADMIN_REQUIRED", message: result.message } }, 403);
+    }
+    return c.json({ success: false, error: { code: "ILLEGAL_STATUS_TRANSITION", message: result.message } }, 409);
   }
 
   return c.json({ success: true, data: result.rule });
@@ -212,13 +223,14 @@ routes.post("/preview", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), 
     registry.recommendationDiversity 
   );
 
+  const parsedLimit = Number(body.limit);
   const result = await uc.execute({
     placement: body.placement,
     productId: body.productId,
     categoryId: body.categoryId,
     categorySlug: body.categorySlug,
-    cartProductIds: body.cartProductIds,
-    limit: body.limit,
+    cartProductIds: Array.isArray(body.cartProductIds) ? body.cartProductIds.slice(0, 50) : undefined,
+    limit: Number.isInteger(parsedLimit) ? Math.min(24, Math.max(1, parsedLimit)) : undefined,
     draftRule: body.draftRule,
     draftOnly: body.draftOnly,
   });

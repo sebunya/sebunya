@@ -27,23 +27,25 @@ routes.post('/events', async (c) => {
     if (rawVisit) {
       try {
         const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit);
-        if (profile) {
-          origin = { producer: 'web-relay', profileId: profile.id };
-          const anonymousId = typeof (body as { anonymousId?: unknown }).anonymousId === 'string'
-            ? (body as { anonymousId: string }).anonymousId
-            : null;
-          if (anonymousId) {
-            registry.experienceProfileRepo
-              .observeAnonymousId(profile.id, anonymousId)
-              .catch((e) => console.error('IDENTITY_STITCH_FAILED', e instanceof Error ? e.message : String(e)));
-          }
-        }
+        if (profile) origin = { producer: 'web-relay', profileId: profile.id };
       } catch {
         // Profile resolution is continuity, not correctness — the event still lands.
       }
     }
 
     await registry.trackRecommendationEventUseCase.execute(body, origin);
+
+    // R9 (M3): the identity stitch runs only AFTER the event validated and
+    // landed — a rejected request must never write into the identity graph —
+    // and the anonymous id is shape-checked before it touches identity_links.
+    if (origin.profileId) {
+      const anonymousId = (body as { anonymousId?: unknown }).anonymousId;
+      if (typeof anonymousId === 'string' && /^anon_[a-zA-Z0-9_-]{12,150}$/.test(anonymousId)) {
+        registry.experienceProfileRepo
+          .observeAnonymousId(origin.profileId, anonymousId)
+          .catch((e) => console.error('IDENTITY_STITCH_FAILED', e instanceof Error ? e.message : String(e)));
+      }
+    }
 
     const res: ApiResponse<{ success: true }> = {
       success: true,
@@ -84,6 +86,27 @@ routes.get('/', async (c) => {
       return c.json(res, 400);
     }
 
+    // R9: id parameters are UUID-validated here so garbage answers 400
+    // instead of surfacing as a Postgres cast failure dressed as a 500.
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    for (const [name, value] of [["productId", q.productId], ["categoryId", q.categoryId]] as const) {
+      if (value && !UUID.test(value)) {
+        const res: ApiResponse<never> = {
+          success: false,
+          error: { code: 'INVALID_RECOMMENDATION_CONTEXT', message: `${name} must be a UUID.` },
+        };
+        return c.json(res, 400);
+      }
+    }
+    const rawCartIds = q.cartProductIds ? q.cartProductIds.split(',').filter(Boolean) : undefined;
+    if (rawCartIds?.some((id) => !UUID.test(id))) {
+      const res: ApiResponse<never> = {
+        success: false,
+        error: { code: 'INVALID_RECOMMENDATION_CONTEXT', message: 'cartProductIds must be UUIDs.' },
+      };
+      return c.json(res, 400);
+    }
+
     // R1: bounded inputs. `limit` used to accept NaN and any magnitude
     // (feeding limit*10 over-fetch multipliers); cartProductIds was unbounded.
     const parsedLimit = q.limit ? Number(q.limit) : undefined;
@@ -98,7 +121,7 @@ routes.get('/', async (c) => {
       categoryId: q.categoryId,
       categorySlug: q.categorySlug,
       anonymousId: q.anonymousId,
-      cartProductIds: q.cartProductIds ? q.cartProductIds.split(',').filter(Boolean).slice(0, 50) : undefined,
+      cartProductIds: rawCartIds?.slice(0, 50),
       limit,
     };
 

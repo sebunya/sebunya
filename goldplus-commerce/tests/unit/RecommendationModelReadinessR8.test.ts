@@ -25,6 +25,9 @@ function readinessFixture(over: {
   responses?: number;
   orphanClicks?: number;
   profileStamped?: number;
+  totalClicks?: number;
+  clientContractV2?: number;
+  clientProfileStamped?: number;
   experiments?: Array<{
     id: string;
     key: string;
@@ -46,6 +49,9 @@ function readinessFixture(over: {
         orphanClicks: over.orphanClicks ?? 0,
         attributedAtcWithoutExposure: 0,
         profileStamped: over.profileStamped ?? 0,
+        totalClicks: over.totalClicks ?? 0,
+        clientContractV2: over.clientContractV2 ?? over.contractV2 ?? 100,
+        clientProfileStamped: over.clientProfileStamped ?? over.profileStamped ?? 0,
       };
     },
     async getServingHealth() {
@@ -90,6 +96,7 @@ describe("AC39/AC40 — the stage is explicit and evidence-gated", () => {
       products: 100,
       responses: 5_000,
       orphanClicks: 0,
+      totalClicks: 500,
       profileStamped: 19_000,
     }).execute();
     expect(result.stage).toBe("LEARNED_RANKER_SHADOW_ONLY");
