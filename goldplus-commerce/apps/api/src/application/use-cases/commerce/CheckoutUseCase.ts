@@ -136,6 +136,8 @@ export class CheckoutUseCase {
         capture: Record<string, unknown>;
       }>;
       recordQuote(orderId: string, capture: Record<string, unknown>): Promise<void>;
+      /** Called when a capture write fails, so the loss is observable. */
+      onCaptureFailed?(orderId: string, error: unknown): void;
     } | null = null
   ) {}
 
@@ -312,9 +314,13 @@ export class CheckoutUseCase {
             .catch(() => undefined);
         }
         if (deliveryCapture && this.deliveryQuoting) {
-          // Never fatal: a capture that fails must not void a real order. It is
-          // an observation the model loses, and the ops queue surfaces that.
-          await this.deliveryQuoting.recordQuote(saved.order.id, deliveryCapture).catch(() => undefined);
+          // Never fatal — a capture that fails must not void a real order — but
+          // never SILENT either. The skipped-mirror lesson: a quiet non-fatal
+          // skip is indistinguishable from never having run, and then nobody
+          // can tell a missing observation from a broken write.
+          await this.deliveryQuoting
+            .recordQuote(saved.order.id, deliveryCapture)
+            .catch((err: unknown) => this.deliveryQuoting?.onCaptureFailed?.(saved.order.id, err));
         }
         return { order: saved.order, deliveryFeeConfirmed: saved.order.deliveryFeeConfirmed, idempotentReplay: saved.duplicate };
       } catch (error) {
@@ -362,7 +368,9 @@ export class CheckoutUseCase {
     // submissions collapse to a single order.
     await this.orderRepo.save(order, clientOrderKey ? { clientOrderKey } : undefined);
     if (deliveryCapture && this.deliveryQuoting) {
-      await this.deliveryQuoting.recordQuote(order.id, deliveryCapture).catch(() => undefined);
+      await this.deliveryQuoting
+        .recordQuote(order.id, deliveryCapture)
+        .catch((err: unknown) => this.deliveryQuoting?.onCaptureFailed?.(order.id, err));
     }
     return { order, deliveryFeeConfirmed: fee.confirmed, idempotentReplay: false };
   }

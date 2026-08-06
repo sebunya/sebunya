@@ -1314,6 +1314,17 @@ export class Registry {
     recordQuote: async (orderId: string, capture: Record<string, unknown>) => {
       await this.deliveryCaptureRepo.upsert({ orderId, ...(capture as Record<string, never>) });
     },
+    /**
+     * A capture that fails is an observation the model will never get. It must
+     * not void the order — but it must not vanish either, which is the whole
+     * lesson of the skipped lifecycle mirrors.
+     */
+    onCaptureFailed: (orderId: string, error: unknown) => {
+      logger.error(
+        { orderId, err: error },
+        '[delivery] capture write FAILED for a placed order — the model loses this observation permanently',
+      );
+    },
   };
 
   public readonly loyaltyDrawRepo = new DrizzleLoyaltyDrawRepository();
