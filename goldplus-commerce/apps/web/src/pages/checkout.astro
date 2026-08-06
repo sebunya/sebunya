@@ -1,4 +1,5 @@
 ---
+import DeliveryQuote from "../components/DeliveryQuote.astro";
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Notice from '../components/Notice.astro';
 import FormField from '../components/FormField.astro';
@@ -511,6 +512,12 @@ if (defaultAddress) {
   }
 }
 
+// What the NEW quoting service needs: the saved address's area when there is
+// one, its district otherwise. Null on both means the customer has not chosen
+// a location yet, and the quote correctly stays at disclaimer stage 1.
+const initialAreaSlug: string | null = (defaultAddress as any)?.areaSlug ?? null;
+const initialDistrict: string | null = defaultAddress?.district ?? null;
+
 const formatUgx = (n: number): string =>
   new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
 ---
@@ -744,6 +751,18 @@ const formatUgx = (n: number): string =>
                     <span class="text-[11px] font-bold text-slate-400">Shown when you pick a location</span>
                   )}
                 </dd>
+              </div>
+              {/* Stage 2: the FIXED commitment, plus the cut-off countdown,
+                  free-delivery progress, pickup and the proportionality
+                  interstitial. Every sentence resolved from the registry. */}
+              <div class="pt-3">
+                <DeliveryQuote
+                  stage={2}
+                  areaSlug={initialAreaSlug}
+                  district={initialDistrict}
+                  items={cart.items.map((i: any) => ({ productId: i.productId, quantity: i.quantity }))}
+                  subtotalUgx={cart.subtotalUgx}
+                />
               </div>
               <div class="flex items-center justify-between pt-3 border-t border-slate-100">
                 <dt class="font-bold text-gray-900 text-sm" id="grand-total-label">{initialDeliveryEstimate?.kind === 'CONFIRMED' ? 'Grand total (incl. delivery)' : 'Grand total (excl. delivery)'}</dt>

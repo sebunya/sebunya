@@ -57,6 +57,7 @@ import { productFinderRoutes } from './routes/product-finder';
 import locationRoutes from './routes/locations';
 import adminLocationRoutes from './routes/admin/locations';
 import adminDeliveryRoutes from './routes/admin/delivery';
+import deliveryQuoteRoutes from './routes/delivery';
 import { maintenanceMode } from './middleware/maintenance';
 import { deploymentService } from '../../infrastructure/deployment/DeploymentService';
 import { controlledActivationDryRunRouter } from '../../presentation/routes/controlled-activation-dry-run.js';
@@ -240,6 +241,7 @@ app.route('/admin/controlled-activation/live-canaries', controlledLiveCanaryRout
 app.route('/admin/controlled-activation', controlledActivationRoutes);
 app.route('/product-finder', productFinderRoutes);
 app.route('/locations', locationRoutes);
+app.route('/delivery', deliveryQuoteRoutes);
 app.route('/admin/locations', adminLocationRoutes);
 app.route('/admin/delivery', adminDeliveryRoutes);
 app.route('/account/consent-operating', consentOperatingRoutes);
@@ -357,6 +359,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/metrics',
   '/product-finder',
   '/locations',
+  '/delivery',
   '/admin/locations',
   '/admin/delivery',
   '/products',

@@ -1,0 +1,149 @@
+---
+import { apiBase } from "../lib/api";
+
+/**
+ * The delivery quote, shown identically at the product page, the cart and
+ * checkout (PART 9 #20: same basket, same fee, everywhere).
+ *
+ * ONE endpoint answers all three, and its cache key includes the configuration
+ * version — so publishing the launch numbers invalidates every cached
+ * "fee unavailable" at once rather than leaving customers looking at a stale
+ * refusal and wondering why the numbers did not take.
+ *
+ * EVERY SENTENCE COMES FROM THE REGISTRY. Nothing in this file hardcodes
+ * customer-facing copy; the API resolves the Tier 1 strings and this renders
+ * them. A wording change reaches all three surfaces without a deploy.
+ *
+ * Server-rendered. No framework, no client fetch on first paint.
+ */
+
+interface Props {
+  /** Which surface this is, so the disclaimer stage is right. */
+  stage: 1 | 2;
+  areaSlug?: string | null;
+  district?: string | null;
+  items?: Array<{ productId: string; quantity: number }>;
+  subtotalUgx?: number | null;
+  /** Product page: a single item, before any area is known. */
+  compact?: boolean;
+}
+
+const { stage, areaSlug = null, district = null, items = [], subtotalUgx = null, compact = false } = Astro.props;
+
+let q: any = null;
+let unreachable = false;
+try {
+  const res = await fetch(`${apiBase}/delivery/quote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ areaSlug, district, items, subtotalUgx }),
+    signal: AbortSignal.timeout(6000),
+  });
+  const json = await res.json().catch(() => null);
+  if (json?.success) q = json.data;
+  else unreachable = true;
+} catch {
+  unreachable = true;
+}
+
+const ugx = (n: number | null | undefined) =>
+  n === null || n === undefined ? null : `UGX ${Math.round(n).toLocaleString("en-UG")}`;
+
+// Tone drives the visual treatment. A customer who IS served must never see the
+// styling we use for "we cannot serve you".
+const toneClass: Record<string, string> = {
+  quoted: "border-gray-200 bg-white",
+  served_differently: "border-blue-200 bg-blue-50",
+  needs_narrowing: "border-amber-200 bg-amber-50",
+  not_served: "border-gray-300 bg-gray-50",
+  confirmed_later: "border-gray-200 bg-gray-50",
+};
+---
+
+{unreachable ? (
+  <div class="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+    We will confirm the delivery fee with you before dispatch.
+  </div>
+) : q && (
+  <div class={`rounded-xl border px-4 py-3 ${toneClass[q.tone] ?? toneClass.quoted}`} data-delivery-quote data-tone={q.tone}>
+    {q.feeUgx !== null ? (
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <span class="text-sm font-black text-brand-dark">Delivery {ugx(q.feeUgx)}</span>
+        {q.parcelCount && q.parcelCount > 1 && (
+          <span class="text-[11px] font-bold text-blue-800">{q.parcelCount} parcels × {ugx(q.perParcelFeeUgx)}</span>
+        )}
+      </div>
+    ) : (
+      <p class="text-sm text-gray-700">{q.message}</p>
+    )}
+
+    {/* Two parcels is two fees. Said BEFORE they commit, never discovered after. */}
+    {q.parcelSentence && q.parcelCount > 1 && (
+      <p class="text-xs text-blue-900 mt-1">{q.parcelSentence} {q.parcelNotice}</p>
+    )}
+
+    {/* Bus: shipment and collection language, never delivery to the door. */}
+    {q.shipmentSentence && <p class="text-xs text-blue-900 mt-1">{q.shipmentSentence}</p>}
+
+    {/* Day level until an hour window is earned from a real sample. */}
+    {q.windowSentence && <p class="text-xs text-gray-600 mt-1">{q.windowSentence}</p>}
+
+    {/* AREA_TOO_COARSE: one step from a price. Prompt, never apologise. */}
+    {q.tone === "needs_narrowing" && q.narrowWithinDistrict && (
+      <p class="text-xs text-amber-900 mt-1 font-bold">
+        Choose your specific area in {q.narrowWithinDistrict} to see the exact fee.
+      </p>
+    )}
+
+    {/* The fee-to-value interstitial. Never the default, never hidden. */}
+    {q.proportionality && (
+      <div class="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2" data-proportionality>
+        <p class="text-xs font-black text-amber-900">{q.proportionality.message}</p>
+        <ul class="text-[11px] text-amber-900 mt-1 space-y-0.5">
+          <li>Shipping is {ugx(q.proportionality.feeUgx)} on a basket of {ugx(q.proportionality.subtotalUgx)}.</li>
+          <li>Add {ugx(q.proportionality.addToReachProportionateUgx)} and the delivery becomes proportionate to what you are buying.</li>
+          {q.proportionality.addToReachFreeUgx !== null && (
+            <li>Add {ugx(q.proportionality.addToReachFreeUgx)} and delivery is free.</li>
+          )}
+        </ul>
+        <label class="flex items-start gap-2 text-[11px] text-amber-900 mt-2">
+          <input type="checkbox" name="acknowledgeDeliveryCost" value="yes" class="mt-0.5 w-3.5 h-3.5" />
+          <span>I understand shipping costs more than the items, and I want to go ahead.</span>
+        </label>
+      </div>
+    )}
+
+    {q.belowMinimum && (
+      <p class="text-xs text-gray-700 mt-2">
+        {q.belowMinimum.message} The minimum for this destination is {ugx(q.belowMinimum.minimumUgx)}; you are {ugx(q.belowMinimum.shortfallUgx)} short.
+      </p>
+    )}
+
+    {/* Free-delivery progress: the EXACT remaining amount. */}
+    {q.freeDelivery && !q.freeDelivery.qualifies && (
+      <div class="mt-2">
+        <div class="h-1.5 rounded-full bg-gray-200 overflow-hidden">
+          <div class="h-full bg-brand-primary" style={`width:${q.freeDelivery.pct}%`}></div>
+        </div>
+        <p class="text-[11px] text-gray-600 mt-1">Add {ugx(q.freeDelivery.remainingUgx)} for free delivery.</p>
+      </div>
+    )}
+    {q.freeDelivery?.qualifies && <p class="text-[11px] font-bold text-green-700 mt-2">Your order qualifies for free delivery.</p>}
+
+    {/* Cut-off countdown, in East Africa Time. Absent when no cutoff is set. */}
+    {q.cutoff && <p class="text-[11px] text-gray-600 mt-2">{q.cutoff.sentence}</p>}
+
+    {/* Pickup, alongside EVERY quote whatever the outcome. */}
+    {q.pickup && <p class="text-[11px] text-gray-600 mt-2">{q.pickup}</p>}
+
+    {/* The pin request. No time claim until the split is measured. */}
+    {!compact && q.pinNudge && stage === 2 && <p class="text-[11px] text-gray-500 mt-1">{q.pinNudge}</p>}
+
+    {/* Disclaimer stage 1 before an area is known, stage 2 once it is. */}
+    {q.disclaimer && (
+      <p class="text-[11px] text-gray-500 mt-2 pt-2 border-t border-gray-200" data-disclaimer-stage={q.disclaimerStage}>
+        {q.disclaimer}
+      </p>
+    )}
+  </div>
+)}

@@ -1,4 +1,5 @@
 ---
+import DeliveryQuote from "../../components/DeliveryQuote.astro";
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProductJsonLd from '../../components/ProductJsonLd.astro';
 import Notice from '../../components/Notice.astro';
@@ -364,6 +365,17 @@ const canonical = Astro.url.toString();
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Delivery, stage 1: an estimate labelled as one, before an area
+              is known. Same endpoint and same copy as the cart and checkout. */}
+          <div class="mb-6">
+            <DeliveryQuote
+              stage={1}
+              compact={true}
+              items={[{ productId: product.id, quantity: 1 }]}
+              subtotalUgx={product.retailPriceUgx ?? 0}
+            />
           </div>
 
           <form method="POST" action="/cart" class="flex flex-col sm:flex-row gap-3 mb-8">

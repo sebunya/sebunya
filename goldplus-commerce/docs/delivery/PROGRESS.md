@@ -112,3 +112,25 @@ paths, so it is first-class rather than a log line.
 
 First-observation alert fires once ever, backed by a milestone row so "once"
 survives restarts and both API replicas.
+
+## 5. Customer surfaces — done
+
+`DeliveryPresentation` decides tone and which registry key; `DeliveryQuote.astro`
+renders it. ONE endpoint (`POST /delivery/quote`) answers the product page, the
+cart and checkout, cached on a key that includes the configuration version.
+
+**No page hardcodes a customer-facing sentence.** The API resolves the Tier 1
+strings and the component renders them, so a wording edit reaches all three
+surfaces without a deploy.
+
+Tone is the control as much as the words: `CARRIER_REQUIRED` renders in the
+"served differently" style, `NO_RATE_CARD` and `PARCEL_CLASS_UNKNOWN` as our own
+gap confirmed later, `AREA_TOO_COARSE` as a prompt to narrow. Only
+`AREA_UNSERVICEABLE` and `WATER_ACCESS` use the not-served treatment.
+
+Cut-off countdown in EAT (tested across the UTC day boundary, where it breaks),
+free-delivery progress with the exact remaining amount, pickup alongside every
+outcome including refusals, pin request with no time claim, day-level promise
+until an hour window is earned, parcel count before commit, and the
+fee-to-value interstitial with an explicit acknowledgement that is never
+pre-selected.
