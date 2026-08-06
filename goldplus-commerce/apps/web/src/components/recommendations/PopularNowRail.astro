@@ -17,7 +17,7 @@ const { excludeProductIds = [], useContainerWrapper = false } = Astro.props;
 const response = await getRecommendations({
   placement: "home_trending",
   limit: 12,
-});
+}, { visitToken: Astro.locals.gpVisit });
 
 const displayItems = filterDisplayableRecommendations(response.items, {
   excludeIds: excludeProductIds,

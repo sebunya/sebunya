@@ -16,7 +16,7 @@ const response = await getRecommendations({
   placement: "cart_addon",
   cartProductIds,
   limit: 8,
-});
+}, { visitToken: Astro.locals.gpVisit });
 
 const displayItems = filterDisplayableRecommendations(response.items, {
   excludeIds: cartProductIds,

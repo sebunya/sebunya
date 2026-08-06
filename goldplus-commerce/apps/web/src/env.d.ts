@@ -18,3 +18,10 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+declare namespace App {
+  interface Locals {
+    /** The raw opaque visit token from the HttpOnly gp_visit cookie (R2). SSR-only; never serialize into HTML. */
+    gpVisit?: string;
+  }
+}

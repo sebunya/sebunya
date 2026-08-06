@@ -1,4 +1,5 @@
 import { pgTable, uuid, varchar, timestamp, boolean, primaryKey, integer, index, uniqueIndex, date } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -129,6 +130,9 @@ export const identityLinks = pgTable(
     cartId: uuid("cart_id"),
     leadId: uuid("lead_id"),
     customerId: uuid("customer_id"),
+    // 0100 (R2): the server-side experience profile this observation belongs
+    // to — the column that finally gave this table a writer.
+    profileId: uuid("profile_id"),
     emailHash: varchar("email_hash", { length: 64 }),
     phoneHash: varchar("phone_hash", { length: 64 }),
     linkType: varchar("link_type", { length: 50 }).notNull(),
@@ -146,6 +150,13 @@ export const identityLinks = pgTable(
     cartIdx: index("identity_links_cart_idx").on(table.cartId),
     leadIdx: index("identity_links_lead_idx").on(table.leadId),
     customerIdx: index("identity_links_customer_idx").on(table.customerId),
+    profileIdx: index("identity_links_profile_idx").on(table.profileId),
+    profileAnonUq: uniqueIndex("identity_links_profile_anon_uq")
+      .on(table.profileId, table.anonymousId)
+      .where(sql`${table.linkType} = 'PROFILE_OBSERVED'`),
+    profileCustomerUq: uniqueIndex("identity_links_profile_customer_uq")
+      .on(table.profileId, table.customerId)
+      .where(sql`${table.linkType} = 'CUSTOMER_LOGIN'`),
     emailHashIdx: index("identity_links_email_hash_idx").on(table.emailHash),
     phoneHashIdx: index("identity_links_phone_hash_idx").on(table.phoneHash),
   })

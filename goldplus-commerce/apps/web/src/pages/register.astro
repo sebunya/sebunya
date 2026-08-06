@@ -63,6 +63,22 @@ if (Astro.request.method === 'POST') {
           maxAge: 604800,
           secure: import.meta.env.PROD,
         });
+
+        // R2: merge this browser's anonymous experience profile into the
+        // signed-in customer — transactional and idempotent on the API side;
+        // a hiccup here must never fail the sign-in itself.
+        const visitToken = Astro.cookies.get('gp_visit')?.value;
+        if (visitToken) {
+          try {
+            await fetch(`${apiBase}/recommendations/profile/link`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${json.data.token}`, 'x-gp-visit': visitToken },
+              signal: AbortSignal.timeout(3000),
+            });
+          } catch {
+            // Continuity, not correctness.
+          }
+        }
         return Astro.redirect(returnTo, 303);
       }
 

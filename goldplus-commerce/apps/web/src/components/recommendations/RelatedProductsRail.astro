@@ -19,7 +19,7 @@ const response = await getRecommendations({
   placement: "product_related",
   productId,
   limit: 8,
-});
+}, { visitToken: Astro.locals.gpVisit });
 
 const displayItems = filterDisplayableRecommendations(response.items, {
   currentProductId: productId,

@@ -24,7 +24,7 @@ const response = await getRecommendations({
   placement: "complete_setup",
   productId,
   limit: 6,
-});
+}, { visitToken: Astro.locals.gpVisit });
 
 const displayItems = filterDisplayableRecommendations(response.items, {
   currentProductId: productId,

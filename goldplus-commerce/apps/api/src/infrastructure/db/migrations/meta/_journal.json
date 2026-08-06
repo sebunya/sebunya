@@ -701,6 +701,13 @@
       "when": 1789444800000,
       "tag": "0099_recommendation_event_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "5",
+      "when": 1789448400000,
+      "tag": "0100_experience_profiles",
+      "breakpoints": true
     }
   ]
 }

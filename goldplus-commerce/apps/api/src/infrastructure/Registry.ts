@@ -58,6 +58,7 @@ import { DrizzleRecommendationRuleRepository } from './db/repositories/DrizzleRe
 import { RecommendationRuleConflictService } from '../application/recommendations/RecommendationRuleConflictService';
 import { RecommendationRuleApplicationService } from '../application/recommendations/RecommendationRuleApplicationService';
 import { DrizzleRecommendationAnalyticsRepository } from './db/repositories/DrizzleRecommendationAnalyticsRepository';
+import { DrizzleExperienceProfileRepository } from './db/repositories/DrizzleExperienceProfileRepository';
 import { RecommendationAnalyticsService } from '../application/recommendations/RecommendationAnalyticsService';
 
 import { DrizzleProductRecommendationReader } from './db/repositories/DrizzleProductRecommendationReader';
@@ -242,6 +243,7 @@ import { EnqueueAdminOrderEmailUseCase } from '../application/use-cases/notifica
 import { ReplayAdminOrderEmailUseCase } from '../application/use-cases/notifications/ReplayAdminOrderEmailUseCase';
 import { UploadProductImagesUseCase } from '../application/use-cases/products/UploadProductImagesUseCase';
 import { TrackRecommendationEventUseCase } from '../application/recommendations/TrackRecommendationEventUseCase';
+import { ResolveExperienceProfileUseCase, LinkExperienceProfileUseCase } from '../application/use-cases/identity/ExperienceProfileUseCases';
 import { GetRecommendationsUseCase } from '../application/recommendations/GetRecommendationsUseCase';
 import { GetRecentlyViewedUseCase } from '../application/recommendations/GetRecentlyViewedUseCase';
 
@@ -604,6 +606,7 @@ export class Registry {
   public readonly recommendationRuleAuditRepo = new DrizzleRecommendationRuleAuditRepository();
   public readonly productRecommendationReader = new DrizzleProductRecommendationReader();
   public readonly recommendationAnalyticsRepo = new DrizzleRecommendationAnalyticsRepository();
+  public readonly experienceProfileRepo = new DrizzleExperienceProfileRepository();
   public readonly pesapalPaymentRepo = new DrizzlePaymentAttemptRepository();
   public readonly pesapalClient: IPesaPalClient = new PesaPalClient(env);
   public readonly systemHealthRepo = new DrizzleSystemHealthRepository();
@@ -1471,6 +1474,10 @@ export class Registry {
           logger.error({ eventType, eventId, error }, 'CHECKOUT_SIDE_EFFECT_DEAD_LETTERED'),
       },
     );
+
+  public readonly resolveExperienceProfileUseCase = new ResolveExperienceProfileUseCase(this.experienceProfileRepo);
+
+  public readonly linkExperienceProfileUseCase = new LinkExperienceProfileUseCase(this.experienceProfileRepo);
 
   public readonly trackRecommendationEventUseCase = new TrackRecommendationEventUseCase(
     this.recommendationEventRepo

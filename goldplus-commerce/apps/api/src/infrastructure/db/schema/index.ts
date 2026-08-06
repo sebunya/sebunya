@@ -1,4 +1,5 @@
 export * from './identity';
+export * from './experience';
 export * from './addresses';
 export * from './commerce';
 export * from './advertising';

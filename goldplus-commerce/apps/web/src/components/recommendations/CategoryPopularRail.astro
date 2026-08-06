@@ -18,7 +18,7 @@ const response = await getRecommendations({
   categoryId,
   categorySlug,
   limit: 12,
-});
+}, { visitToken: Astro.locals.gpVisit });
 
 let displayItems = filterDisplayableRecommendations(response.items, {
   limit: 4,

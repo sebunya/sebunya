@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Registry } from '../../../infrastructure/Registry';
+import { customerSessionMiddleware } from '../middleware/customerSession';
 import type { ApiResponse, GetRecommendationsInput } from '@goldplus/shared';
 import { isRecommendationPlacement, RecommendationEventValidationError } from '../../../application/recommendations/RecommendationValidation';
 
@@ -17,7 +18,32 @@ routes.post('/events', async (c) => {
       return c.json(res, 400);
     }
 
-    await registry.trackRecommendationEventUseCase.execute(body);
+    // R2: the same-origin relay forwards the HttpOnly visit token as a
+    // header. When present and well-formed, the event is stamped with the
+    // server-side profile and the legacy client anonymous id is stitched to
+    // it in identity_links. Profile failure never loses the event.
+    const rawVisit = c.req.header('x-gp-visit');
+    let origin: { producer: string; profileId?: string } = { producer: 'public-api' };
+    if (rawVisit) {
+      try {
+        const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit);
+        if (profile) {
+          origin = { producer: 'web-relay', profileId: profile.id };
+          const anonymousId = typeof (body as { anonymousId?: unknown }).anonymousId === 'string'
+            ? (body as { anonymousId: string }).anonymousId
+            : null;
+          if (anonymousId) {
+            registry.experienceProfileRepo
+              .observeAnonymousId(profile.id, anonymousId)
+              .catch((e) => console.error('IDENTITY_STITCH_FAILED', e instanceof Error ? e.message : String(e)));
+          }
+        }
+      } catch {
+        // Profile resolution is continuity, not correctness — the event still lands.
+      }
+    }
+
+    await registry.trackRecommendationEventUseCase.execute(body, origin);
 
     const res: ApiResponse<{ success: true }> = {
       success: true,
@@ -76,6 +102,14 @@ routes.get('/', async (c) => {
       limit,
     };
 
+    // R2: SSR forwards the visit token so the profile's continuity clock
+    // ticks on every server-rendered rail. Resolution failure never affects
+    // the response.
+    const rawVisitToken = c.req.header('x-gp-visit');
+    if (rawVisitToken) {
+      registry.resolveExperienceProfileUseCase.execute(rawVisitToken).catch(() => undefined);
+    }
+
     const data = await registry.getRecommendationsUseCase.execute(input);
 
     const res: ApiResponse<typeof data> = {
@@ -123,6 +157,40 @@ routes.get('/recently-viewed', async (c) => {
     };
     return c.json(res);
   }
+});
+
+/**
+ * Login merge (R2): after a successful sign-in the web server calls this with
+ * the customer's bearer token and the browser's HttpOnly visit token. The
+ * merge is transactional and idempotent; a profile already owned by a
+ * DIFFERENT verified customer is preserved, never overwritten — the response
+ * says which happened. Never called by browser JavaScript.
+ */
+routes.post('/profile/link', customerSessionMiddleware, async (c) => {
+  const rawToken = c.req.header('x-gp-visit');
+  if (!rawToken) {
+    const res: ApiResponse<never> = {
+      success: false,
+      error: { code: 'VISIT_TOKEN_REQUIRED', message: 'The visit token header is required.' },
+    };
+    return c.json(res, 400);
+  }
+
+  const result = await registry.linkExperienceProfileUseCase.execute({
+    rawToken,
+    customerId: c.get('userId'),
+  });
+
+  if (result.status === 'invalid_token') {
+    const res: ApiResponse<never> = {
+      success: false,
+      error: { code: 'VISIT_TOKEN_INVALID', message: 'The visit token is malformed.' },
+    };
+    return c.json(res, 400);
+  }
+
+  const res: ApiResponse<{ status: string }> = { success: true, data: { status: result.status } };
+  return c.json(res);
 });
 
 export default routes;
