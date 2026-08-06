@@ -102,15 +102,23 @@ routes.get('/', async (c) => {
       limit,
     };
 
-    // R2: SSR forwards the visit token so the profile's continuity clock
-    // ticks on every server-rendered rail. Resolution failure never affects
-    // the response.
+    // R2/R3: SSR forwards the visit token; the resolved profile feeds the
+    // repetition penalties and stamps the server-native response event.
+    // Resolution failure never affects the response.
     const rawVisitToken = c.req.header('x-gp-visit');
+    let profileId: string | undefined;
     if (rawVisitToken) {
-      registry.resolveExperienceProfileUseCase.execute(rawVisitToken).catch(() => undefined);
+      try {
+        profileId = (await registry.resolveExperienceProfileUseCase.execute(rawVisitToken))?.id;
+      } catch {
+        // Continuity, not correctness.
+      }
     }
 
-    const data = await registry.getRecommendationsUseCase.execute(input);
+    const data = await registry.getRecommendationsUseCase.execute(input, {
+      profileId,
+      emitResponseEvent: true,
+    });
 
     const res: ApiResponse<typeof data> = {
       success: true,

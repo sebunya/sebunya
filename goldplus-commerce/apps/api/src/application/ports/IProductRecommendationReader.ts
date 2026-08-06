@@ -22,19 +22,48 @@ export interface RecommendationProductRecord {
 }
 
 export interface IProductRecommendationReader {
+  /**
+   * Eligible public products, deterministically ordered. R3: eligibility is
+   * the CANONICAL commerce truth enforced in SQL — approved, active, and
+   * available-to-promise (stock_quantity − reserved_quantity > 0, the
+   * RESERVE-1 columns); ordering is stable (name, id) or newest-first,
+   * never "whatever the planner returned".
+   */
   findPublicProducts(input?: {
     categoryId?: string;
     categorySlug?: string;
     productIds?: string[];
     excludeProductIds?: string[];
     limit?: number;
+    orderBy?: "stable" | "newest";
   }): Promise<RecommendationProductRecord[]>;
 
   findProductById(productId: string): Promise<RecommendationProductRecord | null>;
 
   findProductsByIds(productIds: string[]): Promise<RecommendationProductRecord[]>;
 
-  findCachedRecommendations(placement: string, contextKey: string): Promise<any[] | null>;
+  /**
+   * Units sold per product from PAID orders only (RFM-1 discipline: unpaid
+   * orders never inflate popularity). Deterministic: units desc, product asc.
+   * Empty result = no paid evidence — the caller reports INSUFFICIENT_SAMPLE
+   * instead of fabricating a bestseller list.
+   */
+  findBestsellerProductIds(input: {
+    categoryId?: string;
+    sinceDays?: number;
+    limit: number;
+  }): Promise<Array<{ productId: string; unitsSold: number }>>;
 
-  saveCachedRecommendations(placement: string, contextKey: string, items: any[]): Promise<void>;
+  /** Curated exact-compatibility targets for an anchor product (empty today — reported, not faked). */
+  findCompatibilityTargetIds(productId: string, limit: number): Promise<string[]>;
+
+  /** Product ids this profile's customer PAID for recently — for post-purchase suppression (§5A.9). */
+  findRecentPaidProductIdsForProfile(profileId: string, sinceDays: number): Promise<string[]>;
+
+  findCachedRecommendations(
+    placement: string,
+    contextKey: string,
+  ): Promise<{ items: unknown[]; updatedAt: Date } | null>;
+
+  saveCachedRecommendations(placement: string, contextKey: string, items: unknown[]): Promise<void>;
 }

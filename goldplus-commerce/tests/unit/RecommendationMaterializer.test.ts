@@ -44,23 +44,26 @@ describe('RecommendationMaterializer Unit Tests', () => {
 describe('GetRecommendationsUseCase Cache Integration', () => {
   it('should query cache first and return cached items', async () => {
     const mockReader: any = {
-      findCachedRecommendations: vi.fn().mockResolvedValue([
-        {
-          productId: 'prod-1',
-          slug: 'super-charger',
-          name: 'Super Charger',
-          price: 15000,
-          currency: 'UGX',
-          score: 10,
-          reasonCodes: ['POPULAR']
-        }
-      ]),
+      // R3 shape: items + updatedAt, so the TTL guard can refuse stale rows.
+      findCachedRecommendations: vi.fn().mockResolvedValue({
+        items: [
+          {
+            productId: 'prod-1',
+            slug: 'super-charger',
+            name: 'Super Charger',
+            price: 15000,
+            currency: 'UGX',
+            score: 10,
+            reasonCodes: ['POPULAR']
+          }
+        ],
+        updatedAt: new Date(),
+      }),
       saveCachedRecommendations: vi.fn()
     };
 
     const mockScoring: any = {};
     const mockTrending: any = {};
-    const mockFallback: any = {};
     const mockEligibility: any = {
       filter: (items: any) => items // bypass
     };
@@ -79,7 +82,6 @@ describe('GetRecommendationsUseCase Cache Integration', () => {
       null as any,
       mockScoring,
       mockTrending,
-      mockFallback,
       mockEligibility,
       mockDedupe,
       mockDiversity,

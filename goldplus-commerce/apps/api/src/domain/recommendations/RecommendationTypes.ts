@@ -81,6 +81,10 @@ export interface RecommendationCandidate {
   // Pass 13A: Attribution support
   ruleId?: string;
   appliedRuleIds?: string[];
+  /** R3: which named source introduced this candidate to the pool. */
+  candidateSource?: import("@goldplus/shared").RecommendationCandidateSource;
+  /** R3: ladder depth of that source for the serving placement (0 = primary). */
+  fallbackLevel?: number;
 }
 
 export interface RecommendationContext {
@@ -92,3 +96,10 @@ export interface RecommendationContext {
   anonymousId?: string;
   limit: number;
 }
+
+/**
+ * The deterministic policy version (R3, 2026-08-06). Stamped on every
+ * response, response event and cache row so a ranking change is always
+ * attributable to a version, never a mystery.
+ */
+export const RECOMMENDATION_POLICY_VERSION = "det-v3" as const;

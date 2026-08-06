@@ -10,8 +10,20 @@ export interface ScoringContext {
   placement: RecommendationPlacement;
   sourceSignals?: ProductSignals;
   cartSignals?: ProductSignals[];
-  trendingScores?: Map<string, number>;
+  /** Deterministic engagement RANKS (1 = hottest), from TrendingScoreService (R3). */
+  trendingRanks?: Map<string, { rank: number }>;
+  /** Total weighted engagement in the window — below threshold, popularity contributes nothing and claims nothing. */
+  trendingSampleSize?: number;
+  /** Units-sold ranks from PAID orders, when the bestseller source has evidence. */
+  bestsellerRanks?: Map<string, { rank: number }>;
 }
+
+/**
+ * The minimum weighted engagement before "popular" means anything (R3). Below
+ * this, the trend component is OFF and POPULAR_NOW is never claimed — one
+ * visit by one person is not a trend (§5.3: never fake popularity).
+ */
+export const TRENDING_MIN_SAMPLE = 30;
 
 export class RecommendationScoringService {
   constructor(private readonly compatibility: CompatibilityRuleService) {}
@@ -30,15 +42,25 @@ export class RecommendationScoringService {
     let score = 0;
     const reasonCodes: RecommendationReasonCode[] = [];
 
-    if (candidate.signals.isFeatured) {
-      score += 50;
-      reasonCodes.push("FEATURED");
+    // R3: the FEATURED component was removed — `isFeatured` is hard-coded
+    // false at the reader (no such catalogue column), so the +50 was dead
+    // weight pretending to be a lever. It returns if the catalogue ever
+    // carries a real featured flag.
+
+    // R3: popularity is a bounded function of RANK, not of raw event volume —
+    // the old code fed a weighted SUM into `min(sum*2, 100)`, saturating after
+    // a single purchase-weight event. And it only speaks with a real sample.
+    const sufficientTrend = (context.trendingSampleSize ?? 0) >= TRENDING_MIN_SAMPLE;
+    const trend = sufficientTrend ? context.trendingRanks?.get(candidate.productId) : undefined;
+    if (trend) {
+      score += Math.max(0, 60 - (trend.rank - 1) * 10);
+      if (trend.rank <= 5) reasonCodes.push("POPULAR_NOW");
     }
 
-    if (context.trendingScores?.has(candidate.productId)) {
-      const rank = context.trendingScores.get(candidate.productId) ?? 0;
-      score += Math.min(rank * 2, 100);
-      if (rank > 5) reasonCodes.push("POPULAR_NOW");
+    const bestseller = context.bestsellerRanks?.get(candidate.productId);
+    if (bestseller) {
+      score += Math.max(0, 80 - (bestseller.rank - 1) * 15);
+      reasonCodes.push("POPULAR_NOW");
     }
 
     if (context.placement === "complete_setup" && context.sourceSignals) {

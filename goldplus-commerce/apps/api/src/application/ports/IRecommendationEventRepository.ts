@@ -28,6 +28,17 @@ export interface IRecommendationEventRepository {
     customerId?: string;
     limit: number;
   }): Promise<Array<{ productId: string; viewedAt: Date }>>;
+  /**
+   * Product ids this profile actually SAW recently (view-verified impressions
+   * and clicks) — the input to the recency penalty (§5A.9). Server-side, so a
+   * cleared cookie resets continuity, not the cap logic.
+   */
+  findRecentlyShownProductIds(input: {
+    profileId: string;
+    withinHours: number;
+    limit: number;
+  }): Promise<string[]>;
+
   getTrendingEvents(input: {
     since: Date;
     limit?: number;

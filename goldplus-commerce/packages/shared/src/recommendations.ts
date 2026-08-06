@@ -88,7 +88,58 @@ export type RecommendationReasonCode =
 export type RecommendationStrategy =
   | "rule_based_v1"
   | "business_rules_v2"
-  | "ml_ranked_v3";
+  | "ml_ranked_v3"
+  | "deterministic_v3";
+
+/**
+ * R3 (2026-08-06): every candidate names where it came from, and every source
+ * names its evidential state. "Unknown never silently becomes zero": a source
+ * that lacks evidence says INSUFFICIENT_SAMPLE instead of contributing noise.
+ */
+export type RecommendationCandidateSource =
+  | "EXACT_PRODUCT_COMPATIBILITY"
+  | "COMPLEMENTARY_HEURISTIC"
+  | "SAME_CATEGORY_ATTRIBUTE_MATCH"
+  | "RECENT_PAID_ORDER_VELOCITY"
+  | "RECENT_ENGAGEMENT_VELOCITY"
+  | "CATEGORY_BESTSELLER"
+  | "GLOBAL_BESTSELLER"
+  | "NEW_AND_ELIGIBLE"
+  | "CURATED_DEFAULT"
+  | "DETERMINISTIC_CATALOGUE_FALLBACK"
+  | "MATERIALIZED_CACHE";
+
+export type RecommendationSourceState =
+  | "SUPPORTED"
+  | "SUPPORTED_WITH_LIMITATIONS"
+  | "INSUFFICIENT_SAMPLE"
+  | "STALE"
+  | "UNSUPPORTED"
+  | "DEGRADED";
+
+/** A surface may be empty only for one of these reasons — never silently. */
+export type RecommendationEmptyReason =
+  | "NO_ELIGIBLE_PRODUCTS"
+  | "CATALOGUE_EMPTY"
+  | "ALL_SUPPRESSED"
+  | "NO_COMPATIBLE_PRODUCTS"
+  | "DEPENDENCY_UNAVAILABLE";
+
+export interface RecommendationSourceReport {
+  source: RecommendationCandidateSource;
+  state: RecommendationSourceState;
+  /** How many candidates this source contributed to the pool (pre-ranking). */
+  candidates: number;
+}
+
+export interface RecommendationResponseMeta {
+  requestId: string;
+  policyVersion: string;
+  /** 0 = primary strategy; each fallback ladder step increments. */
+  fallbackLevel: number;
+  sources: RecommendationSourceReport[];
+  emptyReason?: RecommendationEmptyReason;
+}
 
 export interface RecommendationItemDto {
   productId: string;
@@ -108,6 +159,10 @@ export interface RecommendationItemDto {
   reasonCode?: string;
   railRenderId?: string;
   impressionId?: string;
+
+  // R3 explanation fields
+  candidateSource?: RecommendationCandidateSource;
+  fallbackLevel?: number;
 }
 
 export interface RecommendationResponseDto {
@@ -115,6 +170,8 @@ export interface RecommendationResponseDto {
   items: RecommendationItemDto[];
   generatedAt: string;
   strategy: RecommendationStrategy;
+  /** R3: how this response was produced — present on every new response. */
+  meta?: RecommendationResponseMeta;
 }
 
 export interface UtmPayload {

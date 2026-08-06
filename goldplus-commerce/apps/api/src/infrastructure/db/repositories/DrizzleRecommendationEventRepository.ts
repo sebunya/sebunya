@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { RecommendationEvent } from "../../../domain/recommendations/RecommendationEvent";
 import type {
   IRecommendationEventRepository,
@@ -156,6 +156,25 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
     return deduped;
   }
 
+  async findRecentlyShownProductIds(input: {
+    profileId: string;
+    withinHours: number;
+    limit: number;
+  }): Promise<string[]> {
+    const rows = await db
+      .selectDistinct({ productId: recommendationEvents.recommendationProductId })
+      .from(recommendationEvents)
+      .where(
+        and(
+          eq(recommendationEvents.profileId, input.profileId),
+          inArray(recommendationEvents.eventType, ["RECOMMENDATION_IMPRESSION", "RECOMMENDATION_CLICKED"]),
+          gte(recommendationEvents.createdAt, sql`now() - make_interval(hours => ${input.withinHours})`),
+        ),
+      )
+      .limit(input.limit);
+    return rows.map((r) => r.productId).filter((id): id is string => typeof id === "string");
+  }
+
   async getTrendingEvents(input: {
     since: Date;
     limit?: number;
@@ -170,6 +189,9 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
       .from(recommendationEvents)
       .where(gte(recommendationEvents.createdAt, input.since))
       .groupBy(recommendationEvents.productId, recommendationEvents.eventType)
+      // R3: LIMIT without ORDER BY made trending truncation arbitrary — which
+      // (product, type) groups survived depended on the planner.
+      .orderBy(desc(sql`count(*)`), asc(recommendationEvents.productId), asc(recommendationEvents.eventType))
       .limit(input.limit ?? 500);
 
     return rows

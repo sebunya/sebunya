@@ -131,7 +131,10 @@ export class RecommendationEvent {
   }
 
   static create(props: Omit<RecommendationEventProps, "id" | "createdAt">): RecommendationEvent {
-    if (!props.anonymousId && !props.customerId && !props.profileId) {
+    // Identity is required of every CLIENT-attributed event. A server-native
+    // fact (producer 'api-engine' — e.g. RECOMMENDATION_RESPONSE for an
+    // anonymous first paint with no cookie yet) is its own provenance.
+    if (!props.anonymousId && !props.customerId && !props.profileId && props.producer !== "api-engine") {
       throw new Error("RecommendationEvent requires profileId, anonymousId or customerId.");
     }
 

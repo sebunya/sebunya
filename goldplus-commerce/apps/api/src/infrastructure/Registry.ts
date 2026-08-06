@@ -129,7 +129,6 @@ import { ProductSignalExtractor } from '../application/recommendations/ProductSi
 import { CompatibilityRuleService } from '../application/recommendations/CompatibilityRuleService';
 import { RecommendationScoringService } from '../application/recommendations/RecommendationScoringService';
 import { TrendingScoreService } from '../application/recommendations/TrendingScoreService';
-import { RecommendationFallbackService } from '../application/recommendations/RecommendationFallbackService';
 import { RecommendationEligibilityService } from '../application/recommendations/RecommendationEligibilityService';
 import { RecommendationDeduplicationService } from '../application/recommendations/RecommendationDeduplicationService';
 import { RecommendationDiversityService } from '../application/recommendations/RecommendationDiversityService';
@@ -725,7 +724,6 @@ export class Registry {
   private readonly recommendationCompatibility = new CompatibilityRuleService();
   private readonly recommendationScoring = new RecommendationScoringService(this.recommendationCompatibility);
   private readonly recommendationTrending = new TrendingScoreService(this.recommendationEventRepo);
-  private readonly recommendationFallback = new RecommendationFallbackService(this.productRecommendationReader);
   private readonly recommendationEligibility = new RecommendationEligibilityService();
   public readonly recommendationDedupe = new RecommendationDeduplicationService();
   public readonly recommendationDiversity = new RecommendationDiversityService();
@@ -1495,11 +1493,11 @@ export class Registry {
       this.recommendationSignalExtractor,
       this.recommendationScoring,
       this.recommendationTrending,
-      this.recommendationFallback,
       this.recommendationEligibility,
       this.recommendationDedupe,
       this.recommendationDiversity,
       this.recommendationRuleApplicationService,
+      this.recommendationEventRepo,
       (stage, placement, error) =>
         logger.error({ stage, placement, err: error instanceof Error ? error.message : String(error) }, 'RECOMMENDATION_ENGINE_DEGRADED'),
     );

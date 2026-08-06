@@ -1,10 +1,13 @@
-import { and, eq, inArray, notInArray, asc } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, notInArray, asc, sql } from "drizzle-orm";
 import type {
   IProductRecommendationReader,
   RecommendationProductRecord,
 } from "../../../application/ports/IProductRecommendationReader";
 import { db } from "../client";
 import { products, categories, productPrices } from "../schema/products";
+import { orders, orderItems } from "../schema/commerce";
+import { productCompatibilityMappings } from "../schema/compatibility";
+import { experienceProfiles } from "../schema/experience";
 import { productImages } from "../schema/phase11";
 import { recommendationMaterializedCache } from "../schema/recommendations";
 
@@ -46,6 +49,7 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     productIds?: string[];
     excludeProductIds?: string[];
     limit?: number;
+    orderBy?: "stable" | "newest";
   }): Promise<RecommendationProductRecord[]> {
     
     let targetCategoryId = input?.categoryId;
@@ -80,6 +84,12 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       conditions.push(notInArray(products.id, input.excludeProductIds));
     }
 
+    // R3: canonical availability in SQL — available-to-promise means what
+    // RESERVE-1 says it means: stock minus active reservations, clamped at
+    // zero. The old in-memory check inferred stock from text and defaulted to
+    // "in stock" when it knew nothing.
+    conditions.push(gt(sql`${products.stockQuantity} - ${products.reservedQuantity}`, 0));
+
     const rows = await db
       .select({
         product: products,
@@ -88,9 +98,72 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       .from(products)
       .leftJoin(categories, eq(products.categoryId, categories.id))
       .where(conditions.length ? and(...conditions) : undefined)
+      // Deterministic always: "whatever order the planner returned" was the
+      // entire ordering of the old fallback path.
+      .orderBy(
+        ...(input?.orderBy === "newest"
+          ? [desc(products.createdAt), asc(products.id)]
+          : [asc(products.name), asc(products.id)]),
+      )
       .limit(input?.limit ?? 200);
 
     return this.enrichProducts(rows);
+  }
+
+  async findBestsellerProductIds(input: {
+    categoryId?: string;
+    sinceDays?: number;
+    limit: number;
+  }): Promise<Array<{ productId: string; unitsSold: number }>> {
+    const conditions = [eq(orders.paymentStatus, "paid")];
+    if (input.sinceDays) {
+      conditions.push(gte(orders.createdAt, sql`now() - make_interval(days => ${input.sinceDays})`));
+    }
+    if (input.categoryId) {
+      conditions.push(eq(products.categoryId, input.categoryId));
+    }
+
+    const rows = await db
+      .select({
+        productId: orderItems.productId,
+        unitsSold: sql<number>`sum(${orderItems.quantity})::int`,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .innerJoin(products, eq(orderItems.productId, products.id))
+      .where(and(...conditions))
+      .groupBy(orderItems.productId)
+      .orderBy(desc(sql`sum(${orderItems.quantity})`), asc(orderItems.productId))
+      .limit(input.limit);
+
+    return rows;
+  }
+
+  async findCompatibilityTargetIds(productId: string, limit: number): Promise<string[]> {
+    const rows = await db
+      .select({ targetProductId: productCompatibilityMappings.targetProductId })
+      .from(productCompatibilityMappings)
+      .where(eq(productCompatibilityMappings.productId, productId))
+      .orderBy(asc(productCompatibilityMappings.targetProductId))
+      .limit(limit);
+    return rows.map((r) => r.targetProductId).filter((id): id is string => typeof id === "string");
+  }
+
+  async findRecentPaidProductIdsForProfile(profileId: string, sinceDays: number): Promise<string[]> {
+    const rows = await db
+      .select({ productId: orderItems.productId })
+      .from(experienceProfiles)
+      .innerJoin(orders, eq(orders.userId, experienceProfiles.customerId))
+      .innerJoin(orderItems, eq(orderItems.orderId, orders.id))
+      .where(
+        and(
+          eq(experienceProfiles.id, profileId),
+          eq(orders.paymentStatus, "paid"),
+          gte(orders.createdAt, sql`now() - make_interval(days => ${sinceDays})`),
+        ),
+      )
+      .limit(200);
+    return [...new Set(rows.map((r) => r.productId))];
   }
 
   private async enrichProducts(rows: any[]): Promise<RecommendationProductRecord[]> {
@@ -157,17 +230,24 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     };
   }
 
-  async findCachedRecommendations(placement: string, contextKey: string): Promise<any[] | null> {
+  async findCachedRecommendations(
+    placement: string,
+    contextKey: string,
+  ): Promise<{ items: unknown[]; updatedAt: Date } | null> {
     const row = await db.query.recommendationMaterializedCache.findFirst({
       where: and(
         eq(recommendationMaterializedCache.placement, placement),
         eq(recommendationMaterializedCache.contextKey, contextKey)
       )
     });
-    return row ? row.items : null;
+    if (!row) return null;
+    // The materializer historically wrapped items in a double-encoded JSON
+    // string; tolerate both shapes rather than serving nothing.
+    const items = typeof row.items === "string" ? JSON.parse(row.items) : row.items;
+    return Array.isArray(items) ? { items, updatedAt: row.updatedAt } : null;
   }
 
-  async saveCachedRecommendations(placement: string, contextKey: string, items: any[]): Promise<void> {
+  async saveCachedRecommendations(placement: string, contextKey: string, items: unknown[]): Promise<void> {
     const existing = await db.query.recommendationMaterializedCache.findFirst({
       where: and(
         eq(recommendationMaterializedCache.placement, placement),

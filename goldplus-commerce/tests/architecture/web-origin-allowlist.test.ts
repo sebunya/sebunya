@@ -23,6 +23,7 @@ const ORIGIN_READER_ALLOWLIST = new Set([
   'lib/customerAuth.ts',
   'lib/telemetry.ts',
   'pages/api/admin/measurement/[...path].ts', // server-side BFF proxy
+  'pages/api/rec/[...path].ts', // R2 same-origin recommendation-event relay (same canonical resolution)
   'env.d.ts',
 ]);
 
