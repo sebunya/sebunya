@@ -2,7 +2,7 @@
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
 import { filterDisplayableRecommendations, previewRecommendationRules, productToRecommendationItem } from "../../lib/recommendation-display";
-import { LOCAL_SEED_PRODUCTS, CATEGORY_SLUG_TO_NAME, getCleanCatalog } from "../../lib/catalog/catalog";
+import { CATEGORY_SLUG_TO_NAME, getCleanCatalog } from "../../lib/catalog/catalog";
 import { apiBase } from "../../lib/api";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
@@ -23,10 +23,6 @@ const response = await getRecommendations({
 let displayItems = filterDisplayableRecommendations(response.items, {
   limit: 4,
 });
-
-if (categorySlug === 'power') {
-  displayItems = displayItems.filter(item => LOCAL_SEED_PRODUCTS.some(p => p.id === item.productId));
-}
 
 let finalItems = displayItems;
 

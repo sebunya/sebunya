@@ -9,8 +9,15 @@ import { recommendationEvents } from "../schema/recommendations";
 import { db } from "../client";
 
 export class DrizzleRecommendationEventRepository implements IRecommendationEventRepository {
-  async save(event: RecommendationEvent): Promise<void> {
-    await db.insert(recommendationEvents).values([{
+  /**
+   * Contract v2 (R1): the insert is idempotent at the database. A row with a
+   * dedupe_key that already exists is silently absorbed by the partial UNIQUE
+   * index (`onConflictDoNothing`), so a beacon retry or replay produces one
+   * event even when two replicas race — the app-level window check in the use
+   * case is a fast-path, not the guarantee. Returns false when absorbed.
+   */
+  async save(event: RecommendationEvent): Promise<boolean> {
+    const inserted = await db.insert(recommendationEvents).values([{
       id: event.id,
       eventType: event.eventType,
       anonymousId: event.anonymousId,
@@ -66,7 +73,14 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
 
       metadata: event.metadata,
       createdAt: event.createdAt,
-    }]);
+
+      // Contract v2 (0099)
+      dedupeKey: event.dedupeKey,
+      schemaVersion: event.schemaVersion,
+      producer: event.producer,
+      profileId: event.profileId,
+    }]).onConflictDoNothing().returning({ id: recommendationEvents.id });
+    return inserted.length > 0;
   }
 
   async existsRecentSimilarEvent(query: RecentEventQuery): Promise<boolean> {

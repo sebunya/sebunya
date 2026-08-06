@@ -8,7 +8,7 @@ import type { ProductPublicDto, ApiEnvelope, ApiResponse } from '@goldplus/share
 import CompleteSetupRail from '../../components/recommendations/CompleteSetupRail.astro';
 import RelatedProductsRail from '../../components/recommendations/RelatedProductsRail.astro';
 import RecentlyViewedRail from '../../components/recommendations/RecentlyViewedRail.astro';
-import { LOCAL_SEED_PRODUCTS, normalizeProductCategory, getCleanCatalog } from '../../lib/catalog/catalog';
+import { normalizeProductCategory, getCleanCatalog } from '../../lib/catalog/catalog';
 import { getProductSubcategory } from '../../lib/product-discovery';
 import { previewRecommendationRules, productToRecommendationItem } from '../../lib/recommendation-display';
 
@@ -33,14 +33,10 @@ try {
       fetchError = json.error?.message ?? 'Unexpected API response.';
     }
   } else if (res.status === 404) {
-    // Try to find it in the local seed list
-    const found = LOCAL_SEED_PRODUCTS.find(p => p.slug === slug);
-    if (found) {
-      product = normalizeProductCategory(found);
-      isOfflineFallback = true;
-    } else {
-      return Astro.redirect('/404', 404);
-    }
+    // R1: the seed-catalogue rescue is retired. It rendered a fully
+    // fabricated PDP — invented price, working Add-to-cart — for products the
+    // database has never contained. A product the API does not know is a 404.
+    return Astro.redirect('/404', 404);
   } else {
     fetchError = `API responded with HTTP ${res.status}.`;
   }
@@ -49,13 +45,9 @@ try {
 }
 
 if (!product) {
-  // If we couldn't fetch from API, try finding in local fallback
-  const found = LOCAL_SEED_PRODUCTS.find(p => p.slug === slug);
-  if (found) {
-    product = normalizeProductCategory(found);
-    isOfflineFallback = true;
-    fetchError = null; // Clear fetchError to display the fallback product details
-  } else {
+  // R1: no seed rescue here either — an unreachable product service is a 404,
+  // never a fabricated product page.
+  {
     return Astro.redirect('/404', 404);
   }
 }
@@ -112,12 +104,12 @@ try {
       allProducts = json.data;
     }
   }
-  if (allProducts.length === 0) {
-    allProducts = LOCAL_SEED_PRODUCTS;
-  }
+  // R1: fabricated seed products no longer pad the fallback rail — an
+  // unreachable catalogue yields an empty rail, which renders its honest
+  // empty state.
   pdpFallbackProducts = selectPdpFallbackProducts(allProducts);
 } catch {
-  pdpFallbackProducts = selectPdpFallbackProducts(LOCAL_SEED_PRODUCTS);
+  pdpFallbackProducts = [];
 }
 
 const formatUgx = (amount: number): string =>

@@ -43,6 +43,12 @@ export interface RecommendationEventProps {
 
   metadata?: Record<string, unknown>;
   createdAt: Date;
+
+  // Contract v2 (R1, 2026-08-06)
+  profileId?: string;
+  dedupeKey?: string;
+  schemaVersion?: number;
+  producer?: string;
 }
 
 export class RecommendationEvent {
@@ -79,6 +85,11 @@ export class RecommendationEvent {
   readonly metadata: Record<string, unknown>;
   readonly createdAt: Date;
 
+  readonly profileId?: string;
+  readonly dedupeKey?: string;
+  readonly schemaVersion?: number;
+  readonly producer?: string;
+
   private constructor(props: RecommendationEventProps) {
     this.id = props.id;
     this.eventType = props.eventType;
@@ -112,21 +123,77 @@ export class RecommendationEvent {
 
     this.metadata = props.metadata ?? {};
     this.createdAt = props.createdAt;
+
+    this.profileId = props.profileId;
+    this.dedupeKey = props.dedupeKey;
+    this.schemaVersion = props.schemaVersion;
+    this.producer = props.producer;
   }
 
   static create(props: Omit<RecommendationEventProps, "id" | "createdAt">): RecommendationEvent {
-    if (!props.anonymousId && !props.customerId) {
-      throw new Error("RecommendationEvent requires anonymousId or customerId.");
+    if (!props.anonymousId && !props.customerId && !props.profileId) {
+      throw new Error("RecommendationEvent requires profileId, anonymousId or customerId.");
     }
 
+    const createdAt = new Date();
     return new RecommendationEvent({
       ...props,
+      schemaVersion: props.schemaVersion ?? RECOMMENDATION_EVENT_SCHEMA_VERSION,
+      dedupeKey: props.dedupeKey ?? computeRecommendationEventDedupeKey(props, createdAt),
       id: crypto.randomUUID(),
-      createdAt: new Date(),
+      createdAt,
     });
   }
 
   static rehydrate(props: RecommendationEventProps): RecommendationEvent {
     return new RecommendationEvent(props);
   }
+}
+
+/** Contract version stamped on every new event write. NULL in the database = pre-contract row. */
+export const RECOMMENDATION_EVENT_SCHEMA_VERSION = 2;
+
+/**
+ * Deterministic idempotency key (R1, 2026-08-06), enforced by the partial
+ * UNIQUE index from migration 0099. Only the event types that dedupe get a
+ * key; clicks and add-to-carts return null DELIBERATELY — they are never
+ * deduped (a customer clicking twice is two facts, pinned by the
+ * TrackRecommendationEventUseCase tests).
+ *
+ * The key buckets time (30 min for page views, 10 min for impressions), so an
+ * exact retry — a beacon resend, a double-submit, a replay — collapses to one
+ * row AT THE DATABASE, closing the SELECT-then-INSERT race the app-level
+ * window check always had. The app-level check remains as the friendly
+ * fast-path; this is the guarantee.
+ */
+export function computeRecommendationEventDedupeKey(
+  props: Pick<
+    RecommendationEventProps,
+    "eventType" | "anonymousId" | "customerId" | "profileId" | "productId" | "recommendationProductId" | "placement"
+  >,
+  at: Date,
+): string | undefined {
+  const identity = props.profileId ?? props.customerId ?? props.anonymousId;
+  if (!identity) return undefined;
+
+  // The composite is SHA-256 hashed to a fixed length: raw anonymous IDs can
+  // be up to 160 chars, which would overflow the column, and identity strings
+  // do not belong in a readable key. The short prefix keeps rows greppable.
+  const hashed = (prefix: string, parts: readonly (string | number)[]): string =>
+    `${prefix}:${crypto.createHash("sha256").update(parts.join("|")).digest("hex")}`;
+
+  if (props.eventType === "PRODUCT_VIEWED" && props.productId) {
+    const bucket = Math.floor(at.getTime() / (30 * 60_000));
+    return hashed("pv", [identity, props.productId, bucket]);
+  }
+
+  if (
+    (props.eventType === "RECOMMENDATION_VIEWED" || props.eventType === "RECOMMENDATION_IMPRESSION") &&
+    props.recommendationProductId
+  ) {
+    const bucket = Math.floor(at.getTime() / (10 * 60_000));
+    return hashed("imp", [props.eventType, identity, props.recommendationProductId, props.placement ?? "-", bucket]);
+  }
+
+  return undefined;
 }

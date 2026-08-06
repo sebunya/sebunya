@@ -4,7 +4,6 @@ import {
   getQueryIntent, 
   matchesQuery, 
   sortProducts,
-  LOCAL_SEED_PRODUCTS,
   getCleanCatalog,
 } from '../../apps/web/src/lib/catalog/catalog';
 import type { ProductPublicDto } from '@goldplus/shared';
@@ -39,10 +38,12 @@ describe('Storefront Catalog Normalization & Inference', () => {
     expect(getCleanCatalog([liveProduct]).map((product) => product.id)).toEqual(['live-product']);
   });
 
-  it('uses local seeds only when the API catalogue is unavailable or empty', () => {
-    expect(getCleanCatalog([]).map((product) => product.id)).toEqual(
-      LOCAL_SEED_PRODUCTS.map((product) => product.id),
-    );
+  it('an empty catalogue stays empty — fabricated seed products were retired in R1 (2026-08-06)', () => {
+    // LOCAL_SEED_PRODUCTS invented UUIDs, prices and "in stock" quantities at
+    // the render boundary, up to and including a live fabricated PDP with a
+    // working Add-to-cart. Truthfulness beats fullness: no products means an
+    // honest empty state, never invented stock.
+    expect(getCleanCatalog([])).toEqual([]);
   });
 
   it('should preserve Power Devices and Sound Devices categories', () => {

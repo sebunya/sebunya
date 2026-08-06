@@ -38,6 +38,13 @@ export class GetRecommendationsUseCase {
     private readonly dedupe: RecommendationDeduplicationService,
     private readonly diversity: RecommendationDiversityService,
     private readonly ruleApplication: RecommendationRuleApplicationService,
+    /**
+     * Degradation reporter (R1). The engine deliberately survives cache and
+     * rule failures — but "non-fatal" and "silent" are different decisions.
+     * Every swallowed failure is reported here so a permanently broken cache
+     * or rule engine is an alert, not an invisible behaviour change.
+     */
+    private readonly onDegraded?: (stage: 'cache_read_failed' | 'rule_application_failed', placement: string, error: unknown) => void,
   ) {}
 
   async execute(input: GetRecommendationsInput): Promise<RecommendationResponseDto> {
@@ -84,38 +91,37 @@ export class GetRecommendationsUseCase {
         }
       }
     } catch (err) {
-      // Fail-closed: fall back to live generation
+      // Survivable: fall back to live generation — but reported, never silent.
+      this.onDegraded?.('cache_read_failed', input.placement, err);
     }
 
     if (!candidates) {
       candidates = await this.generateV1ScoredCandidates(input, limit);
     }
 
-    // ---- V2 Rule Application ----
-    const v2Enabled = (() => {
-      const env = process.env.NODE_ENV ?? 'development';
-      if (['development', 'test', 'local'].includes(env)) {
-        return process.env.RECOMMENDATION_V2_RULES_ENABLED !== 'false';
-      }
-      return process.env.RECOMMENDATION_V2_RULES_ENABLED === 'true';
-    })();
-
-    if (v2Enabled) {
-      try {
-        const ruleResult = await this.ruleApplication.apply({
-          placement: input.placement,
-          context: {
-            productId: input.productId,
-            categoryId: input.categoryId,
-            categorySlug: input.categorySlug,
-            cartProductIds: input.cartProductIds,
-          },
-          candidates,
-        });
-        candidates = ruleResult.candidates;
-      } catch (e) {
-        // Fail‑closed: keep original V1 candidates
-      }
+    // ---- Rule application ----
+    // RECOMMENDATION_V2_RULES_ENABLED retired in R1 (2026-08-06). The flag
+    // defaulted OFF outside dev and was never passed to the production
+    // container, so the admin could author rules the live engine silently
+    // ignored — authored-but-unapplied, the same trap as
+    // ORDER_PAYMENT_VERIFICATION_REQUIRED. Rule application is now structural:
+    // an operator's ACTIVE rule either applies or its failure is visible.
+    // Failure isolation is unchanged — a throwing rule engine keeps the
+    // untouched V1 candidates rather than emptying the rail.
+    try {
+      const ruleResult = await this.ruleApplication.apply({
+        placement: input.placement,
+        context: {
+          productId: input.productId,
+          categoryId: input.categoryId,
+          categorySlug: input.categorySlug,
+          cartProductIds: input.cartProductIds,
+        },
+        candidates,
+      });
+      candidates = ruleResult.candidates;
+    } catch (e) {
+      this.onDegraded?.('rule_application_failed', input.placement, e);
     }
 
     // Continue with deduplication and diversity after V2 rules

@@ -6,7 +6,11 @@ import { validateTrackRecommendationEventInput } from "./RecommendationValidatio
 export class TrackRecommendationEventUseCase {
   constructor(private readonly events: IRecommendationEventRepository) {}
 
-  async execute(input: unknown): Promise<{ success: true; skipped?: boolean }> {
+  async execute(
+    input: unknown,
+    /** Who is writing: 'public-api' (legacy browser beacon), 'web-relay' (same-origin, identity server-stamped), 'api-engine' (server-native facts). */
+    origin: { producer: string; profileId?: string } = { producer: "public-api" },
+  ): Promise<{ success: true; skipped?: boolean }> {
     const valid = validateTrackRecommendationEventInput(input);
 
     // Skip logic for duplicate events
@@ -33,8 +37,16 @@ export class TrackRecommendationEventUseCase {
       if (exists) return { success: true, skipped: true };
     }
 
-    const event = RecommendationEvent.create(valid);
-    await this.events.save(event);
+    const event = RecommendationEvent.create({
+      ...valid,
+      profileId: origin.profileId,
+      producer: origin.producer,
+    });
+    // The database is the idempotency authority (0099 partial unique on
+    // dedupe_key): if two replicas race past the window check above, exactly
+    // one insert lands and the other reports skipped.
+    const written = await this.events.save(event);
+    if (!written) return { success: true, skipped: true };
 
     return { success: true };
   }

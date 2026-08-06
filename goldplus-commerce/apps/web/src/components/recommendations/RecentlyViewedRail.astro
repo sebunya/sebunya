@@ -1,6 +1,5 @@
 ---
 import { apiBase } from "../../lib/api";
-import { LOCAL_SEED_PRODUCTS } from "../../lib/catalog/catalog";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
 interface Props {
@@ -37,9 +36,8 @@ try {
   // Graceful fallback
 }
 
-if (validIds.length === 0) {
-  validIds = LOCAL_SEED_PRODUCTS.map(p => p.id);
-}
+// R1: when the catalogue cannot be fetched, the rail stays hidden rather
+// than validating against fabricated seed IDs (retired 2026-08-06).
 ---
 
 <section

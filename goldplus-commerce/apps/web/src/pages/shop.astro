@@ -3,7 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import ProductCard from '../components/ProductCard.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase, publicApiBase } from '../lib/api';
-import { LOCAL_SEED_PRODUCTS, getCleanCatalog } from '../lib/catalog/catalog';
+import { getCleanCatalog } from '../lib/catalog/catalog';
 import {
   DISCOVERY_TAXONOMY,
   categoryNameForSlug,
@@ -50,8 +50,9 @@ try {
 }
 
 if (rawProducts.length === 0) {
-  rawProducts = LOCAL_SEED_PRODUCTS;
-  catalogueNotice = 'Live catalogue updates are temporarily unavailable. Browse the currently listed products and confirm availability on the product page.';
+  // R1: the fabricated LOCAL_SEED_PRODUCTS fallback is retired — an
+  // unreachable catalogue is said plainly, never replaced with invented stock.
+  catalogueNotice = 'The live catalogue is temporarily unavailable. Please try again shortly.';
 }
 
 const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts)).filter(isApprovedDiscoveryProduct);

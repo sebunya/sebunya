@@ -20,7 +20,8 @@ export interface TrendingEventAggregate {
 }
 
 export interface IRecommendationEventRepository {
-  save(event: RecommendationEvent): Promise<void>;
+  /** Returns true when the row was written, false when the database absorbed it as a duplicate (dedupe_key conflict). */
+  save(event: RecommendationEvent): Promise<boolean>;
   existsRecentSimilarEvent(query: RecentEventQuery): Promise<boolean>;
   findRecentlyViewed(input: {
     anonymousId?: string;

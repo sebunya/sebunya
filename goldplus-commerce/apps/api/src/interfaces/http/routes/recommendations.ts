@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { Registry } from '../../../infrastructure/Registry';
 import type { ApiResponse, GetRecommendationsInput } from '@goldplus/shared';
-import { isRecommendationPlacement } from '../../../application/recommendations/RecommendationValidation';
+import { isRecommendationPlacement, RecommendationEventValidationError } from '../../../application/recommendations/RecommendationValidation';
 
 const routes = new Hono();
 const registry = Registry.getInstance();
@@ -25,14 +25,21 @@ routes.post('/events', async (c) => {
     };
     return c.json(res, 200);
   } catch (error) {
+    // Only a typed validation failure echoes its message — those strings are
+    // written for the caller. Anything else (DB down, bug) is a generic 500:
+    // infrastructure detail never leaves the process (ERRLEAK-1).
+    if (error instanceof RecommendationEventValidationError) {
+      const res: ApiResponse<never> = {
+        success: false,
+        error: { code: 'INVALID_RECOMMENDATION_EVENT', message: error.message },
+      };
+      return c.json(res, 400);
+    }
     const res: ApiResponse<never> = {
       success: false,
-      error: {
-        code: 'INVALID_RECOMMENDATION_EVENT',
-        message: error instanceof Error ? error.message : 'Invalid event input.',
-      },
+      error: { code: 'RECOMMENDATION_EVENT_WRITE_FAILED', message: 'The event could not be recorded.' },
     };
-    return c.json(res, 400);
+    return c.json(res, 500);
   }
 });
 
@@ -51,14 +58,22 @@ routes.get('/', async (c) => {
       return c.json(res, 400);
     }
 
+    // R1: bounded inputs. `limit` used to accept NaN and any magnitude
+    // (feeding limit*10 over-fetch multipliers); cartProductIds was unbounded.
+    const parsedLimit = q.limit ? Number(q.limit) : undefined;
+    const limit =
+      parsedLimit !== undefined && Number.isInteger(parsedLimit)
+        ? Math.min(24, Math.max(1, parsedLimit))
+        : undefined;
+
     const input: GetRecommendationsInput = {
       placement: q.placement,
       productId: q.productId,
       categoryId: q.categoryId,
       categorySlug: q.categorySlug,
       anonymousId: q.anonymousId,
-      cartProductIds: q.cartProductIds ? q.cartProductIds.split(',').filter(Boolean) : undefined,
-      limit: q.limit ? Number(q.limit) : undefined,
+      cartProductIds: q.cartProductIds ? q.cartProductIds.split(',').filter(Boolean).slice(0, 50) : undefined,
+      limit,
     };
 
     const data = await registry.getRecommendationsUseCase.execute(input);
@@ -73,7 +88,8 @@ routes.get('/', async (c) => {
       success: false,
       error: {
         code: 'RECOMMENDATION_GENERATION_FAILED',
-        message: error instanceof Error ? error.message : 'An unexpected server error occurred generating recommendations.',
+        // R1: internal error text is never echoed to the public (ERRLEAK-1).
+        message: 'An unexpected server error occurred generating recommendations.',
       },
     };
     return c.json(res, 500);

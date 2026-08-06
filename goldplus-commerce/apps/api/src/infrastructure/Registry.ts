@@ -1493,6 +1493,8 @@ export class Registry {
       this.recommendationDedupe,
       this.recommendationDiversity,
       this.recommendationRuleApplicationService,
+      (stage, placement, error) =>
+        logger.error({ stage, placement, err: error instanceof Error ? error.message : String(error) }, 'RECOMMENDATION_ENGINE_DEGRADED'),
     );
 
   public readonly getRecentlyViewedUseCase = new GetRecentlyViewedUseCase(

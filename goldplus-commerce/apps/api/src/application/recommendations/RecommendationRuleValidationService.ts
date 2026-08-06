@@ -4,15 +4,11 @@ import type {
   RecommendationRuleStatus,
   RecommendationRuleTargetType,
 } from "../../domain/recommendations/RecommendationRuleTypes";
-import { validateOptionalDateRange } from "@goldplus/shared";
-const VALID_PLACEMENTS = [
-  "product_related",
-  "complete_setup",
-  "cart_addon",
-  "home_trending",
-  "category_popular",
-  "recently_viewed",
-];
+import { RECOMMENDATION_PLACEMENTS, validateOptionalDateRange } from "@goldplus/shared";
+
+// The third hand-typed copy of the placement vocabulary was retired in R1
+// (2026-08-06) — rules validate against the same registry the engine serves.
+const VALID_PLACEMENTS: readonly string[] = RECOMMENDATION_PLACEMENTS;
 
 export class RecommendationRuleValidationService {
   validate(rule: Partial<RecommendationRule>): string[] {

@@ -26,13 +26,20 @@ type AdminContextVars = {
 
 const routes = new Hono<{ Variables: AdminContextVars }>();
 
-// All Admin Recommendation routes require general SETTINGS_MANAGE access (Temporary RBAC compromise)
 // audit-exempt: Pass 12C specifies using IRecommendationRuleAuditRepository dedicated domain audit stream instead of generic global audit.
 routes.use("*", authMiddleware);
-routes.use("*", requirePermissions([PERMISSIONS.SETTINGS_MANAGE]));
+
+// R1 (2026-08-06): the "Temporary RBAC compromise" (blanket SETTINGS_MANAGE) is
+// retired. Reads — rule listing, audit history, analytics, and the dry-run
+// preview, which persists nothing — require recommendations.read; every
+// mutation requires recommendations.manage. Both grants were provisioned in
+// the shared registry long ago and are held by Owner and
+// PLATFORM_ADMINISTRATOR in production (verified before the switch).
+// (Inlined per route rather than aliased so the AuthorizationCoverage scan
+// sees the guard at every handler site.)
 
 // 1. LIST RULES
-routes.get("/rules", async (c) => {
+routes.get("/rules", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
   const registry = Registry.getInstance();
   const uc = new ListRecommendationRulesUseCase(registry.recommendationRuleRepo);
 
@@ -55,7 +62,7 @@ routes.get("/rules", async (c) => {
 });
 
 // 2. CREATE RULE
-routes.post("/rules", async (c) => {
+routes.post("/rules", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: "INVALID_JSON", message: "Invalid body" } }, 400);
 
@@ -86,8 +93,8 @@ routes.post("/rules", async (c) => {
 });
 
 // 3. GET RULE BY ID
-routes.get("/rules/:id", async (c) => {
-  const id = c.req.param("id");
+routes.get("/rules/:id", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
+  const id = c.req.param("id") as string;
   const registry = Registry.getInstance();
   const uc = new GetRecommendationRuleUseCase(registry.recommendationRuleRepo);
   
@@ -100,8 +107,8 @@ routes.get("/rules/:id", async (c) => {
 });
 
 // 4. UPDATE RULE
-routes.put("/rules/:id", async (c) => {
-  const id = c.req.param("id");
+routes.put("/rules/:id", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]), async (c) => {
+  const id = c.req.param("id") as string;
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: "INVALID_JSON", message: "Invalid body" } }, 400);
 
@@ -126,8 +133,8 @@ routes.put("/rules/:id", async (c) => {
 });
 
 // 5. CHANGE STATUS
-routes.post("/rules/:id/status", async (c) => {
-  const id = c.req.param("id");
+routes.post("/rules/:id/status", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]), async (c) => {
+  const id = c.req.param("id") as string;
   const body = await c.req.json().catch(() => null);
   if (!body || !body.status) return c.json({ success: false, error: { code: "INVALID_INPUT", message: "Status required." } }, 400);
 
@@ -143,8 +150,8 @@ routes.post("/rules/:id/status", async (c) => {
 });
 
 // 6. ARCHIVE RULE
-routes.post("/rules/:id/archive", async (c) => {
-  const id = c.req.param("id");
+routes.post("/rules/:id/archive", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]), async (c) => {
+  const id = c.req.param("id") as string;
   const registry = Registry.getInstance();
   const uc = new ArchiveRecommendationRuleUseCase(registry.recommendationRuleRepo, registry.recommendationRuleAuditRepo);
 
@@ -157,8 +164,8 @@ routes.post("/rules/:id/archive", async (c) => {
 });
 
 // 7. GET AUDIT LOG
-routes.get("/rules/:id/audit-log", async (c) => {
-  const id = c.req.param("id");
+routes.get("/rules/:id/audit-log", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
+  const id = c.req.param("id") as string;
   const registry = Registry.getInstance();
   const uc = new GetRecommendationRuleAuditLogUseCase(registry.recommendationRuleAuditRepo);
   
@@ -167,7 +174,7 @@ routes.get("/rules/:id/audit-log", async (c) => {
 });
 
 // 8. PREVIEW SIMULATION
-routes.post("/preview", async (c) => {
+routes.post("/preview", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body || !body.placement) return c.json({ success: false, error: { code: "INVALID_INPUT", message: "Placement required in body for preview." } }, 400);
 
@@ -207,14 +214,14 @@ routes.post("/preview", async (c) => {
 // 9. ANALYTICS
 
 // §19 depth metrics — raw counts always; percentages only with safe denominators.
-routes.get("/analytics/depth", async (c) => {
+routes.get("/analytics/depth", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
   const windowDays = Math.min(90, Math.max(1, Number(c.req.query("windowDays")) || 30));
   const result = await Registry.getInstance().recommendationAnalyticsService.getDepthMetrics(windowDays);
   const res: ApiResponse<typeof result> = { success: true, data: result };
   return c.json(res);
 });
 
-routes.get("/analytics", async (c) => {
+routes.get("/analytics", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
   const registry = Registry.getInstance();
   const service = registry.recommendationAnalyticsService;
 

@@ -1,5 +1,4 @@
 import type { ProductAvailability, ProductPublicDto, RecommendationItemDto } from "@goldplus/shared";
-import { STALE_SLUGS } from "./catalog/catalog";
 import { getProductSubcategory } from "./product-discovery";
 
 export type RecommendationRule =
@@ -167,7 +166,7 @@ export function normalizeRecommendationCandidate(
   if (!item) ineligibleReason = "Candidate is missing.";
   else if (!providedId && !slug) ineligibleReason = "Stable product ID or slug is missing.";
   else if (!name) ineligibleReason = "Product name is missing.";
-  else if (!SAFE_SLUG.test(slug) || STALE_SLUGS.has(slug)) ineligibleReason = "Safe PDP slug is missing.";
+  else if (!SAFE_SLUG.test(slug)) ineligibleReason = "Safe PDP slug is missing.";
   else if (item.archived === true || item.hidden === true || item.isActive === false) {
     ineligibleReason = "Product is not public.";
   } else if (["archived", "hidden", "inactive", "deleted"].includes(status)) {

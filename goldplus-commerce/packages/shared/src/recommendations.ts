@@ -1,37 +1,73 @@
-export type RecommendationPlacement =
-  | "product_related"
-  | "complete_setup"
-  | "cart_addon"
-  | "home_trending"
-  | "category_popular"
-  | "recently_viewed";
+/**
+ * THE placement registry (R1, 2026-08-06). These six identifiers are the whole
+ * placement vocabulary, shared verbatim by the engine, the validators, the
+ * rules admin and every storefront rail. This array is the single runtime
+ * source — the API-side copies in RecommendationValidation and
+ * RecommendationRuleValidationService were retired in favour of importing it,
+ * because three hand-maintained copies of one vocabulary is how a placement
+ * quietly becomes "unknown".
+ */
+export const RECOMMENDATION_PLACEMENTS = [
+  "product_related",
+  "complete_setup",
+  "cart_addon",
+  "home_trending",
+  "category_popular",
+  "recently_viewed",
+] as const;
 
-export type RecommendationEventType =
-  | "PAGE_VIEW"
-  | "PRODUCT_VIEWED"
-  | "CATEGORY_VIEWED"
-  | "PRODUCT_SEARCHED"
-  | "PRODUCT_ADDED_TO_CART"
-  | "PRODUCT_REMOVED_FROM_CART"
-  | "PRODUCT_PURCHASED"
-  | "RECOMMENDATION_VIEWED"
-  | "RECOMMENDATION_IMPRESSION"
-  | "RECOMMENDATION_CLICKED"
-  | "RECOMMENDATION_ADD_TO_CART"
-  | "CART_ADD"
-  | "CART_REMOVE"
-  | "CART_QUANTITY_CHANGE"
-  | "CHECKOUT_STARTED"
-  | "QUOTE_STARTED"
-  | "QUOTE_SUBMITTED"
-  | "SUPPORT_STARTED"
-  | "SUPPORT_SUBMITTED"
-  | "DEALER_APPLICATION_STARTED"
-  | "DEALER_APPLICATION_SUBMITTED"
-  | "CUSTOMER_IDENTIFIED"
-  | "LOCATION_PERMISSION_GRANTED"
-  | "LOCATION_CAPTURED"
-  | "LOCATION_PERMISSION_DENIED";
+export type RecommendationPlacement = (typeof RECOMMENDATION_PLACEMENTS)[number];
+
+export function isRecommendationPlacement(value: unknown): value is RecommendationPlacement {
+  return typeof value === "string" && (RECOMMENDATION_PLACEMENTS as readonly string[]).includes(value);
+}
+
+/**
+ * THE event vocabulary — one list, shared by producer validation and analytics.
+ * R1 additions: RECOMMENDATION_RESPONSE (a server-native fact written by the
+ * engine itself, so serving/fill/fallback truth no longer depends on a browser
+ * beacon), RECOMMENDATION_DISMISSED (an explicit negative signal), and
+ * RECOMMENDATION_ERROR (an engine failure made observable instead of a silent
+ * catch). The phantom analytics type `RECOMMENDATION_CLICK` (singular) was
+ * never in this vocabulary and the queries that matched it were corrected —
+ * do not add it here.
+ */
+export const RECOMMENDATION_EVENT_TYPES = [
+  "PAGE_VIEW",
+  "PRODUCT_VIEWED",
+  "CATEGORY_VIEWED",
+  "PRODUCT_SEARCHED",
+  "PRODUCT_ADDED_TO_CART",
+  "PRODUCT_REMOVED_FROM_CART",
+  "PRODUCT_PURCHASED",
+  "RECOMMENDATION_VIEWED",
+  "RECOMMENDATION_IMPRESSION",
+  "RECOMMENDATION_CLICKED",
+  "RECOMMENDATION_ADD_TO_CART",
+  "RECOMMENDATION_RESPONSE",
+  "RECOMMENDATION_DISMISSED",
+  "RECOMMENDATION_ERROR",
+  "CART_ADD",
+  "CART_REMOVE",
+  "CART_QUANTITY_CHANGE",
+  "CHECKOUT_STARTED",
+  "QUOTE_STARTED",
+  "QUOTE_SUBMITTED",
+  "SUPPORT_STARTED",
+  "SUPPORT_SUBMITTED",
+  "DEALER_APPLICATION_STARTED",
+  "DEALER_APPLICATION_SUBMITTED",
+  "CUSTOMER_IDENTIFIED",
+  "LOCATION_PERMISSION_GRANTED",
+  "LOCATION_CAPTURED",
+  "LOCATION_PERMISSION_DENIED",
+] as const;
+
+export type RecommendationEventType = (typeof RECOMMENDATION_EVENT_TYPES)[number];
+
+export function isRecommendationEventType(value: unknown): value is RecommendationEventType {
+  return typeof value === "string" && (RECOMMENDATION_EVENT_TYPES as readonly string[]).includes(value);
+}
 
 export type RecommendationReasonCode =
   | "SAME_CATEGORY"

@@ -5,9 +5,11 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { products } from "./products";
 
 export const recommendationEvents = pgTable(
@@ -84,6 +86,14 @@ export const recommendationEvents = pgTable(
 
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
 
+    // Contract v2 (0099, R1 2026-08-06). All nullable: historic rows are
+    // preserved as written, never backfilled. dedupe_key carries a partial
+    // UNIQUE index — DB-enforced idempotency for the event types that dedupe.
+    dedupeKey: varchar("dedupe_key", { length: 160 }),
+    schemaVersion: integer("schema_version"),
+    producer: varchar("producer", { length: 80 }),
+    profileId: uuid("profile_id"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
@@ -117,6 +127,14 @@ export const recommendationEvents = pgTable(
     impressionIdx: index("recommendation_events_impression_idx").on(table.impressionId),
     railRenderIdx: index("recommendation_events_rail_render_idx").on(table.railRenderId),
     utmSourceIdx: index("recommendation_events_utm_source_idx").on(table.utmSource),
+    dedupeKeyUq: uniqueIndex("recommendation_events_dedupe_key_uq")
+      .on(table.dedupeKey)
+      .where(sql`${table.dedupeKey} IS NOT NULL`),
+    profileIdx: index("recommendation_events_profile_idx").on(table.profileId),
+    profileCreatedAtIdx: index("recommendation_events_profile_created_at_idx").on(
+      table.profileId,
+      table.createdAt,
+    ),
   }),
 );
 

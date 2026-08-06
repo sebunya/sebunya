@@ -9,7 +9,7 @@ import CartAwareRail from '../components/home/CartAwareRail.astro';
 import CategoryAwareRail from '../components/home/CategoryAwareRail.astro';
 import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
 import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
-import { LOCAL_SEED_PRODUCTS, getCleanCatalog } from '../lib/catalog/catalog';
+import { getCleanCatalog } from '../lib/catalog/catalog';
 
 let rawProducts: ProductPublicDto[] = [];
 let hasApiError = false;

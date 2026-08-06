@@ -68,10 +68,15 @@ describe('Slice 06-F elite recommendations intelligence', () => {
     expect(isDisplayableRecommendation({ id: 'id-only', name: 'No slug' })).toBe(false);
   });
 
-  it('rejects missing product names and unsafe or stale slugs', () => {
+  it('rejects missing product names and unsafe slugs — but NEVER a live catalogue slug', () => {
     expect(isDisplayableRecommendation({ id: '1', slug: 'missing-name' })).toBe(false);
     expect(isDisplayableRecommendation({ id: '1', slug: '../unsafe', name: 'Unsafe' })).toBe(false);
-    expect(isDisplayableRecommendation({ id: '1', slug: 'generic-fast-charger', name: 'Stale' })).toBe(false);
+    // R1 (2026-08-06): the STALE_SLUGS denylist is retired. It listed all
+    // eight live production slugs, so every rail vetoed the entire real
+    // catalogue and rendered empty since 2026-07-21. The database is the
+    // authority on which products exist; the display boundary only rejects
+    // structural problems, never specific live slugs.
+    expect(isDisplayableRecommendation({ id: '1', slug: 'generic-fast-charger', name: 'Generic Fast Charger' })).toBe(true);
   });
 
   it('rejects hidden, archived, inactive and deleted candidates', () => {
