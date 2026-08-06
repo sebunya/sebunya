@@ -15,7 +15,10 @@ const moduleCard = read('apps/web/src/components/admin/AdminModuleCard.astro');
 const emptyState = read('apps/web/src/components/admin/AdminEmptyState.astro');
 const readiness = read('apps/web/src/components/admin/AdminReadinessChecklist.astro');
 const measurement = read('apps/web/src/pages/admin/measurement-control-tower.astro');
-const recommendationPreview = read('apps/web/src/components/recommendations/RecommendationRulePreviewPanel.astro');
+// R5 (2026-08-06): RecommendationRulePreviewPanel.astro was retired — its only
+// consumer serialized the admin bearer token into HTML. The server-rendered
+// preview page carries the read-only guarantee now.
+const recommendationPreview = read('apps/web/src/pages/admin/recommendations/preview.astro');
 
 describe('Slice 07-A admin trust centre P0', () => {
   it('constrains status vocabulary to the approved eight values', () => {
@@ -188,7 +191,7 @@ describe('Slice 07-A admin trust centre P0', () => {
 
   it('preserves read-only recommendations and forbids unsafe operator actions or fake metrics', () => {
     const touched = `${dashboard}\n${moduleCard}\n${emptyState}\n${readiness}\n${measurement}\n${recommendationPreview}`;
-    expect(recommendationPreview).toContain('Read-only preview.');
+    expect(recommendationPreview).toContain('nothing saved');
     expect(touched).not.toMatch(/Mark as paid|Activate provider|Send to customer|Send WhatsApp|Customer count|Revenue today|Orders today/);
     expect(touched).not.toMatch(/api[_-]?key|client[_-]?secret|password\s*[:=]/i);
   });
