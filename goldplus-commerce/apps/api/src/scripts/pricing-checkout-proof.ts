@@ -37,6 +37,9 @@ class ControlledPesaPal implements IPesaPalClient {
     const submission = this.submissions.at(-1)!;
     return { order_tracking_id: orderTrackingId, merchant_reference: submission.id, amount: submission.amount, currency: submission.currency, status_code: 1, payment_status_description: 'COMPLETED' };
   }
+  async requestRefund(): Promise<{ status: string; message: string }> {
+    throw new Error('PESAPAL_REFUND_UNAVAILABLE: the controlled proof harness does not refund.');
+  }
 }
 
 async function main() {

@@ -1,7 +1,8 @@
-import { eq, desc } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { orders, paymentAttempts } from '../schema/commerce';
 import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../../application/ports/IPesaPalPaymentRepository';
+import { POLLABLE_ATTEMPT_STATUSES, assertAttemptTransition } from '../../../domain/payments/PaymentAttemptState';
 
 function rowToPaymentAttempt(row: typeof paymentAttempts.$inferSelect): RecordedPaymentAttempt {
   return {
@@ -67,6 +68,12 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
     ipnReceivedAt?: Date | null;
     callbackReceivedAt?: Date | null;
   }): Promise<RecordedPaymentAttempt> {
+    // THE state machine is enforced here, at the single write path, because
+    // production held five attempts trapped in `pending` from May to August.
+    // An illegal move throws — a warning on a money path is a log line nobody
+    // reads. A self-loop (re-stamping timestamps) is legal.
+    const current = await db.query.paymentAttempts.findFirst({ where: eq(paymentAttempts.id, id) });
+    if (current) assertAttemptTransition(current.status, update.status);
     const [row] = await db
       .update(paymentAttempts)
       .set({
@@ -100,6 +107,44 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
   async findAttemptsByOrderId(orderId: string): Promise<RecordedPaymentAttempt[]> {
     const rows = await db.query.paymentAttempts.findMany({
       where: eq(paymentAttempts.orderId, orderId),
+    });
+    return rows.map(rowToPaymentAttempt);
+  }
+
+  /**
+   * Attempts the reconciliation poller must ask the provider about: a live
+   * provider transaction exists (tracking id present) and our status is still
+   * non-terminal after the threshold. The provider holds truth we have not
+   * heard — a customer who paid and closed the tab looks exactly like this.
+   */
+  async listAttemptsForReconciliation(olderThan: Date, limit: number): Promise<RecordedPaymentAttempt[]> {
+    const rows = await db.query.paymentAttempts.findMany({
+      where: and(
+        inArray(paymentAttempts.status, [...POLLABLE_ATTEMPT_STATUSES]),
+        isNotNull(paymentAttempts.orderTrackingId),
+        lt(paymentAttempts.createdAt, olderThan),
+      ),
+      orderBy: [desc(paymentAttempts.createdAt)],
+      limit: Math.max(1, Math.min(limit, 200)),
+    });
+    return rows.map(rowToPaymentAttempt);
+  }
+
+  /**
+   * Attempts with NO tracking id: SubmitOrderRequest never succeeded, so no
+   * provider transaction exists, nothing can be asked, and no money is
+   * possible by construction. After the abandonment window these close as
+   * `abandoned` — a statement about OUR record, never about the provider.
+   */
+  async listStartFailuresForAbandonment(olderThan: Date, limit: number): Promise<RecordedPaymentAttempt[]> {
+    const rows = await db.query.paymentAttempts.findMany({
+      where: and(
+        eq(paymentAttempts.status, 'not_started'),
+        isNull(paymentAttempts.orderTrackingId),
+        lt(paymentAttempts.createdAt, olderThan),
+      ),
+      orderBy: [desc(paymentAttempts.createdAt)],
+      limit: Math.max(1, Math.min(limit, 200)),
     });
     return rows.map(rowToPaymentAttempt);
   }

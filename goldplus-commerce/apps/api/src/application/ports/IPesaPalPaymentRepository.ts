@@ -50,6 +50,11 @@ export interface IPesaPalPaymentRepository {
 
   findAttemptsByOrderId(orderId: string): Promise<RecordedPaymentAttempt[]>;
 
+  /** Non-terminal attempts with a provider transaction, for the poller. */
+  listAttemptsForReconciliation(olderThan: Date, limit: number): Promise<RecordedPaymentAttempt[]>;
+  /** not_started attempts with no tracking id — nothing to ask, no money possible. */
+  listStartFailuresForAbandonment(olderThan: Date, limit: number): Promise<RecordedPaymentAttempt[]>;
+
   /** Most recent attempts across all orders (Slice 3C reconciliation). */
   listRecent(limit: number): Promise<RecordedPaymentAttempt[]>;
 }

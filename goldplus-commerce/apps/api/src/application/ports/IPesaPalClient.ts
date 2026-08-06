@@ -37,4 +37,11 @@ export interface PesaPalTransactionStatusResponse {
 export interface IPesaPalClient {
   submitOrderRequest(input: PesaPalSubmitOrderInput): Promise<PesaPalSubmitOrderResponse>;
   getTransactionStatus(orderTrackingId: string): Promise<PesaPalTransactionStatusResponse>;
+  /** Async at the provider: acceptance here, REVERSED later on status reads. */
+  requestRefund(input: {
+    confirmationCode: string;
+    amount: number;
+    username: string;
+    remarks: string;
+  }): Promise<{ status: string; message: string }>;
 }

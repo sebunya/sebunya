@@ -57,6 +57,7 @@ import { productFinderRoutes } from './routes/product-finder';
 import locationRoutes from './routes/locations';
 import adminLocationRoutes from './routes/admin/locations';
 import adminDeliveryRoutes from './routes/admin/delivery';
+import adminPaymentsRoutes from './routes/admin/payments';
 import deliveryQuoteRoutes from './routes/delivery';
 import { maintenanceMode } from './middleware/maintenance';
 import { deploymentService } from '../../infrastructure/deployment/DeploymentService';
@@ -244,6 +245,7 @@ app.route('/locations', locationRoutes);
 app.route('/delivery', deliveryQuoteRoutes);
 app.route('/admin/locations', adminLocationRoutes);
 app.route('/admin/delivery', adminDeliveryRoutes);
+app.route('/admin/payments', adminPaymentsRoutes);
 app.route('/account/consent-operating', consentOperatingRoutes);
 app.route('/admin/consent-operating', adminConsentOperatingRoutes);
 app.route('/api/admin/consent/operations', adminConsentOperationsRoutes);
@@ -362,6 +364,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/delivery',
   '/admin/locations',
   '/admin/delivery',
+  '/admin/payments',
   '/products',
   '/recommendations',
   '/telemetry',

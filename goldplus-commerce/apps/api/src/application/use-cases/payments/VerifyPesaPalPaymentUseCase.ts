@@ -7,7 +7,12 @@ import { DomainError } from '../../../domain/errors/DomainError';
 export interface VerifyPesaPalPaymentInput {
   orderTrackingId: string;
   merchantReference: string;
-  source: 'callback' | 'ipn';
+  /**
+   * `poll` is the reconciliation safety net asking on a schedule;
+   * `ops_reverify` is a human asking from the payment queue. Neither stamps a
+   * callback/IPN receipt time, because neither is one.
+   */
+  source: 'callback' | 'ipn' | 'poll' | 'ops_reverify';
 }
 
 export interface VerifyPesaPalPaymentOutput {

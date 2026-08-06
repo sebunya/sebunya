@@ -106,6 +106,10 @@ export const PERMISSIONS = {
   DELIVERY_CONFIG_PROPOSE: 'delivery_config.propose',
   DELIVERY_CONFIG_PUBLISH: 'delivery_config.publish',
   DELIVERY_VARIANCE_APPLY: 'delivery_variance.apply',
+  // Payments brief 2026-08-06: giving money back is its own right, separate
+  // from reading payments and from confirming them. If money has been taken
+  // wrongly there must be a way to return it, and that way must be guarded.
+  PAYMENTS_REFUND: 'payments.refund',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

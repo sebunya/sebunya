@@ -65,6 +65,9 @@ import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
 
 import { DrizzlePaymentAttemptRepository } from './db/repositories/DrizzlePaymentAttemptRepository';
+import { SettlePaymentUseCase } from '../application/use-cases/payments/SettlePaymentUseCase';
+import { ReconcilePendingPaymentsUseCase } from '../application/use-cases/payments/ReconcilePendingPaymentsUseCase';
+import { RefundPesaPalPaymentUseCase } from '../application/use-cases/payments/RefundPesaPalPaymentUseCase';
 import { PesaPalClient } from './payments/pesapal/PesaPalClient';
 import { IPesaPalClient } from '../application/ports/IPesaPalClient';
 import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
@@ -1523,6 +1526,91 @@ export class Registry {
         logger.error({ orderId, traceId, reason }, 'PAYMENT_REVIEW_REQUIRED'),
     },
   });
+  /**
+   * ONE settlement for all four doors: callback, IPN, poller, ops re-verify.
+   *
+   * The effects each report their own failure — the skipped-mirror lesson
+   * applied to money. Non-fatal and silent are different decisions.
+   */
+  public readonly settlePaymentUseCase = new SettlePaymentUseCase(
+    this.verifyPesaPalPaymentUseCase,
+    this.reconcileOrderPaymentUseCase,
+    {
+      markFulfilmentPaid: async (orderId) => {
+        await this.markFulfilmentPaymentConfirmedUseCase.execute(orderId, 'paid');
+      },
+      settleLoyalty: async (orderId) => {
+        const result = await Registry.getInstance().consumeRedemptionUseCase.execute({ orderId });
+        if (!result.ok && result.code !== 'NOT_FOUND') {
+          throw new Error(`redemption consume failed: ${result.code}`);
+        }
+      },
+      enqueueAdminEmail: async (orderId) => {
+        const paidOrder = await this.orderRepo.findById(orderId);
+        const task = await this.getFulfilmentOverviewUseCase.byOrderId(orderId);
+        if (paidOrder) {
+          await this.enqueueAdminOrderEmailUseCase.execute({
+            order: paidOrder,
+            event: 'payment-confirmed',
+            // Payment confirmation never clears an inventory hold: stockConfirmed
+            // is derived from the fulfilment task's ON_HOLD state, not payment.
+            stockConfirmed: task ? task.status !== 'ON_HOLD' : true,
+          });
+        }
+      },
+      recordMeasurement: async ({ verification, trackingId, reference }) => {
+        const order = await this.orderRepo.findById(verification.orderId);
+        const mapped = this.pesapalMeasurementMapper.map({
+          verifiedPayment: verification,
+          trackingId,
+          reference,
+          customerEmail: order?.customerEmail,
+          customerPhone: order?.customerPhone,
+        });
+        await this.reconcilePesapalOrderMeasurementUseCase.execute(mapped).catch(async (err) => {
+          // The fallback the routes carried: an explicit FAILED reconciliation
+          // row, so a measurement gap is a queryable fact rather than a log line.
+          await this.paymentMeasurementRepo.createReconciliation({
+            orderId: verification.orderId || 'UNKNOWN',
+            paymentReference: reference,
+            pesapalTrackingId: trackingId,
+            status: 'FAILED',
+            amount: 0,
+            currency: 'UGX',
+          });
+          throw err;
+        });
+      },
+      onEffectFailed: (effect, orderId, error) =>
+        logger.error(
+          { effect, orderId, err: error },
+          'PAYMENT_SETTLEMENT_EFFECT_FAILED — the payment is confirmed; this downstream effect is owed and did not run',
+        ),
+    },
+  );
+
+  /**
+   * The safety net. Asks the provider about every attempt still non-terminal
+   * after the threshold; writes only the provider's own answer, through the
+   * same settlement as the IPN. Time never marks a payment failed.
+   */
+  public readonly reconcilePendingPaymentsUseCase = new ReconcilePendingPaymentsUseCase(
+    this.pesapalPaymentRepo,
+    this.settlePaymentUseCase,
+    {
+      pollAfterMinutes: Number(process.env.PAYMENT_RECONCILE_AFTER_MINUTES) > 0 ? Number(process.env.PAYMENT_RECONCILE_AFTER_MINUTES) : 10,
+      abandonStartFailuresAfterHours: Number(process.env.PAYMENT_ABANDON_START_FAILURES_HOURS) > 0 ? Number(process.env.PAYMENT_ABANDON_START_FAILURES_HOURS) : 24,
+      batchLimit: 100,
+    },
+  );
+
+  /** The refund path. Exists BEFORE it is needed; unexercised against real money. */
+  public readonly refundPesaPalPaymentUseCase = new RefundPesaPalPaymentUseCase(
+    this.pesapalPaymentRepo,
+    this.pesapalClient,
+    this.auditRepo,
+  );
+
   /**
    * Authorized, idempotent payment start.
    *

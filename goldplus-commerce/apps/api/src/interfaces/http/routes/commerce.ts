@@ -109,13 +109,9 @@ const registry = Registry.getInstance();
  * confirmation DOES settle is a prepaid redemption reservation: the discount
  * was honoured in the paid amount, so the points are consumed now.
  */
-async function settleLoyaltyOnPaymentConfirmed(orderId: string): Promise<void> {
-  const result = await registry.consumeRedemptionUseCase.execute({ orderId });
-  if (!result.ok && result.code !== 'NOT_FOUND') {
-    // eslint-disable-next-line no-console
-    console.error('redemption consume on payment failed', { orderId, code: result.code });
-  }
-}
+// settleLoyaltyOnPaymentConfirmed RETIRED 2026-08-06: loyalty settlement moved
+// into SettlePaymentUseCase with the rest of the confirmation effects, so the
+// callback, the IPN, the reconciliation poller and ops re-verify cannot drift.
 
 // Public delivery-fee estimate for a destination. Returns CONFIRMED only when
 // an enabled zone exists (the operator's standing promise); otherwise a
@@ -848,84 +844,17 @@ routes.get('/payments/pesapal/callback', async (c) => {
   }
 
   try {
-    const result = await registry.verifyPesaPalPaymentUseCase.execute({
+    // ONE settlement path for callback, IPN, poller and ops re-verify. The
+    // ~90-line effects block that used to live here is inside it, reported
+    // per-effect rather than swallowed.
+    const { verification: result, settlement } = await registry.settlePaymentUseCase.execute({
       orderTrackingId: trackingId,
       merchantReference: reference,
-      source: 'callback'
-    });
-
-    // Settlement is decided ONCE, by the use case, for both the browser callback and the
-    // IPN. It advances the saga stage (nothing did before, so a paid order sat at
-    // PAYMENT_STARTED forever) and records the durable downstream events. An unverified
-    // or unrecognised payment progresses nothing at all.
-    const settlement = await registry.reconcileOrderPaymentUseCase.execute({
-      verification: { ok: result.ok, orderId: result.orderId, status: result.status },
+      source: 'callback',
       traceId: c.req.header('x-request-id') ?? crypto.randomUUID(),
     });
+    void result;
 
-    if (paymentDidConfirm(settlement)) {
-      // Section 9.3: PaymentConfirmed updates the existing admin alert so the
-      // order becomes ready for preparation. Idempotent — duplicate provider
-      // callbacks never duplicate effects; a failure here never blocks the flow.
-      try {
-        await registry.markFulfilmentPaymentConfirmedUseCase.execute(result.orderId, 'paid');
-      } catch (fulfilErr: any) {
-        console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
-      }
-      try {
-        await settleLoyaltyOnPaymentConfirmed(result.orderId);
-      } catch (loyaltyErr: any) {
-        console.error('[API_ERROR] Loyalty paid-order earn failed:', loyaltyErr?.message);
-      }
-      // Transactional admin email (PaymentConfirmed). Idempotent per order.
-      // Payment confirmation never clears an inventory hold: stockConfirmed is
-      // derived from the fulfilment task's ON_HOLD state, not from payment.
-      try {
-        const paidOrder = await registry.orderRepo.findById(result.orderId);
-        const task = await registry.getFulfilmentOverviewUseCase.byOrderId(result.orderId);
-        if (paidOrder) {
-          await registry.enqueueAdminOrderEmailUseCase.execute({
-            order: paidOrder,
-            event: 'payment-confirmed',
-            stockConfirmed: task ? task.status !== 'ON_HOLD' : true,
-          });
-        }
-      } catch (emailErr: any) {
-        console.error('[API_ERROR] Admin payment-confirmed email enqueue failed:', emailErr?.message);
-      }
-      try {
-        const order = await registry.orderRepo.findById(result.orderId);
-        const mappedInput = registry.pesapalMeasurementMapper.map({
-          verifiedPayment: result,
-          trackingId,
-          reference,
-          customerEmail: order?.customerEmail,
-          customerPhone: order?.customerPhone,
-        });
-        await registry.reconcilePesapalOrderMeasurementUseCase.execute(mappedInput);
-      } catch (err: any) {
-        console.error('[API_ERROR] Measurement reconciliation failed in callback:', err.message);
-        try {
-          await registry.paymentMeasurementRepo.createReconciliation({
-            orderId: result.orderId || 'UNKNOWN',
-            paymentReference: reference,
-            pesapalTrackingId: trackingId,
-            status: 'FAILED',
-            amount: 0,
-            currency: 'UGX'
-          });
-        } catch (subErr: any) {
-          registry.measurementLogger.error({
-            error: err.message,
-            subError: subErr.message,
-            orderId: result.orderId,
-            trackingId,
-            reference
-          }, 'CRITICAL: Unable to record FAILED reconciliation in callback.');
-        }
-      }
-    }
-    
     // What the CUSTOMER is told follows the settlement, not the raw provider status.
     // Reading the status directly here could show "success" for a payment the settlement
     // parked for review — the two would disagree, and the customer would believe the more
@@ -968,83 +897,16 @@ const handleIpn = async (c: any) => {
   }
 
   try {
-    const result = await registry.verifyPesaPalPaymentUseCase.execute({
+    // Same single settlement path as the browser callback. An IPN for an
+    // unknown or unverifiable payment progresses nothing and is still
+    // acknowledged 200, so the provider stops retrying a question we have
+    // already answered.
+    await registry.settlePaymentUseCase.execute({
       orderTrackingId: trackingId,
       merchantReference: reference,
-      source: 'ipn'
-    });
-
-    // Settlement is decided ONCE, by the use case, for both the browser callback and the
-    // IPN. It advances the saga stage (nothing did before, so a paid order sat at
-    // PAYMENT_STARTED forever) and records the durable downstream events. An unverified
-    // or unrecognised payment progresses nothing at all.
-    const settlement = await registry.reconcileOrderPaymentUseCase.execute({
-      verification: { ok: result.ok, orderId: result.orderId, status: result.status },
+      source: 'ipn',
       traceId: c.req.header('x-request-id') ?? crypto.randomUUID(),
     });
-
-    if (paymentDidConfirm(settlement)) {
-      // Section 9.3: PaymentConfirmed updates the existing admin alert so the
-      // order becomes ready for preparation. Idempotent — duplicate provider
-      // callbacks never duplicate effects; a failure here never blocks the flow.
-      try {
-        await registry.markFulfilmentPaymentConfirmedUseCase.execute(result.orderId, 'paid');
-      } catch (fulfilErr: any) {
-        console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
-      }
-      try {
-        await settleLoyaltyOnPaymentConfirmed(result.orderId);
-      } catch (loyaltyErr: any) {
-        console.error('[API_ERROR] Loyalty paid-order earn failed:', loyaltyErr?.message);
-      }
-      // Transactional admin email (PaymentConfirmed). Idempotent per order.
-      // Payment confirmation never clears an inventory hold: stockConfirmed is
-      // derived from the fulfilment task's ON_HOLD state, not from payment.
-      try {
-        const paidOrder = await registry.orderRepo.findById(result.orderId);
-        const task = await registry.getFulfilmentOverviewUseCase.byOrderId(result.orderId);
-        if (paidOrder) {
-          await registry.enqueueAdminOrderEmailUseCase.execute({
-            order: paidOrder,
-            event: 'payment-confirmed',
-            stockConfirmed: task ? task.status !== 'ON_HOLD' : true,
-          });
-        }
-      } catch (emailErr: any) {
-        console.error('[API_ERROR] Admin payment-confirmed email enqueue failed:', emailErr?.message);
-      }
-      try {
-        const order = await registry.orderRepo.findById(result.orderId);
-        const mappedInput = registry.pesapalMeasurementMapper.map({
-          verifiedPayment: result,
-          trackingId,
-          reference,
-          customerEmail: order?.customerEmail,
-          customerPhone: order?.customerPhone,
-        });
-        await registry.reconcilePesapalOrderMeasurementUseCase.execute(mappedInput);
-      } catch (err: any) {
-        console.error('[API_ERROR] Measurement reconciliation failed in IPN:', err.message);
-        try {
-          await registry.paymentMeasurementRepo.createReconciliation({
-            orderId: result.orderId || 'UNKNOWN',
-            paymentReference: reference,
-            pesapalTrackingId: trackingId,
-            status: 'FAILED',
-            amount: 0,
-            currency: 'UGX'
-          });
-        } catch (subErr: any) {
-          registry.measurementLogger.error({
-            error: err.message,
-            subError: subErr.message,
-            orderId: result.orderId,
-            trackingId,
-            reference
-          }, 'CRITICAL: Unable to record FAILED reconciliation in IPN.');
-        }
-      }
-    }
 
     return c.json({
       orderNotificationType: notificationType || 'IPNCHANGE',

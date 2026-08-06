@@ -210,6 +210,46 @@ export class PesaPalClient implements IPesaPalClient {
     };
   }
 
+  /**
+   * Request a refund against a COMPLETED transaction's confirmation code.
+   *
+   * Pesapal v3: POST /api/Transactions/RefundRequest. The provider processes
+   * refunds asynchronously — a 200 here means "refund request accepted", not
+   * "money returned"; the transaction later reads REVERSED (status_code 3) on
+   * GetTransactionStatus, which is how the poller observes it landing.
+   */
+  public async requestRefund(input: {
+    confirmationCode: string;
+    amount: number;
+    username: string;
+    remarks: string;
+  }): Promise<{ status: string; message: string }> {
+    const token = await this.getToken();
+    const url = `${this.getBaseUrl()}/api/Transactions/RefundRequest`;
+    const response = await resilientFetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        confirmation_code: input.confirmationCode,
+        amount: String(input.amount),
+        username: input.username,
+        remarks: input.remarks,
+      }),
+      breakerName: 'pesapal',
+      timeoutMs: 5000,
+    });
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => 'No details');
+      throw new Error(`PESAPAL_REFUND_FAILED: Refund request failed. Status ${response.status}: ${errBody}`);
+    }
+    const data = await response.json() as { status?: string; message?: string };
+    return { status: String(data.status ?? ''), message: String(data.message ?? '') };
+  }
+
   public toJSON(): object {
     return {
       pesapalEnv: this.config.pesapalEnv,
