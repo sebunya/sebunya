@@ -220,12 +220,15 @@ describe('orders.reservation_state has exits', () => {
       join(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleInventoryRepository.ts'),
       'utf8',
     );
-    // Both mirrors are inside the ledger transaction (tx.), not a follow-up write.
-    expect((src.match(/reservationState: 'RELEASED'/g) ?? []).length).toBe(1);
-    expect((src.match(/reservationState: 'CONSUMED'/g) ?? []).length).toBe(1);
+    // Both mirrors run inside the ledger transaction via the shared helper —
+    // extracted so the canonical-transition guard's inspection window around
+    // .update(orders) contains only the two reservation fields.
     const releaseBlock = src.slice(src.indexOf('async releaseForOrder'), src.indexOf('async consumeForOrder'));
-    expect(releaseBlock).toContain("reservationState: 'RELEASED'");
-    expect(releaseBlock).toMatch(/await tx\s*\n?\s*\.update\(orders\)/);
+    expect(releaseBlock).toContain("mirrorOrderReservationState(tx, orderId, 'RELEASED')");
+    const consumeBlock = src.slice(src.indexOf('async consumeForOrder'));
+    expect(consumeBlock).toContain("mirrorOrderReservationState(tx, orderId, 'CONSUMED')");
+    expect(src).toMatch(/private async mirrorOrderReservationState\(/);
+    expect(src).toMatch(/reservationState: state, reservationUpdatedAt/);
   });
 
   it('the widened DB constraint admits exactly the domain vocabulary', async () => {

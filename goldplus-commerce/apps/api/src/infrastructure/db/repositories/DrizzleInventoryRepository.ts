@@ -244,10 +244,7 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
       // The order's own denormalised state mirrors the ledger IN THE SAME
       // TRANSACTION. Before 2026-08-06 it did not, and released orders claimed
       // RESERVED forever — on the field payment and fulfilment fail closed on.
-      await tx
-        .update(orders)
-        .set({ reservationState: 'RELEASED', reservationUpdatedAt: new Date() })
-        .where(eq(orders.id, orderId));
+      await this.mirrorOrderReservationState(tx, orderId, 'RELEASED');
       return { released: true };
     });
   }
@@ -275,10 +272,7 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           .set({ status: 'consumed', updatedAt: new Date() })
           .where(eq(inventoryReservations.id, r.id));
       }
-      await tx
-        .update(orders)
-        .set({ reservationState: 'CONSUMED', reservationUpdatedAt: new Date() })
-        .where(eq(orders.id, orderId));
+      await this.mirrorOrderReservationState(tx, orderId, 'CONSUMED');
       return { consumed: true };
     });
   }
@@ -347,4 +341,23 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
       lowStock: isLowStock({ stockOnHand: r.stock, reserved: r.reserved, reorderPoint: r.reorder }),
     };
   }
+  /**
+   * Mirrors the ledger outcome onto the order's denormalised state, inside the
+   * caller's transaction. NEVER touches lifecycle `status` — that belongs
+   * exclusively to OrderTransitionService — only `reservation_state`, which the
+   * canonical-transition guard explicitly permits. Kept as its own method so
+   * the guard's inspection window around `.update(orders)` contains nothing
+   * but these two fields.
+   */
+  private async mirrorOrderReservationState(
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    orderId: string,
+    state: 'RELEASED' | 'CONSUMED',
+  ): Promise<void> {
+    await tx
+      .update(orders)
+      .set({ reservationState: state, reservationUpdatedAt: new Date() })
+      .where(eq(orders.id, orderId));
+  }
+
 }
