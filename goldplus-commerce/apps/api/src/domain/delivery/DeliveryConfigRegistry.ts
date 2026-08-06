@@ -153,6 +153,40 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     label: 'Reject a rider cost above',
     help: 'A single delivery costing more than this is a typo, not a delivery. Raise it if a genuine long-haul run ever costs more.',
   },
+  /**
+   * The launch wizard's sanity bounds on the derived speed.
+   *
+   * These two are the ONLY numbers in this module that were chosen rather than
+   * answered by an operator or fitted from data, and they are declared here so
+   * that fact is visible rather than buried. They are the same class as
+   * `implausible_rider_cost_ugx`: a typo guard, not a pricing parameter. Two
+   * things keep them harmless — they can never alter a fee, and they only ever
+   * WARN. The operator knows their city better than the check does.
+   */
+  {
+    key: 'plausible_speed_min_kmh',
+    tier: 1,
+    type: 'number',
+    unit: 'km/h',
+    mandatory: false,
+    defaultValue: 8,
+    min: 1,
+    max: 120,
+    label: 'Warn if a derived speed is below',
+    help: 'Only a warning on the setup wizard. It never changes a fee and never blocks a publish.',
+  },
+  {
+    key: 'plausible_speed_max_kmh',
+    tier: 1,
+    type: 'number',
+    unit: 'km/h',
+    mandatory: false,
+    defaultValue: 45,
+    min: 1,
+    max: 120,
+    label: 'Warn if a derived speed is above',
+    help: 'Only a warning on the setup wizard. It never changes a fee and never blocks a publish.',
+  },
   {
     key: 'same_day_cutoff_eat',
     tier: 1,

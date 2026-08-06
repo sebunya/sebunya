@@ -43,8 +43,9 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
   it('discovers the complete current admin Astro inventory', () => {
     // 87 = 84 at slice 8-B1 + platform-modules (U-programme) + media (Wave 2B)
     // + loyalty/gamification (§32 tail). The old flat admin/legal.astro was removed
-    // when the CMS workspace superseded it.
-    expect(adminPages).toHaveLength(88);
+    // when the CMS workspace superseded it. 90 = 88 + the delivery Control Centre
+    // and its launch wizard (delivery brief v7).
+    expect(adminPages).toHaveLength(90);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/analytics/index.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -61,7 +62,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(87);
+    expect(protectedPages).toHaveLength(89);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');

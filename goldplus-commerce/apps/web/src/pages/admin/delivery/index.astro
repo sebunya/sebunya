@@ -1,0 +1,251 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+/**
+ * The delivery Control Centre (brief PART 6).
+ *
+ * One surface, not settings scattered across the back office. What lives here
+ * is the state of the module — is it quoting, on whose numbers, what is waiting
+ * on a human — and the two ops queues that each represent an observation the
+ * model will not get unless someone acts.
+ *
+ * Every field shows its tier. Tier 3 values are absent entirely, because the
+ * registry endpoint filters them out before this page ever sees them.
+ */
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/delivery", 303);
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+let notice: { kind: "success" | "error"; text: string } | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") || "");
+  try {
+    if (intent === "revert") {
+      const res = await fetch(`${apiBase}/admin/delivery/config/revert`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          toVersionId: String(form.get("toVersionId") || ""),
+          reason: String(form.get("reason") || "").trim(),
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: "Reverted. The earlier values are live again, as a new version — the history still shows what was published in between." }
+        : { kind: "error", text: json?.error?.message || "Could not revert." };
+    } else if (intent === "actual-cost") {
+      const res = await fetch(`${apiBase}/admin/delivery/orders/${encodeURIComponent(String(form.get("orderId") || ""))}/actual-cost`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          actualRiderCostUgx: Number(String(form.get("actualRiderCostUgx") || "").replace(/[,\s]/g, "")),
+          note: String(form.get("note") || "").trim() || null,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: "Rider cost recorded. That is one real observation the model now has." }
+        : { kind: "error", text: json?.error?.message || "Could not record the cost." };
+    }
+  } catch {
+    notice = { kind: "error", text: "The delivery service is unreachable right now." };
+  }
+}
+
+const get = async (path: string) => {
+  try {
+    const res = await fetch(`${apiBase}${path}`, { headers });
+    const json = await res.json().catch(() => null);
+    return json?.success ? json.data : null;
+  } catch {
+    return null;
+  }
+};
+
+const [setup, queues, versions, registry] = await Promise.all([
+  get("/admin/delivery/setup"),
+  get("/admin/delivery/awaiting-cost"),
+  get("/admin/delivery/config/versions"),
+  get("/admin/delivery/config-registry"),
+]);
+
+const ugx = (n: number | null) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG")}`);
+const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a second person" };
+---
+
+<AdminLayout title="Delivery" description="Delivery pricing, calibration and the ops queues.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl pb-16">
+    <div class="mb-8 pb-6 border-b border-gray-200 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Delivery</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+          What we charge to deliver, how long we promise, and everything the model is still waiting to learn.
+        </p>
+      </div>
+      <a href="/admin/delivery/launch" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">
+        {setup?.quotingEnabled ? "Change the prices" : "Set up delivery pricing"}
+      </a>
+    </div>
+
+    {notice && (
+      <div class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status">
+        {notice.text}
+      </div>
+    )}
+
+    {!setup ? (
+      <p class="text-sm text-gray-500 border border-dashed border-gray-300 rounded-lg px-4 py-3">
+        The delivery service is not answering. Nothing is broken for customers — orders still complete
+        and our team confirms the fee — but this page cannot show its state.
+      </p>
+    ) : (
+      <>
+        <section class={`rounded-2xl border px-5 py-4 mb-8 ${setup.quotingEnabled ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
+          <h3 class="text-sm font-black text-gray-800">
+            {setup.quotingEnabled ? "Delivery pricing is live" : "Delivery pricing is not switched on"}
+          </h3>
+          <p class="text-xs text-gray-700 mt-1">
+            {setup.quotingEnabled
+              ? `${setup.corridors.areas} areas priced automatically. ${setup.corridors.water} lake areas are pickup only and ${setup.corridors.unserviceable} are not served.`
+              : setup.blockedBy === "NO_ACTIVE_ORIGIN"
+                ? "No dispatch point is active, so nothing can be quoted from anywhere. This is an internal fault, not a data gap."
+                : "Every customer is told our team will confirm the fee before dispatch. Orders complete normally and no fee is guessed."}
+          </p>
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">The numbers that switch it on</h3>
+          <div class="space-y-2">
+            {setup.launchValues.map((v: any) => (
+              <div class="flex flex-wrap items-baseline justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2">
+                <div class="min-w-[200px]">
+                  <span class="text-sm font-bold text-gray-800">{v.label}</span>
+                  <span class="block text-[11px] text-gray-500">{v.help}</span>
+                </div>
+                <span class={`text-sm font-black ${v.set ? "text-brand-dark" : "text-amber-700"}`}>
+                  {v.set ? `${v.value}${v.unit ? ` ${v.unit}` : ""}` : "not set"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+          <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+            <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Deliveries waiting for a cost</h3>
+            <span class="text-[10px] font-bold text-gray-400">{queues?.counts?.awaitingCost ?? 0} waiting</span>
+          </div>
+          <p class="text-xs text-gray-500 mb-4">
+            Every delivered order needs what the rider was actually paid. Without it the model cannot
+            learn whether we are charging enough, and it is the only number nobody else can supply.
+          </p>
+          {(!queues || queues.awaitingCost.length === 0) ? (
+            <p class="text-sm text-gray-500 border border-dashed border-gray-300 rounded-lg px-4 py-3">
+              Nothing waiting. No order has been delivered yet, so there is no rider cost to record —
+              this queue fills the day the first delivery completes.
+            </p>
+          ) : (
+            <div class="space-y-2">
+              {queues.awaitingCost.map((r: any) => (
+                <form method="POST" class="flex flex-wrap items-end gap-2 border border-gray-100 rounded-lg px-3 py-2">
+                  <input type="hidden" name="intent" value="actual-cost" />
+                  <input type="hidden" name="orderId" value={r.orderId} />
+                  <div class="flex-1 min-w-[160px]">
+                    <span class="block text-xs font-bold text-gray-700">{r.areaSlug ?? "area unknown"}</span>
+                    <span class="block text-[10px] text-gray-400 font-mono">{r.orderId}</span>
+                  </div>
+                  <label class="block">
+                    <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Paid the rider</span>
+                    <input name="actualRiderCostUgx" inputmode="numeric" required
+                      class="mt-0.5 w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </label>
+                  <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg hover:bg-black">Record</button>
+                </form>
+              ))}
+            </div>
+          )}
+
+          {queues?.skippedMirrors?.length > 0 && (
+            <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <h4 class="text-xs font-black text-amber-900 mb-1">{queues.counts.skippedMirrors} deliveries never reached "delivered"</h4>
+              <p class="text-[11px] text-amber-900 mb-2">{queues.note}</p>
+              <ul class="text-[11px] text-amber-900 space-y-1">
+                {queues.skippedMirrors.map((m: any) => (
+                  <li class="font-mono">{m.order_number ?? m.fulfilment_task_id} — was {m.order_status_now}, {m.payment_status}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Change history</h3>
+          {!versions || versions.versions.length === 0 ? (
+            <p class="text-sm text-gray-500 border border-dashed border-gray-300 rounded-lg px-4 py-3">
+              Nothing has been published yet. The first version is created when you run the setup.
+            </p>
+          ) : (
+            <div class="space-y-2">
+              {versions.versions.map((v: any) => (
+                <div class="flex flex-wrap items-center justify-between gap-3 border border-gray-100 rounded-lg px-3 py-2">
+                  <div class="min-w-[240px]">
+                    <span class={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${v.id === versions.publishedVersionId ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                      {v.id === versions.publishedVersionId ? "Live" : v.status}
+                    </span>
+                    <span class="block text-xs text-gray-700 mt-1">{v.reason ?? "no reason recorded"}</span>
+                    <span class="block text-[10px] text-gray-400">{new Date(v.createdAt).toLocaleString("en-UG")}</span>
+                  </div>
+                  {v.id !== versions.publishedVersionId && v.status !== "draft" && (
+                    <form method="POST" class="flex items-end gap-2">
+                      <input type="hidden" name="intent" value="revert" />
+                      <input type="hidden" name="toVersionId" value={v.id} />
+                      <input name="reason" required minlength="5" placeholder="Why revert?"
+                        class="w-44 rounded-lg border border-gray-300 px-2 py-1.5 text-xs" />
+                      <button type="submit" class="border border-gray-300 text-gray-700 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg hover:bg-gray-50">Revert to this</button>
+                    </form>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {registry && (
+          <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+            <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Everything that can be changed</h3>
+            <p class="text-xs text-gray-500 mb-4">
+              Generated from the code registry, so this list cannot drift from what the module actually reads.
+              Anything not shown here is fixed in code and changing it is a ticket.
+            </p>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+                <thead class="bg-gray-50 text-[10px] uppercase font-black tracking-widest text-gray-500">
+                  <tr><th class="text-left px-3 py-2">Setting</th><th class="text-left px-3 py-2">Who can change it</th><th class="text-right px-3 py-2">Ships as</th></tr>
+                </thead>
+                <tbody>
+                  {registry.map((e: any) => (
+                    <tr class="border-t border-gray-100">
+                      <td class="px-3 py-2">
+                        <span class="font-bold text-gray-800">{e.label}</span>
+                        <span class="block text-[11px] text-gray-500">{e.help}</span>
+                      </td>
+                      <td class="px-3 py-2 text-xs text-gray-600">{tierLabel[e.tier] ?? "—"}</td>
+                      <td class="px-3 py-2 text-right text-xs text-gray-600">
+                        {e.defaultValue === null ? <span class="text-amber-700 font-bold">unset</span> : String(e.defaultValue).slice(0, 40)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+      </>
+    )}
+  </div>
+</AdminLayout>

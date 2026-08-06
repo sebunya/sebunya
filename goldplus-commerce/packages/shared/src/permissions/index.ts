@@ -97,6 +97,15 @@ export const PERMISSIONS = {
   LEGAL_APPROVE: 'legal.approve',
   // Wave 2E-3 — notification template wording overrides (draft/publish/revert).
   NOTIFICATIONS_MANAGE: 'notifications.manage',
+  // Delivery estimation (brief v7, PART 6). Read, propose and publish are three
+  // separate rights on purpose: the nightly calibration proposes, an operator
+  // reads, and only a publisher makes a fee change live. Applying a variance to
+  // a placed order is its own right again, because it changes what a specific
+  // customer has already been told they will pay.
+  DELIVERY_CONFIG_READ: 'delivery_config.read',
+  DELIVERY_CONFIG_PROPOSE: 'delivery_config.propose',
+  DELIVERY_CONFIG_PUBLISH: 'delivery_config.publish',
+  DELIVERY_VARIANCE_APPLY: 'delivery_variance.apply',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

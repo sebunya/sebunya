@@ -1,0 +1,483 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+/**
+ * The delivery launch wizard (brief "FINISH", PART 2).
+ *
+ * Rob blocked this build four times waiting to send six numbers. The fix is not
+ * to ask again — it is to ask about a delivery the shop already makes and do
+ * the arithmetic here. Every derived value is shown next to the answer it came
+ * from, because a derived number without its working is indistinguishable from
+ * an invented one.
+ *
+ * Server-rendered end to end, no client framework and no JavaScript required:
+ * the area search, the derivation, the preview and the publish are four form
+ * posts. It has to work on an ops phone on a bad connection.
+ */
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/delivery/launch", 303);
+}
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+type Area = { areaSlug: string; label: string; band: string; corridor: string; district: string };
+type Derived = { key: string; label: string; value: number; unit: string; fromAnswer: string; working: string };
+type Warning = { answer: string; message: string };
+
+let notice: { kind: "success" | "error" | "info"; text: string } | null = null;
+let areas: Area[] = [];
+let chosen: Area | null = null;
+let derived: Derived[] = [];
+let warnings: Warning[] = [];
+let derivedValues: Record<string, number> | null = null;
+let preview: any = null;
+let published = false;
+
+// Everything the operator has typed so far, echoed back so a failed step never
+// costs them their answers.
+const answers = {
+  areaQuery: "",
+  areaSlug: "",
+  roundTripMinutes: "",
+  riderPayUgx: "",
+  handlingMinutes: "",
+  marginPercent: "",
+  minimumFeeUgx: "",
+  freeDeliveryThresholdUgx: "",
+  freeDeliveryOff: true,
+};
+
+const post = async (path: string, body: unknown) => {
+  const res = await fetch(`${apiBase}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+  return res.json().catch(() => null);
+};
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") || "");
+  const s = (k: string) => String(form.get(k) || "").trim();
+
+  answers.areaQuery = s("areaQuery");
+  answers.areaSlug = s("areaSlug");
+  answers.roundTripMinutes = s("roundTripMinutes");
+  answers.riderPayUgx = s("riderPayUgx");
+  answers.handlingMinutes = s("handlingMinutes");
+  answers.marginPercent = s("marginPercent");
+  answers.minimumFeeUgx = s("minimumFeeUgx");
+  answers.freeDeliveryThresholdUgx = s("freeDeliveryThresholdUgx");
+  answers.freeDeliveryOff = s("freeDelivery") !== "yes";
+
+  try {
+    if (intent === "search") {
+      const res = await fetch(`${apiBase}/admin/delivery/wizard/areas?q=${encodeURIComponent(answers.areaQuery)}`, { headers });
+      const json = await res.json().catch(() => null);
+      areas = json?.success ? json.data.areas : [];
+      if (areas.length === 0) {
+        notice = { kind: "info", text: `Nothing matched "${answers.areaQuery}". Try the name people actually use — Najjera, Kabalagala, Bweyogerere.` };
+      }
+    } else if (intent === "derive" || intent === "draft") {
+      const json = await post("/admin/delivery/wizard/derive", {
+        areaSlug: answers.areaSlug,
+        roundTripMinutes: answers.roundTripMinutes,
+        riderPayUgx: answers.riderPayUgx,
+        handlingMinutes: answers.handlingMinutes,
+        marginPercent: answers.marginPercent,
+        minimumFeeUgx: answers.minimumFeeUgx,
+        freeDeliveryThresholdUgx: answers.freeDeliveryOff ? "" : answers.freeDeliveryThresholdUgx,
+      });
+      if (!json?.success) {
+        notice = { kind: "error", text: json?.error?.message || "Could not work those answers out." };
+      } else {
+        derived = json.data.derived;
+        warnings = json.data.warnings;
+        derivedValues = json.data.values;
+        chosen = { areaSlug: answers.areaSlug, label: json.data.areaLabel, band: json.data.band, corridor: "", district: "" };
+
+        if (intent === "draft") {
+          const draft = await post("/admin/delivery/config/draft", {
+            values: derivedValues,
+            reason: `Setup wizard: derived from a ${answers.roundTripMinutes} minute round trip to ${json.data.areaLabel}, rider paid ${answers.riderPayUgx} UGX.`,
+          });
+          if (!draft?.success) {
+            notice = { kind: "error", text: draft?.error?.message || "Could not save the draft." };
+          } else {
+            return Astro.redirect(`/admin/delivery/launch?version=${draft.data.versionId}`, 303);
+          }
+        }
+      }
+    } else if (intent === "expert") {
+      const values: Record<string, string> = {
+        effective_speed_kmh: s("effective_speed_kmh"),
+        rider_cost_per_minute_ugx: s("rider_cost_per_minute_ugx"),
+        handling_minutes: s("handling_minutes"),
+        margin_multiplier: s("margin_multiplier"),
+        minimum_fee_ugx: s("minimum_fee_ugx"),
+      };
+      if (s("free_delivery_threshold_ugx")) values.free_delivery_threshold_ugx = s("free_delivery_threshold_ugx");
+      const draft = await post("/admin/delivery/config/draft", { values, reason: "Entered directly (expert mode)." });
+      if (!draft?.success) notice = { kind: "error", text: draft?.error?.message || "Could not save the draft." };
+      else return Astro.redirect(`/admin/delivery/launch?version=${draft.data.versionId}`, 303);
+    } else if (intent === "publish") {
+      const json = await post(`/admin/delivery/config/${encodeURIComponent(s("versionId"))}/publish`, {
+        previewConfirmed: s("confirmed") === "on",
+      });
+      if (!json?.success) {
+        notice = { kind: "error", text: json?.error?.message || "Could not publish." };
+      } else {
+        published = true;
+        notice = { kind: "success", text: "Published. The delivery module is now quoting — every area in the metro set has a fee, and the manual path is only used where it should be." };
+      }
+    }
+  } catch {
+    notice = { kind: "error", text: "The delivery service is unreachable right now." };
+  }
+}
+
+// A draft in the URL means we are at the preview step.
+const versionId = Astro.url.searchParams.get("version");
+if (versionId && !published) {
+  try {
+    const res = await fetch(`${apiBase}/admin/delivery/config/${encodeURIComponent(versionId)}/preview`, { headers });
+    const json = await res.json().catch(() => null);
+    if (json?.success) preview = json.data;
+    else notice = { kind: "error", text: json?.error?.message || "Could not load the preview." };
+  } catch {
+    notice = { kind: "error", text: "Could not load the preview." };
+  }
+}
+
+// Current state, so the page can say whether this is a first run or a change.
+let setup: any = null;
+try {
+  const res = await fetch(`${apiBase}/admin/delivery/setup`, { headers });
+  const json = await res.json().catch(() => null);
+  if (json?.success) setup = json.data;
+} catch { /* the wizard still works without the banner */ }
+
+const ugx = (n: number | null) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG")}`);
+const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "derived" : "answers";
+---
+
+<AdminLayout title="Set up delivery pricing" description="Answer seven questions about a delivery you already make.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-4xl pb-16">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Set up delivery pricing</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+        You do not need to work out any rates. Answer seven questions about one delivery
+        you already make, and we will work out the numbers and show you how we got them.
+      </p>
+    </div>
+
+    {setup && !setup.quotingEnabled && step === "answers" && (
+      <div class="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <strong class="font-black">Delivery pricing is not switched on yet.</strong>
+        <span>
+          Until it is, every customer is told our team will confirm the delivery fee before dispatch,
+          and orders still complete normally. Nothing is broken and no fee is being guessed.
+        </span>
+      </div>
+    )}
+    {setup && setup.quotingEnabled && step === "answers" && (
+      <div class="mb-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
+        <strong class="font-black">Delivery pricing is live.</strong>
+        <span>Running this again creates a new version you can preview before it takes effect, and revert in one action.</span>
+      </div>
+    )}
+
+    {notice && (
+      <div class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : notice.kind === "info" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status">
+        {notice.text}
+      </div>
+    )}
+
+    {published && (
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+        <h3 class="text-lg font-black text-brand-dark">Delivery pricing is live</h3>
+        <p class="text-sm text-gray-600 mt-2">
+          Customers now see a delivery fee and a delivery day at the product page, the basket and checkout.
+          Anywhere we cannot price automatically — upcountry, lake areas, or an address we could not match —
+          the order still completes and our team confirms the fee.
+        </p>
+        <div class="mt-5 flex flex-wrap gap-3">
+          <a href="/admin/delivery" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">Delivery control centre</a>
+          <a href="/admin/delivery/launch" class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-gray-50">Change these numbers</a>
+        </div>
+      </section>
+    )}
+
+    {step === "preview" && preview && (
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+        <h3 class="text-lg font-black text-brand-dark">Check this before it goes live</h3>
+        <p class="text-sm text-gray-600 mt-2 mb-5">{preview.impactSummary}</p>
+
+        {preview.problems.length > 0 && (
+          <div class="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <strong class="font-black block mb-1">These have to be fixed first</strong>
+            <ul class="list-disc ml-5">{preview.problems.map((p: any) => <li>{p.message}</li>)}</ul>
+          </div>
+        )}
+        {preview.stillMissing.length > 0 && (
+          <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Still missing: {preview.stillMissing.join(", ")}. Publishing now would not switch quoting on.
+          </div>
+        )}
+
+        <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">What a customer would pay</h4>
+        <p class="text-xs text-gray-500 mb-3">
+          One real place at each distance, from closest to furthest. If any of these look wrong,
+          the trip time you gave is the usual reason — go back and check it.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+            <thead class="bg-gray-50 text-[10px] uppercase font-black tracking-widest text-gray-500">
+              <tr><th class="text-left px-3 py-2">Place</th><th class="text-right px-3 py-2">About</th><th class="text-right px-3 py-2">Takes</th><th class="text-right px-3 py-2">Fee</th></tr>
+            </thead>
+            <tbody>
+              {preview.bands.map((b: any) => (
+                <tr class="border-t border-gray-100">
+                  <td class="px-3 py-2 font-bold text-gray-800">{b.areaLabel}</td>
+                  <td class="px-3 py-2 text-right text-gray-500">{b.midpointKm} km</td>
+                  <td class="px-3 py-2 text-right text-gray-500">{b.expectedMinutes === null ? "—" : `${Math.round(b.expectedMinutes)} min`}</td>
+                  <td class="px-3 py-2 text-right font-black text-brand-dark">
+                    {b.feeUgx === null ? <span class="text-xs font-bold text-amber-700">{b.unavailableReason ?? "no area in this band"}</span> : ugx(b.feeUgx)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mt-6 mb-2">Your recent orders, repriced</h4>
+        {preview.orders.length === 0 ? (
+          <p class="text-sm text-gray-500 border border-dashed border-gray-300 rounded-lg px-4 py-3">
+            No recent orders could be matched to an area, so there is nothing to reprice.
+            The table above is the only check available — read it carefully.
+          </p>
+        ) : (
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+              <thead class="bg-gray-50 text-[10px] uppercase font-black tracking-widest text-gray-500">
+                <tr><th class="text-left px-3 py-2">Order</th><th class="text-left px-3 py-2">Going to</th><th class="text-right px-3 py-2">Now</th><th class="text-right px-3 py-2">After</th><th class="text-right px-3 py-2">Change</th></tr>
+              </thead>
+              <tbody>
+                {preview.orders.map((o: any) => (
+                  <tr class="border-t border-gray-100">
+                    <td class="px-3 py-2 font-mono text-xs text-gray-600">{o.orderNumber}</td>
+                    <td class="px-3 py-2 text-gray-700">{o.areaLabel}</td>
+                    <td class="px-3 py-2 text-right text-gray-500">{o.beforeFeeUgx === null ? <span class="text-[10px] font-bold text-gray-400">{o.beforeReason}</span> : ugx(o.beforeFeeUgx)}</td>
+                    <td class="px-3 py-2 text-right font-bold">{o.afterFeeUgx === null ? <span class="text-[10px] font-bold text-amber-700">{o.afterReason}</span> : ugx(o.afterFeeUgx)}</td>
+                    <td class="px-3 py-2 text-right text-gray-600">{o.differenceUgx === null ? "—" : o.differenceUgx === 0 ? "no change" : ugx(o.differenceUgx)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <form method="POST" class="mt-6 border-t border-gray-200 pt-5">
+          <input type="hidden" name="intent" value="publish" />
+          <input type="hidden" name="versionId" value={preview.versionId} />
+          <label class="flex items-start gap-3 text-sm text-gray-700 mb-4">
+            <input type="checkbox" name="confirmed" required class="mt-0.5 w-4 h-4 text-brand-primary border-gray-300 rounded" />
+            <span>I have read the fees above and they are what I want customers to pay.</span>
+          </label>
+          <div class="flex flex-wrap gap-3">
+            <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:bg-black">
+              Publish these prices
+            </button>
+            <a href="/admin/delivery/launch" class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:bg-gray-50">
+              Start again
+            </a>
+          </div>
+        </form>
+      </section>
+    )}
+
+    {step !== "preview" && !published && (
+      <form method="POST" class="space-y-5">
+        <input type="hidden" name="intent" value={derived.length > 0 ? "draft" : chosen || answers.areaSlug ? "derive" : "search"} />
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">1. A place you deliver to often</h3>
+          <p class="text-xs text-gray-500 mb-3">Type the name people actually use. Najjera, Kabalagala, Bweyogerere.</p>
+          <div class="flex flex-wrap gap-2 items-end">
+            <input name="areaQuery" value={answers.areaQuery} placeholder="Ntinda"
+              class="flex-1 min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+            <button type="submit" formnovalidate name="intent" value="search"
+              class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-gray-50">
+              Find it
+            </button>
+          </div>
+          {areas.length > 0 && (
+            <fieldset class="mt-4">
+              <legend class="text-[10px] uppercase font-black text-gray-400 tracking-widest mb-2">Which one?</legend>
+              <div class="space-y-2">
+                {areas.map((a) => (
+                  <label class="flex items-center gap-3 text-sm border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50">
+                    <input type="radio" name="areaSlug" value={a.areaSlug} required checked={answers.areaSlug === a.areaSlug} class="w-4 h-4 text-brand-primary" />
+                    <span class="font-bold text-gray-800">{a.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
+          {areas.length === 0 && answers.areaSlug && (
+            <input type="hidden" name="areaSlug" value={answers.areaSlug} />
+          )}
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-5">
+          <label class="block">
+            <span class="text-sm font-black text-gray-700">2. How long does that trip take, there and back?</span>
+            <span class="block text-xs text-gray-500 mb-2">Including finding the address. Not one way — the whole round trip.</span>
+            <div class="flex items-center gap-2">
+              <input name="roundTripMinutes" inputmode="numeric" required value={answers.roundTripMinutes}
+                class="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+              <span class="text-sm text-gray-500">minutes</span>
+            </div>
+          </label>
+
+          <label class="block">
+            <span class="text-sm font-black text-gray-700">3. What do you pay the rider for that trip?</span>
+            <div class="flex items-center gap-2 mt-2">
+              <span class="text-sm text-gray-500">UGX</span>
+              <input name="riderPayUgx" inputmode="numeric" required value={answers.riderPayUgx}
+                class="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+            </div>
+          </label>
+
+          <label class="block">
+            <span class="text-sm font-black text-gray-700">4. From order confirmed, how long before the rider leaves?</span>
+            <span class="block text-xs text-gray-500 mb-2">Picking, packing and handing over. Not travel time.</span>
+            <div class="flex items-center gap-2">
+              <input name="handlingMinutes" inputmode="numeric" required value={answers.handlingMinutes}
+                class="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+              <span class="text-sm text-gray-500">minutes</span>
+            </div>
+          </label>
+
+          <label class="block">
+            <span class="text-sm font-black text-gray-700">5. What do you want to make on top of what it costs you?</span>
+            <div class="flex items-center gap-2 mt-2">
+              <input name="marginPercent" inputmode="decimal" required value={answers.marginPercent}
+                class="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+              <span class="text-sm text-gray-500">percent</span>
+            </div>
+          </label>
+
+          <label class="block">
+            <span class="text-sm font-black text-gray-700">6. Below what fee is a delivery not worth doing?</span>
+            <div class="flex items-center gap-2 mt-2">
+              <span class="text-sm text-gray-500">UGX</span>
+              <input name="minimumFeeUgx" inputmode="numeric" required value={answers.minimumFeeUgx}
+                class="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+            </div>
+          </label>
+
+          <div>
+            <span class="text-sm font-black text-gray-700">7. Free delivery above a certain order value?</span>
+            <div class="mt-2 space-y-2">
+              <label class="flex items-center gap-2 text-sm">
+                <input type="radio" name="freeDelivery" value="no" checked={answers.freeDeliveryOff} class="w-4 h-4 text-brand-primary" />
+                <span>Not yet</span>
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="radio" name="freeDelivery" value="yes" checked={!answers.freeDeliveryOff} class="w-4 h-4 text-brand-primary" />
+                <span>Yes, above</span>
+                <span class="text-gray-500">UGX</span>
+                <input name="freeDeliveryThresholdUgx" inputmode="numeric" value={answers.freeDeliveryThresholdUgx}
+                  class="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+              </label>
+            </div>
+          </div>
+
+          <div class="pt-2 flex flex-wrap gap-3">
+            <button type="submit" name="intent" value="derive"
+              class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:bg-black">
+              Work out my numbers
+            </button>
+          </div>
+        </section>
+
+        {derived.length > 0 && (
+          <section class="bg-white border-2 border-brand-dark rounded-2xl shadow-sm p-6">
+            <h3 class="text-lg font-black text-brand-dark mb-1">Here is what that works out to</h3>
+            <p class="text-xs text-gray-500 mb-4">Every number below comes from an answer you gave. Nothing is assumed.</p>
+            <div class="space-y-4">
+              {derived.map((d) => (
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex flex-wrap items-baseline justify-between gap-2">
+                    <span class="text-sm font-black text-gray-800">{d.label}</span>
+                    <span class="text-lg font-black text-brand-dark">
+                      {d.unit === "UGX" ? ugx(d.value) : `${Math.round(d.value * 100) / 100} ${d.unit}`}
+                    </span>
+                  </div>
+                  <p class="text-xs text-gray-600 mt-1">{d.working}</p>
+                </div>
+              ))}
+            </div>
+            {warnings.length > 0 && (
+              <div class="mt-4 space-y-2">
+                {warnings.map((w) => (
+                  <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                    <strong class="font-black block">{w.answer}</strong>
+                    {w.message}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div class="mt-5 flex flex-wrap gap-3">
+              <button type="submit" name="intent" value="draft"
+                class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:bg-black">
+                Looks right — show me the customer prices
+              </button>
+              <button type="submit" name="intent" value="derive"
+                class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:bg-gray-50">
+                Change an answer
+              </button>
+            </div>
+            <p class="text-[11px] text-gray-500 mt-3">
+              Nothing is live yet. The next screen shows what a customer would actually pay in seven
+              different places, and nothing changes until you confirm it there.
+            </p>
+          </section>
+        )}
+      </form>
+    )}
+
+    {step === "answers" && (
+      <details class="mt-8">
+        <summary class="text-xs font-black uppercase tracking-widest text-gray-400 cursor-pointer hover:text-gray-600">
+          I already know the numbers — let me type them in
+        </summary>
+        <form method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mt-3 grid sm:grid-cols-2 gap-4">
+          <input type="hidden" name="intent" value="expert" />
+          {([
+            ["effective_speed_kmh", "Effective speed", "km/h"],
+            ["rider_cost_per_minute_ugx", "Rider cost per minute", "UGX"],
+            ["handling_minutes", "Handling minutes", "minutes"],
+            ["margin_multiplier", "Margin multiplier", "× (1.3 = 30% on top)"],
+            ["minimum_fee_ugx", "Minimum fee", "UGX"],
+            ["free_delivery_threshold_ugx", "Free delivery threshold (optional)", "UGX"],
+          ] as Array<[string, string, string]>).map(([name, label, unit]) => (
+            <label class="block">
+              <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">{label}</span>
+              <input name={name} inputmode="decimal"
+                class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+              <span class="text-[10px] text-gray-400">{unit}</span>
+            </label>
+          ))}
+          <div class="sm:col-span-2">
+            <button type="submit" class="bg-gray-800 text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:bg-black">
+              Save and preview
+            </button>
+            <p class="text-[11px] text-gray-500 mt-2">Same preview, same confirmation. There is only one way to publish.</p>
+          </div>
+        </form>
+      </details>
+    )}
+  </div>
+</AdminLayout>

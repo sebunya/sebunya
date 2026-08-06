@@ -175,6 +175,18 @@ import {
   ListDeliveriesAwaitingCostUseCase,
   RecordActualRiderCostUseCase,
 } from '../application/use-cases/delivery/DeliveryCaptureUseCases';
+import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/DeliveryAreaResolver';
+import { DrizzleDeliveryConfigRepository } from './db/repositories/DrizzleDeliveryConfigRepository';
+import {
+  DraftConfigVersionUseCase,
+  PreviewConfigVersionUseCase,
+  PublishConfigVersionUseCase,
+  RevertConfigVersionUseCase,
+} from '../application/use-cases/delivery/DeliveryConfigUseCases';
+import {
+  DeriveLaunchValuesUseCase,
+  DraftLaunchValuesUseCase,
+} from '../application/use-cases/delivery/DeliveryWizardUseCases';
 import { DrizzleLoyaltyIdentityRepository, DrizzleLoyaltyTierRepository, LoyaltyProgrammeConfigWriter, OutboxOtpSender, otpHash, otpRandom } from './loyalty/LoyaltyIdentityInfrastructure';
 import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { ListSearchMissesUseCase, PromoteSearchMissToAliasUseCase, ListAddressReviewQueueUseCase, ResolveAddressUseCase, ManageLandmarksUseCase, ManagePickupPointsUseCase, GetZonePoliciesUseCase, SaveZonePolicyUseCase, ListDataExceptionsUseCase } from '../application/use-cases/locations/LocationAdminUseCases';
@@ -1108,6 +1120,25 @@ export class Registry {
   );
   public readonly captureQuoteUseCase = new CaptureQuoteUseCase(this.deliveryCaptureRepo);
   public readonly listDeliveriesAwaitingCostUseCase = new ListDeliveriesAwaitingCostUseCase(this.deliveryCaptureRepo);
+
+  // Configuration: draft → mandatory preview → publish → revert. The launch
+  // wizard is an input surface onto this path, never a way around it.
+  public readonly deliveryAreaResolver = new DeliveryAreaResolver();
+  public readonly deliveryWizardAreaReader = new DeliveryWizardAreaReader();
+  public readonly deliveryConfigRepo = new DrizzleDeliveryConfigRepository(this.deliveryAreaResolver);
+  public readonly draftDeliveryConfigUseCase = new DraftConfigVersionUseCase(this.deliveryConfigRepo, this.auditRepo);
+  public readonly previewDeliveryConfigUseCase = new PreviewConfigVersionUseCase(this.deliveryConfigRepo, () =>
+    this.deliveryConfigReader.currentValues(),
+  );
+  public readonly publishDeliveryConfigUseCase = new PublishConfigVersionUseCase(this.deliveryConfigRepo, this.auditRepo);
+  public readonly revertDeliveryConfigUseCase = new RevertConfigVersionUseCase(this.deliveryConfigRepo, this.auditRepo);
+  public readonly deriveLaunchValuesUseCase = new DeriveLaunchValuesUseCase(this.deliveryWizardAreaReader, () =>
+    this.deliveryConfigReader.currentValues(),
+  );
+  public readonly draftLaunchValuesUseCase = new DraftLaunchValuesUseCase(
+    this.draftDeliveryConfigUseCase,
+    this.deliveryConfigRepo,
+  );
 
   public readonly loyaltyDrawRepo = new DrizzleLoyaltyDrawRepository();
   public readonly grantDrawTokenUseCase = new GrantDrawTokenUseCase(

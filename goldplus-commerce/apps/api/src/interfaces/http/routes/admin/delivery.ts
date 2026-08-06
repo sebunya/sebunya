@@ -153,4 +153,135 @@ routes.post('/config-validate', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
   return c.json({ success: true, data: result });
 });
 
+/* ── The launch wizard (brief "FINISH", PART 2) ──────────────────────────── */
+
+/**
+ * Alias-aware area search, restricted to areas that carry a band.
+ *
+ * Offering a place with no band would let an operator answer every question and
+ * then be told at the end that their choice cannot anchor the arithmetic.
+ */
+routes.get('/wizard/areas', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_READ]), async (c) => {
+  const q = String(c.req.query('q') ?? '').trim();
+  const areas = await Registry.getInstance().deliveryWizardAreaReader.searchQuotableAreas(q, 8);
+  return c.json({ success: true, data: { areas } });
+});
+
+/**
+ * Derive the launch values from the seven answers, showing the working.
+ *
+ * Computes only — nothing is saved. An operator can try three readings of their
+ * own trip before committing to one.
+ */
+routes.post('/wizard/derive', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PROPOSE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const n = (v: unknown): number => {
+    const parsed = Number(String(v ?? '').replace(/[,\s]/g, ''));
+    return Number.isFinite(parsed) ? parsed : Number.NaN;
+  };
+  const freeRaw = String(body?.freeDeliveryThresholdUgx ?? '').trim();
+  const result = await Registry.getInstance().deriveLaunchValuesUseCase.execute({
+    areaSlug: String(body?.areaSlug ?? ''),
+    roundTripMinutes: n(body?.roundTripMinutes),
+    riderPayUgx: n(body?.riderPayUgx),
+    handlingMinutes: n(body?.handlingMinutes),
+    marginPercent: n(body?.marginPercent),
+    minimumFeeUgx: n(body?.minimumFeeUgx),
+    freeDeliveryThresholdUgx: freeRaw === '' || freeRaw.toLowerCase() === 'not_yet' ? null : n(freeRaw),
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: result.result });
+});
+
+/**
+ * Save a derivation (or a direct expert-mode entry) as a DRAFT.
+ *
+ * Nothing takes effect from this. The next step is the preview, and publish
+ * refuses a version that has not been previewed and confirmed.
+ */
+routes.post('/config/draft', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PROPOSE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const raw = body?.values;
+  if (!raw || typeof raw !== 'object') {
+    return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'No values supplied.' } } satisfies ApiResponse<never>, 400);
+  }
+  const values: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const parsed = Number(String(v ?? '').replace(/[,\s]/g, ''));
+    if (Number.isFinite(parsed)) values[k] = parsed;
+  }
+  const result = await Registry.getInstance().draftLaunchValuesUseCase.execute({
+    values,
+    actorId: (c.get('user') as { id: string }).id,
+    reason: String(body?.reason ?? '').slice(0, 500) || 'Delivery launch values',
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: { versionId: result.versionId } });
+});
+
+/**
+ * The mandatory preview: one real named area in every band, plus every recent
+ * real order repriced, plus a plain-language impact summary.
+ *
+ * "An operator who answered 40 minutes when they meant 40 minutes each way will
+ * see it here and nowhere else."
+ */
+routes.get('/config/:versionId/preview', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_READ]), async (c) => {
+  const result = await Registry.getInstance().previewDeliveryConfigUseCase.execute({
+    versionId: String(c.req.param('versionId') ?? ''),
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 404);
+  }
+  return c.json({ success: true, data: result.preview });
+});
+
+/** Publish. Refuses without an explicit preview confirmation. */
+routes.post('/config/:versionId/publish', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const scheduledRaw = String(body?.scheduledFor ?? '').trim();
+  const scheduled = scheduledRaw ? new Date(scheduledRaw) : null;
+  if (scheduled && Number.isNaN(scheduled.getTime())) {
+    return c.json({ success: false, error: { code: 'INVALID_SCHEDULE', message: 'That is not a valid date and time.' } } satisfies ApiResponse<never>, 400);
+  }
+  const result = await Registry.getInstance().publishDeliveryConfigUseCase.execute({
+    versionId: String(c.req.param('versionId') ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+    previewConfirmed: body?.previewConfirmed === true,
+    scheduledFor: scheduled,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: result.version });
+});
+
+/** Version history, so an operator can see what was live and when. */
+routes.get('/config/versions', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const [versions, published] = await Promise.all([
+    registry.deliveryConfigRepo.listVersions(50),
+    registry.deliveryConfigRepo.publishedVersion(),
+  ]);
+  return c.json({ success: true, data: { versions, publishedVersionId: published?.id ?? null } });
+});
+
+/** Revert in one action: a NEW published version carrying the old values. */
+routes.post('/config/revert', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().revertDeliveryConfigUseCase.execute({
+    toVersionId: String(body?.toVersionId ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+    reason: String(body?.reason ?? ''),
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: result.version });
+});
+
 export default routes;
