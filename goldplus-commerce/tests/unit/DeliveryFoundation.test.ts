@@ -195,3 +195,33 @@ describe('the data files, when present', () => {
     expect(rows.filter((r) => r.includes(',water,'))).toHaveLength(12);
   });
 });
+
+/**
+ * CONFIGURATION.md is GENERATED. A doc that drifts from the code is worse than
+ * no doc, so drift fails the build rather than quietly misleading whoever reads
+ * it next.
+ */
+describe('CONFIGURATION.md generates from the registry', () => {
+  it('matches exactly what the generator produces', async () => {
+    const { renderConfigurationDoc } = await import(
+      '../../apps/api/src/scripts/generate-delivery-configuration-doc'
+    );
+    const onDisk = readFileSync(resolve(__dirname, '../../docs/delivery/CONFIGURATION.md'), 'utf8');
+    expect(onDisk).toBe(renderConfigurationDoc());
+  });
+
+  it('is never hand-maintained, and says so at the top', () => {
+    const onDisk = readFileSync(resolve(__dirname, '../../docs/delivery/CONFIGURATION.md'), 'utf8');
+    expect(onDisk).toContain('GENERATED FROM');
+    expect(onDisk).toContain('Do not hand-edit');
+  });
+
+  it('never exposes a Tier 3 value as configurable', async () => {
+    const { DELIVERY_CONFIG_REGISTRY, isWritableConfigKey } = await import(
+      '../../apps/api/src/domain/delivery/DeliveryConfigRegistry'
+    );
+    for (const entry of DELIVERY_CONFIG_REGISTRY) {
+      if (entry.tier === 3) expect(isWritableConfigKey(entry.key), entry.key).toBe(false);
+    }
+  });
+});

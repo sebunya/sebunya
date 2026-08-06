@@ -1,0 +1,205 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+/**
+ * Calibration: the proposal queue and the reports (brief PART 4).
+ *
+ * PROPOSED, NEVER APPLIED — the nightly job fills this queue and a human
+ * decides. Accepting below the minimum sample is REFUSED by the API, not warned
+ * about, so this page cannot talk an operator into it.
+ *
+ * Every panel renders its own emptiness IN WORDS. A blank table is a support
+ * ticket; "0 observations, nothing delivered, no minimum set, nothing to
+ * propose" is a useful screen.
+ */
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/delivery/calibration", 303);
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+let notice: { kind: "success" | "error"; text: string } | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") || "");
+  const id = String(form.get("proposalId") || "");
+  try {
+    if (intent === "run") {
+      const res = await fetch(`${apiBase}/admin/delivery/calibration/run`, { method: "POST", headers, body: "{}" });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: `Calibration run. ${json.data.proposalsCreated} proposal(s) from ${json.data.observations} observation(s).` }
+        : { kind: "error", text: json?.error?.message || "Could not run the calibration." };
+    } else if (intent === "accept" || intent === "edit") {
+      const editedRaw = String(form.get("editedValue") || "").trim();
+      const res = await fetch(`${apiBase}/admin/delivery/calibration/proposals/${encodeURIComponent(id)}/accept`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ editedValue: intent === "edit" && editedRaw ? Number(editedRaw) : null }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: intent === "edit" ? "Applied your edited value, recorded as set by hand." : "Applied the fitted value." }
+        : { kind: "error", text: json?.error?.message || "Could not accept." };
+    } else if (intent === "reject") {
+      const res = await fetch(`${apiBase}/admin/delivery/calibration/proposals/${encodeURIComponent(id)}/reject`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ reason: String(form.get("reason") || "").trim() }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: "Rejected." }
+        : { kind: "error", text: json?.error?.message || "Could not reject." };
+    }
+  } catch {
+    notice = { kind: "error", text: "The delivery service is unreachable right now." };
+  }
+}
+
+const get = async (path: string) => {
+  try {
+    const res = await fetch(`${apiBase}${path}`, { headers });
+    const json = await res.json().catch(() => null);
+    return json?.success ? json.data : null;
+  } catch {
+    return null;
+  }
+};
+
+const [queue, margin, variance, fallback] = await Promise.all([
+  get("/admin/delivery/calibration/proposals"),
+  get("/admin/delivery/reports/margin"),
+  get("/admin/delivery/reports/variance"),
+  get("/admin/delivery/reports/fallback-rate"),
+]);
+
+const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG")}`);
+---
+
+<AdminLayout title="Delivery calibration" description="What the model has learned, and what it proposes to change.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl pb-16">
+    <div class="mb-8 pb-6 border-b border-gray-200 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Calibration</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+          The model proposes; you decide. Nothing here changes a price until someone accepts it.
+        </p>
+      </div>
+      <form method="POST"><input type="hidden" name="intent" value="run" />
+        <button type="submit" class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-gray-50">Run now</button>
+      </form>
+    </div>
+
+    {notice && (
+      <div class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status">{notice.text}</div>
+    )}
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Proposals waiting on you</h3>
+      {!queue || queue.proposals.length === 0 ? (
+        <div class="rounded-lg border border-dashed border-gray-300 px-4 py-3">
+          <p class="text-sm font-bold text-gray-700">Nothing to propose.</p>
+          <p class="text-xs text-gray-500 mt-1">{queue?.note ?? "The calibration has not run yet."}</p>
+          {queue && (
+            <p class="text-[11px] text-gray-500 mt-2">
+              {queue.counts.observations} observation(s) · {queue.counts.deliveredOrders} delivered order(s) ·
+              {" "}{queue.counts.riderCostsRecorded} rider cost(s) recorded · {queue.counts.skippedMirrors} skipped mirror(s)
+            </p>
+          )}
+        </div>
+      ) : (
+        <div class="space-y-3">
+          {queue.proposals.map((p: any) => (
+            <div class="border border-gray-200 rounded-lg p-4">
+              <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <span class="text-sm font-bold text-gray-800">{p.factorKind} · {p.scopeKey}</span>
+                <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">{p.sampleSize} deliveries</span>
+              </div>
+              <p class="text-xs text-gray-600 mt-1">
+                {/* Unlearned is never shown as a number. */}
+                {p.currentState === "not_learned"
+                  ? "Nothing learned yet"
+                  : `${p.currentState === "set_by_hand" ? "Set by hand" : "Measured"} at ${p.currentValue}`}
+                {" → "}<strong>{p.proposedValue}</strong>
+                {p.feeImpactUgx !== null && <span> · fee impact {ugx(p.feeImpactUgx)}</span>}
+              </p>
+              <div class="flex flex-wrap gap-2 mt-3">
+                <form method="POST" class="flex gap-2 items-end">
+                  <input type="hidden" name="intent" value="accept" /><input type="hidden" name="proposalId" value={p.id} />
+                  <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg hover:bg-black">Accept</button>
+                </form>
+                <form method="POST" class="flex gap-2 items-end">
+                  <input type="hidden" name="intent" value="edit" /><input type="hidden" name="proposalId" value={p.id} />
+                  <input name="editedValue" inputmode="decimal" placeholder="Your value" class="w-28 rounded-lg border border-gray-300 px-2 py-1.5 text-xs" />
+                  <button type="submit" class="border border-gray-300 text-gray-700 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg hover:bg-gray-50">Edit</button>
+                </form>
+                <form method="POST" class="flex gap-2 items-end">
+                  <input type="hidden" name="intent" value="reject" /><input type="hidden" name="proposalId" value={p.id} />
+                  <input name="reason" required minlength="3" placeholder="Why reject?" class="w-40 rounded-lg border border-gray-300 px-2 py-1.5 text-xs" />
+                  <button type="submit" class="border border-gray-300 text-gray-700 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg hover:bg-gray-50">Reject</button>
+                </form>
+              </div>
+              <p class="text-[10px] text-gray-400 mt-2">An edited value is recorded as set by hand, never as a measurement.</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Margin — what we charged against what the rider cost</h3>
+      {!margin || margin.rows.length === 0 ? (
+        <div class="rounded-lg border border-dashed border-gray-300 px-4 py-3">
+          <p class="text-sm font-bold text-gray-700">{margin?.emptiness?.headline ?? "No margin data."}</p>
+          {margin?.emptiness && (
+            <dl class="text-xs text-gray-600 mt-2 space-y-1">
+              <div><dt class="inline font-bold">What exists: </dt><dd class="inline">{margin.emptiness.has}</dd></div>
+              <div><dt class="inline font-bold">What is missing: </dt><dd class="inline">{margin.emptiness.missing}</dd></div>
+              <div><dt class="inline font-bold">What would fill it: </dt><dd class="inline">{margin.emptiness.needs}</dd></div>
+            </dl>
+          )}
+        </div>
+      ) : (
+        <table class="w-full text-sm">
+          <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500"><tr><th class="text-left py-2">Area</th><th class="text-right">Deliveries</th><th class="text-right">Charged</th><th class="text-right">Cost</th><th class="text-right">Margin</th></tr></thead>
+          <tbody>{margin.rows.map((r: any) => (
+            <tr class="border-t border-gray-100"><td class="py-2">{r.areaSlug ?? "—"}</td><td class="text-right">{r.deliveries}</td><td class="text-right">{ugx(r.chargedUgx)}</td><td class="text-right">{ugx(r.costUgx)}</td><td class="text-right font-bold">{ugx(r.marginUgx)}{r.marginPct !== null && <span class="text-[10px] text-gray-400"> ({r.marginPct.toFixed(0)}%)</span>}</td></tr>
+          ))}</tbody>
+        </table>
+      )}
+    </section>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Variance — how often a quote changed after placement</h3>
+      {!variance || variance.rows.length === 0 ? (
+        <div class="rounded-lg border border-dashed border-gray-300 px-4 py-3">
+          <p class="text-sm font-bold text-gray-700">{variance?.emptiness?.headline ?? "No variance data."}</p>
+          {variance?.emptiness && <p class="text-xs text-gray-600 mt-1">{variance.emptiness.has}. Missing: {variance.emptiness.missing}.</p>}
+        </div>
+      ) : (
+        <table class="w-full text-sm">
+          <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500"><tr><th class="text-left py-2">Reason</th><th class="text-right">Times</th><th class="text-right">Absorbed</th><th class="text-right">We paid</th><th class="text-right">Agreed</th><th class="text-right">Declined</th></tr></thead>
+          <tbody>{variance.rows.map((r: any) => (
+            <tr class="border-t border-gray-100"><td class="py-2 text-xs">{r.reason}</td><td class="text-right">{r.count}</td><td class="text-right">{r.absorbedCount}</td><td class="text-right">{ugx(r.absorbedUgx)}</td><td class="text-right">{r.agreedCount}</td><td class="text-right">{r.declinedCount}</td></tr>
+          ))}</tbody>
+        </table>
+      )}
+    </section>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Legacy fallback</h3>
+      <p class="text-xs text-gray-500 mb-3">The old pricing path answers only when our launch values are unset. It is deleted once this has been zero for the agreed period.</p>
+      {fallback ? (
+        <>
+          <p class="text-sm text-gray-800"><strong>{fallback.fallbackCount}</strong> of {fallback.total} captured quotes used the legacy path ({fallback.fallbackPct.toFixed(1)}%).</p>
+          <p class="text-xs text-gray-600 mt-1">{fallback.note}</p>
+        </>
+      ) : (
+        <p class="text-sm text-gray-500">The fallback report is unavailable.</p>
+      )}
+    </section>
+  </div>
+</AdminLayout>

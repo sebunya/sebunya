@@ -439,4 +439,93 @@ routes.get('/reports/fallback-rate', requirePermissions([PERMISSIONS.REPORTS_REA
   return c.json({ success: true, data: await Registry.getInstance().deliveryFallbackRateUseCase.execute() });
 });
 
+/* ── The single-order quote inspector (PART 9 #37) ───────────────────────── */
+
+/**
+ * Explain ANY order's quote, fully.
+ *
+ * Origin, centroid source, mode, corridor, band, every factor with its sample
+ * size, configuration version, rounding, carrier and card version, and any
+ * variance. This is what makes "why is this the fee" answerable months later
+ * without re-running anything — which is why the explanation was recorded at
+ * quote time rather than reconstructed now.
+ */
+routes.get('/orders/:orderId/quote-explanation', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const orderId = String(c.req.param('orderId') ?? '');
+  const registry = Registry.getInstance();
+  const [capture, variances] = await Promise.all([
+    registry.deliveryCaptureRepo.findByOrderId(orderId),
+    registry.listOrderVariancesUseCase.execute(orderId),
+  ]);
+  if (!capture) {
+    return c.json({
+      success: true,
+      data: {
+        found: false,
+        note: 'No delivery quote was captured for this order. Orders placed before the quoting service went live have none, and that absence is a fact rather than an error.',
+        variances,
+      },
+    });
+  }
+  const factors = await registry.deliveryQuotingRepo.factorsFor({
+    areaSlug: capture.areaSlug,
+    corridor: capture.corridor,
+    eatHourOfWeek: null,
+  });
+  const { describeFactor } = await import('../../../../domain/delivery/DeliveryLearnedFactor');
+  return c.json({
+    success: true,
+    data: {
+      found: true,
+      capture,
+      // Unlearned and fitted are never collapsed into one number.
+      factors: {
+        corridor: describeFactor(factors.corridor),
+        hour: describeFactor(factors.hour),
+        detour: describeFactor(factors.detour),
+        lastMile: describeFactor(factors.lastMile),
+      },
+      areaSampleSize: factors.areaSampleSize,
+      variances,
+    },
+  });
+});
+
+/* ── CSV round trip for the corridor table (PART 9 #29) ──────────────────── */
+
+/** Export exactly the shape the importer accepts. */
+routes.get('/corridors/export.csv', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_READ]), async (c) => {
+  const { db } = await import('../../../../infrastructure/db/client');
+  const { sql } = await import('drizzle-orm');
+  const rows = (await db.execute(sql`
+    select area_slug, postcode, delivery_zone, district, sub_county_or_division, area,
+           corridor, distance_band, access_mode, serviceable, fulfilment_mode
+    from delivery_corridor order by area_slug`)) as unknown as Array<Record<string, unknown>>;
+  const header = [
+    'area_slug', 'postcode', 'delivery_zone', 'district', 'sub_county_or_division', 'area',
+    'corridor', 'distance_band', 'access_mode', 'serviceable', 'fulfilment_mode',
+  ];
+  const esc = (v: unknown) => {
+    const s = v === null || v === undefined ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [header.join(','), ...rows.map((r) => header.map((h) => esc(r[h])).join(','))].join('\n');
+  return new Response(csv, {
+    headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename=goldplus_delivery_corridors_export.csv' },
+  });
+});
+
+/**
+ * Dry run a corridor CSV: every changed and failing row, nothing written.
+ *
+ * A bulk edit that lands without a dry run is a bulk mistake, so the apply path
+ * refuses a payload that has not been dry-run and confirmed.
+ */
+routes.post('/corridors/dry-run', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PROPOSE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const csv = String(body?.csv ?? '');
+  const result = await Registry.getInstance().dryRunCorridorCsvUseCase.execute(csv);
+  return c.json({ success: true, data: result });
+});
+
 export default routes;

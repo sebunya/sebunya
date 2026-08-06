@@ -74,6 +74,10 @@ const [setup, queues, versions, registry] = await Promise.all([
   get("/admin/delivery/config-registry"),
 ]);
 
+// Variances waiting on a customer. NOTHING dispatches on these until answered,
+// so it sits at the top of the queues rather than in a report.
+const pendingVariance = await get("/admin/delivery/variance/pending");
+
 const ugx = (n: number | null) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG")}`);
 const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a second person" };
 ---
@@ -87,9 +91,14 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
           What we charge to deliver, how long we promise, and everything the model is still waiting to learn.
         </p>
       </div>
-      <a href="/admin/delivery/launch" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">
-        {setup?.quotingEnabled ? "Change the prices" : "Set up delivery pricing"}
-      </a>
+      <div class="flex flex-wrap gap-2">
+        <a href="/admin/delivery/calibration" class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-gray-50">
+          Calibration &amp; reports
+        </a>
+        <a href="/admin/delivery/launch" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">
+          {setup?.quotingEnabled ? "Change the prices" : "Set up delivery pricing"}
+        </a>
+      </div>
     </div>
 
     {notice && (
@@ -134,6 +143,22 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
             ))}
           </div>
         </section>
+
+        {pendingVariance && pendingVariance.count > 0 && (
+          <section class="rounded-2xl border border-amber-300 bg-amber-50 p-6 mb-8">
+            <h3 class="text-sm font-black uppercase tracking-widest text-amber-900 mb-1">
+              {pendingVariance.count} order(s) waiting on a customer's answer
+            </h3>
+            <p class="text-xs text-amber-900 mb-3">{pendingVariance.note}</p>
+            <ul class="text-xs text-amber-900 space-y-1">
+              {pendingVariance.pending.map((v: any) => (
+                <li class="font-mono">
+                  {v.orderId} — {v.oldFeeUgx.toLocaleString("en-UG")} → {v.newFeeUgx.toLocaleString("en-UG")} UGX ({v.reason})
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
           <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">

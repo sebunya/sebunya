@@ -134,3 +134,22 @@ outcome including refusals, pin request with no time claim, day-level promise
 until an hour window is earned, parcel count before commit, and the
 fee-to-value interstitial with an explicit acknowledgement that is never
 pre-selected.
+
+## 6. Control Centre completion — done
+
+`/admin/delivery` (state, launch values, queues, version history with one-action
+revert, registry-generated field list), `/admin/delivery/launch` (the wizard),
+`/admin/delivery/calibration` (proposal queue, margin, variance, fallback rate).
+
+- **Quote inspector**: `GET /admin/delivery/orders/:id/quote-explanation` returns
+  origin, centroid source, mode, corridor, band, every factor with its sample
+  size **and its learned/unlearned state**, config version, rounding, carrier,
+  card version and every variance. An order with no capture says so as a fact
+  rather than erroring.
+- **CSV round trip** with a mandatory dry run reporting every changed AND every
+  failing row. A CSV cannot create an area — the gazetteer is the only source,
+  so a typo'd slug fails instead of quietly becoming a new row.
+- **`CONFIGURATION.md` generates from the registry**, and a test asserts the
+  file on disk matches the generator exactly. Drift fails the build.
+- Pending variances surface at the TOP of the Control Centre, because nothing
+  dispatches on them until the customer answers.

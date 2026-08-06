@@ -179,6 +179,7 @@ import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/Deliv
 import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliveryQuotingRepository';
 import { DrizzleDeliveryVarianceRepository } from './db/repositories/DrizzleDeliveryVarianceRepository';
 import { DrizzleDeliveryCalibrationRepository } from './db/repositories/DrizzleDeliveryCalibrationRepository';
+import { DryRunCorridorCsvUseCase } from '../application/use-cases/delivery/DeliveryCorridorCsvUseCase';
 import {
   AcceptCalibrationProposalUseCase,
   RejectCalibrationProposalUseCase,
@@ -1166,6 +1167,30 @@ export class Registry {
     this.draftDeliveryConfigUseCase,
     this.deliveryConfigRepo,
   );
+
+  // CSV round trip for the corridor table, with a mandatory dry run.
+  public readonly dryRunCorridorCsvUseCase = new DryRunCorridorCsvUseCase({
+    currentCorridors: async () => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const rows = (await db.execute(sql`
+        select area_slug, corridor, distance_band, access_mode, serviceable, fulfilment_mode
+        from delivery_corridor`)) as unknown as Array<Record<string, unknown>>;
+      return new Map(
+        rows.map((r) => [
+          String(r.area_slug),
+          {
+            areaSlug: String(r.area_slug),
+            corridor: String(r.corridor),
+            distanceBand: String(r.distance_band),
+            accessMode: String(r.access_mode),
+            serviceable: Boolean(r.serviceable),
+            fulfilmentMode: r.fulfilment_mode === null ? null : String(r.fulfilment_mode),
+          },
+        ]),
+      );
+    },
+  });
 
   // The learning loop (PART 4). Proposes, never applies.
   public readonly deliveryCalibrationRepo = new DrizzleDeliveryCalibrationRepository();
