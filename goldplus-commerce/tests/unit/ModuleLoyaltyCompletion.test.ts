@@ -37,7 +37,14 @@ describe('Loyalty completion boundary', () => {
     // commerce routes no longer earn at payment time — they only settle a
     // prepaid redemption reservation.
     expect(commerce).not.toContain('earnLoyaltyPointsUseCase');
-    expect(commerce).toContain('consumeRedemptionUseCase');
+    // MOVED 2026-08-06: loyalty settlement on payment lives in the ONE
+    // settlement path (SettlePaymentUseCase wiring in the Registry), so the
+    // callback, IPN, reconciliation poller and ops re-verify cannot drift.
+    const registrySource = readFileSync(
+      resolve(__dirname, '../../apps/api/src/infrastructure/Registry.ts'),
+      'utf8',
+    );
+    expect(registrySource).toContain('consumeRedemptionUseCase.execute({ orderId })');
   });
 
   it('keeps earning behind the gated use case, vested on delivered/completed', () => {

@@ -241,17 +241,30 @@ describe('both provider paths settle through the same use case', () => {
   );
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
-  it('is called by the browser callback AND the IPN', () => {
-    // Two copies of a payment settlement path drift, and the drift is invisible: an
-    // order settled by IPN would quietly differ from one settled by the callback.
-    expect((code.match(/reconcileOrderPaymentUseCase\.execute\(/g) ?? []).length).toBe(2);
+  it('is called by the browser callback AND the IPN — now through ONE settle use case', () => {
+    // UPDATED 2026-08-06: the two routes no longer each call reconcile + carry
+    // their own ~90-line effects copy. Both call settlePaymentUseCase, and
+    // reconcile is invoked exactly once, inside it. Two doors, one path.
+    expect((code.match(/settlePaymentUseCase\.execute\(/g) ?? []).length).toBe(2);
+    expect(code).not.toContain('reconcileOrderPaymentUseCase.execute(');
+    const settleSource = readFileSync(
+      join(__dirname, '../../apps/api/src/application/use-cases/payments/SettlePaymentUseCase.ts'),
+      'utf8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect((settleSource.match(/this\.reconcile\.execute\(/g) ?? []).length).toBe(1);
   });
 
   it('gates downstream work on the settlement, not on the raw provider status', () => {
-    // Three: the callback's downstream work, the IPN's downstream work, and what the
-    // CUSTOMER is told on the callback redirect. That last one mattered — reading the raw
-    // status there could show "success" for a payment the settlement parked for review.
-    expect((code.match(/paymentDidConfirm\(settlement\)/g) ?? []).length).toBe(3);
+    // The downstream effects moved into SettlePaymentUseCase, gated on
+    // paymentDidConfirm there. What remains in the route is what the CUSTOMER
+    // is told on the callback redirect — which mattered: reading the raw status
+    // could show "success" for a payment the settlement parked for review.
+    expect((code.match(/paymentDidConfirm\(settlement\)/g) ?? []).length).toBe(1);
+    const settleSource = readFileSync(
+      join(__dirname, '../../apps/api/src/application/use-cases/payments/SettlePaymentUseCase.ts'),
+      'utf8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect((settleSource.match(/paymentDidConfirm\(settlement\)/g) ?? []).length).toBeGreaterThanOrEqual(1);
     // The old condition trusted the adapter's status string directly.
     expect(code).not.toContain("result.ok && result.status === 'completed'");
   });
