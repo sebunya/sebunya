@@ -4,9 +4,11 @@ import { readSessionToken } from "../../../lib/session";
 import { getRecommendationAnalytics } from "../../../lib/admin-analytics";
 import {
   listRecommendationRules,
+  getModelReadiness,
   getServingHealth,
   getLineageReport,
   getSearchIntelligence,
+  type ModelReadinessPayload,
   type ServingHealthPayload,
   type LineageReportPayload,
   type SearchIntelligencePayload,
@@ -28,11 +30,13 @@ const ruleId = url.searchParams.get("ruleId") || "";
 const productId = url.searchParams.get("productId") || "";
 
 // Fetch analytics data
-const [servingRes, lineageRes, searchIntelRes] = await Promise.all([
+const [servingRes, lineageRes, searchIntelRes, readinessRes] = await Promise.all([
   getServingHealth(token, 7),
   getLineageReport(token, 30),
   getSearchIntelligence(token, 10),
+  getModelReadiness(token),
 ]);
+const readiness: ModelReadinessPayload | null = readinessRes.ok ? readinessRes.data : null;
 const serving: ServingHealthPayload | null = servingRes.ok ? servingRes.data : null;
 const lineage: LineageReportPayload | null = lineageRes.ok ? lineageRes.data : null;
 const searchIntel: SearchIntelligencePayload | null = searchIntelRes.ok ? searchIntelRes.data : null;
@@ -514,6 +518,48 @@ const placements = [
             </div>
           </div>
         </div>
+
+        {/* R8: the model-readiness decision, evidence beside it */}
+        {readiness && (
+          <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
+            <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-baseline justify-between">
+              <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Ranking stage</h3>
+              <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200">{readiness.stage}</span>
+            </div>
+            <div class="p-6">
+              <p class="text-xs text-gray-600 mb-4">{readiness.statement}</p>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500">
+                    <tr><th class="text-left py-2">Evidence gate</th><th class="text-right px-3">Required</th><th class="text-right px-3">Actual</th><th class="text-right px-3"></th></tr>
+                  </thead>
+                  <tbody>
+                    {readiness.gates.map((g) => (
+                      <tr class="border-t border-gray-100">
+                        <td class="py-2 text-xs font-bold text-gray-700">{g.gate.replace(/_/g, ' ')}</td>
+                        <td class="text-right px-3 font-black text-brand-dark">{g.required.toLocaleString('en-UG')}</td>
+                        <td class="text-right px-3 font-black text-brand-dark">{g.actual.toLocaleString('en-UG')}</td>
+                        <td class="text-right px-3 text-[10px] font-black uppercase">{g.met ? <span class="text-green-700">met</span> : <span class="text-gray-400">not yet</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {readiness.recommendationExperiments.length > 0 ? (
+                <div class="mt-4">
+                  <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Recommendation experiments</h4>
+                  {readiness.recommendationExperiments.map((e) => (
+                    <p class={`text-xs ${e.srm?.srmSuspected ? "text-red-700 font-bold" : "text-gray-600"}`}>
+                      {e.key} · {e.status}{e.srm ? ` · ${e.srm.total} assignment(s) · ${e.srm.note}` : ""}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p class="text-[11px] text-gray-400 mt-4">No recommendation experiments exist. One is created and RUN only by explicit admin action — never automatically.</p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Unavailable Metrics Section */}
         <div class="bg-gray-100 border border-gray-200 rounded-2xl p-6 mb-10">

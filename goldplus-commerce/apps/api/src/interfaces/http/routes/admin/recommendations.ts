@@ -242,6 +242,13 @@ routes.get("/analytics/depth", requirePermissions([PERMISSIONS.RECOMMENDATIONS_R
   return c.json(res);
 });
 
+// R8: the model-readiness decision, with its evidence beside it.
+routes.get("/model/readiness", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
+  const result = await Registry.getInstance().recommendationModelReadinessUseCase.execute();
+  const res: ApiResponse<typeof result> = { success: true, data: result };
+  return c.json(res);
+});
+
 // R6: serving truth per placement — from the engine's own response events.
 routes.get("/analytics/serving", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
   const windowDays = Math.min(90, Math.max(1, Number(c.req.query("windowDays")) || 7));

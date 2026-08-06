@@ -140,6 +140,8 @@ export interface RecommendationResponseMeta {
   fallbackLevel: number;
   sources: RecommendationSourceReport[];
   emptyReason?: RecommendationEmptyReason;
+  /** R8: server-assigned experiment variant, when a rec_ experiment is RUNNING. Assigned server-side; the client can neither choose nor alter it. */
+  experiment?: { experimentKey: string; variantKey: string };
 }
 
 export interface RecommendationItemDto {

@@ -244,6 +244,8 @@ import { ReplayAdminOrderEmailUseCase } from '../application/use-cases/notificat
 import { UploadProductImagesUseCase } from '../application/use-cases/products/UploadProductImagesUseCase';
 import { TrackRecommendationEventUseCase } from '../application/recommendations/TrackRecommendationEventUseCase';
 import { ResolveExperienceProfileUseCase, LinkExperienceProfileUseCase } from '../application/use-cases/identity/ExperienceProfileUseCases';
+import { AssignRecommendationExperimentUseCase } from '../application/recommendations/AssignRecommendationExperimentUseCase';
+import { RecommendationModelReadinessUseCase } from '../application/recommendations/RecommendationModelReadiness';
 import { GetRecommendationsUseCase } from '../application/recommendations/GetRecommendationsUseCase';
 import { GetRecentlyViewedUseCase } from '../application/recommendations/GetRecentlyViewedUseCase';
 
@@ -1474,6 +1476,17 @@ export class Registry {
           logger.error({ eventType, eventId, error }, 'CHECKOUT_SIDE_EFFECT_DEAD_LETTERED'),
       },
     );
+
+  public readonly assignRecommendationExperimentUseCase = new AssignRecommendationExperimentUseCase(
+    this.experimentRepo,
+    this.experimentOperationsUseCase,
+  );
+
+  public readonly recommendationModelReadinessUseCase = new RecommendationModelReadinessUseCase(
+    this.recommendationAnalyticsRepo,
+    this.productRecommendationReader,
+    this.experimentRepo,
+  );
 
   public readonly resolveExperienceProfileUseCase = new ResolveExperienceProfileUseCase(this.experienceProfileRepo);
 

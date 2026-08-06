@@ -115,9 +115,16 @@ routes.get('/', async (c) => {
       }
     }
 
+    // R8: server-side experiment assignment — only with a stable profile, only
+    // while a rec_ experiment is RUNNING, and never blocking the serve.
+    const experiment = profileId
+      ? await registry.assignRecommendationExperimentUseCase.execute(profileId)
+      : null;
+
     const data = await registry.getRecommendationsUseCase.execute(input, {
       profileId,
       emitResponseEvent: true,
+      ...(experiment ? { experiment } : {}),
     });
 
     const res: ApiResponse<typeof data> = {

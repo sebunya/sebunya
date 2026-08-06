@@ -186,6 +186,19 @@ export interface SearchIntelligencePayload {
   clickedNeverConverted: Array<{ query: string; clickCount: number; productId: string }>;
 }
 
+export interface ModelReadinessPayload {
+  stage: string;
+  policyVersion: string;
+  gates: Array<{ gate: string; required: number; actual: number; met: boolean }>;
+  blockedBy: string[];
+  recommendationExperiments: Array<{ key: string; status: string; srm: { total: number; chiSquare: number | null; srmSuspected: boolean; note: string } | null }>;
+  statement: string;
+}
+
+export async function getModelReadiness(token: string) {
+  return fetchAuthed<ModelReadinessPayload>(`/admin/recommendations/model/readiness`, token);
+}
+
 export async function getServingHealth(token: string, windowDays = 7) {
   return fetchAuthed<ServingHealthPayload>(`/admin/recommendations/analytics/serving?windowDays=${windowDays}`, token);
 }

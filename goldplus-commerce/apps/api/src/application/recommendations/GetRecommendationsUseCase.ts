@@ -92,6 +92,8 @@ export interface RecommendationServerContext {
   profileId?: string;
   /** True only on the live serving route — never for preview or materializer runs. */
   emitResponseEvent?: boolean;
+  /** R8: server-assigned experiment variant (AssignRecommendationExperimentUseCase). */
+  experiment?: { experimentKey: string; variantKey: string };
 }
 
 interface GatherResult {
@@ -251,6 +253,7 @@ export class GetRecommendationsUseCase {
       fallbackLevel,
       sources: sourceReports,
       ...(emptyReason ? { emptyReason } : {}),
+      ...(serverContext?.experiment ? { experiment: serverContext.experiment } : {}),
     };
 
     const response: RecommendationResponseDto = {
@@ -569,6 +572,7 @@ export class GetRecommendationsUseCase {
         fallbackLevel: response.meta?.fallbackLevel,
         emptyReason: response.meta?.emptyReason,
         sources: response.meta?.sources.map((s) => `${s.source}:${s.state}:${s.candidates}`),
+        experiment: response.meta?.experiment,
         items: response.items.map((item, rank) => ({
           id: item.productId,
           rank: rank + 1,
