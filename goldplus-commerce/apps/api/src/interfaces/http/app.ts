@@ -22,6 +22,8 @@ import adminProductsRoutes from './routes/admin/products';
 import adminProductCostsRoutes from './routes/admin/product-costs';
 import adminHeroRoutes from './routes/admin/hero';
 import heroPublicRoutes from './routes/hero';
+import adminNavRoutes from './routes/admin/nav';
+import navPublicRoutes from './routes/nav';
 import authSocialRoutes from './routes/auth-social';
 import adminNotificationsRoutes from './routes/admin/notifications';
 import adminRecommendationsRoutes from './routes/admin/recommendations';
@@ -209,6 +211,7 @@ app.route('/admin/roles', adminRolesRoutes);
 app.route('/admin/products', adminProductsRoutes);
 app.route('/admin/product-costs', adminProductCostsRoutes);
 app.route('/admin/hero', adminHeroRoutes);
+app.route('/admin/nav', adminNavRoutes);
 app.route('/admin/notifications', adminNotificationsRoutes);
 app.route('/admin/recommendations', adminRecommendationsRoutes);
 app.route('/admin/customer-dna', adminCustomerDnaRoutes);
@@ -232,6 +235,7 @@ app.route('/admin/inventory', adminInventoryRoutes);
 app.route('/admin/control-centre', adminControlCentreRoutes);
 app.route('/recommendations', recommendationRoutes);
 app.route('/hero', heroPublicRoutes);
+app.route('/nav', navPublicRoutes);
 app.route('/telemetry', telemetryRoutes);
 app.route('/health', healthRoutes);
 app.route('/metrics', metricsRoutes);
@@ -313,6 +317,8 @@ export default app;
 export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/hero',
   '/hero',
+  '/admin/nav',
+  '/nav',
   '/auth/social',
   '/admin/product-costs',
   '/account',

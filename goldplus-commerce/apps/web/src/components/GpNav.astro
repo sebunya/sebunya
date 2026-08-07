@@ -4,14 +4,29 @@ import { resolveCartCredential } from '../lib/cartCredential';
 import { resolveAuthenticatedUserId } from '../lib/customerAuth';
 import { readSessionToken } from '../lib/session';
 import { apiBase } from '../lib/api';
-import { HERO_SLIDE_LIBRARY, computeNbaCandidates, kampalaCutoff } from '@goldplus/shared';
+import { HERO_SLIDE_LIBRARY, computeNbaCandidates, kampalaCutoff, DEFAULT_NAV_CONFIG, type NavConfig } from '@goldplus/shared';
 
 /**
- * GoldPlus site navigation (Stage 1: port + real data).
+ * GoldPlus site navigation.
  * ONE instance, rendered once from BaseLayout. Per-visitor data is resolved
- * server-side; all pages are dynamic + uncached, so this is safe. Content is
- * hardcoded here for now — Stage 2 lifts it into a CMS.
+ * server-side; all pages are dynamic + uncached, so this is safe.
+ *
+ * Stage 2: the header CONTENT (rail, contact, featured cards, flash panel, search
+ * copy, the first-order estimate, trending) is DB-backed and editable in
+ * /admin/nav. We fetch it here and fall back to DEFAULT_NAV_CONFIG — the header
+ * is never a database outage. The deep structural bodies (tile descriptors, the
+ * capacity matrix, the battery brand chips) stay in code; they match the seed.
  */
+
+// ---- header content (CMS, DB-backed) ----
+let nav: NavConfig = DEFAULT_NAV_CONFIG;
+try {
+  const navRes = await fetch(`${apiBase}/nav`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(2000) });
+  const navJson: any = await navRes.json().catch(() => null);
+  if (navRes.ok && navJson?.success && navJson.data?.config) nav = navJson.data.config as NavConfig;
+} catch {
+  // keep DEFAULT_NAV_CONFIG — the header never blanks on a DB hiccup
+}
 
 // ---- cart: read through the SIGNED credential, never an id in a URL ----
 const headerUserId = await resolveAuthenticatedUserId(Astro.cookies);
@@ -92,7 +107,15 @@ const nba = computeNbaCandidates({
 });
 
 const escNav = (str: string) => str.replace(/</g, '\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-const navConfigJson = escNav(JSON.stringify({ signedIn, firstName, points, cartCount, saleEnds }));
+const navConfigJson = escNav(JSON.stringify({
+  signedIn, firstName, points, cartCount, saleEnds,
+  firstOrderEstimate: nav.settings.firstOrderEstimateUgx,
+  firstOrderPct: nav.settings.firstOrderDiscountPct,
+  referralPct: nav.settings.referralPct,
+  pointsRate: nav.settings.pointsToUgxRate,
+  trending: nav.search.trendingTerms.map((t) => [t.label, t.href]),
+  zeroResult: nav.search.zeroResultCopy,
+}));
 const nbaJson = escNav(JSON.stringify(nba));
 ---
 <header class="gp-nav" id="gpNav" data-sale-ends={saleEnds}>
@@ -168,13 +191,9 @@ const nbaJson = escNav(JSON.stringify(nba));
 
   <nav class="gp-nav__rail" aria-label="Product categories">
     <div class="gp-nav__rail-in gpn-container" id="gpNavRail">
-      <a class="gp-nav__cat" href="/shop" data-cat="all">Shop All</a>
-      <a class="gp-nav__cat" href="/shop?category=power" data-cat="power">Power</a>
-      <a class="gp-nav__cat" href="/shop?category=sound" data-cat="sound">Sound</a>
-      <a class="gp-nav__cat" href="/shop?category=storage" data-cat="storage">Storage</a>
-      <a class="gp-nav__cat" href="/shop?category=car" data-cat="car">Car</a>
-      <a class="gp-nav__cat" href="/shop?category=pc" data-cat="pc">PC</a>
-      <a class="gp-nav__cat gp-nav__cat--flash" href="/shop?promo=flash-sale" data-cat="flash">Flash sale<span class="gp-nav__cat-tag">Live</span></a>
+      {nav.rail.map((cat) => (
+        <a class={cat.key === 'flash' ? 'gp-nav__cat gp-nav__cat--flash' : 'gp-nav__cat'} href={cat.href} data-cat={cat.key}>{cat.label}{cat.tag && <span class="gp-nav__cat-tag">{cat.tag}</span>}</a>
+      ))}
       <span class="gp-nav__spark" id="gpNavSpark" aria-hidden="true"></span>
     </div>
   </nav>
@@ -1078,6 +1097,35 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   'use strict';
   var nav = document.getElementById('gpNav'); if (!nav) return;
   var CFG = window.__GPNAV || {};  // server-injected per-visitor truth
+
+  // ---- §10 instrumentation: nav_events via the same-origin relay ----
+  var gpSeg = CFG.signedIn ? 'signed_in' : (function(){ try { var v = parseInt(localStorage.getItem('gp_visits')||'0',10)||0; return v>1?'returning':(v===1?'new':'unknown'); } catch(e){ return 'unknown'; } })();
+  var gpBeacon = { NBA_CLICK:1, SEARCH_SUGGEST_CLICK:1, WHATSAPP_TAP:1, BATTERY_FINDER_SUBMIT:1, MINICART_CHECKOUT:1 };
+  var gpSeen = {};
+  window.gpNavTrack = function(type, d){
+    d = d || {};
+    try {
+      var body = JSON.stringify({ eventType:type, itemKey:d.itemKey||'', position:d.position||0, segment:gpSeg, term:(d.term!=null?String(d.term):null) });
+      if (gpBeacon[type] && navigator.sendBeacon){ navigator.sendBeacon('/api/nav/events', new Blob([body],{type:'application/json'})); return; }
+      fetch('/api/nav/events', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', keepalive:true, body:body }).catch(function(){});
+    } catch(e){}
+  };
+  nav.addEventListener('click', function(e){
+    var t = e.target; if (!t || !t.closest) return;
+    var wa = t.closest('a[href^="https://wa.me/"]');
+    if (wa){ var place = wa.closest('.gp-nav__finder') ? 'panel-power' : (wa.closest('.gp-nav__sh-foot') ? 'search-foot' : 'bar'); window.gpNavTrack('WHATSAPP_TAP', { itemKey: place }); return; }
+    if (t.closest('.gp-nav__sheet [data-opt]')){ window.gpNavTrack('SEARCH_SUGGEST_CLICK', {}); return; }
+    if (t.closest('.gp-nav__mini a[href="/checkout"]')){ window.gpNavTrack('MINICART_CHECKOUT', {}); return; }
+    var slot = t.closest('.gp-nav__nba-slot');
+    if (slot){ window.gpNavTrack('NBA_CLICK', { itemKey: slot.getAttribute('data-nba') || '' }); return; }
+  });
+  nav.addEventListener('submit', function(e){
+    var f = e.target;
+    if (f && f.closest && (f.closest('.gp-nav__finder') || f.closest('.gp-nav__mfinder'))){
+      var mi = f.querySelector('input[name=model]');
+      window.gpNavTrack('BATTERY_FINDER_SUBMIT', { itemKey: 'power', term: mi ? mi.value : '' });
+    }
+  }, true);
   var mega = document.getElementById('gpNavMega');
   var burger = document.getElementById('gpNavBurger');
   var scrim = document.getElementById('gpNavScrim');
@@ -1143,6 +1191,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   var current = null, closeT = null;
 
   function show(id, el){
+    if (id && !gpSeen['panel:'+id]){ gpSeen['panel:'+id]=1; window.gpNavTrack('PANEL_OPEN', { itemKey:id }); }
     for (var i=0;i<panels.length;i++){
       panels[i].removeAttribute('data-on');
       if (panels[i].getAttribute('data-panel') === id) panels[i].setAttribute('data-on','');
@@ -1211,7 +1260,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     var cut = document.getElementById('gpNavMiniCut');
     if (!wrap) return;
     var t = null;
-    function open(){ if (window.innerWidth <= 980) return; clearTimeout(t); wrap.setAttribute('data-open',''); }
+    function open(){ if (window.innerWidth <= 980) return; clearTimeout(t); wrap.setAttribute('data-open',''); if (!gpSeen.minicart){ gpSeen.minicart=1; window.gpNavTrack('MINICART_OPEN', {}); } }
     function shut(){ t = setTimeout(function(){ wrap.removeAttribute('data-open'); }, 220); }
     wrap.addEventListener('mouseenter', open);
     wrap.addEventListener('mouseleave', shut);
@@ -1276,7 +1325,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     function R(id, url){ return (window.__resources && window.__resources[id]) || url; }
 
     var INDEX = [];  // Stage 3 wires the real /products/suggest endpoint
-    var TREND = [];  // Stage 3 wires real trending from query logs
+    var TREND = (CFG.trending && CFG.trending.length) ? CFG.trending : [];  // seeded from the CMS (query logs)
     var RKEY = 'gp_recent';
     function recents(){ try { return JSON.parse(localStorage.getItem(RKEY) || '[]'); } catch(e){ return []; } }
     function remember(q){
@@ -1320,9 +1369,9 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       }
       function renderHits(q, hits){
         if (!hits.length){
-          sheet.innerHTML = '<div class="gp-nav__sh-empty">No match for <b>' + esc(q) +
-            '</b>. Try a phone model, a size, or a category &mdash; or ask us directly.</div>' + foot();
-          if (window.gpNavTrack) window.gpNavTrack('search_zero', { q: q });
+          var zr = (CFG.zeroResult || 'No match for <b>{q}</b>. Try a phone model, a size, or a category — or ask us directly.').replace('{q}', esc(q));
+          sheet.innerHTML = '<div class="gp-nav__sh-empty">' + zr + '</div>' + foot();
+          if (window.gpNavTrack) window.gpNavTrack('SEARCH_ZERO', { term: q });
           return;
         }
         var h = '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Products</p><div class="gp-nav__sug">';
@@ -1335,6 +1384,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         }).join('');
         h += '</div></div>' + foot();
         sheet.innerHTML = h;
+        if (!gpSeen['sshown:'+q]){ gpSeen['sshown:'+q]=1; window.gpNavTrack('SEARCH_SUGGEST_SHOWN', { position: hits.length }); }
       }
       /* real predictive search over the public autocomplete, via a same-origin
          relay; the newest keystroke always wins, and any failure degrades to the
@@ -1432,9 +1482,9 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<div class="gp-nav__acct-links">' +
             '<a href="/account">Your orders</a>' +
             '<a href="/account/rewards">Rewards <b>' + POINTS.toLocaleString() + ' pts</b></a>' +
-            '<a href="/account/account/rewards">Refer a friend <b>Give 10%</b></a>' +
+            '<a href="/account/rewards">Refer a friend <b>Give ' + (CFG.referralPct||10) + '%</b></a>' +
             '<a href="/account#settings">Account settings</a>' +
-            '<a href="/account/logout">Sign out</a>' +
+            '<a href="/logout">Sign out</a>' +
           '</div>';
       }
       if (returning){
@@ -1461,7 +1511,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         '<div class="gp-nav__hold">' +
           '<span class="gp-nav__hold-tag">Reserved for you</span>' +
           '<b>10% off your first order</b>' +
-          '<span>About <em>UGX 18,500</em> back on a typical order</span>' +
+          '<span>About <em>' + (CFG.firstOrderEstimate||'UGX 18,500') + '</em> back on a typical order</span>' +
         '</div>' +
         '<form class="gp-nav__join" action="/register" method="get">' +
           '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" ' +
@@ -1488,7 +1538,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<a class="gp-nav__mhi-alt" href="/account">Sign in instead</a>';
       }
       return '<h2>' + partOfDay() + '</h2>' +
-        '<p><b>10% off your first order</b> is reserved &mdash; about <b>UGX 18,500</b> back. Your phone number is your account.</p>' +
+        '<p><b>' + (CFG.firstOrderPct||10) + '% off your first order</b> is reserved &mdash; about <b>' + (CFG.firstOrderEstimate||'UGX 18,500') + '</b> back. Your phone number is your account.</p>' +
         '<form class="gp-nav__mjoin" action="/register" method="get">' +
           '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
           '<button type="submit">Claim it</button>' +
@@ -1637,11 +1687,11 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       if (CTX.signedIn) c.push({ id:'refer', score:62,
         text:'Send a friend here &mdash; they save <em>10%</em>, you earn <em>10%</em>',
         short:'They save <em>10%</em>, you earn <em>10%</em>',
-        cta:'Get your link', href:'/account/account/rewards' });
+        cta:'Get your link', href:'/account/rewards' });
 
       /* ---- not signed in: the useful, honest defaults ---- */
       if (!CTX.signedIn && CTX.visits <= 1) c.push({ id:'welcome', score:92,
-        text:'<em>10% off</em> your first order is reserved &mdash; about <b>UGX 18,500</b> back',
+        text:'<em>10% off</em> your first order is reserved &mdash; about <b>' + (CFG.firstOrderEstimate||'UGX 18,500') + '</b> back',
         short:'<em>10% off</em> your first order, reserved',
         cta:'Claim it', href:'/register' });
 
@@ -1694,6 +1744,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         }
         slot.setAttribute('href', item.href || '#');
         slot.setAttribute('data-nba', item.id);
+        if (!gpSeen['nba:'+item.id]){ gpSeen['nba:'+item.id]=1; window.gpNavTrack('NBA_IMPRESSION', { itemKey:item.id, position:n+1 }); }
         if (dot){ item.urgent ? dot.setAttribute('data-urgent','') : dot.removeAttribute('data-urgent'); }
         slot.setAttribute('data-in','');
       }, rendered ? 320 : 0);
@@ -1715,6 +1766,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     if (xBtn) xBtn.addEventListener('click', function(){
       var id = slot.getAttribute('data-nba');
       if (id && dismissed.indexOf(id) < 0){ dismissed.push(id); set('gp_nba_x', dismissed.join(',')); }
+      if (id) window.gpNavTrack('NBA_DISMISS', { itemKey:id });
       build(window.GP_NBA);
     });
 

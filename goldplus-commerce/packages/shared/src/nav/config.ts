@@ -1,0 +1,277 @@
+import { HERO_SLIDE_LIBRARY } from '../hero/library';
+import type { NavConfig } from './types';
+
+/**
+ * DEFAULT_NAV_CONFIG — the single source of truth for the header content, used by
+ * BOTH the idempotent boot seed and the SSR fallback (the role HERO_SLIDE_LIBRARY
+ * plays for the hero). After seeding it belongs to marketing via the admin editor;
+ * the seed is add-only and never overwrites an operator's edits.
+ *
+ * Three seed-time corrections vs. the previous hardcoded header:
+ *  1. The refer-a-friend link is the canonical /account/rewards (the old header
+ *     had a /account/account/rewards double-`account` bug).
+ *  2. The first-order estimate is ONE field (settings.firstOrderEstimateUgx),
+ *     not four duplicated literals.
+ *  3. settings.saleEndsIso is DERIVED from the hero flash deadline so the header
+ *     countdown can never fork into a second, contradictory clock.
+ */
+
+const WA = 'https://wa.me/256705004545';
+const WA_BATTERY = 'https://wa.me/256705004545?text=Hi%20GoldPlus%2C%20I%20need%20a%20battery%20for%20my%20';
+const FEAT = '/nav/featured-default.png';
+const flashSlide = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === 'flash');
+const SALE_ENDS_ISO = (flashSlide?.extras?.saleEndsIso as string) ?? '2026-08-09T23:59:59+03:00';
+
+const brandChips = [
+  { label: 'Tecno', href: '/shop?category=power&q=tecno' },
+  { label: 'Infinix', href: '/shop?category=power&q=infinix' },
+  { label: 'itel', href: '/shop?category=power&q=itel' },
+  { label: 'Samsung', href: '/shop?category=power&q=samsung' },
+  { label: 'iPhone', href: '/shop?category=power&q=iphone' },
+  { label: 'Redmi', href: '/shop?category=power&q=redmi' },
+  { label: 'Xiaomi', href: '/shop?category=power&q=xiaomi' },
+  { label: 'Huawei', href: '/shop?category=power&q=huawei' },
+  { label: 'Nokia', href: '/shop?category=power&q=nokia' },
+  { label: 'Oppo', href: '/shop?category=power&q=oppo' },
+  { label: 'All brands →', href: '/shop?category=power&q=battery', style: 'green' as const },
+];
+
+const caps = (kind: 'flash+drive' | 'memory+card') => {
+  const sizes = ['1gb', '2gb', '4gb', '8gb', '16gb', '32gb', '64gb', '128gb', '256gb', '512gb'];
+  return sizes.map((s) => ({ label: s.toUpperCase().replace('GB', 'GB'), href: `/shop?category=storage&q=${s}` }));
+};
+
+export const DEFAULT_NAV_CONFIG: NavConfig = {
+  contact: {
+    phoneDisplay: '0705 004545',
+    tel: 'tel:+256705004545',
+    telNumber: '+256705004545',
+    whatsappUrl: WA,
+    whatsappNumber: '256705004545',
+    whatsappBatteryPrefill: WA_BATTERY,
+    businessHoursNote: '0705 004545 · 9am–7pm, Monday to Saturday',
+    reachCallLabel: 'Call us',
+    reachWhatsappLabel: 'WhatsApp',
+  },
+  brand: {
+    logoSrc: '/nav/gp-wordmark-cream.png',
+    logoAlt: 'GoldPlus',
+    logoHref: '/',
+    logoAriaLabel: 'GoldPlus home',
+    featuredDefaultImage: FEAT,
+  },
+  search: {
+    formAction: '/shop',
+    inputName: 'q',
+    placeholderDesktop: 'Search a phone model, a size, or a product…',
+    placeholderMobile: 'Search a phone model or product…',
+    scanLink: { href: '/verification', ariaLabel: 'Check if a product is genuine' },
+    sheetHeadings: { recent: 'Recent', recentClear: 'Clear', trending: 'Trending in Kampala', products: 'Products' },
+    footerCtaLabel: 'Ask us on WhatsApp',
+    footerCtaHref: WA,
+    zeroResultCopy: 'No match for <b>{q}</b>. Try a phone model, a size, or a category — or ask us directly.',
+    trendingTerms: [],
+  },
+  rail: [
+    { key: 'all', label: 'Shop All', href: '/shop' },
+    { key: 'power', label: 'Power', href: '/shop?category=power' },
+    { key: 'sound', label: 'Sound', href: '/shop?category=sound' },
+    { key: 'storage', label: 'Storage', href: '/shop?category=storage' },
+    { key: 'car', label: 'Car', href: '/shop?category=car' },
+    { key: 'pc', label: 'PC', href: '/shop?category=pc' },
+    { key: 'flash', label: 'Flash sale', href: '/shop?promo=flash-sale', tag: 'Live' },
+  ],
+  panels: [
+    {
+      key: 'all',
+      shape: 'wide',
+      tiles: [
+        { label: 'Power', descriptor: 'Banks, batteries, chargers', href: '/shop?category=power' },
+        { label: 'Sound', descriptor: 'Earbuds and headphones', href: '/shop?category=sound' },
+        { label: 'Storage', descriptor: '1GB to 512GB', href: '/shop?category=storage' },
+        { label: 'Car', descriptor: 'Chargers and Bluetooth', href: '/shop?category=car' },
+        { label: 'PC', descriptor: 'Mouse and sound cards', href: '/shop?category=pc' },
+        { label: 'Everything →', descriptor: 'The full range', href: '/shop', variant: 'go' },
+      ],
+      featColumn: {
+        heading: 'Start here',
+        rows: [
+          { label: 'New this month', href: '/shop' },
+          { label: 'Best sellers', href: '/shop' },
+          { label: 'Under UGX 100,000', href: '/shop' },
+          { label: 'How we verify stock', href: '/verification' },
+        ],
+      },
+      featured: null,
+    },
+    {
+      key: 'power',
+      shape: 'list',
+      heading: 'Power',
+      listRows: [
+        { label: 'Power banks', href: '/shop?category=power&q=power+bank' },
+        { label: 'Wall chargers', href: '/shop?category=power&q=wall+charger' },
+        { label: 'Adapters', href: '/shop?category=power&q=adapter' },
+        { label: 'Cables', href: '/shop?category=power&q=cable' },
+        { label: 'All Power →', href: '/shop?category=power', bold: true },
+      ],
+      batteryFinder: {
+        heading: 'Phone batteries',
+        note: '80+ models in stock — find yours by phone',
+        formAction: '/shop?category=power&q=battery',
+        inputName: 'model',
+        inputPlaceholder: 'Type your phone, e.g. Tecno Spark 10',
+        brandChips,
+        askAction: { label: "Can't find your model? Send us a photo of the old one", href: WA_BATTERY },
+      },
+      featured: {
+        eyebrow: 'Most carried', name: 'Magnetic Power Bank', line: 'Clips to the back of your phone',
+        href: '/shop?category=power&q=power+bank', alt: 'Magnetic Power Bank', img: FEAT,
+      },
+    },
+    {
+      key: 'sound',
+      shape: 'wide',
+      tiles: [
+        { label: 'Earbuds', descriptor: 'True wireless, with a charging case', href: '/shop?category=sound&q=earbuds' },
+        { label: 'Earphones', descriptor: 'Wired, with a mic for calls', href: '/shop?category=sound&q=earphones' },
+        { label: 'Headphones', descriptor: 'On-ear, for everyday listening', href: '/shop?category=sound&q=headphones' },
+        { label: 'Over-ear headphones', descriptor: 'Full cups, for studio and travel', href: '/shop?category=sound&q=over-ear' },
+      ],
+      featured: {
+        eyebrow: 'Also worth carrying', name: 'Digital Display Power Bank', line: '20,000mAh, with a charge level you can read',
+        href: '/shop?category=power&q=power+bank', alt: 'Digital Display Power Bank', img: FEAT,
+      },
+    },
+    {
+      key: 'storage',
+      shape: 'wide',
+      capacityMatrix: [
+        { rowLabel: 'Flash drives', allSizes: { label: 'All sizes →', href: '/shop?category=storage&q=flash+drive' }, caps: caps('flash+drive') },
+        { rowLabel: 'Memory cards', allSizes: { label: 'All sizes →', href: '/shop?category=storage&q=memory+card' }, caps: caps('memory+card') },
+      ],
+      note: 'Every card is written full and read back before it is sold. <b>The size on the box is the size you get.</b>',
+      featured: {
+        eyebrow: 'Also worth carrying', name: 'Power Bank with Built-in Cables', line: 'No cable to forget at home',
+        href: '/shop?category=power&q=power+bank', alt: 'Power Bank with Built-in Cables', img: FEAT,
+      },
+    },
+    {
+      key: 'car',
+      shape: 'wide',
+      tiles: [
+        { label: 'Car chargers', descriptor: 'Fast charging built for Kampala potholes', href: '/shop?category=car&q=charger' },
+        { label: 'Bluetooth for cars', descriptor: 'Calls and music in a car with no Bluetooth', href: '/shop?category=car&q=bluetooth' },
+      ],
+      featured: {
+        eyebrow: 'Also worth carrying', name: 'Power Bank with Carry Handle', line: 'Enough charge for the whole car',
+        href: '/shop?category=power&q=power+bank', alt: 'Power Bank with Carry Handle', img: FEAT,
+      },
+    },
+    {
+      key: 'pc',
+      shape: 'wide',
+      tiles: [
+        { label: 'Mouse', descriptor: 'Wired and wireless, for work and play', href: '/shop?category=pc&q=mouse' },
+        { label: 'Sound cards', descriptor: 'External audio for laptops and studios', href: '/shop?category=pc&q=sound+card' },
+      ],
+      featured: {
+        eyebrow: 'Also worth carrying', name: '100W Portable Power Station', line: 'Keeps a desk running through a blackout',
+        href: '/shop?category=power', alt: '100W Portable Power Station', img: FEAT,
+      },
+    },
+  ],
+  flash: {
+    countdownHeading: 'Ends in',
+    countdownLabels: { d: 'Days', h: 'Hrs', m: 'Min', s: 'Sec' },
+    noteDefault: 'Same verified stock. Less money, until the clock runs out.',
+    noteFinalHours: 'Final hours. Same verified stock, less money.',
+    stock: { left: 14, of: 60, label: 'at this price', barWidthPct: 23 },
+    cta: { label: 'Shop the flash sale →', href: '/shop?promo=flash-sale' },
+    discountRowsHeading: 'Biggest cuts',
+    discountRows: [
+      { label: 'Power banks', pct: '−40%', href: '/shop?promo=flash-sale' },
+      { label: 'Earbuds', pct: '−35%', href: '/shop?promo=flash-sale' },
+      { label: 'Memory cards', pct: '−30%', href: '/shop?promo=flash-sale' },
+      { label: 'Phone batteries', pct: '−25%', href: '/shop?promo=flash-sale' },
+      { label: 'Everything under UGX 100,000', pct: null, href: '/shop?promo=flash-sale' },
+      { label: 'Everything on sale →', pct: null, href: '/shop?promo=flash-sale', bold: true },
+    ],
+    featured: {
+      eyebrow: 'Best seller, on sale', name: 'Magnetic Power Bank', line: 'UGX 185,000 → <b>UGX 111,000</b>',
+      href: '/shop?promo=flash-sale', alt: 'Magnetic Power Bank', img: FEAT,
+    },
+  },
+  mobile: {
+    quickLinks: [
+      { key: 'all', label: 'Shop All', href: '/shop' },
+      { key: 'flash', label: 'Flash sale', href: '/shop?promo=flash-sale', tag: 'Live' },
+    ],
+    mflashPrefix: 'Flash sale ends in',
+    mflashGo: 'Shop →',
+    mflashHref: '/shop?promo=flash-sale',
+    batteryAccordionHeading: 'Phone batteries — 80+ models',
+  },
+  popover: {
+    signedIn: {
+      subTemplate: 'You have <b>{points} points</b> — that is {money} off your next order.',
+      links: [
+        { label: 'Your orders', href: '/account' },
+        { label: 'Rewards', value: '{points} pts', href: '/account/rewards' },
+        { label: 'Refer a friend', value: 'Give {referralPct}%', href: '/account/rewards' },
+        { label: 'Account settings', href: '/account#settings' },
+        { label: 'Sign out', href: '/logout' },
+      ],
+      mobileRow: [
+        { label: 'Your rewards', href: '/account/rewards' },
+        { label: 'Your orders', href: '/account' },
+      ],
+    },
+    returning: {
+      heading: 'Welcome back',
+      holdTag: 'Still reserved',
+      holdTitle: '{discountPct}% off your first order',
+      holdSubManyVisits: 'This is visit <em>{visits}</em> — none of them have earned points yet',
+      holdSubDefault: 'Points start counting from the order you make today',
+      formAction: '/register',
+      formInputPlaceholder: '07XX XXX XXX',
+      submit: 'Claim it',
+      altLink: { label: 'Sign in instead', href: '/account' },
+      mobileSub: '<b>{discountPct}% off your first order</b> is still reserved. Points start counting from today.',
+    },
+    firstTime: {
+      holdTag: 'Reserved for you',
+      holdTitle: '{discountPct}% off your first order',
+      holdSub: 'About <em>{estimate}</em> back on a typical order',
+      formAction: '/register',
+      formInputPlaceholder: '07XX XXX XXX',
+      submit: 'Claim it',
+      joinNote: 'Your number is your account. Nothing else to fill in.',
+      altLink: { label: 'I already have an account', href: '/account' },
+      mobileSub: '<b>{discountPct}% off your first order</b> is reserved — about <b>{estimate}</b> back. Your phone number is your account.',
+    },
+  },
+  miniCart: {
+    heading: 'In your cart',
+    subtotalLabel: 'Subtotal',
+    checkoutCta: { label: 'Checkout', href: '/checkout' },
+    viewCartCta: { label: 'View cart', href: '/cart' },
+    cutoffSunday: 'Closed Sunday — this order goes out <b>Monday morning</b>',
+    cutoffAfter: "Today's run has left — this order goes out <b>tomorrow morning</b>",
+    cutoffBefore: 'Check out in <b>{left}</b> and this arrives <b>today</b>.',
+  },
+  settings: {
+    firstOrderEstimateUgx: 'UGX 18,500',
+    firstOrderDiscountPct: 10,
+    pointsToUgxRate: 10,
+    referralPct: 10,
+    saleEndsIso: SALE_ENDS_ISO,
+    cutoffTimeLabel: '5:00pm',
+    nbaVisible: 1,
+    searchSuggestions: 6,
+    recentSearches: 5,
+    miniCartItems: 4,
+    dayStartHour: 6.5,
+    dayEndHour: 18.75,
+  },
+};

@@ -48,7 +48,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 92 adds product-costs (2026-08-07) — the cost-entry surface whose absence
     // made "enter costs to activate profit" a promise with nowhere to keep it.
     // 93 adds hero (2026-08-07) — the homepage hero editor.
-    expect(adminPages).toHaveLength(93);
+    // 94 adds nav (2026-08-07) — the header/navigation editor (Stage 2 CMS).
+    expect(adminPages).toHaveLength(94);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/analytics/index.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -65,7 +66,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(92);
+    expect(protectedPages).toHaveLength(93);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');

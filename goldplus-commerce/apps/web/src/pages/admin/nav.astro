@@ -1,0 +1,242 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../lib/session';
+import { apiBase } from '../../lib/api';
+import { NAV_LIMITS } from '@goldplus/shared';
+
+/**
+ * Header (nav) editor (0109/0110). Marketing edits the rail, contact, featured
+ * cards, flash sale, search copy, the first-order estimate and trending terms —
+ * no code, no deploy. Every save validates the WHOLE config server-side; a save
+ * that would break the header is refused with the reasons. The deep structural
+ * bodies (tile descriptions, the capacity matrix, the battery brand chips) are
+ * code-managed and shown read-only here. Below the editor is the §10 report.
+ */
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/nav', 303);
+
+const authed = (path: string, init?: RequestInit) =>
+  fetch(`${apiBase}${path}`, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+
+let notice: { kind: 'ok' | 'error'; message: string; details?: Array<{ path: string; message: string }> } | null = null;
+
+// deep-set a dotted path on an object (numeric segments create/index arrays)
+function deepSet(obj: any, path: string, value: unknown) {
+  const parts = path.split('.');
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const k = parts[i];
+    if (cur[k] == null) cur[k] = /^\d+$/.test(parts[i + 1]) ? [] : {};
+    cur = cur[k];
+  }
+  cur[parts[parts.length - 1]] = value;
+}
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  try {
+    // Start from the CURRENT config so structural parts we don't edit are preserved.
+    const cur = await authed('/admin/nav');
+    const curJson: any = await cur.json().catch(() => null);
+    if (!cur.ok || !curJson?.success) throw new Error(curJson?.error?.message ?? 'Could not read the current header.');
+    const cfg = curJson.data.config;
+
+    // Scalar dotted fields (settings, contact, search, flash notes/cta/stock).
+    const scalarStr = [
+      'settings.firstOrderEstimateUgx', 'settings.cutoffTimeLabel',
+      'contact.phoneDisplay', 'contact.telNumber', 'contact.whatsappNumber', 'contact.businessHoursNote',
+      'search.placeholderDesktop', 'search.placeholderMobile', 'search.zeroResultCopy',
+      'flash.noteDefault', 'flash.noteFinalHours', 'flash.cta.label', 'flash.stock.label',
+    ];
+    for (const p of scalarStr) { const v = form.get(p); if (v != null) deepSet(cfg, p, String(v)); }
+    const scalarNum = ['settings.firstOrderDiscountPct', 'settings.referralPct', 'settings.pointsToUgxRate', 'flash.stock.left', 'flash.stock.of', 'flash.stock.barWidthPct'];
+    for (const p of scalarNum) { const v = form.get(p); if (v != null && v !== '') deepSet(cfg, p, Number(v)); }
+    // Derived contact fields kept consistent.
+    cfg.contact.tel = `tel:${cfg.contact.telNumber}`;
+    cfg.contact.whatsappUrl = `https://wa.me/${cfg.contact.whatsappNumber}`;
+
+    // Rail (by key).
+    (cfg.rail ?? []).forEach((r: any) => {
+      const label = form.get(`rail.${r.key}.label`); if (label != null) r.label = String(label);
+      const href = form.get(`rail.${r.key}.href`); if (href != null) r.href = String(href);
+      const tag = form.get(`rail.${r.key}.tag`); if (tag != null) { const t = String(tag).trim(); if (t) r.tag = t; else delete r.tag; }
+    });
+
+    // Featured cards (by panel key + flash).
+    const setFeat = (f: any, key: string) => {
+      if (!f) return;
+      for (const field of ['name', 'line', 'href', 'alt', 'eyebrow'] as const) {
+        const v = form.get(`feat.${key}.${field}`); if (v != null) f[field] = String(v);
+      }
+    };
+    (cfg.panels ?? []).forEach((p: any) => setFeat(p.featured, p.key));
+    setFeat(cfg.flash?.featured, 'flash');
+
+    // Trending terms (one "label | href" per line).
+    const trendingRaw = form.get('trending');
+    if (trendingRaw != null) {
+      cfg.search.trendingTerms = String(trendingRaw).split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+        const [label, href] = l.split('|').map((x) => x.trim());
+        return { label: label ?? '', href: href ?? '' };
+      }).filter((t) => t.label && t.href);
+    }
+
+    const res = await authed('/admin/nav', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: cfg }) });
+    const json: any = await res.json().catch(() => null);
+    if (res.ok && json?.success) notice = { kind: 'ok', message: `Header saved (version ${json.data.version}). Live for every visitor.` };
+    else if (res.status === 422) notice = { kind: 'error', message: 'Save blocked — fix these before saving:', details: json?.error?.details ?? [] };
+    else notice = { kind: 'error', message: json?.error?.message ?? 'Could not save the header.' };
+  } catch (e) {
+    notice = { kind: 'error', message: e instanceof Error ? e.message : 'Could not save the header.' };
+  }
+}
+
+// Load config + report.
+let config: any = null; let errors: any[] = []; let report: any = null; let loadError = '';
+try {
+  const [cfgRes, repRes] = await Promise.all([authed('/admin/nav'), authed('/admin/nav/report?windowDays=30')]);
+  if (cfgRes.status === 401 || cfgRes.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/nav', 303);
+  const cfgJson: any = await cfgRes.json().catch(() => null);
+  if (cfgRes.ok && cfgJson?.success) { config = cfgJson.data.config; errors = cfgJson.data.errors ?? []; }
+  else loadError = cfgJson?.error?.message ?? 'Could not load the header configuration.';
+  const repJson: any = await repRes.json().catch(() => null);
+  if (repRes.ok && repJson?.success) report = repJson.data;
+} catch { loadError = 'The header service is unreachable right now.'; }
+
+const featPanels = config
+  ? [...config.panels.filter((p: any) => p.featured), { key: 'flash', featured: config.flash?.featured }].filter((p: any) => p.featured)
+  : [];
+const trendingText = config ? (config.search.trendingTerms ?? []).map((t: any) => `${t.label} | ${t.href}`).join('\n') : '';
+const rate = (n: number | null) => (n == null ? '— (below sample floor)' : `${n}%`);
+---
+<AdminLayout title="Header (navigation)">
+  <div class="mx-auto max-w-4xl px-4 py-8">
+    <h1 class="text-2xl font-black text-slate-900">Header (navigation)</h1>
+    <p class="mt-2 text-sm text-slate-600">Edit the top navigation. Changes go live for every visitor after you press Save. See <a class="underline" href="/docs/header/HEADER-GUIDE.md">the guide</a> if anything looks wrong.</p>
+
+    {notice && (
+      <div class:list={["mt-6 rounded-xl border p-4 text-sm", notice.kind === 'ok' ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-red-300 bg-red-50 text-red-900']}>
+        <p class="font-bold">{notice.message}</p>
+        {notice.details && notice.details.length > 0 && (
+          <ul class="mt-2 list-disc pl-5">{notice.details.map((d) => <li><code>{d.path}</code> — {d.message}</li>)}</ul>
+        )}
+      </div>
+    )}
+    {loadError && <div class="mt-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{loadError}</div>}
+    {config && errors.length > 0 && (
+      <div class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <p class="font-bold">This header currently has {errors.length} issue(s):</p>
+        <ul class="mt-2 list-disc pl-5">{errors.map((e: any) => <li><code>{e.path}</code> — {e.message}</li>)}</ul>
+      </div>
+    )}
+
+    {config && (
+      <form method="POST" class="mt-8 space-y-10" data-nav-editor>
+        <section>
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Rail categories</h2>
+          <p class="text-xs text-slate-500">Category name ≤{NAV_LIMITS.categoryLabel} chars. Links must be real pages.</p>
+          <div class="mt-3 space-y-3">
+            {config.rail.map((r: any) => (
+              <div class="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[110px_1fr_1fr_90px]">
+                <span class="text-xs font-mono text-slate-400 self-center">{r.key}</span>
+                <label class="text-xs">Label<input class="mt-1 w-full rounded border px-2 py-1" name={`rail.${r.key}.label`} value={r.label} data-limit={NAV_LIMITS.categoryLabel} /></label>
+                <label class="text-xs">Link<input class="mt-1 w-full rounded border px-2 py-1" name={`rail.${r.key}.href`} value={r.href} /></label>
+                <label class="text-xs">Tag<input class="mt-1 w-full rounded border px-2 py-1" name={`rail.${r.key}.tag`} value={r.tag ?? ''} /></label>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Featured cards</h2>
+          <p class="text-xs text-slate-500">Every card must name the product in its photo. Name ≤{NAV_LIMITS.featuredName}, line ≤{NAV_LIMITS.featuredLine}. Alt is required.</p>
+          <div class="mt-3 space-y-3">
+            {featPanels.map((p: any) => (
+              <div class="rounded-lg border border-slate-200 p-3">
+                <p class="text-xs font-mono text-slate-400">{p.key}</p>
+                <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label class="text-xs">Eyebrow<input class="mt-1 w-full rounded border px-2 py-1" name={`feat.${p.key}.eyebrow`} value={p.featured.eyebrow} /></label>
+                  <label class="text-xs">Name<input class="mt-1 w-full rounded border px-2 py-1" name={`feat.${p.key}.name`} value={p.featured.name} data-limit={NAV_LIMITS.featuredName} /></label>
+                  <label class="text-xs sm:col-span-2">Line<input class="mt-1 w-full rounded border px-2 py-1" name={`feat.${p.key}.line`} value={p.featured.line} data-limit={NAV_LIMITS.featuredLine} /></label>
+                  <label class="text-xs">Link<input class="mt-1 w-full rounded border px-2 py-1" name={`feat.${p.key}.href`} value={p.featured.href} /></label>
+                  <label class="text-xs">Alt text<input class="mt-1 w-full rounded border px-2 py-1" name={`feat.${p.key}.alt`} value={p.featured.alt} /></label>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Flash sale</h2>
+            <label class="mt-2 block text-xs">Left in stock<input type="number" class="mt-1 w-full rounded border px-2 py-1" name="flash.stock.left" value={config.flash.stock.left} /></label>
+            <label class="mt-2 block text-xs">Of total<input type="number" class="mt-1 w-full rounded border px-2 py-1" name="flash.stock.of" value={config.flash.stock.of} /></label>
+            <label class="mt-2 block text-xs">Bar width %<input type="number" class="mt-1 w-full rounded border px-2 py-1" name="flash.stock.barWidthPct" value={config.flash.stock.barWidthPct} /></label>
+            <label class="mt-2 block text-xs">CTA label<input class="mt-1 w-full rounded border px-2 py-1" name="flash.cta.label" value={config.flash.cta.label} /></label>
+            <p class="mt-2 text-xs text-slate-500">Sale end date lives with the homepage hero — change it there so the two clocks never disagree.</p>
+          </div>
+          <div>
+            <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Settings & offers</h2>
+            <label class="mt-2 block text-xs">First-order estimate<input class="mt-1 w-full rounded border px-2 py-1" name="settings.firstOrderEstimateUgx" value={config.settings.firstOrderEstimateUgx} /></label>
+            <label class="mt-2 block text-xs">First-order discount %<input type="number" class="mt-1 w-full rounded border px-2 py-1" name="settings.firstOrderDiscountPct" value={config.settings.firstOrderDiscountPct} /></label>
+            <label class="mt-2 block text-xs">Referral %<input type="number" class="mt-1 w-full rounded border px-2 py-1" name="settings.referralPct" value={config.settings.referralPct} /></label>
+            <label class="mt-2 block text-xs">Points → UGX rate<input type="number" class="mt-1 w-full rounded border px-2 py-1" name="settings.pointsToUgxRate" value={config.settings.pointsToUgxRate} /></label>
+          </div>
+        </section>
+
+        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Contact</h2>
+            <label class="mt-2 block text-xs">Phone (display)<input class="mt-1 w-full rounded border px-2 py-1" name="contact.phoneDisplay" value={config.contact.phoneDisplay} /></label>
+            <label class="mt-2 block text-xs">Phone (dial, +256…)<input class="mt-1 w-full rounded border px-2 py-1" name="contact.telNumber" value={config.contact.telNumber} /></label>
+            <label class="mt-2 block text-xs">WhatsApp number (256…)<input class="mt-1 w-full rounded border px-2 py-1" name="contact.whatsappNumber" value={config.contact.whatsappNumber} /></label>
+            <label class="mt-2 block text-xs">Hours note<input class="mt-1 w-full rounded border px-2 py-1" name="contact.businessHoursNote" value={config.contact.businessHoursNote} /></label>
+          </div>
+          <div>
+            <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Search</h2>
+            <label class="mt-2 block text-xs">Placeholder (desktop)<input class="mt-1 w-full rounded border px-2 py-1" name="search.placeholderDesktop" value={config.search.placeholderDesktop} /></label>
+            <label class="mt-2 block text-xs">Placeholder (mobile)<input class="mt-1 w-full rounded border px-2 py-1" name="search.placeholderMobile" value={config.search.placeholderMobile} /></label>
+            <label class="mt-2 block text-xs">No-result copy (use {'{q}'}, {'<b>'} allowed)<input class="mt-1 w-full rounded border px-2 py-1" name="search.zeroResultCopy" value={config.search.zeroResultCopy} /></label>
+            <label class="mt-2 block text-xs">Trending (one "term | /link" per line)<textarea class="mt-1 w-full rounded border px-2 py-1" rows="4" name="trending">{trendingText}</textarea></label>
+          </div>
+        </section>
+
+        <div><button type="submit" class="rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white">Save header</button></div>
+      </form>
+    )}
+
+    {report && (
+      <section class="mt-12 border-t border-slate-200 pt-8">
+        <h2 class="text-lg font-black text-slate-900">Last 30 days</h2>
+        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div class="rounded-xl border border-slate-200 p-4">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-500">Tip line (NBA) by segment</h3>
+            <table class="mt-2 w-full text-xs"><thead><tr class="text-left text-slate-400"><th>Message</th><th>Seg</th><th>Impr</th><th>CTR</th><th>Dismiss</th></tr></thead>
+              <tbody>{report.nba.map((r: any) => <tr class="border-t border-slate-100"><td class="font-mono">{r.itemKey}</td><td>{r.segment}</td><td>{r.impressions}</td><td>{rate(r.ctr)}</td><td>{rate(r.dismissRate)}</td></tr>)}
+              {report.nba.length === 0 && <tr><td colspan="5" class="py-2 text-slate-400">No data yet.</td></tr>}</tbody></table>
+          </div>
+          <div class="rounded-xl border border-slate-200 p-4 text-sm">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-500">Search & cart</h3>
+            <p class="mt-2">Suggestion CTR: <b>{rate(report.searchSuggest.ctr)}</b> ({report.searchSuggest.clicks}/{report.searchSuggest.shown})</p>
+            <p class="mt-1">Mini-cart → checkout: <b>{rate(report.miniCart.rate)}</b> ({report.miniCart.checkouts}/{report.miniCart.opens})</p>
+            <p class="mt-3 text-xs font-black uppercase tracking-wider text-slate-500">Top zero-result searches</p>
+            <ul class="mt-1 list-disc pl-5">{report.zeroResultTerms.slice(0, 8).map((t: any) => <li>{t.term} <span class="text-slate-400">({t.count})</span></li>)}{report.zeroResultTerms.length === 0 && <li class="text-slate-400">None.</li>}</ul>
+            <p class="mt-3 text-xs font-black uppercase tracking-wider text-slate-500">Battery-finder submits</p>
+            <ul class="mt-1 list-disc pl-5">{report.batteryFinder.slice(0, 8).map((t: any) => <li>{t.model} <span class="text-slate-400">({t.count})</span></li>)}{report.batteryFinder.length === 0 && <li class="text-slate-400">None.</li>}</ul>
+          </div>
+        </div>
+      </section>
+    )}
+  </div>
+  <script is:inline>
+    // §9 live character counters on top of the server-side limits.
+    document.querySelectorAll('[data-nav-editor] [data-limit]').forEach(function (el) {
+      var max = Number(el.getAttribute('data-limit'));
+      var tag = document.createElement('span');
+      tag.style.cssText = 'font-size:10px;margin-left:6px;';
+      var upd = function () { var n = el.value.replace(/<\/?(?:em|b)>/gi, '').length; tag.textContent = n + '/' + max; tag.style.color = n > max ? '#dc2626' : '#94a3b8'; };
+      el.insertAdjacentElement('afterend', tag); el.addEventListener('input', upd); upd();
+    });
+  </script>
+</AdminLayout>

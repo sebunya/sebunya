@@ -764,6 +764,20 @@
       "when": 1789477200000,
       "tag": "0108_hero_events",
       "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "5",
+      "when": 1789480800000,
+      "tag": "0109_nav_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "5",
+      "when": 1789484400000,
+      "tag": "0110_nav_events",
+      "breakpoints": true
     }
   ]
 }

@@ -29,7 +29,7 @@ export * from './checkout-intent';
 export * from './cart-credential';
 export * from './analytics';
 export * from './hero';
-export * from './nav/nba';
+export * from './nav';
 export * from './locations/uganda';
 export * from './locations/uganda-geo';
 export * from './locations/folding';

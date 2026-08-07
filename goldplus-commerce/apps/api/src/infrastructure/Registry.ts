@@ -82,6 +82,9 @@ import { DrizzleHeroRepository } from './db/repositories/DrizzleHeroRepository';
 import { HeroContentService } from '../application/hero/HeroContentService';
 import { HeroSignalsService } from './hero/HeroSignalsService';
 import { HeroTelemetryService } from './hero/HeroTelemetryService';
+import { DrizzleNavRepository } from './db/repositories/DrizzleNavRepository';
+import { NavContentService } from '../application/nav/NavContentService';
+import { NavTelemetryService } from './nav/NavTelemetryService';
 import {
   AbandonStaleUnpaidOrdersUseCase,
   AlertOnLedgerMismatchUseCase,
@@ -1575,6 +1578,11 @@ export class Registry {
   public readonly heroContentService = new HeroContentService(this.heroRepo);
   public readonly heroSignalsService = new HeroSignalsService();
   public readonly heroTelemetryService = new HeroTelemetryService();
+
+  /** Header/nav CMS (0109/0110): the editable header document + its telemetry. */
+  public readonly navRepo = new DrizzleNavRepository();
+  public readonly navContentService = new NavContentService(this.navRepo);
+  public readonly navTelemetryService = new NavTelemetryService();
 
   /** The ONE product-cost owner: what a product cost, from when, on whose authority. */
   public readonly productCostRepo = new DrizzleProductCostRepository();

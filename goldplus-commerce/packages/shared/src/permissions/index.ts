@@ -13,6 +13,8 @@ export const PERMISSIONS = {
   // hero is the most visible surface on the site and marketing owns it.
   HERO_READ: 'hero.read',
   HERO_MANAGE: 'hero.manage',
+  NAV_READ: 'nav.read',
+  NAV_MANAGE: 'nav.manage',
   // Supplier cost. Its own right, separate from retail pricing, because
   // CLAUDE.md forbids supplier cost from ever reaching a public API and the
   // people who set shelf prices are not always the people who see margin.

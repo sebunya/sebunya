@@ -20,6 +20,7 @@ import { startLoyaltyDailyTicker, stopLoyaltyDailyTicker } from '../../infrastru
 import { startPaymentReconcileTicker, stopPaymentReconcileTicker } from '../../infrastructure/scheduler/PaymentReconcileTicker';
 import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
 import { runHeroSlideSeedAtBoot } from '../../infrastructure/hero/HeroSlideSeeder';
+import { runNavSeedAtBoot } from '../../infrastructure/nav/NavSeeder';
 import { templateOverrideCache } from '../../infrastructure/notifications/TemplateOverrideCache';
 import { endDbConnection } from '../../infrastructure/db/client';
 import { QueueService } from '../../infrastructure/queues/QueueService';
@@ -47,6 +48,7 @@ const server = serve({
     void runPermissionRegistrySyncAtBoot();
     // Ensure the hero library exists (idempotent, add-only, never overwrites edits).
     void runHeroSlideSeedAtBoot();
+    void runNavSeedAtBoot();
     // Notification wording overrides: load published rows now, refresh every minute.
     templateOverrideCache.start();
   }

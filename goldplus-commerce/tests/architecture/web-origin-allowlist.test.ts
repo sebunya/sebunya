@@ -26,6 +26,7 @@ const ORIGIN_READER_ALLOWLIST = new Set([
   'pages/api/rec/[...path].ts', // R2 same-origin recommendation-event relay (same canonical resolution)
   'pages/api/hero/signals.ts', // Task 3 same-origin hero-signals relay (same canonical resolution)
   'pages/api/hero/events.ts', // Task 3 same-origin hero-telemetry relay (same canonical resolution)
+  'pages/api/nav/events.ts', // Stage 2 same-origin nav-telemetry relay (same canonical resolution)
   'env.d.ts',
 ]);
 
