@@ -73,6 +73,10 @@ import { SettlePaymentUseCase } from '../application/use-cases/payments/SettlePa
 import { ReconcilePendingPaymentsUseCase } from '../application/use-cases/payments/ReconcilePendingPaymentsUseCase';
 import { RefundPesaPalPaymentUseCase } from '../application/use-cases/payments/RefundPesaPalPaymentUseCase';
 import { DrizzleRefundLedgerRepository } from './db/repositories/DrizzleRefundLedgerRepository';
+import { DrizzleAccountRecoveryRepository } from './db/repositories/DrizzleAccountRecoveryRepository';
+import { DrizzleSocialIdentityRepository } from './db/repositories/DrizzleSocialIdentityRepository';
+import { NotificationResetDelivery } from './identity/NotificationResetDelivery';
+import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../application/use-cases/identity/PasswordResetUseCases';
 import { DrizzleProductCostRepository } from './db/repositories/DrizzleProductCostRepository';
 import {
   AbandonStaleUnpaidOrdersUseCase,
@@ -1535,6 +1539,31 @@ export class Registry {
     this.pesapalPaymentRepo,
     this.orderRepo,
     this.pesapalClient
+  );
+
+  /** Account recovery (0106): reset tokens, stored only as hashes. */
+  public readonly accountRecoveryRepo = new DrizzleAccountRecoveryRepository();
+
+  /** Social identity (0106): one row per (provider, subject). */
+  public readonly socialIdentityRepo = new DrizzleSocialIdentityRepository();
+
+  /**
+   * Password reset. Delivery rides the ONE canonical notification provider, so
+   * when no mail transport is configured it reports NOT_CONFIGURED instead of
+   * pretending a link is on its way.
+   */
+  public readonly requestPasswordResetUseCase = new RequestPasswordResetUseCase(
+    this.userRepo,
+    this.accountRecoveryRepo,
+    new NotificationResetDelivery(
+      this.zeptoMailAdapter,
+      process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com',
+    ),
+  );
+
+  public readonly resetPasswordUseCase = new ResetPasswordUseCase(
+    this.accountRecoveryRepo,
+    this.passwordHasher,
   );
 
   /** The ONE product-cost owner: what a product cost, from when, on whose authority. */

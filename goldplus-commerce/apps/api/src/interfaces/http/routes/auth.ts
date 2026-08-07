@@ -4,6 +4,7 @@ import { Registry } from '../../../infrastructure/Registry';
 import { AuthenticateUserUseCase } from '../../../application/use-cases/identity/AuthenticateUserUseCase';
 import { RegisterCustomerUseCase } from '../../../application/use-cases/identity/RegisterCustomerUseCase';
 import { ApiResponse } from '@goldplus/shared';
+import { logger } from '../../../infrastructure/logging/logger';
 import { clientIp } from '../clientAddress';
 import { SESSION_LIFETIMES } from '../../../domain/identity/SessionPolicy';
 
@@ -399,5 +400,67 @@ routes.get('/mfa/status', async (c) => {
   return c.json({ success: true, data: status });
 });
 
-export default routes;
+/* ── Password reset (0106) ───────────────────────────────────────────────── */
 
+/**
+ * Request a reset link.
+ *
+ * ALWAYS answers the same thing. A different response for a registered and an
+ * unregistered address is a free customer list, and it is exactly what
+ * credential stuffing uses to pick targets. The interesting detail — whether
+ * an account exists, whether it was throttled, whether mail is configured —
+ * goes to the log and the operator, never to the caller.
+ */
+routes.post('/password/forgot', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.requestPasswordResetUseCase.execute({
+    email: String(body?.email ?? ''),
+    ip: clientIp(c),
+  });
+
+  logger.info(
+    { delivery: result.internal.delivery, userFound: result.internal.userFound, throttled: result.internal.throttled },
+    'PASSWORD_RESET_REQUESTED',
+  );
+
+  const res: ApiResponse<{ message: string }> = { success: true, data: { message: result.message } };
+  return c.json(res);
+});
+
+/** Complete the reset. Revokes every existing session on success. */
+routes.post('/password/reset', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.resetPasswordUseCase.execute({
+    token: String(body?.token ?? ''),
+    newPassword: String(body?.password ?? ''),
+  });
+
+  if (!result.ok) {
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, result.code === 'WEAK_PASSWORD' ? 400 : 410);
+  }
+
+  // Belt and braces: the repository stamps sessions_invalidated_after inside
+  // the same transaction, and this revokes the durable refresh families too.
+  await registry.sessionService.logoutAll(result.userId, 'password_change').catch(() => undefined);
+  await registry.createAuditLogUseCase
+    .execute({
+      actorId: result.userId,
+      action: 'PASSWORD_RESET_COMPLETED',
+      entity: 'user',
+      entityId: result.userId,
+      previousState: null,
+      newState: { sessionsRevoked: true },
+    })
+    .catch(() => undefined);
+
+  const res: ApiResponse<{ message: string }> = {
+    success: true,
+    data: { message: 'Your password has been changed and you have been signed out everywhere. Sign in with your new password.' },
+  };
+  return c.json(res);
+});
+
+export default routes;

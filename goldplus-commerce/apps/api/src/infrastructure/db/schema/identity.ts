@@ -5,7 +5,10 @@ export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   email: varchar('email', { length: 255 }).unique().notNull(),
   phone: varchar('phone', { length: 20 }).unique(),
-  passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+  // NULLABLE since 0106: a customer who signs up with Google has no password,
+  // and inventing one would be a credential nobody chose. Password login fails
+  // CLOSED on null — never treat it as an empty password that matches.
+  passwordHash: varchar('password_hash', { length: 255 }),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   /** 0085: verified phone is the loyalty identity spine (loyalty brief PART I). */
@@ -161,3 +164,42 @@ export const identityLinks = pgTable(
     phoneHashIdx: index("identity_links_phone_hash_idx").on(table.phoneHash),
   })
 );
+
+/**
+ * Account recovery (0106). The raw token is NEVER stored — only its SHA-256 —
+ * so a database read cannot be replayed into a takeover. Single-use, short
+ * lived, and bound to one user.
+ */
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  requestedIp: varchar('requested_ip', { length: 64 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  hashUq: uniqueIndex('password_reset_tokens_hash_uq').on(table.tokenHash),
+  userIdx: index('password_reset_tokens_user_idx').on(table.userId, table.createdAt),
+  expiryIdx: index('password_reset_tokens_expiry_idx').on(table.expiresAt),
+}));
+
+/**
+ * Social identity (0106). Keyed on the provider's STABLE subject, never the
+ * email — users change emails and not every provider verifies them.
+ * `emailVerified` decides whether this identity may be auto-linked to an
+ * existing password account; linking on an unverified email is a takeover.
+ */
+export const userIdentities = pgTable('user_identities', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  provider: varchar('provider', { length: 20 }).notNull(),
+  subject: varchar('subject', { length: 255 }).notNull(),
+  email: varchar('email', { length: 255 }),
+  emailVerified: boolean('email_verified').default(false).notNull(),
+  linkedAt: timestamp('linked_at', { withTimezone: true }).defaultNow().notNull(),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+}, (table) => ({
+  providerSubjectUq: uniqueIndex('user_identities_provider_subject_uq').on(table.provider, table.subject),
+  userIdx: index('user_identities_user_idx').on(table.userId),
+}));

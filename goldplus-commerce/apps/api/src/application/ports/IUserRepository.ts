@@ -2,7 +2,8 @@ export interface PersistedUser {
   id: string;
   email: string;
   phone: string | null;
-  passwordHash: string;
+  /** NULL for a social-only account (0106): password login fails closed. */
+  passwordHash: string | null;
   isActive: boolean;
   createdAt: Date;
   /** Slice 3B immediate hard-revocation cutoff; null means none. */

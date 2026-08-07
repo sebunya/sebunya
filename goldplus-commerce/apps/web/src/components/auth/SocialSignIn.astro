@@ -1,0 +1,73 @@
+---
+import { apiBase } from '../../lib/api';
+
+/**
+ * Social sign-in buttons (0106).
+ *
+ * The list is asked of the API rather than hardcoded, so a provider appears
+ * the moment an operator configures its credentials and never appears as a
+ * button that cannot work. A dead "Continue with Google" is worse than no
+ * button: the customer blames themselves.
+ */
+interface Props {
+  returnTo?: string;
+  /** "signin" or "signup" — only the wording differs. */
+  intent?: 'signin' | 'signup';
+}
+
+const { returnTo = '/account', intent = 'signin' } = Astro.props;
+
+type ProviderRow = { provider: string; displayName: string; configured: boolean; startUrl: string };
+let providers: ProviderRow[] = [];
+let lookupFailed = false;
+
+try {
+  const res = await fetch(`${apiBase}/auth/social/providers`, { signal: AbortSignal.timeout(2500) });
+  const json = await res.json().catch(() => null);
+  if (res.ok && json?.success) providers = (json.data.providers ?? []) as ProviderRow[];
+  else lookupFailed = true;
+} catch {
+  lookupFailed = true;
+}
+
+const available = providers.filter((p) => p.configured);
+const verb = intent === 'signup' ? 'Sign up' : 'Continue';
+
+const brand: Record<string, { bg: string; text: string; border: string }> = {
+  google: { bg: 'bg-white', text: 'text-slate-700', border: 'border-slate-300' },
+  apple: { bg: 'bg-black', text: 'text-white', border: 'border-black' },
+  facebook: { bg: 'bg-[#1877F2]', text: 'text-white', border: 'border-[#1877F2]' },
+};
+---
+
+{available.length > 0 && (
+  <div class="space-y-3 mb-6">
+    {available.map((p) => {
+      const style = brand[p.provider] ?? brand.google;
+      return (
+        <a
+          href={`${p.startUrl}?returnTo=${encodeURIComponent(returnTo)}`}
+          rel="nofollow"
+          class={`flex items-center justify-center gap-3 w-full ${style.bg} ${style.text} border ${style.border} py-2.5 rounded-full font-bold text-xs tracking-wider uppercase transition-all hover:shadow-md outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30`}
+        >
+          {verb} with {p.displayName}
+        </a>
+      );
+    })}
+
+    <div class="relative py-2">
+      <div class="absolute inset-0 flex items-center" aria-hidden="true">
+        <div class="w-full border-t border-slate-200"></div>
+      </div>
+      <div class="relative flex justify-center">
+        <span class="bg-slate-50 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">or</span>
+      </div>
+    </div>
+  </div>
+)}
+
+{lookupFailed && (
+  <p class="mb-4 text-xs text-slate-400">
+    Sign-in providers could not be listed just now — email and password still work.
+  </p>
+)}

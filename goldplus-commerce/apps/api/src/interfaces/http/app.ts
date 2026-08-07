@@ -20,6 +20,7 @@ import adminUsersRoutes from './routes/admin/users';
 import adminRolesRoutes from './routes/admin/roles';
 import adminProductsRoutes from './routes/admin/products';
 import adminProductCostsRoutes from './routes/admin/product-costs';
+import authSocialRoutes from './routes/auth-social';
 import adminNotificationsRoutes from './routes/admin/notifications';
 import adminRecommendationsRoutes from './routes/admin/recommendations';
 import adminCustomerDnaRoutes from './routes/admin/customer-dna';
@@ -194,6 +195,7 @@ app.use('*', async (c, next) => {
 
 // Routes
 app.route('/auth', authRoutes);
+app.route('/auth/social', authSocialRoutes);
 app.route('/products', productRoutes);
 app.route('/commerce', commerceRoutes);
 app.route('/governance', governanceRoutes);
@@ -305,6 +307,7 @@ export default app;
 
 /** Every API prefix mounted below. Kept in step by tests/architecture/control-centre-route-coverage.test.ts. */
 export const MOUNTED_API_PREFIXES: readonly string[] = [
+  '/auth/social',
   '/admin/product-costs',
   '/account',
   '/account/behavioural-interventions',

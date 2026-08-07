@@ -4,6 +4,7 @@ import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
+import SocialSignIn from '../components/auth/SocialSignIn.astro';
 import { SESSION_COOKIE_NAME } from '../lib/session';
 
 let status: 'success' | 'error' | null = null;
@@ -96,6 +97,8 @@ if (Astro.request.method === 'POST') {
       )}
       {!notConfigured && <FormFeedback status={status} message={message} />}
 
+      <SocialSignIn returnTo={Astro.url.searchParams.get('returnTo') ?? '/account'} intent="signin" />
+
       <form method="POST" action="/login" novalidate class="bg-white p-8 rounded-2xl border border-slate-200/80 shadow-xs space-y-5">
         <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" defaultValue={values.email} />
         <FormField id="password" name="password" label="Password" type="password" required autocomplete="current-password" />
@@ -105,6 +108,9 @@ if (Astro.request.method === 'POST') {
         >
           Sign in
         </button>
+        <p class="text-xs text-slate-400 text-center leading-relaxed">
+          <a href="/forgot-password" class="font-bold text-slate-600 underline hover:text-gray-900">Forgot your password?</a>
+        </p>
         <p class="text-xs text-slate-400 text-center leading-relaxed">
           New to GoldPlus?
           <a href={`/register${Astro.url.searchParams.get('returnTo') ? `?returnTo=${encodeURIComponent(Astro.url.searchParams.get('returnTo') ?? '')}` : ''}`} class="font-bold text-slate-600 underline hover:text-gray-900">Create your account</a>

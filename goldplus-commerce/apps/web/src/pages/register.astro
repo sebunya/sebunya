@@ -4,6 +4,7 @@ import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
+import SocialSignIn from '../components/auth/SocialSignIn.astro';
 import { SESSION_COOKIE_NAME } from '../lib/session';
 
 // Already signed in? Registration has nothing to offer — go to the account.
@@ -114,6 +115,8 @@ if (Astro.request.method === 'POST') {
         </div>
       )}
       {!notConfigured && <FormFeedback status={status} message={message} />}
+
+      <SocialSignIn returnTo={Astro.url.searchParams.get('returnTo') ?? '/account'} intent="signup" />
 
       <form method="POST" novalidate class="bg-white p-8 rounded-2xl border border-slate-200/80 shadow-xs space-y-5">
         <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" defaultValue={values.email} />

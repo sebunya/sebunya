@@ -90,6 +90,15 @@ export class AuthenticateUserUseCase {
       return failGeneric();
     }
 
+    // A social-only account (0106) has NO password hash. Password login must
+    // fail closed on it — and must take the SAME time as a real verification,
+    // or the response time tells an attacker which accounts sign in with
+    // Google and are therefore worth attacking somewhere else.
+    if (!user.passwordHash) {
+      await this.hasher.verify(password, await this.dummyHash());
+      return failGeneric();
+    }
+
     const passwordOk = await this.hasher.verify(password, user.passwordHash);
     if (!passwordOk) return failGeneric();
 
