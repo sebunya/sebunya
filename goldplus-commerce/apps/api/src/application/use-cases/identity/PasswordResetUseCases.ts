@@ -71,6 +71,8 @@ export type RequestPasswordResetResult = {
     userFound: boolean;
     throttled: boolean;
     delivery: 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'DRY_RUN' | 'DISABLED' | 'NOT_ATTEMPTED';
+    /** The provider's own words. A status without a reason is not actionable. */
+    deliveryDetail?: string;
   };
 };
 
@@ -116,7 +118,7 @@ export class RequestPasswordResetUseCase {
     });
 
     const sent = await this.delivery.sendPasswordReset({ email: user.email, rawToken, expiresAt });
-    return generic({ userFound: true, throttled: false, delivery: sent.status });
+    return generic({ userFound: true, throttled: false, delivery: sent.status, deliveryDetail: sent.detail });
   }
 }
 

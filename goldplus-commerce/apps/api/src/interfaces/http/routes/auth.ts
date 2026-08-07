@@ -420,7 +420,12 @@ routes.post('/password/forgot', async (c) => {
   });
 
   logger.info(
-    { delivery: result.internal.delivery, userFound: result.internal.userFound, throttled: result.internal.throttled },
+    {
+      delivery: result.internal.delivery,
+      deliveryDetail: result.internal.deliveryDetail,
+      userFound: result.internal.userFound,
+      throttled: result.internal.throttled,
+    },
     'PASSWORD_RESET_REQUESTED',
   );
 
