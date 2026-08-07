@@ -2,20 +2,24 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
 
 /**
- * Per-visitor hero signals (Task 3, 2026-08-07).
+ * Per-visitor hero signals.
  *
- * These are the signals the client-side engine CANNOT see for itself — they
- * come from the server-issued experience profile and the catalogue. They are
- * ENHANCEMENTS: the hero renders four sensible slides with none of this, and
- * this endpoint is fetched AFTER the neutral SSR lead has already painted, so
- * it is never on the critical path and never varies an edge-cached response.
- *
- * Everything here is derived from the server profile (both sides server-issued)
- * and public catalogue facts. No PII is returned; the shapes are counts,
- * booleans, category slugs and stock flags.
+ * Derived from the server-issued experience profile and the catalogue, consumed
+ * server-side to personalise the hero for every visitor (no consent gate — owner
+ * decision 2026-08-07). For a KNOWN customer these now include first-party PII
+ * (first name and delivery area) so the hero can address them directly. This is
+ * safe because the hero is rendered per-visitor and is never shared-cached — one
+ * visitor's PII can never reach another's page — and nothing here is sent to any
+ * third party.
  */
 
 export interface HeroSignals {
+  /**
+   * First-party identity for a signed-in customer, used to greet them and speak
+   * to their delivery area. Null for an anonymous visitor. Never leaves the
+   * server rendering of THIS visitor's page.
+   */
+  customer: { firstName: string | null; area: string | null } | null;
   /**
    * Visit strength derived server-side from the profile: 1 = first session,
    * >=2 = returning, >=4 = regular. Replaces the old client-side localStorage
@@ -43,7 +47,7 @@ export interface HeroSignals {
 const rowsOf = (r: any): any[] => (Array.isArray(r) ? r : r?.rows ?? []);
 
 const EMPTY: HeroSignals = {
-  visits: 1, hasOrdered: false, categoryAffinity: [], preferredProduct: null, loyalty: null, stockBySlug: {}, zone: null,
+  customer: null, visits: 1, hasOrdered: false, categoryAffinity: [], preferredProduct: null, loyalty: null, stockBySlug: {}, zone: null,
 };
 
 export class HeroSignalsService {
@@ -61,21 +65,48 @@ export class HeroSignalsService {
     }
 
     try {
-      const [affinity, ordered, loyalty, stock, visits] = await Promise.all([
+      const [affinity, ordered, loyalty, stock, visits, customer] = await Promise.all([
         this.categoryAffinity(profileId),
         this.hasOrdered(profileId),
         this.loyaltyFor(profileId),
         this.stockFor(productSlugs),
         this.visitStrength(profileId),
+        this.customerIdentity(profileId),
       ]);
 
       const preferredProduct = affinity.length > 0 ? await this.preferredProduct(affinity[0].categorySlug) : null;
 
-      return { visits, hasOrdered: ordered, categoryAffinity: affinity, preferredProduct, loyalty, stockBySlug: stock, zone: null };
+      return { customer, visits, hasOrdered: ordered, categoryAffinity: affinity, preferredProduct, loyalty, stockBySlug: stock, zone: null };
     } catch {
       // A signals failure must never break the hero: return the neutral payload.
       return EMPTY;
     }
+  }
+
+  /**
+   * First-party identity for a signed-in customer: a first name to greet them by
+   * and their delivery area, taken from their default saved address. Anonymous
+   * visitors (no linked customer) get null. Only the first token of the name is
+   * used, and only this visitor's own SSR ever sees it.
+   */
+  private async customerIdentity(profileId: string): Promise<HeroSignals['customer']> {
+    const rows = rowsOf(
+      await db.execute(sql`
+        select a.recipient_name as recipient_name,
+               coalesce(nullif(a.snapshot_district, ''), nullif(a.district, '')) as area
+        from experience_profiles ep
+        join addresses a on a.user_id = ep.customer_id
+        where ep.id = ${profileId}::uuid and ep.customer_id is not null and a.deleted_at is null
+        order by a.is_default desc, a.created_at desc
+        limit 1
+      `),
+    );
+    if (!rows.length) return null;
+    const raw = String(rows[0].recipient_name ?? '').trim();
+    const firstName = raw ? raw.split(/\s+/)[0] : null;
+    const area = rows[0].area ? String(rows[0].area) : null;
+    if (!firstName && !area) return null;
+    return { firstName, area };
   }
 
   /**

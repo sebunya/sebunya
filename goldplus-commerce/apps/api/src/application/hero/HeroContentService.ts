@@ -68,6 +68,8 @@ export interface HeroPersonalisationSignals {
   preferredProduct: { imageUrl: string; alt: string; categorySlug: string } | null;
   loyalty: { points: number; tierLabel: string; goalRemaining: number } | null;
   stockBySlug: Record<string, boolean>;
+  /** First-party identity for a signed-in customer (null when anonymous). */
+  customer?: { firstName: string | null; area: string | null } | null;
 }
 
 /** Presentation inputs the server cannot get from the profile: the cart, the URL and the clock. */
@@ -218,11 +220,16 @@ export class HeroContentService {
     const chosen = selectHeroSlides(stored, ctx, { ...HERO_SELECTION_TUNING, show: config.show });
     const safe = chosen.length > 0 ? chosen : stored.slice(0, 1);
 
-    // Enrich the chosen slides in place (real loyalty balance, category deep-link).
+    // Enrich the chosen slides in place: real loyalty balance, category deep-link,
+    // and — for a signed-in customer — first-party PII (greet by name, name their
+    // delivery area). Rendered as escaped text per-visitor; never shared-cached.
     const affinityCat = ctx.serverCats[0] ?? null;
+    const firstName = (signals.customer?.firstName || '').trim().slice(0, 40) || null;
+    const area = (signals.customer?.area || '').trim().slice(0, 60) || null;
     const enriched = safe.map((s) => {
       const extras = { ...(s.extras ?? {}) };
       let ctaUrl = s.ctaUrl;
+      let kicker = s.kicker;
       if (s.slideKey === 'loyalty' && signals.loyalty) {
         extras.points = signals.loyalty.points;
         extras.goalLabel =
@@ -233,7 +240,14 @@ export class HeroContentService {
       if ((s.slideKey === 'range' || s.slideKey === 'newarrivals') && affinityCat && ctaUrl.startsWith('/shop')) {
         ctaUrl = `/shop?category=${encodeURIComponent(affinityCat)}`;
       }
-      return this.toPublic({ ...s, ctaUrl, extras });
+      // PII personalisation: greet a returning customer by name; name their area.
+      if (firstName && (s.slideKey === 'referral' || s.slideKey === 'loyalty')) {
+        kicker = `Welcome back, ${firstName}`;
+      }
+      if (area && s.slideKey === 'sameday') {
+        kicker = `${s.kicker} · ${area}`;
+      }
+      return this.toPublic({ ...s, ctaUrl, extras, kicker });
     });
 
     return {

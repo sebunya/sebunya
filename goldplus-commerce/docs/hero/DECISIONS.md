@@ -96,3 +96,43 @@ and completes the server-authoritative direction hinted at in D-HERO-4.
   (`/hero/events`) continues, also ungated — an impression still counts only when
   the slide is actually on screen (>=1s, tab visible), which is honesty about what
   was seen, not a privacy gate.
+
+## 2026-08-07 — consent machinery relaxed site-wide; PII used for personalisation (owner decision)
+
+Owner directive: remove the site's consent gating, keep everything first-party
+(no third-party sharing), and use the customer's own data — including PII — to
+personalise their experience.
+
+- **D-HERO-18 · First-party personalisation is the default; third-party sharing stays OFF.**
+  The single lever is `ConsentService.getCurrentState`: when nothing explicit is
+  stored (the common case — there is no storefront consent banner) it now returns
+  `personalization: true`, `analytics: false`, `advertising: false`. This is
+  precise, not blanket: EVERY measurement destination is third-party
+  (`ga4`/`gtm_web` = Google → `analytics`; Meta/TikTok/LinkedIn/Pinterest →
+  `advertising`; see DESTINATION_PURPOSE_MAP), and `personalization` is in NO
+  destination map — it is purely on-site. So granting `personalization` while
+  keeping `analytics`/`advertising` denied turns on on-site personalisation for
+  everyone AND keeps the ConversionRouter from dispatching anything off-site,
+  honouring "no third-party sharing" verbatim. `getPersonalisationConsent` now
+  defaults to `granted` for the same reason. Explicit stored grants/denials, if a
+  customer ever sets one, are still honoured. This ungates every consumer that
+  reads the resolvers — zero-party capture, lifecycle next-best-action — with one
+  change. The dead browser consent SDK (`apps/web/src/lib/consent.ts`, imported by
+  nothing) was deleted. The A4 outbound-messaging and third-party ad-measurement
+  gates (OutboundGovernance, ConversionRouter, PaidSocialPayloadRedactor) were
+  LEFT in place: they enforce exactly the "no third-party sharing" the owner wants.
+  The dormant Phase-2 subsystems (behavioural interventions, surveys, customer-DNA
+  next-best-action, automation) keep their internal consent-audit plumbing — they
+  are not wired to the live site, consent is woven into their evidence records, and
+  the repo is Phase-1 only; the resolver default they will read is already
+  permissive, so they are consent-open the moment they are wired.
+- **D-HERO-19 · The hero uses first-party PII to address a signed-in customer.**
+  `HeroSignalsService` now returns `customer: { firstName, area }` for a customer
+  with a linked profile — first name and delivery district from their default
+  saved address. The server greets them ("Welcome back, {name}" on the referral/
+  loyalty slide) and names their area on the same-day slide. Safe because the hero
+  is rendered per-visitor and never shared-cached (one visitor's PII can never
+  reach another's page — a correctness invariant kept regardless of posture), the
+  values are escaped text, only the first name token is used, and nothing is sent
+  off-site. The cookies and privacy pages were updated to state this plainly:
+  first-party personalisation for everyone, never sold or shared with third parties.

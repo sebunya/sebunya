@@ -28,7 +28,10 @@ export class DrizzleLifecycleReadRepository implements ILifecycleReadRepository 
 
   async getPersonalisationConsent(userIds: string[]): Promise<Map<string, ConsentState>> {
     const map = new Map<string, ConsentState>();
-    for (const id of userIds) map.set(id, 'unknown');
+    // Owner decision (2026-08-07): first-party personalisation is on by default,
+    // so absence is 'granted', not 'unknown'. An explicit stored withdrawal below
+    // still overrides to 'denied'.
+    for (const id of userIds) map.set(id, 'granted');
     if (userIds.length === 0) return map;
     // Identity refs are written by the consent module; we accept both raw ids
     // and 'user:<id>' refs. Any state other than an unexpired grant stays as
