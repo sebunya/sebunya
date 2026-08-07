@@ -83,7 +83,10 @@ const leadSlide = slides.find((s) => s.slideKey === leadKey) ?? slides[0];
 const leadImage = leadSlide && leadSlide.media !== 'card' ? leadSlide.imageUrl : '';
 
 const ugx = (n: any) => (typeof n === 'number' ? `UGX ${n.toLocaleString('en-UG')}` : String(n ?? ''));
-const configJson = JSON.stringify(config);
+// Escape for a <script> context: neutralise </script> breakout and the JSON-
+// legal-but-JS-hostile line separators. config is server-controlled today, but
+// prizes/values flow from CMS extras, so this is the render-side XSS boundary.
+const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 ---
 {/* Preload the lead image for LCP. A preload link in body is valid HTML and
     functions; the lead <img> also carries fetchpriority="high". */}
@@ -811,16 +814,21 @@ const configJson = JSON.stringify(config);
     autoplay: CMS.autoplay !== false,
     flashSaleEnds: CMS.flashSaleEnds || null,
     cutoffHour: (typeof CMS.cutoffHour === 'number') ? CMS.cutoffHour : 17,
-    keys: { visits:'gp_visits', last:'gp_last', scratch:'gp_scratch', cats:'gp_cats', cart:'goldplus_cart_data' },
+    keys: { visits:'gp_visits', last:'gp_last', scratch:'gp_scratch', cats:'gp_cats' },
     prizes: (CMS.prizes && CMS.prizes.length) ? CMS.prizes : [ {pct:5,code:'GP5',w:45},{pct:10,code:'GP10',w:32},{pct:15,code:'GP15',w:18},{pct:20,code:'GP20',w:5} ],
     themeCap: { offer:2, logistics:1, loyalty:1, product:1, brand:1, trust:1 },
     funnel:   { offer:1, product:2, logistics:3, loyalty:4, brand:5, trust:6 },
-    priorityWeight: 0.5   // CMS priority (0-100) nudges score without overriding caps
+    priorityWeight: 0.5
   };
 
   var box = document.getElementById('gpHero');
   if (!box) return;
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Task 3 helpers. Consent defaults to FALSE (matches the consent SDK): no
+  // profiling or measurement until the visitor grants the purpose.
+  function gpConsent(purpose){ try { var s = JSON.parse(localStorage.getItem('_gp_consent_state') || 'null'); return !!(s && s[purpose]); } catch(e){ return false; } }
+  function heroReadCart(){ try { var m = document.cookie.match(/(?:^|; )goldplus_cart_data=([^;]+)/); if (!m) return 0; var d = JSON.parse(decodeURIComponent(m[1])); var it = (d && d.items) || []; return it.reduce(function(a,x){ return a + (x.quantity||0); }, 0); } catch(e){ return 0; } }
+  var heroPref = null;   // preferred product for the arch, set only after consented signals load
   var INERT_OK = 'inert' in HTMLElement.prototype;
   var qs = function(k){ var m = location.search.match(new RegExp('[?&]' + k + '=([^&]+)')); return m && decodeURIComponent(m[1]); };
 
@@ -852,9 +860,7 @@ const configJson = JSON.stringify(config);
     scratched: scratched,
     referred: /[?&](ref|utm_campaign=referral)/i.test(location.search),
     cats: (store.get(CONFIG.keys.cats) || '').split(',').filter(Boolean),
-    // Task 3 signal fields — populated by gatherSignals() before selection.
-    cartItems: 0, hasOrdered: false, loyalty: null, stock: {}, serverCats: [],
-    preferredProduct: null, lateEvening: (now.getHours() >= 21 || now.getHours() < 5)
+    cartItems: heroReadCart()   // B: their own cart cookie — functional, no profiling
   };
   /* QA overrides: ?gp=new | returning | regular | expired | aftercutoff */
   var force = qs('gp');
@@ -863,90 +869,32 @@ const configJson = JSON.stringify(config);
   if (force === 'regular')    { CTX.isNew = false; CTX.isReturning = true;  CTX.isRegular = true; }
   if (force === 'expired')    { CTX.saleLive = false; }
   if (force === 'aftercutoff'){ CTX.beforeCutoff = false; }
-  if (force === 'hasordered'){ CTX.hasOrdered = true; CTX.forceHasOrdered = true; }
-  if (force === 'cart'){ CTX.cartItems = 2; CTX.forceCart = true; }
-  if (force === 'evening'){ CTX.lateEvening = true; }
-  var forceAffinity = qs('affinity'); if (forceAffinity){ CTX.serverCats = [{categorySlug: forceAffinity, score: 99}]; }
 
   /* ---------------- the 12-slide library ---------------- */
-  // Category affinity (A): does a category the visitor engages with match a
-  // campaign? A small, honest boost, never a takeover of the ranking.
-  function affinityBoost(c, cat){ for (var i=0;i<c.serverCats.length;i++){ if (c.serverCats[i].categorySlug === cat) return 12; } return 0; }
   var LIB = {
-    // Stock gate (E): a flash sale on a sold-out SKU is a broken promise.
-    flash:      { when:function(c){ return c.saleLive && c.stockFlash !== false; }, score:function(){ return 100; } },
-    // Cart & order state (B): past acquisition → suppress the first-order promo.
-    welcome:    { when:function(c){ return c.isNew && !c.hasOrdered && c.cartItems === 0; }, score:function(){ return 96; } },
-    // A prior buyer is worth more on referral/loyalty than on another discount.
-    referral:   { when:function(c){ return c.isReturning || c.hasOrdered; }, score:function(c){ return (c.isRegular || c.hasOrdered) ? 88 : 74; } },
+    flash:      { when:function(c){ return c.saleLive; },            score:function(){ return 100; } },
+    welcome:    { when:function(c){ return c.isNew && c.cartItems === 0; }, score:function(){ return 96; } },
+    referral:   { when:function(c){ return c.isReturning; },         score:function(c){ return c.isRegular ? 88 : 74; } },
     sameday:    { when:function(){ return true; },                   score:function(c){ return c.beforeCutoff ? 92 : 46; } },
     fees:       { when:function(){ return true; },                   score:function(c){ return c.isNew ? 80 : 62; } },
     ambassador: { when:function(){ return true; },                   score:function(c){ return c.isNew ? 70 : 58; } },
-    // Regulars and browsers late in the evening lean to new stock; affinity lifts it.
-    newarrivals:{ when:function(){ return true; },                   score:function(c){ return (c.isRegular?90:60) + (c.lateEvening?10:0) + affinityBoost(c,'sound') + affinityBoost(c,'storage'); } },
-    range:      { when:function(){ return true; },                   score:function(c){ return (c.isNew?78:50) + (c.lateEvening?8:0) + (c.serverCats.length?8:0); } },
-    loyalty:    { when:function(c){ return !c.isNew || c.hasOrdered; }, score:function(c){ return (c.isRegular||c.hasOrdered) ? 86 : 66; } },
+    newarrivals:{ when:function(){ return true; },                   score:function(c){ return c.isRegular ? 90 : 60; } },
+    range:      { when:function(){ return true; },                   score:function(c){ return c.isNew ? 78 : 50; } },
+    loyalty:    { when:function(c){ return !c.isNew; },              score:function(c){ return c.isRegular ? 86 : 66; } },
     scratch:    { when:function(c){ return !c.scratched; },          score:function(c){ return c.isReturning ? 84 : 72; } },
     nostories:  { when:function(){ return true; },                   score:function(c){ return c.isNew ? 82 : 56; } },
     authentic:  { when:function(){ return true; },                   score:function(c){ return c.isNew ? 76 : 44; } }
   };
 
-
-  /* ---------------- Task 3: gather server + client signals ----------------
-     Runs BEFORE the first selection but AFTER the neutral SSR lead has already
-     painted, so it is never on the critical path. Everything degrades: a
-     failure or timeout leaves the local-only CTX (the shipped behaviour).
-     Cache-safe — the per-visitor call is no-store and same-origin. */
-  function heroSegment(){ return CTX.isRegular ? 'regular' : CTX.isReturning ? 'returning' : CTX.isNew ? 'new' : 'unknown'; }
-  function readCartItems(){
-    try {
-      var m = document.cookie.match(/(?:^|; )goldplus_cart_data=([^;]+)/);
-      if (!m) return 0;
-      var data = JSON.parse(decodeURIComponent(m[1]));
-      var items = (data && data.items) || [];
-      return items.reduce(function(a,it){ return a + (it.quantity || 0); }, 0);
-    } catch(e){ return 0; }
-  }
-  function gatherSignals(){
-    if (!CTX.forceCart) CTX.cartItems = readCartItems();
-    var flashStage = box.querySelector('.gp-hero__slide[data-id="flash"] .gp-hero__stage');
-    var flashSlug = null;
-    if (flashStage){ var mm = (flashStage.getAttribute('data-img')||'').match(/\/products\/([a-z0-9-]+)\.webp/i); flashSlug = mm && mm[1]; }
-    return new Promise(function(resolve){
-      var done = false, finish = function(){ if (done) return; done = true; resolve(); };
-      var timer = setTimeout(finish, 700);
-      try {
-        fetch('/api/hero/signals', { credentials: 'same-origin' })
-          .then(function(r){ return r.ok ? r.json() : null; })
-          .then(function(j){
-            var d = j && j.success && j.data;
-            if (d){
-              if (!CTX.forceHasOrdered) CTX.hasOrdered = !!d.hasOrdered;
-              CTX.loyalty = d.loyalty || null;
-              CTX.stock = d.stockBySlug || d.stock || {};
-              if (!qs('affinity')) CTX.serverCats = d.categoryAffinity || [];
-              CTX.preferredProduct = d.preferredProduct || null;
-              if (flashSlug && CTX.stock && Object.prototype.hasOwnProperty.call(CTX.stock, flashSlug)) CTX.stockFlash = CTX.stock[flashSlug];
-            }
-          })
-          .catch(function(){})
-          .then(function(){ clearTimeout(timer); finish(); });
-      } catch(e){ clearTimeout(timer); finish(); }
-    });
-  }
-
-  function boot(){
   /* ---------------- selection ---------------- */
   var all = [].slice.call(box.querySelectorAll('.gp-hero__slide'));
   var pool = all.map(function(el){
     var id = el.getAttribute('data-id'), cfg = LIB[id] || {};
-    var base = cfg.score ? cfg.score(CTX) : 0;
     var pr = parseInt(el.getAttribute('data-priority') || '0', 10) || 0;
     return { el:el, id:id, theme:el.getAttribute('data-theme'),
              ok: cfg.when ? cfg.when(CTX) : true,
-             // CMS priority nudges ranking (§4.3); it is added, so it can never
-             // override the theme caps applied after the sort.
-             score: base + pr * CONFIG.priorityWeight };
+             // CMS priority nudges ranking (added, so it never overrides caps).
+             score: (cfg.score ? cfg.score(CTX) : 0) + pr * CONFIG.priorityWeight };
   }).filter(function(s){ return s.ok; });
 
   pool.sort(function(a,b){ return b.score - a.score; });
@@ -1015,7 +963,7 @@ const configJson = JSON.stringify(config);
     b.setAttribute('aria-label','Show slide ' + (i+1) + ' of ' + total);
     b.innerHTML = '<span class="gp-hero__seg-num">' + ('0'+(i+1)).slice(-2) +
                   '</span><span class="gp-hero__seg-rail"><span class="gp-hero__seg-fill"></span></span>';
-    b.addEventListener('click', function(){ go(i); });
+    b.addEventListener('click', function(){ go(i, true); });
     segsWrap.appendChild(b); segs.push(b); fills.push(b.querySelector('.gp-hero__seg-fill'));
   });
   var tail = document.createElement('span');
@@ -1045,10 +993,9 @@ const configJson = JSON.stringify(config);
     contactEl.style.width = (r.width*0.68) + 'px';
     contactEl.style.top   = (segsBox.top - b.top + segsBox.height/2 - 1) + 'px';
     contactEl.setAttribute('data-on','');
-    // Category affinity (Task 3 A): on a product-AGNOSTIC stage slide, swap in
-    // the visitor's preferred in-stock product so the arch matches their
-    // interest. Slides whose copy names a product (flash, welcome) opt out.
-    var pref = (CTX.preferredProduct && s.getAttribute('data-product-agnostic') === '1') ? CTX.preferredProduct : null;
+    // Task 3 (A): on a product-AGNOSTIC stage slide, show the visitor's
+    // preferred in-stock product when consent + signals gave us one.
+    var pref = (heroPref && s.getAttribute('data-product-agnostic') === '1') ? heroPref : null;
     var src = pref ? pref.imageUrl : st.getAttribute('data-img');
     if (pref) st.setAttribute('data-alt', pref.alt);
     if (src && archImg.getAttribute('src') !== src){
@@ -1094,7 +1041,7 @@ const configJson = JSON.stringify(config);
     });
     segs.forEach(function(b,i){ b.setAttribute('aria-current', i === index ? 'true' : 'false'); });
     fills.forEach(function(f,i){ f.style.width = i < index ? '100%' : '0%'; });
-    if (live) live.textContent = 'Slide ' + (index+1) + ' of ' + total;
+    if (live && lastUserNav) live.textContent = 'Slide ' + (index+1) + ' of ' + total;
     if (tail && !reduce){
       tail.removeAttribute('data-charge');
       void tail.offsetWidth;              /* reflow so the animation replays */
@@ -1102,8 +1049,9 @@ const configJson = JSON.stringify(config);
     }
     placeArch();
   }
-  function go(i){ index = (i + total) % total; paint(); restart(); }
-  function next(){ go(index+1); } function prev(){ go(index-1); }
+  var lastUserNav = false;
+  function go(i, byUser){ index = (i + total) % total; lastUserNav = !!byUser; paint(); restart(); }
+  function next(byUser){ go(index+1, byUser); } function prev(byUser){ go(index-1, byUser); }
   function restart(){
     cancelAnimationFrame(raf);
     if (!playing || reduce || total < 2){ if (fills[index]) fills[index].style.width = '0%'; return; }
@@ -1124,8 +1072,8 @@ const configJson = JSON.stringify(config);
     playBtn.setAttribute('aria-label', v ? 'Pause automatic slide rotation' : 'Resume automatic slide rotation');
     if (v) restart(); else stop();
   }
-  document.getElementById('gpPrev').addEventListener('click', prev);
-  document.getElementById('gpNext').addEventListener('click', next);
+  document.getElementById('gpPrev').addEventListener('click', function(){ prev(true); });
+  document.getElementById('gpNext').addEventListener('click', function(){ next(true); });
   playBtn.addEventListener('click', function(){ setPlaying(!playing); });
   if (reduce) setPlaying(false);
 
@@ -1139,15 +1087,15 @@ const configJson = JSON.stringify(config);
   }
   box.addEventListener('keydown', function(e){
     if (e.target.closest('.gp-hero__scratch')) return;
-    if (e.key === 'ArrowRight'){ e.preventDefault(); next(); }
-    else if (e.key === 'ArrowLeft'){ e.preventDefault(); prev(); }
+    if (e.key === 'ArrowRight'){ e.preventDefault(); next(true); }
+    else if (e.key === 'ArrowLeft'){ e.preventDefault(); prev(true); }
   });
   var x0=0,y0=0,dn=false;
   box.addEventListener('pointerdown', function(e){ if (e.target.closest('.gp-hero__scratch')) return; dn=true; x0=e.clientX; y0=e.clientY; });
   window.addEventListener('pointerup', function(e){
     if (!dn) return; dn=false;
     var dx=e.clientX-x0, dy=e.clientY-y0;
-    if (Math.abs(dx)>50 && Math.abs(dx)>Math.abs(dy)) dx<0?next():prev();
+    if (Math.abs(dx)>50 && Math.abs(dx)>Math.abs(dy)) dx<0?next(true):prev(true);
   });
 
   /* ---------------- pointer parallax on the product stage ---------------- */
@@ -1292,7 +1240,10 @@ const configJson = JSON.stringify(config);
       if (done) return; done = true;
       cv.setAttribute('data-cleared',''); card.style.cursor='default';
       card.setAttribute('aria-label', prize.pct + '% member discount revealed. Code ' + prize.code + '.');
-      cta.innerHTML = 'Claim ' + prize.pct + '% with rewards <span aria-hidden="true">&rarr;</span>';
+      // prize.pct is CMS data — never innerHTML. Set text; keep a static arrow node.
+      cta.textContent = 'Claim ' + prize.pct + '% with rewards ';
+      var _arr = document.createElement('span'); _arr.setAttribute('aria-hidden','true'); _arr.textContent = '\u2192';
+      cta.appendChild(_arr);
       cta.setAttribute('href','/rewards?promo=' + prize.code);
       sub.textContent = 'That ' + prize.pct + '% is yours — open a free rewards account to lock it to your next order.';
       if (liveP) liveP.textContent = 'You revealed ' + prize.pct + '% off. Code ' + prize.code + '.';
@@ -1329,39 +1280,74 @@ const configJson = JSON.stringify(config);
     }
   })();
 
-    /* Task 3 measurement — per-slide impression (active >= 1s) and CTA click,
-       by segment and position, to the hero's OWN endpoint. Fire-and-forget. */
-    (function heroInstrument(){
-      var seg = heroSegment(), impressed = {}, impTimer = null;
-      function emit(type, key, pos){
-        try {
-          var body = JSON.stringify({ eventType: type, slideKey: key, position: pos, segment: seg });
-          if (type === 'CLICK' && navigator.sendBeacon){ navigator.sendBeacon('/api/hero/events', new Blob([body], {type:'application/json'})); return; }
-          fetch('/api/hero/events', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', keepalive:true, body:body }).catch(function(){});
-        } catch(e){}
-      }
-      function armImpression(){
-        if (impTimer) clearTimeout(impTimer);
-        var s = slides[index]; if (!s) return;
-        var key = s.getAttribute('data-id'), pos = index + 1;
-        if (impressed[key]) return;
-        impTimer = setTimeout(function(){
-          if (slides[index] && slides[index].getAttribute('data-id') === key && !document.hidden){ impressed[key] = true; emit('IMPRESSION', key, pos); }
-        }, 1000);
-      }
-      var _paint = paint;
-      paint = function(){ _paint(); armImpression(); };
-      box.addEventListener('click', function(e){
-        var cta = e.target && e.target.closest && e.target.closest('.gp-hero__cta');
-        if (!cta) return;
-        var s = slides[index]; if (s) emit('CLICK', s.getAttribute('data-id'), index + 1);
-      });
-      armImpression();
-    })();
+  paint(); restart();
 
-    paint(); restart();
-  }
+  /* ---------------- Task 3: enhancements + measurement ----------------
+     The full engine has ALREADY rendered and is rotating from local context —
+     nothing below is on the paint path. These are pure enhancements, each
+     gated by consent, and each degrades to nothing on failure. They never
+     reshuffle the visible rail (that would be worse UX than the marginal gain);
+     they refine the arch image, deep-link a CTA, and fill the loyalty meter. */
+  function heroSegment(){ return CTX.isRegular ? 'regular' : CTX.isReturning ? 'returning' : CTX.isNew ? 'new' : 'unknown'; }
 
-  gatherSignals().then(boot).catch(boot);
+  (function heroEnhance(){
+    // The server fetch sends the visit token and profiles the visitor: it runs
+    // ONLY with personalization consent. Without it the hero keeps its
+    // non-profiled local order and default imagery.
+    if (!gpConsent('personalization')) return;
+    var ctl;
+    try { ctl = (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(4000) : undefined; } catch(e){}
+    fetch('/api/hero/signals', { credentials: 'same-origin', signal: ctl })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){
+        var d = j && j.success && j.data; if (!d) return;
+        // A: preferred in-stock product for the arch on agnostic slides.
+        if (d.preferredProduct && d.preferredProduct.imageUrl){ heroPref = d.preferredProduct; placeArch(); }
+        // A: deep-link the browse CTAs into the visitor's category (visual only).
+        var cat = (d.categoryAffinity && d.categoryAffinity[0] && d.categoryAffinity[0].categorySlug) || null;
+        if (cat){
+          ['range','newarrivals'].forEach(function(id){
+            var s = null; for (var i=0;i<slides.length;i++){ if (slides[i].getAttribute('data-id')===id){ s=slides[i]; break; } }
+            if (!s) return; var a = s.querySelector('.gp-hero__cta');
+            if (a && a.getAttribute('href') && a.getAttribute('href').indexOf('/shop') === 0) a.setAttribute('href', '/shop?category=' + encodeURIComponent(cat));
+          });
+        }
+        // C: real loyalty balance in the meter (only if the slide is shown).
+        if (d.loyalty){
+          var pts = document.querySelector('.gp-hero__meter-pts'), goal = document.querySelector('.gp-hero__meter-goal');
+          if (pts) pts.textContent = Number(d.loyalty.points||0).toLocaleString('en-UG') + ' pts';
+          if (goal && typeof d.loyalty.goalRemaining === 'number') goal.textContent = d.loyalty.goalRemaining > 0 ? (d.loyalty.goalRemaining + ' to ' + (d.loyalty.tierLabel||'next')) : (d.loyalty.tierLabel||'');
+        }
+      })
+      .catch(function(){});
+  })();
+
+  (function heroInstrument(){
+    // No analytics consent → measure nothing. Silence is the correct default.
+    if (!gpConsent('analytics')) return;
+    var seg = heroSegment(), impressed = {}, impTimer = null;
+    function emit(type, key, pos){
+      try {
+        var body = JSON.stringify({ eventType: type, slideKey: key, position: pos, segment: seg });
+        if (type === 'CLICK' && navigator.sendBeacon){ navigator.sendBeacon('/api/hero/events', new Blob([body], {type:'application/json'})); return; }
+        fetch('/api/hero/events', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', keepalive:true, body:body }).catch(function(){});
+      } catch(e){}
+    }
+    function armImpression(){
+      if (impTimer) clearTimeout(impTimer);
+      var s = slides[index]; if (!s) return;
+      var key = s.getAttribute('data-id'), pos = index + 1;
+      if (impressed[key]) return;
+      impTimer = setTimeout(function(){
+        if (slides[index] && slides[index].getAttribute('data-id') === key && !document.hidden){ impressed[key] = true; emit('IMPRESSION', key, pos); }
+      }, 1000);
+    }
+    var _paint = paint; paint = function(){ _paint(); armImpression(); };
+    box.addEventListener('click', function(e){
+      var cta = e.target && e.target.closest && e.target.closest('.gp-hero__cta'); if (!cta) return;
+      var s = slides[index]; if (s) emit('CLICK', s.getAttribute('data-id'), index + 1);
+    });
+    armImpression();
+  })();
 })();
 </script>
