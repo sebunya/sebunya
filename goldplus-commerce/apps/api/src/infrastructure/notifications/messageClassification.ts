@@ -54,6 +54,15 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   // Routed outbox aliases for the two payment outcomes.
   'PAYMENT_SUCCESS',
   'PAYMENT_FAILED',
+  // Account recovery (0106). A password reset is the most transactional
+  // message this system sends: the customer asked for it seconds ago and
+  // cannot get back into their account without it.
+  //
+  // Left unclassified it fell through to MARKETING and was refused for
+  // NO_CONSENT_FOR_MARKETING — so a customer locked out of their account was
+  // told a link was coming and never got one, because they had not opted in to
+  // receiving offers. Nobody consents to being able to reset their password.
+  'PASSWORD_RESET',
 ]);
 
 export function classifyTemplate(template: string): MessageClass {
