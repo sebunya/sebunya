@@ -19,9 +19,12 @@ export class DrizzleNavRepository implements INavRepository {
     return rows[0] ? toStored(rows[0]) : null;
   }
 
-  async updateConfig(config: NavConfig, actorId: string): Promise<StoredNavConfig> {
+  async updateConfig(config: NavConfig, actorId: string, expectedVersion?: number): Promise<StoredNavConfig | null> {
     // jsonb: bind the RAW object and cast ::jsonb — the double-encoding fix.
     // NEVER JSON.stringify first (postgres-js serializes the bound object once).
+    // Optimistic concurrency: when expectedVersion is given, the WHERE also pins
+    // the version, so a stale-based save matches 0 rows and returns null.
+    const guard = expectedVersion != null ? sql`and version = ${expectedVersion}` : sql``;
     const rows = rowsOf(
       await db.execute(sql`
         update nav_config
@@ -29,11 +32,11 @@ export class DrizzleNavRepository implements INavRepository {
                version = version + 1,
                updated_by = ${actorId}::uuid,
                updated_at = now()
-         where id = true
+         where id = true ${guard}
          returning config, version, updated_at
       `),
     );
-    return toStored(rows[0]);
+    return rows[0] ? toStored(rows[0]) : null;
   }
 
   async seedMissing(defaultConfig: NavConfig): Promise<{ inserted: number }> {

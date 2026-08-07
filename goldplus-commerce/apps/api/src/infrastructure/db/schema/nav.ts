@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { boolean, index, integer, jsonb, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 /**
@@ -30,5 +31,10 @@ export const navEvents = pgTable(
   (t) => ({
     typeItemIdx: index('nav_events_type_item_idx').on(t.eventType, t.itemKey),
     createdIdx: index('nav_events_created_idx').on(t.createdAt),
+    // Matches the partial index migration 0110 creates — keeps the schema an
+    // accurate model of the table (so a future drizzle-kit diff never drops it).
+    zeroTermIdx: index('nav_events_zero_term_idx')
+      .on(t.term)
+      .where(sql`event_type = 'SEARCH_ZERO' AND term IS NOT NULL`),
   }),
 );

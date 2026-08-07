@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_NAV_CONFIG,
   validateNavConfig,
+  navConfigWarnings,
   sanitiseNavHtml,
+  sanitiseNavConfig,
   navVisibleText,
   NAV_LIMITS,
   HERO_SLIDE_LIBRARY,
@@ -17,14 +19,12 @@ import {
  */
 
 const clone = (): NavConfig => structuredClone(DEFAULT_NAV_CONFIG);
-// The sale deadline is time-relative; exclude it so this suite is deterministic
-// regardless of when it runs (its own case below proves expiry is caught).
-const structuralErrors = (cfg: NavConfig) =>
-  validateNavConfig(cfg).filter((e) => e.path !== 'settings.saleEndsIso');
 
 describe('DEFAULT_NAV_CONFIG', () => {
-  it('validates clean (no structural errors)', () => {
-    expect(structuralErrors(DEFAULT_NAV_CONFIG)).toEqual([]);
+  it('validates clean — the seed can never be a save that the CMS refuses', () => {
+    // An expired sale is a non-blocking WARNING, not a hard error, so it never
+    // appears here; validateNavConfig must be empty for the shipped seed.
+    expect(validateNavConfig(DEFAULT_NAV_CONFIG)).toEqual([]);
   });
 
   it('every mega-panel key has a matching rail entry', () => {
@@ -80,9 +80,51 @@ describe('validateNavConfig', () => {
     expect(validateNavConfig(c).some((e) => e.path === 'search.zeroResultCopy')).toBe(true);
   });
 
-  it('refuses a flash-sale deadline that has already passed', () => {
+  it('refuses a trending term with an unreal href (dead link or javascript:)', () => {
+    const c = clone();
+    c.search.trendingTerms = [{ label: 'Power banks', href: 'javascript:alert(1)' }];
+    expect(validateNavConfig(c).some((e) => e.path === 'search.trendingTerms[0].href')).toBe(true);
+  });
+
+  it('refuses out-of-range offer figures (negative or >100 percent)', () => {
+    const c = clone(); c.settings.firstOrderDiscountPct = -5;
+    expect(validateNavConfig(c).some((e) => e.path === 'settings.firstOrderDiscountPct')).toBe(true);
+  });
+
+  it('refuses a nonsensical flash stock (left greater than total, bad bar width)', () => {
+    const c = clone(); c.flash.stock.left = 99; c.flash.stock.of = 10; c.flash.stock.barWidthPct = 500;
+    const errs = validateNavConfig(c).map((e) => e.path);
+    expect(errs).toContain('flash.stock.left');
+    expect(errs).toContain('flash.stock.barWidthPct');
+  });
+});
+
+describe('navConfigWarnings (non-blocking)', () => {
+  it('reports an expired sale as a WARNING — never a save-blocking error', () => {
     const c = clone(); c.settings.saleEndsIso = '2020-01-01T00:00:00+03:00';
-    expect(validateNavConfig(c).some((e) => e.path === 'settings.saleEndsIso')).toBe(true);
+    // Not in the hard errors (so unrelated edits still save)…
+    expect(validateNavConfig(c).some((e) => e.path === 'settings.saleEndsIso')).toBe(false);
+    // …but surfaced as a warning for the operator.
+    expect(navConfigWarnings(c).some((w) => w.path === 'settings.saleEndsIso')).toBe(true);
+  });
+});
+
+describe('sanitiseNavConfig (applied once on read)', () => {
+  it('neutralises a smuggled <img onerror> in zeroResultCopy but keeps <b>', () => {
+    const c = clone();
+    c.search.zeroResultCopy = 'No match for <b>{q}</b> <img src=x onerror=alert(1)>';
+    const out = sanitiseNavConfig(c);
+    expect(out.search.zeroResultCopy).toContain('<b>{q}</b>'); // allowed tag survives
+    expect(out.search.zeroResultCopy).not.toContain('<img');   // no live tag reaches the DOM
+    expect(out.search.zeroResultCopy).toContain('&lt;img');    // it is inert, escaped text
+  });
+
+  it('returns a deep copy and never mutates the input (raw stays raw for re-editing)', () => {
+    const c = clone();
+    c.search.zeroResultCopy = "Today's <img onerror=x> deal";
+    const before = c.search.zeroResultCopy;
+    sanitiseNavConfig(c);
+    expect(c.search.zeroResultCopy).toBe(before);
   });
 });
 

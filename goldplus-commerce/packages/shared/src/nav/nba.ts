@@ -53,6 +53,26 @@ export interface NbaItem {
   urgent?: boolean;
 }
 
+/**
+ * The offer figures the copy quotes. CMS-owned (nav.settings) so the strip never
+ * hardcodes a percentage the operator has since changed; the defaults reproduce
+ * the launch copy exactly, so callers that pass nothing behave as before. The
+ * browser fallback (GpNav) mirrors these from window.__GPNAV — one source, no drift.
+ */
+export interface NbaRates {
+  firstOrderPct: number;
+  referralPct: number;
+  pointsToUgxRate: number;
+  firstOrderEstimate: string;
+}
+
+export const DEFAULT_NBA_RATES: NbaRates = {
+  firstOrderPct: 10,
+  referralPct: 10,
+  pointsToUgxRate: 10,
+  firstOrderEstimate: 'UGX 18,500',
+};
+
 const money = (n: number) => 'UGX ' + n.toLocaleString('en-UG');
 
 /** Routes as the live storefront serves them (no Shopify /collections or /pages). */
@@ -73,7 +93,8 @@ const R = {
  * The applicable candidates for this visitor, unsorted. The caller (or the
  * browser engine) filters dismissed ids, sorts by score, and shows the top one.
  */
-export function computeNbaCandidates(ctx: NbaContext): NbaItem[] {
+export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_NBA_RATES): NbaItem[] {
+  const r = { ...DEFAULT_NBA_RATES, ...rates };
   const c: NbaItem[] = [];
 
   // signed-in: things only we can know
@@ -106,8 +127,8 @@ export function computeNbaCandidates(ctx: NbaContext): NbaItem[] {
   if (ctx.signedIn && ctx.points >= 1000) {
     c.push({
       id: 'points', score: 88,
-      text: 'You have <em>' + ctx.points.toLocaleString('en-UG') + ' points</em> &mdash; that is ' + money(ctx.points * 10) + ' off',
-      short: '<em>' + money(ctx.points * 10) + '</em> in points to spend',
+      text: 'You have <em>' + ctx.points.toLocaleString('en-UG') + ' points</em> &mdash; that is ' + money(ctx.points * r.pointsToUgxRate) + ' off',
+      short: '<em>' + money(ctx.points * r.pointsToUgxRate) + '</em> in points to spend',
       cta: 'Spend them', href: R.rewards,
     });
   }
@@ -120,15 +141,15 @@ export function computeNbaCandidates(ctx: NbaContext): NbaItem[] {
     });
   }
   if (ctx.signedIn) {
-    c.push({ id: 'refer', score: 62, text: 'Send a friend here &mdash; they save <em>10%</em>, you earn <em>10%</em>', short: 'They save <em>10%</em>, you earn <em>10%</em>', cta: 'Get your link', href: R.refer });
+    c.push({ id: 'refer', score: 62, text: 'Send a friend here &mdash; they save <em>' + r.referralPct + '%</em>, you earn <em>' + r.referralPct + '%</em>', short: 'They save <em>' + r.referralPct + '%</em>, you earn <em>' + r.referralPct + '%</em>', cta: 'Get your link', href: R.refer });
   }
 
   // not signed in: the useful, honest defaults
   if (!ctx.signedIn && ctx.visits <= 1) {
-    c.push({ id: 'welcome', score: 92, text: '<em>10% off</em> your first order is reserved &mdash; about <b>UGX 18,500</b> back', short: '<em>10% off</em> your first order, reserved', cta: 'Claim it', href: R.register });
+    c.push({ id: 'welcome', score: 92, text: '<em>' + r.firstOrderPct + '% off</em> your first order is reserved &mdash; about <b>' + r.firstOrderEstimate + '</b> back', short: '<em>' + r.firstOrderPct + '% off</em> your first order, reserved', cta: 'Claim it', href: R.register });
   }
   if (!ctx.signedIn && ctx.visits > 1) {
-    c.push({ id: 'signup', score: 70, text: 'Your <em>10% off</em> is still reserved &mdash; your phone number is the account', short: 'Your <em>10% off</em> is still reserved', cta: 'Claim it', href: R.register });
+    c.push({ id: 'signup', score: 70, text: 'Your <em>' + r.firstOrderPct + '% off</em> is still reserved &mdash; your phone number is the account', short: 'Your <em>' + r.firstOrderPct + '% off</em> is still reserved', cta: 'Claim it', href: R.register });
   }
 
   if (ctx.saleLive) {

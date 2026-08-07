@@ -16,9 +16,20 @@ export const NAV_LIMITS = {
   featuredName: 40,
   featuredLine: 60,
   finderNote: 60,
+  trendingLabel: 24,
 } as const;
 
 export interface NavConfigError { path: string; message: string; }
+
+/** The fields rendered via set:html / innerHTML — the XSS boundary. Sanitised on
+ * write (sanitiseNavConfig) AND, where a sink builds markup by hand, at render. */
+const HTML_FIELD_PATHS = [
+  'search.zeroResultCopy',
+  'miniCart.cutoffSunday', 'miniCart.cutoffAfter', 'miniCart.cutoffBefore',
+  'popover.signedIn.subTemplate',
+  'popover.returning.holdSubManyVisits', 'popover.returning.holdSubDefault', 'popover.returning.mobileSub',
+  'popover.firstTime.holdSub', 'popover.firstTime.mobileSub',
+] as const;
 
 /** Visible length: strip the only allowed inline tags so a tag never counts as width. */
 export function navVisibleText(v: string): string {
@@ -102,9 +113,34 @@ export function validateNavConfig(cfg: NavConfig): NavConfigError[] {
     if (!isRealHref(cfg.flash.cta.href)) push('flash.cta.href', 'The flash CTA link must be real.');
     cfg.flash.discountRows.forEach((r, i) => { if (!isRealHref(r.href)) push(`flash.discountRows[${i}].href`, 'Link must be a real page.'); });
     validateFeatured(cfg.flash.featured, 'flash', push);
-    if (cfg.settings?.saleEndsIso && flashSaleHasEnded({ saleEndsIso: cfg.settings.saleEndsIso })) {
-      push('settings.saleEndsIso', 'This flash-sale deadline has already passed — the sale is not being shown.');
+    // NOTE: an EXPIRED saleEndsIso is a non-blocking warning (navConfigWarnings),
+    // NOT a hard error — the deadline is hero-owned and not editable here, so
+    // blocking on it would make the whole header un-saveable once the sale ends.
+    const s = cfg.flash.stock;
+    if (s) {
+      if (!Number.isFinite(s.left) || s.left < 0) push('flash.stock.left', 'Stock left must be zero or more.');
+      if (!Number.isFinite(s.of) || s.of < 1) push('flash.stock.of', 'Stock total must be at least 1.');
+      if (Number.isFinite(s.left) && Number.isFinite(s.of) && s.left > s.of) push('flash.stock.left', 'Stock left cannot exceed the total.');
+      if (!Number.isFinite(s.barWidthPct) || s.barWidthPct < 0 || s.barWidthPct > 100) push('flash.stock.barWidthPct', 'Bar width must be between 0 and 100.');
     }
+  }
+
+  // trending terms: written by the editor, rendered into an href — same href
+  // rule as every other link (isRealHref blocks #, empty, and javascript:).
+  (cfg.search?.trendingTerms ?? []).forEach((t, i) => {
+    if (!isRealHref(t.href)) push(`search.trendingTerms[${i}].href`, 'Trending link must be a real page (starts with /), not empty, # or a script.');
+    if (navVisibleText(t.label ?? '').length > NAV_LIMITS.trendingLabel) push(`search.trendingTerms[${i}].label`, `Trending term over ${NAV_LIMITS.trendingLabel} characters.`);
+  });
+
+  // offer figures: finite and in range (they fan out into "{n}% off" copy)
+  const st = cfg.settings;
+  if (st) {
+    const pct = (v: number, path: string, label: string) => {
+      if (!Number.isFinite(v) || v < 0 || v > 100) push(path, `${label} must be between 0 and 100.`);
+    };
+    pct(st.firstOrderDiscountPct, 'settings.firstOrderDiscountPct', 'First-order discount');
+    pct(st.referralPct, 'settings.referralPct', 'Referral percentage');
+    if (!Number.isFinite(st.pointsToUgxRate) || st.pointsToUgxRate < 0) push('settings.pointsToUgxRate', 'Points-to-UGX rate must be zero or more.');
   }
 
   // XSS-boundary strings: balanced tags only (the sanitiser strips the rest at render)
@@ -121,6 +157,45 @@ export function validateNavConfig(cfg: NavConfig): NavConfigError[] {
   htmlFields.forEach(([path, v]) => { if (v != null && !balancedTags(v)) push(path, 'Unbalanced <em>/<b> tag — close every tag you open.'); });
 
   return errs;
+}
+
+/**
+ * Non-blocking advisories: shown in the editor but they NEVER refuse a save.
+ * The expired-sale notice lives here (not in validateNavConfig) because the
+ * saleEndsIso is hero-owned and not editable on the nav screen — a hard block
+ * would strand every other header field once the sale ends.
+ */
+export function navConfigWarnings(cfg: NavConfig): NavConfigError[] {
+  const warnings: NavConfigError[] = [];
+  if (cfg?.flash && cfg.settings?.saleEndsIso && flashSaleHasEnded({ saleEndsIso: cfg.settings.saleEndsIso })) {
+    warnings.push({ path: 'settings.saleEndsIso', message: 'This flash-sale deadline has already passed — the header countdown is hidden. Update it on the homepage hero.' });
+  }
+  return warnings;
+}
+
+/** A helper to set a dotted path on a plain object (used by sanitiseNavConfig). */
+function getPath(obj: any, path: string): unknown {
+  return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+function setPath(obj: any, path: string, value: unknown): void {
+  const parts = path.split('.');
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) { if (cur[parts[i]] == null) return; cur = cur[parts[i]]; }
+  cur[parts[parts.length - 1]] = value;
+}
+
+/**
+ * Returns a deep copy of the config with every set:html/innerHTML-bound field run
+ * through sanitiseNavHtml — the "sanitised on write" half of the XSS boundary the
+ * module docstring promises. Escapes everything, restores only <em>/<b>. Idempotent.
+ */
+export function sanitiseNavConfig(cfg: NavConfig): NavConfig {
+  const copy: NavConfig = JSON.parse(JSON.stringify(cfg));
+  for (const path of HTML_FIELD_PATHS) {
+    const v = getPath(copy, path);
+    if (typeof v === 'string') setPath(copy, path, sanitiseNavHtml(v));
+  }
+  return copy;
 }
 
 function validateFeatured(f: NavConfig['flash']['featured'], at: string, push: (p: string, m: string) => void): void {

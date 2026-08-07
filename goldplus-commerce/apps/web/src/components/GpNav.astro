@@ -4,7 +4,8 @@ import { resolveCartCredential } from '../lib/cartCredential';
 import { resolveAuthenticatedUserId } from '../lib/customerAuth';
 import { readSessionToken } from '../lib/session';
 import { apiBase } from '../lib/api';
-import { HERO_SLIDE_LIBRARY, computeNbaCandidates, kampalaCutoff, DEFAULT_NAV_CONFIG, type NavConfig } from '@goldplus/shared';
+import { HERO_SLIDE_LIBRARY, computeNbaCandidates, kampalaCutoff, type NavConfig } from '@goldplus/shared';
+import { getNavConfig } from '../lib/navConfig';
 
 /**
  * GoldPlus site navigation.
@@ -19,14 +20,10 @@ import { HERO_SLIDE_LIBRARY, computeNbaCandidates, kampalaCutoff, DEFAULT_NAV_CO
  */
 
 // ---- header content (CMS, DB-backed) ----
-let nav: NavConfig = DEFAULT_NAV_CONFIG;
-try {
-  const navRes = await fetch(`${apiBase}/nav`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(2000) });
-  const navJson: any = await navRes.json().catch(() => null);
-  if (navRes.ok && navJson?.success && navJson.data?.config) nav = navJson.data.config as NavConfig;
-} catch {
-  // keep DEFAULT_NAV_CONFIG — the header never blanks on a DB hiccup
-}
+// Cached in-process with a short TTL (getNavConfig): per-site, identical for all
+// visitors, so we do not block every page render on a fetch. Falls back to the
+// last good value / DEFAULT_NAV_CONFIG — the header never blanks on a DB hiccup.
+const nav: NavConfig = await getNavConfig();
 
 // ---- cart: read through the SIGNED credential, never an id in a URL ----
 const headerUserId = await resolveAuthenticatedUserId(Astro.cookies);
@@ -92,9 +89,10 @@ if (signedIn) {
 // never show a first-order promo we cannot gate.
 if (!signedIn) visits = Astro.locals.gpVisitIsNew ? 1 : 2;
 
-// ---- the sale clock: the SAME deadline as the hero, never a second one ----
+// ---- the sale clock: the CMS-owned deadline (nav.settings), which is itself
+// seeded from — and kept equal to — the hero's, so there is never a second one.
 const flash = HERO_SLIDE_LIBRARY.find((sl) => sl.slideKey === 'flash');
-const saleEnds = (flash?.extras?.saleEndsIso as string) || '';
+const saleEnds = nav.settings?.saleEndsIso || (flash?.extras?.saleEndsIso as string) || '';
 const saleLive = saleEnds ? Date.now() < new Date(saleEnds).getTime() : false;
 
 // ---- Next Best Action, computed on the SERVER from real signals ----
@@ -104,9 +102,15 @@ const cut = kampalaCutoff(new Date());
 const nba = computeNbaCandidates({
   signedIn, visits, cart: cartCount, points, lastOrderDays, orderInTransit,
   beforeCutoff: cut.beforeCutoff, minsToCutoff: cut.minsToCutoff, sunday: cut.sunday, saleLive,
+}, {
+  // the CMS offer figures drive the copy, so the server strip and the editor agree
+  firstOrderPct: nav.settings.firstOrderDiscountPct,
+  referralPct: nav.settings.referralPct,
+  pointsToUgxRate: nav.settings.pointsToUgxRate,
+  firstOrderEstimate: nav.settings.firstOrderEstimateUgx,
 });
 
-const escNav = (str: string) => str.replace(/</g, '\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+const escNav = (str: string) => str.replace(/&/g, '\\u0026').replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 const navConfigJson = escNav(JSON.stringify({
   signedIn, firstName, points, cartCount, saleEnds,
   firstOrderEstimate: nav.settings.firstOrderEstimateUgx,
@@ -1097,9 +1101,36 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   'use strict';
   var nav = document.getElementById('gpNav'); if (!nav) return;
   var CFG = window.__GPNAV || {};  // server-injected per-visitor truth
+  // CMS-owned offer figures, fanned out to every copy site so editing them in
+  // /admin/nav is reflected everywhere (no hardcoded percentages that drift).
+  var RATE_FIRST = CFG.firstOrderPct != null ? CFG.firstOrderPct : 10;
+  var RATE_REFER = CFG.referralPct != null ? CFG.referralPct : 10;
+  var RATE_PTS = CFG.pointsRate != null ? CFG.pointsRate : 10;
+  var EST_FIRST = CFG.firstOrderEstimate || 'UGX 18,500';
+
+  /* ---- visitor counter ----
+     First-party, non-identifying: a count and a timestamp. Everything that
+     distinguishes a first-time visitor from a returning one depends on this,
+     so it is incremented ONCE per load, HERE, before any block (segment,
+     greeting, NBA) reads it. In private browsing localStorage throws and the
+     visitor is treated as returning — never show a first-order promo you
+     cannot gate. */
+  var gpVisits = 0, gpVisitsKnown = false;
+  (function(){
+    try {
+      gpVisits = parseInt(localStorage.getItem('gp_visits') || '0', 10) + 1;
+      localStorage.setItem('gp_visits', String(gpVisits));
+      localStorage.setItem('gp_last', String(Date.now()));
+      gpVisitsKnown = true;
+    } catch(e){
+      try { window.__gpVisitsFallback = 2; } catch(e2){}
+    }
+  })();
 
   // ---- §10 instrumentation: nav_events via the same-origin relay ----
-  var gpSeg = CFG.signedIn ? 'signed_in' : (function(){ try { var v = parseInt(localStorage.getItem('gp_visits')||'0',10)||0; return v>1?'returning':(v===1?'new':'unknown'); } catch(e){ return 'unknown'; } })();
+  // Segment is derived from the POST-increment count so it matches the greeting
+  // and NBA the visitor actually sees (v===1 first visit → 'new', v>1 → 'returning').
+  var gpSeg = CFG.signedIn ? 'signed_in' : (gpVisitsKnown ? (gpVisits > 1 ? 'returning' : 'new') : 'unknown');
   var gpBeacon = { NBA_CLICK:1, SEARCH_SUGGEST_CLICK:1, WHATSAPP_TAP:1, BATTERY_FINDER_SUBMIT:1, MINICART_CHECKOUT:1 };
   var gpSeen = {};
   window.gpNavTrack = function(type, d){
@@ -1134,22 +1165,6 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   var panels = mega.querySelectorAll('.gp-nav__panel');
   var mq = function(){ return window.innerWidth <= 980; };
   var qs = function(k){ var m = location.search.match(new RegExp('[?&]' + k + '=([^&]+)')); return m && decodeURIComponent(m[1]); };
-
-  /* ---- visitor counter ----
-     First-party, non-identifying: a count and a timestamp. Everything that
-     distinguishes a first-time visitor from a returning one depends on this,
-     so it is incremented once per load before any block reads it. In private
-     browsing localStorage throws and the visitor is treated as returning —
-     never show a first-order promo you cannot gate. */
-  (function(){
-    try {
-      var v = parseInt(localStorage.getItem('gp_visits') || '0', 10) + 1;
-      localStorage.setItem('gp_visits', String(v));
-      localStorage.setItem('gp_last', String(Date.now()));
-    } catch(e){
-      try { window.__gpVisitsFallback = 2; } catch(e2){}
-    }
-  })();
 
   /* ---- open / close ---- */
   function open(){
@@ -1357,7 +1372,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           h += '</div></div>';
         }
         h += '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Trending in Kampala</p><div class="gp-nav__trend">';
-        h += TREND.map(function(t,i){ return '<a href="' + t[1] + '" data-opt><i>' + (i+1) + '</i>' + esc(t[0]) + '</a>'; }).join('');
+        h += TREND.map(function(t,i){ return '<a href="' + esc(t[1]) + '" data-opt><i>' + (i+1) + '</i>' + esc(t[0]) + '</a>'; }).join('');
         h += '</div></div>';
         h += foot();
         sheet.innerHTML = h;
@@ -1461,7 +1476,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     var mhi = document.getElementById('gpNavMhi');
     function st(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
 
-    var name = CFG.firstName || '';
+    // The name is the visitor's own recipientName — escape before it reaches
+    // innerHTML (defence in depth alongside the fixed __GPNAV serialisation).
+    var esch = function(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]; }); };
+    var name = esch(CFG.firstName || '');
     var visits = parseInt(st('gp_visits') || '0', 10) || window.__gpVisitsFallback || 2;
     var known = CFG.signedIn === true;  /* signed in (server truth) */
     var returning = visits > 1;       /* been here before, not signed in */
@@ -1478,11 +1496,11 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     function popHTML(){
       if (known){
         return '<p class="gp-nav__hi">' + partOfDay() + ', ' + name + '</p>' +
-          '<p class="gp-nav__hi-sub">You have <b>' + POINTS.toLocaleString() + ' points</b> &mdash; that is UGX ' + (POINTS*10).toLocaleString() + ' off your next order.</p>' +
+          '<p class="gp-nav__hi-sub">You have <b>' + POINTS.toLocaleString() + ' points</b> &mdash; that is UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' off your next order.</p>' +
           '<div class="gp-nav__acct-links">' +
             '<a href="/account">Your orders</a>' +
             '<a href="/account/rewards">Rewards <b>' + POINTS.toLocaleString() + ' pts</b></a>' +
-            '<a href="/account/rewards">Refer a friend <b>Give ' + (CFG.referralPct||10) + '%</b></a>' +
+            '<a href="/account/rewards">Refer a friend <b>Give ' + RATE_REFER + '%</b></a>' +
             '<a href="/account#settings">Account settings</a>' +
             '<a href="/logout">Sign out</a>' +
           '</div>';
@@ -1494,7 +1512,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         return '<p class="gp-nav__hi">Welcome back</p>' +
           '<div class="gp-nav__hold">' +
             '<span class="gp-nav__hold-tag">Still reserved</span>' +
-            '<b>10% off your first order</b>' +
+            '<b>' + RATE_FIRST + '% off your first order</b>' +
             '<span>' + (missed > 2
               ? 'This is visit <em>' + CTX_visits + '</em> &mdash; none of them have earned points yet'
               : 'Points start counting from the order you make today') + '</span>' +
@@ -1510,8 +1528,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       return '<p class="gp-nav__hi">' + partOfDay() + '</p>' +
         '<div class="gp-nav__hold">' +
           '<span class="gp-nav__hold-tag">Reserved for you</span>' +
-          '<b>10% off your first order</b>' +
-          '<span>About <em>' + (CFG.firstOrderEstimate||'UGX 18,500') + '</em> back on a typical order</span>' +
+          '<b>' + RATE_FIRST + '% off your first order</b>' +
+          '<span>About <em>' + EST_FIRST + '</em> back on a typical order</span>' +
         '</div>' +
         '<form class="gp-nav__join" action="/register" method="get">' +
           '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" ' +
@@ -1525,12 +1543,12 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     function mobileHTML(){
       if (known){
         return '<h2>' + partOfDay() + ', ' + name + '</h2>' +
-          '<p>You have <b>' + POINTS.toLocaleString() + ' points</b> waiting &mdash; UGX ' + (POINTS*10).toLocaleString() + ' off your next order.</p>' +
+          '<p>You have <b>' + POINTS.toLocaleString() + ' points</b> waiting &mdash; UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' off your next order.</p>' +
           '<div class="gp-nav__mhi-row"><a href="/account/rewards">Your rewards</a><a href="/account">Your orders</a></div>';
       }
       if (returning){
         return '<h2>Welcome back</h2>' +
-          '<p><b>10% off your first order</b> is still reserved. Points start counting from today.</p>' +
+          '<p><b>' + RATE_FIRST + '% off your first order</b> is still reserved. Points start counting from today.</p>' +
           '<form class="gp-nav__mjoin" action="/register" method="get">' +
             '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
             '<button type="submit">Claim it</button>' +
@@ -1538,7 +1556,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<a class="gp-nav__mhi-alt" href="/account">Sign in instead</a>';
       }
       return '<h2>' + partOfDay() + '</h2>' +
-        '<p><b>' + (CFG.firstOrderPct||10) + '% off your first order</b> is reserved &mdash; about <b>' + (CFG.firstOrderEstimate||'UGX 18,500') + '</b> back. Your phone number is your account.</p>' +
+        '<p><b>' + RATE_FIRST + '% off your first order</b> is reserved &mdash; about <b>' + EST_FIRST + '</b> back. Your phone number is your account.</p>' +
         '<form class="gp-nav__mjoin" action="/register" method="get">' +
           '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
           '<button type="submit">Claim it</button>' +
@@ -1685,19 +1703,19 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         cta:'Find your model', href:'/shop?category=power&q=battery' });
 
       if (CTX.signedIn) c.push({ id:'refer', score:62,
-        text:'Send a friend here &mdash; they save <em>10%</em>, you earn <em>10%</em>',
-        short:'They save <em>10%</em>, you earn <em>10%</em>',
+        text:'Send a friend here &mdash; they save <em>' + RATE_REFER + '%</em>, you earn <em>' + RATE_REFER + '%</em>',
+        short:'They save <em>' + RATE_REFER + '%</em>, you earn <em>' + RATE_REFER + '%</em>',
         cta:'Get your link', href:'/account/rewards' });
 
       /* ---- not signed in: the useful, honest defaults ---- */
       if (!CTX.signedIn && CTX.visits <= 1) c.push({ id:'welcome', score:92,
-        text:'<em>10% off</em> your first order is reserved &mdash; about <b>' + (CFG.firstOrderEstimate||'UGX 18,500') + '</b> back',
-        short:'<em>10% off</em> your first order, reserved',
+        text:'<em>' + RATE_FIRST + '% off</em> your first order is reserved &mdash; about <b>' + EST_FIRST + '</b> back',
+        short:'<em>' + RATE_FIRST + '% off</em> your first order, reserved',
         cta:'Claim it', href:'/register' });
 
       if (!CTX.signedIn && CTX.visits > 1) c.push({ id:'signup', score:70,
-        text:'Your <em>10% off</em> is still reserved &mdash; your phone number is the account',
-        short:'Your <em>10% off</em> is still reserved',
+        text:'Your <em>' + RATE_FIRST + '% off</em> is still reserved &mdash; your phone number is the account',
+        short:'Your <em>' + RATE_FIRST + '% off</em> is still reserved',
         cta:'Claim it', href:'/register' });
 
       if (CTX.saleLive) c.push({ id:'sale', score:86,

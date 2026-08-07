@@ -61,6 +61,26 @@ describe('NBA — signed-in signals', () => {
   });
 });
 
+describe('NBA — offer figures come from the CMS rates', () => {
+  it('defaults reproduce the launch copy (10% / UGX 18,500 / points × 10)', () => {
+    const welcome = computeNbaCandidates({ ...base, visits: 1 }).find((x) => x.id === 'welcome')!;
+    expect(welcome.text).toContain('10% off');
+    expect(welcome.text).toContain('UGX 18,500');
+    const points = computeNbaCandidates({ ...base, signedIn: true, points: 1240 }).find((x) => x.id === 'points')!;
+    expect(points.text).toContain('UGX 12,400');
+  });
+  it('custom rates flow into the copy (edit in /admin/nav is reflected)', () => {
+    const rates = { firstOrderPct: 15, referralPct: 12, pointsToUgxRate: 20, firstOrderEstimate: 'UGX 30,000' };
+    const welcome = computeNbaCandidates({ ...base, visits: 1 }, rates).find((x) => x.id === 'welcome')!;
+    expect(welcome.text).toContain('15% off');
+    expect(welcome.text).toContain('UGX 30,000');
+    const refer = computeNbaCandidates({ ...base, signedIn: true }, rates).find((x) => x.id === 'refer')!;
+    expect(refer.text).toContain('12%');
+    const points = computeNbaCandidates({ ...base, signedIn: true, points: 1000 }, rates).find((x) => x.id === 'points')!;
+    expect(points.text).toContain('UGX 20,000'); // 1,000 × 20
+  });
+});
+
 describe('NBA — always safe, never empty', () => {
   it('always yields at least the evergreen verify candidate', () => {
     const set = ids({ ...base, visits: 3, saleLive: false, beforeCutoff: false, sunday: true });

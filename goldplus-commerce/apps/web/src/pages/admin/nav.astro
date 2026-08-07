@@ -51,7 +51,7 @@ if (Astro.request.method === 'POST') {
     ];
     for (const p of scalarStr) { const v = form.get(p); if (v != null) deepSet(cfg, p, String(v)); }
     const scalarNum = ['settings.firstOrderDiscountPct', 'settings.referralPct', 'settings.pointsToUgxRate', 'flash.stock.left', 'flash.stock.of', 'flash.stock.barWidthPct'];
-    for (const p of scalarNum) { const v = form.get(p); if (v != null && v !== '') deepSet(cfg, p, Number(v)); }
+    for (const p of scalarNum) { const v = form.get(p); const n = Number(v); if (v != null && v !== '' && Number.isFinite(n)) deepSet(cfg, p, n); }
     // Derived contact fields kept consistent.
     cfg.contact.tel = `tel:${cfg.contact.telNumber}`;
     cfg.contact.whatsappUrl = `https://wa.me/${cfg.contact.whatsappNumber}`;
@@ -82,9 +82,15 @@ if (Astro.request.method === 'POST') {
       }).filter((t) => t.label && t.href);
     }
 
-    const res = await authed('/admin/nav', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: cfg }) });
+    // Optimistic concurrency: send the version the operator was editing. If the
+    // stored version moved on (a second admin saved first), the API refuses (409)
+    // rather than silently clobbering their edit.
+    const expectedRaw = form.get('expectedVersion');
+    const expectedVersion = expectedRaw != null && expectedRaw !== '' ? Number(expectedRaw) : undefined;
+    const res = await authed('/admin/nav', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: cfg, expectedVersion }) });
     const json: any = await res.json().catch(() => null);
     if (res.ok && json?.success) notice = { kind: 'ok', message: `Header saved (version ${json.data.version}). Live for every visitor.` };
+    else if (res.status === 409) notice = { kind: 'error', message: json?.error?.message ?? 'Someone else changed the header since you loaded it. Reload and re-apply your change.' };
     else if (res.status === 422) notice = { kind: 'error', message: 'Save blocked — fix these before saving:', details: json?.error?.details ?? [] };
     else notice = { kind: 'error', message: json?.error?.message ?? 'Could not save the header.' };
   } catch (e) {
@@ -93,12 +99,12 @@ if (Astro.request.method === 'POST') {
 }
 
 // Load config + report.
-let config: any = null; let errors: any[] = []; let report: any = null; let loadError = '';
+let config: any = null; let errors: any[] = []; let warnings: any[] = []; let version = 0; let report: any = null; let loadError = '';
 try {
   const [cfgRes, repRes] = await Promise.all([authed('/admin/nav'), authed('/admin/nav/report?windowDays=30')]);
   if (cfgRes.status === 401 || cfgRes.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/nav', 303);
   const cfgJson: any = await cfgRes.json().catch(() => null);
-  if (cfgRes.ok && cfgJson?.success) { config = cfgJson.data.config; errors = cfgJson.data.errors ?? []; }
+  if (cfgRes.ok && cfgJson?.success) { config = cfgJson.data.config; errors = cfgJson.data.errors ?? []; warnings = cfgJson.data.warnings ?? []; version = cfgJson.data.version ?? 0; }
   else loadError = cfgJson?.error?.message ?? 'Could not load the header configuration.';
   const repJson: any = await repRes.json().catch(() => null);
   if (repRes.ok && repJson?.success) report = repJson.data;
@@ -125,14 +131,21 @@ const rate = (n: number | null) => (n == null ? '— (below sample floor)' : `${
     )}
     {loadError && <div class="mt-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{loadError}</div>}
     {config && errors.length > 0 && (
-      <div class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-        <p class="font-bold">This header currently has {errors.length} issue(s):</p>
+      <div class="mt-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">
+        <p class="font-bold">This header has {errors.length} issue(s) that block saving:</p>
         <ul class="mt-2 list-disc pl-5">{errors.map((e: any) => <li><code>{e.path}</code> — {e.message}</li>)}</ul>
+      </div>
+    )}
+    {config && warnings.length > 0 && (
+      <div class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <p class="font-bold">Heads up (these do not block saving):</p>
+        <ul class="mt-2 list-disc pl-5">{warnings.map((w: any) => <li>{w.message}</li>)}</ul>
       </div>
     )}
 
     {config && (
       <form method="POST" class="mt-8 space-y-10" data-nav-editor>
+        <input type="hidden" name="expectedVersion" value={version} />
         <section>
           <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Rail categories</h2>
           <p class="text-xs text-slate-500">Category name ≤{NAV_LIMITS.categoryLabel} chars. Links must be real pages.</p>

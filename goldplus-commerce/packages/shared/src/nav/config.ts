@@ -36,9 +36,12 @@ const brandChips = [
   { label: 'All brands →', href: '/shop?category=power&q=battery', style: 'green' as const },
 ];
 
-const caps = (kind: 'flash+drive' | 'memory+card') => {
+// The capacity chips search by SIZE within the storage category, exactly as the
+// rendered header markup does (the per-row allSizes link carries the kind). Kept
+// in lock-step with that markup so the seed and the page never diverge.
+const caps = () => {
   const sizes = ['1gb', '2gb', '4gb', '8gb', '16gb', '32gb', '64gb', '128gb', '256gb', '512gb'];
-  return sizes.map((s) => ({ label: s.toUpperCase().replace('GB', 'GB'), href: `/shop?category=storage&q=${s}` }));
+  return sizes.map((s) => ({ label: s.toUpperCase(), href: `/shop?category=storage&q=${s}` }));
 };
 
 export const DEFAULT_NAV_CONFIG: NavConfig = {
@@ -147,8 +150,8 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
       key: 'storage',
       shape: 'wide',
       capacityMatrix: [
-        { rowLabel: 'Flash drives', allSizes: { label: 'All sizes →', href: '/shop?category=storage&q=flash+drive' }, caps: caps('flash+drive') },
-        { rowLabel: 'Memory cards', allSizes: { label: 'All sizes →', href: '/shop?category=storage&q=memory+card' }, caps: caps('memory+card') },
+        { rowLabel: 'Flash drives', allSizes: { label: 'All sizes →', href: '/shop?category=storage&q=flash+drive' }, caps: caps() },
+        { rowLabel: 'Memory cards', allSizes: { label: 'All sizes →', href: '/shop?category=storage&q=memory+card' }, caps: caps() },
       ],
       note: 'Every card is written full and read back before it is sold. <b>The size on the box is the size you get.</b>',
       featured: {

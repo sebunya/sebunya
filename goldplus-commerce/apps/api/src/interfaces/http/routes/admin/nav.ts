@@ -24,7 +24,11 @@ routes.put('/', requirePermissions([PERMISSIONS.NAV_MANAGE]), async (c) => {
     return c.json({ success: false, error: { code: 'INVALID_JSON', message: 'A config object is required.' } }, 400);
   }
   const actorId = (c.get('user') as { id: string }).id;
-  const result = await Registry.getInstance().navContentService.updateConfig(body.config, actorId);
+  const expectedVersion = typeof body.expectedVersion === 'number' ? body.expectedVersion : undefined;
+  const result = await Registry.getInstance().navContentService.updateConfig(body.config, actorId, expectedVersion);
+  if (!result.ok && 'conflict' in result) {
+    return c.json({ success: false, error: { code: 'VERSION_CONFLICT', message: 'Someone else changed the header since you loaded it. Reload and re-apply your change.' } }, 409);
+  }
   if (!result.ok) {
     return c.json({ success: false, error: { code: 'INVALID_CONFIG', message: 'The header would break.', details: result.errors } }, 422);
   }
