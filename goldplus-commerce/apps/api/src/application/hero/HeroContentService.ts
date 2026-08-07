@@ -3,7 +3,10 @@ import {
   HERO_FALLBACK_KEY,
   HERO_SETTINGS_DEFAULT,
   HERO_SLIDE_LIBRARY,
+  HERO_SELECTION_TUNING,
+  selectHeroSlides,
   type HeroSettingsSeed,
+  type HeroSelectionContext,
 } from '../../domain/hero/HeroSlideLibrary';
 import { flashSaleHasEnded, validateHeroSlide, type HeroSlideFieldErrors } from '../../domain/hero/HeroSlideValidation';
 
@@ -50,6 +53,37 @@ export interface HeroEngineConfig {
 export interface HeroPublicPayload {
   slides: HeroPublicSlide[];
   config: HeroEngineConfig;
+}
+
+/**
+ * The per-visitor signals the personalised payload consumes. Declared here as a
+ * plain structural shape so the application layer never imports the
+ * infrastructure signals service — the thin route fetches the signals and passes
+ * them in. The infrastructure `HeroSignals` satisfies this shape.
+ */
+export interface HeroPersonalisationSignals {
+  visits: number;
+  hasOrdered: boolean;
+  categoryAffinity: Array<{ categorySlug: string; score: number }>;
+  preferredProduct: { imageUrl: string; alt: string; categorySlug: string } | null;
+  loyalty: { points: number; tierLabel: string; goalRemaining: number } | null;
+  stockBySlug: Record<string, boolean>;
+}
+
+/** Presentation inputs the server cannot get from the profile: the cart, the URL and the clock. */
+export interface HeroPersonalisationInput {
+  cartItems: number;
+  referred: boolean;
+  now: Date;
+  /** QA override (?gp=new|returning|regular|expired|aftercutoff), else null. */
+  force?: string | null;
+}
+
+export interface HeroPersonalisedPayload extends HeroPublicPayload {
+  /** slideKey of the lead (first, active) slide the storefront must render active. */
+  lead: string;
+  /** Product to show in the arch on product-agnostic slides, or null. */
+  preferredArch: { imageUrl: string; alt: string } | null;
 }
 
 export interface HeroAdminSlide extends StoredHeroSlide {
@@ -112,6 +146,104 @@ export class HeroContentService {
     }
 
     return { slides: slides.map((s) => this.toPublic(s)), config: this.deriveConfig(slides, settings) };
+  }
+
+  /** Enabled slides + settings, falling back to the library if the DB is unreachable. */
+  private async loadStored(): Promise<{ slides: StoredHeroSlide[]; settings: HeroSettingsSeed }> {
+    try {
+      const [slides, settings] = await Promise.all([this.repo.listEnabled(), this.repo.getSettings()]);
+      if (slides.length > 0) return { slides, settings };
+      // Everything disabled → the evergreen slide, never an empty box (§2.5).
+      const authentic = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === HERO_FALLBACK_KEY)!;
+      return { slides: [{ ...authentic, id: 'fallback', updatedAt: new Date() }], settings };
+    } catch {
+      const slides = HERO_SLIDE_LIBRARY.filter((s) => s.enabled).map((s) => ({ ...s, id: s.slideKey, updatedAt: new Date() }));
+      return { slides, settings: HERO_SETTINGS_DEFAULT };
+    }
+  }
+
+  /**
+   * What the storefront renders for THIS visitor — selection and enrichment done
+   * on the server (2026-08-07). The browser no longer selects, fetches signals or
+   * gates on consent: personalisation is a first-party feature that runs for
+   * everyone. The result is per-visitor and MUST NOT be shared-cached.
+   *
+   * Signals come from the profile (structural param, so no infra import); the
+   * cart, the referral flag and the clock come from the request. Uganda is a
+   * fixed UTC+3 with no DST, so the same-day cutoff and the flash countdown are
+   * evaluated in Kampala time from the server clock.
+   */
+  async buildPersonalisedPayload(
+    signals: HeroPersonalisationSignals,
+    input: HeroPersonalisationInput,
+  ): Promise<HeroPersonalisedPayload> {
+    const { slides: stored, settings } = await this.loadStored();
+    const config = this.deriveConfig(stored, settings);
+
+    // Visitor tier mirrors the old client counter; hasOrdered stays a separate
+    // flag (the rules use both). Regular does NOT fold in hasOrdered, to avoid
+    // double-counting a customer who is also a frequent visitor.
+    const visits = Math.max(1, signals.visits || 1);
+    const KAMPALA_OFFSET_MS = 3 * 60 * 60 * 1000;
+    const kampala = new Date(input.now.getTime() + KAMPALA_OFFSET_MS);
+    const hour = kampala.getUTCHours();
+    const day = kampala.getUTCDay(); // 0 = Sunday
+    const saleLive = config.flashSaleEnds ? input.now.getTime() < new Date(config.flashSaleEnds).getTime() : false;
+
+    const ctx: HeroSelectionContext = {
+      isNew: visits <= 1,
+      isReturning: visits > 1,
+      isRegular: visits >= 4,
+      hasOrdered: signals.hasOrdered,
+      saleLive,
+      beforeCutoff: hour < config.cutoffHour && day !== 0,
+      cartItems: Math.max(0, input.cartItems || 0),
+      // Scratch state lives in the browser; the client still shows an already
+      // revealed prize. Server-side the slide stays eligible.
+      scratched: false,
+      referred: input.referred,
+      serverCats: signals.categoryAffinity.map((a) => a.categorySlug).filter(Boolean),
+    };
+
+    // QA overrides (?gp=…) — the same set the client used, now applied server-side.
+    switch (input.force) {
+      case 'new': ctx.isNew = true; ctx.isReturning = false; ctx.isRegular = false; break;
+      case 'returning': ctx.isNew = false; ctx.isReturning = true; ctx.isRegular = false; break;
+      case 'regular': ctx.isNew = false; ctx.isReturning = true; ctx.isRegular = true; break;
+      case 'expired': ctx.saleLive = false; break;
+      case 'aftercutoff': ctx.beforeCutoff = false; break;
+      default: break;
+    }
+
+    const chosen = selectHeroSlides(stored, ctx, { ...HERO_SELECTION_TUNING, show: config.show });
+    const safe = chosen.length > 0 ? chosen : stored.slice(0, 1);
+
+    // Enrich the chosen slides in place (real loyalty balance, category deep-link).
+    const affinityCat = ctx.serverCats[0] ?? null;
+    const enriched = safe.map((s) => {
+      const extras = { ...(s.extras ?? {}) };
+      let ctaUrl = s.ctaUrl;
+      if (s.slideKey === 'loyalty' && signals.loyalty) {
+        extras.points = signals.loyalty.points;
+        extras.goalLabel =
+          signals.loyalty.goalRemaining > 0
+            ? `${signals.loyalty.goalRemaining} to ${signals.loyalty.tierLabel}`
+            : signals.loyalty.tierLabel;
+      }
+      if ((s.slideKey === 'range' || s.slideKey === 'newarrivals') && affinityCat && ctaUrl.startsWith('/shop')) {
+        ctaUrl = `/shop?category=${encodeURIComponent(affinityCat)}`;
+      }
+      return this.toPublic({ ...s, ctaUrl, extras });
+    });
+
+    return {
+      slides: enriched,
+      config,
+      lead: safe[0].slideKey,
+      preferredArch: signals.preferredProduct
+        ? { imageUrl: signals.preferredProduct.imageUrl, alt: signals.preferredProduct.alt }
+        : null,
+    };
   }
 
   private libraryFallback(): HeroPublicPayload {

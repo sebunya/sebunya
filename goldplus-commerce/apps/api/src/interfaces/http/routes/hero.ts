@@ -25,19 +25,42 @@ async function profileFrom(c: any): Promise<string | null> {
   } catch { return null; }
 }
 
+const heroProductSlugs = (): string[] =>
+  HERO_SLIDE_LIBRARY
+    .map((s) => (s.imageUrl.match(/\/products\/([a-z0-9-]+)\.webp/i) || [])[1])
+    .filter(Boolean) as string[];
+
 routes.get('/', async (c) => {
   const payload = await registry.heroContentService.getPublicPayload();
   c.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
   return c.json({ success: true, data: payload });
 });
 
+// Per-visitor, server-personalised hero (2026-08-07). Selection + enrichment run
+// here from the profile — the storefront renders the result and the browser only
+// rotates. Personalisation runs for every visitor; there is no consent gate.
+// Per-visitor output → MUST NOT be shared-cached.
+routes.get('/personalised', async (c) => {
+  const profileId = await profileFrom(c);
+  const signals = await registry.heroSignalsService.getSignals(profileId, heroProductSlugs());
+  const cartItems = Number(c.req.query('cart') ?? '0');
+  const referred = c.req.query('ref') === '1';
+  const force = c.req.query('force') || null;
+  const payload = await registry.heroContentService.buildPersonalisedPayload(signals, {
+    cartItems: Number.isFinite(cartItems) ? cartItems : 0,
+    referred,
+    now: new Date(),
+    force,
+  });
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data: payload });
+});
+
+// Retained for compatibility; the storefront now personalises server-side via
+// /hero/personalised and no longer fetches this after paint.
 routes.get('/signals', async (c) => {
   const profileId = await profileFrom(c);
-  // Stock is looked up only for the product slugs the slides actually reference.
-  const slugs = HERO_SLIDE_LIBRARY
-    .map((s) => (s.imageUrl.match(/\/products\/([a-z0-9-]+)\.webp/i) || [])[1])
-    .filter(Boolean) as string[];
-  const signals = await registry.heroSignalsService.getSignals(profileId, slugs);
+  const signals = await registry.heroSignalsService.getSignals(profileId, heroProductSlugs());
   // Per-visitor: MUST NOT be shared-cached, or one visitor's signals leak.
   c.header('Cache-Control', 'private, no-store');
   return c.json({ success: true, data: signals });

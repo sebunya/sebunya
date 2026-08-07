@@ -1,22 +1,28 @@
 ---
 import { apiBase } from '../../lib/api';
-import { HERO_SLIDE_LIBRARY, HERO_SETTINGS_DEFAULT } from '@goldplus/shared';
+import {
+  HERO_SLIDE_LIBRARY, HERO_SETTINGS_DEFAULT, HERO_SELECTION_TUNING, selectHeroSlides,
+  type HeroSelectionContext,
+} from '@goldplus/shared';
 
 /**
- * GoldPlus hero slider (ported 2026-08-07).
+ * GoldPlus hero slider — server-personalised (2026-08-07).
  *
- * A 12-slide library from which the client engine shows exactly 4, chosen per
- * visitor and ordered by funnel stage. Content is CMS-driven: this component
- * fetches the enabled slides + settings from the API and renders them; the
- * lead slide is server-rendered so the hero is readable with JavaScript off
- * and is the LCP element with CLS = 0.
+ * A 12-slide library from which exactly 4 are chosen per visitor and ordered by
+ * funnel stage. That choice — and the enrichments (real loyalty balance,
+ * category deep-links, preferred arch product) — is made ON THE SERVER from the
+ * visitor's experience profile, then rendered here. Personalisation is a
+ * first-party product feature that runs for EVERY visitor; the browser no longer
+ * selects, fetches signals, or gates on consent — it only rotates and animates.
  *
- * Cache-safe: the server output is visitor-NEUTRAL (the full enabled library
- * plus a neutral lead). All personalisation runs in the browser after paint,
- * so an edge cache can never serve one visitor's variant to another.
+ * Safe to render per-visitor: the homepage is already dynamic and uncached (it
+ * mints a per-visitor cookie), so there is no shared cache to leak one visitor's
+ * rail to another. The API response for the rail is `private, no-store`.
  *
- * Namespaces (gp-hero__*, --gph-*) and the vanilla engine are ported faithfully
- * from the approved build — no carousel library, no new dependencies.
+ * The lead slide is server-rendered active so the hero is readable with
+ * JavaScript off and is the LCP element with CLS = 0. Namespaces (gp-hero__*,
+ * --gph-*) and the vanilla engine are ported from the approved build — no
+ * carousel library, no new dependencies.
  */
 
 interface HeroPublicSlide {
@@ -37,35 +43,64 @@ let config: HeroConfig = {
   show: HERO_SETTINGS_DEFAULT.slidesShown, dwell: HERO_SETTINGS_DEFAULT.dwellMs,
   autoplay: HERO_SETTINGS_DEFAULT.autoplay, flashSaleEnds: null, cutoffHour: 17, prizes: [],
 };
+let leadKey = '';
+let preferredArch: { imageUrl: string; alt: string } | null = null;
 
+// Server-personalised rail. The visit token (HttpOnly, resolved by middleware)
+// identifies the profile; the referral flag and QA override come from the URL.
+// Cart item count is not cheaply available server-side (the cart cookie holds an
+// id, not a count), so it is passed as 0 \u2014 it only softens the welcome gate.
+const visit = Astro.locals.gpVisit;
+const reqUrl = new URL(Astro.request.url);
+const referred = reqUrl.searchParams.has('ref') || reqUrl.searchParams.get('utm_campaign') === 'referral';
+const force = reqUrl.searchParams.get('gp');
 try {
-  const res = await fetch(`${apiBase}/hero`, { signal: AbortSignal.timeout(2500) });
+  const qs = new URLSearchParams({ cart: '0', ref: referred ? '1' : '0' });
+  if (force) qs.set('force', force);
+  const res = await fetch(`${apiBase}/hero/personalised?${qs.toString()}`, {
+    headers: visit ? { 'x-gp-visit': visit } : {},
+    signal: AbortSignal.timeout(2500),
+  });
   const json = await res.json().catch(() => null);
   if (res.ok && json?.success && Array.isArray(json.data?.slides) && json.data.slides.length > 0) {
     slides = json.data.slides;
     config = json.data.config;
+    leadKey = json.data.lead || slides[0].slideKey;
+    preferredArch = json.data.preferredArch ?? null;
   }
 } catch {
   // fall through to the in-code fallback below
 }
 
-// The hero must NEVER be blank. If the API is unreachable, render the library.
+// The hero must NEVER be blank. If the API is unreachable, select from the
+// library with the SAME shared algorithm as the server, in a neutral (first-
+// visit) context \u2014 so the fallback rail is coherent, not the whole library.
 if (slides.length === 0) {
-  slides = HERO_SLIDE_LIBRARY.filter((s) => s.enabled).map((s) => ({
+  const lib = HERO_SLIDE_LIBRARY.filter((s) => s.enabled);
+  const flash = lib.find((s) => s.slideKey === 'flash');
+  const sameday = lib.find((s) => s.slideKey === 'sameday');
+  const scratch = lib.find((s) => s.slideKey === 'scratch');
+  const saleEndsIso = (flash?.extras?.saleEndsIso as string) ?? null;
+  const neutral: HeroSelectionContext = {
+    isNew: true, isReturning: false, isRegular: false, hasOrdered: false,
+    saleLive: saleEndsIso ? Date.now() < new Date(saleEndsIso).getTime() : false,
+    beforeCutoff: true, cartItems: 0, scratched: false, referred: false, serverCats: [],
+  };
+  const chosen = selectHeroSlides(lib, neutral, { ...HERO_SELECTION_TUNING, show: HERO_SETTINGS_DEFAULT.slidesShown });
+  const picked = chosen.length ? chosen : lib.slice(0, 1);
+  slides = picked.map((s) => ({
     slideKey: s.slideKey, theme: s.theme, tint: s.tint, media: s.media,
     kicker: s.kicker, headline: s.headline, subcopy: s.subcopy,
     ctaLabel: s.ctaLabel, ctaUrl: s.ctaUrl, finePrint: s.finePrint,
-    imageUrl: s.imageUrl, imageAlt: s.imageAlt, priority: s.priority, extras: s.extras,
+    imageUrl: s.imageUrl, imageAlt: s.imageAlt, priority: s.priority, extras: s.extras as Record<string, any>,
   }));
-  const flash = slides.find((s) => s.slideKey === 'flash');
-  const sameday = slides.find((s) => s.slideKey === 'sameday');
-  const scratch = slides.find((s) => s.slideKey === 'scratch');
   config = {
     show: HERO_SETTINGS_DEFAULT.slidesShown, dwell: HERO_SETTINGS_DEFAULT.dwellMs, autoplay: HERO_SETTINGS_DEFAULT.autoplay,
-    flashSaleEnds: (flash?.extras?.saleEndsIso as string) ?? null,
+    flashSaleEnds: saleEndsIso,
     cutoffHour: Number(sameday?.extras?.cutoffHour ?? 17),
-    prizes: Array.isArray(scratch?.extras?.prizes) ? scratch!.extras.prizes : [],
+    prizes: Array.isArray(scratch?.extras?.prizes) ? (scratch!.extras.prizes as HeroConfig['prizes']) : [],
   };
+  leadKey = slides[0].slideKey;
 }
 
 // The <em> boundary, on the render side too. The headline is set:html; escape
@@ -75,18 +110,18 @@ const escapeHtml = (v: string) =>
   (v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const safeHeadline = (v: string) => escapeHtml(v).replace(/&lt;em&gt;/gi, '<em>').replace(/&lt;\/em&gt;/gi, '</em>');
 
-// Neutral lead slide (cache-safe): flash while its sale is live, else the first
-// slide. Personalisation reorders client-side after paint.
-const saleLive = config.flashSaleEnds ? Date.now() < new Date(config.flashSaleEnds).getTime() : false;
-const leadKey = saleLive && slides.some((s) => s.slideKey === 'flash') ? 'flash' : slides[0]?.slideKey;
+// The lead is the server-chosen first slide (funnel order). Preload its image.
 const leadSlide = slides.find((s) => s.slideKey === leadKey) ?? slides[0];
 const leadImage = leadSlide && leadSlide.media !== 'card' ? leadSlide.imageUrl : '';
 
 const ugx = (n: any) => (typeof n === 'number' ? `UGX ${n.toLocaleString('en-UG')}` : String(n ?? ''));
 // Escape for a <script> context: neutralise </script> breakout and the JSON-
 // legal-but-JS-hostile line separators. config is server-controlled today, but
-// prizes/values flow from CMS extras, so this is the render-side XSS boundary.
-const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+// prizes/values/preferredArch flow from CMS/catalogue data, so this is the
+// render-side XSS boundary. preferredArch rides along so the engine can position
+// the server-chosen arch product without a client fetch.
+const configJson = JSON.stringify({ ...config, preferredArch })
+  .replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 ---
 {/* Preload the lead image for LCP. A preload link in body is valid HTML and
     functions; the lead <img> also carries fetchpriority="high". */}
@@ -831,26 +866,11 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
   var box = document.getElementById('gpHero');
   if (!box) return;
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Consent posture (2026-08-07): first-party, non-identifying personalisation
-  // and measurement run BY DEFAULT — consistent with the rest of the
-  // storefront's first-party measurement, which does not gate. We honour an
-  // EXPLICIT refusal only: Global Privacy Control, Do Not Track, or a purpose
-  // recorded false via the Preference Centre. The pre-banner deny-all default
-  // is NOT a refusal (no banner exists to have shown it), so treating it as one
-  // would silently disable the feature for everyone. The cookies page promises
-  // exactly this: "GPC and DNT are honoured for personalisation."
-  function heroOptedOut(purpose){
-    try {
-      if (navigator.globalPrivacyControl === true) return true;
-      var dnt = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
-      if (dnt === '1' || dnt === 'yes') return true;
-      var raw = localStorage.getItem('_gp_consent_state');
-      if (raw){ var s = JSON.parse(raw); if (s && s[purpose] === false) return true; }
-    } catch(e){}
-    return false;
-  }
+  // Personalisation is a first-party product feature that runs for EVERY
+  // visitor. Selection and enrichment happen on the server (SSR); the browser
+  // no longer profiles, fetches signals, or gates on consent.
   function heroReadCart(){ try { var m = document.cookie.match(/(?:^|; )goldplus_cart_data=([^;]+)/); if (!m) return 0; var d = JSON.parse(decodeURIComponent(m[1])); var it = (d && d.items) || []; return it.reduce(function(a,x){ return a + (x.quantity||0); }, 0); } catch(e){ return 0; } }
-  var heroPref = null;   // preferred product for the arch, set only after consented signals load
+  var heroPref = (CMS.preferredArch && CMS.preferredArch.imageUrl) ? CMS.preferredArch : null;  // arch product, chosen server-side
   var INERT_OK = 'inert' in HTMLElement.prototype;
   var qs = function(k){ var m = location.search.match(new RegExp('[?&]' + k + '=([^&]+)')); return m && decodeURIComponent(m[1]); };
 
@@ -882,12 +902,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
     scratched: scratched,
     referred: /[?&](ref|utm_campaign=referral)/i.test(location.search),
     cats: (store.get(CONFIG.keys.cats) || '').split(',').filter(Boolean),
-    cartItems: heroReadCart(),  // B: their own cart cookie — functional, no profiling
-    // Server-derived signals — safe defaults now, filled once /api/hero/signals
-    // returns (personalization consent only). Selection re-runs when they change.
-    hasOrdered: false,          // confirmed customer (server profile)
-    serverCats: [],             // category-affinity slugs the profile actually browsed
-    stockBySlug: {}             // live stock for referenced products
+    cartItems: heroReadCart()   // the visitor's own cart cookie (functional)
   };
   /* QA overrides: ?gp=new | returning | regular | expired | aftercutoff */
   var force = qs('gp');
@@ -897,120 +912,29 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
   if (force === 'expired')    { CTX.saleLive = false; }
   if (force === 'aftercutoff'){ CTX.beforeCutoff = false; }
 
-  /* ---------------- the 12-slide library ---------------- */
-  var LIB = {
-    flash:      { when:function(c){ return c.saleLive; },            score:function(){ return 100; } },
-    // A confirmed customer does not need a first-visit welcome.
-    welcome:    { when:function(c){ return c.isNew && c.cartItems === 0 && !c.hasOrdered; }, score:function(){ return 96; } },
-    // Referral resonates with anyone who has already bought, even on a fresh device.
-    referral:   { when:function(c){ return c.isReturning || c.hasOrdered; }, score:function(c){ return (c.isRegular || c.hasOrdered) ? 88 : 74; } },
-    sameday:    { when:function(){ return true; },                   score:function(c){ return c.beforeCutoff ? 92 : 46; } },
-    fees:       { when:function(){ return true; },                   score:function(c){ return c.isNew ? 80 : 62; } },
-    ambassador: { when:function(){ return true; },                   score:function(c){ return c.isNew ? 70 : 58; } },
-    // Real browsing affinity lifts what's new in the visitor's categories.
-    newarrivals:{ when:function(){ return true; },                   score:function(c){ return (c.isRegular ? 90 : 60) + (c.serverCats.length ? 8 : 0); } },
-    range:      { when:function(){ return true; },                   score:function(c){ return (c.isNew ? 78 : 50) + (c.serverCats.length ? 6 : 0); } },
-    // Loyalty is the natural lead for someone who has ordered before.
-    loyalty:    { when:function(c){ return !c.isNew || c.hasOrdered; }, score:function(c){ return c.hasOrdered ? 92 : (c.isRegular ? 86 : 66); } },
-    scratch:    { when:function(c){ return !c.scratched; },          score:function(c){ return c.isReturning ? 84 : 72; } },
-    nostories:  { when:function(){ return true; },                   score:function(c){ return c.isNew ? 82 : 56; } },
-    authentic:  { when:function(){ return true; },                   score:function(c){ return c.isNew ? 76 : 44; } }
-  };
-
-  /* ---------------- selection (re-runnable) ----------------
-     computeChoice() picks and orders the slides from a context; applyChoice()
-     makes that set the visible rail. Both can run twice: once immediately from
-     LOCAL context (so the hero renders and its controls work at t=0), and again
-     when server signals arrive — WITHOUT reshuffling the visible slide, so the
-     personalisation settles behind the scenes rather than jumping. Slides are
-     HIDDEN, never removed, so a later choice can pick any of the twelve. */
-  var all = [].slice.call(box.querySelectorAll('.gp-hero__slide'));
-  var reviewAll = (force === 'all');
-  var NAMES = {
-    flash:'Flash sale', welcome:'Welcome \u00b7 new visitor', referral:'Referral \u00b7 returning',
-    sameday:'Same-day delivery', fees:'Delivery fees', ambassador:'Ambassadors',
-    newarrivals:'New arrivals', range:'Full range', loyalty:'Loyalty',
-    scratch:'Scratch to reveal', nostories:'No stories', authentic:'Authenticity'
-  };
-
-  function computeChoice(ctx){
-    if (reviewAll) return all.slice();   // ?gp=all — the whole library, authored order
-    var pool = all.map(function(el){
-      var id = el.getAttribute('data-id'), cfg = LIB[id] || {};
-      var pr = parseInt(el.getAttribute('data-priority') || '0', 10) || 0;
-      return { el:el, id:id, theme:el.getAttribute('data-theme'),
-               ok: cfg.when ? cfg.when(ctx) : true,
-               score: (cfg.score ? cfg.score(ctx) : 0) + pr * CONFIG.priorityWeight };
-    }).filter(function(s){ return s.ok; });
-    pool.sort(function(a,b){ return b.score - a.score; });
-    var used = {}, chosen = [];
-    pool.forEach(function(s){
-      if (chosen.length >= CONFIG.show) return;
-      var cap = CONFIG.themeCap[s.theme] || 1;
-      if ((used[s.theme] || 0) >= cap) return;
-      used[s.theme] = (used[s.theme] || 0) + 1;
-      chosen.push(s);
-    });
-    pool.forEach(function(s){ if (chosen.length < CONFIG.show && chosen.indexOf(s) < 0) chosen.push(s); });
-    chosen.sort(function(a,b){ return (CONFIG.funnel[a.theme]||9) - (CONFIG.funnel[b.theme]||9); });
-    return chosen.map(function(c){ return c.el; });
-  }
-
-  /* dynamic rail state — reassigned by applyChoice, read by every control fn */
-  var slides = [], total = 0, index = 0, playing = !reduce && CONFIG.autoplay, raf = null, startedAt = 0;
+  /* ---------------- rail setup (server-selected) ----------------
+     Selection, ordering and enrichment now happen on the SERVER: the rendered
+     slides are already the chosen set, in funnel order, lead first. The engine
+     just reveals them, wires the progress nav, and rotates. No client selection,
+     no signals fetch, no consent gate — personalisation is delivered by SSR. */
+  var slides = [].slice.call(box.querySelectorAll('.gp-hero__slide'));
+  var total = slides.length;
+  var index = 0;                       // the server rendered the lead first + active
+  var playing = !reduce && CONFIG.autoplay, raf = null, startedAt = 0;
   var segsWrap = document.getElementById('gpSegs'), fills = [], segs = [], tail = null;
   var live = document.getElementById('gpHeroLive');
   var archEl = document.getElementById('gpArch');
   var archImg = document.getElementById('gpArchImg');
   var contactEl = document.getElementById('gpContact');
-  if (reviewAll) box.setAttribute('data-review','');
 
-  function applyChoice(chosenEls, keepActiveId){
-    if (raf) cancelAnimationFrame(raf);          // no tick referencing stale fills
-    // Preserving a visible slide across a re-selection means it MUST remain in
-    // the set even if fresh signals would have dropped it — otherwise the deck
-    // would jump out from under the visitor. Swap it in for the lowest-funnel
-    // pick and re-sort, so ordering stays coherent.
-    if (keepActiveId){
-      var keepEl = null;
-      for (var q=0;q<all.length;q++){ if (all[q].getAttribute('data-id') === keepActiveId){ keepEl = all[q]; break; } }
-      if (keepEl && chosenEls.indexOf(keepEl) < 0){
-        if (chosenEls.length >= CONFIG.show) chosenEls = chosenEls.slice(0, CONFIG.show - 1);
-        chosenEls = chosenEls.concat([keepEl]);
-        chosenEls.sort(function(a,b){
-          var fa = CONFIG.funnel[a.getAttribute('data-theme')] || 9, fb = CONFIG.funnel[b.getAttribute('data-theme')] || 9;
-          return fa - fb;
-        });
-      }
-    }
-    var chosenSet = chosenEls;
-    // Hide everything not chosen; show + order the chosen.
-    all.forEach(function(el){ if (chosenSet.indexOf(el) < 0){ el.hidden = true; el.removeAttribute('data-active'); } });
-    chosenEls.forEach(function(el){ el.hidden = false; box.insertBefore(el, segsWrap); });
-
-    slides = chosenEls; total = slides.length;
-    // Preserve the visible slide across a re-selection so nothing jumps.
-    var keepIdx = 0;
-    if (keepActiveId){ for (var k=0;k<slides.length;k++){ if (slides[k].getAttribute('data-id') === keepActiveId){ keepIdx = k; break; } } }
-    index = keepIdx;
-
+  function setupRail(){
     slides.forEach(function(s, i){
+      s.hidden = false;                // SSR hid all but the lead; reveal the deck
       s.setAttribute('role','group');
       s.setAttribute('aria-roledescription','slide');
       s.setAttribute('aria-label',(i+1) + ' of ' + total);
-      if (i === index) s.setAttribute('data-active',''); else s.removeAttribute('data-active');
+      if (i === 0) s.setAttribute('data-active',''); else s.removeAttribute('data-active');
     });
-
-    if (reviewAll){
-      slides.forEach(function(s, i){
-        if (s.querySelector('.gp-hero__tag')) return;
-        var tag = document.createElement('span'); tag.className = 'gp-hero__tag';
-        tag.textContent = ('0'+(i+1)).slice(-2) + ' \u00b7 ' + (NAMES[s.getAttribute('data-id')] || s.getAttribute('data-id'));
-        s.appendChild(tag);
-      });
-    }
-
-    // Rebuild the progress nav for the current set (fresh closures, no leaks).
     segsWrap.innerHTML = ''; fills = []; segs = [];
     slides.forEach(function(s, i){
       var b = document.createElement('button');
@@ -1022,10 +946,8 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
       segsWrap.appendChild(b); segs.push(b); fills.push(b.querySelector('.gp-hero__seg-fill'));
     });
     tail = document.createElement('span'); tail.className = 'gp-hero__tail'; segsWrap.appendChild(tail);
-
     paint(); restart();
   }
-
 
   /* park the persistent arch over the active slide's stage box */
   function placeArch(){
@@ -1045,8 +967,8 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
     contactEl.style.width = (r.width*0.68) + 'px';
     contactEl.style.top   = (segsBox.top - b.top + segsBox.height/2 - 1) + 'px';
     contactEl.setAttribute('data-on','');
-    // Task 3 (A): on a product-AGNOSTIC stage slide, show the visitor's
-    // preferred in-stock product when consent + signals gave us one.
+    // On a product-AGNOSTIC stage slide, show the visitor's preferred in-stock
+    // product — chosen on the server and delivered in the injected config.
     var pref = (heroPref && s.getAttribute('data-product-agnostic') === '1') ? heroPref : null;
     var src = pref ? pref.imageUrl : st.getAttribute('data-img');
     if (pref) st.setAttribute('data-alt', pref.alt);
@@ -1332,67 +1254,18 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
     }
   })();
 
-  // First render: immediate, from LOCAL context — controls and countdown live at t=0.
-  applyChoice(computeChoice(CTX), null);
+  // First render — reveal the server-chosen rail and start rotating.
+  setupRail();
 
-  /* ---------------- Task 3: enhancements + measurement ----------------
-     The full engine has ALREADY rendered and is rotating from local context —
-     nothing below is on the paint path. These are pure enhancements, each
-     gated by consent, and each degrades to nothing on failure. They never
-     reshuffle the visible rail (that would be worse UX than the marginal gain);
-     they refine the arch image, deep-link a CTA, and fill the loyalty meter. */
+  /* ---------------- measurement ----------------
+     Selection and enrichment are done on the server; nothing here reshuffles or
+     re-fetches. This is measurement only: per-slide impression and CTA click.
+     The segment label is a light client-side approximation for the report. */
   function heroSegment(){ return CTX.isRegular ? 'regular' : CTX.isReturning ? 'returning' : CTX.isNew ? 'new' : 'unknown'; }
 
-  (function heroEnhance(){
-    // The server fetch sends the visit token and profiles the visitor: it runs
-    // ONLY with personalization consent. Without it the hero keeps its
-    // non-profiled local order and default imagery.
-    if (heroOptedOut('personalization')) return;
-    var ctl;
-    try { ctl = (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(4000) : undefined; } catch(e){}
-    fetch('/api/hero/signals', { credentials: 'same-origin', signal: ctl })
-      .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(j){
-        var d = j && j.success && j.data; if (!d) return;
-
-        // Fold the real signals into the context and RE-SELECT — this is where
-        // personalisation stops being cosmetic and starts choosing slides.
-        // The currently-visible slide is preserved, so only the deck behind it
-        // rearranges; nothing the visitor is looking at jumps.
-        var changed = false;
-        if (typeof d.hasOrdered === 'boolean' && d.hasOrdered !== CTX.hasOrdered){ CTX.hasOrdered = d.hasOrdered; changed = true; }
-        var cats = (d.categoryAffinity || []).map(function(x){ return x && x.categorySlug; }).filter(Boolean);
-        if (cats.length && cats.join(',') !== CTX.serverCats.join(',')){ CTX.serverCats = cats; changed = true; }
-        if (d.stockBySlug) CTX.stockBySlug = d.stockBySlug;
-        if (changed){
-          var keep = slides[index] && slides[index].getAttribute('data-id');
-          applyChoice(computeChoice(CTX), keep);
-        }
-
-        // A: preferred in-stock product for the arch on agnostic slides.
-        if (d.preferredProduct && d.preferredProduct.imageUrl){ heroPref = d.preferredProduct; placeArch(); }
-        // A: deep-link the browse CTAs into the visitor's category (visual only).
-        var cat = (d.categoryAffinity && d.categoryAffinity[0] && d.categoryAffinity[0].categorySlug) || null;
-        if (cat){
-          ['range','newarrivals'].forEach(function(id){
-            var s = null; for (var i=0;i<slides.length;i++){ if (slides[i].getAttribute('data-id')===id){ s=slides[i]; break; } }
-            if (!s) return; var a = s.querySelector('.gp-hero__cta');
-            if (a && a.getAttribute('href') && a.getAttribute('href').indexOf('/shop') === 0) a.setAttribute('href', '/shop?category=' + encodeURIComponent(cat));
-          });
-        }
-        // C: real loyalty balance in the meter (only if the slide is shown).
-        if (d.loyalty){
-          var pts = document.querySelector('.gp-hero__meter-pts'), goal = document.querySelector('.gp-hero__meter-goal');
-          if (pts) pts.textContent = Number(d.loyalty.points||0).toLocaleString('en-UG') + ' pts';
-          if (goal && typeof d.loyalty.goalRemaining === 'number') goal.textContent = d.loyalty.goalRemaining > 0 ? (d.loyalty.goalRemaining + ' to ' + (d.loyalty.tierLabel||'next')) : (d.loyalty.tierLabel||'');
-        }
-      })
-      .catch(function(){});
-  })();
-
   (function heroInstrument(){
-    // No analytics consent → measure nothing. Silence is the correct default.
-    if (heroOptedOut('analytics')) return;
+    // Measurement runs for every visitor (no consent gate). An impression counts
+    // only when the slide is actually on screen (>=1s, tab visible).
     var seg = heroSegment(), impressed = {}, impTimer = null;
     function emit(type, key, pos){
       try {

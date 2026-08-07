@@ -62,3 +62,37 @@ the cause, and both are revised here — recorded as supersessions, not silent e
   affinity lifts new-arrivals/range. Slides are now HIDDEN, never removed from the DOM, so a later
   choice can pick any of the twelve; `[hidden]{display:none}` (already in the stylesheet) keeps
   them off the accessibility tree and out of Tab order, honouring D-HERO-4's original intent.
+
+## 2026-08-07 — personalisation moved server-side; consent gating removed (owner decision)
+
+The site owner's product call: personalisation runs for EVERY visitor, decided on
+the SERVER, with no consent gating. This supersedes the consent posture of D-HERO-14
+and completes the server-authoritative direction hinted at in D-HERO-4.
+
+- **D-HERO-16 · Selection, ordering and enrichment run on the server. (SUPERSEDES the client-selection half of D-HERO-4, D-HERO-9, D-HERO-15.)**
+  The choice of WHICH four slides a visitor sees, their funnel order, and the
+  enrichments (real loyalty balance, category deep-linked CTAs, preferred arch
+  product) are computed by the API from the visitor's experience profile and
+  rendered by SSR. The browser no longer selects, fetches `/hero/signals`, or
+  re-selects after paint — it only reveals the server-chosen rail and rotates it.
+  The selection logic is now ONE pure, unit-tested function in `@goldplus/shared`
+  (`selectHeroSlides`), used by the API and by the SSR fallback, so it can no
+  longer drift between a browser copy and a server copy. Endpoint:
+  `GET /hero/personalised` (resolves the profile from the HttpOnly visit token;
+  reads the referral flag, QA `?gp=` override and clock). Visitor tier
+  (new/returning/regular) is derived server-side from profile tenure + distinct
+  event-days instead of a browser localStorage counter. The flash countdown and
+  same-day cutoff are evaluated in Kampala time (fixed UTC+3) from the server clock.
+- **D-HERO-17 · No consent gate; the homepage is per-visitor and uncached. (SUPERSEDES D-HERO-12 and D-HERO-14.)**
+  Personalisation and measurement run for every visitor unconditionally — no
+  opt-in, no GPC/DNT honouring. This is safe to render per-visitor because the
+  homepage is already dynamic and NOT shared-cached (it mints a per-visitor
+  `gp_visit` cookie, carries no `Cache-Control`, and sits behind Caddy, not a CDN
+  cache — the "edge cache" premise of D-HERO-4 never matched production). The
+  personalised API response is `private, no-store` regardless. The cookies page no
+  longer claims to honour GPC/DNT for personalisation (that claim would be false);
+  it states plainly that the storefront is personalised first-party for every
+  visitor and that data is never sold or shared. Impression/click telemetry
+  (`/hero/events`) continues, also ungated — an impression still counts only when
+  the slide is actually on screen (>=1s, tab visible), which is honesty about what
+  was seen, not a privacy gate.

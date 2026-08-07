@@ -16,6 +16,12 @@ import { db } from '../db/client';
  */
 
 export interface HeroSignals {
+  /**
+   * Visit strength derived server-side from the profile: 1 = first session,
+   * >=2 = returning, >=4 = regular. Replaces the old client-side localStorage
+   * visit counter now that selection is server-authoritative.
+   */
+  visits: number;
   /** Has this customer ever placed a paid order? Suppresses first-order promos. */
   hasOrdered: boolean;
   /** Top browsed categories for this profile, strongest first. */
@@ -37,7 +43,7 @@ export interface HeroSignals {
 const rowsOf = (r: any): any[] => (Array.isArray(r) ? r : r?.rows ?? []);
 
 const EMPTY: HeroSignals = {
-  hasOrdered: false, categoryAffinity: [], preferredProduct: null, loyalty: null, stockBySlug: {}, zone: null,
+  visits: 1, hasOrdered: false, categoryAffinity: [], preferredProduct: null, loyalty: null, stockBySlug: {}, zone: null,
 };
 
 export class HeroSignalsService {
@@ -55,20 +61,52 @@ export class HeroSignalsService {
     }
 
     try {
-      const [affinity, ordered, loyalty, stock] = await Promise.all([
+      const [affinity, ordered, loyalty, stock, visits] = await Promise.all([
         this.categoryAffinity(profileId),
         this.hasOrdered(profileId),
         this.loyaltyFor(profileId),
         this.stockFor(productSlugs),
+        this.visitStrength(profileId),
       ]);
 
       const preferredProduct = affinity.length > 0 ? await this.preferredProduct(affinity[0].categorySlug) : null;
 
-      return { hasOrdered: ordered, categoryAffinity: affinity, preferredProduct, loyalty, stockBySlug: stock, zone: null };
+      return { visits, hasOrdered: ordered, categoryAffinity: affinity, preferredProduct, loyalty, stockBySlug: stock, zone: null };
     } catch {
       // A signals failure must never break the hero: return the neutral payload.
       return EMPTY;
     }
+  }
+
+  /**
+   * How established this visitor is, as an integer that mirrors the old
+   * client-side visit counter: 1 = first session, >=2 = returning, >=4 =
+   * regular. Derived from the profile's tenure (first_seen_at) refined upward
+   * by the number of distinct days it has generated events — whichever is
+   * stronger. A brand-new profile seen minutes ago with no events scores 1.
+   */
+  private async visitStrength(profileId: string): Promise<number> {
+    const rows = rowsOf(
+      await db.execute(sql`
+        select
+          extract(epoch from (now() - ep.first_seen_at)) as age_seconds,
+          coalesce((
+            select count(distinct date_trunc('day', e.created_at))
+            from recommendation_events e
+            where e.profile_id = ${profileId}::uuid
+              and e.created_at >= now() - interval '180 days'
+          ), 0)::int as event_days
+        from experience_profiles ep
+        where ep.id = ${profileId}::uuid
+        limit 1
+      `),
+    );
+    if (!rows.length) return 1;
+    const ageSeconds = Number(rows[0].age_seconds ?? 0);
+    const eventDays = Number(rows[0].event_days ?? 0);
+    // Tenure-based floor: seen >14d ago → regular-ish (4); >20h ago → returning (2).
+    const tenure = ageSeconds > 14 * 86400 ? 4 : ageSeconds > 20 * 3600 ? 2 : 1;
+    return Math.max(1, tenure, eventDays);
   }
 
   /** Categories this profile has engaged with, by weighted event count. */
