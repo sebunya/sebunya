@@ -23,5 +23,7 @@ declare namespace App {
   interface Locals {
     /** The raw opaque visit token from the HttpOnly gp_visit cookie (R2). SSR-only; never serialize into HTML. */
     gpVisit?: string;
+    /** True only on the first-ever document request from this browser (cookie just minted). */
+    gpVisitIsNew?: boolean;
   }
 }

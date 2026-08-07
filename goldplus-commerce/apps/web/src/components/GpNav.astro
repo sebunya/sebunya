@@ -4,7 +4,7 @@ import { resolveCartCredential } from '../lib/cartCredential';
 import { resolveAuthenticatedUserId } from '../lib/customerAuth';
 import { readSessionToken } from '../lib/session';
 import { apiBase } from '../lib/api';
-import { HERO_SLIDE_LIBRARY } from '@goldplus/shared';
+import { HERO_SLIDE_LIBRARY, computeNbaCandidates, kampalaCutoff } from '@goldplus/shared';
 
 /**
  * GoldPlus site navigation (Stage 1: port + real data).
@@ -34,6 +34,9 @@ if (headerCart) {
 // ---- signed-in enrichment: real points + first name (never fabricated) ----
 let points = 0;
 let firstName = '';
+let visits = 2;                       // >1 unless we learn this is a first session
+let lastOrderDays: number | null = null;
+let orderInTransit = false;
 if (signedIn) {
   const token = readSessionToken(Astro.request);
   if (token) {
@@ -50,6 +53,15 @@ if (signedIn) {
         }
         const rn = ov?.defaultAddress?.recipientName;
         if (rn && typeof rn === 'string') firstName = rn.trim().split(/\s+/)[0] || '';
+        // order history powers the reorder + in-transit NBA candidates
+        const orders: any[] = Array.isArray(ov?.recentOrders) ? ov.recentOrders : [];
+        const last = orders[0];
+        const lastAt = last && (last.createdAt ?? last.placedAt ?? last.date);
+        if (lastAt) {
+          const t = new Date(lastAt).getTime();
+          if (Number.isFinite(t)) lastOrderDays = Math.max(0, Math.round((Date.now() - t) / 86400000));
+        }
+        orderInTransit = orders.some((o) => /deliver|transit|dispatch|shipp?ed|out_for/i.test(String(o?.status ?? '')));
       }
     } catch {
       // A failed read leaves the header in its signed-in-but-unenriched state.
@@ -57,12 +69,31 @@ if (signedIn) {
   }
 }
 
+// ---- visit tenure for a signed-out visitor (drives welcome vs signup) ----
+// The header is on every page, so this must be cheap: the middleware minted the
+// visit cookie iff this is the first-ever document request from this browser —
+// the honest "brand-new visitor" signal, with no per-page profile lookup. A
+// resolvable-throw in private browsing would treat them as returning, so we
+// never show a first-order promo we cannot gate.
+if (!signedIn) visits = Astro.locals.gpVisitIsNew ? 1 : 2;
+
 // ---- the sale clock: the SAME deadline as the hero, never a second one ----
 const flash = HERO_SLIDE_LIBRARY.find((sl) => sl.slideKey === 'flash');
 const saleEnds = (flash?.extras?.saleEndsIso as string) || '';
+const saleLive = saleEnds ? Date.now() < new Date(saleEnds).getTime() : false;
 
-const navConfig = { signedIn, firstName, points, cartCount, saleEnds };
-const navConfigJson = JSON.stringify(navConfig).replace(/</g, '\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+// ---- Next Best Action, computed on the SERVER from real signals ----
+// The browser keeps an identical offline set as the fallback; this is what makes
+// the strip right for new vs existing customers before the page even paints.
+const cut = kampalaCutoff(new Date());
+const nba = computeNbaCandidates({
+  signedIn, visits, cart: cartCount, points, lastOrderDays, orderInTransit,
+  beforeCutoff: cut.beforeCutoff, minsToCutoff: cut.minsToCutoff, sunday: cut.sunday, saleLive,
+});
+
+const escNav = (str: string) => str.replace(/</g, '\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+const navConfigJson = escNav(JSON.stringify({ signedIn, firstName, points, cartCount, saleEnds }));
+const nbaJson = escNav(JSON.stringify(nba));
 ---
 <header class="gp-nav" id="gpNav" data-sale-ends={saleEnds}>
   <div class="gp-nav__top">
@@ -1019,7 +1050,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav[data-mode="day"]{--gpn-cream:#FFFDF7;--gpn-muted:rgba(255,253,247,.7);}
 </style>
 
-<script is:inline set:html={`window.__GPNAV=${navConfigJson};`}></script>
+<script is:inline set:html={`window.__GPNAV=${navConfigJson};window.GP_NBA=${nbaJson};`}></script>
 
 <script is:inline>
 (function(){

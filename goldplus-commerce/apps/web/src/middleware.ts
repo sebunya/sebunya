@@ -47,6 +47,10 @@ export const onRequest = defineMiddleware((context, next) => {
     if (token) {
       context.cookies.set(VISIT_COOKIE_NAME, token, visitCookieOptions());
       context.locals.gpVisit = token;
+      // First document request we have ever seen from this browser — the cheapest
+      // honest "brand-new visitor" signal (the cookie then persists 180 days), so
+      // the header can pick welcome vs signup without a per-page profile lookup.
+      context.locals.gpVisitIsNew = true;
     }
   }
 
