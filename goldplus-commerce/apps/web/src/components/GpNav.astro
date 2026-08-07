@@ -1297,26 +1297,45 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.66.15-.2.3-.76.96-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.47-1.75-1.65-2.05-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.66-1.6-.9-2.19-.24-.57-.48-.5-.66-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.03 1.01-1.03 2.46s1.06 2.85 1.2 3.05c.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.71.22 1.35.19 1.86.12.57-.08 1.75-.71 1.99-1.4.25-.69.25-1.28.17-1.4-.07-.13-.27-.2-.57-.35z"/><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.15h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.17 8.17 0 0 1-1.25-4.38c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.25 8.23z"/></svg>' +
           'Ask us on WhatsApp</a><span class="gp-nav__sh-keys"><span><kbd>&uarr;</kbd><kbd>&darr;</kbd> move</span><span><kbd>&crarr;</kbd> open</span></span></div>';
       }
-      function results(q){
-        var ql = q.toLowerCase();
-        var hits = INDEX.filter(function(p){
-          return p.t.toLowerCase().indexOf(ql) > -1 || p.c.toLowerCase().indexOf(ql) > -1;
-        }).slice(0,6);
+      function renderHits(q, hits){
         if (!hits.length){
           sheet.innerHTML = '<div class="gp-nav__sh-empty">No match for <b>' + esc(q) +
             '</b>. Try a phone model, a size, or a category &mdash; or ask us directly.</div>' + foot();
+          if (window.gpNavTrack) window.gpNavTrack('search_zero', { q: q });
           return;
         }
         var h = '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Products</p><div class="gp-nav__sug">';
         h += hits.map(function(p){
           var img = p.i ? '<span class="gp-nav__sug-img"><img src="' + p.i + '" alt="" loading="lazy"></span>'
                         : '<span class="gp-nav__sug-img"></span>';
-          return '<a href="' + p.u + '" data-opt>' + img +
+          return '<a href="' + p.u + '" data-opt data-sug="' + esc(p.t) + '">' + img +
             '<span class="gp-nav__sug-t"><b>' + mark(p.t,q) + '</b><span>' + esc(p.c) + '</span></span>' +
             '<span class="gp-nav__sug-p">' + esc(p.p) + '</span></a>';
         }).join('');
         h += '</div></div>' + foot();
         sheet.innerHTML = h;
+      }
+      /* real predictive search over the public autocomplete, via a same-origin
+         relay; the newest keystroke always wins, and any failure degrades to the
+         honest empty state. */
+      var searchAbort = null, searchSeq = 0;
+      function results(q){
+        var seq = ++searchSeq;
+        try { if (searchAbort) searchAbort.abort(); } catch(e){}
+        try { searchAbort = ('AbortController' in window) ? new AbortController() : null; } catch(e){ searchAbort = null; }
+        fetch('/api/search/suggest?q=' + encodeURIComponent(q), searchAbort ? { signal: searchAbort.signal } : undefined)
+          .then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(j){
+            if (seq !== searchSeq) return;
+            var rows = (j && j.success && j.data) || [];
+            var hits = rows.slice(0,6).map(function(p){
+              return { t: p.name, c: p.categoryName || '',
+                       p: (typeof p.priceUgx === 'number' ? 'UGX ' + p.priceUgx.toLocaleString('en-UG') : ''),
+                       u: '/products/' + p.slug, i: null };
+            });
+            renderHits(q, hits);
+          })
+          .catch(function(){ if (seq === searchSeq) renderHits(q, []); });
       }
       function opts(){ return sheet.querySelectorAll('[data-opt]'); }
       function highlight(){
@@ -1328,10 +1347,13 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       function hide(){ form.removeAttribute('data-open'); sel = -1; }
 
       input.addEventListener('focus', function(){ if (!input.value) idle(); else results(input.value); show(); });
+      var debT = null;
       input.addEventListener('input', function(){
-        sel = -1;
-        input.value.trim() ? results(input.value.trim()) : idle();
-        show();
+        sel = -1; show();
+        var v = input.value.trim();
+        clearTimeout(debT);
+        if (!v){ idle(); return; }
+        debT = setTimeout(function(){ results(v); }, 150);
       });
       input.addEventListener('keydown', function(e){
         var o = opts();
