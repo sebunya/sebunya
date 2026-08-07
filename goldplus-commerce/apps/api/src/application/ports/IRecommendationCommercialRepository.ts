@@ -80,11 +80,40 @@ export interface IRecommendationCommercialRepository {
   getCommercialFunnel(windowDays: number): Promise<CommercialFunnel>;
   getCustomerValueCohorts(): Promise<CustomerValueCohorts>;
   getMediaSpend(windowDays: number): Promise<{
+    /** A pure aggregate over EVERY row in the window — never a sum of a display page. */
     totalSpendMinor: number;
     /** Non-UGX currencies present in the window — any entry forces ROAS to refuse (MIXED_CURRENCY_SPEND). */
     mixedCurrencies: string[];
     campaigns: Array<{ campaign: string; spendMinor: number; currency: string }>;
     sources: number;
+    /** Newest spend DAY covered (YYYY-MM-DD), or null when no spend exists. */
+    newestSpendDate: string | null;
+    /** When spend was last ingested — a feed that stopped is not a feed of zero. */
+    newestIngestedAt: Date | null;
+    /** Days between the newest spend day and today; null when no spend exists. */
+    spendDataAgeDays: number | null;
   }>;
   getCommercialDataQuality(windowDays: number): Promise<CommercialDataQuality>;
+
+  /** Every distinct currency ever ingested — used to refuse a poisoning batch at INGEST. */
+  getIngestedCurrencies(): Promise<string[]>;
+
+  /**
+   * Fix a spend fact already ingested. `on conflict do nothing` meant a wrong
+   * number could never be corrected: the resubmission was silently discarded
+   * and the report kept the bad figure. Returns the PREVIOUS values so the
+   * caller can audit before-and-after.
+   */
+  correctMediaCostFact(input: {
+    spendDate: string;
+    channel: string;
+    platform: string;
+    account: string;
+    campaign: string;
+    adSetOrGroup?: string | null;
+    adOrCreative?: string | null;
+    source: string;
+    spendMinor: number;
+    taxOrFeeMinor: number;
+  }): Promise<{ corrected: boolean; previous: { spendMinor: number; taxOrFeeMinor: number } | null }>;
 }

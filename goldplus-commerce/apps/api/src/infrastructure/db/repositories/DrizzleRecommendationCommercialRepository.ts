@@ -143,7 +143,11 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
       order by oi.id, t.strength desc, t.created_at desc, t.id desc
       ) attributed
       -- Newest orders first — the UI header says "latest" and now means it (M2).
-      order by attributed.order_created_at desc
+      -- order_item_id breaks the tie: without it, lines sharing a created_at
+      -- (every line of one order does) landed either side of the LIMIT
+      -- boundary at the planner's discretion, so the same window could show
+      -- different rows on two consecutive loads.
+      order by attributed.order_created_at desc, attributed.order_item_id desc
       limit ${limit}
     `)) as unknown as Array<Record<string, unknown>>;
 
@@ -436,34 +440,137 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
     mixedCurrencies: string[];
     campaigns: Array<{ campaign: string; spendMinor: number; currency: string }>;
     sources: number;
+    newestSpendDate: string | null;
+    newestIngestedAt: Date | null;
+    spendDataAgeDays: number | null;
   }> {
-    const rows = (await db.execute(sql`
-      select campaign, currency,
+    // The ROAS denominator is a PURE aggregate over every row in the window.
+    // It used to be summed from a LIMIT 100 campaign list, so the 101st
+    // campaign silently vanished from spend — inflating ROAS — and a non-UGX
+    // row outside the top 100 escaped the mixed-currency refusal entirely.
+    // Totals and the display list are now different questions.
+    const totals = (await db.execute(sql`
+      select currency,
              coalesce(sum(spend_minor + tax_or_fee_minor), 0)::bigint as spend,
-             count(distinct source)::int as sources
+             count(distinct source)::int as sources,
+             max(spend_date)::text as newest_spend_date,
+             max(ingested_at) as newest_ingested_at
       from media_cost_facts
       -- Spend dates are CALENDAR days in Kampala; the window edge must not
       -- drift a day on the UTC boundary (R3.1 review, minor 7).
       where spend_date >= ((now() at time zone 'Africa/Kampala') - make_interval(days => ${windowDays}))::date
+      group by currency
+    `)) as unknown as Array<Record<string, unknown>>;
+
+    const rows = (await db.execute(sql`
+      select campaign, currency,
+             coalesce(sum(spend_minor + tax_or_fee_minor), 0)::bigint as spend
+      from media_cost_facts
+      where spend_date >= ((now() at time zone 'Africa/Kampala') - make_interval(days => ${windowDays}))::date
       group by campaign, currency
-      order by spend desc
+      order by spend desc, campaign asc
       limit 100
     `)) as unknown as Array<Record<string, unknown>>;
 
-    const currencies = [...new Set(rows.map((r) => r.currency as string))];
+    const currencies = [...new Set(totals.map((r) => r.currency as string))];
+    const newestSpendDate = totals
+      .map((r) => (r.newest_spend_date as string) ?? null)
+      .filter(Boolean)
+      .sort()
+      .pop() ?? null;
+    const newestIngestedAt = totals
+      .map((r) => (r.newest_ingested_at ? new Date(r.newest_ingested_at as string) : null))
+      .filter((d): d is Date => d !== null)
+      .sort((a, b) => a.getTime() - b.getTime())
+      .pop() ?? null;
+
     return {
       // M1 (R3.1 review): a cross-currency sum is not a number — UGX-only
       // totals are summed; anything else forces the caller to refuse ROAS.
-      totalSpendMinor: currencies.every((c) => c === "UGX")
-        ? rows.reduce((s, r) => s + Number(r.spend), 0)
-        : rows.filter((r) => r.currency === "UGX").reduce((s, r) => s + Number(r.spend), 0),
+      totalSpendMinor: totals
+        .filter((r) => r.currency === "UGX")
+        .reduce((s, r) => s + Number(r.spend), 0),
       mixedCurrencies: currencies.filter((c) => c !== "UGX"),
       campaigns: rows.map((r) => ({
         campaign: r.campaign as string,
         spendMinor: Number(r.spend),
         currency: r.currency as string,
       })),
-      sources: rows.reduce((s, r) => Math.max(s, Number(r.sources)), 0),
+      sources: totals.reduce((s, r) => Math.max(s, Number(r.sources)), 0),
+      // Freshness: spend that stopped arriving is not spend of zero, and an
+      // operator cannot tell those apart from a total alone.
+      newestSpendDate,
+      newestIngestedAt,
+      spendDataAgeDays:
+        newestSpendDate === null
+          ? null
+          : Math.max(
+              0,
+              Math.floor((Date.now() - new Date(`${newestSpendDate}T00:00:00Z`).getTime()) / 86_400_000),
+            ),
+    };
+  }
+
+  /** Every distinct currency ever ingested for the window — the poison check. */
+  async getIngestedCurrencies(): Promise<string[]> {
+    const rows = (await db.execute(sql`
+      select distinct currency from media_cost_facts
+    `)) as unknown as Array<{ currency: string }>;
+    return rows.map((r) => String(r.currency));
+  }
+
+  /**
+   * Correct a spend fact already ingested. The logical key identifies the row;
+   * `on conflict do nothing` meant a wrong number could never be fixed — a
+   * resubmission was silently discarded and the report kept the bad figure.
+   * Returns the previous values so the caller can audit before-and-after.
+   */
+  async correctMediaCostFact(input: {
+    spendDate: string;
+    channel: string;
+    platform: string;
+    account: string;
+    campaign: string;
+    adSetOrGroup?: string | null;
+    adOrCreative?: string | null;
+    source: string;
+    spendMinor: number;
+    taxOrFeeMinor: number;
+  }): Promise<{ corrected: boolean; previous: { spendMinor: number; taxOrFeeMinor: number } | null }> {
+    // RETURNING sees the NEW row, so the old values are captured in a CTE
+    // first — an audit trail that echoes back what you just wrote records
+    // nothing.
+    const rows = (await db.execute(sql`
+      with before as (
+        select id, spend_minor, tax_or_fee_minor
+        from media_cost_facts
+        where spend_date = ${input.spendDate}::date
+          and channel = ${input.channel}
+          and platform = ${input.platform}
+          and account = ${input.account}
+          and campaign = ${input.campaign}
+          and coalesce(ad_set_or_group, '') = ${input.adSetOrGroup ?? ''}
+          and coalesce(ad_or_creative, '') = ${input.adOrCreative ?? ''}
+          and source = ${input.source}
+        for update
+      ),
+      upd as (
+        update media_cost_facts m
+        set spend_minor = ${input.spendMinor},
+            tax_or_fee_minor = ${input.taxOrFeeMinor},
+            ingested_at = now()
+        from before b
+        where m.id = b.id
+        returning m.id
+      )
+      select b.spend_minor as prev_spend, b.tax_or_fee_minor as prev_tax
+      from before b join upd on upd.id = b.id
+    `)) as unknown as Array<Record<string, unknown>>;
+
+    if (rows.length === 0) return { corrected: false, previous: null };
+    return {
+      corrected: true,
+      previous: { spendMinor: Number(rows[0].prev_spend ?? 0), taxOrFeeMinor: Number(rows[0].prev_tax ?? 0) },
     };
   }
 

@@ -84,6 +84,9 @@ export class RecommendationCommercialService {
       reportedRoas: Metric;
       contributionRoas: Metric;
       mediaSpendMinor: number;
+      newestSpendDate: string | null;
+      spendDataAgeDays: number | null;
+      spendFreshness: "NO_SPEND_INGESTED" | "CURRENT" | "LAGGING" | "STALE";
     };
     dataQuality: Awaited<ReturnType<IRecommendationCommercialRepository["getCommercialDataQuality"]>>;
     attributedLines: AttributedLine[];
@@ -115,7 +118,7 @@ export class RecommendationCommercialService {
 
     const missingProfitComponents = [
       ...(dataQuality.linesMissingCogsSnapshot > 0 || totals.attributedLinesWithCogs === 0
-        ? ["COGS snapshots (product cost_price is unset across the catalogue — enter costs to activate)"]
+        ? ["COGS snapshots (no product cost is set — enter or import costs at Admin → Product costs, then new orders freeze a cost at sale)"]
         : []),
       "payment fee allocation (no per-order fee source)",
       "delivery cost allocation (fee is revenue-side only)",
@@ -217,6 +220,18 @@ export class RecommendationCommercialService {
               : "HISTORICAL_COGS_OR_COST_ALLOCATION_MISSING: contribution ROAS needs contribution profit, which needs cost truth.",
         },
         mediaSpendMinor: spend.totalSpendMinor,
+        // Freshness, so a feed that STOPPED is distinguishable from a period
+        // that genuinely had no spend. Both read as a small number otherwise.
+        newestSpendDate: spend.newestSpendDate,
+        spendDataAgeDays: spend.spendDataAgeDays,
+        spendFreshness:
+          spend.newestSpendDate === null
+            ? "NO_SPEND_INGESTED"
+            : (spend.spendDataAgeDays ?? 0) <= 2
+            ? "CURRENT"
+            : (spend.spendDataAgeDays ?? 0) <= 7
+            ? "LAGGING"
+            : "STALE",
       },
       dataQuality,
       attributedLines: lines,

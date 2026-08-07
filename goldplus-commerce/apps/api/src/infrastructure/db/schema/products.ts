@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, boolean, integer, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, integer, jsonb, bigint, date, text, index } from 'drizzle-orm/pg-core';
 
 export const categories = pgTable('categories', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -63,5 +63,36 @@ export const productPrices = pgTable('product_prices', {
   productId: uuid('product_id').references(() => products.id).notNull(),
   retailPrice: integer('retail_price').notNull(),
   dealerPrice: integer('dealer_price'), // Secured, never returned to public
-  costPrice: integer('cost_price'), // Secured
+  // Secured. The CURRENT effective supplier cost — a materialisation of
+  // product_cost_entries (0104), not an independent truth. Written only by the
+  // cost use cases; read by DrizzleOrderRepository to freeze the COGS snapshot
+  // at sale. NULL means cost is unknown, which reports UNAVAILABLE, never zero.
+  costPrice: integer('cost_price'),
 });
+
+/**
+ * The ONE product-cost owner (0104): what a product cost, from when, on whose
+ * authority. Effective-dated so a cost entered today can change what NEW
+ * orders snapshot while never rewriting an order_items.cogs_snapshot_ugx
+ * already frozen at sale.
+ *
+ * Corrections are new rows pointing at what they replace (`correctsEntryId`)
+ * with the old row stamped `supersededAt` — the trail keeps the wrong number
+ * and the right one. Nothing is UPDATEd in place but that stamp.
+ */
+export const productCostEntries = pgTable('product_cost_entries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }).notNull(),
+  costPriceUgx: bigint('cost_price_ugx', { mode: 'number' }).notNull(),
+  currency: varchar('currency', { length: 3 }).default('UGX').notNull(),
+  effectiveFrom: date('effective_from').notNull(),
+  source: varchar('source', { length: 120 }).notNull(),
+  note: text('note'),
+  enteredBy: uuid('entered_by'),
+  correctsEntryId: uuid('corrects_entry_id'),
+  supersededAt: timestamp('superseded_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  productIdx: index('product_cost_entries_product_idx').on(table.productId, table.effectiveFrom),
+  createdIdx: index('product_cost_entries_created_idx').on(table.createdAt),
+}));

@@ -33,6 +33,24 @@ const rules = rulesRes.ok ? rulesRes.data.rules : [];
 const serving: ServingHealthPayload | null = servingRes.ok ? servingRes.data : null;
 const lineage: LineageReportPayload | null = lineageRes.ok ? lineageRes.data : null;
 
+/**
+ * "We could not ask" and "the answer is zero" are different facts, and this
+ * page used to render both as 0 — a failed serving fetch showed every
+ * placement as having served nothing, which reads as an outage that isn't one
+ * (or hides one that is). A metric nobody measured shows an em dash.
+ */
+const servingUnavailable = !servingRes.ok;
+const servingFailure = servingRes.ok ? null : servingRes;
+const count = (value: number | undefined) => (servingUnavailable ? "—" : String(value ?? 0));
+
+/**
+ * A refusal is not an outage. 401/403 means the API answered perfectly and
+ * declined; saying "unreachable" sends an operator to check the servers when
+ * the real answer is that their account lacks a permission.
+ */
+const deniedCodes = new Set(["UNAUTHENTICATED", "PERMISSION_DENIED", "FORBIDDEN"]);
+const isPermissionRefusal = !rulesRes.ok && deniedCodes.has(String(rulesRes.code ?? ""));
+
 const stats = {
   total: rules.length,
   active: rules.filter((r) => r.status === "ACTIVE").length,
@@ -53,8 +71,20 @@ const servingFor = (id: string) => serving?.placements.find((p) => p.placement =
 
 // One deterministic, honest next action.
 let nextAction = { text: "Everything is serving on safe defaults. Nothing needs you.", href: "", cta: "" };
-if (!isApiLive) {
-  nextAction = { text: "The recommendation API is unreachable — nothing on this page is current.", href: "", cta: "" };
+if (isPermissionRefusal) {
+  nextAction = {
+    text: "Your account cannot read recommendation rules (recommendations.read). The API answered normally and declined — this is a permission to grant, not an outage to investigate.",
+    href: "",
+    cta: "",
+  };
+} else if (!isApiLive) {
+  nextAction = { text: `The recommendation API is unreachable — nothing on this page is current. (${rulesRes.ok ? "" : rulesRes.message})`, href: "", cta: "" };
+} else if (servingUnavailable) {
+  nextAction = {
+    text: `Serving truth could not be read, so the per-placement counters below are unknown, not zero. (${servingFailure?.message ?? "unknown error"})`,
+    href: "",
+    cta: "",
+  };
 } else if (serving && serving.totalResponses === 0) {
   nextAction = {
     text: `No placement has served in the last ${serving.windowDays} days. Open the storefront once and this page will show the serving trace; if it stays empty, the web tier is not reaching the engine.`,
@@ -159,18 +189,22 @@ const fmtWhen = (iso: string | null) =>
             <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <div class="flex items-start justify-between gap-2">
                 <h4 class="text-sm font-black text-brand-dark">{p.name}</h4>
-                {s && s.responses > 0
+                {servingUnavailable
+                  ? <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">not measured</span>
+                  : s && s.responses > 0
                   ? <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">serving</span>
                   : <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-gray-50 text-gray-500 border border-gray-200">no serves recorded</span>}
               </div>
               <p class="text-[11px] text-gray-500 mt-1 leading-relaxed">{p.description}</p>
               <dl class="mt-3 grid grid-cols-3 gap-2 text-center">
-                <div><dt class="text-[9px] font-black uppercase text-gray-400">Served</dt><dd class="text-sm font-black text-brand-dark">{s?.responses ?? 0}</dd></div>
-                <div><dt class="text-[9px] font-black uppercase text-gray-400">Empty</dt><dd class={`text-sm font-black ${s && s.empty > 0 ? "text-red-600" : "text-brand-dark"}`}>{s?.empty ?? 0}</dd></div>
-                <div><dt class="text-[9px] font-black uppercase text-gray-400">Fallback</dt><dd class="text-sm font-black text-brand-dark">{s?.fallbackServed ?? 0}</dd></div>
+                <div><dt class="text-[9px] font-black uppercase text-gray-400">Served</dt><dd class="text-sm font-black text-brand-dark">{count(s?.responses)}</dd></div>
+                <div><dt class="text-[9px] font-black uppercase text-gray-400">Empty</dt><dd class={`text-sm font-black ${!servingUnavailable && s && s.empty > 0 ? "text-red-600" : "text-brand-dark"}`}>{count(s?.empty)}</dd></div>
+                <div><dt class="text-[9px] font-black uppercase text-gray-400">Fallback</dt><dd class="text-sm font-black text-brand-dark">{count(s?.fallbackServed)}</dd></div>
               </dl>
               <p class="text-[10px] text-gray-400 mt-3">
-                Last served: {fmtWhen(s?.lastResponseAt ?? null)} · {activeRulesHere} active rule(s)
+                {servingUnavailable
+                  ? "Serving truth could not be read — these are unknown, not zero."
+                  : <Fragment>Last served: {fmtWhen(s?.lastResponseAt ?? null)} · {activeRulesHere} active rule(s)</Fragment>}
               </p>
             </div>
           );

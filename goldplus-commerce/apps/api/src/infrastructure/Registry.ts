@@ -73,6 +73,7 @@ import { SettlePaymentUseCase } from '../application/use-cases/payments/SettlePa
 import { ReconcilePendingPaymentsUseCase } from '../application/use-cases/payments/ReconcilePendingPaymentsUseCase';
 import { RefundPesaPalPaymentUseCase } from '../application/use-cases/payments/RefundPesaPalPaymentUseCase';
 import { DrizzleRefundLedgerRepository } from './db/repositories/DrizzleRefundLedgerRepository';
+import { DrizzleProductCostRepository } from './db/repositories/DrizzleProductCostRepository';
 import {
   AbandonStaleUnpaidOrdersUseCase,
   AlertOnLedgerMismatchUseCase,
@@ -1819,6 +1820,9 @@ export class Registry {
     },
     (message, detail) => logger.error({ ...detail }, `ALERT ${message}`),
   );
+
+  /** The ONE product-cost owner: what a product cost, from when, on whose authority. */
+  public readonly productCostRepo = new DrizzleProductCostRepository();
 
   /** The ONE refund ledger: how much of a payment has already been given back. */
   public readonly refundLedgerRepo = new DrizzleRefundLedgerRepository();

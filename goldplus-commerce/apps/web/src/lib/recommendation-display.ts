@@ -276,7 +276,19 @@ function sanitiseSelected<T extends RecommendationCandidate>(
     price: normalized.price,
     availability: normalized.availability,
     imageAlt: normalized.imageAlt,
-    reasonCode: reasonCodeForRule(rule),
+    // The display boundary must NOT re-explain an item the engine already
+    // explained. This used to stamp its own locally-derived rule over every
+    // item, so engine rails rendered SAME_CATEGORY and COMPATIBLE_ACCESSORY as
+    // CATALOGUE_FALLBACK: the reason badge disappeared, and — worse — every
+    // impression and click event carried a reason dimension that described the
+    // display helper rather than what actually served.
+    //
+    // A locally-derived rule is still correct for candidates that arrive with
+    // no reason at all (the honest catalogue-fallback rail builds its items
+    // that way), so it fills in only when the engine said nothing.
+    reasonCode: typeof item.reasonCode === "string" && item.reasonCode.trim().length > 0
+      ? item.reasonCode
+      : reasonCodeForRule(rule),
   } as T;
 }
 

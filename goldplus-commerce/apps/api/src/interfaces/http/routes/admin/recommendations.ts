@@ -263,6 +263,193 @@ routes.get("/analytics/commercial", requirePermissions([PERMISSIONS.RECOMMENDATI
   return c.json(res);
 });
 
+/**
+ * One row's validation, shared by the single, batch and preview paths so they
+ * cannot drift apart. Returns the normalised fact or the reasons it is not one.
+ */
+const validateMediaCostRow = (
+  row: any,
+): { ok: true; fact: Record<string, unknown> } | { ok: false; errors: string[] } => {
+  const errors: string[] = [];
+  // R3.1 review (minor 6): a REAL calendar date — the regex alone let
+  // 2026-99-99 through to a Postgres cast failure dressed as a 500 — and
+  // never in the future: spend that has not happened cannot be ingested.
+  const dateShape = typeof row?.spendDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(row.spendDate);
+  const parsedDate = dateShape ? new Date(`${row.spendDate}T00:00:00Z`) : null;
+  const dateReal = parsedDate !== null && !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === row.spendDate;
+  if (!dateReal) errors.push("spendDate must be a real YYYY-MM-DD date.");
+  else if (parsedDate!.getTime() > Date.now()) errors.push("spendDate cannot be in the future.");
+
+  const FIELD_CAPS = { channel: 40, platform: 80, account: 120, campaign: 150, source: 120 } as const;
+  for (const field of ["channel", "platform", "account", "campaign", "source"] as const) {
+    const value = row?.[field];
+    if (typeof value !== "string" || !value.trim()) errors.push(`${field} is required.`);
+    else if (value.trim().length > FIELD_CAPS[field]) errors.push(`${field} exceeds ${FIELD_CAPS[field]} characters.`);
+  }
+  for (const field of ["adSetOrGroup", "adOrCreative"] as const) {
+    if (typeof row?.[field] === "string" && row[field].length > 150) errors.push(`${field} exceeds 150 characters.`);
+  }
+  if (typeof row?.sourceReference === "string" && row.sourceReference.length > 200) errors.push("sourceReference exceeds 200 characters.");
+
+  const MAX_SPEND_MINOR = 10_000_000_000; // UGX 10bn per row: beyond this is a typo, not a campaign.
+  const spendMinor = Number(row?.spendMinor);
+  if (!Number.isInteger(spendMinor) || spendMinor < 0 || spendMinor > MAX_SPEND_MINOR) errors.push("spendMinor must be a non-negative integer within a sane ceiling (minor units).");
+  const taxOrFeeMinor = Number(row?.taxOrFeeMinor ?? 0);
+  if (!Number.isInteger(taxOrFeeMinor) || taxOrFeeMinor < 0 || taxOrFeeMinor > MAX_SPEND_MINOR) errors.push("taxOrFeeMinor must be a non-negative integer within a sane ceiling.");
+  const currency = String(row?.currency ?? "UGX").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) errors.push("currency must be a 3-letter code.");
+
+  if (errors.length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    fact: {
+      spendDate: row.spendDate,
+      channel: row.channel.trim(),
+      platform: row.platform.trim(),
+      account: row.account.trim(),
+      campaign: row.campaign.trim(),
+      adSetOrGroup: typeof row.adSetOrGroup === "string" ? row.adSetOrGroup.trim() || null : null,
+      adOrCreative: typeof row.adOrCreative === "string" ? row.adOrCreative.trim() || null : null,
+      currency,
+      spendMinor,
+      taxOrFeeMinor,
+      source: row.source.trim(),
+      sourceReference: typeof row.sourceReference === "string" ? row.sourceReference.trim() || null : null,
+    },
+  };
+};
+
+/**
+ * Batch spend ingestion: validate the WHOLE file, then write all of it or none.
+ *
+ * `dryRun` runs identical validation and reports the same plan without writing,
+ * so an operator sees what a file does before it does it. A partially applied
+ * spend file is worse than a rejected one — it makes ROAS a blend of the new
+ * numbers and the old with nothing recording which is which.
+ *
+ * Mixed currency is refused HERE, not only at report time. The report already
+ * refuses to divide by a cross-currency sum, but by then the bad row is stored
+ * and every ROAS read is dead until someone finds it.
+ */
+routes.post("/media-costs/batch", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ success: false, error: { code: "INVALID_JSON", message: "Invalid body" } }, 400);
+
+  const dryRun = body.dryRun === true;
+  const rows = Array.isArray(body.rows) ? body.rows.slice(0, 5_000) : [];
+  if (rows.length === 0) {
+    return c.json({ success: false, error: { code: "EMPTY_BATCH", message: "The file contains no rows." } }, 400);
+  }
+
+  const rowErrors: Array<{ rowNumber: number; errors: string[] }> = [];
+  const facts: Array<Record<string, unknown>> = [];
+  const logicalKeys = new Map<string, number>();
+
+  rows.forEach((row: any, index: number) => {
+    const rowNumber = index + 1;
+    const verdict = validateMediaCostRow(row);
+    if (!verdict.ok) return rowErrors.push({ rowNumber, errors: verdict.errors });
+
+    // A file that states the same spend twice contradicts itself; the operator
+    // decides which is right, not the importer.
+    const f = verdict.fact;
+    const key = [f.spendDate, f.channel, f.platform, f.account, f.campaign, f.adSetOrGroup ?? "", f.adOrCreative ?? "", f.source].join("|");
+    const first = logicalKeys.get(key);
+    if (first !== undefined) {
+      return rowErrors.push({ rowNumber, errors: [`Row ${first} already states this exact spend fact. One file may not state it twice.`] });
+    }
+    logicalKeys.set(key, rowNumber);
+    facts.push(f);
+  });
+
+  const batchCurrencies = [...new Set(facts.map((f) => String(f.currency)))];
+  if (batchCurrencies.length > 1) {
+    rowErrors.push({ rowNumber: 0, errors: [`The file mixes ${batchCurrencies.join(", ")}. A cross-currency spend total is not a number — ingest one currency per file.`] });
+  } else if (batchCurrencies.length === 1) {
+    const existing = await Registry.getInstance().recommendationCommercialRepo.getIngestedCurrencies();
+    const conflicting = existing.filter((cur) => cur !== batchCurrencies[0]);
+    if (conflicting.length > 0) {
+      rowErrors.push({ rowNumber: 0, errors: [`Spend already exists in ${conflicting.join(", ")} and this file is ${batchCurrencies[0]}. Ingesting it would make ROAS unavailable for every period that spans both — convert to one currency first.`] });
+    }
+  }
+
+  if (rowErrors.length > 0) {
+    return c.json({ success: false, data: { accepted: false, dryRun, totalRows: rows.length, applied: 0, errors: rowErrors } }, 422);
+  }
+
+  if (dryRun) {
+    return c.json({ success: true, data: { accepted: true, dryRun: true, totalRows: rows.length, applied: 0, errors: [], plan: facts } });
+  }
+
+  const repo = Registry.getInstance().recommendationCommercialRepo;
+  let inserted = 0;
+  let duplicates = 0;
+  for (const fact of facts) {
+    const result = await repo.insertMediaCostFact({ ...(fact as any), ingestedBy: (c.get("user") as { id: string }).id });
+    if (result.inserted) inserted += 1;
+    else duplicates += 1;
+  }
+
+  await Registry.getInstance().createAuditLogUseCase.execute({
+    actorId: (c.get("user") as { id: string }).id,
+    action: "MEDIA_COST_BATCH_INGESTED",
+    entity: "media_cost_fact",
+    entityId: `batch:${facts.length}:${String(facts[0]?.source ?? "unknown")}`,
+    previousState: null,
+    newState: { totalRows: rows.length, inserted, duplicates, currency: batchCurrencies[0] },
+  });
+
+  return c.json({ success: true, data: { accepted: true, dryRun: false, totalRows: rows.length, applied: inserted, duplicates, errors: [] } });
+});
+
+/**
+ * Correct a spend fact already ingested. Without this a wrong number was
+ * permanent: the logical-key conflict silently discarded the resubmission and
+ * the report kept the bad figure forever.
+ */
+routes.post("/media-costs/correct", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ success: false, error: { code: "INVALID_JSON", message: "Invalid body" } }, 400);
+
+  const verdict = validateMediaCostRow(body);
+  if (!verdict.ok) {
+    return c.json({ success: false, error: { code: "INVALID_MEDIA_COST", message: verdict.errors.join(" ") } }, 400);
+  }
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (reason.length < 10) {
+    return c.json({ success: false, error: { code: "REASON_REQUIRED", message: "Correcting a spend figure needs a written reason of at least 10 characters." } }, 400);
+  }
+
+  const f = verdict.fact as any;
+  const result = await Registry.getInstance().recommendationCommercialRepo.correctMediaCostFact({
+    spendDate: f.spendDate,
+    channel: f.channel,
+    platform: f.platform,
+    account: f.account,
+    campaign: f.campaign,
+    adSetOrGroup: f.adSetOrGroup,
+    adOrCreative: f.adOrCreative,
+    source: f.source,
+    spendMinor: f.spendMinor,
+    taxOrFeeMinor: f.taxOrFeeMinor,
+  });
+
+  if (!result.corrected) {
+    return c.json({ success: false, error: { code: "FACT_NOT_FOUND", message: "No ingested spend fact matches that logical key, so there is nothing to correct." } }, 404);
+  }
+
+  await Registry.getInstance().createAuditLogUseCase.execute({
+    actorId: (c.get("user") as { id: string }).id,
+    action: "MEDIA_COST_CORRECTED",
+    entity: "media_cost_fact",
+    entityId: `${f.spendDate}:${f.platform}:${f.account}:${f.campaign}`,
+    previousState: result.previous,
+    newState: { spendMinor: f.spendMinor, taxOrFeeMinor: f.taxOrFeeMinor, reason },
+  });
+
+  return c.json({ success: true, data: { corrected: true, previous: result.previous } });
+});
+
 // R3.1 (§12): server-side media-spend ingestion into the ONE canonical fact
 // table. Duplicate-protected by the logical key; spend is never invented.
 routes.post("/media-costs", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]), async (c) => {

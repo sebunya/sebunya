@@ -8,6 +8,12 @@ export const PERMISSIONS = {
   PRODUCTS_WRITE: 'products.write',
   PRODUCTS_PUBLISH: 'products.publish',
   CATEGORIES_MANAGE: 'categories.manage',
+  // Supplier cost. Its own right, separate from retail pricing, because
+  // CLAUDE.md forbids supplier cost from ever reaching a public API and the
+  // people who set shelf prices are not always the people who see margin.
+  // READ exposes what a product costs; MANAGE changes it.
+  PRODUCT_COSTS_READ: 'product_costs.read',
+  PRODUCT_COSTS_MANAGE: 'product_costs.manage',
   PRICING_MANAGE: 'pricing.manage',
   PRICING_READ: 'pricing.read',
   PRICING_CREATE: 'pricing.create',

@@ -1,0 +1,325 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../lib/session";
+import { apiBase } from "../../lib/api";
+
+/**
+ * Product costs — the surface that did not exist.
+ *
+ * `product_prices.cost_price` had no writer anywhere in the system, so the
+ * commercial report told operators to "enter costs to activate" profit with
+ * nowhere to enter them. Margin was not waiting on business data; it was
+ * waiting on this page.
+ *
+ * Cost is supplier data (CLAUDE.md): never served publicly, and every call
+ * below carries the operator's own bearer token against a route gated on
+ * product_costs.read / product_costs.manage.
+ *
+ * Both actions are ordinary form POSTs handled here in frontmatter — the same
+ * pattern the rest of the admin uses. The session cookie is HttpOnly, so the
+ * browser cannot attach a bearer token itself; the server does it.
+ */
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/product-costs", 303);
+}
+
+const authed = (path: string, init?: RequestInit) =>
+  fetch(`${apiBase}${path}`, {
+    ...init,
+    headers: { ...init?.headers, Authorization: `Bearer ${token}`, Accept: "application/json" },
+  });
+
+type PlanRow = {
+  rowNumber: number;
+  sku: string;
+  productName: string;
+  costPriceUgx: number;
+  effectiveFrom: string;
+  previousCostUgx: number | null;
+  isCorrection: boolean;
+};
+type ImportResult = {
+  accepted: boolean;
+  dryRun: boolean;
+  totalRows: number;
+  applied: number;
+  plan: PlanRow[];
+  errors: Array<{ rowNumber: number; identifier: string; message: string }>;
+};
+
+let importResult: ImportResult | null = null;
+let submitError: string | null = null;
+let submittedRows = "";
+let submittedSource = "supplier-invoice";
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "check");
+  submittedRows = String(form.get("rows") ?? "");
+  submittedSource = String(form.get("source") ?? "supplier-invoice");
+
+  // `sku,cost,effectiveFrom[,currency]` — one product per line. Parsing stays
+  // here so the API receives structured rows and reports errors BY ROW NUMBER,
+  // which is what the operator is actually looking at.
+  const rows = submittedRows
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [identifier, cost, effectiveFrom, currency] = line.split(",").map((part) => part.trim());
+      return {
+        identifier: identifier ?? "",
+        costPriceUgx: cost === undefined || cost === "" ? Number.NaN : Number(cost),
+        effectiveFrom: effectiveFrom ?? "",
+        currency: currency || "UGX",
+      };
+    });
+
+  const path = intent === "apply" ? "/admin/product-costs/import" : "/admin/product-costs/import/preview";
+  try {
+    const res = await authed(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows, source: submittedSource }),
+    });
+    const json = await res.json().catch(() => null);
+    if (res.status === 401 || res.status === 403) {
+      submitError = "Your account cannot change product costs (product_costs.manage). The API declined — this is a permission to grant, not an outage.";
+    } else if (json?.data) {
+      importResult = json.data as ImportResult;
+    } else {
+      submitError = json?.error?.message ?? `The import could not be processed (HTTP ${res.status}).`;
+    }
+  } catch {
+    submitError = "Could not reach the API.";
+  }
+}
+
+type CoverageRow = {
+  productId: string;
+  sku: string;
+  productName: string;
+  retailPriceUgx: number | null;
+  currentCostUgx: number | null;
+  effectiveFrom: string | null;
+};
+type Coverage = {
+  totalActiveProducts: number;
+  withCost: number;
+  withoutCost: number;
+  coveragePercent: number | null;
+  rows: CoverageRow[];
+};
+
+let coverage: Coverage | null = null;
+let loadError: string | null = null;
+let denied = false;
+
+try {
+  const res = await authed("/admin/product-costs/coverage?limit=200");
+  const json = await res.json().catch(() => null);
+  if (res.status === 401 || res.status === 403) denied = true;
+  else if (!res.ok || !json?.success) loadError = json?.error?.message ?? `Could not load cost coverage (HTTP ${res.status}).`;
+  else coverage = json.data as Coverage;
+} catch {
+  loadError = "Could not reach the API.";
+}
+
+const ugx = (value: number | null) =>
+  value === null || value === undefined ? "—" : `UGX ${Math.round(value).toLocaleString("en-UG")}`;
+
+const today = new Date().toISOString().slice(0, 10);
+const corrections = importResult?.plan.filter((p) => p.isCorrection).length ?? 0;
+---
+
+<AdminLayout title="Product costs" description="Supplier cost per product — the input margin and profit are computed from.">
+  <div class="container mx-auto px-6 max-w-7xl">
+    <header class="mb-6">
+      <h2 class="text-2xl font-black tracking-tight text-brand-dark">Product costs</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+        What each product costs you. An order freezes the cost in force on the day it is placed, so
+        entering a cost changes what <strong>new</strong> orders record and never rewrites an order
+        already sold. Until a product has a cost, its margin is reported as unavailable — never as zero.
+      </p>
+    </header>
+
+    {denied && (
+      <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-5 mb-6">
+        <strong class="font-black">Permission denied.</strong>
+        <p class="text-sm mt-1">
+          Your account cannot read product costs (<code>product_costs.read</code>). The API answered
+          normally and declined — a permission to grant, not an outage to investigate.
+        </p>
+      </div>
+    )}
+
+    {loadError && (
+      <div class="bg-red-50 border border-red-200 text-red-900 rounded-2xl p-5 mb-6">
+        <strong class="font-black">Coverage unavailable.</strong>
+        <p class="text-sm mt-1">{loadError} The figures are unknown, not zero.</p>
+      </div>
+    )}
+
+    {coverage && (
+      <section class="grid sm:grid-cols-3 gap-4 mb-8">
+        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active products</p>
+          <p class="text-2xl font-black text-brand-dark">{coverage.totalActiveProducts}</p>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">With a cost</p>
+          <p class="text-2xl font-black text-brand-dark">
+            {coverage.withCost}
+            {coverage.coveragePercent !== null && <span class="text-sm text-gray-400 ml-2">{coverage.coveragePercent}%</span>}
+          </p>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Still missing</p>
+          <p class={`text-2xl font-black ${coverage.withoutCost > 0 ? "text-red-600" : "text-brand-dark"}`}>{coverage.withoutCost}</p>
+        </div>
+      </section>
+    )}
+
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Enter or import costs</h3>
+      <p class="text-xs text-gray-500 mb-4 max-w-3xl">
+        One row per product: SKU (or product id), cost in whole shillings, and the date the cost applies from.
+        <strong> Check the file</strong> validates everything and shows exactly what it would do, writing nothing.
+        <strong> Apply</strong> writes every row or none — a half-applied file would leave margin computed from a
+        mixture of new and stale numbers with nothing recording which is which.
+      </p>
+
+      <form method="POST" class="space-y-4">
+        <div>
+          <label for="cost-source" class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+            Where these numbers came from
+          </label>
+          <input
+            id="cost-source"
+            name="source"
+            required
+            value={submittedSource}
+            class="w-full sm:w-80 border border-gray-300 rounded-lg p-2 text-sm outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+          />
+        </div>
+
+        <div>
+          <label for="cost-rows" class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+            Rows — sku,cost,effectiveFrom (one per line)
+          </label>
+          <textarea
+            id="cost-rows"
+            name="rows"
+            rows="10"
+            spellcheck="false"
+            aria-describedby="cost-rows-help"
+            placeholder={`GP-101,45000,${today}`}
+            class="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+          >{submittedRows}</textarea>
+          <p id="cost-rows-help" class="text-[11px] text-gray-400 mt-1">
+            Costs are UGX only. A second currency needs a conversion source before margin can mean anything,
+            so a non-UGX row is refused rather than silently treated as shillings.
+          </p>
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+          <button
+            type="submit"
+            name="intent"
+            value="check"
+            class="bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-xl px-5 py-3 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+          >
+            Check the file
+          </button>
+          <button
+            type="submit"
+            name="intent"
+            value="apply"
+            class="bg-brand-primary text-brand-charcoal font-black text-xs uppercase tracking-widest rounded-xl px-5 py-3 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+          >
+            Apply
+          </button>
+        </div>
+      </form>
+
+      <div class="mt-5" role="status" aria-live="polite">
+        {submitError && (
+          <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-900">{submitError}</div>
+        )}
+
+        {importResult && importResult.errors.length > 0 && (
+          <div class="bg-red-50 border border-red-200 rounded-xl p-4">
+            <strong class="font-black text-red-900">Nothing was written.</strong>
+            <p class="text-xs text-red-800 mt-1">
+              {importResult.errors.length} row(s) need fixing. The file is applied only when every row is valid.
+            </p>
+            <ul class="mt-2 space-y-1 text-xs text-red-900">
+              {importResult.errors.slice(0, 50).map((e) => (
+                <li><strong>Row {e.rowNumber}</strong>{e.identifier ? ` (${e.identifier})` : ""}: {e.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {importResult && importResult.errors.length === 0 && (
+          <div class="bg-green-50 border border-green-200 rounded-xl p-4">
+            <strong class="font-black text-green-900">
+              {importResult.dryRun
+                ? `${importResult.plan.length} row(s) valid — nothing written yet.`
+                : `Applied ${importResult.applied} cost(s).`}
+            </strong>
+            {corrections > 0 && (
+              <p class="text-xs text-green-900 mt-1">
+                {corrections} of these replace an existing cost for the same date. The previous figure is kept in the trail.
+              </p>
+            )}
+            <ul class="mt-2 space-y-1 text-xs text-green-900">
+              {importResult.plan.slice(0, 50).map((p) => (
+                <li>
+                  {p.sku} — {p.previousCostUgx === null ? "no cost" : ugx(p.previousCostUgx)} → <strong>{ugx(p.costPriceUgx)}</strong> from {p.effectiveFrom}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </section>
+
+    {coverage && (
+      <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 px-6 py-4 border-b border-gray-100">
+          Coverage — products without a cost first
+        </h3>
+        <div class="overflow-x-auto">
+          <table class="min-w-[820px] w-full text-left text-xs">
+            <caption class="sr-only">Active products and whether each has a supplier cost recorded</caption>
+            <thead class="bg-slate-950 text-white">
+              <tr>
+                <th scope="col" class="px-4 py-3 font-black">Product</th>
+                <th scope="col" class="px-4 py-3 font-black">SKU</th>
+                <th scope="col" class="px-4 py-3 font-black text-right">Retail</th>
+                <th scope="col" class="px-4 py-3 font-black text-right">Cost</th>
+                <th scope="col" class="px-4 py-3 font-black">Effective from</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              {coverage.rows.map((row) => (
+                <tr class={row.currentCostUgx === null ? "bg-red-50/40" : ""}>
+                  <th scope="row" class="px-4 py-3 font-bold text-brand-dark text-left">{row.productName}</th>
+                  <td class="px-4 py-3 font-mono text-gray-500">{row.sku}</td>
+                  <td class="px-4 py-3 text-right">{ugx(row.retailPriceUgx)}</td>
+                  <td class={`px-4 py-3 text-right font-black ${row.currentCostUgx === null ? "text-red-600" : "text-brand-dark"}`}>
+                    {row.currentCostUgx === null ? "not set" : ugx(row.currentCostUgx)}
+                  </td>
+                  <td class="px-4 py-3 text-gray-500">{row.effectiveFrom ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+  </div>
+</AdminLayout>

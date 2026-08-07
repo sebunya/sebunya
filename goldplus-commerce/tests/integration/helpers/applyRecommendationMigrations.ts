@@ -8,7 +8,7 @@ import { join } from "node:path";
  * NOT concurrency-safe (two racing creators still collide in pg_class), and
  * vitest runs suites in parallel workers.
  */
-const MIGRATIONS = ["0099_recommendation_event_contract.sql", "0100_experience_profiles.sql", "0101_order_profile_stitching.sql", "0102_commercial_costs.sql", "0103_refund_ledger.sql"];
+const MIGRATIONS = ["0099_recommendation_event_contract.sql", "0100_experience_profiles.sql", "0101_order_profile_stitching.sql", "0102_commercial_costs.sql", "0103_refund_ledger.sql", "0104_product_cost_entries.sql", "0105_commercial_indexes.sql"];
 const ADVISORY_LOCK_KEY = 209_920_260_806;
 
 type Pg = {

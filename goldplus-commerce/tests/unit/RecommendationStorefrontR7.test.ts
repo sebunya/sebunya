@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { filterDisplayableRecommendations, supportedRecommendationReason } from "../../apps/web/src/lib/recommendation-display";
 
 /**
  * R7 (2026-08-06): the storefront trusts the engine and the copy matches the
@@ -97,5 +98,57 @@ describe("no tracking loader without real configuration (§32)", () => {
   it("PostHog loads only with a real key — the mock key connected to app.posthog.com on every page", () => {
     expect(layout).not.toContain("phc_mock_key_for_telemetry',");
     expect(layout).toContain("{import.meta.env.PUBLIC_POSTHOG_KEY && <script>");
+  });
+});
+
+/* ── The display boundary must not re-explain the engine (2026-08-07) ─────── */
+
+describe("the display boundary preserves the engine's reason", () => {
+  const engineItem = (over: Record<string, unknown> = {}) => ({
+    productId: "11111111-1111-4111-8111-111111111111",
+    slug: "reinforced-usb-c-cable",
+    name: "Reinforced USB-C Cable",
+    price: 25_000,
+    score: 40,
+    reasonCodes: ["SAME_CATEGORY"],
+    reasonCode: "SAME_CATEGORY",
+    categoryName: "Cables",
+    availability: "in_stock",
+    ...over,
+  });
+
+  it("keeps SAME_CATEGORY instead of stamping CATALOGUE_FALLBACK over it", () => {
+    const [out] = filterDisplayableRecommendations([engineItem()] as never, { limit: 4 }) as Array<Record<string, unknown>>;
+    // Production served every PDP rail card as CATALOGUE_FALLBACK: the badge
+    // vanished and every event's reason dimension described the display
+    // helper rather than what actually served.
+    expect(out.reasonCode).toBe("SAME_CATEGORY");
+  });
+
+  it("keeps COMPATIBLE_ACCESSORY — the reason the setup rail exists to state", () => {
+    const [out] = filterDisplayableRecommendations(
+      [engineItem({ reasonCode: "COMPATIBLE_ACCESSORY", reasonCodes: ["COMPATIBLE_ACCESSORY"] })] as never,
+      { limit: 4 },
+    ) as Array<Record<string, unknown>>;
+    expect(out.reasonCode).toBe("COMPATIBLE_ACCESSORY");
+    expect(supportedRecommendationReason(out.reasonCode as string)).toBe("Related by product details");
+  });
+
+  it("still supplies a rule for candidates that arrive with NO reason at all", () => {
+    const [out] = filterDisplayableRecommendations(
+      [engineItem({ reasonCode: undefined, reasonCodes: [] })] as never,
+      { limit: 4 },
+    ) as Array<Record<string, unknown>>;
+    expect(typeof out.reasonCode).toBe("string");
+    expect((out.reasonCode as string).length).toBeGreaterThan(0);
+  });
+
+  it("an explicit CATALOGUE_FALLBACK stays CATALOGUE_FALLBACK — the honest fallback rail is unchanged", () => {
+    const [out] = filterDisplayableRecommendations(
+      [engineItem({ reasonCode: "CATALOGUE_FALLBACK", reasonCodes: [] })] as never,
+      { limit: 4 },
+    ) as Array<Record<string, unknown>>;
+    expect(out.reasonCode).toBe("CATALOGUE_FALLBACK");
+    expect(supportedRecommendationReason("CATALOGUE_FALLBACK")).toBeUndefined();
   });
 });

@@ -56,7 +56,7 @@ rebuild goldplus_test_analytics empty
 # migrations; apply them so EVERY suite sees the full schema (idempotent —
 # IF NOT EXISTS throughout). Suites keep their own guarded application for
 # standalone runs.
-for m in 0099_recommendation_event_contract 0100_experience_profiles 0101_order_profile_stitching 0102_commercial_costs 0103_refund_ledger; do
+for m in 0099_recommendation_event_contract 0100_experience_profiles 0101_order_profile_stitching 0102_commercial_costs 0103_refund_ledger 0104_product_cost_entries 0105_commercial_indexes; do
   sed 's/--> statement-breakpoint//' "apps/api/src/infrastructure/db/migrations/${m}.sql" | psql -q goldplus_test_commerce >/dev/null
 done
 

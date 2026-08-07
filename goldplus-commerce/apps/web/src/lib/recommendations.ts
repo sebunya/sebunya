@@ -52,8 +52,15 @@ export async function trackRecommendationEvent(
 ): Promise<void> {
   try {
     const anonymousId = input.anonymousId ?? getAnonymousId();
-    // Fail early gracefully if no context identifier available.
-    if (!anonymousId && !input.customerId) return;
+    // NO client-side identifier is required to send an event.
+    //
+    // This used to return early unless localStorage yielded an anonymous id,
+    // so a browser with storage blocked (private mode, strict privacy
+    // settings, an embedded webview) silently emitted nothing at all — and the
+    // analytics simply showed less traffic, with nothing saying why. The
+    // canonical identity is the HttpOnly visit token the same-origin relay
+    // attaches server-side; the localStorage id is a convenience that predates
+    // it. Send the event either way and let the server decide who it belongs to.
 
     const browserContext = captureBrowserContext();
 

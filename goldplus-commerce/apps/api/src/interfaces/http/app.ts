@@ -19,6 +19,7 @@ import adminAuditRoutes from './routes/admin/audit';
 import adminUsersRoutes from './routes/admin/users';
 import adminRolesRoutes from './routes/admin/roles';
 import adminProductsRoutes from './routes/admin/products';
+import adminProductCostsRoutes from './routes/admin/product-costs';
 import adminNotificationsRoutes from './routes/admin/notifications';
 import adminRecommendationsRoutes from './routes/admin/recommendations';
 import adminCustomerDnaRoutes from './routes/admin/customer-dna';
@@ -202,6 +203,7 @@ app.route('/admin/audit', adminAuditRoutes);
 app.route('/admin/users', adminUsersRoutes);
 app.route('/admin/roles', adminRolesRoutes);
 app.route('/admin/products', adminProductsRoutes);
+app.route('/admin/product-costs', adminProductCostsRoutes);
 app.route('/admin/notifications', adminNotificationsRoutes);
 app.route('/admin/recommendations', adminRecommendationsRoutes);
 app.route('/admin/customer-dna', adminCustomerDnaRoutes);
@@ -303,6 +305,7 @@ export default app;
 
 /** Every API prefix mounted below. Kept in step by tests/architecture/control-centre-route-coverage.test.ts. */
 export const MOUNTED_API_PREFIXES: readonly string[] = [
+  '/admin/product-costs',
   '/account',
   '/account/behavioural-interventions',
   '/account/consent-operating',
