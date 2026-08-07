@@ -97,7 +97,7 @@ const nbaJson = escNav(JSON.stringify(nba));
 ---
 <header class="gp-nav" id="gpNav" data-sale-ends={saleEnds}>
   <div class="gp-nav__top">
-    <div class="gp-nav__top-in">
+    <div class="gp-nav__top-in gpn-container">
       <div class="gp-nav__nba" id="gpNavNba" role="status" aria-live="off" aria-label="Recommended next step">
         <span class="gp-nav__dot" aria-hidden="true"></span>
         <a class="gp-nav__nba-slot" id="gpNavNbaSlot" href="/support" data-in=""><span class="gp-nav__nba-txt" id="gpNavNbaText">Order before <b>5:00pm</b> for same-day delivery in Kampala</span><u id="gpNavNbaCta" hidden=""></u></a>
@@ -117,7 +117,7 @@ const nbaJson = escNav(JSON.stringify(nba));
     </div>
   </div>
 
-  <div class="gp-nav__bar">
+  <div class="gp-nav__bar gpn-container">
     <button class="gp-nav__burger" id="gpNavBurger" type="button" aria-expanded="false" aria-controls="gpNavMega" aria-label="Open menu"><span></span><span></span><span></span></button>
 
     <a class="gp-nav__logo" href="/" aria-label="GoldPlus home">
@@ -167,7 +167,7 @@ const nbaJson = escNav(JSON.stringify(nba));
   </div>
 
   <nav class="gp-nav__rail" aria-label="Product categories">
-    <div class="gp-nav__rail-in" id="gpNavRail">
+    <div class="gp-nav__rail-in gpn-container" id="gpNavRail">
       <a class="gp-nav__cat" href="/shop" data-cat="all">Shop All</a>
       <a class="gp-nav__cat" href="/shop?category=power" data-cat="power">Power</a>
       <a class="gp-nav__cat" href="/shop?category=sound" data-cat="sound">Sound</a>
@@ -180,7 +180,7 @@ const nbaJson = escNav(JSON.stringify(nba));
   </nav>
 
   <div class="gp-nav__mega" id="gpNavMega">
-    <div class="gp-nav__mega-in">
+    <div class="gp-nav__mega-in gpn-container">
 
       <div class="gp-nav__panel" data-panel="all" data-shape="wide">
         <div class="gp-nav__tiles gp-nav__tiles--five">
@@ -447,6 +447,21 @@ const nbaJson = escNav(JSON.stringify(nba));
 body.gph-nav-demo{display:block;margin:0;padding:0;background:#0A0A0A;min-height:100vh;}
 body.gph-nav-demo .gp-hero{margin-top:22px;}
 
+/* ===== ALIGNMENT: the header shares the SITE's content container =====
+   The storefront wraps every section in Tailwind's `.container mx-auto px-4
+   lg:px-8` (default stepped breakpoints; 16px gutter -> 32px at lg). A single
+   fixed max-width cannot match a STEPPED container, so .gpn-container replicates
+   it EXACTLY and the four header rows use it: the header lines up with the hero
+   and every section by construction, at every width, not by eye. */
+:root{ --gpn-gutter:16px; }
+@media (min-width:1024px){ :root{ --gpn-gutter:32px; } }
+.gpn-container{ width:100%; margin-inline:auto; padding-inline:var(--gpn-gutter); }
+@media (min-width:640px){ .gpn-container{ max-width:640px; } }
+@media (min-width:768px){ .gpn-container{ max-width:768px; } }
+@media (min-width:1024px){ .gpn-container{ max-width:1024px; } }
+@media (min-width:1280px){ .gpn-container{ max-width:1280px; } }
+@media (min-width:1536px){ .gpn-container{ max-width:1536px; } }
+
 .gp-nav{
   --gpn-green:#93D500;
   --gpn-ink:#0A0A0A;
@@ -456,6 +471,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   --gpn-panel:#0F0F0F;
   --gpn-ease:cubic-bezier(.22,.9,.28,1);
   position:relative;z-index:60;background:var(--gpn-ink);
+  box-shadow:0 1px 0 rgba(147,213,0,.14), 0 18px 40px -26px rgba(10,10,10,.6);
   font-family:'Poppins',system-ui,sans-serif;color:var(--gpn-cream);
 }
 .gp-nav,.gp-nav *,.gp-nav *::before,.gp-nav *::after{box-sizing:border-box;}
@@ -468,22 +484,27 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 /* Same zero-specificity treatment as the anchor reset above, and for the same
    reason: `.gp-nav button` at (0,1,1) beat `.gp-nav__acct-cta` at (0,1,0) and
    stripped the fill off the primary sign-up CTA. */
-:where(.gp-nav) button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;}
+:where(.gp-nav) button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;}
+/* #4: a 20px glyph in a 44px box sits 12px in; pull leading/trailing controls
+   out by that residual so the marks go flush with page content, the hit box
+   overhangs harmlessly into the gutter. */
+.gp-nav__burger{margin-left:-12px;}
+.gp-nav__cartwrap{margin-right:-12px;}
 .gp-nav :focus-visible{outline:2px solid var(--gpn-green);outline-offset:3px;border-radius:6px;}
 
 /* ---------- contact strip: the two ways to reach a human ---------- */
 .gp-nav__top{border-bottom:1px solid var(--gpn-line);font-size:12px;}
 .gp-nav__top-in{
-  max-width:1180px;margin:0 auto;padding:0 28px;height:38px;
+  height:38px;
   display:flex;align-items:center;justify-content:space-between;gap:20px;
 }
 /* ---------- next best action ----------
    One line, one job: the single most useful thing this visitor could do
    next. Ranked by the same kind of engine the hero used, so the two
    never contradict each other. */
-.gp-nav__nba{display:flex;align-items:center;gap:9px;color:var(--gpn-muted);min-width:0;flex:1;}
+.gp-nav__nba{display:flex;align-items:center;gap:9px;color:var(--gpn-muted);min-width:0;flex:1;align-self:stretch;}
 .gp-nav__nba-slot{
-  display:flex;align-items:center;gap:7px;min-width:0;
+  display:flex;align-items:center;gap:7px;min-width:0;align-self:stretch;
   color:var(--gpn-muted);white-space:nowrap;overflow:hidden;
   opacity:0;transform:translateY(4px);
   transition:opacity .4s var(--gpn-ease),transform .4s var(--gpn-ease),color .2s;
@@ -522,10 +543,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
 /* ---------- main bar ---------- */
 .gp-nav__bar{
-  max-width:1180px;margin:0 auto;padding:0 28px;height:80px;
+  height:80px;
   display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:24px;
 }
-.gp-nav__logo{display:block;line-height:0;flex:none;}
+.gp-nav__logo{display:block;line-height:0;flex:none;padding-block:9px;}  /* #8: 44px hit box, mark size unchanged */
 .gp-nav__logo img{height:30px;width:auto;display:block;transition:opacity .25s var(--gpn-ease);}
 .gp-nav__logo:hover img{opacity:.8;}
 
@@ -585,7 +606,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 /* ---------- rail ---------- */
 .gp-nav__rail{border-top:1px solid var(--gpn-line);position:relative;}
 .gp-nav__rail-in{
-  max-width:1180px;margin:0 auto;padding:0 28px;height:48px;
+  height:48px;
   display:flex;align-items:center;gap:32px;position:relative;
 }
 .gp-nav__cat{
@@ -615,7 +636,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 }
 .gp-nav[data-open] .gp-nav__mega{grid-template-rows:1fr;}
 .gp-nav__mega-in{
-  max-width:1180px;margin:0 auto;padding:0 28px;
+  width:100%;justify-self:stretch;   /* #3: fill the animating grid track, THEN center */
   min-height:0;overflow-x:hidden;overflow-y:auto;
   max-height:min(78vh,560px);      /* short windows scroll rather than clip */
 }
@@ -687,11 +708,11 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
 /* ---------- mobile ---------- */
 @media (max-width:980px){
-  .gp-nav__top-in{height:34px;padding:0 16px;justify-content:center;}
+  .gp-nav__top-in{height:34px;justify-content:center;}
   .gp-nav__nba{font-size:11px;justify-content:center;}
   .gp-nav__nba-x{display:none!important;}
   .gp-nav__reach{display:none;}
-  .gp-nav__bar{grid-template-columns:auto 1fr auto;height:60px;padding:0 12px;gap:8px;}
+  .gp-nav__bar{grid-template-columns:auto 1fr auto;height:60px;gap:8px;}
   .gp-nav__search,.gp-nav__rail,.gp-nav__pts{display:none;}
   .gp-nav__burger{display:block;}
   .gp-nav__logo{justify-self:center;}
@@ -708,7 +729,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   /* the desktop clamp is (0,3,0); a bare .gp-nav__mega rule cannot beat it
      inside a media query, so match its specificity or the overlay stays 420px */
   .gp-nav[data-open] .gp-nav__mega{transform:none;max-height:none;grid-template-rows:none;}
-  .gp-nav__mega-in{padding:calc(var(--gpn-head,94px) + 16px) 18px 36px;max-height:none;overflow:visible;}
+  .gp-nav__mega-in{padding-block:calc(var(--gpn-head,94px) + 16px) 36px;max-height:none;overflow:visible;}
   .gp-nav__panel{display:none!important;}
   .gp-nav__mob{display:block;}
 
@@ -763,7 +784,6 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   .gp-nav__mnote{margin:12px 0 0;font-size:12px;color:var(--gpn-muted);text-align:center;}
 }
 @media (max-width:380px){
-  .gp-nav__bar{padding:0 10px;}
   .gp-nav__logo img{height:23px;}
 }
 @media (prefers-reduced-motion:reduce){
@@ -821,7 +841,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 }
 .gp-nav__acct-cta:hover{color:var(--gpn-ink);box-shadow:0 8px 22px rgba(147,213,0,.3);}
 .gp-nav__acct-alt{
-  display:flex;align-items:center;justify-content:center;height:42px;border-radius:11px;
+  display:flex;align-items:center;justify-content:center;height:44px;border-radius:11px;
   border:1px solid var(--gpn-line);font-size:13px;color:var(--gpn-cream);
 }
 .gp-nav__acct-alt:hover{border-color:rgba(147,213,0,.45);color:var(--gpn-cream);}
@@ -934,6 +954,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__sug a:hover,.gp-nav__sug a[data-sel]{background:rgba(243,239,228,.06);}
 .gp-nav__sug-img{
   width:44px;height:44px;flex:none;border-radius:10px;background:var(--gpn-cream);
+  background-image:linear-gradient(135deg,transparent 46%,rgba(10,10,10,.07) 46% 54%,transparent 54%);
   display:grid;place-items:center;overflow:hidden;isolation:isolate;
 }
 .gp-nav__sug-img img{width:82%;height:82%;object-fit:contain;mix-blend-mode:multiply;filter:brightness(1.09) contrast(1.04);}
@@ -1202,8 +1223,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     function tick(){
       if (!cut) return;
       var d = new Date(), h = d.getHours(), m = d.getMinutes();
-      if (d.getDay() === 0){ cut.innerHTML = 'Closed Sunday. This order goes out <b>Monday morning</b>.'; return; }
-      if (h >= 17){ cut.innerHTML = "Today's run has left. Order now and it goes <b>tomorrow morning</b>."; return; }
+      if (d.getDay() === 0){ cut.innerHTML = 'Closed Sunday &mdash; this order goes out <b>Monday morning</b>'; return; }
+      if (h >= 17){ cut.innerHTML = "Today's run has left &mdash; this order goes out <b>tomorrow morning</b>"; return; }
       var mins = (17 - h) * 60 - m;
       var left = mins >= 60 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm' : mins + ' minutes';
       cut.innerHTML = 'Check out in <b>' + left + '</b> and this arrives <b>today</b>.';
