@@ -21,7 +21,7 @@ export class NotificationResetDelivery implements ResetDeliveryPort {
   ) {}
 
   async sendPasswordReset(input: { email: string; rawToken: string; expiresAt: Date }): Promise<{
-    status: 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'DRY_RUN';
+    status: 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'DRY_RUN' | 'DISABLED';
     detail?: string;
   }> {
     const resetUrl = `${this.publicBaseUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(input.rawToken)}`;
@@ -40,18 +40,27 @@ export class NotificationResetDelivery implements ResetDeliveryPort {
         relatedEntityId: input.email,
       });
 
+      // Pass the provider's own verdict through. Flattening DISABLED into
+      // FAILED told the operator delivery had broken when in fact a governance
+      // flag was refusing customer email — a different problem with a
+      // different fix, and production reported exactly that.
       const status =
-        result.status === 'SENT' || result.status === 'DRY_RUN' || result.status === 'NOT_CONFIGURED'
+        result.status === 'SENT' ||
+        result.status === 'DRY_RUN' ||
+        result.status === 'NOT_CONFIGURED' ||
+        result.status === 'DISABLED'
           ? result.status
           : 'FAILED';
 
-      if (status === 'NOT_CONFIGURED') {
+      if (status === 'NOT_CONFIGURED' || status === 'DISABLED') {
         // Loud, because the customer has been told a link is coming and no
         // transport exists to send it. This is an operator problem and it
         // should be visible as one.
         logger.error(
-          { template: 'password_reset', providerMessage: result.providerMessage },
-          'PASSWORD_RESET_DELIVERY_NOT_CONFIGURED',
+          { template: 'password_reset', status, providerCode: result.providerCode, providerMessage: result.providerMessage },
+          status === 'NOT_CONFIGURED'
+            ? 'PASSWORD_RESET_DELIVERY_NOT_CONFIGURED'
+            : 'PASSWORD_RESET_DELIVERY_BLOCKED_BY_POLICY',
         );
       }
 

@@ -50,7 +50,14 @@ export interface ResetDeliveryPort {
    * says it cannot be sent.
    */
   sendPasswordReset(input: { email: string; rawToken: string; expiresAt: Date }): Promise<{
-    status: 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'DRY_RUN';
+    /**
+     * DISABLED is distinct from FAILED and from NOT_CONFIGURED on purpose:
+     * "a governance flag is blocking customer email", "no transport is
+     * configured" and "the send was attempted and broke" are three different
+     * operator problems with three different fixes. Collapsing them sends
+     * somebody to check the wrong thing.
+     */
+    status: 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'DRY_RUN' | 'DISABLED';
     detail?: string;
   }>;
 }
@@ -63,7 +70,7 @@ export type RequestPasswordResetResult = {
   internal: {
     userFound: boolean;
     throttled: boolean;
-    delivery: 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'DRY_RUN' | 'NOT_ATTEMPTED';
+    delivery: 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'DRY_RUN' | 'DISABLED' | 'NOT_ATTEMPTED';
   };
 };
 
