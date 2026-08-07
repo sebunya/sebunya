@@ -1,0 +1,277 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../lib/session';
+import { apiBase } from '../../lib/api';
+import { HERO_LIMITS } from '@goldplus/shared';
+
+/**
+ * Hero slider editor (0107). Marketing edits campaigns, copy, prices, links,
+ * images and rotation here — no code, no deploy. Every save is validated
+ * server-side; a save that would break the homepage is refused with the
+ * reasons, so a broken hero cannot ship from this page.
+ *
+ * Actions are ordinary form POSTs handled in frontmatter (the session cookie
+ * is HttpOnly, so the server attaches the bearer token). Character counters
+ * are progressive enhancement on top of the server-side limits.
+ */
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/hero', 303);
+
+const authed = (path: string, init?: RequestInit) =>
+  fetch(`${apiBase}${path}`, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+
+let notice: { kind: 'ok' | 'error'; message: string; details?: Array<{ field: string; message: string }> } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  try {
+    if (intent === 'save-settings') {
+      const res = await authed('/admin/hero/settings', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slidesShown: Number(form.get('slidesShown')),
+          dwellMs: Number(form.get('dwellMs')),
+          autoplay: form.get('autoplay') === 'on',
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: 'ok', message: 'Rotation settings saved.' }
+        : { kind: 'error', message: json?.error?.message ?? 'Could not save settings.' };
+    } else if (intent === 'save-slide') {
+      const key = String(form.get('slideKey'));
+      const extrasRaw = String(form.get('extras') ?? '').trim();
+      let extras: unknown;
+      let extrasError = false;
+      if (extrasRaw) { try { extras = JSON.parse(extrasRaw); } catch { extrasError = true; } }
+      if (extrasError) {
+        notice = { kind: 'error', message: `Slide "${key}": the campaign data is not valid JSON. Nothing was saved.` };
+      } else {
+        const body: Record<string, unknown> = {
+          enabled: form.get('enabled') === 'on',
+          theme: form.get('theme'), tint: form.get('tint'), media: form.get('media'),
+          priority: Number(form.get('priority') || 0),
+          kicker: form.get('kicker'), headline: form.get('headline'), subcopy: form.get('subcopy'),
+          ctaLabel: form.get('ctaLabel'), ctaUrl: form.get('ctaUrl'), finePrint: form.get('finePrint'),
+          imageUrl: form.get('imageUrl'), imageAlt: form.get('imageAlt'),
+        };
+        if (extrasRaw) body.extras = extras;
+        const res = await authed(`/admin/hero/slides/${encodeURIComponent(key)}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        const json = await res.json().catch(() => null);
+        notice = res.ok && json?.success
+          ? { kind: 'ok', message: `Slide "${key}" saved.` }
+          : { kind: 'error', message: json?.error?.message ?? `Could not save slide "${key}".`, details: json?.error?.details };
+      }
+    }
+  } catch {
+    notice = { kind: 'error', message: 'Could not reach the API.' };
+  }
+}
+
+type AdminSlide = {
+  slideKey: string; enabled: boolean; theme: string; tint: string; media: string;
+  kicker: string; headline: string; subcopy: string; ctaLabel: string; ctaUrl: string;
+  finePrint: string; imageUrl: string; imageAlt: string; priority: number; extras: Record<string, unknown>;
+  errors: Array<{ field: string; message: string }>; saleEnded: boolean;
+};
+type Settings = { slidesShown: number; dwellMs: number; autoplay: boolean };
+
+let slides: AdminSlide[] = [];
+let settings: Settings = { slidesShown: 4, dwellMs: 6000, autoplay: true };
+let denied = false;
+let loadError: string | null = null;
+
+try {
+  const res = await authed('/admin/hero');
+  const json = await res.json().catch(() => null);
+  if (res.status === 401 || res.status === 403) denied = true;
+  else if (!res.ok || !json?.success) loadError = json?.error?.message ?? `Could not load the hero library (HTTP ${res.status}).`;
+  else { slides = json.data.slides; settings = json.data.settings; }
+} catch { loadError = 'Could not reach the API.'; }
+
+const THEMES = ['offer', 'logistics', 'loyalty', 'product', 'brand', 'trust'];
+const TINTS = ['a', 'b', 'c', 'd'];
+const MEDIA = ['stage', 'bleed', 'card'];
+const jsonPretty = (v: unknown) => { try { return JSON.stringify(v ?? {}, null, 2); } catch { return '{}'; } };
+---
+
+<AdminLayout title="Homepage hero" description="Edit the homepage campaigns, copy, prices, links and images — no code, no deploy.">
+  <div class="container mx-auto px-6 max-w-5xl">
+    <header class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+      <div>
+        <h2 class="text-2xl font-black tracking-tight text-brand-dark">Homepage hero</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-2xl">
+          Twelve campaigns; each visitor sees four, chosen automatically. Edit any of them below — changes are live as
+          soon as you save. A save is refused if it would break the homepage, and it tells you why.
+        </p>
+      </div>
+      <a href="/?gp=all" target="_blank" rel="noopener" class="shrink-0 bg-slate-900 text-white text-xs font-black uppercase tracking-widest rounded-xl px-4 py-3">
+        Preview all 12 slides →
+      </a>
+    </header>
+
+    {denied && (
+      <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-5 mb-6">
+        <strong class="font-black">Permission denied.</strong>
+        <p class="text-sm mt-1">Your account cannot manage the hero (<code>hero.read</code> / <code>hero.manage</code>). The API declined — a permission to grant, not an outage.</p>
+      </div>
+    )}
+    {loadError && <div class="bg-red-50 border border-red-200 text-red-900 rounded-2xl p-5 mb-6"><strong class="font-black">Unavailable.</strong> <span class="text-sm">{loadError}</span></div>}
+
+    {notice && (
+      <div class={`rounded-2xl p-4 mb-6 text-sm ${notice.kind === 'ok' ? 'bg-green-50 border border-green-200 text-green-900' : 'bg-red-50 border border-red-200 text-red-900'}`} role="status" aria-live="polite">
+        <strong class="font-black">{notice.message}</strong>
+        {notice.details && notice.details.length > 0 && (
+          <ul class="mt-2 space-y-1 text-xs">{notice.details.map((d) => <li><strong>{d.field}</strong>: {d.message}</li>)}</ul>
+        )}
+      </div>
+    )}
+
+    {!denied && (
+      <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Rotation settings</h3>
+        <form method="POST" class="grid sm:grid-cols-4 gap-4 items-end">
+          <input type="hidden" name="intent" value="save-settings" />
+          <label class="block">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Slides per visit</span>
+            <input type="number" name="slidesShown" min="1" max="8" value={settings.slidesShown} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Dwell (ms)</span>
+            <input type="number" name="dwellMs" min="2000" max="20000" step="500" value={settings.dwellMs} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
+          </label>
+          <label class="flex items-center gap-2 pb-2">
+            <input type="checkbox" name="autoplay" checked={settings.autoplay} class="h-4 w-4" />
+            <span class="text-xs font-bold text-gray-600">Autoplay</span>
+          </label>
+          <button type="submit" class="bg-brand-primary text-brand-charcoal font-black text-xs uppercase tracking-widest rounded-xl px-4 py-3">Save settings</button>
+        </form>
+      </section>
+    )}
+
+    {slides.map((s) => (
+      <section class={`bg-white border rounded-2xl p-6 mb-5 ${s.errors.length ? 'border-red-300' : 'border-gray-200'}`}>
+        <form method="POST" class="space-y-4" data-hero-slide>
+          <input type="hidden" name="intent" value="save-slide" />
+          <input type="hidden" name="slideKey" value={s.slideKey} />
+
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div class="flex items-center gap-3">
+              <h3 class="text-base font-black text-brand-dark">{s.slideKey}</h3>
+              <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">{s.theme} · {s.media}</span>
+            </div>
+            <label class="flex items-center gap-2">
+              <input type="checkbox" name="enabled" checked={s.enabled} class="h-4 w-4" />
+              <span class="text-xs font-bold text-gray-600">Shown in rotation</span>
+            </label>
+          </div>
+
+          {s.saleEnded && (
+            <p class="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-2 text-xs font-bold">
+              This sale's end date has passed — the slide is enabled but the countdown will not show. Update the sale end, or turn it off.
+            </p>
+          )}
+          {s.errors.length > 0 && (
+            <ul class="bg-red-50 border border-red-200 text-red-900 rounded-lg p-3 text-xs space-y-1">
+              {s.errors.map((e) => <li><strong>{e.field}</strong>: {e.message}</li>)}
+            </ul>
+          )}
+
+          <label class="block">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Kicker <span data-counter data-limit={HERO_LIMITS.kicker} class="text-gray-300"></span></span>
+            <input type="text" name="kicker" value={s.kicker} data-count-input class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
+          </label>
+
+          <label class="block">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Headline <span data-counter data-limit={HERO_LIMITS.headline} data-strip-em class="text-gray-300"></span></span>
+            <input type="text" name="headline" value={s.headline} data-count-input data-strip-em class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
+            <span class="text-[11px] text-gray-400">Wrap the words you want in green with <code>&lt;em&gt;</code> and <code>&lt;/em&gt;</code>. Two or three words maximum — the green is an accent, not a highlighter.</span>
+          </label>
+
+          <label class="block">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Subcopy <span data-counter data-limit={HERO_LIMITS.subcopy} class="text-gray-300"></span></span>
+            <textarea name="subcopy" rows="2" data-count-input class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm">{s.subcopy}</textarea>
+          </label>
+
+          <div class="grid sm:grid-cols-2 gap-4">
+            <label class="block">
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">CTA label <span data-counter data-limit={HERO_LIMITS.ctaLabel} class="text-gray-300"></span></span>
+              <input type="text" name="ctaLabel" value={s.ctaLabel} data-count-input class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
+            </label>
+            <label class="block">
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">CTA link</span>
+              <input type="text" name="ctaUrl" value={s.ctaUrl} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm font-mono" placeholder="/shop" />
+            </label>
+          </div>
+
+          <label class="block">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Fine print <span data-counter data-limit={HERO_LIMITS.finePrint} class="text-gray-300"></span></span>
+            <input type="text" name="finePrint" value={s.finePrint} data-count-input class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
+          </label>
+
+          <div class="grid sm:grid-cols-2 gap-4">
+            <label class="block">
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Image URL</span>
+              <input type="text" name="imageUrl" value={s.imageUrl} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm font-mono" placeholder="/hero/… , /media/… or /products/….webp" />
+              <span class="text-[11px] text-gray-400">Stage slides: a product on a plain white background, square, exported JPEG q80–85. Bleed slides: landscape lifestyle photo, 2000px+, JPEG q80–85. Never upload a PNG photo.</span>
+            </label>
+            <label class="block">
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Image alt text</span>
+              <input type="text" name="imageAlt" value={s.imageAlt} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
+            </label>
+          </div>
+
+          <div class="grid sm:grid-cols-3 gap-4">
+            <label class="block">
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Theme</span>
+              <select name="theme" class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm">{THEMES.map((t) => <option value={t} selected={s.theme === t}>{t}</option>)}</select>
+            </label>
+            <label class="block">
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Tint</span>
+              <select name="tint" class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm">{TINTS.map((t) => <option value={t} selected={s.tint === t}>{t}</option>)}</select>
+            </label>
+            <label class="block">
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Priority (0–100)</span>
+              <input type="number" name="priority" min="0" max="100" value={s.priority} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
+            </label>
+          </div>
+
+          <input type="hidden" name="media" value={s.media} />
+
+          <details class="rounded-lg border border-gray-200 p-3">
+            <summary class="text-[10px] font-black uppercase tracking-widest text-gray-400 cursor-pointer">Campaign data (advanced)</summary>
+            <p class="text-[11px] text-gray-400 mt-2">JSON for this campaign's extras — e.g. flash: saleEndsIso, originalPriceUgx, salePriceUgx, savePct · welcome: promoCode · sameday: cutoffHour · fees: fees[] · scratch: prizes[] · loyalty: points, goalLabel.</p>
+            <textarea name="extras" rows="4" class="mt-2 w-full border border-gray-300 rounded-lg p-2 text-xs font-mono">{jsonPretty(s.extras)}</textarea>
+          </details>
+
+          <div class="flex justify-end">
+            <button type="submit" class="bg-brand-primary text-brand-charcoal font-black text-xs uppercase tracking-widest rounded-xl px-5 py-3">Save “{s.slideKey}”</button>
+          </div>
+        </form>
+      </section>
+    ))}
+  </div>
+</AdminLayout>
+
+<script>
+  // Live character counters (progressive enhancement over the server limits).
+  const stripEm = (v: string) => v.replace(/<\/?em>/gi, '');
+  document.querySelectorAll<HTMLElement>('[data-counter]').forEach((counter) => {
+    const label = counter.closest('label');
+    const input = label?.querySelector<HTMLInputElement | HTMLTextAreaElement>('[data-count-input]');
+    if (!input) return;
+    const limit = Number(counter.getAttribute('data-limit') || '0');
+    const strip = counter.hasAttribute('data-strip-em');
+    const paint = () => {
+      const len = (strip ? stripEm(input.value) : input.value).length;
+      counter.textContent = `${len}/${limit}`;
+      counter.style.color = len > limit ? '#dc2626' : '#cbd5e1';
+    };
+    input.addEventListener('input', paint);
+    paint();
+  });
+</script>

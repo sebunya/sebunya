@@ -28,6 +28,7 @@ export * from './types/checkout';
 export * from './checkout-intent';
 export * from './cart-credential';
 export * from './analytics';
+export * from './hero';
 export * from './locations/uganda';
 export * from './locations/uganda-geo';
 export * from './locations/folding';

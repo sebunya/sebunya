@@ -78,6 +78,8 @@ import { DrizzleSocialIdentityRepository } from './db/repositories/DrizzleSocial
 import { NotificationResetDelivery } from './identity/NotificationResetDelivery';
 import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../application/use-cases/identity/PasswordResetUseCases';
 import { DrizzleProductCostRepository } from './db/repositories/DrizzleProductCostRepository';
+import { DrizzleHeroRepository } from './db/repositories/DrizzleHeroRepository';
+import { HeroContentService } from '../application/hero/HeroContentService';
 import {
   AbandonStaleUnpaidOrdersUseCase,
   AlertOnLedgerMismatchUseCase,
@@ -1565,6 +1567,10 @@ export class Registry {
     this.accountRecoveryRepo,
     this.passwordHasher,
   );
+
+  /** Homepage hero content (0107): the 12-slide library and its settings. */
+  public readonly heroRepo = new DrizzleHeroRepository();
+  public readonly heroContentService = new HeroContentService(this.heroRepo);
 
   /** The ONE product-cost owner: what a product cost, from when, on whose authority. */
   public readonly productCostRepo = new DrizzleProductCostRepository();

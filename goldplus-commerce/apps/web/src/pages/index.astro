@@ -6,6 +6,7 @@ import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
 import RecentlyViewedRail from '../components/recommendations/RecentlyViewedRail.astro';
 import CartAwareRail from '../components/home/CartAwareRail.astro';
+import HeroSlider from '../components/hero/HeroSlider.astro';
 import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
 import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
 import { getCleanCatalog } from '../lib/catalog/catalog';
@@ -45,29 +46,8 @@ const usedProductIds = [
 
 <BaseLayout title="Premium electronics — Uganda">
 
-  {/* 1. Hero */}
-  <section class="bg-gradient-to-b from-white to-slate-50 flex-grow flex flex-col justify-center items-center text-center px-4 py-20 lg:py-28 border-b border-slate-100">
-    <div class="max-w-3xl mx-auto">
-      <span class="inline-block py-1.5 px-3.5 rounded-full bg-brand-primary/15 text-gray-900 text-xs font-black tracking-wider uppercase mb-6 border border-brand-primary/20">
-        Guaranteed authenticity
-      </span>
-      <h1 class="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight text-gray-900 mb-6 leading-tight">
-        Power your lifestyle with <span class="text-brand-primary">GoldPlus</span>
-      </h1>
-      <p class="text-base md:text-lg text-slate-500 mb-8 max-w-2xl mx-auto leading-relaxed">
-        Engineered for the Ugandan market. Durable, reliable, verified original electronics. Power, sound, storage and car accessories.
-      </p>
- 
-      <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="/shop" class="w-full sm:w-auto bg-brand-primary text-gray-950 px-8 py-3.5 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/25 transition-all hover:scale-[1.01] active:scale-95 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none text-[15px]">
-          Shop all products
-        </a>
-        <a href="/verification" class="w-full sm:w-auto bg-white text-gray-800 border border-slate-200 px-8 py-3.5 rounded-full font-bold hover:bg-slate-50 transition-all hover:scale-[1.01] active:scale-95 focus-visible:ring-4 focus-visible:ring-slate-200/50 outline-none text-[15px] shadow-xs">
-          Verify product
-        </a>
-      </div>
-    </div>
-  </section>
+  {/* 1. Hero — CMS-driven 12-slide personalised slider (ported 2026-08-07) */}
+  <HeroSlider />
 
   {/* Cart-Aware Continue Journey Banner (Only when active cart items exist) */}
   <div class="container mx-auto px-4 lg:px-8">

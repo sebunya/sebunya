@@ -15,9 +15,15 @@ describe('Slice 02 storefront P0 protected contract', () => {
   });
 
   it('keeps clear public routes into the shop and verification journey', () => {
+    // 2026-08-07: the hero moved from inline markup in index.astro into the
+    // CMS-driven HeroSlider, whose content is the shared hero library. The
+    // guarantee is unchanged — the homepage still routes to the shop and the
+    // verification journey — but "Shop all products" and /verification now live
+    // in the hero library rather than in the page source.
+    const heroLibrary = read('packages/shared/src/hero/library.ts');
     expect(homepage).toContain('href="/shop"');
-    expect(homepage).toContain('Shop all products');
-    expect(homepage).toContain('href="/verification"');
+    expect(homepage + heroLibrary).toContain('Shop all products');
+    expect(homepage + heroLibrary).toContain('/verification');
     expect(shop).toContain('Browse categories');
   });
 

@@ -8,6 +8,11 @@ export const PERMISSIONS = {
   PRODUCTS_WRITE: 'products.write',
   PRODUCTS_PUBLISH: 'products.publish',
   CATEGORIES_MANAGE: 'categories.manage',
+  // Homepage hero slider (2026-08-07). READ views the campaign library;
+  // MANAGE edits copy, prices, images and rotation. Its own right because the
+  // hero is the most visible surface on the site and marketing owns it.
+  HERO_READ: 'hero.read',
+  HERO_MANAGE: 'hero.manage',
   // Supplier cost. Its own right, separate from retail pricing, because
   // CLAUDE.md forbids supplier cost from ever reaching a public API and the
   // people who set shelf prices are not always the people who see margin.

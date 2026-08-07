@@ -19,6 +19,7 @@ import { startOutboxTicker, gracefulStopOutboxTicker } from '../../infrastructur
 import { startLoyaltyDailyTicker, stopLoyaltyDailyTicker } from '../../infrastructure/scheduler/LoyaltyDailyTicker';
 import { startPaymentReconcileTicker, stopPaymentReconcileTicker } from '../../infrastructure/scheduler/PaymentReconcileTicker';
 import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
+import { runHeroSlideSeedAtBoot } from '../../infrastructure/hero/HeroSlideSeeder';
 import { templateOverrideCache } from '../../infrastructure/notifications/TemplateOverrideCache';
 import { endDbConnection } from '../../infrastructure/db/client';
 import { QueueService } from '../../infrastructure/queues/QueueService';
@@ -44,6 +45,8 @@ const server = serve({
     registerAllWorkers();
     // Converge DB permissions on the code registry (advisory-locked, add-only).
     void runPermissionRegistrySyncAtBoot();
+    // Ensure the hero library exists (idempotent, add-only, never overwrites edits).
+    void runHeroSlideSeedAtBoot();
     // Notification wording overrides: load published rows now, refresh every minute.
     templateOverrideCache.start();
   }
