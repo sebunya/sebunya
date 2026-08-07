@@ -43,3 +43,17 @@ export const heroSettings = pgTable('hero_settings', {
   updatedBy: uuid('updated_by'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+/** Hero telemetry (0108): per-slide impressions and clicks, its own owner. */
+export const heroEvents = pgTable('hero_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  eventType: varchar('event_type', { length: 12 }).notNull(),
+  slideKey: varchar('slide_key', { length: 24 }).notNull(),
+  position: integer('position').default(0).notNull(),
+  segment: varchar('segment', { length: 16 }).default('unknown').notNull(),
+  profileId: uuid('profile_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  slideIdx: index('hero_events_slide_idx').on(table.slideKey, table.eventType),
+  createdIdx: index('hero_events_created_idx').on(table.createdAt),
+}));

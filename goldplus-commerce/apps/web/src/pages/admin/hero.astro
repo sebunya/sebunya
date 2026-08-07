@@ -85,12 +85,17 @@ let settings: Settings = { slidesShown: 4, dwellMs: 6000, autoplay: true };
 let denied = false;
 let loadError: string | null = null;
 
+type ReportRow = { slideKey: string; impressions: number; clicks: number; ctr: number | null };
+let report: ReportRow[] = [];
+
 try {
-  const res = await authed('/admin/hero');
+  const [res, rep] = await Promise.all([authed('/admin/hero'), authed('/admin/hero/report?windowDays=30')]);
   const json = await res.json().catch(() => null);
   if (res.status === 401 || res.status === 403) denied = true;
   else if (!res.ok || !json?.success) loadError = json?.error?.message ?? `Could not load the hero library (HTTP ${res.status}).`;
   else { slides = json.data.slides; settings = json.data.settings; }
+  const repJson = await rep.json().catch(() => null);
+  if (rep.ok && repJson?.success) report = repJson.data.slides ?? [];
 } catch { loadError = 'Could not reach the API.'; }
 
 const THEMES = ['offer', 'logistics', 'loyalty', 'product', 'brand', 'trust'];
@@ -129,6 +134,32 @@ const jsonPretty = (v: unknown) => { try { return JSON.stringify(v ?? {}, null, 
           <ul class="mt-2 space-y-1 text-xs">{notice.details.map((d) => <li><strong>{d.field}</strong>: {d.message}</li>)}</ul>
         )}
       </div>
+    )}
+
+    {!denied && report.length > 0 && (
+      <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8 overflow-x-auto">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Performance — last 30 days</h3>
+        <p class="text-[11px] text-gray-400 mb-4">Per-slide impressions, clicks and click-through. CTR is withheld until a slide has enough impressions to be more than noise. A slide sitting near the bottom is a candidate to rewrite or cut.</p>
+        <table class="min-w-[520px] w-full text-left text-xs">
+          <caption class="sr-only">Hero slide performance over the last 30 days</caption>
+          <thead class="bg-slate-950 text-white"><tr>
+            <th scope="col" class="px-4 py-2 font-black">Slide</th>
+            <th scope="col" class="px-4 py-2 font-black text-right">Impressions</th>
+            <th scope="col" class="px-4 py-2 font-black text-right">Clicks</th>
+            <th scope="col" class="px-4 py-2 font-black text-right">CTR</th>
+          </tr></thead>
+          <tbody class="divide-y divide-slate-100">
+            {report.map((r) => (
+              <tr>
+                <th scope="row" class="px-4 py-2 font-bold text-brand-dark text-left">{r.slideKey}</th>
+                <td class="px-4 py-2 text-right">{r.impressions.toLocaleString('en-UG')}</td>
+                <td class="px-4 py-2 text-right">{r.clicks.toLocaleString('en-UG')}</td>
+                <td class="px-4 py-2 text-right font-black">{r.ctr === null ? <span class="text-gray-300">not enough data</span> : `${r.ctr}%`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
     )}
 
     {!denied && (

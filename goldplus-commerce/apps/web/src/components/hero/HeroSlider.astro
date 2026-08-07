@@ -102,8 +102,14 @@ const configJson = JSON.stringify(config);
     {slides.map((s) => {
       const isLead = s.slideKey === leadKey;
       const ex = s.extras || {};
+      // Product-AGNOSTIC stage slides may show the visitor's preferred product
+      // in the arch (Task 3 A). Slides whose copy names a product (flash sells
+      // power banks; welcome shows a specific unit) opt out, so the image can
+      // never contradict the words.
+      const PRODUCT_AGNOSTIC = new Set(['sameday', 'fees', 'loyalty', 'nostories', 'authentic']);
+      const agnostic = s.media === 'stage' && PRODUCT_AGNOSTIC.has(s.slideKey);
       return (
-        <div class="gp-hero__slide" data-id={s.slideKey} data-theme={s.theme} data-tint={s.tint} data-media={s.media} data-active={isLead ? '' : undefined} hidden={isLead ? undefined : true}>
+        <div class="gp-hero__slide" data-id={s.slideKey} data-theme={s.theme} data-tint={s.tint} data-media={s.media} data-priority={String(s.priority ?? 0)} data-product-agnostic={agnostic ? '1' : undefined} data-active={isLead ? '' : undefined} hidden={isLead ? undefined : true}>
           {s.media === 'bleed' && (
             <div class="gp-hero__bleed">
               <img src={s.imageUrl} alt={s.imageAlt} width="1400" height="933" loading={isLead ? 'eager' : 'lazy'} fetchpriority={isLead ? 'high' : undefined} decoding="async" />
@@ -800,18 +806,16 @@ const configJson = JSON.stringify(config);
 
   var CMS = (typeof window !== 'undefined' && window.__GPHERO) || {};
   var CONFIG = {
-    // CMS-driven (0107): a marketer changes these without a deploy.
     show: CMS.show || 4,
     dwell: CMS.dwell || 6000,
     autoplay: CMS.autoplay !== false,
-    flashSaleEnds: CMS.flashSaleEnds || null,     // EAT ISO from the flash slide
+    flashSaleEnds: CMS.flashSaleEnds || null,
     cutoffHour: (typeof CMS.cutoffHour === 'number') ? CMS.cutoffHour : 17,
-    keys: { visits:'gp_visits', last:'gp_last', scratch:'gp_scratch', cats:'gp_cats' },
+    keys: { visits:'gp_visits', last:'gp_last', scratch:'gp_scratch', cats:'gp_cats', cart:'goldplus_cart_data' },
     prizes: (CMS.prizes && CMS.prizes.length) ? CMS.prizes : [ {pct:5,code:'GP5',w:45},{pct:10,code:'GP10',w:32},{pct:15,code:'GP15',w:18},{pct:20,code:'GP20',w:5} ],
-    /* one entry per slide: when() gates eligibility, score() ranks it.
-       themeCap stops the hero showing two of the same kind of message. */
     themeCap: { offer:2, logistics:1, loyalty:1, product:1, brand:1, trust:1 },
-    funnel:   { offer:1, product:2, logistics:3, loyalty:4, brand:5, trust:6 }
+    funnel:   { offer:1, product:2, logistics:3, loyalty:4, brand:5, trust:6 },
+    priorityWeight: 0.5   // CMS priority (0-100) nudges score without overriding caps
   };
 
   var box = document.getElementById('gpHero');
@@ -847,7 +851,10 @@ const configJson = JSON.stringify(config);
     saleLive: isFinite(saleEnd) ? Date.now() < saleEnd : true,
     scratched: scratched,
     referred: /[?&](ref|utm_campaign=referral)/i.test(location.search),
-    cats: (store.get(CONFIG.keys.cats) || '').split(',').filter(Boolean)
+    cats: (store.get(CONFIG.keys.cats) || '').split(',').filter(Boolean),
+    // Task 3 signal fields — populated by gatherSignals() before selection.
+    cartItems: 0, hasOrdered: false, loyalty: null, stock: {}, serverCats: [],
+    preferredProduct: null, lateEvening: (now.getHours() >= 21 || now.getHours() < 5)
   };
   /* QA overrides: ?gp=new | returning | regular | expired | aftercutoff */
   var force = qs('gp');
@@ -856,30 +863,90 @@ const configJson = JSON.stringify(config);
   if (force === 'regular')    { CTX.isNew = false; CTX.isReturning = true;  CTX.isRegular = true; }
   if (force === 'expired')    { CTX.saleLive = false; }
   if (force === 'aftercutoff'){ CTX.beforeCutoff = false; }
+  if (force === 'hasordered'){ CTX.hasOrdered = true; CTX.forceHasOrdered = true; }
+  if (force === 'cart'){ CTX.cartItems = 2; CTX.forceCart = true; }
+  if (force === 'evening'){ CTX.lateEvening = true; }
+  var forceAffinity = qs('affinity'); if (forceAffinity){ CTX.serverCats = [{categorySlug: forceAffinity, score: 99}]; }
 
   /* ---------------- the 12-slide library ---------------- */
+  // Category affinity (A): does a category the visitor engages with match a
+  // campaign? A small, honest boost, never a takeover of the ranking.
+  function affinityBoost(c, cat){ for (var i=0;i<c.serverCats.length;i++){ if (c.serverCats[i].categorySlug === cat) return 12; } return 0; }
   var LIB = {
-    flash:      { when:function(c){ return c.saleLive; },            score:function(){ return 100; } },
-    welcome:    { when:function(c){ return c.isNew; },               score:function(){ return 96; } },
-    referral:   { when:function(c){ return c.isReturning; },         score:function(c){ return c.isRegular ? 88 : 74; } },
+    // Stock gate (E): a flash sale on a sold-out SKU is a broken promise.
+    flash:      { when:function(c){ return c.saleLive && c.stockFlash !== false; }, score:function(){ return 100; } },
+    // Cart & order state (B): past acquisition → suppress the first-order promo.
+    welcome:    { when:function(c){ return c.isNew && !c.hasOrdered && c.cartItems === 0; }, score:function(){ return 96; } },
+    // A prior buyer is worth more on referral/loyalty than on another discount.
+    referral:   { when:function(c){ return c.isReturning || c.hasOrdered; }, score:function(c){ return (c.isRegular || c.hasOrdered) ? 88 : 74; } },
     sameday:    { when:function(){ return true; },                   score:function(c){ return c.beforeCutoff ? 92 : 46; } },
     fees:       { when:function(){ return true; },                   score:function(c){ return c.isNew ? 80 : 62; } },
     ambassador: { when:function(){ return true; },                   score:function(c){ return c.isNew ? 70 : 58; } },
-    newarrivals:{ when:function(){ return true; },                   score:function(c){ return c.isRegular ? 90 : 60; } },
-    range:      { when:function(){ return true; },                   score:function(c){ return c.isNew ? 78 : 50; } },
-    loyalty:    { when:function(c){ return !c.isNew; },              score:function(c){ return c.isRegular ? 86 : 66; } },
+    // Regulars and browsers late in the evening lean to new stock; affinity lifts it.
+    newarrivals:{ when:function(){ return true; },                   score:function(c){ return (c.isRegular?90:60) + (c.lateEvening?10:0) + affinityBoost(c,'sound') + affinityBoost(c,'storage'); } },
+    range:      { when:function(){ return true; },                   score:function(c){ return (c.isNew?78:50) + (c.lateEvening?8:0) + (c.serverCats.length?8:0); } },
+    loyalty:    { when:function(c){ return !c.isNew || c.hasOrdered; }, score:function(c){ return (c.isRegular||c.hasOrdered) ? 86 : 66; } },
     scratch:    { when:function(c){ return !c.scratched; },          score:function(c){ return c.isReturning ? 84 : 72; } },
     nostories:  { when:function(){ return true; },                   score:function(c){ return c.isNew ? 82 : 56; } },
     authentic:  { when:function(){ return true; },                   score:function(c){ return c.isNew ? 76 : 44; } }
   };
 
+
+  /* ---------------- Task 3: gather server + client signals ----------------
+     Runs BEFORE the first selection but AFTER the neutral SSR lead has already
+     painted, so it is never on the critical path. Everything degrades: a
+     failure or timeout leaves the local-only CTX (the shipped behaviour).
+     Cache-safe — the per-visitor call is no-store and same-origin. */
+  function heroSegment(){ return CTX.isRegular ? 'regular' : CTX.isReturning ? 'returning' : CTX.isNew ? 'new' : 'unknown'; }
+  function readCartItems(){
+    try {
+      var m = document.cookie.match(/(?:^|; )goldplus_cart_data=([^;]+)/);
+      if (!m) return 0;
+      var data = JSON.parse(decodeURIComponent(m[1]));
+      var items = (data && data.items) || [];
+      return items.reduce(function(a,it){ return a + (it.quantity || 0); }, 0);
+    } catch(e){ return 0; }
+  }
+  function gatherSignals(){
+    if (!CTX.forceCart) CTX.cartItems = readCartItems();
+    var flashStage = box.querySelector('.gp-hero__slide[data-id="flash"] .gp-hero__stage');
+    var flashSlug = null;
+    if (flashStage){ var mm = (flashStage.getAttribute('data-img')||'').match(/\/products\/([a-z0-9-]+)\.webp/i); flashSlug = mm && mm[1]; }
+    return new Promise(function(resolve){
+      var done = false, finish = function(){ if (done) return; done = true; resolve(); };
+      var timer = setTimeout(finish, 700);
+      try {
+        fetch('/api/hero/signals', { credentials: 'same-origin' })
+          .then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(j){
+            var d = j && j.success && j.data;
+            if (d){
+              if (!CTX.forceHasOrdered) CTX.hasOrdered = !!d.hasOrdered;
+              CTX.loyalty = d.loyalty || null;
+              CTX.stock = d.stockBySlug || d.stock || {};
+              if (!qs('affinity')) CTX.serverCats = d.categoryAffinity || [];
+              CTX.preferredProduct = d.preferredProduct || null;
+              if (flashSlug && CTX.stock && Object.prototype.hasOwnProperty.call(CTX.stock, flashSlug)) CTX.stockFlash = CTX.stock[flashSlug];
+            }
+          })
+          .catch(function(){})
+          .then(function(){ clearTimeout(timer); finish(); });
+      } catch(e){ clearTimeout(timer); finish(); }
+    });
+  }
+
+  function boot(){
   /* ---------------- selection ---------------- */
   var all = [].slice.call(box.querySelectorAll('.gp-hero__slide'));
   var pool = all.map(function(el){
     var id = el.getAttribute('data-id'), cfg = LIB[id] || {};
+    var base = cfg.score ? cfg.score(CTX) : 0;
+    var pr = parseInt(el.getAttribute('data-priority') || '0', 10) || 0;
     return { el:el, id:id, theme:el.getAttribute('data-theme'),
              ok: cfg.when ? cfg.when(CTX) : true,
-             score: cfg.score ? cfg.score(CTX) : 0 };
+             // CMS priority nudges ranking (§4.3); it is added, so it can never
+             // override the theme caps applied after the sort.
+             score: base + pr * CONFIG.priorityWeight };
   }).filter(function(s){ return s.ok; });
 
   pool.sort(function(a,b){ return b.score - a.score; });
@@ -978,7 +1045,12 @@ const configJson = JSON.stringify(config);
     contactEl.style.width = (r.width*0.68) + 'px';
     contactEl.style.top   = (segsBox.top - b.top + segsBox.height/2 - 1) + 'px';
     contactEl.setAttribute('data-on','');
-    var src = st.getAttribute('data-img');
+    // Category affinity (Task 3 A): on a product-AGNOSTIC stage slide, swap in
+    // the visitor's preferred in-stock product so the arch matches their
+    // interest. Slides whose copy names a product (flash, welcome) opt out.
+    var pref = (CTX.preferredProduct && s.getAttribute('data-product-agnostic') === '1') ? CTX.preferredProduct : null;
+    var src = pref ? pref.imageUrl : st.getAttribute('data-img');
+    if (pref) st.setAttribute('data-alt', pref.alt);
     if (src && archImg.getAttribute('src') !== src){
       archImg.classList.remove('is-in');
       archImg.style.transform = '';
@@ -1257,6 +1329,39 @@ const configJson = JSON.stringify(config);
     }
   })();
 
-  paint(); restart();
+    /* Task 3 measurement — per-slide impression (active >= 1s) and CTA click,
+       by segment and position, to the hero's OWN endpoint. Fire-and-forget. */
+    (function heroInstrument(){
+      var seg = heroSegment(), impressed = {}, impTimer = null;
+      function emit(type, key, pos){
+        try {
+          var body = JSON.stringify({ eventType: type, slideKey: key, position: pos, segment: seg });
+          if (type === 'CLICK' && navigator.sendBeacon){ navigator.sendBeacon('/api/hero/events', new Blob([body], {type:'application/json'})); return; }
+          fetch('/api/hero/events', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', keepalive:true, body:body }).catch(function(){});
+        } catch(e){}
+      }
+      function armImpression(){
+        if (impTimer) clearTimeout(impTimer);
+        var s = slides[index]; if (!s) return;
+        var key = s.getAttribute('data-id'), pos = index + 1;
+        if (impressed[key]) return;
+        impTimer = setTimeout(function(){
+          if (slides[index] && slides[index].getAttribute('data-id') === key && !document.hidden){ impressed[key] = true; emit('IMPRESSION', key, pos); }
+        }, 1000);
+      }
+      var _paint = paint;
+      paint = function(){ _paint(); armImpression(); };
+      box.addEventListener('click', function(e){
+        var cta = e.target && e.target.closest && e.target.closest('.gp-hero__cta');
+        if (!cta) return;
+        var s = slides[index]; if (s) emit('CLICK', s.getAttribute('data-id'), index + 1);
+      });
+      armImpression();
+    })();
+
+    paint(); restart();
+  }
+
+  gatherSignals().then(boot).catch(boot);
 })();
 </script>

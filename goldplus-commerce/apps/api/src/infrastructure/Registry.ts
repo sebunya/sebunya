@@ -80,6 +80,8 @@ import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../applicatio
 import { DrizzleProductCostRepository } from './db/repositories/DrizzleProductCostRepository';
 import { DrizzleHeroRepository } from './db/repositories/DrizzleHeroRepository';
 import { HeroContentService } from '../application/hero/HeroContentService';
+import { HeroSignalsService } from './hero/HeroSignalsService';
+import { HeroTelemetryService } from './hero/HeroTelemetryService';
 import {
   AbandonStaleUnpaidOrdersUseCase,
   AlertOnLedgerMismatchUseCase,
@@ -1571,6 +1573,8 @@ export class Registry {
   /** Homepage hero content (0107): the 12-slide library and its settings. */
   public readonly heroRepo = new DrizzleHeroRepository();
   public readonly heroContentService = new HeroContentService(this.heroRepo);
+  public readonly heroSignalsService = new HeroSignalsService();
+  public readonly heroTelemetryService = new HeroTelemetryService();
 
   /** The ONE product-cost owner: what a product cost, from when, on whose authority. */
   public readonly productCostRepo = new DrizzleProductCostRepository();

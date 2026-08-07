@@ -84,4 +84,10 @@ routes.put('/settings', requirePermissions([PERMISSIONS.HERO_MANAGE]), async (c)
   return c.json({ success: true, data: { settings } });
 });
 
+routes.get('/report', requirePermissions([PERMISSIONS.HERO_READ]), async (c) => {
+  const windowDays = Math.min(365, Math.max(1, Number(c.req.query('windowDays')) || 30));
+  const report = await Registry.getInstance().heroTelemetryService.report(windowDays);
+  return c.json({ success: true, data: report });
+});
+
 export default routes;

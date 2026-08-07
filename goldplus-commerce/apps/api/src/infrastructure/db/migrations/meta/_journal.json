@@ -757,6 +757,13 @@
       "when": 1789473600000,
       "tag": "0107_hero_slides",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "5",
+      "when": 1789477200000,
+      "tag": "0108_hero_events",
+      "breakpoints": true
     }
   ]
 }
