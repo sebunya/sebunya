@@ -46,8 +46,12 @@ const usedProductIds = [
 
 <BaseLayout title="Premium electronics — Uganda">
 
-  {/* 1. Hero — CMS-driven 12-slide personalised slider (ported 2026-08-07) */}
-  <HeroSlider />
+  {/* 1. Hero — CMS-driven 12-slide personalised slider (ported 2026-08-07).
+      Wrapped in the SAME content container as every rail/section below, so the
+      hero card aligns to the site's grid instead of juting out full-bleed. */}
+  <div class="container mx-auto px-4 lg:px-8">
+    <HeroSlider />
+  </div>
 
   {/* Cart-Aware Continue Journey Banner (Only when active cart items exist) */}
   <div class="container mx-auto px-4 lg:px-8">

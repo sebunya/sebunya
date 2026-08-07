@@ -234,12 +234,14 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
   --gph-ease:cubic-bezier(.22,1,.36,1); --gph-spring:cubic-bezier(.34,1.56,.64,1);
 }
 
-/* width:100% is load-bearing, not cosmetic: the homepage <main> is a flex
-   column, and .gp-hero's `margin:auto` disables cross-axis stretch, so without
-   an explicit width the section collapses to its padding (~56px) and the whole
-   hero renders blank. The reference carried this in its demo shell; it belongs
-   here for the same reason. max-width still caps it; auto margins still centre. */
-.gp-hero{width:100%;max-width:1180px;margin:16px auto 0;padding:0 28px;font-family:'Poppins',system-ui,sans-serif;}
+/* The hero is placed INSIDE the site's standard content container
+   (container mx-auto px-4 lg:px-8), the same one every rail and section uses,
+   so it aligns to the page grid rather than imposing its own width. It fills
+   that container (width:100%) and adds NO horizontal padding or max-width of
+   its own — the container owns both, which is what keeps the hero's left/right
+   edges flush with everything below it. Only a small top gap and the brand
+   font are the hero's own. */
+.gp-hero{width:100%;margin:16px 0 0;padding:0;font-family:'Poppins',system-ui,sans-serif;}
 /* if the mode changes mid-session, ease into it */
 .gp-hero__slide,.gp-hero__arch i,.gp-hero__cta,.gp-hero__bleed img,.gp-hero__arch img{
   transition-property:opacity,visibility,background,box-shadow,filter;
@@ -624,7 +626,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
    (0,2,0) so they beat the [data-media] rules instead of losing to them.
    ===================================================================== */
 @media (max-width:860px){
-  .gp-hero{padding:0 14px;}
+  .gp-hero{padding:0;}
   .gp-hero__box{height:clamp(568px,166vw,624px);border-radius:22px;}
 
   /* product band on top, copy beneath, content anchored to the top so it
@@ -683,7 +685,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
 /* Small phones (≤380px): 320px-wide screens still have to hold a headline,
    a countdown row and a full-width tap target without clipping. */
 @media (max-width:380px){
-  .gp-hero{padding:0 12px;}
+  .gp-hero{padding:0;}
   .gp-hero__ctrls{top:14px;right:12px;padding:3px;}
   .gp-hero__btn{width:42px;height:42px;font-size:17px;}
   .gp-hero__box{height:clamp(548px,175vw,584px);}
