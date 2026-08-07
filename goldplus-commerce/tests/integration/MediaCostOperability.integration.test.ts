@@ -101,16 +101,21 @@ suite("media-cost operability on real PostgreSQL", () => {
   });
 
   it("the ROAS denominator counts EVERY campaign, not the top 100 shown on screen", async () => {
-    // 120 campaigns of 1,000 each: a LIMIT 100 sum would report 100,000 and
-    // silently inflate ROAS by a fifth.
+    // media_cost_facts is shared with other suites in this database, so assert
+    // the DELTA this test causes rather than a global total — an exact total
+    // would pass or fail depending on which suites ran first.
+    const before = (await repo.getMediaSpend(30)).totalSpendMinor;
+
+    // 120 campaigns of 1,000 each: a LIMIT 100 sum would report at most 100 of
+    // them and silently inflate ROAS by a fifth.
     for (let i = 0; i < 120; i += 1) {
       await repo.insertMediaCostFact(
         fact({ campaign: `bulk-${suffix}-${String(i).padStart(3, "0")}`, spendMinor: 1_000 }),
       );
     }
+
     const spend = await repo.getMediaSpend(30);
-    const bulkTotal = 120 * 1_000;
-    expect(spend.totalSpendMinor).toBe(bulkTotal + 250_000);
+    expect(spend.totalSpendMinor - before).toBe(120 * 1_000);
     // The display list stays capped — totals and display are different questions.
     expect(spend.campaigns.length).toBeLessThanOrEqual(100);
   });

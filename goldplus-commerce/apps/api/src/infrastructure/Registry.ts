@@ -1537,10 +1537,18 @@ export class Registry {
     this.pesapalClient
   );
 
+  /** The ONE product-cost owner: what a product cost, from when, on whose authority. */
+  public readonly productCostRepo = new DrizzleProductCostRepository();
+
+  /** The ONE refund ledger: how much of a payment has already been given back. */
+  public readonly refundLedgerRepo = new DrizzleRefundLedgerRepository();
+
   public readonly verifyPesaPalPaymentUseCase = new VerifyPesaPalPaymentUseCase(
     this.pesapalPaymentRepo,
     this.pesapalClient,
-    this.orderTransitionService
+    this.orderTransitionService,
+    // The ledger decides whether a provider reversal was total or partial.
+    this.refundLedgerRepo,
   );
 
   /**
@@ -1820,12 +1828,6 @@ export class Registry {
     },
     (message, detail) => logger.error({ ...detail }, `ALERT ${message}`),
   );
-
-  /** The ONE product-cost owner: what a product cost, from when, on whose authority. */
-  public readonly productCostRepo = new DrizzleProductCostRepository();
-
-  /** The ONE refund ledger: how much of a payment has already been given back. */
-  public readonly refundLedgerRepo = new DrizzleRefundLedgerRepository();
 
   /** The refund path. Exists BEFORE it is needed; unexercised against real money. */
   public readonly refundPesaPalPaymentUseCase = new RefundPesaPalPaymentUseCase(

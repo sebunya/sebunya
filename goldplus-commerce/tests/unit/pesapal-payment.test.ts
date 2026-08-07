@@ -491,3 +491,102 @@ describe('PesaPal Payment Integration Unit Tests', () => {
     })).rejects.toThrow('PESAPAL_LIVE_GUARD_VIOLATION: Live mode callback URL');
   });
 });
+
+/* ── A partial refund must not cancel the order (2026-08-07) ─────────────── */
+
+describe('provider reversal is read against the refund ledger', () => {
+  const attempt: RecordedPaymentAttempt = {
+    id: 'attempt-uuid', orderId: 'order-123', merchantReference: 'ref-123',
+    orderTrackingId: 'track-123', amount: 500_000, currency: 'UGX', status: 'completed',
+    redirectUrl: null, provider: 'pesapal', ipnReceivedAt: null, callbackReceivedAt: null,
+    createdAt: new Date(), updatedAt: new Date(),
+  };
+
+  /** Self-contained fixtures: the outer suite's mocks are scoped to its own describe. */
+  const world = (refundedUgx: number) => {
+    const settled: string[] = [];
+    const paymentRepo = {
+      createPaymentAttempt: vi.fn(),
+      findByMerchantReference: vi.fn(),
+      findByTrackingId: vi.fn().mockResolvedValue(attempt),
+      updatePaymentAttemptStatus: vi.fn(),
+      updateOrderPaymentStatusSafely: vi.fn(),
+    } as any;
+    const orderTransition = {
+      transition: vi.fn().mockResolvedValue({
+        orderId: 'order-123', fromStatus: 'processing', toStatus: 'cancelled',
+        eventId: 'evt-1', idempotentReplay: false,
+      }),
+      history: vi.fn().mockResolvedValue([]),
+    } as any;
+    const pesapalClient = {
+      getTransactionStatus: vi.fn().mockResolvedValue({
+        order_tracking_id: 'track-123', merchant_reference: 'ref-123',
+        amount: 500_000, currency: 'UGX', status_code: 3, payment_status_description: 'REVERSED',
+      }),
+    } as any;
+    const ledger = {
+      async getRefundedTotalUgx() { return refundedUgx; },
+      // Outstanding by definition in these scenarios: a refund was requested
+      // and the provider is now reporting on it.
+      async hasOutstandingRefunds() { return refundedUgx > 0; },
+      async settleRefundsForAttempt(id: string) { settled.push(id); return 1; },
+      async reserveRefund() { throw new Error('not used'); },
+      async recordProviderOutcome() { /* not used */ },
+      async listRefundsForOrder() { return []; },
+    } as any;
+    const useCase = new VerifyPesaPalPaymentUseCase(paymentRepo, pesapalClient, orderTransition, ledger);
+    return { useCase, paymentRepo, orderTransition, settled };
+  };
+
+  const runReversal = async (refundedUgx: number) => {
+    const w = world(refundedUgx);
+    const output = await w.useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
+    return { ...w, output };
+  };
+
+  it('a PARTIAL refund leaves the order paid and does NOT cancel it', async () => {
+    // 5,000 back on a 500,000 order — a delivery-fee variance. Reading the
+    // provider's per-transaction REVERSED as total used to cancel the whole
+    // order and erase its revenue.
+    const { output, orderTransition, paymentRepo, settled } = await runReversal(5_000);
+
+    expect(output.status).toBe('completed');
+    expect(orderTransition.transition).not.toHaveBeenCalled();
+    expect(paymentRepo.updateOrderPaymentStatusSafely).not.toHaveBeenCalledWith('order-123', 'reversed');
+    // The provider confirmed it, so the in-flight refund is now settled.
+    expect(settled).toEqual(['attempt-uuid']);
+  });
+
+  it('a FULL refund still reverses and cancels, exactly as before', async () => {
+    const { output, orderTransition, settled } = await runReversal(500_000);
+    expect(output.status).toBe('reversed');
+    expect(orderTransition.transition).toHaveBeenCalledWith('order-123', 'cancelled', expect.objectContaining({
+      paymentStatus: 'reversed',
+    }));
+    expect(settled).toEqual(['attempt-uuid']);
+  });
+
+  it('a completed attempt with NO outstanding refund keeps its idempotent early return', async () => {
+    // The provider must not be re-asked on every duplicate callback; only an
+    // outstanding refund justifies looking again.
+    const { output, orderTransition, settled } = await runReversal(0);
+    expect(output.status).toBe('completed');
+    expect(output.message).toMatch(/ALREADY_COMPLETED/);
+    expect(orderTransition.transition).not.toHaveBeenCalled();
+    expect(settled).toEqual([]);
+  });
+
+  it('with NO ledger rows a reversal on a still-pending attempt is treated as TOTAL', async () => {
+    const w = world(0);
+    w.paymentRepo.findByTrackingId.mockResolvedValue({ ...attempt, status: 'pending' });
+    const output = await w.useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
+    expect(output.status).toBe('reversed');
+    expect(w.orderTransition.transition).toHaveBeenCalledWith('order-123', 'cancelled', expect.anything());
+  });
+
+  it('an over-refund (ledger >= collected) is total, never mistaken for partial', async () => {
+    const { output } = await runReversal(600_000);
+    expect(output.status).toBe('reversed');
+  });
+});

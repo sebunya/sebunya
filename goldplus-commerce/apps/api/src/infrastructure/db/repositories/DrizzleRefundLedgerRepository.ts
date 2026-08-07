@@ -170,6 +170,25 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
     return Number(row?.refunded ?? 0);
   }
 
+  async hasOutstandingRefunds(paymentAttemptId: string): Promise<boolean> {
+    const rows: any = await db.execute(sql`
+      select 1 from payment_refunds
+      where payment_attempt_id = ${paymentAttemptId}::uuid and status = 'requested'
+      limit 1
+    `);
+    return (Array.isArray(rows) ? rows : rows?.rows ?? []).length > 0;
+  }
+
+  async settleRefundsForAttempt(paymentAttemptId: string): Promise<number> {
+    const rows: any = await db.execute(sql`
+      update payment_refunds
+      set status = 'settled', settled_at = now()
+      where payment_attempt_id = ${paymentAttemptId}::uuid and status = 'requested'
+      returning id
+    `);
+    return (Array.isArray(rows) ? rows : rows?.rows ?? []).length;
+  }
+
   async listRefundsForOrder(orderId: string): Promise<RecordedRefund[]> {
     const rows: any = await db.execute(sql`
       select * from payment_refunds where order_id = ${orderId}::uuid order by created_at desc

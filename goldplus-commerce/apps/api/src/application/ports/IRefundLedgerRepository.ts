@@ -67,5 +67,26 @@ export interface IRefundLedgerRepository {
   /** Refunded totals for an attempt, excluding rejected rows. */
   getRefundedTotalUgx(paymentAttemptId: string): Promise<number>;
 
+  /**
+   * Is there a refund on this attempt still waiting on the provider?
+   *
+   * Verification returns early for an already-completed attempt, which is
+   * correct idempotency for a duplicate callback — but it also meant the
+   * provider was never asked again, so a reversal could never be observed and
+   * the completed→reversed edge the state machine declares was unreachable.
+   * An outstanding refund is the one reason to look again.
+   */
+  hasOutstandingRefunds(paymentAttemptId: string): Promise<boolean>;
+
+  /**
+   * The provider has confirmed the reversal: move every outstanding
+   * 'requested' refund on this attempt to 'settled'.
+   *
+   * Nothing wrote 'settled' before this existed — the completed→reversed edge
+   * had no writer at all, so a refund that actually landed left the ledger
+   * saying it was still in flight forever. Returns how many rows settled.
+   */
+  settleRefundsForAttempt(paymentAttemptId: string): Promise<number>;
+
   listRefundsForOrder(orderId: string): Promise<RecordedRefund[]>;
 }

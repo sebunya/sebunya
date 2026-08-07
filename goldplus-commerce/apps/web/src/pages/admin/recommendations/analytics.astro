@@ -59,6 +59,25 @@ const serving: ServingHealthPayload | null = servingRes.ok ? servingRes.data : n
 const lineage: LineageReportPayload | null = lineageRes.ok ? lineageRes.data : null;
 const searchIntel: SearchIntelligencePayload | null = searchIntelRes.ok ? searchIntelRes.data : null;
 
+/**
+ * "We could not ask" and "the answer is nothing" are different facts.
+ *
+ * These panels rendered the same reassuring sentence for both — a failed
+ * search-intelligence fetch printed "None recorded — no catalogue gap is
+ * wearing a customer's words", which is an affirmative claim about the
+ * business made from an error. A panel that could not load says so.
+ */
+const servingFailed = !servingRes.ok;
+const searchIntelFailed = !searchIntelRes.ok;
+const commercialFailed = !commercialRes.ok;
+const deniedCodes = new Set(["UNAUTHENTICATED", "PERMISSION_DENIED", "FORBIDDEN"]);
+const failureNote = (result: { ok: boolean; message?: string; code?: string }): string =>
+  result.ok
+    ? ""
+    : deniedCodes.has(String(result.code ?? ""))
+    ? "Your account lacks the permission for this panel — the API answered and declined."
+    : `Could not be loaded: ${result.message ?? "unknown error"}.`;
+
 const res = await getRecommendationAnalytics(token, {
   startDate,
   endDate,
@@ -116,16 +135,19 @@ const placements = [
     <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-10">
       <form id="analytics-filter-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
         <div>
-          <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Start Date</label>
-          <input type="date" name="startDate" value={startDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary" />
+          {/* `for`/`id` pairs: these labels were visually present but not
+              programmatically associated, so a screen reader announced four
+              unnamed controls. */}
+          <label for="filter-start-date" class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Start Date</label>
+          <input id="filter-start-date" type="date" name="startDate" value={startDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary" />
         </div>
         <div>
-          <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">End Date</label>
-          <input type="date" name="endDate" value={endDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary" />
+          <label for="filter-end-date" class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">End Date</label>
+          <input id="filter-end-date" type="date" name="endDate" value={endDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary" />
         </div>
         <div>
-          <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Placement</label>
-          <select name="placement" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary appearance-none">
+          <label for="filter-placement" class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Placement</label>
+          <select id="filter-placement" name="placement" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary appearance-none">
             <option value="">All Placements</option>
             {placements.map(p => (
               <option value={p.id} selected={placement === p.id}>{p.name}</option>
@@ -133,8 +155,8 @@ const placements = [
           </select>
         </div>
         <div>
-          <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Rule</label>
-          <select name="ruleId" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary appearance-none">
+          <label for="filter-rule" class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Rule</label>
+          <select id="filter-rule" name="ruleId" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary appearance-none">
             <option value="">All Rules</option>
             {allRules.map((r: any) => (
               <option value={r.id} selected={ruleId === r.id}>{r.name}</option>
@@ -144,6 +166,16 @@ const placements = [
         <div class="flex gap-2">
           <button type="submit" class="flex-1 bg-brand-dark text-white hover:bg-black px-4 py-2 rounded-lg font-bold text-xs transition-colors">Apply Filters</button>
           <a href="/admin/recommendations/analytics" class="px-4 py-2 border border-gray-200 text-gray-500 hover:text-brand-dark rounded-lg font-bold text-xs transition-colors">Reset</a>
+        </div>
+        {/* The filter sits above everything, so it looks like it governs
+            everything. It does not, and a filter that silently applies to some
+            panels is worse than one that says where it stops. */}
+        <div class="sm:col-span-2 lg:col-span-5">
+          <p class="text-[11px] text-gray-400 leading-relaxed">
+            These filters apply to the <strong>event summary and its three tables</strong> only. Serving truth
+            (7 days), search intelligence (10 days), model readiness and every commercial panel (30 days) each
+            read their own fixed window, stated on the panel.
+          </p>
         </div>
       </form>
     </div>
@@ -159,6 +191,16 @@ const placements = [
                 ? "There was an issue with your filters: end date cannot be earlier than start date."
                 : `There was an issue with your filters: ${(res as any).message?.toLowerCase() || "invalid date format."}`)
             : "We are unable to reach the commerce intelligence system. This usually means the API is temporarily down or there is a connectivity issue."}
+        </p>
+        {/* The panels below this one read their OWN fixed windows and do not
+            depend on the filtered call that just failed — but they render
+            inside its success branch, so they are hidden too. Saying which
+            data is missing and why beats letting an operator conclude the
+            commercial numbers are gone. */}
+        <p class="text-xs text-red-600/80 mt-3 max-w-md mx-auto">
+          Serving truth, search intelligence, model readiness and the commercial panels read their own fixed
+          windows and are unaffected by this failure — they are hidden only because they render alongside the
+          filtered summary. Reset the filter to see them.
         </p>
         <div class="mt-6">
           {((res as any).code === "END_BEFORE_START" || (res as any).code === "INVALID_DATE_RANGE" || (res as any).message?.toLowerCase().includes("date")) ? (
@@ -206,7 +248,7 @@ const placements = [
             <h4 class="text-2xl font-black text-brand-dark">{fmtPct(data!.summary.addToCartRate)}</h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Recommendation Share</p>
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Share of events rule-attributed</p>
             <h4 class="text-2xl font-black text-brand-dark">
               {data!.summary.totalEvents > 0 ? fmtPct(data!.summary.attributedEvents / data!.summary.totalEvents) : '—'}
             </h4>
@@ -615,7 +657,9 @@ const placements = [
             <span class="text-[10px] text-gray-400 font-bold">source: engine response events</span>
           </div>
           <div class="p-6 overflow-x-auto">
-            {serving && serving.placements.length > 0 ? (
+            {servingFailed ? (
+              <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">Serving truth is unavailable, so nothing below is measured — it is unknown. {failureNote(servingRes)}</p>
+            ) : serving && serving.placements.length > 0 ? (
               <table class="w-full text-sm">
                 <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500">
                   <tr><th class="text-left py-2">Placement</th><th class="text-right px-3">Served</th><th class="text-right px-3">Empty</th><th class="text-right px-3">Via fallback</th><th class="text-right px-3">Last served</th></tr>
@@ -681,7 +725,9 @@ const placements = [
           <div class="p-6 grid md:grid-cols-3 gap-6">
             <div>
               <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Top queries</h4>
-              {searchIntel && searchIntel.topQueries.length > 0 ? (
+              {searchIntelFailed ? (
+                <p class="text-xs text-amber-700">Unavailable — not measured. {failureNote(searchIntelRes)}</p>
+              ) : searchIntel && searchIntel.topQueries.length > 0 ? (
                 <ul class="space-y-1">{searchIntel.topQueries.map((q) => (
                   <li class="text-xs text-gray-700 flex justify-between border-b border-gray-100 py-1"><span>{q.query}</span><span class="font-black">{q.searchCount}</span></li>
                 ))}</ul>
@@ -689,7 +735,9 @@ const placements = [
             </div>
             <div>
               <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Zero-result searches</h4>
-              {searchIntel && searchIntel.zeroResultQueries.length > 0 ? (
+              {searchIntelFailed ? (
+                <p class="text-xs text-amber-700">Unavailable — not measured. {failureNote(searchIntelRes)}</p>
+              ) : searchIntel && searchIntel.zeroResultQueries.length > 0 ? (
                 <ul class="space-y-1">{searchIntel.zeroResultQueries.map((q) => (
                   <li class="text-xs text-gray-700 flex justify-between border-b border-gray-100 py-1"><span>{q.query}</span><span class="font-black text-red-600">{q.zeroResultCount}</span></li>
                 ))}</ul>
@@ -697,7 +745,9 @@ const placements = [
             </div>
             <div>
               <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Clicked, never bought</h4>
-              {searchIntel && searchIntel.clickedNeverConverted.length > 0 ? (
+              {searchIntelFailed ? (
+                <p class="text-xs text-amber-700">Unavailable — not measured. {failureNote(searchIntelRes)}</p>
+              ) : searchIntel && searchIntel.clickedNeverConverted.length > 0 ? (
                 <ul class="space-y-1">{searchIntel.clickedNeverConverted.map((q) => (
                   <li class="text-xs text-gray-700 flex justify-between border-b border-gray-100 py-1"><span>{q.query}</span><span class="font-black">{q.clickCount}</span></li>
                 ))}</ul>

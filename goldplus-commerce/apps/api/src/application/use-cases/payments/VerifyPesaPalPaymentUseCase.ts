@@ -1,3 +1,4 @@
+import { IRefundLedgerRepository } from '../../ports/IRefundLedgerRepository';
 import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../ports/IPesaPalPaymentRepository';
 import { IPesaPalClient } from '../../ports/IPesaPalClient';
 import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
@@ -28,15 +29,23 @@ export class VerifyPesaPalPaymentUseCase {
   private paymentRepo: IPesaPalPaymentRepository;
   private pesapalClient: IPesaPalClient;
   private orderTransition: IOrderTransitionPort;
+  private refundLedger?: IRefundLedgerRepository;
 
   constructor(
     paymentRepo: IPesaPalPaymentRepository,
     pesapalClient: IPesaPalClient,
     orderTransition: IOrderTransitionPort,
+    /**
+     * Optional so the hermetic unit suites can construct this without a
+     * database. Absent, a provider reversal is treated as TOTAL — the safe
+     * reading, and exactly what happened before the ledger existed.
+     */
+    refundLedger?: IRefundLedgerRepository,
   ) {
     this.paymentRepo = paymentRepo;
     this.pesapalClient = pesapalClient;
     this.orderTransition = orderTransition;
+    this.refundLedger = refundLedger;
   }
 
   async execute(input: VerifyPesaPalPaymentInput): Promise<VerifyPesaPalPaymentOutput> {
@@ -75,8 +84,21 @@ export class VerifyPesaPalPaymentUseCase {
       ipnReceivedAt: input.source === 'ipn' ? now : undefined,
     });
 
-    // If already COMPLETED, return immediately (idempotency key protection)
-    if (attempt.status === 'completed') {
+    // If already COMPLETED, return immediately (idempotency key protection).
+    //
+    // EXCEPT when a refund on this attempt is still waiting on the provider.
+    // This early return is correct for a duplicate callback or IPN, but it was
+    // unconditional — so once an attempt reached 'completed' the provider was
+    // never asked again, and the completed→reversed edge the state machine
+    // declares had no reachable writer at all. A refund could be requested and
+    // never observed landing. Looking again costs one provider call, and only
+    // when the ledger says something is genuinely outstanding.
+    const awaitingRefund =
+      attempt.status === 'completed' && this.refundLedger
+        ? await this.refundLedger.hasOutstandingRefunds(attempt.id)
+        : false;
+
+    if (attempt.status === 'completed' && !awaitingRefund) {
       return {
         ok: true,
         status: 'completed',
@@ -165,12 +187,39 @@ export class VerifyPesaPalPaymentUseCase {
         lifecycleTarget = 'processing';
         reasonCode = 'pesapal_payment_completed';
         break;
-      case 3:
-        mappedStatus = 'reversed';
-        orderPaymentStatus = 'reversed';
-        lifecycleTarget = 'cancelled';
-        reasonCode = 'pesapal_payment_reversed';
+      case 3: {
+        // A provider reversal is reported per TRANSACTION, so it says nothing
+        // about how much came back. Ask the refund ledger.
+        //
+        // Treating every reversal as total used to cancel the customer's whole
+        // order and wipe its revenue — so a 5,000 UGX delivery-fee refund
+        // cancelled a 500,000 UGX order that had already been paid and
+        // fulfilled. Only a reversal the ledger PROVES is partial diverges;
+        // with no ledger rows we cannot tell, so the safe total reading stands.
+        const refunded = this.refundLedger ? await this.refundLedger.getRefundedTotalUgx(attempt.id) : 0;
+        const provenPartial = refunded > 0 && refunded < attempt.amount;
+
+        if (provenPartial) {
+          // Money WAS collected and only part of it returned: the attempt stays
+          // completed, the order stays paid, and nothing is cancelled. How much
+          // came back lives in the ledger, which the commercial projection
+          // subtracts line by line.
+          mappedStatus = 'completed';
+          orderPaymentStatus = 'paid';
+          lifecycleTarget = null;
+          reasonCode = 'pesapal_payment_partially_refunded';
+        } else {
+          mappedStatus = 'reversed';
+          orderPaymentStatus = 'reversed';
+          lifecycleTarget = 'cancelled';
+          reasonCode = 'pesapal_payment_reversed';
+        }
+
+        // Either way the provider has confirmed it: refunds that were in
+        // flight have now landed. Nothing wrote 'settled' before this.
+        if (this.refundLedger) await this.refundLedger.settleRefundsForAttempt(attempt.id);
         break;
+      }
       case 2:
         mappedStatus = 'failed';
         orderPaymentStatus = 'failed';
