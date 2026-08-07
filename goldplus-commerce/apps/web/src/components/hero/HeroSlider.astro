@@ -234,7 +234,12 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
   --gph-ease:cubic-bezier(.22,1,.36,1); --gph-spring:cubic-bezier(.34,1.56,.64,1);
 }
 
-.gp-hero{max-width:1180px;margin:16px auto 0;padding:0 28px;font-family:'Poppins',system-ui,sans-serif;}
+/* width:100% is load-bearing, not cosmetic: the homepage <main> is a flex
+   column, and .gp-hero's `margin:auto` disables cross-axis stretch, so without
+   an explicit width the section collapses to its padding (~56px) and the whole
+   hero renders blank. The reference carried this in its demo shell; it belongs
+   here for the same reason. max-width still caps it; auto margins still centre. */
+.gp-hero{width:100%;max-width:1180px;margin:16px auto 0;padding:0 28px;font-family:'Poppins',system-ui,sans-serif;}
 /* if the mode changes mid-session, ease into it */
 .gp-hero__slide,.gp-hero__arch i,.gp-hero__cta,.gp-hero__bleed img,.gp-hero__arch img{
   transition-property:opacity,visibility,background,box-shadow,filter;

@@ -15,6 +15,18 @@ test.describe("homepage", () => {
     // The recommendation rail serves (title depends on live evidence).
     await expect(page.locator("[data-recommendation-click]").first()).toBeVisible();
 
+    // The hero must actually occupy the page. It renders its slides absolutely,
+    // so if the section ever collapses (e.g. a flex parent shrinking it to its
+    // padding) the whole hero goes blank — this asserts it has real width and
+    // height, and that its lead heading is visible.
+    const heroBox = page.locator("#gpHero");
+    await expect(heroBox).toBeVisible();
+    const heroRect = await heroBox.boundingBox();
+    expect(heroRect, "hero box must have a bounding box").not.toBeNull();
+    expect(heroRect!.width).toBeGreaterThan(300);
+    expect(heroRect!.height).toBeGreaterThan(300);
+    await expect(page.locator(".gp-hero h1")).toHaveCount(1);
+
     // The opaque locator is HttpOnly — visible to the context, not to scripts.
     const cookies = await context.cookies();
     const visit = cookies.find((c) => c.name === "gp_visit");
