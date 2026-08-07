@@ -90,6 +90,12 @@ const configJson = JSON.stringify(config);
 {leadImage && <link rel="preload" as="image" href={leadImage} fetchpriority="high" />}
 
 <section class="gp-hero">
+  {/* One stable page heading, decoupled from the rotation. The rotating slide
+      titles are <h2>; if the h1 lived on a slide it would vanish when the
+      engine removed that slide (e.g. flash after its sale ends), leaving the
+      homepage with no h1. Visually hidden — the hero's design has no fixed
+      headline — but always present for screen readers and SEO. */}
+  <h1 class="gp-hero__sr">GoldPlus — verified original electronics for Uganda</h1>
   <div class="gp-hero__box" id="gpHero" role="region" aria-roledescription="carousel" aria-label="GoldPlus featured offers">
     <p class="gp-hero__sr" aria-live="polite" id="gpHeroLive"></p>
 
@@ -106,9 +112,7 @@ const configJson = JSON.stringify(config);
           <div class="gp-hero__copy">
             <div class="gp-hero__eyebrow"><span class="gp-hero__rule"></span><span class="gp-hero__plus" aria-hidden="true"></span><span class="gp-hero__kicker" id={s.slideKey === 'flash' ? 'gpFlashKicker' : undefined}>{s.kicker}</span></div>
 
-            {isLead
-              ? <h1 class="gp-hero__title" set:html={safeHeadline(s.headline)} />
-              : <h2 class="gp-hero__title" set:html={safeHeadline(s.headline)} />}
+            <h2 class="gp-hero__title" set:html={safeHeadline(s.headline)} />
 
             {s.slideKey === 'flash' && (
               <div class="gp-hero__count" id="gpCountdown" aria-label="Time remaining in the flash sale">
