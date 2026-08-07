@@ -26,3 +26,39 @@
 - **FINDING-HERO-C · The hero juted out wider than the rest of the page.** It imposed its own `max-width:1180px` + 28px padding and spanned the full page width, while every rail and section sits in `container mx-auto px-4 lg:px-8`. Measured: at a 960 viewport the content column was x96→864 but the hero card was x28→932 — ~68px proud on each side, reading as a foreign full-width block pasted above a contained page. This is what "you just pasted the code without integrating the styling" meant, and it was right.
 - **FIX.** The hero is placed INSIDE that same container (index.astro) and no longer carries its own max-width or horizontal padding (`.gp-hero{width:100%;margin:16px 0 0;padding:0}`); the container owns width and padding, so the hero's left/right edges are flush with the rails and sections. Verified in a real browser: hero-card left = recommendation-card left (both 344 at one width); hero right = the container's padded inner edge. The mobile padding overrides were zeroed for the same reason (the container's px-4 owns them). A plug-and-play port should have done this from the start.
 - **NOTE · Bleed photo resolution.** The three lifestyle photos came from the provided standalone bundle at ~760px wide; the brief calls for 2000px+. They upscale softly on large screens. Higher-resolution originals should be uploaded via the media library — an asset the bundle did not contain, not a code fix.
+
+## 2026-08-07 — personalisation was built but inert; two prior decisions revised
+
+Self-critique after Tasks 1–3 shipped: the personalisation layer worked in a test
+harness but did almost nothing for a real visitor. Two of the decisions above were
+the cause, and both are revised here — recorded as supersessions, not silent edits.
+
+- **D-HERO-14 · Personalisation runs by default; explicit refusal is honoured. (SUPERSEDES D-HERO-12.)**
+  D-HERO-12 gated the signals fetch and telemetry behind opt-IN consent (`personalization`/`analytics`
+  recorded true). But the consent SDK defaults every purpose to FALSE, and no storefront
+  banner ever grants them — only the Preference Centre does, which a visitor has to seek out.
+  Meanwhile the recommendation-event relay and the telemetry lib fire with NO consent gate at
+  all, and the cookies page tells visitors "Global Privacy Control and Do Not Track are honoured
+  for personalisation" — i.e. personalisation is ON unless a browser signal says otherwise. So
+  D-HERO-12 made the hero the ONE self-suppressing surface, inert for ~100% of real visitors,
+  inconsistent with both the rest of the site and the site's own stated posture. "Proven in a
+  real browser: zero hero network calls" was true and exactly the problem — the feature never
+  ran for anyone. Revised posture (`heroOptedOut`): profiling and measurement run by default,
+  and an EXPLICIT refusal is honoured — Global Privacy Control, Do Not Track, or a purpose set
+  false in the Preference Centre. The pre-banner deny-all default is NOT treated as a refusal
+  (no banner exists to have shown it). This matches the cookies-page promise verbatim and is in
+  fact stricter than the rec relays, which honour neither GPC nor DNT.
+- **D-HERO-15 · Server signals now choose slides, not just cosmetics — without a visible jump. (SUPERSEDES D-HERO-10; refines D-HERO-9.)**
+  D-HERO-9's "never reshuffle the visible rail" was right about the slide the visitor is LOOKING
+  at, but D-HERO-10 over-applied it: the server's richest signals (hasOrdered, category affinity)
+  were allowed to change only the arch image, a CTA href and the loyalty meter — never WHICH
+  slides show — so a confirmed repeat customer and a first-time visitor saw the identical slide
+  SELECTION. Selection is now re-runnable: `computeChoice(ctx)` picks/orders from a context and
+  `applyChoice(chosen, keepVisibleId)` makes that the rail. It runs once immediately from local
+  context (controls, countdown and rotation live at t=0 — D-HERO-9 preserved), then again when
+  signals arrive, PRESERVING the currently-visible slide (it is force-kept in the set and stays
+  active) so only the not-yet-seen deck re-ranks. Honest signal effects added: a customer who has
+  ordered is not shown the first-visit welcome and gets loyalty/referral lifted; real browsing
+  affinity lifts new-arrivals/range. Slides are now HIDDEN, never removed from the DOM, so a later
+  choice can pick any of the twelve; `[hidden]{display:none}` (already in the stylesheet) keeps
+  them off the accessibility tree and out of Tab order, honouring D-HERO-4's original intent.

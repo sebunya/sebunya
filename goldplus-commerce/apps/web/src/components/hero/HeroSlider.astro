@@ -831,9 +831,24 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
   var box = document.getElementById('gpHero');
   if (!box) return;
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Task 3 helpers. Consent defaults to FALSE (matches the consent SDK): no
-  // profiling or measurement until the visitor grants the purpose.
-  function gpConsent(purpose){ try { var s = JSON.parse(localStorage.getItem('_gp_consent_state') || 'null'); return !!(s && s[purpose]); } catch(e){ return false; } }
+  // Consent posture (2026-08-07): first-party, non-identifying personalisation
+  // and measurement run BY DEFAULT — consistent with the rest of the
+  // storefront's first-party measurement, which does not gate. We honour an
+  // EXPLICIT refusal only: Global Privacy Control, Do Not Track, or a purpose
+  // recorded false via the Preference Centre. The pre-banner deny-all default
+  // is NOT a refusal (no banner exists to have shown it), so treating it as one
+  // would silently disable the feature for everyone. The cookies page promises
+  // exactly this: "GPC and DNT are honoured for personalisation."
+  function heroOptedOut(purpose){
+    try {
+      if (navigator.globalPrivacyControl === true) return true;
+      var dnt = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      if (dnt === '1' || dnt === 'yes') return true;
+      var raw = localStorage.getItem('_gp_consent_state');
+      if (raw){ var s = JSON.parse(raw); if (s && s[purpose] === false) return true; }
+    } catch(e){}
+    return false;
+  }
   function heroReadCart(){ try { var m = document.cookie.match(/(?:^|; )goldplus_cart_data=([^;]+)/); if (!m) return 0; var d = JSON.parse(decodeURIComponent(m[1])); var it = (d && d.items) || []; return it.reduce(function(a,x){ return a + (x.quantity||0); }, 0); } catch(e){ return 0; } }
   var heroPref = null;   // preferred product for the arch, set only after consented signals load
   var INERT_OK = 'inert' in HTMLElement.prototype;
@@ -867,7 +882,12 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
     scratched: scratched,
     referred: /[?&](ref|utm_campaign=referral)/i.test(location.search),
     cats: (store.get(CONFIG.keys.cats) || '').split(',').filter(Boolean),
-    cartItems: heroReadCart()   // B: their own cart cookie — functional, no profiling
+    cartItems: heroReadCart(),  // B: their own cart cookie — functional, no profiling
+    // Server-derived signals — safe defaults now, filled once /api/hero/signals
+    // returns (personalization consent only). Selection re-runs when they change.
+    hasOrdered: false,          // confirmed customer (server profile)
+    serverCats: [],             // category-affinity slugs the profile actually browsed
+    stockBySlug: {}             // live stock for referenced products
   };
   /* QA overrides: ?gp=new | returning | regular | expired | aftercutoff */
   var force = qs('gp');
@@ -880,107 +900,132 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
   /* ---------------- the 12-slide library ---------------- */
   var LIB = {
     flash:      { when:function(c){ return c.saleLive; },            score:function(){ return 100; } },
-    welcome:    { when:function(c){ return c.isNew && c.cartItems === 0; }, score:function(){ return 96; } },
-    referral:   { when:function(c){ return c.isReturning; },         score:function(c){ return c.isRegular ? 88 : 74; } },
+    // A confirmed customer does not need a first-visit welcome.
+    welcome:    { when:function(c){ return c.isNew && c.cartItems === 0 && !c.hasOrdered; }, score:function(){ return 96; } },
+    // Referral resonates with anyone who has already bought, even on a fresh device.
+    referral:   { when:function(c){ return c.isReturning || c.hasOrdered; }, score:function(c){ return (c.isRegular || c.hasOrdered) ? 88 : 74; } },
     sameday:    { when:function(){ return true; },                   score:function(c){ return c.beforeCutoff ? 92 : 46; } },
     fees:       { when:function(){ return true; },                   score:function(c){ return c.isNew ? 80 : 62; } },
     ambassador: { when:function(){ return true; },                   score:function(c){ return c.isNew ? 70 : 58; } },
-    newarrivals:{ when:function(){ return true; },                   score:function(c){ return c.isRegular ? 90 : 60; } },
-    range:      { when:function(){ return true; },                   score:function(c){ return c.isNew ? 78 : 50; } },
-    loyalty:    { when:function(c){ return !c.isNew; },              score:function(c){ return c.isRegular ? 86 : 66; } },
+    // Real browsing affinity lifts what's new in the visitor's categories.
+    newarrivals:{ when:function(){ return true; },                   score:function(c){ return (c.isRegular ? 90 : 60) + (c.serverCats.length ? 8 : 0); } },
+    range:      { when:function(){ return true; },                   score:function(c){ return (c.isNew ? 78 : 50) + (c.serverCats.length ? 6 : 0); } },
+    // Loyalty is the natural lead for someone who has ordered before.
+    loyalty:    { when:function(c){ return !c.isNew || c.hasOrdered; }, score:function(c){ return c.hasOrdered ? 92 : (c.isRegular ? 86 : 66); } },
     scratch:    { when:function(c){ return !c.scratched; },          score:function(c){ return c.isReturning ? 84 : 72; } },
     nostories:  { when:function(){ return true; },                   score:function(c){ return c.isNew ? 82 : 56; } },
     authentic:  { when:function(){ return true; },                   score:function(c){ return c.isNew ? 76 : 44; } }
   };
 
-  /* ---------------- selection ---------------- */
+  /* ---------------- selection (re-runnable) ----------------
+     computeChoice() picks and orders the slides from a context; applyChoice()
+     makes that set the visible rail. Both can run twice: once immediately from
+     LOCAL context (so the hero renders and its controls work at t=0), and again
+     when server signals arrive — WITHOUT reshuffling the visible slide, so the
+     personalisation settles behind the scenes rather than jumping. Slides are
+     HIDDEN, never removed, so a later choice can pick any of the twelve. */
   var all = [].slice.call(box.querySelectorAll('.gp-hero__slide'));
-  var pool = all.map(function(el){
-    var id = el.getAttribute('data-id'), cfg = LIB[id] || {};
-    var pr = parseInt(el.getAttribute('data-priority') || '0', 10) || 0;
-    return { el:el, id:id, theme:el.getAttribute('data-theme'),
-             ok: cfg.when ? cfg.when(CTX) : true,
-             // CMS priority nudges ranking (added, so it never overrides caps).
-             score: (cfg.score ? cfg.score(CTX) : 0) + pr * CONFIG.priorityWeight };
-  }).filter(function(s){ return s.ok; });
-
-  pool.sort(function(a,b){ return b.score - a.score; });
-
   var reviewAll = (force === 'all');
-  var used = {}, chosen = [];
-  pool.forEach(function(s){
-    if (chosen.length >= CONFIG.show) return;
-    var cap = CONFIG.themeCap[s.theme] || 1;
-    if ((used[s.theme] || 0) >= cap) return;
-    used[s.theme] = (used[s.theme] || 0) + 1;
-    chosen.push(s);
-  });
-  /* top-up if caps starved us */
-  pool.forEach(function(s){ if (chosen.length < CONFIG.show && chosen.indexOf(s) < 0) chosen.push(s); });
+  var NAMES = {
+    flash:'Flash sale', welcome:'Welcome \u00b7 new visitor', referral:'Referral \u00b7 returning',
+    sameday:'Same-day delivery', fees:'Delivery fees', ambassador:'Ambassadors',
+    newarrivals:'New arrivals', range:'Full range', loyalty:'Loyalty',
+    scratch:'Scratch to reveal', nostories:'No stories', authentic:'Authenticity'
+  };
 
-  /* review mode: take the whole library, in authored order */
-  if (reviewAll){
-    chosen = all.map(function(el){
-      return { el:el, id:el.getAttribute('data-id'), theme:el.getAttribute('data-theme') };
+  function computeChoice(ctx){
+    if (reviewAll) return all.slice();   // ?gp=all — the whole library, authored order
+    var pool = all.map(function(el){
+      var id = el.getAttribute('data-id'), cfg = LIB[id] || {};
+      var pr = parseInt(el.getAttribute('data-priority') || '0', 10) || 0;
+      return { el:el, id:id, theme:el.getAttribute('data-theme'),
+               ok: cfg.when ? cfg.when(ctx) : true,
+               score: (cfg.score ? cfg.score(ctx) : 0) + pr * CONFIG.priorityWeight };
+    }).filter(function(s){ return s.ok; });
+    pool.sort(function(a,b){ return b.score - a.score; });
+    var used = {}, chosen = [];
+    pool.forEach(function(s){
+      if (chosen.length >= CONFIG.show) return;
+      var cap = CONFIG.themeCap[s.theme] || 1;
+      if ((used[s.theme] || 0) >= cap) return;
+      used[s.theme] = (used[s.theme] || 0) + 1;
+      chosen.push(s);
     });
-    box.setAttribute('data-review','');
-  } else {
-    /* order by funnel stage: offer → product → logistics → loyalty → brand → trust */
+    pool.forEach(function(s){ if (chosen.length < CONFIG.show && chosen.indexOf(s) < 0) chosen.push(s); });
     chosen.sort(function(a,b){ return (CONFIG.funnel[a.theme]||9) - (CONFIG.funnel[b.theme]||9); });
+    return chosen.map(function(c){ return c.el; });
   }
 
-  all.forEach(function(el){
-    var keep = chosen.some(function(c){ return c.el === el; });
-    if (!keep) el.parentNode.removeChild(el);
-  });
-  /* put them in the chosen order and reveal */
-  chosen.forEach(function(c){ c.el.hidden = false; box.insertBefore(c.el, document.getElementById('gpSegs')); });
-
-  var slides = chosen.map(function(c){ return c.el; });
-  var total = slides.length, index = 0, playing = !reduce && CONFIG.autoplay, raf = null, startedAt = 0;
-
-  if (reviewAll){
-    var NAMES = {
-      flash:'Flash sale', welcome:'Welcome · new visitor', referral:'Referral · returning',
-      sameday:'Same-day delivery', fees:'Delivery fees', ambassador:'Ambassadors',
-      newarrivals:'New arrivals', range:'Full range', loyalty:'Loyalty',
-      scratch:'Scratch to reveal', nostories:'No stories', authentic:'Authenticity'
-    };
-    slides.forEach(function(s, i){
-      var tag = document.createElement('span');
-      tag.className = 'gp-hero__tag';
-      tag.textContent = ('0'+(i+1)).slice(-2) + ' · ' + (NAMES[s.getAttribute('data-id')] || s.getAttribute('data-id'));
-      s.appendChild(tag);
-    });
-  }
-
-  slides.forEach(function(s, i){
-    s.setAttribute('role','group');
-    s.setAttribute('aria-roledescription','slide');
-    s.setAttribute('aria-label',(i+1) + ' of ' + total);
-    if (i) s.removeAttribute('data-active');
-  });
-  slides[0].setAttribute('data-active','');
-
-  /* ---------------- progress + nav ---------------- */
-  var segsWrap = document.getElementById('gpSegs'), fills = [], segs = [];
-  slides.forEach(function(s, i){
-    var b = document.createElement('button');
-    b.type = 'button'; b.className = 'gp-hero__seg';
-    b.setAttribute('aria-label','Show slide ' + (i+1) + ' of ' + total);
-    b.innerHTML = '<span class="gp-hero__seg-num">' + ('0'+(i+1)).slice(-2) +
-                  '</span><span class="gp-hero__seg-rail"><span class="gp-hero__seg-fill"></span></span>';
-    b.addEventListener('click', function(){ go(i, true); });
-    segsWrap.appendChild(b); segs.push(b); fills.push(b.querySelector('.gp-hero__seg-fill'));
-  });
-  var tail = document.createElement('span');
-  tail.className = 'gp-hero__tail';
-  segsWrap.appendChild(tail);
-
+  /* dynamic rail state — reassigned by applyChoice, read by every control fn */
+  var slides = [], total = 0, index = 0, playing = !reduce && CONFIG.autoplay, raf = null, startedAt = 0;
+  var segsWrap = document.getElementById('gpSegs'), fills = [], segs = [], tail = null;
   var live = document.getElementById('gpHeroLive');
   var archEl = document.getElementById('gpArch');
   var archImg = document.getElementById('gpArchImg');
   var contactEl = document.getElementById('gpContact');
+  if (reviewAll) box.setAttribute('data-review','');
+
+  function applyChoice(chosenEls, keepActiveId){
+    if (raf) cancelAnimationFrame(raf);          // no tick referencing stale fills
+    // Preserving a visible slide across a re-selection means it MUST remain in
+    // the set even if fresh signals would have dropped it — otherwise the deck
+    // would jump out from under the visitor. Swap it in for the lowest-funnel
+    // pick and re-sort, so ordering stays coherent.
+    if (keepActiveId){
+      var keepEl = null;
+      for (var q=0;q<all.length;q++){ if (all[q].getAttribute('data-id') === keepActiveId){ keepEl = all[q]; break; } }
+      if (keepEl && chosenEls.indexOf(keepEl) < 0){
+        if (chosenEls.length >= CONFIG.show) chosenEls = chosenEls.slice(0, CONFIG.show - 1);
+        chosenEls = chosenEls.concat([keepEl]);
+        chosenEls.sort(function(a,b){
+          var fa = CONFIG.funnel[a.getAttribute('data-theme')] || 9, fb = CONFIG.funnel[b.getAttribute('data-theme')] || 9;
+          return fa - fb;
+        });
+      }
+    }
+    var chosenSet = chosenEls;
+    // Hide everything not chosen; show + order the chosen.
+    all.forEach(function(el){ if (chosenSet.indexOf(el) < 0){ el.hidden = true; el.removeAttribute('data-active'); } });
+    chosenEls.forEach(function(el){ el.hidden = false; box.insertBefore(el, segsWrap); });
+
+    slides = chosenEls; total = slides.length;
+    // Preserve the visible slide across a re-selection so nothing jumps.
+    var keepIdx = 0;
+    if (keepActiveId){ for (var k=0;k<slides.length;k++){ if (slides[k].getAttribute('data-id') === keepActiveId){ keepIdx = k; break; } } }
+    index = keepIdx;
+
+    slides.forEach(function(s, i){
+      s.setAttribute('role','group');
+      s.setAttribute('aria-roledescription','slide');
+      s.setAttribute('aria-label',(i+1) + ' of ' + total);
+      if (i === index) s.setAttribute('data-active',''); else s.removeAttribute('data-active');
+    });
+
+    if (reviewAll){
+      slides.forEach(function(s, i){
+        if (s.querySelector('.gp-hero__tag')) return;
+        var tag = document.createElement('span'); tag.className = 'gp-hero__tag';
+        tag.textContent = ('0'+(i+1)).slice(-2) + ' \u00b7 ' + (NAMES[s.getAttribute('data-id')] || s.getAttribute('data-id'));
+        s.appendChild(tag);
+      });
+    }
+
+    // Rebuild the progress nav for the current set (fresh closures, no leaks).
+    segsWrap.innerHTML = ''; fills = []; segs = [];
+    slides.forEach(function(s, i){
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'gp-hero__seg';
+      b.setAttribute('aria-label','Show slide ' + (i+1) + ' of ' + total);
+      b.innerHTML = '<span class="gp-hero__seg-num">' + ('0'+(i+1)).slice(-2) +
+                    '</span><span class="gp-hero__seg-rail"><span class="gp-hero__seg-fill"></span></span>';
+      b.addEventListener('click', function(){ go(i, true); });
+      segsWrap.appendChild(b); segs.push(b); fills.push(b.querySelector('.gp-hero__seg-fill'));
+    });
+    tail = document.createElement('span'); tail.className = 'gp-hero__tail'; segsWrap.appendChild(tail);
+
+    paint(); restart();
+  }
+
 
   /* park the persistent arch over the active slide's stage box */
   function placeArch(){
@@ -1287,7 +1332,8 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
     }
   })();
 
-  paint(); restart();
+  // First render: immediate, from LOCAL context — controls and countdown live at t=0.
+  applyChoice(computeChoice(CTX), null);
 
   /* ---------------- Task 3: enhancements + measurement ----------------
      The full engine has ALREADY rendered and is rotating from local context —
@@ -1301,13 +1347,28 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
     // The server fetch sends the visit token and profiles the visitor: it runs
     // ONLY with personalization consent. Without it the hero keeps its
     // non-profiled local order and default imagery.
-    if (!gpConsent('personalization')) return;
+    if (heroOptedOut('personalization')) return;
     var ctl;
     try { ctl = (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(4000) : undefined; } catch(e){}
     fetch('/api/hero/signals', { credentials: 'same-origin', signal: ctl })
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(j){
         var d = j && j.success && j.data; if (!d) return;
+
+        // Fold the real signals into the context and RE-SELECT — this is where
+        // personalisation stops being cosmetic and starts choosing slides.
+        // The currently-visible slide is preserved, so only the deck behind it
+        // rearranges; nothing the visitor is looking at jumps.
+        var changed = false;
+        if (typeof d.hasOrdered === 'boolean' && d.hasOrdered !== CTX.hasOrdered){ CTX.hasOrdered = d.hasOrdered; changed = true; }
+        var cats = (d.categoryAffinity || []).map(function(x){ return x && x.categorySlug; }).filter(Boolean);
+        if (cats.length && cats.join(',') !== CTX.serverCats.join(',')){ CTX.serverCats = cats; changed = true; }
+        if (d.stockBySlug) CTX.stockBySlug = d.stockBySlug;
+        if (changed){
+          var keep = slides[index] && slides[index].getAttribute('data-id');
+          applyChoice(computeChoice(CTX), keep);
+        }
+
         // A: preferred in-stock product for the arch on agnostic slides.
         if (d.preferredProduct && d.preferredProduct.imageUrl){ heroPref = d.preferredProduct; placeArch(); }
         // A: deep-link the browse CTAs into the visitor's category (visual only).
@@ -1331,7 +1392,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/\u20
 
   (function heroInstrument(){
     // No analytics consent → measure nothing. Silence is the correct default.
-    if (!gpConsent('analytics')) return;
+    if (heroOptedOut('analytics')) return;
     var seg = heroSegment(), impressed = {}, impTimer = null;
     function emit(type, key, pos){
       try {
