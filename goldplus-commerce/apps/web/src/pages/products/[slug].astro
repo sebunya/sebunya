@@ -175,32 +175,32 @@ const whyYoullLikeIt = (() => {
 
 const pdpDescriptions: Record<string, { intro: string; description: string }> = {
   'goldplus-16gb-usb-flash-drive': {
-    intro: 'Portable USB storage for daily files, photos and documents.',
-    description: 'The GoldPlus 16GB USB Flash Drive is a simple, compact storage option for moving and carrying everyday files. Its metal-style body and keyring-friendly design make it easy to keep with you at work, school, home or on the move.\n\nIt is a practical choice for documents, music, photos and everyday file transfers between compatible USB devices.'
+    intro: '16GB of storage small enough to live on your keyring.',
+    description: 'A metal-bodied 16GB drive that clips to your keys, so the documents, photos and music you need are always on you. Plug it into any compatible USB port and it is ready. Nothing to install, nothing to charge.'
   },
   'goldplus-32gb-memory-card': {
-    intro: 'Compact 32GB memory storage for compatible devices.',
-    description: 'The GoldPlus 32GB Memory Card gives you a simple way to expand storage on compatible devices. It is suitable for everyday photos, music, documents and media files where microSD storage is supported.\n\nIts compact design makes it useful for phones, cameras, tablets, speakers and other compatible devices that accept memory cards.'
+    intro: '32GB more room on the devices you already own.',
+    description: 'Slot it into a phone, camera, tablet or speaker that takes microSD and you have space for thousands more photos, songs and files. If the device supports microSD, this works in it.'
   },
   'goldplus-usb-mouse': {
-    intro: 'A simple USB mouse for everyday computer use.',
-    description: 'The GoldPlus USB Mouse is designed for simple, reliable computer control. Its clean shape and comfortable everyday profile make it suitable for work, study, browsing, office use and general laptop or desktop setups.\n\nIt is a practical option for customers who want a straightforward wired mouse that is easy to plug in and use.'
+    intro: 'A wired USB mouse that just works.',
+    description: 'Plug it in and start clicking. No batteries to replace, no pairing, no drivers to hunt down. It sits comfortably under your hand through a long day at the laptop or desk, whether you are working, studying or catching up online.'
   },
   'goldplus-usb-sound-card': {
-    intro: 'USB sound card support for computer audio setups.',
-    description: 'The GoldPlus USB Sound Card is made for users who need a simple external audio connection for laptops, desktops and music setups. It is useful for DJs, music producers, editors and everyday users who need practical USB audio input or output support.\n\nIts compact USB design makes it easy to carry and connect when working with audio, music playback, recording support or computer sound troubleshooting.'
+    intro: 'External USB audio for laptops and desktops.',
+    description: 'When your computer’s built-in audio is not enough, or has stopped behaving, this plugs in over USB and gives you a clean headphone and microphone connection. Producers, editors and anyone stuck with a dead audio jack will get the most out of it.'
   },
   'goldplus-dual-usb-car-charger-gp-ca03': {
-    intro: 'Dual USB charging for everyday use in the car.',
-    description: 'The GoldPlus Dual USB Car Charger gives you a simple way to charge compatible phones and everyday devices while you are on the move. With two USB ports in one compact car adapter, it is useful for commutes, road trips, work travel and daily driving.\n\nIts black-and-white GoldPlus design keeps the setup clean, practical and easy to use inside your vehicle.'
+    intro: 'Two USB ports, so nobody fights over the charger.',
+    description: 'Charge two phones at once on the school run, the daily commute or a long drive upcountry. It sits flush in the socket in the black-and-white GoldPlus finish and stays out of the way until you need it.'
   }
 };
 
 if (product?.categoryName === 'Sound Devices') {
   if (product && !pdpDescriptions[product.slug] && product.slug.includes('earbuds')) {
     pdpDescriptions[product.slug] = {
-      intro: 'Wireless earbuds for music, calls, videos and everyday listening.',
-      description: 'GoldPlus Wireless Earbuds are made for simple everyday listening. They give users a compact wireless audio option for music, videos, calls and daily movement, with a charging case that keeps the earbuds ready when you need them.\n\nTheir clean GoldPlus design makes them suitable for work, travel, study, commuting and casual entertainment.'
+      intro: 'Wireless earbuds for music, calls and the daily commute.',
+      description: 'Take them out of the case, put them in, and you are connected. Good for music on the boda, calls on the move, and videos once you finally sit down. The case tops them up between uses, so they are ready when you are.'
     };
   }
 }
