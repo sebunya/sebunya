@@ -104,6 +104,8 @@ export function toProductPublicDto(
     slug: entity.slug,
     name: entity.name,
     categoryName: cleanedCategoryName,
+    shortDescription: entity.shortDescription?.trim() ? entity.shortDescription.trim() : null,
+    longDescription: entity.longDescription?.trim() ? entity.longDescription.trim() : null,
     sku,
     modelNumber,
     retailPriceUgx: safeRetailPrice,

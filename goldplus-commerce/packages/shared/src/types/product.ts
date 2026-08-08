@@ -25,6 +25,10 @@ export interface ProductPublicDto {
   name: string;
   /** Category display name, not the internal UUID. */
   categoryName: string;
+  /** One-line product summary (DB-owned, admin-editable). Null if not set. */
+  shortDescription: string | null;
+  /** Full product description (DB-owned, admin-editable). Null if not set. */
+  longDescription: string | null;
   /** SKU or `null` if the source row is "Missing. Requires admin review." */
   sku: string | null;
   /** Model number or `null` if missing. Never invent one. */

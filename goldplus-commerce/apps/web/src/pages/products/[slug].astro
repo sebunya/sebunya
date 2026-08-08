@@ -206,6 +206,10 @@ if (product?.categoryName === 'Sound Devices') {
 }
 
 const pdpCopy = product ? pdpDescriptions[product.slug] : null;
+// DB copy (admin-editable) is the source of truth; the hardcoded map is only a
+// fallback for any product whose description hasn't been written yet.
+const descIntro = product?.shortDescription?.trim() || pdpCopy?.intro || null;
+const descBody = product?.longDescription?.trim() || pdpCopy?.description || null;
 
 // Slice 5: admin-verified compatibility guidance (declared mappings only —
 // unverified pairs are simply absent; unknown is never shown as compatible).
@@ -308,10 +312,10 @@ const canonical = Astro.url.toString();
             )}
           </div>
 
-          {pdpCopy && (
+          {(descIntro || descBody) && (
             <div class="mb-6 prose prose-sm max-w-none text-slate-600 leading-relaxed">
-              <p class="font-bold text-gray-900 text-base mb-2">{pdpCopy.intro}</p>
-              {pdpCopy.description.split('\n\n').map(p => <p class="mb-3">{p}</p>)}
+              {descIntro && <p class="font-bold text-gray-900 text-base mb-2">{descIntro}</p>}
+              {descBody && descBody.split('\n\n').map(p => <p class="mb-3">{p}</p>)}
             </div>
           )}
 
