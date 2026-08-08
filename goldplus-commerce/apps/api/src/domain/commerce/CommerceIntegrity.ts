@@ -13,7 +13,7 @@
  */
 
 export type ReconciliationExceptionType =
-  | 'ORDER_TOTAL_MISMATCH' // total_amount != subtotal_amount + delivery_fee
+  | 'ORDER_TOTAL_MISMATCH' // total_amount != subtotal_amount + delivery_fee - loyalty_discount
   | 'ORDER_LINES_MISMATCH' // subtotal_amount != sum(order_items.final_line_total)
   | 'RESERVED_LEDGER_MISMATCH' // product.reserved_quantity != sum(active reservations)
   | 'RESERVED_EXCEEDS_STOCK'; // reserved_quantity > stock_quantity (available < 0)
@@ -34,6 +34,13 @@ export interface OrderMoneyRow {
   deliveryFee: number;
   /** SUM(order_items.final_line_total) for the order. */
   lineItemsSum: number;
+  /**
+   * Points redeemed against the order total (Order.create: total = subtotal +
+   * delivery - loyaltyDiscount). Optional and defaulted to 0 so legacy callers
+   * and non-redeemed orders reconcile unchanged; without it, every loyalty-
+   * redeemed order would falsely raise ORDER_TOTAL_MISMATCH.
+   */
+  loyaltyDiscount?: number;
 }
 
 export interface InventoryRow {
@@ -47,14 +54,15 @@ export interface InventoryRow {
 /** Money integrity inside a single order. */
 export function checkOrderMoney(row: OrderMoneyRow): ReconciliationException[] {
   const out: ReconciliationException[] = [];
-  const expectedTotal = row.subtotalAmount + row.deliveryFee;
+  const loyaltyDiscount = row.loyaltyDiscount ?? 0;
+  const expectedTotal = row.subtotalAmount + row.deliveryFee - loyaltyDiscount;
   if (row.totalAmount !== expectedTotal) {
     out.push({
       type: 'ORDER_TOTAL_MISMATCH',
       entityKind: 'order',
       entityId: row.orderId,
-      detail: { totalAmount: row.totalAmount, subtotalAmount: row.subtotalAmount, deliveryFee: row.deliveryFee, expectedTotal },
-      message: `Order total ${row.totalAmount} != subtotal ${row.subtotalAmount} + delivery ${row.deliveryFee} (${expectedTotal}).`,
+      detail: { totalAmount: row.totalAmount, subtotalAmount: row.subtotalAmount, deliveryFee: row.deliveryFee, loyaltyDiscount, expectedTotal },
+      message: `Order total ${row.totalAmount} != subtotal ${row.subtotalAmount} + delivery ${row.deliveryFee} - loyalty ${loyaltyDiscount} (${expectedTotal}).`,
     });
   }
   if (row.subtotalAmount !== row.lineItemsSum) {

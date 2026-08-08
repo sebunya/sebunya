@@ -64,7 +64,9 @@ if (appr) {
   filteredProducts = filteredProducts.filter(p => p.approvalStatus === appr);
 }
 
-const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+import { formatUgx } from '../../../lib/money';
+// UGX code format via the single money source (en-UG's currency symbol is "USh").
+const formatter = { format: (n: unknown) => formatUgx(n) };
 const isFiltered = q || cat || stock || visible || appr;
 ---
 

@@ -4,6 +4,7 @@ import { readSessionToken } from "../../../lib/session";
 import { getRecommendationAnalytics } from "../../../lib/admin-analytics";
 import { getCommerceAnalyticsOverview, getPaymentIntelligence } from "../../../lib/admin-commerce-analytics";
 import { resolveAnalyticsPeriod, type MetricValue } from "../../../lib/commerce-analytics";
+import { formatUgx } from "../../../lib/money";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -45,7 +46,8 @@ const recSummary: any = recommendationResult.ok ? (recommendationResult.data as 
 const payments: any = paymentResult.ok ? paymentResult.data : null;
 
 const fmtNumber = (value: number) => new Intl.NumberFormat("en-UG", { maximumFractionDigits: 1 }).format(value);
-const fmtMoney = (value: number) => new Intl.NumberFormat("en-UG", { style: "currency", currency: "UGX", maximumFractionDigits: 0 }).format(value);
+// UGX code format via the single money source (en-UG's currency symbol is "USh").
+const fmtMoney = (value: number) => formatUgx(value);
 const fmtRate = (value: number) => new Intl.NumberFormat("en-UG", { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
 
 const STATE_LABELS: Record<string, string> = {

@@ -13,10 +13,11 @@ export class DrizzleCommerceReconciliationRepository implements ICommerceReconci
              o.total_amount as total_amount,
              o.subtotal_amount as subtotal_amount,
              o.delivery_fee as delivery_fee,
+             o.loyalty_discount_ugx as loyalty_discount,
              coalesce(sum(oi.final_line_total), 0) as line_items_sum
       from orders o
       left join order_items oi on oi.order_id = o.id
-      group by o.id, o.total_amount, o.subtotal_amount, o.delivery_fee
+      group by o.id, o.total_amount, o.subtotal_amount, o.delivery_fee, o.loyalty_discount_ugx
       order by o.created_at desc
       limit ${limit}
     `)) as unknown as any[];
@@ -25,6 +26,7 @@ export class DrizzleCommerceReconciliationRepository implements ICommerceReconci
       totalAmount: num(r.total_amount),
       subtotalAmount: num(r.subtotal_amount),
       deliveryFee: num(r.delivery_fee),
+      loyaltyDiscount: num(r.loyalty_discount),
       lineItemsSum: num(r.line_items_sum),
     }));
   }

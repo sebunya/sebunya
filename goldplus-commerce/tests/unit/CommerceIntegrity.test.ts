@@ -17,6 +17,15 @@ describe('checkOrderMoney', () => {
     const ex = checkOrderMoney({ orderId: 'o1', totalAmount: 110, subtotalAmount: 100, deliveryFee: 10, lineItemsSum: 80 });
     expect(ex.map((e) => e.type)).toContain('ORDER_LINES_MISMATCH');
   });
+  it('passes a loyalty-redeemed order (total = subtotal + delivery - loyalty)', () => {
+    // Regression: Order.create stores total = subtotal + delivery - loyaltyDiscount.
+    // 50000 subtotal + 0 delivery - 5000 loyalty = 45000 stored total → no mismatch.
+    expect(checkOrderMoney({ orderId: 'o1', totalAmount: 45000, subtotalAmount: 50000, deliveryFee: 0, lineItemsSum: 50000, loyaltyDiscount: 5000 })).toEqual([]);
+  });
+  it('still flags a genuine mismatch even after accounting for loyalty', () => {
+    const ex = checkOrderMoney({ orderId: 'o1', totalAmount: 40000, subtotalAmount: 50000, deliveryFee: 0, lineItemsSum: 50000, loyaltyDiscount: 5000 });
+    expect(ex.map((e) => e.type)).toContain('ORDER_TOTAL_MISMATCH');
+  });
 });
 
 describe('checkInventory', () => {
