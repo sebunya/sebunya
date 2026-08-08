@@ -25,21 +25,21 @@ const { preferences } = Astro.props;
       name="consent.analytics" 
       label="Measurement & Analytics" 
       description="Help us improve by allowing anonymous usage tracking." 
-      checked={preferences.consent?.analytics || false} 
+      checked={preferences.consent?.analytics ?? true} 
     />
     <ConsentToggle 
       id="consent_advertising" 
       name="consent.advertising" 
       label="Advertising & Paid Social" 
       description="Allow us to measure the effectiveness of our marketing campaigns on social platforms." 
-      checked={preferences.consent?.advertising || false} 
+      checked={preferences.consent?.advertising ?? true} 
     />
     <ConsentToggle 
       id="consent_personalization" 
       name="consent.personalization" 
       label="Personalization" 
       description="Get product recommendations tailored to your shopping behavior." 
-      checked={preferences.consent?.personalization || false} 
+      checked={preferences.consent?.personalization ?? true} 
     />
   </div>
 
@@ -52,21 +52,21 @@ const { preferences } = Astro.props;
       name="channels.email" 
       label="Email Updates" 
       description="Receive receipts, shipping updates, and occasional offers via email." 
-      checked={preferences.channels?.email || false} 
+      checked={preferences.channels?.email ?? true} 
     />
     <ConsentToggle 
       id="channel_sms" 
       name="channels.sms" 
       label="SMS Messages" 
       description="Get instant alerts for deliveries and critical order updates." 
-      checked={preferences.channels?.sms || false} 
+      checked={preferences.channels?.sms ?? true} 
     />
     <ConsentToggle 
       id="channel_whatsapp" 
       name="channels.whatsapp" 
       label="WhatsApp" 
       description="Chat with support and receive rich media updates via WhatsApp." 
-      checked={preferences.channels?.whatsapp || false} 
+      checked={preferences.channels?.whatsapp ?? true} 
     />
   </div>
 
@@ -81,7 +81,7 @@ const { preferences } = Astro.props;
               type="checkbox" 
               name={`interests.${topic.toLowerCase().replace(' ', '_')}`} 
               value="true"
-              checked={preferences.interests?.[topic.toLowerCase().replace(' ', '_')] || false}
+              checked={preferences.interests?.[topic.toLowerCase().replace(' ', '_')] ?? true}
               class="text-brand-primary focus:ring-brand-primary" 
             />
             <span class="text-sm font-bold text-brand-charcoal">{topic}</span>
