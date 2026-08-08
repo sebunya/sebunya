@@ -39,8 +39,6 @@ if (unauthorised) {
   return Astro.redirect('/login?returnTo=/account', 303);
 }
 
-const formatUgx = (n: number) =>
-  formatUgx(n);
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
 
 const statusBadge: Record<string, string> = {
