@@ -202,6 +202,16 @@ routes.get('/loyalty-programme', async (c) => {
 });
 
 /**
+ * Public business/contact info (0112) for the footer and contact points.
+ * Falls back to DEFAULT — the footer is never a database outage.
+ */
+routes.get('/business-info', async (c) => {
+  const data = await registry.businessInfoService.getPublicConfig();
+  c.header('Cache-Control', 'public, max-age=60');
+  return c.json({ success: true, data });
+});
+
+/**
  * The active storefront discount for DISPLAY (card/PDP/cart).
  *
  * Reads the SAME active promotion versions the checkout evaluator charges from,

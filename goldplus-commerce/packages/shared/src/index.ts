@@ -30,6 +30,7 @@ export * from './cart-credential';
 export * from './analytics';
 export * from './hero';
 export * from './nav';
+export * from './business';
 export * from './locations/uganda';
 export * from './locations/uganda-geo';
 export * from './locations/folding';

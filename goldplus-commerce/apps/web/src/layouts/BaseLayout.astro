@@ -3,6 +3,10 @@ import '../styles/global.css';
 import GpNav from '../components/GpNav.astro';
 
 import { whatsappSupportNumber } from '../lib/api';
+import { getBusinessInfo } from '../lib/businessInfo';
+
+// Business/contact info — admin-editable, DB-backed (falls back to DEFAULT).
+const biz = await getBusinessInfo();
 
 interface Props {
   title: string;
@@ -189,22 +193,23 @@ const canonical = canonicalUrl ?? Astro.url.toString();
           <div class="flex flex-col">
             <h3 class="text-white text-base font-black tracking-tight">Stay ahead of the fakes.</h3>
             <p class="text-xs text-slate-400 leading-relaxed mt-2 mb-4">Product drops, verification tips and dealer news, straight to our WhatsApp channel.</p>
-            <a href="https://whatsapp.com/channel/0029VbByb56KmCPSiisvMs44" target="_blank" rel="noopener noreferrer" aria-label="Follow GoldPlus on WhatsApp" class="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold w-fit outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 transition-colors" style="background:#93D500;color:#0A0A0A">
+            <a href={biz.whatsappChannelUrl} target="_blank" rel="noopener noreferrer" aria-label="Follow GoldPlus on WhatsApp" class="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold w-fit outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 transition-colors" style="background:#93D500;color:#0A0A0A">
               <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 004.79 1.22h.01c5.46 0 9.9-4.45 9.9-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0012.04 2z"/></svg>
               Follow on WhatsApp
             </a>
             <div class="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs">
               <div>
                 <p class="font-bold text-white mb-1.5">Visit the shop</p>
-                <p class="text-slate-400 leading-relaxed">Wilson Road, Kampala</p>
-                <p class="text-slate-500 leading-relaxed">Next to Uhuru Restaurant, opposite Pioneer Mall parking.</p>
-                <a href="tel:+256705004545" class="mt-2 inline-block font-bold text-slate-300 hover:text-brand-primary transition-colors">0705 004545</a>
+                {biz.addressLine1 && <p class="text-slate-400 leading-relaxed">{biz.addressLine1}</p>}
+                {biz.addressLine2 && <p class="text-slate-500 leading-relaxed">{biz.addressLine2}</p>}
+                {biz.phoneDisplay && <a href={biz.phoneDial || `tel:${biz.phoneDisplay}`} class="mt-2 inline-block font-bold text-slate-300 hover:text-brand-primary transition-colors">{biz.phoneDisplay}</a>}
               </div>
               <div>
                 <p class="font-bold text-white mb-1.5">Open</p>
-                <p class="text-slate-400">Shop &middot; 8:30am&ndash;6:00pm</p>
-                <p class="text-slate-400">Delivery &middot; 8:30am&ndash;8:00pm</p>
-                <p class="text-slate-500 mt-1.5">Same-day in Kampala &amp; Wakiso. Fee shown before you pay.</p>
+                {biz.shopHours && <p class="text-slate-400">Shop &middot; {biz.shopHours}</p>}
+                {biz.deliveryHours && <p class="text-slate-400">Delivery &middot; {biz.deliveryHours}</p>}
+                {biz.openDays && <p class="text-slate-500">{biz.openDays}</p>}
+                {biz.deliveryNote && <p class="text-slate-500 mt-1.5">{biz.deliveryNote}</p>}
               </div>
             </div>
           </div>
@@ -247,20 +252,24 @@ const canonical = canonicalUrl ?? Astro.url.toString();
 
         {/* SOCIAL, CONTACT & COMMUNITY ICON ROW */}
         <div class="border-t border-zinc-800/50 mt-16 pt-8 flex flex-wrap items-center justify-start gap-3">
-          {footerSocialLinks.filter(link => link.enabled).map((link) => (
-            <a
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="w-11 h-11 bg-zinc-900 border border-zinc-800/80 hover:border-brand-primary text-zinc-400 hover:text-brand-primary rounded-full flex items-center justify-center transition-all hover:bg-zinc-850 focus:ring-2 focus:ring-brand-primary outline-none"
-              aria-label={link.label}
-              title={link.label}
-            >
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d={link.iconPath}></path>
-              </svg>
-            </a>
-          ))}
+          {biz.socials.filter((s) => s.enabled && s.href).map((s) => {
+            const iconPath = footerSocialLinks.find((l) => l.key === s.key)?.iconPath;
+            if (!iconPath) return null;
+            return (
+              <a
+                href={s.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="w-11 h-11 bg-zinc-900 border border-zinc-800/80 hover:border-brand-primary text-zinc-400 hover:text-brand-primary rounded-full flex items-center justify-center transition-all hover:bg-zinc-850 focus:ring-2 focus:ring-brand-primary outline-none"
+                aria-label={`GoldPlus on ${s.label}`}
+                title={s.label}
+              >
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d={iconPath}></path>
+                </svg>
+              </a>
+            );
+          })}
         </div>
 
         {/* LOWER BRAND & LEGAL ROW */}

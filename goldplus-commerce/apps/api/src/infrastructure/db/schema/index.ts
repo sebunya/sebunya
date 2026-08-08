@@ -54,3 +54,4 @@ export * from './roleGrants';
 export * from './locations';
 export * from './delivery';
 export * from './orderAttribution';
+export * from './businessInfo';

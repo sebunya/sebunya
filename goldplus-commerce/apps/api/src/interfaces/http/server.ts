@@ -21,6 +21,7 @@ import { startPaymentReconcileTicker, stopPaymentReconcileTicker } from '../../i
 import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
 import { runHeroSlideSeedAtBoot } from '../../infrastructure/hero/HeroSlideSeeder';
 import { runNavSeedAtBoot } from '../../infrastructure/nav/NavSeeder';
+import { runBusinessInfoSeedAtBoot } from '../../infrastructure/business/BusinessInfoSeeder';
 import { templateOverrideCache } from '../../infrastructure/notifications/TemplateOverrideCache';
 import { endDbConnection } from '../../infrastructure/db/client';
 import { QueueService } from '../../infrastructure/queues/QueueService';
@@ -49,6 +50,7 @@ const server = serve({
     // Ensure the hero library exists (idempotent, add-only, never overwrites edits).
     void runHeroSlideSeedAtBoot();
     void runNavSeedAtBoot();
+    void runBusinessInfoSeedAtBoot();
     // Notification wording overrides: load published rows now, refresh every minute.
     templateOverrideCache.start();
   }
