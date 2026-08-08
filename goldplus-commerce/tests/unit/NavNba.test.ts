@@ -112,4 +112,18 @@ describe('kampalaCutoff (fixed UTC+3, no DST)', () => {
     // 2026-08-09 is a Sunday
     expect(kampalaCutoff(new Date('2026-08-09T09:00:00Z')).sunday).toBe(true);
   });
+  it('honours an operator-configured cutoff hour', () => {
+    // 12:00 Kampala with a 14:00 cutoff → 120 min left, still before cutoff.
+    const c = kampalaCutoff(new Date('2026-08-10T09:00:00Z'), { cutoffHour: 14 });
+    expect(c.beforeCutoff).toBe(true);
+    expect(c.minsToCutoff).toBe(120);
+    expect(c.cutoffLabel).toBe('2:00pm');
+    // Same instant is AFTER a 10:00 cutoff.
+    expect(kampalaCutoff(new Date('2026-08-10T09:00:00Z'), { cutoffHour: 10 }).beforeCutoff).toBe(false);
+  });
+  it('honours operator-configured closed days (and Monday is not closed by default)', () => {
+    // Monday closed when configured; Sunday open when not configured closed.
+    expect(kampalaCutoff(new Date('2026-08-10T09:00:00Z'), { closedDays: [1] }).closed).toBe(true);
+    expect(kampalaCutoff(new Date('2026-08-09T09:00:00Z'), { closedDays: [1] }).closed).toBe(false);
+  });
 });

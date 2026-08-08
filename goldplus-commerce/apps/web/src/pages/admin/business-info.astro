@@ -39,6 +39,8 @@ if (Astro.request.method === 'POST') {
       deliveryHours: String(form.get('deliveryHours') ?? '').trim(),
       deliveryNote: String(form.get('deliveryNote') ?? '').trim(),
       openDays: String(form.get('openDays') ?? '').trim(),
+      sameDayCutoffHour: Number(form.get('sameDayCutoffHour') ?? 17),
+      closedDays: [0, 1, 2, 3, 4, 5, 6].filter((d) => form.get(`closedDay.${d}`) === 'on'),
       socials,
     };
     const res = await authed('/admin/business-info', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config }) });
@@ -61,6 +63,9 @@ try {
 } catch { loadError = 'The service is unreachable right now.'; }
 
 const socialFor = (key: string) => (cfg?.socials ?? []).find((s: any) => s.key === key) ?? { href: '', enabled: false };
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const closedDays: number[] = Array.isArray(cfg?.closedDays) ? cfg.closedDays : [];
+const cutoffHour: number = typeof cfg?.sameDayCutoffHour === 'number' ? cfg.sameDayCutoffHour : 17;
 const field = (name: string, label: string, value: string, ph = '') =>
   ({ name, label, value: value ?? '', ph });
 const scalarFields = cfg ? [
@@ -98,6 +103,27 @@ const scalarFields = cfg ? [
               <input class="mt-1 w-full rounded border px-3 py-2 text-sm" name={f.name} value={f.value} placeholder={f.ph} />
             </label>
           ))}
+        </section>
+
+        <section>
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Same-day delivery cutoff</h2>
+          <p class="text-xs text-slate-500">The daily order deadline and any closed days. Drives the header countdown and the cart/checkout deadline line.</p>
+          <div class="mt-3 flex flex-wrap items-end gap-6">
+            <label class="text-xs block">Cutoff hour (0–23, Kampala time)
+              <input type="number" min="0" max="23" name="sameDayCutoffHour" value={cutoffHour} class="mt-1 w-28 rounded border px-3 py-2 text-sm" />
+              <span class="mt-1 block text-[11px] text-slate-400">17 = 5:00pm</span>
+            </label>
+            <fieldset class="text-xs">
+              <legend class="mb-1">Closed days (no same-day run)</legend>
+              <div class="flex flex-wrap gap-2">
+                {WEEKDAYS.map((name, i) => (
+                  <label class="flex items-center gap-1 rounded border border-slate-200 px-2 py-1">
+                    <input type="checkbox" name={`closedDay.${i}`} checked={closedDays.includes(i)} /> {name.slice(0, 3)}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          </div>
         </section>
 
         <section>

@@ -5,6 +5,7 @@ import { resolveAuthenticatedUserId } from '../lib/customerAuth';
 import { readSessionToken } from '../lib/session';
 import { apiBase } from '../lib/api';
 import { HERO_SLIDE_LIBRARY, computeNbaCandidates, kampalaCutoff, type NavConfig } from '@goldplus/shared';
+import { getBusinessInfo } from '../lib/businessInfo';
 import { getNavConfig } from '../lib/navConfig';
 
 /**
@@ -111,10 +112,12 @@ try {
 // ---- Next Best Action, computed on the SERVER from real signals ----
 // The browser keeps an identical offline set as the fallback; this is what makes
 // the strip right for new vs existing customers before the page even paints.
-const cut = kampalaCutoff(new Date());
+const bizNav = await getBusinessInfo();
+const cut = kampalaCutoff(new Date(), { cutoffHour: bizNav.sameDayCutoffHour, closedDays: bizNav.closedDays });
 const nba = computeNbaCandidates({
   signedIn, visits, cart: cartCount, points, lastOrderDays, orderInTransit,
   beforeCutoff: cut.beforeCutoff, minsToCutoff: cut.minsToCutoff, sunday: cut.sunday, saleLive,
+  cutoffLabel: cut.cutoffLabel,
 }, {
   // the CMS offer figures drive the copy, so the server strip and the editor agree
   firstOrderPct: nav.settings.firstOrderDiscountPct,

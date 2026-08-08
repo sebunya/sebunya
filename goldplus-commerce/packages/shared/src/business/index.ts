@@ -23,6 +23,10 @@ export interface BusinessInfo {
   deliveryHours: string;
   deliveryNote: string;
   openDays: string;
+  /** Same-day order deadline, hour 0–23 Kampala time. Drives the header/checkout countdown. */
+  sameDayCutoffHour: number;
+  /** Weekdays with no same-day run, 0=Sun…6=Sat. */
+  closedDays: number[];
   socials: BusinessSocialLink[];
 }
 
@@ -39,6 +43,8 @@ export const DEFAULT_BUSINESS_INFO: BusinessInfo = {
   deliveryHours: '8:30am–8:00pm',
   deliveryNote: 'Same-day in Kampala & Wakiso. Fee shown before you pay.',
   openDays: 'Monday to Saturday',
+  sameDayCutoffHour: 17,
+  closedDays: [0],
   socials: [
     { key: 'instagram', label: 'Instagram', href: 'https://instagram.com/ShopGoldPlus', enabled: true },
     { key: 'x', label: 'X', href: 'https://x.com/ShopGoldPlus', enabled: true },

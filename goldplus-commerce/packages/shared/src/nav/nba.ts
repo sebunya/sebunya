@@ -34,10 +34,12 @@ export interface NbaContext {
   beforeCutoff: boolean;
   /** whole minutes to the cutoff (only meaningful when beforeCutoff) */
   minsToCutoff: number;
-  /** Sunday in Kampala */
+  /** Sunday in Kampala (kept as the back-compat "closed today" flag) */
   sunday: boolean;
   /** the flash sale is still running */
   saleLive: boolean;
+  /** operator-configured cutoff label for copy, e.g. "5:00pm" (default 5:00pm) */
+  cutoffLabel?: string;
 }
 
 export interface NbaItem {
@@ -159,15 +161,16 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   }
 
   // always available, and always true
+  const cutoffLabel = ctx.cutoffLabel || '5:00pm';
   if (ctx.sunday) {
-    c.push({ id: 'sunday', score: 40, text: 'Closed Sunday &mdash; same-day delivery resumes <b>Monday</b>', short: 'Delivery resumes <b>Monday</b>', href: R.delivery });
+    c.push({ id: 'sunday', score: 40, text: 'Closed today &mdash; same-day delivery resumes the <b>next working day</b>', short: 'Delivery resumes <b>next working day</b>', href: R.delivery });
   } else if (ctx.beforeCutoff) {
     c.push({
       id: 'cutoff', score: ctx.minsToCutoff <= 60 ? 90 : 50, urgent: ctx.minsToCutoff <= 60,
       text: ctx.minsToCutoff <= 60
         ? 'Only <em>' + ctx.minsToCutoff + ' minutes</em> left for same-day delivery in Kampala'
-        : 'Order before <b>5:00pm</b> for same-day delivery in Kampala',
-      short: ctx.minsToCutoff <= 60 ? '<em>' + ctx.minsToCutoff + ' min</em> left for delivery today' : 'Order by <b>5:00pm</b> for delivery today',
+        : 'Order before <b>' + cutoffLabel + '</b> for same-day delivery in Kampala',
+      short: ctx.minsToCutoff <= 60 ? '<em>' + ctx.minsToCutoff + ' min</em> left for delivery today' : 'Order by <b>' + cutoffLabel + '</b> for delivery today',
       href: R.delivery,
     });
   } else {
@@ -179,14 +182,41 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   return c;
 }
 
-/** Kampala is a fixed UTC+3 with no DST — derive cutoff/Sunday from any Date. */
-export function kampalaCutoff(now: Date): { beforeCutoff: boolean; minsToCutoff: number; sunday: boolean } {
+/** Operator-editable same-day delivery window (business_info). */
+export interface DeliveryCutoffConfig {
+  /** Same-day order deadline, hour of day 0–23 Kampala time. Default 17 (5pm). */
+  cutoffHour?: number;
+  /** Weekdays with no same-day run, 0=Sun…6=Sat. Default [0] (closed Sunday). */
+  closedDays?: number[];
+}
+
+/** 24h hour → "5:00pm" style label for copy. */
+export function formatCutoffLabel(hour: number): string {
+  const h = ((Math.trunc(hour) % 24) + 24) % 24;
+  const ampm = h < 12 ? 'am' : 'pm';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:00${ampm}`;
+}
+
+/**
+ * Kampala is a fixed UTC+3 with no DST — derive the same-day cutoff and closed
+ * state from any Date. The cutoff hour and closed days are operator-editable
+ * (business_info); the defaults (17:00, closed Sunday) reproduce the original
+ * behaviour so callers that pass nothing are unchanged. `sunday` is kept as a
+ * back-compat alias for "closed today".
+ */
+export function kampalaCutoff(
+  now: Date,
+  cfg?: DeliveryCutoffConfig,
+): { beforeCutoff: boolean; minsToCutoff: number; closed: boolean; sunday: boolean; cutoffHour: number; cutoffLabel: string } {
+  const cutoffHour = Number.isFinite(cfg?.cutoffHour) ? Math.min(23, Math.max(0, Math.trunc(cfg!.cutoffHour!))) : 17;
+  const closedDays = Array.isArray(cfg?.closedDays) ? cfg!.closedDays! : [0];
   const k = new Date(now.getTime() + 3 * 60 * 60 * 1000);
   const day = k.getUTCDay();
   const hour = k.getUTCHours();
   const mins = k.getUTCMinutes();
-  const sunday = day === 0;
-  const minsToCutoff = (17 - hour) * 60 - mins;
-  const beforeCutoff = !sunday && hour < 17;
-  return { beforeCutoff, minsToCutoff, sunday };
+  const closed = closedDays.includes(day);
+  const minsToCutoff = (cutoffHour - hour) * 60 - mins;
+  const beforeCutoff = !closed && hour < cutoffHour;
+  return { beforeCutoff, minsToCutoff, closed, sunday: closed, cutoffHour, cutoffLabel: formatCutoffLabel(cutoffHour) };
 }

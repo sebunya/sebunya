@@ -9,6 +9,7 @@ import { getStorefrontDiscount, salePriceUgx } from '../lib/storefrontDiscount';
 import { readCartSessionId } from '../lib/cart-session';
 import type { ApiEnvelope } from '@goldplus/shared';
 import { kampalaCutoff } from '@goldplus/shared';
+import { getBusinessInfo } from '../lib/businessInfo';
 import CartAddonRail from '../components/recommendations/CartAddonRail.astro';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
 import { parseLocalCartCookie } from '../lib/cart';
@@ -260,11 +261,12 @@ try {
 } catch { /* preview only */ }
 const cartPotentialPoints = cartLoyaltyRate > 0 ? Math.floor(subtotal / 1000) * cartLoyaltyRate : 0;
 
-// The same-day deadline, from the SAME 17:00 Kampala source the header uses,
-// rendered where the decision is actually made.
-const cut = kampalaCutoff(new Date());
-const cutoffLine = cut.sunday
-  ? 'Closed Sunday — this goes out Monday morning'
+// The same-day deadline, from the SAME operator-configured Kampala cutoff the
+// header uses, rendered where the decision is actually made.
+const bizCart = await getBusinessInfo();
+const cut = kampalaCutoff(new Date(), { cutoffHour: bizCart.sameDayCutoffHour, closedDays: bizCart.closedDays });
+const cutoffLine = cut.closed
+  ? 'Closed today — this goes out on the next working day'
   : !cut.beforeCutoff
     ? "Today's run has left — this goes out tomorrow morning"
     : cut.minsToCutoff <= 60

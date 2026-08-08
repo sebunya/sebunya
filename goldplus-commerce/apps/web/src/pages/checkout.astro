@@ -23,6 +23,7 @@ import {
 } from '../lib/checkoutClient';
 import { mayStartPayment, kampalaCutoff } from '@goldplus/shared';
 import { getStorefrontDiscount, salePriceUgx } from '../lib/storefrontDiscount';
+import { getBusinessInfo } from '../lib/businessInfo';
 import type { ApiEnvelope } from '@goldplus/shared';
 
 interface CartItem {
@@ -525,10 +526,11 @@ if (defaultAddress) {
 const initialAreaSlug: string | null = (defaultAddress as any)?.areaSlug ?? null;
 const initialDistrict: string | null = defaultAddress?.district ?? null;
 
-// Same-day deadline from the SAME 17:00 Kampala source the header uses.
-const cut = kampalaCutoff(new Date());
-const cutoffLine = cut.sunday
-  ? 'Closed Sunday — this goes out Monday morning'
+// Same-day deadline from the SAME operator-configured Kampala cutoff the header uses.
+const bizCheckout = await getBusinessInfo();
+const cut = kampalaCutoff(new Date(), { cutoffHour: bizCheckout.sameDayCutoffHour, closedDays: bizCheckout.closedDays });
+const cutoffLine = cut.closed
+  ? 'Closed today — this goes out on the next working day'
   : !cut.beforeCutoff
     ? "Today's run has left — this goes out tomorrow morning"
     : cut.minsToCutoff <= 60
