@@ -223,6 +223,16 @@ routes.get('/taxonomy', async (c) => {
 });
 
 /**
+ * Homepage marketing content (trust strip + business-pathway cards) for the
+ * storefront. Falls back to DEFAULT — the homepage is never a database outage.
+ */
+routes.get('/homepage-content', async (c) => {
+  const data = await registry.homepageContentService.getPublicConfig();
+  c.header('Cache-Control', 'public, max-age=60');
+  return c.json({ success: true, data });
+});
+
+/**
  * The active storefront discount for DISPLAY (card/PDP/cart).
  *
  * Reads the SAME active promotion versions the checkout evaluator charges from,

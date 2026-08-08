@@ -89,6 +89,8 @@ import { DrizzleBusinessInfoRepository } from './db/repositories/DrizzleBusiness
 import { BusinessInfoService } from '../application/business/BusinessInfoService';
 import { DrizzleTaxonomyRepository } from './db/repositories/DrizzleTaxonomyRepository';
 import { TaxonomyService } from '../application/taxonomy/TaxonomyService';
+import { DrizzleHomepageContentRepository } from './db/repositories/DrizzleHomepageContentRepository';
+import { HomepageContentService } from '../application/homepage/HomepageContentService';
 import { NavTelemetryService } from './nav/NavTelemetryService';
 import {
   AbandonStaleUnpaidOrdersUseCase,
@@ -1592,6 +1594,8 @@ export class Registry {
   public readonly businessInfoService = new BusinessInfoService(this.businessInfoRepo);
   public readonly taxonomyRepo = new DrizzleTaxonomyRepository();
   public readonly taxonomyService = new TaxonomyService(this.taxonomyRepo);
+  public readonly homepageContentRepo = new DrizzleHomepageContentRepository();
+  public readonly homepageContentService = new HomepageContentService(this.homepageContentRepo);
   public readonly navTelemetryService = new NavTelemetryService();
 
   /** The ONE product-cost owner: what a product cost, from when, on whose authority. */
