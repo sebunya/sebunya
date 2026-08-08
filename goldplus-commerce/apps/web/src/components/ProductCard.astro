@@ -30,6 +30,14 @@ const productType = lowerName.includes("charger") ? "Charger"
 
 const shortDescAttr = product.attributeValues?.find(a => a.name === 'CardShortDescription')?.value;
 
+// Honest scarcity: a count only when stock is genuinely low (computed here to
+// keep the `<=` out of the template, where Astro parses `<` as a tag).
+const lowStockLeft = product.availability.kind === 'in_stock'
+  && product.availability.quantity > 0
+  && product.availability.quantity <= 10
+  ? product.availability.quantity
+  : null;
+
 const availabilityLabel = (() => {
   switch(product.availability.kind) {
     case 'in_stock': return 'In Stock';
@@ -106,6 +114,9 @@ const availabilityBadgeClass = (() => {
       <p class={`font-black tracking-tight tabular-nums ${hasValidPrice ? 'text-lg text-gray-900' : 'text-xs text-slate-500 font-bold'}`}>
         {formattedPrice}
       </p>
+      {lowStockLeft !== null && (
+        <p class="mt-1 text-[11px] font-bold text-amber-700">Only {lowStockLeft} left</p>
+      )}
     </div>
   </div>
 </article>
