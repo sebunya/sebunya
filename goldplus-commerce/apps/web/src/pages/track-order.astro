@@ -1,79 +1,169 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { whatsappSupportNumber } from '../lib/api';
+import { postJson, whatsappSupportNumber } from '../lib/api';
+import { formatUgx } from '../lib/money';
 
 const orderHelpWhatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(
   'Hello GoldPlus, I need help with an order. I have my order reference ready.'
 )}`;
+
+// Human labels for the two status enums the lookup returns.
+const label = (s: unknown) =>
+  String(s ?? '')
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (m) => m.toUpperCase()) || 'Unknown';
+
+// Green for a settled/positive state, amber for in-progress, slate otherwise.
+const toneFor = (s: string) => {
+  const v = String(s ?? '').toUpperCase();
+  if (/PAID|DELIVERED|CONFIRMED|COMPLETE/.test(v)) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+  if (/PENDING|PROCESS|PACK|DISPATCH|TRANSIT|OUT_FOR/.test(v)) return 'bg-amber-50 text-amber-900 border-amber-200';
+  if (/FAIL|CANCEL|REFUND/.test(v)) return 'bg-red-50 text-red-800 border-red-200';
+  return 'bg-slate-50 text-slate-700 border-slate-200';
+};
+
+const fmtDate = (iso: unknown) => {
+  const t = iso ? new Date(String(iso)).getTime() : NaN;
+  return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+};
+
+let order: any = null;
+let errorMsg: string | undefined;
+let submittedRef = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const reference = String(form.get('reference') ?? '').trim();
+  const contact = String(form.get('contact') ?? '').trim();
+  submittedRef = reference;
+  if (!reference || !contact) {
+    errorMsg = 'Enter both your order reference and the phone number or email used at checkout.';
+  } else {
+    const result = await postJson('/commerce/orders/lookup', { reference, contact });
+    if (result.ok) {
+      order = result.data;
+    } else {
+      errorMsg = result.code === 'NETWORK'
+        ? 'We cannot reach the order service right now. Please try again shortly.'
+        : (result.message ?? 'We could not verify that order. Please check your reference and contact details.');
+    }
+  }
+}
 ---
 
-<BaseLayout title="Order help | GoldPlus">
+<BaseLayout title="Track your order | GoldPlus">
   <main>
     <section class="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
       <div class="container mx-auto px-4 lg:px-8">
         <a href="/support" class="text-xs font-bold text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-brand-primary">&larr; Customer support</a>
-        <p class="mt-8 text-xs font-black uppercase tracking-[0.18em] text-brand-primary">Order support</p>
-        <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Need help with an order?</h1>
+        <p class="mt-8 text-xs font-black uppercase tracking-[0.18em] text-brand-primaryInk">Track your order</p>
+        <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Where's my order?</h1>
         <p class="mt-4 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
-          Have your order reference ready. GoldPlus support will help verify the order information available to us.
+          Enter your order reference and the phone number or email you used at checkout to see its current status.
         </p>
       </div>
     </section>
 
     <section class="container mx-auto px-4 py-10 sm:py-14 lg:px-8">
-      <div class="mx-auto grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+      <div class="mx-auto grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-[1fr_0.9fr]">
+        <!-- Lookup + result -->
         <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
-          <h2 class="text-2xl font-black text-gray-900">Before you contact support</h2>
-          <ol class="mt-6 space-y-5" aria-label="Information to prepare for order support">
-            <li class="flex gap-4">
-              <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-primary text-sm font-black text-gray-950">1</span>
-              <div>
-                <h3 class="font-black text-gray-900">Find your order reference</h3>
-                <p class="mt-1 text-sm leading-relaxed text-slate-600">Use the reference shown after checkout or on any genuine order record you received.</p>
-              </div>
-            </li>
-            <li class="flex gap-4">
-              <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-primary text-sm font-black text-gray-950">2</span>
-              <div>
-                <h3 class="font-black text-gray-900">Keep your checkout contact ready</h3>
-                <p class="mt-1 text-sm leading-relaxed text-slate-600">Support may ask for the phone number or email used at checkout to protect order details.</p>
-              </div>
-            </li>
-            <li class="flex gap-4">
-              <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-primary text-sm font-black text-gray-950">3</span>
-              <div>
-                <h3 class="font-black text-gray-900">Ask us to verify</h3>
-                <p class="mt-1 text-sm leading-relaxed text-slate-600">Tell support what you need checked. Do not post payment credentials, passwords or one-time codes.</p>
-              </div>
-            </li>
-          </ol>
+          <h2 class="text-xl font-black text-gray-900">Look up your order</h2>
+          <form method="POST" action="/track-order" class="mt-5 space-y-4">
+            <label class="block">
+              <span class="text-xs font-bold text-slate-700">Order reference</span>
+              <input name="reference" required maxlength="80" value={submittedRef}
+                placeholder="e.g. GP-2026-01234"
+                class="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand-primary" />
+            </label>
+            <label class="block">
+              <span class="text-xs font-bold text-slate-700">Phone or email used at checkout</span>
+              <input name="contact" required maxlength="120" inputmode="email"
+                placeholder="07XX XXX XXX or you@example.com"
+                class="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand-primary" />
+            </label>
+            <button type="submit"
+              class="inline-flex min-h-12 w-full items-center justify-center rounded-full px-6 text-sm font-bold outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 transition active:scale-[0.99]"
+              style="background:#93D500;color:#0A0A0A">
+              Track order
+            </button>
+            <p class="text-center text-xs text-slate-500">We only show order details when the reference and contact match — for your privacy.</p>
+          </form>
 
-          <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-            <a
-              href={orderHelpWhatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Open GoldPlus order support on WhatsApp in a new tab"
-              class="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-center text-sm font-bold text-white outline-none transition hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
-            >
-              Ask on WhatsApp
-            </a>
-            <a href="/support" class="inline-flex min-h-12 flex-1 items-center justify-center rounded-full border border-slate-300 px-6 py-3 text-center text-sm font-bold text-slate-800 outline-none transition hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">See all support options</a>
-          </div>
-          <p class="mt-4 text-center text-xs leading-relaxed text-slate-500">WhatsApp opens as a link. No message is sent automatically.</p>
+          {errorMsg && (
+            <div role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+              {errorMsg}
+            </div>
+          )}
+
+          {order && (
+            <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Order</p>
+                  <p class="text-lg font-black text-gray-900">{order.orderNumber}</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <span class={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${toneFor(order.orderStatus)}`}>{label(order.orderStatus)}</span>
+                  <span class={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${toneFor(order.paymentStatus)}`}>Payment: {label(order.paymentStatus)}</span>
+                </div>
+              </div>
+
+              <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                {order.customerName && (<><dt class="text-slate-500">Name</dt><dd class="text-right font-semibold text-gray-900">{order.customerName}</dd></>)}
+                {order.deliveryArea && (<><dt class="text-slate-500">Delivery area</dt><dd class="text-right font-semibold text-gray-900">{order.deliveryArea}</dd></>)}
+                {order.createdAt && (<><dt class="text-slate-500">Placed</dt><dd class="text-right font-semibold text-gray-900">{fmtDate(order.createdAt)}</dd></>)}
+                {(order.customerPhone || order.customerEmail) && (<><dt class="text-slate-500">Contact</dt><dd class="text-right font-semibold text-gray-900">{order.customerPhone || order.customerEmail}</dd></>)}
+              </dl>
+
+              {Array.isArray(order.items) && order.items.length > 0 && (
+                <div class="mt-4 border-t border-slate-200 pt-3">
+                  <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Items</p>
+                  <ul class="mt-2 space-y-1.5 text-sm">
+                    {order.items.map((it: any) => (
+                      <li class="flex items-center justify-between gap-3">
+                        <span class="text-gray-800">{it.name ?? it.productName ?? 'Item'} <span class="text-slate-400">× {it.quantity ?? it.qty ?? 1}</span></span>
+                        {typeof (it.lineTotalUgx ?? it.unitPriceUgx) === 'number' && (
+                          <span class="font-semibold text-gray-900 tabular-nums">{formatUgx(it.lineTotalUgx ?? (it.unitPriceUgx * (it.quantity ?? 1)))}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <dl class="mt-4 space-y-1 border-t border-slate-200 pt-3 text-sm">
+                {typeof order.subtotalUgx === 'number' && (<div class="flex justify-between"><dt class="text-slate-500">Subtotal</dt><dd class="font-semibold text-gray-900 tabular-nums">{formatUgx(order.subtotalUgx)}</dd></div>)}
+                {typeof order.deliveryFeeUgx === 'number' && (<div class="flex justify-between"><dt class="text-slate-500">Delivery</dt><dd class="font-semibold text-gray-900 tabular-nums">{formatUgx(order.deliveryFeeUgx)}</dd></div>)}
+                {typeof order.totalUgx === 'number' && (<div class="flex justify-between border-t border-slate-200 pt-1.5"><dt class="font-black text-gray-900">Total</dt><dd class="font-black text-brand-primaryInk tabular-nums">{formatUgx(order.totalUgx)}</dd></div>)}
+              </dl>
+
+              <div class="mt-5 flex flex-col gap-3 sm:flex-row">
+                <a href={orderHelpWhatsappUrl} target="_blank" rel="noopener noreferrer"
+                  class="inline-flex min-h-11 flex-1 items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900">Ask about this order on WhatsApp</a>
+              </div>
+            </div>
+          )}
         </div>
 
-        <aside aria-labelledby="order-status-truth" class="rounded-2xl border border-amber-200 bg-amber-50/60 p-6 sm:p-8">
-          <h2 id="order-status-truth" class="text-xl font-black text-amber-950">What this page does—and does not—show</h2>
-          <p class="mt-4 text-sm leading-relaxed text-amber-900">
-            This is an order-help page, not live courier tracking. It does not confirm payment, product availability, dispatch, delivery status or an arrival time.
+        <!-- Prepare / honest note -->
+        <aside class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
+          <h2 class="text-lg font-black text-gray-900">Before you look up</h2>
+          <ol class="mt-5 space-y-4" aria-label="What you need">
+            <li class="flex gap-3">
+              <span aria-hidden="true" class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-primary text-xs font-black text-gray-950">1</span>
+              <p class="text-sm leading-relaxed text-slate-600"><span class="font-bold text-gray-900">Your order reference</span> — shown after checkout and on any genuine order record you received.</p>
+            </li>
+            <li class="flex gap-3">
+              <span aria-hidden="true" class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-primary text-xs font-black text-gray-950">2</span>
+              <p class="text-sm leading-relaxed text-slate-600"><span class="font-bold text-gray-900">The phone or email from checkout</span> — we match it to protect your order details. Never share payment credentials, passwords or one-time codes.</p>
+            </li>
+          </ol>
+          <p class="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
+            Delivery timing depends on the product, availability and your location. If anything looks wrong, our team can help on WhatsApp.
           </p>
-          <p class="mt-4 text-sm leading-relaxed text-amber-900">
-            Support will verify the details available for your order. Delivery timing depends on the order, product availability and location.
-          </p>
-          <p class="mt-4 text-sm font-bold leading-relaxed text-amber-950">
-            An order reference alone is not proof that an order is paid, confirmed or dispatched.
-          </p>
+          <a href="/support" class="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-5 py-2.5 text-sm font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">See all support options</a>
         </aside>
       </div>
     </section>
