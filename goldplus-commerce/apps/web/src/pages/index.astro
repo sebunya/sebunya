@@ -10,6 +10,7 @@ import HeroSlider from '../components/hero/HeroSlider.astro';
 import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
 import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
 import { getCleanCatalog } from '../lib/catalog/catalog';
+import { getTaxonomy } from '../lib/taxonomy';
 
 let rawProducts: ProductPublicDto[] = [];
 let hasApiError = false;
@@ -28,6 +29,8 @@ try {
 }
 
 const allProducts = getCleanCatalog(rawProducts);
+// Homepage "Shop by category" tiles — operator-editable taxonomy (admin/categories).
+const homepageCategories = (await getTaxonomy()).filter((c) => c.showOnHomepage);
 
 // Execute cross-section deduplication and building of allocations
 const allocation = buildHomepageProductAllocation(allProducts);
@@ -106,12 +109,7 @@ const usedProductIds = [
     <div class="container mx-auto px-4 lg:px-8">
       <h2 class="text-2xl font-black tracking-tight text-gray-900 mb-8 text-center">Shop by category</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { name: 'Power devices', desc: 'Chargers, banks', slug: 'power' },
-          { name: 'Sound devices', desc: 'Earbuds, speakers', slug: 'sound' },
-          { name: 'Storage devices', desc: 'Flash drives, SDs', slug: 'storage' },
-          { name: 'Car accessories', desc: 'Mounts, chargers', slug: 'car' },
-        ].map((cat) => (
+        {homepageCategories.map((cat) => (
           <a href={`/shop?category=${cat.slug}`} class="block group focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none rounded-2xl">
             <div class="bg-white border border-slate-200/85 aspect-[4/3] rounded-2xl p-6 flex flex-col justify-end relative overflow-hidden transition-all hover:border-brand-primary hover:shadow-lg hover:shadow-slate-100/60">
               <div class="absolute inset-0 flex items-center justify-center text-slate-200 font-medium" aria-hidden="true">
@@ -119,7 +117,7 @@ const usedProductIds = [
               </div>
               <div class="relative z-10 bg-white/95 p-3.5 rounded-xl border border-slate-100/80 shadow-xs">
                 <h3 class="text-base font-bold text-gray-950 mb-0.5">{cat.name}</h3>
-                <p class="text-xs text-slate-500 font-medium group-hover:text-brand-primary transition-colors">{cat.desc}</p>
+                {cat.homepageBlurb && <p class="text-xs text-slate-500 font-medium group-hover:text-brand-primary transition-colors">{cat.homepageBlurb}</p>}
               </div>
             </div>
           </a>

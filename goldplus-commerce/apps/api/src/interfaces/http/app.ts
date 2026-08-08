@@ -25,6 +25,7 @@ import heroPublicRoutes from './routes/hero';
 import adminNavRoutes from './routes/admin/nav';
 import navPublicRoutes from './routes/nav';
 import adminBusinessInfoRoutes from './routes/admin/business-info';
+import adminTaxonomyRoutes from './routes/admin/taxonomy';
 import authSocialRoutes from './routes/auth-social';
 import adminNotificationsRoutes from './routes/admin/notifications';
 import adminRecommendationsRoutes from './routes/admin/recommendations';
@@ -214,6 +215,7 @@ app.route('/admin/product-costs', adminProductCostsRoutes);
 app.route('/admin/hero', adminHeroRoutes);
 app.route('/admin/nav', adminNavRoutes);
 app.route('/admin/business-info', adminBusinessInfoRoutes);
+app.route('/admin/taxonomy', adminTaxonomyRoutes);
 app.route('/admin/notifications', adminNotificationsRoutes);
 app.route('/admin/recommendations', adminRecommendationsRoutes);
 app.route('/admin/customer-dna', adminCustomerDnaRoutes);
@@ -321,6 +323,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/hero',
   '/admin/nav',
   '/admin/business-info',
+  '/admin/taxonomy',
   '/nav',
   '/auth/social',
   '/admin/product-costs',

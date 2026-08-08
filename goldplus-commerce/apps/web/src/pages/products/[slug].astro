@@ -12,6 +12,7 @@ import RelatedProductsRail from '../../components/recommendations/RelatedProduct
 import RecentlyViewedRail from '../../components/recommendations/RecentlyViewedRail.astro';
 import { normalizeProductCategory, getCleanCatalog } from '../../lib/catalog/catalog';
 import { getProductSubcategory } from '../../lib/product-discovery';
+import { getTaxonomy } from '../../lib/taxonomy';
 import { previewRecommendationRules, productToRecommendationItem } from '../../lib/recommendation-display';
 
 const { slug } = Astro.params;
@@ -66,7 +67,7 @@ if (searchQuery && Number.isInteger(searchRank) && searchRank >= 1 && searchRank
 const hasValidSku = product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending');
 const verifiedAttributes = product.attributeValues.filter((v) => v.isVerified && v.name !== 'Badge' && v.name !== 'CardShortDescription');
 
-const productSubcategory = getProductSubcategory(product);
+const productSubcategory = getProductSubcategory(product, await getTaxonomy());
 
 // Honest catalogue fallback for the non-personalised PDP browse rail.
 let pdpFallbackProducts: Array<{

@@ -1,37 +1,155 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { readSessionToken } from '../../../lib/session';
+import { apiBase } from '../../../lib/api';
 
+/**
+ * Product discovery taxonomy editor (0113). Categories and their subcategories,
+ * the homepage "Shop by category" tiles, inference keywords and URL aliases —
+ * the storefront reads these from the DB, so an edit here goes live with no
+ * deploy. The whole tree is serialised client-side and PUT to /admin/taxonomy,
+ * which validates and sanitises every field.
+ */
 const token = readSessionToken(Astro.request);
-if (!token) {
-  return Astro.redirect("/admin/login?returnTo=/admin/categories", 303);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/categories', 303);
+
+let cfg: any[] = [];
+let loadError = '';
+try {
+  const res = await fetch(`${apiBase}/admin/taxonomy`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+  if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/categories', 303);
+  const json: any = await res.json().catch(() => null);
+  if (res.ok && json?.success) cfg = Array.isArray(json.data.config) ? json.data.config : [];
+  else loadError = json?.error?.message ?? 'Could not load the taxonomy.';
+} catch {
+  loadError = 'The service is unreachable right now.';
 }
 ---
+<AdminLayout title="Categories & taxonomy">
+  <div class="mx-auto max-w-4xl px-4 py-8">
+    <h1 class="text-2xl font-black text-slate-900">Categories &amp; taxonomy</h1>
+    <p class="mt-2 text-sm text-slate-600">The shop categories and subcategories, the homepage tiles, the search-inference keywords and URL aliases. Changes go live within a minute, no deploy.</p>
 
-<AdminLayout 
-  title="Categories — not yet available" 
-  description="Category management is not available in this admin yet."
->
-  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
-      <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Categories</h2>
-        <p class="text-sm text-gray-500 mt-1">Category management is not available in this admin yet.</p>
-      </div>
+    <div id="notice" class="mt-6 hidden rounded-xl border p-4 text-sm"></div>
+    {loadError && <div class="mt-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{loadError}</div>}
+
+    <div id="categories" class="mt-8 space-y-6"></div>
+
+    <div class="mt-6 flex items-center gap-3">
+      <button id="add-category" type="button" class="rounded-full border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:border-slate-900">+ Add category</button>
+      <button id="save" type="button" class="rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white">Save taxonomy</button>
     </div>
-
-    <div class="mt-12 p-16 border border-dashed border-gray-300 bg-gray-50 rounded-2xl text-center max-w-3xl mx-auto flex flex-col items-center justify-center">
-      <h4 class="font-black text-brand-dark text-base">Feature Under Construction</h4>
-      <p class="text-xs text-gray-500 mt-2 max-w-md leading-relaxed font-medium">
-        Category configurations and taxonomy hierarchies are managed directly within the seed files and database layer. They are not yet exposed as a live, modifiable module.
-      </p>
-      <a href="/admin" class="mt-6 text-xs font-bold text-white bg-brand-dark hover:bg-black px-5 py-2.5 rounded-xl transition-colors shadow-sm">
-        Return to Control Centre
-      </a>
-    </div>
-
   </div>
+
+  <template id="tpl-category">
+    <div class="category-block rounded-2xl border border-slate-200 bg-white p-5">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label class="text-xs block">Category name
+          <input data-f="name" class="mt-1 w-full rounded border px-3 py-2 text-sm" placeholder="Power Devices" />
+        </label>
+        <label class="text-xs block">Slug (URL)
+          <input data-f="slug" class="mt-1 w-full rounded border px-3 py-2 text-sm font-mono" placeholder="power-devices" />
+        </label>
+        <label class="text-xs block sm:col-span-2">Description (optional)
+          <input data-f="description" class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+        </label>
+        <label class="text-xs block">Homepage blurb (optional)
+          <input data-f="homepageBlurb" class="mt-1 w-full rounded border px-3 py-2 text-sm" placeholder="Chargers, banks" />
+        </label>
+        <label class="text-xs block">URL aliases (comma-separated)
+          <input data-f="aliases" class="mt-1 w-full rounded border px-3 py-2 text-sm font-mono" placeholder="power" />
+        </label>
+        <label class="text-xs flex items-center gap-2 sm:col-span-2"><input type="checkbox" data-f="showOnHomepage" /> Show as a homepage tile</label>
+      </div>
+      <div class="mt-4">
+        <p class="text-xs font-black uppercase tracking-wider text-slate-500">Subcategories</p>
+        <div class="subs mt-2 space-y-2"></div>
+        <button type="button" class="add-sub mt-2 text-xs font-bold text-slate-600 hover:text-slate-900">+ Add subcategory</button>
+      </div>
+      <button type="button" class="remove-category mt-4 text-xs font-bold text-red-600 hover:text-red-800">Remove category</button>
+    </div>
+  </template>
+
+  <template id="tpl-sub">
+    <div class="sub-block grid grid-cols-[1fr_1fr_2fr_auto] items-center gap-2">
+      <input data-f="name" class="rounded border px-2 py-1 text-sm" placeholder="Chargers" />
+      <input data-f="slug" class="rounded border px-2 py-1 text-sm font-mono" placeholder="chargers" />
+      <input data-f="keywords" class="rounded border px-2 py-1 text-sm font-mono" placeholder="keywords: charger, adapter" />
+      <button type="button" class="remove-sub text-xs font-bold text-red-600 hover:text-red-800">✕</button>
+    </div>
+  </template>
+
+  <script is:inline define:vars={{ initial: cfg, apiBase, token }}>
+    const $ = (sel, root = document) => root.querySelector(sel);
+    const catList = document.getElementById('categories');
+    const catTpl = document.getElementById('tpl-category');
+    const subTpl = document.getElementById('tpl-sub');
+
+    function addSub(subsEl, sub = {}) {
+      const node = subTpl.content.firstElementChild.cloneNode(true);
+      node.querySelector('[data-f="name"]').value = sub.name ?? '';
+      node.querySelector('[data-f="slug"]').value = sub.slug ?? '';
+      node.querySelector('[data-f="keywords"]').value = Array.isArray(sub.keywords) ? sub.keywords.join(', ') : '';
+      node.querySelector('.remove-sub').addEventListener('click', () => node.remove());
+      subsEl.appendChild(node);
+    }
+
+    function addCategory(cat = {}) {
+      const node = catTpl.content.firstElementChild.cloneNode(true);
+      node.querySelector('[data-f="name"]').value = cat.name ?? '';
+      node.querySelector('[data-f="slug"]').value = cat.slug ?? '';
+      node.querySelector('[data-f="description"]').value = cat.description ?? '';
+      node.querySelector('[data-f="homepageBlurb"]').value = cat.homepageBlurb ?? '';
+      node.querySelector('[data-f="aliases"]').value = Array.isArray(cat.aliases) ? cat.aliases.join(', ') : '';
+      node.querySelector('[data-f="showOnHomepage"]').checked = !!cat.showOnHomepage;
+      const subsEl = node.querySelector('.subs');
+      (cat.subcategories ?? []).forEach((s) => addSub(subsEl, s));
+      node.querySelector('.add-sub').addEventListener('click', () => addSub(subsEl));
+      node.querySelector('.remove-category').addEventListener('click', () => node.remove());
+      catList.appendChild(node);
+    }
+
+    const csv = (v) => v.split(',').map((x) => x.trim()).filter(Boolean);
+
+    function serialize() {
+      return [...catList.querySelectorAll('.category-block')].map((block) => ({
+        name: $('[data-f="name"]', block).value.trim(),
+        slug: $('[data-f="slug"]', block).value.trim(),
+        description: $('[data-f="description"]', block).value.trim(),
+        homepageBlurb: $('[data-f="homepageBlurb"]', block).value.trim(),
+        aliases: csv($('[data-f="aliases"]', block).value),
+        showOnHomepage: $('[data-f="showOnHomepage"]', block).checked,
+        subcategories: [...block.querySelectorAll('.sub-block')].map((s) => ({
+          name: $('[data-f="name"]', s).value.trim(),
+          slug: $('[data-f="slug"]', s).value.trim(),
+          keywords: csv($('[data-f="keywords"]', s).value),
+        })),
+      }));
+    }
+
+    function notify(kind, message) {
+      const el = document.getElementById('notice');
+      el.className = 'mt-6 rounded-xl border p-4 text-sm ' + (kind === 'ok' ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-red-300 bg-red-50 text-red-900');
+      el.textContent = message;
+    }
+
+    (initial ?? []).forEach((c) => addCategory(c));
+    if (!(initial ?? []).length) addCategory();
+
+    document.getElementById('add-category').addEventListener('click', () => addCategory());
+    document.getElementById('save').addEventListener('click', async () => {
+      try {
+        const res = await fetch(`${apiBase}/admin/taxonomy`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Accept: 'application/json' },
+          body: JSON.stringify({ config: serialize() }),
+        });
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.success) notify('ok', `Saved (version ${json.data.version}). Live within a minute.`);
+        else notify('error', json?.error?.message ?? 'Could not save.');
+      } catch {
+        notify('error', 'The service is unreachable right now.');
+      }
+    });
+  </script>
 </AdminLayout>
-
-

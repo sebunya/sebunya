@@ -5,7 +5,6 @@ import Notice from '../components/Notice.astro';
 import { apiBase, publicApiBase } from '../lib/api';
 import { getCleanCatalog } from '../lib/catalog/catalog';
 import {
-  DISCOVERY_TAXONOMY,
   categoryNameForSlug,
   dedupeProductsById,
   filterDiscoveryProducts,
@@ -18,13 +17,16 @@ import {
   sortDiscoveryProducts,
   subcategoryNameForSlug,
 } from '../lib/product-discovery';
+import { getTaxonomy } from '../lib/taxonomy';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 
+// Operator-editable discovery taxonomy (admin/categories); drives filters + labels.
+const taxonomy = await getTaxonomy();
 const search = normalizeSearchParam(Astro.url.searchParams.get('search') ?? Astro.url.searchParams.get('q'));
-const category = normalizeCategoryParam(Astro.url.searchParams.get('category'));
-const subcategory = normalizeSubcategoryParam(Astro.url.searchParams.get('subcategory'), category);
+const category = normalizeCategoryParam(Astro.url.searchParams.get('category'), taxonomy);
+const subcategory = normalizeSubcategoryParam(Astro.url.searchParams.get('subcategory'), category, taxonomy);
 const sort = normalizeSortParam(Astro.url.searchParams.get('sort'));
-const selectedCategory = DISCOVERY_TAXONOMY.find((item) => item.slug === category);
+const selectedCategory = taxonomy.find((item) => item.slug === category);
 
 function shopUrl(overrides: Partial<{ search: string; category: string; subcategory: string; sort: string }> = {}) {
   const state = { search, category, subcategory, sort, ...overrides };
@@ -55,8 +57,8 @@ if (rawProducts.length === 0) {
   catalogueNotice = 'The live catalogue is temporarily unavailable. Please try again shortly.';
 }
 
-const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts)).filter(isApprovedDiscoveryProduct);
-const filteredProducts = filterDiscoveryProducts(availableProducts, { search, category, subcategory });
+const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts)).filter((p) => isApprovedDiscoveryProduct(p, taxonomy));
+const filteredProducts = filterDiscoveryProducts(availableProducts, { search, category, subcategory }, taxonomy);
 const products = sortDiscoveryProducts(filteredProducts, sort);
 const browseFallback = products.length === 0 ? availableProducts.slice(0, 6) : [];
 
@@ -89,8 +91,8 @@ if (search) {
   }).catch(() => {});
 }
 const hasFilters = Boolean(search || category || subcategory || sort !== 'default');
-const categoryLabel = categoryNameForSlug(category);
-const subcategoryLabel = subcategoryNameForSlug(subcategory);
+const categoryLabel = categoryNameForSlug(category, taxonomy);
+const subcategoryLabel = subcategoryNameForSlug(subcategory, taxonomy);
 
 const activeFilters = [
   search ? { label: `Search: “${search}”`, href: shopUrl({ search: '' }) } : null,
@@ -139,7 +141,7 @@ const activeFilters = [
       </div>
       <div class="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:px-0" aria-label="Product categories">
         <a href={shopUrl({ category: '', subcategory: '' })} aria-current={!category ? 'page' : undefined} class={`shrink-0 rounded-full border px-4 py-2 text-sm font-bold ${!category ? 'border-brand-primary bg-brand-primary text-slate-950' : 'border-slate-300 bg-white text-slate-700'}`}>All products</a>
-        {DISCOVERY_TAXONOMY.map((item) => (
+        {taxonomy.map((item) => (
           <a href={shopUrl({ category: item.slug, subcategory: '' })} aria-current={category === item.slug ? 'page' : undefined} aria-label={`Filter by ${item.name}`} class={`shrink-0 rounded-full border px-4 py-2 text-sm font-bold ${category === item.slug ? 'border-brand-primary bg-brand-primary text-slate-950' : 'border-slate-300 bg-white text-slate-700'}`}>{item.name}</a>
         ))}
       </div>
@@ -178,7 +180,7 @@ const activeFilters = [
 
     {products.length > 0 ? (
       <section aria-label="Product results" class="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {products.map((product, index) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product))} searchQuery={search} searchRank={index + 1} />)}
+        {products.map((product, index) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy)} searchQuery={search} searchRank={index + 1} />)}
       </section>
     ) : (
       <section class="mt-7 rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10" aria-labelledby="no-results-heading">
@@ -206,7 +208,7 @@ const activeFilters = [
         <h2 id="browse-available-heading" class="text-xl font-black text-slate-900">Browse available products</h2>
         <p class="mt-1 text-sm text-slate-600">These are currently listed products, not personalised recommendations.</p>
         <div class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {browseFallback.map((product) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product))} />)}
+          {browseFallback.map((product) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy)} />)}
         </div>
       </section>
     )}

@@ -792,6 +792,13 @@
       "when": 1789491600000,
       "tag": "0112_business_info",
       "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "5",
+      "when": 1789495200000,
+      "tag": "0113_taxonomy_config",
+      "breakpoints": true
     }
   ]
 }

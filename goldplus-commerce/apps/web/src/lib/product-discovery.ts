@@ -1,41 +1,30 @@
 import type { ProductPublicDto } from '@goldplus/shared';
+import { DEFAULT_TAXONOMY, type Taxonomy } from '@goldplus/shared';
 
-export const DISCOVERY_TAXONOMY = [
-  { slug: 'power-devices', name: 'Power Devices', subcategories: [
-    { slug: 'chargers', name: 'Chargers' },
-    { slug: 'power-banks', name: 'Power Banks' },
-  ] },
-  { slug: 'sound-devices', name: 'Sound Devices', subcategories: [
-    { slug: 'earbuds', name: 'Earbuds' },
-    { slug: 'speakers', name: 'Speakers' },
-  ] },
-  { slug: 'storage-devices', name: 'Storage Devices', subcategories: [
-    { slug: 'flash-drives', name: 'Flash Drives' },
-    { slug: 'memory-cards', name: 'Memory Cards' },
-  ] },
-  { slug: 'car-accessories', name: 'Car Accessories', subcategories: [
-    { slug: 'mounts', name: 'Mounts' },
-    { slug: 'car-chargers', name: 'Car Chargers' },
-  ] },
-  { slug: 'pc-accessories', name: 'PC Accessories', subcategories: [
-    { slug: 'mice', name: 'Mice' },
-    { slug: 'sound-cards', name: 'Sound Cards' },
-  ] },
-] as const;
+/**
+ * Product discovery. The taxonomy (categories, subcategories, inference keywords,
+ * aliases) is operator-editable and passed in from the DB; every function
+ * defaults to DEFAULT_TAXONOMY so pure-function callers and tests behave exactly
+ * as before. Discovery matches products by categoryName + keyword inference, so
+ * it never touches the products↔categories FK.
+ */
 
-export type DiscoveryCategorySlug = typeof DISCOVERY_TAXONOMY[number]['slug'];
-export type DiscoverySubcategorySlug = typeof DISCOVERY_TAXONOMY[number]['subcategories'][number]['slug'];
+// Back-compat: the original hardcoded constant is now the default document.
+export const DISCOVERY_TAXONOMY = DEFAULT_TAXONOMY;
+
+export type DiscoveryCategorySlug = string;
+export type DiscoverySubcategorySlug = string;
 export type DiscoverySort = 'default' | 'price-low-high' | 'price-high-low' | 'name-a-z';
 
-const LEGACY_CATEGORY_ALIASES: Record<string, DiscoveryCategorySlug> = {
-  power: 'power-devices',
-  sound: 'sound-devices',
-  storage: 'storage-devices',
-  car: 'car-accessories',
-  pc: 'pc-accessories',
-};
-
 const VALID_SORTS = new Set<DiscoverySort>(['default', 'price-low-high', 'price-high-low', 'name-a-z']);
+
+function aliasMap(taxonomy: Taxonomy): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const category of taxonomy) {
+    for (const alias of category.aliases ?? []) out[alias.toLowerCase()] = category.slug;
+  }
+  return out;
+}
 
 export function normalizeSearchParam(value: string | null): string {
   return (value ?? '')
@@ -50,22 +39,21 @@ export function normalizeSearchParam(value: string | null): string {
     .slice(0, 100);
 }
 
-export function normalizeCategoryParam(value: string | null): DiscoveryCategorySlug | '' {
+export function normalizeCategoryParam(value: string | null, taxonomy: Taxonomy = DEFAULT_TAXONOMY): DiscoveryCategorySlug | '' {
   const candidate = (value ?? '').trim().toLowerCase();
-  const canonical = LEGACY_CATEGORY_ALIASES[candidate] ?? candidate;
-  return DISCOVERY_TAXONOMY.some((item) => item.slug === canonical) ? canonical as DiscoveryCategorySlug : '';
+  const canonical = aliasMap(taxonomy)[candidate] ?? candidate;
+  return taxonomy.some((item) => item.slug === canonical) ? canonical : '';
 }
 
 export function normalizeSubcategoryParam(
   value: string | null,
   category: DiscoveryCategorySlug | '',
+  taxonomy: Taxonomy = DEFAULT_TAXONOMY,
 ): DiscoverySubcategorySlug | '' {
   if (!category) return '';
   const candidate = (value ?? '').trim().toLowerCase();
-  const categoryEntry = DISCOVERY_TAXONOMY.find((item) => item.slug === category);
-  return categoryEntry?.subcategories.some((item) => item.slug === candidate)
-    ? candidate as DiscoverySubcategorySlug
-    : '';
+  const categoryEntry = taxonomy.find((item) => item.slug === category);
+  return categoryEntry?.subcategories.some((item) => item.slug === candidate) ? candidate : '';
 }
 
 export function normalizeSortParam(value: string | null): DiscoverySort {
@@ -79,29 +67,42 @@ export function normalizeSortParam(value: string | null): DiscoverySort {
   return VALID_SORTS.has(candidate as DiscoverySort) ? candidate as DiscoverySort : 'default';
 }
 
-export function categoryNameForSlug(slug: DiscoveryCategorySlug | ''): string {
-  return DISCOVERY_TAXONOMY.find((item) => item.slug === slug)?.name ?? '';
+export function categoryNameForSlug(slug: DiscoveryCategorySlug | '', taxonomy: Taxonomy = DEFAULT_TAXONOMY): string {
+  return taxonomy.find((item) => item.slug === slug)?.name ?? '';
 }
 
-export function subcategoryNameForSlug(slug: DiscoverySubcategorySlug | ''): string {
-  for (const category of DISCOVERY_TAXONOMY) {
+export function subcategoryNameForSlug(slug: DiscoverySubcategorySlug | '', taxonomy: Taxonomy = DEFAULT_TAXONOMY): string {
+  for (const category of taxonomy) {
     const match = category.subcategories.find((item) => item.slug === slug);
     if (match) return match.name;
   }
   return '';
 }
 
-export function getProductSubcategory(product: ProductPublicDto): DiscoverySubcategorySlug | '' {
+/** Escape a keyword and match it as a word-boundary phrase (spaces → flexible whitespace). */
+function keywordMatches(keyword: string, haystack: string): boolean {
+  const escaped = keyword.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  if (!escaped) return false;
+  return new RegExp('\\b' + escaped).test(haystack);
+}
+
+export function getProductSubcategory(product: ProductPublicDto, taxonomy: Taxonomy = DEFAULT_TAXONOMY): DiscoverySubcategorySlug | '' {
   const searchable = `${product.name} ${product.categoryName}`.toLowerCase();
-  if (/\bpower\s*bank\b/.test(searchable)) return 'power-banks';
-  if (/\bcar\s+charger\b/.test(searchable)) return 'car-chargers';
-  if (/\bcharger|adapter|charging\s+brick\b/.test(searchable)) return 'chargers';
-  if (/\bearbud|earphone|headphone\b/.test(searchable)) return 'earbuds';
-  if (/\bspeaker\b/.test(searchable)) return 'speakers';
-  if (/\bflash\s+drive|usb\s+drive\b/.test(searchable)) return 'flash-drives';
-  if (/\bmemory\s+card|micro\s*sd|sd\s+card\b/.test(searchable)) return 'memory-cards';
-  if (/\bmount\b/.test(searchable)) return 'mounts';
-  return '';
+  // Longest matching keyword wins, so a specific phrase ("car charger") beats a
+  // generic one ("charger") regardless of category order.
+  let best = '';
+  let bestLen = 0;
+  for (const category of taxonomy) {
+    for (const sub of category.subcategories) {
+      for (const keyword of sub.keywords ?? []) {
+        if (keyword.length > bestLen && keywordMatches(keyword, searchable)) {
+          best = sub.slug;
+          bestLen = keyword.length;
+        }
+      }
+    }
+  }
+  return best;
 }
 
 export function dedupeProductsById(products: ProductPublicDto[]): ProductPublicDto[] {
@@ -113,13 +114,13 @@ export function dedupeProductsById(products: ProductPublicDto[]): ProductPublicD
   });
 }
 
-export function isApprovedDiscoveryProduct(product: ProductPublicDto): boolean {
-  return DISCOVERY_TAXONOMY.some((category) => category.name === product.categoryName);
+export function isApprovedDiscoveryProduct(product: ProductPublicDto, taxonomy: Taxonomy = DEFAULT_TAXONOMY): boolean {
+  return taxonomy.some((category) => category.name === product.categoryName);
 }
 
-export function matchesDiscoveryQuery(product: ProductPublicDto, query: string): boolean {
+export function matchesDiscoveryQuery(product: ProductPublicDto, query: string, taxonomy: Taxonomy = DEFAULT_TAXONOMY): boolean {
   if (!query) return true;
-  const subcategory = subcategoryNameForSlug(getProductSubcategory(product));
+  const subcategory = subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy);
   return [product.name, product.categoryName, subcategory, product.sku, product.modelNumber]
     .filter((value): value is string => typeof value === 'string')
     .some((value) => value.toLocaleLowerCase('en').includes(query.toLocaleLowerCase('en')));
@@ -128,13 +129,14 @@ export function matchesDiscoveryQuery(product: ProductPublicDto, query: string):
 export function filterDiscoveryProducts(
   products: ProductPublicDto[],
   filters: { search: string; category: DiscoveryCategorySlug | ''; subcategory: DiscoverySubcategorySlug | '' },
+  taxonomy: Taxonomy = DEFAULT_TAXONOMY,
 ): ProductPublicDto[] {
-  const categoryName = categoryNameForSlug(filters.category);
+  const categoryName = categoryNameForSlug(filters.category, taxonomy);
   return dedupeProductsById(products)
-    .filter(isApprovedDiscoveryProduct)
+    .filter((product) => isApprovedDiscoveryProduct(product, taxonomy))
     .filter((product) => !categoryName || product.categoryName === categoryName)
-    .filter((product) => !filters.subcategory || getProductSubcategory(product) === filters.subcategory)
-    .filter((product) => matchesDiscoveryQuery(product, filters.search));
+    .filter((product) => !filters.subcategory || getProductSubcategory(product, taxonomy) === filters.subcategory)
+    .filter((product) => matchesDiscoveryQuery(product, filters.search, taxonomy));
 }
 
 export function sortDiscoveryProducts(products: ProductPublicDto[], sort: DiscoverySort): ProductPublicDto[] {

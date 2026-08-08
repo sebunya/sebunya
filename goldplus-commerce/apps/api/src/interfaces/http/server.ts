@@ -22,6 +22,7 @@ import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/P
 import { runHeroSlideSeedAtBoot } from '../../infrastructure/hero/HeroSlideSeeder';
 import { runNavSeedAtBoot } from '../../infrastructure/nav/NavSeeder';
 import { runBusinessInfoSeedAtBoot } from '../../infrastructure/business/BusinessInfoSeeder';
+import { runTaxonomySeedAtBoot } from '../../infrastructure/taxonomy/TaxonomySeeder';
 import { templateOverrideCache } from '../../infrastructure/notifications/TemplateOverrideCache';
 import { endDbConnection } from '../../infrastructure/db/client';
 import { QueueService } from '../../infrastructure/queues/QueueService';
@@ -51,6 +52,7 @@ const server = serve({
     void runHeroSlideSeedAtBoot();
     void runNavSeedAtBoot();
     void runBusinessInfoSeedAtBoot();
+    void runTaxonomySeedAtBoot();
     // Notification wording overrides: load published rows now, refresh every minute.
     templateOverrideCache.start();
   }

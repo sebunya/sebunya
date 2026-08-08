@@ -212,6 +212,17 @@ routes.get('/business-info', async (c) => {
 });
 
 /**
+ * The product discovery taxonomy (categories, subcategories, keywords, homepage
+ * tiles, aliases) for the storefront. Falls back to DEFAULT — discovery is never
+ * a database outage.
+ */
+routes.get('/taxonomy', async (c) => {
+  const data = await registry.taxonomyService.getPublicConfig();
+  c.header('Cache-Control', 'public, max-age=60');
+  return c.json({ success: true, data });
+});
+
+/**
  * The active storefront discount for DISPLAY (card/PDP/cart).
  *
  * Reads the SAME active promotion versions the checkout evaluator charges from,
