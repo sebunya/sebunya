@@ -99,6 +99,15 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
     }
   }
 
+  /** Public badge catalogue — key/title/description only, for the customer
+   * loyalty page. No award counts, no customer data. */
+  async listCatalogBadges(): Promise<Array<{ key: string; title: string; description: string | null }>> {
+    return db
+      .select({ key: gamificationBadges.key, title: gamificationBadges.title, description: gamificationBadges.description })
+      .from(gamificationBadges)
+      .orderBy(desc(gamificationBadges.createdAt));
+  }
+
   async listMissions() {
     const missions = await db.select().from(gamificationMissions).orderBy(desc(gamificationMissions.createdAt));
     const badges = await db.select().from(gamificationBadges).orderBy(desc(gamificationBadges.createdAt));

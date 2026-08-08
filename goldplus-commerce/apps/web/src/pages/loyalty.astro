@@ -29,6 +29,8 @@ interface Programme {
     streak: { orders: number; windowDays: number | null; points: number } | null;
   } | null;
   tiers?: Array<{ code: string; name: string; threshold: number; benefits: Record<string, boolean> }>;
+  /** 0087: the real admin-defined badge catalogue — empty until configured. */
+  badges?: Array<{ key: string; title: string; description?: string | null }>;
   termsVersion?: string | null;
 }
 let programme: Programme | null = null;
@@ -298,11 +300,15 @@ const BENEFIT_LABELS: Record<string, string> = {
               Badges are awarded on things we can verify — a scan that checked out, a counterfeit our team confirmed,
               a delivery that actually arrived. They cost nothing and carry no expiry.
             </p>
-            <div class="mt-6 flex flex-wrap gap-2">
-              {["Authenticator", "Counterfeit Hunter", "Verified Buyer", "First Delivery", "Loyal Customer", "Connector"].map((b) => (
-                <span class="rounded-full border border-gray-200 bg-gray-50 px-4 py-2 text-xs font-black uppercase tracking-wider text-gray-700">{b}</span>
-              ))}
-            </div>
+            {programme.badges && programme.badges.length > 0 ? (
+              <div class="mt-6 flex flex-wrap gap-2">
+                {programme.badges.map((b) => (
+                  <span class="rounded-full border border-gray-200 bg-gray-50 px-4 py-2 text-xs font-black uppercase tracking-wider text-gray-700" title={b.description ?? undefined}>{b.title}</span>
+                ))}
+              </div>
+            ) : (
+              <p class="mt-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">Badges are being set up. Keep verifying your products and shopping — they'll appear here as they go live.</p>
+            )}
             <a href="/account/loyalty" class="mt-6 inline-block text-sm font-bold text-slate-900 underline underline-offset-4">See your badges and progress →</a>
           </div>
         </div>

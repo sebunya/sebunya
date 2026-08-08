@@ -171,6 +171,11 @@ routes.get('/loyalty-programme', async (c) => {
               : null,
           }
         : null,
+      // Badge catalogue (0087): the real, admin-defined badges — public-safe
+      // fields only. Empty until badges are configured (never an invented list).
+      badges: active && !programme.killSwitch
+        ? await registry.gamificationRepo.listCatalogBadges().catch(() => [])
+        : [],
       // Active tiers (0087): thresholds + service benefits, public-safe fields only.
       tiers: active
         ? (await registry.loyaltyTierRepo.listTiers().catch(() => []))
