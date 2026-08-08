@@ -188,6 +188,47 @@ routes.get('/loyalty-programme', async (c) => {
 });
 
 /**
+ * The active storefront discount for DISPLAY (card/PDP/cart).
+ *
+ * Reads the SAME active promotion versions the checkout evaluator charges from,
+ * and reports the campaign ONLY when it is a single, unconditional, site-wide,
+ * auto (no coupon) PERCENTAGE_OFF within its window — the exact case the display
+ * can mirror penny-for-penny (sale = retail - floor(retail * bps / 10000)).
+ * Anything more complex returns active:false, so the storefront never previews a
+ * number different from what the evaluator will actually charge. Public + safe:
+ * it only reveals the public discount percentage and its end date.
+ */
+routes.get('/storefront-discount', async (c) => {
+  try {
+    const now = new Date();
+    const active = await registry.pricingRepo.listActiveVersions(now);
+    const qualifying = active.filter(({ version }) =>
+      version.conditions.length === 0 &&
+      version.exclusions.length === 0 &&
+      !version.couponCode &&
+      version.schedule.startsAt <= now && now < version.schedule.endsAt &&
+      version.benefits.some((b) => b.type === 'PERCENTAGE_OFF' && (!b.targetProductIds || b.targetProductIds.length === 0)),
+    );
+    if (qualifying.length !== 1) return c.json({ success: true, data: { active: false } });
+    const { definition, version } = qualifying[0];
+    const benefit = version.benefits.find((b) => b.type === 'PERCENTAGE_OFF' && (!b.targetProductIds || b.targetProductIds.length === 0))!;
+    if (!Number.isFinite(benefit.value) || benefit.value <= 0 || benefit.value >= 10_000) return c.json({ success: true, data: { active: false } });
+    return c.json({
+      success: true,
+      data: {
+        active: true,
+        percentBps: benefit.value,
+        percent: Math.round(benefit.value / 100),
+        endsIso: version.schedule.endsAt.toISOString(),
+        name: definition.name,
+      },
+    });
+  } catch {
+    return c.json({ success: true, data: { active: false } });
+  }
+});
+
+/**
  * Public odds disclosure for the reward draw (0088).
  *
  * Deliberately public and unauthenticated: the odds a customer is offered

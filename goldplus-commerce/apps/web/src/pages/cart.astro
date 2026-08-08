@@ -5,6 +5,7 @@ import EmptyState from '../components/EmptyState.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import { formatUgx } from '../lib/money';
+import { getStorefrontDiscount, salePriceUgx } from '../lib/storefrontDiscount';
 import { readCartSessionId } from '../lib/cart-session';
 import type { ApiEnvelope } from '@goldplus/shared';
 import { kampalaCutoff } from '@goldplus/shared';
@@ -242,6 +243,14 @@ if (items.length > 0) {
 }
 const subtotal = items.reduce((acc, item) => acc + (item.unitPriceUgx * item.quantity), 0);
 
+// Active campaign discount (display; per-line to match the checkout evaluator).
+const cartDiscount = await getStorefrontDiscount();
+const cartOnSale = cartDiscount.active && cartDiscount.percentBps > 0 && subtotal > 0;
+const saleSubtotal = cartOnSale
+  ? items.reduce((acc, i) => acc + salePriceUgx(i.unitPriceUgx * i.quantity, cartDiscount.percentBps), 0)
+  : subtotal;
+const cartSavings = subtotal - saleSubtotal;
+
 // Loyalty earn preview at the point of decision (loyalty brief PART G).
 let cartLoyaltyRate = 0;
 try {
@@ -396,8 +405,14 @@ const cutoffLine = cut.sunday
             <dl class="space-y-4 text-sm mb-8">
               <div class="flex items-center justify-between">
                 <dt class="text-slate-500 font-medium">Subtotal</dt>
-                <dd class="font-bold text-gray-900">{formatUgx(subtotal)}</dd>
+                <dd class="font-bold text-gray-900 tabular-nums">{formatUgx(subtotal)}</dd>
               </div>
+              {cartOnSale && (
+                <div class="flex items-center justify-between">
+                  <dt class="font-medium" style="color:#456B00">{cartDiscount.percent}% off {cartDiscount.name ? `(${cartDiscount.name})` : ''}</dt>
+                  <dd class="font-bold tabular-nums" style="color:#456B00">&minus;{formatUgx(cartSavings)}</dd>
+                </div>
+              )}
               <div class="flex items-center justify-between">
                 <dt class="text-slate-500 font-medium">Delivery</dt>
                 <dd class="text-slate-500">Added at checkout</dd>
@@ -413,7 +428,7 @@ const cutoffLine = cut.sunday
               </div>
               <div class="flex items-center justify-between pt-4 border-t border-slate-100">
                 <dt class="font-black text-gray-900 text-base">Estimated total</dt>
-                <dd class="font-black text-brand-primaryInk text-xl tracking-tight tabular-nums">{formatUgx(subtotal)}</dd>
+                <dd class="font-black text-brand-primaryInk text-xl tracking-tight tabular-nums">{formatUgx(saleSubtotal)}</dd>
               </div>
               <p class="text-[11px] text-slate-500 -mt-2">Delivery is added at checkout, once you choose your area.</p>
               {cartPotentialPoints > 0 && (

@@ -1,5 +1,7 @@
 ---
 import type { ProductPublicDto } from '@goldplus/shared';
+import { formatUgx } from '../lib/money';
+import { getStorefrontDiscount, salePriceUgx } from '../lib/storefrontDiscount';
 
 interface Props {
   product: ProductPublicDto;
@@ -16,9 +18,12 @@ const productHref = searchQuery && searchRank > 0
 const hasValidPrice = typeof product.retailPriceUgx === 'number'
   && Number.isFinite(product.retailPriceUgx)
   && product.retailPriceUgx > 0;
-const formattedPrice = hasValidPrice
-  ? `UGX ${product.retailPriceUgx!.toLocaleString('en-UG')}`
-  : "Price on request";
+const formattedPrice = hasValidPrice ? formatUgx(product.retailPriceUgx!) : "Price on request";
+
+// Active campaign discount (display only; mirrors what checkout charges).
+const discount = await getStorefrontDiscount();
+const onSale = hasValidPrice && discount.active && discount.percentBps > 0;
+const saleUgx = onSale ? salePriceUgx(product.retailPriceUgx!, discount.percentBps) : null;
 
 const lowerName = product.name.toLowerCase();
 const productType = lowerName.includes("charger") ? "Charger"
@@ -111,9 +116,17 @@ const availabilityBadgeClass = (() => {
     )}
     
     <div class="mt-auto pt-3 border-t border-slate-100">
-      <p class={`font-black tracking-tight tabular-nums ${hasValidPrice ? 'text-lg text-gray-900' : 'text-xs text-slate-500 font-bold'}`}>
-        {formattedPrice}
-      </p>
+      {onSale ? (
+        <div class="flex flex-wrap items-baseline gap-2">
+          <span class="font-black tracking-tight tabular-nums text-lg text-gray-900">{formatUgx(saleUgx)}</span>
+          <span class="text-xs font-semibold text-slate-400 line-through tabular-nums">{formatUgx(product.retailPriceUgx)}</span>
+          <span class="text-[10px] font-black uppercase tracking-wider rounded-full px-2 py-0.5" style="background:#93D500;color:#0A0A0A">{discount.percent}% off</span>
+        </div>
+      ) : (
+        <p class={`font-black tracking-tight tabular-nums ${hasValidPrice ? 'text-lg text-gray-900' : 'text-xs text-slate-500 font-bold'}`}>
+          {formattedPrice}
+        </p>
+      )}
       {lowStockLeft !== null && (
         <p class="mt-1 text-[11px] font-bold text-amber-700">Only {lowStockLeft} left</p>
       )}

@@ -5,6 +5,7 @@ import ProductJsonLd from '../../components/ProductJsonLd.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
 import { formatUgx } from '../../lib/money';
+import { getStorefrontDiscount, salePriceUgx } from '../../lib/storefrontDiscount';
 import type { ProductPublicDto, ApiEnvelope, ApiResponse } from '@goldplus/shared';
 import CompleteSetupRail from '../../components/recommendations/CompleteSetupRail.astro';
 import RelatedProductsRail from '../../components/recommendations/RelatedProductsRail.astro';
@@ -205,6 +206,12 @@ if (product?.categoryName === 'Sound Devices') {
   }
 }
 
+// Active campaign discount (display only; mirrors the checkout charge).
+const pdpHasPrice = product && typeof product.retailPriceUgx === 'number' && product.retailPriceUgx > 0;
+const pdpDiscount = await getStorefrontDiscount();
+const pdpOnSale = pdpHasPrice && pdpDiscount.active && pdpDiscount.percentBps > 0;
+const pdpSaleUgx = pdpOnSale ? salePriceUgx(product!.retailPriceUgx!, pdpDiscount.percentBps) : null;
+
 const pdpCopy = product ? pdpDescriptions[product.slug] : null;
 // DB copy (admin-editable) is the source of truth; the hardcoded map is only a
 // fallback for any product whose description hasn't been written yet.
@@ -294,7 +301,18 @@ const canonical = Astro.url.toString();
             <div class="flex items-baseline gap-3 mb-4 flex-wrap">
               {product.retailPriceUgx !== null ? (
                 <>
-                <p class="text-3xl font-black text-gray-900">{formatUgx(product.retailPriceUgx)}</p>
+                {pdpOnSale ? (
+                  <div class="flex flex-wrap items-baseline gap-3">
+                    <p class="text-3xl font-black text-gray-900 tabular-nums">{formatUgx(pdpSaleUgx)}</p>
+                    <p class="text-lg font-semibold text-slate-400 line-through tabular-nums">{formatUgx(product.retailPriceUgx)}</p>
+                    <span class="text-xs font-black uppercase tracking-wider rounded-full px-2.5 py-1" style="background:#93D500;color:#0A0A0A">{pdpDiscount.percent}% off</span>
+                  </div>
+                ) : (
+                  <p class="text-3xl font-black text-gray-900 tabular-nums">{formatUgx(product.retailPriceUgx)}</p>
+                )}
+                {pdpOnSale && pdpDiscount.endsIso && (
+                  <p class="mt-1.5 text-xs font-bold text-amber-700" data-sale-ends={pdpDiscount.endsIso}>Offer ends soon</p>
+                )}
                 {loyaltyRate > 0 && Math.floor(product.retailPriceUgx / 1000) * loyaltyRate > 0 && (
                   <p class="text-xs font-bold text-brand-primaryInk mt-1">Earn {(Math.floor(product.retailPriceUgx / 1000) * loyaltyRate).toLocaleString('en-US')} GoldPlus points on this order</p>
                 )}
@@ -507,6 +525,23 @@ const canonical = Astro.url.toString();
     )}
   </div>
 </BaseLayout>
+
+<script is:inline>
+  (function () {
+    var el = document.querySelector('[data-sale-ends]');
+    if (!el) return;
+    var end = new Date(el.getAttribute('data-sale-ends')).getTime();
+    if (!isFinite(end)) return;
+    function tick() {
+      var ms = end - Date.now();
+      if (ms <= 0) { el.textContent = 'This offer has ended'; return; }
+      var d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000), m = Math.floor((ms % 3600000) / 60000);
+      el.textContent = d > 0 ? ('Offer ends in ' + d + 'd ' + h + 'h') : (h > 0 ? ('Offer ends in ' + h + 'h ' + m + 'm') : ('Offer ends in ' + m + 'm'));
+    }
+    tick();
+    setInterval(tick, 60000);
+  })();
+</script>
 
 <script>
   import {
