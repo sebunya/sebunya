@@ -49,7 +49,7 @@ const availabilityBadgeClass = (() => {
 ---
 
 <article
-  class="group flex flex-col h-full border border-slate-200/80 rounded-2xl p-5 hover:border-brand-primary hover:shadow-lg hover:shadow-slate-100 transition-all duration-300 bg-white"
+  class="group flex flex-col h-full border border-slate-200/80 rounded-2xl p-5 hover:border-brand-primary hover:-translate-y-0.5 transition-[transform,border-color] duration-200 bg-white"
   data-product-id={product.id}
   data-product-name={product.name}
   data-product-price={product.retailPriceUgx ?? ''}
@@ -64,7 +64,7 @@ const availabilityBadgeClass = (() => {
         <img 
           src={product.primaryImageUrl} 
           alt={`Photo of ${product.name}`} 
-          class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-[1.035]"
+          class="object-cover w-full h-full"
           loading="lazy"
         />
       ) : (
@@ -74,19 +74,13 @@ const availabilityBadgeClass = (() => {
           <span class="text-[9px] font-bold text-slate-300 mt-1 uppercase tracking-tight">Image pending</span>
         </div>
       )}
-      <div class="absolute top-3 left-3">
-         <span class={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border shadow-xs ${availabilityBadgeClass}`}>
-           {availabilityLabel}
-         </span>
-      </div>
-      
-      {/* Verified Original Trust Overlay Badge */}
-      <div class="absolute bottom-3 right-3">
-         <span class="bg-gray-900/90 backdrop-blur-xs text-white text-[9px] font-bold px-2.5 py-1.5 rounded-full uppercase tracking-wider border border-white/10 shadow-sm flex items-center gap-1">
-           <svg class="w-3 h-3 text-brand-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M2.166 4.9L10 1.154l7.834 3.746a1 1 0 01.586.904v4.32a9.002 9.002 0 01-4.707 7.925L10 19l-3.713-2.007a9.002 9.002 0 01-4.707-7.925v-4.32a1 1 0 01.586-.904zM10 3.018L3.999 5.892v3.232a7.001 7.001 0 003.659 6.16l2.342 1.266 2.342-1.266a7.001 7.001 0 003.659-6.16V5.892L10 3.018zm.707 6.293a1 1 0 00-1.414 0L7.5 11.086 6.707 10.293a1 1 0 00-1.414 1.414l1.5 1.5a1 1 0 001.414 0l2.5-2.5a1 1 0 000-1.414z" clip-rule="evenodd"></path></svg>
-           Authentic
-         </span>
-      </div>
+      {product.availability.kind !== 'in_stock' && (
+        <div class="absolute top-3 left-3">
+           <span class={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border shadow-xs ${availabilityBadgeClass}`}>
+             {availabilityLabel}
+           </span>
+        </div>
+      )}
     </a>
   </div>
   
@@ -108,26 +102,10 @@ const availabilityBadgeClass = (() => {
       </p>
     )}
     
-    {/* Conditional SKU Tag */}
-    {product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending') && (
-      <div class="mb-4">
-        <span class="text-[9px] text-slate-500 font-mono bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100/80 inline-block">
-          SKU: {product.sku}
-        </span>
-      </div>
-    )}
-
-    <div class="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
-      <p class={`font-black tracking-tight ${hasValidPrice ? 'text-base text-gray-900' : 'text-xs text-slate-500 font-bold'}`}>
+    <div class="mt-auto pt-3 border-t border-slate-100">
+      <p class={`font-black tracking-tight tabular-nums ${hasValidPrice ? 'text-lg text-gray-900' : 'text-xs text-slate-500 font-bold'}`}>
         {formattedPrice}
       </p>
-      
-      <a 
-        href={productHref}
-        class="px-3.5 py-1.5 rounded-full font-bold text-xs transition-all duration-300 outline-none focus:ring-4 focus:ring-brand-primary/20 bg-slate-50 text-gray-700 hover:bg-brand-primary hover:text-gray-950 border border-slate-200/60 shadow-xs active:scale-95"
-        aria-label={`View product details for ${product.name}`}>
-         View details
-      </a>
     </div>
   </div>
 </article>

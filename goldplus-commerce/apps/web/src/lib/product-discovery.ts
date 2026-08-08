@@ -17,6 +17,10 @@ export const DISCOVERY_TAXONOMY = [
     { slug: 'mounts', name: 'Mounts' },
     { slug: 'car-chargers', name: 'Car Chargers' },
   ] },
+  { slug: 'pc-accessories', name: 'PC Accessories', subcategories: [
+    { slug: 'mice', name: 'Mice' },
+    { slug: 'sound-cards', name: 'Sound Cards' },
+  ] },
 ] as const;
 
 export type DiscoveryCategorySlug = typeof DISCOVERY_TAXONOMY[number]['slug'];
@@ -28,6 +32,7 @@ const LEGACY_CATEGORY_ALIASES: Record<string, DiscoveryCategorySlug> = {
   sound: 'sound-devices',
   storage: 'storage-devices',
   car: 'car-accessories',
+  pc: 'pc-accessories',
 };
 
 const VALID_SORTS = new Set<DiscoverySort>(['default', 'price-low-high', 'price-high-low', 'name-a-z']);
