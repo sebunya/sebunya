@@ -137,7 +137,13 @@ describe("Slice 9-B public route, copy and artifact safety", () => {
   it("contains no form, input, toggle or save button", () => expect(page).not.toMatch(/<form|<input|type=["']checkbox|<button|Save preferences/i));
   it("contains no browser persistence", () => expect(publicSurface).not.toMatch(/localStorage|sessionStorage|document\.cookie|setCookie/));
   it("contains no API, provider or send path", () => expect(publicSurface).not.toMatch(/fetch\(|apiBase|postJson|sendEmail|sendSms|sendWhatsApp|outbox|queue/i));
-  it("contains no account, order, inventory or customer read", () => expect(publicSurface).not.toMatch(/\/account\/preferences|\/orders|\/inventory|customerId|readSessionToken/));
+  it("contains no account, order, inventory or customer read", () => {
+    // 2026-08-08: the public page may LINK to /account/preferences (the signed-in
+    // opt-out management surface) — a navigation affordance, not a data read. What
+    // stays forbidden is the page itself reading customer/order/session state.
+    const withoutAccountLink = publicSurface.replace(/href="\/account\/preferences"/g, '');
+    expect(withoutAccountLink).not.toMatch(/\/account\/preferences|\/orders|\/inventory|customerId|readSessionToken/);
+  });
   it("redirects the consent alias to the canonical page with 303", () => expect(alias).toContain("Astro.redirect('/preferences', 303)"));
   it("links support, privacy and terms", () => expect(supportActions.map((item) => item.href)).toEqual(["/support", "/privacy", "/terms"]));
   it("adds an accessible section navigation", () => expect(page).toContain('aria-label="Preference Centre sections"'));

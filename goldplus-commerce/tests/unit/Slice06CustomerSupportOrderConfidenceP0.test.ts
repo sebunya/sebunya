@@ -12,24 +12,34 @@ describe('Slice 06 customer support and order confidence P0', () => {
     expect(support).toContain('How can we help?');
     expect(support).toContain('Need help with an order?');
     expect(support).toContain('href="/track-order"');
-    expect(orderHelp).toContain('Need help with an order?');
-    expect(orderHelp).toContain('Have your order reference ready.');
-    expect(orderHelp).toContain('aria-label="Information to prepare for order support"');
+    // 2026-08-08: track-order became a real order-lookup + dispatch-progress page
+    // (customer request: dispatch tracking + back-office follow-up, no live GPS).
+    expect(orderHelp).toContain("Where's my order?");
+    expect(orderHelp).toContain('Look up your order');
+    expect(orderHelp).toContain('aria-label="What you need"');
   });
 
-  it('uses an honest support-first fallback instead of claiming live tracking', () => {
-    expect(orderHelp).toContain('This is an order-help page, not live courier tracking.');
-    expect(orderHelp).toContain('It does not confirm payment, product availability, dispatch, delivery status or an arrival time.');
-    expect(orderHelp).toContain('An order reference alone is not proof that an order is paid, confirmed or dispatched.');
+  it('shows dispatch progress but never claims live courier / GPS tracking', () => {
+    // Fulfilment stages (placed → preparing → dispatched → delivered), not a map.
+    expect(orderHelp).toContain('aria-label="Dispatch progress"');
+    for (const stage of ['Order placed', 'Confirmed & preparing', 'Dispatched', 'Delivered']) {
+      expect(orderHelp).toContain(stage);
+    }
+    expect(orderHelp).toContain('not a live map');
+    expect(orderHelp).toContain('not live courier tracking');
   });
 
-  it('keeps WhatsApp support link-only and accessible', () => {
+  it('keeps WhatsApp support link-only; back-office sends only on explicit submit', () => {
     expect(sliceRuntime).toContain('href={whatsappSupportUrl}');
     expect(sliceRuntime).toContain('href={orderHelpWhatsappUrl}');
     expect(sliceRuntime).toContain('target="_blank"');
     expect(sliceRuntime).toContain('rel="noopener noreferrer"');
-    expect(sliceRuntime).toContain('No message is sent automatically.');
-    expect(sliceRuntime).not.toMatch(/WhatsAppAdapter|sendWhatsApp|whatsapp\/send|postJson|method=["']POST/i);
+    // WhatsApp is a pre-filled link the customer must send themselves — never an
+    // automated provider send. The follow-up ticket is raised only when the
+    // customer submits the follow-up form (intent=followup), never on page load.
+    expect(orderHelp).toContain('name="intent" value="lookup"');
+    expect(orderHelp).toContain('name="intent" value="followup"');
+    expect(sliceRuntime).not.toMatch(/WhatsAppAdapter|sendWhatsApp|whatsapp\/send/i);
   });
 
   it('renders returns, warranty, terms and privacy links with qualified policy copy', () => {
@@ -46,8 +56,16 @@ describe('Slice 06 customer support and order confidence P0', () => {
     expect(sliceRuntime).not.toMatch(/Delivery status progress|Order Received|In Processing|Completed \/ Delivered|guaranteed delivery|arrives? (?:today|tomorrow|in)|payment confirmed|your order is dispatched/i);
   });
 
-  it('introduces no API lookup, provider send, auth or measurement behavior', () => {
-    expect(sliceRuntime).not.toMatch(/apiBase|ApiEnvelope|fetch\(|postJson|\/commerce\/orders\/lookup|telemetry|measurement|auth|PesaPal/i);
+  it('verifies order ownership before showing details, with no login or credential capture', () => {
+    // The lookup only reveals an order when the reference AND the checkout contact
+    // match — the privacy guarantee that replaced the old no-lookup contract.
+    expect(orderHelp).toContain('Enter both your order reference and the phone number or email used at checkout.');
+    expect(orderHelp).toContain('We only show order details when the reference and contact match');
+    // No password, OTP or payment field is ever collected here.
+    expect(orderHelp).toContain('Never share payment credentials, passwords or one-time codes.');
+    expect(orderHelp).not.toMatch(/type=["']password["']|one-time code input|name=["'](?:password|otp|pin|card|cvv)["']/i);
+    // Public page — no session/auth requirement, no measurement/telemetry.
+    expect(sliceRuntime).not.toMatch(/readSessionToken|Authorization|Bearer |telemetry|measurement|PesaPal/i);
   });
 
   it('keeps support actions keyboard-visible and mobile-friendly', () => {

@@ -9,8 +9,10 @@ const shop = read('apps/web/src/pages/shop.astro');
 
 describe('Slice 02 storefront P0 protected contract', () => {
   it('keeps the approved public category taxonomy', () => {
+    // 2026-08-08: PC Accessories joined as the fifth category (the orphaned PC
+    // category now has a taxonomy home instead of falling through discovery).
     expect(DISCOVERY_TAXONOMY.map((category) => category.name)).toEqual([
-      'Power Devices', 'Sound Devices', 'Storage Devices', 'Car Accessories',
+      'Power Devices', 'Sound Devices', 'Storage Devices', 'Car Accessories', 'PC Accessories',
     ]);
   });
 
@@ -28,8 +30,10 @@ describe('Slice 02 storefront P0 protected contract', () => {
   });
 
   it('keeps storefront truth language and honest empty states', () => {
-    expect(homepage).toContain('No Fake Claims');
-    expect(homepage).toContain("If a spec isn't verified, we tell you it's missing.");
+    // 2026-08-08: the trust copy was rewritten to a more human voice, but the
+    // guarantee is unchanged — unverified specs are marked missing, never invented.
+    expect(homepage).toContain('The spec you read is the spec you get');
+    expect(homepage).toContain("If a detail isn't verified, we mark it missing.");
     expect(shop).toContain('No matching products yet.');
     expect(shop).toContain('not personalised recommendations');
   });
