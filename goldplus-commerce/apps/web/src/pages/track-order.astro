@@ -7,18 +7,13 @@ const orderHelpWhatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${enco
   'Hello GoldPlus, I need help with an order. I have my order reference ready.'
 )}`;
 
-// Human labels for the two status enums the lookup returns.
 const label = (s: unknown) =>
-  String(s ?? '')
-    .replace(/[_-]+/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (m) => m.toUpperCase()) || 'Unknown';
+  String(s ?? '').replace(/[_-]+/g, ' ').toLowerCase().replace(/\b\w/g, (m) => m.toUpperCase()) || 'Unknown';
 
-// Green for a settled/positive state, amber for in-progress, slate otherwise.
 const toneFor = (s: string) => {
   const v = String(s ?? '').toUpperCase();
-  if (/PAID|DELIVERED|CONFIRMED|COMPLETE/.test(v)) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
-  if (/PENDING|PROCESS|PACK|DISPATCH|TRANSIT|OUT_FOR/.test(v)) return 'bg-amber-50 text-amber-900 border-amber-200';
+  if (/PAID|DELIVERED|COMPLETE|CONFIRM/.test(v)) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+  if (/PENDING|PROCESS|DISPATCH|TRANSIT|REVIEW/.test(v)) return 'bg-amber-50 text-amber-900 border-amber-200';
   if (/FAIL|CANCEL|REFUND/.test(v)) return 'bg-red-50 text-red-800 border-red-200';
   return 'bg-slate-50 text-slate-700 border-slate-200';
 };
@@ -28,28 +23,77 @@ const fmtDate = (iso: unknown) => {
   return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 };
 
+// Dispatch stages the customer cares about — fulfilment progress, NOT live GPS.
+const STAGES = [
+  { key: 'placed', title: 'Order placed', desc: 'We have your order.' },
+  { key: 'preparing', title: 'Confirmed & preparing', desc: 'Payment reviewed; your items are being prepared at our shop.' },
+  { key: 'dispatched', title: 'Dispatched', desc: 'Handed to our rider and on the way to you.' },
+  { key: 'delivered', title: 'Delivered', desc: 'Order completed.' },
+];
+const stageIndexOf = (orderStatus: unknown): number => {
+  const s = String(orderStatus ?? '').toLowerCase();
+  if (['delivered', 'completed'].includes(s)) return 3;
+  if (['dispatched', 'delivery_failed'].includes(s)) return 2;
+  if (['processing', 'pending_owner_review'].includes(s)) return 1;
+  return 0; // received, pending_payment, failed, cancelled (pre-dispatch)
+};
+
+async function lookupOrder(reference: string, contact: string) {
+  return postJson('/commerce/orders/lookup', { reference, contact });
+}
+
 let order: any = null;
 let errorMsg: string | undefined;
 let submittedRef = '';
+let followupOk = false;
+let followupError: string | undefined;
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? 'lookup');
   const reference = String(form.get('reference') ?? '').trim();
   const contact = String(form.get('contact') ?? '').trim();
   submittedRef = reference;
+
   if (!reference || !contact) {
     errorMsg = 'Enter both your order reference and the phone number or email used at checkout.';
   } else {
-    const result = await postJson('/commerce/orders/lookup', { reference, contact });
-    if (result.ok) {
-      order = result.data;
-    } else {
+    // Both actions re-verify the order — a follow-up is never raised for an
+    // unverified reference, and the ticket carries the real order details.
+    const result = await lookupOrder(reference, contact);
+    if (!result.ok) {
       errorMsg = result.code === 'NETWORK'
         ? 'We cannot reach the order service right now. Please try again shortly.'
         : (result.message ?? 'We could not verify that order. Please check your reference and contact details.');
+    } else {
+      order = result.data;
+      if (intent === 'followup') {
+        const note = String(form.get('note') ?? '').trim().slice(0, 800);
+        const isEmail = contact.includes('@');
+        const ticket = await postJson('/governance/support/report-issue', {
+          subject: `Order follow-up requested: ${order.orderNumber}`,
+          description:
+            `A customer asked our team to follow up on their order.\n` +
+            `Order: ${order.orderNumber}\n` +
+            `Order status: ${label(order.orderStatus)} · Payment: ${label(order.paymentStatus)}\n` +
+            `Delivery area: ${order.deliveryArea ?? '—'}\n` +
+            (note ? `\nCustomer note:\n${note}\n` : '') +
+            `\nRaised from the Track Order page.`,
+          productModel: 'Order follow-up',
+          email: isEmail ? contact : '',
+          phone: isEmail ? '' : contact,
+          metadata: { source: 'track-order', orderReference: order.orderNumber },
+        });
+        if (ticket.ok) followupOk = true;
+        else followupError = ticket.message ?? 'We could not send your follow-up request. Please try WhatsApp instead.';
+      }
     }
   }
 }
+
+const currentStage = order ? stageIndexOf(order.orderStatus) : -1;
+const isCancelled = order && ['cancelled', 'failed'].includes(String(order.orderStatus ?? '').toLowerCase());
+const isDeliveryFailed = order && String(order.orderStatus ?? '').toLowerCase() === 'delivery_failed';
 ---
 
 <BaseLayout title="Track your order | GoldPlus">
@@ -60,17 +104,17 @@ if (Astro.request.method === 'POST') {
         <p class="mt-8 text-xs font-black uppercase tracking-[0.18em] text-brand-primaryInk">Track your order</p>
         <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Where's my order?</h1>
         <p class="mt-4 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
-          Enter your order reference and the phone number or email you used at checkout to see its current status.
+          Enter your order reference and the phone number or email you used at checkout to see its dispatch progress.
         </p>
       </div>
     </section>
 
     <section class="container mx-auto px-4 py-10 sm:py-14 lg:px-8">
       <div class="mx-auto grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-[1fr_0.9fr]">
-        <!-- Lookup + result -->
         <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
           <h2 class="text-xl font-black text-gray-900">Look up your order</h2>
           <form method="POST" action="/track-order" class="mt-5 space-y-4">
+            <input type="hidden" name="intent" value="lookup" />
             <label class="block">
               <span class="text-xs font-bold text-slate-700">Order reference</span>
               <input name="reference" required maxlength="80" value={submittedRef}
@@ -92,9 +136,7 @@ if (Astro.request.method === 'POST') {
           </form>
 
           {errorMsg && (
-            <div role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
-              {errorMsg}
-            </div>
+            <div role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{errorMsg}</div>
           )}
 
           {order && (
@@ -110,15 +152,42 @@ if (Astro.request.method === 'POST') {
                 </div>
               </div>
 
-              <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                {order.customerName && (<><dt class="text-slate-500">Name</dt><dd class="text-right font-semibold text-gray-900">{order.customerName}</dd></>)}
+              {/* Dispatch progress — fulfilment stages, not live GPS tracking. */}
+              {isCancelled ? (
+                <div class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+                  This order is <strong>{label(order.orderStatus)}</strong>. If you think this is wrong, request a follow-up below and our team will check.
+                </div>
+              ) : (
+                <ol class="mt-6 space-y-0" aria-label="Dispatch progress">
+                  {STAGES.map((stage, i) => {
+                    const done = i < currentStage;
+                    const active = i === currentStage;
+                    const last = i === STAGES.length - 1;
+                    return (
+                      <li class="relative flex gap-4 pb-6 last:pb-0">
+                        {!last && <span aria-hidden="true" class={`absolute left-[11px] top-6 h-full w-0.5 ${done ? 'bg-brand-primary' : 'bg-slate-200'}`}></span>}
+                        <span aria-hidden="true" class={`relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${done ? 'border-brand-primary bg-brand-primary text-gray-950' : active ? 'border-brand-primary bg-white text-brand-primaryInk' : 'border-slate-300 bg-white text-slate-300'}`}>
+                          {done ? '✓' : i + 1}
+                        </span>
+                        <div class={active ? '' : done ? '' : 'opacity-55'}>
+                          <p class={`text-sm font-black ${active ? 'text-brand-primaryInk' : 'text-gray-900'}`}>{stage.title}{active && <span class="ml-2 rounded-full bg-brand-primary/15 px-2 py-0.5 text-[10px] font-bold text-brand-primaryInk align-middle">Now</span>}</p>
+                          <p class="mt-0.5 text-xs leading-relaxed text-slate-600">{stage.desc}</p>
+                          {active && isDeliveryFailed && <p class="mt-1 text-xs font-semibold text-amber-800">A delivery attempt didn't succeed — our team will re-attempt or contact you.</p>}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+
+              <dl class="mt-5 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-200 pt-4 text-sm">
                 {order.deliveryArea && (<><dt class="text-slate-500">Delivery area</dt><dd class="text-right font-semibold text-gray-900">{order.deliveryArea}</dd></>)}
                 {order.createdAt && (<><dt class="text-slate-500">Placed</dt><dd class="text-right font-semibold text-gray-900">{fmtDate(order.createdAt)}</dd></>)}
-                {(order.customerPhone || order.customerEmail) && (<><dt class="text-slate-500">Contact</dt><dd class="text-right font-semibold text-gray-900">{order.customerPhone || order.customerEmail}</dd></>)}
+                {typeof order.totalUgx === 'number' && (<><dt class="text-slate-500">Total</dt><dd class="text-right font-black text-brand-primaryInk tabular-nums">{formatUgx(order.totalUgx)}</dd></>)}
               </dl>
 
               {Array.isArray(order.items) && order.items.length > 0 && (
-                <div class="mt-4 border-t border-slate-200 pt-3">
+                <div class="mt-3 border-t border-slate-200 pt-3">
                   <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Items</p>
                   <ul class="mt-2 space-y-1.5 text-sm">
                     {order.items.map((it: any) => (
@@ -133,21 +202,47 @@ if (Astro.request.method === 'POST') {
                 </div>
               )}
 
-              <dl class="mt-4 space-y-1 border-t border-slate-200 pt-3 text-sm">
-                {typeof order.subtotalUgx === 'number' && (<div class="flex justify-between"><dt class="text-slate-500">Subtotal</dt><dd class="font-semibold text-gray-900 tabular-nums">{formatUgx(order.subtotalUgx)}</dd></div>)}
-                {typeof order.deliveryFeeUgx === 'number' && (<div class="flex justify-between"><dt class="text-slate-500">Delivery</dt><dd class="font-semibold text-gray-900 tabular-nums">{formatUgx(order.deliveryFeeUgx)}</dd></div>)}
-                {typeof order.totalUgx === 'number' && (<div class="flex justify-between border-t border-slate-200 pt-1.5"><dt class="font-black text-gray-900">Total</dt><dd class="font-black text-brand-primaryInk tabular-nums">{formatUgx(order.totalUgx)}</dd></div>)}
-              </dl>
-
-              <div class="mt-5 flex flex-col gap-3 sm:flex-row">
+              {/* Back-office follow-up: notifies our team about THIS order. */}
+              <div class="mt-5 border-t border-slate-200 pt-4">
+                {followupOk ? (
+                  <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                    Thanks — our team has been notified and will follow up on order {order.orderNumber} using your checkout contact.
+                  </div>
+                ) : (
+                  <details class="group">
+                    <summary class="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-gray-900 marker:content-none">
+                      <span aria-hidden="true" class="transition-transform group-open:rotate-90">▸</span>
+                      Ask our team to follow up on this order
+                    </summary>
+                    <form method="POST" action="/track-order" class="mt-3 space-y-3">
+                      <input type="hidden" name="intent" value="followup" />
+                      <input type="hidden" name="reference" value={order.orderNumber} />
+                      {/* contact is re-entered so the follow-up re-verifies the order */}
+                      <label class="block">
+                        <span class="text-xs font-bold text-slate-700">Confirm the phone or email used at checkout</span>
+                        <input name="contact" required maxlength="120" inputmode="email"
+                          placeholder="07XX XXX XXX or you@example.com"
+                          class="mt-1 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-primary" />
+                      </label>
+                      <label class="block">
+                        <span class="text-xs font-bold text-slate-700">Anything you'd like us to check? (optional)</span>
+                        <textarea name="note" rows="3" maxlength="800"
+                          placeholder="e.g. Please confirm dispatch date."
+                          class="mt-1 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-primary"></textarea>
+                      </label>
+                      {followupError && <p role="alert" class="text-xs font-semibold text-red-700">{followupError}</p>}
+                      <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-brand-primary px-5 text-sm font-bold text-gray-900 outline-none hover:bg-brand-primary/10 focus-visible:ring-4 focus-visible:ring-brand-primary/30">Request a follow-up</button>
+                      <p class="text-xs text-slate-500">This notifies our back office. We reply on the phone or email from your order — not live courier tracking.</p>
+                    </form>
+                  </details>
+                )}
                 <a href={orderHelpWhatsappUrl} target="_blank" rel="noopener noreferrer"
-                  class="inline-flex min-h-11 flex-1 items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900">Ask about this order on WhatsApp</a>
+                  class="mt-3 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900">Or ask on WhatsApp</a>
               </div>
             </div>
           )}
         </div>
 
-        <!-- Prepare / honest note -->
         <aside class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
           <h2 class="text-lg font-black text-gray-900">Before you look up</h2>
           <ol class="mt-5 space-y-4" aria-label="What you need">
@@ -161,7 +256,7 @@ if (Astro.request.method === 'POST') {
             </li>
           </ol>
           <p class="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
-            Delivery timing depends on the product, availability and your location. If anything looks wrong, our team can help on WhatsApp.
+            This shows dispatch progress (placed → preparing → dispatched → delivered), not a live map. Delivery timing depends on the product, availability and your location.
           </p>
           <a href="/support" class="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-5 py-2.5 text-sm font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">See all support options</a>
         </aside>
