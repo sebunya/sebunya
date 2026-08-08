@@ -296,6 +296,13 @@ const canonical = canonicalUrl ?? Astro.url.toString();
     </footer>
 
     <script>
+      // Capture marketing attribution (last-touch UTM + external referrer) on every
+      // page, so an order can be attributed to where it came from.
+      import { captureAttribution } from '../lib/attribution';
+      captureAttribution();
+    </script>
+
+    <script>
       // An image whose source dies must degrade to an honest placeholder, never
       // to the browser's broken-image glyph. Delegated on window in the capture
       // phase because `error` does not bubble: this covers every <img> on the

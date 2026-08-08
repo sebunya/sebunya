@@ -97,6 +97,20 @@ const checkoutBodySchema = z.object({
   paymentMethod: z.enum(['pesapal', 'offline']).nullish(),
   cartId: z.string().uuid().nullish(),
   cartVersion: z.number().int().min(1).nullish(),
+  // Marketing attribution (last-touch UTM + referrer). Optional, never trusted for
+  // pricing — recorded best-effort after the order for reporting only.
+  attribution: z
+    .object({
+      source: z.string().trim().max(120).nullish(),
+      medium: z.string().trim().max(120).nullish(),
+      campaign: z.string().trim().max(160).nullish(),
+      term: z.string().trim().max(160).nullish(),
+      content: z.string().trim().max(160).nullish(),
+      landingPath: z.string().trim().max(2000).nullish(),
+      referrer: z.string().trim().max(2000).nullish(),
+      firstAt: z.string().trim().max(40).nullish(),
+    })
+    .nullish(),
 });
 
 const routes = new Hono();
@@ -547,6 +561,13 @@ routes.post('/orders/create', async (c) => {
       deliveryFeeConfirmed: outcome.deliveryFeeConfirmed,
       idempotentReplay: outcome.idempotentReplay,
     });
+
+    // Best-effort marketing attribution — recorded AFTER the order, never affects it.
+    if (body.attribution && (outcome.order as any)?.id) {
+      void registry.orderAttributionRepo
+        .record({ orderId: (outcome.order as any).id, orderNumber: (outcome.order as any).orderNumber ?? null, ...body.attribution })
+        .catch(() => undefined);
+    }
 
     if (outcome.kind === 'BLOCKED_STOCK') {
       // The order exists and is recorded truthfully, but it does not progress.

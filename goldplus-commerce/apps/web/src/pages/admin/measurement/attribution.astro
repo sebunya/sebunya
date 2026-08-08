@@ -105,24 +105,33 @@ if (!token) {
       </div>
     </div>
 
+    <!-- Orders by channel -->
+    <div class="section-panel">
+      <div class="section-header">
+        <h2>Orders by channel</h2>
+        <p class="section-desc">Where your orders came from, over the selected window. Source/medium/campaign from the last touch before checkout. "(direct)" = no campaign or referrer.</p>
+      </div>
+      <div id="channel-summary" class="attribution-result attribution-empty">Loading…</div>
+    </div>
+
     <!-- Order Lookup -->
     <div class="section-panel">
       <div class="section-header">
-        <h2>Attribution Report by Order</h2>
-        <p class="section-desc">Look up the full attribution journey for a specific order ID.</p>
+        <h2>Attribution by order</h2>
+        <p class="section-desc">Look up where a specific order came from, by its order reference.</p>
       </div>
       <div class="order-lookup">
         <input
           type="text"
           id="order-id-input"
           class="order-input"
-          placeholder="Enter Order UUID…"
+          placeholder="Enter order reference (e.g. GP-2026-01234)…"
           autocomplete="off"
         />
         <button id="lookup-btn" class="btn-primary">Look Up</button>
       </div>
       <div id="attribution-result" class="attribution-result attribution-empty">
-        Enter an order ID above to view its attribution report.
+        Enter an order reference above to view its attribution.
       </div>
     </div>
   </div>
@@ -343,6 +352,28 @@ if (!token) {
     }
   }
 
+  async function loadChannelSummary(days: number) {
+    const el = document.getElementById('channel-summary');
+    if (!el) return;
+    try {
+      const res = await fetch(`/api/admin/measurement/attribution-summary?windowDays=${days}`, { credentials: 'same-origin' });
+      const json = await res.json();
+      const channels: any[] = json?.success ? json.data.channels : [];
+      if (!channels.length) { el.className = 'attribution-result attribution-empty'; el.textContent = 'No attributed orders in this window yet.'; return; }
+      const esc = (v: any) => String(v).replace(/[&<>"]/g, (m: string) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m] as string));
+      const total = channels.reduce((a, c) => a + c.orders, 0);
+      el.className = 'attribution-result';
+      el.innerHTML = `<table style="width:100%;font-size:0.85rem;border-collapse:collapse">
+        <thead><tr style="text-align:left;color:#64748b"><th style="padding:.4rem 0">Source</th><th>Medium</th><th>Campaign</th><th style="text-align:right">Orders</th></tr></thead>
+        <tbody>${channels.map((c) => `<tr style="border-top:1px solid #eef2f7"><td style="padding:.4rem 0">${esc(c.source)}</td><td>${esc(c.medium)}</td><td>${esc(c.campaign)}</td><td style="text-align:right;font-weight:700">${c.orders}</td></tr>`).join('')}</tbody>
+        <tfoot><tr style="border-top:2px solid #e2e8f0;font-weight:700"><td style="padding:.4rem 0">Total</td><td></td><td></td><td style="text-align:right">${total}</td></tr></tfoot>
+      </table>`;
+    } catch {
+      el.className = 'attribution-result attribution-error';
+      el.textContent = 'Could not load the channel summary.';
+    }
+  }
+
   function scoreClass(score: number) {
     if (score >= 70) return 'score-high';
     if (score >= 40) return 'score-med';
@@ -380,32 +411,23 @@ if (!token) {
       }
 
       const r = json.data;
-      const avgScore = r.matchQualityAvg.toFixed(1);
-
+      const esc = (v: any) => (v == null ? '—' : String(v).replace(/[&<>"]/g, (m: string) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m] as string)));
+      const row = (label: string, val: any) => `<div class="attr-tp"><span class="tp-event">${label}</span><div style="font-size:0.8rem;color:#334155;word-break:break-all;text-align:right">${esc(val)}</div></div>`;
       resultEl.className = 'attribution-result';
       resultEl.innerHTML = `
         <div class="attr-report">
           <div class="attr-report-header">
-            <div>
-              <span class="attr-report-title">Order ${orderId.slice(0, 8)}…</span>
-              <span style="font-size:0.75rem;color:#64748b;margin-left:0.5rem">${r.touchpoints.length} touchpoints · ${r.hasAdvertisingConsent ? '✓ Advertising consent' : '✗ No ad consent'}</span>
-            </div>
-            <span class="attr-score ${scoreClass(r.matchQualityAvg)}">Avg Match ${avgScore}%</span>
+            <span class="attr-report-title">Order ${esc(r.orderNumber || orderId)}</span>
           </div>
           <div class="attr-tp-list">
-            ${r.touchpoints.map((tp: any) => `
-              <div class="attr-tp">
-                <div>
-                  <span class="tp-event">${tp.eventName}</span>
-                  <div class="tp-time">${new Date(tp.eventTime).toLocaleString()}</div>
-                </div>
-                <div style="font-size:0.75rem;color:#64748b;">
-                  Routed: ${tp.routedDestinations.join(', ') || '—'}
-                  ${tp.blockedDestinations.length ? `· Blocked: ${tp.blockedDestinations.join(', ')}` : ''}
-                </div>
-                <span class="tp-score-pill" style="${tpScoreClass(tp.matchScore)}">${tp.matchScore.toFixed(0)}%</span>
-              </div>
-            `).join('')}
+            ${row('Source', r.source)}
+            ${row('Medium', r.medium)}
+            ${row('Campaign', r.campaign)}
+            ${r.term ? row('Term', r.term) : ''}
+            ${r.content ? row('Content', r.content) : ''}
+            ${r.landingPath ? row('Landing page', r.landingPath) : ''}
+            ${r.referrer ? row('Referrer', r.referrer) : ''}
+            ${r.firstAt ? row('First seen', new Date(r.firstAt).toLocaleString()) : ''}
           </div>
         </div>
       `;
@@ -423,6 +445,7 @@ if (!token) {
       (e.currentTarget as HTMLElement).classList.add('active');
       currentDays = parseInt((e.currentTarget as HTMLElement).dataset.days!);
       loadMatchQuality(currentDays);
+      loadChannelSummary(currentDays);
     });
   });
 
@@ -432,4 +455,5 @@ if (!token) {
   });
 
   loadMatchQuality(currentDays);
+  loadChannelSummary(currentDays);
 </script>

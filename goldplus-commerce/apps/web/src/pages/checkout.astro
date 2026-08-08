@@ -318,6 +318,8 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            // Server-validated and reserved — a bad value fails the checkout
            // with a clear message rather than a silent trim.
            ...( (() => { const rp = parseInt(String(formData.get('redeemPoints') || ''), 10); return Number.isInteger(rp) && rp > 0 ? { redeemPoints: rp } : {}; })() ),
+           // Marketing attribution captured client-side; recorded best-effort, never priced.
+           ...( (() => { try { const a = JSON.parse(String(formData.get('attribution') || 'null')); return a && typeof a === 'object' ? { attribution: a } : {}; } catch { return {}; } })() ),
         },
         intentToken: checkoutIntent.token,
         sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null,
@@ -597,6 +599,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
           <FormFeedback status={status} message={message} />
           
           <form id="checkout-form" method="POST" action="/checkout" novalidate class="space-y-6 mt-4">
+            <input type="hidden" name="attribution" id="attribution-field" />
             <!-- Slice 3B: idempotency key — a resubmitted/double-clicked form returns the same order -->
             {/*
               No hidden order key. A hidden field is caller-controlled, so it can
@@ -870,6 +873,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
   // idempotent, so double-import double-wires nothing.
   import '../lib/locationPickerClient';
   import { track, captureClickIdsServerSide } from '../lib/telemetry';
+  import { getCheckoutAttribution } from '../lib/attribution';
   import { publicApiBase } from '../lib/api';
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -1008,6 +1012,11 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
     restoreDraft();
     formEl?.addEventListener('input', () => saveDraft());
     formEl?.addEventListener('submit', () => {
+      // Stamp last-touch marketing attribution onto the order (best-effort).
+      try {
+        const attrEl = document.getElementById('attribution-field') as HTMLInputElement | null;
+        if (attrEl) attrEl.value = JSON.stringify(getCheckoutAttribution() ?? {});
+      } catch { /* attribution is optional */ }
       try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
     });
 
