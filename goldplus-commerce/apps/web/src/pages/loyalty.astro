@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { formatUgx } from "../lib/money";
 import { apiBase } from "../lib/api";
 import { resolveAuthenticatedUserId } from "../lib/customerAuth";
 
@@ -61,7 +62,7 @@ if (userId && sessionToken && programme) {
   }
 }
 
-const fmtUgx = (n: number) => new Intl.NumberFormat("en-UG", { style: "currency", currency: "UGX", maximumFractionDigits: 0 }).format(n);
+const fmtUgx = (n: number) => formatUgx(n);
 const pointValue = programme?.redemption.configured ? programme.redemption.pointValueUgx ?? null : null;
 
 // Ways to earn: built from the LIVE config only. A source whose value is unset

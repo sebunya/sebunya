@@ -1,5 +1,6 @@
 ---
 import type { ProductPublicDto } from "@goldplus/shared";
+import { formatUgx } from "../lib/money";
 
 /**
  * HomeCommerceHighlights.astro
@@ -20,7 +21,7 @@ if (!promoProduct && !todaysPickProduct) {
 
 function getFormattedPrice(p: ProductPublicDto) {
   return (typeof p.retailPriceUgx === "number" && p.retailPriceUgx > 0)
-    ? `USh ${p.retailPriceUgx.toLocaleString("en-UG")}`
+    ? formatUgx(p.retailPriceUgx)
     : "Price on request";
 }
 

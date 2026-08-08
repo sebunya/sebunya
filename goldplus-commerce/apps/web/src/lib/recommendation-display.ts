@@ -1,5 +1,6 @@
 import type { ProductAvailability, ProductPublicDto, RecommendationItemDto } from "@goldplus/shared";
 import { getProductSubcategory } from "./product-discovery";
+import { formatUgx } from "./money";
 
 export type RecommendationRule =
   | "same_subcategory"
@@ -132,7 +133,7 @@ function isSafeImageUrl(value: unknown): value is string {
 
 export function formatRecommendationPrice(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? `USh ${value.toLocaleString("en-UG")}`
+    ? formatUgx(value)
     : "Price on request";
 }
 

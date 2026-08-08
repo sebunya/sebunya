@@ -124,7 +124,9 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
     });
   }
 
-  if (ctx.signedIn && ctx.points >= 1000) {
+  // Only surface "spend your points" when redemption is configured (rate > 0).
+  // A shilling value is never asserted for points that cannot yet be redeemed.
+  if (ctx.signedIn && ctx.points >= 1000 && r.pointsToUgxRate > 0) {
     c.push({
       id: 'points', score: 88,
       text: 'You have <em>' + ctx.points.toLocaleString('en-UG') + ' points</em> &mdash; that is ' + money(ctx.points * r.pointsToUgxRate) + ' off',

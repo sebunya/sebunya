@@ -448,7 +448,7 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'We could not match your address to an area. Place your order and our team will confirm the delivery fee with you before dispatch.',
+      'Place your order and our team will confirm your delivery fee before dispatch — or collect free from our Wilson Road shop.',
     label: 'Address did not resolve',
     help: 'A data gap never blocks a sale — the order completes through the manual path.',
   },

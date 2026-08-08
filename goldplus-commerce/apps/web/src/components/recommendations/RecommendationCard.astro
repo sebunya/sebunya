@@ -1,6 +1,7 @@
 ---
 import type { RecommendationItemDto, RecommendationPlacement } from "@goldplus/shared";
 import { supportedRecommendationReason } from "../../lib/recommendation-display";
+import { formatUgx } from "../../lib/money";
 
 interface Props {
   item: RecommendationItemDto & {
@@ -14,7 +15,7 @@ interface Props {
 const { item, placement, variant = "default" } = Astro.props;
 
 const formattedPrice = (typeof item.price === "number" && item.price > 0)
-  ? `USh ${item.price.toLocaleString("en-UG")}`
+  ? formatUgx(item.price)
   : "Price on request";
 const availabilityLabel = item.availability?.kind === "in_stock" ? "In stock"
   : item.availability?.kind === "out_of_stock" ? "Out of stock"

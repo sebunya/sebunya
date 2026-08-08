@@ -95,6 +95,19 @@ const flash = HERO_SLIDE_LIBRARY.find((sl) => sl.slideKey === 'flash');
 const saleEnds = nav.settings?.saleEndsIso || (flash?.extras?.saleEndsIso as string) || '';
 const saleLive = saleEnds ? Date.now() < new Date(saleEnds).getTime() : false;
 
+// ---- points redemption value: ONE source of truth (the loyalty programme,
+// the same endpoint checkout uses). We claim a shilling value ONLY when
+// redemption is actually configured — the old hardcoded rate promised money the
+// programme may not offer (redemption is unconfigured until an operator sets it).
+let pointsRedeemUgx = 0;
+try {
+  const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2000) });
+  const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
+  if (lpJson?.success && lpJson.data?.redemption?.configured) {
+    pointsRedeemUgx = Number(lpJson.data.redemption.pointValueUgx) || 0;
+  }
+} catch { /* the header never blocks on loyalty */ }
+
 // ---- Next Best Action, computed on the SERVER from real signals ----
 // The browser keeps an identical offline set as the fallback; this is what makes
 // the strip right for new vs existing customers before the page even paints.
@@ -106,7 +119,7 @@ const nba = computeNbaCandidates({
   // the CMS offer figures drive the copy, so the server strip and the editor agree
   firstOrderPct: nav.settings.firstOrderDiscountPct,
   referralPct: nav.settings.referralPct,
-  pointsToUgxRate: nav.settings.pointsToUgxRate,
+  pointsToUgxRate: pointsRedeemUgx, // the loyalty redemption value, or 0 = no money claim
   firstOrderEstimate: nav.settings.firstOrderEstimateUgx,
 });
 
@@ -116,7 +129,7 @@ const navConfigJson = escNav(JSON.stringify({
   firstOrderEstimate: nav.settings.firstOrderEstimateUgx,
   firstOrderPct: nav.settings.firstOrderDiscountPct,
   referralPct: nav.settings.referralPct,
-  pointsRate: nav.settings.pointsToUgxRate,
+  pointsRate: pointsRedeemUgx,
   trending: nav.search.trendingTerms.map((t) => [t.label, t.href]),
   zeroResult: nav.search.zeroResultCopy,
 }));
@@ -1105,7 +1118,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   // /admin/nav is reflected everywhere (no hardcoded percentages that drift).
   var RATE_FIRST = CFG.firstOrderPct != null ? CFG.firstOrderPct : 10;
   var RATE_REFER = CFG.referralPct != null ? CFG.referralPct : 10;
-  var RATE_PTS = CFG.pointsRate != null ? CFG.pointsRate : 10;
+  var RATE_PTS = CFG.pointsRate != null ? CFG.pointsRate : 0; // 0 = redemption not configured; claim no shilling value
   var EST_FIRST = CFG.firstOrderEstimate || 'UGX 18,500';
 
   /* ---- visitor counter ----
@@ -1496,7 +1509,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     function popHTML(){
       if (known){
         return '<p class="gp-nav__hi">' + partOfDay() + ', ' + name + '</p>' +
-          '<p class="gp-nav__hi-sub">You have <b>' + POINTS.toLocaleString() + ' points</b> &mdash; that is UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' off your next order.</p>' +
+          '<p class="gp-nav__hi-sub">You have <b>' + POINTS.toLocaleString() + ' points</b>' + (RATE_PTS > 0 ? ' &mdash; that is UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' off your next order' : '') + '.</p>' +
           '<div class="gp-nav__acct-links">' +
             '<a href="/account">Your orders</a>' +
             '<a href="/account/rewards">Rewards <b>' + POINTS.toLocaleString() + ' pts</b></a>' +
@@ -1543,7 +1556,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     function mobileHTML(){
       if (known){
         return '<h2>' + partOfDay() + ', ' + name + '</h2>' +
-          '<p>You have <b>' + POINTS.toLocaleString() + ' points</b> waiting &mdash; UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' off your next order.</p>' +
+          '<p>You have <b>' + POINTS.toLocaleString() + ' points</b> waiting' + (RATE_PTS > 0 ? ' &mdash; UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' off your next order' : '') + '.</p>' +
           '<div class="gp-nav__mhi-row"><a href="/account/rewards">Your rewards</a><a href="/account">Your orders</a></div>';
       }
       if (returning){
@@ -1692,9 +1705,9 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         short:'Basket saved &mdash; arrives <b>' + (CTX.sunday ? 'Monday' : 'tomorrow') + '</b>',
         cta:'Finish order', href:'/cart' });
 
-      if (CTX.signedIn && CTX.points >= 1000) c.push({ id:'points', score:88,
-        text:'You have <em>' + CTX.points.toLocaleString() + ' points</em> &mdash; that is ' + money(CTX.points * 10) + ' off',
-        short:'<em>' + money(CTX.points * 10) + '</em> in points to spend',
+      if (CTX.signedIn && CTX.points >= 1000 && RATE_PTS > 0) c.push({ id:'points', score:88,
+        text:'You have <em>' + CTX.points.toLocaleString() + ' points</em> &mdash; that is ' + money(CTX.points * RATE_PTS) + ' off',
+        short:'<em>' + money(CTX.points * RATE_PTS) + '</em> in points to spend',
         cta:'Spend them', href:'/account/rewards' });
 
       if (CTX.signedIn && CTX.lastOrderDays !== null && CTX.lastOrderDays > 150) c.push({ id:'reorder', score:84,

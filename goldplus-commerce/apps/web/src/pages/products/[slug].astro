@@ -4,6 +4,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProductJsonLd from '../../components/ProductJsonLd.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
+import { formatUgx } from '../../lib/money';
 import type { ProductPublicDto, ApiEnvelope, ApiResponse } from '@goldplus/shared';
 import CompleteSetupRail from '../../components/recommendations/CompleteSetupRail.astro';
 import RelatedProductsRail from '../../components/recommendations/RelatedProductsRail.astro';
@@ -112,8 +113,6 @@ try {
   pdpFallbackProducts = [];
 }
 
-const formatUgx = (amount: number): string =>
-  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(amount);
 
 // Loyalty earn preview (loyalty brief PART G: visibility at the point of
 // decision). Lower bound, vests on delivery — absent when the programme is off.
@@ -293,7 +292,7 @@ const canonical = Astro.url.toString();
                 <>
                 <p class="text-3xl font-black text-gray-900">{formatUgx(product.retailPriceUgx)}</p>
                 {loyaltyRate > 0 && Math.floor(product.retailPriceUgx / 1000) * loyaltyRate > 0 && (
-                  <p class="text-xs font-bold text-amber-700 mt-1">Earn at least {(Math.floor(product.retailPriceUgx / 1000) * loyaltyRate).toLocaleString('en-UG')} GoldPlus points when delivered</p>
+                  <p class="text-xs font-bold text-brand-primaryInk mt-1">Earn {(Math.floor(product.retailPriceUgx / 1000) * loyaltyRate).toLocaleString('en-US')} GoldPlus points on this order</p>
                 )}
                 </>
               ) : (

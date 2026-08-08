@@ -86,7 +86,7 @@ describe('Slice 06-F elite recommendations intelligence', () => {
   });
 
   it('uses a truthful UGX price display and never emits NaN or undefined', () => {
-    expect(formatRecommendationPrice(125000)).toBe('USh 125,000');
+    expect(formatRecommendationPrice(125000)).toBe('UGX 125,000');
     expect(formatRecommendationPrice(Number.NaN)).toBe('Price on request');
     expect(formatRecommendationPrice(undefined)).toBe('Price on request');
     expect(formatRecommendationPrice(0)).toBe('Price on request');

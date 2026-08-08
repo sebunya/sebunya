@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { formatUgx } from "../../lib/money";
 import AccountNav from '../../components/AccountNav.astro';
 import EmptyState from '../../components/EmptyState.astro';
 import Notice from '../../components/Notice.astro';
@@ -39,7 +40,7 @@ if (unauthorised) {
 }
 
 const formatUgx = (n: number) =>
-  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
+  formatUgx(n);
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
 
 const statusBadge: Record<string, string> = {

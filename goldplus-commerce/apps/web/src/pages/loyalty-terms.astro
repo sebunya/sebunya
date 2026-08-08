@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { apiBase } from "../lib/api";
+import { formatUgx } from "../lib/money";
 
 /**
  * GoldPlus Rewards terms (loyalty brief PART U #29: "Loyalty terms exist, are
@@ -44,7 +45,7 @@ try {
   /* an unreachable API renders the not-active version, never invented terms */
 }
 
-const fmtUgx = (n: number) => new Intl.NumberFormat("en-UG", { style: "currency", currency: "UGX", maximumFractionDigits: 0 }).format(n);
+const fmtUgx = (n: number) => formatUgx(n);
 const src = programme?.earnSources ?? null;
 const pointValue = programme?.redemption.configured ? programme.redemption.pointValueUgx ?? null : null;
 const maxSharePct = programme?.redemption.maxShareBps ? Math.floor(programme.redemption.maxShareBps / 100) : null;

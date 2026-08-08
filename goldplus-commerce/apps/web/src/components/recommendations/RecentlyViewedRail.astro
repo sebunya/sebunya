@@ -118,7 +118,7 @@ try {
     list.innerHTML = items
       .map((item) => {
         const priceLabel = (typeof item.price === "number" && item.price > 0) 
-          ? `USh ${item.price.toLocaleString("en-UG")}` 
+          ? `UGX ${item.price.toLocaleString("en-US")}`
           : "Price on request";
         
         const itemName = String(item.name ?? "Product");

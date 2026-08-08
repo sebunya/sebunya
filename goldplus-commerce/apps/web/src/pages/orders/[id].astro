@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { formatUgx } from "../../lib/money";
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, clearSessionCookie } from '../../lib/session';
@@ -37,7 +38,7 @@ try {
 }
 
 const formatUgx = (n: number) =>
-  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
+  formatUgx(n);
 
 const statusBadge: Record<string, string> = {
   PENDING_PAYMENT: 'bg-orange-50 text-orange-700 border-orange-200',

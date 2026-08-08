@@ -4,8 +4,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import EmptyState from '../components/EmptyState.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
+import { formatUgx } from '../lib/money';
 import { readCartSessionId } from '../lib/cart-session';
 import type { ApiEnvelope } from '@goldplus/shared';
+import { kampalaCutoff } from '@goldplus/shared';
 import CartAddonRail from '../components/recommendations/CartAddonRail.astro';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
 import { parseLocalCartCookie } from '../lib/cart';
@@ -249,8 +251,16 @@ try {
 } catch { /* preview only */ }
 const cartPotentialPoints = cartLoyaltyRate > 0 ? Math.floor(subtotal / 1000) * cartLoyaltyRate : 0;
 
-const formatUgx = (n: number): string =>
-  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
+// The same-day deadline, from the SAME 17:00 Kampala source the header uses,
+// rendered where the decision is actually made.
+const cut = kampalaCutoff(new Date());
+const cutoffLine = cut.sunday
+  ? 'Closed Sunday — this goes out Monday morning'
+  : !cut.beforeCutoff
+    ? "Today's run has left — this goes out tomorrow morning"
+    : cut.minsToCutoff <= 60
+      ? `Only ${cut.minsToCutoff} minutes left to get this today`
+      : `Order in ${Math.floor(cut.minsToCutoff / 60)}h ${cut.minsToCutoff % 60}m and this arrives today`;
 ---
 
 <BaseLayout title="Your cart">
@@ -308,9 +318,12 @@ const formatUgx = (n: number): string =>
                           class="w-24 h-24 object-cover bg-slate-50/50 rounded-2xl border border-slate-200/60 p-1 hover:border-brand-primary transition-colors"
                         />
                       ) : (
-                        <div class="w-24 h-24 bg-slate-50 rounded-2xl flex items-center justify-center text-[10px] text-slate-400 font-bold border border-slate-200/60 uppercase text-center p-2 hover:border-brand-primary transition-colors">
-                          No image
-                        </div>
+                        <div
+                          class="w-24 h-24 rounded-2xl border border-slate-200/60 hover:border-brand-primary transition-colors"
+                          style="background:#F0EFED;background-image:repeating-linear-gradient(135deg,transparent 0,transparent 10px,rgba(0,0,0,0.03) 10px,rgba(0,0,0,0.03) 11px);"
+                          role="img"
+                          aria-label={item.name}
+                        ></div>
                       )}
                     </a>
                     
@@ -319,7 +332,7 @@ const formatUgx = (n: number): string =>
                         <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.categoryName}</p>
                       )}
                       <a href={`/products/${item.slug}`} class="font-bold text-gray-900 hover:text-brand-primary transition-colors line-clamp-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50 rounded leading-snug">{item.name}</a>
-                      <p class="text-sm font-bold text-brand-primary mt-1.5">{formatUgx(item.unitPriceUgx)} <span class="text-xs font-normal text-slate-400 ml-1">each</span></p>
+                      <p class="text-sm font-bold text-brand-primaryInk mt-1.5">{formatUgx(item.unitPriceUgx)} <span class="text-xs font-normal text-slate-400 ml-1">each</span></p>
                     </div>
                     
                     {/* Quantity Selector controls */}
@@ -387,7 +400,7 @@ const formatUgx = (n: number): string =>
               </div>
               <div class="flex items-center justify-between">
                 <dt class="text-slate-500 font-medium">Delivery</dt>
-                <dd class="text-slate-400 italic">Calculated at checkout</dd>
+                <dd class="text-slate-500">Added at checkout</dd>
               </div>
               {/* Stage 1: the same quote the product page showed, so one
                   basket cannot show two different answers. */}
@@ -399,24 +412,27 @@ const formatUgx = (n: number): string =>
                 />
               </div>
               <div class="flex items-center justify-between pt-4 border-t border-slate-100">
-                <dt class="font-black text-gray-900 text-base">Total</dt>
-                <dd class="font-black text-brand-primary text-xl tracking-tight">{formatUgx(subtotal)}</dd>
+                <dt class="font-black text-gray-900 text-base">Estimated total</dt>
+                <dd class="font-black text-brand-primaryInk text-xl tracking-tight tabular-nums">{formatUgx(subtotal)}</dd>
               </div>
+              <p class="text-[11px] text-slate-500 -mt-2">Delivery is added at checkout, once you choose your area.</p>
               {cartPotentialPoints > 0 && (
                 <div class="pt-1">
-                  <p class="text-[11px] font-bold text-amber-700">Earn at least {cartPotentialPoints.toLocaleString('en-UG')} GoldPlus points when delivered (sign in to collect them)</p>
+                  <p class="text-[11px] font-bold" style="color:#456B00">Earn {cartPotentialPoints.toLocaleString('en-US')} GoldPlus points on this order. <a href="/login?returnTo=/cart" class="underline">Sign in to collect them</a></p>
                 </div>
               )}
             </dl>
 
             <a
               href="/checkout"
-              class="flex items-center justify-center w-full h-14 px-6 bg-brand-charcoal text-white rounded-full font-bold hover:bg-black outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 transition-all shadow-md active:scale-95 text-base cursor-pointer"
+              class="flex items-center justify-center w-full h-[52px] px-6 rounded-full font-semibold outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 transition-all shadow-md active:scale-95 text-[15px] cursor-pointer"
+              style="background:#93D500;color:#0A0A0A"
             >
               Continue to checkout
             </a>
-            <a 
-              href="/shop" 
+            <p class="mt-3 text-center text-xs font-semibold" style="color:#456B00">{cutoffLine}</p>
+            <a
+              href="/shop"
               class="flex items-center justify-center w-full h-12 mt-3 text-sm font-bold text-slate-500 hover:text-gray-900 hover:bg-slate-50 rounded-full transition-colors outline-none focus-visible:ring-4 focus-visible:ring-slate-200 cursor-pointer"
             >
               Continue shopping

@@ -45,7 +45,7 @@ promise rather than a default.
 | `copy_unavailable_no_active_origin` | string | — | `We cannot quote delivery right now. Place your order and our` | — | When no dispatch point is active |
 | `copy_unavailable_area_unserviceable` | string | — | `We are not able to deliver to this area at the moment. You a` | — | Area we do not serve |
 | `copy_unavailable_water_access` | string | — | `This address is reached by boat, so we cannot deliver there ` | — | Lake-access areas |
-| `copy_unavailable_area_unresolved` | string | — | `We could not match your address to an area. Place your order` | — | Address did not resolve |
+| `copy_unavailable_area_unresolved` | string | — | `Place your order and our team will confirm your delivery fee` | — | Address did not resolve |
 | `copy_pickup_offer` | string | — | `Collect free from GoldPlus, Wilson Road — next to Uhuru Rest` | — | Pickup offer |
 | `copy_unavailable_area_too_coarse` | string | — | `We found your district. Choose the specific area you are in ` | — | District known, area not yet chosen |
 | `copy_variance_agreement_request` | string | — | `Your delivery address turned out to be in a different area f` | — | Asking a customer to agree a changed fee |

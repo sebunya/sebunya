@@ -6,6 +6,7 @@ import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
 import UgandaLocationPicker from '../components/UgandaLocationPicker.astro';
 import { apiBase, postJson } from '../lib/api';
+import { formatUgx } from '../lib/money';
 import { readCartSessionId } from '../lib/cart-session';
 import { prepareCheckoutPayload, validateCheckoutPayload } from '../lib/checkout';
 import { parseLocalCartCookie } from '../lib/cart';
@@ -20,7 +21,7 @@ import {
   startPayment,
   paymentStartMessageFor,
 } from '../lib/checkoutClient';
-import { mayStartPayment } from '@goldplus/shared';
+import { mayStartPayment, kampalaCutoff } from '@goldplus/shared';
 import type { ApiEnvelope } from '@goldplus/shared';
 
 interface CartItem {
@@ -521,15 +522,22 @@ if (defaultAddress) {
 const initialAreaSlug: string | null = (defaultAddress as any)?.areaSlug ?? null;
 const initialDistrict: string | null = defaultAddress?.district ?? null;
 
-const formatUgx = (n: number): string =>
-  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
+// Same-day deadline from the SAME 17:00 Kampala source the header uses.
+const cut = kampalaCutoff(new Date());
+const cutoffLine = cut.sunday
+  ? 'Closed Sunday — this goes out Monday morning'
+  : !cut.beforeCutoff
+    ? "Today's run has left — this goes out tomorrow morning"
+    : cut.minsToCutoff <= 60
+      ? `Only ${cut.minsToCutoff} minutes left to get this today`
+      : `Order in ${Math.floor(cut.minsToCutoff / 60)}h ${cut.minsToCutoff % 60}m and this arrives today`;
 ---
 
 <BaseLayout title="Checkout">
   <div class="bg-gradient-to-b from-slate-50 to-white py-10 border-b border-slate-100">
     <div class="container mx-auto px-4 lg:px-8">
       <h1 class="text-2xl md:text-3xl font-black tracking-tight text-gray-900 mb-2">Checkout</h1>
-      <p class="text-slate-500 max-w-2xl text-sm">Verify your delivery zone accurately to accelerate shipment processing time.</p>
+      <p class="text-slate-500 max-w-2xl text-sm">Tell us where you are and we'll show your exact delivery fee.</p>
     </div>
   </div>
 
@@ -715,18 +723,22 @@ const formatUgx = (n: number): string =>
                 id="submitBtn"
                 data-label-offline="Place order"
                 data-label-pesapal="Pay securely now"
-                class="bg-brand-primary text-gray-955 px-8 py-2.5 rounded-full font-bold text-sm tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985] shadow-sm"
+                class="px-8 h-[52px] rounded-full font-semibold text-[15px] hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 cursor-pointer hover:scale-[1.005] active:scale-[0.985] shadow-sm"
+                style="background:#93D500;color:#0A0A0A"
               >
                 Place order
               </button>
-              <p class="text-xs text-slate-400 italic max-w-xs">Location verification safeguards delivery times.</p>
+              <p class="text-xs font-semibold" style="color:#456B00">{cutoffLine}</p>
             </div>
           </form>
         </div>
 
         <aside class="w-full lg:w-1/3">
           <div class="bg-white rounded-2xl border border-slate-200/80 p-6 sticky top-24 shadow-xs">
-            <h2 class="text-base font-black text-gray-900 mb-4">Order summary</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-base font-black text-gray-900">Order summary</h2>
+              <a href="/cart" class="text-xs font-bold text-slate-500 hover:text-gray-900 underline outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 rounded">Edit cart</a>
+            </div>
             <ul class="space-y-3 text-sm mb-4" aria-label="Order items">
               {cart.items.map((item) => (
                 <li class="flex items-start justify-between gap-3">
@@ -747,9 +759,9 @@ const formatUgx = (n: number): string =>
                 <dt class="text-slate-550">Delivery</dt>
                 <dd class="text-right" id="delivery-estimate-value" data-state={initialDeliveryEstimate?.kind ?? 'NONE'}>
                   {initialDeliveryEstimate?.kind === 'CONFIRMED' && initialDeliveryEstimate.feeUgx !== null ? (
-                    <span class="font-bold text-gray-900">{formatUgx(initialDeliveryEstimate.feeUgx)}</span>
+                    <span class="font-bold text-gray-900 tabular-nums">{formatUgx(initialDeliveryEstimate.feeUgx)}</span>
                   ) : initialDeliveryEstimate?.kind === 'ESTIMATED' && initialDeliveryEstimate.feeUgx !== null ? (
-                    <span class="font-bold text-gray-900">≈ {formatUgx(initialDeliveryEstimate.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">estimate — confirmed before dispatch</span></span>
+                    <span class="font-bold text-gray-900 tabular-nums">about {formatUgx(initialDeliveryEstimate.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">confirmed before dispatch</span></span>
                   ) : (
                     <span class="text-[11px] font-bold text-slate-400">Shown when you pick a location</span>
                   )}
@@ -768,11 +780,14 @@ const formatUgx = (n: number): string =>
                 />
               </div>
               <div class="flex items-center justify-between pt-3 border-t border-slate-100">
-                <dt class="font-bold text-gray-900 text-sm" id="grand-total-label">{initialDeliveryEstimate?.kind === 'CONFIRMED' ? 'Grand total (incl. delivery)' : 'Grand total (excl. delivery)'}</dt>
-                <dd class="font-black text-gray-900 text-lg" id="grand-total-value" data-subtotal={cart.subtotalUgx}>
-                  {formatUgx(cart.subtotalUgx + (initialDeliveryEstimate?.kind === 'CONFIRMED' ? initialDeliveryEstimate.feeUgx ?? 0 : 0))}
+                <dt class="font-bold text-gray-900 text-sm" id="grand-total-label">{initialDeliveryEstimate?.kind === 'CONFIRMED' ? 'Total to pay' : 'Estimated total'}</dt>
+                <dd class="font-black text-gray-900 text-lg tabular-nums" id="grand-total-value" data-subtotal={cart.subtotalUgx}>
+                  {formatUgx(cart.subtotalUgx + (initialDeliveryEstimate?.kind === 'CONFIRMED' ? (initialDeliveryEstimate.feeUgx ?? 0) : 0))}
                 </dd>
               </div>
+              {initialDeliveryEstimate?.kind === 'ESTIMATED' && (
+                <p class="text-[10px] text-slate-400 text-right -mt-1">Delivery is added on top and confirmed before dispatch.</p>
+              )}
             </dl>
             {loyaltyProgramme.active && loyaltyProgramme.redemption.configured && loyaltyAvailablePoints >= (loyaltyProgramme.redemption.minPoints ?? 1) && (
               <div class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 space-y-2">
@@ -800,14 +815,14 @@ const formatUgx = (n: number): string =>
             )}
             {potentialPoints > 0 && (
               authenticatedUserId ? (
-                <p class="mt-4 rounded-xl bg-amber-50 border border-amber-200/60 px-3.5 py-2.5 text-xs font-semibold text-amber-900">
-                  You'll earn at least <strong>{potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> when this order is delivered.
+                <p class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-700">
+                  You'll earn <strong style="color:#456B00">{potentialPoints.toLocaleString('en-US')} GoldPlus points</strong> when this order is delivered.
                 </p>
               ) : (
-                <p class="mt-4 rounded-xl bg-amber-50 border border-amber-200/60 px-3.5 py-2.5 text-xs font-semibold text-amber-900">
+                <p class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-700">
                   <a href="/login?returnTo=/checkout" class="underline font-bold">Sign in</a> or
                   <a href="/register?returnTo=/checkout" class="underline font-bold">create an account</a> to earn
-                  <strong> {potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> on this order.
+                  <strong style="color:#456B00"> {potentialPoints.toLocaleString('en-US')} GoldPlus points</strong> on this order.
                 </p>
               )
             )}
@@ -891,22 +906,26 @@ const formatUgx = (n: number): string =>
     const estimateEl = document.getElementById('delivery-estimate-value');
     const totalEl = document.getElementById('grand-total-value');
     const totalLabelEl = document.getElementById('grand-total-label');
-    const ugx = (n: number) =>
-      new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
+    const ugx = (n: number) => `UGX ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(n))}`;
 
     function renderEstimate(est: { kind: string; feeUgx: number | null } | null) {
       if (!estimateEl || !totalEl || !totalLabelEl) return;
+      // The Total always includes every fee shown above it. A CONFIRMED fee is
+      // the amount to pay; an ESTIMATE is folded into an "Estimated total" so the
+      // customer never sees a total that excludes a fee the page just quoted.
       if (est && est.kind === 'CONFIRMED' && est.feeUgx !== null) {
-        estimateEl.innerHTML = `<span class="font-bold text-gray-900">${ugx(est.feeUgx)}</span>`;
-        totalLabelEl.textContent = 'Grand total (incl. delivery)';
+        estimateEl.innerHTML = `<span class="font-bold text-gray-900 tabular-nums">${ugx(est.feeUgx)}</span>`;
+        totalLabelEl.textContent = 'Total to pay';
         totalEl.textContent = ugx(subtotal + est.feeUgx);
       } else if (est && est.kind === 'ESTIMATED' && est.feeUgx !== null) {
-        estimateEl.innerHTML = `<span class="font-bold text-gray-900">≈ ${ugx(est.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">estimate — confirmed before dispatch</span></span>`;
-        totalLabelEl.textContent = 'Grand total (excl. delivery)';
+        // An estimate is not a commitment: it is shown, but only a CONFIRMED
+        // operator-zone fee joins the committed total (Slice 03 P0 contract).
+        estimateEl.innerHTML = `<span class="font-bold text-gray-900 tabular-nums">about ${ugx(est.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">confirmed before dispatch</span></span>`;
+        totalLabelEl.textContent = 'Estimated total';
         totalEl.textContent = ugx(subtotal);
       } else {
-        estimateEl.innerHTML = '<span class="text-[11px] font-bold text-slate-400">Confirmed by our team after ordering</span>';
-        totalLabelEl.textContent = 'Grand total (excl. delivery)';
+        estimateEl.innerHTML = '<span class="text-[11px] font-bold text-slate-400">Shown when you pick a location</span>';
+        totalLabelEl.textContent = 'Estimated total';
         totalEl.textContent = ugx(subtotal);
       }
     }

@@ -133,17 +133,39 @@ const toneClass: Record<string, string> = {
     {/* Cut-off countdown, in East Africa Time. Absent when no cutoff is set. */}
     {q.cutoff && <p class="text-[11px] text-gray-600 mt-2">{q.cutoff.sentence}</p>}
 
-    {/* Pickup, alongside EVERY quote whatever the outcome. */}
-    {q.pickup && <p class="text-[11px] text-gray-600 mt-2">{q.pickup}</p>}
+    {/* Collect free — a focusable control (opens directions to the real shop),
+        not the middle of three grey paragraphs. */}
+    {q.pickup && (
+      <a
+        href="https://www.google.com/maps/search/?api=1&query=GoldPlus%20Wilson%20Road%20Kampala"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="mt-2 inline-flex items-center gap-1.5 rounded-full border-2 border-brand-primary px-3.5 py-1.5 text-[11px] font-bold text-gray-900 hover:bg-brand-primary/10 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 transition-colors"
+      >
+        Collect free from our shop
+        <span aria-hidden="true">&rarr;</span>
+      </a>
+    )}
 
-    {/* The pin request. No time claim until the split is measured. */}
-    {!compact && q.pinNudge && stage === 2 && <p class="text-[11px] text-gray-500 mt-1">{q.pinNudge}</p>}
-
-    {/* Disclaimer stage 1 before an area is known, stage 2 once it is. */}
-    {q.disclaimer && (
-      <p class="text-[11px] text-gray-500 mt-2 pt-2 border-t border-gray-200" data-disclaimer-stage={q.disclaimerStage}>
-        {q.disclaimer}
-      </p>
+    {/* Secondary reassurance — the shop address, pin request and disclaimer — is
+        collapsed so the panel leads with the fee and one line of state, not stacked
+        grey paragraphs. Every sentence is still the registry copy. */}
+    {(q.pickup || (!compact && q.pinNudge && stage === 2) || q.disclaimer) && (
+      <details class="mt-2 group">
+        <summary class="text-[11px] font-semibold text-gray-600 cursor-pointer select-none marker:content-none flex items-center gap-1">
+          <span aria-hidden="true" class="transition-transform group-open:rotate-90">▸</span>
+          How delivery works
+        </summary>
+        <div class="mt-1.5 space-y-1.5">
+          {q.pickup && <p class="text-[11px] text-gray-600">{q.pickup}</p>}
+          {!compact && q.pinNudge && stage === 2 && <p class="text-[11px] text-gray-500">{q.pinNudge}</p>}
+          {q.disclaimer && (
+            <p class="text-[11px] text-gray-500 pt-2 border-t border-gray-200" data-disclaimer-stage={q.disclaimerStage}>
+              {q.disclaimer}
+            </p>
+          )}
+        </div>
+      </details>
     )}
   </div>
 )}
