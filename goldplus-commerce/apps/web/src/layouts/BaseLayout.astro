@@ -330,6 +330,20 @@ const canonical = canonicalUrl ?? Astro.url.toString();
       tickSaleChips();
       document.addEventListener('DOMContentLoaded', tickSaleChips);
       setInterval(tickSaleChips, 60_000);
+      // Rails inject cards after load in whatever order their scripts ran —
+      // tick the moment new chips appear rather than up to a minute later.
+      // Guarded to ELEMENT insertions that carry a chip: the ticker's own
+      // textContent writes add bare text nodes, which must not re-trigger it.
+      new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const node of Array.from(m.addedNodes)) {
+            if (node instanceof Element && (node.matches('[data-card-sale-ends]') || node.querySelector('[data-card-sale-ends]'))) {
+              tickSaleChips();
+              return;
+            }
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
     </script>
 
     <script>
