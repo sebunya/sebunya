@@ -57,3 +57,4 @@ export * from './orderAttribution';
 export * from './businessInfo';
 export * from './taxonomy';
 export * from './homepageContent';
+export * from './storefrontCopy';

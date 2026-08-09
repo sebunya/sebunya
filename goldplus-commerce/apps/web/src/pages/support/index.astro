@@ -1,10 +1,13 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { whatsappSupportNumber } from '../../lib/api';
+import { getStorefrontCopy } from '../../lib/storefrontCopy';
 
 const whatsappSupportUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(
   'Hello GoldPlus, I need customer support.'
 )}`;
+// Support landing heading + intro — operator-editable (admin/storefront-copy).
+const copy = await getStorefrontCopy();
 ---
 
 <BaseLayout title="Customer support and order help | GoldPlus">
@@ -12,9 +15,9 @@ const whatsappSupportUrl = `https://wa.me/${whatsappSupportNumber}?text=${encode
     <section class="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
       <div class="container mx-auto px-4 text-center lg:px-8">
         <p class="mb-3 text-xs font-black uppercase tracking-[0.18em] text-brand-primary">GoldPlus support</p>
-        <h1 class="text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">How can we help?</h1>
+        <h1 class="text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">{copy.supportHeading}</h1>
         <p class="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
-          Buying, waiting on an order, or worried a product might be fake? Start here and our team will sort it out with you.
+          {copy.supportIntro}
         </p>
       </div>
     </section>

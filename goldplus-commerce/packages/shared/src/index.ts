@@ -33,6 +33,7 @@ export * from './nav';
 export * from './business';
 export * from './taxonomy';
 export * from './homepage';
+export * from './storefront-copy';
 export * from './locations/uganda';
 export * from './locations/uganda-geo';
 export * from './locations/folding';

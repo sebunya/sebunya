@@ -1,0 +1,106 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../lib/session';
+import { apiBase } from '../../lib/api';
+
+/**
+ * Storefront copy editor (0115). The support landing heading + intro and the two
+ * checkout payment-method labels/descriptions — the storefront reads these from
+ * the DB, so an edit here goes live with no deploy. Payment method keys are
+ * code-bound; only their display copy is editable.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/storefront-copy', 303);
+
+const authed = (path: string, init?: RequestInit) =>
+  fetch(`${apiBase}${path}`, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+
+let notice: { kind: 'ok' | 'error'; message: string } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  try {
+    const config = {
+      supportHeading: String(form.get('supportHeading') ?? '').trim(),
+      supportIntro: String(form.get('supportIntro') ?? '').trim(),
+      payment: {
+        offline: {
+          label: String(form.get('offline.label') ?? '').trim(),
+          description: String(form.get('offline.description') ?? '').trim(),
+        },
+        pesapal: {
+          label: String(form.get('pesapal.label') ?? '').trim(),
+          description: String(form.get('pesapal.description') ?? '').trim(),
+        },
+      },
+    };
+    const res = await authed('/admin/storefront-copy', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config }) });
+    const json: any = await res.json().catch(() => null);
+    notice = res.ok && json?.success
+      ? { kind: 'ok', message: `Saved (version ${json.data.version}). Live within a minute.` }
+      : { kind: 'error', message: json?.error?.message ?? 'Could not save.' };
+  } catch (e) {
+    notice = { kind: 'error', message: e instanceof Error ? e.message : 'Could not save.' };
+  }
+}
+
+let cfg: any = null; let loadError = '';
+try {
+  const res = await authed('/admin/storefront-copy');
+  if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/storefront-copy', 303);
+  const json: any = await res.json().catch(() => null);
+  if (res.ok && json?.success) cfg = json.data.config;
+  else loadError = json?.error?.message ?? 'Could not load storefront copy.';
+} catch { loadError = 'The service is unreachable right now.'; }
+---
+<AdminLayout title="Storefront copy">
+  <div class="mx-auto max-w-3xl px-4 py-8">
+    <h1 class="text-2xl font-black text-slate-900">Storefront copy</h1>
+    <p class="mt-2 text-sm text-slate-600">The support page heading &amp; intro and the checkout payment-method labels. Changes go live within a minute, no deploy.</p>
+
+    {notice && (
+      <div class:list={["mt-6 rounded-xl border p-4 text-sm", notice.kind === 'ok' ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-red-300 bg-red-50 text-red-900']}>
+        <p class="font-bold">{notice.message}</p>
+      </div>
+    )}
+    {loadError && <div class="mt-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{loadError}</div>}
+
+    {cfg && (
+      <form method="POST" class="mt-8 space-y-8">
+        <section class="space-y-3">
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Support page</h2>
+          <label class="text-xs block">Heading
+            <input name="supportHeading" value={cfg.supportHeading} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+          </label>
+          <label class="text-xs block">Intro
+            <textarea name="supportIntro" rows="2" class="mt-1 w-full rounded border px-3 py-2 text-sm">{cfg.supportIntro}</textarea>
+          </label>
+        </section>
+
+        <section class="space-y-4">
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Checkout payment methods</h2>
+          <div class="rounded-xl border border-slate-200 p-4 space-y-2">
+            <p class="text-xs font-mono text-slate-400">offline</p>
+            <label class="text-xs block">Label
+              <input name="offline.label" value={cfg.payment.offline.label} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+            </label>
+            <label class="text-xs block">Description
+              <textarea name="offline.description" rows="2" class="mt-1 w-full rounded border px-3 py-2 text-sm">{cfg.payment.offline.description}</textarea>
+            </label>
+          </div>
+          <div class="rounded-xl border border-slate-200 p-4 space-y-2">
+            <p class="text-xs font-mono text-slate-400">pesapal</p>
+            <label class="text-xs block">Label
+              <input name="pesapal.label" value={cfg.payment.pesapal.label} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+            </label>
+            <label class="text-xs block">Description
+              <textarea name="pesapal.description" rows="2" class="mt-1 w-full rounded border px-3 py-2 text-sm">{cfg.payment.pesapal.description}</textarea>
+            </label>
+          </div>
+        </section>
+
+        <button type="submit" class="rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white">Save storefront copy</button>
+      </form>
+    )}
+  </div>
+</AdminLayout>

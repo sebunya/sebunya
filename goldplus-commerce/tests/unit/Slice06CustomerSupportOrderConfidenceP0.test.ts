@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_STOREFRONT_COPY } from '@goldplus/shared';
+
 const read = (file: string) => readFileSync(resolve(__dirname, '../..', file), 'utf8');
 const support = read('apps/web/src/pages/support/index.astro');
 const orderHelp = read('apps/web/src/pages/track-order.astro');
@@ -9,7 +11,10 @@ const sliceRuntime = `${support}\n${orderHelp}`;
 
 describe('Slice 06 customer support and order confidence P0', () => {
   it('renders clear public support and order-help surfaces', () => {
-    expect(support).toContain('How can we help?');
+    // 2026-08-08: the support heading + intro moved into the admin-editable
+    // storefront_copy document (DEFAULT_STOREFRONT_COPY is the seed/fallback).
+    expect(DEFAULT_STOREFRONT_COPY.supportHeading).toBe('How can we help?');
+    expect(support).toContain('copy.supportHeading');
     expect(support).toContain('Need help with an order?');
     expect(support).toContain('href="/track-order"');
     // 2026-08-08: track-order became a real order-lookup + dispatch-progress page

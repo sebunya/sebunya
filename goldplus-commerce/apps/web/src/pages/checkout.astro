@@ -24,6 +24,7 @@ import {
 import { mayStartPayment, kampalaCutoff } from '@goldplus/shared';
 import { getStorefrontDiscount, salePriceUgx } from '../lib/storefrontDiscount';
 import { getBusinessInfo } from '../lib/businessInfo';
+import { getStorefrontCopy } from '../lib/storefrontCopy';
 import type { ApiEnvelope } from '@goldplus/shared';
 
 interface CartItem {
@@ -528,6 +529,8 @@ const initialDistrict: string | null = defaultAddress?.district ?? null;
 
 // Same-day deadline from the SAME operator-configured Kampala cutoff the header uses.
 const bizCheckout = await getBusinessInfo();
+// Payment-method display copy — operator-editable (admin/storefront-copy).
+const paymentCopy = (await getStorefrontCopy()).payment;
 const cut = kampalaCutoff(new Date(), { cutoffHour: bizCheckout.sameDayCutoffHour, closedDays: bizCheckout.closedDays });
 const cutoffLine = cut.closed
   ? 'Closed today — this goes out on the next working day'
@@ -702,15 +705,15 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
                 <label class="flex items-start gap-3 p-4 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all hover:shadow-xs">
                   <input type="radio" name="paymentMethod" value="offline" checked class="mt-1 w-4 h-4 text-brand-primary border-slate-250 focus:ring-brand-primary cursor-pointer" />
                   <div>
-                    <span class="font-bold text-gray-900 text-sm">Cash / Manual Invoice</span>
-                    <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">Place your order now. Our team confirms your delivery details with you, then sends a final invoice to pay.</p>
+                    <span class="font-bold text-gray-900 text-sm">{paymentCopy.offline.label}</span>
+                    <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">{paymentCopy.offline.description}</p>
                   </div>
                 </label>
                 <label class="flex items-start gap-3 p-4 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all hover:shadow-xs">
                   <input type="radio" name="paymentMethod" value="pesapal" class="mt-1 w-4 h-4 text-brand-primary border-slate-250 focus:ring-brand-primary cursor-pointer" />
                   <div>
-                    <span class="font-bold text-gray-900 text-sm">Mobile Money & Card via PesaPal</span>
-                    <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">Pay now with MTN or Airtel Mobile Money, or a bank card, through PesaPal.</p>
+                    <span class="font-bold text-gray-900 text-sm">{paymentCopy.pesapal.label}</span>
+                    <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">{paymentCopy.pesapal.description}</p>
                   </div>
                 </label>
               </div>

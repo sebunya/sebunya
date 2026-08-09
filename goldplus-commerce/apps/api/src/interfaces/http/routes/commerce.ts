@@ -233,6 +233,16 @@ routes.get('/homepage-content', async (c) => {
 });
 
 /**
+ * Miscellaneous storefront copy (support intro + payment-method labels). Falls
+ * back to DEFAULT — never a database outage.
+ */
+routes.get('/storefront-copy', async (c) => {
+  const data = await registry.storefrontCopyService.getPublicConfig();
+  c.header('Cache-Control', 'public, max-age=60');
+  return c.json({ success: true, data });
+});
+
+/**
  * The active storefront discount for DISPLAY (card/PDP/cart).
  *
  * Reads the SAME active promotion versions the checkout evaluator charges from,
