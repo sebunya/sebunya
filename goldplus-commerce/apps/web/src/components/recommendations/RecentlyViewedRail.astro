@@ -1,5 +1,6 @@
 ---
 import { apiBase } from "../../lib/api";
+import { getStorefrontDiscount } from "../../lib/storefrontDiscount";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
 interface Props {
@@ -12,7 +13,7 @@ interface Props {
     name: string;
     imageUrl?: string;
     price?: number;
-    availability?: { kind: "in_stock" | "out_of_stock" | "pre_order" | "unknown" };
+    availability?: { kind: "in_stock" | "out_of_stock" | "pre_order" | "unknown"; quantity?: number };
   }>;
 }
 
@@ -38,6 +39,10 @@ try {
 
 // R1: when the catalogue cannot be fetched, the rail stays hidden rather
 // than validating against fabricated seed IDs (retired 2026-08-06).
+
+// The SAME campaign discount every server-rendered card shows, stamped for the
+// client-side card builder so this rail is uniform with the rest of the site.
+const railDiscount = await getStorefrontDiscount();
 ---
 
 <section
@@ -48,6 +53,9 @@ try {
   data-valid-ids={JSON.stringify(validIds)}
   data-always-render={alwaysRender ? "true" : "false"}
   data-fallback-products={JSON.stringify(fallbackProducts)}
+  data-sale-bps={railDiscount.active ? String(railDiscount.percentBps) : ""}
+  data-sale-percent={railDiscount.active ? String(railDiscount.percent) : ""}
+  data-sale-ends-iso={railDiscount.active ? (railDiscount.endsIso ?? "") : ""}
 >
   <div class="mb-6">
     <h2 id="recommendation-recently-viewed" class="text-2xl font-black tracking-tight text-brand-charcoal">
@@ -114,6 +122,14 @@ try {
     // Unhide section now that all gating rules passed and we have data
     rail.style.display = "block";
 
+    // The SAME campaign discount every server-rendered card shows (stamped by
+    // the frontmatter); the evaluator's exact per-line formula, to the shilling.
+    const saleBps = Number(rail.getAttribute("data-sale-bps") || 0);
+    const salePercent = Number(rail.getAttribute("data-sale-percent") || 0);
+    const saleEndsIso = rail.getAttribute("data-sale-ends-iso") || "";
+    const saleActive = Number.isFinite(saleBps) && saleBps > 0;
+    const salePriceOf = (regular: number) => Math.max(0, regular - Math.floor((regular * saleBps) / 10_000));
+
     const sharedRailRenderId = crypto.randomUUID();
     list.innerHTML = items
       .map((item) => {
@@ -142,12 +158,29 @@ try {
                 <span class="text-[9px] font-bold text-brand-mutedGrey/40 mt-1 uppercase tracking-tight">Image unavailable</span>
               </div>`;
 
-        const availabilityLabel = item.availability?.kind === "in_stock" ? "In stock"
+        const qty = item.availability?.kind === "in_stock" && typeof item.availability?.quantity === "number" && item.availability.quantity > 0
+          ? item.availability.quantity : null;
+        const stockIsLow = qty !== null && qty <= 10;
+        const availabilityLabel = item.availability?.kind === "in_stock"
+          ? (qty !== null ? (stockIsLow ? `Only ${qty} left in stock` : `${qty} in stock`) : "In stock")
           : item.availability?.kind === "out_of_stock" ? "Out of stock"
           : item.availability?.kind === "pre_order" ? "Pre-order"
           : "Confirm availability";
+        const availabilityClass = stockIsLow ? "text-amber-700 font-bold" : "text-brand-mutedGrey";
 
-        const priceSizeClass = (typeof item.price === 'number' && item.price > 0) ? 'text-lg text-brand-charcoal' : 'text-xs text-brand-mutedGrey font-bold';
+        const hasPrice = typeof item.price === "number" && item.price > 0;
+        const onSale = saleActive && hasPrice;
+        const priceHtml = onSale
+          ? `<span class="flex flex-col min-w-0">
+               <span class="flex flex-wrap items-baseline gap-x-2">
+                 <span class="font-black tracking-tight tabular-nums text-lg text-brand-charcoal">UGX ${salePriceOf(item.price).toLocaleString("en-US")}</span>
+                 <span class="text-[11px] font-semibold text-slate-400 line-through tabular-nums">UGX ${item.price.toLocaleString("en-US")}</span>
+                 <span class="text-[9px] font-black uppercase tracking-wider rounded-full px-1.5 py-0.5" style="background:#93D500;color:#0A0A0A">${salePercent}% off</span>
+               </span>
+               ${saleEndsIso ? `<span class="mt-0.5 text-[10px] font-bold text-amber-700 tabular-nums" data-card-sale-ends="${escapeHtml(saleEndsIso)}">Sale price \u2014 limited time</span>` : ""}
+             </span>`
+          : `<span class="font-black tracking-tight ${hasPrice ? 'text-lg text-brand-charcoal' : 'text-xs text-brand-mutedGrey font-bold'}">${priceLabel}</span>`;
+
 
         // R7: real UUIDs — the old "loc_"-prefixed values failed the API's
         // uuid columns, so every event from this rail was silently rejected.
@@ -170,9 +203,9 @@ try {
               </div>
               <div class="flex flex-col flex-grow">
                 <h3 class="text-base font-bold text-brand-charcoal leading-tight mb-2 group-hover:text-brand-primary transition-colors line-clamp-2 min-h-[2.5rem]">${escapedName}</h3>
-                <p class="mb-3 text-[11px] font-semibold text-brand-mutedGrey">${availabilityLabel}</p>
+                <p class="mb-3 text-[11px] font-semibold ${availabilityClass}">${availabilityLabel}</p>
                 <div class="mt-auto pt-4 border-t border-brand-borderGrey flex items-center justify-between gap-3">
-                  <span class="font-black tracking-tight ${priceSizeClass}">${priceLabel}</span>
+                  ${priceHtml}
                   <span class="px-4 py-2 rounded-xl font-bold text-xs transition-all duration-300 bg-brand-softGrey text-brand-charcoal group-hover:bg-brand-charcoal group-hover:text-white">View</span>
                 </div>
               </div>

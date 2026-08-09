@@ -59,8 +59,33 @@ describe('product-card commercial signals', () => {
 
   it('counts down to the sale end and says plainly when the regular price returns', () => {
     expect(card).toContain('data-card-sale-ends={discount.endsIso}');
-    expect(card).toContain('Sale ends in');
-    expect(card).toContain('Sale ended — regular price applies');
+    // ONE ticker owns every chip, in BaseLayout — rails inject cards on any page.
+    const layout = read('apps/web/src/layouts/BaseLayout.astro');
+    expect(layout).toContain('Sale ends in');
+    expect(layout).toContain('Sale ended — regular price applies');
+  });
+
+  it('EVERY module renders the same commercial signals — rails are uniform with the card', () => {
+    // The shared RecommendationCard (PopularNow / CompleteSetup / Related /
+    // CartAddon / CategoryPopular rails and the cart page) carries sale price,
+    // % pill, countdown chip and the honest stock count.
+    const rec = read('apps/web/src/components/recommendations/RecommendationCard.astro');
+    expect(rec).toContain('salePriceUgx(item.price!, discount.percentBps)');
+    expect(rec).toContain('data-card-sale-ends={discount.endsIso}');
+    expect(rec).toContain('Only ${stockCount} left in stock');
+    expect(rec).toContain('${stockCount} in stock');
+
+    // The client-built RecentlyViewedRail applies the SAME formula from the
+    // server-stamped campaign (never a client-invented number).
+    const rv = read('apps/web/src/components/recommendations/RecentlyViewedRail.astro');
+    expect(rv).toContain('getStorefrontDiscount');
+    expect(rv).toContain('Math.floor((regular * saleBps) / 10_000)');
+    expect(rv).toContain('data-card-sale-ends=');
+    expect(rv).toContain('Only ${qty} left in stock');
+
+    // The spec-speak rail subtitle is gone from the PDP.
+    const pdp = read('apps/web/src/pages/products/[slug].astro');
+    expect(pdp).not.toContain('clearly labelled catalogue fallback');
   });
 
   it('the PDP countdown is SCOPED to its own attribute — it can never touch the header', () => {

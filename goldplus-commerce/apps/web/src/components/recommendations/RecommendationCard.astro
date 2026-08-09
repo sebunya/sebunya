@@ -2,10 +2,11 @@
 import type { RecommendationItemDto, RecommendationPlacement } from "@goldplus/shared";
 import { supportedRecommendationReason } from "../../lib/recommendation-display";
 import { formatUgx } from "../../lib/money";
+import { getStorefrontDiscount, salePriceUgx } from "../../lib/storefrontDiscount";
 
 interface Props {
   item: RecommendationItemDto & {
-    availability?: { kind: "in_stock" | "out_of_stock" | "pre_order" | "unknown" };
+    availability?: { kind: "in_stock" | "out_of_stock" | "pre_order" | "unknown"; quantity?: number };
     imageAlt?: string;
   };
   placement: RecommendationPlacement;
@@ -14,10 +15,24 @@ interface Props {
 
 const { item, placement, variant = "default" } = Astro.props;
 
-const formattedPrice = (typeof item.price === "number" && item.price > 0)
-  ? formatUgx(item.price)
-  : "Price on request";
-const availabilityLabel = item.availability?.kind === "in_stock" ? "In stock"
+const hasValidPrice = typeof item.price === "number" && Number.isFinite(item.price) && item.price > 0;
+const formattedPrice = hasValidPrice ? formatUgx(item.price!) : "Price on request";
+
+// The SAME campaign discount every other card shows (display mirrors charge).
+const discount = await getStorefrontDiscount();
+const onSale = hasValidPrice && discount.active && discount.percentBps > 0;
+const saleUgx = onSale ? salePriceUgx(item.price!, discount.percentBps) : null;
+
+// Honest stock: the REAL tracked count when the engine carried one — amber
+// urgency only when genuinely low. Computed here to keep `<=` out of the
+// template, where Astro parses `<` as a tag.
+const stockCount = item.availability?.kind === "in_stock"
+  && typeof item.availability.quantity === "number" && item.availability.quantity > 0
+  ? item.availability.quantity
+  : null;
+const stockIsLow = stockCount !== null && stockCount <= 10;
+const availabilityLabel = item.availability?.kind === "in_stock"
+  ? (stockCount !== null ? (stockIsLow ? `Only ${stockCount} left in stock` : `${stockCount} in stock`) : "In stock")
   : item.availability?.kind === "out_of_stock" ? "Out of stock"
   : item.availability?.kind === "pre_order" ? "Pre-order"
   : "Confirm availability";
@@ -81,16 +96,29 @@ const productType = lowerName.includes("charger") ? "Charger"
         : "text-base font-bold text-brand-charcoal leading-tight mb-2 group-hover:text-brand-primary transition-colors line-clamp-2 min-h-[2.5rem]"}>
         {item.name}
       </h3>
-      <p class="mb-3 text-[11px] font-semibold text-brand-mutedGrey">{availabilityLabel}</p>
+      <p class={`mb-3 text-[11px] font-semibold ${stockIsLow ? 'text-amber-700 font-bold' : 'text-brand-mutedGrey'}`}>{availabilityLabel}</p>
 
       <div class={variant === "cart-compact"
         ? "mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-2"
         : "mt-auto pt-4 border-t border-brand-borderGrey flex items-center justify-between gap-3"}>
-        <span class={variant === "cart-compact"
-          ? `font-black tracking-tight ${typeof item.price === 'number' && item.price > 0 ? 'text-sm text-brand-primary' : 'text-[10px] text-slate-400 font-bold uppercase'}`
-          : `font-black tracking-tight ${typeof item.price === 'number' && item.price > 0 ? 'text-lg text-brand-charcoal' : 'text-xs text-brand-mutedGrey font-bold'}`}>
-          {formattedPrice}
-        </span>
+        {onSale ? (
+          <span class="flex flex-col min-w-0">
+            <span class="flex flex-wrap items-baseline gap-x-2">
+              <span class={variant === "cart-compact" ? "font-black tracking-tight tabular-nums text-sm text-brand-primary" : "font-black tracking-tight tabular-nums text-lg text-brand-charcoal"}>{formatUgx(saleUgx)}</span>
+              <span class="text-[11px] font-semibold text-slate-400 line-through tabular-nums">{formatUgx(item.price)}</span>
+              <span class="text-[9px] font-black uppercase tracking-wider rounded-full px-1.5 py-0.5" style="background:#93D500;color:#0A0A0A">{discount.percent}% off</span>
+            </span>
+            {variant !== "cart-compact" && discount.endsIso && (
+              <span class="mt-0.5 text-[10px] font-bold text-amber-700 tabular-nums" data-card-sale-ends={discount.endsIso}>Sale price — limited time</span>
+            )}
+          </span>
+        ) : (
+          <span class={variant === "cart-compact"
+            ? `font-black tracking-tight ${hasValidPrice ? 'text-sm text-brand-primary' : 'text-[10px] text-slate-400 font-bold uppercase'}`
+            : `font-black tracking-tight ${hasValidPrice ? 'text-lg text-brand-charcoal' : 'text-xs text-brand-mutedGrey font-bold'}`}>
+            {formattedPrice}
+          </span>
+        )}
         {variant === "cart-compact" ? (
           <span class="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 bg-slate-50 text-gray-900 group-hover:bg-brand-charcoal group-hover:text-white border border-slate-200 group-hover:border-transparent flex-shrink-0">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>

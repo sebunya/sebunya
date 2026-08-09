@@ -312,6 +312,27 @@ const canonical = canonicalUrl ?? Astro.url.toString();
     </script>
 
     <script>
+      // ONE sale-countdown ticker for every [data-card-sale-ends] chip on the
+      // page — product cards, recommendation rails, client-injected cards alike.
+      // Counts down to the campaign end so the customer knows exactly when the
+      // price returns to normal. Re-scans each tick because rails inject cards
+      // after load. Scoped attribute: the header owns data-sale-ends.
+      const tickSaleChips = () => {
+        for (const el of Array.from(document.querySelectorAll<HTMLElement>('[data-card-sale-ends]'))) {
+          const end = new Date(el.getAttribute('data-card-sale-ends') ?? '').getTime();
+          if (!Number.isFinite(end)) continue;
+          const ms = end - Date.now();
+          if (ms <= 0) { el.textContent = 'Sale ended — regular price applies'; continue; }
+          const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000), m = Math.floor((ms % 3600000) / 60000);
+          el.textContent = d > 0 ? `Sale ends in ${d}d ${h}h` : h > 0 ? `Sale ends in ${h}h ${m}m` : `Sale ends in ${m}m`;
+        }
+      };
+      tickSaleChips();
+      document.addEventListener('DOMContentLoaded', tickSaleChips);
+      setInterval(tickSaleChips, 60_000);
+    </script>
+
+    <script>
       // An image whose source dies must degrade to an honest placeholder, never
       // to the browser's broken-image glyph. Delegated on window in the capture
       // phase because `error` does not bubble: this covers every <img> on the

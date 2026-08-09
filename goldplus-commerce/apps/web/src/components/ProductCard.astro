@@ -141,24 +141,5 @@ const availabilityBadgeClass = (() => {
   </div>
 </article>
 
-<script>
-  // One ticker for EVERY card on the page (Astro dedupes component scripts):
-  // counts down to the sale end so the customer knows exactly when the price
-  // returns to normal. Same maths as the PDP countdown — one truth, two places.
-  (() => {
-    const els = Array.from(document.querySelectorAll<HTMLElement>('[data-card-sale-ends]'));
-    if (els.length === 0) return;
-    const tick = () => {
-      for (const el of els) {
-        const end = new Date(el.getAttribute('data-card-sale-ends') ?? '').getTime();
-        if (!Number.isFinite(end)) continue;
-        const ms = end - Date.now();
-        if (ms <= 0) { el.textContent = 'Sale ended — regular price applies'; continue; }
-        const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000), m = Math.floor((ms % 3600000) / 60000);
-        el.textContent = d > 0 ? `Sale ends in ${d}d ${h}h` : h > 0 ? `Sale ends in ${h}h ${m}m` : `Sale ends in ${m}m`;
-      }
-    };
-    tick();
-    setInterval(tick, 60_000);
-  })();
-</script>
+{/* The sale-countdown ticker for [data-card-sale-ends] chips lives in
+    BaseLayout — one owner, every page (rails inject cards on ANY page). */}
