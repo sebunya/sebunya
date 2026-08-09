@@ -63,6 +63,20 @@ describe('product-card commercial signals', () => {
     expect(card).toContain('Sale ended — regular price applies');
   });
 
+  it('the PDP countdown is SCOPED to its own attribute — it can never touch the header', () => {
+    // The header element (<header id="gpNav">) carries data-sale-ends for the
+    // flash-sale strip. A bare [data-sale-ends] query on the PDP matched the
+    // header FIRST, and textContent then wiped the ENTIRE navigation on every
+    // product page. The PDP owns data-pdp-sale-ends; the header keeps its name.
+    const pdp = read('apps/web/src/pages/products/[slug].astro');
+    expect(pdp).toContain('data-pdp-sale-ends');
+    expect(pdp).not.toContain("querySelector('[data-sale-ends]')");
+    const nav = read('apps/web/src/components/GpNav.astro');
+    expect(nav).toContain('data-sale-ends={saleEnds}');
+    // The card ticker likewise uses its own attribute.
+    expect(card).not.toContain("querySelector('[data-sale-ends]')");
+  });
+
   it('sale price still mirrors the evaluator formula (display equals charge)', () => {
     expect(card).toContain('salePriceUgx(product.retailPriceUgx!, discount.percentBps)');
     const lib = read('apps/web/src/lib/storefrontDiscount.ts');

@@ -312,7 +312,7 @@ const canonical = Astro.url.toString();
                   <p class="text-3xl font-black text-gray-900 tabular-nums">{formatUgx(product.retailPriceUgx)}</p>
                 )}
                 {pdpOnSale && pdpDiscount.endsIso && (
-                  <p class="mt-1.5 text-xs font-bold text-amber-700" data-sale-ends={pdpDiscount.endsIso}>Offer ends soon</p>
+                  <p class="mt-1.5 text-xs font-bold text-amber-700" data-pdp-sale-ends={pdpDiscount.endsIso}>Offer ends soon</p>
                 )}
                 {loyaltyRate > 0 && Math.floor(product.retailPriceUgx / 1000) * loyaltyRate > 0 && (
                   <p class="text-xs font-bold text-brand-primaryInk mt-1">Earn {(Math.floor(product.retailPriceUgx / 1000) * loyaltyRate).toLocaleString('en-US')} GoldPlus points on this order</p>
@@ -530,9 +530,12 @@ const canonical = Astro.url.toString();
 
 <script is:inline>
   (function () {
-    var el = document.querySelector('[data-sale-ends]');
+    // SCOPED to the PDP's own element: the header carries data-sale-ends for the
+    // flash-sale strip, and a bare [data-sale-ends] query matched it FIRST —
+    // textContent then wiped the ENTIRE navigation on every product page.
+    var el = document.querySelector('[data-pdp-sale-ends]');
     if (!el) return;
-    var end = new Date(el.getAttribute('data-sale-ends')).getTime();
+    var end = new Date(el.getAttribute('data-pdp-sale-ends')).getTime();
     if (!isFinite(end)) return;
     function tick() {
       var ms = end - Date.now();
