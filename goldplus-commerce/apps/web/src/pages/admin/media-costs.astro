@@ -1,0 +1,396 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../lib/session";
+import { apiBase } from "../../lib/api";
+
+/**
+ * Media costs — the operator surface for the ONE canonical spend fact table
+ * (media_cost_facts, 0102). The API (batch dry-run, all-or-nothing commit,
+ * duplicate protection, mixed-currency refusal, audited correction) has existed
+ * since R3.1; what did not exist was a page, so "import spend without code
+ * changes" still meant curl. This is that page.
+ *
+ * Same pattern as /admin/product-costs: ordinary form POSTs handled in
+ * frontmatter, the server attaches the operator's own bearer token, and
+ * "Check the file" runs the identical validation as "Apply" without writing.
+ * Spend is never invented here — an empty table stays empty and ROAS stays
+ * truthfully UNAVAILABLE / MEDIA_COST_NOT_CONNECTED.
+ */
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/media-costs", 303);
+}
+
+const authed = (path: string, init?: RequestInit) =>
+  fetch(`${apiBase}${path}`, {
+    ...init,
+    headers: { ...init?.headers, Authorization: `Bearer ${token}`, Accept: "application/json" },
+  });
+
+type BatchResult = {
+  accepted: boolean;
+  dryRun: boolean;
+  totalRows: number;
+  applied: number;
+  duplicates?: number;
+  errors: Array<{ rowNumber: number; errors: string[] }>;
+  plan?: Array<Record<string, unknown>>;
+};
+
+let batchResult: BatchResult | null = null;
+let submitError: string | null = null;
+let correctionNotice: string | null = null;
+let submittedRows = "";
+let submittedSource = "ad-platform-export";
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "check");
+  const actionPost = (path: string, body: unknown) =>
+    authed(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+  if (intent === "correct") {
+    // Governed correction of one already-ingested fact: same logical key, new
+    // amounts, written reason. The API audits before-and-after.
+    const payload = {
+      spendDate: String(form.get("c_spendDate") ?? "").trim(),
+      channel: String(form.get("c_channel") ?? "").trim(),
+      platform: String(form.get("c_platform") ?? "").trim(),
+      account: String(form.get("c_account") ?? "").trim(),
+      campaign: String(form.get("c_campaign") ?? "").trim(),
+      adSetOrGroup: String(form.get("c_adSetOrGroup") ?? "").trim() || undefined,
+      adOrCreative: String(form.get("c_adOrCreative") ?? "").trim() || undefined,
+      source: String(form.get("c_source") ?? "").trim(),
+      currency: String(form.get("c_currency") ?? "UGX").trim() || "UGX",
+      spendMinor: Number(form.get("c_spend") ?? Number.NaN),
+      taxOrFeeMinor: Number(form.get("c_tax") ?? 0),
+      reason: String(form.get("c_reason") ?? "").trim(),
+    };
+    try {
+      const res = await actionPost("/admin/recommendations/media-costs/correct", payload);
+      const json = await res.json().catch(() => null);
+      if (res.status === 401 || res.status === 403) {
+        submitError = "Your account cannot change media costs (recommendations.manage). The API declined — this is a permission to grant, not an outage.";
+      } else if (res.ok && json?.success) {
+        const prev = json.data?.previous;
+        correctionNotice = prev
+          ? `Corrected. Previous spend was ${Number(prev.spendMinor).toLocaleString("en-UG")} (+ ${Number(prev.taxOrFeeMinor).toLocaleString("en-UG")} tax/fee); the audit log holds both.`
+          : "Corrected.";
+      } else {
+        submitError = json?.error?.message ?? `The correction could not be processed (HTTP ${res.status}).`;
+      }
+    } catch {
+      submitError = "Could not reach the API.";
+    }
+  } else {
+    submittedRows = String(form.get("rows") ?? "");
+    submittedSource = String(form.get("source") ?? "ad-platform-export").trim() || "ad-platform-export";
+
+    // `date,channel,platform,account,campaign,spend[,tax,currency,adSet,ad]`
+    // — one spend fact per line. Parsing stays here so the API receives
+    // structured rows and reports errors BY ROW NUMBER, which is what the
+    // operator is looking at. `source` applies to every row of the file, the
+    // way one export comes from one place.
+    //
+    // A line with MORE than ten fields is ambiguous (a campaign name with a
+    // comma in it, most likely) — naive splitting would silently truncate the
+    // campaign to the text before its first comma and store a corrupted fact.
+    // Ambiguity is rejected as a row error, never guessed at.
+    const parseErrors: Array<{ rowNumber: number; errors: string[] }> = [];
+    const rows = submittedRows
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 5_000)
+      .map((line, index) => {
+        const parts = line.split(",").map((part) => part.trim());
+        if (parts.length > 10) {
+          parseErrors.push({
+            rowNumber: index + 1,
+            errors: [`This line has ${parts.length} comma-separated fields but the format allows at most 10 — a name probably contains a comma. Remove or replace it; nothing is guessed.`],
+          });
+        }
+        const [date, channel, platform, account, campaign, spend, tax, currency, adSetOrGroup, adOrCreative] = parts;
+        return {
+          spendDate: date ?? "",
+          channel: channel ?? "",
+          platform: platform ?? "",
+          account: account ?? "",
+          campaign: campaign ?? "",
+          spendMinor: spend === undefined || spend === "" ? Number.NaN : Number(spend),
+          taxOrFeeMinor: tax === undefined || tax === "" ? 0 : Number(tax),
+          currency: currency || "UGX",
+          adSetOrGroup: adSetOrGroup || undefined,
+          adOrCreative: adOrCreative || undefined,
+          source: submittedSource,
+        };
+      });
+
+    if (parseErrors.length > 0) {
+      // Ambiguous lines never reach the API — nothing may be written from a
+      // file the page itself could not read unambiguously.
+      batchResult = { accepted: false, dryRun: intent !== "apply", totalRows: rows.length, applied: 0, errors: parseErrors };
+    } else {
+      try {
+        const res = await actionPost("/admin/recommendations/media-costs/batch", {
+          rows,
+          dryRun: intent !== "apply",
+        });
+        const json = await res.json().catch(() => null);
+        if (res.status === 401 || res.status === 403) {
+          submitError = "Your account cannot ingest media costs (recommendations.manage). The API declined — this is a permission to grant, not an outage.";
+        } else if (json?.data) {
+          batchResult = json.data as BatchResult;
+        } else {
+          submitError = json?.error?.message ?? `The batch could not be processed (HTTP ${res.status}).`;
+        }
+      } catch {
+        submitError = "Could not reach the API.";
+      }
+    }
+  }
+}
+
+type Summary = {
+  totalFacts: number;
+  currencies: string[];
+  distinctSources: number;
+  distinctCampaigns: number;
+  newestSpendDate: string | null;
+  newestIngestedAt: string | null;
+  spendDataAgeDays: number | null;
+  recentFacts: Array<{
+    spendDate: string;
+    channel: string;
+    platform: string;
+    account: string;
+    campaign: string;
+    adSetOrGroup: string | null;
+    adOrCreative: string | null;
+    currency: string;
+    spendMinor: number;
+    taxOrFeeMinor: number;
+    source: string;
+    ingestedAt: string;
+  }>;
+};
+
+let summary: Summary | null = null;
+let loadError: string | null = null;
+let denied = false;
+
+try {
+  const res = await authed("/admin/recommendations/media-costs/summary?limit=50");
+  const json = await res.json().catch(() => null);
+  if (res.status === 401 || res.status === 403) denied = true;
+  else if (!res.ok || !json?.success) loadError = json?.error?.message ?? `Could not load the spend summary (HTTP ${res.status}).`;
+  else summary = json.data as Summary;
+} catch {
+  loadError = "Could not reach the API.";
+}
+
+const money = (minor: number, currency: string) => `${currency} ${Math.round(minor).toLocaleString("en-UG")}`;
+const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+---
+
+<AdminLayout
+  title="Media costs"
+  description="Import advertising spend into the one canonical fact table that activates ROAS."
+>
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Media costs</h2>
+        <p class="text-sm text-gray-500 mt-1">
+          Advertising spend, imported into the one canonical fact table. ROAS activates from this data alone —
+          no spend here means ROAS honestly reads unavailable, never zero.
+        </p>
+      </div>
+    </div>
+
+    {denied && (
+      <div role="alert" class="rounded-xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">
+        Your account does not carry <code>recommendations.read</code>, so the spend summary is hidden. This is a
+        permission to grant, not an outage.
+      </div>
+    )}
+    {loadError && !denied && (
+      <div role="alert" class="rounded-xl border border-red-300 bg-red-50 p-5 text-sm text-red-900">{loadError}</div>
+    )}
+
+    {summary && (
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        <div class="bg-white border border-gray-200 rounded-xl p-5">
+          <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Spend facts</p>
+          <p class="text-2xl font-black text-brand-dark">{summary.totalFacts}</p>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-5">
+          <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Campaigns / sources</p>
+          <p class="text-2xl font-black text-brand-dark">{summary.distinctCampaigns} <span class="text-sm text-gray-400">/ {summary.distinctSources}</span></p>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-5">
+          <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Newest spend day</p>
+          <p class="text-lg font-black text-brand-dark">{summary.newestSpendDate ?? "—"}</p>
+          {summary.spendDataAgeDays !== null && (
+            <p class={`text-xs mt-1 font-bold ${summary.spendDataAgeDays > 7 ? "text-amber-700" : "text-gray-400"}`}>
+              {summary.spendDataAgeDays === 0 ? "today" : `${summary.spendDataAgeDays} day(s) old`}
+              {summary.spendDataAgeDays > 7 && " — a feed that stopped is not a feed of zero"}
+            </p>
+          )}
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-5">
+          <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Last ingested</p>
+          <p class="text-lg font-black text-brand-dark">{fmtDate(summary.newestIngestedAt)}</p>
+          {summary.currencies.length > 0 && <p class="text-xs text-gray-400 mt-1">currency: {summary.currencies.join(", ")}</p>}
+        </div>
+      </div>
+    )}
+
+    {/* ── Import ─────────────────────────────────────────────────────────── */}
+    <section aria-labelledby="import-heading" class="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8 mb-10">
+      <h3 id="import-heading" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Import a spend file</h3>
+      <p class="text-sm text-gray-500 mb-5 max-w-3xl">
+        One fact per line: <code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded">date,channel,platform,account,campaign,spend,tax,currency,adSet,ad</code>
+        — the first six matter, the rest are optional (tax defaults 0, currency UGX). Spend is whole UGX.
+        <strong> Check the file</strong> validates everything and shows exactly what it would do, writing nothing.
+        <strong> Apply</strong> writes every row or none — a half-applied spend file would make ROAS a blend of old and new
+        numbers with nothing recording which is which. Re-applying the same file is safe: exact duplicates are counted, not doubled.
+      </p>
+
+      {submitError && (
+        <div role="alert" class="mb-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{submitError}</div>
+      )}
+      {correctionNotice && (
+        <div role="status" class="mb-4 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{correctionNotice}</div>
+      )}
+
+      <form method="POST" class="space-y-4">
+        <label class="block text-xs font-bold text-gray-700">
+          Source (applies to every row — where this file came from)
+          <input name="source" value={submittedSource} required maxlength="120"
+            class="mt-1 block w-full sm:w-96 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-primary outline-none" />
+        </label>
+        <label class="block text-xs font-bold text-gray-700">
+          Spend rows
+          <textarea name="rows" rows="8" required
+            placeholder={`2026-08-01,paid_social,Meta,GoldPlus Main,August Chargers,250000\n2026-08-01,paid_search,Google,GoldPlus Ads,Brand Search,120000,21600`}
+            class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:ring-2 focus:ring-brand-primary outline-none">{submittedRows}</textarea>
+        </label>
+        <div class="flex flex-wrap gap-3">
+          <button type="submit" name="intent" value="check"
+            class="inline-flex min-h-11 items-center rounded-full border-2 border-brand-dark px-6 text-sm font-bold text-brand-dark outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-brand-primary">
+            Check the file
+          </button>
+          <button type="submit" name="intent" value="apply"
+            class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-brand-primary">
+            Apply
+          </button>
+        </div>
+      </form>
+
+      {batchResult && batchResult.errors.length > 0 && (
+        <div role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
+          <p class="text-sm font-bold text-red-900 mb-2">
+            {batchResult.errors.length} problem(s) — the file is applied only when every row is valid. Nothing was written.
+          </p>
+          <ul class="text-xs text-red-800 space-y-1 list-disc pl-5">
+            {batchResult.errors.slice(0, 50).map((e) => (
+              <li>{e.rowNumber === 0 ? "File" : `Row ${e.rowNumber}`}: {e.errors.join(" ")}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {batchResult && batchResult.errors.length === 0 && (
+        <div role="status" class="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          {batchResult.dryRun
+            ? `${batchResult.totalRows} row(s) valid — nothing written yet. Apply to commit.`
+            : `Applied ${batchResult.applied} fact(s).${(batchResult.duplicates ?? 0) > 0 ? ` ${batchResult.duplicates} exact duplicate(s) already existed and were not doubled.` : ""}`}
+        </div>
+      )}
+    </section>
+
+    {/* ── Correction ─────────────────────────────────────────────────────── */}
+    <section aria-labelledby="correct-heading" class="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8 mb-10">
+      <h3 id="correct-heading" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Correct one ingested fact</h3>
+      <p class="text-sm text-gray-500 mb-5 max-w-3xl">
+        Identify the fact by its exact logical key (the same fields it was imported with), give the corrected amounts and a
+        written reason. The previous figure is preserved in the audit log — corrections replace numbers, never history.
+      </p>
+      <form method="POST" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <input type="hidden" name="intent" value="correct" />
+        <label class="text-xs font-bold text-gray-700">Date (YYYY-MM-DD)
+          <input name="c_spendDate" required placeholder="2026-08-01" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Channel
+          <input name="c_channel" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Platform
+          <input name="c_platform" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Account
+          <input name="c_account" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Campaign
+          <input name="c_campaign" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Source
+          <input name="c_source" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Ad set / group (if imported with one)
+          <input name="c_adSetOrGroup" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Ad / creative (if imported with one)
+          <input name="c_adOrCreative" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Currency
+          <input name="c_currency" value="UGX" required maxlength="3" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Corrected spend (whole UGX)
+          <input name="c_spend" type="number" min="0" step="1" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Corrected tax / fee
+          <input name="c_tax" type="number" min="0" step="1" value="0" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700 sm:col-span-3">Reason (at least 10 characters — this goes in the audit log)
+          <input name="c_reason" required minlength="10" maxlength="300" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <div class="sm:col-span-3">
+          <button type="submit"
+            class="inline-flex min-h-11 items-center rounded-full border-2 border-amber-600 px-6 text-sm font-bold text-amber-800 outline-none hover:bg-amber-50 focus-visible:ring-2 focus-visible:ring-amber-500">
+            Correct this fact
+          </button>
+        </div>
+      </form>
+    </section>
+
+    {/* ── Recent facts ───────────────────────────────────────────────────── */}
+    {summary && summary.recentFacts.length > 0 && (
+      <section aria-labelledby="recent-heading" class="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8 mb-12">
+        <h3 id="recent-heading" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Most recently ingested</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                <th class="py-2 pr-4">Date</th>
+                <th class="py-2 pr-4">Platform / account</th>
+                <th class="py-2 pr-4">Campaign</th>
+                <th class="py-2 pr-4 text-right">Spend</th>
+                <th class="py-2 pr-4 text-right">Tax/fee</th>
+                <th class="py-2 pr-4">Source</th>
+                <th class="py-2">Ingested</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.recentFacts.map((f) => (
+                <tr class="border-b border-gray-100">
+                  <td class="py-2 pr-4 font-mono">{f.spendDate}</td>
+                  <td class="py-2 pr-4">{f.platform} <span class="text-gray-400">/ {f.account}</span></td>
+                  <td class="py-2 pr-4">{f.campaign}{f.adSetOrGroup && <span class="text-gray-400"> · {f.adSetOrGroup}</span>}</td>
+                  <td class="py-2 pr-4 text-right font-bold tabular-nums">{money(f.spendMinor, f.currency)}</td>
+                  <td class="py-2 pr-4 text-right tabular-nums">{money(f.taxOrFeeMinor, f.currency)}</td>
+                  <td class="py-2 pr-4 text-gray-500">{f.source}</td>
+                  <td class="py-2 text-gray-500">{fmtDate(f.ingestedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+    {summary && summary.recentFacts.length === 0 && (
+      <div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-500 mb-12">
+        No spend has been ingested yet. ROAS reads <strong>unavailable — media cost not connected</strong> until real
+        spend rows exist; it activates from data alone, with nothing to switch on.
+      </div>
+    )}
+  </div>
+</AdminLayout>

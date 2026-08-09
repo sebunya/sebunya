@@ -289,4 +289,22 @@ describe("media-cost ingestion is server-side and duplicate-protected (§12)", (
     expect(migration).toContain("media_cost_facts_logical_uq");
     expect(migration).toContain('CHECK ("spend_minor" >= 0');
   });
+
+  it("R4: the operator has a real import page and a read-gated summary — spend never requires curl", () => {
+    const routes = read("apps/api/src/interfaces/http/routes/admin/recommendations.ts");
+    // Reads are gated on the READ permission and bounded; writes stay on MANAGE.
+    expect(routes).toContain('routes.get("/media-costs/summary", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ])');
+    expect(routes).toContain('Math.min(200, Math.max(1, Number(c.req.query("limit"))');
+
+    const page = read("apps/web/src/pages/admin/media-costs.astro");
+    // The page drives the SAME batch endpoint (dry run then apply), never a
+    // parallel write path, and surfaces per-row errors and freshness.
+    expect(page).toContain("/admin/recommendations/media-costs/batch");
+    expect(page).toContain("/admin/recommendations/media-costs/correct");
+    expect(page).toContain("/admin/recommendations/media-costs/summary");
+    expect(page).toContain('dryRun: intent !== "apply"');
+    expect(page).toContain("readSessionToken(Astro.request)");
+    // Missing spend stays a truthful absence on the page too — never a zero.
+    expect(page).toContain("a feed that stopped is not a feed of zero");
+  });
 });

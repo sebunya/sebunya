@@ -511,6 +511,90 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
     };
   }
 
+  /**
+   * Operator view of the media-cost fact table (R4): freshness, totals and the
+   * most recently ingested facts for the import page. Pure reads, bounded.
+   */
+  async getMediaCostOpsSummary(limit: number): Promise<{
+    totalFacts: number;
+    currencies: string[];
+    distinctSources: number;
+    distinctCampaigns: number;
+    newestSpendDate: string | null;
+    newestIngestedAt: Date | null;
+    spendDataAgeDays: number | null;
+    recentFacts: Array<{
+      spendDate: string;
+      channel: string;
+      platform: string;
+      account: string;
+      campaign: string;
+      adSetOrGroup: string | null;
+      adOrCreative: string | null;
+      currency: string;
+      spendMinor: number;
+      taxOrFeeMinor: number;
+      source: string;
+      ingestedAt: Date;
+    }>;
+  }> {
+    const bounded = Math.min(200, Math.max(1, Math.trunc(limit) || 50));
+    const totals = (await db.execute(sql`
+      select count(*)::int as total_facts,
+             count(distinct currency)::int as currency_count,
+             array_agg(distinct currency) as currencies,
+             count(distinct source)::int as distinct_sources,
+             count(distinct campaign)::int as distinct_campaigns,
+             max(spend_date)::text as newest_spend_date,
+             max(ingested_at) as newest_ingested_at
+      from media_cost_facts
+    `)) as unknown as Array<Record<string, unknown>>;
+    const t = totals[0] ?? {};
+    const rawCurrencies = t.currencies;
+    const currencies = Array.isArray(rawCurrencies)
+      ? rawCurrencies.map(String)
+      : typeof rawCurrencies === 'string'
+        ? rawCurrencies.replace(/[{}]/g, '').split(',').filter(Boolean)
+        : [];
+    const newestSpendDate = (t.newest_spend_date as string) ?? null;
+
+    const rows = (await db.execute(sql`
+      select spend_date::text as spend_date, channel, platform, account, campaign,
+             ad_set_or_group, ad_or_creative, currency, spend_minor, tax_or_fee_minor,
+             source, ingested_at
+      from media_cost_facts
+      order by ingested_at desc, spend_date desc
+      limit ${bounded}
+    `)) as unknown as Array<Record<string, unknown>>;
+
+    return {
+      totalFacts: Number(t.total_facts ?? 0),
+      currencies,
+      distinctSources: Number(t.distinct_sources ?? 0),
+      distinctCampaigns: Number(t.distinct_campaigns ?? 0),
+      newestSpendDate,
+      newestIngestedAt: t.newest_ingested_at ? new Date(t.newest_ingested_at as string) : null,
+      spendDataAgeDays:
+        newestSpendDate === null
+          ? null
+          : Math.max(0, Math.floor((Date.now() - new Date(`${newestSpendDate}T00:00:00Z`).getTime()) / 86_400_000)),
+      recentFacts: rows.map((r) => ({
+        spendDate: String(r.spend_date),
+        channel: String(r.channel),
+        platform: String(r.platform),
+        account: String(r.account),
+        campaign: String(r.campaign),
+        adSetOrGroup: (r.ad_set_or_group as string) ?? null,
+        adOrCreative: (r.ad_or_creative as string) ?? null,
+        currency: String(r.currency),
+        spendMinor: Number(r.spend_minor),
+        taxOrFeeMinor: Number(r.tax_or_fee_minor),
+        source: String(r.source),
+        ingestedAt: new Date(r.ingested_at as string),
+      })),
+    };
+  }
+
   /** Every distinct currency ever ingested for the window — the poison check. */
   async getIngestedCurrencies(): Promise<string[]> {
     const rows = (await db.execute(sql`

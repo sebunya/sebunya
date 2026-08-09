@@ -99,6 +99,35 @@ export interface IRecommendationCommercialRepository {
   getIngestedCurrencies(): Promise<string[]>;
 
   /**
+   * Operator view of the media-cost fact table: freshness (a feed that stopped
+   * is not a feed of zero), totals and the most recently ingested facts, so the
+   * import page can show what the ONE canonical table currently holds.
+   */
+  getMediaCostOpsSummary(limit: number): Promise<{
+    totalFacts: number;
+    currencies: string[];
+    distinctSources: number;
+    distinctCampaigns: number;
+    newestSpendDate: string | null;
+    newestIngestedAt: Date | null;
+    spendDataAgeDays: number | null;
+    recentFacts: Array<{
+      spendDate: string;
+      channel: string;
+      platform: string;
+      account: string;
+      campaign: string;
+      adSetOrGroup: string | null;
+      adOrCreative: string | null;
+      currency: string;
+      spendMinor: number;
+      taxOrFeeMinor: number;
+      source: string;
+      ingestedAt: Date;
+    }>;
+  }>;
+
+  /**
    * Fix a spend fact already ingested. `on conflict do nothing` meant a wrong
    * number could never be corrected: the resubmission was silently discarded
    * and the report kept the bad figure. Returns the PREVIOUS values so the

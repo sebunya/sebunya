@@ -331,6 +331,16 @@ const validateMediaCostRow = (
  * refuses to divide by a cross-currency sum, but by then the bad row is stored
  * and every ROAS read is dead until someone finds it.
  */
+/**
+ * Operator view of the canonical fact table (R4): freshness, totals and the
+ * most recently ingested facts. Read-only; powers /admin/media-costs.
+ */
+routes.get("/media-costs/summary", requirePermissions([PERMISSIONS.RECOMMENDATIONS_READ]), async (c) => {
+  const limit = Math.min(200, Math.max(1, Number(c.req.query("limit")) || 50));
+  const data = await Registry.getInstance().recommendationCommercialRepo.getMediaCostOpsSummary(limit);
+  return c.json({ success: true, data });
+});
+
 routes.post("/media-costs/batch", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: "INVALID_JSON", message: "Invalid body" } }, 400);
