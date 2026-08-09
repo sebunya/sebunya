@@ -66,5 +66,9 @@ export AUTH_TEST_DATABASE_URL="${BASE}/goldplus_test_auth"
 export ANALYTICS_TEST_DATABASE_URL="${BASE}/goldplus_test_analytics"
 export REDIS_TEST_URL="redis://127.0.0.1:6379"
 
-echo "Environment ready. Running: ${*:-npx vitest run tests/integration}"
-if [[ $# -gt 0 ]]; then "$@"; else npx vitest run tests/integration; fi
+# Serial by default: these suites share goldplus_test_commerce, and several
+# assert GLOBAL aggregates (the ROAS denominator, singleton config versions).
+# Parallel workers make those reads race each other's writes — observed as
+# different "failures" every run with every suite green in isolation.
+echo "Environment ready. Running: ${*:-npx vitest run --no-file-parallelism tests/integration}"
+if [[ $# -gt 0 ]]; then "$@"; else npx vitest run --no-file-parallelism tests/integration; fi

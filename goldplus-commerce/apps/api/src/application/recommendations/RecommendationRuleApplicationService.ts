@@ -184,7 +184,7 @@ export function applyPinPositions<T extends { productId: string }>(
 ): T[] {
   let result = [...items];
   for (const pin of pins) {
-    let idx = result.findIndex((c) => c.productId === pin.productId);
+    const idx = result.findIndex((c) => c.productId === pin.productId);
     let item: T | undefined;
     if (idx !== -1) {
       [item] = result.splice(idx, 1);

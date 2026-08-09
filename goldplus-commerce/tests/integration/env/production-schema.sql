@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict r8ufV3pRLdySbXUPYDBrC593p6gZrzI6Ve03cwFTCfKkiGibL5ayqOE4hqmuSHb
+\restrict ciGwT2cTmHWE8fKe0yu3gVmGl5huAHnfhh88w3Ie8WJtTb8c3vd1zhcA8FMCF3S
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -765,6 +765,21 @@ CREATE TABLE public.behavioural_intervention_versions (
     CONSTRAINT behavioural_intervention_versions_content_object_chk CHECK ((jsonb_typeof(content) = 'object'::text)),
     CONSTRAINT behavioural_intervention_versions_suppression_object_chk CHECK ((jsonb_typeof(suppression) = 'object'::text)),
     CONSTRAINT behavioural_intervention_versions_target_chk CHECK (((target_behaviour)::text = ANY ((ARRAY['PRODUCT_DISCOVERY'::character varying, 'CHECKOUT_COMPLETION'::character varying, 'PRODUCT_EDUCATION'::character varying, 'FEEDBACK_COMPLETION'::character varying])::text[])))
+);
+
+
+--
+-- Name: business_info; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.business_info (
+    id boolean DEFAULT true NOT NULL,
+    config jsonb DEFAULT '{}'::jsonb NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT business_info_singleton CHECK ((id = true))
 );
 
 
@@ -2390,6 +2405,20 @@ CREATE TABLE public.devices (
 
 
 --
+-- Name: experience_profiles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.experience_profiles (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    token_hash character varying(64) NOT NULL,
+    customer_id uuid,
+    customer_linked_at timestamp with time zone,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: experiment_assignments; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2831,6 +2860,86 @@ CREATE TABLE public.gsc_performance (
 
 
 --
+-- Name: hero_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.hero_events (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    event_type character varying(12) NOT NULL,
+    slide_key character varying(24) NOT NULL,
+    "position" integer DEFAULT 0 NOT NULL,
+    segment character varying(16) DEFAULT 'unknown'::character varying NOT NULL,
+    profile_id uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT hero_events_type_vocab CHECK (((event_type)::text = ANY ((ARRAY['IMPRESSION'::character varying, 'CLICK'::character varying])::text[])))
+);
+
+
+--
+-- Name: hero_settings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.hero_settings (
+    id boolean DEFAULT true NOT NULL,
+    slides_shown integer DEFAULT 4 NOT NULL,
+    dwell_ms integer DEFAULT 6000 NOT NULL,
+    autoplay boolean DEFAULT true NOT NULL,
+    updated_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT hero_settings_dwell_range CHECK (((dwell_ms >= 2000) AND (dwell_ms <= 20000))),
+    CONSTRAINT hero_settings_shown_range CHECK (((slides_shown >= 1) AND (slides_shown <= 8))),
+    CONSTRAINT hero_settings_singleton CHECK ((id = true))
+);
+
+
+--
+-- Name: hero_slides; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.hero_slides (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    slide_key character varying(24) NOT NULL,
+    "position" integer DEFAULT 0 NOT NULL,
+    enabled boolean DEFAULT true NOT NULL,
+    theme character varying(12) NOT NULL,
+    tint character varying(1) DEFAULT 'a'::character varying NOT NULL,
+    media character varying(8) DEFAULT 'stage'::character varying NOT NULL,
+    kicker character varying(48) DEFAULT ''::character varying NOT NULL,
+    headline character varying(200) DEFAULT ''::character varying NOT NULL,
+    subcopy character varying(240) DEFAULT ''::character varying NOT NULL,
+    cta_label character varying(48) DEFAULT ''::character varying NOT NULL,
+    cta_url character varying(512) DEFAULT ''::character varying NOT NULL,
+    fine_print character varying(160) DEFAULT ''::character varying NOT NULL,
+    image_url character varying(512) DEFAULT ''::character varying NOT NULL,
+    image_alt character varying(200) DEFAULT ''::character varying NOT NULL,
+    priority integer DEFAULT 0 NOT NULL,
+    extras jsonb DEFAULT '{}'::jsonb NOT NULL,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT hero_slides_media_vocab CHECK (((media)::text = ANY ((ARRAY['stage'::character varying, 'bleed'::character varying, 'card'::character varying])::text[]))),
+    CONSTRAINT hero_slides_priority_range CHECK (((priority >= 0) AND (priority <= 100))),
+    CONSTRAINT hero_slides_theme_vocab CHECK (((theme)::text = ANY ((ARRAY['offer'::character varying, 'logistics'::character varying, 'loyalty'::character varying, 'product'::character varying, 'brand'::character varying, 'trust'::character varying])::text[]))),
+    CONSTRAINT hero_slides_tint_vocab CHECK (((tint)::text = ANY ((ARRAY['a'::character varying, 'b'::character varying, 'c'::character varying, 'd'::character varying])::text[])))
+);
+
+
+--
+-- Name: homepage_content; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.homepage_content (
+    id boolean DEFAULT true NOT NULL,
+    config jsonb DEFAULT '{}'::jsonb NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT homepage_content_singleton CHECK ((id = true))
+);
+
+
+--
 -- Name: identity_links; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2850,7 +2959,8 @@ CREATE TABLE public.identity_links (
     first_linked_at timestamp with time zone DEFAULT now() NOT NULL,
     last_seen_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    profile_id uuid
 );
 
 
@@ -3878,6 +3988,30 @@ CREATE TABLE public.media_assets (
 
 
 --
+-- Name: media_cost_facts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.media_cost_facts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    spend_date date NOT NULL,
+    channel character varying(40) NOT NULL,
+    platform character varying(80) NOT NULL,
+    account character varying(120) NOT NULL,
+    campaign character varying(150) NOT NULL,
+    ad_set_or_group character varying(150),
+    ad_or_creative character varying(150),
+    currency character varying(3) DEFAULT 'UGX'::character varying NOT NULL,
+    spend_minor bigint NOT NULL,
+    tax_or_fee_minor bigint DEFAULT 0 NOT NULL,
+    source character varying(120) NOT NULL,
+    source_reference character varying(200),
+    ingested_by uuid,
+    ingested_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT media_cost_facts_spend_nonneg CHECK (((spend_minor >= 0) AND (tax_or_fee_minor >= 0)))
+);
+
+
+--
 -- Name: media_usages; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3911,6 +4045,39 @@ CREATE TABLE public.module_activation_approvals (
     CONSTRAINT module_activation_approvals_reference_not_blank CHECK ((length(btrim((approval_reference)::text)) > 0)),
     CONSTRAINT module_activation_approvals_revocation_complete CHECK ((((revoked_at IS NULL) AND (revoked_by IS NULL) AND (revocation_reason IS NULL)) OR ((revoked_at IS NOT NULL) AND (revoked_by IS NOT NULL) AND (length(btrim(COALESCE(revocation_reason, ''::text))) > 0)))),
     CONSTRAINT module_activation_approvals_revoked_after_approved CHECK (((revoked_at IS NULL) OR (revoked_at >= approved_at)))
+);
+
+
+--
+-- Name: nav_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.nav_config (
+    id boolean DEFAULT true NOT NULL,
+    config jsonb DEFAULT '{}'::jsonb NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT nav_config_singleton CHECK ((id = true))
+);
+
+
+--
+-- Name: nav_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.nav_events (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    event_type character varying(24) NOT NULL,
+    item_key character varying(32) DEFAULT ''::character varying NOT NULL,
+    "position" integer DEFAULT 0 NOT NULL,
+    segment character varying(16) DEFAULT 'unknown'::character varying NOT NULL,
+    term character varying(80),
+    profile_id uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT nav_events_segment_vocab CHECK (((segment)::text = ANY ((ARRAY['new'::character varying, 'returning'::character varying, 'signed_in'::character varying, 'unknown'::character varying])::text[]))),
+    CONSTRAINT nav_events_type_vocab CHECK (((event_type)::text = ANY ((ARRAY['NBA_IMPRESSION'::character varying, 'NBA_CLICK'::character varying, 'NBA_DISMISS'::character varying, 'SEARCH_SUGGEST_SHOWN'::character varying, 'SEARCH_SUGGEST_CLICK'::character varying, 'SEARCH_ZERO'::character varying, 'BATTERY_FINDER_SUBMIT'::character varying, 'WHATSAPP_TAP'::character varying, 'MINICART_OPEN'::character varying, 'MINICART_CHECKOUT'::character varying, 'PANEL_OPEN'::character varying])::text[])))
 );
 
 
@@ -3987,6 +4154,25 @@ CREATE TABLE public.notification_template_overrides (
 
 
 --
+-- Name: order_attribution; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.order_attribution (
+    order_id uuid NOT NULL,
+    order_number character varying(20),
+    source character varying(120),
+    medium character varying(120),
+    campaign character varying(160),
+    term character varying(160),
+    content character varying(160),
+    landing_path text,
+    referrer text,
+    first_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: order_events; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -4026,6 +4212,7 @@ CREATE TABLE public.order_items (
     base_subtotal bigint DEFAULT 0 NOT NULL,
     discount_amount bigint DEFAULT 0 NOT NULL,
     final_line_total bigint DEFAULT 0 NOT NULL,
+    cogs_snapshot_ugx bigint,
     CONSTRAINT order_items_money_non_negative CHECK (((unit_price >= 0) AND (canonical_unit_price >= 0) AND (base_subtotal >= 0) AND (discount_amount >= 0) AND (final_line_total >= 0))),
     CONSTRAINT order_items_pricing_money_check CHECK (((canonical_unit_price >= 0) AND (base_subtotal >= 0) AND (discount_amount >= 0) AND (final_line_total >= 0))),
     CONSTRAINT order_items_quantity_positive CHECK ((quantity > 0))
@@ -4073,9 +4260,10 @@ CREATE TABLE public.orders (
     delivery_location_raw jsonb,
     loyalty_discount_ugx bigint DEFAULT 0 NOT NULL,
     loyalty_redemption_id uuid,
+    profile_id uuid,
     CONSTRAINT orders_money_non_negative CHECK (((subtotal_amount >= 0) AND (delivery_fee >= 0) AND (total_amount >= 0) AND (pricing_base_subtotal >= 0) AND (pricing_discount_total >= 0) AND (pricing_tax_total >= 0))),
     CONSTRAINT orders_pricing_money_check CHECK ((((pricing_currency)::text = 'UGX'::text) AND (pricing_base_subtotal >= 0) AND (pricing_discount_total >= 0) AND (pricing_tax_total >= 0))),
-    CONSTRAINT orders_reservation_state_known CHECK (((reservation_state)::text = ANY ((ARRAY['PENDING'::character varying, 'RESERVED'::character varying, 'BACKORDERED'::character varying, 'NOT_REQUIRED'::character varying, 'UNRESERVED_BLOCKED'::character varying])::text[])))
+    CONSTRAINT orders_reservation_state_known CHECK (((reservation_state)::text = ANY ((ARRAY['PENDING'::character varying, 'RESERVED'::character varying, 'BACKORDERED'::character varying, 'NOT_REQUIRED'::character varying, 'UNRESERVED_BLOCKED'::character varying, 'RELEASED'::character varying, 'CONSUMED'::character varying])::text[])))
 );
 
 
@@ -4132,6 +4320,21 @@ CREATE TABLE public.packing_sessions (
 
 
 --
+-- Name: password_reset_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.password_reset_tokens (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    token_hash character varying(64) NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    consumed_at timestamp with time zone,
+    requested_ip character varying(64),
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: payment_attempts; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -4171,6 +4374,41 @@ CREATE TABLE public.payment_measurement_reconciliations (
 
 
 --
+-- Name: payment_refund_lines; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.payment_refund_lines (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    refund_id uuid NOT NULL,
+    order_item_id uuid NOT NULL,
+    amount_ugx bigint NOT NULL,
+    CONSTRAINT payment_refund_lines_amount_positive CHECK ((amount_ugx > 0))
+);
+
+
+--
+-- Name: payment_refunds; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.payment_refunds (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    payment_attempt_id uuid NOT NULL,
+    order_id uuid NOT NULL,
+    idempotency_key character varying(120) NOT NULL,
+    amount_ugx bigint NOT NULL,
+    reason text NOT NULL,
+    status character varying(20) DEFAULT 'requested'::character varying NOT NULL,
+    provider_status character varying(60),
+    provider_message text,
+    requested_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    settled_at timestamp with time zone,
+    CONSTRAINT payment_refunds_amount_positive CHECK ((amount_ugx > 0)),
+    CONSTRAINT payment_refunds_status_vocab CHECK (((status)::text = ANY ((ARRAY['requested'::character varying, 'settled'::character varying, 'rejected'::character varying])::text[])))
+);
+
+
+--
 -- Name: payments; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -4190,6 +4428,18 @@ CREATE TABLE public.payments (
     CONSTRAINT payments_amount_non_negative CHECK ((amount >= 0)),
     CONSTRAINT payments_review_state_consistent CHECK ((((requires_review = true) AND (reviewed_at IS NULL)) OR (requires_review = false))),
     CONSTRAINT payments_unverified_requires_review CHECK (((signature_verified = true) OR (requires_review = true) OR (reviewed_at IS NOT NULL)))
+);
+
+
+--
+-- Name: payments_ops_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.payments_ops_config (
+    config_key character varying(64) NOT NULL,
+    config_value text NOT NULL,
+    updated_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -4425,6 +4675,26 @@ CREATE TABLE public.product_compatibility_mappings (
     enabled boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: product_cost_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.product_cost_entries (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    cost_price_ugx bigint NOT NULL,
+    currency character varying(3) DEFAULT 'UGX'::character varying NOT NULL,
+    effective_from date NOT NULL,
+    source character varying(120) NOT NULL,
+    note text,
+    entered_by uuid,
+    corrects_entry_id uuid,
+    superseded_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT product_cost_entries_cost_sane CHECK (((cost_price_ugx >= 0) AND (cost_price_ugx <= '10000000000'::bigint)))
 );
 
 
@@ -4794,7 +5064,11 @@ CREATE TABLE public.recommendation_events (
     district character varying(120),
     town character varying(120),
     gps_geohash character varying(16),
-    gps_accuracy_meters integer
+    gps_accuracy_meters integer,
+    dedupe_key character varying(160),
+    schema_version integer,
+    producer character varying(80),
+    profile_id uuid
 );
 
 
@@ -5066,6 +5340,21 @@ CREATE TABLE public.search_product_insights (
 
 
 --
+-- Name: storefront_copy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.storefront_copy (
+    id boolean DEFAULT true NOT NULL,
+    config jsonb DEFAULT '{}'::jsonb NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT storefront_copy_singleton CHECK ((id = true))
+);
+
+
+--
 -- Name: support_assisted_preference_requests; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -5182,6 +5471,21 @@ CREATE TABLE public.survey_versions (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT survey_versions_audience_object_chk CHECK ((jsonb_typeof(audience) = 'object'::text)),
     CONSTRAINT survey_versions_questions_array_chk CHECK ((jsonb_typeof(questions) = 'array'::text))
+);
+
+
+--
+-- Name: taxonomy_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.taxonomy_config (
+    id boolean DEFAULT true NOT NULL,
+    config jsonb DEFAULT '[]'::jsonb NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT taxonomy_config_singleton CHECK ((id = true))
 );
 
 
@@ -5354,6 +5658,23 @@ CREATE TABLE public.ug_search_miss (
 
 
 --
+-- Name: user_identities; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_identities (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    provider character varying(20) NOT NULL,
+    subject character varying(255) NOT NULL,
+    email character varying(255),
+    email_verified boolean DEFAULT false NOT NULL,
+    linked_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_login_at timestamp with time zone,
+    CONSTRAINT user_identities_provider_vocab CHECK (((provider)::text = ANY ((ARRAY['google'::character varying, 'apple'::character varying, 'facebook'::character varying])::text[])))
+);
+
+
+--
 -- Name: user_mfa; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -5400,7 +5721,7 @@ CREATE TABLE public.users (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     email character varying(255) NOT NULL,
     phone character varying(20),
-    password_hash character varying(255) NOT NULL,
+    password_hash character varying(255),
     is_active boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     display_name character varying(160),
@@ -5736,6 +6057,14 @@ ALTER TABLE ONLY public.behavioural_intervention_outcomes
 
 ALTER TABLE ONLY public.behavioural_intervention_versions
     ADD CONSTRAINT behavioural_intervention_versions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: business_info business_info_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.business_info
+    ADD CONSTRAINT business_info_pkey PRIMARY KEY (id);
 
 
 --
@@ -6419,6 +6748,22 @@ ALTER TABLE ONLY public.devices
 
 
 --
+-- Name: experience_profiles experience_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.experience_profiles
+    ADD CONSTRAINT experience_profiles_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: experience_profiles experience_profiles_token_hash_uq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.experience_profiles
+    ADD CONSTRAINT experience_profiles_token_hash_uq UNIQUE (token_hash);
+
+
+--
 -- Name: experiment_assignments experiment_assignments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -6600,6 +6945,38 @@ ALTER TABLE ONLY public.gamification_missions
 
 ALTER TABLE ONLY public.gsc_performance
     ADD CONSTRAINT gsc_performance_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: hero_events hero_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hero_events
+    ADD CONSTRAINT hero_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: hero_settings hero_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hero_settings
+    ADD CONSTRAINT hero_settings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: hero_slides hero_slides_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hero_slides
+    ADD CONSTRAINT hero_slides_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: homepage_content homepage_content_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.homepage_content
+    ADD CONSTRAINT homepage_content_pkey PRIMARY KEY (id);
 
 
 --
@@ -7075,6 +7452,14 @@ ALTER TABLE ONLY public.media_assets
 
 
 --
+-- Name: media_cost_facts media_cost_facts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.media_cost_facts
+    ADD CONSTRAINT media_cost_facts_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: media_usages media_usages_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7088,6 +7473,22 @@ ALTER TABLE ONLY public.media_usages
 
 ALTER TABLE ONLY public.module_activation_approvals
     ADD CONSTRAINT module_activation_approvals_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: nav_config nav_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nav_config
+    ADD CONSTRAINT nav_config_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: nav_events nav_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nav_events
+    ADD CONSTRAINT nav_events_pkey PRIMARY KEY (id);
 
 
 --
@@ -7120,6 +7521,14 @@ ALTER TABLE ONLY public.notification_attempts
 
 ALTER TABLE ONLY public.notification_template_overrides
     ADD CONSTRAINT notification_template_overrides_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: order_attribution order_attribution_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.order_attribution
+    ADD CONSTRAINT order_attribution_pkey PRIMARY KEY (order_id);
 
 
 --
@@ -7179,6 +7588,14 @@ ALTER TABLE ONLY public.packing_sessions
 
 
 --
+-- Name: password_reset_tokens password_reset_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.password_reset_tokens
+    ADD CONSTRAINT password_reset_tokens_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: payment_attempts payment_attempts_merchant_reference_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7203,11 +7620,35 @@ ALTER TABLE ONLY public.payment_measurement_reconciliations
 
 
 --
+-- Name: payment_refund_lines payment_refund_lines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_refund_lines
+    ADD CONSTRAINT payment_refund_lines_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payment_refunds payment_refunds_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_refunds
+    ADD CONSTRAINT payment_refunds_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: payments payments_idempotency_key_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.payments
     ADD CONSTRAINT payments_idempotency_key_unique UNIQUE (idempotency_key);
+
+
+--
+-- Name: payments_ops_config payments_ops_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payments_ops_config
+    ADD CONSTRAINT payments_ops_config_pkey PRIMARY KEY (config_key);
 
 
 --
@@ -7312,6 +7753,14 @@ ALTER TABLE ONLY public.product_attribute_values
 
 ALTER TABLE ONLY public.product_compatibility_mappings
     ADD CONSTRAINT product_compatibility_mappings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: product_cost_entries product_cost_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_cost_entries
+    ADD CONSTRAINT product_cost_entries_pkey PRIMARY KEY (id);
 
 
 --
@@ -7627,6 +8076,14 @@ ALTER TABLE ONLY public.search_product_insights
 
 
 --
+-- Name: storefront_copy storefront_copy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.storefront_copy
+    ADD CONSTRAINT storefront_copy_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: support_assisted_preference_requests support_assisted_preference_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7672,6 +8129,14 @@ ALTER TABLE ONLY public.survey_responses
 
 ALTER TABLE ONLY public.survey_versions
     ADD CONSTRAINT survey_versions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: taxonomy_config taxonomy_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.taxonomy_config
+    ADD CONSTRAINT taxonomy_config_pkey PRIMARY KEY (id);
 
 
 --
@@ -7744,6 +8209,14 @@ ALTER TABLE ONLY public.ug_pickup_point
 
 ALTER TABLE ONLY public.ug_search_miss
     ADD CONSTRAINT ug_search_miss_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_identities user_identities_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_identities
+    ADD CONSTRAINT user_identities_pkey PRIMARY KEY (id);
 
 
 --
@@ -9082,6 +9555,20 @@ CREATE UNIQUE INDEX devices_slug_idx ON public.devices USING btree (slug);
 
 
 --
+-- Name: experience_profiles_customer_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX experience_profiles_customer_idx ON public.experience_profiles USING btree (customer_id);
+
+
+--
+-- Name: experience_profiles_last_seen_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX experience_profiles_last_seen_idx ON public.experience_profiles USING btree (last_seen_at);
+
+
+--
 -- Name: experiment_assignments_subject_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -9390,6 +9877,34 @@ CREATE INDEX gsc_performance_page_date_idx ON public.gsc_performance USING btree
 
 
 --
+-- Name: hero_events_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX hero_events_created_idx ON public.hero_events USING btree (created_at);
+
+
+--
+-- Name: hero_events_slide_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX hero_events_slide_idx ON public.hero_events USING btree (slide_key, event_type);
+
+
+--
+-- Name: hero_slides_key_uq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX hero_slides_key_uq ON public.hero_slides USING btree (slide_key);
+
+
+--
+-- Name: hero_slides_order_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX hero_slides_order_idx ON public.hero_slides USING btree (enabled, "position");
+
+
+--
 -- Name: identity_links_anonymous_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -9436,6 +9951,27 @@ CREATE INDEX identity_links_lead_idx ON public.identity_links USING btree (lead_
 --
 
 CREATE INDEX identity_links_phone_hash_idx ON public.identity_links USING btree (phone_hash);
+
+
+--
+-- Name: identity_links_profile_anon_uq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX identity_links_profile_anon_uq ON public.identity_links USING btree (profile_id, anonymous_id) WHERE ((link_type)::text = 'PROFILE_OBSERVED'::text);
+
+
+--
+-- Name: identity_links_profile_customer_uq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX identity_links_profile_customer_uq ON public.identity_links USING btree (profile_id, customer_id) WHERE ((link_type)::text = 'CUSTOMER_LOGIN'::text);
+
+
+--
+-- Name: identity_links_profile_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX identity_links_profile_idx ON public.identity_links USING btree (profile_id);
 
 
 --
@@ -9726,6 +10262,27 @@ CREATE INDEX media_assets_status_idx ON public.media_assets USING btree (status)
 
 
 --
+-- Name: media_cost_facts_campaign_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX media_cost_facts_campaign_idx ON public.media_cost_facts USING btree (campaign);
+
+
+--
+-- Name: media_cost_facts_date_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX media_cost_facts_date_idx ON public.media_cost_facts USING btree (spend_date);
+
+
+--
+-- Name: media_cost_facts_logical_uq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX media_cost_facts_logical_uq ON public.media_cost_facts USING btree (spend_date, channel, platform, account, campaign, COALESCE(ad_set_or_group, ''::character varying), COALESCE(ad_or_creative, ''::character varying), source);
+
+
+--
 -- Name: media_usages_asset_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -9758,6 +10315,27 @@ CREATE UNIQUE INDEX module_activation_approvals_live_module_idx ON public.module
 --
 
 CREATE INDEX module_activation_approvals_module_idx ON public.module_activation_approvals USING btree (module_key, revoked_at);
+
+
+--
+-- Name: nav_events_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX nav_events_created_idx ON public.nav_events USING btree (created_at);
+
+
+--
+-- Name: nav_events_type_item_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX nav_events_type_item_idx ON public.nav_events USING btree (event_type, item_key);
+
+
+--
+-- Name: nav_events_zero_term_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX nav_events_zero_term_idx ON public.nav_events USING btree (term) WHERE (((event_type)::text = 'SEARCH_ZERO'::text) AND (term IS NOT NULL));
 
 
 --
@@ -9796,6 +10374,27 @@ CREATE UNIQUE INDEX notification_template_overrides_key_status_uq ON public.noti
 
 
 --
+-- Name: order_attribution_channel_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX order_attribution_channel_idx ON public.order_attribution USING btree (source, medium, campaign);
+
+
+--
+-- Name: order_attribution_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX order_attribution_created_idx ON public.order_attribution USING btree (created_at);
+
+
+--
+-- Name: order_attribution_number_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX order_attribution_number_idx ON public.order_attribution USING btree (order_number);
+
+
+--
 -- Name: order_events_idempotency_uq; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -9814,6 +10413,13 @@ CREATE INDEX order_events_order_occurred_idx ON public.order_events USING btree 
 --
 
 CREATE INDEX order_items_order_id_idx ON public.order_items USING btree (order_id);
+
+
+--
+-- Name: order_items_product_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX order_items_product_idx ON public.order_items USING btree (product_id);
 
 
 --
@@ -9859,6 +10465,20 @@ CREATE INDEX orders_number_idx ON public.orders USING btree (order_number);
 
 
 --
+-- Name: orders_payment_status_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX orders_payment_status_created_idx ON public.orders USING btree (payment_status, created_at);
+
+
+--
+-- Name: orders_profile_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX orders_profile_idx ON public.orders USING btree (profile_id);
+
+
+--
 -- Name: orders_reservation_state_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -9873,10 +10493,24 @@ CREATE INDEX orders_session_idx ON public.orders USING btree (session_id);
 
 
 --
+-- Name: orders_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX orders_status_idx ON public.orders USING btree (status);
+
+
+--
 -- Name: orders_unreserved_blocked_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX orders_unreserved_blocked_idx ON public.orders USING btree (created_at) WHERE ((reservation_state)::text = 'UNRESERVED_BLOCKED'::text);
+
+
+--
+-- Name: orders_user_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX orders_user_idx ON public.orders USING btree (user_id);
 
 
 --
@@ -9940,6 +10574,76 @@ CREATE INDEX paid_social_log_dest_status_idx ON public.measurement_paid_social_d
 --
 
 CREATE INDEX paid_social_log_event_idx ON public.measurement_paid_social_delivery_logs USING btree (event_id);
+
+
+--
+-- Name: password_reset_tokens_expiry_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX password_reset_tokens_expiry_idx ON public.password_reset_tokens USING btree (expires_at);
+
+
+--
+-- Name: password_reset_tokens_hash_uq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX password_reset_tokens_hash_uq ON public.password_reset_tokens USING btree (token_hash);
+
+
+--
+-- Name: password_reset_tokens_user_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX password_reset_tokens_user_idx ON public.password_reset_tokens USING btree (user_id, created_at DESC);
+
+
+--
+-- Name: payment_attempts_order_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX payment_attempts_order_idx ON public.payment_attempts USING btree (order_id);
+
+
+--
+-- Name: payment_refund_lines_item_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX payment_refund_lines_item_idx ON public.payment_refund_lines USING btree (order_item_id);
+
+
+--
+-- Name: payment_refund_lines_uq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX payment_refund_lines_uq ON public.payment_refund_lines USING btree (refund_id, order_item_id);
+
+
+--
+-- Name: payment_refunds_attempt_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX payment_refunds_attempt_idx ON public.payment_refunds USING btree (payment_attempt_id);
+
+
+--
+-- Name: payment_refunds_idempotency_uq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX payment_refunds_idempotency_uq ON public.payment_refunds USING btree (idempotency_key);
+
+
+--
+-- Name: payment_refunds_order_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX payment_refunds_order_idx ON public.payment_refunds USING btree (order_id);
+
+
+--
+-- Name: payment_refunds_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX payment_refunds_status_idx ON public.payment_refunds USING btree (status);
 
 
 --
@@ -10080,6 +10784,27 @@ CREATE UNIQUE INDEX pricing_quote_lines_quote_product_idx ON public.pricing_quot
 --
 
 CREATE INDEX pricing_quotes_expiry_idx ON public.pricing_quotes USING btree (expires_at);
+
+
+--
+-- Name: product_cost_entries_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX product_cost_entries_created_idx ON public.product_cost_entries USING btree (created_at);
+
+
+--
+-- Name: product_cost_entries_live_uq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX product_cost_entries_live_uq ON public.product_cost_entries USING btree (product_id, effective_from) WHERE (superseded_at IS NULL);
+
+
+--
+-- Name: product_cost_entries_product_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX product_cost_entries_product_idx ON public.product_cost_entries USING btree (product_id, effective_from DESC);
 
 
 --
@@ -10279,6 +11004,13 @@ CREATE INDEX recommendation_events_attribution_idx ON public.recommendation_even
 
 
 --
+-- Name: recommendation_events_attribution_join_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX recommendation_events_attribution_join_idx ON public.recommendation_events USING btree (profile_id, recommendation_product_id, created_at);
+
+
+--
 -- Name: recommendation_events_browser_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -10311,6 +11043,13 @@ CREATE INDEX recommendation_events_created_at_idx ON public.recommendation_event
 --
 
 CREATE INDEX recommendation_events_customer_id_idx ON public.recommendation_events USING btree (customer_id);
+
+
+--
+-- Name: recommendation_events_dedupe_key_uq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX recommendation_events_dedupe_key_uq ON public.recommendation_events USING btree (dedupe_key) WHERE (dedupe_key IS NOT NULL);
 
 
 --
@@ -10353,6 +11092,20 @@ CREATE INDEX recommendation_events_product_created_at_idx ON public.recommendati
 --
 
 CREATE INDEX recommendation_events_product_id_idx ON public.recommendation_events USING btree (product_id);
+
+
+--
+-- Name: recommendation_events_profile_created_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX recommendation_events_profile_created_at_idx ON public.recommendation_events USING btree (profile_id, created_at);
+
+
+--
+-- Name: recommendation_events_profile_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX recommendation_events_profile_idx ON public.recommendation_events USING btree (profile_id);
 
 
 --
@@ -10745,6 +11498,20 @@ CREATE INDEX ug_search_miss_created_idx ON public.ug_search_miss USING btree (cr
 --
 
 CREATE INDEX ug_search_miss_norm_idx ON public.ug_search_miss USING btree (normalised_query);
+
+
+--
+-- Name: user_identities_provider_subject_uq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX user_identities_provider_subject_uq ON public.user_identities USING btree (provider, subject);
+
+
+--
+-- Name: user_identities_user_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX user_identities_user_idx ON public.user_identities USING btree (user_id);
 
 
 --
@@ -11399,6 +12166,14 @@ ALTER TABLE ONLY public.delivery_config_value
 
 
 --
+-- Name: experience_profiles experience_profiles_customer_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.experience_profiles
+    ADD CONSTRAINT experience_profiles_customer_fk FOREIGN KEY (customer_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
 -- Name: experiment_assignments experiment_assignments_experiment_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -11572,6 +12347,14 @@ ALTER TABLE ONLY public.gamification_badges
 
 ALTER TABLE ONLY public.gsc_performance
     ADD CONSTRAINT gsc_performance_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: identity_links identity_links_profile_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identity_links
+    ADD CONSTRAINT identity_links_profile_fk FOREIGN KEY (profile_id) REFERENCES public.experience_profiles(id) ON DELETE CASCADE;
 
 
 --
@@ -11863,6 +12646,14 @@ ALTER TABLE ONLY public.orders
 
 
 --
+-- Name: orders orders_profile_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT orders_profile_fk FOREIGN KEY (profile_id) REFERENCES public.experience_profiles(id) ON DELETE SET NULL;
+
+
+--
 -- Name: orders orders_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -11887,11 +12678,51 @@ ALTER TABLE ONLY public.packing_sessions
 
 
 --
+-- Name: password_reset_tokens password_reset_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.password_reset_tokens
+    ADD CONSTRAINT password_reset_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: payment_attempts payment_attempts_order_id_orders_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.payment_attempts
     ADD CONSTRAINT payment_attempts_order_id_orders_id_fk FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+
+--
+-- Name: payment_refund_lines payment_refund_lines_order_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_refund_lines
+    ADD CONSTRAINT payment_refund_lines_order_item_id_fkey FOREIGN KEY (order_item_id) REFERENCES public.order_items(id);
+
+
+--
+-- Name: payment_refund_lines payment_refund_lines_refund_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_refund_lines
+    ADD CONSTRAINT payment_refund_lines_refund_id_fkey FOREIGN KEY (refund_id) REFERENCES public.payment_refunds(id) ON DELETE CASCADE;
+
+
+--
+-- Name: payment_refunds payment_refunds_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_refunds
+    ADD CONSTRAINT payment_refunds_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+
+--
+-- Name: payment_refunds payment_refunds_payment_attempt_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_refunds
+    ADD CONSTRAINT payment_refunds_payment_attempt_id_fkey FOREIGN KEY (payment_attempt_id) REFERENCES public.payment_attempts(id);
 
 
 --
@@ -12012,6 +12843,22 @@ ALTER TABLE ONLY public.product_compatibility_mappings
 
 ALTER TABLE ONLY public.product_compatibility_mappings
     ADD CONSTRAINT product_compatibility_mappings_target_product_id_products_id_fk FOREIGN KEY (target_product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+
+--
+-- Name: product_cost_entries product_cost_entries_corrects_entry_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_cost_entries
+    ADD CONSTRAINT product_cost_entries_corrects_entry_id_fkey FOREIGN KEY (corrects_entry_id) REFERENCES public.product_cost_entries(id);
+
+
+--
+-- Name: product_cost_entries product_cost_entries_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_cost_entries
+    ADD CONSTRAINT product_cost_entries_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
 
 
 --
@@ -12375,6 +13222,14 @@ ALTER TABLE ONLY public.ug_pickup_point
 
 
 --
+-- Name: user_identities user_identities_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_identities
+    ADD CONSTRAINT user_identities_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: user_mfa_recovery_codes user_mfa_recovery_codes_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -12442,5 +13297,5 @@ ALTER TABLE ONLY public.wishlists
 -- PostgreSQL database dump complete
 --
 
-\unrestrict r8ufV3pRLdySbXUPYDBrC593p6gZrzI6Ve03cwFTCfKkiGibL5ayqOE4hqmuSHb
+\unrestrict ciGwT2cTmHWE8fKe0yu3gVmGl5huAHnfhh88w3Ie8WJtTb8c3vd1zhcA8FMCF3S
 

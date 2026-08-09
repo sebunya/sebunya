@@ -55,7 +55,9 @@ suite('nav content on real PostgreSQL', () => {
   it('updateConfig bumps the version and stays a jsonb object', async () => {
     const before = await repo.getConfig();
     const edited = structuredClone(before!.config);
-    edited.rail[0].label = 'Shop Everything';
+    // ≤14 chars — the Stage 2 validator caps rail labels so they cannot
+    // overflow the header ('Shop Everything', 15, is correctly refused).
+    edited.rail[0].label = 'Shop All Items';
     const res = await service.updateConfig(edited, actor);
     expect(res.ok).toBe(true);
 
@@ -64,7 +66,7 @@ suite('nav content on real PostgreSQL', () => {
     expect(Number(row.version)).toBe(before!.version + 1);
 
     const after = await repo.getConfig();
-    expect(after!.config.rail[0].label).toBe('Shop Everything');
+    expect(after!.config.rail[0].label).toBe('Shop All Items');
   });
 
   it('updateConfig refuses a config that would break the header', async () => {

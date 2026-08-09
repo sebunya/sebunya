@@ -1,4 +1,4 @@
-import { createHash, createPrivateKey, createVerify, randomBytes, sign as signCallback } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, createVerify, randomBytes, sign as signCallback } from 'node:crypto';
 import { promisify } from 'node:util';
 
 const signAsync = promisify(signCallback) as (
@@ -188,8 +188,6 @@ const fetchJwks = async (uri: string): Promise<Jwk[]> => {
 const jwkToPem = (jwk: Jwk): any => {
   // node's createPublicKey accepts a JWK directly, which avoids hand-rolling
   // DER encoding — the classic place to introduce a signature-check bug.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { createPublicKey } = require('node:crypto');
   return createPublicKey({ key: jwk as any, format: 'jwk' });
 };
 

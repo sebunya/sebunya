@@ -51,7 +51,7 @@ function parseCsv(content: string, file: string): Array<Record<string, string>> 
   let field = '';
   let row: string[] = [];
   let inQuotes = false;
-  const src = content.replace(/^﻿/, '');
+  const src = content.replace(/^\uFEFF/, '');
   for (let i = 0; i < src.length; i++) {
     const ch = src[i];
     if (inQuotes) {
