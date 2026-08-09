@@ -284,6 +284,57 @@ routes.get('/storefront-discount', async (c) => {
 });
 
 /**
+ * Promo-code preview: the SAME evaluator that charges at checkout, run against
+ * the caller's basket with and without the code, so the shown effect equals the
+ * charge to the shilling. Returns the persisted quoteId — checkout passes it as
+ * previewQuoteId and the existing PRICE_CHANGED consistency gate holds the
+ * promise. Server-priced from canonical retail (client prices are ignored), so
+ * this reveals nothing a PDP does not. An unknown or unqualified code is a
+ * truthful zero with a reason, never an error page.
+ */
+routes.post('/pricing-preview', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const rawItems = Array.isArray(body?.items) ? body.items.slice(0, 50) : [];
+  const items = rawItems
+    .map((i: any) => ({ productId: String(i?.productId ?? ''), quantity: Number(i?.quantity) }))
+    .filter((i: any) => /^[0-9a-f-]{36}$/i.test(i.productId) && Number.isInteger(i.quantity) && i.quantity >= 1 && i.quantity <= 99);
+  if (items.length === 0) {
+    return c.json({ success: false, error: { code: 'INVALID_BASKET', message: 'Pricing preview needs the basket items.' } }, 400);
+  }
+  const couponCode = typeof body?.couponCode === 'string' && body.couponCode.trim() ? body.couponCode.trim().slice(0, 40) : null;
+  try {
+    // Baseline first (auto promotions only), then with the code: the delta is
+    // the coupon's true effect under the live stacking rules.
+    const base = await registry.evaluateCartPricingUseCase.execute({ items, couponCode: null, persist: false });
+    const quote = couponCode
+      ? await registry.evaluateCartPricingUseCase.execute({ items, couponCode, persist: true })
+      : await registry.evaluateCartPricingUseCase.execute({ items, couponCode: null, persist: true });
+    const couponDiscountUgx = couponCode ? Math.max(0, quote.discountTotalUgx - base.discountTotalUgx) : 0;
+    return c.json({
+      success: true,
+      data: {
+        quoteId: quote.id,
+        baseSubtotalUgx: quote.baseSubtotalUgx,
+        discountTotalUgx: quote.discountTotalUgx,
+        goodsTotalUgx: quote.finalTotalUgx - quote.shippingUgx - quote.taxUgx,
+        couponApplied: couponDiscountUgx > 0,
+        couponDiscountUgx,
+        couponMessage: couponCode
+          ? couponDiscountUgx > 0
+            ? null
+            : "This code doesn't match a live offer for this basket, or its conditions aren't met."
+          : null,
+        expiresAt: quote.expiresAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    const code = (error as { code?: string })?.code ?? 'PRICING_UNAVAILABLE';
+    const message = error instanceof Error ? error.message : 'Pricing preview is unavailable right now.';
+    return c.json({ success: false, error: { code, message } }, 400);
+  }
+});
+
+/**
  * Public odds disclosure for the reward draw (0088).
  *
  * Deliberately public and unauthenticated: the odds a customer is offered

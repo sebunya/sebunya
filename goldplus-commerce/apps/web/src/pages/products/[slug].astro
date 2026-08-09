@@ -323,6 +323,7 @@ const canonical = Astro.url.toString();
               )}
               <span class={`inline-flex items-center px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider ${availabilityClass[product.availability.kind]}`}>
                 {availabilityLabel[product.availability.kind]}
+                {product.availability.kind === 'in_stock' && product.availability.quantity > 0 && ` · ${product.availability.quantity} available`}
               </span>
             </div>
 

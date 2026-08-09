@@ -35,13 +35,13 @@ const productType = lowerName.includes("charger") ? "Charger"
 
 const shortDescAttr = product.attributeValues?.find(a => a.name === 'CardShortDescription')?.value;
 
-// Honest scarcity: a count only when stock is genuinely low (computed here to
-// keep the `<=` out of the template, where Astro parses `<` as a tag).
-const lowStockLeft = product.availability.kind === 'in_stock'
-  && product.availability.quantity > 0
-  && product.availability.quantity <= 10
+// Honest stock: the REAL tracked count, always shown when in stock — amber
+// urgency only when it is genuinely low (computed here to keep the `<=` out of
+// the template, where Astro parses `<` as a tag). Never an invented number.
+const stockCount = product.availability.kind === 'in_stock' && product.availability.quantity > 0
   ? product.availability.quantity
   : null;
+const stockIsLow = stockCount !== null && stockCount <= 10;
 
 const availabilityLabel = (() => {
   switch(product.availability.kind) {
@@ -127,9 +127,38 @@ const availabilityBadgeClass = (() => {
           {formattedPrice}
         </p>
       )}
-      {lowStockLeft !== null && (
-        <p class="mt-1 text-[11px] font-bold text-amber-700">Only {lowStockLeft} left</p>
+      {onSale && discount.endsIso && (
+        <p class="mt-1 text-[11px] font-bold text-amber-700 tabular-nums" data-card-sale-ends={discount.endsIso}>Sale price — limited time</p>
       )}
+      <div class="mt-1 flex items-center justify-between gap-2">
+        {stockCount !== null ? (
+          <p class={`text-[11px] font-bold ${stockIsLow ? 'text-amber-700' : 'text-slate-500'}`}>
+            {stockIsLow ? `Only ${stockCount} left in stock` : `${stockCount} in stock`}
+          </p>
+        ) : <span></span>}
+      </div>
     </div>
   </div>
 </article>
+
+<script>
+  // One ticker for EVERY card on the page (Astro dedupes component scripts):
+  // counts down to the sale end so the customer knows exactly when the price
+  // returns to normal. Same maths as the PDP countdown — one truth, two places.
+  (() => {
+    const els = Array.from(document.querySelectorAll<HTMLElement>('[data-card-sale-ends]'));
+    if (els.length === 0) return;
+    const tick = () => {
+      for (const el of els) {
+        const end = new Date(el.getAttribute('data-card-sale-ends') ?? '').getTime();
+        if (!Number.isFinite(end)) continue;
+        const ms = end - Date.now();
+        if (ms <= 0) { el.textContent = 'Sale ended — regular price applies'; continue; }
+        const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000), m = Math.floor((ms % 3600000) / 60000);
+        el.textContent = d > 0 ? `Sale ends in ${d}d ${h}h` : h > 0 ? `Sale ends in ${h}h ${m}m` : `Sale ends in ${m}m`;
+      }
+    };
+    tick();
+    setInterval(tick, 60_000);
+  })();
+</script>
