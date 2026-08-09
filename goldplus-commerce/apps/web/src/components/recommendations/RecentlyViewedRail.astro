@@ -25,12 +25,22 @@ const {
 } = Astro.props;
 
 let validIds: string[] = [];
+// Fresh server truth per product (price, stock, image): local history is a
+// bookmark, not a price list — what renders must match what the shop charges.
+let liveByProduct: Record<string, { price?: number; availability?: ProductPublicDto["availability"]; imageUrl?: string }> = {};
 try {
   const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
   if (res.ok) {
     const json = await res.json() as ApiResponse<ProductPublicDto[]>;
     if (json.success && json.data) {
       validIds = json.data.map(p => p.id).filter((id): id is string => typeof id === "string");
+      for (const p of json.data) {
+        liveByProduct[p.id] = {
+          price: typeof p.retailPriceUgx === "number" && p.retailPriceUgx > 0 ? p.retailPriceUgx : undefined,
+          availability: p.availability,
+          imageUrl: p.primaryImageUrl ?? undefined,
+        };
+      }
     }
   }
 } catch {
@@ -53,6 +63,7 @@ const railDiscount = await getStorefrontDiscount();
   data-valid-ids={JSON.stringify(validIds)}
   data-always-render={alwaysRender ? "true" : "false"}
   data-fallback-products={JSON.stringify(fallbackProducts)}
+  data-live-products={JSON.stringify(liveByProduct)}
   data-sale-bps={railDiscount.active ? String(railDiscount.percentBps) : ""}
   data-sale-percent={railDiscount.active ? String(railDiscount.percent) : ""}
   data-sale-ends-iso={railDiscount.active ? (railDiscount.endsIso ?? "") : ""}
@@ -100,8 +111,19 @@ const railDiscount = await getStorefrontDiscount();
       return /^https?:\/\//i.test(candidate) || /^\/(?!\/)/.test(candidate) ? candidate : "";
     };
 
+    // Overlay fresh server truth (price, stock, image) onto local history —
+    // a bookmark from last week must not show last week's price.
+    const liveAttr = rail.getAttribute("data-live-products");
+    const liveByProduct: Record<string, { price?: number; availability?: { kind: string; quantity?: number }; imageUrl?: string }> =
+      liveAttr ? JSON.parse(liveAttr) : {};
+    const overlay = (item: any) => {
+      const live = liveByProduct[item.productId];
+      return live ? { ...item, price: live.price ?? item.price, availability: live.availability ?? item.availability, imageUrl: live.imageUrl ?? item.imageUrl } : item;
+    };
+
     const rawHistory = getRecentlyViewedHistory();
     let items = rawHistory
+      .map(overlay)
       .filter((item) => validIds.length === 0 || validIds.includes(item.productId))
       .filter((item) => safeSlug.test(String(item.slug ?? "")))
       .slice(0, 4);
