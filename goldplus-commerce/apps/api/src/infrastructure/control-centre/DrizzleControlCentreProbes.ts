@@ -1,4 +1,14 @@
 import { sql } from 'drizzle-orm';
+
+/**
+ * postgres-js returns the row ARRAY from db.execute() directly; node-postgres
+ * shapes it as {rows}. Reading only `.rows` here made EVERY table probe report
+ * DOWN ("dependency postgres.X did not respond"), every approval read as
+ * absent (all programmes DORMANT), and the approvals ledger render empty —
+ * one driver-shape bug, three symptoms across the whole Trust Centre.
+ */
+const rowsOf = (r: unknown): Record<string, unknown>[] =>
+  Array.isArray(r) ? (r as Record<string, unknown>[]) : ((r as { rows?: Record<string, unknown>[] })?.rows ?? []);
 import { db } from '../db/client';
 import { logger } from '../logging/logger';
 import type {
@@ -28,7 +38,7 @@ export const drizzleDependencyProbe: DependencyProbe = {
         // to_regclass returns NULL rather than throwing for an absent relation, so a
         // missing table is a clean false instead of a caught exception.
         const result = await db.execute(sql`select to_regclass(${`public.${table}`}) as relation`);
-        const rows = (result as unknown as { rows?: { relation: string | null }[] }).rows ?? [];
+        const rows = rowsOf(result);
         return Boolean(rows[0]?.relation);
       }
       await db.execute(sql`select 1`);
@@ -55,8 +65,7 @@ export const drizzleApprovalProbe: ApprovalProbe = {
         sql`select 1 from module_activation_approvals
             where module_key = ${moduleKey} and revoked_at is null limit 1`,
       );
-      const rows = (result as unknown as { rows?: unknown[] }).rows ?? [];
-      return rows.length > 0;
+      return rowsOf(result).length > 0;
     } catch {
       return false;
     }
@@ -152,7 +161,7 @@ export const drizzleModuleApprovalRepository: IModuleApprovalRepository = {
 };
 
 function toRecords(result: unknown): ModuleApprovalRecord[] {
-  const rows = (result as { rows?: Record<string, unknown>[] }).rows ?? [];
+  const rows = rowsOf(result);
   return rows.map((row) => ({
     id: String(row.id),
     moduleKey: String(row.module_key),

@@ -43,13 +43,10 @@ const isPathActive = (href: string) => {
         
         {/* Sidebar Header / Brand */}
         <div class="flex items-center h-16 px-6 border-b border-gray-800 bg-black">
-          <a href="/admin" class="flex items-center gap-2 group outline-none">
-            <div class="w-5 h-5 rounded-md bg-brand-primary flex items-center justify-center">
-              <span class="text-brand-charcoal font-black text-xs leading-none">G</span>
-            </div>
-            <span class="text-base font-black tracking-wider text-white uppercase">
-              GP <span class="text-brand-primary font-medium">Control</span>
-            </span>
+          <a href="/admin" class="flex items-center gap-2.5 group outline-none" aria-label="GoldPlus admin home">
+            {/* The REAL GoldPlus mark — the same asset the storefront header wears. */}
+            <img src="/goldplus-logo-header-desktop-150x43.svg" alt="GoldPlus" class="h-6 w-auto transition-opacity group-hover:opacity-80" />
+            <span class="text-[10px] font-black tracking-[0.2em] uppercase text-brand-primary border-l border-gray-700 pl-2.5">Control</span>
           </a>
         </div>
 
