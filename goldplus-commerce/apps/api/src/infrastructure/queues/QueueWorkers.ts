@@ -183,14 +183,21 @@ export function registerAllWorkers(): void {
         // credentials are absent the use case is an honest no-op
         // (READY_FOR_CREDENTIALS) — nothing fake is written.
         const { SyncGscPerformanceUseCase } = await import('../../application/use-cases/seo-growth/SyncGscPerformanceUseCase');
-        const { GscClient } = await import('../seo/GscClient');
+        // 0118: credentials resolve vault-first (integration control plane),
+        // env-second (bootstrap/emergency).
+        const { resolveGscClientVaultFirst } = await import('../seo/SeoIntegrationSyncRunner');
         const uc = new SyncGscPerformanceUseCase({
-          client: GscClient.fromEnv(),
+          client: await resolveGscClientVaultFirst(),
           store: registry.seoGrowthRepo,
         });
         const outcome = await uc.execute();
         logger.info({ ...outcome }, '[QueueWorker] GSC sync finished');
         if (outcome.status === 'FAILED') throw new Error(outcome.error);
+      } else if (job.name === 'seo-integration-sync') {
+        // 0118 Integrations Control Plane: per-connection sync jobs, isolated
+        // per connection; failures land on the job row, never in commerce paths.
+        const { runSeoIntegrationSyncJob } = await import('../seo/SeoIntegrationSyncRunner');
+        await runSeoIntegrationSyncJob(job.data as { jobId: string; connectionId: string; providerId: string });
       } else if (job.name === 'abandonment-scan-cron') {
         // Wave 2E-1: the hourly evaluator is the ONLY writer of abandonment
         // classifications; each new one is announced on ABANDONED_CART_EVENTS.

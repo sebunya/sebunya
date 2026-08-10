@@ -1,0 +1,78 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getBusinessInfo } from '../../lib/businessInfo';
+import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
+import { SITE_ORIGIN } from '../../lib/sitemap';
+import { evaluateLocalPageGate } from '../../lib/categoryHubs';
+
+/**
+ * LOCAL SEARCH — delivery in Kampala & Wakiso, described qualitatively from
+ * the admin-editable business-info document ONLY. There is no public quoting
+ * endpoint that works without an address+cart (per docs/delivery/CONTRACT.md
+ * the ONE quoting service prices a real basket to a real address), so this
+ * page states no fees or windows — the exact fee is quoted at checkout by
+ * that single service. Gated + noindex until business-info returns address+phone.
+ */
+const biz = await getBusinessInfo();
+const gatePass = evaluateLocalPageGate(biz);
+const canonicalUrl = `${SITE_ORIGIN}/delivery/kampala-wakiso`;
+const robotsMeta = gatePass ? undefined : 'noindex,follow';
+
+const cutoffLabel = (() => {
+  const h = biz.sameDayCutoffHour;
+  if (!Number.isInteger(h) || h < 0 || h > 23) return '';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}${h < 12 ? 'am' : 'pm'}`;
+})();
+
+const crumbs = [
+  { name: 'Home', url: `${SITE_ORIGIN}/` },
+  { name: 'Delivery in Kampala & Wakiso', url: canonicalUrl },
+];
+---
+
+<BaseLayout
+  title="Delivery in Kampala & Wakiso | GoldPlus"
+  description={`GoldPlus delivery in Kampala & Wakiso: ${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}.`}
+  canonicalUrl={canonicalUrl}
+  robotsMeta={robotsMeta}
+>
+  <script type="application/ld+json" set:html={serializeJsonLd(breadcrumbJsonLd(crumbs))} />
+
+  <header class="border-b border-slate-800 bg-slate-950 py-10 text-white sm:py-12">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <h1 class="text-3xl font-black tracking-tight sm:text-4xl">Delivery in Kampala &amp; Wakiso</h1>
+      <p class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">{biz.deliveryNote}</p>
+    </div>
+  </header>
+
+  <main class="mx-auto w-full min-w-0 max-w-7xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+      <section class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h2 class="text-base font-black text-slate-900">When we deliver</h2>
+        <p class="mt-2 text-sm text-slate-700">Delivery hours: {biz.deliveryHours}, {biz.openDays}.</p>
+        {cutoffLabel && (
+          <p class="mt-2 text-sm text-slate-700">Orders placed before {cutoffLabel} are eligible for same-day delivery on delivery days.</p>
+        )}
+      </section>
+
+      <section class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h2 class="text-base font-black text-slate-900">What delivery costs</h2>
+        <p class="mt-2 text-sm leading-relaxed text-slate-600">
+          The delivery fee depends on your exact address and your order. It is calculated and shown at checkout before you pay — there are no surprise charges after ordering.
+        </p>
+      </section>
+    </div>
+
+    <section class="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
+      <h2 class="text-base font-black text-slate-900">Prefer to collect?</h2>
+      <p class="mt-2 text-sm leading-relaxed text-slate-600">
+        You can also pick up your order at the GoldPlus shop on Wilson Road, Kampala — see the <a href="/locations/wilson-road" class="font-bold underline">shop page</a> for hours and directions.
+      </p>
+      <div class="mt-4 flex flex-wrap gap-3 text-sm font-bold">
+        <a href="/shop" class="rounded-full bg-slate-950 px-5 py-2.5 text-white hover:bg-brand-primary hover:text-slate-950">Browse the shop</a>
+        <a href="/cart" class="rounded-full border border-slate-300 px-5 py-2.5 text-slate-700 hover:border-brand-primary">Go to your cart</a>
+      </div>
+    </section>
+  </main>
+</BaseLayout>

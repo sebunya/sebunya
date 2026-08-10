@@ -8,6 +8,6 @@ import { sitemapIndexXml, xmlResponse } from '../lib/sitemap';
  */
 export const GET: APIRoute = async () => {
   return xmlResponse(
-    sitemapIndexXml(['/sitemaps/static.xml', '/sitemaps/products.xml', '/sitemaps/categories.xml']),
+    sitemapIndexXml(['/sitemaps/static.xml', '/sitemaps/products.xml', '/sitemaps/categories.xml', '/sitemaps/hubs.xml']),
   );
 };

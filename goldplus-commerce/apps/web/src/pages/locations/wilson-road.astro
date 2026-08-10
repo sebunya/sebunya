@@ -1,0 +1,97 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getBusinessInfo } from '../../lib/businessInfo';
+import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
+import { SITE_ORIGIN } from '../../lib/sitemap';
+import { evaluateLocalPageGate } from '../../lib/categoryHubs';
+
+/**
+ * LOCAL SEARCH — the Wilson Road shop page. Built ONLY from the admin-editable
+ * business-info document (same source as the footer). Indexable only when
+ * business-info actually returns an address and phone; the LocalBusiness
+ * JSON-LD carries verified fields only — no invented coordinates or hours.
+ */
+const biz = await getBusinessInfo();
+const gatePass = evaluateLocalPageGate(biz);
+const canonicalUrl = `${SITE_ORIGIN}/locations/wilson-road`;
+const robotsMeta = gatePass ? undefined : 'noindex,follow';
+
+const telephone = biz.phoneDial?.replace(/^tel:/, '') || undefined;
+const localBusiness: Record<string, unknown> = {
+  '@context': 'https://schema.org',
+  '@type': 'Store',
+  name: 'GoldPlus',
+  url: canonicalUrl,
+};
+if (biz.addressLine1) {
+  localBusiness.address = {
+    '@type': 'PostalAddress',
+    streetAddress: biz.addressLine1,
+    addressLocality: 'Kampala',
+    addressCountry: 'UG',
+  };
+}
+if (telephone) localBusiness.telephone = telephone;
+// No geo: business-info stores no coordinates — none are invented.
+// No openingHoursSpecification: hours are stored as free text; shown visibly below.
+
+const crumbs = [
+  { name: 'Home', url: `${SITE_ORIGIN}/` },
+  { name: 'Wilson Road shop', url: canonicalUrl },
+];
+---
+
+<BaseLayout
+  title="GoldPlus shop on Wilson Road, Kampala"
+  description={`Visit the GoldPlus shop on Wilson Road, Kampala — ${biz.openDays}, ${biz.shopHours}. Phone, directions and what to expect in store.`}
+  canonicalUrl={canonicalUrl}
+  robotsMeta={robotsMeta}
+>
+  {gatePass && <script type="application/ld+json" set:html={serializeJsonLd(localBusiness)} />}
+  <script type="application/ld+json" set:html={serializeJsonLd(breadcrumbJsonLd(crumbs))} />
+
+  <header class="border-b border-slate-800 bg-slate-950 py-10 text-white sm:py-12">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <h1 class="text-3xl font-black tracking-tight sm:text-4xl">The GoldPlus shop on Wilson Road</h1>
+      <p class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
+        GoldPlus sells its house-brand electronics accessories from one shop in central Kampala. Everything on this site ships from the same stock you would find on the shelf.
+      </p>
+    </div>
+  </header>
+
+  <main class="mx-auto w-full min-w-0 max-w-7xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+      <section class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h2 class="text-base font-black text-slate-900">Find us</h2>
+        {biz.addressLine1 && <p class="mt-2 text-sm font-semibold text-slate-800">{biz.addressLine1}</p>}
+        {biz.addressLine2 && <p class="mt-1 text-sm text-slate-600">{biz.addressLine2}</p>}
+        {biz.mapUrl && (
+          <a href={biz.mapUrl} rel="noopener" target="_blank" class="mt-4 inline-block rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Open in Google Maps</a>
+        )}
+      </section>
+
+      <section class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h2 class="text-base font-black text-slate-900">Opening hours</h2>
+        <p class="mt-2 text-sm text-slate-700">{biz.openDays}, {biz.shopHours}</p>
+        <h2 class="mt-5 text-base font-black text-slate-900">Contact</h2>
+        {biz.phoneDisplay && (
+          <p class="mt-2 text-sm text-slate-700">Phone: <a href={biz.phoneDial} class="font-bold text-slate-900 underline">{biz.phoneDisplay}</a></p>
+        )}
+        {biz.whatsappUrl && (
+          <p class="mt-1 text-sm text-slate-700"><a href={biz.whatsappUrl} rel="noopener" target="_blank" class="font-bold text-slate-900 underline">Chat on WhatsApp</a></p>
+        )}
+      </section>
+    </div>
+
+    <section class="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
+      <h2 class="text-base font-black text-slate-900">In-store and online</h2>
+      <p class="mt-2 text-sm leading-relaxed text-slate-600">
+        You can buy in person at the shop or order on this site for delivery in Kampala &amp; Wakiso. Warranty claims and returns for products bought here are handled directly at the shop — see the <a href="/warranty" class="font-bold underline">warranty</a> and <a href="/returns" class="font-bold underline">returns</a> pages for how that works.
+      </p>
+      <div class="mt-4 flex flex-wrap gap-3 text-sm font-bold">
+        <a href="/shop" class="rounded-full bg-slate-950 px-5 py-2.5 text-white hover:bg-brand-primary hover:text-slate-950">Browse the shop</a>
+        <a href="/delivery/kampala-wakiso" class="rounded-full border border-slate-300 px-5 py-2.5 text-slate-700 hover:border-brand-primary">Delivery in Kampala &amp; Wakiso</a>
+      </div>
+    </section>
+  </main>
+</BaseLayout>

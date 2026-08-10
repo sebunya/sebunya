@@ -1,0 +1,202 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProductCard from '../../components/ProductCard.astro';
+import { apiBase } from '../../lib/api';
+import { getCleanCatalog } from '../../lib/catalog/catalog';
+import { getTaxonomy } from '../../lib/taxonomy';
+import { getBusinessInfo } from '../../lib/businessInfo';
+import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
+import { SITE_ORIGIN } from '../../lib/sitemap';
+import {
+  CATEGORY_HUBS,
+  getHub,
+  getHubChild,
+  productsForHub,
+  productsForHubChild,
+  evaluateReleaseGate,
+  hasVerifiedWarrantyFact,
+  hubPath,
+} from '../../lib/categoryHubs';
+import { dedupeProductsById, isApprovedDiscoveryProduct, getProductSubcategory, subcategoryNameForSlug } from '../../lib/product-discovery';
+import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
+
+/**
+ * CATEGORY AUTHORITY ENGINE — one dynamic route serves every registered hub
+ * (/power) and child (/power/power-banks). Astro prefers static routes over
+ * dynamic ones, so every existing top-level page (all static files) wins over
+ * this route; anything not in the hub registry 404s below.
+ */
+const hubSlug = Astro.params.hub ?? '';
+const childParam = (Astro.params.child ?? '').replace(/\/+$/, '');
+const hub = getHub(hubSlug);
+const child = hub && childParam ? getHubChild(hub, childParam) : undefined;
+
+if (!hub || (childParam && !child) || childParam.includes('/')) {
+  // Same pattern as products/[slug].astro — an unregistered path is a 404.
+  return Astro.redirect('/404', 404);
+}
+
+const taxonomy = await getTaxonomy();
+const biz = await getBusinessInfo();
+
+let rawProducts: ProductPublicDto[] = [];
+try {
+  const response = await fetch(`${apiBase}/products`, { signal: AbortSignal.timeout(3000) });
+  if (response.ok) {
+    const body = (await response.json()) as ApiResponse<ProductPublicDto[]>;
+    if (body.success && Array.isArray(body.data)) rawProducts = body.data;
+  }
+} catch {
+  // Gate simply fails closed (noindex + honest empty state) — never invented stock.
+}
+
+const catalogue = dedupeProductsById(getCleanCatalog(rawProducts)).filter((p) => isApprovedDiscoveryProduct(p, taxonomy));
+const products = child ? productsForHubChild(hub, child, catalogue, taxonomy) : productsForHub(hub, catalogue, taxonomy);
+const gate = evaluateReleaseGate(products, hub.releaseGate);
+
+const page = child ?? hub;
+const path = hubPath(hub.slug, child?.slug);
+const canonicalUrl = `${SITE_ORIGIN}${path}`;
+const robotsMeta = gate.pass ? undefined : 'noindex,follow';
+
+// FAQs: static honest ones + live-data ones only when the data backs them.
+const showWarrantyFaq = hasVerifiedWarrantyFact(products);
+const faqs = hub.faqs
+  .map((f) => {
+    if (f.source === 'delivery') {
+      const answer = `Yes — ${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. The exact fee for your address is shown at checkout before you pay.`;
+      return { question: f.question, answer };
+    }
+    if (f.source === 'warranty') {
+      if (!showWarrantyFaq) return null;
+      return {
+        question: f.question,
+        answer:
+          'Products that carry a warranty state it on their product page, taken from the verified product record. See the warranty page for how claims are handled at our Wilson Road shop.',
+      };
+    }
+    return f.answer ? { question: f.question, answer: f.answer } : null;
+  })
+  .filter((f): f is { question: string; answer: string } => Boolean(f));
+
+// JSON-LD: breadcrumbs + a plain ItemList of the real products (name + url only).
+const crumbs = [
+  { name: 'Home', url: `${SITE_ORIGIN}/` },
+  { name: hub.h1, url: `${SITE_ORIGIN}${hubPath(hub.slug)}` },
+  ...(child ? [{ name: child.h1, url: canonicalUrl }] : []),
+];
+const itemListJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  itemListElement: products.slice(0, 24).map((p, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    name: p.name,
+    url: `${SITE_ORIGIN}/products/${p.slug}`,
+  })),
+};
+
+const relatedHubs = CATEGORY_HUBS.filter((h) => h.slug !== hub.slug).slice(0, 5);
+const intro = child ? [child.intro] : hub.intro;
+---
+
+<BaseLayout title={page.title} description={page.metaDescription} canonicalUrl={canonicalUrl} robotsMeta={robotsMeta}>
+  <script type="application/ld+json" set:html={serializeJsonLd(breadcrumbJsonLd(crumbs))} />
+  {products.length > 0 && <script type="application/ld+json" set:html={serializeJsonLd(itemListJsonLd)} />}
+
+  <header class="border-b border-slate-800 bg-slate-950 py-10 text-white sm:py-12">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <nav aria-label="Breadcrumb" class="text-xs font-semibold text-slate-400">
+        <a href="/" class="hover:text-white">Home</a>
+        <span aria-hidden="true"> / </span>
+        {child ? (
+          <>
+            <a href={hubPath(hub.slug)} class="hover:text-white">{hub.h1}</a>
+            <span aria-hidden="true"> / </span>
+            <span class="text-slate-200">{child.h1}</span>
+          </>
+        ) : (
+          <span class="text-slate-200">{hub.h1}</span>
+        )}
+      </nav>
+      <h1 class="mt-3 text-3xl font-black tracking-tight sm:text-4xl">{page.h1}</h1>
+      {intro.map((p) => (
+        <p class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">{p}</p>
+      ))}
+    </div>
+  </header>
+
+  <main class="mx-auto w-full min-w-0 max-w-7xl overflow-hidden px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
+    {!child && hub.children.length > 0 && (
+      <section aria-label="Browse this range" class="flex flex-wrap gap-2">
+        {hub.children.map((c) => (
+          <a href={hubPath(hub.slug, c.slug)} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">{c.h1}</a>
+        ))}
+        <a href={hub.categorySlug ? `/shop?category=${hub.categorySlug}` : '/shop'} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">All in shop</a>
+      </section>
+    )}
+
+    {products.length > 0 ? (
+      <section aria-label="Products" class="mt-7">
+        <p class="text-sm font-semibold text-slate-700">{products.length} product{products.length === 1 ? '' : 's'} in this range</p>
+        <div class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {products.map((product) => (
+            <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy)} />
+          ))}
+        </div>
+      </section>
+    ) : (
+      <section class="mt-7 rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10">
+        <h2 class="text-xl font-black text-slate-900">Range being stocked</h2>
+        <p class="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600">This range has no live listings right now — see the full shop for what is in stock today.</p>
+        <a href="/shop" class="mt-5 inline-block rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Browse the shop</a>
+      </section>
+    )}
+
+    {hub.buyingCriteria.length > 0 && (
+      <section aria-labelledby="buying-guide-heading" class="mt-12">
+        <h2 id="buying-guide-heading" class="text-xl font-black text-slate-900">How to choose</h2>
+        <div class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {hub.buyingCriteria.map((c) => (
+            <div class="rounded-2xl border border-slate-200 bg-white p-5">
+              <h3 class="text-sm font-black text-slate-900">{c.heading}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-600">{c.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    {faqs.length > 0 && (
+      <section aria-labelledby="faq-heading" class="mt-12">
+        <h2 id="faq-heading" class="text-xl font-black text-slate-900">Common questions</h2>
+        <div class="mt-5 space-y-3">
+          {faqs.map((f) => (
+            <details class="rounded-2xl border border-slate-200 bg-white p-5">
+              <summary class="cursor-pointer text-sm font-black text-slate-900">{f.question}</summary>
+              <p class="mt-2 text-sm leading-relaxed text-slate-600">{f.answer}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <section aria-label="Delivery, warranty and returns" class="mt-12 flex flex-wrap gap-3 text-sm font-bold">
+      <a href="/delivery/kampala-wakiso" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-slate-700 hover:border-brand-primary">Delivery in Kampala &amp; Wakiso</a>
+      <a href="/warranty" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-slate-700 hover:border-brand-primary">Warranty</a>
+      <a href="/returns" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-slate-700 hover:border-brand-primary">Returns</a>
+      <a href="/locations/wilson-road" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-slate-700 hover:border-brand-primary">Our Wilson Road shop</a>
+    </section>
+
+    {relatedHubs.length > 0 && (
+      <section aria-labelledby="related-heading" class="mt-10">
+        <h2 id="related-heading" class="text-base font-black text-slate-900">More GoldPlus ranges</h2>
+        <div class="mt-3 flex flex-wrap gap-2">
+          {relatedHubs.map((h) => (
+            <a href={hubPath(h.slug)} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">{h.h1}</a>
+          ))}
+        </div>
+      </section>
+    )}
+  </main>
+</BaseLayout>

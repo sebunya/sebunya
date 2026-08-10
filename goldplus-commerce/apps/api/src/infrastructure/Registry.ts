@@ -17,6 +17,7 @@ import { DrizzleCreatorRepository } from './db/repositories/DrizzleCreatorReposi
 import { DrizzleFlashSaleRepository } from './db/repositories/DrizzleFlashSaleRepository';
 import { DrizzleSeoRepository } from './db/repositories/DrizzleSeoRepository';
 import { DrizzleSeoGrowthRepository } from './db/repositories/DrizzleSeoGrowthRepository';
+import { DrizzleSeoIntegrationRepository } from './db/repositories/DrizzleSeoIntegrationRepository';
 import { NoSendMobileMoneyDisbursement } from '../application/ports/IMobileMoneyDisbursement';
 import { DrizzlePricingOperationsRepository } from './db/repositories/DrizzlePricingOperationsRepository';
 import { DrizzleDealerRepository } from './db/repositories/DrizzleDealerRepository';
@@ -614,6 +615,7 @@ export class Registry {
   public readonly flashSaleRepo = new DrizzleFlashSaleRepository();
   public readonly seoRepo = new DrizzleSeoRepository();
   public readonly seoGrowthRepo = new DrizzleSeoGrowthRepository();
+  public readonly seoIntegrationRepo = new DrizzleSeoIntegrationRepository();
   public readonly mobileMoneyDisbursement = new NoSendMobileMoneyDisbursement();
   public readonly submitReviewUseCase = new SubmitReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly pricingOperationsRepo = new DrizzlePricingOperationsRepository();

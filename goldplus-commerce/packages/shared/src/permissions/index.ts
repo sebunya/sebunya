@@ -134,6 +134,12 @@ export const PERMISSIONS = {
   SEO_COMPETITORS_MANAGE: 'seo.competitors.manage',
   SEO_SERP_MANAGE: 'seo.serp.manage',
   SEO_INTEGRATIONS_MANAGE: 'seo.integrations.manage',
+  // Integrations control plane (0118): connecting a provider, handling raw
+  // credentials, and running the experimental custom read-only connector are
+  // separately dangerous acts, so each carries its own right.
+  SEO_INTEGRATIONS_CONNECT: 'seo.integrations.connect',
+  SEO_INTEGRATIONS_CREDENTIALS: 'seo.integrations.credentials',
+  SEO_INTEGRATIONS_CUSTOM_CONNECTOR: 'seo.integrations.custom_connector',
   SEO_EXPERIMENTS_MANAGE: 'seo.experiments.manage',
   SEO_APPROVE_HIGH_RISK: 'seo.approve_high_risk',
   // Payments brief 2026-08-06: giving money back is its own right, separate

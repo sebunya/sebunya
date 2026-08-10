@@ -49,7 +49,7 @@ const COMPETITORS: Row[] = [
   { canonicalName: 'Jumia Uganda', domains: ['jumia.ug'], businessType: 'MARKETPLACE', directness: 'DIRECT', ...UG, localPresence: true, isMarketplace: true, isBrand: false, categoryOverlap: ['phones', 'accessories', 'electronics', 'computing'] },
   { canonicalName: 'Jiji Uganda', domains: ['jiji.ug'], businessType: 'CLASSIFIED_MARKETPLACE', directness: 'DIRECT', ...UG, localPresence: true, isMarketplace: true, isBrand: false, categoryOverlap: ['phones', 'accessories', 'electronics'] },
   { canonicalName: 'Kilimall Uganda', domains: ['kilimall.co.ug'], businessType: 'REGIONAL_MARKETPLACE', directness: 'DIRECT', ...UG, localPresence: true, isMarketplace: true, isBrand: false, categoryOverlap: ['phones', 'accessories', 'electronics'] },
-  { canonicalName: 'MoMo Market', aliases: ['MoMo Market', 'Market by MoMo', 'MTN MoMo Market'], businessType: 'MARKETPLACE', directness: 'DIRECT', ...UG, localPresence: true, isMarketplace: true, isBrand: false },
+  { canonicalName: 'MoMo Market', aliases: ['MoMo Market', 'Market by MoMo', 'MTN MoMo Market'], businessType: 'REGIONAL_MARKETPLACE', directness: 'DIRECT', ...UG, localPresence: true, isMarketplace: true, isBrand: false },
   { canonicalName: 'Oraimo Uganda', domains: ['oraimo.com'], businessType: 'DIRECT_BRAND', directness: 'DIRECT', ...UG, localPresence: true, isMarketplace: false, isBrand: true, categoryOverlap: ['accessories', 'audio', 'power'] },
   unverifiedLocal('BLACK'),
   unverifiedLocal('TechXpress Uganda'),
@@ -104,6 +104,12 @@ const COMPETITORS: Row[] = [
   unverifiedLocal('Nexus Computers Uganda', { businessType: 'COMPUTER_RETAILER' }),
   unverifiedLocal('StarTech Uganda'),
   unverifiedLocal('Ayne Uganda'),
+  // 2026-08-10 reconciliation against the 58-entry source workbook: these two
+  // were in the workbook but absent from the first seed. Classification is
+  // deliberately UNRESOLVED — the workbook names them without enough evidence
+  // to classify, and we do not invent business facts.
+  unverifiedLocal('RedSMS Uganda', { businessType: 'UNRESOLVED', directness: 'UNRESOLVED' }),
+  unverifiedLocal('Kampala Arcade', { businessType: 'UNRESOLVED', directness: 'UNRESOLVED' }),
 ];
 
 const INTEGRATIONS: Record<string, string[]> = {

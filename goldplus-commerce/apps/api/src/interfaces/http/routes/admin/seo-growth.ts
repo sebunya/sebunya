@@ -59,6 +59,15 @@ const requirePermissionsAnySeoManage = async (c: Context, next: () => Promise<vo
 
 const actorId = (c: Context): string => (c.get('user') as any).id as string;
 
+/** 0118: provider ids holding an ACTIVE vault credential (defensive: [] when the control plane is unavailable). */
+const vaultConfiguredProviders = async (): Promise<string[]> => {
+  try {
+    return await Registry.getInstance().seoIntegrationRepo.listVaultConfiguredProviders();
+  } catch {
+    return [];
+  }
+};
+
 /** Every mutation lands in the platform audit trail as well as the SEO change ledger. */
 const audit = async (c: Context, action: string, entity: string, entityId: string, newState?: Record<string, unknown>) => {
   await Registry.getInstance().createAuditLogUseCase.execute({
@@ -78,7 +87,8 @@ routes.get('/overview', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) =>
     repo.marketShare(30),
     repo.overviewCounts(),
     repo.listCrawlRuns(1),
-    new SyncSeoIntegrationStatusesUseCase(repo).execute(),
+    vaultConfiguredProviders().then((vaultIds) =>
+      new SyncSeoIntegrationStatusesUseCase(repo, process.env, vaultIds).execute()),
     repo.listAlerts({ status: 'OPEN', limit: 20 }),
   ]);
   return ok(c, {
@@ -359,19 +369,25 @@ routes.post('/change-ledger', requirePermissionsAnySeoManage, async (c) => {
 // ── Integrations ────────────────────────────────────────────────────────────
 
 routes.get('/integrations', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
-  const uc = new SyncSeoIntegrationStatusesUseCase(Registry.getInstance().seoGrowthRepo);
+  const uc = new SyncSeoIntegrationStatusesUseCase(
+    Registry.getInstance().seoGrowthRepo,
+    process.env,
+    await vaultConfiguredProviders(),
+  );
   return ok(c, await uc.execute());
 });
 
 routes.post('/integrations/gsc/sync', requirePermissions([PERMISSIONS.SEO_INTEGRATIONS_MANAGE]), async (c) => {
-  // Honest no-op path: without credentials nothing is enqueued and nothing pretends to run.
-  const hasCredentials =
+  // Honest no-op path: without credentials (vault OR env — 0118 is vault-first)
+  // nothing is enqueued and nothing pretends to run.
+  const hasEnvCredentials =
     (process.env.GSC_SERVICE_ACCOUNT_JSON ?? '').trim() !== '' &&
     (process.env.GSC_SITE_URL ?? '').trim() !== '';
-  if (!hasCredentials) {
+  const hasVaultCredentials = (await vaultConfiguredProviders()).includes('google-search-console');
+  if (!hasEnvCredentials && !hasVaultCredentials) {
     return ok(c, {
       status: 'READY_FOR_CREDENTIALS',
-      message: 'GSC is not configured. Set GSC_SERVICE_ACCOUNT_JSON and GSC_SITE_URL to enable syncing.',
+      message: 'GSC is not configured. Add a Google Search Console connection with a credential in the Integrations control plane (or set GSC_SERVICE_ACCOUNT_JSON and GSC_SITE_URL) to enable syncing.',
     });
   }
   const queue = QueueService.getInstance().getQueue(QUEUES.ANALYTICS_FANOUT);
@@ -387,7 +403,22 @@ routes.post('/integrations/indexnow/submit', requirePermissions([PERMISSIONS.SEO
   if (!urls || urls.length === 0) return bad(c, 'BAD_INPUT', 'urls must be a non-empty array.');
   const { SubmitIndexNowUseCase } = await import('../../../../application/use-cases/seo-growth/SubmitIndexNowUseCase');
   const { IndexNowClient } = await import('../../../../infrastructure/seo/IndexNowClient');
-  const result = await new SubmitIndexNowUseCase(new IndexNowClient()).execute(urls);
+  // 0118: the IndexNow key resolves vault-first, env-second (bootstrap/emergency).
+  let indexNowKey = (process.env.INDEXNOW_KEY ?? '').trim();
+  try {
+    const intRepo = Registry.getInstance().seoIntegrationRepo;
+    const connection = await intRepo.findConnectionWithActiveCredential('indexnow');
+    if (connection) {
+      const { IntegrationCredentialVault } = await import('../../../../infrastructure/seo/IntegrationCredentialVault');
+      const vault = IntegrationCredentialVault.fromEnv();
+      const credential = await intRepo.getActiveCredential(connection.id);
+      if (vault && credential) {
+        const secret = vault.decrypt<Record<string, unknown>>(credential.ciphertext);
+        if (typeof secret.apiKey === 'string' && secret.apiKey.trim() !== '') indexNowKey = secret.apiKey.trim();
+      }
+    }
+  } catch { /* vault unavailable — env fallback stands */ }
+  const result = await new SubmitIndexNowUseCase(new IndexNowClient(), { ...process.env, INDEXNOW_KEY: indexNowKey }).execute(urls);
   if (result.status === 'REJECTED') return bad(c, 'BAD_INPUT', result.reason);
   await audit(c, 'SEO_INDEXNOW_SUBMITTED', 'seo_integration', 'INDEXNOW', { result: result.status, urlCount: urls.length });
   return ok(c, result);

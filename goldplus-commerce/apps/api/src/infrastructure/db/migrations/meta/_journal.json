@@ -827,6 +827,13 @@
       "when": 1789509600000,
       "tag": "0117_seo_opportunity_technical_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "5",
+      "when": 1789596000000,
+      "tag": "0118_seo_integration_platform",
+      "breakpoints": true
     }
   ]
 }

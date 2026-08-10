@@ -37,10 +37,27 @@ export interface SeoIntegrationView {
   status: string;
   envVars: Array<{ name: string; present: boolean }>;
   computedStatus: 'CONNECTED' | 'READY_FOR_CREDENTIALS' | null;
+  /** 0118: true when the integrations control plane holds an ACTIVE vault credential for this provider. */
+  vaultConfigured: boolean;
   lastSuccessAt: unknown;
   lastFailureAt: unknown;
   lastError: unknown;
 }
+
+/** Legacy env-presence provider key → 0118 control-plane provider id. */
+export const LEGACY_TO_PLATFORM_PROVIDER: Record<string, string> = {
+  GSC: 'google-search-console',
+  GA4: 'google-analytics-4',
+  MERCHANT_CENTER: 'google-merchant-center',
+  GBP: 'google-business-profile',
+  KEYWORD_PROVIDER: 'keyword-provider-generic',
+  RANK_TRACKER: 'rank-tracker-generic',
+  BACKLINK_PROVIDER: 'backlink-provider-generic',
+  BING_WEBMASTER: 'bing-webmaster',
+  INDEXNOW: 'indexnow',
+  PAGESPEED: 'google-pagespeed',
+  CRUX: 'google-crux',
+};
 
 export interface SeoIntegrationStore {
   listIntegrations(): Promise<SeoIntegrationRow[]>;
@@ -64,6 +81,8 @@ export class SyncSeoIntegrationStatusesUseCase {
   constructor(
     private readonly store: SeoIntegrationStore,
     private readonly env: Record<string, string | undefined> = process.env,
+    /** 0118 control-plane provider ids that hold an ACTIVE vault credential. */
+    private readonly vaultConfiguredProviderIds: string[] = [],
   ) {}
 
   async execute(): Promise<SeoIntegrationView[]> {
@@ -91,7 +110,14 @@ export class SyncSeoIntegrationStatusesUseCase {
       if (codeDeclared && storedDeclared && codeDeclared.join('|') !== storedDeclared.join('|')) {
         await this.store.upsertIntegrationStatus(row.provider, { config: { envVars: codeDeclared } });
       }
-      const { envVars, computedStatus } = computeEnvPresence(declared, this.env);
+      const presence = computeEnvPresence(declared, this.env);
+      const envVars = presence.envVars;
+      // 0118: a vault-configured connection counts as configured even when the
+      // legacy env vars are absent — status reflects BOTH sources.
+      const vaultConfigured = this.vaultConfiguredProviderIds.includes(
+        LEGACY_TO_PLATFORM_PROVIDER[row.provider] ?? row.provider,
+      );
+      const computedStatus = vaultConfigured ? 'CONNECTED' : presence.computedStatus;
 
       let status = row.status;
       // Report + persist the computed state, but never overwrite a manual
@@ -105,6 +131,7 @@ export class SyncSeoIntegrationStatusesUseCase {
         status,
         envVars,
         computedStatus,
+        vaultConfigured,
         lastSuccessAt: row.last_success_at ?? null,
         lastFailureAt: row.last_failure_at ?? null,
         lastError: row.last_error ?? null,

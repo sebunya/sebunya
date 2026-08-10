@@ -26,6 +26,7 @@ import adminNavRoutes from './routes/admin/nav';
 import navPublicRoutes from './routes/nav';
 import seoPublicRoutes from './routes/seo';
 import adminSeoGrowthRoutes from './routes/admin/seo-growth';
+import adminSeoIntegrationRoutes from './routes/admin/seo-integrations';
 import adminBusinessInfoRoutes from './routes/admin/business-info';
 import adminTaxonomyRoutes from './routes/admin/taxonomy';
 import adminHomepageRoutes from './routes/admin/homepage';
@@ -247,6 +248,7 @@ app.route('/recommendations', recommendationRoutes);
 app.route('/hero', heroPublicRoutes);
 app.route('/nav', navPublicRoutes);
 app.route('/seo', seoPublicRoutes);
+app.route('/admin/seo/integrations', adminSeoIntegrationRoutes);
 app.route('/admin/seo', adminSeoGrowthRoutes);
 app.route('/telemetry', telemetryRoutes);
 app.route('/health', healthRoutes);
@@ -383,6 +385,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/roles',
   '/admin/search-demand',
   '/admin/seo',
+  '/admin/seo/integrations',
   '/seo',
   '/admin/surveys',
   '/admin/users',
