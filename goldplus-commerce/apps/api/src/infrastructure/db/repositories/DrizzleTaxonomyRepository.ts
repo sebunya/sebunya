@@ -14,7 +14,9 @@ const toStored = (row: any): StoredTaxonomy => ({
 /**
  * The config is a JSON ARRAY. postgres-js would serialize a raw JS array as a
  * Postgres array literal, so (unlike the object singletons) we bind the JSON
- * text and cast ::jsonb — a single parse, no double-encode.
+ * text — cast ::text FIRST so the driver types the parameter as plain text
+ * (a bare ::jsonb made it JSON-encode the string again, storing a quoted
+ * scalar; the tolerant reader masked it), then ::jsonb parses it once.
  */
 export class DrizzleTaxonomyRepository implements ITaxonomyRepository {
   async getConfig(): Promise<StoredTaxonomy | null> {
@@ -26,7 +28,7 @@ export class DrizzleTaxonomyRepository implements ITaxonomyRepository {
     const rows = rowsOf(
       await db.execute(sql`
         update taxonomy_config
-           set config = ${JSON.stringify(config)}::jsonb,
+           set config = ${JSON.stringify(config)}::text::jsonb,
                version = version + 1,
                updated_by = ${actorId}::uuid,
                updated_at = now()
@@ -41,7 +43,7 @@ export class DrizzleTaxonomyRepository implements ITaxonomyRepository {
     const rows = rowsOf(
       await db.execute(sql`
         insert into taxonomy_config (id, config, version)
-        values (true, ${JSON.stringify(defaultConfig)}::jsonb, 1)
+        values (true, ${JSON.stringify(defaultConfig)}::text::jsonb, 1)
         on conflict (id) do nothing
         returning id
       `),
