@@ -215,7 +215,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     primaryApiEndpoints: ['/admin/measurement-control-tower', '/admin/measurement'],
     requiredPermissions: [P.REPORTS_READ],
     optionalPermissions: [P.SETTINGS_MANAGE],
-    dataDependencies: [{ name: 'postgres', table: 'measurement_events' }],
+    dataDependencies: [{ name: 'postgres', table: 'purchase_measurement_events' }],
     providerDependencies: ['meta', 'google', 'tiktok'],
     activationPolicy: 'PROVIDER_CONFIG',
     supportedActions: [
@@ -236,7 +236,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     primaryApiEndpoints: ['/governance/admin/support/inbox'],
     requiredPermissions: [P.REPORTS_READ],
     optionalPermissions: [P.SETTINGS_MANAGE],
-    dataDependencies: [{ name: 'postgres', table: 'support_cases' }],
+    dataDependencies: [{ name: 'postgres', table: 'support_issues' }],
     providerDependencies: [],
     activationPolicy: 'AUTOMATIC',
     supportedActions: [
