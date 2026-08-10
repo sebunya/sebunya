@@ -275,7 +275,7 @@ const canonical = canonicalUrl ?? Astro.url.toString();
                 href={s.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                class="w-11 h-11 bg-zinc-900 border border-zinc-800/80 hover:border-brand-primary text-zinc-400 hover:text-brand-primary rounded-full flex items-center justify-center transition-all hover:bg-zinc-850 focus:ring-2 focus:ring-brand-primary outline-none"
+                class="w-11 h-11 bg-zinc-900 border border-zinc-700 hover:border-brand-primary text-zinc-200 hover:text-brand-primary rounded-full flex items-center justify-center transition-all hover:bg-zinc-800 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none"
                 aria-label={`GoldPlus on ${s.label}`}
                 title={s.label}
               >
@@ -292,10 +292,10 @@ const canonical = canonicalUrl ?? Astro.url.toString();
           <div class="max-w-sm">
             <h4 class="font-bold text-xs uppercase tracking-wider mb-4 text-white">Pay how you already pay</h4>
             <div class="flex flex-wrap items-center gap-2.5 mb-6">
-              <span class="inline-flex items-center justify-center h-11 px-3 rounded-lg bg-white shadow-sm"><img src="/payment/mtn-momo.svg" alt="MTN Mobile Money" class="h-7 w-auto object-contain" /></span>
-              <span class="inline-flex items-center justify-center h-11 px-3 rounded-lg bg-white shadow-sm"><img src="/payment/airtel-money.svg" alt="Airtel Money" class="h-7 w-auto object-contain" /></span>
-              <span class="inline-flex items-center justify-center h-11 px-3 rounded-lg bg-white shadow-sm"><img src="/payment/visa.svg" alt="Visa" class="h-6 w-auto object-contain" /></span>
-              <span class="inline-flex items-center justify-center h-11 px-3 rounded-lg bg-white shadow-sm"><img src="/payment/mastercard.svg" alt="Mastercard" class="h-6 w-auto object-contain" /></span>
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="MTN Mobile Money"><img src="/payment/mtn-momo.svg" alt="MTN Mobile Money" class="h-9 w-auto object-contain" /></span>
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Airtel Money"><img src="/payment/airtel-money.svg" alt="Airtel Money" class="h-9 w-auto object-contain" /></span>
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Visa"><img src="/payment/visa.svg" alt="Visa" class="h-5 w-auto object-contain" /></span>
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Mastercard"><img src="/payment/mastercard.svg" alt="Mastercard" class="h-7 w-auto object-contain" /></span>
             </div>
             <p>&copy; {new Date().getFullYear()} GoldPlus. All rights reserved.</p>
           </div>

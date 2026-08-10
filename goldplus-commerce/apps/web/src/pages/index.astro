@@ -139,7 +139,7 @@ const usedProductIds = [
         {homepageCategories.map((cat) => (
           <a
             href={`/shop?category=${cat.slug}`}
-            class="gp-cat-tile block rounded-2xl outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/40"
+            class="gp-cat-tile flex flex-col rounded-2xl outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/40 min-h-[168px] max-lg:[&:last-child:nth-child(odd)]:col-span-2 sm:max-lg:[&:last-child:nth-child(odd)]:col-span-1"
             style="background:#101010;border:1px solid rgba(243,239,232,.1);padding:26px 18px 20px;transition:border-color .25s,background .25s"
           >
             {cat.imageUrl ? (
@@ -151,7 +151,7 @@ const usedProductIds = [
               <svg viewBox="0 0 24 24" fill="none" stroke="#93D500" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
                 class="block mb-6" style="width:38px;height:38px" set:html={categorySilhouette(cat)} />
             )}
-            <h3 class="text-[15px] font-semibold mb-1" style="color:#F3EFE8">{cat.name}</h3>
+            <h3 class="text-[15px] font-semibold mb-1 mt-auto" style="color:#F3EFE8">{cat.name}</h3>
             {cat.homepageBlurb && <p class="text-[12.5px] leading-snug" style="color:rgba(243,239,232,.62)">{cat.homepageBlurb}</p>}
           </a>
         ))}
