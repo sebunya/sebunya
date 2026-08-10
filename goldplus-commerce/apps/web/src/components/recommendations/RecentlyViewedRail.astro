@@ -209,29 +209,43 @@ const railDiscount = await getStorefrontDiscount();
         const attributionId = crypto.randomUUID();
         const railRenderId = sharedRailRenderId;
 
+        // The SAME server-handled add/buy the PDP and every other card use.
+        const canBuy = item.availability?.kind === "in_stock" && hasPrice;
+        const ctaHtml = canBuy
+          ? `<form method="POST" action="/cart" class="mt-3 flex gap-2">
+               <input type="hidden" name="action" value="add" />
+               <input type="hidden" name="productId" value="${escapedProductId}" />
+               <input type="hidden" name="slug" value="${escapedSlug}" />
+               <input type="hidden" name="name" value="${escapedName}" />
+               <input type="hidden" name="priceUgx" value="${Number(item.price) || 0}" />
+               <button type="submit" aria-label="Add ${escapedName} to cart" class="flex-1 min-h-10 rounded-full border border-slate-300 text-[11px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]">Add to cart</button>
+               <button type="submit" name="buyNow" value="1" aria-label="Buy ${escapedName} now" class="flex-1 min-h-10 rounded-full text-[11px] font-black uppercase tracking-wider outline-none transition hover:shadow-md hover:shadow-brand-primary/25 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]" style="background:#93D500;color:#0A0A0A">Buy now</button>
+             </form>`
+          : `<a href="/products/${escapedSlug}" class="mt-3 flex min-h-10 items-center justify-center rounded-full border border-slate-300 text-[11px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 focus-visible:ring-2 focus-visible:ring-brand-primary">View product</a>`;
+
         return `
           <li class="group list-none h-full">
-            <a href="/products/${escapedSlug}"
-               aria-label="View ${escapedName}. ${priceLabel}. ${availabilityLabel}."
-               data-recommendation-click 
-               data-placement="recently_viewed" 
-               data-product-id="${escapedProductId}"
-               data-attribution-id="${attributionId}"
-               data-rail-render-id="${railRenderId}"
-               data-reason-code="${isUsingFallback ? 'RECENTLY_VIEWED_FALLBACK' : 'RECENTLY_VIEWED'}"
-               class="flex flex-col h-full border border-brand-borderGrey rounded-3xl p-5 hover:border-brand-primary hover:shadow-xl transition-all duration-300 bg-white outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30">
-              <div class="aspect-square bg-brand-softGrey rounded-2xl overflow-hidden mb-4 relative border border-brand-borderGrey/50">
+            <div class="flex flex-col h-full border border-brand-borderGrey rounded-3xl p-5 hover:border-brand-primary hover:shadow-xl transition-all duration-300 bg-white">
+              <a href="/products/${escapedSlug}"
+                 aria-label="View ${escapedName}. ${priceLabel}. ${availabilityLabel}."
+                 data-recommendation-click 
+                 data-placement="recently_viewed" 
+                 data-product-id="${escapedProductId}"
+                 data-attribution-id="${attributionId}"
+                 data-rail-render-id="${railRenderId}"
+                 data-reason-code="${isUsingFallback ? 'RECENTLY_VIEWED_FALLBACK' : 'RECENTLY_VIEWED'}"
+                 class="block aspect-square bg-brand-softGrey rounded-2xl overflow-hidden mb-4 relative border border-brand-borderGrey/50 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30">
                  ${img}
-              </div>
+              </a>
               <div class="flex flex-col flex-grow">
-                <h3 class="text-base font-bold text-brand-charcoal leading-tight mb-2 group-hover:text-brand-primary transition-colors line-clamp-2 min-h-[2.5rem]">${escapedName}</h3>
+                <h3 class="text-base font-bold text-brand-charcoal leading-tight mb-2 group-hover:text-brand-primary transition-colors line-clamp-2 min-h-[2.5rem]"><a href="/products/${escapedSlug}" class="outline-none focus-visible:underline">${escapedName}</a></h3>
                 <p class="mb-3 text-[11px] font-semibold ${availabilityClass}">${availabilityLabel}</p>
                 <div class="mt-auto pt-4 border-t border-brand-borderGrey flex items-center justify-between gap-3">
                   ${priceHtml}
-                  <span class="px-4 py-2 rounded-xl font-bold text-xs transition-all duration-300 bg-brand-softGrey text-brand-charcoal group-hover:bg-brand-charcoal group-hover:text-white">View</span>
                 </div>
+                ${ctaHtml}
               </div>
-            </a>
+            </div>
           </li>
         `;
       })

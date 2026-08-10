@@ -48,19 +48,10 @@ const productType = lowerName.includes("charger") ? "Charger"
 ---
 
 <li class="group list-none h-full">
-  <a
-    href={`/products/${item.slug}`}
-    aria-label={`View ${item.name}. ${formattedPrice}. ${availabilityLabel}.`}
-    class={variant === "cart-compact" 
-      ? "flex flex-col h-full border border-slate-200/80 rounded-2xl p-4 hover:border-brand-primary hover:shadow-lg transition-all duration-300 bg-white relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
-      : "flex flex-col h-full border border-brand-borderGrey rounded-3xl p-5 hover:border-brand-primary hover:shadow-xl transition-all duration-300 bg-white relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"}
-    data-recommendation-click
-    data-placement={placement}
-    data-product-id={item.productId}
-    data-attribution-id={item.attributionId}
-    data-rail-render-id={item.railRenderId}
-    data-rule-id={item.ruleId}
-    data-reason-code={item.reasonCode}
+  <div
+    class={variant === "cart-compact"
+      ? "flex flex-col h-full border border-slate-200/80 rounded-2xl p-4 hover:border-brand-primary hover:shadow-lg transition-all duration-300 bg-white relative"
+      : "flex flex-col h-full border border-brand-borderGrey rounded-3xl p-5 hover:border-brand-primary hover:shadow-xl transition-all duration-300 bg-white relative"}
   >
     {/* Render small rationale tag if exists */}
     {displayReason && (
@@ -71,9 +62,19 @@ const productType = lowerName.includes("charger") ? "Charger"
       </div>
     )}
 
-    <div class={variant === "cart-compact" 
-      ? "aspect-square bg-slate-50 rounded-xl overflow-hidden mb-3 relative border border-slate-100"
-      : "aspect-square bg-brand-softGrey rounded-2xl overflow-hidden mb-4 relative border border-brand-borderGrey/50"}>
+    <a
+      href={`/products/${item.slug}`}
+      aria-label={`View ${item.name}. ${formattedPrice}. ${availabilityLabel}.`}
+      data-recommendation-click
+      data-placement={placement}
+      data-product-id={item.productId}
+      data-attribution-id={item.attributionId}
+      data-rail-render-id={item.railRenderId}
+      data-rule-id={item.ruleId}
+      data-reason-code={item.reasonCode}
+      class={variant === "cart-compact"
+        ? "block aspect-square bg-slate-50 rounded-xl overflow-hidden mb-3 relative border border-slate-100 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+        : "block aspect-square bg-brand-softGrey rounded-2xl overflow-hidden mb-4 relative border border-brand-borderGrey/50 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"}>
       {item.imageUrl ? (
         <img
           src={item.imageUrl}
@@ -88,13 +89,13 @@ const productType = lowerName.includes("charger") ? "Charger"
            <span class="text-[9px] font-bold text-brand-mutedGrey/50 mt-1 uppercase tracking-tight">Image unavailable</span>
         </div>
       )}
-    </div>
+    </a>
 
     <div class="flex flex-col flex-grow">
       <h3 class={variant === "cart-compact"
         ? "text-sm font-bold text-gray-900 leading-tight mb-1.5 group-hover:text-brand-primary transition-colors line-clamp-1"
         : "text-base font-bold text-brand-charcoal leading-tight mb-2 group-hover:text-brand-primary transition-colors line-clamp-2 min-h-[2.5rem]"}>
-        {item.name}
+        <a href={`/products/${item.slug}`} class="outline-none focus-visible:underline">{item.name}</a>
       </h3>
       <p class={`mb-3 text-[11px] font-semibold ${stockIsLow ? 'text-amber-700 font-bold' : 'text-brand-mutedGrey'}`}>{availabilityLabel}</p>
 
@@ -119,16 +120,40 @@ const productType = lowerName.includes("charger") ? "Charger"
             {formattedPrice}
           </span>
         )}
-        {variant === "cart-compact" ? (
-          <span class="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 bg-slate-50 text-gray-900 group-hover:bg-brand-charcoal group-hover:text-white border border-slate-200 group-hover:border-transparent flex-shrink-0">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-          </span>
-        ) : (
-          <span class="px-4 py-2 rounded-xl font-bold text-xs transition-all duration-300 bg-brand-softGrey text-brand-charcoal group-hover:bg-brand-charcoal group-hover:text-white">
-            View
-          </span>
-        )}
       </div>
+
+      {/* The call to action — the SAME server-handled add/buy the PDP uses
+          (form POST /cart; buyNow goes straight to checkout on success). */}
+      {item.availability?.kind === "in_stock" && hasValidPrice ? (
+        <form method="POST" action="/cart" class={variant === "cart-compact" ? "mt-2.5 flex gap-1.5" : "mt-3 flex gap-2"}>
+          <input type="hidden" name="action" value="add" />
+          <input type="hidden" name="productId" value={item.productId} />
+          <input type="hidden" name="slug" value={item.slug} />
+          <input type="hidden" name="name" value={item.name} />
+          <input type="hidden" name="priceUgx" value={item.price ?? 0} />
+          <button
+            type="submit"
+            aria-label={`Add ${item.name} to cart`}
+            class={variant === "cart-compact"
+              ? "flex-1 min-h-9 rounded-full border border-slate-300 text-[10px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]"
+              : "flex-1 min-h-10 rounded-full border border-slate-300 text-[11px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]"}
+          >Add to cart</button>
+          <button
+            type="submit"
+            name="buyNow"
+            value="1"
+            aria-label={`Buy ${item.name} now`}
+            class={variant === "cart-compact"
+              ? "flex-1 min-h-9 rounded-full text-[10px] font-black uppercase tracking-wider outline-none transition hover:shadow-md hover:shadow-brand-primary/25 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]"
+              : "flex-1 min-h-10 rounded-full text-[11px] font-black uppercase tracking-wider outline-none transition hover:shadow-md hover:shadow-brand-primary/25 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]"}
+            style="background:#93D500;color:#0A0A0A"
+          >Buy now</button>
+        </form>
+      ) : (
+        <a href={`/products/${item.slug}`} class="mt-3 flex min-h-10 items-center justify-center rounded-full border border-slate-300 text-[11px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 focus-visible:ring-2 focus-visible:ring-brand-primary">
+          View product
+        </a>
+      )}
     </div>
-  </a>
+  </div>
 </li>

@@ -102,6 +102,32 @@ describe('product-card commercial signals', () => {
     expect(card).not.toContain("querySelector('[data-sale-ends]')");
   });
 
+  it('EVERY card carries a real call to action — the same server-handled add/buy the PDP uses', () => {
+    // ProductCard, RecommendationCard and the client-built rail all POST the
+    // SAME /cart form (action=add, buyNow=1 goes straight to checkout); an
+    // unbuyable product gets an honest "View product" link, never a dead button.
+    const rec = read('apps/web/src/components/recommendations/RecommendationCard.astro');
+    const rv = read('apps/web/src/components/recommendations/RecentlyViewedRail.astro');
+    for (const [name, src] of [['ProductCard', card], ['RecommendationCard', rec], ['RecentlyViewedRail', rv]] as const) {
+      expect(src, `${name} must post the canonical add form`).toContain('method="POST" action="/cart"');
+      expect(src, `${name} must offer Buy now`).toContain('name="buyNow"');
+      expect(src, `${name} must offer Add to cart`).toContain('Add to cart');
+      expect(src, `${name} must degrade honestly when unbuyable`).toContain('View product');
+    }
+    // A form may never nest inside an anchor — the card wrappers are divs.
+    expect(rec).not.toMatch(/<a[^>]*>\s*[\s\S]*<form[\s\S]*<\/form>[\s\S]*<\/a>\s*<\/li>/);
+  });
+
+  it('the Support & Trust promise renders from ONE component, on the shop grid and the PDP', () => {
+    const strip = read('apps/web/src/components/SupportTrustStrip.astro');
+    expect(strip).toContain('Buy with confidence. Every GoldPlus product is supported with verification tools');
+    expect(strip).toContain('/verification');
+    expect(strip).toContain('/support/issue');
+    expect(strip).toContain('/support/fake');
+    expect(read('apps/web/src/pages/shop.astro')).toContain('<SupportTrustStrip layout="row" />');
+    expect(read('apps/web/src/pages/products/[slug].astro')).toContain('<SupportTrustStrip />');
+  });
+
   it('sale price still mirrors the evaluator formula (display equals charge)', () => {
     expect(card).toContain('salePriceUgx(product.retailPriceUgx!, discount.percentBps)');
     const lib = read('apps/web/src/lib/storefrontDiscount.ts');

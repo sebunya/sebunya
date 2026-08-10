@@ -2,6 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import ProductCard from '../components/ProductCard.astro';
 import Notice from '../components/Notice.astro';
+import SupportTrustStrip from '../components/SupportTrustStrip.astro';
 import { apiBase, publicApiBase } from '../lib/api';
 import { getCleanCatalog } from '../lib/catalog/catalog';
 import {
@@ -212,6 +213,9 @@ const activeFilters = [
         </div>
       </section>
     )}
+    <div class="mt-12">
+      <SupportTrustStrip layout="row" />
+    </div>
   </main>
 
   <script is:inline define:vars={{ apiBase: publicApiBase }}>

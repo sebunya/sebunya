@@ -137,6 +137,34 @@ const availabilityBadgeClass = (() => {
           </p>
         ) : <span></span>}
       </div>
+
+      {/* The call to action — the SAME server-handled add/buy the PDP uses
+          (form POST /cart; buyNow goes straight to checkout on success). */}
+      {product.availability.kind === 'in_stock' && hasValidPrice ? (
+        <form method="POST" action="/cart" class="mt-3 flex gap-2">
+          <input type="hidden" name="action" value="add" />
+          <input type="hidden" name="productId" value={product.id} />
+          <input type="hidden" name="slug" value={product.slug} />
+          <input type="hidden" name="name" value={product.name} />
+          <input type="hidden" name="categoryName" value={product.categoryName ?? ''} />
+          <input type="hidden" name="priceUgx" value={product.retailPriceUgx ?? 0} />
+          <button
+            type="submit"
+            class="flex-1 min-h-10 rounded-full border border-slate-300 text-[11px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]"
+          >Add to cart</button>
+          <button
+            type="submit"
+            name="buyNow"
+            value="1"
+            class="flex-1 min-h-10 rounded-full text-[11px] font-black uppercase tracking-wider outline-none transition hover:shadow-md hover:shadow-brand-primary/25 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]"
+            style="background:#93D500;color:#0A0A0A"
+          >Buy now</button>
+        </form>
+      ) : (
+        <a href={productHref} class="mt-3 flex min-h-10 items-center justify-center rounded-full border border-slate-300 text-[11px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 focus-visible:ring-2 focus-visible:ring-brand-primary">
+          View product
+        </a>
+      )}
     </div>
   </div>
 </article>
