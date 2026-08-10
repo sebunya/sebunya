@@ -18,6 +18,7 @@ import {
   subcategoryNameForSlug,
 } from '../lib/product-discovery';
 import { getTaxonomy } from '../lib/taxonomy';
+import { shopCrawlDirective } from '../lib/crawlPolicy';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 
 // Operator-editable discovery taxonomy (admin/categories); drives filters + labels.
@@ -27,6 +28,22 @@ const category = normalizeCategoryParam(Astro.url.searchParams.get('category'), 
 const subcategory = normalizeSubcategoryParam(Astro.url.searchParams.get('subcategory'), category, taxonomy);
 const sort = normalizeSortParam(Astro.url.searchParams.get('sort'));
 const selectedCategory = taxonomy.find((item) => item.slug === category);
+
+// U6 AC5 — facet crawl policy (mirrors apps/api/src/domain/seo/CrawlPolicy.ts):
+// category alone (with operator copy) is indexable; search results, stacked
+// filters and sort variants are noindex,follow with a cleaned canonical.
+const crawlParams: Record<string, string> = {};
+if (search) crawlParams.search = search;
+if (category) crawlParams.category = category;
+if (subcategory) crawlParams.subcategory = subcategory;
+if (sort && sort !== 'default') crawlParams.sort = sort;
+const { robotsMeta, canonicalUrl } = shopCrawlDirective({
+  params: crawlParams,
+  // Search results never have unique editorial copy; a category page has it
+  // only when the operator wrote a description in the taxonomy.
+  hasUniqueCopy: search ? false : selectedCategory ? Boolean(selectedCategory.description) : undefined,
+  origin: Astro.url.origin,
+});
 
 function shopUrl(overrides: Partial<{ search: string; category: string; subcategory: string; sort: string }> = {}) {
   const state = { search, category, subcategory, sort, ...overrides };
@@ -102,7 +119,7 @@ const activeFilters = [
 ].filter((item): item is { label: string; href: string } => Boolean(item));
 ---
 
-<BaseLayout title="Shop products | GoldPlus" description="Search and browse GoldPlus products by category and subcategory.">
+<BaseLayout title="Shop products | GoldPlus" description="Search and browse GoldPlus products by category and subcategory." robotsMeta={robotsMeta} canonicalUrl={canonicalUrl}>
   <header class="border-b border-slate-800 bg-slate-950 py-10 text-white sm:py-12">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <h1 class="text-3xl font-black tracking-tight sm:text-4xl">Find a GoldPlus product</h1>

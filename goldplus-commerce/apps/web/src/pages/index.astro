@@ -8,6 +8,7 @@ import RecentlyViewedRail from '../components/recommendations/RecentlyViewedRail
 import CartAwareRail from '../components/home/CartAwareRail.astro';
 import HeroSlider from '../components/hero/HeroSlider.astro';
 import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
+import SiteJsonLd from '../components/SiteJsonLd.astro';
 import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
 import { getCleanCatalog } from '../lib/catalog/catalog';
 import { getTaxonomy } from '../lib/taxonomy';
@@ -88,6 +89,11 @@ const usedProductIds = [
 ---
 
 <BaseLayout title="Premium electronics — Uganda">
+
+  {/* U6 — Organization + WebSite structured data, homepage only. */}
+  <Fragment slot="head">
+    <SiteJsonLd />
+  </Fragment>
 
   {/* 1. Hero — CMS-driven 12-slide personalised slider (ported 2026-08-07).
       Wrapped in the SAME content container as every rail/section below, so the

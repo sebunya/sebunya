@@ -1,0 +1,42 @@
+---
+import { getBusinessInfo } from '../lib/businessInfo';
+import { serializeJsonLd } from '../lib/jsonld';
+import { SITE_ORIGIN } from '../lib/sitemap';
+
+/**
+ * U6 AC3/AC4 — Organization + WebSite JSON-LD for the homepage, mirroring the
+ * builders in apps/api/src/domain/seo/StructuredData.ts. Facts are ONLY the
+ * verified ones the site already renders: the brand name, the canonical host,
+ * the real logo shipped in public/, and exactly the social profiles the footer
+ * renders from the admin-editable business-info module — nothing invented.
+ * WhatsApp chat links are contact actions, not social profiles, so they are
+ * excluded from sameAs.
+ */
+const biz = await getBusinessInfo();
+const sameAs = biz.socials
+  .filter((s) => s.enabled && s.href && !s.href.startsWith('https://wa.me/'))
+  .map((s) => s.href);
+
+const organization = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'ShopGoldPlus',
+  url: SITE_ORIGIN,
+  logo: `${SITE_ORIGIN}/goldplus-logo-header-desktop-150x43.png`,
+  sameAs,
+};
+
+const website = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'ShopGoldPlus',
+  url: SITE_ORIGIN,
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: { '@type': 'EntryPoint', urlTemplate: `${SITE_ORIGIN}/shop?search={search_term_string}` },
+    'query-input': 'required name=search_term_string',
+  },
+};
+---
+<script type="application/ld+json" is:inline set:html={serializeJsonLd(organization)} />
+<script type="application/ld+json" is:inline set:html={serializeJsonLd(website)} />

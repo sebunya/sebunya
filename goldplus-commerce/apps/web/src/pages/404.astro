@@ -1,6 +1,31 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import EmptyState from '../components/EmptyState.astro';
+import { apiBase } from '../lib/api';
+
+// U6 AC6 — before giving up with a 404, ask the API whether this path has a
+// recorded redirect (product slug changes create 301s). Only the 404 path pays
+// this cost — healthy pages never hit the endpoint. Fail-open with a short
+// timeout: any error or miss renders the normal 404.
+const requestPath = Astro.url.pathname;
+if (requestPath && requestPath !== '/404') {
+  try {
+    const res = await fetch(`${apiBase}/seo/resolve-redirect?path=${encodeURIComponent(requestPath)}`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(400),
+    });
+    if (res.ok) {
+      const json: any = await res.json().catch(() => null);
+      const to = json?.data?.to;
+      const statusCode = json?.data?.statusCode;
+      if (json?.success && typeof to === 'string' && to.startsWith('/')) {
+        return Astro.redirect(to, statusCode === 302 ? 302 : 301);
+      }
+    }
+  } catch {
+    /* fail open — render the 404 */
+  }
+}
 
 Astro.response.status = 404;
 Astro.response.headers.set('Cache-Control', 'no-store');

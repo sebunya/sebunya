@@ -30,7 +30,9 @@ const adminPage = readFileSync(resolve(root, "apps/web/src/pages/admin/loyalty.a
 const trustConfig = readFileSync(resolve(root, "apps/web/src/lib/admin-trust-centre.ts"), "utf8");
 const moduleCard = readFileSync(resolve(root, "apps/web/src/components/admin/AdminModuleCard.astro"), "utf8");
 const footer = readFileSync(resolve(root, "apps/web/src/layouts/BaseLayout.astro"), "utf8");
-const sitemap = readFileSync(resolve(root, "apps/web/src/pages/sitemap.xml.ts"), "utf8");
+// U6: the static sitemap URL list moved from pages/sitemap.xml.ts (now a
+// sitemap index) into the testable lib module.
+const sitemap = readFileSync(resolve(root, "apps/web/src/lib/sitemap.ts"), "utf8");
 
 describe("Slice 8-A programme and public truth", () => {
   it("keeps the programme inactive", () => expect(isLoyaltyProgrammeActive()).toBe(false));

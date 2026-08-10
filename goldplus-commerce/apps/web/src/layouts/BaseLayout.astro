@@ -13,6 +13,8 @@ interface Props {
   description?: string;
   image?: string;
   canonicalUrl?: string;
+  /** U6 — optional robots directive (e.g. "noindex,follow"). Omitted = default index,follow. */
+  robotsMeta?: string;
 }
 
 const {
@@ -20,6 +22,7 @@ const {
   description = 'GoldPlus — Premium electronics in Uganda',
   image = '/icon-512.svg',
   canonicalUrl,
+  robotsMeta,
 } = Astro.props;
 
 const footerSocialLinks = [
@@ -122,6 +125,7 @@ const canonical = canonicalUrl ?? Astro.url.toString();
     <meta property="twitter:description" content={description} />
     <meta property="twitter:image" content={image} />
     <link rel="canonical" href={canonical} />
+    {robotsMeta && <meta name="robots" content={robotsMeta} />}
     <slot name="head" />
 
     {/* Server-Side Google Tag Manager — R7 (§32): only rendered when a REAL

@@ -7,6 +7,7 @@ import { AddProductImageByUrlUseCase } from '../../../../application/use-cases/p
 import { RemoveProductImageUseCase } from '../../../../application/use-cases/products/RemoveProductImageUseCase';
 import { SetAttributeValueUseCase } from '../../../../application/use-cases/products/SetAttributeValueUseCase';
 import { DefineAttributeUseCase } from '../../../../application/use-cases/products/DefineAttributeUseCase';
+import { RecordProductSlugChangeUseCase } from '../../../../application/use-cases/products/RecordProductSlugChangeUseCase';
 import { validateStockAdjustment } from '../../../../domain/inventory/Inventory';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 
@@ -482,6 +483,18 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
 
     // Save entity through repository orchestration
     await registry.productRepo.updateProductProperties(productEntity, categoryId);
+
+    // U6 AC6 — a slug change 301s the old product URL to the new one so inbound
+    // links keep resolving. Fail-open: the product update already committed and
+    // must not be reported as failed because the redirect insert hiccuped.
+    if (existingProduct.slug && existingProduct.slug !== slug) {
+      try {
+        const slugChangeUc = new RecordProductSlugChangeUseCase(registry.seoRepo);
+        await slugChangeUc.execute({ oldSlug: existingProduct.slug, newSlug: slug, actorId: (c.get('user') as any).id });
+      } catch {
+        // Redirect recording is best-effort; the admin can re-save to retry.
+      }
+    }
 
     const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
     await auditUc.execute({
