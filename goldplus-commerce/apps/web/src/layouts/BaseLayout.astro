@@ -188,7 +188,7 @@ const canonical = canonicalUrl ?? Astro.url.toString();
       <div class="container mx-auto px-4 lg:px-8 py-16 md:py-20">
         
         {/* TOP GRID: brand + visit/hours | Shop | Buying | Help */}
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.7fr_1fr_1fr_1.1fr] gap-10 lg:gap-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1.05fr] gap-10 lg:gap-8">
 
           <div class="flex flex-col">
             <h3 class="text-white text-base font-black tracking-tight">Stay ahead of the fakes.</h3>
@@ -224,6 +224,8 @@ const canonical = canonicalUrl ?? Astro.url.toString();
               <li><a href="/shop?category=pc" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">PC</a></li>
               <li><a href="/shop?promo=flash-sale" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Flash sale</a></li>
               <li><a href="/shop" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Shop all</a></li>
+              <li><a href="/product-finder" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Shopping Assistant</a></li>
+              <li><a href="/compare" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Compare products</a></li>
             </ul>
           </div>
 
@@ -235,6 +237,19 @@ const canonical = canonicalUrl ?? Astro.url.toString();
               <li><a href="/track-order" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Track your order</a></li>
               <li><a href="/quote-request" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Request a quote</a></li>
               <li><a href="/loyalty" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">GoldPlus Rewards</a></li>
+              <li><a href="/dealers/apply" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Become a dealer</a></li>
+            </ul>
+          </div>
+
+          <div class="flex flex-col">
+            <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Account</h4>
+            <ul class="space-y-3.5 text-xs">
+              <li><a href="/account" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">My account</a></li>
+              <li><a href="/account/orders" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Your orders</a></li>
+              <li><a href="/account/addresses" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Saved addresses</a></li>
+              <li><a href="/account/loyalty" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Points &amp; rewards</a></li>
+              <li><a href="/login" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Sign in</a></li>
+              <li><a href="/register" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Create an account</a></li>
             </ul>
           </div>
 

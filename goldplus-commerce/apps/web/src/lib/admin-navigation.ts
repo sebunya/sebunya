@@ -1,7 +1,7 @@
 export interface NavItem {
   label: string;
   href: string;
-  group: 'Dashboard' | 'Commerce' | 'Recommendations' | 'Merchandising' | 'Measurement' | 'System' | 'Other';
+  group: 'Dashboard' | 'Commerce' | 'Storefront' | 'Marketing' | 'Customers' | 'Recommendations' | 'Merchandising' | 'Measurement' | 'System' | 'Other';
   status: 'working' | 'read_only' | 'diagnostic' | 'hidden';
   description: string;
   reason?: string;
@@ -214,10 +214,10 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   },
   // Hidden Modules
   {
-    label: 'Categories',
+    label: 'Categories & taxonomy',
     href: '/admin/categories',
-    group: 'Commerce',
-    status: 'hidden',
+    group: 'Storefront',
+    status: 'working',
     description: 'Organize inventory into customer-facing groupings.'
   },
   {
@@ -235,30 +235,30 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Control Ugandan Shilling rates, currencies and wholesale levels.'
   },
   {
-    label: 'Authenticity Check',
+    label: 'Verification checks',
     href: '/admin/verification',
-    group: 'Other',
-    status: 'hidden',
+    group: 'Customers',
+    status: 'working',
     description: 'Lookup holographic sequence status and scans.'
   },
   {
-    label: 'Dealer Requests',
+    label: 'Dealer requests',
     href: '/admin/dealers',
-    group: 'Other',
-    status: 'hidden',
+    group: 'Customers',
+    status: 'working',
     description: 'Assess retail applications for wholesale credentials.'
   },
   {
-    label: 'Price Quotes',
+    label: 'Quote requests',
     href: '/admin/quotes',
-    group: 'Other',
-    status: 'hidden',
+    group: 'Customers',
+    status: 'working',
     description: 'Formulate responses to corporate procurement enquiries.'
   },
   {
-    label: 'Support Tickets',
+    label: 'Support tickets',
     href: '/admin/support',
-    group: 'Other',
+    group: 'Customers',
     status: 'working',
     description: 'Assist users with technical difficulties and support cases.'
   },
@@ -275,7 +275,38 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     group: 'System',
     status: 'working',
     description: 'Governed activation approvals for approval-gated modules.'
-  }
+  },
+  // ── Completed IA (2026-08-10): every operator module reachable from the nav.
+  { label: 'Reports', href: '/admin/reports', group: 'Dashboard', status: 'working', description: 'Operational and commercial reports.' },
+  { label: 'Product costs', href: '/admin/product-costs', group: 'Commerce', status: 'working', description: 'Enter or import effective-dated supplier costs; coverage activates profit.' },
+  { label: 'Payments', href: '/admin/payments', group: 'Commerce', status: 'working', description: 'Payment attempts, reconciliation thresholds and the retry queue.' },
+  { label: 'Delivery zones', href: '/admin/pricing/delivery-zones', group: 'Commerce', status: 'working', description: 'Confirmed delivery fees per district; adopt estimates into zones.' },
+  { label: 'Delivery Control Centre', href: '/admin/delivery', group: 'Commerce', status: 'working', description: 'Delivery quoting model, calibration and launch controls.' },
+  { label: 'Locations', href: '/admin/locations', group: 'Commerce', status: 'working', description: 'The verified Uganda location dataset behind addresses and delivery.' },
+  { label: 'Compatibility', href: '/admin/compatibility', group: 'Commerce', status: 'working', description: 'Declared product compatibility used by Complete-your-setup.' },
+  { label: 'Homepage hero', href: '/admin/hero', group: 'Storefront', status: 'working', description: 'The hero slide library and rotation — live with no deploy.' },
+  { label: 'Header & navigation', href: '/admin/nav', group: 'Storefront', status: 'working', description: 'The header rail, featured cards, flash sale and offer figures.' },
+  { label: 'Homepage content', href: '/admin/homepage', group: 'Storefront', status: 'working', description: 'The trust strip and business-pathway cards below the hero.' },
+  { label: 'Storefront copy', href: '/admin/storefront-copy', group: 'Storefront', status: 'working', description: 'Support-page intro and checkout payment-method wording.' },
+  { label: 'Business info', href: '/admin/business-info', group: 'Storefront', status: 'working', description: 'Address, hours, phone, WhatsApp, socials and the same-day cutoff.' },
+  { label: 'Legal pages', href: '/admin/legal', group: 'Storefront', status: 'working', description: 'Privacy, terms, returns, warranty and cookies content.' },
+  { label: 'Media library', href: '/admin/media', group: 'Storefront', status: 'working', description: 'Upload and manage images used across the storefront.' },
+  { label: 'Copy quality', href: '/admin/copy-quality', group: 'Storefront', status: 'working', description: 'Storefront copy review against the brand voice rules.' },
+  { label: 'Campaigns', href: '/admin/campaigns', group: 'Marketing', status: 'working', description: 'Marketing campaigns and their scheduling.' },
+  { label: 'Media costs', href: '/admin/media-costs', group: 'Marketing', status: 'working', description: 'Import advertising spend — dry run, commit, correct; activates ROAS.' },
+  { label: 'UTM builder', href: '/admin/utm-builder', group: 'Marketing', status: 'working', description: 'Build consistent campaign links for attribution.' },
+  { label: 'Experiments', href: '/admin/experiments', group: 'Marketing', status: 'working', description: 'Governed A/B experiments and variants.' },
+  { label: 'Product feeds', href: '/admin/feeds', group: 'Marketing', status: 'working', description: 'Catalogue feeds for external channels.' },
+  { label: 'Demand signals', href: '/admin/demand', group: 'Marketing', status: 'working', description: 'Search and browse demand the catalogue does not yet serve.' },
+  { label: 'Surveys', href: '/admin/surveys', group: 'Marketing', status: 'working', description: 'Customer surveys and their responses.' },
+  { label: 'Notifications', href: '/admin/notifications', group: 'Marketing', status: 'working', description: 'Notification templates and wording overrides.' },
+  { label: 'Loyalty & rewards', href: '/admin/loyalty', group: 'Marketing', status: 'working', description: 'Points programme, tiers, quests and gamification.' },
+  { label: 'Lifecycle', href: '/admin/lifecycle', group: 'Marketing', status: 'working', description: 'Customer lifecycle stages and automations.' },
+  { label: 'Behavioural interventions', href: '/admin/behavioural-interventions', group: 'Marketing', status: 'working', description: 'Governed nudges shown to customers, with guardrails.' },
+  { label: 'Users', href: '/admin/users', group: 'System', status: 'working', description: 'Operator accounts.' },
+  { label: 'Roles & permissions', href: '/admin/roles', group: 'System', status: 'working', description: 'Role definitions and their permission grants.' },
+  { label: 'Audit log', href: '/admin/audit', group: 'System', status: 'working', description: 'Every governed mutation, actor and before/after.' },
+  { label: 'Release readiness', href: '/admin/release-readiness', group: 'System', status: 'diagnostic', description: 'Release gates and evidence.' }
 ];
 
 // Group helper to replicate traditional display grouping without duplicate data
@@ -287,6 +318,18 @@ export const ADMIN_NAVIGATION: NavGroup[] = [
   {
     title: 'Commerce',
     items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Commerce' && item.status !== 'hidden')
+  },
+  {
+    title: 'Storefront',
+    items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Storefront' && item.status !== 'hidden')
+  },
+  {
+    title: 'Marketing',
+    items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Marketing' && item.status !== 'hidden')
+  },
+  {
+    title: 'Customers',
+    items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Customers' && item.status !== 'hidden')
   },
   {
     title: 'Recommendations',
