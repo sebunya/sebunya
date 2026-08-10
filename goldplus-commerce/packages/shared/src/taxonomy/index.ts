@@ -25,6 +25,12 @@ export interface TaxonomyCategory {
   showOnHomepage: boolean;
   /** Short blurb under the homepage tile. */
   homepageBlurb?: string;
+  /**
+   * Optional photo for the homepage tile (uploaded via the media library or an
+   * absolute URL). When absent the tile renders the category's icon — keyed by
+   * slug in code — never a bare frame.
+   */
+  imageUrl?: string;
   /** Legacy/alias slugs that normalize to this category (e.g. "power"). */
   aliases?: string[];
   subcategories: TaxonomySubcategory[];

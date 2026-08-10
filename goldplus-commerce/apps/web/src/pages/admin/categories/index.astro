@@ -56,6 +56,9 @@ try {
         <label class="text-xs block">Homepage blurb (optional)
           <input data-f="homepageBlurb" class="mt-1 w-full rounded border px-3 py-2 text-sm" placeholder="Chargers, banks" />
         </label>
+        <label class="text-xs block">Tile photo URL (optional — icon shown when empty)
+          <input data-f="imageUrl" class="mt-1 w-full rounded border px-3 py-2 text-sm font-mono" placeholder="/uploads/… or https://…" />
+        </label>
         <label class="text-xs block">URL aliases (comma-separated)
           <input data-f="aliases" class="mt-1 w-full rounded border px-3 py-2 text-sm font-mono" placeholder="power" />
         </label>
@@ -100,6 +103,7 @@ try {
       node.querySelector('[data-f="slug"]').value = cat.slug ?? '';
       node.querySelector('[data-f="description"]').value = cat.description ?? '';
       node.querySelector('[data-f="homepageBlurb"]').value = cat.homepageBlurb ?? '';
+      node.querySelector('[data-f="imageUrl"]').value = cat.imageUrl ?? '';
       node.querySelector('[data-f="aliases"]').value = Array.isArray(cat.aliases) ? cat.aliases.join(', ') : '';
       node.querySelector('[data-f="showOnHomepage"]').checked = !!cat.showOnHomepage;
       const subsEl = node.querySelector('.subs');
@@ -117,6 +121,7 @@ try {
         slug: $('[data-f="slug"]', block).value.trim(),
         description: $('[data-f="description"]', block).value.trim(),
         homepageBlurb: $('[data-f="homepageBlurb"]', block).value.trim(),
+        imageUrl: $('[data-f="imageUrl"]', block).value.trim(),
         aliases: csv($('[data-f="aliases"]', block).value),
         showOnHomepage: $('[data-f="showOnHomepage"]', block).checked,
         subcategories: [...block.querySelectorAll('.sub-block')].map((s) => ({

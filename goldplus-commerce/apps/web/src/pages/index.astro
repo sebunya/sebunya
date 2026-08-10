@@ -33,6 +33,29 @@ const allProducts = getCleanCatalog(rawProducts);
 // Homepage "Shop by category" tiles — operator-editable taxonomy (admin/categories).
 const homepageCategories = (await getTaxonomy()).filter((c) => c.showOnHomepage);
 
+// Every tile gets iconography that actually corresponds to its category — a
+// bare photo-frame glyph tells the customer nothing. Keyed by slug for the
+// known five; a name-keyword heuristic covers operator-added categories; the
+// operator can replace any icon with a real photo via admin/categories.
+const CATEGORY_ICON_PATHS: Record<string, string> = {
+  'power-devices': 'M13 10V3L4 14h7v7l9-11h-7z',
+  'sound-devices': 'M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z',
+  'storage-devices': 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4',
+  'car-accessories': 'M8 7h8m-8 0a4 4 0 00-4 4v3a2 2 0 002 2h1m9-9a4 4 0 014 4v3a2 2 0 01-2 2h-1m-8 0a2 2 0 104 0m-4 0h4m4 0a2 2 0 104 0m-4 0h4M9 7l1-3h4l1 3',
+  'pc-accessories': 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+};
+const categoryIconPath = (cat: { slug: string; name: string }): string => {
+  if (CATEGORY_ICON_PATHS[cat.slug]) return CATEGORY_ICON_PATHS[cat.slug];
+  const n = cat.name.toLowerCase();
+  if (/power|charg|batter/.test(n)) return CATEGORY_ICON_PATHS['power-devices'];
+  if (/sound|audio|speaker|earbud|headphone/.test(n)) return CATEGORY_ICON_PATHS['sound-devices'];
+  if (/storage|drive|memory|card/.test(n)) return CATEGORY_ICON_PATHS['storage-devices'];
+  if (/car|auto|vehicle/.test(n)) return CATEGORY_ICON_PATHS['car-accessories'];
+  if (/pc|computer|desktop|laptop/.test(n)) return CATEGORY_ICON_PATHS['pc-accessories'];
+  // Shopping-bag default for anything unrecognised — still a real symbol.
+  return 'M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z';
+};
+
 // Homepage marketing copy — operator-editable (admin/homepage). Icons stay in code.
 const homepageContent = await getHomepageContent();
 const TRUST_ICON_PATHS: Record<string, string> = {
@@ -106,9 +129,15 @@ const usedProductIds = [
         {homepageCategories.map((cat) => (
           <a href={`/shop?category=${cat.slug}`} class="block group focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none rounded-2xl">
             <div class="bg-white border border-slate-200/85 aspect-[4/3] rounded-2xl p-6 flex flex-col justify-end relative overflow-hidden transition-all hover:border-brand-primary hover:shadow-lg hover:shadow-slate-100/60">
-              <div class="absolute inset-0 flex items-center justify-center text-slate-200 font-medium" aria-hidden="true">
-                <svg class="w-10 h-10 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-              </div>
+              {cat.imageUrl ? (
+                <img src={cat.imageUrl} alt={`${cat.name} category`} loading="lazy" class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+              ) : (
+                <div class="absolute inset-0 flex items-center justify-center" aria-hidden="true">
+                  <div class="w-20 h-20 rounded-2xl bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center transition-all duration-300 group-hover:bg-brand-primary/20 group-hover:scale-110">
+                    <svg class="w-10 h-10 text-brand-primaryInk" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={categoryIconPath(cat)}></path></svg>
+                  </div>
+                </div>
+              )}
               <div class="relative z-10 bg-white/95 p-3.5 rounded-xl border border-slate-100/80 shadow-xs">
                 <h3 class="text-base font-bold text-gray-950 mb-0.5">{cat.name}</h3>
                 {cat.homepageBlurb && <p class="text-xs text-slate-500 font-medium group-hover:text-brand-primary transition-colors">{cat.homepageBlurb}</p>}

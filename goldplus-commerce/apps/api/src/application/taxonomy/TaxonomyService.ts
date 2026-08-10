@@ -43,6 +43,9 @@ function sanitizeCategory(raw: any): TaxonomyCategory | null {
   if (description) cat.description = description;
   const homepageBlurb = s(raw?.homepageBlurb, 120);
   if (homepageBlurb) cat.homepageBlurb = homepageBlurb;
+  // Tile photo: http(s) or site-relative only — never javascript:/data: URLs.
+  const imageUrl = s(raw?.imageUrl, 500);
+  if (imageUrl && (/^https?:\/\//i.test(imageUrl) || /^\/(?!\/)/.test(imageUrl))) cat.imageUrl = imageUrl;
   return cat;
 }
 
