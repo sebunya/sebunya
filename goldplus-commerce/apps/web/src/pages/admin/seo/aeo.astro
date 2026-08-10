@@ -1,0 +1,172 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, rowsOf, emptyReason, str, num, pct, fmtWhen } from "../../../lib/adminSeo";
+
+/** AEO (Answer Engine Optimisation) — the prompt bank, manually recorded
+ *  answer-engine observations, and per-engine coverage. Coverage counts only
+ *  EXECUTED prompts: an unasked prompt is not evidence of anything. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/aeo", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  if (intent === "add-prompt") {
+    const res = await seoPost(token, "/admin/seo/aeo", {
+      kind: "prompt",
+      prompt: String(form.get("prompt") ?? "").trim(),
+      category: String(form.get("category") ?? "").trim() || undefined,
+    });
+    if (res.ok) notice = "Prompt added to the bank."; else formError = res.message;
+  } else if (intent === "observation") {
+    const res = await seoPost(token, "/admin/seo/aeo", {
+      kind: "observation",
+      promptId: String(form.get("promptId") ?? "").trim(),
+      engine: String(form.get("engine") ?? "").trim(),
+      model: String(form.get("model") ?? "").trim() || undefined,
+      observedAt: String(form.get("observedAt") ?? "").trim() || undefined,
+      excerpt: String(form.get("excerpt") ?? "").trim(),
+      mentioned: String(form.get("mentioned") ?? "") === "on",
+      cited: String(form.get("cited") ?? "") === "on",
+      competitorsMentioned: String(form.get("competitors") ?? "")
+        .split(",").map((c) => c.trim()).filter(Boolean),
+    });
+    if (res.ok) notice = "Observation recorded."; else formError = res.message;
+  }
+}
+
+type Prompt = { id?: string; prompt?: string; category?: string; lastExecutedAt?: string; observationCount?: number };
+const promptsRes = await seoGet(token, "/admin/seo/aeo");
+const prompts = rowsOf<Prompt>(promptsRes);
+const promptsReason = emptyReason(promptsRes, "The prompt bank is empty");
+
+type Coverage = { engine?: string; executedPrompts?: number; mentionedRate?: number; citedRate?: number; lastObservedAt?: string };
+const coverageRes = await seoGet(token, "/admin/seo/aeo/coverage");
+const coverage = rowsOf<Coverage>(coverageRes);
+const coverageReason = emptyReason(coverageRes, "No coverage data yet");
+---
+
+<AdminLayout title="AEO" description="Answer-engine prompt bank, recorded observations and per-engine coverage.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Answer Engine Optimisation</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        Whether AI answer engines (ChatGPT, Gemini, Perplexity, AI Overviews) mention or cite ShopGoldPlus when asked
+        the questions customers ask. Observations are recorded from real sessions — never simulated.
+      </p>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    {/* Coverage */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Coverage by engine</h3>
+      <p class="text-xs text-gray-500 mb-4">
+        Counts <strong>EXECUTED prompts only</strong> — a prompt that has never actually been asked contributes nothing.
+        Rates are over real recorded observations.
+      </p>
+      {coverageReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">{coverageReason}</p>}
+      {!coverageReason && coverage.length === 0 && (
+        <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">No prompts have been executed yet — record an observation below to start coverage.</p>
+      )}
+      {coverage.length > 0 && (
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+              <th class="py-2 pr-4">Engine</th><th class="py-2 pr-4 text-right">Executed prompts</th>
+              <th class="py-2 pr-4 text-right">Mentioned</th><th class="py-2 pr-4 text-right">Cited</th><th class="py-2">Last observed</th>
+            </tr></thead>
+            <tbody>{coverage.map((c) => (
+              <tr class="border-b border-gray-100">
+                <td class="py-2 pr-4 font-bold text-brand-dark">{str(c.engine)}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{num(c.executedPrompts)}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{pct(c.mentionedRate)}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{pct(c.citedRate)}</td>
+                <td class="py-2">{fmtWhen(c.lastObservedAt)}</td>
+              </tr>))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    {/* Prompt bank + add */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Prompt bank</h3>
+      {promptsReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 mb-4">{promptsReason}</p>}
+      {!promptsReason && prompts.length === 0 && <p class="text-sm text-gray-500 mb-4">The prompt bank is empty — add the questions customers would ask an AI.</p>}
+      {prompts.length > 0 && (
+        <div class="overflow-x-auto mb-6">
+          <table class="w-full text-left text-xs">
+            <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+              <th class="py-2 pr-4">Prompt</th><th class="py-2 pr-4">Category</th>
+              <th class="py-2 pr-4 text-right">Observations</th><th class="py-2">Last executed</th>
+            </tr></thead>
+            <tbody>{prompts.map((p) => (
+              <tr class="border-b border-gray-100 align-top">
+                <td class="py-2 pr-4 font-bold text-brand-dark max-w-md">{str(p.prompt)}</td>
+                <td class="py-2 pr-4">{str(p.category)}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{num(p.observationCount)}</td>
+                <td class="py-2">{fmtWhen(p.lastExecutedAt)}</td>
+              </tr>))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <form method="POST" class="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="intent" value="add-prompt" />
+        <label class="text-xs font-bold text-gray-700 grow min-w-64">Prompt
+          <input name="prompt" required maxlength="300" placeholder="Where can I buy a genuine phone charger in Kampala?"
+            class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Category
+          <input name="category" placeholder="e.g. chargers" class="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white hover:bg-black">Add prompt</button>
+      </form>
+    </section>
+
+    {/* Record observation */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-12">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Record an observation</h3>
+      <p class="text-xs text-gray-500 mb-4 max-w-3xl">
+        Ask a bank prompt in a real answer-engine session and record exactly what came back. The excerpt is the evidence;
+        the checkboxes are your reading of it.
+      </p>
+      <form method="POST" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <input type="hidden" name="intent" value="observation" />
+        <label class="text-xs font-bold text-gray-700 lg:col-span-2">Prompt
+          <select name="promptId" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="">— choose from the bank —</option>
+            {prompts.map((p) => <option value={str(p.id)}>{str(p.prompt)}</option>)}
+          </select></label>
+        <label class="text-xs font-bold text-gray-700">Engine
+          <select name="engine" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="chatgpt">ChatGPT</option><option value="gemini">Gemini</option>
+            <option value="perplexity">Perplexity</option><option value="ai_overview">Google AI Overview</option>
+            <option value="copilot">Copilot</option><option value="other">Other</option>
+          </select></label>
+        <label class="text-xs font-bold text-gray-700">Model (if shown)
+          <input name="model" placeholder="e.g. GPT-5" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Observed at
+          <input name="observedAt" type="datetime-local" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700 lg:col-span-3">Competitors mentioned (comma-separated)
+          <input name="competitors" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700 sm:col-span-2 lg:col-span-4">Answer excerpt (the relevant part, verbatim)
+          <textarea name="excerpt" rows="4" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></textarea></label>
+        <div class="flex items-center gap-6 sm:col-span-2 lg:col-span-4">
+          <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+            <input type="checkbox" name="mentioned" class="rounded border-gray-300" /> ShopGoldPlus mentioned
+          </label>
+          <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+            <input type="checkbox" name="cited" class="rounded border-gray-300" /> ShopGoldPlus cited/linked
+          </label>
+          <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white hover:bg-black">Record observation</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</AdminLayout>

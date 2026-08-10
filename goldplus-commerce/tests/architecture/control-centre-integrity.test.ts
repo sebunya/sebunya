@@ -121,6 +121,12 @@ describe('card-to-route integrity', () => {
     for (const module of CONTROL_CENTRE_MODULES) {
       if (!resolves(module.adminRoute)) broken.push(`${module.key} -> ${module.adminRoute}`);
       for (const action of module.supportedActions) {
+        // READ actions navigate to an admin page, so the page must exist.
+        // WRITE/APPROVE/DIAGNOSTIC actions target the API endpoint they call
+        // (ModuleAction.target: "Route the button navigates to, or API endpoint
+        // it calls") — endpoint reachability is covered by the apiMount checks
+        // above, not by the pages directory.
+        if (action.kind !== 'READ') continue;
         if (action.target.startsWith('/admin') && !resolves(action.target)) {
           broken.push(`${module.key}.${action.key} -> ${action.target}`);
         }

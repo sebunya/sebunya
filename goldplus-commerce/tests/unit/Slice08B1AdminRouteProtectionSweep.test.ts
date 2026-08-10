@@ -55,7 +55,10 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 97 adds storefront-copy (2026-08-08) — support intro + payment-method copy.
     // 98 adds media-costs (2026-08-09) — the spend-import surface whose absence
     // made "ingest spend without code changes" still mean curl (R4 closure).
-    expect(adminPages).toHaveLength(98);
+    // 108 adds the ten seo/* pages (2026-08-10) — the Search Growth group of
+    // the Organic Growth OS (overview, competitors, queries, serp, market-share,
+    // opportunities, technical, integrations, content, aeo).
+    expect(adminPages).toHaveLength(108);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/analytics/index.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -72,7 +75,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(97);
+    expect(protectedPages).toHaveLength(107);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');

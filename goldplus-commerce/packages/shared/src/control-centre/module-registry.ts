@@ -633,6 +633,39 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     owner: 'operations',
     runbookLink: '/docs/handover/claude/CONTROL_CENTRE_PRODUCTION_RUNBOOK.md',
   },
+  {
+    key: 'seo-organic-growth',
+    displayName: 'SEO & Organic Growth',
+    description: 'Competitor intelligence, query universe, SERP evidence, first-party crawl audits, opportunities and AEO coverage.',
+    category: 'COMMERCE_OS',
+    adminRoute: '/admin/seo',
+    apiMount: '/admin/seo',
+    primaryApiEndpoints: ['/admin/seo/overview', '/admin/seo/market-share', '/admin/seo/opportunities'],
+    requiredPermissions: [PERMISSIONS.SEO_VIEW],
+    optionalPermissions: [
+      PERMISSIONS.SEO_AUDIT_RUN,
+      PERMISSIONS.SEO_COMPETITORS_MANAGE,
+      PERMISSIONS.SEO_SERP_MANAGE,
+      PERMISSIONS.SEO_EXPERIMENTS_MANAGE,
+      PERMISSIONS.SEO_INTEGRATIONS_MANAGE,
+      PERMISSIONS.SEO_APPROVE_HIGH_RISK,
+    ],
+    dataDependencies: [
+      { name: 'seo_competitors', table: 'seo_competitors' },
+      { name: 'seo_queries', table: 'seo_queries' },
+    ],
+    providerDependencies: [],
+    activationPolicy: 'AUTOMATIC',
+    supportedActions: [
+      { key: 'open', label: 'Open SEO workspace', target: '/admin/seo', requiredPermission: PERMISSIONS.SEO_VIEW, kind: 'READ' },
+      { key: 'crawl-start', label: 'Start site crawl', target: '/admin/seo/crawl/start', requiredPermission: PERMISSIONS.SEO_AUDIT_RUN, kind: 'WRITE' },
+      { key: 'opportunity-generate', label: 'Generate opportunities', target: '/admin/seo/opportunities/generate', requiredPermission: PERMISSIONS.SEO_AUDIT_RUN, kind: 'WRITE' },
+    ],
+    riskClass: 'MEDIUM',
+    liveMode: false,
+    owner: 'discovery',
+    runbookLink: '/docs/handover/claude/CONTROL_CENTRE_PRODUCTION_RUNBOOK.md',
+  },
 
   // ─── Readiness entry points ───────────────────────────────────────────────
   {

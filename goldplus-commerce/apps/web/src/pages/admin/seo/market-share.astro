@@ -1,0 +1,145 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, emptyReason, str, num, pct } from "../../../lib/adminSeo";
+
+/** Organic market share — Top-N shares and outrank rates over a chosen window,
+ *  with the methodology shown in full. Zero observations renders an honest
+ *  zero state, never a zero percentage. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/market-share", 303);
+
+const url = new URL(Astro.request.url);
+const windowDays = Number(url.searchParams.get("windowDays") ?? "30") || 30;
+
+type ShareData = {
+  windowDays?: number;
+  observationCount?: number;
+  queryCount?: number;
+  methodology?: string;
+  self?: { top1?: number; top3?: number; top5?: number; top10?: number; top20?: number } | null;
+  rows?: Array<{
+    entity?: string; isSelf?: boolean;
+    top1?: number; top3?: number; top5?: number; top10?: number; top20?: number;
+    outrankRate?: number;
+  }>;
+  outrank?: Array<{ competitor?: string; outrankRate?: number; comparisons?: number }>;
+};
+
+const res = await seoGet<ShareData>(token, `/admin/seo/market-share?windowDays=${windowDays}`);
+const data = res.ok ? res.data : null;
+const reason = emptyReason(res, "No market-share data yet");
+const rows = Array.isArray(data?.rows) ? data!.rows! : [];
+const outrank = Array.isArray(data?.outrank) ? data!.outrank! : [];
+const hasObservations = (data?.observationCount ?? 0) > 0 || rows.length > 0;
+const windows = [7, 30, 90];
+---
+
+<AdminLayout title="Organic Market Share" description="Top-N SERP share and outrank rates computed from real observations only.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Organic market share</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        Share of tracked-query SERP positions held by each competitor, computed only from recorded observations
+        in the chosen window.
+      </p>
+    </div>
+
+    <form method="GET" class="mb-6 flex items-center gap-2">
+      <span class="text-xs font-bold text-gray-600">Window:</span>
+      {windows.map((w) => (
+        <button type="submit" name="windowDays" value={String(w)}
+          class={`rounded-full px-4 py-1.5 text-xs font-bold border ${w === windowDays ? "bg-brand-dark text-white border-brand-dark" : "border-gray-300 text-gray-700 hover:bg-gray-50"}`}>
+          {w} days
+        </button>
+      ))}
+    </form>
+
+    {reason && <div role="status" class="mb-8 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">{reason}</div>}
+
+    {!reason && !hasObservations && (
+      <div role="status" class="mb-8 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-sm text-gray-600">
+        <p class="font-bold text-brand-dark mb-1">No SERP observations in the last {windowDays} days.</p>
+        <p>
+          Market share is a ratio of real observed positions — with zero observations there is no share to show, and
+          showing 0% would be a lie about competitors. Record observations on
+          <a href="/admin/seo/serp" class="underline font-bold">SERP Intelligence</a> or connect a rank tracker under
+          <a href="/admin/seo/integrations" class="underline font-bold">Integrations</a>.
+        </p>
+      </div>
+    )}
+
+    {hasObservations && (
+      <>
+        <p class="text-xs text-gray-500 mb-4">
+          Based on <strong>{num(data?.observationCount)}</strong> observation(s) across
+          <strong> {num(data?.queryCount)}</strong> tracked quer(ies) in the last {str(data?.windowDays ?? windowDays)} days.
+        </p>
+        <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Share of positions</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                  <th class="py-2 pr-4">Entity</th>
+                  <th class="py-2 pr-4 text-right">Top 1</th><th class="py-2 pr-4 text-right">Top 3</th>
+                  <th class="py-2 pr-4 text-right">Top 5</th><th class="py-2 pr-4 text-right">Top 10</th>
+                  <th class="py-2 pr-4 text-right">Top 20</th><th class="py-2 text-right">Outrank rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr class={`border-b border-gray-100 ${r.isSelf ? "bg-amber-50/50 font-bold" : ""}`}>
+                    <td class="py-2 pr-4 text-brand-dark">{str(r.entity)}{r.isSelf && <span class="ml-1 rounded-full bg-brand-dark text-white px-2 py-0.5 text-[9px] uppercase">us</span>}</td>
+                    <td class="py-2 pr-4 text-right tabular-nums">{pct(r.top1)}</td>
+                    <td class="py-2 pr-4 text-right tabular-nums">{pct(r.top3)}</td>
+                    <td class="py-2 pr-4 text-right tabular-nums">{pct(r.top5)}</td>
+                    <td class="py-2 pr-4 text-right tabular-nums">{pct(r.top10)}</td>
+                    <td class="py-2 pr-4 text-right tabular-nums">{pct(r.top20)}</td>
+                    <td class="py-2 text-right tabular-nums">{pct(r.outrankRate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {outrank.length > 0 && (
+          <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+            <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Head-to-head outrank rates</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead>
+                  <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                    <th class="py-2 pr-4">Competitor</th><th class="py-2 pr-4 text-right">We outrank them</th><th class="py-2 text-right">Comparisons</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {outrank.map((o) => (
+                    <tr class="border-b border-gray-100">
+                      <td class="py-2 pr-4 font-bold text-brand-dark">{str(o.competitor)}</td>
+                      <td class="py-2 pr-4 text-right tabular-nums">{pct(o.outrankRate)}</td>
+                      <td class="py-2 text-right tabular-nums">{num(o.comparisons)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+      </>
+    )}
+
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-12">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-2">Methodology</h3>
+      {data?.methodology ? (
+        <p class="text-sm text-gray-600 whitespace-pre-line max-w-3xl">{data.methodology}</p>
+      ) : (
+        <p class="text-sm text-gray-500">
+          The methodology text comes from the API alongside the numbers so the two can never drift apart. It is not
+          available yet.
+        </p>
+      )}
+    </section>
+  </div>
+</AdminLayout>

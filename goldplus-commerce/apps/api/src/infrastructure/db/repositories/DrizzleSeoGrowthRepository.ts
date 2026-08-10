@@ -397,6 +397,14 @@ export class DrizzleSeoGrowthRepository {
     return { inserted: batch.length, candidatesCreated };
   }
 
+  async listSerpObservations(queryId: string, paging?: { limit?: number }): Promise<any[]> {
+    return rowsOf(await db.execute(sql`
+      select * from seo_serp_observations where query_id = ${queryId}
+      order by observed_at desc, rank asc nulls last
+      limit ${Math.min(Math.max(paging?.limit ?? 200, 1), 1000)}
+    `));
+  }
+
   // ── Opportunities ────────────────────────────────────────────────────────
 
   async listOpportunities(filter?: { status?: string; kind?: string; limit?: number; offset?: number }): Promise<any[]> {
@@ -526,6 +534,24 @@ export class DrizzleSeoGrowthRepository {
       returning *
     `));
     return rows[0];
+  }
+
+  async getCrawlRun(runId: string): Promise<any | null> {
+    const rows = rowsOf(await db.execute(sql`select * from seo_crawl_runs where id = ${runId}`));
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Marks a RUNNING crawl CANCELLED without stamping finished_at — the worker
+   * observes the status between pages, stops, and calls finishCrawlRun with the
+   * real page count. Returns false when the run was not RUNNING.
+   */
+  async markCrawlRunCancelled(runId: string): Promise<boolean> {
+    const rows = rowsOf(await db.execute(sql`
+      update seo_crawl_runs set status = 'CANCELLED'
+      where id = ${runId} and status = 'RUNNING' returning id
+    `));
+    return rows.length > 0;
   }
 
   async finishCrawlRun(runId: string, outcome: { status: 'COMPLETE' | 'FAILED' | 'CANCELLED'; pagesCrawled: number; notes?: string | null }): Promise<any> {
@@ -699,6 +725,107 @@ export class DrizzleSeoGrowthRepository {
     return rows[0];
   }
 
+  async createAeoPrompt(input: { prompt: string; engine: string; category?: string | null; intent?: string | null }): Promise<any> {
+    const rows = rowsOf(await db.execute(sql`
+      insert into seo_aeo_prompts (prompt, engine, category, intent)
+      values (${input.prompt}, ${input.engine}, ${input.category ?? null}, ${input.intent ?? null})
+      returning *
+    `));
+    return rows[0];
+  }
+
+  async listAeoObservations(promptId?: string, limit = 200): Promise<any[]> {
+    const cond = promptId ? sql`prompt_id = ${promptId}` : sql`true`;
+    return rowsOf(await db.execute(sql`
+      select * from seo_aeo_observations where ${cond}
+      order by executed_at desc limit ${Math.min(Math.max(limit, 1), 500)}
+    `));
+  }
+
+  /**
+   * Mention/citation coverage per engine over EXECUTED observations only.
+   * Engines with zero executed observations simply do not appear — honest
+   * zeros, nothing extrapolated.
+   */
+  async aeoCoverage(): Promise<Array<{ engine: string; observations: number; mentioned: number; cited: number; mentionRate: number; citationRate: number }>> {
+    const rows = rowsOf(await db.execute(sql`
+      select o.engine,
+             count(*)::int as observations,
+             count(*) filter (where o.we_mentioned)::int as mentioned,
+             count(*) filter (where o.we_cited)::int as cited
+      from seo_aeo_observations o
+      join seo_aeo_prompts p on p.id = o.prompt_id
+      where p.status = 'EXECUTED'
+      group by o.engine
+      order by o.engine
+    `));
+    return rows.map((r) => {
+      const observations = Number(r.observations ?? 0);
+      const mentioned = Number(r.mentioned ?? 0);
+      const cited = Number(r.cited ?? 0);
+      return {
+        engine: String(r.engine),
+        observations,
+        mentioned,
+        cited,
+        mentionRate: observations === 0 ? 0 : mentioned / observations,
+        citationRate: observations === 0 ? 0 : cited / observations,
+      };
+    });
+  }
+
+  // ── Experiments ──────────────────────────────────────────────────────────
+
+  async listExperiments(limit = 100): Promise<any[]> {
+    return rowsOf(await db.execute(sql`
+      select * from seo_experiments order by created_at desc limit ${Math.min(Math.max(limit, 1), 500)}
+    `));
+  }
+
+  async createExperiment(input: {
+    name: string; hypothesis: string; change: string; metric: string;
+    cohort?: string | null; startAt?: Date | null; endAt?: Date | null;
+    baseline?: Record<string, unknown> | null;
+  }): Promise<any> {
+    const rows = rowsOf(await db.execute(sql`
+      insert into seo_experiments (name, hypothesis, change, metric, cohort, start_at, end_at, baseline)
+      values (
+        ${input.name}, ${input.hypothesis}, ${input.change}, ${input.metric},
+        ${input.cohort ?? null}, ${input.startAt ?? null}, ${input.endAt ?? null},
+        ${input.baseline == null ? null : sql`${input.baseline as never}::jsonb`}
+      ) returning *
+    `));
+    return rows[0];
+  }
+
+  async acknowledgeAlert(id: string): Promise<boolean> {
+    const rows = rowsOf(await db.execute(sql`
+      update seo_alerts set status = 'ACKNOWLEDGED'
+      where id = ${id} and status = 'OPEN' returning id
+    `));
+    return rows.length > 0;
+  }
+
+  /** Real COUNT(*)s for the overview card — no cached or invented numbers. */
+  async overviewCounts(): Promise<{ openOpportunities: number; openAlerts: number; competitors: number; candidateCompetitors: number; trackedQueries: number }> {
+    const rows = rowsOf(await db.execute(sql`
+      select
+        (select count(*)::int from seo_opportunities where status = 'OPEN') as open_opportunities,
+        (select count(*)::int from seo_alerts where status = 'OPEN') as open_alerts,
+        (select count(*)::int from seo_competitors where status = 'ACTIVE') as competitors,
+        (select count(*)::int from seo_competitors where status = 'CANDIDATE') as candidate_competitors,
+        (select count(*)::int from seo_queries) as tracked_queries
+    `));
+    const r = rows[0] ?? {};
+    return {
+      openOpportunities: Number(r.open_opportunities ?? 0),
+      openAlerts: Number(r.open_alerts ?? 0),
+      competitors: Number(r.competitors ?? 0),
+      candidateCompetitors: Number(r.candidate_competitors ?? 0),
+      trackedQueries: Number(r.tracked_queries ?? 0),
+    };
+  }
+
   // ── Gap records ──────────────────────────────────────────────────────────
 
   async listGapRecords(filter?: { status?: string; queryId?: string; limit?: number; offset?: number }): Promise<any[]> {
@@ -746,6 +873,83 @@ export class DrizzleSeoGrowthRepository {
       ) returning *
     `));
     return rows[0];
+  }
+
+  // ── Keyword imports ──────────────────────────────────────────────────────
+
+  async recordKeywordImport(input: {
+    provider: string; country: string; language: string;
+    methodology?: string | null; rowCount: number; importedBy?: string | null;
+  }): Promise<any> {
+    const rows = rowsOf(await db.execute(sql`
+      insert into seo_keyword_imports (provider, country, language, methodology, row_count, imported_by)
+      values (${input.provider}, ${input.country}, ${input.language},
+              ${input.methodology ?? null}, ${input.rowCount}, ${input.importedBy ?? null})
+      returning *
+    `));
+    return rows[0];
+  }
+
+  // ── Opportunity-generator evidence reads ─────────────────────────────────
+
+  /** Aggregated GSC rows in the window; empty when gsc_performance is empty. */
+  async gscOpportunityRows(windowDays: number): Promise<Array<{ page: string; query: string; impressions: number; clicks: number; position: number | null }>> {
+    const days = Math.min(Math.max(Math.floor(windowDays) || 28, 1), 365);
+    const rows = rowsOf(await db.execute(sql`
+      select page, query,
+             sum(impressions)::int as impressions,
+             sum(clicks)::int as clicks,
+             case when sum(impressions) > 0
+               then sum(coalesce(position, 0) * impressions) / nullif(sum(case when position is not null then impressions else 0 end), 0)
+               else null end as position
+      from gsc_performance
+      where date >= (current_date - make_interval(days => ${days}))::date
+      group by page, query
+      having sum(impressions) > 0
+    `));
+    return rows.map((r) => ({
+      page: String(r.page),
+      query: String(r.query),
+      impressions: Number(r.impressions ?? 0),
+      clicks: Number(r.clicks ?? 0),
+      position: r.position == null ? null : Number(r.position),
+    }));
+  }
+
+  /** Approved+active products with the three audited content attributes. */
+  async productAttributeGapRows(): Promise<Array<{ id: string; slug: string; name: string; imageUrl: string | null; shortDescription: string; specifications: Record<string, unknown> }>> {
+    const rows = rowsOf(await db.execute(sql`
+      select id, slug, name, image_url, short_description, specifications
+      from products
+      where active = true and approval_status = 'approved'
+    `));
+    return rows.map((r) => ({
+      id: String(r.id),
+      slug: String(r.slug),
+      name: String(r.name),
+      imageUrl: r.image_url == null ? null : String(r.image_url),
+      shortDescription: String(r.short_description ?? ''),
+      specifications: obj(r.specifications),
+    }));
+  }
+
+  /** Issue-bearing pages of the latest COMPLETE crawl run. */
+  async latestCrawlIssuePages(): Promise<Array<{ url: string; finalUrl: string; httpStatus: number; issues: string[] }>> {
+    const rows = rowsOf(await db.execute(sql`
+      with latest_run as (
+        select id from seo_crawl_runs where status = 'COMPLETE'
+        order by started_at desc limit 1
+      )
+      select url, final_url, http_status, issues from seo_crawl_pages
+      where run_id = (select id from latest_run)
+        and issues is not null and jsonb_array_length(issues) > 0
+    `));
+    return rows.map((r) => ({
+      url: String(r.url),
+      finalUrl: String(r.final_url),
+      httpStatus: Number(r.http_status),
+      issues: arr(r.issues),
+    }));
   }
 
   // ── Market share ─────────────────────────────────────────────────────────

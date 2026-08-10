@@ -1,0 +1,120 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, seoPatch, rowsOf, emptyReason, str } from "../../../lib/adminSeo";
+
+/** Opportunities — grouped by kind, with value / confidence / readiness /
+ *  effort / risk shown as SEPARATE columns. A single merged score would hide
+ *  which dimension is weak; five honest columns cannot. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/opportunities", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  if (intent === "generate") {
+    const res = await seoPost(token, "/admin/seo/opportunities/generate", {});
+    if (res.ok) {
+      const d = res.data as { generated?: number } | null;
+      notice = d && typeof d.generated === "number"
+        ? `Generated ${d.generated} opportunit${d.generated === 1 ? "y" : "ies"} from measured data.`
+        : "Generation completed.";
+    } else formError = res.message;
+  } else if (intent === "dismiss") {
+    const id = String(form.get("id") ?? "");
+    const res = await seoPatch(token, "/admin/seo/opportunities", { id, status: "DISMISSED" });
+    if (res.ok) notice = "Opportunity dismissed.";
+    else formError = res.message;
+  }
+}
+
+type Opportunity = {
+  id?: string; kind?: string; title?: string; summary?: string; status?: string;
+  value?: string | number; confidence?: string | number; readiness?: string | number;
+  effort?: string | number; risk?: string | number;
+};
+const listRes = await seoGet(token, "/admin/seo/opportunities");
+const opportunities = rowsOf<Opportunity>(listRes).filter((o) => o.status !== "DISMISSED");
+const listReason = emptyReason(listRes, "No opportunities yet");
+
+const byKind = new Map<string, Opportunity[]>();
+for (const o of opportunities) {
+  const k = str(o.kind);
+  if (!byKind.has(k)) byKind.set(k, []);
+  byKind.get(k)!.push(o);
+}
+---
+
+<AdminLayout title="SEO Opportunities" description="Ranked organic-growth opportunities with value, confidence, readiness, effort and risk shown separately.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Opportunities</h2>
+        <p class="text-sm text-gray-500 mt-1">
+          Generated from measured data only. Value, confidence, readiness, effort and risk are shown separately —
+          never blended into one score that hides which dimension is weak.
+        </p>
+      </div>
+      <form method="POST">
+        <input type="hidden" name="intent" value="generate" />
+        <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white hover:bg-black focus-visible:ring-2 focus-visible:ring-brand-primary">
+          Generate from current data
+        </button>
+      </form>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    {listReason && <div role="status" class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600 mb-12">{listReason}</div>}
+    {!listReason && opportunities.length === 0 && (
+      <div role="status" class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-sm text-gray-600 mb-12">
+        No open opportunities. Generation only produces opportunities where real query, SERP or crawl data supports
+        them — an empty list means the data does not yet support any, not that everything is perfect.
+      </div>
+    )}
+
+    {[...byKind.entries()].map(([kind, items]) => (
+      <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-6">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">{kind} ({items.length})</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                <th class="py-2 pr-4">Opportunity</th>
+                <th class="py-2 pr-4">Value</th><th class="py-2 pr-4">Confidence</th>
+                <th class="py-2 pr-4">Readiness</th><th class="py-2 pr-4">Effort</th>
+                <th class="py-2 pr-4">Risk</th><th class="py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((o) => (
+                <tr class="border-b border-gray-100 align-top">
+                  <td class="py-2 pr-4 max-w-md">
+                    <p class="font-bold text-brand-dark">{str(o.title)}</p>
+                    {o.summary && <p class="text-gray-500 mt-0.5">{str(o.summary)}</p>}
+                  </td>
+                  <td class="py-2 pr-4 font-bold tabular-nums">{str(o.value)}</td>
+                  <td class="py-2 pr-4 tabular-nums">{str(o.confidence)}</td>
+                  <td class="py-2 pr-4 tabular-nums">{str(o.readiness)}</td>
+                  <td class="py-2 pr-4 tabular-nums">{str(o.effort)}</td>
+                  <td class="py-2 pr-4 tabular-nums">{str(o.risk)}</td>
+                  <td class="py-2">
+                    <form method="POST">
+                      <input type="hidden" name="intent" value="dismiss" />
+                      <input type="hidden" name="id" value={str(o.id)} />
+                      <button type="submit" class="rounded-full border border-gray-300 px-3 py-1 text-[11px] font-bold text-gray-600 hover:bg-gray-50">Dismiss</button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    ))}
+  </div>
+</AdminLayout>

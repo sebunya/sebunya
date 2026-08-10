@@ -112,7 +112,7 @@ describe('GET /admin/control-centre/modules', () => {
       headers: { Authorization: 'Bearer admin' },
     });
     const body = await res.json();
-    expect(body.data.modules.length).toBe(16);
+    expect(body.data.modules.length).toBe(17);
     expect(body.data.modules.every((m: any) => m.category === 'COMMERCE_OS')).toBe(true);
   });
 

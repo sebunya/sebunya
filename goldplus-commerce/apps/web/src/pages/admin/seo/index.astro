@@ -1,0 +1,201 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, emptyReason, str, num, pct, fmtWhen } from "../../../lib/adminSeo";
+
+/**
+ * SEO & Organic Growth Overview — the front door of the Organic Growth OS.
+ * Every figure comes from the API or is honestly absent; this page never
+ * shows a placeholder metric.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo", 303);
+
+type Overview = {
+  marketShare?: {
+    top1Share?: number; top3Share?: number; top10Share?: number;
+    outrankRate?: number; methodology?: string; windowDays?: number;
+    observationCount?: number;
+  } | null;
+  opportunitiesByKind?: Record<string, number> | null;
+  openAlerts?: Array<Record<string, unknown>> | null;
+  integrations?: Array<{ provider?: string; status?: string; envVars?: string[] }> | null;
+  latestCrawl?: Record<string, unknown> | null;
+};
+
+const overviewRes = await seoGet<Overview>(token, "/admin/seo/overview");
+const overview = overviewRes.ok ? overviewRes.data : null;
+const overviewReason = emptyReason(overviewRes, "Awaiting the first organic-growth data");
+
+const share = overview?.marketShare ?? null;
+const oppKinds = overview?.opportunitiesByKind ?? null;
+const alerts = Array.isArray(overview?.openAlerts) ? overview!.openAlerts! : [];
+const integrations = Array.isArray(overview?.integrations) ? overview!.integrations! : [];
+const crawl = overview?.latestCrawl ?? null;
+
+const subPages = [
+  { href: "/admin/seo/competitors", label: "Competitors", note: "Registry, candidate review, evidence." },
+  { href: "/admin/seo/queries", label: "Queries", note: "Query intelligence, add & CSV import." },
+  { href: "/admin/seo/serp", label: "SERP Intelligence", note: "Observation history and manual capture." },
+  { href: "/admin/seo/market-share", label: "Market Share", note: "Top-N share and outrank rates." },
+  { href: "/admin/seo/opportunities", label: "Opportunities", note: "Value, confidence, readiness — never merged." },
+  { href: "/admin/seo/technical", label: "Technical SEO", note: "Crawl runs, page issues, alerts." },
+  { href: "/admin/seo/integrations", label: "Integrations", note: "Provider status and required credentials." },
+  { href: "/admin/seo/content", label: "Content & Experiments", note: "Gaps, change ledger, experiments." },
+  { href: "/admin/seo/aeo", label: "AEO", note: "Answer-engine prompt bank and coverage." },
+];
+---
+
+<AdminLayout title="SEO & Organic Growth" description="Organic market share, opportunities, alerts and integrations — the Organic Growth OS overview.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">SEO &amp; Organic Growth</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        One overview of organic market position. Every number below is measured; when nothing has been
+        measured yet the page says so instead of inventing a figure.
+      </p>
+    </div>
+
+    {overviewReason && (
+      <div role="status" class="mb-8 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
+        {overviewReason}
+      </div>
+    )}
+
+    {/* ── Hero metric: organic market share ─────────────────────────────── */}
+    <section aria-labelledby="share-heading" class="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8 mb-8">
+      <h3 id="share-heading" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Organic market share</h3>
+      {share ? (
+        <>
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="rounded-xl border border-gray-200 p-5">
+              <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Top 1 share</p>
+              <p class="text-3xl font-black text-brand-dark tabular-nums">{pct(share.top1Share)}</p>
+            </div>
+            <div class="rounded-xl border border-gray-200 p-5">
+              <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Top 3 share</p>
+              <p class="text-3xl font-black text-brand-dark tabular-nums">{pct(share.top3Share)}</p>
+            </div>
+            <div class="rounded-xl border border-gray-200 p-5">
+              <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Top 10 share</p>
+              <p class="text-3xl font-black text-brand-dark tabular-nums">{pct(share.top10Share)}</p>
+            </div>
+            <div class="rounded-xl border border-gray-200 p-5">
+              <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Outrank rate</p>
+              <p class="text-3xl font-black text-brand-dark tabular-nums">{pct(share.outrankRate)}</p>
+            </div>
+          </div>
+          {share.methodology && (
+            <p class="mt-4 text-xs text-gray-500 border-l-4 border-gray-200 pl-3 max-w-3xl">
+              <strong class="uppercase tracking-widest text-[10px] text-gray-400 block mb-0.5">Methodology</strong>
+              {share.methodology}
+            </p>
+          )}
+        </>
+      ) : (
+        <p class="text-sm text-gray-500">
+          No market-share data yet. Share is computed only from real SERP observations — record observations on the
+          <a href="/admin/seo/serp" class="underline font-bold">SERP Intelligence</a> page, or connect a rank tracker under
+          <a href="/admin/seo/integrations" class="underline font-bold">Integrations</a>.
+        </p>
+      )}
+    </section>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      {/* Opportunities by kind */}
+      <section class="bg-white border border-gray-200 rounded-2xl p-6">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">
+          Open opportunities <a href="/admin/seo/opportunities" class="float-right text-xs font-bold underline normal-case tracking-normal">view all</a>
+        </h3>
+        {oppKinds && Object.keys(oppKinds).length > 0 ? (
+          <ul class="space-y-2">
+            {Object.entries(oppKinds).map(([kind, count]) => (
+              <li class="flex items-center justify-between text-sm border-b border-gray-100 pb-2">
+                <span class="text-gray-700">{kind}</span>
+                <span class="font-black tabular-nums text-brand-dark">{num(count)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="text-sm text-gray-500">No open opportunities yet — generate them from measured data on the Opportunities page.</p>
+        )}
+      </section>
+
+      {/* Alerts */}
+      <section class="bg-white border border-gray-200 rounded-2xl p-6">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">
+          Open alerts <a href="/admin/seo/technical" class="float-right text-xs font-bold underline normal-case tracking-normal">manage</a>
+        </h3>
+        {alerts.length > 0 ? (
+          <ul class="space-y-2">
+            {alerts.slice(0, 8).map((a) => (
+              <li class="text-sm border-b border-gray-100 pb-2">
+                <span class="font-bold text-brand-dark">{str(a.severity ?? a.kind ?? a.type)}</span>
+                <span class="text-gray-600"> — {str(a.message ?? a.title ?? a.summary)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="text-sm text-gray-500">No open alerts.</p>
+        )}
+      </section>
+    </div>
+
+    {/* Integration status */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">
+        Integrations <a href="/admin/seo/integrations" class="float-right text-xs font-bold underline normal-case tracking-normal">details</a>
+      </h3>
+      {integrations.length > 0 ? (
+        <div class="flex flex-wrap gap-2">
+          {integrations.map((i) => (
+            <span
+              class={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${
+                i.status === "CONNECTED"
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                  : "border-amber-300 bg-amber-50 text-amber-900"
+              }`}
+            >
+              {str(i.provider)} · {str(i.status)}
+              {i.status !== "CONNECTED" && Array.isArray(i.envVars) && i.envVars.length > 0 && (
+                <span class="font-mono font-normal text-[10px]">({i.envVars.join(", ")})</span>
+              )}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p class="text-sm text-gray-500">Integration status not available yet — no provider is presumed connected.</p>
+      )}
+    </section>
+
+    {/* Latest crawl */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">
+        Latest crawl <a href="/admin/seo/technical" class="float-right text-xs font-bold underline normal-case tracking-normal">technical SEO</a>
+      </h3>
+      {crawl ? (
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Status</p><p class="font-bold text-brand-dark">{str(crawl.status)}</p></div>
+          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Pages</p><p class="font-bold text-brand-dark tabular-nums">{num(crawl.pagesCrawled ?? crawl.pageCount)}</p></div>
+          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Issues</p><p class="font-bold text-brand-dark tabular-nums">{num(crawl.issueCount ?? crawl.issues)}</p></div>
+          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Started</p><p class="font-bold text-brand-dark">{fmtWhen(crawl.startedAt)}</p></div>
+        </div>
+      ) : (
+        <p class="text-sm text-gray-500">Awaiting first crawl. Start one from the Technical SEO page.</p>
+      )}
+    </section>
+
+    {/* Sub-page links */}
+    <section class="mb-12">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Modules</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {subPages.map((p) => (
+          <a href={p.href} class="block rounded-xl border border-gray-200 bg-white p-5 hover:border-brand-dark focus-visible:ring-2 focus-visible:ring-brand-primary outline-none">
+            <p class="font-black text-brand-dark">{p.label}</p>
+            <p class="text-xs text-gray-500 mt-1">{p.note}</p>
+          </a>
+        ))}
+      </div>
+    </section>
+  </div>
+</AdminLayout>

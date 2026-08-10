@@ -1,0 +1,190 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, seoPatch, rowsOf, emptyReason, str } from "../../../lib/adminSeo";
+
+/** Competitor registry — who we are measured against, with a review queue for
+ *  machine-detected CANDIDATE competitors. Classify / ignore / merge are
+ *  ordinary form POSTs; the API records the decision. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/competitors", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  if (intent === "add") {
+    const res = await seoPost(token, "/admin/seo/competitors", {
+      name: String(form.get("name") ?? "").trim(),
+      type: String(form.get("type") ?? "").trim() || undefined,
+      directness: String(form.get("directness") ?? "").trim() || undefined,
+      ugandaRelevance: String(form.get("ugandaRelevance") ?? "").trim() || undefined,
+      domains: String(form.get("domains") ?? "")
+        .split(",").map((d) => d.trim()).filter(Boolean),
+    });
+    if (res.ok) notice = "Competitor added.";
+    else formError = res.message;
+  } else if (["classify", "ignore", "merge"].includes(intent)) {
+    const id = String(form.get("id") ?? "");
+    const body: Record<string, unknown> = { action: intent };
+    if (intent === "classify") {
+      body.status = "ACTIVE";
+      body.directness = String(form.get("directness") ?? "").trim() || undefined;
+    }
+    if (intent === "ignore") body.status = "IGNORED";
+    if (intent === "merge") body.mergeIntoId = String(form.get("mergeIntoId") ?? "").trim();
+    const res = await seoPatch(token, `/admin/seo/competitors?id=${encodeURIComponent(id)}`, { id, ...body });
+    if (res.ok) notice = `Competitor ${intent === "classify" ? "classified" : intent === "ignore" ? "ignored" : "merged"}.`;
+    else formError = res.message;
+  }
+}
+
+const statusFilter = new URL(Astro.request.url).searchParams.get("status") ?? "";
+const listRes = await seoGet(token, `/admin/seo/competitors${statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : ""}`);
+type Competitor = {
+  id?: string; name?: string; type?: string; directness?: string;
+  ugandaRelevance?: string; status?: string; domains?: string[];
+  evidence?: unknown;
+};
+const competitors = rowsOf<Competitor>(listRes);
+const listReason = emptyReason(listRes, "No competitors are registered yet");
+const candidates = competitors.filter((c) => c.status === "CANDIDATE");
+const others = competitors.filter((c) => c.status !== "CANDIDATE");
+const statuses = ["", "ACTIVE", "CANDIDATE", "IGNORED", "MERGED"];
+const evidenceText = (e: unknown): string =>
+  e === null || e === undefined ? "—" : typeof e === "string" ? e : Array.isArray(e) ? e.map(String).join("; ") : JSON.stringify(e);
+---
+
+<AdminLayout title="SEO Competitors" description="The competitor registry the Organic Growth OS measures ShopGoldPlus against.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Competitors</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        Who organic performance is measured against. CANDIDATE rows were detected in real SERPs and wait for a
+        human decision — nothing is auto-classified.
+      </p>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    {/* Candidate review queue */}
+    {candidates.length > 0 && (
+      <section class="bg-white border border-amber-300 rounded-2xl p-6 mb-8">
+        <h3 class="text-sm font-black uppercase tracking-widest text-amber-800 mb-4">Candidate review queue ({candidates.length})</h3>
+        <div class="space-y-4">
+          {candidates.map((c) => (
+            <div class="rounded-xl border border-gray-200 p-4">
+              <div class="flex flex-wrap items-baseline gap-2 mb-2">
+                <span class="font-black text-brand-dark">{str(c.name)}</span>
+                {Array.isArray(c.domains) && <span class="text-xs font-mono text-gray-500">{c.domains.join(", ")}</span>}
+              </div>
+              <p class="text-xs text-gray-500 mb-3"><strong>Evidence:</strong> {evidenceText(c.evidence)}</p>
+              <div class="flex flex-wrap gap-2">
+                <form method="POST" class="flex gap-2 items-center">
+                  <input type="hidden" name="intent" value="classify" />
+                  <input type="hidden" name="id" value={str(c.id)} />
+                  <select name="directness" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
+                    <option value="DIRECT">Direct</option>
+                    <option value="INDIRECT">Indirect</option>
+                    <option value="MARKETPLACE">Marketplace</option>
+                  </select>
+                  <button type="submit" class="rounded-full bg-brand-dark px-4 py-1.5 text-xs font-bold text-white hover:bg-black">Classify as competitor</button>
+                </form>
+                <form method="POST">
+                  <input type="hidden" name="intent" value="ignore" />
+                  <input type="hidden" name="id" value={str(c.id)} />
+                  <button type="submit" class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">Ignore</button>
+                </form>
+                <form method="POST" class="flex gap-2 items-center">
+                  <input type="hidden" name="intent" value="merge" />
+                  <input type="hidden" name="id" value={str(c.id)} />
+                  <input name="mergeIntoId" required placeholder="Merge into competitor id" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs w-48" />
+                  <button type="submit" class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">Merge</button>
+                </form>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    {/* Filter + registry table */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Registry</h3>
+        <form method="GET" class="flex items-center gap-2">
+          <label class="text-xs font-bold text-gray-600">Status
+            <select name="status" class="ml-2 rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
+              {statuses.map((s) => <option value={s} selected={s === statusFilter}>{s === "" ? "All" : s}</option>)}
+            </select>
+          </label>
+          <button type="submit" class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">Filter</button>
+        </form>
+      </div>
+
+      {listReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">{listReason}</p>}
+      {!listReason && others.length === 0 && candidates.length === 0 && (
+        <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">
+          No competitors match this filter. Add one below, or wait for SERP observations to surface candidates.
+        </p>
+      )}
+      {others.length > 0 && (
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                <th class="py-2 pr-4">Name</th><th class="py-2 pr-4">Type</th><th class="py-2 pr-4">Directness</th>
+                <th class="py-2 pr-4">Uganda relevance</th><th class="py-2 pr-4">Status</th>
+                <th class="py-2 pr-4">Domains</th><th class="py-2">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {others.map((c) => (
+                <tr class="border-b border-gray-100 align-top">
+                  <td class="py-2 pr-4 font-bold text-brand-dark">{str(c.name)}</td>
+                  <td class="py-2 pr-4">{str(c.type)}</td>
+                  <td class="py-2 pr-4">{str(c.directness)}</td>
+                  <td class="py-2 pr-4">{str(c.ugandaRelevance)}</td>
+                  <td class="py-2 pr-4"><span class="rounded-full bg-gray-100 px-2 py-0.5 font-bold">{str(c.status)}</span></td>
+                  <td class="py-2 pr-4 font-mono">{Array.isArray(c.domains) ? c.domains.join(", ") : "—"}</td>
+                  <td class="py-2 text-gray-500 max-w-xs">{evidenceText(c.evidence)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    {/* Add competitor */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-12">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Add a competitor</h3>
+      <form method="POST" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <input type="hidden" name="intent" value="add" />
+        <label class="text-xs font-bold text-gray-700">Name
+          <input name="name" required maxlength="160" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Type
+          <select name="type" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="RETAILER">Retailer</option><option value="MARKETPLACE">Marketplace</option>
+            <option value="BRAND">Brand</option><option value="PUBLISHER">Publisher</option><option value="OTHER">Other</option>
+          </select></label>
+        <label class="text-xs font-bold text-gray-700">Directness
+          <select name="directness" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="DIRECT">Direct</option><option value="INDIRECT">Indirect</option>
+          </select></label>
+        <label class="text-xs font-bold text-gray-700">Uganda relevance
+          <select name="ugandaRelevance" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option>
+          </select></label>
+        <label class="text-xs font-bold text-gray-700 sm:col-span-2">Domains (comma-separated)
+          <input name="domains" required placeholder="example.co.ug, example.com" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+        <div class="sm:col-span-3">
+          <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white hover:bg-black focus-visible:ring-2 focus-visible:ring-brand-primary">Add competitor</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</AdminLayout>

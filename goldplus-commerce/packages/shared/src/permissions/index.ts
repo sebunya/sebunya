@@ -119,6 +119,23 @@ export const PERMISSIONS = {
   DELIVERY_CONFIG_PROPOSE: 'delivery_config.propose',
   DELIVERY_CONFIG_PUBLISH: 'delivery_config.publish',
   DELIVERY_VARIANCE_APPLY: 'delivery_variance.apply',
+  // Organic Growth OS (Phase 2). VIEW opens every read surface; each mutating
+  // area carries its own manage right so competitor curation, SERP evidence
+  // entry and technical changes can be granted separately. audit.run starts a
+  // first-party crawl or opportunity generation (compute, no external send);
+  // approve_high_risk exists so HIGH-risk technical changes (redirects,
+  // robots) can require a second person, mirroring the maker/checker split
+  // used by legal and pricing.
+  SEO_VIEW: 'seo.view',
+  SEO_AUDIT_RUN: 'seo.audit.run',
+  SEO_METADATA_MANAGE: 'seo.metadata.manage',
+  SEO_REDIRECTS_MANAGE: 'seo.redirects.manage',
+  SEO_ROBOTS_MANAGE: 'seo.robots.manage',
+  SEO_COMPETITORS_MANAGE: 'seo.competitors.manage',
+  SEO_SERP_MANAGE: 'seo.serp.manage',
+  SEO_INTEGRATIONS_MANAGE: 'seo.integrations.manage',
+  SEO_EXPERIMENTS_MANAGE: 'seo.experiments.manage',
+  SEO_APPROVE_HIGH_RISK: 'seo.approve_high_risk',
   // Payments brief 2026-08-06: giving money back is its own right, separate
   // from reading payments and from confirming them. If money has been taken
   // wrongly there must be a way to return it, and that way must be guarded.

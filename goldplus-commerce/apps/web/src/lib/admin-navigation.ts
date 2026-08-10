@@ -1,7 +1,7 @@
 export interface NavItem {
   label: string;
   href: string;
-  group: 'Dashboard' | 'Commerce' | 'Storefront' | 'Marketing' | 'Customers' | 'Recommendations' | 'Merchandising' | 'Measurement' | 'System' | 'Other';
+  group: 'Dashboard' | 'Commerce' | 'Storefront' | 'Marketing' | 'Search Growth' | 'Customers' | 'Recommendations' | 'Merchandising' | 'Measurement' | 'System' | 'Other';
   status: 'working' | 'read_only' | 'diagnostic' | 'hidden';
   description: string;
   reason?: string;
@@ -306,7 +306,18 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'Users', href: '/admin/users', group: 'System', status: 'working', description: 'Operator accounts.' },
   { label: 'Roles & permissions', href: '/admin/roles', group: 'System', status: 'working', description: 'Role definitions and their permission grants.' },
   { label: 'Audit log', href: '/admin/audit', group: 'System', status: 'working', description: 'Every governed mutation, actor and before/after.' },
-  { label: 'Release readiness', href: '/admin/release-readiness', group: 'System', status: 'diagnostic', description: 'Release gates and evidence.' }
+  { label: 'Release readiness', href: '/admin/release-readiness', group: 'System', status: 'diagnostic', description: 'Release gates and evidence.' },
+  // ── Organic Growth OS (Search Growth) — every figure measured, none invented.
+  { label: 'SEO Overview', href: '/admin/seo', group: 'Search Growth', status: 'working', description: 'Organic market share, open opportunities, alerts and integration status.' },
+  { label: 'Competitors', href: '/admin/seo/competitors', group: 'Search Growth', status: 'working', description: 'Competitor registry with a human-decided candidate review queue.' },
+  { label: 'Queries', href: '/admin/seo/queries', group: 'Search Growth', status: 'working', description: 'The tracked search-query universe: add queries or import a CSV.' },
+  { label: 'SERP Intelligence', href: '/admin/seo/serp', group: 'Search Growth', status: 'working', description: 'Real SERP observations per query, including manual operator capture.' },
+  { label: 'Market Share', href: '/admin/seo/market-share', group: 'Search Growth', status: 'working', description: 'Top-N share and outrank rates computed from observations only.' },
+  { label: 'Opportunities', href: '/admin/seo/opportunities', group: 'Search Growth', status: 'working', description: 'Generated opportunities with value, confidence, readiness, effort and risk shown separately.' },
+  { label: 'Technical SEO', href: '/admin/seo/technical', group: 'Search Growth', status: 'working', description: 'Crawl runs, per-page issues and technical alerts.' },
+  { label: 'Integrations', href: '/admin/seo/integrations', group: 'Search Growth', status: 'working', description: 'Provider status and the credentials each connection needs.' },
+  { label: 'Content & Experiments', href: '/admin/seo/content', group: 'Search Growth', status: 'working', description: 'Content gaps, the SEO change ledger and controlled experiments.' },
+  { label: 'AEO', href: '/admin/seo/aeo', group: 'Search Growth', status: 'working', description: 'Answer-engine prompt bank, recorded observations and coverage.' }
 ];
 
 // Group helper to replicate traditional display grouping without duplicate data
@@ -326,6 +337,10 @@ export const ADMIN_NAVIGATION: NavGroup[] = [
   {
     title: 'Marketing',
     items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Marketing' && item.status !== 'hidden')
+  },
+  {
+    title: 'Search Growth',
+    items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Search Growth' && item.status !== 'hidden')
   },
   {
     title: 'Customers',

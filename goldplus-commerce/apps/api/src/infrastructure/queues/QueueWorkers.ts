@@ -168,6 +168,16 @@ export function registerAllWorkers(): void {
         if (!result.success) {
           throw new Error('Recommendation materialization failed');
         }
+      } else if (job.name === 'seo-crawl') {
+        // Organic Growth OS: first-party technical crawl. The use case enforces
+        // the SSRF host allowlist, page/depth/time limits and cancellation
+        // (run status flips to CANCELLED between pages).
+        const { runId, maxPages, startUrl } = job.data as { runId: string; maxPages?: number; startUrl?: string };
+        const { CrawlSiteUseCase } = await import('../../application/use-cases/seo-growth/CrawlSiteUseCase');
+        const { FetchSeoPageFetcher } = await import('../seo/FetchSeoPageFetcher');
+        const uc = new CrawlSiteUseCase(registry.seoGrowthRepo, new FetchSeoPageFetcher());
+        const outcome = await uc.execute(runId, { maxPages, startUrl });
+        logger.info({ runId, ...outcome }, '[QueueWorker] SEO crawl finished');
       } else if (job.name === 'abandonment-scan-cron') {
         // Wave 2E-1: the hourly evaluator is the ONLY writer of abandonment
         // classifications; each new one is announced on ABANDONED_CART_EVENTS.

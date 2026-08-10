@@ -1,0 +1,194 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, rowsOf, emptyReason, str, num, fmtWhen } from "../../../lib/adminSeo";
+
+/** Technical SEO — first-party crawler runs, per-page issues and alerts. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/technical", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  if (intent === "start-crawl") {
+    const res = await seoPost(token, "/admin/seo/crawl/start", {
+      pageLimit: Number(form.get("pageLimit") ?? 200) || 200,
+    });
+    if (res.ok) notice = "Crawl started — refresh this page to watch its progress.";
+    else formError = res.message;
+  } else if (intent === "alert-ack" || intent === "alert-resolve") {
+    const res = await seoPost(token, "/admin/seo/alerts", {
+      id: String(form.get("id") ?? ""),
+      action: intent === "alert-ack" ? "ACKNOWLEDGE" : "RESOLVE",
+    });
+    if (res.ok) notice = intent === "alert-ack" ? "Alert acknowledged." : "Alert resolved.";
+    else formError = res.message;
+  }
+}
+
+type CrawlRun = {
+  id?: string; status?: string; startedAt?: string; finishedAt?: string;
+  pagesCrawled?: number; pageLimit?: number; issueCount?: number;
+};
+const runsRes = await seoGet(token, "/admin/seo/crawl/runs");
+const runs = rowsOf<CrawlRun>(runsRes);
+const runsReason = emptyReason(runsRes, "Awaiting first crawl");
+
+const url = new URL(Astro.request.url);
+const runId = url.searchParams.get("runId") ?? (runs[0]?.id ? String(runs[0].id) : "");
+const issuesOnly = url.searchParams.get("issuesOnly") === "1";
+
+type CrawlPage = {
+  url?: string; statusCode?: number; title?: string; issues?: string[] | string;
+  indexable?: boolean; canonical?: string;
+};
+let pages: CrawlPage[] = [];
+let pagesReason: string | null = null;
+if (runId) {
+  const pagesRes = await seoGet(token, `/admin/seo/crawl/runs/${encodeURIComponent(runId)}/pages`);
+  pages = rowsOf<CrawlPage>(pagesRes);
+  pagesReason = emptyReason(pagesRes, "No pages recorded for this run yet");
+}
+const issuesOf = (p: CrawlPage): string[] =>
+  Array.isArray(p.issues) ? p.issues : typeof p.issues === "string" && p.issues ? [p.issues] : [];
+const visiblePages = issuesOnly ? pages.filter((p) => issuesOf(p).length > 0) : pages;
+
+type Alert = { id?: string; severity?: string; kind?: string; message?: string; status?: string; createdAt?: string };
+const alertsRes = await seoGet(token, "/admin/seo/alerts");
+const alerts = rowsOf<Alert>(alertsRes).filter((a) => a.status !== "RESOLVED");
+const alertsReason = emptyReason(alertsRes, "No alerts yet");
+---
+
+<AdminLayout title="Technical SEO" description="Crawl runs, per-page issues and technical alerts for the storefront.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Technical SEO</h2>
+      <p class="text-sm text-gray-500 mt-1">First-party crawls of the storefront: what was fetched, what is broken, what changed.</p>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    {/* Start crawl */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Start a crawl</h3>
+      <form method="POST" class="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="intent" value="start-crawl" />
+        <label class="text-xs font-bold text-gray-700">Page limit
+          <input name="pageLimit" type="number" min="10" max="10000" value="200" class="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white hover:bg-black">Start crawl</button>
+      </form>
+    </section>
+
+    {/* Runs */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Crawl runs</h3>
+      {runsReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">{runsReason}</p>}
+      {!runsReason && runs.length === 0 && (
+        <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">Awaiting first crawl — start one above.</p>
+      )}
+      {runs.length > 0 && (
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                <th class="py-2 pr-4">Started</th><th class="py-2 pr-4">Status</th>
+                <th class="py-2 pr-4 text-right">Pages</th><th class="py-2 pr-4 text-right">Issues</th>
+                <th class="py-2 pr-4">Finished</th><th class="py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr class={`border-b border-gray-100 ${String(r.id) === runId ? "bg-amber-50/50" : ""}`}>
+                  <td class="py-2 pr-4">{fmtWhen(r.startedAt)}</td>
+                  <td class="py-2 pr-4"><span class="rounded-full bg-gray-100 px-2 py-0.5 font-bold">{str(r.status)}</span></td>
+                  <td class="py-2 pr-4 text-right tabular-nums">{num(r.pagesCrawled)}{r.pageLimit ? ` / ${num(r.pageLimit)}` : ""}</td>
+                  <td class="py-2 pr-4 text-right tabular-nums font-bold">{num(r.issueCount)}</td>
+                  <td class="py-2 pr-4">{fmtWhen(r.finishedAt)}</td>
+                  <td class="py-2"><a href={`/admin/seo/technical?runId=${encodeURIComponent(str(r.id))}`} class="underline font-bold">pages</a></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    {/* Pages of selected run */}
+    {runId && (
+      <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Pages in run</h3>
+          <a href={`/admin/seo/technical?runId=${encodeURIComponent(runId)}${issuesOnly ? "" : "&issuesOnly=1"}`}
+            class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">
+            {issuesOnly ? "Show all pages" : "Only pages with issues"}
+          </a>
+        </div>
+        {pagesReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">{pagesReason}</p>}
+        {!pagesReason && visiblePages.length === 0 && (
+          <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">
+            {issuesOnly ? "No pages with issues in this run." : "No pages recorded for this run yet."}
+          </p>
+        )}
+        {visiblePages.length > 0 && (
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                  <th class="py-2 pr-4">URL</th><th class="py-2 pr-4 text-right">HTTP</th>
+                  <th class="py-2 pr-4">Indexable</th><th class="py-2">Issues</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visiblePages.slice(0, 300).map((p) => (
+                  <tr class="border-b border-gray-100 align-top">
+                    <td class="py-2 pr-4 font-mono max-w-md truncate">{str(p.url)}</td>
+                    <td class="py-2 pr-4 text-right tabular-nums font-bold">{str(p.statusCode)}</td>
+                    <td class="py-2 pr-4">{p.indexable === undefined ? "—" : p.indexable ? "yes" : "no"}</td>
+                    <td class="py-2 text-gray-600">{issuesOf(p).length > 0 ? issuesOf(p).join("; ") : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    )}
+
+    {/* Alerts */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-12">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Open alerts</h3>
+      {alertsReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">{alertsReason}</p>}
+      {!alertsReason && alerts.length === 0 && <p class="text-sm text-gray-500">No open alerts.</p>}
+      {alerts.length > 0 && (
+        <ul class="space-y-3">
+          {alerts.map((a) => (
+            <li class="rounded-xl border border-gray-200 p-4 flex flex-wrap items-center justify-between gap-3">
+              <div class="text-sm">
+                <span class="font-black text-brand-dark">{str(a.severity)}</span>
+                <span class="text-gray-500"> · {str(a.kind)}</span>
+                <p class="text-gray-700">{str(a.message)}</p>
+                <p class="text-xs text-gray-400">{fmtWhen(a.createdAt)} · {str(a.status)}</p>
+              </div>
+              <div class="flex gap-2">
+                <form method="POST">
+                  <input type="hidden" name="intent" value="alert-ack" />
+                  <input type="hidden" name="id" value={str(a.id)} />
+                  <button type="submit" class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">Acknowledge</button>
+                </form>
+                <form method="POST">
+                  <input type="hidden" name="intent" value="alert-resolve" />
+                  <input type="hidden" name="id" value={str(a.id)} />
+                  <button type="submit" class="rounded-full bg-brand-dark px-4 py-1.5 text-xs font-bold text-white hover:bg-black">Resolve</button>
+                </form>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  </div>
+</AdminLayout>

@@ -1,0 +1,197 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, rowsOf, emptyReason, str, num } from "../../../lib/adminSeo";
+
+/** Query intelligence — the tracked search-query universe. CSV import is parsed
+ *  HERE (server-side, from the pasted/uploaded text) so the API receives
+ *  structured rows and errors can name row numbers. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/queries", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+
+function parseCsv(text: string): { rows: Array<Record<string, string>>; errors: string[] } {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 5000);
+  if (lines.length === 0) return { rows: [], errors: ["The CSV is empty."] };
+  const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  const qIdx = header.indexOf("query");
+  if (qIdx === -1) return { rows: [], errors: ['The first line must be a header containing a "query" column.'] };
+  const errors: string[] = [];
+  const rows = lines.slice(1).map((line, i) => {
+    const parts = line.split(",").map((p) => p.trim());
+    if (parts.length > header.length) {
+      errors.push(`Row ${i + 2}: ${parts.length} fields but the header has ${header.length} — a value probably contains a comma. Nothing is guessed.`);
+    }
+    const row: Record<string, string> = {};
+    header.forEach((h, j) => { if (parts[j]) row[h] = parts[j]; });
+    if (!row.query) errors.push(`Row ${i + 2}: missing query text.`);
+    return row;
+  });
+  return { rows, errors };
+}
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  if (intent === "add") {
+    const res = await seoPost(token, "/admin/seo/queries", {
+      query: String(form.get("query") ?? "").trim(),
+      intent: String(form.get("q_intent") ?? "").trim() || undefined,
+      category: String(form.get("category") ?? "").trim() || undefined,
+      priority: String(form.get("priority") ?? "").trim() || undefined,
+      source: "manual",
+    });
+    if (res.ok) notice = "Query added.";
+    else formError = res.message;
+  } else if (intent === "import") {
+    const csvText = String(form.get("csv") ?? "");
+    const { rows, errors } = parseCsv(csvText);
+    if (errors.length > 0) {
+      formError = `The CSV was not imported: ${errors.slice(0, 10).join(" ")}`;
+    } else {
+      const res = await seoPost(token, "/admin/seo/queries/import-csv", { rows, source: "csv-import" });
+      if (res.ok) {
+        const d = res.data as { imported?: number; skipped?: number } | null;
+        notice = d && typeof d.imported === "number"
+          ? `Imported ${d.imported} quer${d.imported === 1 ? "y" : "ies"}${typeof d.skipped === "number" && d.skipped > 0 ? `; ${d.skipped} skipped (already tracked).` : "."}`
+          : `Imported ${rows.length} row(s).`;
+      } else formError = res.message;
+    }
+  }
+}
+
+const url = new URL(Astro.request.url);
+const filters = ["intent", "category", "priority", "source"] as const;
+const qs = filters
+  .map((f) => [f, url.searchParams.get(f) ?? ""] as const)
+  .filter(([, v]) => v)
+  .map(([f, v]) => `${f}=${encodeURIComponent(v)}`)
+  .join("&");
+
+const listRes = await seoGet(token, `/admin/seo/queries${qs ? `?${qs}` : ""}`);
+type QueryRow = {
+  id?: string; query?: string; intent?: string; category?: string;
+  priority?: string; source?: string; trackedSince?: string; volume?: number;
+};
+const queries = rowsOf<QueryRow>(listRes);
+const listReason = emptyReason(listRes, "No queries are tracked yet");
+
+// Import history is optional — shown only if the API returns it.
+const importHistory = listRes.ok && !Array.isArray(listRes.data)
+  ? ((listRes.data as { imports?: Array<Record<string, unknown>> }).imports ?? [])
+  : [];
+const fv = (f: string) => url.searchParams.get(f) ?? "";
+---
+
+<AdminLayout title="SEO Queries" description="The tracked search-query universe: intent, category, priority and source.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Query intelligence</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        The universe of search queries organic performance is measured on. Add queries one at a time or import a CSV;
+        volumes appear only when a data provider is connected — never estimated here.
+      </p>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Tracked queries</h3>
+        <form method="GET" class="flex flex-wrap items-center gap-2">
+          <input name="intent" value={fv("intent")} placeholder="Intent" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs w-28" />
+          <input name="category" value={fv("category")} placeholder="Category" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs w-28" />
+          <input name="priority" value={fv("priority")} placeholder="Priority" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs w-24" />
+          <input name="source" value={fv("source")} placeholder="Source" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs w-24" />
+          <button type="submit" class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">Filter</button>
+        </form>
+      </div>
+
+      {listReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">{listReason}</p>}
+      {!listReason && queries.length === 0 && (
+        <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">No queries match this filter yet.</p>
+      )}
+      {queries.length > 0 && (
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                <th class="py-2 pr-4">Query</th><th class="py-2 pr-4">Intent</th><th class="py-2 pr-4">Category</th>
+                <th class="py-2 pr-4">Priority</th><th class="py-2 pr-4">Source</th><th class="py-2 text-right">Volume</th>
+              </tr>
+            </thead>
+            <tbody>
+              {queries.map((q) => (
+                <tr class="border-b border-gray-100">
+                  <td class="py-2 pr-4 font-bold text-brand-dark">
+                    <a href={`/admin/seo/serp?queryId=${encodeURIComponent(str(q.id))}`} class="underline">{str(q.query)}</a>
+                  </td>
+                  <td class="py-2 pr-4">{str(q.intent)}</td>
+                  <td class="py-2 pr-4">{str(q.category)}</td>
+                  <td class="py-2 pr-4">{str(q.priority)}</td>
+                  <td class="py-2 pr-4 text-gray-500">{str(q.source)}</td>
+                  <td class="py-2 text-right tabular-nums">{num(q.volume)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <section class="bg-white border border-gray-200 rounded-2xl p-6">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Add a query</h3>
+        <form method="POST" class="space-y-3">
+          <input type="hidden" name="intent" value="add" />
+          <label class="block text-xs font-bold text-gray-700">Query text
+            <input name="query" required maxlength="200" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <div class="grid grid-cols-3 gap-3">
+            <label class="text-xs font-bold text-gray-700">Intent
+              <select name="q_intent" class="mt-1 block w-full rounded-lg border border-gray-300 px-2 py-2 text-sm">
+                <option value="TRANSACTIONAL">Transactional</option><option value="COMMERCIAL">Commercial</option>
+                <option value="INFORMATIONAL">Informational</option><option value="NAVIGATIONAL">Navigational</option>
+                <option value="LOCAL">Local</option>
+              </select></label>
+            <label class="text-xs font-bold text-gray-700">Category
+              <input name="category" placeholder="e.g. solar" class="mt-1 block w-full rounded-lg border border-gray-300 px-2 py-2 text-sm" /></label>
+            <label class="text-xs font-bold text-gray-700">Priority
+              <select name="priority" class="mt-1 block w-full rounded-lg border border-gray-300 px-2 py-2 text-sm">
+                <option value="HIGH">High</option><option value="MEDIUM" selected>Medium</option><option value="LOW">Low</option>
+              </select></label>
+          </div>
+          <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white hover:bg-black">Add query</button>
+        </form>
+      </section>
+
+      <section class="bg-white border border-gray-200 rounded-2xl p-6">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Import CSV</h3>
+        <p class="text-xs text-gray-500 mb-4">
+          Paste CSV with a header line containing at least <code class="bg-gray-100 px-1 rounded">query</code>
+          (optional columns: <code class="bg-gray-100 px-1 rounded">intent,category,priority</code>). The page parses it and
+          sends structured rows; ambiguous lines are rejected by row number, never guessed.
+        </p>
+        <form method="POST" class="space-y-3">
+          <input type="hidden" name="intent" value="import" />
+          <textarea name="csv" rows="6" required placeholder={`query,intent,category,priority\nsolar battery price uganda,TRANSACTIONAL,solar,HIGH`}
+            class="block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"></textarea>
+          <button type="submit" class="inline-flex min-h-11 items-center rounded-full border-2 border-brand-dark px-6 text-sm font-bold text-brand-dark hover:bg-gray-50">Import</button>
+        </form>
+      </section>
+    </div>
+
+    {importHistory.length > 0 && (
+      <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-12">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Import history</h3>
+        <ul class="text-xs text-gray-600 space-y-1">
+          {importHistory.slice(0, 20).map((h) => (
+            <li>{str(h.importedAt ?? h.createdAt)} — {num(h.rowCount ?? h.imported)} row(s) from {str(h.source)}</li>
+          ))}
+        </ul>
+      </section>
+    )}
+  </div>
+</AdminLayout>

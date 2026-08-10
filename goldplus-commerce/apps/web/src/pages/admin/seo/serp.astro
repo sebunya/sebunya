@@ -1,0 +1,169 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, rowsOf, emptyReason, str, fmtWhen } from "../../../lib/adminSeo";
+
+/** SERP Intelligence — observation history per tracked query, plus a manual
+ *  entry form so operator-captured SERPs count as real observations until a
+ *  rank-tracker credential exists (provider automation is READY_FOR_CREDENTIALS). */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/serp", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const rankRaw = String(form.get("rank") ?? "").trim();
+  const res = await seoPost(token, "/admin/seo/serp/observations", {
+    queryId: String(form.get("queryId") ?? "").trim(),
+    engine: String(form.get("engine") ?? "").trim(),
+    device: String(form.get("device") ?? "").trim(),
+    rank: rankRaw === "" ? null : Number(rankRaw),
+    url: String(form.get("url") ?? "").trim() || undefined,
+    resultType: String(form.get("resultType") ?? "").trim() || undefined,
+    serpFeatures: String(form.get("serpFeatures") ?? "")
+      .split(",").map((f) => f.trim()).filter(Boolean),
+    observedAt: String(form.get("observedAt") ?? "").trim() || undefined,
+    source: "manual-operator",
+  });
+  if (res.ok) notice = "Observation recorded.";
+  else formError = res.message;
+}
+
+const url = new URL(Astro.request.url);
+const queryId = url.searchParams.get("queryId") ?? "";
+
+const queriesRes = await seoGet(token, "/admin/seo/queries");
+type QueryRow = { id?: string; query?: string };
+const queries = rowsOf<QueryRow>(queriesRes);
+const queriesReason = emptyReason(queriesRes, "No tracked queries yet");
+
+type Observation = {
+  engine?: string; device?: string; rank?: number | null; url?: string;
+  resultType?: string; serpFeatures?: string[]; observedAt?: string; source?: string;
+};
+let observations: Observation[] = [];
+let obsReason: string | null = null;
+if (queryId) {
+  const obsRes = await seoGet(token, `/admin/seo/serp?queryId=${encodeURIComponent(queryId)}`);
+  observations = rowsOf<Observation>(obsRes);
+  obsReason = emptyReason(obsRes, "No observations for this query yet");
+}
+const selectedQuery = queries.find((q) => q.id === queryId);
+---
+
+<AdminLayout title="SERP Intelligence" description="SERP observation history per query, with manual operator capture.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">SERP Intelligence</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        What real search result pages showed for tracked queries. Automated rank tracking is
+        <strong> READY_FOR_CREDENTIALS</strong> — until a provider is connected under
+        <a href="/admin/seo/integrations" class="underline font-bold">Integrations</a>, operator-captured SERPs
+        recorded below are the only observations, and they are treated as first-class data.
+      </p>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    {/* Query picker */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Pick a query</h3>
+      {queriesReason && <p class="text-sm text-gray-500">{queriesReason} Add queries on the <a href="/admin/seo/queries" class="underline font-bold">Queries</a> page first.</p>}
+      {queries.length > 0 && (
+        <form method="GET" class="flex flex-wrap items-center gap-3">
+          <select name="queryId" class="rounded-lg border border-gray-300 px-3 py-2 text-sm min-w-64">
+            <option value="">— choose a tracked query —</option>
+            {queries.map((q) => <option value={str(q.id)} selected={q.id === queryId}>{str(q.query)}</option>)}
+          </select>
+          <button type="submit" class="rounded-full bg-brand-dark px-5 py-2 text-sm font-bold text-white hover:bg-black">Show history</button>
+        </form>
+      )}
+    </section>
+
+    {/* Observation history */}
+    {queryId && (
+      <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">
+          Observation history{selectedQuery ? ` — “${str(selectedQuery.query)}”` : ""}
+        </h3>
+        {obsReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">{obsReason}</p>}
+        {!obsReason && observations.length === 0 && (
+          <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">
+            No observations recorded for this query yet — record one below.
+          </p>
+        )}
+        {observations.length > 0 && (
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                  <th class="py-2 pr-4">Observed</th><th class="py-2 pr-4">Engine</th><th class="py-2 pr-4">Device</th>
+                  <th class="py-2 pr-4 text-right">Rank</th><th class="py-2 pr-4">URL</th>
+                  <th class="py-2 pr-4">Result type</th><th class="py-2 pr-4">SERP features</th><th class="py-2">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {observations.map((o) => (
+                  <tr class="border-b border-gray-100">
+                    <td class="py-2 pr-4">{fmtWhen(o.observedAt)}</td>
+                    <td class="py-2 pr-4">{str(o.engine)}</td>
+                    <td class="py-2 pr-4">{str(o.device)}</td>
+                    <td class="py-2 pr-4 text-right font-bold tabular-nums">{o.rank === null || o.rank === undefined ? "not ranked" : o.rank}</td>
+                    <td class="py-2 pr-4 font-mono max-w-xs truncate">{str(o.url)}</td>
+                    <td class="py-2 pr-4">{str(o.resultType)}</td>
+                    <td class="py-2 pr-4 text-gray-500">{Array.isArray(o.serpFeatures) && o.serpFeatures.length > 0 ? o.serpFeatures.join(", ") : "—"}</td>
+                    <td class="py-2 text-gray-500">{str(o.source)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    )}
+
+    {/* Manual entry */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-12">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Record a manual observation</h3>
+      <p class="text-xs text-gray-500 mb-4 max-w-3xl">
+        For SERPs you captured yourself (search in an incognito window, note the position). Leave rank empty if the site
+        did not appear — "not ranked" is a real, valuable observation.
+      </p>
+      <form method="POST" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <label class="text-xs font-bold text-gray-700 lg:col-span-2">Query
+          <select name="queryId" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="">— choose —</option>
+            {queries.map((q) => <option value={str(q.id)} selected={q.id === queryId}>{str(q.query)}</option>)}
+          </select></label>
+        <label class="text-xs font-bold text-gray-700">Engine
+          <select name="engine" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="google">Google</option><option value="bing">Bing</option><option value="duckduckgo">DuckDuckGo</option>
+          </select></label>
+        <label class="text-xs font-bold text-gray-700">Device
+          <select name="device" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="mobile">Mobile</option><option value="desktop">Desktop</option>
+          </select></label>
+        <label class="text-xs font-bold text-gray-700">Rank (empty = not ranked)
+          <input name="rank" type="number" min="1" max="200" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700 lg:col-span-2">Ranking URL
+          <input name="url" type="url" placeholder="https://…" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+        <label class="text-xs font-bold text-gray-700">Result type
+          <select name="resultType" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="ORGANIC">Organic</option><option value="LOCAL_PACK">Local pack</option>
+            <option value="SHOPPING">Shopping</option><option value="FEATURED_SNIPPET">Featured snippet</option>
+            <option value="AI_OVERVIEW">AI overview</option><option value="OTHER">Other</option>
+          </select></label>
+        <label class="text-xs font-bold text-gray-700 lg:col-span-2">SERP features seen (comma-separated)
+          <input name="serpFeatures" placeholder="local_pack, ai_overview, shopping" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Observed at (optional)
+          <input name="observedAt" type="datetime-local" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <div class="sm:col-span-2 lg:col-span-4">
+          <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white hover:bg-black">Record observation</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</AdminLayout>
