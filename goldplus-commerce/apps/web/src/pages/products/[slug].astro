@@ -3,7 +3,6 @@ import DeliveryQuote from "../../components/DeliveryQuote.astro";
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProductJsonLd from '../../components/ProductJsonLd.astro';
 import Notice from '../../components/Notice.astro';
-import SupportTrustStrip from '../../components/SupportTrustStrip.astro';
 import { apiBase } from '../../lib/api';
 import { formatUgx } from '../../lib/money';
 import { getStorefrontDiscount, salePriceUgx } from '../../lib/storefrontDiscount';
@@ -424,18 +423,12 @@ const canonical = Astro.url.toString();
                 Buy now
               </button>
             )}
-            <a href={`/quote-request?productName=${encodeURIComponent(product.name)}`} class="flex-1 py-3 px-6 rounded-full font-bold text-xs tracking-wider uppercase text-center transition-all duration-300 outline-none border border-slate-250 text-gray-800 hover:border-gray-500 hover:bg-slate-50 active:scale-[0.98] shadow-xs">
-              Request quote
-            </a>
           </form>
 
           <a href={`/product-finder?compatibleWith=${encodeURIComponent(product.id)}`} class="block mb-8 rounded-xl border border-brand-primary/40 bg-brand-primary/5 px-5 py-4 text-sm font-semibold text-gray-900 hover:border-brand-primary">
             Find declared-compatible available products with the Shopping Assistant
           </a>
 
-          <div class="mb-8">
-            <SupportTrustStrip />
-          </div>
           </div>
 
         </div>

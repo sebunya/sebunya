@@ -118,14 +118,18 @@ describe('product-card commercial signals', () => {
     expect(rec).not.toMatch(/<a[^>]*>\s*[\s\S]*<form[\s\S]*<\/form>[\s\S]*<\/a>\s*<\/li>/);
   });
 
-  it('the Support & Trust promise renders from ONE component, on the shop grid and the PDP', () => {
-    const strip = read('apps/web/src/components/SupportTrustStrip.astro');
-    expect(strip).toContain('Buy with confidence. Every GoldPlus product is supported with verification tools');
-    expect(strip).toContain('/verification');
-    expect(strip).toContain('/support/issue');
-    expect(strip).toContain('/support/fake');
-    expect(read('apps/web/src/pages/shop.astro')).toContain('<SupportTrustStrip layout="row" />');
-    expect(read('apps/web/src/pages/products/[slug].astro')).toContain('<SupportTrustStrip />');
+  it('the PDP sells without detours — no Request quote, no Support & Trust block (owner decision)', () => {
+    // 2026-08-10: the owner removed both. "Request quote" beside Add to
+    // cart/Buy now confused regular customers (wholesale quoting lives at
+    // /quote-request via the business pathways), and the Verify/Report trio is
+    // unnecessary on our own storefront — those journeys stay in the footer
+    // and support pages.
+    const pdp = read('apps/web/src/pages/products/[slug].astro');
+    expect(pdp).not.toContain('Request quote');
+    expect(pdp).not.toContain('SupportTrustStrip');
+    expect(pdp).not.toContain('Support & Trust');
+    const shop = read('apps/web/src/pages/shop.astro');
+    expect(shop).not.toContain('SupportTrustStrip');
   });
 
   it('sale price still mirrors the evaluator formula (display equals charge)', () => {
