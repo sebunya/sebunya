@@ -43,7 +43,7 @@ export const DEFAULT_TAXONOMY: Taxonomy = [
     slug: 'power-devices',
     name: 'Power Devices',
     showOnHomepage: true,
-    homepageBlurb: 'Chargers, banks',
+    homepageBlurb: 'Banks, batteries, chargers',
     aliases: ['power'],
     subcategories: [
       { slug: 'chargers', name: 'Chargers', keywords: ['charger', 'adapter', 'charging brick'] },
@@ -54,7 +54,7 @@ export const DEFAULT_TAXONOMY: Taxonomy = [
     slug: 'sound-devices',
     name: 'Sound Devices',
     showOnHomepage: true,
-    homepageBlurb: 'Earbuds, speakers',
+    homepageBlurb: 'Earbuds, headphones',
     aliases: ['sound'],
     subcategories: [
       { slug: 'earbuds', name: 'Earbuds', keywords: ['earbud', 'earphone', 'headphone'] },
@@ -65,7 +65,7 @@ export const DEFAULT_TAXONOMY: Taxonomy = [
     slug: 'storage-devices',
     name: 'Storage Devices',
     showOnHomepage: true,
-    homepageBlurb: 'Flash drives, SDs',
+    homepageBlurb: '1GB to 512GB',
     aliases: ['storage'],
     subcategories: [
       { slug: 'flash-drives', name: 'Flash Drives', keywords: ['flash drive', 'usb drive'] },
@@ -76,7 +76,7 @@ export const DEFAULT_TAXONOMY: Taxonomy = [
     slug: 'car-accessories',
     name: 'Car Accessories',
     showOnHomepage: true,
-    homepageBlurb: 'Mounts, chargers',
+    homepageBlurb: 'Chargers, Bluetooth kits',
     aliases: ['car'],
     subcategories: [
       { slug: 'mounts', name: 'Mounts', keywords: ['mount'] },
@@ -86,8 +86,9 @@ export const DEFAULT_TAXONOMY: Taxonomy = [
   {
     slug: 'pc-accessories',
     name: 'PC Accessories',
-    showOnHomepage: false,
-    homepageBlurb: 'Mice, sound cards',
+    // Tile brief: five categories, not four — PC belongs on the homepage.
+    showOnHomepage: true,
+    homepageBlurb: 'Mouse, sound cards',
     aliases: ['pc'],
     subcategories: [
       // No inference keywords by default (parity with the original code, which had

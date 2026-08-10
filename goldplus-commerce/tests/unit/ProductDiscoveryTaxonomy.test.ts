@@ -56,9 +56,9 @@ describe('default taxonomy shape', () => {
       'power-devices', 'sound-devices', 'storage-devices', 'car-accessories', 'pc-accessories',
     ]);
   });
-  it('shows four homepage tiles by default (PC hidden)', () => {
+  it('shows all five homepage tiles by default (tile brief: five, not four)', () => {
     expect(DEFAULT_TAXONOMY.filter((c) => c.showOnHomepage).map((c) => c.slug)).toEqual([
-      'power-devices', 'sound-devices', 'storage-devices', 'car-accessories',
+      'power-devices', 'sound-devices', 'storage-devices', 'car-accessories', 'pc-accessories',
     ]);
   });
 });

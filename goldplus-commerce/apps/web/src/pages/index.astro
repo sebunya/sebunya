@@ -33,27 +33,34 @@ const allProducts = getCleanCatalog(rawProducts);
 // Homepage "Shop by category" tiles — operator-editable taxonomy (admin/categories).
 const homepageCategories = (await getTaxonomy()).filter((c) => c.showOnHomepage);
 
-// Every tile gets iconography that actually corresponds to its category — a
-// bare photo-frame glyph tells the customer nothing. Keyed by slug for the
-// known five; a name-keyword heuristic covers operator-added categories; the
-// operator can replace any icon with a real photo via admin/categories.
-const CATEGORY_ICON_PATHS: Record<string, string> = {
-  'power-devices': 'M13 10V3L4 14h7v7l9-11h-7z',
-  'sound-devices': 'M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z',
-  'storage-devices': 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4',
-  'car-accessories': 'M8 7h8m-8 0a4 4 0 00-4 4v3a2 2 0 002 2h1m9-9a4 4 0 014 4v3a2 2 0 01-2 2h-1m-8 0a2 2 0 104 0m-4 0h4m4 0a2 2 0 104 0m-4 0h4M9 7l1-3h4l1 3',
-  'pc-accessories': 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+// Product SILHOUETTES, not UI glyphs (tile brief, direction 1b): each icon
+// draws the actual object on the shelf — a power bank with its charge pips, a
+// pair of headphones, a flash drive and its connector, a 12V car charger with
+// its contact tip, a mouse. One family, one stroke weight, distinguishable
+// from each other at 38px. Keyed by slug; a name-keyword heuristic covers
+// operator-added categories; a real photo (admin/categories) replaces the icon.
+const CATEGORY_SILHOUETTES: Record<string, string> = {
+  'power-devices':
+    '<rect x="7" y="2.6" width="10" height="18.8" rx="2.6"/><circle cx="9.6" cy="6.4" r=".75" fill="#93D500" stroke="none"/><circle cx="12" cy="6.4" r=".75" fill="#93D500" stroke="none"/><circle cx="14.4" cy="6.4" r=".75" fill="#93D500" stroke="none"/><rect x="10.4" y="17.4" width="3.2" height="1.7" rx=".85"/>',
+  'sound-devices':
+    '<path d="M4.5 13v-1.6a7.5 7.5 0 0 1 15 0V13"/><rect x="2.5" y="12.4" width="4.4" height="7" rx="2.2"/><rect x="17.1" y="12.4" width="4.4" height="7" rx="2.2"/>',
+  'storage-devices':
+    '<rect x="2.6" y="8.6" width="13.4" height="6.8" rx="1.8"/><rect x="16" y="10.2" width="5.4" height="3.6" rx=".8"/><path d="M5.6 11.2v2M8.2 11.2v2"/>',
+  'car-accessories':
+    '<circle cx="3" cy="12" r="1" fill="#93D500" stroke="none"/><path d="M4.2 12h1.4"/><path d="M5.6 9.4 9.2 7.8v8.4L5.6 14.6z"/><rect x="9.2" y="6.2" width="11.2" height="11.6" rx="2.6"/><rect x="14.4" y="10.6" width="3.4" height="2.8" rx=".7"/>',
+  'pc-accessories':
+    '<path d="M12 2.8c-3.4 0-5.4 2.4-5.4 5.8v5.6c0 3.4 2 5.6 5.4 5.6s5.4-2.2 5.4-5.6V8.6c0-3.4-2-5.8-5.4-5.8z"/><path d="M12 3v5.4"/>',
 };
-const categoryIconPath = (cat: { slug: string; name: string }): string => {
-  if (CATEGORY_ICON_PATHS[cat.slug]) return CATEGORY_ICON_PATHS[cat.slug];
+const categorySilhouette = (cat: { slug: string; name: string }): string => {
+  if (CATEGORY_SILHOUETTES[cat.slug]) return CATEGORY_SILHOUETTES[cat.slug];
   const n = cat.name.toLowerCase();
-  if (/power|charg|batter/.test(n)) return CATEGORY_ICON_PATHS['power-devices'];
-  if (/sound|audio|speaker|earbud|headphone/.test(n)) return CATEGORY_ICON_PATHS['sound-devices'];
-  if (/storage|drive|memory|card/.test(n)) return CATEGORY_ICON_PATHS['storage-devices'];
-  if (/car|auto|vehicle/.test(n)) return CATEGORY_ICON_PATHS['car-accessories'];
-  if (/pc|computer|desktop|laptop/.test(n)) return CATEGORY_ICON_PATHS['pc-accessories'];
-  // Shopping-bag default for anything unrecognised — still a real symbol.
-  return 'M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z';
+  if (/power|charg|batter/.test(n)) return CATEGORY_SILHOUETTES['power-devices'];
+  if (/sound|audio|speaker|earbud|headphone/.test(n)) return CATEGORY_SILHOUETTES['sound-devices'];
+  if (/storage|drive|memory|card/.test(n)) return CATEGORY_SILHOUETTES['storage-devices'];
+  if (/car|auto|vehicle/.test(n)) return CATEGORY_SILHOUETTES['car-accessories'];
+  if (/pc|computer|desktop|laptop|mouse|mice/.test(n)) return CATEGORY_SILHOUETTES['pc-accessories'];
+  // A shopping bag for anything unrecognised — still a real object.
+  return '<path d="M16 11V7a4 4 0 0 0-8 0v4"/><path d="M5 9h14l1 12H4L5 9z"/>';
 };
 
 // Homepage marketing copy — operator-editable (admin/homepage). Icons stay in code.
@@ -121,33 +128,39 @@ const usedProductIds = [
   {/* 4. HomeCommerceHighlights */}
   <HomeCommerceHighlights promoProduct={promoProduct} todaysPickProduct={todaysPickProduct} />
 
-  {/* 5. Shop by Category */}
-  <section class="bg-slate-50 py-14 border-b border-slate-100/65">
+  {/* 5. Shop by Category — tile brief direction 1b: product silhouettes on
+      Obsidian panels, one text block (no box inside a box), so the section
+      belongs to the same site as the header. A real photo (admin/categories)
+      replaces the silhouette on a cream stage that dissolves studio whites. */}
+  <section class="py-14" style="background:#0A0A0A">
     <div class="container mx-auto px-4 lg:px-8">
-      <h2 class="text-2xl font-black tracking-tight text-gray-900 mb-8 text-center">Shop by category</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <h2 class="text-2xl font-black tracking-tight mb-8" style="color:#F3EFE8">Shop by category</h2>
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
         {homepageCategories.map((cat) => (
-          <a href={`/shop?category=${cat.slug}`} class="block group focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none rounded-2xl">
-            <div class="bg-white border border-slate-200/85 aspect-[4/3] rounded-2xl p-6 flex flex-col justify-end relative overflow-hidden transition-all hover:border-brand-primary hover:shadow-lg hover:shadow-slate-100/60">
-              {cat.imageUrl ? (
-                <img src={cat.imageUrl} alt={`${cat.name} category`} loading="lazy" class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-              ) : (
-                <div class="absolute inset-0 flex items-center justify-center" aria-hidden="true">
-                  <div class="w-20 h-20 rounded-2xl bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center transition-all duration-300 group-hover:bg-brand-primary/20 group-hover:scale-110">
-                    <svg class="w-10 h-10 text-brand-primaryInk" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={categoryIconPath(cat)}></path></svg>
-                  </div>
-                </div>
-              )}
-              <div class="relative z-10 bg-white/95 p-3.5 rounded-xl border border-slate-100/80 shadow-xs">
-                <h3 class="text-base font-bold text-gray-950 mb-0.5">{cat.name}</h3>
-                {cat.homepageBlurb && <p class="text-xs text-slate-500 font-medium group-hover:text-brand-primary transition-colors">{cat.homepageBlurb}</p>}
+          <a
+            href={`/shop?category=${cat.slug}`}
+            class="gp-cat-tile block rounded-2xl outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/40"
+            style="background:#101010;border:1px solid rgba(243,239,232,.1);padding:26px 18px 20px;transition:border-color .25s,background .25s"
+          >
+            {cat.imageUrl ? (
+              <div class="rounded-xl overflow-hidden relative mb-5" style="aspect-ratio:1/1;background:#F3EFE8;isolation:isolate">
+                <img src={cat.imageUrl} alt={`${cat.name} category`} width="600" height="600" loading="lazy" decoding="async"
+                  class="absolute w-[82%] h-[82%] object-contain" style="inset:9%;mix-blend-mode:multiply;filter:brightness(1.09) contrast(1.04)" />
               </div>
-            </div>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="#93D500" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+                class="block mb-6" style="width:38px;height:38px" set:html={categorySilhouette(cat)} />
+            )}
+            <h3 class="text-[15px] font-semibold mb-1" style="color:#F3EFE8">{cat.name}</h3>
+            {cat.homepageBlurb && <p class="text-[12.5px] leading-snug" style="color:rgba(243,239,232,.62)">{cat.homepageBlurb}</p>}
           </a>
         ))}
       </div>
     </div>
   </section>
+  <style>
+    .gp-cat-tile:hover { border-color: rgba(147, 213, 0, .5) !important; background: #131313 !important; }
+  </style>
 
   {/* 6. Featured products */}
   <section class="bg-white py-14 border-b border-slate-100">
