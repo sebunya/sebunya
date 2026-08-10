@@ -250,7 +250,9 @@ describe('integration env presence', () => {
 
   it('never leaks a secret value — only var names and booleans', async () => {
     const secret = 'super-secret-gsc-key-value';
-    const env = { GSC_CLIENT_EMAIL: 'svc@x.iam', GSC_PRIVATE_KEY: secret, GSC_SITE_URL: 'https://www.shopgoldplus.com' };
+    // The code's canonical env-var list is authoritative over stored config
+    // (phase 3): GSC expects the service-account JSON + site URL.
+    const env = { GSC_SERVICE_ACCOUNT_JSON: secret, GSC_SITE_URL: 'https://www.shopgoldplus.com' };
     const updates: any[] = [];
     const store = {
       listIntegrations: async () => [
@@ -263,8 +265,7 @@ describe('integration env presence', () => {
     expect(gsc.computedStatus).toBe('CONNECTED');
     expect(gsc.status).toBe('CONNECTED');
     expect(gsc.envVars).toEqual([
-      { name: 'GSC_CLIENT_EMAIL', present: true },
-      { name: 'GSC_PRIVATE_KEY', present: true },
+      { name: 'GSC_SERVICE_ACCOUNT_JSON', present: true },
       { name: 'GSC_SITE_URL', present: true },
     ]);
     const serialized = JSON.stringify({ views, updates });
