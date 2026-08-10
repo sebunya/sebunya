@@ -494,6 +494,18 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
       } catch {
         // Redirect recording is best-effort; the admin can re-save to retry.
       }
+      // Best-effort IndexNow ping for the moved URL pair. A no-op returning
+      // READY_FOR_CREDENTIALS when INDEXNOW_KEY is unset; never blocks the save.
+      try {
+        const { SubmitIndexNowUseCase, INDEXNOW_HOST } = await import('../../../../application/use-cases/seo-growth/SubmitIndexNowUseCase');
+        const { IndexNowClient } = await import('../../../../infrastructure/seo/IndexNowClient');
+        await new SubmitIndexNowUseCase(new IndexNowClient()).execute([
+          `https://${INDEXNOW_HOST}/products/${existingProduct.slug}`,
+          `https://${INDEXNOW_HOST}/products/${slug}`,
+        ]);
+      } catch {
+        // IndexNow is strictly best-effort.
+      }
     }
 
     const auditUc = new CreateAuditLogUseCase(registry.auditRepo);

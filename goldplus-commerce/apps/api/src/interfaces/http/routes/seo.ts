@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
+import { buildMerchantFeedXml } from '../../../application/use-cases/seo-growth/MerchantFeedUseCase';
 
 /**
  * U6 — public SEO endpoints. Thin routes over Registry.seoRepo:
@@ -57,6 +58,41 @@ routes.get('/sitemap/products', async (c) => {
   }
   c.header('Cache-Control', 'public, max-age=900');
   const res: ApiResponse<typeof items> = { success: true, data: items };
+  return c.json(res);
+});
+
+/**
+ * Google Merchant Center product feed — live, credential-free (Merchant Center
+ * fetches this URL on a schedule). Real catalogue data only; inclusion rules
+ * and XML shape live in MerchantFeedUseCase. Cached in-process for 15 minutes.
+ */
+let feedCache: { xml: string; builtAt: number } | null = null;
+const FEED_TTL_MS = 15 * 60 * 1000;
+
+routes.get('/merchant-feed.xml', async (c) => {
+  const now = Date.now();
+  if (!feedCache || now - feedCache.builtAt > FEED_TTL_MS) {
+    const products = await Registry.getInstance().seoGrowthRepo.feedProducts();
+    feedCache = { xml: buildMerchantFeedXml(products), builtAt: now };
+  }
+  c.header('Content-Type', 'application/xml; charset=utf-8');
+  c.header('Cache-Control', 'public, max-age=900');
+  return c.body(feedCache.xml);
+});
+
+/**
+ * IndexNow key discovery for the storefront's /{key}.txt verification route.
+ * Per the IndexNow protocol the key is NOT a secret — it must be publicly
+ * served at https://host/{key}.txt. 404 when the integration is not configured.
+ */
+routes.get('/indexnow-key', (c) => {
+  const key = process.env.INDEXNOW_KEY?.trim();
+  if (!key) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'NOT_CONFIGURED', message: 'IndexNow is not configured.' } };
+    return c.json(res, 404);
+  }
+  c.header('Cache-Control', 'public, max-age=300');
+  const res: ApiResponse<{ key: string }> = { success: true, data: { key } };
   return c.json(res);
 });
 

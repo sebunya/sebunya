@@ -525,6 +525,72 @@ export class DrizzleSeoGrowthRepository {
     return rows[0];
   }
 
+  async getIntegration(provider: string): Promise<any | null> {
+    const rows = rowsOf(await db.execute(sql`select * from seo_integrations where provider = ${provider}`));
+    return rows[0] ?? null;
+  }
+
+  /**
+   * GSC warehouse upsert on the (date, page, query) unique index. Batched in
+   * chunks of 500 rows per statement.
+   */
+  async upsertGscPerformance(rows: Array<{
+    date: string; page: string; query: string;
+    clicks: number; impressions: number; ctr: number | null; position: number | null;
+  }>): Promise<number> {
+    let written = 0;
+    for (let i = 0; i < rows.length; i += 500) {
+      const chunk = rows.slice(i, i + 500);
+      const values = sql.join(
+        chunk.map((r) => sql`(${r.date}::date, ${r.page}, ${r.query}, ${r.clicks}, ${r.impressions}, ${r.ctr}, ${r.position})`),
+        sql`, `,
+      );
+      await db.execute(sql`
+        insert into gsc_performance (date, page, query, clicks, impressions, ctr, position)
+        values ${values}
+        on conflict (date, page, query) do update set
+          clicks = excluded.clicks,
+          impressions = excluded.impressions,
+          ctr = excluded.ctr,
+          position = excluded.position
+      `);
+      written += chunk.length;
+    }
+    return written;
+  }
+
+  /**
+   * Every ACTIVE + APPROVED product with the fields the Merchant feed and the
+   * feed-quality report need. Inclusion/diagnostics logic lives in the use case.
+   */
+  async feedProducts(): Promise<Array<{
+    sku: string; slug: string; name: string; shortDescription: string;
+    priceUgx: number; stockStatus: string; imageUrl: string | null;
+    modelNumber: string | null; isFeedEligible: boolean; active: boolean; approvalStatus: string;
+  }>> {
+    const rows = rowsOf(await db.execute(sql`
+      select sku, slug, name, short_description, price_ugx, stock_status,
+             image_url, model_number, is_feed_eligible, active, approval_status
+      from products
+      where active = true and approval_status = 'approved'
+      order by sku asc
+      limit 50000
+    `));
+    return rows.map((r: any) => ({
+      sku: String(r.sku),
+      slug: String(r.slug),
+      name: String(r.name),
+      shortDescription: String(r.short_description ?? ''),
+      priceUgx: Number(r.price_ugx ?? 0),
+      stockStatus: String(r.stock_status ?? ''),
+      imageUrl: r.image_url == null ? null : String(r.image_url),
+      modelNumber: r.model_number == null ? null : String(r.model_number),
+      isFeedEligible: Boolean(r.is_feed_eligible),
+      active: Boolean(r.active),
+      approvalStatus: String(r.approval_status ?? ''),
+    }));
+  }
+
   // ── Crawl runs & pages ───────────────────────────────────────────────────
 
   async createCrawlRun(input: { scope: string; pageLimit: number; notes?: string | null }): Promise<any> {

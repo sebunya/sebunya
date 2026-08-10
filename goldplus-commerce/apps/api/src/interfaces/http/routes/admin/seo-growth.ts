@@ -363,6 +363,45 @@ routes.get('/integrations', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c
   return ok(c, await uc.execute());
 });
 
+routes.post('/integrations/gsc/sync', requirePermissions([PERMISSIONS.SEO_INTEGRATIONS_MANAGE]), async (c) => {
+  // Honest no-op path: without credentials nothing is enqueued and nothing pretends to run.
+  const hasCredentials =
+    (process.env.GSC_SERVICE_ACCOUNT_JSON ?? '').trim() !== '' &&
+    (process.env.GSC_SITE_URL ?? '').trim() !== '';
+  if (!hasCredentials) {
+    return ok(c, {
+      status: 'READY_FOR_CREDENTIALS',
+      message: 'GSC is not configured. Set GSC_SERVICE_ACCOUNT_JSON and GSC_SITE_URL to enable syncing.',
+    });
+  }
+  const queue = QueueService.getInstance().getQueue(QUEUES.ANALYTICS_FANOUT);
+  if (!queue) return bad(c, 'QUEUE_UNAVAILABLE', 'Background queue is not available; sync not started.', 503);
+  await queue.add('seo-gsc-sync', { requestedBy: actorId(c) });
+  await audit(c, 'SEO_GSC_SYNC_ENQUEUED', 'seo_integration', 'GSC');
+  return ok(c, { enqueued: true }, 202);
+});
+
+routes.post('/integrations/indexnow/submit', requirePermissions([PERMISSIONS.SEO_INTEGRATIONS_MANAGE]), async (c) => {
+  const body = await json(c);
+  const urls = Array.isArray(body?.urls) ? body.urls.map(String) : null;
+  if (!urls || urls.length === 0) return bad(c, 'BAD_INPUT', 'urls must be a non-empty array.');
+  const { SubmitIndexNowUseCase } = await import('../../../../application/use-cases/seo-growth/SubmitIndexNowUseCase');
+  const { IndexNowClient } = await import('../../../../infrastructure/seo/IndexNowClient');
+  const result = await new SubmitIndexNowUseCase(new IndexNowClient()).execute(urls);
+  if (result.status === 'REJECTED') return bad(c, 'BAD_INPUT', result.reason);
+  await audit(c, 'SEO_INDEXNOW_SUBMITTED', 'seo_integration', 'INDEXNOW', { result: result.status, urlCount: urls.length });
+  return ok(c, result);
+});
+
+// ── Merchant feed quality ───────────────────────────────────────────────────
+
+routes.get('/merchant/feed-quality', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
+  const { FeedQualityUseCase } = await import('../../../../application/use-cases/seo-growth/MerchantFeedUseCase');
+  const repo = Registry.getInstance().seoGrowthRepo;
+  const report = await new FeedQualityUseCase(() => repo.feedProducts()).execute();
+  return ok(c, report);
+});
+
 // ── Alerts ──────────────────────────────────────────────────────────────────
 
 routes.get('/alerts', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {

@@ -178,6 +178,19 @@ export function registerAllWorkers(): void {
         const uc = new CrawlSiteUseCase(registry.seoGrowthRepo, new FetchSeoPageFetcher());
         const outcome = await uc.execute(runId, { maxPages, startUrl });
         logger.info({ runId, ...outcome }, '[QueueWorker] SEO crawl finished');
+      } else if (job.name === 'seo-gsc-sync') {
+        // Organic Growth OS: incremental GSC search-analytics sync. When
+        // credentials are absent the use case is an honest no-op
+        // (READY_FOR_CREDENTIALS) — nothing fake is written.
+        const { SyncGscPerformanceUseCase } = await import('../../application/use-cases/seo-growth/SyncGscPerformanceUseCase');
+        const { GscClient } = await import('../seo/GscClient');
+        const uc = new SyncGscPerformanceUseCase({
+          client: GscClient.fromEnv(),
+          store: registry.seoGrowthRepo,
+        });
+        const outcome = await uc.execute();
+        logger.info({ ...outcome }, '[QueueWorker] GSC sync finished');
+        if (outcome.status === 'FAILED') throw new Error(outcome.error);
       } else if (job.name === 'abandonment-scan-cron') {
         // Wave 2E-1: the hourly evaluator is the ONLY writer of abandonment
         // classifications; each new one is announced on ABANDONED_CART_EVENTS.

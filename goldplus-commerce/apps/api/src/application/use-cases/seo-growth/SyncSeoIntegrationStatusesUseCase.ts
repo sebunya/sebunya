@@ -9,7 +9,8 @@
  */
 
 export const SEO_INTEGRATION_ENV_VARS: Record<string, string[]> = {
-  GSC: ['GSC_CLIENT_EMAIL', 'GSC_PRIVATE_KEY', 'GSC_SITE_URL'],
+  // Must match what GscClient.fromEnv / SyncGscPerformanceUseCase consume.
+  GSC: ['GSC_SERVICE_ACCOUNT_JSON', 'GSC_SITE_URL'],
   GA4: ['GA4_PROPERTY_ID', 'GA4_CLIENT_EMAIL', 'GA4_PRIVATE_KEY'],
   MERCHANT_CENTER: ['MERCHANT_CENTER_ID', 'MERCHANT_CENTER_CLIENT_EMAIL', 'MERCHANT_CENTER_PRIVATE_KEY'],
   GBP: ['GBP_CLIENT_EMAIL', 'GBP_PRIVATE_KEY', 'GBP_LOCATION_ID'],
@@ -80,9 +81,16 @@ export class SyncSeoIntegrationStatusesUseCase {
 
     const views: SeoIntegrationView[] = [];
     for (const row of byProvider.values()) {
-      const declared = Array.isArray((row.config as any)?.envVars)
+      // The code list is authoritative for known providers — a stale stored
+      // declaration (e.g. the pre-connector GSC var names) must not survive it.
+      const codeDeclared = SEO_INTEGRATION_ENV_VARS[row.provider];
+      const storedDeclared = Array.isArray((row.config as any)?.envVars)
         ? ((row.config as any).envVars as unknown[]).map(String)
-        : SEO_INTEGRATION_ENV_VARS[row.provider] ?? [];
+        : null;
+      const declared = codeDeclared ?? storedDeclared ?? [];
+      if (codeDeclared && storedDeclared && codeDeclared.join('|') !== storedDeclared.join('|')) {
+        await this.store.upsertIntegrationStatus(row.provider, { config: { envVars: codeDeclared } });
+      }
       const { envVars, computedStatus } = computeEnvPresence(declared, this.env);
 
       let status = row.status;
