@@ -787,3 +787,170 @@ describe('an answer unit cannot stay READY once its grounding fact disappears', 
     expect(rec.answerUnits).toHaveLength(2);
   });
 });
+
+// ── Provider activation through the coordinator (§19, §23, §24) ─────────────
+
+/** The same category, before and after Search Console reports demand. */
+const demandBlind = (): EntityCandidate => ({
+  ...candidate(),
+  entityId: '/power',
+  components: [
+    { component: 'CATALOGUE_DEPTH', raw: 8, normalized: 0.4, state: 'KNOWN', reasonCode: 'eligible_products' },
+    { component: 'SEARCH_DEMAND', raw: null, normalized: null, state: 'UNKNOWN', reasonCode: 'search_console_not_connected' },
+  ],
+  evidenceStates: { ...candidate().evidenceStates, SEARCH_DEMAND: 'UNKNOWN' },
+});
+
+/** Mirrors the runner's 5% banding, which is what removes daily noise. */
+const band = (n: number) => {
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const step = Math.max(1, Math.round(n * 0.05));
+  return Math.round(n / step) * step;
+};
+
+const demandKnown = (impressions = 5000): EntityCandidate => ({
+  ...demandBlind(),
+  components: [
+    { component: 'CATALOGUE_DEPTH', raw: 8, normalized: 0.4, state: 'KNOWN', reasonCode: 'eligible_products' },
+    {
+      component: 'SEARCH_DEMAND',
+      raw: { impressions: band(impressions), clicks: band(120), queries: 40 },
+      normalized: Math.min(1, Math.log10(band(impressions) + 1) / 4),
+      state: 'KNOWN', reasonCode: 'gsc_observed_impressions',
+    },
+  ],
+  evidenceStates: { ...demandBlind().evidenceStates, SEARCH_DEMAND: 'KNOWN' },
+  sourcePeriodStart: '2026-07-01',
+  sourcePeriodEnd: '2026-08-12',
+});
+
+describe('connecting Search Console enriches opportunities rather than replacing them', () => {
+  it('reports PROVIDER_INITIAL_ENRICHMENT rather than a bare full rebuild', async () => {
+    const { m } = harness({
+      candidates: [demandBlind()],
+      universe: [{ entityType: 'CATEGORY', entityId: '/power' }],
+      changes: [{ source: 'PROVIDER_CONNECTED', entityId: 'gsc:conn-1:v1', changeType: 'PROVIDER_ENRICHED' }],
+    });
+    const r = await m.execute('INCREMENTAL');
+
+    expect(r.executionMode).toBe('PROVIDER_INITIAL_ENRICHMENT');
+    // It still evaluates everything — that is correct, and now it says why.
+    expect(r.counts.entitiesEvaluated).toBe(1);
+  });
+
+  it('keeps the SAME opportunity key when demand becomes known', async () => {
+    const before = harness({ candidates: [demandBlind()] });
+    await before.m.execute('FULL_REBUILD');
+    const after = harness({ candidates: [demandKnown()] });
+    await after.m.execute('FULL_REBUILD');
+
+    // Never a "GSC opportunity" replacing the pre-GSC one.
+    expect(after.rec.upserts[0].key).toBe(before.rec.upserts[0].key);
+  });
+
+  it('moves SEARCH_DEMAND from UNKNOWN to KNOWN, never to zero', async () => {
+    const blind = harness().m.evaluate(demandBlind());
+    const known = harness().m.evaluate(demandKnown());
+
+    expect(blind.evidenceMissing).toContain('SEARCH_DEMAND');
+    expect(known.evidenceMissing).not.toContain('SEARCH_DEMAND');
+    expect(known.evidenceAvailable).toContain('SEARCH_DEMAND');
+
+    const blindComponent = blind.components.find((c) => c.component === 'SEARCH_DEMAND')!;
+    const knownComponent = known.components.find((c) => c.component === 'SEARCH_DEMAND')!;
+    expect(blindComponent.evidenceState).toBe('UNKNOWN');
+    expect(blindComponent.raw).toBeNull();
+    expect(knownComponent.evidenceState).toBe('KNOWN');
+    // The distinction the whole evidence model rests on.
+    expect(blindComponent.normalized).not.toBe(0);
+    expect(blindComponent.normalized).toBeNull();
+  });
+
+  it('raises evidence completeness and can raise confidence', async () => {
+    const blind = harness().m.evaluate(demandBlind());
+    const known = harness().m.evaluate(demandKnown());
+    expect(known.evidenceCompleteness).toBeGreaterThan(blind.evidenceCompleteness);
+  });
+
+  it('records the observation period so a partial window is not read as complete', async () => {
+    const known = harness().m.evaluate(demandKnown());
+    expect(known.sourcePeriodStart).toBe('2026-07-01');
+    expect(known.sourcePeriodEnd).toBe('2026-08-12');
+  });
+
+  it('writes a material change when demand genuinely arrives', async () => {
+    const first = harness({ candidates: [demandBlind()] });
+    await first.m.execute('FULL_REBUILD');
+    const evaluated = first.m.evaluate(demandBlind());
+
+    const second = harness({
+      candidates: [demandKnown()],
+      snapshots: new Map([[evaluated.opportunityKey, {
+        sourceHash: evaluated.sourceHash, semanticHash: evaluated.semanticHash,
+        evaluationHash: evaluated.evaluationHash, policyVersion: evaluated.policyVersion,
+        evidenceAvailable: evaluated.evidenceAvailable, score: evaluated.score,
+        priorityBucket: evaluated.priorityBucket,
+      }]]),
+    });
+    const r = await second.m.execute('FULL_REBUILD');
+    expect(r.counts.updated).toBe(1);
+    expect(second.rec.history.length).toBeGreaterThan(0);
+  });
+
+  it('writes NOTHING when the same demand evidence is seen again', async () => {
+    const first = harness({ candidates: [demandKnown()] });
+    await first.m.execute('FULL_REBUILD');
+    const evaluated = first.m.evaluate(demandKnown());
+
+    const second = harness({
+      candidates: [demandKnown()],
+      snapshots: new Map([[evaluated.opportunityKey, {
+        sourceHash: evaluated.sourceHash, semanticHash: evaluated.semanticHash,
+        evaluationHash: evaluated.evaluationHash, policyVersion: evaluated.policyVersion,
+        evidenceAvailable: evaluated.evidenceAvailable, score: evaluated.score,
+        priorityBucket: evaluated.priorityBucket,
+      }]]),
+    });
+    const r = await second.m.execute('FULL_REBUILD');
+    expect(r.counts.unchanged).toBe(1);
+    expect(second.rec.upserts).toHaveLength(0);
+    expect(second.rec.history).toHaveLength(0);
+  });
+
+  it('does not churn on an immaterial demand movement', async () => {
+    const base = harness({ candidates: [demandKnown(5000)] });
+    await base.m.execute('FULL_REBUILD');
+    const evaluated = base.m.evaluate(demandKnown(5000));
+
+    // A handful of extra impressions is noise, not a finding.
+    const nudged = harness({
+      candidates: [demandKnown(5003)],
+      snapshots: new Map([[evaluated.opportunityKey, {
+        sourceHash: evaluated.sourceHash, semanticHash: evaluated.semanticHash,
+        evaluationHash: evaluated.evaluationHash, policyVersion: evaluated.policyVersion,
+        evidenceAvailable: evaluated.evidenceAvailable, score: evaluated.score,
+        priorityBucket: evaluated.priorityBucket,
+      }]]),
+    });
+    const r = await nudged.m.execute('FULL_REBUILD');
+    // Churn is measured by domain writes and history, not by the work-queue
+    // reconcile call, which runs for every opportunity on every pass.
+    expect(r.counts.unchanged).toBe(1);
+    expect(r.counts.updated).toBe(0);
+    expect(nudged.rec.upserts).toHaveLength(0);
+    expect(nudged.rec.history).toHaveLength(0);
+  });
+
+  it('creates no Guardian incident from historical backfill', async () => {
+    // Materialisation writes to seo_intel_* and the work queue only. Nothing
+    // in this path opens an incident, so a 16-month backfill cannot manufacture
+    // a "current" SEO emergency.
+    const { m, rec } = harness({
+      candidates: [demandKnown()],
+      changes: [{ source: 'PROVIDER_CONNECTED', entityId: 'gsc:conn-1:v1', changeType: 'PROVIDER_ENRICHED' }],
+      universe: [{ entityType: 'CATEGORY', entityId: '/power' }],
+    });
+    await m.execute('INCREMENTAL');
+    expect(rec.actionRequests.every((a) => a.state !== 'PROPOSED')).toBe(true);
+  });
+});

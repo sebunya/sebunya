@@ -459,8 +459,14 @@ export class OrganicIntelligenceMaterialiser {
           // GLOBAL all mean "evaluate everything", and each says so honestly
           // rather than reporting a narrowed run it did not perform.
           affected = plan.mode === 'EXACT' ? plan.evaluate : null;
+
+          // A provider connecting for the first time makes evidence appear
+          // across the whole portfolio at once, so the run is correctly
+          // global — but calling it FULL_REBUILD would hide WHY it went wide.
+          const providerEnrichment = resolved.changes.some((ch) => ch.source === 'PROVIDER_CONNECTED');
           executionMode =
-            plan.mode === 'EXACT' ? 'INCREMENTAL_EXACT'
+            providerEnrichment ? 'PROVIDER_INITIAL_ENRICHMENT'
+            : plan.mode === 'EXACT' ? 'INCREMENTAL_EXACT'
             : plan.mode === 'EXPANDED' ? 'INCREMENTAL_EXPANDED'
             : plan.mode === 'GLOBAL' ? 'FULL_REBUILD'
             : 'FULL_FALLBACK';

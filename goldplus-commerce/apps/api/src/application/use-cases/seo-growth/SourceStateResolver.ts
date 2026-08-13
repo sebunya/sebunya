@@ -86,6 +86,11 @@ export interface SourceDescriptor {
  */
 export const SOURCE_DESCRIPTORS: SourceDescriptor[] = [
   {
+    key: 'provider_enrichment', changeSource: 'PROVIDER_CONNECTED', entityType: 'QUERY',
+    capability: 'STATE_HASH', deleteDetection: 'NONE',
+    note: 'A provider connection that has reached an operational state but whose initial enrichment is not COMPLETE. Derived from durable connection state, so a crash between connecting and emitting cannot lose the requirement.',
+  },
+  {
     key: 'products', changeSource: 'PRODUCT', entityType: 'PRODUCT',
     capability: 'CURSOR_EXACT', deleteDetection: 'INVENTORY_DIFF',
     note: 'products.updated_at + products.id gives an exact cursor. There is no deleted_at, so removal is only visible by diffing the id inventory.',
@@ -99,6 +104,11 @@ export const SOURCE_DESCRIPTORS: SourceDescriptor[] = [
     key: 'seo_change_ledger', changeSource: 'CONTENT', entityType: 'URL',
     capability: 'CURSOR_EXACT', deleteDetection: 'NONE',
     note: 'The operator SEO change ledger is append-only: occurred_at + id is exact, and entries are never deleted.',
+  },
+  {
+    key: 'gsc_performance', changeSource: 'CATEGORY', entityType: 'CATEGORY',
+    capability: 'STATE_HASH', deleteDetection: 'NONE',
+    note: 'Observed Search Console demand, digested per attributed entity. gsc_performance has no updated_at, and a per-entity digest is what actually matters: it changes exactly when that entity\'s demand changes, so the affected entity is named directly rather than inferred from query text.',
   },
   {
     key: 'seo_queries', changeSource: 'GSC_QUERY', entityType: 'QUERY',
@@ -255,11 +265,18 @@ export async function resolveSourceChanges(
       for (const row of rows) {
         seen.add(row.id);
         const prior = known.get(row.id);
+        // Matching hash means this revision has already been fully processed
+        // and committed. For provider enrichment that is precisely the
+        // idempotency guarantee: the same connection revision never enriches
+        // twice, and a run that failed never committed, so it retries.
         if (prior === row.stateHash) continue;
+        const kind: CanonicalChange['changeKind'] =
+          d.changeSource === 'PROVIDER_CONNECTED' ? 'PROVIDER_ENRICHED'
+          : prior === undefined ? 'CREATED'
+          : 'UPDATED';
         changes.push({
           sourceKey: d.key, source: d.changeSource, entityId: row.id,
-          changeType: prior === undefined ? 'CREATED' : 'UPDATED',
-          changeKind: prior === undefined ? 'CREATED' : 'UPDATED',
+          changeType: kind, changeKind: kind,
           stateHash: row.stateHash, observedAt: row.at,
           historical: Boolean(row.historical), changeVersion: row.stateHash,
         });
@@ -267,17 +284,29 @@ export async function resolveSourceChanges(
 
       // Inventory diff: anything we knew about that is no longer present has
       // been deleted. This is the only deletion evidence these sources have.
-      for (const [id] of known) {
-        if (seen.has(id)) continue;
-        changes.push({
-          sourceKey: d.key, source: d.changeSource, entityId: id,
-          changeType: 'DELETED', changeKind: 'DELETED', stateHash: '',
-          observedAt: null, historical: false, changeVersion: 'deleted',
-        });
+      //
+      // Skipped where deletion is genuinely undetectable. A provider going
+      // away is a DISCONNECT, not a deletion: the evidence it already
+      // contributed stays, ages under the freshness policy, and must never be
+      // rewritten to zero.
+      if (d.deleteDetection !== 'NONE') {
+        for (const [id] of known) {
+          if (seen.has(id)) continue;
+          changes.push({
+            sourceKey: d.key, source: d.changeSource, entityId: id,
+            changeType: 'DELETED', changeKind: 'DELETED', stateHash: '',
+            observedAt: null, historical: false, changeVersion: 'deleted',
+          });
+        }
       }
 
       proposedCursors[d.key] = lower;
-      proposedState[d.key] = new Map(rows.map((r) => [r.id, r.stateHash]));
+      proposedState[d.key] = d.deleteDetection === 'NONE'
+        // The inventory here lists outstanding work, not the whole world, so
+        // previously-completed revisions must be carried forward rather than
+        // pruned — otherwise every completed enrichment would look new again.
+        ? new Map([...known, ...rows.map((r) => [r.id, r.stateHash] as [string, string])])
+        : new Map(rows.map((r) => [r.id, r.stateHash]));
     }
 
     if (d.deleteDetection !== 'TOMBSTONE') {

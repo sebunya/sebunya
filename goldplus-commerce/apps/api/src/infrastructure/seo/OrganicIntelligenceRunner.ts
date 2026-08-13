@@ -90,6 +90,49 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
       // An EXACT plan that touches no category legitimately evaluates nothing.
       if (wanted !== null && wanted.length === 0) return [];
 
+      /**
+       * Observed search demand from Search Console, attributed to a category
+       * by the PAGE the impression landed on — never by the query text
+       * mentioning a category name. Attribution by wording is how demand ends
+       * up on the wrong entity.
+       *
+       * The grain is the one gsc_performance already enforces with a unique
+       * index: DATE x PAGE x QUERY. Summing impressions over that grain cannot
+       * double-count, because no overlapping dimensional projection (device,
+       * country, search appearance) is stored in the same table.
+       *
+       * Only completed days are counted: today is still accumulating and
+       * comparing it against a full period would understate demand.
+       */
+      const demandRows = rowsOf(await conn.execute(sql`
+        select c.slug,
+               sum(g.impressions)::bigint as impressions,
+               sum(g.clicks)::bigint as clicks,
+               count(distinct g.query)::int as queries,
+               min(g.date)::text as period_start,
+               max(g.date)::text as period_end
+        from gsc_performance g
+        join categories c
+          on g.page ilike '%/' || c.slug
+          or g.page ilike '%/' || c.slug || '/%'
+          or g.page ilike '%/' || c.slug || '?%'
+        where g.date < current_date
+        group by c.slug
+      `));
+      const demandBySlug = new Map<string, {
+        impressions: number; clicks: number; queries: number;
+        periodStart: string | null; periodEnd: string | null;
+      }>();
+      for (const r of demandRows) {
+        demandBySlug.set(`/${String(r.slug)}`, {
+          impressions: Number(r.impressions ?? 0),
+          clicks: Number(r.clicks ?? 0),
+          queries: Number(r.queries ?? 0),
+          periodStart: r.period_start ? String(r.period_start) : null,
+          periodEnd: r.period_end ? String(r.period_end) : null,
+        });
+      }
+
       const cats = rowsOf(await conn.execute(sql`
         select c.id::text as category_id, c.name, c.slug,
                count(p.id) filter (where p.active = true and p.approval_status = 'approved')::int as eligible,
@@ -107,9 +150,47 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
         const eligible = Number(r.eligible ?? 0);
         const inStock = Number(r.in_stock ?? 0);
         const unpriced = Number(r.unpriced ?? 0);
+        const entityId = `/${String(r.slug)}`;
+
+        // Absent evidence stays UNKNOWN. It must never become 0 — "Search
+        // Console reported nothing for this page" and "nobody has connected
+        // Search Console" are different facts, and only the first is a
+        // measurement.
+        const demand = demandBySlug.get(entityId) ?? null;
+        // Real Search Console figures drift by a few impressions every single
+        // day. Feeding raw counts into the evidence hash would rewrite every
+        // opportunity on every run — daily churn that says nothing. Banding to
+        // 5% keeps the meaning ("about five thousand impressions") and drops
+        // the noise. The exact figures remain in gsc_performance for analysis.
+        const band = (n: number) => {
+          if (!Number.isFinite(n) || n <= 0) return 0;
+          const step = Math.max(1, Math.round(n * 0.05));
+          return Math.round(n / step) * step;
+        };
+        const demandComponent = demand
+          ? {
+              component: 'SEARCH_DEMAND' as const,
+              raw: {
+                impressions: band(demand.impressions),
+                clicks: band(demand.clicks),
+                queries: demand.queries,
+              },
+              // Log-scaled so one high-visibility category cannot flatten the
+              // rest of the portfolio to zero. Computed from the BANDED figure
+              // so the score cannot drift on daily noise either.
+              normalized: Math.min(1, Math.log10(band(demand.impressions) + 1) / 4),
+              state: 'KNOWN' as const,
+              reasonCode: 'gsc_observed_impressions',
+            }
+          : {
+              component: 'SEARCH_DEMAND' as const,
+              raw: null, normalized: null, state: 'UNKNOWN' as const,
+              reasonCode: 'search_console_not_connected',
+            };
+
         return {
           entityType: 'CATEGORY',
-          entityId: `/${String(r.slug)}`,
+          entityId,
           entityLabel: String(r.name),
           templateFamily: 'category',
           commercial: {
@@ -125,14 +206,13 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
             { component: 'CATALOGUE_DEPTH', raw: eligible, normalized: Math.min(1, eligible / 20), state: 'KNOWN', reasonCode: 'eligible_products' },
             { component: 'STOCK_CONFIDENCE', raw: inStock, normalized: eligible === 0 ? 0 : inStock / eligible, state: 'KNOWN', reasonCode: 'in_stock_ratio' },
             { component: 'COMMERCIAL_INTENT', raw: 'CATEGORY', normalized: 0.8, state: 'KNOWN', reasonCode: 'category_is_commercial' },
-            // Not zero. Unknown.
-            { component: 'SEARCH_DEMAND', raw: null, normalized: null, state: 'UNKNOWN', reasonCode: 'search_console_not_connected' },
+            demandComponent,
             { component: 'CONVERSION_SIGNAL', raw: null, normalized: null, state: 'UNKNOWN', reasonCode: 'ga4_not_connected' },
             { component: 'REVENUE_SIGNAL', raw: null, normalized: null, state: 'UNKNOWN', reasonCode: 'ga4_not_connected' },
           ],
           evidenceStates: {
             COMMERCE: 'KNOWN', TECHNICAL: 'KNOWN', CONTENT: 'KNOWN',
-            SEARCH_DEMAND: 'UNKNOWN', GA4: 'UNKNOWN', MERCHANT: 'UNKNOWN',
+            SEARCH_DEMAND: demand ? 'KNOWN' : 'UNKNOWN', GA4: 'UNKNOWN', MERCHANT: 'UNKNOWN',
             LINK_GRAPH: 'UNKNOWN', COMPETITOR: 'UNKNOWN', GBP: 'UNKNOWN', CWV: 'UNKNOWN',
           },
           effort: eligible === 0 ? 'HIGH' : 'MEDIUM',
@@ -140,6 +220,11 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
           confirmingSignals: 2,
           persistent: true,
           staleEvidence: false,
+          // Observation period, so scoring can tell a complete window from a
+          // partial one rather than treating all evidence as equally fresh.
+          sourcePeriodStart: demand?.periodStart ?? null,
+          sourcePeriodEnd: demand?.periodEnd ?? null,
+          sourceObservedAt: demand?.periodEnd ?? null,
         };
       });
     },
@@ -457,6 +542,55 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
         },
 
         readInventory: async (d) => {
+          if (d.key === 'provider_enrichment') {
+            // A connection that has genuinely reached an operational state AND
+            // holds an active credential. The revision is (connection,
+            // credential version): replacing a credential creates a new
+            // revision and legitimately warrants enrichment again, while a
+            // mere status flap does not.
+            const rows = rowsOf(await conn.execute(sql`
+              select n.id::text as connection_id, n.provider_id,
+                     coalesce(max(c.version), 0) as credential_version
+              from seo_integration_connections n
+              join seo_integration_credentials c
+                on c.connection_id = n.id and c.status = 'ACTIVE'
+              where n.status in ('CONNECTED','SYNCING','HEALTHY','STALE')
+              group by n.id, n.provider_id
+            `));
+            return rows.map((r) => {
+              const revision = `${r.provider_id}:${r.connection_id}:v${r.credential_version}`;
+              // id and hash are both the revision, so a completed revision
+              // compares equal on the next run and enriches exactly once.
+              return { id: revision, at: null, stateHash: revision };
+            });
+          }
+          if (d.key === 'gsc_performance') {
+            // Same attribution rule and same canonical grain as scoring uses:
+            // page-based, completed days only. The digest moves only when the
+            // entity's observed demand actually moves.
+            const rows = rowsOf(await conn.execute(sql`
+              select c.slug,
+                     sum(g.impressions)::bigint as impressions,
+                     sum(g.clicks)::bigint as clicks,
+                     max(g.date)::text as period_end
+              from gsc_performance g
+              join categories c
+                on g.page ilike '%/' || c.slug
+                or g.page ilike '%/' || c.slug || '/%'
+                or g.page ilike '%/' || c.slug || '?%'
+              where g.date < current_date
+              group by c.slug
+            `));
+            return rows.map((r) => ({
+              id: `/${String(r.slug)}`,
+              at: r.period_end ? String(r.period_end) : null,
+              stateHash: stateHashOf({
+                impressions: Number(r.impressions ?? 0),
+                clicks: Number(r.clicks ?? 0),
+                through: r.period_end ?? null,
+              }),
+            }));
+          }
           if (d.key === 'categories') {
             // categories has no timestamp column at all, so the full observed
             // state IS the change evidence.
