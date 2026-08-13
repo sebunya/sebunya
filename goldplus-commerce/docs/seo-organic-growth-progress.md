@@ -316,40 +316,128 @@ after cleanup: repo clean, 1 worktree, no files under `apps/api/`, no secrets in
 any scratch file. Backup retained.
 `UNINTENDED_DIAGNOSTIC_RESIDUE=NONE`.
 
+## PUBLIC OAUTH CALLBACK RECONCILIATION — 2026-08-13
+
+The owner opened `https://shopgoldplus.com/seo/oauth/google/callback` in a real
+browser and got a **404**. That contradicted the previous closeout's
+"CALLBACK_BOUNDARY=303 proven". The owner was right and the earlier conclusion
+was overstated. Both facts are recorded here deliberately — the point of durable
+state is to preserve what was learned, not to tidy away the error.
+
+```
+INITIAL_INTERNAL_CALLBACK_RESULT=303 — but measured against
+  https://api.shopgoldplus.com/seo/oauth/google/callback (the API origin)
+OWNER_BROWSER_RESULT=404 — against
+  https://shopgoldplus.com/seo/oauth/google/callback (the storefront origin)
+PREVIOUS_303_TEST_BOUNDARY=PUBLIC_ORIGIN, but the WRONG public origin
+PREVIOUS_PUBLIC_CALLBACK_CLAIM=OVERSTATED
+```
+
+Both results were reproduced from the public internet. They are consistent: the
+handler is mounted on the public **API** router, so the storefront origin has no
+such route and correctly 404s.
+
+### Two distinct defects
+
+**1. Documentation/instruction error (mine).** The previous closeout told the
+owner to set `SEO_OAUTH_REDIRECT_BASE=https://shopgoldplus.com`. That would have
+pointed Google at a 404. The correct value is `https://api.shopgoldplus.com`,
+because `redirectUri()` appends `/seo/oauth/google/callback` to the base and the
+handler lives on the API origin. No code change needed — the guidance was wrong,
+not the code.
+
+**2. Real code defect (also mine, shipped in `256b344`).** The callback's
+`back()` helper used a **relative** redirect, which resolves against the API
+origin. After a *successful* authorization the operator was sent to
+`api.shopgoldplus.com/admin/seo/integrations` — the JSON route, which answers
+401. A dead end, the same class of defect as the original Bearer-only callback
+this whole thing was meant to fix.
+
+```
+ROOT_CAUSE=WRONG_DOCUMENTED_CALLBACK_PATH (primary)
+           + relative-redirect wrong-origin return path (real code defect)
+CORRECTION=build the return URL against the storefront origin, from
+  SEO_ADMIN_RETURN_BASE if set, else the first CORS_ORIGIN entry, else relative.
+  Two files changed. One canonical handler retained. No new route, no duplicate
+  handler, no schema change, no migration.
+RELEASED=69bec06 — API image rebuilt only (sha256:0f6a76700674);
+  web image untouched (sha256:8dc9ee78e4a5)
+```
+
+### Final public proof (from the internet, not the production host)
+
+```
+GET <api>/seo/oauth/google/callback              303 -> https://shopgoldplus.com/admin/seo/integrations?oauth=invalid_state
+GET <api>/seo/oauth/google/callback?code=fake&state=forged.sig
+                                                 303 -> same rejection path
+destination https://shopgoldplus.com/admin/seo/integrations?oauth=invalid_state
+                                                 303 -> /admin/login?returnTo=/admin/seo/integrations
+OAuth START unauthenticated                      401 (initiation stays admin-only)
+MISSING_STATE_ACCEPTED=false   FORGED_STATE_ACCEPTED=false
+OAUTH_STATE_VALIDATION=GREEN
+PUBLIC_CALLBACK_PROVEN=true
+```
+
+### Canonical redirect URI (corrected)
+
+```
+GOOGLE_OAUTH_REDIRECT_URI=https://api.shopgoldplus.com/seo/oauth/google/callback
+```
+
+### Provider auth modes (read from the registered manifests)
+
+```
+GSC              SERVICE_ACCOUNT or OAUTH2
+GA4              SERVICE_ACCOUNT or OAUTH2
+MERCHANT_CENTER  SERVICE_ACCOUNT
+GBP              OAUTH2 only
+PAGESPEED        API_KEY
+CRUX             API_KEY
+```
+
+GSC, GA4 and Merchant Center therefore need **no** OAuth env vars and no
+redeploy: their service-account JSON goes straight into the encrypted vault from
+`/admin/seo/integrations`. Only GBP requires the OAuth client + redirect
+registration.
+
+### Search and commerce unmoved by the API rollout
+
+Hubs, battery finder, sitemap gating, robots fallback and commerce routes all
+re-verified identical after the rollout.
+
 ## Current state
 
 ```
-STATUS=PRODUCTION_VERIFIED · NOT ACTIVATED (external configuration outstanding)
-RELEASE_ID=375d109 (docs at 0dab2c4)
-PROVIDER_REGISTRY=14 manifests registered
-GSC / GA4 / MERCHANT_CENTER / PAGESPEED / CRUX = CONFIGURATION_REQUIRED
-GBP = AUTHORIZATION_REQUIRED
-ROBOTS_STATE=GREEN_SAFE_FALLBACK
-INDEXABILITY_GATING=GREEN   SITEMAP_GATING=GREEN
-COMMERCE_REGRESSION=NONE
-ANALYTICS_TEST_DEFECT=PREEXISTING_TEST_DEFECT (carried forward, not green)
-RECOMMENDATION_MATERIALIZER=SEV3, separate platform defect
-PROGRAMME_STATE=WAITING_FOR_OWNER_CONFIGURATION
+STATUS=PRODUCTION_VERIFIED · PUBLIC OAUTH CALLBACK PROVEN · NOT ACTIVATED
+RELEASE_ID=69bec06 (api sha256:0f6a76700674 · web sha256:8dc9ee78e4a5)
+LOCAL_HEAD = ORIGIN_HEAD = PRODUCTION_HEAD = 69bec06
+MIGRATION_CEILING=1789603200000 (0120) — untouched
+PROVIDER_REGISTRY=14 registered / 14 unique / 0 duplicates
+OWNER_GOOGLE_CONFIGURATION_SAFE_TO_BEGIN=YES
+PROGRAMME_STATE=OWNER_GOOGLE_CONFIGURATION_REQUIRED
 ```
 
-### Owner actions (the only things blocking activation)
+### Owner actions
 
-1. `SEO_OAUTH_REDIRECT_BASE=https://shopgoldplus.com` in
-   `/opt/goldplus/app/goldplus-commerce/.env.production` — not a secret;
-   requires an api restart to load.
-2. `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` in the same file —
-   secrets; never paste them into a chat session; api restart to load.
-3. Register the redirect URI in the Google Cloud console exactly as
-   `https://shopgoldplus.com/seo/oauth/google/callback`.
-   This session has no authenticated Google Cloud access and cannot do it.
-4. Optional: `GOOGLE_PAGESPEED_API_KEY` to enable Core Web Vitals ingestion.
+For GBP (OAuth) only:
+1. `SEO_OAUTH_REDIRECT_BASE=https://api.shopgoldplus.com` — **note the api
+   subdomain**; the earlier instruction naming the storefront origin was wrong.
+2. `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — secrets, never in
+   chat. Restart api after 1–2.
+3. Register in Google Cloud exactly:
+   `https://api.shopgoldplus.com/seo/oauth/google/callback`
 
-After 1–3, an administrator connects GSC/GA4/Merchant/GBP entirely from
-`/admin/seo/integrations` with no redeploy. Service-account providers
-(GSC/GA4/Merchant) need no env change at all — their credentials go straight
-into the vault from the admin UI.
+For GSC / GA4 / Merchant Center: nothing here — upload service-account JSON in
+`/admin/seo/integrations`. No env change, no redeploy.
 
-### Separate backlog item (not SEO/AEO)
+For PageSpeed / CrUX: `GOOGLE_PAGESPEED_API_KEY` (optional). Absent stays
+`CONFIGURATION_REQUIRED`, never a zero measurement.
 
-`RecommendationMaterializer` hourly cron: `cannot cast type record to jsonb`,
-failing since 2026-08-06, cache frozen, SEV3. Own work item after this closeout.
+### Carried forward, unrepaired in this slice (correctly)
+
+```
+AnalyticsReadRepository.integration.test.ts = PREEXISTING_TEST_DEFECT
+RecommendationMaterializer = hourly failure since 2026-08-06, SEV3,
+  stale-not-absent recommendations, no data/pricing/checkout/security impact.
+  RECOMMENDATION_SEPARATE_REPAIR_READY=true (own work item, not this task)
+```
