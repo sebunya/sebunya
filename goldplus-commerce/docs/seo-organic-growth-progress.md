@@ -433,11 +433,68 @@ For GSC / GA4 / Merchant Center: nothing here — upload service-account JSON in
 For PageSpeed / CrUX: `GOOGLE_PAGESPEED_API_KEY` (optional). Absent stays
 `CONFIGURATION_REQUIRED`, never a zero measurement.
 
-### Carried forward, unrepaired in this slice (correctly)
+## RECOMMENDATIONMATERIALIZER — REPAIRED 2026-08-13
+
+The separate platform defect carried through the SEO/AEO closeout is fixed. It
+was never part of that tranche and is recorded here only because this log is
+where it was discovered and tracked.
+
+```
+SYMPTOM   PostgresError: cannot cast type record to jsonb, hourly since 2026-08-06
+IMPACT    recommendation_materialized_cache frozen 7 days; customers served
+          stale-not-absent recommendations; no data/pricing/checkout/security impact
+SEVERITY  SEV3
+```
+
+**Cause.** `saveCachedRecommendations` bound a raw JS **array** into
+``sql`${items as never}::jsonb` ``. postgres.js infers a Postgres ARRAY for a raw
+JS array, and an array/record cannot be cast to jsonb. The sibling object writer
+``sql`${event.metadata ?? {}}::jsonb` `` is correct — postgres.js serializes a
+plain object to json exactly once — and the AC21 contract wrongly generalized
+that object form to the array case.
+
+**Fix.** ``sql`${JSON.stringify(items ?? [])}::text::jsonb` `` — the array-binding
+rule already used elsewhere in this codebase. An empty result set now persists
+as `[]` rather than throwing.
+
+**Why the suite stayed green for a week.** The unit contract asserted the broken
+expression *verbatim* as a source string, so it passed while production failed
+hourly. That is the more important lesson than the cast itself: a grep-shaped
+test cannot detect a runtime type-inference bug.
+
+Replaced with a real behavioural test that round-trips insert / update / empty
+through PostgreSQL and asserts `jsonb_typeof(items) = 'array'`. It was proven to
+fail against the pre-fix file (reproducing `cannot cast type record to jsonb`)
+and pass against the fix — a regression test that cannot pass vacuously.
+
+**Production proof.**
+
+```
+RELEASE=4cffb65 · api sha256:2442e4f5aa1d (web untouched, sha256:ea3f983739aa)
+MATERIALIZER_RESULT={"success":true,"durationMs":578,"processedCount":21}
+cache last_updated 2026-08-06 21:00 -> 2026-08-13 10:24
+jsonb_typeof distribution: array=21 (was a frozen mix)
+recommendations serving: home_trending 12, product_related 8, cart_addon 6
+API errors since roll: 0
+```
+
+Gates: unit + architecture 6358 passed / 404 files (ZeroSkipGate environmental
+only; one flaky ExperienceProfile failure that passed in isolation and on
+re-run). Integration suite green on an isolated production-shaped database.
+
+### Carried forward
 
 ```
 AnalyticsReadRepository.integration.test.ts = PREEXISTING_TEST_DEFECT
-RecommendationMaterializer = hourly failure since 2026-08-06, SEV3,
-  stale-not-absent recommendations, no data/pricing/checkout/security impact.
-  RECOMMENDATION_SEPARATE_REPAIR_READY=true (own work item, not this task)
+  (its beforeAll truncates products without product_prices; fails identically
+   against the pre-tranche 8af8186 schema — not an SEO/AEO regression)
+
+SEO/AEO ACTIVATION = WAITING_FOR_OWNER_CONFIGURATION
+  GBP OAuth: SEO_OAUTH_REDIRECT_BASE=https://api.shopgoldplus.com
+             + GOOGLE_OAUTH_CLIENT_ID / _SECRET + Google Cloud redirect
+             https://api.shopgoldplus.com/seo/oauth/google/callback
+  GSC / GA4 / Merchant Center: connectable NOW via service-account JSON in
+             /admin/seo/integrations — no env change, no redeploy
+  PageSpeed / CrUX: optional GOOGLE_PAGESPEED_API_KEY; absent stays
+             CONFIGURATION_REQUIRED, never a fabricated measurement
 ```
