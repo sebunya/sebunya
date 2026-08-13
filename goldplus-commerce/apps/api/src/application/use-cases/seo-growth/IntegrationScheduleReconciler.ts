@@ -82,6 +82,73 @@ export function isSchedulable(c: SchedulableConnection): boolean {
   return SCHEDULABLE_STATUSES.has(String(c.status ?? '').toUpperCase()) && c.hasActiveCredential;
 }
 
+/** Milliseconds a cadence must elapse before another collection is due. */
+const CADENCE_INTERVAL_MS: Record<string, number> = {
+  HOURLY: 60 * 60 * 1000,
+  DAILY: 24 * 60 * 60 * 1000,
+  WEEKLY: 7 * 24 * 60 * 60 * 1000,
+  MONTHLY: 30 * 24 * 60 * 60 * 1000,
+};
+
+export interface DueDecision {
+  connectionId: string;
+  providerId: string;
+  due: boolean;
+  reason: string;
+}
+
+/**
+ * Which connections are due for collection right now.
+ *
+ * Due-ness is derived from durable state — cadence versus the last successful
+ * collection — rather than from a per-connection repeatable job. That choice
+ * is deliberate: the queue does not return the jobId of a registered
+ * repeatable, so per-connection schedules could be created but never reliably
+ * found again to update or remove. A schedule that cannot be removed is worse
+ * than no schedule: a disabled connection would keep syncing forever.
+ *
+ * Deriving from state also makes every §9 case fall out for free — disable,
+ * delete, cadence change and re-enable are all just a different answer to the
+ * same question, evaluated fresh each tick.
+ */
+export function decideDueConnections(input: {
+  connections: SchedulableConnection[];
+  /** Last successful collection per connection id, epoch ms. */
+  lastSuccessMs: Map<string, number | null>;
+  nowMs: number;
+}): DueDecision[] {
+  const out: DueDecision[] = [];
+  for (const c of input.connections ?? []) {
+    if (!isSchedulable(c)) {
+      out.push({ connectionId: c.id, providerId: c.providerId, due: false,
+        reason: `Not schedulable (status ${c.status}, credential ${c.hasActiveCredential ? 'active' : 'absent'}).` });
+      continue;
+    }
+    const cadence = String(c.syncFrequency ?? DEFAULT_CADENCE).toUpperCase();
+    const interval = CADENCE_INTERVAL_MS[cadence];
+    if (!interval) {
+      out.push({ connectionId: c.id, providerId: c.providerId, due: false,
+        reason: `Cadence "${c.syncFrequency}" is not recognised; no collection scheduled.` });
+      continue;
+    }
+    const last = input.lastSuccessMs.get(c.id) ?? null;
+    if (last === null) {
+      out.push({ connectionId: c.id, providerId: c.providerId, due: true,
+        reason: 'Never collected successfully; first scheduled collection is due.' });
+      continue;
+    }
+    const elapsed = input.nowMs - last;
+    out.push({
+      connectionId: c.id, providerId: c.providerId,
+      due: elapsed >= interval,
+      reason: elapsed >= interval
+        ? `${cadence} cadence elapsed (${Math.floor(elapsed / 3_600_000)}h since last success).`
+        : `Not due: ${Math.floor(elapsed / 3_600_000)}h of the ${cadence} interval elapsed.`,
+    });
+  }
+  return out;
+}
+
 /**
  * Compare what should exist against what does.
  *

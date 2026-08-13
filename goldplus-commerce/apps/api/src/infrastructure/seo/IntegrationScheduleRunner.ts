@@ -4,7 +4,7 @@ import { logger } from '../logging/logger';
 import { QueueService, QUEUES } from '../queues/QueueService';
 import { Registry } from '../Registry';
 import {
-  planSchedules, jobIdFor,
+  decideDueConnections,
   type SchedulableConnection,
 } from '../../application/use-cases/seo-growth/IntegrationScheduleReconciler';
 
@@ -36,50 +36,48 @@ async function loadConnections(): Promise<SchedulableConnection[]> {
 }
 
 export async function reconcileIntegrationSchedules(): Promise<{
-  desired: number; created: number; replaced: number; removed: number; unchanged: number; reasons: string[];
+  evaluated: number; due: number; enqueued: number; skipped: number; removedLegacy: number; reasons: string[];
 }> {
   const queue = QueueService.getInstance().getQueue(QUEUES.ANALYTICS_FANOUT);
   if (!queue) {
-    logger.warn('[IntegrationSchedule] Queue unavailable; schedules unchanged.');
-    return { desired: 0, created: 0, replaced: 0, removed: 0, unchanged: 0, reasons: ['Queue unavailable.'] };
+    logger.warn('[IntegrationSchedule] Queue unavailable; no collection scheduled.');
+    return { evaluated: 0, due: 0, enqueued: 0, skipped: 0, removedLegacy: 0, reasons: ['Queue unavailable.'] };
+  }
+
+  // Retire any per-connection repeatable left by the earlier design. The queue
+  // does not return a repeatable's jobId, so those could be created but never
+  // reliably found again — which would leave a disabled connection syncing
+  // forever. Collection is now decided from state on each tick instead.
+  let removedLegacy = 0;
+  for (const r of (await queue.getRepeatableJobs()) as any[]) {
+    if (String(r.name) !== 'seo-integration-scheduled-sync') continue;
+    try { await queue.removeRepeatableByKey(String(r.key)); removedLegacy += 1; } catch { /* already gone */ }
   }
 
   const connections = await loadConnections();
-  const repeatables = await queue.getRepeatableJobs();
-  const existing = repeatables
-    .filter((r: any) => String(r.name) === 'seo-integration-scheduled-sync')
-    .map((r: any) => ({ jobId: String(r.id ?? ''), pattern: String(r.pattern ?? r.cron ?? ''), key: String(r.key ?? '') }));
-
-  const plan = planSchedules({ connections, existing: existing.map(({ jobId, pattern }) => ({ jobId, pattern })) });
-
-  let created = 0, replaced = 0, removed = 0, unchanged = 0;
-
-  // Remove first, so a cadence replacement never leaves both patterns live.
-  const removals = new Set([...plan.obsolete, ...plan.replace.map((d) => d.jobId)]);
-  for (const e of existing) {
-    if (!removals.has(e.jobId)) continue;
-    try {
-      await queue.removeRepeatableByKey(e.key);
-      if (plan.obsolete.includes(e.jobId)) removed += 1; else replaced += 1;
-    } catch (err) {
-      logger.warn({ err: String((err as Error)?.message ?? err), jobId: e.jobId }, '[IntegrationSchedule] Failed to remove repeatable');
-    }
+  const lastSuccessMs = new Map<string, number | null>();
+  for (const r of rowsOf(await db.execute(sql`
+    select id::text as id, last_success_at from seo_integration_connections
+  `))) {
+    lastSuccessMs.set(String(r.id), r.last_success_at ? new Date(r.last_success_at as any).getTime() : null);
   }
 
-  for (const d of plan.desired) {
-    const already = existing.find((e) => e.jobId === d.jobId && !removals.has(e.jobId));
-    if (already) { unchanged += 1; continue; }
-    await queue.add(
-      'seo-integration-scheduled-sync',
-      { connectionId: d.connectionId, providerId: d.providerId },
-      // jobId is the deterministic identity: registering the same schedule from
-      // every replica collapses to one, which is what makes boot safe.
-      { repeat: { pattern: d.pattern }, jobId: d.jobId },
-    );
-    if (plan.replace.some((r) => r.jobId === d.jobId)) { /* counted as replaced above */ } else created += 1;
+  const decisions = decideDueConnections({ connections, lastSuccessMs, nowMs: Date.now() });
+  const reasons: string[] = [];
+  let enqueued = 0, skipped = 0;
+
+  for (const d of decisions) {
+    if (!d.due) { skipped += 1; reasons.push(`${d.providerId}/${d.connectionId}: ${d.reason}`); continue; }
+    const res = await enqueueScheduledSync(d.connectionId);
+    if (res.enqueued) enqueued += 1; else skipped += 1;
+    reasons.push(`${d.providerId}/${d.connectionId}: ${d.reason} ${res.reason}`);
   }
 
-  return { desired: plan.desired.length, created, replaced, removed, unchanged, reasons: plan.reasons };
+  return {
+    evaluated: decisions.length,
+    due: decisions.filter((d) => d.due).length,
+    enqueued, skipped, removedLegacy, reasons,
+  };
 }
 
 /**

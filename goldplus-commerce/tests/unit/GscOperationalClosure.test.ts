@@ -9,7 +9,7 @@ import {
   type GscObservation,
 } from '../../apps/api/src/application/use-cases/seo-growth/GscQueryProjection';
 import {
-  planSchedules, jobIdFor, patternFor, isSchedulable,
+  planSchedules, jobIdFor, patternFor, isSchedulable, decideDueConnections,
   type SchedulableConnection,
 } from '../../apps/api/src/application/use-cases/seo-growth/IntegrationScheduleReconciler';
 
@@ -429,5 +429,78 @@ describe('the provider admin view exposes capability where consumers read it', (
   it('keeps declarative descriptors in the manifest', () => {
     const view = toProviderAdminView(providerRow());
     expect((view.manifest as any).quota.dailyRequestCap).toBe(2000);
+  });
+});
+
+
+// ── Due-based collection (§9–§11, §60) ──────────────────────────────────────
+
+const HOUR = 3_600_000;
+const NOW = Date.parse('2026-08-14T12:00:00Z');
+
+const due = (connections: SchedulableConnection[], lastSuccess: Record<string, number | null>) =>
+  decideDueConnections({
+    connections,
+    lastSuccessMs: new Map(Object.entries(lastSuccess)),
+    nowMs: NOW,
+  });
+
+describe('collection is due from durable state, not from a schedule that cannot be revoked', () => {
+  it('is due when a connection has never collected successfully', () => {
+    const [d] = due([conn()], { 'conn-1': null });
+    expect(d.due).toBe(true);
+    expect(d.reason).toMatch(/never collected/i);
+  });
+
+  it('is due once the DAILY interval has elapsed', () => {
+    const [d] = due([conn()], { 'conn-1': NOW - 25 * HOUR });
+    expect(d.due).toBe(true);
+  });
+
+  it('is NOT due before the interval elapses', () => {
+    const [d] = due([conn()], { 'conn-1': NOW - 3 * HOUR });
+    expect(d.due).toBe(false);
+    expect(d.reason).toMatch(/not due/i);
+  });
+
+  it('never collects for a disabled connection, however long it has been', () => {
+    // The failure a per-connection repeatable risked: a schedule that outlives
+    // the connection's eligibility.
+    const [d] = due([conn({ status: 'DISABLED' })], { 'conn-1': NOW - 400 * HOUR });
+    expect(d.due).toBe(false);
+    expect(d.reason).toMatch(/not schedulable/i);
+  });
+
+  it('never collects without an active credential', () => {
+    const [d] = due([conn({ hasActiveCredential: false })], { 'conn-1': null });
+    expect(d.due).toBe(false);
+  });
+
+  it('respects a changed cadence immediately, with no re-registration', () => {
+    const twoHoursAgo = { 'conn-1': NOW - 2 * HOUR };
+    expect(due([conn({ syncFrequency: 'DAILY' })], twoHoursAgo)[0].due).toBe(false);
+    expect(due([conn({ syncFrequency: 'HOURLY' })], twoHoursAgo)[0].due).toBe(true);
+  });
+
+  it('refuses to collect on an unrecognised cadence rather than inventing one', () => {
+    const [d] = due([conn({ syncFrequency: 'FORTNIGHTLY' })], { 'conn-1': null });
+    expect(d.due).toBe(false);
+    expect(d.reason).toMatch(/not recognised/i);
+  });
+
+  it('evaluates a deleted connection by simply not seeing it', () => {
+    expect(due([], { 'conn-1': null })).toHaveLength(0);
+  });
+
+  it('does not create a catch-up storm after downtime', () => {
+    // Long downtime yields exactly ONE due decision, not one per missed day.
+    const decisions = due([conn()], { 'conn-1': NOW - 30 * 24 * HOUR });
+    expect(decisions.filter((d) => d.due)).toHaveLength(1);
+  });
+
+  it('is deterministic for the same inputs', () => {
+    const a = due([conn()], { 'conn-1': NOW - 25 * HOUR });
+    const b = due([conn()], { 'conn-1': NOW - 25 * HOUR });
+    expect(b).toEqual(a);
   });
 });

@@ -216,20 +216,14 @@ export function registerAllWorkers(): void {
           logger.error({ err: String((err as Error)?.message ?? err) }, '[QueueWorker] Organic Intelligence failed; Guardian result unaffected');
         }
       } else if (job.name === 'seo-integration-schedule-reconcile') {
-        // Turns each connection's stored cadence into a real repeatable job.
-        // Runs periodically rather than only at boot so a connection created,
+        // Decides which connections are due for collection from their stored
+        // cadence and last success. Runs hourly, so a connection created,
         // disabled or re-cadenced at runtime becomes correct on its own — no
-        // operator re-save, no redeploy.
+        // operator re-save, no redeploy — and a cadence longer than the tick
+        // simply is not due yet.
         const { reconcileIntegrationSchedules } = await import('../seo/IntegrationScheduleRunner');
         const outcome = await reconcileIntegrationSchedules();
         logger.info(outcome, '[QueueWorker] Integration schedules reconciled');
-      } else if (job.name === 'seo-integration-scheduled-sync') {
-        // The per-connection cadence fired. This creates the SAME persisted job
-        // the manual admin path creates, so scheduled and manual converge on
-        // one execution path.
-        const { enqueueScheduledSync } = await import('../seo/IntegrationScheduleRunner');
-        const res = await enqueueScheduledSync(String((job.data as any)?.connectionId ?? ''));
-        logger.info(res, '[QueueWorker] Scheduled provider sync considered');
       } else if (job.name === 'seo-integration-sync') {
         // 0118 Integrations Control Plane: per-connection sync jobs, isolated
         // per connection; failures land on the job row, never in commerce paths.
