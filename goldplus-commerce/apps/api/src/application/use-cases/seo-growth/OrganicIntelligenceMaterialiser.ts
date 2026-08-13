@@ -346,8 +346,16 @@ export class OrganicIntelligenceMaterialiser {
       : null;
 
     // Source hash covers ONLY observed evidence — never run time or ordering.
+    //
+    // The RAW observation is part of that evidence, not just its normalised
+    // projection. Hashing only `normalized` meant any movement that landed in
+    // the same normalised value was invisible: with a saturating scale,
+    // observed impressions could go from 80,000 to 5,000,000 while the stored
+    // record kept the old figure forever, because nothing appeared to change.
+    // Raw values are banded upstream, so daily provider noise still cannot
+    // move this hash.
     const src = sourceHash({
-      components: c.components.map((x) => ({ c: x.component, n: x.normalized, s: x.state })),
+      components: c.components.map((x) => ({ c: x.component, n: x.normalized, s: x.state, r: x.raw ?? null })),
       commercial: c.commercial,
       blockers: c.seoBlockers,
       contentThin: c.contentThin,

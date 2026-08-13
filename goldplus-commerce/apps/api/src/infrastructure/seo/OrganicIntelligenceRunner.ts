@@ -178,7 +178,13 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
               // Log-scaled so one high-visibility category cannot flatten the
               // rest of the portfolio to zero. Computed from the BANDED figure
               // so the score cannot drift on daily noise either.
-              normalized: Math.min(1, Math.log10(band(demand.impressions) + 1) / 4),
+              //
+              // The divisor sets where the scale saturates: /6 means a category
+              // has to reach roughly a million impressions in the window before
+              // demand stops differentiating it. /4 saturated at 10,000, which
+              // any real property clears immediately — every category would
+              // have scored an identical, maximal 1.0.
+              normalized: Math.min(1, Math.log10(band(demand.impressions) + 1) / 6),
               state: 'KNOWN' as const,
               reasonCode: 'gsc_observed_impressions',
             }

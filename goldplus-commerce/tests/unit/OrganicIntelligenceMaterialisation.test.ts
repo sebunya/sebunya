@@ -815,7 +815,7 @@ const demandKnown = (impressions = 5000): EntityCandidate => ({
     {
       component: 'SEARCH_DEMAND',
       raw: { impressions: band(impressions), clicks: band(120), queries: 40 },
-      normalized: Math.min(1, Math.log10(band(impressions) + 1) / 4),
+      normalized: Math.min(1, Math.log10(band(impressions) + 1) / 6),
       state: 'KNOWN', reasonCode: 'gsc_observed_impressions',
     },
   ],
