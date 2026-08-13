@@ -6,6 +6,10 @@ import {
   resolveSourceChanges, stateHashOf, SOURCE_DESCRIPTORS, type SourceStatePorts,
 } from '../../application/use-cases/seo-growth/SourceStateResolver';
 import {
+  resolveLandingPage, type RouteTruth,
+} from '../../application/use-cases/seo-growth/LandingPageEntityResolver';
+import { projectObservationsToQueries } from '../../application/use-cases/seo-growth/GscQueryProjection';
+import {
   OrganicIntelligenceMaterialiser,
   type MaterialiserPorts, type MaterialisationMode, type EntityCandidate, type MaterialisationResult,
 } from '../../application/use-cases/seo-growth/OrganicIntelligenceMaterialiser';
@@ -22,6 +26,96 @@ import { known, unknown } from '../../application/use-cases/seo-growth/OrganicOp
  */
 
 const rowsOf = (r: unknown): any[] => (Array.isArray(r) ? r : (r as any)?.rows ?? []);
+
+/**
+ * gsc_performance -> seo_queries.
+ *
+ * Metrics are deliberately NOT copied. Clicks and impressions stay in
+ * gsc_performance; a second mutable copy would be a second truth, and the two
+ * would disagree the first time Google revises a period. seo_queries carries
+ * identity and provenance only.
+ */
+async function projectGscQueries(conn: { execute: (q: unknown) => Promise<unknown> }): Promise<{ identities: number; inserted: number }> {
+  const observations = rowsOf(await conn.execute(sql`
+    select date::text as date, page, query, clicks, impressions from gsc_performance
+  `)).map((r) => ({
+    date: String(r.date), page: String(r.page), query: String(r.query),
+    clicks: Number(r.clicks ?? 0), impressions: Number(r.impressions ?? 0),
+  }));
+  if (observations.length === 0) return { identities: 0, inserted: 0 };
+
+  const projected = projectObservationsToQueries(observations);
+  let inserted = 0;
+  for (const q of projected.queries) {
+    const res = rowsOf(await conn.execute(sql`
+      insert into seo_queries (query, normalized_query, source, evidence_state, last_observed_at)
+      values (${q.raw}, ${q.normalized}, 'GSC', 'OBSERVED', ${q.lastObservedAt}::timestamptz)
+      -- The unique index is plain (normalized_query), so no predicate belongs
+      -- here. One normalized query is one identity regardless of which source
+      -- first recorded it; the source column is left untouched so original provenance
+      -- survives while freshness advances.
+      on conflict (normalized_query) do update set
+        -- Freshness may only move forward; a backfill of older dates must not
+        -- drag it backwards. first-seen is never rewritten.
+        last_observed_at = greatest(seo_queries.last_observed_at, excluded.last_observed_at),
+        updated_at = now()
+      returning (xmax = 0) as inserted
+    `));
+    if (res[0]?.inserted) inserted += 1;
+  }
+  return { identities: projected.identities, inserted };
+}
+
+/** Route truth as the STOREFRONT defines it, plus the product->category link. */
+interface RunnerRouteTruth extends RouteTruth {
+  categorySlugByProductId: Map<string, string>;
+}
+
+/**
+ * Loads the storefront's own routing vocabulary.
+ *
+ * `taxonomy_config` is what the shop page consults: each entry has a canonical
+ * slug and operator-editable aliases, and `?category=power` resolves to
+ * `power-devices` through that alias map. Reproducing that mapping by hand
+ * would drift the moment an operator edits it, so it is read from the same
+ * source the storefront reads.
+ */
+async function loadRouteTruth(conn: { execute: (q: unknown) => Promise<unknown> }): Promise<RunnerRouteTruth> {
+  const categoryByKey = new Map<string, string>();
+  const taxonomyRows = rowsOf(await conn.execute(sql`
+    select x->>'slug' as slug, coalesce(x->'aliases', '[]'::jsonb) as aliases
+    from taxonomy_config tc, jsonb_array_elements(tc.config) x
+  `));
+  for (const r of taxonomyRows) {
+    const slug = String(r.slug ?? '').toLowerCase();
+    if (!slug) continue;
+    categoryByKey.set(slug, slug);
+    const aliases = Array.isArray(r.aliases) ? r.aliases : [];
+    for (const a of aliases) {
+      const alias = String(a ?? '').toLowerCase().trim();
+      if (alias) categoryByKey.set(alias, slug);
+    }
+  }
+
+  // Categories the opportunity universe actually contains. A taxonomy entry
+  // with no catalogue category cannot receive attribution, and says so.
+  const knownCategorySlugs = new Set<string>(
+    rowsOf(await conn.execute(sql`select slug from categories`)).map((r) => String(r.slug).toLowerCase()),
+  );
+
+  const productIdBySlug = new Map<string, string>();
+  const categorySlugByProductId = new Map<string, string>();
+  for (const r of rowsOf(await conn.execute(sql`
+    select p.id::text as id, lower(p.slug) as slug, lower(c.slug) as category_slug
+    from products p left join categories c on c.id = p.category_id
+    where p.slug is not null
+  `))) {
+    productIdBySlug.set(String(r.slug), String(r.id));
+    if (r.category_slug) categorySlugByProductId.set(String(r.id), `/${String(r.category_slug)}`);
+  }
+
+  return { categoryByKey, productIdBySlug, knownCategorySlugs, categorySlugByProductId };
+}
 
 const INTEL_LOCK_ID = 887_401_122;
 const STALE_RUN_MINUTES = 45;
@@ -91,46 +185,62 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
       if (wanted !== null && wanted.length === 0) return [];
 
       /**
-       * Observed search demand from Search Console, attributed to a category
-       * by the PAGE the impression landed on — never by the query text
-       * mentioning a category name. Attribution by wording is how demand ends
-       * up on the wrong entity.
+       * Observed search demand from Search Console, attributed through the
+       * canonical LandingPageEntityResolver.
        *
-       * The grain is the one gsc_performance already enforces with a unique
-       * index: DATE x PAGE x QUERY. Summing impressions over that grain cannot
-       * double-count, because no overlapping dimensional projection (device,
-       * country, search appearance) is stored in the same table.
+       * The previous rule matched category slugs as URL path segments, which
+       * was an assumption about the storefront rather than knowledge of it.
+       * Real data disproved it immediately: the site serves /products/<slug>
+       * and /shop?category=power, while the catalogue slug is power-devices.
+       * Nothing matched and no opportunity ever saw demand.
        *
-       * Only completed days are counted: today is still accumulating and
-       * comparing it against a full period would understate demand.
+       * Resolution now follows the storefront's own semantics — the taxonomy
+       * alias map, exactly as the shop page uses it.
+       *
+       * Only completed days count: today is still accumulating, and comparing
+       * a partial day against a full period would understate demand.
        */
-      const demandRows = rowsOf(await conn.execute(sql`
-        select c.slug,
-               sum(g.impressions)::bigint as impressions,
-               sum(g.clicks)::bigint as clicks,
-               count(distinct g.query)::int as queries,
-               min(g.date)::text as period_start,
-               max(g.date)::text as period_end
-        from gsc_performance g
-        join categories c
-          on g.page ilike '%/' || c.slug
-          or g.page ilike '%/' || c.slug || '/%'
-          or g.page ilike '%/' || c.slug || '?%'
-        where g.date < current_date
-        group by c.slug
+      const routeTruth = await loadRouteTruth(conn);
+      const observations = rowsOf(await conn.execute(sql`
+        select date::text as date, page, query, clicks, impressions
+        from gsc_performance
+        where date < current_date
       `));
+
       const demandBySlug = new Map<string, {
         impressions: number; clicks: number; queries: number;
         periodStart: string | null; periodEnd: string | null;
       }>();
-      for (const r of demandRows) {
-        demandBySlug.set(`/${String(r.slug)}`, {
-          impressions: Number(r.impressions ?? 0),
-          clicks: Number(r.clicks ?? 0),
-          queries: Number(r.queries ?? 0),
-          periodStart: r.period_start ? String(r.period_start) : null,
-          periodEnd: r.period_end ? String(r.period_end) : null,
-        });
+      const seenQueriesByEntity = new Map<string, Set<string>>();
+
+      for (const o of observations) {
+        const resolved = resolveLandingPage(String(o.page ?? ''), routeTruth);
+        // A product page's demand rolls up to the category that owns it; an
+        // unmapped or homepage observation attributes to nothing, and stays
+        // visible as PARTIAL/UNMAPPED rather than becoming a zero somewhere.
+        const entityId = resolved.entityType === 'CATEGORY'
+          ? resolved.entityId
+          : resolved.entityType === 'PRODUCT'
+            ? routeTruth.categorySlugByProductId.get(String(resolved.entityId)) ?? null
+            : null;
+        if (!entityId) continue;
+
+        const current = demandBySlug.get(entityId) ?? {
+          impressions: 0, clicks: 0, queries: 0, periodStart: null as string | null, periodEnd: null as string | null,
+        };
+        current.impressions += Number(o.impressions ?? 0);
+        current.clicks += Number(o.clicks ?? 0);
+        const date = String(o.date);
+        if (!current.periodStart || date < current.periodStart) current.periodStart = date;
+        if (!current.periodEnd || date > current.periodEnd) current.periodEnd = date;
+        demandBySlug.set(entityId, current);
+
+        if (!seenQueriesByEntity.has(entityId)) seenQueriesByEntity.set(entityId, new Set());
+        seenQueriesByEntity.get(entityId)!.add(String(o.query ?? ''));
+      }
+      for (const [entityId, queries] of seenQueriesByEntity) {
+        const d = demandBySlug.get(entityId);
+        if (d) d.queries = queries.size;
       }
 
       const cats = rowsOf(await conn.execute(sql`
@@ -722,6 +832,13 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
     // ── Query intelligence ──────────────────────────────────────────────────
 
     async loadQueryUniverse() {
+      // Project provider observations into the semantic query universe before
+      // reading it. gsc_performance is the METRIC source of truth at the
+      // DATE x PAGE x QUERY grain; seo_queries is the IDENTITY universe, one
+      // row per query however many times it was observed. Without this bridge
+      // real Google queries existed but the query graph was empty.
+      await projectGscQueries(conn);
+
       // Queries come from whatever providers are actually connected. There is
       // no synthetic fallback: an empty universe is reported as empty, and the
       // coordinator renders that as provider absence rather than zero demand.

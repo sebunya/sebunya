@@ -117,6 +117,8 @@ const [providersRes, connectionsRes, jobsRes, auditRes, usageRes] = await Promis
 
 const provider = rowsOf<ProviderRow>(providersRes).find((p) => String(p.provider_id) === providerId) ?? null;
 const manifest = provider?.manifest ?? {};
+// Operational capability flags live beside the manifest, not inside it.
+const supports = provider?.supports ?? {};
 const connections = rowsOf<ConnectionRow>(connectionsRes);
 const connectionIds = new Set(connections.map((c) => String(c.id)));
 const jobs = rowsOf<SyncJobRow>(jobsRes).filter((j) => connectionIds.has(String(j.connection_id)));
@@ -135,7 +137,7 @@ const credentialsFor = (i: number) => rowsOf<CredentialRow>(credentialResults[i]
 const credentialDenied = (i: number) => credentialResults[i].ok === false && (credentialResults[i] as any).denied === true;
 
 const usesGoogleOAuth = Array.isArray(manifest.oauthScopes) && manifest.oauthScopes.length > 0;
-const supportsDiscovery = manifest.supports?.testConnection !== undefined || Boolean(manifest.supports?.backfill);
+const supportsDiscovery = supports.testConnection !== undefined || Boolean(supports.backfill);
 const configFields = (manifest.configurationSchema ?? []) as ManifestField[];
 const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
 ---
@@ -277,14 +279,14 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
                       <button type="submit" class="rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-brand-dark hover:bg-gray-50">Discover accounts/properties</button>
                     </form>
                   )}
-                  {manifest.supports?.manualSync && (
+                  {supports.manualSync && (
                     <form method="POST" class="inline flex items-center gap-1">
                       <input type="hidden" name="intent" value="sync" />
                       <input type="hidden" name="connectionId" value={conn.id} />
                       <select name="jobType" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
                         <option value="MANUAL">Manual</option>
                         <option value="INCREMENTAL">Incremental</option>
-                        {manifest.supports?.backfill && <option value="BACKFILL">Backfill</option>}
+                        {supports.backfill && <option value="BACKFILL">Backfill</option>}
                       </select>
                       <button type="submit" class="rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-brand-dark hover:bg-gray-50">Run sync</button>
                     </form>

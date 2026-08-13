@@ -100,10 +100,42 @@ const decryptActiveSecret = async (connectionId: string): Promise<Record<string,
 
 // ── Providers ───────────────────────────────────────────────────────────────
 
+/**
+ * Shapes one provider row into the admin view contract.
+ *
+ * `supports`, `capabilities` and `manifest` are SEPARATE top-level fields, and
+ * saying so explicitly is the point. Returning the raw row let the admin pages
+ * read `manifest.supports.manualSync`, which is always undefined — `supports`
+ * is its own column, and `manifest` holds only schemas, quota and notes. The
+ * Run sync button therefore stayed hidden on a connection whose backend fully
+ * supported it, and nothing failed loudly enough to notice.
+ */
+export function toProviderAdminView(row: any) {
+  return {
+    provider_id: String(row.provider_id),
+    canonical_name: String(row.canonical_name),
+    family: String(row.family),
+    description: String(row.description ?? ''),
+    auth_types: row.auth_types ?? [],
+    capabilities: row.capabilities ?? [],
+    // Operational capability flags — what an operator may DO with this provider.
+    supports: row.supports ?? {},
+    default_sync_frequency: row.default_sync_frequency ?? null,
+    docs_url: row.docs_url ?? null,
+    enabled: Boolean(row.enabled),
+    experimental: Boolean(row.experimental),
+    adapter_version: String(row.adapter_version ?? '1'),
+    // Declarative descriptors only: configuration/credential schemas, quota,
+    // oauth scopes, notes. Never operational flags.
+    manifest: row.manifest ?? {},
+  };
+}
+
 routes.get('/providers', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
   // Idempotent bootstrap: the manifest registry is code-authoritative.
   await new RegisterSeoIntegrationProvidersUseCase(repo()).execute();
-  return ok(c, await repo().listProviders());
+  const providers = await repo().listProviders();
+  return ok(c, providers.map(toProviderAdminView));
 });
 
 routes.post('/providers/register', requirePermissions([PERMISSIONS.SEO_INTEGRATIONS_MANAGE]), async (c) => {

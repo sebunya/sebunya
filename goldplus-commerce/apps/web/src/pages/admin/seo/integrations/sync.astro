@@ -54,8 +54,11 @@ const connectionsReason = emptyReason(connectionsRes, "Connections are not avail
 const jobsReason = emptyReason(jobsRes, "Sync jobs are not available yet");
 
 const connById = new Map(connections.map((c) => [String(c.id), c]));
+/** `supports` is a top-level provider field, NOT part of the manifest JSON.
+ *  Reading it from `manifest` silently yielded undefined and hid the manual
+ *  sync action for a provider whose backend supported it. */
 const supportsManualSync = (providerId: unknown) =>
-  providers.find((p) => String(p.provider_id) === String(providerId))?.manifest?.supports?.manualSync === true;
+  providers.find((p) => String(p.provider_id) === String(providerId))?.supports?.manualSync === true;
 
 const JOB_STATUSES = ["", "QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "PARTIAL"];
 const activeJobs = jobs.filter((j) => j.status === "RUNNING" || j.status === "QUEUED");

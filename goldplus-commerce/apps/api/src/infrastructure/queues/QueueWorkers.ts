@@ -215,6 +215,21 @@ export function registerAllWorkers(): void {
         } catch (err) {
           logger.error({ err: String((err as Error)?.message ?? err) }, '[QueueWorker] Organic Intelligence failed; Guardian result unaffected');
         }
+      } else if (job.name === 'seo-integration-schedule-reconcile') {
+        // Turns each connection's stored cadence into a real repeatable job.
+        // Runs periodically rather than only at boot so a connection created,
+        // disabled or re-cadenced at runtime becomes correct on its own — no
+        // operator re-save, no redeploy.
+        const { reconcileIntegrationSchedules } = await import('../seo/IntegrationScheduleRunner');
+        const outcome = await reconcileIntegrationSchedules();
+        logger.info(outcome, '[QueueWorker] Integration schedules reconciled');
+      } else if (job.name === 'seo-integration-scheduled-sync') {
+        // The per-connection cadence fired. This creates the SAME persisted job
+        // the manual admin path creates, so scheduled and manual converge on
+        // one execution path.
+        const { enqueueScheduledSync } = await import('../seo/IntegrationScheduleRunner');
+        const res = await enqueueScheduledSync(String((job.data as any)?.connectionId ?? ''));
+        logger.info(res, '[QueueWorker] Scheduled provider sync considered');
       } else if (job.name === 'seo-integration-sync') {
         // 0118 Integrations Control Plane: per-connection sync jobs, isolated
         // per connection; failures land on the job row, never in commerce paths.
@@ -291,6 +306,21 @@ export function registerAllWorkers(): void {
         jobId: 'search-console-guardian-job',
       }
     ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule Search Console Guardian cron job'));
+
+    // Integration schedule reconciliation. This does NOT sync anything; it
+    // makes each connection's stored cadence real. Hourly so a cadence change
+    // or a newly connected provider starts running without a redeploy, and
+    // jobId keeps it to one logical schedule across replicas.
+    syntheticQueue.add(
+      'seo-integration-schedule-reconcile',
+      {},
+      {
+        repeat: {
+          pattern: '10 * * * *',
+        },
+        jobId: 'seo-integration-schedule-reconcile-job',
+      }
+    ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule integration schedule reconciliation'));
 
     // Hourly recommendation materialization
     syntheticQueue.add(
