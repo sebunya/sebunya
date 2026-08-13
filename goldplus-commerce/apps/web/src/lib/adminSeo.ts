@@ -11,7 +11,10 @@ import { apiBase } from "./api";
 
 export type SeoResult<T> =
   | { ok: true; data: T }
-  | { ok: false; notFound?: boolean; denied?: boolean; message: string };
+  /** `details` carries the API's structured error payload (e.g. robots.txt
+   *  validation findings with line numbers). Without it the operator saw a
+   *  one-line message and an empty findings list. */
+  | { ok: false; notFound?: boolean; denied?: boolean; message: string; details?: Record<string, unknown> };
 
 async function request<T>(
   token: string,
@@ -36,7 +39,11 @@ async function request<T>(
       return { ok: false, denied: true, message: "Your account does not carry the permission for this SEO module." };
     }
     if (!res.ok || !json?.success) {
-      return { ok: false, message: json?.error?.message ?? `The API declined the request (HTTP ${res.status}).` };
+      return {
+        ok: false,
+        message: json?.error?.message ?? `The API declined the request (HTTP ${res.status}).`,
+        details: json?.error ?? undefined,
+      };
     }
     return { ok: true, data: json.data as T };
   } catch {

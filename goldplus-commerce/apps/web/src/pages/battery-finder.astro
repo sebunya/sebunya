@@ -131,7 +131,10 @@ const ugx = (n: number) => `UGX ${n.toLocaleString('en-UG')}`;
             </div>
             {m.product && (
               <div class="text-right">
-                <p class="font-black text-brand-dark">{ugx(m.product.priceUgx)}</p>
+                {/* A missing price is stated, never rendered as UGX 0. */}
+                <p class="font-black text-brand-dark">
+                  {m.product.priceUgx > 0 ? ugx(m.product.priceUgx) : "Price on request"}
+                </p>
                 <a href={`/products/${m.product.slug}`} class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
               </div>
             )}

@@ -154,7 +154,7 @@ export class DrizzleSeoObservabilityRepository {
         group by path order by hits desc limit 50
       `),
       db.execute(sql`
-        select coalesce(status_code, 0) as status_code, count(*)::int as hits
+        select status_code as status_code, count(*)::int as hits
         from seo_crawler_hits
         where hit_date >= (current_date - ${d}::int)
         group by status_code order by hits desc

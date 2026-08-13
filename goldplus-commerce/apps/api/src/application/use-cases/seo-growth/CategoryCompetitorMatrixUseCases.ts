@@ -26,6 +26,12 @@ export interface MatrixObservation {
   competitorId: string;
   rank: number | null;
   observedAt: string;
+  /**
+   * How many sightings this row represents. The repository aggregates in SQL
+   * (one row per category × competitor), so a row can stand for many
+   * observations; omitted means one.
+   */
+  sightings?: number;
 }
 
 export interface MatrixCompetitor {
@@ -118,7 +124,7 @@ export function buildCategoryCompetitorMatrix(
         competitorId: competitor.id,
         competitorName: competitor.canonicalName,
         state,
-        sightings: hits.length,
+        sightings: hits.reduce((n, h) => n + (Number(h.sightings) || 1), 0),
         bestRank: ranks.length > 0 ? Math.min(...ranks) : null,
         lastObservedAt: hits.length > 0 ? hits.map((h) => h.observedAt).sort().at(-1) ?? null : null,
         categorySampleSize: tested,

@@ -142,7 +142,11 @@ export function validateRobotsContent(content: unknown): RobotsFinding[] {
   for (const group of groups) {
     const isWildcard = group.agents.some((a) => a.trim() === '*');
     for (const rule of group.disallow) {
-      if (rule.value !== '/') continue;
+      // Google honours `/*` and `*` exactly as it honours `/` — all three
+      // block every URL on the site. Checking only `/` let a whole-site block
+      // publish with a clean bill of health.
+      const target = rule.value.trim();
+      if (target !== '/' && target !== '/*' && target !== '*') continue;
       if (isWildcard) {
         findings.push({
           code: 'ROBOTS_DISALLOW_ALL_WILDCARD',

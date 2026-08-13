@@ -336,3 +336,38 @@ describe('catalogue intelligence is wired end to end', () => {
     expect(page).toMatch(/have not checked/i);
   });
 });
+
+describe('lifecycle decisions actually reach the live product URL', () => {
+  const publicRoutes = read('apps/api/src/interfaces/http/routes/seo.ts');
+  const productPage = read('apps/web/src/pages/products/[slug].astro');
+
+  it('exposes the derived outcome publicly without leaking internal reasoning', () => {
+    expect(publicRoutes).toContain("routes.get('/product-lifecycle'");
+    expect(publicRoutes).toContain('lifecycleSeoOutcome(');
+    // rationale / decided_by / evidence are internal and must not be returned.
+    const handler = publicRoutes.slice(
+      publicRoutes.indexOf("routes.get('/product-lifecycle'"),
+      publicRoutes.indexOf("routes.get('/oauth/google/callback'"),
+    );
+    for (const internal of ['rationale', 'decided_by', 'evidence']) {
+      expect(handler, `${internal} must not be exposed publicly`).not.toContain(`${internal}:`);
+    }
+  });
+
+  it('makes the product page obey a recorded decision', () => {
+    expect(productPage).toContain('/seo/product-lifecycle?productId=');
+    // A 301 only ever goes to a real successor product.
+    expect(productPage).toContain('o.httpStatus === 301 && lcJson.data.successorSlug');
+    expect(productPage).toContain('/products/${lcJson.data.successorSlug}`, 301)');
+    expect(productPage).toContain("robotsMeta={lifecycleNoindex ? 'noindex,follow' : undefined}");
+  });
+
+  it('leaves the page untouched when no decision exists or the lookup fails', () => {
+    expect(productPage).toContain('lcJson.data?.decided');
+    // The lifecycle lookup's OWN catch block must not redirect or noindex.
+    const lookupStart = productPage.indexOf('/seo/product-lifecycle?productId=');
+    const catchBlock = productPage.slice(productPage.indexOf('} catch {', lookupStart), productPage.indexOf('const hasValidSku'));
+    expect(catchBlock).not.toContain('Astro.redirect');
+    expect(catchBlock).not.toContain('noindex');
+  });
+});

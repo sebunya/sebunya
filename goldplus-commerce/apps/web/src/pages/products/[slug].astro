@@ -65,6 +65,41 @@ if (searchQuery && Number.isInteger(searchRank) && searchRank >= 1 && searchRank
   }).catch(() => {});
 }
 
+/**
+ * Honour any recorded lifecycle SEO decision for this product. A decision is
+ * a deliberate human act, so the page obeys it: a 301 only ever goes to a
+ * genuine successor product, and a discontinued-but-honest page keeps its 200
+ * and its indexability because it still answers the customer's question.
+ * No decision recorded = nothing changes.
+ */
+let lifecycleNotice: string | null = null;
+let lifecycleNoindex = false;
+let lifecycleAlternatives = false;
+try {
+  const lcRes = await fetch(`${apiBase}/seo/product-lifecycle?productId=${encodeURIComponent(product.id)}`, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(700),
+  });
+  const lcJson = (await lcRes.json()) as ApiResponse<{
+    decided?: boolean;
+    successorSlug?: string | null;
+    outcome?: { httpStatus?: number; indexable?: boolean; showAlternatives?: boolean; notice?: string | null } | null;
+  }>;
+  if (lcJson.success && lcJson.data?.decided && lcJson.data.outcome) {
+    const o = lcJson.data.outcome;
+    if (o.httpStatus === 301 && lcJson.data.successorSlug) {
+      return Astro.redirect(`/products/${lcJson.data.successorSlug}`, 301);
+    }
+    if (o.httpStatus === 410) return Astro.redirect('/404', 410);
+    lifecycleNotice = o.notice ?? null;
+    lifecycleNoindex = o.indexable === false;
+    lifecycleAlternatives = o.showAlternatives === true;
+  }
+} catch {
+  // The decision service is advisory: if it is unreachable the product page
+  // behaves exactly as it always did rather than failing or redirecting.
+}
+
 const hasValidSku = product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending');
 const verifiedAttributes = product.attributeValues.filter((v) => v.isVerified && v.name !== 'Badge' && v.name !== 'CardShortDescription');
 
@@ -261,12 +296,21 @@ if (product) {
 }
 ---
 
-<BaseLayout title={pageTitle} description={description} canonicalUrl={canonical}>
+<BaseLayout title={pageTitle} description={description} canonicalUrl={canonical} robotsMeta={lifecycleNoindex ? 'noindex,follow' : undefined}>
   {product && (
     <Fragment slot="head">
       <ProductJsonLd product={product} url={canonical} />
       {breadcrumbJson && <script type="application/ld+json" is:inline set:html={breadcrumbJson} />}
     </Fragment>
+  )}
+
+  {lifecycleNotice && (
+    <div role="status" class="bg-amber-50 border-b border-amber-200">
+      <div class="container mx-auto px-4 lg:px-8 py-3 text-sm text-amber-900">
+        <strong>{lifecycleNotice}</strong>
+        {lifecycleAlternatives && <span class="ml-1">Browse the alternatives below.</span>}
+      </div>
+    </div>
   )}
 
   <div class="bg-slate-50 py-3.5 border-b border-slate-100">

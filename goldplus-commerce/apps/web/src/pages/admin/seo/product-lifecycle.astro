@@ -23,7 +23,7 @@ if (Astro.request.method === "POST") {
       successorProductId: String(form.get("successorProductId") ?? "").trim() || null,
       rationale: String(form.get("rationale") ?? "").trim() || null,
     });
-    if (res.ok) notice = "Lifecycle decision recorded.";
+    if (res.ok) notice = "Lifecycle decision recorded and now live: the product URL follows it on the next request.";
     else formError = res.message;
   }
 }

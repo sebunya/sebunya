@@ -136,15 +136,47 @@ describe('the control-plane pages are real admin surfaces', () => {
     }
   });
 
-  it('drives every operator action through a real control-plane endpoint', () => {
+  it('drives every operator action through an endpoint that actually exists', () => {
+    // Asserting that a path string appears in the page proves nothing: delete
+    // the handler and the page still contains the string. So resolve each UI
+    // action against the ROUTE FILE's real registrations.
+    const routeSource = readFileSync(
+      resolve(__dirname, '../../apps/api/src/interfaces/http/routes/admin/seo-integrations.ts'),
+      'utf8',
+    );
+    const registered = new Set(
+      [...routeSource.matchAll(/routes\.(get|post|patch|delete)\('([^']+)'/g)].map((m) => `${m[1].toUpperCase()} ${m[2]}`),
+    );
+    for (const route of [
+      'GET /providers', 'GET /connections', 'POST /connections', 'PATCH /connections/:id',
+      'DELETE /connections/:id', 'POST /connections/:id/credentials', 'GET /connections/:id/credentials',
+      'POST /credentials/:id/revoke', 'POST /connections/:id/test', 'POST /connections/:id/discover',
+      'POST /connections/:id/select-resource', 'POST /connections/:id/sync',
+      'POST /sync-jobs/:id/cancel', 'GET /sync-jobs', 'GET /audit', 'GET /usage',
+      'GET /oauth/google/start',
+    ]) {
+      expect(registered, `the UI depends on ${route}`).toContain(route);
+    }
     for (const intent of ['test', 'discover', 'select-resource', 'sync', 'rotate-credential', 'revoke-credential', 'oauth', 'delete']) {
       expect(DETAIL, `detail page must handle intent ${intent}`).toContain(`"${intent}"`);
     }
-    expect(DETAIL).toContain('/test');
-    expect(DETAIL).toContain('/credentials');
-    expect(DETAIL).toContain('/oauth/google/start');
-    expect(SYNC).toContain('/sync-jobs/');
-    expect(WIZARD).toContain(`${'${INTEGRATIONS_API}'}/connections`);
+  });
+
+  it('keeps the OAuth callback off the admin router, where it could never authenticate', () => {
+    // Google's consent redirect is a browser navigation with no Authorization
+    // header. Registered under authMiddleware it returned 401 and the button
+    // was a dead control that left the connection AUTHORIZATION_REQUIRED.
+    const adminRoutes = readFileSync(
+      resolve(__dirname, '../../apps/api/src/interfaces/http/routes/admin/seo-integrations.ts'),
+      'utf8',
+    );
+    const publicRoutes = readFileSync(
+      resolve(__dirname, '../../apps/api/src/interfaces/http/routes/seo.ts'),
+      'utf8',
+    );
+    expect(adminRoutes).not.toMatch(/routes\.get\('\/oauth\/google\/callback'/);
+    expect(publicRoutes).toContain("routes.get('/oauth/google/callback'");
+    expect(publicRoutes).toContain('oauth.consumeState(state)');
   });
 
   it('states plainly that a connection is not connected until a test passes', () => {

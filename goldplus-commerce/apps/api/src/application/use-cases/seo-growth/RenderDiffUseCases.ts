@@ -1,3 +1,4 @@
+import { buildAllowlist, isAllowedUrl } from './CrawlSiteUseCase';
 /**
  * Raw vs rendered SEO diff (migration 0120).
  *
@@ -291,12 +292,18 @@ export interface RenderDiffStore {
 }
 
 /** URLs must be absolute http(s). No file://, no internal schemes. */
-export function normaliseDiffUrl(raw: unknown): string | null {
+export function normaliseDiffUrl(raw: unknown, allowlist?: string[]): string | null {
   const value = String(raw ?? '').trim();
   if (!value) return null;
   try {
     const u = new URL(value);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    // SSRF gate. Without it, an operator with SEO_AUDIT_RUN could point the
+    // diff at http://169.254.169.254/ (cloud metadata) or a localhost service
+    // and read the response back out of the SEO console. Reuses the crawler's
+    // allowlist so both fetchers obey one rule; IP literals are never allowed,
+    // because an allowlist keyed on hostnames cannot vet them.
+    if (!isAllowedUrl(u.toString(), allowlist ?? buildAllowlist())) return null;
     return u.toString();
   } catch {
     return null;

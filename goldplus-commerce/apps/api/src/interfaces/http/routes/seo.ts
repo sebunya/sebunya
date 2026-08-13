@@ -4,6 +4,7 @@ import { ApiResponse } from '@goldplus/shared';
 import { buildMerchantFeedXml } from '../../../application/use-cases/seo-growth/MerchantFeedUseCase';
 import { SearchBatteryFinderUseCase } from '../../../application/use-cases/seo-growth/BatteryCompatibilityUseCases';
 import { fallbackRobotsTxt } from '../../../application/use-cases/seo-growth/RobotsGovernanceUseCases';
+import { lifecycleSeoOutcome } from '../../../application/use-cases/seo-growth/ProductLifecycleSeoUseCases';
 
 /**
  * U6 — public SEO endpoints. Thin routes over Registry.seoRepo:
@@ -149,6 +150,137 @@ routes.get('/robots-published', async (c) => {
       error: { code: 'ROBOTS_READ_FAILED', message: String(err?.message ?? err).slice(0, 200) },
     };
     return c.json(res, 503);
+  }
+});
+
+/**
+ * Google OAuth callback for the Search Integrations Control Plane.
+ *
+ * This lives on the PUBLIC router because it is a plain browser navigation
+ * from Google's consent screen: it carries no Authorization header and could
+ * never satisfy the admin auth middleware. Under /admin it was a dead control
+ * — the operator granted consent and landed on a 401 while the connection sat
+ * at AUTHORIZATION_REQUIRED for ever.
+ *
+ * It is NOT unauthenticated. The `state` is HMAC-signed, single-use and
+ * expires in ten minutes, and it carries the connection and the operator it
+ * was issued to; an attacker cannot mint one. On success the operator is
+ * redirected back to the provider page rather than shown raw JSON.
+ */
+routes.get('/oauth/google/callback', async (c) => {
+  const code = c.req.query('code') ?? '';
+  const state = c.req.query('state') ?? '';
+  const registry = Registry.getInstance();
+  const { googleOAuthService } = await import('../../../infrastructure/seo/GoogleOAuthService');
+  const oauth = googleOAuthService();
+
+  // Consumes the state on ANY outcome below, so a code can never be replayed.
+  const record = state ? oauth.consumeState(state) : null;
+  const back = (params: string) =>
+    c.redirect(`/admin/seo/integrations${record ? `/${record.connectionId}` : ''}?${params}`, 303);
+
+  if (c.req.query('error')) {
+    if (record) await registry.seoIntegrationRepo.setConnectionStatus(record.connectionId, {
+      status: 'AUTHORIZATION_REQUIRED',
+      lastError: `Authorization was not granted: ${String(c.req.query('error')).slice(0, 200)}`,
+    });
+    return back('oauth=denied');
+  }
+  if (code === '' || !record) return back('oauth=invalid_state');
+
+  const connection = await registry.seoIntegrationRepo.getConnection(record.connectionId);
+  if (!connection) return back('oauth=connection_missing');
+
+  const redirectUri = oauth.redirectUri();
+  if (!redirectUri) return back('oauth=not_configured');
+
+  try {
+    const { IntegrationCredentialVault, maskOf } = await import('../../../infrastructure/seo/IntegrationCredentialVault');
+    const vault = IntegrationCredentialVault.fromEnv();
+    if (!vault) return back('oauth=vault_unavailable');
+
+    const activeCredential = await registry.seoIntegrationRepo.getActiveCredential(connection.id);
+    const existingSecret: Record<string, unknown> | null =
+      activeCredential ? (vault.decrypt(activeCredential.ciphertext) as Record<string, unknown>) : null;
+    const app = existingSecret?.clientId && existingSecret?.clientSecret
+      ? { clientId: String(existingSecret.clientId), clientSecret: String(existingSecret.clientSecret) }
+      : oauth.envClientApp();
+    if (!app) return back('oauth=no_client_app');
+
+    const tokens = await oauth.exchangeCode({ code, verifier: record.verifier, ...app, redirectUri });
+    await registry.seoIntegrationRepo.addCredential({
+      connectionId: connection.id,
+      authType: 'OAUTH2',
+      ciphertext: vault.encrypt({ ...(existingSecret ?? {}), tokens }),
+      // Never the token itself — only its mask.
+      mask: maskOf(tokens.refreshToken ?? tokens.accessToken),
+      createdBy: record.actorId,
+      expiresAt: new Date(tokens.expiresAt),
+    });
+    // Consent granted is not the same as working: the connection becomes
+    // CONFIGURING and must still pass a staged test before it is READY.
+    await registry.seoIntegrationRepo.setConnectionStatus(connection.id, { status: 'CONFIGURING', lastError: null });
+    await registry.seoIntegrationRepo.appendAudit({
+      connectionId: connection.id,
+      providerId: connection.provider_id,
+      actorId: record.actorId,
+      action: 'SEO_INTEGRATION_OAUTH_COMPLETED',
+      detail: { scope: tokens.scope },
+    });
+    return back('oauth=authorized');
+  } catch {
+    await registry.seoIntegrationRepo.setConnectionStatus(connection.id, {
+      status: 'AUTHORIZATION_REQUIRED',
+      lastError: 'Authorization code exchange failed.',
+    });
+    return back('oauth=exchange_failed');
+  }
+});
+
+/**
+ * The recorded lifecycle decision for a product, so the storefront can HONOUR
+ * it. Without this the admin screen wrote a row and nothing happened — an
+ * operator would record a 301 and believe an SEO action had shipped.
+ *
+ * Returns only the derived outcome (status, successor slug, indexability,
+ * notice) — never the rationale, the decider or the evidence snapshot, which
+ * are internal.
+ */
+routes.get('/product-lifecycle', async (c) => {
+  const productId = (c.req.query('productId') ?? '').trim();
+  if (!productId) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_INPUT', message: 'productId is required.' } };
+    return c.json(res, 400);
+  }
+  try {
+    const row = await Registry.getInstance().seoCatalogueRepo.getLifecycleForProduct(productId);
+    c.header('Cache-Control', 'public, max-age=120');
+    if (!row) {
+      // No decision recorded means the page behaves exactly as before. The
+      // absence of a decision never triggers an action.
+      const res: ApiResponse<unknown> = { success: true, data: { decided: false, outcome: null } };
+      return c.json(res);
+    }
+    const outcome = lifecycleSeoOutcome({
+      state: row.state,
+      disposition: row.disposition,
+      successorProductId: row.successor_product_id ?? null,
+    });
+    const res: ApiResponse<unknown> = {
+      success: true,
+      data: {
+        decided: row.disposition !== 'UNDECIDED',
+        state: row.state,
+        disposition: row.disposition,
+        successorSlug: row.successor_slug ?? null,
+        outcome,
+      },
+    };
+    return c.json(res);
+  } catch {
+    // A lookup failure must never change how a live product page behaves.
+    const res: ApiResponse<unknown> = { success: true, data: { decided: false, outcome: null } };
+    return c.json(res);
   }
 });
 

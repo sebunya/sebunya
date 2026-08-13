@@ -143,6 +143,7 @@ routes.get('/matrix', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
       competitorId: String(r.competitor_id),
       rank: r.rank === null || r.rank === undefined ? null : Number(r.rank),
       observedAt: new Date(r.observed_at).toISOString(),
+      sightings: Number(r.sightings) || 1,
     })),
     sampleSizes,
   );

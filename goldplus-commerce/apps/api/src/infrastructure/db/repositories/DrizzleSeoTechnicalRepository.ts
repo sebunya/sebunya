@@ -98,10 +98,11 @@ export class DrizzleSeoTechnicalRepository {
   async rejectRobotsVersion(id: string, actorId: string, note: string | null): Promise<any | null> {
     const rows = rowsOf(await db.execute(sql`
       update seo_robots_versions
+      -- approved_by/approved_at are deliberately NOT written here. Recording
+      -- the rejecter as the approver made a REJECTED version render as
+      -- "approved by X" for someone who never approved anything.
       set status = 'REJECTED',
-          note = coalesce(${note}, note),
-          approved_by = ${actorId},
-          approved_at = now()
+          note = coalesce(${note}, note)
       where id = ${id} and status in ('DRAFT', 'PENDING_APPROVAL', 'APPROVED')
       returning *
     `));

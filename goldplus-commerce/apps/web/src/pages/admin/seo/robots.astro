@@ -50,7 +50,10 @@ if (Astro.request.method === "POST") {
   }
   if (res && !res.ok) {
     formError = res.message;
-    const err = (res as unknown as { findings?: Finding[] }).findings;
+    // The API returns findings inside its error payload, which seoPost/seoPatch
+    // now surface as `details`. Reading them off the result root left the list
+    // permanently empty, so an operator never saw WHICH line was blocking.
+    const err = (res.details?.findings ?? (res as unknown as { findings?: Finding[] }).findings) as Finding[] | undefined;
     if (Array.isArray(err)) formFindings = err;
   }
 }

@@ -62,10 +62,11 @@ export class GoogleOAuthService {
   }
 
   /**
-   * Validate + consume a state. Rejects unknown, tampered, expired states and
-   * states initiated by a different actor. One-shot: consumed on success.
+   * Validate + consume a state. Rejects unknown, tampered and expired states,
+   * and — when an actor is supplied — states initiated by a different actor.
+   * One-shot: consumed on success.
    */
-  consumeState(state: string, actorId: string): OAuthStateRecord | null {
+  consumeState(state: string, actorId?: string): OAuthStateRecord | null {
     const dot = state.lastIndexOf('.');
     if (dot <= 0) return null;
     const token = state.slice(0, dot);
@@ -80,7 +81,13 @@ export class GoogleOAuthService {
       this.states.delete(token);
       return null;
     }
-    if (record.actorId !== actorId) return null;
+    // The provider's redirect is a plain browser navigation carrying no
+    // Authorization header, so the callback has no session to compare against.
+    // Omitting actorId is therefore allowed: the state is still HMAC-signed,
+    // single-use and TTL-bound, and it CARRIES the actor it was issued to
+    // (callers use record.actorId). When a caller does supply an actor, the
+    // stricter binding is enforced as before.
+    if (actorId !== undefined && record.actorId !== actorId) return null;
     this.states.delete(token);
     return record;
   }
@@ -109,7 +116,9 @@ export class GoogleOAuthService {
 
   redirectUri(): string | null {
     const base = (this.env.SEO_OAUTH_REDIRECT_BASE ?? '').trim().replace(/\/$/, '');
-    return base === '' ? null : `${base}/admin/seo/integrations/oauth/google/callback`;
+    // Public router: the consent redirect is a browser navigation with no
+    // Authorization header, so it cannot land on an /admin surface.
+    return base === '' ? null : `${base}/seo/oauth/google/callback`;
   }
 
   async exchangeCode(input: {

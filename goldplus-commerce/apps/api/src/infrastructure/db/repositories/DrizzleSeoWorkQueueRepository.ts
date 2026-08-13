@@ -40,14 +40,18 @@ export class DrizzleSeoWorkQueueRepository {
     const rows = rowsOf(await db.execute(sql`
       update seo_work_items set
         title = coalesce(${input.title ?? null}, title),
-        detail = ${input.detail ?? null},
+        detail = coalesce(${input.detail ?? null}, detail),
         state = coalesce(${input.state ?? null}, state),
         priority = coalesce(${input.priority ?? null}, priority),
-        assignee_id = ${input.assigneeId ?? null},
+        assignee_id = coalesce(${input.assigneeId ?? null}, assignee_id),
         change_ledger_id = coalesce(${input.changeLedgerId ?? null}, change_ledger_id),
         target_url = coalesce(${input.targetUrl ?? null}, target_url),
-        outcome = ${input.outcome ?? null},
-        outcome_note = ${input.outcomeNote ?? null},
+        -- An absent key means UNCHANGED, not CLEARED: advancing an item
+        -- without re-picking its outcome used to null a recorded IMPROVED
+        -- while outcome_measured_at survived, showing 'not measured yet'
+        -- next to a real measurement date.
+        outcome = coalesce(${input.outcome ?? null}, outcome),
+        outcome_note = coalesce(${input.outcomeNote ?? null}, outcome_note),
         outcome_measured_at = case
           when ${input.outcome ?? null}::text is not null and outcome is distinct from ${input.outcome ?? null}
           then now() else outcome_measured_at end,
@@ -113,14 +117,21 @@ export class DrizzleSeoWorkQueueRepository {
    * never looked".
    */
   async matrixObservations(days = 90): Promise<any[]> {
+    // Aggregated in SQL, one row per (category, competitor). Shipping raw
+    // observations under a `limit` was unsafe: a competitor whose sightings
+    // fell outside the cap became NOT_OBSERVED — the grid would positively
+    // assert their absence because of a row limit.
     return rowsOf(await db.execute(sql`
-      select q.category as category, o.competitor_id, o.rank, o.observed_at
+      select q.category as category, o.competitor_id,
+             min(o.rank)::int as rank,
+             count(*)::int as sightings,
+             max(o.observed_at) as observed_at
       from seo_serp_observations o
       join seo_queries q on q.id = o.query_id
       where o.competitor_id is not null
         and q.category is not null and q.category <> ''
         and o.observed_at > now() - (${days} * interval '1 day')
-      limit 20000
+      group by q.category, o.competitor_id
     `));
   }
 

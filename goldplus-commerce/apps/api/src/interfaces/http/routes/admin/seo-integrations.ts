@@ -406,49 +406,10 @@ routes.get('/oauth/google/start', requirePermissions([PERMISSIONS.SEO_INTEGRATIO
   return ok(c, { authUrl });
 });
 
-routes.get('/oauth/google/callback', requirePermissions([PERMISSIONS.SEO_INTEGRATIONS_MANAGE]), async (c) => {
-  const code = c.req.query('code') ?? '';
-  const state = c.req.query('state') ?? '';
-  if (c.req.query('error')) return bad(c, 'OAUTH_DENIED', `Authorization was not granted: ${c.req.query('error')}`, 400);
-  if (code === '' || state === '') return bad(c, 'BAD_INPUT', 'code and state are required.');
-
-  const { googleOAuthService } = await import('../../../../infrastructure/seo/GoogleOAuthService');
-  const oauth = googleOAuthService();
-  const record = oauth.consumeState(state, actorId(c));
-  if (!record) return bad(c, 'BAD_STATE', 'OAuth state is invalid, expired, or belongs to another operator.', 403);
-  const connection = await repo().getConnection(record.connectionId);
-  if (!connection) return bad(c, 'NOT_FOUND', 'Connection no longer exists.', 404);
-  const redirectUri = oauth.redirectUri();
-  if (!redirectUri) return bad(c, 'NOT_CONFIGURED', 'SEO_OAUTH_REDIRECT_BASE is not set.', 503);
-
-  const existingSecret = await decryptActiveSecret(connection.id);
-  const app = existingSecret?.clientId && existingSecret?.clientSecret
-    ? { clientId: String(existingSecret.clientId), clientSecret: String(existingSecret.clientSecret) }
-    : oauth.envClientApp();
-  if (!app) return bad(c, 'NO_OAUTH_APP', 'No Google OAuth client app is configured.', 503);
-
-  const v = await vault();
-  if (!v) return bad(c, 'VAULT_UNAVAILABLE', 'Credential vault key is not configured.', 503);
-  try {
-    const tokens = await oauth.exchangeCode({ code, verifier: record.verifier, ...app, redirectUri });
-    const { maskOf } = await import('../../../../infrastructure/seo/IntegrationCredentialVault');
-    const payload = { ...(existingSecret ?? {}), tokens };
-    await repo().addCredential({
-      connectionId: connection.id,
-      authType: 'OAUTH2',
-      ciphertext: v.encrypt(payload),
-      mask: maskOf(tokens.refreshToken ?? tokens.accessToken),
-      createdBy: actorId(c),
-      expiresAt: new Date(tokens.expiresAt),
-    });
-    await repo().setConnectionStatus(connection.id, { status: 'CONFIGURING', lastError: null });
-    await audit(c, 'SEO_INTEGRATION_OAUTH_COMPLETED', { connectionId: connection.id, providerId: connection.provider_id }, { scope: tokens.scope });
-    return ok(c, { authorized: true, connectionId: connection.id, connectionStatus: 'CONFIGURING' });
-  } catch (err: any) {
-    await repo().setConnectionStatus(connection.id, { status: 'AUTHORIZATION_REQUIRED', lastError: String(err?.message ?? err).slice(0, 300) });
-    logger.warn({ connectionId: connection.id }, 'SEO OAuth code exchange failed');
-    return bad(c, 'OAUTH_EXCHANGE_FAILED', 'Authorization code exchange failed; try again.', 502);
-  }
-});
+// The Google OAuth callback is NOT here. It is a plain browser navigation
+// carrying no Authorization header, so it could never pass authMiddleware —
+// the button led to a 401 and the connection stayed AUTHORIZATION_REQUIRED
+// forever. It now lives on the public router at GET /seo/oauth/google/callback,
+// authenticated by the HMAC-signed, single-use, TTL-bound state alone.
 
 export default routes;

@@ -213,3 +213,23 @@ describe('RunRenderDiffUseCase', () => {
     expect(s.saved).toHaveLength(0);
   });
 });
+
+describe('the render-diff URL gate is a real SSRF gate', () => {
+  it('rejects cloud metadata, loopback and private ranges — not just file://', () => {
+    for (const url of [
+      'http://169.254.169.254/latest/meta-data/',
+      'http://127.0.0.1:5432',
+      'http://localhost/admin',
+      'http://10.0.0.5/',
+      'http://192.168.1.1/',
+      'http://[::1]/',
+      'http://internal-service/',
+    ]) {
+      expect(normaliseDiffUrl(url), `${url} must be refused`).toBeNull();
+    }
+  });
+
+  it('still accepts an allowlisted storefront URL', () => {
+    expect(normaliseDiffUrl('https://shopgoldplus.com/power', ['shopgoldplus.com'])).toBe('https://shopgoldplus.com/power');
+  });
+});

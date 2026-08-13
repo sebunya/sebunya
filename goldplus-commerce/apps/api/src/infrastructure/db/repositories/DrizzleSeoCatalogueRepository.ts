@@ -80,22 +80,34 @@ export class DrizzleSeoCatalogueRepository {
    */
   async searchBatteryCompat(tokens: string[]): Promise<any[]> {
     if (tokens.length === 0) return [];
-    const pattern = `%${tokens[0]}%`;
+    // Every token must match, IN SQL. Filtering on tokens[0] alone and then
+    // truncating at a limit meant a specific query ("samsung galaxy s21")
+    // could miss its own VERIFIED row because 200 arbitrary "samsung" rows
+    // came back first — and the public page would then say we had never
+    // checked that phone. That is a false statement about our own evidence.
+    // The join is restricted to active products: quoting a price for
+    // something we do not sell is its own kind of lie.
+    const conditions = tokens.slice(0, 8).map((t) => {
+      const pattern = `%${t.toLowerCase()}%`;
+      return sql`(
+        lower(c.phone_brand) like ${pattern}
+        or lower(c.phone_model) like ${pattern}
+        or lower(coalesce(c.model_number, '')) like ${pattern}
+        or lower(c.battery_reference) like ${pattern}
+        or lower(coalesce(c.variant, '')) like ${pattern}
+      )`;
+    });
     return rowsOf(await db.execute(sql`
       select c.id, c.phone_brand, c.phone_model, c.model_number, c.variant,
              c.battery_reference, c.status,
              p.id as product_id, p.name as product_name, p.slug as product_slug,
              p.price_ugx as product_price, p.image_url as product_image_url
       from seo_battery_compat c
-      left join products p on p.id = c.battery_product_id
+      left join products p
+        on p.id = c.battery_product_id and p.active = true
       where c.status in ('VERIFIED', 'PROVISIONAL')
-        and (
-          lower(c.phone_brand) like ${pattern}
-          or lower(c.phone_model) like ${pattern}
-          or lower(coalesce(c.model_number, '')) like ${pattern}
-          or lower(c.battery_reference) like ${pattern}
-          or lower(coalesce(c.variant, '')) like ${pattern}
-        )
+        and ${sql.join(conditions, sql` and `)}
+      order by (c.status = 'VERIFIED') desc, c.phone_brand, c.phone_model, c.id
       limit 200
     `));
   }
