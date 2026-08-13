@@ -205,45 +205,151 @@ failing cron that deserves its own fix.
 Also pre-existing: `sgtm-preview` and `sgtm-production` containers are in a
 restart loop, unchanged from before the release.
 
+## ACTIVATION & CLOSEOUT — 2026-08-13
+
+Activation-controller run against the production-verified release. No rebuild,
+no redeploy, no new migration, no new release.
+
+### Release identity reproduced (no drift)
+
+```
+LOCAL_HEAD = ORIGIN_HEAD = PRODUCTION_HEAD = 0dab2c4
+api sha256:0ca71ee79684 · web sha256:8dc9ee78e4a5
+MIGRATION_CEILING=1789603200000 (0120)
+```
+
+### Provider registry bootstrapped
+
+The registry was empty in production. Bootstrapped via the existing
+`RegisterSeoIntegrationProvidersUseCase` (manifest registration only, no
+credential mutation, idempotent): **14 manifests, 14 unique, 0 duplicates**.
+
+This is **not** an operations gap: `GET /admin/seo/integrations/providers`
+calls the same use case on every read, so the first authenticated admin view
+would have bootstrapped it anyway. This run simply pre-warmed it.
+`BOOTSTRAP_STATE=GREEN_ACTIVATED`.
+
+### Providers fail honestly (runtime-proven, no credentials involved)
+
+Each Google adapter was asked to test its connection with **no** credential.
+Every one returned a typed, provider-specific code — none fabricated success,
+none collapsed into a generic "API unavailable":
+
+```
+google-search-console    INVALID_CREDENTIAL   "No credential configured."
+google-analytics-4       INVALID_CREDENTIAL   "No credential configured."
+google-merchant-center   INVALID_CREDENTIAL   "No credential configured."
+google-business-profile  AUTH_EXPIRED         "Authorization required — complete the Google OAuth flow."
+google-pagespeed         INVALID_CREDENTIAL   "No API key configured."
+google-crux              INVALID_CREDENTIAL   "No API key configured."
+```
+
+PageSpeed/CrUX report a missing key rather than emitting zero measurements.
+`FABRICATED_MEASUREMENTS=false`.
+
+### OAuth boundary semantics (not just status codes)
+
+```
+OAUTH_START unauthenticated      401 — correct; initiation belongs behind admin auth
+CALLBACK missing state           303 -> /admin/seo/integrations?oauth=invalid_state (rejected)
+CALLBACK forged state            303 -> same rejection path (signature check holds)
+FORGED_STATE_ACCEPTED=false      OAUTH_STATE_VALIDATION=GREEN
+```
+
+The callback is public by necessity (a browser redirect carries no Bearer
+header) but authenticated by the HMAC-signed, single-use, TTL-bound state.
+
+### Robots source settled
+
+`seo_robots_versions` holds **0 rows**, so nothing has been published. The
+storefront is designed to serve its committed static content until a governed
+version is published, and it announces which source is live via
+`X-Robots-Source`. Static fallback is therefore the **intended** state, not a
+defect: `ROBOTS_STATE=GREEN_SAFE_FALLBACK`. It was left alone.
+
+### Search truth unchanged by activation work
+
+```
+/power /audio                                   indexable
+/storage /phone-batteries
+/computer-accessories /car-accessories          noindex,follow
+/battery-finder                                 noindex,follow
+sitemaps/hubs.xml    /power /audio + the two local pages only
+```
+
+### RecommendationMaterializer — impact established
+
+```
+CURRENTLY_FAILING=yes
+CANONICAL_SCHEDULE=0 * * * *  (HOURLY — not daily)
+ATTEMPTS_PER_RUN=3 with backoff (observed 08:00:00, 08:00:05, 08:00:15)
+ERROR=PostgresError: cannot cast type record to jsonb
+recommendation_materialized_cache: 21 rows, last updated 2026-08-06 21:00:00Z
+```
+
+The cache froze on **2026-08-06**, the same day `RecommendationMaterializer`
+last changed (`868ce36`). It has therefore been failing hourly for ~7 days —
+long before this tranche existed, and the file is untouched by the release.
+
+Customer impact is **stale, not absent**: live probes return real
+recommendations (`product_related` 8, `home_trending` 12, `cart_addon` 6).
+
+```
+DATA_INTEGRITY_IMPACT=none (derived cache only)
+PRICING / INVENTORY / CHECKOUT / SECURITY IMPACT=none
+FAILURE_CONTAINED=yes   FALLBACK_PATH_EXISTS=yes
+LAST_GOOD_DATA=2026-08-06 21:00Z   STALE_DATA_RISK=grows with catalogue churn
+SEVERITY=SEV3
+SCOPE=SEPARATE_PLATFORM_DEFECT — deliberately NOT repaired inside this closeout
+```
+
+SEV3 because a non-critical derived capability is degraded but still serving,
+the failure is contained to one cron, and nothing touches money, stock, auth or
+stability.
+
+### Hygiene
+
+Two diagnostic scripts (`/tmp/bootstrap-providers.ts`, `/tmp/probe-providers.ts`)
+and four scratch files were used and removed. They were bind-mounted read-only
+into `--rm` containers, so no image or application path was modified. Verified
+after cleanup: repo clean, 1 worktree, no files under `apps/api/`, no secrets in
+any scratch file. Backup retained.
+`UNINTENDED_DIAGNOSTIC_RESIDUE=NONE`.
+
 ## Current state
 
 ```
-STATUS=PRODUCTION_VERIFIED (SEO/AEO release) · NOT ACTIVATED (see blockers)
-HEAD=375d109  ORIGIN_HEAD=375d109  PRODUCTION_HEAD=375d109
-MIGRATION_CEILING=1789603200000 (0120)
-RELEASE_ID=375d109 / api sha256:0ca71ee79684 / web sha256:8dc9ee78e4a5
-BACKUP_ID=pre-seo-tranche2-20260813-074227.dump
-GREEN_GATES=unit+architecture 6353/404 · astro build · integration 175/184
-  (1 pre-existing failure) · rehearsal REHEARSE_OK · live migration proven
-  from DB truth · production smoke passed
-CURRENT_PHASE=released and verified; awaiting external activation
+STATUS=PRODUCTION_VERIFIED · NOT ACTIVATED (external configuration outstanding)
+RELEASE_ID=375d109 (docs at 0dab2c4)
+PROVIDER_REGISTRY=14 manifests registered
+GSC / GA4 / MERCHANT_CENTER / PAGESPEED / CRUX = CONFIGURATION_REQUIRED
+GBP = AUTHORIZATION_REQUIRED
+ROBOTS_STATE=GREEN_SAFE_FALLBACK
+INDEXABILITY_GATING=GREEN   SITEMAP_GATING=GREEN
+COMMERCE_REGRESSION=NONE
+ANALYTICS_TEST_DEFECT=PREEXISTING_TEST_DEFECT (carried forward, not green)
+RECOMMENDATION_MATERIALIZER=SEV3, separate platform defect
+PROGRAMME_STATE=WAITING_FOR_OWNER_CONFIGURATION
 ```
 
-### External blockers — owner action required, not engineering work
+### Owner actions (the only things blocking activation)
 
-Every integration is honestly `NOT_CONFIGURED`. The control plane exists so an
-administrator supplies credentials from the admin UI without touching `.env`,
-Docker Compose or source, and without a redeploy. Two things, however, are
-environment-level and cannot be set from the UI:
+1. `SEO_OAUTH_REDIRECT_BASE=https://shopgoldplus.com` in
+   `/opt/goldplus/app/goldplus-commerce/.env.production` — not a secret;
+   requires an api restart to load.
+2. `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` in the same file —
+   secrets; never paste them into a chat session; api restart to load.
+3. Register the redirect URI in the Google Cloud console exactly as
+   `https://shopgoldplus.com/seo/oauth/google/callback`.
+   This session has no authenticated Google Cloud access and cannot do it.
+4. Optional: `GOOGLE_PAGESPEED_API_KEY` to enable Core Web Vitals ingestion.
 
-1. **Google OAuth** — `SEO_OAUTH_REDIRECT_BASE`, `GOOGLE_OAUTH_CLIENT_ID` and
-   `GOOGLE_OAUTH_CLIENT_SECRET` are all absent from `.env.production`, and the
-   redirect URI must be registered in the Google Cloud console as
-   `<SEO_OAUTH_REDIRECT_BASE>/seo/oauth/google/callback`
-   (with the current domain: `https://shopgoldplus.com/seo/oauth/google/callback`).
-   `GOOGLE_OAUTH_STATUS=EXTERNAL_CONFIGURATION_REQUIRED`.
-2. **PageSpeed/CrUX** — `GOOGLE_PAGESPEED_API_KEY` (or `GOOGLE_API_KEY`) absent.
-   Without it the vitals sync returns `CONFIGURATION_ERROR` and stores nothing
-   rather than fabricating a measurement.
+After 1–3, an administrator connects GSC/GA4/Merchant/GBP entirely from
+`/admin/seo/integrations` with no redeploy. Service-account providers
+(GSC/GA4/Merchant) need no env change at all — their credentials go straight
+into the vault from the admin UI.
 
-`SEO_CREDENTIAL_VAULT_KEY` is absent but `JWT_SECRET` is present, so the
-credential vault is operational on its documented fallback.
+### Separate backlog item (not SEO/AEO)
 
-### Exact next action
-
-Owner: set the OAuth env vars + register the redirect URI, and optionally add a
-PageSpeed key. Then an administrator can connect GSC/GA4/Merchant/GBP/PageSpeed/
-CrUX entirely from `/admin/seo/integrations` with no redeploy.
-
-Engineering: the pre-existing `RecommendationMaterializer` jsonb-cast failure is
-the highest-value unrelated defect now visible in production.
+`RecommendationMaterializer` hourly cron: `cannot cast type record to jsonb`,
+failing since 2026-08-06, cache frozen, SEV3. Own work item after this closeout.
