@@ -1,0 +1,256 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, emptyReason, str, num, fmtWhen } from "../../../lib/adminSeo";
+
+/** The domains the Organic Intelligence runtime materialises beyond the
+ *  opportunity portfolio: query clusters and their ownership, cannibalisation
+ *  findings, content intelligence, content gaps, and the actions the system
+ *  would propose.
+ *
+ *  Two rules govern every panel here. An absent provider renders as
+ *  WAITING FOR PROVIDER, never as a zero — an operator who reads "0
+ *  impressions" when Search Console was never connected will draw exactly the
+ *  wrong conclusion. And an empty panel says WHY it is empty, because "this
+ *  stage found nothing" and "this stage never ran" are different facts. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/intelligence", 303);
+
+const url = new URL(Astro.request.url);
+const tab = url.searchParams.get("tab") ?? "clusters";
+const openCluster = url.searchParams.get("cluster") ?? "";
+
+const TABS = [
+  ["clusters", "Query clusters"],
+  ["cannibalisation", "Cannibalisation"],
+  ["content", "Content intelligence"],
+  ["gaps", "Content gaps"],
+  ["actions", "Proposed actions"],
+] as const;
+
+const path =
+  tab === "cannibalisation" ? "/admin/seo/workqueue/intel/cannibalisation"
+  : tab === "content" ? "/admin/seo/workqueue/intel/content"
+  : tab === "gaps" ? "/admin/seo/workqueue/intel/content-gaps"
+  : tab === "actions" ? "/admin/seo/workqueue/intel/action-requests"
+  : "/admin/seo/workqueue/intel/clusters";
+
+const [listRes, membershipRes] = await Promise.all([
+  seoGet<any[]>(token, path),
+  openCluster
+    ? seoGet<any[]>(token, `/admin/seo/workqueue/intel/clusters/${encodeURIComponent(openCluster)}/membership`)
+    : Promise.resolve(null as any),
+]);
+
+const rows = Array.isArray(listRes.ok ? listRes.data : null) ? (listRes.data as any[]) : [];
+const membership = Array.isArray(membershipRes?.ok ? membershipRes.data : null) ? (membershipRes!.data as any[]) : [];
+const reason = emptyReason(listRes, "Nothing has been materialised for this domain yet");
+
+/** NULL is a known unknown. Zero is a measurement. They must never look alike. */
+const demand = (v: unknown) => (v === null || v === undefined ? "WAITING FOR PROVIDER" : num(v));
+
+const EMPTY_BECAUSE: Record<string, string> = {
+  clusters: "No query universe has been ingested yet. Clusters appear once queries exist — this is provider absence, not an absence of search demand.",
+  cannibalisation: "Cannibalisation needs at least two indexable URLs competing for the same cluster. Nothing currently qualifies.",
+  content: "Content intelligence classifies URLs the portfolio already reasons about. No URL-scoped opportunity exists yet.",
+  gaps: "A gap is an opportunity of class CREATE_CONTENT. None is currently open.",
+  actions: "No opportunity has reached a priority that would warrant proposing an action.",
+};
+
+const stateClass = (s: string) =>
+  s === "APPROVAL_REQUIRED" ? "border-amber-300 bg-amber-50 text-amber-900"
+  : s === "DENIED" ? "border-red-300 bg-red-50 text-red-900"
+  : "border-gray-300 bg-gray-50 text-gray-600";
+---
+
+<AdminLayout title="Organic Intelligence domains" description="Query clusters, ownership, cannibalisation, content intelligence and proposed actions.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Organic Intelligence domains</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+        What the materialisation runtime currently believes, beyond the ranked portfolio. Evidence that no connected
+        provider has reported reads <strong>WAITING FOR PROVIDER</strong> — never zero. Proposed actions are a review
+        surface only: autonomy is level 0, so nothing here executes.
+      </p>
+    </div>
+
+    <nav class="flex flex-wrap gap-2 mb-6">
+      {TABS.map(([key, label]) => (
+        <a href={`/admin/seo/intelligence?tab=${key}`}
+          class={`rounded-full border px-3 py-1 text-xs font-bold ${tab === key ? "border-brand-dark bg-brand-dark text-white" : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"}`}
+        >{label}</a>
+      ))}
+    </nav>
+
+    {reason ? (
+      <div role="status" class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">{reason}</div>
+    ) : rows.length === 0 ? (
+      <p class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
+        {EMPTY_BECAUSE[tab] ?? "Nothing to show."}
+      </p>
+    ) : tab === "clusters" ? (
+      <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+        <table class="w-full text-xs">
+          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+            <th class="p-3">Cluster</th><th>Members</th><th>Method</th><th>Intent</th>
+            <th>Owner (preferred)</th><th>Decision</th><th>Demand</th><th class="p-3">Queries</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr class="border-b border-gray-50">
+                <td class="p-3">
+                  <strong class="text-brand-dark">{str(r.label)}</strong>
+                  <div class="text-gray-400 font-mono text-[11px]">{str(r.cluster_key)}</div>
+                </td>
+                <td>{num(r.member_count)}</td>
+                <td class="font-mono text-[11px]">{str(r.cluster_method)}</td>
+                <td>
+                  <span class={r.primary_intent === "UNKNOWN" ? "text-amber-800 font-bold" : ""}>{str(r.primary_intent)}</span>
+                  <div class="text-gray-400 text-[10px]">{str(r.intent_method)}</div>
+                </td>
+                <td class="font-mono text-[11px]">{r.preferred_owner_url ? str(r.preferred_owner_url) : "—"}</td>
+                <td>
+                  {str(r.ownership_decision)}
+                  <div class="text-gray-500 text-[10px] max-w-xs">{str(r.ownership_rationale)}</div>
+                </td>
+                <td class="text-[11px] text-amber-800">{demand(r.impressions)}</td>
+                <td class="p-3">
+                  <a class="font-bold text-brand-dark hover:underline"
+                    href={`/admin/seo/intelligence?tab=clusters&cluster=${encodeURIComponent(r.cluster_key)}`}>Show →</a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : tab === "cannibalisation" ? (
+      <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+        <table class="w-full text-xs">
+          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+            <th class="p-3">Classification</th><th>Cluster</th><th>Affected URLs</th><th>Seen</th><th>Status</th><th class="p-3">Why</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr class="border-b border-gray-50">
+                <td class="p-3"><strong class="text-brand-dark">{str(r.classification)}</strong></td>
+                <td class="font-mono text-[11px]">{str(r.cluster_key)}</td>
+                <td class="font-mono text-[11px]">
+                  {(Array.isArray(r.affected_urls) ? r.affected_urls : []).map((u: string) => <div>{u}</div>)}
+                </td>
+                <td>{num(r.persistence)}×</td>
+                <td>{str(r.status)}</td>
+                <td class="p-3 text-gray-600 max-w-md">{str(r.rationale)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : tab === "content" ? (
+      <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+        <table class="w-full text-xs">
+          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+            <th class="p-3">URL</th><th>Classification</th><th>Intent</th><th>Completeness</th><th class="p-3">Last change</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr class="border-b border-gray-50">
+                <td class="p-3 font-mono text-[11px]">{str(r.url)}</td>
+                <td>
+                  <span class={r.classification === "INSUFFICIENT_EVIDENCE" ? "text-amber-800 font-bold" : "font-bold text-brand-dark"}>
+                    {str(r.classification)}
+                  </span>
+                </td>
+                <td>{str(r.primary_intent)}</td>
+                {/* No content signal means no number — not a zero score. */}
+                <td>{r.content_completeness === null ? "WAITING FOR EVIDENCE" : num(r.content_completeness)}</td>
+                <td class="p-3">{fmtWhen(r.last_material_change_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : tab === "gaps" ? (
+      <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+        <table class="w-full text-xs">
+          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+            <th class="p-3">Entity</th><th>Priority</th><th>Score</th><th>Confidence</th><th class="p-3">Blocked by</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr class="border-b border-gray-50">
+                <td class="p-3">
+                  <strong class="text-brand-dark">{str(r.entity_label ?? r.entity_id)}</strong>
+                  <div class="text-gray-400 font-mono text-[11px]">{str(r.entity_type)}</div>
+                </td>
+                <td>{str(r.priority_bucket)}</td>
+                <td>{r.adjusted_score === null ? "—" : Number(r.adjusted_score).toFixed(1)}</td>
+                <td>{str(r.confidence)}</td>
+                <td class="p-3 font-mono text-[11px]">
+                  {(Array.isArray(r.blocked_by) ? r.blocked_by : []).join(", ") || "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : (
+      <>
+        <p class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+          <strong>Nothing on this tab executes.</strong> Autonomy is level 0 and external writes are disabled, so every
+          request below is recorded with the reason it was not authorised. Acting on any of them is a human decision.
+        </p>
+        <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+          <table class="w-full text-xs">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+              <th class="p-3">Action</th><th>Entity</th><th>State</th><th>Blast radius</th><th>Rollback</th><th class="p-3">Why not authorised</th>
+            </tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr class="border-b border-gray-50">
+                  <td class="p-3 font-mono text-[11px]">{str(r.action_class)}</td>
+                  <td class="font-mono text-[11px]">{str(r.entity_id)}</td>
+                  <td><span class={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${stateClass(String(r.state))}`}>{str(r.state)}</span></td>
+                  <td>{num(r.blast_radius)}</td>
+                  <td class="font-mono text-[11px]">{str(r.rollback_class)}</td>
+                  <td class="p-3 text-gray-600 max-w-md">{str(r.decision_reason)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>
+    )}
+
+    {openCluster && (
+      <section class="mt-8 mb-16 rounded-2xl border border-brand-dark bg-white p-6">
+        <h3 class="font-black text-brand-dark text-lg">Queries in this cluster</h3>
+        <p class="text-xs text-gray-500 mt-1 font-mono">{openCluster}</p>
+        {membership.length === 0 ? (
+          <p class="mt-4 text-xs text-gray-500">No query is currently placed in this cluster.</p>
+        ) : (
+          <table class="w-full text-xs mt-4">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+              <th class="py-1">Query</th><th>Method</th><th>Source</th><th>Observed</th><th>Impressions</th>
+            </tr></thead>
+            <tbody>
+              {membership.map((m) => (
+                <tr class="border-b border-gray-50">
+                  <td class="py-2">{str(m.raw_query)}</td>
+                  <td class="font-mono text-[11px]">{str(m.membership_method)}</td>
+                  <td>
+                    {str(m.source)}
+                    {/* A historical import must never be read as a live observation. */}
+                    {m.is_backfill && <span class="ml-1 rounded bg-gray-100 px-1 text-[10px] text-gray-600">BACKFILL</span>}
+                  </td>
+                  <td>{m.source_observed_at ? fmtWhen(m.source_observed_at) : "—"}</td>
+                  <td class="text-amber-800">{demand(m.impressions)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <a href={`/admin/seo/intelligence?tab=clusters`} class="mt-6 inline-block text-xs font-bold text-gray-500 hover:text-brand-dark">← Back to clusters</a>
+      </section>
+    )}
+  </div>
+</AdminLayout>

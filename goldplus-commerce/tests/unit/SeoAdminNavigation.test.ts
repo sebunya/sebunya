@@ -35,6 +35,8 @@ const EXPECTED: Array<{ label: string; href: string }> = [
   { label: 'robots.txt', href: '/admin/seo/robots' },
   { label: 'Core Web Vitals', href: '/admin/seo/web-vitals' },
   { label: 'Organic Intelligence', href: '/admin/seo/opportunities-intel' },
+  // The domains the runtime materialises beyond the ranked portfolio.
+  { label: 'Intelligence Domains', href: '/admin/seo/intelligence' },
 ];
 
 const PAGES = path.resolve(__dirname, '../../apps/web/src/pages');

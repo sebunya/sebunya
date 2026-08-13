@@ -213,6 +213,94 @@ export class DrizzleSeoWorkQueueRepository {
     `));
   }
 
+  // ── Organic Intelligence domains materialised by 0123 ─────────────────────
+
+  /**
+   * Query clusters with their intent and ownership decision. Demand columns
+   * stay NULL until a provider actually reports them, so the surface can
+   * distinguish "no demand" from "nobody has told us".
+   */
+  async listIntelClusters(limit = 100): Promise<any[]> {
+    return rowsOf(await db.execute(sql`
+      select c.cluster_key, c.label, c.cluster_method, c.cluster_confidence,
+             c.member_count, c.primary_intent, c.secondary_intent, c.intent_method,
+             c.current_owner_url, c.preferred_owner_url, c.preferred_owner_type,
+             c.ownership_decision, c.ownership_rationale,
+             c.impressions, c.clicks, c.demand_state, c.updated_at,
+             (select count(*) from seo_intel_query_membership m where m.cluster_key = c.cluster_key) as membership_rows
+      from seo_intel_clusters c
+      order by c.member_count desc, c.label
+      limit ${Math.min(Math.max(limit, 1), 500)}
+    `));
+  }
+
+  /** The queries placed in one cluster, with their provenance. */
+  async listClusterMembership(clusterKey: string, limit = 200): Promise<any[]> {
+    return rowsOf(await db.execute(sql`
+      select raw_query, normalized_query, membership_method, membership_confidence,
+             source, source_observed_at, is_backfill, demand_state, impressions, clicks
+      from seo_intel_query_membership
+      where cluster_key = ${clusterKey}
+      order by raw_query
+      limit ${Math.min(Math.max(limit, 1), 1000)}
+    `));
+  }
+
+  async listIntelCannibalisation(limit = 100): Promise<any[]> {
+    return rowsOf(await db.execute(sql`
+      select finding_key, cluster_key, classification, confidence, rationale,
+             affected_urls, persistence, status, resolved_reason,
+             first_seen_at, last_material_change_at
+      from seo_intel_cannibalisation
+      where status <> 'SUPERSEDED'
+      order by last_material_change_at desc
+      limit ${Math.min(Math.max(limit, 1), 500)}
+    `));
+  }
+
+  async listIntelContent(limit = 200): Promise<any[]> {
+    return rowsOf(await db.execute(sql`
+      select content_key, url, classification, primary_intent, cluster_key,
+             content_completeness, commercial_value, performance_state,
+             first_seen_at, last_material_change_at
+      from seo_intel_content
+      order by last_material_change_at desc
+      limit ${Math.min(Math.max(limit, 1), 1000)}
+    `));
+  }
+
+  /**
+   * What the system would propose, and why it is not authorised to do it.
+   * Autonomy is level 0, so this is a review surface, never a queue of
+   * pending executions.
+   */
+  async listIntelActionRequests(limit = 100): Promise<any[]> {
+    return rowsOf(await db.execute(sql`
+      select request_key, opportunity_key, action_class, entity_id, state,
+             decision_reason, confidence, blast_radius, rollback_class,
+             preconditions, unmet_preconditions, expected_effect,
+             verification_plan, policy_version, updated_at
+      from seo_intel_action_requests
+      order by updated_at desc
+      limit ${Math.min(Math.max(limit, 1), 500)}
+    `));
+  }
+
+  /**
+   * Content GAPS are opportunities of class CREATE_CONTENT — deliberately not
+   * a separate table, so one fix and one root cause cover both.
+   */
+  async listIntelContentGaps(limit = 100): Promise<any[]> {
+    return rowsOf(await db.execute(sql`
+      select opportunity_key, entity_type, entity_id, entity_label, priority_bucket,
+             adjusted_score, confidence, evidence_completeness, blocked_by, status
+      from seo_intel_opportunities
+      where recommended_action_class = 'CREATE_CONTENT' and status <> 'CLOSED'
+      order by adjusted_score desc nulls last
+      limit ${Math.min(Math.max(limit, 1), 500)}
+    `));
+  }
+
   /** Our own best observed rank per category, for the outrank gap. */
   async ourBestRankByCategory(days = 90): Promise<Array<{ category: string; bestRank: number | null }>> {
     const rows = rowsOf(await db.execute(sql`

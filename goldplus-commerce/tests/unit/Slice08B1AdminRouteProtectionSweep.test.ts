@@ -67,7 +67,9 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 120 adds the six Wave 3 technical-governance surfaces (2026-08-13):
     // category-matrix, work-queue, robots, web-vitals, render-diff, crawler-logs.
     // 121 adds the Organic Intelligence portfolio (2026-08-13).
-    expect(adminPages).toHaveLength(121);
+    // 122 adds the Organic Intelligence domains surface — query clusters,
+    // cannibalisation, content, gaps and proposed actions (2026-08-13).
+    expect(adminPages).toHaveLength(122);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/analytics/index.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -84,7 +86,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(120);
+    expect(protectedPages).toHaveLength(121);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');

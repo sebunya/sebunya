@@ -194,4 +194,49 @@ routes.get('/intel/runs', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) 
   return ok(c, await repo.listIntelRuns(20));
 });
 
+// ── Organic Intelligence domains materialised by 0123 ──────────────────────
+
+/**
+ * Query clusters, with intent and the ownership decision. Where demand has
+ * never been reported the columns are NULL, and the surface renders that as
+ * WAITING FOR PROVIDER rather than as a measured zero.
+ */
+routes.get('/intel/clusters', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 100, 1), 500);
+  const repo = Registry.getInstance().seoWorkQueueRepo as any;
+  return ok(c, await repo.listIntelClusters(limit));
+});
+
+/** The queries placed in one cluster, with the provenance of each placement. */
+routes.get('/intel/clusters/:key/membership', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
+  const key = c.req.param('key') ?? '';
+  const repo = Registry.getInstance().seoWorkQueueRepo as any;
+  return ok(c, await repo.listClusterMembership(key, 200));
+});
+
+routes.get('/intel/cannibalisation', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
+  const repo = Registry.getInstance().seoWorkQueueRepo as any;
+  return ok(c, await repo.listIntelCannibalisation(100));
+});
+
+routes.get('/intel/content', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
+  const repo = Registry.getInstance().seoWorkQueueRepo as any;
+  return ok(c, await repo.listIntelContent(200));
+});
+
+/** Gaps are CREATE_CONTENT opportunities, not a parallel universe of findings. */
+routes.get('/intel/content-gaps', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
+  const repo = Registry.getInstance().seoWorkQueueRepo as any;
+  return ok(c, await repo.listIntelContentGaps(100));
+});
+
+/**
+ * Proposed actions and the reason each one is not authorised. Read-only by
+ * construction: autonomy is level 0 and there is no execution endpoint.
+ */
+routes.get('/intel/action-requests', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
+  const repo = Registry.getInstance().seoWorkQueueRepo as any;
+  return ok(c, await repo.listIntelActionRequests(100));
+});
+
 export default routes;
