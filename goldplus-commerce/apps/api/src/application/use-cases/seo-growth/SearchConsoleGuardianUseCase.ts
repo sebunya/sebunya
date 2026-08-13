@@ -101,6 +101,12 @@ export interface GuardianPorts {
     dedupeKey: string; severity: 'CRITICAL' | 'HIGH' | 'INFO'; kind: string; message: string;
   }): Promise<{ id: string; created: boolean }>;
   resolveIncident(dedupeKey: string): Promise<void>;
+  /**
+   * Links a signal to the incident it raised. Without this the evidence graph
+   * has a hole: an operator inspecting a signal cannot reach its incident, and
+   * "why did GoldPlus decide this?" becomes unanswerable from data alone.
+   */
+  linkSignalToIncident(input: { signalId: string; alertId: string }): Promise<void>;
   recordAction(input: {
     runId: string; signalId: string | null; key: string; remediationClass: string; tier: string;
     mode: string | null; decision: 'ALLOWED' | 'DENIED'; decisionReason: string; entity: string; proposedUrls: number;
@@ -314,6 +320,9 @@ export class SearchConsoleGuardianUseCase {
           if (incident.created) {
             incidentsOpened += 1;
             events.push('INCIDENT_OPENED');
+          }
+          if (saved.id && incident.id) {
+            await this.ports.linkSignalToIncident({ signalId: saved.id, alertId: incident.id });
           }
         }
 

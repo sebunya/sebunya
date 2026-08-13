@@ -226,6 +226,13 @@ export async function runSearchConsoleGuardian(): Promise<GuardianRunnerOutcome>
       return { id: String(rows[0]?.id ?? ''), created: rows[0]?.inserted === true };
     },
 
+    async linkSignalToIncident({ signalId, alertId }) {
+      await conn.execute(sql`
+        update seo_guardian_signals set alert_id = ${alertId}::uuid, updated_at = now()
+        where id = ${signalId}::uuid and alert_id is distinct from ${alertId}::uuid
+      `);
+    },
+
     async resolveIncident(dedupeKey) {
       await conn.execute(sql`
         update seo_alerts set status = 'RESOLVED', resolved_at = now()

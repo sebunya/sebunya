@@ -21,6 +21,7 @@ interface Recorded {
   saved: Array<{ key: string; state: string; consecutive: number }>;
   finished: Array<Record<string, unknown>>;
   gated: Array<{ readiness: string; phase: string }>;
+  linked: Array<{ signalId: string; alertId: string }>;
   backfills: Array<{ windows: number }>;
 }
 
@@ -41,7 +42,7 @@ function harness(over: {
 } = {}) {
   const rec: Recorded = {
     incidents: [], resolved: [], actions: [], notifications: [], saved: [], finished: [],
-    gated: [], backfills: [],
+    gated: [], backfills: [], linked: [],
   };
   const existingIncidents = new Set<string>();
 
@@ -72,6 +73,7 @@ function harness(over: {
       return { id: `inc-${rec.incidents.length}`, created };
     },
     resolveIncident: async (k) => { rec.resolved.push(k); },
+    linkSignalToIncident: async (l) => { rec.linked.push({ signalId: l.signalId, alertId: l.alertId }); },
     recordAction: async (a) => { rec.actions.push({ decision: a.decision, reason: a.decisionReason, mode: a.mode }); },
     startRun: async () => (over.leaseHeld ? null : { runId: 'run-1' }),
     finishRun: async (f) => { rec.finished.push(f as unknown as Record<string, unknown>); },
@@ -166,6 +168,9 @@ describe('hysteresis governs when an incident may open', () => {
     expect(rec.incidents).toHaveLength(1);
     expect(r.events).toContain('INCIDENT_OPENED');
     expect(r.notificationSent).toBe(true);
+    // The evidence graph must connect: signal -> incident.
+    expect(rec.linked).toHaveLength(1);
+    expect(rec.linked[0]).toMatchObject({ signalId: 'sig-1', alertId: 'inc-1' });
   });
 
   it('does not re-open or re-notify an already-ongoing incident', async () => {
