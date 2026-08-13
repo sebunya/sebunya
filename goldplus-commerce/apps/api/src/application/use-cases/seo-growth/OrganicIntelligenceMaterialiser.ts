@@ -471,8 +471,11 @@ export class OrganicIntelligenceMaterialiser {
             totalEligible: eff.totalEligible,
             directAffected: eff.directlyAffected,
             dependentAffected: eff.dependentAffected,
-            evaluated: affected ? affected.length : universe.length,
-            skippedUnaffected: affected ? Math.max(0, universe.length - affected.length) : 0,
+            // Filled in after loading: the affected list can legitimately name
+            // one entity under two types (a category and its URL share the
+            // "/slug" namespace), so its length is not the evaluated count.
+            evaluated: 0,
+            skippedUnaffected: 0,
             planMode: plan.mode,
             reasons: plan.reasons,
             coverageLimits: resolved.coverageLimits,
@@ -482,6 +485,15 @@ export class OrganicIntelligenceMaterialiser {
 
       const candidates = await this.ports.loadCandidates(mode, affected);
       counts.entitiesEvaluated = candidates.length;
+
+      // Work reduction is reported from what was actually evaluated, not from
+      // what the planner nominated. Reporting the nomination count could show
+      // more "evaluated" than exist, which is how an optimisation metric ends
+      // up flattering itself.
+      if (planning) {
+        planning.evaluated = candidates.length;
+        planning.skippedUnaffected = Math.max(0, planning.totalEligible - candidates.length);
+      }
 
       const evaluated = candidates.map((c) => this.evaluate(c));
       const snapshots = await this.ports.loadSnapshots(evaluated.map((e) => e.opportunityKey));
