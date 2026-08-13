@@ -72,6 +72,13 @@ const stateClass = (s: string) =>
         provider has reported reads <strong>WAITING FOR PROVIDER</strong> — never zero. Proposed actions are a review
         surface only: autonomy is level 0, so nothing here executes.
       </p>
+      <p class="text-xs text-gray-500 mt-3 max-w-3xl">
+        <strong>Current owner</strong> is the page evidence says receives this demand today.
+        <strong> Preferred owner</strong> is the page GoldPlus business and SEO truth says should own it. They are
+        different questions, and before a search provider is connected the first is usually
+        <strong>UNKNOWN</strong> — which is not the same as <strong>NO PAGE REQUIRED</strong>, a deliberate decision
+        that no page is needed.
+      </p>
     </div>
 
     <nav class="flex flex-wrap gap-2 mb-6">
@@ -92,8 +99,9 @@ const stateClass = (s: string) =>
       <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
         <table class="w-full text-xs">
           <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
-            <th class="p-3">Cluster</th><th>Members</th><th>Method</th><th>Intent</th>
-            <th>Owner (preferred)</th><th>Decision</th><th>Demand</th><th class="p-3">Queries</th>
+            <th class="p-3">Cluster</th><th>Members</th><th>Intent</th>
+            <th>Current owner</th><th>Preferred owner</th><th>Decision / blocker</th>
+            <th>Demand</th><th class="p-3">Queries</th>
           </tr></thead>
           <tbody>
             {rows.map((r) => (
@@ -103,14 +111,33 @@ const stateClass = (s: string) =>
                   <div class="text-gray-400 font-mono text-[11px]">{str(r.cluster_key)}</div>
                 </td>
                 <td>{num(r.member_count)}</td>
-                <td class="font-mono text-[11px]">{str(r.cluster_method)}</td>
                 <td>
                   <span class={r.primary_intent === "UNKNOWN" ? "text-amber-800 font-bold" : ""}>{str(r.primary_intent)}</span>
-                  <div class="text-gray-400 text-[10px]">{str(r.intent_method)}</div>
+                  {/* Provenance matters: intent read from recorded evidence is a
+                      different kind of claim from intent guessed from wording. */}
+                  <div class="text-gray-400 text-[10px]">
+                    {str(r.intent_method)}{r.intent_confidence === null ? "" : ` · ${Number(r.intent_confidence).toFixed(2)}`}
+                  </div>
                 </td>
-                <td class="font-mono text-[11px]">{r.preferred_owner_url ? str(r.preferred_owner_url) : "—"}</td>
+                <td class="font-mono text-[11px]">
+                  {r.current_owner_url ? (
+                    <>
+                      {str(r.current_owner_url)}
+                      <div class="text-gray-400 text-[10px]">{str(r.current_owner_type)}</div>
+                    </>
+                  ) : (
+                    /* Not "no page" — nobody has told us which page wins this. */
+                    <span class="text-amber-800 font-bold">UNKNOWN</span>
+                  )}
+                </td>
+                <td class="font-mono text-[11px]">
+                  {r.preferred_owner_url ? str(r.preferred_owner_url) : "—"}
+                  <div class="text-gray-400 text-[10px]">{str(r.preferred_owner_type)}</div>
+                </td>
                 <td>
-                  {str(r.ownership_decision)}
+                  <span class={r.ownership_decision === "NO_PAGE_REQUIRED" ? "font-bold text-gray-700" : ""}>
+                    {str(r.ownership_decision)}
+                  </span>
                   <div class="text-gray-500 text-[10px] max-w-xs">{str(r.ownership_rationale)}</div>
                 </td>
                 <td class="text-[11px] text-amber-800">{demand(r.impressions)}</td>

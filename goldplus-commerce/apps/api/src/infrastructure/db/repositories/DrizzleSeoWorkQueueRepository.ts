@@ -223,9 +223,11 @@ export class DrizzleSeoWorkQueueRepository {
   async listIntelClusters(limit = 100): Promise<any[]> {
     return rowsOf(await db.execute(sql`
       select c.cluster_key, c.label, c.cluster_method, c.cluster_confidence,
-             c.member_count, c.primary_intent, c.secondary_intent, c.intent_method,
-             c.current_owner_url, c.preferred_owner_url, c.preferred_owner_type,
+             c.member_count, c.primary_intent, c.secondary_intent,
+             c.current_owner_url, c.current_owner_type,
+             c.preferred_owner_url, c.preferred_owner_type,
              c.ownership_decision, c.ownership_rationale,
+             c.intent_confidence, c.intent_method,
              c.impressions, c.clicks, c.demand_state, c.updated_at,
              (select count(*) from seo_intel_query_membership m where m.cluster_key = c.cluster_key) as membership_rows
       from seo_intel_clusters c
