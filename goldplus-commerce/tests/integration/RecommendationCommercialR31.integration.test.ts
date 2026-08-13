@@ -99,8 +99,69 @@ suite("commercial attribution on real PostgreSQL", () => {
     await pg`delete from orders where id in ${pg(orderIds)}`;
     await pg`delete from recommendation_events where profile_id = ${profileId}::uuid`;
     await pg`delete from experience_profiles where id = ${profileId}::uuid`;
+    await pg`delete from recommendation_materialized_cache where context_key = ${`r31-cache-${suffix}`}`;
     await pg`delete from products where category_id = ${categoryId}::uuid`;
     await pg`delete from categories where id = ${categoryId}::uuid`;
+  });
+
+  /**
+   * REGRESSION (2026-08-13). The hourly RecommendationMaterializer failed from
+   * 2026-08-06 with `cannot cast type record to jsonb`, freezing the
+   * recommendation cache for a week, while the unit suite stayed green because
+   * it only grepped the source for the offending expression.
+   *
+   * A raw JS ARRAY bound into `::jsonb` makes postgres.js infer a Postgres
+   * array, and an array/record cannot be cast to jsonb. Only a real write
+   * proves the fix, so this exercises the actual repository against real SQL.
+   */
+  it("AC21 REGRESSION: an ARRAY of cached items writes and round-trips as real jsonb", async () => {
+    const { DrizzleProductRecommendationReader } = await import(
+      "../../apps/api/src/infrastructure/db/repositories/DrizzleProductRecommendationReader"
+    );
+    const reader = new DrizzleProductRecommendationReader();
+    const contextKey = `r31-cache-${suffix}`;
+    const items = [
+      { productId: recommendedProduct, score: 0.91, reason: "co_purchase" },
+      { productId: organicProduct, score: 0.42, reason: "category_popular" },
+    ];
+
+    // Insert path.
+    await reader.saveCachedRecommendations("home_trending", contextKey, items);
+
+    const [row] = await pg`
+      select items, jsonb_typeof(items) as kind
+      from recommendation_materialized_cache
+      where placement = 'home_trending' and context_key = ${contextKey}
+    `;
+    expect(row, "the materializer's write must actually land").toBeTruthy();
+    // A real jsonb ARRAY — not a record, and not a double-encoded string.
+    expect(row.kind).toBe("array");
+    const parsed = typeof row.items === "string" ? JSON.parse(row.items) : row.items;
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0].productId).toBe(recommendedProduct);
+    expect(parsed[0].score).toBe(0.91);
+
+    // Update path (the hourly cron re-runs over an existing row).
+    await reader.saveCachedRecommendations("home_trending", contextKey, [items[1]]);
+    const [updated] = await pg`
+      select items, jsonb_typeof(items) as kind
+      from recommendation_materialized_cache
+      where placement = 'home_trending' and context_key = ${contextKey}
+    `;
+    expect(updated.kind).toBe("array");
+    const reparsed = typeof updated.items === "string" ? JSON.parse(updated.items) : updated.items;
+    expect(reparsed).toHaveLength(1);
+    expect(reparsed[0].productId).toBe(organicProduct);
+
+    // An empty result set must persist as [] rather than throwing.
+    await reader.saveCachedRecommendations("home_trending", contextKey, []);
+    const [emptied] = await pg`
+      select items, jsonb_typeof(items) as kind
+      from recommendation_materialized_cache
+      where placement = 'home_trending' and context_key = ${contextKey}
+    `;
+    expect(emptied.kind).toBe("array");
+    expect(typeof emptied.items === "string" ? JSON.parse(emptied.items) : emptied.items).toEqual([]);
   });
 
   it("AC1/AC16: the golden chain yields exactly ONE primary attribution — the ATC wins precedence", async () => {

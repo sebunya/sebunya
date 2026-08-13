@@ -252,10 +252,19 @@ describe("the stitching chain that makes PROVEN attribution possible", () => {
 
 describe("JSONB is canonical at the writers (AC21/AC22)", () => {
   it("both writers cast ONE stringify to ::jsonb; readers keep historic tolerance", () => {
+    // OBJECT writer: postgres.js serializes a plain object to json exactly
+    // once, so the raw value may ride the fragment.
     const events = read("apps/api/src/infrastructure/db/repositories/DrizzleRecommendationEventRepository.ts");
     expect(events).toContain("sql`${event.metadata ?? {}}::jsonb`");
+
+    // ARRAY writer: this one is NOT interchangeable with the object form.
+    // Binding a raw JS array makes postgres.js infer a Postgres ARRAY, and
+    // `::jsonb` on an array/record raises "cannot cast type record to jsonb".
+    // This contract previously pinned the raw-array form, which is why the
+    // hourly materializer failed from 2026-08-06 with a green test suite.
     const reader = read("apps/api/src/infrastructure/db/repositories/DrizzleProductRecommendationReader.ts");
-    expect(reader).toContain("sql`${items as never}::jsonb`");
+    expect(reader).toContain("sql`${JSON.stringify(items ?? [])}::text::jsonb`");
+    expect(reader, "an array must never be bound raw for a jsonb cast").not.toContain("sql`${items as never}::jsonb`");
     expect(reader).toContain('typeof row.items === "string" ? JSON.parse(row.items) : row.items');
     const analytics = read("apps/api/src/infrastructure/db/repositories/DrizzleRecommendationAnalyticsRepository.ts");
     expect(analytics).toContain("jsonb_typeof(metadata) = 'string'");

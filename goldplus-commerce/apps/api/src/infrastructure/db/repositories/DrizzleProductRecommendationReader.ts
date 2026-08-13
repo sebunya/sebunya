@@ -255,12 +255,19 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       )
     });
 
-    // R3.1 (AC21): canonical JSONB — the RAW ARRAY rides an SQL fragment, so
-    // drizzle's jsonb stringify is bypassed and postgres.js serializes exactly
-    // once (its jsonb param serializer double-encodes anything already
-    // stringified). The read path keeps its tolerance for historic
-    // string-typed rows (AC22).
-    const canonicalItems = sql`${items as never}::jsonb`;
+    // R3.1 (AC21): canonical JSONB, written exactly once.
+    //
+    // An ARRAY must be stringified and bound as TEXT before the cast. Binding a
+    // raw JS array lets postgres.js infer a Postgres ARRAY, and `::jsonb` on an
+    // array/record fails with "cannot cast type record to jsonb" — which is
+    // precisely what broke this cron hourly from 2026-08-06 and froze the cache.
+    //
+    // The object writer next door (`${event.metadata ?? {}}::jsonb`) is correct
+    // as-is: postgres.js serializes a plain OBJECT to json once. The two are
+    // not interchangeable, and that is the whole bug.
+    //
+    // The read path keeps its tolerance for historic string-typed rows (AC22).
+    const canonicalItems = sql`${JSON.stringify(items ?? [])}::text::jsonb`;
     if (existing) {
       await db
         .update(recommendationMaterializedCache)
