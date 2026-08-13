@@ -130,7 +130,12 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
         select opportunity_key, source_hash, semantic_hash, evaluation_hash, policy_version,
                evidence_available, score, priority_bucket
         from seo_intel_opportunities
-        where opportunity_key = any(${keys}::text[])
+        -- A raw JS array binds as a RECORD, so casting it to a text array fails
+        -- with "cannot cast type record to text[]". Bind as jsonb text and
+        -- expand it, the same array rule used elsewhere in this codebase.
+        where opportunity_key in (
+          select jsonb_array_elements_text(${JSON.stringify(keys)}::text::jsonb)
+        )
       `));
       const map = new Map<string, StoredSnapshot>();
       for (const r of rows) {
@@ -334,7 +339,10 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
     async loadAnswerUnitHashes(keys) {
       if (keys.length === 0) return new Map();
       const rows = rowsOf(await conn.execute(sql`
-        select answer_key, fact_hash from seo_intel_answer_units where answer_key = any(${keys}::text[])
+        select answer_key, fact_hash from seo_intel_answer_units
+        where answer_key in (
+          select jsonb_array_elements_text(${JSON.stringify(keys)}::text::jsonb)
+        )
       `));
       return new Map(rows.map((r) => [String(r.answer_key), String(r.fact_hash)]));
     },
