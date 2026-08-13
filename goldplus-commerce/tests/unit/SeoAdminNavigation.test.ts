@@ -30,6 +30,10 @@ const EXPECTED: Array<{ label: string; href: string }> = [
   // Wave 3: derived competitor matrix and the observation-to-outcome queue.
   { label: 'Category × Competitor', href: '/admin/seo/category-matrix' },
   { label: 'Work Queue', href: '/admin/seo/work-queue' },
+  { label: 'Raw vs Rendered', href: '/admin/seo/render-diff' },
+  { label: 'Crawler Logs', href: '/admin/seo/crawler-logs' },
+  { label: 'robots.txt', href: '/admin/seo/robots' },
+  { label: 'Core Web Vitals', href: '/admin/seo/web-vitals' },
 ];
 
 const PAGES = path.resolve(__dirname, '../../apps/web/src/pages');

@@ -323,7 +323,11 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'Storage Testing', href: '/admin/seo/storage-tests', group: 'Search Growth', status: 'working', description: 'Measured capacity and speed per storage product; untested stock is shown as NOT TESTED.' },
   { label: 'Product Lifecycle SEO', href: '/admin/seo/product-lifecycle', group: 'Search Growth', status: 'working', description: 'Per-product URL dispositions for discontinued and out-of-stock products; no blanket redirects.' },
   { label: 'Category × Competitor', href: '/admin/seo/category-matrix', group: 'Search Growth', status: 'working', description: 'Where competitors actually appear per category, keeping NOT TESTED distinct from absence.' },
-  { label: 'Work Queue', href: '/admin/seo/work-queue', group: 'Search Growth', status: 'working', description: 'Observation to measured outcome; an item cannot be DONE without a recorded result.' }
+  { label: 'Work Queue', href: '/admin/seo/work-queue', group: 'Search Growth', status: 'working', description: 'Observation to measured outcome; an item cannot be DONE without a recorded result.' },
+  { label: 'Raw vs Rendered', href: '/admin/seo/render-diff', group: 'Search Growth', status: 'working', description: 'What a non-JavaScript crawler sees versus the rendered page; unrendered pages report UNKNOWN, never "no difference".' },
+  { label: 'Crawler Logs', href: '/admin/seo/crawler-logs', group: 'Search Growth', status: 'working', description: 'Crawl budget from ingested server access logs, with the verified-versus-claimed crawler split.' },
+  { label: 'robots.txt', href: '/admin/seo/robots', group: 'Search Growth', status: 'working', description: 'Versioned robots.txt with a line diff, two-person approval and rollback; exactly one version is live.' },
+  { label: 'Core Web Vitals', href: '/admin/seo/web-vitals', group: 'Search Growth', status: 'working', description: 'Measured lab (PageSpeed) and field (CrUX) vitals kept strictly separate; unmeasured URLs show as NOT MEASURED.' }
 ];
 
 // Group helper to replicate traditional display grouping without duplicate data

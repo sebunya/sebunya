@@ -3,6 +3,7 @@ import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
 import { buildMerchantFeedXml } from '../../../application/use-cases/seo-growth/MerchantFeedUseCase';
 import { SearchBatteryFinderUseCase } from '../../../application/use-cases/seo-growth/BatteryCompatibilityUseCases';
+import { fallbackRobotsTxt } from '../../../application/use-cases/seo-growth/RobotsGovernanceUseCases';
 
 /**
  * U6 — public SEO endpoints. Thin routes over Registry.seoRepo:
@@ -95,6 +96,60 @@ routes.get('/indexnow-key', (c) => {
   c.header('Cache-Control', 'public, max-age=300');
   const res: ApiResponse<{ key: string }> = { success: true, data: { key } };
   return c.json(res);
+});
+
+/**
+ * The live robots.txt body, for the storefront to serve at /robots.txt.
+ *
+ * This is PUBLIC on purpose and lives on the public router rather than under
+ * /admin: robots.txt is a crawler-facing file by definition, so serving it
+ * must never depend on an admin session. Only the published version's text is
+ * exposed — never drafts, notes, approvers or version history.
+ *
+ * When nothing has been published, the committed static content is returned
+ * with published:false, so the storefront never serves an empty or
+ * accidentally permissive file.
+ */
+routes.get('/robots-published', async (c) => {
+  const base = String(c.req.query('base') ?? 'https://shopgoldplus.com');
+  try {
+    const row = await Registry.getInstance().seoTechnicalRepo.getPublishedRobots();
+    c.header('Cache-Control', 'public, max-age=300');
+    if (!row) {
+      const res: ApiResponse<unknown> = {
+        success: true,
+        data: {
+          published: false,
+          source: 'FALLBACK',
+          reason: 'No robots.txt version has been published. The committed static content is authoritative.',
+          version: null,
+          content: fallbackRobotsTxt(base),
+          publishedAt: null,
+        },
+      };
+      return c.json(res);
+    }
+    const res: ApiResponse<unknown> = {
+      success: true,
+      data: {
+        published: true,
+        source: 'DATABASE',
+        reason: null,
+        version: row.version ?? null,
+        content: String(row.content ?? ''),
+        publishedAt: row.published_at ?? null,
+      },
+    };
+    return c.json(res);
+  } catch (err: any) {
+    // The storefront falls back to its committed static content on any
+    // failure — robots.txt must never be empty because a query failed.
+    const res: ApiResponse<never> = {
+      success: false,
+      error: { code: 'ROBOTS_READ_FAILED', message: String(err?.message ?? err).slice(0, 200) },
+    };
+    return c.json(res, 503);
+  }
 });
 
 /**

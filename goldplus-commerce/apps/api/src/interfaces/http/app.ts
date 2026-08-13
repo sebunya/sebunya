@@ -29,6 +29,9 @@ import adminSeoGrowthRoutes from './routes/admin/seo-growth';
 import adminSeoIntegrationRoutes from './routes/admin/seo-integrations';
 import adminSeoCatalogueRoutes from './routes/admin/seo-catalogue';
 import adminSeoWorkQueueRoutes from './routes/admin/seo-workqueue';
+import adminSeoObservabilityRoutes from './routes/admin/seo-observability';
+import adminSeoRobotsRoutes from './routes/admin/seo-robots';
+import adminSeoVitalsRoutes from './routes/admin/seo-vitals';
 import adminBusinessInfoRoutes from './routes/admin/business-info';
 import adminTaxonomyRoutes from './routes/admin/taxonomy';
 import adminHomepageRoutes from './routes/admin/homepage';
@@ -253,6 +256,9 @@ app.route('/seo', seoPublicRoutes);
 app.route('/admin/seo/integrations', adminSeoIntegrationRoutes);
 app.route('/admin/seo/catalogue', adminSeoCatalogueRoutes);
 app.route('/admin/seo/workqueue', adminSeoWorkQueueRoutes);
+app.route('/admin/seo/observability', adminSeoObservabilityRoutes);
+app.route('/admin/seo/robots', adminSeoRobotsRoutes);
+app.route('/admin/seo/vitals', adminSeoVitalsRoutes);
 app.route('/admin/seo', adminSeoGrowthRoutes);
 app.route('/telemetry', telemetryRoutes);
 app.route('/health', healthRoutes);
@@ -392,6 +398,9 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/seo/integrations',
   '/admin/seo/catalogue',
   '/admin/seo/workqueue',
+  '/admin/seo/observability',
+  '/admin/seo/robots',
+  '/admin/seo/vitals',
   '/seo',
   '/admin/surveys',
   '/admin/users',

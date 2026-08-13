@@ -1,0 +1,228 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, rowsOf, emptyReason, str, num, fmtWhen } from "../../../lib/adminSeo";
+
+/** Raw vs rendered — what a crawler that does not execute JavaScript sees,
+ *  against what a browser sees. A page that was never rendered is reported as
+ *  NOT ATTEMPTED with severity UNKNOWN; it is never shown as "no difference". */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/render-diff", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+let compared: any = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  if (intent === "run") {
+    const res = await seoPost<any>(token, "/admin/seo/observability/render-diff", {
+      url: String(form.get("url") ?? "").trim(),
+    });
+    if (res.ok) {
+      notice = `Diff recorded for ${str(res.data?.url)} — state ${str(res.data?.renderState)}, severity ${str(res.data?.severity)}. ${str(res.data?.stateNote)}`;
+    } else formError = res.message;
+  } else if (intent === "compare") {
+    const res = await seoPost<any>(token, "/admin/seo/observability/render-diff/compare", {
+      rawHtml: String(form.get("rawHtml") ?? ""),
+      renderedHtml: String(form.get("renderedHtml") ?? ""),
+    });
+    if (res.ok) { compared = res.data; notice = "Comparison computed. Nothing was fetched or stored."; }
+    else formError = res.message;
+  }
+}
+
+const url = new URL(Astro.request.url);
+const severityFilter = url.searchParams.get("severity") ?? "";
+const listRes = await seoGet<any>(
+  token,
+  `/admin/seo/observability/render-diff${severityFilter ? `?severity=${encodeURIComponent(severityFilter)}` : ""}`,
+);
+type DiffRow = {
+  id?: string; url?: string; observed_at?: string; render_state?: string; severity?: string;
+  raw_status?: number; raw_title?: string | null; rendered_title?: string | null;
+  raw_word_count?: number | null; rendered_word_count?: number | null;
+  differences?: Array<{ field?: string; raw?: unknown; rendered?: unknown; severity?: string }>;
+  error?: string | null; stateNote?: string;
+};
+const diffs = rowsOf<DiffRow>(listRes);
+const listReason = emptyReason(listRes, "No raw-vs-rendered diffs have been recorded yet");
+const data: any = listRes.ok ? listRes.data : null;
+const summary = data?.summary ?? null;
+const rendererConfigured = data?.rendererConfigured === true;
+const rendererNote = str(data?.rendererNote);
+const severities = ["", "CRITICAL", "WARNING", "INFO", "NONE", "UNKNOWN"];
+
+const severityClass = (s: unknown): string => {
+  switch (String(s)) {
+    case "CRITICAL": return "bg-red-100 text-red-900";
+    case "WARNING": return "bg-amber-100 text-amber-900";
+    case "INFO": return "bg-sky-100 text-sky-900";
+    case "NONE": return "bg-emerald-100 text-emerald-900";
+    default: return "bg-gray-200 text-gray-700";
+  }
+};
+const val = (v: unknown): string => (v === null || v === undefined ? "(absent)" : String(v));
+---
+
+<AdminLayout title="Raw vs Rendered" description="What a non-JavaScript crawler sees compared with the rendered page.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Raw vs rendered</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        The raw HTML response is what a crawler that does not execute JavaScript sees. Title, canonical and meta
+        robots that appear only after rendering are CRITICAL — that crawler never sees them at all.
+      </p>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    {!rendererConfigured && (
+      <div role="note" class="mb-8 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">
+        <strong class="block font-black uppercase tracking-widest text-xs mb-1">No rendering engine configured</strong>
+        <p>{rendererNote === "—" ? "Raw HTML is captured, but the post-JavaScript view is not observed. Those runs are stored as NOT ATTEMPTED with severity UNKNOWN — which is not a finding of “no difference”." : rendererNote}</p>
+        <p class="mt-2">Until an engine is wired, paste a browser copy of the HTML into the manual comparison below to get a real verdict.</p>
+      </div>
+    )}
+
+    {summary && (
+      <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+          <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Render state</h3>
+          {(summary.byState ?? []).length === 0 && <p class="text-sm text-gray-500">Nothing recorded yet.</p>}
+          <ul class="space-y-1 text-sm">
+            {(summary.byState ?? []).map((r: any) => (
+              <li class="flex justify-between"><span class="font-mono">{str(r.render_state)}</span><span class="font-bold">{num(Number(r.hits))}</span></li>
+            ))}
+          </ul>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+          <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Severity</h3>
+          {(summary.bySeverity ?? []).length === 0 && <p class="text-sm text-gray-500">Nothing recorded yet.</p>}
+          <ul class="space-y-1 text-sm">
+            {(summary.bySeverity ?? []).map((r: any) => (
+              <li class="flex justify-between">
+                <span class={`rounded-full px-2 py-0.5 text-xs font-bold ${severityClass(r.severity)}`}>{str(r.severity)}</span>
+                <span class="font-bold">{num(Number(r.hits))}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    )}
+
+    {/* Run a diff */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Run a diff</h3>
+      <form method="POST" class="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="intent" value="run" />
+        <label class="text-xs font-bold text-gray-700 flex-1 min-w-64">URL
+          <input name="url" required type="url" placeholder="https://www.shopgoldplus.com/batteries"
+            class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+        <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white hover:bg-black focus-visible:ring-2 focus-visible:ring-brand-primary">Fetch and diff</button>
+      </form>
+      <p class="text-xs text-gray-500 mt-3">
+        The raw fetch always runs. The rendered fetch only runs if a rendering engine is configured; otherwise the row
+        is stored as NOT ATTEMPTED / UNKNOWN.
+      </p>
+    </section>
+
+    {/* Manual comparison */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Manual comparison</h3>
+      <form method="POST" class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <input type="hidden" name="intent" value="compare" />
+        <label class="text-xs font-bold text-gray-700">Raw HTML (view-source)
+          <textarea name="rawHtml" required rows="6" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-mono"></textarea></label>
+        <label class="text-xs font-bold text-gray-700">Rendered HTML (browser copy)
+          <textarea name="renderedHtml" required rows="6" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-mono"></textarea></label>
+        <div class="lg:col-span-2">
+          <button type="submit" class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-6 text-sm font-bold text-gray-700 hover:bg-gray-50">Compare</button>
+        </div>
+      </form>
+
+      {compared && (
+        <div class="mt-6 rounded-xl border border-gray-200 p-4">
+          <p class="mb-3 text-sm">
+            Overall severity:
+            <span class={`ml-2 rounded-full px-2 py-0.5 text-xs font-bold ${severityClass(compared.severity)}`}>{str(compared.severity)}</span>
+          </p>
+          {(compared.differences ?? []).length === 0 && <p class="text-sm text-gray-500">The two documents produced identical SEO facts.</p>}
+          {(compared.differences ?? []).length > 0 && (
+            <table class="w-full text-left text-xs">
+              <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                <th class="py-2 pr-4">Field</th><th class="py-2 pr-4">Raw</th><th class="py-2 pr-4">Rendered</th><th class="py-2">Severity</th>
+              </tr></thead>
+              <tbody>
+                {(compared.differences ?? []).map((d: any) => (
+                  <tr class="border-b border-gray-100 align-top">
+                    <td class="py-2 pr-4 font-bold text-brand-dark">{str(d.field)}</td>
+                    <td class="py-2 pr-4 font-mono text-gray-600 max-w-xs break-words">{val(d.raw)}</td>
+                    <td class="py-2 pr-4 font-mono text-gray-600 max-w-xs break-words">{val(d.rendered)}</td>
+                    <td class="py-2"><span class={`rounded-full px-2 py-0.5 font-bold ${severityClass(d.severity)}`}>{str(d.severity)}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </section>
+
+    {/* Recorded diffs */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-12">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Recorded diffs</h3>
+        <form method="GET" class="flex items-center gap-2">
+          <label class="text-xs font-bold text-gray-600">Severity
+            <select name="severity" class="ml-2 rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
+              {severities.map((s) => <option value={s} selected={s === severityFilter}>{s === "" ? "All" : s}</option>)}
+            </select>
+          </label>
+          <button type="submit" class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">Filter</button>
+        </form>
+      </div>
+
+      {listReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">{listReason}</p>}
+      {!listReason && diffs.length === 0 && (
+        <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">
+          No diffs match this filter. Nothing has been measured — that is not the same as no difference existing.
+        </p>
+      )}
+      {diffs.length > 0 && (
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                <th class="py-2 pr-4">URL</th><th class="py-2 pr-4">Observed</th><th class="py-2 pr-4">Render state</th>
+                <th class="py-2 pr-4">Severity</th><th class="py-2 pr-4">Raw status</th>
+                <th class="py-2 pr-4">Words raw / rendered</th><th class="py-2">Differences</th>
+              </tr>
+            </thead>
+            <tbody>
+              {diffs.map((d) => (
+                <tr class="border-b border-gray-100 align-top">
+                  <td class="py-2 pr-4 font-mono text-brand-dark max-w-xs break-words">{str(d.url)}</td>
+                  <td class="py-2 pr-4 text-gray-500">{fmtWhen(d.observed_at)}</td>
+                  <td class="py-2 pr-4"><span class="rounded-full bg-gray-100 px-2 py-0.5 font-bold">{str(d.render_state)}</span></td>
+                  <td class="py-2 pr-4"><span class={`rounded-full px-2 py-0.5 font-bold ${severityClass(d.severity)}`}>{str(d.severity)}</span></td>
+                  <td class="py-2 pr-4">{num(d.raw_status)}</td>
+                  <td class="py-2 pr-4">{num(d.raw_word_count)} / {num(d.rendered_word_count)}</td>
+                  <td class="py-2 text-gray-600 max-w-sm">
+                    {d.render_state !== "RENDERED"
+                      ? <span class="text-gray-500">{str(d.stateNote)}</span>
+                      : (Array.isArray(d.differences) && d.differences.length > 0
+                          ? d.differences.map((x) => `${str(x.field)} (${str(x.severity)})`).join(", ")
+                          : "No difference found between raw and rendered.")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  </div>
+</AdminLayout>

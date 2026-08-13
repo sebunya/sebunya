@@ -20,6 +20,8 @@ import { DrizzleSeoGrowthRepository } from './db/repositories/DrizzleSeoGrowthRe
 import { DrizzleSeoIntegrationRepository } from './db/repositories/DrizzleSeoIntegrationRepository';
 import { DrizzleSeoCatalogueRepository } from './db/repositories/DrizzleSeoCatalogueRepository';
 import { DrizzleSeoWorkQueueRepository } from './db/repositories/DrizzleSeoWorkQueueRepository';
+import { DrizzleSeoObservabilityRepository } from './db/repositories/DrizzleSeoObservabilityRepository';
+import { DrizzleSeoTechnicalRepository } from './db/repositories/DrizzleSeoTechnicalRepository';
 import { NoSendMobileMoneyDisbursement } from '../application/ports/IMobileMoneyDisbursement';
 import { DrizzlePricingOperationsRepository } from './db/repositories/DrizzlePricingOperationsRepository';
 import { DrizzleDealerRepository } from './db/repositories/DrizzleDealerRepository';
@@ -620,6 +622,8 @@ export class Registry {
   public readonly seoIntegrationRepo = new DrizzleSeoIntegrationRepository();
   public readonly seoCatalogueRepo = new DrizzleSeoCatalogueRepository();
   public readonly seoWorkQueueRepo = new DrizzleSeoWorkQueueRepository();
+  public readonly seoObservabilityRepo = new DrizzleSeoObservabilityRepository();
+  public readonly seoTechnicalRepo = new DrizzleSeoTechnicalRepository();
   public readonly mobileMoneyDisbursement = new NoSendMobileMoneyDisbursement();
   public readonly submitReviewUseCase = new SubmitReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly pricingOperationsRepo = new DrizzlePricingOperationsRepository();

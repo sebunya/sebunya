@@ -1,0 +1,285 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, emptyReason, str, fmtWhen } from "../../../lib/adminSeo";
+
+/** robots.txt governance — versioned drafts, a unified diff, two-person
+ *  approval and rollback-as-a-new-version. The live file is whatever row is
+ *  PUBLISHED here; nothing on this page edits history. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/robots", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+let formFindings: Finding[] = [];
+
+type Finding = { code?: string; severity?: string; line?: number | null; message?: string };
+type Version = {
+  id?: string; version?: number; content?: string; status?: string; note?: string | null;
+  created_by?: string; created_at?: string; approved_by?: string | null; approved_at?: string | null;
+  published_at?: string | null; superseded_at?: string | null;
+  restored_from_id?: string | null; restored_from_version?: number | null;
+};
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const id = String(form.get("id") ?? "");
+  const ack = form.get("acknowledgeRisk") === "on";
+  const note = String(form.get("note") ?? "").trim() || undefined;
+
+  let res;
+  if (intent === "draft") {
+    res = await seoPost(token, "/admin/seo/robots", {
+      content: String(form.get("content") ?? ""),
+      note,
+      acknowledgeRisk: ack,
+    });
+    if (res.ok) notice = "Draft created. It must be submitted and approved by a second operator before it can be published.";
+  } else if (["submit", "approve", "reject", "publish", "rollback"].includes(intent)) {
+    res = await seoPost(token, `/admin/seo/robots/${encodeURIComponent(id)}/${intent}`, { note, acknowledgeRisk: ack });
+    if (res.ok) {
+      notice = {
+        submit: "Version submitted for approval.",
+        approve: "Version approved. It is not live until published.",
+        reject: "Version rejected.",
+        publish: "Version published. It is now the live robots.txt and the previous version was superseded.",
+        rollback: "Rollback drafted as a new version. History was not altered.",
+      }[intent] ?? "Done.";
+    }
+  }
+  if (res && !res.ok) {
+    formError = res.message;
+    const err = (res as unknown as { findings?: Finding[] }).findings;
+    if (Array.isArray(err)) formFindings = err;
+  }
+}
+
+const listRes = await seoGet<{
+  items?: Version[]; published?: Version | null; publishedState?: string; findingsForPublished?: Finding[];
+}>(token, "/admin/seo/robots?limit=50");
+const data = listRes.ok ? listRes.data : null;
+const versions: Version[] = Array.isArray(data?.items) ? data!.items! : [];
+const live = data?.published ?? null;
+const liveFindings: Finding[] = Array.isArray(data?.findingsForPublished) ? data!.findingsForPublished! : [];
+const listReason = emptyReason(listRes, "No robots.txt versions have been recorded yet");
+
+// Diff between two chosen versions (defaults: live vs the newest non-published).
+const params = new URL(Astro.request.url).searchParams;
+const diffFrom = params.get("from") ?? live?.id ?? "";
+const diffTo = params.get("to") ?? versions.find((v) => v.id !== live?.id)?.id ?? "";
+type DiffLine = { op?: string; text?: string; fromLine?: number | null; toLine?: number | null };
+type DiffHunk = { header?: string; lines?: DiffLine[] };
+let diff: { identical?: boolean; added?: number; removed?: number; hunks?: DiffHunk[] } | null = null;
+let diffReason: string | null = null;
+if (diffFrom && diffTo && diffFrom !== diffTo) {
+  const diffRes = await seoGet<{ diff?: typeof diff }>(
+    token,
+    `/admin/seo/robots/diff/compare?from=${encodeURIComponent(diffFrom)}&to=${encodeURIComponent(diffTo)}`,
+  );
+  if (diffRes.ok) diff = diffRes.data?.diff ?? null;
+  else diffReason = diffRes.message;
+} else {
+  diffReason = "Choose two different versions to compare.";
+}
+
+const sevClass = (s?: string) =>
+  s === "BLOCKING" ? "border-red-300 bg-red-50 text-red-900"
+  : s === "WARNING" ? "border-amber-300 bg-amber-50 text-amber-900"
+  : "border-gray-200 bg-gray-50 text-gray-700";
+const statusClass = (s?: string) =>
+  s === "PUBLISHED" ? "bg-emerald-100 text-emerald-900"
+  : s === "APPROVED" ? "bg-blue-100 text-blue-900"
+  : s === "PENDING_APPROVAL" ? "bg-amber-100 text-amber-900"
+  : s === "REJECTED" ? "bg-red-100 text-red-900"
+  : "bg-gray-100 text-gray-700";
+const lineClass = (op?: string) =>
+  op === "add" ? "bg-emerald-50 text-emerald-900"
+  : op === "remove" ? "bg-red-50 text-red-900"
+  : "text-gray-600";
+const marker = (op?: string) => (op === "add" ? "+" : op === "remove" ? "-" : " ");
+const seed = live?.content ?? "";
+---
+
+<AdminLayout title="robots.txt Governance" description="Versioned robots.txt with diff, two-person approval and rollback.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">robots.txt</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        The live crawler directives. Every change is a new version, reviewed against a diff and approved by a
+        second operator. A rollback creates a new version — nothing is ever edited in place.
+      </p>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && (
+      <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">
+        <p class="font-bold">{formError}</p>
+        {formFindings.length > 0 && (
+          <ul class="mt-2 list-disc pl-5 space-y-1">
+            {formFindings.map((f) => <li>[{str(f.severity)}] {str(f.message)}</li>)}
+          </ul>
+        )}
+      </div>
+    )}
+
+    {/* Live version */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Live robots.txt</h3>
+      {listReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">{listReason}</p>}
+      {!listReason && !live && (
+        <div class="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-6 text-sm text-amber-900">
+          <p class="font-bold">No version is published.</p>
+          <p class="mt-1">
+            The storefront is serving the committed static robots.txt. That file is real and correct — it simply is not
+            yet under this module's version control. Draft the current content below and publish it to take control.
+          </p>
+        </div>
+      )}
+      {live && (
+        <div>
+          <p class="text-xs text-gray-500 mb-3">
+            Version {str(live.version)} · published {fmtWhen(live.published_at)} · approved by {str(live.approved_by)} on {fmtWhen(live.approved_at)}
+          </p>
+          <pre class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs font-mono overflow-x-auto whitespace-pre">{str(live.content)}</pre>
+          {liveFindings.length > 0 && (
+            <ul class="mt-4 space-y-2">
+              {liveFindings.map((f) => (
+                <li class={`rounded-lg border px-3 py-2 text-xs ${sevClass(f.severity)}`}>
+                  <strong>{str(f.severity)}</strong> · {str(f.code)} — {str(f.message)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+
+    {/* Diff */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Compare versions</h3>
+        <form method="GET" class="flex flex-wrap items-center gap-2">
+          <select name="from" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
+            {versions.map((v) => <option value={str(v.id)} selected={v.id === diffFrom}>v{str(v.version)} · {str(v.status)}</option>)}
+          </select>
+          <span class="text-xs text-gray-400">→</span>
+          <select name="to" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
+            {versions.map((v) => <option value={str(v.id)} selected={v.id === diffTo}>v{str(v.version)} · {str(v.status)}</option>)}
+          </select>
+          <button type="submit" class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">Diff</button>
+        </form>
+      </div>
+      {diffReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">{diffReason}</p>}
+      {diff && diff.identical && <p class="text-sm text-gray-600">These two versions are byte-identical.</p>}
+      {diff && !diff.identical && (
+        <div>
+          <p class="text-xs text-gray-500 mb-2">+{str(diff.added)} added · −{str(diff.removed)} removed</p>
+          <div class="rounded-xl border border-gray-200 overflow-x-auto">
+            {(diff.hunks ?? []).map((h) => (
+              <div>
+                <div class="bg-gray-100 px-3 py-1 text-[11px] font-mono text-gray-600">{str(h.header)}</div>
+                {(h.lines ?? []).map((l) => (
+                  <div class={`px-3 py-0.5 text-xs font-mono whitespace-pre ${lineClass(l.op)}`}>{marker(l.op)}{str(l.text)}</div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+
+    {/* Version history + actions */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Version history</h3>
+      {versions.length === 0 && !listReason && (
+        <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">
+          No versions exist yet. The first draft you create becomes version 1.
+        </p>
+      )}
+      <div class="space-y-4">
+        {versions.map((v) => (
+          <div class="rounded-xl border border-gray-200 p-4">
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <span class="font-black text-brand-dark">Version {str(v.version)}</span>
+              <span class={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${statusClass(v.status)}`}>{str(v.status)}</span>
+              <span class="text-xs text-gray-500">created {fmtWhen(v.created_at)}</span>
+              {v.restored_from_version !== null && v.restored_from_version !== undefined && (
+                <span class="text-xs text-blue-800">rollback of v{str(v.restored_from_version)}</span>
+              )}
+            </div>
+            {v.note && <p class="text-xs text-gray-600 mb-2">{str(v.note)}</p>}
+            <details class="mb-3">
+              <summary class="cursor-pointer text-xs font-bold text-gray-600">Show content</summary>
+              <pre class="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs font-mono overflow-x-auto whitespace-pre">{str(v.content)}</pre>
+            </details>
+            <div class="flex flex-wrap gap-2">
+              {v.status === "DRAFT" && (
+                <form method="POST" class="flex items-center gap-2">
+                  <input type="hidden" name="intent" value="submit" />
+                  <input type="hidden" name="id" value={str(v.id)} />
+                  <label class="flex items-center gap-1 text-[11px] text-gray-600"><input type="checkbox" name="acknowledgeRisk" /> acknowledge risk</label>
+                  <button type="submit" class="rounded-full bg-brand-dark px-4 py-1.5 text-xs font-bold text-white hover:bg-black">Submit for approval</button>
+                </form>
+              )}
+              {v.status === "PENDING_APPROVAL" && (
+                <form method="POST" class="flex items-center gap-2">
+                  <input type="hidden" name="intent" value="approve" />
+                  <input type="hidden" name="id" value={str(v.id)} />
+                  <label class="flex items-center gap-1 text-[11px] text-gray-600"><input type="checkbox" name="acknowledgeRisk" /> acknowledge risk</label>
+                  <button type="submit" class="rounded-full bg-blue-700 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-800">Approve (not the author)</button>
+                </form>
+              )}
+              {v.status === "APPROVED" && (
+                <form method="POST" class="flex items-center gap-2">
+                  <input type="hidden" name="intent" value="publish" />
+                  <input type="hidden" name="id" value={str(v.id)} />
+                  <label class="flex items-center gap-1 text-[11px] text-gray-600"><input type="checkbox" name="acknowledgeRisk" /> acknowledge risk</label>
+                  <button type="submit" class="rounded-full bg-emerald-700 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-800">Publish live</button>
+                </form>
+              )}
+              {["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(String(v.status)) && (
+                <form method="POST" class="flex items-center gap-2">
+                  <input type="hidden" name="intent" value="reject" />
+                  <input type="hidden" name="id" value={str(v.id)} />
+                  <input name="note" required placeholder="Reason for rejection" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs w-56" />
+                  <button type="submit" class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">Reject</button>
+                </form>
+              )}
+              {["SUPERSEDED", "PUBLISHED", "REJECTED"].includes(String(v.status)) && (
+                <form method="POST" class="flex items-center gap-2">
+                  <input type="hidden" name="intent" value="rollback" />
+                  <input type="hidden" name="id" value={str(v.id)} />
+                  <label class="flex items-center gap-1 text-[11px] text-gray-600"><input type="checkbox" name="acknowledgeRisk" /> acknowledge risk</label>
+                  <button type="submit" class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">Roll back to this content</button>
+                </form>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    {/* New draft */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-12">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">New draft</h3>
+      <form method="POST" class="space-y-4">
+        <input type="hidden" name="intent" value="draft" />
+        <label class="block">
+          <span class="text-xs font-bold text-gray-600">robots.txt content</span>
+          <textarea name="content" required rows="14" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-mono">{seed}</textarea>
+        </label>
+        <label class="block">
+          <span class="text-xs font-bold text-gray-600">Why this change</span>
+          <input name="note" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs" placeholder="e.g. block the faceted filter parameters" />
+        </label>
+        <label class="flex items-center gap-2 text-xs text-gray-700">
+          <input type="checkbox" name="acknowledgeRisk" />
+          I understand this content may block crawlers, and I intend it. (Required only when a blocking finding is raised —
+          the content is never rewritten for you.)
+        </label>
+        <button type="submit" class="rounded-full bg-brand-dark px-6 py-2 text-xs font-bold text-white hover:bg-black">Create draft</button>
+      </form>
+    </section>
+  </div>
+</AdminLayout>

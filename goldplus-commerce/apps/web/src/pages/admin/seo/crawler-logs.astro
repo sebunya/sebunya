@@ -1,0 +1,283 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, rowsOf, emptyReason, str, num, fmtWhen } from "../../../lib/adminSeo";
+
+/** Server-log crawl budget. Every number here comes from access-log lines an
+ *  operator ingested. A crawler user-agent is a claim, so the VERIFIED vs
+ *  UNVERIFIED split is shown before any total is read as crawler activity. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/crawler-logs", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+let ingestResult: any = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  if (intent === "ingest") {
+    const res = await seoPost<any>(token, "/admin/seo/observability/ingest-log", {
+      sourceName: String(form.get("sourceName") ?? "").trim(),
+      format: String(form.get("format") ?? "COMBINED"),
+      text: String(form.get("text") ?? ""),
+    });
+    if (res.ok) {
+      ingestResult = res.data;
+      notice = `Ingested ${num(res.data?.linesParsed)} of ${num(res.data?.linesRead)} lines (${num(res.data?.linesRejected)} rejected); ${num(res.data?.crawlerHits)} crawler hits recorded.`;
+    } else formError = res.message;
+  }
+}
+
+const url = new URL(Astro.request.url);
+const days = url.searchParams.get("days") ?? "30";
+const crawlerFilter = url.searchParams.get("crawler") ?? "";
+const verificationFilter = url.searchParams.get("verification") ?? "";
+const qs = new URLSearchParams({ days });
+if (crawlerFilter) qs.set("crawler", crawlerFilter);
+if (verificationFilter) qs.set("verification", verificationFilter);
+
+const listRes = await seoGet<any>(token, `/admin/seo/observability/crawler-hits?${qs.toString()}`);
+type HitRow = {
+  id?: string; hit_at?: string; path?: string; crawler?: string; verification?: string;
+  status_code?: number | null; user_agent?: string | null; source_file?: string | null;
+};
+const hits = rowsOf<HitRow>(listRes);
+const listReason = emptyReason(listRes, "No crawler hits have been ingested yet");
+const data: any = listRes.ok ? listRes.data : null;
+const budget = data?.budget ?? null;
+const ingestions: any[] = Array.isArray(data?.ingestions) ? data.ingestions : [];
+const verifierConfigured = data?.verifierConfigured === true;
+const coverage = str(data?.coverage);
+const verificationNote = str(data?.verificationNote);
+
+const split: Record<string, number> = {};
+for (const row of (budget?.verificationSplit ?? [])) split[String(row.verification)] = Number(row.hits ?? 0);
+const totalHits = Object.values(split).reduce((a, b) => a + b, 0);
+const verifiedCount = split.VERIFIED ?? 0;
+const unverifiedCount = (split.UNVERIFIED ?? 0) + (split.NOT_CHECKED ?? 0);
+const spoofedCount = split.SPOOFED ?? 0;
+
+const crawlers = ["", "Googlebot", "Bingbot", "DuckDuckBot", "Slurp", "AhrefsBot", "SemrushBot", "GPTBot", "ClaudeBot", "PerplexityBot", "Applebot"];
+const verifications = ["", "VERIFIED", "SPOOFED", "UNVERIFIED", "NOT_CHECKED"];
+
+const verifClass = (v: unknown): string => {
+  switch (String(v)) {
+    case "VERIFIED": return "bg-emerald-100 text-emerald-900";
+    case "SPOOFED": return "bg-red-100 text-red-900";
+    case "NOT_CHECKED": return "bg-gray-200 text-gray-700";
+    default: return "bg-amber-100 text-amber-900";
+  }
+};
+---
+
+<AdminLayout title="Crawler Logs" description="Crawl budget observed in real server access logs, with the verified-versus-claimed split.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Crawler logs</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        Crawl budget measured from access-log lines that were actually ingested. A “Googlebot” user agent is a claim
+        anyone can send — only VERIFIED rows passed a reverse-DNS-then-forward-confirm check.
+      </p>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    {/* Verification split — deliberately the first thing on the page. */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Verified vs claimed</h3>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <p class="text-2xl font-black text-emerald-900">{num(verifiedCount)}</p>
+          <p class="text-xs font-bold uppercase tracking-widest text-emerald-800">Verified hits</p>
+        </div>
+        <div class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p class="text-2xl font-black text-amber-900">{num(unverifiedCount)}</p>
+          <p class="text-xs font-bold uppercase tracking-widest text-amber-800">Unverified / not checked</p>
+        </div>
+        <div class="rounded-xl border border-red-200 bg-red-50 p-4">
+          <p class="text-2xl font-black text-red-900">{num(spoofedCount)}</p>
+          <p class="text-xs font-bold uppercase tracking-widest text-red-800">Spoofed</p>
+        </div>
+        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p class="text-2xl font-black text-brand-dark">{num(totalHits)}</p>
+          <p class="text-xs font-bold uppercase tracking-widest text-gray-500">Total logged hits</p>
+        </div>
+      </div>
+      <p class="text-xs text-gray-500 mt-4">{verificationNote}</p>
+      {!verifierConfigured && (
+        <p class="text-xs text-amber-800 mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+          No reverse-DNS verifier is configured, so hits are recorded as NOT CHECKED. None of these hits are confirmed
+          crawler activity.
+        </p>
+      )}
+      <p class="text-xs text-gray-500 mt-3"><strong>Coverage:</strong> {coverage}</p>
+    </section>
+
+    {/* Ingest */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Ingest an access log</h3>
+      <form method="POST" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <input type="hidden" name="intent" value="ingest" />
+        <label class="text-xs font-bold text-gray-700">Source name
+          <input name="sourceName" required maxlength="200" placeholder="nginx-access.log 2026-08-12"
+            class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Format
+          <select name="format" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="COMBINED">Combined Log Format</option>
+            <option value="COMMON">Common Log Format</option>
+          </select></label>
+        <label class="text-xs font-bold text-gray-700 sm:col-span-3">Log lines
+          <textarea name="text" required rows="8" placeholder='66.249.66.1 - - [10/Oct/2025:13:55:36 +0000] "GET /batteries HTTP/1.1" 200 2326 "-" "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"'
+            class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-mono"></textarea></label>
+        <div class="sm:col-span-3">
+          <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white hover:bg-black focus-visible:ring-2 focus-visible:ring-brand-primary">Ingest log</button>
+        </div>
+      </form>
+      <p class="text-xs text-gray-500 mt-3">
+        Lines that do not match the format are counted as rejected — never guessed at. The ingestion record stores the
+        real time window covered, so a report cannot imply coverage it does not have.
+      </p>
+
+      {ingestResult && (
+        <div class="mt-6 rounded-xl border border-gray-200 p-4 text-sm">
+          <p><strong>Read:</strong> {num(ingestResult.linesRead)} · <strong>Parsed:</strong> {num(ingestResult.linesParsed)} · <strong>Rejected:</strong> {num(ingestResult.linesRejected)} · <strong>Crawler hits:</strong> {num(ingestResult.crawlerHits)}</p>
+          <p class="text-xs text-gray-500 mt-2">{str(ingestResult.coverage)}</p>
+          {ingestResult.truncated && <p class="text-xs text-amber-800 mt-2">The payload was truncated at the line cap; the remainder was not read.</p>}
+          {Array.isArray(ingestResult.rejections) && ingestResult.rejections.length > 0 && (
+            <details class="mt-3">
+              <summary class="text-xs font-bold text-gray-600 cursor-pointer">Rejected lines ({ingestResult.rejections.length} shown)</summary>
+              <ul class="mt-2 space-y-1 text-[11px] font-mono text-gray-500">
+                {ingestResult.rejections.map((r: any) => <li>line {num(r.lineNumber)}: {str(r.reason)}</li>)}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+    </section>
+
+    {/* Crawl budget */}
+    {budget && (
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+          <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Hits per crawler</h3>
+          {(budget.perCrawler ?? []).length === 0 && <p class="text-sm text-gray-500">No hits in this window.</p>}
+          <ul class="space-y-1 text-sm">
+            {(budget.perCrawler ?? []).map((r: any) => (
+              <li class="flex justify-between gap-2">
+                <span class="font-bold text-brand-dark">{str(r.crawler)}</span>
+                <span class="text-gray-600">{num(Number(r.hits))} <span class="text-emerald-700">({num(Number(r.verified))} verified)</span></span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+          <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Most-crawled paths</h3>
+          {(budget.perPath ?? []).length === 0 && <p class="text-sm text-gray-500">No hits in this window.</p>}
+          <ul class="space-y-1 text-xs">
+            {(budget.perPath ?? []).slice(0, 15).map((r: any) => (
+              <li class="flex justify-between gap-2">
+                <span class="font-mono text-gray-700 truncate">{str(r.path)}</span>
+                <span class="font-bold">{num(Number(r.hits))}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+          <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Status codes served to crawlers</h3>
+          {(budget.perStatus ?? []).length === 0 && <p class="text-sm text-gray-500">No hits in this window.</p>}
+          <ul class="space-y-1 text-sm">
+            {(budget.perStatus ?? []).map((r: any) => (
+              <li class="flex justify-between"><span class="font-mono">{str(r.status_code)}</span><span class="font-bold">{num(Number(r.hits))}</span></li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    )}
+
+    {/* Hits */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Logged hits</h3>
+        <form method="GET" class="flex flex-wrap items-center gap-2">
+          <label class="text-xs font-bold text-gray-600">Days
+            <input name="days" value={days} inputmode="numeric" class="ml-2 w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-xs" /></label>
+          <label class="text-xs font-bold text-gray-600">Crawler
+            <select name="crawler" class="ml-2 rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
+              {crawlers.map((x) => <option value={x} selected={x === crawlerFilter}>{x === "" ? "All" : x}</option>)}
+            </select></label>
+          <label class="text-xs font-bold text-gray-600">Verification
+            <select name="verification" class="ml-2 rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
+              {verifications.map((x) => <option value={x} selected={x === verificationFilter}>{x === "" ? "All" : x}</option>)}
+            </select></label>
+          <button type="submit" class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">Filter</button>
+        </form>
+      </div>
+
+      {listReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">{listReason}</p>}
+      {!listReason && hits.length === 0 && (
+        <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">
+          No crawler hits match this filter. That means none were ingested for this window — not that no crawling happened.
+        </p>
+      )}
+      {hits.length > 0 && (
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                <th class="py-2 pr-4">When</th><th class="py-2 pr-4">Crawler</th><th class="py-2 pr-4">Verification</th>
+                <th class="py-2 pr-4">Path</th><th class="py-2 pr-4">Status</th><th class="py-2">Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hits.map((h) => (
+                <tr class="border-b border-gray-100 align-top">
+                  <td class="py-2 pr-4 text-gray-500">{fmtWhen(h.hit_at)}</td>
+                  <td class="py-2 pr-4 font-bold text-brand-dark">{str(h.crawler)}</td>
+                  <td class="py-2 pr-4"><span class={`rounded-full px-2 py-0.5 font-bold ${verifClass(h.verification)}`}>{str(h.verification)}</span></td>
+                  <td class="py-2 pr-4 font-mono text-gray-700 max-w-xs break-words">{str(h.path)}</td>
+                  <td class="py-2 pr-4">{num(h.status_code)}</td>
+                  <td class="py-2 text-gray-500">{str(h.source_file)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    {/* Ingestion history */}
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-12">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Ingestion history</h3>
+      {ingestions.length === 0 && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6">No logs have been ingested, so no period is covered.</p>}
+      {ingestions.length > 0 && (
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+                <th class="py-2 pr-4">Source</th><th class="py-2 pr-4">Format</th><th class="py-2 pr-4">Read</th>
+                <th class="py-2 pr-4">Parsed</th><th class="py-2 pr-4">Rejected</th><th class="py-2 pr-4">Crawler hits</th>
+                <th class="py-2 pr-4">Window covered</th><th class="py-2">Ingested</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ingestions.map((r: any) => (
+                <tr class="border-b border-gray-100 align-top">
+                  <td class="py-2 pr-4 font-bold text-brand-dark">{str(r.source_name)}</td>
+                  <td class="py-2 pr-4">{str(r.format)}</td>
+                  <td class="py-2 pr-4">{num(Number(r.lines_read))}</td>
+                  <td class="py-2 pr-4">{num(Number(r.lines_parsed))}</td>
+                  <td class="py-2 pr-4 text-amber-800">{num(Number(r.lines_rejected))}</td>
+                  <td class="py-2 pr-4">{num(Number(r.crawler_hits))}</td>
+                  <td class="py-2 pr-4 text-gray-500">{fmtWhen(r.window_start)} → {fmtWhen(r.window_end)}</td>
+                  <td class="py-2 text-gray-500">{fmtWhen(r.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  </div>
+</AdminLayout>
