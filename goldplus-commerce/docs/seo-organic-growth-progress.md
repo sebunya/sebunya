@@ -555,30 +555,113 @@ Coverage reports which missing facts block the most answers, so the AEO work
 queue is derived from absence rather than a content wish list. A content gap
 must pass all six conditions — the gate that stops this becoming a page factory.
 
+## P1 CANONICAL INTELLIGENCE — RELEASED 2026-08-13
+
+The P1 engines now have durable memory. Migration 0122 applied, materialisation
+wired to the existing six-hourly tick, Control Center surfacing real persisted
+intelligence.
+
+### Schema: six tables, not one per engine
+
+Cannibalisation, content intelligence and content gaps are opportunity CLASSES
+sharing identity, scoring, readiness and lifecycle — separate tables would
+fragment the portfolio and make root-cause consolidation impossible. Page
+ownership is 1:1 with a cluster, so it lives on the cluster row.
+
+Identity is the load-bearing idea: every durable object carries a deterministic
+semantic key that survives restart, redeploy, policy rescoring, backfill and
+provider activation, because the key is what history and work items hang from.
+Three hashes stay separate — `source` (reality), `semantic` (meaning),
+`evaluation` (judgement) — so "the algorithm changed" is permanently
+distinguishable from "demand changed".
+
+### Proven against production-shaped PostgreSQL, not mocks
+
+| Gate | Result |
+|---|---|
+| identical replay | **0 rows, 0 history, 0 work items, 3 unchanged** |
+| duplicate opportunities / work items | 0 / 0 |
+| material change | same key, `first_seen` preserved, **0 new rows** |
+| evidence graph | 0 orphan components, 0 orphan history |
+| UNKNOWN stored as a number | **0** |
+| concurrency (two racers) | `[true, false]`, 0 duplicates |
+| READY with a missing fact | **rejected by the database** |
+
+Five schema guardrails were separately proven to REJECT the states they exist
+to prevent (READY-with-missing-fact, UNKNOWN-carrying-figures,
+CLOSED-without-reason, duplicate identity), and that `ON CONFLICT
+(opportunity_key)` updates in place — the Guardian's partial-index trap does
+not recur.
+
+### Two defects the proof caught before production
+
+1. `cannot cast type record to text[]` — a raw JS array bound as a RECORD.
+   **The third appearance of this exact defect family**, after the
+   RecommendationMaterializer froze a cache for a week. Invisible to the type
+   checker and to fakes; only real PostgreSQL surfaces it.
+2. My own proof harness filtered the failure summary out and reported a wall of
+   zeros that read as a clean pass. A harness that cannot fail loudly is worse
+   than no harness. Fixed to abort on a failed run.
+
+### First production materialisation
+
+```
+FIRST  FULL_REBUILD  3 evaluated · 3 new · 3 history events
+SECOND INCREMENTAL   3 evaluated, none changed.
+                     No domain write, no work item, no history.
+```
+
+Live portfolio, honestly reported with Search Console unconnected:
+
+```
+Power Devices  WATCH    READY           LOW  REPRIORITISE_WORK  33.5
+Sound Devices  WATCH    READY           LOW  REPRIORITISE_WORK  33.5
+Other          BLOCKED  CATALOGUE_THIN  LOW  EXPAND_CATALOGUE   33.0
+```
+
+All three list seven missing evidence dimensions. Confidence is LOW precisely
+because demand is unknown — and 0 work items were created, because a
+low-confidence opportunity does not get to occupy a human queue. `Other` is
+correctly BLOCKED with EXPAND_CATALOGUE rather than "index this page".
+
+### Control Center
+
+`/admin/seo/opportunities-intel` — the portfolio plus the mandatory
+"why did GoldPlus decide this?" drill-down: every score component with raw
+evidence, evidence state, weight and contribution; the policy version in force;
+root cause and the siblings one fix unlocks; material history. An absent
+provider renders **WAITING FOR PROVIDER**, never a zero.
+
 ## Current state
 
 ```
-STATUS=P1 ENGINEERING COMPLETE (not released — no runtime change to release)
-LOCAL_HEAD = ORIGIN_HEAD = aeeb0c8   PRODUCTION_HEAD=6173fd4
-GUARDIAN=LIVE · 0 */6 * * * · OBSERVE_ONLY · WAITING_FOR_CREDENTIAL (unchanged)
-MIGRATION_CEILING=1789606800000 (0121) — no 0122 needed yet
-TESTS=6463/6463 · 75 new · typecheck clean
+STATUS=P1 RELEASED · PRODUCTION VERIFIED · INTELLIGENCE ACTIVE
+LOCAL_HEAD = ORIGIN_HEAD = PRODUCTION_HEAD = 4a8068a
+MIGRATION_CEILING=1789610400000 (0122) · EXPAND_ONLY · backward compatible
+api sha256:4001bf873ccf · web sha256:2690dffcf836
+BACKUP=pre-0122-20260813-123723.dump retained
+GUARDIAN=unchanged · 0 */6 * * * · OBSERVE_ONLY · 4 repeat jobs intact
+AUTONOMY_LEVEL=0 · EXTERNAL_SEO_WRITES=false
+TESTS=6501/6501 · SEO regression none · commerce regression none
 ```
 
-### Deliberately NOT done in this tranche
+### Rollback
 
-Persistence, wiring and Control Center surfaces for the P1 engines. They are
-pure functions with no callers yet. Wiring them means a migration (0122) to
-persist clusters, ownership, scores and answer units — and on the evidence of
-the Guardian tranche, that work needs production-shaped execution to be
-trustworthy, not just unit tests.
+`APPLICATION_ROLLBACK_WITH_EXPANDED_SCHEMA`. 0122 is additive; the previous
+application is unaware of all six `seo_intel_*` tables, so the artifact can be
+rolled back with the schema left in place. No database restore is implied.
 
-That is the next tranche, and it is worth doing in the right order: the engines
-are proven in isolation first, then persisted, then surfaced.
+### Remaining internally-controllable work
+
+Query clusters, page ownership and answer units have schema and engines but no
+materialisation path yet (only the opportunity spine is wired). Incremental
+affected-entity selection currently evaluates all categories — correct but not
+yet narrowed. GA4/Merchant hot-plug is structurally ready and untested against
+real data.
 
 ### Owner action unchanged
 
 Upload the Search Console service-account JSON in `/admin/seo/integrations`.
-Everything above becomes materially more useful the moment real demand data
-exists — and the modules were written so that GSC enriches them rather than
-requiring a rebuild.
+On the next tick, demand becomes KNOWN, confidence rises, scores re-rank — and
+the SAME opportunity keys are enriched rather than recreated. That contract is
+tested.
