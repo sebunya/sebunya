@@ -163,4 +163,35 @@ routes.get('/matrix', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
   });
 });
 
+// ── Organic Intelligence read APIs (0122) ──────────────────────────────────
+
+/**
+ * The portfolio. Summary first, bounded, with evidence states rendered
+ * honestly — an absent provider is WAITING_FOR_PROVIDER, never a zero.
+ */
+routes.get('/intel/opportunities', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
+  const bucket = c.req.query('bucket');
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 50, 1), 200);
+  const repo = Registry.getInstance().seoWorkQueueRepo as any;
+  return ok(c, await repo.listOpportunities({ bucket, limit }));
+});
+
+/**
+ * "Why did GoldPlus decide this?" — the trust surface. Returns the score
+ * components with their raw evidence, the policy version in force, what was
+ * unknown, the root cause and the history.
+ */
+routes.get('/intel/opportunities/:key/why', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
+  const key = c.req.param('key') ?? '';
+  const repo = Registry.getInstance().seoWorkQueueRepo as any;
+  const detail = await repo.explainOpportunity(key);
+  if (!detail) return bad(c, 'NOT_FOUND', 'No such opportunity.', 404);
+  return ok(c, detail);
+});
+
+routes.get('/intel/runs', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
+  const repo = Registry.getInstance().seoWorkQueueRepo as any;
+  return ok(c, await repo.listIntelRuns(20));
+});
+
 export default routes;

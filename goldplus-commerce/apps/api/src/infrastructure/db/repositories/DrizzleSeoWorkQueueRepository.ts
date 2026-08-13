@@ -148,6 +148,71 @@ export class DrizzleSeoWorkQueueRepository {
     return rows.map((r) => ({ category: String(r.category), observations: Number(r.observations) }));
   }
 
+  // ── Organic Intelligence reads (0122) ─────────────────────────────────────
+
+  /** Portfolio summary. Bounded, ordered by adjusted score, closed excluded. */
+  async listOpportunities(filter: { bucket?: string; limit?: number } = {}): Promise<any[]> {
+    const limit = Math.min(Math.max(Number(filter.limit) || 50, 1), 200);
+    return rowsOf(await db.execute(sql`
+      select opportunity_key, opportunity_class, entity_type, entity_id, entity_label,
+             root_cause_key, score, adjusted_score, unscored_weight_share,
+             commercial_readiness, seo_ready, content_ready, confidence,
+             evidence_completeness, evidence_available, evidence_missing,
+             effort, risk, priority_bucket, recommended_action_class, status,
+             work_item_id, policy_version, first_seen_at, last_material_change_at
+      from seo_intel_opportunities
+      where status not in ('CLOSED','DECAYED')
+        and (${filter.bucket ?? null}::text is null or priority_bucket = ${filter.bucket ?? null})
+      order by
+        case priority_bucket when 'NOW' then 0 when 'NEXT' then 1 when 'BLOCKED' then 2 else 3 end,
+        adjusted_score desc nulls last
+      limit ${limit}
+    `));
+  }
+
+  /**
+   * The full decision record for one opportunity: components with raw
+   * evidence, what was unknown, the policy in force, root-cause siblings and
+   * the material history.
+   */
+  async explainOpportunity(key: string): Promise<any | null> {
+    const opp = rowsOf(await db.execute(sql`
+      select * from seo_intel_opportunities where opportunity_key = ${key}
+    `))[0];
+    if (!opp) return null;
+
+    const components = rowsOf(await db.execute(sql`
+      select component, raw_evidence, evidence_state, normalized, weight, contribution, reason_code, policy_version
+      from seo_intel_score_components
+      where opportunity_key = ${key} and evaluation_hash = ${opp.evaluation_hash}
+      order by contribution desc
+    `));
+    const history = rowsOf(await db.execute(sql`
+      select event_type, from_state, to_state, reason, policy_version, occurred_at
+      from seo_intel_history where opportunity_key = ${key}
+      order by occurred_at desc limit 50
+    `));
+    const siblings = opp.root_cause_key
+      ? rowsOf(await db.execute(sql`
+          select opportunity_key, entity_label, adjusted_score
+          from seo_intel_opportunities
+          where root_cause_key = ${opp.root_cause_key} and opportunity_key <> ${key}
+          order by adjusted_score desc nulls last limit 50
+        `))
+      : [];
+
+    return { opportunity: opp, components, history, rootCauseSiblings: siblings };
+  }
+
+  async listIntelRuns(limit = 20): Promise<any[]> {
+    return rowsOf(await db.execute(sql`
+      select id, mode, status, started_at, finished_at, policy_version,
+             entities_evaluated, opportunities_created, opportunities_updated,
+             opportunities_unchanged, history_events, evidence_state, error
+      from seo_intel_runs order by started_at desc limit ${Math.min(Math.max(limit, 1), 100)}
+    `));
+  }
+
   /** Our own best observed rank per category, for the outrank gap. */
   async ourBestRankByCategory(days = 90): Promise<Array<{ category: string; bestRank: number | null }>> {
     const rows = rowsOf(await db.execute(sql`

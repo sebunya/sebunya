@@ -201,6 +201,20 @@ export function registerAllWorkers(): void {
         const { runSearchConsoleGuardian } = await import('../seo/SearchConsoleGuardianRunner');
         const outcome = await runSearchConsoleGuardian();
         logger.info({ ...outcome }, '[QueueWorker] Search Console Guardian finished');
+
+        // Organic Intelligence materialises on the SAME six-hourly tick — one
+        // schedule, not two. It runs whether or not Search Console is
+        // connected: commerce and technical truth already support useful
+        // partial-evidence intelligence, and provider absence is reported as
+        // UNKNOWN rather than blocking the run. Failures are isolated so the
+        // Guardian's own result still stands.
+        try {
+          const { runOrganicIntelligence } = await import('../seo/OrganicIntelligenceRunner');
+          const intel = await runOrganicIntelligence('INCREMENTAL');
+          logger.info({ mode: intel.mode, counts: intel.counts, summary: intel.summary }, '[QueueWorker] Organic Intelligence finished');
+        } catch (err) {
+          logger.error({ err: String((err as Error)?.message ?? err) }, '[QueueWorker] Organic Intelligence failed; Guardian result unaffected');
+        }
       } else if (job.name === 'seo-integration-sync') {
         // 0118 Integrations Control Plane: per-connection sync jobs, isolated
         // per connection; failures land on the job row, never in commerce paths.

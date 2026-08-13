@@ -34,6 +34,7 @@ const EXPECTED: Array<{ label: string; href: string }> = [
   { label: 'Crawler Logs', href: '/admin/seo/crawler-logs' },
   { label: 'robots.txt', href: '/admin/seo/robots' },
   { label: 'Core Web Vitals', href: '/admin/seo/web-vitals' },
+  { label: 'Organic Intelligence', href: '/admin/seo/opportunities-intel' },
 ];
 
 const PAGES = path.resolve(__dirname, '../../apps/web/src/pages');
