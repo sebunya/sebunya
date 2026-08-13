@@ -801,10 +801,10 @@ const demandBlind = (): EntityCandidate => ({
   evidenceStates: { ...candidate().evidenceStates, SEARCH_DEMAND: 'UNKNOWN' },
 });
 
-/** Mirrors the runner's 5% banding, which is what removes daily noise. */
+/** Mirrors the runner's fixed-grid banding, which is what removes daily noise. */
 const band = (n: number) => {
   if (!Number.isFinite(n) || n <= 0) return 0;
-  const step = Math.max(1, Math.round(n * 0.05));
+  const step = Math.max(1, 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1));
   return Math.round(n / step) * step;
 };
 

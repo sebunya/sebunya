@@ -162,9 +162,15 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
         // opportunity on every run — daily churn that says nothing. Banding to
         // 5% keeps the meaning ("about five thousand impressions") and drops
         // the noise. The exact figures remain in gsc_performance for analysis.
+        // Two significant figures, on a FIXED grid.
+        //
+        // Deriving the step from the value itself (n * 5%) is self-referential:
+        // a tiny change alters the step, which alters the banded result, so the
+        // noise it was meant to absorb comes straight back. The grid must
+        // depend only on magnitude.
         const band = (n: number) => {
           if (!Number.isFinite(n) || n <= 0) return 0;
-          const step = Math.max(1, Math.round(n * 0.05));
+          const step = Math.max(1, 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1));
           return Math.round(n / step) * step;
         };
         const demandComponent = demand
