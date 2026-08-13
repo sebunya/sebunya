@@ -254,8 +254,8 @@ export const forbiddenClaims = Object.freeze([
 
 export const supportActions = Object.freeze([
   { label: "Get preference help", href: "/support", description: "Ask GoldPlus support what can be confirmed or updated today." },
-  { label: "Read privacy guidance", href: "/privacy", description: "Understand current interim data-use guidance." },
-  { label: "Read terms", href: "/terms", description: "Review current interim service terms." },
+  { label: "Read privacy guidance", href: "/privacy", description: "Understand how your data is used." },
+  { label: "Read terms", href: "/terms", description: "Review the service terms in force." },
 ]);
 
 export function preferenceCentreSafetySummary() {

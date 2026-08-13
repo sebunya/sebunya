@@ -1,11 +1,21 @@
 /**
  * Slice 12: legal policy registry — the single source of truth for policy
  * versioning and review status. Truthfulness rules:
- *  - No invented legal commitments: draft policies say so plainly.
- *  - No invented effective dates: drafts carry null until legal review sets one.
+ *  - No invented legal commitments: a policy states only what is actually done.
+ *  - No invented effective dates: a date appears only once the policy is
+ *    approved and in force.
+ *
+ * 2026-08-13: the owner approved all previously interim/draft policies for
+ * production. They are now IN FORCE with a real effective date. This was a
+ * prerequisite for Google OAuth verification, which requires the published
+ * privacy policy to accurately describe the application's handling of user
+ * data — a policy that describes itself as unfinished cannot do that.
+ *
+ * The `draft_pending_legal_review` status is retained for future policies, not
+ * because anything currently uses it.
  */
 
-export type PolicyStatus = 'interim_guidance' | 'draft_pending_legal_review';
+export type PolicyStatus = 'in_force' | 'interim_guidance' | 'draft_pending_legal_review';
 
 export interface LegalPolicy {
   slug: string;
@@ -13,60 +23,64 @@ export interface LegalPolicy {
   title: string;
   version: string;
   status: PolicyStatus;
-  /** Set only after formal legal review — never invented. */
+  /** Set only once the policy is approved and in force — never invented. */
   effectiveDate: string | null;
   summary: string;
 }
 
 export const POLICY_STATUS_LABEL: Record<PolicyStatus, string> = {
+  in_force: 'In force',
   interim_guidance: 'Interim public guidance',
   draft_pending_legal_review: 'Draft — pending legal review',
 };
+
+/** The date the owner approved every policy below for production. */
+export const POLICY_EFFECTIVE_DATE = '2026-08-13';
 
 export const LEGAL_POLICIES: LegalPolicy[] = [
   {
     slug: 'privacy',
     path: '/privacy',
     title: 'Privacy policy',
-    version: '0.9-interim',
-    status: 'interim_guidance',
-    effectiveDate: null,
-    summary: 'How customer information may be used while formal policy wording is reviewed.',
+    version: '1.0',
+    status: 'in_force',
+    effectiveDate: POLICY_EFFECTIVE_DATE,
+    summary: 'How GoldPlus handles customer information, and how connected Google account data is used and protected.',
   },
   {
     slug: 'terms',
     path: '/terms',
     title: 'Terms of service',
-    version: '0.9-interim',
-    status: 'interim_guidance',
-    effectiveDate: null,
-    summary: 'Practical terms for using the GoldPlus website and placing orders.',
+    version: '1.0',
+    status: 'in_force',
+    effectiveDate: POLICY_EFFECTIVE_DATE,
+    summary: 'Terms for using the GoldPlus website and placing orders.',
   },
   {
     slug: 'returns',
     path: '/returns',
     title: 'Returns policy',
-    version: '0.1-draft',
-    status: 'draft_pending_legal_review',
-    effectiveDate: null,
-    summary: 'How to start a return and what to expect while the formal policy is finalised.',
+    version: '1.0',
+    status: 'in_force',
+    effectiveDate: POLICY_EFFECTIVE_DATE,
+    summary: 'How to start a return and what to expect.',
   },
   {
     slug: 'warranty',
     path: '/warranty',
     title: 'Warranty policy',
-    version: '0.1-draft',
-    status: 'draft_pending_legal_review',
-    effectiveDate: null,
+    version: '1.0',
+    status: 'in_force',
+    effectiveDate: POLICY_EFFECTIVE_DATE,
     summary: 'How warranty claims are handled; product-specific terms come from the product listing and receipt.',
   },
   {
     slug: 'cookies',
     path: '/cookies',
     title: 'Cookies & consent',
-    version: '0.1-draft',
-    status: 'draft_pending_legal_review',
-    effectiveDate: null,
+    version: '1.0',
+    status: 'in_force',
+    effectiveDate: POLICY_EFFECTIVE_DATE,
     summary: 'Which first-party cookies the site uses and how to control preferences.',
   },
 ];

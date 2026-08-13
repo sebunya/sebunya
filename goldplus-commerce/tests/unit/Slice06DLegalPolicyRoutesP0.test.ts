@@ -9,11 +9,15 @@ const layout = read('apps/web/src/layouts/BaseLayout.astro');
 const legalPages = `${terms}\n${privacy}`;
 
 describe('Slice 06-D legal policy routes P0', () => {
-  it('renders concise interim terms and privacy pages', () => {
+  it('renders concise, in-force terms and privacy pages', () => {
     expect(terms).toContain('<h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Terms of service</h1>');
     expect(privacy).toContain('<h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Privacy policy</h1>');
-    expect(terms).toContain('This interim page provides practical customer guidance');
-    expect(privacy).toContain('This interim page explains in practical terms');
+    // 2026-08-13: the owner approved these policies for production, so they no
+    // longer describe themselves as provisional. Google OAuth verification
+    // requires the published privacy policy to be a definite document.
+    expect(terms).toContain('These terms apply to your use of the GoldPlus website');
+    expect(privacy).toContain('This policy explains what information GoldPlus handles');
+    expect(legalPages).not.toMatch(/interim|pending legal review|to be confirmed/i);
   });
 
   it('links both pages back to support and to each other', () => {
@@ -49,6 +53,10 @@ describe('Slice 06-D legal policy routes P0', () => {
     expect(legalPages).toContain('aria-label="Privacy sections"');
     expect(legalPages).toContain('focus-visible:ring-2');
     expect(legalPages).toContain('sm:flex-row');
-    expect(legalPages).not.toMatch(/fetch\(|postJson|apiBase|PesaPal|WhatsAppAdapter|sendWhatsApp|measurement|telemetry|auth|method=["']POST/i);
+    // The bare word `auth` was matching the PROSE word "Authorisation" in the
+    // privacy policy's Google-data section — a false positive against a guard
+    // whose intent is "no provider/mutation CODE on a public legal page".
+    // Narrowed to the actual code constructs; the intent is unchanged.
+    expect(legalPages).not.toMatch(/fetch\(|postJson|apiBase|PesaPal|WhatsAppAdapter|sendWhatsApp|measurement|telemetry|authMiddleware|readSessionToken|Authorization:|method=["']POST/i);
   });
 });

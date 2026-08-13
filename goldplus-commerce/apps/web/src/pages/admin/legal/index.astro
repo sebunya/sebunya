@@ -297,7 +297,7 @@ const linkButtonClass = "text-[10px] font-black uppercase tracking-widest text-g
       <p class="text-sm text-gray-500 mt-1 max-w-3xl">
         Governed drafting for the public legal pages. Every change moves draft → review → approval
         before it can publish, and nothing goes public without approval. Until a policy has a
-        published version, its public page keeps showing the interim static wording.
+        published version, its public page keeps showing the built-in published wording.
       </p>
     </div>
 
@@ -489,14 +489,14 @@ const linkButtonClass = "text-[10px] font-black uppercase tracking-widest text-g
     {loadFailed && (
       <div class="bg-white border border-red-200 rounded-2xl p-12 text-center text-red-500 italic">
         Legal policies could not be loaded (service unavailable or permission denied). The public
-        pages keep serving their interim static wording regardless.
+        pages keep serving their built-in published wording regardless.
       </div>
     )}
 
     {!loadFailed && policies.length === 0 && (
       <div class="bg-white border border-dashed border-gray-300 rounded-2xl p-12 text-center">
         <p class="text-sm font-bold text-gray-600">The legal service returned no policies.</p>
-        <p class="text-xs text-gray-400 mt-2">The public pages continue to show the interim static wording.</p>
+        <p class="text-xs text-gray-400 mt-2">The public pages continue to show their built-in published wording.</p>
       </div>
     )}
 
@@ -518,7 +518,7 @@ const linkButtonClass = "text-[10px] font-black uppercase tracking-widest text-g
                 </>
               ) : (
                 <p class="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-xs text-left">
-                  No published version — the public page shows the interim static wording.
+                  No published version — the public page shows its built-in published wording.
                 </p>
               )}
             </div>

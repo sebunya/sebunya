@@ -4,8 +4,8 @@ import { policyBySlug, POLICY_STATUS_LABEL } from '../lib/legal-policies';
 const policy = policyBySlug('returns')!;
 import CmsPolicyDocument from '../components/CmsPolicyDocument.astro';
 import { fetchPublishedPolicy } from '../lib/legalCms';
-// Wave 2C: a PUBLISHED CMS version replaces the interim static wording below;
-// until one exists this page keeps its truthful interim content unchanged.
+// Wave 2C: a PUBLISHED CMS version replaces the wording below; until one
+// exists this page is the authoritative published policy.
 const cms = await fetchPublishedPolicy('returns');
 ---
 
@@ -18,9 +18,9 @@ const cms = await fetchPublishedPolicy('returns');
         <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Returns policy</h1>
         <p class="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">This draft explains how to start a return today. The formal returns policy, with exact windows and refund rules, is being prepared and reviewed.</p>
         <p class="mt-4 inline-flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
-          <span class="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-amber-800">{POLICY_STATUS_LABEL[policy.status]}</span>
+          <span class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-emerald-900">{POLICY_STATUS_LABEL[policy.status]}</span>
           <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Version {policy.version}</span>
-          <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Effective date: {policy.effectiveDate ?? 'to be confirmed after legal review'}</span>
+          <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Effective date: {policy.effectiveDate}</span>
         </p>
       </div>
     </header>
