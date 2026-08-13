@@ -17,9 +17,13 @@ import {
 } from './OpportunityPortfolio';
 import { buildAnswerUnit, type AnswerUnitDraft } from './AnswerUnitEngine';
 import {
-  clusterQueries, classifyIntent, resolveOwnership, classifyCannibalisation,
+  clusterQueries, classifyIntent, resolveOwnership, classifyCannibalisation, intentConsensus,
   type ClusterEntity, type Intent, type OwnerType,
 } from './QueryIntelligence';
+import {
+  planAffectedEntities, planEfficiency,
+  type EntityRef, type SourceChange, type DependencyResolver, type AffectedPlan,
+} from './AffectedEntityPlanner';
 
 /**
  * THE single materialisation boundary.
@@ -37,6 +41,21 @@ import {
 
 export const MATERIALISATION_MODES = ['INCREMENTAL', 'FULL_REBUILD', 'BACKFILL', 'REPLAY'] as const;
 export type MaterialisationMode = (typeof MATERIALISATION_MODES)[number];
+
+/**
+ * What the run ACTUALLY did, as opposed to what it was asked to do. A run that
+ * evaluated the whole universe must never report itself as INCREMENTAL — the
+ * label is how the previous implementation hid the fact that nothing was being
+ * narrowed.
+ */
+export const EXECUTION_MODES = [
+  'INCREMENTAL_EXACT',
+  'INCREMENTAL_EXPANDED',
+  'FULL_FALLBACK',
+  'FULL_REBUILD',
+  'PROVIDER_INITIAL_ENRICHMENT',
+] as const;
+export type ExecutionMode = (typeof EXECUTION_MODES)[number];
 
 /** One entity the pipeline may form an opinion about. */
 export interface EntityCandidate {
@@ -121,8 +140,28 @@ export interface MaterialiserPorts {
     evidenceState: Record<string, unknown>; error?: string;
   }): Promise<void>;
 
-  /** Entities to evaluate. INCREMENTAL supplies only affected ones. */
-  loadCandidates(mode: MaterialisationMode): Promise<EntityCandidate[]>;
+  /**
+   * Entities to evaluate.
+   *
+   * `affected` is the planner's output. When it is present the port MUST load
+   * only those entities — a port that ignores it and returns the whole
+   * universe turns "incremental" back into a label, which is the exact defect
+   * this closure tranche exists to fix. When it is null (FULL_REBUILD,
+   * FULL_FALLBACK, GLOBAL) the full universe is correct.
+   */
+  loadCandidates(mode: MaterialisationMode, affected: EntityRef[] | null): Promise<EntityCandidate[]>;
+
+  /** Everything evaluable, for planner fallback and work-reduction reporting. */
+  loadUniverse(): Promise<EntityRef[]>;
+  /** Resolves what changed since the last successful materialisation. */
+  resolveChanges(): Promise<{
+    snapshotId: string;
+    changes: SourceChange[];
+    coverageLimits: string[];
+    commit(): Promise<void>;
+  } | null>;
+  /** The dependency graph the planner walks. */
+  dependencyResolver(): Promise<DependencyResolver>;
   /** Current stored snapshots, keyed by opportunity key. */
   loadSnapshots(keys: string[]): Promise<Map<string, StoredSnapshot>>;
 
@@ -144,7 +183,18 @@ export interface MaterialiserPorts {
   linkWorkItem(input: { opportunityKey: string; workItemId: string }): Promise<void>;
 
   /** Queries GoldPlus tracks, plus entities to cluster them against. */
-  loadQueryUniverse(): Promise<{ queries: Array<{ raw: string; source: string; observedAt: string | null; isBackfill: boolean }>; entities: ClusterEntity[] }>;
+  loadQueryUniverse(): Promise<{
+    queries: Array<{
+      raw: string; source: string; observedAt: string | null; isBackfill: boolean;
+      /** seo_queries.intent — already recorded, and must not be re-derived away. */
+      intent?: string | null;
+      /** seo_queries.evidence_state — decides whether that intent is trusted. */
+      evidenceState?: string | null;
+    }>;
+    entities: ClusterEntity[];
+    /** Canonical route + readiness per entity, for entity-aware ownership. */
+    entityRoutes?: Map<string, { url: string | null; ownerType: string | null; catalogueReady: boolean; seoEligible: boolean }>;
+  }>;
   upsertCluster(input: {
     clusterKey: string; label: string; method: string; confidence: number;
     membershipSignature: string; memberCount: number; entityId: string | null; entityType: string | null;
@@ -184,6 +234,12 @@ export interface MaterialiserPorts {
     verificationPlan: string; state: string; decisionReason: string;
   }): Promise<{ changed: boolean }>;
 
+  /**
+   * Answer-unit drafts and their current grounding facts. `affectedKeys` is
+   * the planner's fact-invalidation output; null means re-evaluate all.
+   */
+  loadAnswerUnitDrafts(affectedKeys: string[] | null): Promise<Array<AnswerUnitDraft & { templateId: string; entityContext: string }>>;
+
   upsertAnswerUnit(input: {
     answerKey: string; templateId: string | null; displayQuestion: string; intent: string;
     answerType: string; readiness: string; confidence: string; blockedReason: string | null;
@@ -219,6 +275,22 @@ export interface MaterialisationResult {
   rootCauses: number;
   answerUnitsChanged: number;
   summary: string;
+  /** What the run actually did. */
+  executionMode: ExecutionMode;
+  /** The source boundary this result is attributable to. */
+  sourceSnapshotId: string | null;
+  /** Work-reduction evidence: proves the optimisation is real, or that it isn't. */
+  planning: {
+    sourceChanges: number;
+    totalEligible: number;
+    directAffected: number;
+    dependentAffected: number;
+    evaluated: number;
+    skippedUnaffected: number;
+    planMode: string;
+    reasons: string[];
+    coverageLimits: string[];
+  } | null;
   /**
    * Per-domain execution record. A zero count is only meaningful once
    * `executed` is true — a stage that never ran must never read as "nothing
@@ -344,15 +416,71 @@ export class OrganicIntelligenceMaterialiser {
       return {
         ran: false, runId: null, mode, counts: emptyCounts(), rootCauses: 0, answerUnitsChanged: 0,
         summary: 'Another materialisation holds the lease; this invocation stood down.',
-        stages: {},
+        stages: {}, executionMode: 'FULL_REBUILD', sourceSnapshotId: null, planning: null,
       };
     }
     const runId = started.runId;
     const counts = emptyCounts();
     const stages: Record<string, StageOutcome> = {};
 
+    // ── Source resolution and affected-entity planning ──────────────────────
+    //
+    // This is what makes incremental real. The planner decides what must be
+    // evaluated; loadCandidates is then obliged to load only that.
+    let executionMode: ExecutionMode = mode === 'FULL_REBUILD' ? 'FULL_REBUILD' : 'FULL_FALLBACK';
+    let sourceSnapshotId: string | null = null;
+    let planning: MaterialisationResult['planning'] = null;
+    let affected: EntityRef[] | null = null;
+    let commitCursors: (() => Promise<void>) | null = null;
+    let plan: AffectedPlan | null = null;
+    let answerUnitsChanged = 0;
+
     try {
-      const candidates = await this.ports.loadCandidates(mode);
+      // Every materialisation records the source boundary it read, including a
+      // full rebuild. Without that a rebuild cannot be compared against an
+      // incremental run at all, and §13 parity would be permanently
+      // INCONCLUSIVE — which is exactly what happened before this line.
+      const resolved = await this.ports.resolveChanges();
+      if (resolved) {
+        sourceSnapshotId = resolved.snapshotId;
+        commitCursors = resolved.commit;
+
+        // Only an incremental run may narrow. A rebuild deliberately ignores
+        // the plan and evaluates everything.
+        if (mode === 'INCREMENTAL') {
+          const universe = await this.ports.loadUniverse();
+          plan = planAffectedEntities({
+            changes: resolved.changes,
+            resolver: await this.ports.dependencyResolver(),
+            universe,
+          });
+
+          // Only an EXACT plan narrows the load. EXPANDED, FULL_FALLBACK and
+          // GLOBAL all mean "evaluate everything", and each says so honestly
+          // rather than reporting a narrowed run it did not perform.
+          affected = plan.mode === 'EXACT' ? plan.evaluate : null;
+          executionMode =
+            plan.mode === 'EXACT' ? 'INCREMENTAL_EXACT'
+            : plan.mode === 'EXPANDED' ? 'INCREMENTAL_EXPANDED'
+            : plan.mode === 'GLOBAL' ? 'FULL_REBUILD'
+            : 'FULL_FALLBACK';
+
+          const eff = planEfficiency(plan, universe.length);
+          planning = {
+            sourceChanges: resolved.changes.length,
+            totalEligible: eff.totalEligible,
+            directAffected: eff.directlyAffected,
+            dependentAffected: eff.dependentAffected,
+            evaluated: affected ? affected.length : universe.length,
+            skippedUnaffected: affected ? Math.max(0, universe.length - affected.length) : 0,
+            planMode: plan.mode,
+            reasons: plan.reasons,
+            coverageLimits: resolved.coverageLimits,
+          };
+        }
+      }
+
+      const candidates = await this.ports.loadCandidates(mode, affected);
       counts.entitiesEvaluated = candidates.length;
 
       const evaluated = candidates.map((c) => this.evaluate(c));
@@ -452,23 +580,46 @@ export class OrganicIntelligenceMaterialiser {
       // What the system WOULD do, and why it is not authorised to do it.
       await this.materialiseActionRequests(evaluated, stages);
 
+      // Answer units re-evaluate whenever the facts under them move. A unit
+      // whose grounding fact disappeared must not stay READY.
+      const drafts = await this.ports.loadAnswerUnitDrafts(
+        plan && plan.mode === 'EXACT' ? plan.affectedAnswerUnits : null,
+      );
+      answerUnitsChanged = await this.materialiseAnswerUnits(drafts);
+      stages.ANSWER_UNITS = {
+        executed: true,
+        count: drafts.length,
+        changed: answerUnitsChanged,
+        note: drafts.length === 0 && plan?.mode === 'EXACT'
+          ? 'No fact under any answer unit changed, so none needed re-evaluation.'
+          : undefined,
+      };
+
       await this.ports.finishRun({
         runId, status: 'COMPLETED', counts,
         evidenceState: this.evidenceSummary(candidates),
       });
 
+      // The cursor advances ONLY here — after every stage has executed and the
+      // run is committed. Advancing earlier would silently consume changes a
+      // failed run never actually processed, and a replay would not see them
+      // again.
+      if (commitCursors) await commitCursors();
+
       return {
-        ran: true, runId, mode, counts, rootCauses: groups.length, answerUnitsChanged: 0,
+        ran: true, runId, mode, counts, rootCauses: groups.length, answerUnitsChanged,
         summary: `${this.summarise(mode, counts, groups.length)} ${clusterKeys} cluster(s) materialised.`,
-        stages,
+        stages, executionMode, sourceSnapshotId, planning,
       };
     } catch (err: any) {
       const message = String(err?.message ?? err).slice(0, 500);
       await this.ports.finishRun({ runId, status: 'FAILED', counts, evidenceState: {}, error: message }).catch(() => undefined);
+      // Deliberately NOT committing the cursor: the same ChangeSet must be
+      // available to the next run.
       return {
         ran: true, runId, mode, counts, rootCauses: 0, answerUnitsChanged: 0,
         summary: `Materialisation failed and was contained: ${message}`,
-        stages,
+        stages, executionMode, sourceSnapshotId, planning,
       };
     }
   }
@@ -513,19 +664,41 @@ export class OrganicIntelligenceMaterialiser {
       const key = clusterKey(cluster.label);
       clusterKeysForCannibalisation.push(key);
 
-      const intent = classifyIntent({ raw: cluster.label, entityType: cluster.entityType });
+      // Intent evidence precedence: a query GoldPlus already classified is
+      // stronger evidence than anything re-derived from the cluster label.
+      const memberEvidence = cluster.members
+        .map((m) => queries.find((q) => q.raw === m))
+        .filter((q): q is NonNullable<typeof q> => Boolean(q?.intent) && q!.intent !== 'UNKNOWN');
+      const consensus = intentConsensus(memberEvidence.map((q) => String(q.intent)));
+      const intent = classifyIntent({
+        raw: cluster.label,
+        entityType: cluster.entityType,
+        persisted: consensus.intent
+          ? { intent: consensus.intent as never, evidenceState: consensus.evidenceState, observedAt: null }
+          : null,
+      });
       const competing = (await this.ports.loadCompetingUrls([key])).get(key) ?? [];
       // The incumbent is the live URL with the strongest observed signal; with
       // no demand evidence it is simply the only lifecycle-active candidate.
       const incumbent = competing.filter((u) => u.lifecycleActive)
         .sort((a, b) => (b.impressions ?? -1) - (a.impressions ?? -1))[0] ?? null;
+      // Ownership derives from the entity's canonical route, not from a URL
+      // that happens to contain the query text.
+      const route = cluster.entityId ? universe.entityRoutes?.get(cluster.entityId) ?? null : null;
       const ownership = resolveOwnership({
         intent: intent.primary,
         currentOwnerUrl: incumbent?.url ?? null,
         currentOwnerType: incumbent?.ownerType ?? null,
+        // Nothing here is provider-observed yet, and the competing-URL join is
+        // lexical, so it is recorded as the weak signal it is.
+        currentOwnerEvidence: incumbent ? 'URL_LEXICAL_FALLBACK' : 'NONE',
+        entityCanonicalUrl: route?.url ?? null,
+        entityOwnerType: (route?.ownerType ?? null) as never,
+        catalogueReady: route ? route.catalogueReady : undefined,
+        seoEligible: route ? route.seoEligible : undefined,
         candidateUrl: competing.find((u) => u.url !== incumbent?.url)?.url ?? null,
-        contentThin: (incumbent?.contentSimilarity ?? null) === null ? false : false,
-        hasCommercialDepth: competing.length > 0,
+        contentThin: false,
+        hasCommercialDepth: Boolean(route?.catalogueReady) || competing.length > 0,
         // Demand is only "known" when a provider actually reported it.
         demandKnown: competing.some((u) => u.impressions !== null),
       });
@@ -537,6 +710,7 @@ export class OrganicIntelligenceMaterialiser {
         method: cluster.method,
         intent: intent.primary,
         owner: ownership.preferredOwnerUrl,
+        ownerDecision: ownership.decision,
       });
 
       const changed = priorHashes.get(key) !== membershipSignature;
@@ -554,12 +728,14 @@ export class OrganicIntelligenceMaterialiser {
           secondaryIntent: intent.secondary ?? null,
           intentConfidence: intent.confidence,
           intentMethod: intent.method,
-          currentOwnerUrl: incumbent?.url ?? null,
-          currentOwnerType: incumbent?.ownerType ?? null,
+          // Only trusted evidence may claim current ownership; a lexical URL
+          // match is discarded here rather than persisted as fact.
+          currentOwnerUrl: ownership.currentOwnerUrl,
+          currentOwnerType: ownership.currentOwnerUrl ? (incumbent?.ownerType ?? null) : null,
           preferredOwnerUrl: ownership.preferredOwnerUrl ?? null,
           preferredOwnerType: ownership.preferredOwnerType,
           ownershipDecision: ownership.decision,
-          ownershipRationale: ownership.rationale,
+          ownershipRationale: `${ownership.rationale} ${ownership.preferredOwnerReason}`.trim(),
         });
         if (res.changed) clustersChanged += 1;
       }

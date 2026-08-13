@@ -192,6 +192,13 @@ function harness(over: {
   clusterHashes?: Map<string, string>;
   membershipKeys?: Set<string>;
   competingUrls?: Map<string, any[]>;
+  changes?: any[];
+  universe?: any[];
+  snapshotId?: string;
+  resolverAbsent?: boolean;
+  dependencies?: Partial<Record<string, any>>;
+  answerDrafts?: any[];
+  answerHashes?: Map<string, string>;
 } = {}) {
   const rec = {
     upserts: [] as Array<{ key: string; isNew: boolean }>,
@@ -204,6 +211,11 @@ function harness(over: {
     cannibalisation: [] as string[],
     content: [] as Array<{ key: string; classification: string }>,
     actionRequests: [] as Array<{ key: string; state: string; reason: string }>,
+    /** What loadCandidates was actually asked to load. */
+    loadedWith: [] as Array<any[] | null>,
+    cursorCommits: 0,
+    answerUnits: [] as Array<{ key: string; readiness: string; blocked: string | null }>,
+    answerDraftKeys: [] as Array<string[] | null>,
     workItems: [] as Array<{ key: string; material: boolean }>,
     links: [] as string[],
     finished: [] as Array<Record<string, unknown>>,
@@ -211,7 +223,35 @@ function harness(over: {
   const ports: MaterialiserPorts = {
     startRun: async () => (over.leaseHeld ? null : { runId: 'run-1' }),
     finishRun: async (f) => { rec.finished.push(f as unknown as Record<string, unknown>); },
-    loadCandidates: async () => over.candidates ?? [candidate()],
+    loadCandidates: async (_mode, affected) => {
+      rec.loadedWith.push(affected);
+      const all = over.candidates ?? [candidate()];
+      // A port that ignored `affected` would make "incremental" a label again,
+      // so the fake honours it exactly as the real one must.
+      if (affected === null) return all;
+      // Mirrors the real port: the category/URL namespace is shared, so the
+      // affected set is deduplicated by id before loading.
+      const wanted = new Set(affected.map((a: any) => a.entityId));
+      return all.filter((c) => wanted.has(c.entityId));
+    },
+    loadUniverse: async () => over.universe ?? [{ entityType: 'CATEGORY', entityId: '/storage' }],
+    resolveChanges: async () => over.resolverAbsent ? null : ({
+      snapshotId: over.snapshotId ?? 'snap-1',
+      // The default is "the candidate's own category changed", because these
+      // suites exercise the write pipeline, not the planner. With no changes at
+      // all a truly incremental run correctly evaluates nothing — which is the
+      // whole point of this tranche, and is asserted separately below.
+      changes: over.changes ?? [{ source: 'CATEGORY', entityId: '/storage', changeType: 'UPDATED' }],
+      coverageLimits: ['products: deletion detected by INVENTORY_DIFF'],
+      commit: async () => { rec.cursorCommits += 1; },
+    }),
+    dependencyResolver: async () => ({
+      categoriesForProduct: () => over.dependencies?.categoriesForProduct?.() ?? ['/storage'],
+      urlsForEntity: (r: any) => (r.entityType === 'CATEGORY' ? [r.entityId] : []),
+      clustersForUrl: () => [],
+      answerUnitsForFact: () => over.dependencies?.answerUnitsForFact?.() ?? [],
+      linkSourcesForUrl: () => [],
+    }),
     loadSnapshots: async () => over.snapshots ?? new Map(),
     upsertOpportunity: async (i) => { rec.upserts.push({ key: i.opportunity.opportunityKey, isNew: i.isNew }); },
     writeComponents: async (i) => { rec.components.push(i.opportunityKey); },
@@ -223,8 +263,18 @@ function harness(over: {
       return { workItemId: i.material ? 'wi-1' : null, created: i.material, updated: false };
     },
     linkWorkItem: async (i) => { rec.links.push(i.opportunityKey); },
-    upsertAnswerUnit: async () => ({ changed: true }),
-    loadAnswerUnitHashes: async () => new Map(),
+    loadAnswerUnitDrafts: async (keys) => {
+      rec.answerDraftKeys.push(keys);
+      const all = over.answerDrafts ?? [];
+      if (keys === null) return all as any;
+      const wanted = new Set(keys);
+      return all.filter((d: any) => wanted.has(`${d.templateId}::${d.entityContext}`)) as any;
+    },
+    upsertAnswerUnit: async (i) => {
+      rec.answerUnits.push({ key: i.answerKey, readiness: i.readiness, blocked: i.blockedReason });
+      return { changed: true };
+    },
+    loadAnswerUnitHashes: async () => over.answerHashes ?? new Map(),
 
     loadQueryUniverse: async () => over.queryUniverse ?? { queries: [], entities: [] },
     upsertCluster: async (i) => { rec.clusters.push(i as unknown as Record<string, unknown>); return { changed: true }; },
@@ -498,11 +548,242 @@ describe('the engines that were built but never ran now actually run', () => {
 
   it('classifies content as INSUFFICIENT_EVIDENCE rather than THIN when it has no content signal', async () => {
     const url: EntityCandidate = { ...candidate(), entityType: 'URL', entityId: '/probe-page' };
-    const { m, rec } = harness({ candidates: [url] });
+    const { m, rec } = harness({
+      candidates: [url],
+      changes: [{ source: 'CONTENT', entityId: '/probe-page', changeType: 'UPDATED' }],
+      universe: [{ entityType: 'URL', entityId: '/probe-page' }],
+    });
     await m.execute('INCREMENTAL');
 
     expect(rec.content).toHaveLength(1);
     // THIN is a measurement; without content evidence it would be a fabrication.
     expect(rec.content[0].classification).toBe('INSUFFICIENT_EVIDENCE');
+  });
+});
+
+// ── The planner actually drives execution (§9, §11, §18) ────────────────────
+
+describe('incremental is narrowed by the planner, not merely labelled', () => {
+  const UNIVERSE = [
+    { entityType: 'CATEGORY' as const, entityId: '/storage' },
+    { entityType: 'CATEGORY' as const, entityId: '/power' },
+    { entityType: 'CATEGORY' as const, entityId: '/audio' },
+    { entityType: 'CATEGORY' as const, entityId: '/car' },
+  ];
+  const CANDIDATES = UNIVERSE.map((u) => ({ ...candidate(), entityId: u.entityId, entityLabel: u.entityId }));
+
+  it('loads ONLY the affected entities when the plan is exact', async () => {
+    const { m, rec } = harness({
+      universe: UNIVERSE, candidates: CANDIDATES,
+      changes: [{ source: 'CATEGORY', entityId: '/power', changeType: 'UPDATED' }],
+    });
+    const r = await m.execute('INCREMENTAL');
+
+    // The load was narrowed, not filtered afterwards.
+    expect(rec.loadedWith[0]).not.toBeNull();
+    expect([...new Set(rec.loadedWith[0]!.map((a: any) => a.entityId))]).toEqual(['/power']);
+    expect(r.counts.entitiesEvaluated).toBe(1);
+    expect(r.executionMode).toBe('INCREMENTAL_EXACT');
+  });
+
+  it('reports work reduction honestly', async () => {
+    const { m } = harness({
+      universe: UNIVERSE, candidates: CANDIDATES,
+      changes: [{ source: 'CATEGORY', entityId: '/power', changeType: 'UPDATED' }],
+    });
+    const r = await m.execute('INCREMENTAL');
+
+    expect(r.planning).not.toBeNull();
+    expect(r.planning!.totalEligible).toBe(4);
+    // The planner may name one entity under two types; what matters is that
+    // exactly one candidate was evaluated and three were skipped.
+    expect(r.counts.entitiesEvaluated).toBe(1);
+    expect(r.planning!.totalEligible - r.counts.entitiesEvaluated).toBe(3);
+  });
+
+  it('follows a product change into its category rather than stopping at the product', async () => {
+    const { m, rec } = harness({
+      universe: UNIVERSE, candidates: CANDIDATES,
+      changes: [{ source: 'PRODUCT', entityId: 'p-1', changeType: 'UPDATED' }],
+      dependencies: { categoriesForProduct: () => ['/storage'] },
+    });
+    await m.execute('INCREMENTAL');
+
+    const loaded = rec.loadedWith[0]!.map((a: any) => a.entityId);
+    expect(loaded).toContain('/storage');
+    expect(loaded).not.toContain('/audio');
+  });
+
+  it('evaluates NOTHING when no source change occurred', async () => {
+    const { m, rec } = harness({ universe: UNIVERSE, candidates: CANDIDATES, changes: [] });
+    const r = await m.execute('INCREMENTAL');
+
+    // The honest answer to "what changed?" being "nothing" is not a reason to
+    // recompute the world.
+    expect(r.counts.entitiesEvaluated).toBe(0);
+    expect(rec.upserts).toHaveLength(0);
+  });
+
+  it('loads the whole universe when a policy change makes the run global', async () => {
+    const { m, rec } = harness({
+      universe: UNIVERSE, candidates: CANDIDATES,
+      changes: [{ source: 'POLICY', entityId: 'scoring', changeType: 'UPDATED' }],
+    });
+    const r = await m.execute('INCREMENTAL');
+
+    expect(rec.loadedWith[0]).toBeNull();
+    expect(r.counts.entitiesEvaluated).toBe(4);
+    // A global run must not describe itself as incremental.
+    expect(r.executionMode).toBe('FULL_REBUILD');
+  });
+
+  it('widens rather than narrow when a change source has no dependency rule', async () => {
+    const { m, rec } = harness({
+      universe: UNIVERSE, candidates: CANDIDATES,
+      changes: [{ source: 'UNKNOWN', entityId: '???', changeType: 'UPDATED' }],
+    });
+    const r = await m.execute('INCREMENTAL');
+
+    expect(rec.loadedWith[0]).toBeNull();
+    expect(r.executionMode).toBe('INCREMENTAL_EXPANDED');
+  });
+
+  it('never narrows a FULL_REBUILD', async () => {
+    const { m, rec } = harness({ universe: UNIVERSE, candidates: CANDIDATES });
+    const r = await m.execute('FULL_REBUILD');
+
+    expect(rec.loadedWith[0]).toBeNull();
+    expect(r.counts.entitiesEvaluated).toBe(4);
+    expect(r.executionMode).toBe('FULL_REBUILD');
+  });
+
+  it('attributes the result to a source snapshot', async () => {
+    const { m } = harness({ universe: UNIVERSE, candidates: CANDIDATES, snapshotId: 'snap-xyz' });
+    const r = await m.execute('INCREMENTAL');
+    expect(r.sourceSnapshotId).toBe('snap-xyz');
+  });
+
+  it('surfaces the deletion coverage limit rather than implying exactness', async () => {
+    const { m } = harness({ universe: UNIVERSE, candidates: CANDIDATES });
+    const r = await m.execute('INCREMENTAL');
+    expect(r.planning!.coverageLimits.join(' ')).toMatch(/INVENTORY_DIFF/);
+  });
+});
+
+// ── Cursor commitment (§4, §41) ─────────────────────────────────────────────
+
+describe('the source cursor advances only after a successful run', () => {
+  it('commits the cursor when the run completes', async () => {
+    const { m, rec } = harness();
+    await m.execute('INCREMENTAL');
+    expect(rec.cursorCommits).toBe(1);
+  });
+
+  it('does NOT commit the cursor when the run fails', async () => {
+    const { m, rec, ports } = harness();
+    ports.upsertOpportunity = async () => { throw new Error('storage exploded'); };
+    const r = await m.execute('INCREMENTAL');
+
+    // If the cursor advanced here, the change would be lost forever: the next
+    // run would start after it and never see it again.
+    expect(r.summary).toMatch(/failed and was contained/i);
+    expect(rec.cursorCommits).toBe(0);
+  });
+
+  it('does not commit a cursor when it never resolved changes', async () => {
+    const { m, rec } = harness({ resolverAbsent: true });
+    await m.execute('INCREMENTAL');
+    expect(rec.cursorCommits).toBe(0);
+  });
+});
+
+// ── AEO fact invalidation, end to end (§37, §38) ────────────────────────────
+
+/** A draft whose facts are all present and verified — this may reach READY. */
+const groundedDraft = (productId = 'p-1') => ({
+  templateId: 'product-availability',
+  entityContext: 'solar-panel',
+  question: 'Is the solar panel available, and what does it cost?',
+  intent: 'PRICE',
+  answerType: 'PRICE',
+  requiredFactKeys: [`price:${productId}`, `availability:${productId}`],
+  availableFacts: [
+    { key: `price:${productId}`, value: '450000', source: 'CATALOGUE', sourceId: productId, verified: true },
+    { key: `availability:${productId}`, value: '12', source: 'CATALOGUE', sourceId: productId, verified: true },
+  ],
+  productEntities: [productId],
+  categoryEntities: ['/power'],
+});
+
+/** The same unit after its price fact disappeared from the catalogue. */
+const ungroundedDraft = (productId = 'p-1') => ({
+  ...groundedDraft(productId),
+  availableFacts: groundedDraft(productId).availableFacts.filter((f) => !f.key.startsWith('price:')),
+});
+
+describe('an answer unit cannot stay READY once its grounding fact disappears', () => {
+  it('reaches READY while every required fact is present and verified', async () => {
+    const { m, rec } = harness({ answerDrafts: [groundedDraft()] });
+    const r = await m.execute('FULL_REBUILD');
+
+    expect(r.stages.ANSWER_UNITS.executed).toBe(true);
+    expect(rec.answerUnits).toHaveLength(1);
+    expect(rec.answerUnits[0].readiness).toBe('READY');
+  });
+
+  it('leaves READY when a required fact is removed, and says why', async () => {
+    const { m, rec } = harness({ answerDrafts: [ungroundedDraft()] });
+    await m.execute('FULL_REBUILD');
+
+    const unit = rec.answerUnits[0];
+    // The core AEO safety property: no stale READY answer survives.
+    expect(unit.readiness).not.toBe('READY');
+    expect(unit.readiness).toBe('BLOCKED_BY_MISSING_FACT');
+    expect(unit.blocked).toBeTruthy();
+  });
+
+  it('keeps the SAME semantic identity across the transition', async () => {
+    const before = harness({ answerDrafts: [groundedDraft()] });
+    await before.m.execute('FULL_REBUILD');
+    const after = harness({ answerDrafts: [ungroundedDraft()] });
+    await after.m.execute('FULL_REBUILD');
+
+    // Identity must survive invalidation, or the history and the work item
+    // detach from their subject.
+    expect(after.rec.answerUnits[0].key).toBe(before.rec.answerUnits[0].key);
+  });
+
+  it('re-evaluates a unit the planner marked as fact-affected', async () => {
+    const { m, rec } = harness({
+      answerDrafts: [ungroundedDraft()],
+      changes: [{ source: 'FACT', entityId: 'price:p-1', changeType: 'DELETED' }],
+      dependencies: { answerUnitsForFact: () => ['product-availability::solar-panel'] },
+    });
+    await m.execute('INCREMENTAL');
+
+    // The planner named it, so the drafts were narrowed to exactly it.
+    expect(rec.answerDraftKeys[0]).toEqual(['product-availability::solar-panel']);
+    expect(rec.answerUnits[0].readiness).toBe('BLOCKED_BY_MISSING_FACT');
+  });
+
+  it('does not re-evaluate answer units when no fact changed', async () => {
+    const { m, rec } = harness({
+      answerDrafts: [groundedDraft()],
+      changes: [{ source: 'CATEGORY', entityId: '/storage', changeType: 'UPDATED' }],
+    });
+    const r = await m.execute('INCREMENTAL');
+
+    expect(rec.answerDraftKeys[0]).toEqual([]);
+    expect(rec.answerUnits).toHaveLength(0);
+    // Executed and found nothing to do — not "never ran".
+    expect(r.stages.ANSWER_UNITS.executed).toBe(true);
+    expect(r.stages.ANSWER_UNITS.note).toMatch(/no fact/i);
+  });
+
+  it('evaluates every unit on a full rebuild', async () => {
+    const { m, rec } = harness({ answerDrafts: [groundedDraft('p-1'), groundedDraft('p-2')] });
+    await m.execute('FULL_REBUILD');
+    expect(rec.answerDraftKeys[0]).toBeNull();
+    expect(rec.answerUnits).toHaveLength(2);
   });
 });

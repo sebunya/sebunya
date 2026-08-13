@@ -41,6 +41,55 @@ const SYNONYMS: Array<[RegExp, string]> = [
   [/\bmicro\s*-?\s*usb\b/gi, 'micro usb'],
 ];
 
+/**
+ * Safe singular/plural collapse, by explicit domain lexicon.
+ *
+ * Generic stemming is NOT used and must not be introduced. A stemmer would
+ * happily fold "iPhone 15 Pro" toward "iPhone 15", or treat "128gb" and
+ * "128gbs" as unrelated to their singular forms while merging things that
+ * carry different commercial meaning. Every entry here is a word where a
+ * GoldPlus shopper means the same thing either way — and nothing else
+ * qualifies without being added deliberately.
+ *
+ * The plural form maps to the singular; matching is whole-word only, so a
+ * model token or part number containing these letters is untouched.
+ */
+const SAFE_MORPHOLOGY: Array<[RegExp, string]> = [
+  [/\bbatteries\b/gi, 'battery'],
+  [/\bchargers\b/gi, 'charger'],
+  [/\bcables\b/gi, 'cable'],
+  [/\bcards\b/gi, 'card'],
+  [/\bdrives\b/gi, 'drive'],
+  [/\bearphones\b/gi, 'earphone'],
+  [/\bheadphones\b/gi, 'headphone'],
+  [/\bearbuds\b/gi, 'earbud'],
+  [/\baccessories\b/gi, 'accessory'],
+  [/\badapters\b/gi, 'adapter'],
+  [/\bspeakers\b/gi, 'speaker'],
+  [/\binverters\b/gi, 'inverter'],
+  [/\bbanks\b/gi, 'bank'],
+  [/\blaptops\b/gi, 'laptop'],
+  [/\bphones\b/gi, 'phone'],
+  [/\bscreens\b/gi, 'screen'],
+  [/\bcases\b/gi, 'case'],
+  [/\bpanels\b/gi, 'panel'],
+  [/\bbulbs\b/gi, 'bulb'],
+  [/\bmounts\b/gi, 'mount'],
+  [/\bholders\b/gi, 'holder'],
+];
+
+/**
+ * Tokens that identify a DIFFERENT commercial thing and must survive
+ * normalization untouched. Guarded explicitly because a future well-meaning
+ * "improvement" to the rules above is exactly how "iPhone 15" and
+ * "iPhone 15 Pro" quietly become one cluster.
+ */
+export const IDENTITY_TOKEN_PATTERNS: RegExp[] = [
+  /\b\d+\s*(gb|tb|mah|w)\b/i,   // capacity and power ratings
+  /\bpro\b|\bmax\b|\bplus\b|\bultra\b|\bmini\b|\blite\b/i,
+  /\b[a-z]{1,3}\d{2,}[a-z0-9-]*\b/i, // model/part codes: s24, a2479, eb-bg991
+];
+
 export interface NormalizedQuery {
   raw: string;
   normalized: string;
@@ -56,6 +105,9 @@ export function normalizeQuery(raw: string): NormalizedQuery {
   for (const [re, to] of BRAND_VARIANTS) s = s.replace(re, to);
   for (const [re, to] of SYNONYMS) s = s.replace(re, to);
   for (const [re, to] of UNIT_RULES) s = s.replace(re, to);
+  // Morphology runs after the unit rules so "128 gb" is already "128gb" and
+  // cannot be mistaken for a pluralisable word.
+  for (const [re, to] of SAFE_MORPHOLOGY) s = s.replace(re, to);
   s = s
     .replace(/[^\p{L}\p{N}\s.+-]/gu, ' ')  // keep model-ish chars
     .replace(/\s+/g, ' ')
@@ -148,7 +200,9 @@ export const INTENTS = [
 ] as const;
 export type Intent = (typeof INTENTS)[number];
 
-export const INTENT_METHODS = ['RULE', 'ENTITY', 'SEMANTIC', 'HYBRID'] as const;
+// PERSISTED = intent GoldPlus already recorded for the query, which outranks
+// anything derived from the wording alone.
+export const INTENT_METHODS = ['PERSISTED', 'RULE', 'ENTITY', 'SEMANTIC', 'HYBRID'] as const;
 export type IntentMethod = (typeof INTENT_METHODS)[number];
 
 export interface IntentResult {
@@ -179,7 +233,33 @@ export function classifyIntent(input: {
   raw: string;
   entityType?: ClusterEntity['entityType'] | null;
   isBrandQuery?: boolean;
+  /**
+   * Intent GoldPlus has already recorded for this query (seo_queries.intent),
+   * with the provenance that makes it trustworthy or not. Lexical rules must
+   * never overwrite this: a weaker layer erasing stronger evidence is exactly
+   * how populated intent data ended up reported as UNKNOWN.
+   */
+  persisted?: {
+    intent: Intent | null;
+    /** seo_queries.evidence_state — OBSERVED/VERIFIED outrank INFERRED. */
+    evidenceState?: string | null;
+    observedAt?: string | null;
+  } | null;
 }): IntentResult {
+  // Evidence precedence, highest first. A recorded VERIFIED/OBSERVED intent is
+  // stronger than anything a regex can infer from the words alone.
+  const persisted = input.persisted;
+  const STRONG_EVIDENCE = ['VERIFIED', 'OBSERVED', 'MANAGEMENT_SUPPLIED'];
+  if (persisted?.intent && persisted.intent !== 'UNKNOWN'
+      && STRONG_EVIDENCE.includes(String(persisted.evidenceState ?? '').toUpperCase())) {
+    return {
+      primary: persisted.intent,
+      secondary: null,
+      confidence: 0.95,
+      method: 'PERSISTED',
+      matched: [`PERSISTED:${persisted.evidenceState}`],
+    };
+  }
   const n = normalizeQuery(input.raw);
   const matched: string[] = [];
   const hits: Intent[] = [];
@@ -223,12 +303,18 @@ export function classifyIntent(input: {
   } else if (hits.length > 0) {
     primary = hits[0];
     secondary = hits[1] ?? null;
+  } else if (persisted?.intent && persisted.intent !== 'UNKNOWN') {
+    // Inferred persisted evidence is weaker than a rule hit, but far stronger
+    // than giving up and reporting UNKNOWN while the answer sits in the table.
+    primary = persisted.intent;
+    method = 'PERSISTED';
+    matched.push(`PERSISTED:${persisted.evidenceState ?? 'INFERRED'}`);
   } else {
     primary = 'UNKNOWN';
     method = 'RULE';
   }
 
-  const confidence = primary === 'UNKNOWN' ? 0.2 : method === 'HYBRID' ? 0.9 : method === 'ENTITY' ? 0.8 : matched.length > 1 ? 0.75 : 0.6;
+  const confidence = primary === 'UNKNOWN' ? 0.2 : method === 'PERSISTED' ? 0.7 : method === 'HYBRID' ? 0.9 : method === 'ENTITY' ? 0.8 : matched.length > 1 ? 0.75 : 0.6;
   return { primary, secondary: secondary === primary ? null : secondary, confidence, method, matched };
 }
 
@@ -243,8 +329,11 @@ export const OWNERSHIP_DECISIONS = [
 ] as const;
 export type OwnershipDecision = (typeof OWNERSHIP_DECISIONS)[number];
 
-/** Which page type SHOULD own an intent. */
-export function preferredOwnerType(intent: Intent): OwnerType {
+/**
+ * Which page type SHOULD own an intent, or null when the intent is not
+ * understood well enough to say. Null is not NO_PAGE_REQUIRED — see §33.
+ */
+export function preferredOwnerType(intent: Intent): OwnerType | null {
   switch (intent) {
     case 'PRODUCT': return 'PRODUCT';
     case 'CATEGORY': case 'TRANSACTIONAL': return 'CATEGORY';
@@ -252,15 +341,50 @@ export function preferredOwnerType(intent: Intent): OwnerType {
     case 'COMPARISON': case 'INFORMATIONAL': case 'PRICE': return 'BUYER_GUIDE';
     case 'AFTERSALES': case 'PROBLEM_SOLUTION': return 'SUPPORT';
     case 'LOCAL': return 'LOCAL';
+    // Brand and navigational demand is genuinely already served — this is a
+    // decision, made deliberately.
     case 'BRAND': case 'NAVIGATIONAL': return 'NO_PAGE_REQUIRED';
-    default: return 'NO_PAGE_REQUIRED';
+    // Everything else, INCLUDING UNKNOWN, must NOT reach NO_PAGE_REQUIRED.
+    // "we could not determine the intent" and "GoldPlus deliberately should
+    // not maintain a page for this" are opposite statements, and collapsing
+    // them silently retires demand nobody ever evaluated.
+    default: return null;
   }
 }
+
+/** How we came to believe a page currently owns the demand. */
+export const OWNER_EVIDENCE = [
+  /** A provider observed this page receiving the query. Strongest. */
+  'PROVIDER_OBSERVED',
+  /** The cluster resolves to an entity that owns a canonical route. */
+  'CANONICAL_ENTITY_ROUTE',
+  /** Internal link graph points at this page for the intent. */
+  'INTERNAL_LINK_GRAPH',
+  /** The query text appears in the URL. Weak — never authoritative. */
+  'URL_LEXICAL_FALLBACK',
+  /** Nothing supports a claim about current ownership. */
+  'NONE',
+] as const;
+export type OwnerEvidence = (typeof OWNER_EVIDENCE)[number];
 
 export interface OwnershipInput {
   intent: Intent;
   currentOwnerUrl: string | null;
   currentOwnerType: OwnerType | null;
+  /**
+   * What supports the current-owner claim. URL_LEXICAL_FALLBACK is explicitly
+   * NOT authoritative: a URL containing the query is a coincidence of wording,
+   * not a domain model, and treating it as ownership produced false
+   * NO_PAGE_REQUIRED decisions.
+   */
+  currentOwnerEvidence?: OwnerEvidence;
+  /** The canonical route of the entity this cluster resolves to, if any. */
+  entityCanonicalUrl?: string | null;
+  entityOwnerType?: OwnerType | null;
+  /** Catalogue truth: enough real products to justify a page at all. */
+  catalogueReady?: boolean;
+  /** Technical eligibility: indexable, canonical-clean, alive. */
+  seoEligible?: boolean;
   /** Does a suitable page already exist for the preferred type? */
   candidateUrl: string | null;
   contentThin: boolean;
@@ -270,66 +394,225 @@ export interface OwnershipInput {
 }
 
 export interface OwnershipResult {
-  preferredOwnerType: OwnerType;
+  /** Null when the intent is not understood well enough to decide. */
+  preferredOwnerType: OwnerType | null;
   preferredOwnerUrl: string | null;
+  preferredOwnerReason: string;
+  preferredOwnerConfidence: number;
+  /**
+   * Which page currently owns the demand — a question about observed reality.
+   * Separate from the preferred owner, which is a question about what GoldPlus
+   * business and SEO truth says SHOULD own it. Before a provider is connected
+   * the honest answer here is usually null.
+   */
+  currentOwnerUrl: string | null;
+  currentOwnerEvidence: OwnerEvidence;
+  currentOwnerConfidence: number;
   decision: OwnershipDecision;
   rationale: string;
+  /** Set when the preferred owner is correct but cannot yet be shipped. */
+  blocker: string | null;
 }
 
 export function resolveOwnership(i: OwnershipInput): OwnershipResult {
   const preferred = preferredOwnerType(i.intent);
 
-  if (preferred === 'NO_PAGE_REQUIRED') {
+  // Current ownership is a claim about observed reality, and a URL that
+  // happens to contain the query text does not support one. Anything weaker
+  // than a canonical entity route is recorded but not believed.
+  const evidence: OwnerEvidence = i.currentOwnerEvidence ?? (i.currentOwnerUrl ? 'URL_LEXICAL_FALLBACK' : 'NONE');
+  const currentTrusted = evidence === 'PROVIDER_OBSERVED' || evidence === 'CANONICAL_ENTITY_ROUTE';
+  const currentOwnerUrl = currentTrusted ? i.currentOwnerUrl : null;
+  const currentOwnerConfidence =
+    evidence === 'PROVIDER_OBSERVED' ? 0.95
+    : evidence === 'CANONICAL_ENTITY_ROUTE' ? 0.7
+    : evidence === 'INTERNAL_LINK_GRAPH' ? 0.5
+    : 0;
+
+  const base = { currentOwnerUrl, currentOwnerEvidence: evidence, currentOwnerConfidence };
+
+  // Intent not understood: say so. This must never become NO_PAGE_REQUIRED,
+  // which asserts a deliberate decision nobody made.
+  if (preferred === null) {
     return {
-      preferredOwnerType: preferred,
-      preferredOwnerUrl: i.currentOwnerUrl,
-      decision: 'NO_PAGE_REQUIRED',
-      rationale: 'Brand and navigational demand is already served; a dedicated page would add nothing.',
+      ...base,
+      preferredOwnerType: null,
+      preferredOwnerUrl: null,
+      preferredOwnerReason: 'The intent behind this demand is not yet understood, so no page type can be named as its owner.',
+      preferredOwnerConfidence: 0,
+      decision: 'INSUFFICIENT_EVIDENCE',
+      rationale: 'Intent is UNKNOWN. This is missing knowledge, not a decision that no page is needed.',
+      blocker: 'INTENT_UNKNOWN',
     };
   }
 
-  if (!i.currentOwnerUrl && !i.candidateUrl) {
-    // The trap this guards: "no page exists" does NOT mean "create a page".
-    // Without commercial depth a new page is a thin page.
+  if (preferred === 'NO_PAGE_REQUIRED') {
+    return {
+      ...base,
+      preferredOwnerType: preferred,
+      preferredOwnerUrl: currentOwnerUrl,
+      preferredOwnerReason: 'Brand and navigational demand already resolves to GoldPlus; a dedicated page would add nothing.',
+      preferredOwnerConfidence: 0.9,
+      decision: 'NO_PAGE_REQUIRED',
+      rationale: 'A deliberate decision: this intent is already served and needs no distinct page.',
+      blocker: null,
+    };
+  }
+
+  // The preferred owner comes from the entity, not from string matching. If
+  // the cluster resolves to a real entity with a canonical route, that route
+  // is the answer whether or not any URL mentions the query.
+  const entityUrl = i.entityCanonicalUrl ?? null;
+  // When the incumbent is the wrong page TYPE for this intent, it cannot be
+  // the preferred owner however strong the evidence that it currently ranks.
+  const wrongType = i.currentOwnerType !== null && i.currentOwnerType !== preferred;
+  // Weak evidence is discarded as an OWNERSHIP claim but retained as proof
+  // that a page exists at all — otherwise the engine recommends creating a
+  // page that is already there.
+  const preferredUrl = entityUrl
+    ?? (wrongType ? i.candidateUrl : i.currentOwnerUrl)
+    ?? i.candidateUrl ?? i.currentOwnerUrl ?? null;
+  const preferredConfidence = entityUrl ? 0.85 : preferredUrl ? 0.6 : 0.4;
+  const reason = entityUrl
+    ? `${i.intent} demand belongs on the ${preferred} page for the entity this cluster resolves to.`
+    : `${preferred} is the right page type for ${i.intent} demand, but no canonical route has been identified yet.`;
+
+  const withPreferred = {
+    ...base,
+    preferredOwnerType: preferred,
+    preferredOwnerUrl: preferredUrl,
+    preferredOwnerReason: reason,
+    preferredOwnerConfidence: preferredConfidence,
+  };
+
+  // A correct preferred owner that cannot ship is BLOCKED VALUE — it must stay
+  // visible rather than vanish because current ownership is unresolved.
+  if (i.catalogueReady === false) {
+    return {
+      ...withPreferred,
+      decision: 'INSUFFICIENT_EVIDENCE',
+      rationale: 'The right page type is known, but the catalogue cannot support it yet. Shipping now would produce a thin page.',
+      blocker: 'CATALOGUE_THIN',
+    };
+  }
+  if (i.seoEligible === false) {
+    return {
+      ...withPreferred,
+      decision: 'IMPROVE_EXISTING_PAGE',
+      rationale: 'The right page owns this demand but is not currently eligible to rank for it.',
+      blocker: 'INDEXABILITY',
+    };
+  }
+
+  if (!preferredUrl) {
+    // No page exists. Whether to create one depends on catalogue depth, not on
+    // the absence of a URL.
     if (!i.hasCommercialDepth) {
       return {
-        preferredOwnerType: preferred,
-        preferredOwnerUrl: null,
+        ...withPreferred,
         decision: 'INSUFFICIENT_EVIDENCE',
         rationale: 'No page owns this demand and the catalogue cannot support one yet. Creating a page here would produce a thin result.',
+        blocker: 'CATALOGUE_THIN',
       };
     }
     return {
-      preferredOwnerType: preferred,
-      preferredOwnerUrl: null,
+      ...withPreferred,
       decision: 'CREATE_PAGE_CANDIDATE',
       rationale: 'No page owns this demand and the catalogue can support a genuine one.',
+      blocker: null,
     };
   }
 
-  const owner = i.currentOwnerUrl ?? i.candidateUrl;
-  const typeMismatch = i.currentOwnerType !== null && i.currentOwnerType !== preferred;
-
-  if (typeMismatch) {
+  if (wrongType && currentTrusted) {
     return {
-      preferredOwnerType: preferred,
-      preferredOwnerUrl: i.candidateUrl ?? owner,
+      ...withPreferred,
       decision: 'CONTENT_DIFFERENTIATION',
       rationale: `A ${i.currentOwnerType} page is answering ${i.intent} demand; a ${preferred} page is the better owner.`,
+      blocker: null,
     };
   }
   if (i.contentThin) {
-    return { preferredOwnerType: preferred, preferredOwnerUrl: owner, decision: 'IMPROVE_EXISTING_PAGE', rationale: 'The right page owns this demand but does not answer it fully.' };
+    return {
+      ...withPreferred,
+      decision: 'IMPROVE_EXISTING_PAGE',
+      rationale: 'The right page owns this demand but does not answer it fully.',
+      blocker: 'CONTENT',
+    };
+  }
+  if (!currentTrusted) {
+    // We know where this SHOULD live; we have no evidence about where the
+    // demand actually lands. Those are different unknowns and both are stated.
+    return {
+      ...withPreferred,
+      decision: 'INSUFFICIENT_EVIDENCE',
+      rationale: 'The preferred owner is identified from catalogue truth, but no connected provider has reported which page actually receives this demand.',
+      blocker: 'WAITING_FOR_PROVIDER',
+    };
   }
   if (!i.demandKnown) {
     return {
-      preferredOwnerType: preferred,
-      preferredOwnerUrl: owner,
+      ...withPreferred,
       decision: 'INSUFFICIENT_EVIDENCE',
       rationale: 'The page looks correct, but without search-performance evidence we cannot confirm it is winning the demand.',
+      blocker: 'WAITING_FOR_PROVIDER',
     };
   }
-  return { preferredOwnerType: preferred, preferredOwnerUrl: owner, decision: 'CURRENT_OWNER_CORRECT', rationale: 'The right page type owns this demand and answers it adequately.' };
+
+  // Both known and in agreement.
+  if (currentOwnerUrl && preferredUrl && currentOwnerUrl !== preferredUrl) {
+    return {
+      ...withPreferred,
+      decision: 'CONTENT_DIFFERENTIATION',
+      rationale: 'The page receiving this demand is not the page that should own it.',
+      blocker: 'QUERY_PAGE_MISMATCH',
+    };
+  }
+  return {
+    ...withPreferred,
+    decision: 'CURRENT_OWNER_CORRECT',
+    rationale: 'The right page type owns this demand and answers it adequately.',
+    blocker: null,
+  };
+}
+
+/**
+ * Agreement across the intents recorded for a cluster's member queries.
+ *
+ * Two failure modes are avoided deliberately. Collapsing every disagreement to
+ * UNKNOWN throws away real evidence — a cluster where four of five queries are
+ * COMMERCIAL is not a mystery. Manufacturing consensus from a genuine split is
+ * worse, because it hides a cluster that should probably be two.
+ */
+export function intentConsensus(intents: string[]): {
+  state: 'CONSENSUS' | 'MAJORITY' | 'MIXED' | 'CONFLICTING' | 'UNKNOWN';
+  intent: string | null;
+  evidenceState: string;
+  agreement: number;
+} {
+  const values = (intents ?? []).filter((v) => v && v !== 'UNKNOWN');
+  if (values.length === 0) {
+    return { state: 'UNKNOWN', intent: null, evidenceState: 'UNKNOWN', agreement: 0 };
+  }
+
+  const counts = new Map<string, number>();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  // Sort by count, then by name, so the result never depends on input order.
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const [top, topCount] = ranked[0];
+  const agreement = topCount / values.length;
+
+  if (counts.size === 1) {
+    return { state: 'CONSENSUS', intent: top, evidenceState: 'OBSERVED', agreement: 1 };
+  }
+  if (agreement >= 0.6) {
+    return { state: 'MAJORITY', intent: top, evidenceState: 'OBSERVED', agreement };
+  }
+  // An even split between two intents is a signal the cluster spans two
+  // different questions, not a reason to invent an answer.
+  if (ranked.length === 2 && ranked[0][1] === ranked[1][1]) {
+    return { state: 'CONFLICTING', intent: null, evidenceState: 'INFERRED', agreement };
+  }
+  return { state: 'MIXED', intent: top, evidenceState: 'INFERRED', agreement };
 }
 
 // ── Cannibalisation ─────────────────────────────────────────────────────────

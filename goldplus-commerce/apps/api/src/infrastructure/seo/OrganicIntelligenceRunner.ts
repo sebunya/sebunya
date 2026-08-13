@@ -3,6 +3,9 @@ import { db } from '../db/client';
 import { logger } from '../logging/logger';
 import { pgJsonb, pgInTextList } from '../db/PgParams';
 import {
+  resolveSourceChanges, stateHashOf, type SourceStatePorts,
+} from '../../application/use-cases/seo-growth/SourceStateResolver';
+import {
   OrganicIntelligenceMaterialiser,
   type MaterialiserPorts, type MaterialisationMode, type EntityCandidate, type MaterialisationResult,
 } from '../../application/use-cases/seo-growth/OrganicIntelligenceMaterialiser';
@@ -71,7 +74,22 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
      * absent until Search Console is connected — it is reported UNKNOWN, never
      * zero, so the engine scores on what is genuinely known.
      */
-    async loadCandidates(_mode) {
+    async loadCandidates(_mode, affected) {
+      // The planner's affected set is authoritative when present. Slugs are
+      // how a CATEGORY entity is identified downstream, so the narrowing is
+      // applied on the slug the planner named.
+      // A category and its URL share the "/slug" namespace, so the planner can
+      // legitimately name the same thing as both a direct CATEGORY and a
+      // dependent URL. Deduplicate, or the entity is evaluated twice.
+      const wanted = affected === null ? null
+        : [...new Set(
+            affected
+              .filter((a) => a.entityType === 'CATEGORY' || a.entityType === 'URL')
+              .map((a) => a.entityId.replace(/^\//, '')),
+          )];
+      // An EXACT plan that touches no category legitimately evaluates nothing.
+      if (wanted !== null && wanted.length === 0) return [];
+
       const cats = rowsOf(await conn.execute(sql`
         select c.id::text as category_id, c.name, c.slug,
                count(p.id) filter (where p.active = true and p.approval_status = 'approved')::int as eligible,
@@ -79,6 +97,7 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
                count(p.id) filter (where p.active = true and coalesce(p.price_ugx,0) <= 0)::int as unpriced
         from categories c
         left join products p on p.category_id = c.id
+        where ${wanted === null ? sql`true` : pgInTextList(sql`c.slug`, wanted)}
         group by c.id, c.name, c.slug
         order by c.name
         limit 500
@@ -348,6 +367,194 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
       return new Map(rows.map((r) => [String(r.answer_key), String(r.fact_hash)]));
     },
 
+    // ── Source-state resolution and dependency planning ─────────────────────
+
+    async loadUniverse() {
+      const rows = rowsOf(await conn.execute(sql`select slug from categories order by slug limit 500`));
+      return rows.map((r) => ({ entityType: 'CATEGORY' as const, entityId: `/${String(r.slug)}` }));
+    },
+
+    async resolveChanges() {
+      const ports: SourceStatePorts = {
+        now: async () => String(rowsOf(await conn.execute(sql`select now()::text as t`))[0]?.t ?? ''),
+
+        readCursor: async (key) => {
+          const row = rowsOf(await conn.execute(sql`
+            select cursor_at::text as at, cursor_id from seo_intel_source_cursors where source_key = ${key}
+          `))[0];
+          return { at: row?.at ? String(row.at) : null, id: row?.cursor_id ? String(row.cursor_id) : null };
+        },
+
+        readKnownState: async (key) => {
+          const rows = rowsOf(await conn.execute(sql`
+            select entity_id, state_hash from seo_intel_source_state where source_key = ${key}
+          `));
+          return new Map(rows.map((r) => [String(r.entity_id), String(r.state_hash)]));
+        },
+
+        readSince: async (d, lower, upperBound) => {
+          if (d.key === 'products') {
+            // Composite (updated_at, id) comparison: rows sharing an instant
+            // are ordered by id so none is skipped.
+            const rows = rowsOf(await conn.execute(sql`
+              select id::text as id, updated_at::text as at,
+                     active, approval_status, stock_status, stock_quantity, price_ugx,
+                     has_retail_price, category_id::text as category_id
+              from products
+              where updated_at <= ${upperBound}::timestamptz
+                and (${lower.at === null ? sql`true` : sql`
+                  (updated_at > ${lower.at}::timestamptz
+                   or (updated_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
+              order by updated_at, id
+              limit 5000
+            `));
+            return rows.map((r) => ({
+              id: String(r.id), at: String(r.at),
+              stateHash: stateHashOf({
+                active: r.active, approval: r.approval_status, stock: r.stock_status,
+                qty: r.stock_quantity, price: r.price_ugx, retail: r.has_retail_price,
+                category: r.category_id,
+              }),
+            }));
+          }
+          if (d.key === 'seo_change_ledger') {
+            const rows = rowsOf(await conn.execute(sql`
+              select id::text as id, occurred_at::text as at, target, scope, validation_state
+              from seo_change_ledger
+              where occurred_at <= ${upperBound}::timestamptz
+                and (${lower.at === null ? sql`true` : sql`
+                  (occurred_at > ${lower.at}::timestamptz
+                   or (occurred_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
+              order by occurred_at, id
+              limit 5000
+            `));
+            return rows.map((r) => ({
+              id: String(r.target), at: String(r.at),
+              stateHash: stateHashOf({ scope: r.scope, state: r.validation_state, id: r.id }),
+            }));
+          }
+          if (d.key === 'seo_queries') {
+            const rows = rowsOf(await conn.execute(sql`
+              select id::text as id, last_observed_at::text as at, query, intent, evidence_state, source
+              from seo_queries
+              where last_observed_at is not null
+                and last_observed_at <= ${upperBound}::timestamptz
+                and (${lower.at === null ? sql`true` : sql`
+                  (last_observed_at > ${lower.at}::timestamptz
+                   or (last_observed_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
+              order by last_observed_at, id
+              limit 5000
+            `));
+            return rows.map((r) => ({
+              id: String(r.query), at: String(r.at),
+              stateHash: stateHashOf({ intent: r.intent, evidence: r.evidence_state }),
+              // A CSV import or operator entry describes the past, so it must
+              // not be read as a new current SEO event.
+              historical: String(r.source) === 'CSV_IMPORT' || String(r.source) === 'OPERATOR',
+            }));
+          }
+          return [];
+        },
+
+        readInventory: async (d) => {
+          if (d.key === 'categories') {
+            // categories has no timestamp column at all, so the full observed
+            // state IS the change evidence.
+            const rows = rowsOf(await conn.execute(sql`
+              select c.id::text as id, c.slug, c.name,
+                     count(p.id) filter (where p.active = true and p.approval_status = 'approved')::int as eligible
+              from categories c left join products p on p.category_id = c.id
+              group by c.id, c.slug, c.name limit 500
+            `));
+            return rows.map((r) => ({
+              id: `/${String(r.slug)}`, at: null,
+              stateHash: stateHashOf({ name: r.name, slug: r.slug, eligible: r.eligible }),
+            }));
+          }
+          if (d.key === 'products') {
+            const rows = rowsOf(await conn.execute(sql`select id::text as id from products limit 20000`));
+            return rows.map((r) => ({ id: String(r.id), at: null, stateHash: '' }));
+          }
+          return [];
+        },
+      };
+
+      const snapshot = await resolveSourceChanges(ports);
+
+      return {
+        snapshotId: snapshot.snapshotId,
+        changes: snapshot.changes,
+        coverageLimits: snapshot.coverageLimits,
+        // Committed only by the coordinator, and only after the whole run
+        // succeeded.
+        commit: async () => {
+          for (const [key, cur] of Object.entries(snapshot.proposedCursors)) {
+            await conn.execute(sql`
+              insert into seo_intel_source_cursors (source_key, cursor_at, cursor_id, snapshot_id, updated_at)
+              values (${key}, ${cur.at}::timestamptz, ${cur.id}, ${snapshot.snapshotId}, now())
+              on conflict (source_key) do update set
+                cursor_at = excluded.cursor_at, cursor_id = excluded.cursor_id,
+                snapshot_id = excluded.snapshot_id, updated_at = now()
+            `);
+          }
+          for (const [key, state] of Object.entries(snapshot.proposedState)) {
+            for (const [entityId, hash] of state) {
+              await conn.execute(sql`
+                insert into seo_intel_source_state (source_key, entity_id, state_hash, updated_at)
+                values (${key}, ${entityId}, ${hash}, now())
+                on conflict (source_key, entity_id) do update set
+                  state_hash = excluded.state_hash, updated_at = now()
+              `);
+            }
+          }
+        },
+      };
+    },
+
+    async dependencyResolver() {
+      // Loaded once per run: the graph is small and a per-lookup query would
+      // turn planning into N round-trips.
+      const prodCats = rowsOf(await conn.execute(sql`
+        select p.id::text as product_id, c.slug from products p
+        join categories c on c.id = p.category_id limit 20000
+      `));
+      const byProduct = new Map<string, string[]>();
+      for (const r of prodCats) {
+        const k = String(r.product_id);
+        if (!byProduct.has(k)) byProduct.set(k, []);
+        byProduct.get(k)!.push(`/${String(r.slug)}`);
+      }
+
+      const clusterByUrl = new Map<string, string[]>();
+      for (const r of rowsOf(await conn.execute(sql`
+        select cluster_key, preferred_owner_url from seo_intel_clusters where preferred_owner_url is not null
+      `))) {
+        const u = String(r.preferred_owner_url);
+        if (!clusterByUrl.has(u)) clusterByUrl.set(u, []);
+        clusterByUrl.get(u)!.push(String(r.cluster_key));
+      }
+
+      const answersByFact = new Map<string, string[]>();
+      for (const r of rowsOf(await conn.execute(sql`
+        select answer_key, fact_hash from seo_intel_answer_units
+      `))) {
+        const f = String(r.fact_hash);
+        if (!answersByFact.has(f)) answersByFact.set(f, []);
+        answersByFact.get(f)!.push(String(r.answer_key));
+      }
+
+      return {
+        categoriesForProduct: (id) => byProduct.get(id) ?? [],
+        // A category entity IS its URL in this model; a product has no
+        // standalone indexable route yet, so it contributes through its
+        // categories rather than inventing one.
+        urlsForEntity: (ref) => (ref.entityType === 'CATEGORY' ? [ref.entityId] : []),
+        clustersForUrl: (url) => clusterByUrl.get(url) ?? [],
+        answerUnitsForFact: (fact) => answersByFact.get(fact) ?? [],
+        linkSourcesForUrl: () => [],
+      };
+    },
+
     // ── Query intelligence ──────────────────────────────────────────────────
 
     async loadQueryUniverse() {
@@ -525,6 +732,65 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
         returning (xmax = 0) as inserted
       `));
       return { changed: Boolean(res[0]?.inserted) };
+    },
+
+    // ── Answer units (AEO) ──────────────────────────────────────────────────
+
+    /**
+     * Drafts built from catalogue truth. A fact is only offered here while the
+     * underlying row still supports it — when a product is deactivated or its
+     * price removed, the fact simply stops appearing, which is what drives the
+     * answer unit out of READY on the next run.
+     */
+    async loadAnswerUnitDrafts(affectedKeys) {
+      const rows = rowsOf(await conn.execute(sql`
+        select p.id::text as product_id, p.name, p.slug,
+               p.price_ugx, p.stock_quantity, p.active, p.approval_status,
+               c.slug as category_slug
+        from products p
+        left join categories c on c.id = p.category_id
+        where p.active = true and p.approval_status = 'approved'
+        limit 2000
+      `));
+
+      const drafts = rows.map((r) => {
+        const productId = String(r.product_id);
+        const facts: Array<{ key: string; value: string; source: string; sourceId: string; verified: boolean }> = [];
+
+        // Price is a fact only while the catalogue actually carries one. A
+        // missing price must not become "0" — it must be absent.
+        if (r.price_ugx !== null && Number(r.price_ugx) > 0) {
+          facts.push({
+            key: `price:${productId}`, value: String(r.price_ugx),
+            source: 'CATALOGUE', sourceId: productId, verified: true,
+          });
+        }
+        if (r.stock_quantity !== null) {
+          facts.push({
+            key: `availability:${productId}`, value: String(r.stock_quantity),
+            source: 'CATALOGUE', sourceId: productId, verified: true,
+          });
+        }
+
+        return {
+          templateId: 'product-availability',
+          entityContext: String(r.slug),
+          question: `Is ${String(r.name)} available at GoldPlus, and what does it cost?`,
+          intent: 'PRICE',
+          answerType: 'PRICE' as never,
+          // Both facts are required: an answer that states availability without
+          // a price is not the answer to this question.
+          requiredFactKeys: [`price:${productId}`, `availability:${productId}`],
+          availableFacts: facts as never,
+          productEntities: [productId],
+          categoryEntities: r.category_slug ? [`/${String(r.category_slug)}`] : [],
+        };
+      });
+
+      if (affectedKeys === null) return drafts as never;
+      // Incremental: only the units the planner marked as fact-affected.
+      const wanted = new Set(affectedKeys);
+      return drafts.filter((d) => wanted.has(`${d.templateId}::${d.entityContext}`)) as never;
     },
 
     // ── Content intelligence ────────────────────────────────────────────────

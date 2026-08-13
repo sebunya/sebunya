@@ -282,6 +282,9 @@ describe('page ownership does not assume "no page" means "make a page"', () => {
   it('flags the wrong page type owning an intent', () => {
     const r = resolveOwnership({
       intent: 'COMPATIBILITY', currentOwnerUrl: '/products/x', currentOwnerType: 'PRODUCT',
+      // Ownership must now declare its evidence: a page only "currently owns"
+      // demand when something actually observed it doing so.
+      currentOwnerEvidence: 'PROVIDER_OBSERVED',
       candidateUrl: '/battery-finder', contentThin: false, hasCommercialDepth: true, demandKnown: true,
     });
     expect(r.decision).toBe('CONTENT_DIFFERENTIATION');
