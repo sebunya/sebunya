@@ -156,7 +156,7 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
         // Console reported nothing for this page" and "nobody has connected
         // Search Console" are different facts, and only the first is a
         // measurement.
-        const demand = null as any; // MUTANT
+        const demand = demandBySlug.get(entityId) ?? null;
         // Real Search Console figures drift by a few impressions every single
         // day. Feeding raw counts into the evidence hash would rewrite every
         // opportunity on every run — daily churn that says nothing. Banding to
