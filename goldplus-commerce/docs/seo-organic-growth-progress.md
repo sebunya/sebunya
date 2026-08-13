@@ -484,34 +484,101 @@ Notification is deliberately `CONTROL_CENTER_AND_AUDIT_ONLY` this tranche and
 reports `delivered:false` rather than pretending a send occurred. Email is
 out of scope by instruction.
 
+## P1 ORGANIC INTELLIGENCE — ENGINEERED 2026-08-13 (`aeeb0c8`)
+
+Turns the Guardian's *what changed?* into *does it matter, why, how much, and
+what should happen next?* Four pure modules, 75 behavioural tests, **no
+migration and no runtime wiring** — nothing in production changed.
+
+Guardian untouched: `git diff 6173fd4..HEAD` shows zero Guardian, QueueWorkers
+or 0121 files. The six-hourly schedule is intact.
+
+### Reuse over rebuild
+
+`seo_opportunities` already carried kind / opportunity_value /
+evidence_confidence / commercial_readiness / technical_readiness / effort /
+risk / status / evidence, and `seo_queries` already had `normalized_query` and
+`intent`. Those are the persistence targets. The work queue, alerts, link
+graph, crawler and lifecycle engine are consumed as evidence, never duplicated.
+
+### OrganicOpportunityScoring — explainable, versioned, honest
+
+The governing rule is **UNKNOWN IS NOT ZERO**. GSC is unconnected, so demand is
+genuinely unknown; scoring it as zero would rank every page last and make the
+whole engine lie. Instead the score is computed over *available* components and
+reports the unscored weight share as its own caveat. Missing evidence lowers
+CONFIDENCE and EVIDENCE_COMPLETENESS, nothing else.
+
+Every score decomposes into components carrying raw evidence, normalised value,
+weight, contribution and reason code — the test re-derives the score from its
+own components rather than trusting the number. Confidence can never reach HIGH
+without search-demand evidence, however complete the rest of the picture is.
+
+**Business truth outranks SEO optics.** High demand against a thin catalogue
+recommends `EXPAND_CATALOGUE`, never "index this now"; a hard SEO blocker forces
+`CLEAR_TECHNICAL_BLOCKER` first. Blocked opportunities keep their score so that
+clearing the blocker is visibly worth doing.
+
+### QueryIntelligence — deterministic by construction
+
+Normalization collapses brand, unit and synonym variants while always
+preserving the raw query. Clustering is entity-first with keys derived from the
+entity or a sorted signature, so identity cannot drift between six-hourly runs —
+if it did, every downstream opportunity and its history would detach from its
+subject. Intent uses the full 13-value taxonomy and lets a modifier beat the
+bare entity type: "which battery fits my S21" is COMPATIBILITY, not PRODUCT.
+
+Page ownership refuses the *no page exists therefore make one* trap when the
+catalogue cannot support a real page. Cannibalisation distinguishes seven
+classes — intent split is healthy coverage, a canonical conflict is a defect
+regardless of traffic, and nothing is asserted without evidence and persistence.
+
+### OpportunityPortfolio — a decision system, not a ticket factory
+
+Root-cause consolidation groups symptoms sharing a template and action class
+(20 thin pages from one missing ingestion rule is ONE job), with a threshold so
+genuinely separate symptoms stay separate. Decay closes resolved, obsolete and
+superseded opportunities. The versioned action catalogue caps
+canonical/redirect/indexability/catalogue changes at autonomy level **0
+permanently** — no accumulation of successful runs promotes a mass-noindex. The
+executor contract denies incomplete or irreversible requests rather than
+defaulting the gaps, and the outcome model refuses to call a deploy a success:
+technically verified still waits for search evidence.
+
+### AnswerUnitEngine — no fact source, no definitive answer
+
+Units ground only in sources that already exist: VERIFIED battery
+compatibility, storage tests, catalogue, business info, delivery contract. A
+missing fact blocks publication and names exactly what to record; a
+present-but-unverified fact degrades to PARTIAL rather than being asserted.
+Coverage reports which missing facts block the most answers, so the AEO work
+queue is derived from absence rather than a content wish list. A content gap
+must pass all six conditions — the gate that stops this becoming a page factory.
+
 ## Current state
 
 ```
-STATUS=GUARDIAN RELEASED · SCHEDULED · WAITING_FOR_PROVIDER
-LOCAL_HEAD = ORIGIN_HEAD = PRODUCTION_HEAD = 7dc3d24
-MIGRATION_CEILING=1789606800000 (0121)
-AUTONOMY_LEVEL=0 (OBSERVE)  ·  LEVEL_1_READY=false (0 valid live runs)
-TESTS=6388/6388 · 95 guardian tests · typecheck clean
-BACKUP=pre-guardian-20260813-111415.dump (23,410,143 B) retained
+STATUS=P1 ENGINEERING COMPLETE (not released — no runtime change to release)
+LOCAL_HEAD = ORIGIN_HEAD = aeeb0c8   PRODUCTION_HEAD=6173fd4
+GUARDIAN=LIVE · 0 */6 * * * · OBSERVE_ONLY · WAITING_FOR_CREDENTIAL (unchanged)
+MIGRATION_CEILING=1789606800000 (0121) — no 0122 needed yet
+TESTS=6463/6463 · 75 new · typecheck clean
 ```
 
-### The only thing standing between this and a working agent
+### Deliberately NOT done in this tranche
 
-Upload the Search Console **service-account JSON** in
-`/admin/seo/integrations`. No env change, no redeploy, no OAuth. The Guardian
-picks it up on the next six-hourly tick, runs the historical backfill, captures
-and confirms a live baseline, then begins observing.
+Persistence, wiring and Control Center surfaces for the P1 engines. They are
+pure functions with no callers yet. Wiring them means a migration (0122) to
+persist clusters, ownership, scores and answer units — and on the evidence of
+the Guardian tranche, that work needs production-shaped execution to be
+trustworthy, not just unit tests.
 
-### Internally controllable work remaining (P1, not started)
+That is the next tranche, and it is worth doing in the right order: the engines
+are proven in isolation first, then persisted, then surfaced.
 
-Commercial Opportunity Engine · Query→Intent→Page graph · Cannibalisation
-intelligence · Search Opportunity engine · Content intelligence · AEO
-answer-unit evidence model · Remediation executor contract.
+### Owner action unchanged
 
-### Carried forward
-
-```
-AnalyticsReadRepository.integration.test.ts = PREEXISTING_TEST_DEFECT
-RecommendationMaterializer = FIXED 2026-08-13 (was SEV3)
-GBP OAuth = owner configuration (api subdomain redirect)
-```
+Upload the Search Console service-account JSON in `/admin/seo/integrations`.
+Everything above becomes materially more useful the moment real demand data
+exists — and the modules were written so that GSC enriches them rather than
+requiring a rebuild.
