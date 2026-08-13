@@ -199,3 +199,35 @@ describe('the control-plane pages are real admin surfaces', () => {
     expect(DETAIL).toContain('seo.integrations.credentials');
   });
 });
+
+describe('the Google OAuth callback is reachable and returns the operator to the admin UI', () => {
+  const publicRoutes = readFileSync(
+    resolve(__dirname, '../../apps/api/src/interfaces/http/routes/seo.ts'),
+    'utf8',
+  );
+  const oauthService = readFileSync(
+    resolve(__dirname, '../../apps/api/src/infrastructure/seo/GoogleOAuthService.ts'),
+    'utf8',
+  );
+
+  it('serves the callback from the API origin, which is what the redirect base must point at', () => {
+    // The handler is mounted on the PUBLIC api router at /seo/oauth/google/callback.
+    // Google therefore calls <API_ORIGIN>/seo/oauth/google/callback — NOT the
+    // storefront origin, which has no such route and answers 404.
+    expect(publicRoutes).toContain("routes.get('/oauth/google/callback'");
+    expect(oauthService).toContain('/seo/oauth/google/callback');
+  });
+
+  it('returns the operator to the storefront admin UI, not to this API host', () => {
+    // A relative redirect resolves against the API origin, landing the operator
+    // on the JSON route (401) after a SUCCESSFUL authorization — a dead end.
+    expect(publicRoutes).toContain('SEO_ADMIN_RETURN_BASE');
+    expect(publicRoutes).toContain('CORS_ORIGIN');
+    expect(publicRoutes).toMatch(/adminBase \? `\$\{adminBase\}\$\{path\}` : path/);
+  });
+
+  it('still rejects a missing or forged state', () => {
+    expect(publicRoutes).toContain('oauth.consumeState(state)');
+    expect(publicRoutes).toContain('oauth=invalid_state');
+  });
+});

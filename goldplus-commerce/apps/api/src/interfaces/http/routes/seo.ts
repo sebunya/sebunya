@@ -176,8 +176,32 @@ routes.get('/oauth/google/callback', async (c) => {
 
   // Consumes the state on ANY outcome below, so a code can never be replayed.
   const record = state ? oauth.consumeState(state) : null;
-  const back = (params: string) =>
-    c.redirect(`/admin/seo/integrations${record ? `/${record.connectionId}` : ''}?${params}`, 303);
+
+  /**
+   * Send the operator back to the ADMIN UI, which is served by the storefront
+   * origin — not by this API origin.
+   *
+   * A relative redirect here resolves against the API host, so the operator
+   * landed on `api.<domain>/admin/seo/integrations`, which is the JSON route
+   * and answers 401. That is a dead end after a successful authorization: the
+   * same class of defect as the original Bearer-only callback.
+   *
+   * The storefront origin comes from SEO_ADMIN_RETURN_BASE when set, otherwise
+   * the first configured CORS origin (the storefront is the only browser origin
+   * allowed to call this API). If neither is available we fall back to a
+   * relative path — still wrong-origin, but never a crash.
+   */
+  const adminBase = (() => {
+    const explicit = (process.env.SEO_ADMIN_RETURN_BASE ?? '').trim().replace(/\/+$/, '');
+    if (explicit) return explicit;
+    const firstCors = (process.env.CORS_ORIGIN ?? '').split(',')[0]?.trim().replace(/\/+$/, '') ?? '';
+    return firstCors;
+  })();
+
+  const back = (params: string) => {
+    const path = `/admin/seo/integrations${record ? `/${record.connectionId}` : ''}?${params}`;
+    return c.redirect(adminBase ? `${adminBase}${path}` : path, 303);
+  };
 
   if (c.req.query('error')) {
     if (record) await registry.seoIntegrationRepo.setConnectionStatus(record.connectionId, {
