@@ -232,8 +232,8 @@ const activeFilters = [
   </main>
 
   <script is:inline define:vars={{ apiBase: publicApiBase }}>
-    // Slice 4: progressive autocomplete. The form works without JavaScript;
-    // this only fills the datalist with catalogue names on capable browsers.
+    // Progressive autocomplete. The form works without JavaScript; this only
+    // fills the datalist with catalogue names on capable browsers.
     (function () {
       var input = document.getElementById('shop-search');
       var list = document.getElementById('shop-suggest');

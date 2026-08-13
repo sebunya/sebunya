@@ -1,91 +1,68 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
 
-// Mock dealer data
-const dealer = {
-  name: "Sample Dealer Store",
-  status: "approved",
-  id: "DLR-123",
-  stats: {
-    totalSales: "UGX 4,200,000",
-    stockItems: 42,
-    pendingVerifications: 0
-  }
-};
+/**
+ * Dealer portal placeholder.
+ *
+ * This route previously rendered a hard-coded "Sample Dealer Store" with
+ * invented figures (UGX 4,200,000 in sales, 42 stock items, account DLR-123)
+ * and was publicly reachable and indexable. There is no dealer backend — no
+ * dealer tables, no dealer API — so every number on it was fiction presented
+ * as a real account.
+ *
+ * Until a real dealer portal exists this page states the truth and routes the
+ * visitor to the channels that do work. It is noindex because it is an
+ * account-adjacent utility page with nothing to rank for.
+ */
+const supportEmail = "support@shopgoldplus.com";
 ---
 
-<BaseLayout title="Dealer Dashboard - GoldPlus">
-  <div class="flex h-screen bg-gray-100 overflow-hidden">
-    
-    {/* Sidebar */}
-    <aside class="w-64 bg-brand-dark text-white flex-shrink-0 hidden lg:flex flex-col">
-      <div class="p-6 border-b border-gray-800">
-        <h2 class="text-xl font-black text-brand-gold tracking-tight">GOLDPLUS</h2>
-        <p class="text-[10px] uppercase font-bold text-gray-500 tracking-widest mt-1">Dealer Hub</p>
+<BaseLayout
+  title="Dealer account | GoldPlus"
+  description="How GoldPlus dealer accounts are managed."
+  robotsMeta="noindex,follow"
+>
+  <main id="main-content" class="container mx-auto max-w-3xl px-4 py-16 lg:px-8">
+    <p class="text-xs font-black uppercase tracking-[0.18em] text-brand-primary">Dealers</p>
+    <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Dealer account</h1>
+
+    <p class="mt-6 text-base leading-relaxed text-slate-700">
+      GoldPlus does not yet offer a self-service dealer portal. Dealer accounts, pricing and orders are handled
+      directly by our team, so there is no dashboard to sign in to at this address.
+    </p>
+
+    <div class="mt-10 rounded-2xl border border-slate-200 bg-slate-50 p-6">
+      <h2 class="font-black text-gray-900">If you are already a GoldPlus dealer</h2>
+      <p class="mt-2 text-sm leading-relaxed text-slate-700">
+        Contact your usual GoldPlus representative, or reach us through support, for pricing, stock availability and
+        order status. Please have your business details ready so we can verify the account before discussing terms.
+      </p>
+      <div class="mt-5 flex flex-col gap-3 sm:flex-row">
+        <a
+          href="/support"
+          class="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-center text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
+        >Contact support</a>
+        <a
+          href={`mailto:${supportEmail}`}
+          class="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-center text-sm font-bold text-slate-900 outline-none hover:border-slate-500 focus-visible:ring-2 focus-visible:ring-brand-primary"
+        >{supportEmail}</a>
       </div>
-      <nav class="p-4 space-y-2 flex-grow">
-        <a href="#" class="block px-4 py-2 bg-gray-800 text-white rounded-lg font-bold text-sm">Dashboard</a>
-        <a href="#" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm">Inventory</a>
-        <a href="#" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm">Sales Reports</a>
-        <a href="#" class="block px-4 py-2 text-gray-400 hover:text-white transition-colors text-sm">Verify Customer</a>
-      </nav>
-      <div class="p-4 border-t border-gray-800">
-         <div class="flex items-center gap-3">
-           <div class="w-8 h-8 rounded-full bg-brand-gold text-brand-dark flex items-center justify-center font-bold text-xs">SD</div>
-           <div class="flex-grow min-w-0">
-             <p class="text-xs font-bold truncate">{dealer.name}</p>
-             <p class="text-[10px] text-gray-500">ID: {dealer.id}</p>
-           </div>
-         </div>
-      </div>
-    </aside>
+    </div>
 
-    {/* Main Content */}
-    <main class="flex-grow flex flex-col overflow-y-auto">
-      <header class="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
-        <h1 class="text-xl font-bold text-brand-dark">Dashboard Overview</h1>
-        <div class="flex items-center gap-4 text-sm font-bold text-brand-green">
-           <span class="w-2 h-2 rounded-full bg-brand-green animate-pulse"></span>
-           Live Market Status
-        </div>
-      </header>
+    <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+      <h2 class="font-black text-gray-900">If you would like to become a dealer</h2>
+      <p class="mt-2 text-sm leading-relaxed text-slate-700">
+        Apply through the dealer application form. We review each application and respond with the next steps.
+      </p>
+      <a
+        href="/dealers/apply"
+        class="mt-5 inline-flex min-h-11 items-center justify-center rounded-full bg-brand-primary px-6 py-3 text-center text-sm font-bold text-white outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2"
+      >Apply to become a dealer</a>
+    </div>
 
-      <div class="p-8">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Total Sales</p>
-            <p class="text-2xl font-black text-brand-dark">{dealer.stats.totalSales}</p>
-          </div>
-          <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Inventory Items</p>
-            <p class="text-2xl font-black text-brand-dark">{dealer.stats.stockItems}</p>
-          </div>
-          <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Pending Tasks</p>
-            <p class="text-2xl font-black text-brand-dark">{dealer.stats.pendingVerifications}</p>
-          </div>
-        </div>
-
-        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-12">
-           <div class="p-6 border-b border-gray-100 flex justify-between items-center">
-             <h3 class="font-bold text-brand-dark">Recent Inventory Movements</h3>
-             <a href="#" class="text-xs font-bold text-brand-green hover:underline">View All</a>
-           </div>
-           <div class="p-12 text-center text-gray-400">
-             <svg class="w-12 h-12 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-             <p class="text-sm">No recent inventory changes recorded.</p>
-           </div>
-        </div>
-
-        <div class="bg-brand-dark text-white p-8 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-6">
-          <div>
-            <h3 class="text-xl font-bold mb-1">Expand your business with GoldPlus</h3>
-            <p class="text-gray-400 text-sm">Access dealer-only training modules and premium marketing assets.</p>
-          </div>
-          <a href="#" class="bg-brand-gold text-brand-dark px-6 py-2 rounded-lg font-bold hover:bg-white transition-colors">Go to Training</a>
-        </div>
-      </div>
-    </main>
-
-  </div>
+    <p class="mt-10 text-sm text-slate-500">
+      Looking for your own orders? <a class="underline decoration-slate-300 underline-offset-4 hover:text-gray-950" href="/account/orders">Your account</a>
+      holds your order history and delivery details.
+    </p>
+  </main>
 </BaseLayout>
