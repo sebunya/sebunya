@@ -27,6 +27,9 @@ const EXPECTED: Array<{ label: string; href: string }> = [
   { label: 'Battery Compatibility', href: '/admin/seo/battery-compatibility' },
   { label: 'Storage Testing', href: '/admin/seo/storage-tests' },
   { label: 'Product Lifecycle SEO', href: '/admin/seo/product-lifecycle' },
+  // Wave 3: derived competitor matrix and the observation-to-outcome queue.
+  { label: 'Category × Competitor', href: '/admin/seo/category-matrix' },
+  { label: 'Work Queue', href: '/admin/seo/work-queue' },
 ];
 
 const PAGES = path.resolve(__dirname, '../../apps/web/src/pages');

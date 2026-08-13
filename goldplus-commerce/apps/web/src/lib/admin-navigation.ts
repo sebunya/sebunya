@@ -321,7 +321,9 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'AEO', href: '/admin/seo/aeo', group: 'Search Growth', status: 'working', description: 'Answer-engine prompt bank, recorded observations and coverage.' },
   { label: 'Battery Compatibility', href: '/admin/seo/battery-compatibility', group: 'Search Growth', status: 'working', description: 'Evidenced phone-to-battery fits behind the public finder; VERIFIED requires a source and a note.' },
   { label: 'Storage Testing', href: '/admin/seo/storage-tests', group: 'Search Growth', status: 'working', description: 'Measured capacity and speed per storage product; untested stock is shown as NOT TESTED.' },
-  { label: 'Product Lifecycle SEO', href: '/admin/seo/product-lifecycle', group: 'Search Growth', status: 'working', description: 'Per-product URL dispositions for discontinued and out-of-stock products; no blanket redirects.' }
+  { label: 'Product Lifecycle SEO', href: '/admin/seo/product-lifecycle', group: 'Search Growth', status: 'working', description: 'Per-product URL dispositions for discontinued and out-of-stock products; no blanket redirects.' },
+  { label: 'Category × Competitor', href: '/admin/seo/category-matrix', group: 'Search Growth', status: 'working', description: 'Where competitors actually appear per category, keeping NOT TESTED distinct from absence.' },
+  { label: 'Work Queue', href: '/admin/seo/work-queue', group: 'Search Growth', status: 'working', description: 'Observation to measured outcome; an item cannot be DONE without a recorded result.' }
 ];
 
 // Group helper to replicate traditional display grouping without duplicate data

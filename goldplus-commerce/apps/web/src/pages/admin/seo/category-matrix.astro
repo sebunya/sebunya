@@ -1,0 +1,188 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, emptyReason, str, num } from "../../../lib/adminSeo";
+
+/** Category × competitor matrix — where each competitor actually appears in
+ *  the SERPs we sampled, per category. Four honest states, never a boolean:
+ *  NOT TESTED (we never looked) is deliberately distinct from NOT OBSERVED
+ *  (we looked and they were absent). An empty-looking grid must never be read
+ *  as "we have no competition here". */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/category-matrix", 303);
+
+const days = Number(new URL(Astro.request.url).searchParams.get("days")) || 90;
+const res = await seoGet<{
+  windowDays?: number;
+  categories?: string[];
+  competitors?: Array<{ id: string; canonicalName: string }>;
+  cells?: any[];
+  coverage?: any;
+  outrankGaps?: any[];
+}>(token, `/admin/seo/workqueue/matrix?days=${days}`);
+
+const data = res.ok ? res.data : {};
+const categories = Array.isArray(data.categories) ? data.categories : [];
+const competitors = Array.isArray(data.competitors) ? data.competitors : [];
+const cells = Array.isArray(data.cells) ? data.cells : [];
+const coverage = data.coverage ?? null;
+const gaps = Array.isArray(data.outrankGaps) ? data.outrankGaps : [];
+const reason = emptyReason(res, "The competitor matrix is not available yet");
+
+const cellAt = (category: string, competitorId: string) =>
+  cells.find((c: any) => c.category === category && c.competitorId === competitorId);
+
+const cellClass = (state: string) =>
+  state === "OBSERVED" ? "bg-red-50 text-red-900 border-red-200"
+  : state === "NOT_OBSERVED" ? "bg-emerald-50 text-emerald-900 border-emerald-200"
+  : state === "NOT_RELEVANT" ? "bg-gray-50 text-gray-400 border-gray-200"
+  : "bg-amber-50 text-amber-900 border-amber-200"; // NOT_TESTED — never neutral/blank
+
+const cellText = (cell: any) => {
+  if (!cell) return "—";
+  if (cell.state === "OBSERVED") return cell.bestRank === null ? `seen ×${cell.sightings}` : `#${cell.bestRank}`;
+  if (cell.state === "NOT_OBSERVED") return "absent";
+  if (cell.state === "NOT_RELEVANT") return "n/a";
+  return "?";
+};
+
+const WINDOWS = [30, 90, 180, 365];
+---
+
+<AdminLayout title="Category × Competitor Matrix" description="Where each competitor actually appears in the SERPs we sampled, per category.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-6 pb-6 border-b border-gray-200 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Category × Competitor Matrix</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+          Built entirely from recorded SERP observations — nothing here is inferred. The distinction that matters:
+          <strong>NOT TESTED</strong> means we have never sampled that category and know nothing, while
+          <strong>ABSENT</strong> means we did sample it and the competitor was not there. A blank-looking grid is
+          usually the first, not the second.
+        </p>
+      </div>
+      <nav class="flex flex-wrap gap-1">
+        {WINDOWS.map((w) => (
+          <a href={`/admin/seo/category-matrix?days=${w}`}
+            class={`rounded-full border px-3 py-1 text-[11px] font-bold ${days === w ? "border-brand-dark bg-brand-dark text-white" : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"}`}
+          >{w}d</a>
+        ))}
+      </nav>
+    </div>
+
+    {reason && <div role="status" class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600 mb-10">{reason}</div>}
+
+    {coverage && (
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        <div class="rounded-2xl border border-gray-200 bg-white p-4">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Categories</p>
+          <p class="text-xl font-black text-brand-dark">{num(coverage.categories)}</p>
+        </div>
+        <div class="rounded-2xl border border-red-200 bg-white p-4">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Observed</p>
+          <p class="text-xl font-black text-red-800">{num(coverage.observedCells)}</p>
+        </div>
+        <div class="rounded-2xl border border-emerald-200 bg-white p-4">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Absent</p>
+          <p class="text-xl font-black text-emerald-800">{num(coverage.notObservedCells)}</p>
+        </div>
+        <div class="rounded-2xl border border-amber-200 bg-white p-4">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Not tested</p>
+          <p class="text-xl font-black text-amber-800">{num(coverage.notTestedCells)}</p>
+        </div>
+        <div class="rounded-2xl border border-gray-200 bg-white p-4">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Not relevant</p>
+          <p class="text-xl font-black text-gray-500">{num(coverage.notRelevantCells)}</p>
+        </div>
+      </div>
+    )}
+
+    {coverage && Array.isArray(coverage.untestedCategories) && coverage.untestedCategories.length > 0 && (
+      <div role="status" class="mb-8 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <strong>Blind spots.</strong> We have never run a SERP observation for:
+        {" "}{coverage.untestedCategories.join(", ")}. Nothing in this grid says anything about those categories.
+      </div>
+    )}
+
+    {!reason && (categories.length === 0 || competitors.length === 0) && (
+      <p class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600 mb-10">
+        The matrix needs both categorised queries and registered competitors. One of them is empty, so no grid is
+        shown rather than an empty one implying no competition.
+      </p>
+    )}
+
+    {categories.length > 0 && competitors.length > 0 && (
+      <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white mb-6">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="border-b border-gray-100">
+              <th class="p-3 text-left text-[10px] uppercase tracking-widest text-gray-400 sticky left-0 bg-white">Category</th>
+              {competitors.map((c) => (
+                <th class="p-2 text-left text-[10px] font-bold text-gray-500 whitespace-nowrap">{c.canonicalName}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {categories.map((cat) => (
+              <tr class="border-b border-gray-50">
+                <td class="p-3 font-bold text-brand-dark sticky left-0 bg-white whitespace-nowrap">{cat}</td>
+                {competitors.map((c) => {
+                  const cell = cellAt(cat, c.id);
+                  return (
+                    <td class="p-1">
+                      <span
+                        class={`block rounded-lg border px-2 py-1 text-center text-[11px] font-bold ${cellClass(String(cell?.state ?? "NOT_TESTED"))}`}
+                        title={`${cat} × ${c.canonicalName}: ${cell?.state ?? "NOT_TESTED"} (${num(cell?.categorySampleSize ?? 0)} observations run for this category)`}
+                      >{cellText(cell)}</span>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    <div class="flex flex-wrap gap-3 mb-12 text-[11px]">
+      <span class="rounded-lg border border-red-200 bg-red-50 px-3 py-1 font-bold text-red-900">#n / seen — OBSERVED in results</span>
+      <span class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 font-bold text-emerald-900">absent — sampled, NOT OBSERVED</span>
+      <span class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1 font-bold text-amber-900">? — NOT TESTED, we never looked</span>
+      <span class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 font-bold text-gray-500">n/a — outside their recorded categories</span>
+    </div>
+
+    <section class="mb-16">
+      <h3 class="font-black text-brand-dark mb-1">Outrank gaps</h3>
+      <p class="text-xs text-gray-500 mb-3">
+        Competitors observed ahead of us, per category. Categories we never sampled are omitted entirely rather
+        than shown as a gap of zero.
+      </p>
+      {gaps.length === 0 ? (
+        <p class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-600">
+          No category has an observed competitor ranking ahead of us in this window. This covers only the categories
+          we actually sampled.
+        </p>
+      ) : (
+        <div class="space-y-3">
+          {gaps.map((g: any) => (
+            <div class="rounded-2xl border border-gray-200 bg-white p-4">
+              <p class="font-bold text-brand-dark">
+                {str(g.category)}
+                <span class="ml-2 text-xs font-normal text-gray-500">
+                  our best observed rank: {g.ourBestRank === null ? "never observed" : `#${g.ourBestRank}`}
+                </span>
+              </p>
+              <div class="flex flex-wrap gap-2 mt-2">
+                {g.ahead.map((a: any) => (
+                  <span class="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-bold text-red-900">
+                    {a.competitorName} #{a.bestRank}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  </div>
+</AdminLayout>

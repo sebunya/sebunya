@@ -59,5 +59,6 @@ export * from './taxonomy';
 export * from './homepageContent';
 export * from './storefrontCopy';
 export * from './seo-catalogue';
+export * from './seo-technical';
 export * from './seo-growth';
 export * from './seo-integrations';
