@@ -101,6 +101,13 @@ services:
       # shopper loses their basket / cannot check out.
       - CART_CREDENTIAL_SECRET=${CART_CREDENTIAL_SECRET}
       - CHECKOUT_INTENT_SECRET=${CHECKOUT_INTENT_SECRET}
+      # Integration credential vault. Independent of JWT_SECRET on purpose: the
+      # vault falls back to JWT_SECRET when this is unset, which would couple
+      # stored provider credentials to the auth secret and make rotating either
+      # one strand the other. Must be present here — listing it in
+      # .env.production alone does NOT reach the container, because compose
+      # passes only the variables named in this block.
+      - SEO_CREDENTIAL_VAULT_KEY=${SEO_CREDENTIAL_VAULT_KEY}
       - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - COOKIE_SECURE=${COOKIE_SECURE}
