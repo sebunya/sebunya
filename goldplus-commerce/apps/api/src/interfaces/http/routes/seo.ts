@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
 import { buildMerchantFeedXml } from '../../../application/use-cases/seo-growth/MerchantFeedUseCase';
+import { SearchBatteryFinderUseCase } from '../../../application/use-cases/seo-growth/BatteryCompatibilityUseCases';
 
 /**
  * U6 — public SEO endpoints. Thin routes over Registry.seoRepo:
@@ -93,6 +94,44 @@ routes.get('/indexnow-key', (c) => {
   }
   c.header('Cache-Control', 'public, max-age=300');
   const res: ApiResponse<{ key: string }> = { success: true, data: { key } };
+  return c.json(res);
+});
+
+/**
+ * Public battery finder. Returns ONLY compatibility facts an operator recorded
+ * and verified (VERIFIED/PROVISIONAL) — never a guess, and never an
+ * UNVERIFIED or REJECTED combination. `indexable` tells the storefront whether
+ * the finder page has enough verified facts to be worth indexing; below the
+ * threshold it stays noindex rather than becoming a thin page.
+ */
+routes.get('/battery-finder', async (c) => {
+  const query = (c.req.query('q') ?? '').trim();
+  const repo = Registry.getInstance().seoCatalogueRepo;
+  const useCase = new SearchBatteryFinderUseCase({
+    searchRows: async (tokens) =>
+      (await repo.searchBatteryCompat(tokens)).map((r: any) => ({
+        id: String(r.id),
+        phoneBrand: String(r.phone_brand),
+        phoneModel: String(r.phone_model),
+        modelNumber: r.model_number ?? null,
+        variant: r.variant ?? null,
+        batteryReference: String(r.battery_reference),
+        status: String(r.status),
+        product: r.product_id
+          ? {
+              id: String(r.product_id),
+              name: String(r.product_name),
+              slug: String(r.product_slug),
+              priceUgx: Number(r.product_price ?? 0),
+              imageUrl: r.product_image_url ?? null,
+            }
+          : null,
+      })),
+    countVerified: () => repo.countVerifiedBatteryCompat(),
+    recordEvent: (e) => repo.recordFinderEvent(e),
+  });
+  const result = await useCase.execute(query);
+  const res: ApiResponse<typeof result> = { success: true, data: result };
   return c.json(res);
 });
 

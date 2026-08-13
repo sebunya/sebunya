@@ -1,0 +1,153 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { apiBase } from '../lib/api';
+import { SITE_ORIGIN } from '../lib/sitemap';
+import type { ApiResponse } from '@goldplus/shared';
+
+/**
+ * Public battery finder. Shows ONLY compatibility facts an operator recorded
+ * and evidenced — a VERIFIED fit is stated as verified, a PROVISIONAL one is
+ * stated as needing confirmation, and nothing else is shown at all. There is
+ * no guessing, no "probably fits", and no per-model page generated for a
+ * combination we have not checked.
+ *
+ * The page is noindex until the registry holds enough verified fits to be
+ * genuinely useful, so it never ships as a thin page competing for queries it
+ * cannot answer.
+ */
+const query = (new URL(Astro.request.url).searchParams.get('q') ?? '').trim().slice(0, 80);
+
+type FinderResult = {
+  query: string;
+  matches: Array<{
+    id: string;
+    phoneBrand: string;
+    phoneModel: string;
+    modelNumber: string | null;
+    variant: string | null;
+    batteryReference: string;
+    status: string;
+    statusLabel: string;
+    product: { id: string; name: string; slug: string; priceUgx: number; imageUrl: string | null } | null;
+  }>;
+  verifiedCount: number;
+  indexable: boolean;
+};
+
+let result: FinderResult | null = null;
+let unavailable = false;
+try {
+  const res = await fetch(`${apiBase}/seo/battery-finder?q=${encodeURIComponent(query)}`, {
+    headers: { Accept: 'application/json' },
+  });
+  const json = (await res.json()) as ApiResponse<FinderResult>;
+  if (json.success) result = json.data;
+  else unavailable = true;
+} catch {
+  unavailable = true;
+}
+
+const matches = result?.matches ?? [];
+const indexable = result?.indexable === true;
+const robotsMeta = indexable ? undefined : 'noindex,follow';
+const canonicalUrl = `${SITE_ORIGIN}/battery-finder`;
+const ugx = (n: number) => `UGX ${n.toLocaleString('en-UG')}`;
+---
+
+<BaseLayout
+  title="Phone battery finder — find the right battery for your phone"
+  description="Search your phone model to see which replacement batteries we have checked as a fit."
+  canonicalUrl={canonicalUrl}
+  robotsMeta={robotsMeta}
+>
+  <div class="container mx-auto px-4 py-10 max-w-4xl">
+    <h1 class="text-3xl font-black text-brand-dark tracking-tight">Battery finder</h1>
+    <p class="text-gray-600 mt-2 max-w-2xl">
+      Type your phone brand and model. We only list batteries we have actually checked against that phone — if we
+      have not checked yours, we say so rather than guess.
+    </p>
+
+    <form method="GET" class="mt-6 flex flex-wrap gap-2">
+      <label class="sr-only" for="q">Your phone brand and model</label>
+      <input
+        id="q"
+        name="q"
+        value={query}
+        maxlength="80"
+        placeholder="e.g. Samsung Galaxy S21"
+        class="flex-1 min-w-[240px] rounded-xl border border-gray-300 px-4 py-3 text-base"
+      />
+      <button type="submit" class="rounded-xl bg-brand-dark px-6 py-3 font-bold text-white hover:opacity-90">
+        Find batteries
+      </button>
+    </form>
+
+    {unavailable && (
+      <div role="status" class="mt-8 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
+        The battery finder is temporarily unavailable. Please call or WhatsApp us and we will check the fit for you.
+      </div>
+    )}
+
+    {!unavailable && query === '' && (
+      <div class="mt-8 rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
+        Enter your phone model above to see checked fits.
+        {result && result.verifiedCount === 0 && (
+          <p class="mt-2 text-gray-500">
+            We have not published any verified fits yet. If you tell us your model, we will check it for you.
+          </p>
+        )}
+      </div>
+    )}
+
+    {!unavailable && query !== '' && matches.length === 0 && (
+      <div role="status" class="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
+        <p class="font-bold">We have not checked a battery for "{query}" yet.</p>
+        <p class="mt-1">
+          That does not mean one does not exist — it means we have not verified the fit, and we will not guess with
+          your phone. Send us the model and we will confirm before you buy.
+        </p>
+      </div>
+    )}
+
+    {!unavailable && matches.length > 0 && (
+      <div class="mt-8 space-y-4">
+        <p class="text-sm text-gray-500">{matches.length} checked {matches.length === 1 ? 'fit' : 'fits'} for "{query}".</p>
+        {matches.map((m) => (
+          <article class="rounded-2xl border border-gray-200 bg-white p-5 flex flex-wrap items-center gap-4">
+            {m.product?.imageUrl && (
+              <img src={m.product.imageUrl} alt={m.product.name} width="72" height="72" loading="lazy" class="rounded-xl object-cover" />
+            )}
+            <div class="flex-1 min-w-[200px]">
+              <h2 class="font-black text-brand-dark">
+                {m.product ? m.product.name : m.batteryReference}
+              </h2>
+              <p class="text-xs text-gray-500 mt-1">
+                Fits {m.phoneBrand} {m.phoneModel}{m.variant ? ` (${m.variant})` : ''} · battery reference
+                <span class="font-mono"> {m.batteryReference}</span>
+              </p>
+              <span class={`inline-block mt-2 rounded-full border px-3 py-1 text-[11px] font-bold ${m.status === 'VERIFIED' ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
+                {m.statusLabel}
+              </span>
+            </div>
+            {m.product && (
+              <div class="text-right">
+                <p class="font-black text-brand-dark">{ugx(m.product.priceUgx)}</p>
+                <a href={`/products/${m.product.slug}`} class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
+              </div>
+            )}
+            {!m.product && (
+              <p class="text-xs text-gray-500 max-w-[200px]">
+                We have confirmed this fit but do not have it listed for online purchase right now — ask us about
+                availability.
+              </p>
+            )}
+          </article>
+        ))}
+        <p class="text-xs text-gray-500">
+          "Verified fit" means we checked this battery against this phone. "Likely fit" means the evidence points
+          that way but we have not confirmed it ourselves — ask us before you buy.
+        </p>
+      </div>
+    )}
+  </div>
+</BaseLayout>

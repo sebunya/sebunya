@@ -834,6 +834,13 @@
       "when": 1789596000000,
       "tag": "0118_seo_integration_platform",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "5",
+      "when": 1789599600000,
+      "tag": "0119_seo_catalogue_intelligence",
+      "breakpoints": true
     }
   ]
 }

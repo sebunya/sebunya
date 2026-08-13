@@ -1,0 +1,191 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, emptyReason, str, num, fmtWhen } from "../../../lib/adminSeo";
+
+/** Product lifecycle SEO — what happens to a product URL when the product's
+ *  real state changes. Every disposition is a recorded human decision with a
+ *  rationale. Blanket redirects are refused: a 301 needs a genuine successor
+ *  product, never a category or the homepage. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/product-lifecycle", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  if (String(form.get("intent") ?? "") === "decide") {
+    const res = await seoPost(token, "/admin/seo/catalogue/lifecycle", {
+      productId: String(form.get("productId") ?? "").trim(),
+      state: String(form.get("state") ?? ""),
+      disposition: String(form.get("disposition") ?? ""),
+      successorProductId: String(form.get("successorProductId") ?? "").trim() || null,
+      rationale: String(form.get("rationale") ?? "").trim() || null,
+    });
+    if (res.ok) notice = "Lifecycle decision recorded.";
+    else formError = res.message;
+  }
+}
+
+const url = new URL(Astro.request.url);
+const dispositionFilter = url.searchParams.get("disposition") ?? "";
+const res = await seoGet<{ items?: any[]; reviewQueue?: any[] }>(
+  token,
+  `/admin/seo/catalogue/lifecycle${dispositionFilter ? `?disposition=${encodeURIComponent(dispositionFilter)}` : ""}`,
+);
+const vocabRes = await seoGet<{ allowedDispositions?: Record<string, string[]>; suggestedDispositions?: Record<string, string> }>(
+  token, "/admin/seo/catalogue/vocabulary",
+);
+const data = res.ok ? res.data : {};
+const items = Array.isArray(data.items) ? data.items : [];
+const queue = Array.isArray(data.reviewQueue) ? data.reviewQueue : [];
+const reason = emptyReason(res, "No lifecycle decisions have been recorded yet");
+const allowed = vocabRes.ok ? (vocabRes.data.allowedDispositions ?? {}) : {};
+const suggested = vocabRes.ok ? (vocabRes.data.suggestedDispositions ?? {}) : {};
+
+const STATES = Object.keys(allowed);
+const DISPOSITIONS = ["", "RETAIN_200", "OFFER_ALTERNATIVE", "REDIRECT_301_SUCCESSOR", "REDIRECT_301_REPLACEMENT", "GONE_410", "UNPUBLISH", "UNDECIDED"];
+const badge = (d: string) =>
+  d === "UNDECIDED" ? "border-amber-300 bg-amber-50 text-amber-900"
+  : d.startsWith("REDIRECT") ? "border-blue-300 bg-blue-50 text-blue-900"
+  : d === "GONE_410" ? "border-red-300 bg-red-50 text-red-900"
+  : "border-emerald-300 bg-emerald-50 text-emerald-900";
+---
+
+<AdminLayout title="Product Lifecycle SEO" description="Per-product URL dispositions for discontinued, out-of-stock and unpublished products.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Product Lifecycle SEO</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+        What happens to a product URL when the product's real state changes. Out of stock is not a reason to delete
+        a page — the URL keeps its 200 and its rankings. A <strong>301</strong> is only offered when a genuine
+        successor product exists; redirecting to a category or the homepage is a soft 404 and is not available here.
+        A discontinued product with no successor keeps an honest page that says so and offers alternatives, because
+        it still answers "does ShopGoldPlus sell this?".
+      </p>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    {/* Review queue */}
+    <section class="mb-12">
+      <h3 class="font-black text-brand-dark mb-1">Awaiting a decision</h3>
+      <p class="text-xs text-gray-500 mb-3">
+        Products that are out of stock or inactive with no recorded disposition. Nothing has been decided for them —
+        their pages are unchanged until someone decides.
+      </p>
+      {queue.length === 0 ? (
+        <p class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-600">
+          No product is waiting on a lifecycle decision.
+        </p>
+      ) : (
+        <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+          <table class="w-full text-xs">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+              <th class="p-3">Product</th><th>Stock</th><th>Active</th><th class="p-3">Product ID</th>
+            </tr></thead>
+            <tbody>
+              {queue.map((q: any) => (
+                <tr class="border-b border-gray-50">
+                  <td class="p-3"><a href={`/products/${q.product_slug}`} class="font-bold text-brand-dark hover:underline">{str(q.product_name)}</a></td>
+                  <td>{num(q.stock_quantity)}</td>
+                  <td>{q.active === false ? "No" : "Yes"}</td>
+                  <td class="p-3 font-mono text-[11px] text-gray-500">{str(q.product_id)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    {/* Decide */}
+    <form method="POST" class="mb-12 rounded-2xl border border-gray-200 bg-white p-6">
+      <input type="hidden" name="intent" value="decide" />
+      <h3 class="font-black text-brand-dark mb-4">Record a decision</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label class="text-sm text-gray-700">Product ID <span class="text-red-600">*</span>
+          <input name="productId" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs" />
+        </label>
+        <label class="text-sm text-gray-700">Real product state <span class="text-red-600">*</span>
+          <select name="state" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {STATES.map((s) => <option value={s}>{s}</option>)}
+          </select>
+        </label>
+        <label class="text-sm text-gray-700">Disposition <span class="text-red-600">*</span>
+          <select name="disposition" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {DISPOSITIONS.filter(Boolean).map((d) => <option value={d}>{d}</option>)}
+          </select>
+        </label>
+        <label class="text-sm text-gray-700">Successor product ID (required for any 301)
+          <input name="successorProductId" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs" />
+        </label>
+        <label class="text-sm text-gray-700 md:col-span-2">Rationale <span class="text-red-600">*</span>
+          <textarea name="rationale" rows="2" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></textarea>
+          <span class="block mt-1 text-xs text-gray-400">Why this outcome is right for this product. A decision without a reason is rejected.</span>
+        </label>
+      </div>
+
+      {STATES.length > 0 && (
+        <details class="mt-4">
+          <summary class="cursor-pointer text-xs font-bold uppercase tracking-widest text-gray-500">Defensible dispositions per state</summary>
+          <ul class="mt-2 space-y-1 text-xs text-gray-600">
+            {STATES.map((s) => (
+              <li>
+                <strong class="font-mono text-brand-dark">{s}</strong> → {(allowed[s] ?? []).join(", ")}
+                {suggested[s] && <span class="text-gray-400"> (suggested: {suggested[s]})</span>}
+              </li>
+            ))}
+          </ul>
+          <p class="mt-2 text-[11px] text-gray-400">
+            Suggestions are never applied automatically. Anything outside the list is rejected with
+            <code class="font-mono"> DISPOSITION_NOT_DEFENSIBLE</code>.
+          </p>
+        </details>
+      )}
+
+      <button type="submit" class="mt-4 rounded-xl bg-brand-dark px-6 py-3 text-sm font-bold text-white hover:opacity-90">Record decision</button>
+    </form>
+
+    {/* Decisions */}
+    <section class="mb-16">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h3 class="font-black text-brand-dark">Recorded decisions</h3>
+        <nav class="flex flex-wrap gap-1">
+          {DISPOSITIONS.map((d) => (
+            <a href={d ? `/admin/seo/product-lifecycle?disposition=${d}` : "/admin/seo/product-lifecycle"}
+              class={`rounded-full border px-3 py-1 text-[11px] font-bold ${dispositionFilter === d ? "border-brand-dark bg-brand-dark text-white" : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"}`}
+            >{d || "ALL"}</a>
+          ))}
+        </nav>
+      </div>
+      {reason ? (
+        <div role="status" class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">{reason}</div>
+      ) : items.length === 0 ? (
+        <p class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">No decision matches this filter.</p>
+      ) : (
+        <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+          <table class="w-full text-xs">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+              <th class="p-3">Product</th><th>State</th><th>Disposition</th><th>Successor</th><th>Rationale</th><th class="p-3">Decided</th>
+            </tr></thead>
+            <tbody>
+              {items.map((r: any) => (
+                <tr class="border-b border-gray-50">
+                  <td class="p-3"><a href={`/products/${r.product_slug}`} class="font-bold text-brand-dark hover:underline">{str(r.product_name)}</a></td>
+                  <td class="font-mono text-[11px]">{str(r.state)}</td>
+                  <td><span class={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badge(String(r.disposition))}`}>{str(r.disposition)}</span></td>
+                  <td>{r.successor_name ? <a href={`/products/${r.successor_slug}`} class="hover:underline">{r.successor_name}</a> : "—"}</td>
+                  <td class="max-w-md text-gray-600">{str(r.rationale)}</td>
+                  <td class="p-3">{r.decided_at ? fmtWhen(r.decided_at) : "Not decided"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  </div>
+</AdminLayout>

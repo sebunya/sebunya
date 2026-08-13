@@ -62,7 +62,9 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // Integrations Control Plane — integrations/index.astro (marketplace),
     // integrations/[provider].astro (detail), integrations/[provider]/connect.astro
     // (wizard) and integrations/sync.astro (Sync Operations Center). Net +3.
-    expect(adminPages).toHaveLength(111);
+    // 114 adds the three catalogue-intelligence surfaces (2026-08-13):
+    // battery-compatibility, storage-tests and product-lifecycle.
+    expect(adminPages).toHaveLength(114);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/analytics/index.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -79,7 +81,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(110);
+    expect(protectedPages).toHaveLength(113);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');

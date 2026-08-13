@@ -18,8 +18,15 @@ const EXPECTED: Array<{ label: string; href: string }> = [
   { label: 'Opportunities', href: '/admin/seo/opportunities' },
   { label: 'Technical SEO', href: '/admin/seo/technical' },
   { label: 'Integrations', href: '/admin/seo/integrations' },
+  // Tranche 2 (2026-08-13): the Sync Operations Center of the Search
+  // Integrations Control Plane.
+  { label: 'Sync Operations', href: '/admin/seo/integrations/sync' },
   { label: 'Content & Experiments', href: '/admin/seo/content' },
   { label: 'AEO', href: '/admin/seo/aeo' },
+  // Tranche 2 (2026-08-13): the three catalogue-intelligence surfaces.
+  { label: 'Battery Compatibility', href: '/admin/seo/battery-compatibility' },
+  { label: 'Storage Testing', href: '/admin/seo/storage-tests' },
+  { label: 'Product Lifecycle SEO', href: '/admin/seo/product-lifecycle' },
 ];
 
 const PAGES = path.resolve(__dirname, '../../apps/web/src/pages');

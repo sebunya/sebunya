@@ -1,0 +1,185 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, emptyReason, str, num, fmtWhen } from "../../../lib/adminSeo";
+
+/** Storage capacity testing — what we actually measured on flash drives,
+ *  memory cards and SSDs. The result is derived from the measurement, not
+ *  chosen: an operator cannot mark a device PASS while recording a capacity
+ *  that does not support it. A product with no record is NOT_TESTED and is
+ *  shown as such — never as verified quality. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/storage-tests", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  if (String(form.get("intent") ?? "") === "add") {
+    const res = await seoPost<{ result?: string }>(token, "/admin/seo/catalogue/storage", {
+      productId: String(form.get("productId") ?? "").trim(),
+      claimedCapacityGb: Number(form.get("claimedCapacityGb")),
+      testedCapacityGb: String(form.get("testedCapacityGb") ?? "").trim() === "" ? null : Number(form.get("testedCapacityGb")),
+      readMbS: String(form.get("readMbS") ?? "").trim() === "" ? null : Number(form.get("readMbS")),
+      writeMbS: String(form.get("writeMbS") ?? "").trim() === "" ? null : Number(form.get("writeMbS")),
+      method: String(form.get("method") ?? ""),
+      tool: String(form.get("tool") ?? "").trim() || null,
+      tester: String(form.get("tester") ?? "").trim(),
+      testedAt: String(form.get("testedAt") ?? "").trim(),
+      evidenceNote: String(form.get("evidenceNote") ?? "").trim() || null,
+    });
+    if (res.ok) notice = `Test recorded. Derived result: ${res.data.result ?? "—"} (computed from the measured capacity, not chosen).`;
+    else formError = res.message;
+  }
+}
+
+const res = await seoGet<{ tests?: any[]; coverage?: any[]; notTested?: number }>(token, "/admin/seo/catalogue/storage");
+const data = res.ok ? res.data : {};
+const tests = Array.isArray(data.tests) ? data.tests : [];
+const coverage = Array.isArray(data.coverage) ? data.coverage : [];
+const notTested = typeof data.notTested === "number" ? data.notTested : null;
+const reason = emptyReason(res, "Storage test records are not available yet");
+
+const METHODS = ["FULL_WRITE_VERIFY", "SAMPLED_WRITE_VERIFY", "CAPACITY_REPORT_ONLY"];
+const stateBadge = (s: string) =>
+  s === "VERIFIED" ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+  : s === "FAILED" ? "border-red-300 bg-red-50 text-red-900"
+  : s === "INCONCLUSIVE" ? "border-amber-300 bg-amber-50 text-amber-900"
+  : "border-gray-300 bg-gray-50 text-gray-600";
+const stateLabel = (s: string) => (s === "NOT_TESTED" ? "NOT TESTED" : s);
+---
+
+<AdminLayout title="Storage Testing" description="Measured capacity and speed for storage products — with untested stock shown honestly as NOT TESTED.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Storage Testing</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+        A counterfeit drive that reports 128GB and holds 8GB is what this exists to catch. A <strong>PASS</strong>
+        requires a measured usable capacity of at least 90% of the claim — the result is computed from the
+        measurement, never chosen. A product with no record is <strong>NOT TESTED</strong>, which is not the same
+        as passing and is never displayed as verified quality.
+      </p>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+      <div class="rounded-2xl border border-gray-200 bg-white p-5">
+        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Tests recorded</p>
+        <p class="text-2xl font-black text-brand-dark">{num(tests.length)}</p>
+      </div>
+      <div class="rounded-2xl border border-gray-200 bg-white p-5">
+        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Storage products</p>
+        <p class="text-2xl font-black text-brand-dark">{num(coverage.length)}</p>
+      </div>
+      <div class="rounded-2xl border border-gray-200 bg-white p-5">
+        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Not tested</p>
+        <p class="text-2xl font-black text-gray-500">{notTested === null ? "—" : num(notTested)}</p>
+        <p class="text-[11px] text-gray-400 mt-1">Unknown quality — not a claim either way.</p>
+      </div>
+    </div>
+
+    <form method="POST" class="mb-10 rounded-2xl border border-gray-200 bg-white p-6">
+      <input type="hidden" name="intent" value="add" />
+      <h3 class="font-black text-brand-dark mb-4">Record a test</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <label class="text-sm text-gray-700 md:col-span-3">Product ID <span class="text-red-600">*</span>
+          <input name="productId" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs" />
+        </label>
+        <label class="text-sm text-gray-700">Claimed capacity (GB) <span class="text-red-600">*</span>
+          <input name="claimedCapacityGb" type="number" step="any" min="0" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="text-sm text-gray-700">Measured usable capacity (GB)
+          <input name="testedCapacityGb" type="number" step="any" min="0" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          <span class="block mt-1 text-[11px] text-gray-400">Leave blank if not measured — the test is then INCONCLUSIVE, never PASS.</span>
+        </label>
+        <label class="text-sm text-gray-700">Method <span class="text-red-600">*</span>
+          <select name="method" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {METHODS.map((m) => <option value={m}>{m}</option>)}
+          </select>
+        </label>
+        <label class="text-sm text-gray-700">Read speed (MB/s)
+          <input name="readMbS" type="number" step="any" min="0" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="text-sm text-gray-700">Write speed (MB/s)
+          <input name="writeMbS" type="number" step="any" min="0" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="text-sm text-gray-700">Tool used
+          <input name="tool" placeholder="e.g. F3, h2testw" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="text-sm text-gray-700">Tester <span class="text-red-600">*</span>
+          <input name="tester" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="text-sm text-gray-700">Tested on <span class="text-red-600">*</span>
+          <input name="testedAt" type="date" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="text-sm text-gray-700 md:col-span-3">Notes
+          <textarea name="evidenceNote" rows="2" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></textarea>
+        </label>
+      </div>
+      <button type="submit" class="mt-4 rounded-xl bg-brand-dark px-6 py-3 text-sm font-bold text-white hover:opacity-90">Record test</button>
+    </form>
+
+    <section class="mb-12">
+      <h3 class="font-black text-brand-dark mb-3">Coverage by product</h3>
+      {reason ? (
+        <div role="status" class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">{reason}</div>
+      ) : coverage.length === 0 ? (
+        <p class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">No storage products were found in the catalogue.</p>
+      ) : (
+        <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+          <table class="w-full text-xs">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+              <th class="p-3">Product</th><th>Evidence state</th><th>Tests</th><th>Pass</th><th>Fail</th><th>Inconclusive</th><th class="p-3">Last tested</th>
+            </tr></thead>
+            <tbody>
+              {coverage.map((r: any) => (
+                <tr class="border-b border-gray-50">
+                  <td class="p-3"><a href={`/products/${r.product_slug}`} class="font-bold text-brand-dark hover:underline">{str(r.product_name)}</a></td>
+                  <td><span class={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${stateBadge(String(r.evidenceState))}`}>{stateLabel(String(r.evidenceState))}</span></td>
+                  <td>{num(r.tests)}</td>
+                  <td class="text-emerald-800">{num(r.passes)}</td>
+                  <td class="text-red-800">{num(r.failures)}</td>
+                  <td class="text-amber-800">{num(r.inconclusive)}</td>
+                  <td class="p-3">{r.last_tested_at ? str(r.last_tested_at) : "Never"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    <section class="mb-16">
+      <h3 class="font-black text-brand-dark mb-3">Test records</h3>
+      {tests.length === 0 ? (
+        <p class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">No storage test has been recorded yet.</p>
+      ) : (
+        <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+          <table class="w-full text-xs">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+              <th class="p-3">Product</th><th>Claimed</th><th>Measured</th><th>Result</th><th>Method</th><th>Read</th><th>Write</th><th>Tester</th><th class="p-3">Tested</th>
+            </tr></thead>
+            <tbody>
+              {tests.map((t: any) => (
+                <tr class="border-b border-gray-50">
+                  <td class="p-3">{str(t.product_name)}</td>
+                  <td>{num(Number(t.claimed_capacity_gb))} GB</td>
+                  <td>{t.tested_capacity_gb === null || t.tested_capacity_gb === undefined ? "Not measured" : `${num(Number(t.tested_capacity_gb))} GB`}</td>
+                  <td class="font-bold">{str(t.result)}</td>
+                  <td class="font-mono text-[11px]">{str(t.method)}</td>
+                  <td>{t.read_mb_s ? `${num(Number(t.read_mb_s))} MB/s` : "—"}</td>
+                  <td>{t.write_mb_s ? `${num(Number(t.write_mb_s))} MB/s` : "—"}</td>
+                  <td>{str(t.tester)}</td>
+                  <td class="p-3">{str(t.tested_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  </div>
+</AdminLayout>

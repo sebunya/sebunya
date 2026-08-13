@@ -318,7 +318,10 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'Integrations', href: '/admin/seo/integrations', group: 'Search Growth', status: 'working', description: 'The integration marketplace: connect providers, manage vault credentials and run staged tests from the admin UI.' },
   { label: 'Sync Operations', href: '/admin/seo/integrations/sync', group: 'Search Growth', status: 'working', description: 'Data freshness per connection and every sync job, with NO DATA kept distinct from STALE.' },
   { label: 'Content & Experiments', href: '/admin/seo/content', group: 'Search Growth', status: 'working', description: 'Content gaps, the SEO change ledger and controlled experiments.' },
-  { label: 'AEO', href: '/admin/seo/aeo', group: 'Search Growth', status: 'working', description: 'Answer-engine prompt bank, recorded observations and coverage.' }
+  { label: 'AEO', href: '/admin/seo/aeo', group: 'Search Growth', status: 'working', description: 'Answer-engine prompt bank, recorded observations and coverage.' },
+  { label: 'Battery Compatibility', href: '/admin/seo/battery-compatibility', group: 'Search Growth', status: 'working', description: 'Evidenced phone-to-battery fits behind the public finder; VERIFIED requires a source and a note.' },
+  { label: 'Storage Testing', href: '/admin/seo/storage-tests', group: 'Search Growth', status: 'working', description: 'Measured capacity and speed per storage product; untested stock is shown as NOT TESTED.' },
+  { label: 'Product Lifecycle SEO', href: '/admin/seo/product-lifecycle', group: 'Search Growth', status: 'working', description: 'Per-product URL dispositions for discontinued and out-of-stock products; no blanket redirects.' }
 ];
 
 // Group helper to replicate traditional display grouping without duplicate data
