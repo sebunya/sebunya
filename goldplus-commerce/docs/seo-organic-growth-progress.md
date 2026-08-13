@@ -405,96 +405,113 @@ registration.
 Hubs, battery finder, sitemap gating, robots fallback and commerce routes all
 re-verified identical after the rollout.
 
+## SEARCH CONSOLE GUARDIAN — RELEASED AND SCHEDULED, 2026-08-13
+
+The decision core is live, gated, and running on a six-hourly schedule in
+observe-only mode. Nothing existing was rebuilt.
+
+### What shipped
+
+```
+8f96c4f  provider-readiness gate, baseline lifecycle, six-hourly schedule
+7dc3d24  signal -> incident linkage (found by real execution, see below)
+migration 0121 applied: ceiling 1789603200000 -> 1789606800000
+api sha256:f63ef3bbd90e (web untouched, sha256:ea3f983739aa)
+```
+
+### Provider gate
+
+A scheduled run with no Search Console credential costs ONE row and does
+nothing else — no collection, no incident, no work item, no notification.
+Silence is discriminating: an absent or half-configured connection is silent,
+but a credential that STOPS being authorised, or a provider erroring, is
+surfaced. The moment a credential lands in `/admin/seo/integrations` the next
+run proceeds; no redeploy is needed to supply one.
+
+### Baseline lifecycle (replaces "wait a week")
+
+`BACKFILL_PENDING -> BASELINE_CAPTURE -> BASELINE_CONFIRMATION ->
+OBSERVE_ONLY_ACTIVE`, with historical context from four complete
+non-overlapping windows (7 / prev-7 / 28 / prev-28). Backfill is archaeology,
+not monitoring: it may not notify, mutate externally, open incidents or
+overwrite the live baseline. Until the baseline is confirmed the agent observes
+and records but never classifies.
+
+### Scheduling
+
+Exactly one registration on `0 */6 * * *`, on the EXISTING analytics-fanout
+queue — verified in production as the fourth repeatable job,
+`search-console-guardian-cron`. Not hourly: GSC settles over ~3 days, so a
+faster cadence would re-read the same numbers and invent movement.
+`pg_try_advisory_lock` leases each run and releases in a `finally`; a stale
+RUNNING row is reaped so a crashed run recovers.
+
+### Proven by real execution, not by fakes
+
+The whole runner was executed against a production-shaped clone restored from a
+verified backup. Two runtime traps surfaced that neither the type checker nor
+the fake-port tests could see:
+
+1. `seo_alerts`' unique index on `dedupe_key` is **partial**
+   (`WHERE status = 'OPEN'`), so `ON CONFLICT` must repeat that predicate.
+   The semantics are also correct: a recurrence after RESOLVED opens a fresh
+   alert, matching how hysteresis treats a relapse.
+2. `seo_guardian_signals.alert_id` stayed NULL — the column and FK existed but
+   nothing wrote them, leaving a hole in the evidence graph. Fixed in `7dc3d24`.
+
+Full lifecycle then verified on real PostgreSQL with a seeded 43% drop on a
+4,900-click baseline:
+
+```
+run 1  incidentsOpened=1   (CONFIRMED transition)
+run 2  incidentsOpened=0   (no duplicate — idempotent)
+signals linked to alert = 1
+alerts open = 1            (one per condition, not one per run)
+/audio flat                 -> correctly ignored
+actions                     -> DENIED, "The system is in observe-only mode."
+```
+
+### Production state right now
+
+```
+PROD_RUNS=2 · PROD_SIGNALS=0 · PROD_ACTIONS=0 · PROD_ALERTS(CLICK_DROP)=0
+providerReadiness=WAITING_FOR_CREDENTIAL · phase=NO_PROVIDER
+seo_guardian_policy rows=0 -> code defaults apply: OBSERVE_ONLY,
+  autonomous/external writes OFF, content autopublish OFF
+```
+
+Notification is deliberately `CONTROL_CENTER_AND_AUDIT_ONLY` this tranche and
+reports `delivered:false` rather than pretending a send occurred. Email is
+out of scope by instruction.
+
 ## Current state
 
 ```
-STATUS=PRODUCTION_VERIFIED · PUBLIC OAUTH CALLBACK PROVEN · NOT ACTIVATED
-RELEASE_ID=69bec06 (api sha256:0f6a76700674 · web sha256:8dc9ee78e4a5)
-LOCAL_HEAD = ORIGIN_HEAD = PRODUCTION_HEAD = 69bec06
-MIGRATION_CEILING=1789603200000 (0120) — untouched
-PROVIDER_REGISTRY=14 registered / 14 unique / 0 duplicates
-OWNER_GOOGLE_CONFIGURATION_SAFE_TO_BEGIN=YES
-PROGRAMME_STATE=OWNER_GOOGLE_CONFIGURATION_REQUIRED
+STATUS=GUARDIAN RELEASED · SCHEDULED · WAITING_FOR_PROVIDER
+LOCAL_HEAD = ORIGIN_HEAD = PRODUCTION_HEAD = 7dc3d24
+MIGRATION_CEILING=1789606800000 (0121)
+AUTONOMY_LEVEL=0 (OBSERVE)  ·  LEVEL_1_READY=false (0 valid live runs)
+TESTS=6388/6388 · 95 guardian tests · typecheck clean
+BACKUP=pre-guardian-20260813-111415.dump (23,410,143 B) retained
 ```
 
-### Owner actions
+### The only thing standing between this and a working agent
 
-For GBP (OAuth) only:
-1. `SEO_OAUTH_REDIRECT_BASE=https://api.shopgoldplus.com` — **note the api
-   subdomain**; the earlier instruction naming the storefront origin was wrong.
-2. `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — secrets, never in
-   chat. Restart api after 1–2.
-3. Register in Google Cloud exactly:
-   `https://api.shopgoldplus.com/seo/oauth/google/callback`
+Upload the Search Console **service-account JSON** in
+`/admin/seo/integrations`. No env change, no redeploy, no OAuth. The Guardian
+picks it up on the next six-hourly tick, runs the historical backfill, captures
+and confirms a live baseline, then begins observing.
 
-For GSC / GA4 / Merchant Center: nothing here — upload service-account JSON in
-`/admin/seo/integrations`. No env change, no redeploy.
+### Internally controllable work remaining (P1, not started)
 
-For PageSpeed / CrUX: `GOOGLE_PAGESPEED_API_KEY` (optional). Absent stays
-`CONFIGURATION_REQUIRED`, never a zero measurement.
-
-## RECOMMENDATIONMATERIALIZER — REPAIRED 2026-08-13
-
-The separate platform defect carried through the SEO/AEO closeout is fixed. It
-was never part of that tranche and is recorded here only because this log is
-where it was discovered and tracked.
-
-```
-SYMPTOM   PostgresError: cannot cast type record to jsonb, hourly since 2026-08-06
-IMPACT    recommendation_materialized_cache frozen 7 days; customers served
-          stale-not-absent recommendations; no data/pricing/checkout/security impact
-SEVERITY  SEV3
-```
-
-**Cause.** `saveCachedRecommendations` bound a raw JS **array** into
-``sql`${items as never}::jsonb` ``. postgres.js infers a Postgres ARRAY for a raw
-JS array, and an array/record cannot be cast to jsonb. The sibling object writer
-``sql`${event.metadata ?? {}}::jsonb` `` is correct — postgres.js serializes a
-plain object to json exactly once — and the AC21 contract wrongly generalized
-that object form to the array case.
-
-**Fix.** ``sql`${JSON.stringify(items ?? [])}::text::jsonb` `` — the array-binding
-rule already used elsewhere in this codebase. An empty result set now persists
-as `[]` rather than throwing.
-
-**Why the suite stayed green for a week.** The unit contract asserted the broken
-expression *verbatim* as a source string, so it passed while production failed
-hourly. That is the more important lesson than the cast itself: a grep-shaped
-test cannot detect a runtime type-inference bug.
-
-Replaced with a real behavioural test that round-trips insert / update / empty
-through PostgreSQL and asserts `jsonb_typeof(items) = 'array'`. It was proven to
-fail against the pre-fix file (reproducing `cannot cast type record to jsonb`)
-and pass against the fix — a regression test that cannot pass vacuously.
-
-**Production proof.**
-
-```
-RELEASE=4cffb65 · api sha256:2442e4f5aa1d (web untouched, sha256:ea3f983739aa)
-MATERIALIZER_RESULT={"success":true,"durationMs":578,"processedCount":21}
-cache last_updated 2026-08-06 21:00 -> 2026-08-13 10:24
-jsonb_typeof distribution: array=21 (was a frozen mix)
-recommendations serving: home_trending 12, product_related 8, cart_addon 6
-API errors since roll: 0
-```
-
-Gates: unit + architecture 6358 passed / 404 files (ZeroSkipGate environmental
-only; one flaky ExperienceProfile failure that passed in isolation and on
-re-run). Integration suite green on an isolated production-shaped database.
+Commercial Opportunity Engine · Query→Intent→Page graph · Cannibalisation
+intelligence · Search Opportunity engine · Content intelligence · AEO
+answer-unit evidence model · Remediation executor contract.
 
 ### Carried forward
 
 ```
 AnalyticsReadRepository.integration.test.ts = PREEXISTING_TEST_DEFECT
-  (its beforeAll truncates products without product_prices; fails identically
-   against the pre-tranche 8af8186 schema — not an SEO/AEO regression)
-
-SEO/AEO ACTIVATION = WAITING_FOR_OWNER_CONFIGURATION
-  GBP OAuth: SEO_OAUTH_REDIRECT_BASE=https://api.shopgoldplus.com
-             + GOOGLE_OAUTH_CLIENT_ID / _SECRET + Google Cloud redirect
-             https://api.shopgoldplus.com/seo/oauth/google/callback
-  GSC / GA4 / Merchant Center: connectable NOW via service-account JSON in
-             /admin/seo/integrations — no env change, no redeploy
-  PageSpeed / CrUX: optional GOOGLE_PAGESPEED_API_KEY; absent stays
-             CONFIGURATION_REQUIRED, never a fabricated measurement
+RecommendationMaterializer = FIXED 2026-08-13 (was SEV3)
+GBP OAuth = owner configuration (api subdomain redirect)
 ```
