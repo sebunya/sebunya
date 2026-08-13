@@ -3,7 +3,7 @@ import { db } from '../db/client';
 import { logger } from '../logging/logger';
 import { pgJsonb, pgInTextList } from '../db/PgParams';
 import {
-  resolveSourceChanges, stateHashOf, type SourceStatePorts,
+  resolveSourceChanges, stateHashOf, SOURCE_DESCRIPTORS, type SourceStatePorts,
 } from '../../application/use-cases/seo-growth/SourceStateResolver';
 import {
   OrganicIntelligenceMaterialiser,
@@ -504,6 +504,24 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
                 values (${key}, ${entityId}, ${hash}, now())
                 on conflict (source_key, entity_id) do update set
                   state_hash = excluded.state_hash, updated_at = now()
+              `);
+            }
+
+            // Retire state rows for entities that no longer exist. Without
+            // this the inventory diff re-reports the same deletion on every
+            // run forever, because the tombstone it compares against is the
+            // very row it is trying to retire.
+            //
+            // Only safe for sources whose proposed state is the FULL current
+            // inventory; a cursor scan sees a slice, and pruning from a slice
+            // would delete everything it did not happen to read.
+            const descriptor = SOURCE_DESCRIPTORS.find((d) => d.key === key);
+            if (descriptor && descriptor.capability !== 'CURSOR_EXACT') {
+              const present = [...state.keys()];
+              await conn.execute(sql`
+                delete from seo_intel_source_state
+                where source_key = ${key}
+                  and ${present.length === 0 ? sql`true` : sql`not (${pgInTextList(sql`entity_id`, present)})`}
               `);
             }
           }
