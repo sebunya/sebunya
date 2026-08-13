@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../client';
 import type { INavRepository, StoredNavConfig } from '../../../application/ports/INavRepository';
 import type { NavConfig } from '@goldplus/shared';
+import { pgJsonb } from '../PgParams';
 
 const rowsOf = (r: any): any[] => (Array.isArray(r) ? r : r?.rows ?? []);
 
@@ -28,7 +29,7 @@ export class DrizzleNavRepository implements INavRepository {
     const rows = rowsOf(
       await db.execute(sql`
         update nav_config
-           set config = ${config as never}::jsonb,
+           set config = ${pgJsonb(config)},
                version = version + 1,
                updated_by = ${actorId}::uuid,
                updated_at = now()
@@ -44,7 +45,7 @@ export class DrizzleNavRepository implements INavRepository {
     const rows = rowsOf(
       await db.execute(sql`
         insert into nav_config (id, config, version)
-        values (true, ${defaultConfig as never}::jsonb, 1)
+        values (true, ${pgJsonb(defaultConfig)}, 1)
         on conflict (id) do nothing
         returning id
       `),

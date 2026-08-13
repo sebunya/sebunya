@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../client';
 import type { WebVitalMeasurement } from '../../../application/use-cases/seo-growth/WebVitalsUseCases';
+import { pgJsonb } from '../PgParams';
 
 /**
  * Technical SEO governance data access (migration 0120) — robots.txt versions
@@ -158,9 +159,9 @@ export class DrizzleSeoTechnicalRepository {
         (${m.url}, ${m.source}, ${m.formFactor}, ${m.collectionDate},
          ${m.lcpMs ?? null}, ${m.inpMs ?? null}, ${m.cls ?? null}, ${m.ttfbMs ?? null}, ${m.fcpMs ?? null},
          ${m.performanceScore ?? null},
-         ${distributions === null ? null : (distributions as never)}::jsonb,
+         ${pgJsonb(distributions === null ? null : (distributions as never))},
          ${m.sampleSize ?? null}, ${m.connectionId ?? null},
-         ${raw === null ? null : (raw as never)}::jsonb)
+         ${pgJsonb(raw === null ? null : (raw as never))})
       on conflict (url, source, form_factor, collection_date) do update set
         collected_at = now(),
         lcp_ms = excluded.lcp_ms,

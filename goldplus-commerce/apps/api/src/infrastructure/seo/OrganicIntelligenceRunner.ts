@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { logger } from '../logging/logger';
+import { pgJsonb, pgInTextList } from '../db/PgParams';
 import {
   OrganicIntelligenceMaterialiser,
   type MaterialiserPorts, type MaterialisationMode, type EntityCandidate, type MaterialisationResult,
@@ -59,7 +60,7 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
           history_events = ${f.counts.historyEvents},
           work_items_created = ${f.counts.workItemsCreated},
           work_items_updated = ${f.counts.workItemsUpdated},
-          evidence_state = ${f.evidenceState as never}::jsonb,
+          evidence_state = ${pgJsonb(f.evidenceState)},
           error = ${f.error ?? null}
         where id = ${f.runId}::uuid
       `);
@@ -345,6 +346,238 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
         )
       `));
       return new Map(rows.map((r) => [String(r.answer_key), String(r.fact_hash)]));
+    },
+
+    // ── Query intelligence ──────────────────────────────────────────────────
+
+    async loadQueryUniverse() {
+      // Queries come from whatever providers are actually connected. There is
+      // no synthetic fallback: an empty universe is reported as empty, and the
+      // coordinator renders that as provider absence rather than zero demand.
+      const queries = rowsOf(await conn.execute(sql`
+        select query as raw, source, last_observed_at::text as observed_at,
+               -- A CSV import is historical by nature; it must never read as a
+               -- live observation.
+               (source in ('CSV_IMPORT','OPERATOR')) as is_backfill
+        from seo_queries
+        where query is not null and query <> ''
+        order by last_observed_at desc nulls last
+        limit 5000
+      `)).map((r) => ({
+        raw: String(r.raw),
+        source: String(r.source),
+        observedAt: r.observed_at ? String(r.observed_at) : null,
+        isBackfill: Boolean(r.is_backfill),
+      }));
+
+      // Entities give clustering something concrete to attach queries to, so a
+      // cluster can name a real category rather than a token bag.
+      const entities = rowsOf(await conn.execute(sql`
+        select id::text as entity_id, name, slug from categories limit 500
+      `)).map((r) => ({
+        entityId: String(r.entity_id),
+        entityType: 'CATEGORY' as const,
+        label: String(r.name ?? r.slug ?? ''),
+        terms: String(r.name ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean),
+      }));
+
+      return { queries, entities };
+    },
+
+    async loadClusterHashes(keys) {
+      if (keys.length === 0) return new Map();
+      const rows = rowsOf(await conn.execute(sql`
+        select cluster_key, membership_signature from seo_intel_clusters
+        where ${pgInTextList(sql`cluster_key`, keys)}
+      `));
+      return new Map(rows.map((r) => [String(r.cluster_key), String(r.membership_signature ?? '')]));
+    },
+
+    async upsertCluster(i) {
+      const before = rowsOf(await conn.execute(sql`
+        select membership_signature from seo_intel_clusters where cluster_key = ${i.clusterKey}
+      `))[0]?.membership_signature ?? null;
+
+      await conn.execute(sql`
+        insert into seo_intel_clusters (
+          cluster_key, label, cluster_method, cluster_confidence, membership_signature, member_count,
+          entity_id, entity_type, primary_intent, secondary_intent, intent_confidence, intent_method,
+          current_owner_url, current_owner_type, preferred_owner_url, preferred_owner_type,
+          ownership_decision, ownership_rationale, last_seen_at, updated_at
+        ) values (
+          ${i.clusterKey}, ${i.label}, ${i.method}, ${i.confidence}, ${i.membershipSignature}, ${i.memberCount},
+          ${i.entityId}, ${i.entityType}, ${i.primaryIntent}, ${i.secondaryIntent}, ${i.intentConfidence}, ${i.intentMethod},
+          ${i.currentOwnerUrl}, ${i.currentOwnerType}, ${i.preferredOwnerUrl}, ${i.preferredOwnerType},
+          ${i.ownershipDecision}, ${i.ownershipRationale}, now(), now()
+        )
+        on conflict (cluster_key) do update set
+          label = excluded.label, cluster_method = excluded.cluster_method,
+          cluster_confidence = excluded.cluster_confidence,
+          membership_signature = excluded.membership_signature, member_count = excluded.member_count,
+          entity_id = excluded.entity_id, entity_type = excluded.entity_type,
+          primary_intent = excluded.primary_intent, secondary_intent = excluded.secondary_intent,
+          intent_confidence = excluded.intent_confidence, intent_method = excluded.intent_method,
+          current_owner_url = excluded.current_owner_url, current_owner_type = excluded.current_owner_type,
+          preferred_owner_url = excluded.preferred_owner_url, preferred_owner_type = excluded.preferred_owner_type,
+          ownership_decision = excluded.ownership_decision, ownership_rationale = excluded.ownership_rationale,
+          last_seen_at = now(),
+          -- Freshness is not a change. updated_at only moves when the
+          -- membership signature actually differs.
+          updated_at = case
+            when seo_intel_clusters.membership_signature is distinct from excluded.membership_signature
+            then now() else seo_intel_clusters.updated_at end
+      `);
+      return { changed: before !== i.membershipSignature };
+    },
+
+    async loadMembershipKeys(clusterKeys) {
+      if (clusterKeys.length === 0) return new Set();
+      const rows = rowsOf(await conn.execute(sql`
+        select membership_key from seo_intel_query_membership
+        where ${pgInTextList(sql`cluster_key`, clusterKeys)}
+      `));
+      return new Set(rows.map((r) => String(r.membership_key)));
+    },
+
+    async upsertQueryMembership(i) {
+      const res = rowsOf(await conn.execute(sql`
+        insert into seo_intel_query_membership (
+          membership_key, cluster_key, raw_query, normalized_query, membership_method,
+          membership_confidence, source, source_observed_at, is_backfill, demand_state, last_seen_at
+        ) values (
+          ${i.membershipKey}, ${i.clusterKey}, ${i.rawQuery}, ${i.normalizedQuery}, ${i.method},
+          ${i.confidence}, ${i.source}, ${i.observedAt}, ${i.isBackfill},
+          -- Placement does not measure demand. impressions/clicks stay NULL and
+          -- the CHECK constraint enforces that pairing.
+          'UNKNOWN', now()
+        )
+        on conflict (membership_key) do update set
+          membership_confidence = excluded.membership_confidence,
+          last_seen_at = now()
+        returning (xmax = 0) as inserted
+      `));
+      return { changed: Boolean(res[0]?.inserted) };
+    },
+
+    async loadCompetingUrls(clusterKeys) {
+      const out = new Map<string, any[]>();
+      if (clusterKeys.length === 0) return out;
+      // Competition is only observable where a page is actually indexable and
+      // alive. A noindexed or retired URL is not competing for anything.
+      const rows = rowsOf(await conn.execute(sql`
+        select distinct m.cluster_key, p.final_url as url,
+               -- Demand is NOT stored per URL by any connected provider, so it
+               -- stays NULL. Writing 0 here would fabricate a measurement.
+               null::int as impressions, null::int as clicks,
+               p.canonical as canonical_target
+        from seo_intel_query_membership m
+        join seo_crawl_pages p
+          on position(lower(m.normalized_query) in lower(coalesce(p.final_url, ''))) > 0
+        where ${pgInTextList(sql`m.cluster_key`, clusterKeys)}
+          -- A noindexed page is not competing for anything.
+          and coalesce(p.meta_robots, '') not ilike '%noindex%'
+        limit 2000
+      `));
+      for (const r of rows) {
+        const key = String(r.cluster_key);
+        if (!out.has(key)) out.set(key, []);
+        out.get(key)!.push({
+          url: String(r.url),
+          impressions: r.impressions === null ? null : Number(r.impressions),
+          clicks: r.clicks === null ? null : Number(r.clicks),
+          intent: 'UNKNOWN' as never,
+          ownerType: null,
+          canonicalTarget: r.canonical_target ? String(r.canonical_target) : null,
+          contentSimilarity: null,
+          // Reached only via the indexable filter above.
+          lifecycleActive: true,
+        });
+      }
+      return out;
+    },
+
+    async loadCannibalisationHashes(keys) {
+      if (keys.length === 0) return new Map();
+      const rows = rowsOf(await conn.execute(sql`
+        select finding_key, classification, rationale from seo_intel_cannibalisation
+        where ${pgInTextList(sql`finding_key`, keys)}
+      `));
+      return new Map(rows.map((r) => [String(r.finding_key), String(r.classification ?? '')]));
+    },
+
+    async upsertCannibalisation(i) {
+      const res = rowsOf(await conn.execute(sql`
+        insert into seo_intel_cannibalisation (
+          finding_key, cluster_key, classification, confidence, rationale,
+          affected_urls, persistence, status, last_seen_at, last_material_change_at
+        ) values (
+          ${i.findingKey}, ${i.clusterKey}, ${i.classification}, ${i.confidence}, ${i.rationale},
+          ${pgJsonb(i.affectedUrls)}, ${i.persistence}, 'OPEN', now(), now()
+        )
+        on conflict (finding_key) do update set
+          confidence = excluded.confidence, rationale = excluded.rationale,
+          affected_urls = excluded.affected_urls,
+          persistence = seo_intel_cannibalisation.persistence + 1,
+          last_seen_at = now(),
+          last_material_change_at = case
+            when seo_intel_cannibalisation.classification is distinct from excluded.classification
+            then now() else seo_intel_cannibalisation.last_material_change_at end
+        returning (xmax = 0) as inserted
+      `));
+      return { changed: Boolean(res[0]?.inserted) };
+    },
+
+    // ── Content intelligence ────────────────────────────────────────────────
+
+    async loadContentHashes(keys) {
+      if (keys.length === 0) return new Map();
+      const rows = rowsOf(await conn.execute(sql`
+        select content_key, semantic_hash from seo_intel_content
+        where ${pgInTextList(sql`content_key`, keys)}
+      `));
+      return new Map(rows.map((r) => [String(r.content_key), String(r.semantic_hash)]));
+    },
+
+    async upsertContentIntelligence(i) {
+      const res = rowsOf(await conn.execute(sql`
+        insert into seo_intel_content (
+          content_key, url, classification, primary_intent, cluster_key,
+          content_completeness, semantic_hash, last_seen_at, last_material_change_at
+        ) values (
+          ${i.contentKey}, ${i.url}, ${i.classification}, ${i.primaryIntent}, ${i.clusterKey},
+          ${i.contentCompleteness}, ${i.semanticHash}, now(), now()
+        )
+        on conflict (content_key) do update set
+          classification = excluded.classification, primary_intent = excluded.primary_intent,
+          cluster_key = excluded.cluster_key, content_completeness = excluded.content_completeness,
+          semantic_hash = excluded.semantic_hash, last_seen_at = now(),
+          last_material_change_at = case
+            when seo_intel_content.semantic_hash is distinct from excluded.semantic_hash
+            then now() else seo_intel_content.last_material_change_at end
+        returning (xmax = 0) as inserted
+      `));
+      return { changed: Boolean(res[0]?.inserted) };
+    },
+
+    // ── Action requests (recorded, never executed) ───────────────────────────
+
+    async upsertActionRequest(i) {
+      const res = rowsOf(await conn.execute(sql`
+        insert into seo_intel_action_requests (
+          request_key, opportunity_key, action_class, entity_id, evidence_ids,
+          policy_version, preconditions, unmet_preconditions, confidence, blast_radius,
+          expected_effect, rollback_class, verification_plan, state, decision_reason, updated_at
+        ) values (
+          ${i.requestKey}, ${i.opportunityKey}, ${i.actionClass}, ${i.entityId}, ${pgJsonb(i.evidenceIds)},
+          ${i.policyVersion}, ${pgJsonb(i.preconditions)}, ${pgJsonb(i.unmetPreconditions)}, ${i.confidence}, ${i.blastRadius},
+          ${i.expectedEffect}, ${i.rollbackClass}, ${i.verificationPlan}, ${i.state}, ${i.decisionReason}, now()
+        )
+        on conflict (request_key) do update set
+          state = excluded.state, decision_reason = excluded.decision_reason,
+          unmet_preconditions = excluded.unmet_preconditions, updated_at = now()
+        returning (xmax = 0) as inserted
+      `));
+      return { changed: Boolean(res[0]?.inserted) };
     },
   };
 

@@ -12,6 +12,10 @@ export default defineConfig({
       // root-level vitest run cannot resolve it from a test file. The Redis
       // integration proofs import it directly.
       ioredis: path.resolve(__dirname, 'apps/api/node_modules/ioredis'),
+      // Same reason as ioredis: the PostgreSQL parameter-boundary proofs build
+      // real drizzle SQL fragments and inspect what would be bound, so the
+      // import cannot be erased as a type-only one.
+      'drizzle-orm': path.resolve(__dirname, 'apps/api/node_modules/drizzle-orm'),
     },
   },
   test: {

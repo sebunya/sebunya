@@ -7,6 +7,7 @@ import type {
 } from "../../../application/ports/IRecommendationEventRepository";
 import { recommendationEvents } from "../schema/recommendations";
 import { db } from "../client";
+import { pgJsonb } from '../PgParams';
 
 export class DrizzleRecommendationEventRepository implements IRecommendationEventRepository {
   /**
@@ -35,7 +36,7 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
       reasonCode: event.reasonCode,
       // R3.1 (M3): same canonical-jsonb treatment as metadata — the drizzle
       // mapping double-encoded this array on every historic row.
-      appliedRuleIds: (event.appliedRuleIds ? sql`${event.appliedRuleIds}::jsonb` : null) as never,
+      appliedRuleIds: (event.appliedRuleIds ? sql`${pgJsonb(event.appliedRuleIds)}` : null) as never,
 
       // Context
       productId: event.productId,

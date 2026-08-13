@@ -1,11 +1,12 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../client';
+import { pgJsonb } from '../PgParams';
 
 /**
  * Organic Growth OS data access (migration 0116). Raw-SQL via db.execute with
  * the rowsOf guard (postgres-js may return row arrays directly), matching the
  * house style of DrizzleHeroRepository. jsonb binding rules: objects bind
- * `${obj as never}::jsonb`, arrays bind `${JSON.stringify(arr)}::text::jsonb`.
+ * `${pgJsonb(obj)}`, arrays bind `${JSON.stringify(arr)}::text::jsonb`.
  *
  * Evidence discipline: nothing here invents data. marketShare() returns zeros
  * with observedQueries=0 (and says so in the methodology string) when there
@@ -431,7 +432,7 @@ export class DrizzleSeoGrowthRepository {
           technical_readiness = ${input.technicalReadiness ?? 'UNKNOWN'},
           effort = ${input.effort ?? 'M'}, risk = ${input.risk ?? 'LOW'},
           status = ${input.status ?? 'OPEN'}, source = ${input.source},
-          evidence = ${input.evidence == null ? null : sql`${input.evidence as never}::jsonb`},
+          evidence = ${input.evidence == null ? null : sql`${pgJsonb(input.evidence)}`},
           updated_at = now()
         where id = ${input.id}
         returning *
@@ -448,7 +449,7 @@ export class DrizzleSeoGrowthRepository {
         ${input.evidenceConfidence ?? 'LOW'}, ${input.commercialReadiness ?? 'UNKNOWN'},
         ${input.technicalReadiness ?? 'UNKNOWN'}, ${input.effort ?? 'M'},
         ${input.risk ?? 'LOW'}, ${input.status ?? 'OPEN'}, ${input.source},
-        ${input.evidence == null ? null : sql`${input.evidence as never}::jsonb`}
+        ${input.evidence == null ? null : sql`${pgJsonb(input.evidence)}`}
       ) returning *
     `));
     return rows[0];
@@ -472,8 +473,8 @@ export class DrizzleSeoGrowthRepository {
       ) values (
         ${entry.actorId ?? null}, ${entry.occurredAt ?? new Date()}, ${entry.scope},
         ${entry.target},
-        ${entry.oldValue == null ? null : sql`${entry.oldValue as never}::jsonb`},
-        ${entry.newValue == null ? null : sql`${entry.newValue as never}::jsonb`},
+        ${entry.oldValue == null ? null : sql`${pgJsonb(entry.oldValue)}`},
+        ${entry.newValue == null ? null : sql`${pgJsonb(entry.newValue)}`},
         ${entry.reason}, ${entry.experimentId ?? null}, ${entry.deploymentRef ?? null},
         ${entry.validationState ?? 'PENDING'}
       ) returning *
@@ -510,7 +511,7 @@ export class DrizzleSeoGrowthRepository {
         ${(patch.config ?? {}) as never}::jsonb,
         ${patch.lastSuccessAt ?? null}, ${patch.lastFailureAt ?? null},
         ${patch.lastError ?? null},
-        ${patch.syncState == null ? null : sql`${patch.syncState as never}::jsonb`}
+        ${patch.syncState == null ? null : sql`${pgJsonb(patch.syncState)}`}
       )
       on conflict (provider) do update set
         status = coalesce(${patch.status ?? null}, seo_integrations.status),
@@ -644,7 +645,7 @@ export class DrizzleSeoGrowthRepository {
           ${JSON.stringify(p.redirectChain ?? [])}::text::jsonb,
           ${p.contentType ?? null}, ${p.canonical ?? null}, ${p.metaRobots ?? null},
           ${p.title ?? null}, ${p.metaDescription ?? null}, ${p.h1 ?? null},
-          ${p.headings == null ? null : sql`${p.headings as never}::jsonb`},
+          ${p.headings == null ? null : sql`${pgJsonb(p.headings)}`},
           ${p.wordCount ?? null}, ${p.imagesMissingAlt ?? null},
           ${p.internalLinks == null ? null : sql`${JSON.stringify(p.internalLinks)}::text::jsonb`},
           ${p.structuredDataTypes == null ? null : sql`${JSON.stringify(p.structuredDataTypes)}::text::jsonb`},
@@ -858,7 +859,7 @@ export class DrizzleSeoGrowthRepository {
       values (
         ${input.name}, ${input.hypothesis}, ${input.change}, ${input.metric},
         ${input.cohort ?? null}, ${input.startAt ?? null}, ${input.endAt ?? null},
-        ${input.baseline == null ? null : sql`${input.baseline as never}::jsonb`}
+        ${input.baseline == null ? null : sql`${pgJsonb(input.baseline)}`}
       ) returning *
     `));
     return rows[0];

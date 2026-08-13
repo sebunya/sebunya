@@ -186,13 +186,24 @@ const candidate = (over: Partial<EntityCandidate> = {}): EntityCandidate => ({
   ...over,
 });
 
-function harness(over: { candidates?: EntityCandidate[]; snapshots?: Map<string, StoredSnapshot>; leaseHeld?: boolean } = {}) {
+function harness(over: {
+  candidates?: EntityCandidate[]; snapshots?: Map<string, StoredSnapshot>; leaseHeld?: boolean;
+  queryUniverse?: { queries: Array<{ raw: string; source: string; observedAt: string | null; isBackfill: boolean }>; entities: any[] };
+  clusterHashes?: Map<string, string>;
+  membershipKeys?: Set<string>;
+  competingUrls?: Map<string, any[]>;
+} = {}) {
   const rec = {
     upserts: [] as Array<{ key: string; isNew: boolean }>,
     components: [] as string[],
     history: [] as Array<{ key: string; event: string }>,
     touched: [] as string[],
     rootCauses: [] as string[],
+    clusters: [] as Array<Record<string, unknown>>,
+    membership: [] as string[],
+    cannibalisation: [] as string[],
+    content: [] as Array<{ key: string; classification: string }>,
+    actionRequests: [] as Array<{ key: string; state: string; reason: string }>,
     workItems: [] as Array<{ key: string; material: boolean }>,
     links: [] as string[],
     finished: [] as Array<Record<string, unknown>>,
@@ -214,6 +225,21 @@ function harness(over: { candidates?: EntityCandidate[]; snapshots?: Map<string,
     linkWorkItem: async (i) => { rec.links.push(i.opportunityKey); },
     upsertAnswerUnit: async () => ({ changed: true }),
     loadAnswerUnitHashes: async () => new Map(),
+
+    loadQueryUniverse: async () => over.queryUniverse ?? { queries: [], entities: [] },
+    upsertCluster: async (i) => { rec.clusters.push(i as unknown as Record<string, unknown>); return { changed: true }; },
+    loadClusterHashes: async () => over.clusterHashes ?? new Map(),
+    upsertQueryMembership: async (i) => { rec.membership.push(i.membershipKey); return { changed: true }; },
+    loadMembershipKeys: async () => over.membershipKeys ?? new Set<string>(),
+    loadCompetingUrls: async () => over.competingUrls ?? new Map(),
+    upsertCannibalisation: async (i) => { rec.cannibalisation.push(i.classification); return { changed: true }; },
+    loadCannibalisationHashes: async () => new Map(),
+    upsertContentIntelligence: async (i) => { rec.content.push({ key: i.contentKey, classification: i.classification }); return { changed: true }; },
+    loadContentHashes: async () => new Map(),
+    upsertActionRequest: async (i) => {
+      rec.actionRequests.push({ key: i.requestKey, state: i.state, reason: i.decisionReason });
+      return { changed: true };
+    },
   };
   return { m: new OrganicIntelligenceMaterialiser(ports), rec, ports };
 }
@@ -365,5 +391,118 @@ describe('GSC hot-plug enriches the same object', () => {
       },
     );
     expect(verdict.kind).toBe('EVIDENCE_ENRICHED');
+  });
+});
+
+
+// ── Newly wired stages ──────────────────────────────────────────────────────
+
+describe('the engines that were built but never ran now actually run', () => {
+  it('reports provider absence rather than an absence of demand', async () => {
+    // The whole failure mode this guards: a stage that never executed looking
+    // identical to a stage that executed and found nothing.
+    const { m, rec } = harness();
+    const r = await m.execute('INCREMENTAL');
+
+    expect(r.stages.QUERY_CLUSTERS.executed).toBe(true);
+    expect(r.stages.QUERY_CLUSTERS.count).toBe(0);
+    expect(r.stages.QUERY_CLUSTERS.note).toMatch(/provider absence/i);
+    expect(rec.clusters).toHaveLength(0);
+  });
+
+  it('clusters real queries, places their members and records ownership', async () => {
+    const { m, rec } = harness({
+      queryUniverse: {
+        queries: [
+          { raw: 'samsung battery', source: 'GSC', observedAt: '2026-08-01', isBackfill: false },
+          { raw: 'samsung batteries', source: 'GSC', observedAt: '2026-08-01', isBackfill: false },
+        ],
+        entities: [{ entityId: 'cat-1', entityType: 'CATEGORY', label: 'Samsung Battery', terms: ['samsung', 'battery'] }],
+      },
+    });
+    const r = await m.execute('INCREMENTAL');
+
+    expect(r.stages.QUERY_CLUSTERS.count).toBeGreaterThan(0);
+    expect(rec.clusters.length).toBeGreaterThan(0);
+    expect(r.stages.QUERY_MEMBERSHIP.count).toBeGreaterThan(0);
+    expect(rec.membership.length).toBeGreaterThan(0);
+    // Ownership is decided as part of the cluster, not invented separately.
+    expect(rec.clusters[0].ownershipDecision).toBeTruthy();
+    expect(r.stages.PAGE_OWNERSHIP.executed).toBe(true);
+  });
+
+  it('carries query provenance so a backfill never reads as a live observation', async () => {
+    const { m, ports } = harness({
+      queryUniverse: {
+        queries: [{ raw: 'old query', source: 'CSV_IMPORT', observedAt: '2025-01-01', isBackfill: true }],
+        entities: [],
+      },
+    });
+    const seen: any[] = [];
+    const orig = ports.upsertQueryMembership;
+    ports.upsertQueryMembership = async (i) => { seen.push(i); return orig(i); };
+    await m.execute('INCREMENTAL');
+
+    expect(seen[0].isBackfill).toBe(true);
+    expect(seen[0].source).toBe('CSV_IMPORT');
+  });
+
+  it('does not rewrite a cluster whose membership signature is unchanged', async () => {
+    const first = harness({
+      queryUniverse: {
+        queries: [{ raw: 'samsung battery', source: 'GSC', observedAt: null, isBackfill: false }],
+        entities: [{ entityId: 'cat-1', entityType: 'CATEGORY', label: 'Samsung Battery', terms: ['samsung', 'battery'] }],
+      },
+    });
+    await first.m.execute('INCREMENTAL');
+    const written = first.rec.clusters[0];
+
+    const second = harness({
+      queryUniverse: {
+        queries: [{ raw: 'samsung battery', source: 'GSC', observedAt: null, isBackfill: false }],
+        entities: [{ entityId: 'cat-1', entityType: 'CATEGORY', label: 'Samsung Battery', terms: ['samsung', 'battery'] }],
+      },
+      clusterHashes: new Map([[String(written.clusterKey), String(written.membershipSignature)]]),
+    });
+    await second.m.execute('INCREMENTAL');
+    expect(second.rec.clusters).toHaveLength(0);
+  });
+
+  it('needs two URLs before it will call anything cannibalisation', async () => {
+    const { m, rec } = harness({
+      queryUniverse: {
+        queries: [{ raw: 'samsung battery', source: 'GSC', observedAt: null, isBackfill: false }],
+        entities: [],
+      },
+      competingUrls: new Map([['cluster:samsung-battery', [
+        { url: '/a', impressions: null, clicks: null, intent: 'COMMERCIAL', ownerType: 'CATEGORY',
+          canonicalTarget: null, contentSimilarity: null, lifecycleActive: true },
+      ]]]),
+    });
+    await m.execute('INCREMENTAL');
+    // One URL cannot cannibalise itself.
+    expect(rec.cannibalisation).toHaveLength(0);
+  });
+
+  it('records action requests without ever authorising them', async () => {
+    const { m, rec } = harness();
+    const r = await m.execute('INCREMENTAL');
+
+    expect(r.stages.ACTION_REQUESTS.executed).toBe(true);
+    for (const ar of rec.actionRequests) {
+      // Autonomy level 0: nothing may persist in an executable state.
+      expect(['DENIED', 'DEFERRED', 'APPROVAL_REQUIRED']).toContain(ar.state);
+      expect(ar.reason.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('classifies content as INSUFFICIENT_EVIDENCE rather than THIN when it has no content signal', async () => {
+    const url: EntityCandidate = { ...candidate(), entityType: 'URL', entityId: '/probe-page' };
+    const { m, rec } = harness({ candidates: [url] });
+    await m.execute('INCREMENTAL');
+
+    expect(rec.content).toHaveLength(1);
+    // THIN is a measurement; without content evidence it would be a fabrication.
+    expect(rec.content[0].classification).toBe('INSUFFICIENT_EVIDENCE');
   });
 });

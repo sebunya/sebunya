@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../client';
 import type { IHeroRepository, StoredHeroSlide } from '../../../application/ports/IHeroRepository';
 import type { HeroSettingsSeed, HeroSlideSeed, HeroMedia, HeroTheme, HeroTint } from '../../../domain/hero/HeroSlideLibrary';
+import { pgJsonb } from '../PgParams';
 
 const rowsOf = (result: any): any[] => (Array.isArray(result) ? result : result?.rows ?? []);
 
@@ -69,7 +70,7 @@ export class DrizzleHeroRepository implements IHeroRepository {
     if (patch.imageUrl !== undefined) push('image_url', patch.imageUrl);
     if (patch.imageAlt !== undefined) push('image_alt', patch.imageAlt);
     // jsonb: pass the RAW object through ::jsonb — the double-encoding fix.
-    if (patch.extras !== undefined) sets.push(sql`extras = ${patch.extras as never}::jsonb`);
+    if (patch.extras !== undefined) sets.push(sql`extras = ${pgJsonb(patch.extras)}`);
 
     sets.push(sql`updated_by = ${actorId}::uuid`);
     sets.push(sql`updated_at = now()`);
@@ -110,7 +111,7 @@ export class DrizzleHeroRepository implements IHeroRepository {
           values
             (${s.slideKey}, ${s.position}, ${s.enabled}, ${s.theme}, ${s.tint}, ${s.media},
              ${s.kicker}, ${s.headline}, ${s.subcopy}, ${s.ctaLabel}, ${s.ctaUrl}, ${s.finePrint},
-             ${s.imageUrl}, ${s.imageAlt}, ${s.priority}, ${s.extras as never}::jsonb)
+             ${s.imageUrl}, ${s.imageAlt}, ${s.priority}, ${pgJsonb(s.extras)})
           on conflict (slide_key) do nothing
           returning id
         `),

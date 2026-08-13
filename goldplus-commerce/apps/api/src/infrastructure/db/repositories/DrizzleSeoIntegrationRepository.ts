@@ -1,11 +1,12 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../client';
 import type { SeoProviderManifest } from '../../../application/use-cases/seo-growth/RegisterSeoIntegrationProvidersUseCase';
+import { pgJsonb } from '../PgParams';
 
 /**
  * SEO Integrations Control Plane data access (migration 0118). Raw-SQL via
  * db.execute with the rowsOf guard, matching DrizzleSeoGrowthRepository.
- * jsonb binding rules: objects bind `${obj as never}::jsonb`, arrays bind
+ * jsonb binding rules: objects bind `${pgJsonb(obj)}`, arrays bind
  * `${JSON.stringify(arr)}::text::jsonb`.
  *
  * Secret discipline: ciphertext leaves this repository ONLY via
@@ -46,8 +47,8 @@ export class DrizzleSeoIntegrationRepository {
       values
         (${m.providerId}, ${m.canonicalName}, ${m.family}, ${m.description},
          ${JSON.stringify(m.authTypes)}::text::jsonb, ${JSON.stringify(m.capabilities)}::text::jsonb,
-         ${m.supports as never}::jsonb, ${m.defaultSyncFrequency}, ${m.docsUrl},
-         ${m.enabled}, ${m.experimental}, ${m.adapterVersion}, ${manifest as never}::jsonb)
+         ${pgJsonb(m.supports)}, ${m.defaultSyncFrequency}, ${m.docsUrl},
+         ${m.enabled}, ${m.experimental}, ${m.adapterVersion}, ${pgJsonb(manifest)})
       on conflict (provider_id) do update set
         canonical_name = excluded.canonical_name,
         family = excluded.family,
@@ -134,7 +135,7 @@ export class DrizzleSeoIntegrationRepository {
         last_attempt_at = ${patch.lastAttemptAt !== undefined ? patch.lastAttemptAt : existing.last_attempt_at},
         last_error = ${patch.lastError !== undefined ? patch.lastError : existing.last_error},
         data_freshness_at = ${patch.dataFreshnessAt !== undefined ? patch.dataFreshnessAt : existing.data_freshness_at},
-        quota_state = ${patch.quotaState !== undefined ? (patch.quotaState as never) : (existing.quota_state as never)}::jsonb,
+        quota_state = ${pgJsonb(patch.quotaState !== undefined ? (patch.quotaState as never) : (existing.quota_state as never))},
         updated_at = now()
       where id = ${id}
       returning *
@@ -283,7 +284,7 @@ export class DrizzleSeoIntegrationRepository {
         records_inserted = ${patch.recordsInserted ?? existing.records_inserted},
         records_updated = ${patch.recordsUpdated ?? existing.records_updated},
         records_rejected = ${patch.recordsRejected ?? existing.records_rejected},
-        cursor = ${patch.cursor !== undefined ? (patch.cursor as never) : (existing.cursor as never)}::jsonb,
+        cursor = ${pgJsonb(patch.cursor !== undefined ? (patch.cursor as never) : (existing.cursor as never))},
         error = ${patch.error !== undefined ? patch.error : existing.error}
       where id = ${id}
       returning *

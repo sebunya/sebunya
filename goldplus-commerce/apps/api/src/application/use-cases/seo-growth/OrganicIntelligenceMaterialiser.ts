@@ -9,10 +9,17 @@ import {
   assessSeoReadiness, scoreOpportunity, prioritise, recommendedAction,
   SCORING_POLICY_VERSION,
   type EvidenceDimension, type EvidenceState, type ScoreComponent,
-  type CommercialInput, type SeoBlocker, type Effort, type Risk,
+  type CommercialInput, type SeoBlocker, type Effort, type Risk, type ActionClass,
 } from './OrganicOpportunityScoring';
-import { consolidateRootCauses, type OpportunitySymptom } from './OpportunityPortfolio';
+import {
+  consolidateRootCauses, evaluateActionRequest, catalogueEntry,
+  type OpportunitySymptom,
+} from './OpportunityPortfolio';
 import { buildAnswerUnit, type AnswerUnitDraft } from './AnswerUnitEngine';
+import {
+  clusterQueries, classifyIntent, resolveOwnership, classifyCannibalisation,
+  type ClusterEntity, type Intent, type OwnerType,
+} from './QueryIntelligence';
 
 /**
  * THE single materialisation boundary.
@@ -136,6 +143,47 @@ export interface MaterialiserPorts {
   }): Promise<{ workItemId: string | null; created: boolean; updated: boolean }>;
   linkWorkItem(input: { opportunityKey: string; workItemId: string }): Promise<void>;
 
+  /** Queries GoldPlus tracks, plus entities to cluster them against. */
+  loadQueryUniverse(): Promise<{ queries: Array<{ raw: string; source: string; observedAt: string | null; isBackfill: boolean }>; entities: ClusterEntity[] }>;
+  upsertCluster(input: {
+    clusterKey: string; label: string; method: string; confidence: number;
+    membershipSignature: string; memberCount: number; entityId: string | null; entityType: string | null;
+    primaryIntent: string; secondaryIntent: string | null; intentConfidence: number; intentMethod: string;
+    currentOwnerUrl: string | null; currentOwnerType: string | null;
+    preferredOwnerUrl: string | null; preferredOwnerType: string | null;
+    ownershipDecision: string; ownershipRationale: string;
+  }): Promise<{ changed: boolean }>;
+  loadClusterHashes(keys: string[]): Promise<Map<string, string>>;
+  upsertQueryMembership(input: {
+    membershipKey: string; clusterKey: string; rawQuery: string; normalizedQuery: string;
+    method: string; confidence: number; source: string; observedAt: string | null; isBackfill: boolean;
+  }): Promise<{ changed: boolean }>;
+  loadMembershipKeys(clusterKeys: string[]): Promise<Set<string>>;
+
+  /** URLs competing for the same cluster, for cannibalisation. */
+  loadCompetingUrls(clusterKeys: string[]): Promise<Map<string, Array<{
+    url: string; impressions: number | null; clicks: number | null; intent: Intent;
+    ownerType: OwnerType | null; canonicalTarget: string | null; contentSimilarity: number | null; lifecycleActive: boolean;
+  }>>>;
+  upsertCannibalisation(input: {
+    findingKey: string; clusterKey: string | null; classification: string; confidence: number;
+    rationale: string; affectedUrls: string[]; persistence: number;
+  }): Promise<{ changed: boolean }>;
+  loadCannibalisationHashes(keys: string[]): Promise<Map<string, string>>;
+
+  upsertContentIntelligence(input: {
+    contentKey: string; url: string; classification: string; primaryIntent: string | null;
+    clusterKey: string | null; contentCompleteness: number | null; semanticHash: string;
+  }): Promise<{ changed: boolean }>;
+  loadContentHashes(keys: string[]): Promise<Map<string, string>>;
+
+  upsertActionRequest(input: {
+    requestKey: string; opportunityKey: string; actionClass: string; entityId: string;
+    evidenceIds: string[]; policyVersion: string; preconditions: string[]; unmetPreconditions: string[];
+    confidence: string; blastRadius: number; expectedEffect: string; rollbackClass: string;
+    verificationPlan: string; state: string; decisionReason: string;
+  }): Promise<{ changed: boolean }>;
+
   upsertAnswerUnit(input: {
     answerKey: string; templateId: string | null; displayQuestion: string; intent: string;
     answerType: string; readiness: string; confidence: string; blockedReason: string | null;
@@ -156,6 +204,13 @@ export interface RunCounts {
   workItemsUpdated: number;
 }
 
+export interface StageOutcome {
+  executed: boolean;
+  count: number;
+  changed: number;
+  note?: string;
+}
+
 export interface MaterialisationResult {
   ran: boolean;
   runId: string | null;
@@ -164,6 +219,12 @@ export interface MaterialisationResult {
   rootCauses: number;
   answerUnitsChanged: number;
   summary: string;
+  /**
+   * Per-domain execution record. A zero count is only meaningful once
+   * `executed` is true — a stage that never ran must never read as "nothing
+   * to do".
+   */
+  stages: Record<string, StageOutcome>;
 }
 
 const emptyCounts = (): RunCounts => ({
@@ -283,10 +344,12 @@ export class OrganicIntelligenceMaterialiser {
       return {
         ran: false, runId: null, mode, counts: emptyCounts(), rootCauses: 0, answerUnitsChanged: 0,
         summary: 'Another materialisation holds the lease; this invocation stood down.',
+        stages: {},
       };
     }
     const runId = started.runId;
     const counts = emptyCounts();
+    const stages: Record<string, StageOutcome> = {};
 
     try {
       const candidates = await this.ports.loadCandidates(mode);
@@ -378,6 +441,17 @@ export class OrganicIntelligenceMaterialiser {
         });
       }
 
+      // Query intelligence: clustering, intent, ownership, cannibalisation.
+      // These were built, tested and then left unwired — the whole point of
+      // this stage is that they now actually run.
+      const clusterKeys = await this.materialiseQueryIntelligence(runId, stages);
+
+      // Content intelligence over the URLs the portfolio already knows about.
+      await this.materialiseContent(evaluated, stages);
+
+      // What the system WOULD do, and why it is not authorised to do it.
+      await this.materialiseActionRequests(evaluated, stages);
+
       await this.ports.finishRun({
         runId, status: 'COMPLETED', counts,
         evidenceState: this.evidenceSummary(candidates),
@@ -385,7 +459,8 @@ export class OrganicIntelligenceMaterialiser {
 
       return {
         ran: true, runId, mode, counts, rootCauses: groups.length, answerUnitsChanged: 0,
-        summary: this.summarise(mode, counts, groups.length),
+        summary: `${this.summarise(mode, counts, groups.length)} ${clusterKeys} cluster(s) materialised.`,
+        stages,
       };
     } catch (err: any) {
       const message = String(err?.message ?? err).slice(0, 500);
@@ -393,8 +468,290 @@ export class OrganicIntelligenceMaterialiser {
       return {
         ran: true, runId, mode, counts, rootCauses: 0, answerUnitsChanged: 0,
         summary: `Materialisation failed and was contained: ${message}`,
+        stages,
       };
     }
+  }
+
+  /**
+   * Clusters, membership, ownership and cannibalisation.
+   *
+   * Returns the number of clusters materialised. The stage records
+   * `executed: true` even when it produces nothing, because "the query
+   * universe is empty because no provider is connected" and "we clustered and
+   * found nothing" are different facts and an operator must be able to tell
+   * them apart.
+   */
+  private async materialiseQueryIntelligence(
+    runId: string,
+    stages: Record<string, StageOutcome>,
+  ): Promise<number> {
+    const universe = await this.ports.loadQueryUniverse();
+    const queries = universe.queries ?? [];
+
+    if (queries.length === 0) {
+      stages.QUERY_CLUSTERS = {
+        executed: true, count: 0, changed: 0,
+        note: 'No query universe is available. This is provider absence, not an absence of demand.',
+      };
+      stages.QUERY_MEMBERSHIP = { executed: true, count: 0, changed: 0, note: 'No queries to place.' };
+      stages.CANNIBALISATION = { executed: true, count: 0, changed: 0, note: 'Cannibalisation needs query-level competition; none is observable.' };
+      return 0;
+    }
+
+    const clusters = clusterQueries(queries.map((q) => ({ raw: q.raw })), universe.entities ?? []);
+    const keys = clusters.map((c) => clusterKey(c.label));
+    const priorHashes = await this.ports.loadClusterHashes(keys);
+    const existingMembership = await this.ports.loadMembershipKeys(keys);
+
+    let clustersChanged = 0;
+    let membershipCount = 0;
+    let membershipChanged = 0;
+    const clusterKeysForCannibalisation: string[] = [];
+
+    for (const cluster of clusters) {
+      const key = clusterKey(cluster.label);
+      clusterKeysForCannibalisation.push(key);
+
+      const intent = classifyIntent({ raw: cluster.label, entityType: cluster.entityType });
+      const competing = (await this.ports.loadCompetingUrls([key])).get(key) ?? [];
+      // The incumbent is the live URL with the strongest observed signal; with
+      // no demand evidence it is simply the only lifecycle-active candidate.
+      const incumbent = competing.filter((u) => u.lifecycleActive)
+        .sort((a, b) => (b.impressions ?? -1) - (a.impressions ?? -1))[0] ?? null;
+      const ownership = resolveOwnership({
+        intent: intent.primary,
+        currentOwnerUrl: incumbent?.url ?? null,
+        currentOwnerType: incumbent?.ownerType ?? null,
+        candidateUrl: competing.find((u) => u.url !== incumbent?.url)?.url ?? null,
+        contentThin: (incumbent?.contentSimilarity ?? null) === null ? false : false,
+        hasCommercialDepth: competing.length > 0,
+        // Demand is only "known" when a provider actually reported it.
+        demandKnown: competing.some((u) => u.impressions !== null),
+      });
+
+      // The membership signature is what makes "the same cluster" stable
+      // across runs even as confidence numbers drift.
+      const membershipSignature = semanticHash({
+        members: [...cluster.members].sort(),
+        method: cluster.method,
+        intent: intent.primary,
+        owner: ownership.preferredOwnerUrl,
+      });
+
+      const changed = priorHashes.get(key) !== membershipSignature;
+      if (changed) {
+        const res = await this.ports.upsertCluster({
+          clusterKey: key,
+          label: cluster.label,
+          method: cluster.method,
+          confidence: cluster.confidence,
+          membershipSignature,
+          memberCount: cluster.members.length,
+          entityId: cluster.entityId ?? null,
+          entityType: cluster.entityType ?? null,
+          primaryIntent: intent.primary,
+          secondaryIntent: intent.secondary ?? null,
+          intentConfidence: intent.confidence,
+          intentMethod: intent.method,
+          currentOwnerUrl: incumbent?.url ?? null,
+          currentOwnerType: incumbent?.ownerType ?? null,
+          preferredOwnerUrl: ownership.preferredOwnerUrl ?? null,
+          preferredOwnerType: ownership.preferredOwnerType,
+          ownershipDecision: ownership.decision,
+          ownershipRationale: ownership.rationale,
+        });
+        if (res.changed) clustersChanged += 1;
+      }
+
+      for (const member of cluster.members) {
+        const normalized = member.trim().toLowerCase();
+        const membershipKey = `${key}::${semanticHash({ q: normalized })}`;
+        membershipCount += 1;
+        if (existingMembership.has(membershipKey)) continue;
+        const provenance = queries.find((q) => q.raw === member);
+        const res = await this.ports.upsertQueryMembership({
+          membershipKey,
+          clusterKey: key,
+          rawQuery: member,
+          normalizedQuery: normalized,
+          method: cluster.method,
+          confidence: cluster.confidence,
+          source: provenance?.source ?? 'DERIVED',
+          observedAt: provenance?.observedAt ?? null,
+          isBackfill: provenance?.isBackfill ?? false,
+        });
+        if (res.changed) membershipChanged += 1;
+      }
+    }
+
+    // Cannibalisation is a cluster-level judgement, so it runs once the
+    // clusters exist rather than guessing from URLs alone.
+    const competitionByCluster = await this.ports.loadCompetingUrls(clusterKeysForCannibalisation);
+    const findingKeys: string[] = [];
+    const findings: Array<{ key: string; body: Parameters<MaterialiserPorts['upsertCannibalisation']>[0] }> = [];
+
+    for (const [ck, urls] of competitionByCluster) {
+      if (urls.length < 2) continue; // One URL cannot cannibalise itself.
+      const verdict = classifyCannibalisation({
+        urls: urls.map((u) => ({
+          url: u.url, intent: u.intent, impressions: u.impressions, clicks: u.clicks,
+          ownerType: u.ownerType, canonicalTarget: u.canonicalTarget,
+          contentSimilarity: u.contentSimilarity, lifecycleActive: u.lifecycleActive,
+        })),
+        persistence: 1,
+      });
+      const findingKey = `${ck}::${verdict.classification}`;
+      findingKeys.push(findingKey);
+      findings.push({
+        key: findingKey,
+        body: {
+          findingKey, clusterKey: ck, classification: verdict.classification,
+          confidence: verdict.confidence, rationale: verdict.rationale,
+          affectedUrls: urls.map((u) => u.url), persistence: 1,
+        },
+      });
+    }
+
+    const priorFindings = await this.ports.loadCannibalisationHashes(findingKeys);
+    let cannibalisationChanged = 0;
+    for (const f of findings) {
+      const h = semanticHash(f.body);
+      if (priorFindings.get(f.key) === h) continue;
+      const res = await this.ports.upsertCannibalisation(f.body);
+      if (res.changed) cannibalisationChanged += 1;
+    }
+
+    stages.QUERY_CLUSTERS = { executed: true, count: clusters.length, changed: clustersChanged };
+    stages.QUERY_MEMBERSHIP = { executed: true, count: membershipCount, changed: membershipChanged };
+    stages.PAGE_OWNERSHIP = {
+      executed: true, count: clusters.length, changed: clustersChanged,
+      note: 'Ownership is stored on the cluster; it obeys canonical and lifecycle truth rather than raw traffic.',
+    };
+    stages.CANNIBALISATION = { executed: true, count: findings.length, changed: cannibalisationChanged };
+    return clusters.length;
+  }
+
+  /** Content intelligence over URLs the portfolio already reasons about. */
+  private async materialiseContent(
+    evaluated: MaterialisedOpportunity[],
+    stages: Record<string, StageOutcome>,
+  ): Promise<void> {
+    const urls = evaluated.filter((o) => o.entityType === 'URL');
+    if (urls.length === 0) {
+      stages.CONTENT_INTELLIGENCE = {
+        executed: true, count: 0, changed: 0,
+        note: 'No URL-scoped opportunities exist yet, so there is nothing to classify.',
+      };
+      return;
+    }
+
+    const keys = urls.map((o) => `content::${o.entityId}`);
+    const prior = await this.ports.loadContentHashes(keys);
+    let changed = 0;
+
+    for (const o of urls) {
+      const contentKey = `content::${o.entityId}`;
+      // Without content signals the honest classification is
+      // INSUFFICIENT_EVIDENCE — never THIN, which is a measurement.
+      const classification = o.evidenceAvailable.includes('CONTENT_DEPTH')
+        ? o.recommendedActionClass === 'CREATE_CONTENT' ? 'MISSING' : 'PERFORMING'
+        : 'INSUFFICIENT_EVIDENCE';
+      const body = {
+        contentKey,
+        url: o.entityId,
+        classification,
+        primaryIntent: null,
+        clusterKey: null,
+        contentCompleteness: null,
+        semanticHash: semanticHash({ classification, url: o.entityId }),
+      };
+      if (prior.get(contentKey) === body.semanticHash) continue;
+      const res = await this.ports.upsertContentIntelligence(body);
+      if (res.changed) changed += 1;
+    }
+
+    stages.CONTENT_INTELLIGENCE = { executed: true, count: urls.length, changed };
+  }
+
+  /**
+   * Action requests. Autonomy is level 0, so every request is recorded in a
+   * non-executable state. Persisting them is how an operator sees what the
+   * system believes it should do — and why it was not allowed to.
+   */
+  private async materialiseActionRequests(
+    evaluated: MaterialisedOpportunity[],
+    stages: Record<string, StageOutcome>,
+  ): Promise<void> {
+    const actionable = evaluated.filter((o) => WORK_QUEUE_PRIORITIES.has(o.priorityBucket));
+    let changed = 0;
+
+    for (const o of actionable) {
+      const entry = catalogueEntry(o.recommendedActionClass as ActionClass);
+      if (!entry) continue; // Not an action the catalogue recognises; nothing to request.
+
+      // A request is only a decision if it is COMPLETE. Everything the gate
+      // requires is supplied here so that a DENIED verdict means "policy said
+      // no", not "we forgot a field".
+      const request = {
+        actionClass: o.recommendedActionClass as ActionClass,
+        entityId: o.entityId,
+        opportunityId: o.opportunityKey,
+        evidenceIds: o.evidenceAvailable,
+        policyVersion: o.policyVersion,
+        preconditions: entry.requiredPreconditions,
+        confidence: o.confidence as never,
+        idempotencyKey: `ar::${o.opportunityKey}::${o.evaluationHash}`,
+        blastRadius: entry.blastRadiusDefault,
+        expectedEffect: o.explanation.slice(0, 500),
+        rollbackClass: entry.reversibility,
+        verificationPlan: entry.verificationMethod,
+      };
+
+      // Preconditions a blocked opportunity cannot satisfy are exactly the
+      // ones already recorded as blockers — no separate truth.
+      const satisfied = entry.requiredPreconditions.filter((p) => !o.blockedBy.includes(p));
+
+      const decision = evaluateActionRequest({
+        request,
+        earnedLevel: 0,        // Autonomy level 0. Not configurable from here.
+        satisfiedPreconditions: satisfied,
+        writesEnabled: false,  // EXTERNAL_WRITES=false.
+        observeOnly: true,
+      });
+
+      const unmet = entry.requiredPreconditions.filter((p) => !satisfied.includes(p));
+      // ACCEPTED at level 0 still means a human decides; it is never executed
+      // here, so it persists as APPROVAL_REQUIRED rather than PROPOSED.
+      const state = decision.outcome === 'ACCEPTED' ? 'APPROVAL_REQUIRED' : decision.outcome;
+      const reason = decision.outcome === 'ACCEPTED'
+        ? 'Policy permits this class, but autonomy is level 0 and external writes are disabled, so it awaits a human decision.'
+        : `${decision.code}: ${decision.reason}`;
+
+      const res = await this.ports.upsertActionRequest({
+        requestKey: request.idempotencyKey,
+        opportunityKey: o.opportunityKey,
+        actionClass: request.actionClass,
+        entityId: o.entityId,
+        evidenceIds: request.evidenceIds,
+        policyVersion: request.policyVersion,
+        preconditions: request.preconditions,
+        unmetPreconditions: unmet,
+        confidence: o.confidence,
+        blastRadius: request.blastRadius,
+        expectedEffect: request.expectedEffect,
+        rollbackClass: request.rollbackClass,
+        verificationPlan: request.verificationPlan,
+        state,
+        decisionReason: reason,
+      });
+      if (res.changed) changed += 1;
+    }
+
+    stages.ACTION_REQUESTS = {
+      executed: true, count: actionable.length, changed,
+      note: 'Recorded, never executed: autonomy level 0 means every request needs a human decision.',
+    };
   }
 
   /** Answer units re-evaluate whenever their grounding facts move. */

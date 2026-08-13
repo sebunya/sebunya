@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../client';
 import type { IHomepageContentRepository, StoredHomepageContent } from '../../../application/ports/IHomepageContentRepository';
 import type { HomepageContent } from '@goldplus/shared';
+import { pgJsonb } from '../PgParams';
 
 const rowsOf = (r: any): any[] => (Array.isArray(r) ? r : r?.rows ?? []);
 
@@ -22,7 +23,7 @@ export class DrizzleHomepageContentRepository implements IHomepageContentReposit
     const rows = rowsOf(
       await db.execute(sql`
         update homepage_content
-           set config = ${config as never}::jsonb,
+           set config = ${pgJsonb(config)},
                version = version + 1,
                updated_by = ${actorId}::uuid,
                updated_at = now()
@@ -37,7 +38,7 @@ export class DrizzleHomepageContentRepository implements IHomepageContentReposit
     const rows = rowsOf(
       await db.execute(sql`
         insert into homepage_content (id, config, version)
-        values (true, ${defaultConfig as never}::jsonb, 1)
+        values (true, ${pgJsonb(defaultConfig)}, 1)
         on conflict (id) do nothing
         returning id
       `),

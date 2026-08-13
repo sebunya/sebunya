@@ -862,6 +862,13 @@
       "when": 1789610400000,
       "tag": "0122_seo_organic_intelligence",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "5",
+      "when": 1789614000000,
+      "tag": "0123_seo_intel_runtime_closure",
+      "breakpoints": true
     }
   ]
 }
