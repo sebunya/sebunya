@@ -193,6 +193,14 @@ export function registerAllWorkers(): void {
         const outcome = await uc.execute();
         logger.info({ ...outcome }, '[QueueWorker] GSC sync finished');
         if (outcome.status === 'FAILED') throw new Error(outcome.error);
+      } else if (job.name === 'search-console-guardian-cron') {
+        // Organic Growth OS: the six-hourly Search Console Guardian.
+        // It gates itself on provider readiness, so an invocation with no
+        // credential costs one cheap row and raises nothing. Failures are
+        // isolated here — the Guardian must never break commerce fan-out.
+        const { runSearchConsoleGuardian } = await import('../seo/SearchConsoleGuardianRunner');
+        const outcome = await runSearchConsoleGuardian();
+        logger.info({ ...outcome }, '[QueueWorker] Search Console Guardian finished');
       } else if (job.name === 'seo-integration-sync') {
         // 0118 Integrations Control Plane: per-connection sync jobs, isolated
         // per connection; failures land on the job row, never in commerce paths.
@@ -254,6 +262,21 @@ export function registerAllWorkers(): void {
         jobId: 'abandonment-scan-job',
       }
     ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule abandonment scan cron'));
+
+    // Six-hourly Search Console Guardian. NOT hourly: Search Console settles
+    // its data over ~3 days, so a faster cadence would only re-read the same
+    // numbers and invent movement. jobId keeps this to ONE logical schedule
+    // however many API replicas boot.
+    syntheticQueue.add(
+      'search-console-guardian-cron',
+      {},
+      {
+        repeat: {
+          pattern: '0 */6 * * *',
+        },
+        jobId: 'search-console-guardian-job',
+      }
+    ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule Search Console Guardian cron job'));
 
     // Hourly recommendation materialization
     syntheticQueue.add(

@@ -17,6 +17,14 @@ import {
   type NotifiableEvent,
   type CircuitState,
 } from './SeoGuardianPolicy';
+import {
+  evaluateProviderGate,
+  resolveBaselinePhase,
+  backfillWindows,
+  BACKFILL_CONSTRAINTS,
+  type ProviderGateResult,
+  type BaselinePhase,
+} from './SeoGuardianReadiness';
 
 /**
  * The six-hourly Search Console Guardian.
@@ -55,6 +63,19 @@ export interface GuardianPolicySnapshot {
 }
 
 export interface GuardianPorts {
+  /** Integration control-plane state for the Search Console connection. */
+  providerStatus(): Promise<{ connectionStatus: string | null; hasActiveCredential: boolean; propertyConfigured: boolean }>;
+  /** Has the historical backfill already been completed for this property? */
+  backfillComplete(): Promise<boolean>;
+  /** Runs that produced a valid comparable observation. */
+  validLiveRunCount(): Promise<number>;
+  /**
+   * Historical context load. MUST NOT notify, mutate externally, open
+   * incidents or overwrite the live baseline — see BACKFILL_CONSTRAINTS.
+   */
+  runBackfill(windows: Array<{ label: string; startDate: string; endDate: string }>): Promise<{ windowsLoaded: number }>;
+  /** Cheap gated-run record: heartbeat only, no classification. */
+  recordGatedRun(input: { runId: string; readiness: string; reason: string; phase: BaselinePhase }): Promise<void>;
   /** Newest settled source date we hold, or null. */
   latestSourceDate(): Promise<string | null>;
   /** Windows to evaluate — already aggregated by the caller/repository. */
@@ -113,6 +134,8 @@ export interface GuardianRunResult {
   events: NotifiableEvent[];
   /** Human-readable summary of why the run concluded as it did. */
   summary: string;
+  providerReadiness: string;
+  phase: BaselinePhase | null;
 }
 
 const CLICK_DROP = 'CLICK_DROP';
@@ -133,12 +156,52 @@ export class SearchConsoleGuardianUseCase {
         ran: false, runId: null, freshness: null, signalsEvaluated: 0, materialChanges: 0,
         incidentsOpened: 0, actionsAttempted: 0, circuitState: 'CLOSED', notificationSent: false,
         events: [], summary: 'Another Guardian run holds the lease; this invocation stood down.',
+        providerReadiness: 'UNKNOWN', phase: null,
       };
     }
     const runId = started.runId;
     const events: NotifiableEvent[] = [];
 
     try {
+      // ── Provider gate. Runs BEFORE any collection, so a scheduled Guardian
+      // with no credential costs one cheap row and nothing else.
+      const providerStatus = await this.ports.providerStatus();
+      const gate = evaluateProviderGate(providerStatus);
+      const backfillDone = gate.proceed ? await this.ports.backfillComplete() : false;
+      const validRuns = gate.proceed ? await this.ports.validLiveRunCount() : 0;
+      const phase = resolveBaselinePhase({
+        providerConnected: gate.proceed,
+        historicalBackfillComplete: backfillDone,
+        validLiveRuns: validRuns,
+      });
+
+      if (!gate.proceed) {
+        await this.ports.recordGatedRun({ runId, readiness: gate.readiness, reason: gate.reason, phase: phase.phase });
+        // A silent gate raises nothing. A non-silent one (expired auth,
+        // degraded provider) is a genuine operational event worth surfacing.
+        if (!gate.silent) events.push(gate.readiness === 'AUTHORIZATION_REQUIRED' ? 'AUTH_CHANGED' : 'PROVIDER_DEGRADED');
+        const notifyGate = decideNotification({ events, killSwitches: (await this.ports.loadPolicy()).killSwitches });
+        let gateNotified = false;
+        if (notifyGate.send) {
+          const sent = await this.ports.sendAggregatedNotification({
+            events: notifyGate.events, runId, summary: gate.reason,
+          });
+          gateNotified = sent.delivered;
+        }
+        await this.ports.finishRun({
+          runId, status: 'COMPLETED',
+          freshness: { state: 'UNKNOWN', lagDays: null, comparisonValid: false, reason: gate.reason },
+          latestSourceDate: null, signalsEvaluated: 0, materialChanges: 0, incidentsOpened: 0,
+          actionsAttempted: 0, actionsFailed: 0, circuitState: 'CLOSED', circuitReasons: [],
+          notificationSent: gateNotified, notificationEvents: notifyGate.events,
+        });
+        return {
+          ran: true, runId, freshness: null, signalsEvaluated: 0, materialChanges: 0, incidentsOpened: 0,
+          actionsAttempted: 0, circuitState: 'CLOSED', notificationSent: gateNotified,
+          events: notifyGate.events, summary: gate.reason, providerReadiness: gate.readiness, phase: phase.phase,
+        };
+      }
+
       const latestSourceDate = await this.ports.latestSourceDate();
       const freshness = assessFreshness({ latestSourceDate, observedAt: this.now() });
       if (freshness.state === 'STALE') events.push('SOURCE_STALE');
@@ -163,6 +226,23 @@ export class SearchConsoleGuardianUseCase {
       });
       if (circuit.state === 'OPEN') events.push('CIRCUIT_OPENED');
 
+      // Historical context BEFORE the agent is allowed to judge anything.
+      if (phase.shouldBackfill) {
+        const loaded = await this.ports.runBackfill(backfillWindows(latestSourceDate));
+        await this.ports.finishRun({
+          runId, status: 'COMPLETED', freshness, latestSourceDate,
+          signalsEvaluated: 0, materialChanges: 0, incidentsOpened: 0, actionsAttempted: 0, actionsFailed: 0,
+          circuitState: circuit.state, circuitReasons: circuit.reasons,
+          notificationSent: false, notificationEvents: [],
+        });
+        return {
+          ran: true, runId, freshness, signalsEvaluated: 0, materialChanges: 0, incidentsOpened: 0,
+          actionsAttempted: 0, circuitState: circuit.state, notificationSent: false, events: [],
+          summary: `Historical baseline established from ${loaded.windowsLoaded} window(s). Backfill raises no incident and performs no mutation.`,
+          providerReadiness: gate.readiness, phase: phase.phase,
+        };
+      }
+
       const windows = await this.ports.entityWindows();
       let materialChanges = 0;
       let incidentsOpened = 0;
@@ -180,7 +260,11 @@ export class SearchConsoleGuardianUseCase {
 
         // Only a material DROP is a condition. A material rise is recorded as
         // evidence but never opens an incident.
-        const presentNow = materiality.verdict === 'MATERIAL' && materiality.direction === 'DOWN';
+        // Until the baseline is confirmed the agent observes and records but
+        // never classifies a condition as present.
+        const presentNow = phase.mayClassify
+          && materiality.verdict === 'MATERIAL'
+          && materiality.direction === 'DOWN';
 
         const key = idempotencyKey({
           provider: 'GSC',
@@ -296,6 +380,7 @@ export class SearchConsoleGuardianUseCase {
         ran: true, runId, freshness, signalsEvaluated: windows.length, materialChanges,
         incidentsOpened, actionsAttempted, circuitState: circuit.state,
         notificationSent, events: notify.events, summary,
+        providerReadiness: gate.readiness, phase: phase.phase,
       };
     } catch (err: any) {
       const message = String(err?.message ?? err).slice(0, 500);
@@ -310,6 +395,7 @@ export class SearchConsoleGuardianUseCase {
         ran: true, runId, freshness: null, signalsEvaluated: 0, materialChanges: 0, incidentsOpened: 0,
         actionsAttempted: 0, circuitState: 'OPEN', notificationSent: false, events: ['AGENT_FAILED'],
         summary: `Guardian run failed: ${message}`,
+        providerReadiness: 'UNKNOWN', phase: null,
       };
     }
   }

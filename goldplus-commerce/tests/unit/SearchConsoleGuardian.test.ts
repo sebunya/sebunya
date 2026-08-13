@@ -20,6 +20,8 @@ interface Recorded {
   notifications: Array<{ events: string[]; summary: string }>;
   saved: Array<{ key: string; state: string; consecutive: number }>;
   finished: Array<Record<string, unknown>>;
+  gated: Array<{ readiness: string; phase: string }>;
+  backfills: Array<{ windows: number }>;
 }
 
 function harness(over: {
@@ -33,11 +35,22 @@ function harness(over: {
   health?: { abnormal: boolean; authChanged: boolean };
   leaseHeld?: boolean;
   throwOn?: 'entityWindows';
+  provider?: { connectionStatus: string | null; hasActiveCredential: boolean; propertyConfigured: boolean };
+  backfillComplete?: boolean;
+  validLiveRuns?: number;
 } = {}) {
-  const rec: Recorded = { incidents: [], resolved: [], actions: [], notifications: [], saved: [], finished: [] };
+  const rec: Recorded = {
+    incidents: [], resolved: [], actions: [], notifications: [], saved: [], finished: [],
+    gated: [], backfills: [],
+  };
   const existingIncidents = new Set<string>();
 
   const ports: GuardianPorts = {
+    providerStatus: async () => over.provider ?? { connectionStatus: 'CONNECTED', hasActiveCredential: true, propertyConfigured: true },
+    backfillComplete: async () => over.backfillComplete ?? true,
+    validLiveRunCount: async () => over.validLiveRuns ?? 5,
+    runBackfill: async (w) => { rec.backfills.push({ windows: w.length }); return { windowsLoaded: w.length }; },
+    recordGatedRun: async (g) => { rec.gated.push({ readiness: g.readiness, phase: g.phase }); },
     latestSourceDate: async () => (over.latestSourceDate === undefined ? '2026-08-13' : over.latestSourceDate),
     entityWindows: async () => {
       if (over.throwOn === 'entityWindows') throw new Error('provider exploded');
@@ -304,5 +317,91 @@ describe('the guardian is wired to the existing infrastructure, not a parallel o
 
   it('names the agent consistently', () => {
     expect(GUARDIAN_AGENT).toBe('SEARCH_CONSOLE_GUARDIAN');
+  });
+});
+
+// ── Provider readiness gate ─────────────────────────────────────────────────
+
+describe('a scheduled Guardian with no credential is silent and cheap', () => {
+  it('records a gated run and does nothing else when no connection exists', async () => {
+    const { uc, rec } = harness({
+      provider: { connectionStatus: null, hasActiveCredential: false, propertyConfigured: false },
+      windows: bigDrop,
+    });
+    const r = await uc.execute();
+    expect(r.providerReadiness).toBe('WAITING_FOR_CREDENTIAL');
+    expect(r.phase).toBe('NO_PROVIDER');
+    expect(rec.gated).toHaveLength(1);
+    // The whole point: no collection, no incident, no notification, every six hours.
+    expect(rec.saved).toHaveLength(0);
+    expect(rec.incidents).toHaveLength(0);
+    expect(rec.notifications).toHaveLength(0);
+    expect(r.summary).toMatch(/admin\/seo\/integrations/);
+  });
+
+  it('stays silent for a connection that has no active credential', async () => {
+    const { uc, rec } = harness({
+      provider: { connectionStatus: 'CONFIGURING', hasActiveCredential: false, propertyConfigured: false },
+    });
+    const r = await uc.execute();
+    expect(r.providerReadiness).toBe('WAITING_FOR_CREDENTIAL');
+    expect(rec.notifications).toHaveLength(0);
+  });
+
+  it('does NOT stay silent when a working credential stops being authorised', async () => {
+    const { uc, rec } = harness({
+      provider: { connectionStatus: 'AUTH_EXPIRED', hasActiveCredential: true, propertyConfigured: true },
+    });
+    const r = await uc.execute();
+    expect(r.providerReadiness).toBe('AUTHORIZATION_REQUIRED');
+    expect(r.events).toContain('AUTH_CHANGED');
+    expect(rec.notifications).toHaveLength(1);
+  });
+
+  it('begins automatically once the provider becomes connected — no redeploy', async () => {
+    const { uc, rec } = harness({
+      provider: { connectionStatus: 'CONNECTED', hasActiveCredential: true, propertyConfigured: true },
+      windows: bigDrop,
+    });
+    const r = await uc.execute();
+    expect(r.providerReadiness).toBe('CONNECTED');
+    expect(rec.gated).toHaveLength(0);
+    expect(rec.saved).toHaveLength(1);
+  });
+});
+
+// ── Baseline lifecycle ──────────────────────────────────────────────────────
+
+describe('the agent establishes context before it judges anything', () => {
+  it('runs the historical backfill first and raises nothing from it', async () => {
+    const { uc, rec } = harness({ backfillComplete: false, windows: bigDrop });
+    const r = await uc.execute();
+    expect(r.phase).toBe('BACKFILL_PENDING');
+    expect(rec.backfills).toHaveLength(1);
+    expect(rec.backfills[0].windows).toBe(4);
+    // Archaeology, not monitoring.
+    expect(rec.incidents).toHaveLength(0);
+    expect(rec.notifications).toHaveLength(0);
+    expect(rec.saved).toHaveLength(0);
+    expect(r.summary).toMatch(/raises no incident/i);
+  });
+
+  it('captures and confirms before classifying, without waiting a week', async () => {
+    const capture = harness({ validLiveRuns: 0, windows: bigDrop });
+    const c = await capture.uc.execute();
+    expect(c.phase).toBe('BASELINE_CAPTURE');
+    expect(c.materialChanges).toBe(0);
+    expect(capture.rec.saved).toHaveLength(1);
+    expect(capture.rec.incidents).toHaveLength(0);
+
+    const confirm = harness({ validLiveRuns: 1, windows: bigDrop });
+    const f = await confirm.uc.execute();
+    expect(f.phase).toBe('BASELINE_CONFIRMATION');
+    expect(f.materialChanges).toBe(0);
+
+    const active = harness({ validLiveRuns: 2, windows: bigDrop });
+    const a = await active.uc.execute();
+    expect(a.phase).toBe('OBSERVE_ONLY_ACTIVE');
+    expect(a.materialChanges).toBe(1);
   });
 });
