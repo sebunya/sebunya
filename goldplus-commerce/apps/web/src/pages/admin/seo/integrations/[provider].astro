@@ -1,0 +1,517 @@
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../lib/session";
+import { rowsOf, emptyReason, str, num, fmtWhen } from "../../../../lib/adminSeo";
+import {
+  INTEGRATIONS_API, intGet, intPost, intPatch, intDelete,
+  deriveProviderStatus, statusBadgeClass, freshnessBadgeClass,
+  friendlyError, fieldControlOf, durationOf,
+  SYNC_FREQUENCIES,
+  type ProviderRow, type ConnectionRow, type CredentialRow,
+  type SyncJobRow, type AuditRow, type TestResult, type ManifestField,
+} from "../../../../lib/adminSeoIntegrations";
+
+/** Integration detail — one provider: its manifest, every connection, the
+ *  masked credentials in the vault, staged test results, sync history, quota
+ *  usage and the audit trail. Every control here calls a real endpoint; a
+ *  state is only shown because the backend recorded it. Secrets are POSTed
+ *  once and never rendered back — only masks ('••••AB12') are displayed. */
+const token = readSessionToken(Astro.request);
+const providerId = String(Astro.params.provider ?? "");
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/seo/integrations/${providerId}`, 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+let testResult: TestResult | null = null;
+let discovered: Record<string, unknown> | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const connectionId = String(form.get("connectionId") ?? "");
+
+  if (intent === "test") {
+    const res = await intPost<TestResult>(token, `${INTEGRATIONS_API}/connections/${connectionId}/test`, {});
+    if (res.ok) {
+      testResult = res.data;
+      notice = res.data.ok
+        ? `Test passed. The connection is now ${res.data.connectionStatus}.`
+        : null;
+      if (!res.data.ok) formError = friendlyError(res.data.errorCode, res.data.errorMessage);
+    } else formError = res.message;
+  } else if (intent === "discover") {
+    const res = await intPost<Record<string, unknown>>(token, `${INTEGRATIONS_API}/connections/${connectionId}/discover`, {});
+    if (res.ok) { discovered = res.data; notice = "Discovery completed — pick the account/property below."; }
+    else formError = res.message;
+  } else if (intent === "select-resource") {
+    const res = await intPost(token, `${INTEGRATIONS_API}/connections/${connectionId}/select-resource`, {
+      accountRef: String(form.get("accountRef") ?? "").trim() || undefined,
+      propertyRef: String(form.get("propertyRef") ?? "").trim() || undefined,
+    });
+    if (res.ok) notice = "Resource selection saved. Run Test connection to confirm access.";
+    else formError = res.message;
+  } else if (intent === "sync") {
+    const res = await intPost(token, `${INTEGRATIONS_API}/connections/${connectionId}/sync`, {
+      jobType: String(form.get("jobType") ?? "MANUAL"),
+    });
+    if (res.ok) notice = "Sync queued. Progress appears in the sync history below and in Sync Operations.";
+    else formError = res.message;
+  } else if (intent === "rotate-credential") {
+    const authType = String(form.get("authType") ?? "").trim();
+    // Read every manifest-rendered secret field back by its cred_ prefix. The
+    // manifest is loaded below (after mutations), so the submission is the
+    // authority here — plaintext goes straight to the API and is never held.
+    const secret: Record<string, unknown> = {};
+    for (const [key, value] of form.entries()) {
+      if (!key.startsWith("cred_")) continue;
+      const raw = String(value).trim();
+      if (raw !== "") secret[key.slice(5)] = raw;
+    }
+    if (Object.keys(secret).length === 0) formError = "Nothing was entered, so no credential was stored.";
+    else {
+      const res = await intPost<{ mask?: string; version?: number; connectionStatus?: string }>(
+        token, `${INTEGRATIONS_API}/connections/${connectionId}/credentials`, { authType, secret },
+      );
+      if (res.ok) notice = `Credential v${res.data.version} stored (${res.data.mask}). It is never shown again. Connection is now ${res.data.connectionStatus} — run Test connection.`;
+      else formError = res.message;
+    }
+  } else if (intent === "revoke-credential") {
+    const res = await intPost(token, `${INTEGRATIONS_API}/credentials/${String(form.get("credentialId") ?? "")}/revoke`, {});
+    if (res.ok) notice = "Credential revoked. Add a replacement before the next sync.";
+    else formError = res.message;
+  } else if (intent === "disable" || intent === "enable") {
+    const res = await intPatch(token, `${INTEGRATIONS_API}/connections/${connectionId}`, {
+      status: intent === "disable" ? "DISABLED" : "NOT_CONFIGURED",
+    });
+    if (res.ok) notice = intent === "disable"
+      ? "Connection disabled. It will not sync until it is re-enabled."
+      : "Connection re-enabled. It must pass a test again before it is READY.";
+    else formError = res.message;
+  } else if (intent === "settings") {
+    const res = await intPatch(token, `${INTEGRATIONS_API}/connections/${connectionId}`, {
+      name: String(form.get("name") ?? "").trim() || undefined,
+      syncFrequency: String(form.get("syncFrequency") ?? "").trim() || undefined,
+      backfillWindowDays: String(form.get("backfillWindowDays") ?? "").trim() || undefined,
+    });
+    if (res.ok) notice = "Connection settings saved.";
+    else formError = res.message;
+  } else if (intent === "delete") {
+    const res = await intDelete(token, `${INTEGRATIONS_API}/connections/${connectionId}`);
+    if (res.ok) notice = "Connection deleted, together with its vault credentials.";
+    else formError = res.message;
+  } else if (intent === "oauth") {
+    const res = await intGet<{ authUrl?: string }>(token, `${INTEGRATIONS_API}/oauth/google/start?connectionId=${encodeURIComponent(connectionId)}`);
+    if (res.ok && typeof res.data.authUrl === "string") return Astro.redirect(res.data.authUrl, 303);
+    formError = res.ok ? "The API returned no authorization URL." : res.message;
+  }
+}
+
+// Loaded after any mutation so the page always reflects post-action truth.
+const [providersRes, connectionsRes, jobsRes, auditRes, usageRes] = await Promise.all([
+  intGet(token, `${INTEGRATIONS_API}/providers`),
+  intGet(token, `${INTEGRATIONS_API}/connections?providerId=${encodeURIComponent(providerId)}`),
+  intGet(token, `${INTEGRATIONS_API}/sync-jobs?limit=25`),
+  intGet(token, `${INTEGRATIONS_API}/audit?limit=25`),
+  intGet<{ usage?: unknown[]; dailyCaps?: Record<string, number | null> }>(token, `${INTEGRATIONS_API}/usage?providerId=${encodeURIComponent(providerId)}&days=14`),
+]);
+
+const provider = rowsOf<ProviderRow>(providersRes).find((p) => String(p.provider_id) === providerId) ?? null;
+const manifest = provider?.manifest ?? {};
+const connections = rowsOf<ConnectionRow>(connectionsRes);
+const connectionIds = new Set(connections.map((c) => String(c.id)));
+const jobs = rowsOf<SyncJobRow>(jobsRes).filter((j) => connectionIds.has(String(j.connection_id)));
+const audit = rowsOf<AuditRow>(auditRes).filter((a) => String(a.provider_id ?? "") === providerId || connectionIds.has(String(a.connection_id ?? "")));
+const usage = usageRes.ok ? ((usageRes.data as any)?.usage ?? []) : [];
+const dailyCap = usageRes.ok ? ((usageRes.data as any)?.dailyCaps?.[providerId] ?? null) : null;
+const providerReason = emptyReason(providersRes, "The provider registry is not available yet");
+const derivedStatus = deriveProviderStatus(connections);
+
+// Credentials are fetched per connection (a more restricted permission than
+// viewing) — a denial here is shown honestly rather than as "none".
+const credentialResults = await Promise.all(
+  connections.map((c) => intGet<CredentialRow[]>(token, `${INTEGRATIONS_API}/connections/${c.id}/credentials`)),
+);
+const credentialsFor = (i: number) => rowsOf<CredentialRow>(credentialResults[i]);
+const credentialDenied = (i: number) => credentialResults[i].ok === false && (credentialResults[i] as any).denied === true;
+
+const usesGoogleOAuth = Array.isArray(manifest.oauthScopes) && manifest.oauthScopes.length > 0;
+const supportsDiscovery = manifest.supports?.testConnection !== undefined || Boolean(manifest.supports?.backfill);
+const configFields = (manifest.configurationSchema ?? []) as ManifestField[];
+const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
+---
+
+<AdminLayout title={`Integration — ${str(provider?.canonical_name ?? providerId)}`} description="One provider: connections, vault credentials, staged tests, sync history, quota and audit.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <a href="/admin/seo/integrations" class="text-xs font-bold text-gray-500 hover:text-brand-dark">← Integration Marketplace</a>
+
+    {providerReason && (
+      <div role="status" class="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">{providerReason}</div>
+    )}
+
+    {!providerReason && !provider && (
+      <div role="status" class="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
+        No provider with id <code class="font-mono">{providerId}</code> is registered in the control plane.
+      </div>
+    )}
+
+    {provider && (
+      <>
+        <div class="mt-4 mb-8 pb-6 border-b border-gray-200 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 class="text-2xl font-black text-brand-dark tracking-tight">{str(provider.canonical_name)}</h2>
+            <p class="text-sm text-gray-500 mt-1 max-w-3xl">{str(provider.description)}</p>
+            <p class="text-xs text-gray-400 mt-2 font-mono">{providerId} · {str(provider.family)}</p>
+          </div>
+          <span class={`rounded-full border px-3 py-1 text-xs font-bold ${statusBadgeClass(derivedStatus)}`}>{derivedStatus}</span>
+        </div>
+
+        {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+        {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+        {testResult && (
+          <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
+            <h3 class="font-black text-brand-dark mb-3">Test connection — stage results</h3>
+            <ol class="space-y-2">
+              {(testResult.stages ?? []).map((s) => (
+                <li class="flex items-start gap-3 text-sm">
+                  <span class={`mt-0.5 shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${s.ok ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-red-300 bg-red-50 text-red-900"}`}>
+                    {s.ok ? "PASS" : "FAIL"}
+                  </span>
+                  <span><strong class="font-mono text-xs">{str(s.stage)}</strong> — {str(s.detail)}</span>
+                </li>
+              ))}
+            </ol>
+            {testResult.errorCode && (
+              <p class="mt-3 text-xs text-red-900">
+                <strong class="font-mono">{testResult.errorCode}</strong> — {friendlyError(testResult.errorCode, testResult.errorMessage)}
+              </p>
+            )}
+          </section>
+        )}
+
+        {/* Capability + quota facts from the manifest */}
+        <section class="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="rounded-2xl border border-gray-200 bg-white p-5">
+            <h3 class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Capabilities</h3>
+            <div class="flex flex-wrap gap-1">
+              {(provider.capabilities ?? []).map((cap) => (
+                <span class="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-mono text-gray-600">{cap}</span>
+              ))}
+              {(provider.capabilities ?? []).length === 0 && <span class="text-xs text-gray-500">None declared.</span>}
+            </div>
+          </div>
+          <div class="rounded-2xl border border-gray-200 bg-white p-5">
+            <h3 class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Authentication</h3>
+            <p class="text-sm text-gray-700">{(provider.auth_types ?? []).join(", ") || "—"}</p>
+            {usesGoogleOAuth && <p class="text-xs text-gray-500 mt-1">Google OAuth 2.0 with PKCE. Scopes: {(manifest.oauthScopes ?? []).length}.</p>}
+          </div>
+          <div class="rounded-2xl border border-gray-200 bg-white p-5">
+            <h3 class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Daily request cap</h3>
+            <p class="text-sm text-gray-700">{dailyCap === null ? "No cap declared by this provider." : `${num(dailyCap)} requests/day`}</p>
+            {manifest.quota?.notes && <p class="text-xs text-gray-500 mt-1">{manifest.quota.notes}</p>}
+          </div>
+        </section>
+
+        {/* Connections */}
+        {connections.length === 0 ? (
+          <section class="mb-10 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6">
+            <p class="text-sm text-gray-600 mb-4">
+              This provider has no connection yet, so it is honestly <strong>NOT_CONFIGURED</strong>. Nothing is synced
+              and no data from it is presumed to exist.
+            </p>
+            <a href={`/admin/seo/integrations/${providerId}/connect`} class="inline-block rounded-xl bg-brand-dark px-5 py-2.5 text-sm font-bold text-white hover:opacity-90">
+              Set up a connection
+            </a>
+          </section>
+        ) : (
+          <div class="space-y-8 mb-10">
+            {connections.map((conn, i) => (
+              <section class="rounded-2xl border border-gray-200 bg-white p-6">
+                <div class="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-gray-100">
+                  <div>
+                    <h3 class="font-black text-brand-dark">{str(conn.name)}</h3>
+                    <p class="text-xs text-gray-400 font-mono mt-1">{str(conn.id)}</p>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class={`rounded-full border px-3 py-1 text-xs font-bold ${statusBadgeClass(String(conn.status ?? ""))}`}>{str(conn.status)}</span>
+                    <span class={`rounded-full border px-3 py-1 text-xs font-bold ${freshnessBadgeClass(String(conn.freshness ?? "NO_DATA"))}`}>
+                      {conn.freshness === "NO_DATA" ? "NO DATA" : str(conn.freshness)}
+                    </span>
+                  </div>
+                </div>
+
+                <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 text-xs">
+                  <div><dt class="uppercase tracking-widest text-[10px] text-gray-400">Account</dt><dd class="text-gray-700 break-all">{str(conn.account_ref)}</dd></div>
+                  <div><dt class="uppercase tracking-widest text-[10px] text-gray-400">Property</dt><dd class="text-gray-700 break-all">{str(conn.property_ref)}</dd></div>
+                  <div><dt class="uppercase tracking-widest text-[10px] text-gray-400">Last attempt</dt><dd class="text-gray-700">{fmtWhen(conn.last_attempt_at)}</dd></div>
+                  <div>
+                    <dt class="uppercase tracking-widest text-[10px] text-gray-400">Last success</dt>
+                    <dd class="text-gray-700">{conn.last_success_at ? fmtWhen(conn.last_success_at) : "Never — nothing has been synced."}</dd>
+                  </div>
+                </dl>
+
+                {conn.last_error && (
+                  <p class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-900">
+                    <strong>Last failure:</strong> {conn.last_error}
+                  </p>
+                )}
+
+                {/* Operator actions — each maps to one real endpoint */}
+                <div class="flex flex-wrap gap-2 mb-6">
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="intent" value="test" />
+                    <input type="hidden" name="connectionId" value={conn.id} />
+                    <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2 text-xs font-bold text-white hover:opacity-90">Test connection</button>
+                  </form>
+                  {usesGoogleOAuth && (
+                    <form method="POST" class="inline">
+                      <input type="hidden" name="intent" value="oauth" />
+                      <input type="hidden" name="connectionId" value={conn.id} />
+                      <button type="submit" class="rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-brand-dark hover:bg-gray-50">Authorize with Google</button>
+                    </form>
+                  )}
+                  {supportsDiscovery && (
+                    <form method="POST" class="inline">
+                      <input type="hidden" name="intent" value="discover" />
+                      <input type="hidden" name="connectionId" value={conn.id} />
+                      <button type="submit" class="rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-brand-dark hover:bg-gray-50">Discover accounts/properties</button>
+                    </form>
+                  )}
+                  {manifest.supports?.manualSync && (
+                    <form method="POST" class="inline flex items-center gap-1">
+                      <input type="hidden" name="intent" value="sync" />
+                      <input type="hidden" name="connectionId" value={conn.id} />
+                      <select name="jobType" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
+                        <option value="MANUAL">Manual</option>
+                        <option value="INCREMENTAL">Incremental</option>
+                        {manifest.supports?.backfill && <option value="BACKFILL">Backfill</option>}
+                      </select>
+                      <button type="submit" class="rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-brand-dark hover:bg-gray-50">Run sync</button>
+                    </form>
+                  )}
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="intent" value={conn.status === "DISABLED" ? "enable" : "disable"} />
+                    <input type="hidden" name="connectionId" value={conn.id} />
+                    <button type="submit" class="rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50">
+                      {conn.status === "DISABLED" ? "Re-enable" : "Disable"}
+                    </button>
+                  </form>
+                </div>
+
+                {discovered && (
+                  <form method="POST" class="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <input type="hidden" name="intent" value="select-resource" />
+                    <input type="hidden" name="connectionId" value={conn.id} />
+                    <h4 class="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Discovered resources</h4>
+                    <pre class="max-h-48 overflow-auto rounded-lg bg-white p-3 text-[11px] font-mono text-gray-700">{JSON.stringify(discovered, null, 2)}</pre>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                      <label class="text-xs text-gray-600">Account reference
+                        <input name="accountRef" value={str(conn.account_ref) === "—" ? "" : String(conn.account_ref)} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                      </label>
+                      <label class="text-xs text-gray-600">Property / site reference
+                        <input name="propertyRef" value={str(conn.property_ref) === "—" ? "" : String(conn.property_ref)} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                      </label>
+                    </div>
+                    <button type="submit" class="mt-3 rounded-xl bg-brand-dark px-4 py-2 text-xs font-bold text-white hover:opacity-90">Save selection</button>
+                  </form>
+                )}
+
+                {/* Credentials — masks only, never values */}
+                <div class="mb-6">
+                  <h4 class="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Vault credentials</h4>
+                  {credentialDenied(i) ? (
+                    <p class="text-xs text-gray-600 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
+                      Your account can view this integration but not its credentials. Credential management requires
+                      <code class="font-mono"> seo.integrations.credentials</code>.
+                    </p>
+                  ) : credentialsFor(i).length === 0 ? (
+                    <p class="text-xs text-gray-600 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
+                      No credential is stored. This connection cannot authenticate until one is added.
+                    </p>
+                  ) : (
+                    <table class="w-full text-xs">
+                      <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400">
+                        <th class="py-1">Version</th><th>Auth type</th><th>Mask</th><th>Status</th><th>Added</th><th>Expires</th><th></th>
+                      </tr></thead>
+                      <tbody>
+                        {credentialsFor(i).map((cred) => (
+                          <tr class="border-t border-gray-100">
+                            <td class="py-2 font-mono">v{str(cred.version)}</td>
+                            <td class="font-mono">{str(cred.auth_type)}</td>
+                            <td class="font-mono">{str(cred.mask)}</td>
+                            <td>{str(cred.status)}</td>
+                            <td>{fmtWhen(cred.created_at)}</td>
+                            <td>{cred.expires_at ? fmtWhen(cred.expires_at) : "—"}</td>
+                            <td class="text-right">
+                              {cred.status === "ACTIVE" && (
+                                <form method="POST" class="inline">
+                                  <input type="hidden" name="intent" value="revoke-credential" />
+                                  <input type="hidden" name="credentialId" value={cred.id} />
+                                  <button type="submit" class="rounded-lg border border-gray-300 px-2 py-1 text-[11px] font-bold text-gray-600 hover:bg-gray-50">Revoke</button>
+                                </form>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  <p class="mt-2 text-[11px] text-gray-400">
+                    Stored secrets are encrypted in the vault and are never displayed again after they are saved —
+                    only the mask above. To change one, add a new version below; the old version is superseded.
+                  </p>
+                </div>
+
+                {/* Rotate / add credential */}
+                {!credentialDenied(i) && credFields.length > 0 && (
+                  <form method="POST" class="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <input type="hidden" name="intent" value="rotate-credential" />
+                    <input type="hidden" name="connectionId" value={conn.id} />
+                    <h4 class="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Add / rotate credential</h4>
+                    <label class="block text-xs text-gray-600 mb-3">Auth type
+                      <select name="authType" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                        {(provider.auth_types ?? []).map((a) => <option value={a}>{a}</option>)}
+                      </select>
+                    </label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {credFields.map((f) => {
+                        const plan = fieldControlOf(f);
+                        return (
+                          <label class="text-xs text-gray-600 md:col-span-2">
+                            {f.label}{f.required && <span class="text-red-600"> *</span>}
+                            {plan.control === "textarea" ? (
+                              <textarea name={`cred_${f.key}`} rows="5" autocomplete="off" spellcheck="false"
+                                class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"></textarea>
+                            ) : plan.control === "select" ? (
+                              <select name={`cred_${f.key}`} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                                {(f.options ?? []).map((o) => <option value={o}>{o}</option>)}
+                              </select>
+                            ) : (
+                              <input name={`cred_${f.key}`} type={plan.inputType} autocomplete="off"
+                                class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                            )}
+                            {f.help && <span class="block mt-1 text-[11px] text-gray-400">{f.help}</span>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <button type="submit" class="mt-3 rounded-xl bg-brand-dark px-4 py-2 text-xs font-bold text-white hover:opacity-90">Store credential</button>
+                  </form>
+                )}
+
+                {/* Settings */}
+                <form method="POST" class="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <input type="hidden" name="intent" value="settings" />
+                  <input type="hidden" name="connectionId" value={conn.id} />
+                  <h4 class="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Connection settings</h4>
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <label class="text-xs text-gray-600">Name
+                      <input name="name" value={str(conn.name)} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                    </label>
+                    <label class="text-xs text-gray-600">Sync frequency
+                      <select name="syncFrequency" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                        {SYNC_FREQUENCIES.map((f) => <option value={f} selected={conn.sync_frequency === f}>{f}</option>)}
+                      </select>
+                    </label>
+                    <label class="text-xs text-gray-600">Backfill window (days)
+                      <input name="backfillWindowDays" type="number" min="0" value={conn.backfill_window_days ?? ""} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                    </label>
+                  </div>
+                  <button type="submit" class="mt-3 rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-brand-dark hover:bg-gray-50">Save settings</button>
+                </form>
+
+                {configFields.length > 0 && (
+                  <details class="mb-4">
+                    <summary class="cursor-pointer text-xs font-bold uppercase tracking-widest text-gray-500">Configuration values</summary>
+                    <dl class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                      {configFields.map((f) => (
+                        <div class="rounded-lg border border-gray-100 bg-gray-50 p-2">
+                          <dt class="text-[10px] uppercase tracking-widest text-gray-400">{f.label}</dt>
+                          <dd class="text-gray-700 break-all">{str((conn.config ?? {})[f.key])}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </details>
+                )}
+
+                <form method="POST" class="text-right">
+                  <input type="hidden" name="intent" value="delete" />
+                  <input type="hidden" name="connectionId" value={conn.id} />
+                  <button type="submit" class="text-[11px] font-bold text-red-700 hover:underline">Delete this connection and its credentials</button>
+                </form>
+              </section>
+            ))}
+          </div>
+        )}
+
+        {/* Sync history */}
+        <section class="mb-10 rounded-2xl border border-gray-200 bg-white p-6">
+          <h3 class="font-black text-brand-dark mb-3">Sync history</h3>
+          {jobs.length === 0 ? (
+            <p class="text-sm text-gray-600">No sync has ever been run for this provider.</p>
+          ) : (
+            <table class="w-full text-xs">
+              <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400">
+                <th class="py-1">Type</th><th>Status</th><th>Started</th><th>Duration</th><th>Read</th><th>Inserted</th><th>Updated</th><th>Rejected</th><th>Error</th>
+              </tr></thead>
+              <tbody>
+                {jobs.map((j) => (
+                  <tr class="border-t border-gray-100">
+                    <td class="py-2 font-mono">{str(j.job_type)}</td>
+                    <td class="font-bold">{str(j.status)}</td>
+                    <td>{fmtWhen(j.started_at)}</td>
+                    <td>{durationOf(j.started_at, j.completed_at)}</td>
+                    <td>{num(j.records_read)}</td>
+                    <td>{num(j.records_inserted)}</td>
+                    <td>{num(j.records_updated)}</td>
+                    <td>{num(j.records_rejected)}</td>
+                    <td class="text-red-800 max-w-xs truncate">{str(j.error)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        {/* Quota usage */}
+        <section class="mb-10 rounded-2xl border border-gray-200 bg-white p-6">
+          <h3 class="font-black text-brand-dark mb-3">Request usage (last 14 days)</h3>
+          {usage.length === 0 ? (
+            <p class="text-sm text-gray-600">No requests have been recorded for this provider.</p>
+          ) : (
+            <table class="w-full text-xs">
+              <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400"><th class="py-1">Day</th><th>Requests</th><th>Cap</th></tr></thead>
+              <tbody>
+                {(usage as any[]).map((u) => (
+                  <tr class="border-t border-gray-100">
+                    <td class="py-2">{str(u.day)}</td>
+                    <td>{num(u.requests)}</td>
+                    <td>{dailyCap === null ? "no cap" : num(dailyCap)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        {/* Audit */}
+        <section class="mb-16 rounded-2xl border border-gray-200 bg-white p-6">
+          <h3 class="font-black text-brand-dark mb-3">Integration audit trail</h3>
+          {audit.length === 0 ? (
+            <p class="text-sm text-gray-600">No actions have been recorded against this provider yet.</p>
+          ) : (
+            <ul class="space-y-2">
+              {audit.map((a) => (
+                <li class="border-t border-gray-100 pt-2 text-xs">
+                  <span class="font-mono font-bold text-brand-dark">{str(a.action)}</span>
+                  <span class="text-gray-400"> · {fmtWhen(a.created_at)}</span>
+                  <div class="text-gray-600 break-all">{a.detail ? JSON.stringify(a.detail) : "—"}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </>
+    )}
+  </div>
+</AdminLayout>

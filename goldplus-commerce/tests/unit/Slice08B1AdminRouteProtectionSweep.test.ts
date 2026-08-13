@@ -58,7 +58,11 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 108 adds the ten seo/* pages (2026-08-10) — the Search Growth group of
     // the Organic Growth OS (overview, competitors, queries, serp, market-share,
     // opportunities, technical, integrations, content, aeo).
-    expect(adminPages).toHaveLength(108);
+    // 111 (2026-08-13): the flat seo/integrations.astro became the Search
+    // Integrations Control Plane — integrations/index.astro (marketplace),
+    // integrations/[provider].astro (detail), integrations/[provider]/connect.astro
+    // (wizard) and integrations/sync.astro (Sync Operations Center). Net +3.
+    expect(adminPages).toHaveLength(111);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/analytics/index.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -75,7 +79,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(107);
+    expect(protectedPages).toHaveLength(110);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');
@@ -115,7 +119,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('keeps every dynamic admin route explicitly guarded', () => {
     const dynamicPages = adminPages.filter((page) => page.includes('['));
-    expect(dynamicPages).toHaveLength(19);
+    // 21: +2 for the integration detail page and its connection wizard.
+    expect(dynamicPages).toHaveLength(21);
     for (const page of dynamicPages) {
       expect(read(page), `${page} requires source-level protection`).toContain('readSessionToken(Astro.request)');
     }

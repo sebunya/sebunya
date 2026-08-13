@@ -1,0 +1,174 @@
+---
+import AdminLayout from "../../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../../lib/session";
+import { rowsOf, emptyReason, str } from "../../../../../lib/adminSeo";
+import {
+  INTEGRATIONS_API, intGet, intPost,
+  fieldControlOf, readSchemaForm, SYNC_FREQUENCIES,
+  type ProviderRow, type ConnectionRow, type ManifestField,
+} from "../../../../../lib/adminSeoIntegrations";
+
+/** Connection wizard — creates a connection from the provider's manifest, then
+ *  hands the operator to the detail page for credentials, authorization,
+ *  discovery and the staged test. Nothing here claims a connection works: a
+ *  newly created connection is NOT_CONFIGURED until a credential is stored and
+ *  a real test passes. */
+const token = readSessionToken(Astro.request);
+const providerId = String(Astro.params.provider ?? "");
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/seo/integrations/${providerId}/connect`, 303);
+
+const providersRes = await intGet(token, `${INTEGRATIONS_API}/providers`);
+const provider = rowsOf<ProviderRow>(providersRes).find((p) => String(p.provider_id) === providerId) ?? null;
+const manifest = provider?.manifest ?? {};
+const configFields = (manifest.configurationSchema ?? []) as ManifestField[];
+const capabilities = provider?.capabilities ?? [];
+const providerReason = emptyReason(providersRes, "The provider registry is not available yet");
+
+const existingRes = await intGet(token, `${INTEGRATIONS_API}/connections?providerId=${encodeURIComponent(providerId)}`);
+const existing = rowsOf<ConnectionRow>(existingRes);
+const singleConnectionTaken = existing.length > 0 && manifest.supports?.multipleConnections !== true;
+
+let formError: string | null = null;
+
+if (Astro.request.method === "POST" && provider && !singleConnectionTaken) {
+  const form = await Astro.request.formData();
+  const res = await intPost<{ id?: string }>(token, `${INTEGRATIONS_API}/connections`, {
+    providerId,
+    name: String(form.get("name") ?? "").trim(),
+    config: readSchemaForm(configFields, form, "cfg_"),
+    enabledCapabilities: form.getAll("capabilities").map(String),
+    syncFrequency: String(form.get("syncFrequency") ?? "").trim() || undefined,
+    backfillWindowDays: String(form.get("backfillWindowDays") ?? "").trim() || undefined,
+  });
+  if (res.ok) return Astro.redirect(`/admin/seo/integrations/${providerId}`, 303);
+  formError = res.message;
+}
+
+const needsCredential = (provider?.auth_types ?? []).some((a) => a !== "NONE");
+const usesGoogleOAuth = Array.isArray(manifest.oauthScopes) && manifest.oauthScopes.length > 0;
+---
+
+<AdminLayout title={`Connect — ${str(provider?.canonical_name ?? providerId)}`} description="Create a connection to this provider from the admin UI — no environment edits, no redeploy.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-3xl">
+    <a href={`/admin/seo/integrations/${providerId}`} class="text-xs font-bold text-gray-500 hover:text-brand-dark">← Back to provider</a>
+
+    {providerReason && <div role="status" class="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">{providerReason}</div>}
+
+    {!providerReason && !provider && (
+      <div role="status" class="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
+        No provider with id <code class="font-mono">{providerId}</code> is registered.
+      </div>
+    )}
+
+    {provider && (
+      <>
+        <div class="mt-4 mb-8 pb-6 border-b border-gray-200">
+          <h2 class="text-2xl font-black text-brand-dark tracking-tight">Connect {str(provider.canonical_name)}</h2>
+          <p class="text-sm text-gray-500 mt-1">{str(provider.description)}</p>
+        </div>
+
+        {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+        {singleConnectionTaken ? (
+          <div role="status" class="rounded-xl border border-amber-300 bg-amber-50 p-6 text-sm text-amber-900">
+            This provider supports a single connection and one already exists
+            (<strong>{str(existing[0].name)}</strong>, status {str(existing[0].status)}).
+            <a href={`/admin/seo/integrations/${providerId}`} class="ml-1 font-bold underline">Manage it instead.</a>
+          </div>
+        ) : (
+          <>
+            <ol class="mb-8 grid gap-3 text-sm">
+              <li class="rounded-xl border border-brand-dark bg-white p-4">
+                <strong class="text-brand-dark">Step 1 — Name and configure</strong>
+                <p class="text-xs text-gray-500 mt-1">On this page. Creates the connection in state <strong>NOT_CONFIGURED</strong>.</p>
+              </li>
+              <li class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <strong class="text-gray-700">Step 2 — {usesGoogleOAuth ? "Authorize with Google (OAuth 2.0 + PKCE)" : needsCredential ? "Store a credential in the vault" : "No credential required"}</strong>
+                <p class="text-xs text-gray-500 mt-1">On the provider page, after this step. Secrets are encrypted and never shown again.</p>
+              </li>
+              <li class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <strong class="text-gray-700">Step 3 — Discover and select the account/property</strong>
+                <p class="text-xs text-gray-500 mt-1">Only accounts the credential can actually see are offered.</p>
+              </li>
+              <li class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <strong class="text-gray-700">Step 4 — Test connection, then sync</strong>
+                <p class="text-xs text-gray-500 mt-1">
+                  The connection becomes <strong>READY</strong> only after a staged test passes, and
+                  <strong> CONNECTED</strong> only after a real data operation succeeds. It is never marked connected
+                  because credentials merely exist.
+                </p>
+              </li>
+            </ol>
+
+            <form method="POST" class="rounded-2xl border border-gray-200 bg-white p-6 space-y-4">
+              <label class="block text-sm text-gray-700">Connection name <span class="text-red-600">*</span>
+                <input name="name" required value={str(provider.canonical_name) === "—" ? "" : String(provider.canonical_name)}
+                  class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <span class="block mt-1 text-xs text-gray-400">How this connection is labelled in the control plane.</span>
+              </label>
+
+              {configFields.map((f) => {
+                const plan = fieldControlOf(f);
+                return (
+                  <label class="block text-sm text-gray-700">
+                    {f.label}{f.required && <span class="text-red-600"> *</span>}
+                    {plan.control === "textarea" ? (
+                      <textarea name={`cfg_${f.key}`} rows="4" required={f.required} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"></textarea>
+                    ) : plan.control === "select" ? (
+                      <select name={`cfg_${f.key}`} required={f.required} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                        {(f.options ?? []).map((o) => <option value={o}>{o}</option>)}
+                      </select>
+                    ) : (
+                      <input name={`cfg_${f.key}`} type={plan.inputType} required={f.required} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                    )}
+                    {f.help && <span class="block mt-1 text-xs text-gray-400">{f.help}</span>}
+                  </label>
+                );
+              })}
+
+              {configFields.length === 0 && (
+                <p class="text-xs text-gray-500">This provider declares no configuration fields — only a name is needed here.</p>
+              )}
+
+              {capabilities.length > 0 && (
+                <fieldset class="border border-gray-200 rounded-xl p-4">
+                  <legend class="px-2 text-xs font-bold uppercase tracking-widest text-gray-500">Capabilities to enable</legend>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {capabilities.map((cap) => (
+                      <label class="flex items-center gap-2 text-xs text-gray-700">
+                        <input type="checkbox" name="capabilities" value={cap} checked class="rounded border-gray-300" />
+                        <span class="font-mono">{cap}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label class="block text-sm text-gray-700">Sync frequency
+                  <select name="syncFrequency" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {SYNC_FREQUENCIES.map((f) => <option value={f} selected={provider.default_sync_frequency === f}>{f}</option>)}
+                  </select>
+                </label>
+                <label class="block text-sm text-gray-700">Backfill window (days)
+                  <input name="backfillWindowDays" type="number" min="0"
+                    value={manifest.backfillWindowMonths ? manifest.backfillWindowMonths * 30 : ""}
+                    class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                </label>
+              </div>
+
+              <p class="text-xs text-gray-500">
+                No secret is entered on this page. Credentials are added on the provider page after the connection
+                exists, so they can be stored against it in the encrypted vault.
+              </p>
+
+              <button type="submit" class="rounded-xl bg-brand-dark px-6 py-3 text-sm font-bold text-white hover:opacity-90">
+                Create connection
+              </button>
+            </form>
+          </>
+        )}
+      </>
+    )}
+  </div>
+</AdminLayout>

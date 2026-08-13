@@ -315,7 +315,8 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'Market Share', href: '/admin/seo/market-share', group: 'Search Growth', status: 'working', description: 'Top-N share and outrank rates computed from observations only.' },
   { label: 'Opportunities', href: '/admin/seo/opportunities', group: 'Search Growth', status: 'working', description: 'Generated opportunities with value, confidence, readiness, effort and risk shown separately.' },
   { label: 'Technical SEO', href: '/admin/seo/technical', group: 'Search Growth', status: 'working', description: 'Crawl runs, per-page issues and technical alerts.' },
-  { label: 'Integrations', href: '/admin/seo/integrations', group: 'Search Growth', status: 'working', description: 'Provider status and the credentials each connection needs.' },
+  { label: 'Integrations', href: '/admin/seo/integrations', group: 'Search Growth', status: 'working', description: 'The integration marketplace: connect providers, manage vault credentials and run staged tests from the admin UI.' },
+  { label: 'Sync Operations', href: '/admin/seo/integrations/sync', group: 'Search Growth', status: 'working', description: 'Data freshness per connection and every sync job, with NO DATA kept distinct from STALE.' },
   { label: 'Content & Experiments', href: '/admin/seo/content', group: 'Search Growth', status: 'working', description: 'Content gaps, the SEO change ledger and controlled experiments.' },
   { label: 'AEO', href: '/admin/seo/aeo', group: 'Search Growth', status: 'working', description: 'Answer-engine prompt bank, recorded observations and coverage.' }
 ];

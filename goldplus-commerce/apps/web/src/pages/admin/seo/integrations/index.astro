@@ -1,0 +1,159 @@
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../lib/session";
+import { rowsOf, emptyReason, str, fmtWhen } from "../../../../lib/adminSeo";
+import {
+  INTEGRATIONS_API, intGet,
+  FAMILY_FILTERS, familyBucketOf,
+  STATUS_VIEWS, deriveProviderStatus, statusViewOf, statusBadgeClass,
+  type ProviderRow, type ConnectionRow,
+} from "../../../../lib/adminSeoIntegrations";
+
+/** Integration Marketplace — every provider the control plane knows, its real
+ *  connection status (words only, never invented health percentages) and a
+ *  path to set it up or manage it. A provider with no connection is honestly
+ *  NOT_CONFIGURED. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/integrations", 303);
+
+const url = new URL(Astro.request.url);
+const viewParam = (url.searchParams.get("view") ?? "ALL").toUpperCase();
+const view = (STATUS_VIEWS as readonly string[]).includes(viewParam) ? viewParam : "ALL";
+const familyParam = url.searchParams.get("family") ?? "";
+const family = (FAMILY_FILTERS as readonly string[]).includes(familyParam) ? familyParam : "";
+
+const [providersRes, connectionsRes] = await Promise.all([
+  intGet(token, `${INTEGRATIONS_API}/providers`),
+  intGet(token, `${INTEGRATIONS_API}/connections`),
+]);
+const providers = rowsOf<ProviderRow>(providersRes);
+const connections = rowsOf<ConnectionRow>(connectionsRes);
+const reason = emptyReason(providersRes, "The provider registry is not available yet");
+
+const connectionsFor = (providerId: string) => connections.filter((c) => c.provider_id === providerId);
+
+const cards = providers.map((p) => {
+  const providerId = String(p.provider_id ?? "");
+  const conns = connectionsFor(providerId);
+  const status = deriveProviderStatus(conns);
+  const lastSync = conns
+    .map((c) => c.last_success_at)
+    .filter((v): v is string => typeof v === "string" && v !== "")
+    .sort()
+    .at(-1) ?? null;
+  return { p, providerId, conns, status, view: statusViewOf(status), bucket: familyBucketOf(p.family), lastSync };
+});
+
+const visible = cards.filter((c) =>
+  (view === "ALL" || c.view === view) && (family === "" || c.bucket === family),
+);
+
+const qs = (nextView: string, nextFamily: string): string => {
+  const params = new URLSearchParams();
+  if (nextView !== "ALL") params.set("view", nextView);
+  if (nextFamily !== "") params.set("family", nextFamily);
+  const s = params.toString();
+  return s ? `?${s}` : "";
+};
+const viewLabel = (v: string) => (v === "NEEDS_SETUP" ? "NEEDS SETUP" : v);
+---
+
+<AdminLayout title="SEO Integrations" description="The integration marketplace: every provider, its honest connection status, and setup entry points.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Integration Marketplace</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+          Every external provider the Search Integrations Control Plane can use. Status is a word earned by real
+          tests and syncs — a provider with no connection is honestly <strong>NOT_CONFIGURED</strong>. No health
+          percentages are shown because none are measured.
+        </p>
+      </div>
+      <a href="/admin/seo/integrations/sync" class="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-brand-dark hover:bg-gray-50">
+        Sync Operations →
+      </a>
+    </div>
+
+    {/* Status views */}
+    <nav aria-label="Status filter" class="flex flex-wrap gap-2 mb-3">
+      {STATUS_VIEWS.map((v) => (
+        <a
+          href={`/admin/seo/integrations${qs(v, family)}`}
+          class={`rounded-full border px-3 py-1 text-xs font-bold ${view === v ? "border-brand-dark bg-brand-dark text-white" : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"}`}
+          aria-current={view === v ? "page" : undefined}
+        >{viewLabel(v)}</a>
+      ))}
+    </nav>
+
+    {/* Family filter */}
+    <nav aria-label="Family filter" class="flex flex-wrap gap-2 mb-8">
+      <a
+        href={`/admin/seo/integrations${qs(view, "")}`}
+        class={`rounded-full border px-3 py-1 text-xs font-bold ${family === "" ? "border-brand-dark bg-brand-dark text-white" : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"}`}
+      >All families</a>
+      {FAMILY_FILTERS.map((f) => (
+        <a
+          href={`/admin/seo/integrations${qs(view, f)}`}
+          class={`rounded-full border px-3 py-1 text-xs font-bold ${family === f ? "border-brand-dark bg-brand-dark text-white" : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"}`}
+        >{f}</a>
+      ))}
+    </nav>
+
+    {reason && (
+      <div role="status" class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600 mb-12">
+        {reason} No provider is presumed connected in the meantime.
+      </div>
+    )}
+
+    {!reason && visible.length === 0 && (
+      <div role="status" class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600 mb-12">
+        No providers match this filter.
+      </div>
+    )}
+
+    {visible.length > 0 && (
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-12">
+        {visible.map(({ p, providerId, conns, status, lastSync, bucket }) => (
+          <section class="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col">
+            <div class="flex items-start justify-between gap-3 mb-2">
+              <div>
+                <h3 class="font-black text-brand-dark leading-tight">{str(p.canonical_name)}</h3>
+                <div class="flex flex-wrap gap-1 mt-1">
+                  <span class="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-gray-500">{bucket}</span>
+                  {p.experimental && (
+                    <span class="rounded-full border border-purple-300 bg-purple-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-purple-800">Experimental</span>
+                  )}
+                </div>
+              </div>
+              <span class={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${statusBadgeClass(status)}`}>{status}</span>
+            </div>
+
+            <p class="text-xs text-gray-500 mb-3">{str(p.description)}</p>
+
+            {Array.isArray(p.capabilities) && p.capabilities.length > 0 && (
+              <div class="flex flex-wrap gap-1 mb-3">
+                {p.capabilities.map((cap) => (
+                  <span class="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-mono text-gray-600">{cap}</span>
+                ))}
+              </div>
+            )}
+
+            <div class="text-xs text-gray-500 grid grid-cols-2 gap-2 mb-4">
+              <span><strong class="uppercase tracking-widest text-[10px] text-gray-400 block">Auth</strong>{Array.isArray(p.auth_types) ? p.auth_types.join(", ") : "—"}</span>
+              <span><strong class="uppercase tracking-widest text-[10px] text-gray-400 block">Last sync</strong>{lastSync ? fmtWhen(lastSync) : "Never — no data has been synced."}</span>
+            </div>
+
+            <div class="mt-auto flex gap-2">
+              {conns.length === 0 ? (
+                <a href={`/admin/seo/integrations/${providerId}/connect`} class="rounded-xl bg-brand-dark px-4 py-2 text-xs font-bold text-white hover:opacity-90">Set up</a>
+              ) : (
+                <a href={`/admin/seo/integrations/${providerId}`} class="rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-brand-dark hover:bg-gray-50">Manage</a>
+              )}
+              <a href={`/admin/seo/integrations/${providerId}`} class="rounded-xl px-4 py-2 text-xs font-bold text-gray-500 hover:text-brand-dark">Details</a>
+            </div>
+          </section>
+        ))}
+      </div>
+    )}
+  </div>
+</AdminLayout>

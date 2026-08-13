@@ -1,0 +1,240 @@
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../lib/session";
+import { rowsOf, emptyReason, str, num, fmtWhen } from "../../../../lib/adminSeo";
+import {
+  INTEGRATIONS_API, intGet, intPost,
+  statusBadgeClass, freshnessBadgeClass, durationOf,
+  type ProviderRow, type ConnectionRow, type SyncJobRow, type AuditRow,
+} from "../../../../lib/adminSeoIntegrations";
+
+/** Sync Operations Center — every connection's data freshness and every sync
+ *  job across all providers, in one place. Freshness distinguishes NO DATA
+ *  (nothing has ever synced) from STALE (data exists but is older than the
+ *  connection's cadence) — the two are never conflated. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/integrations/sync", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  if (intent === "sync") {
+    const res = await intPost(token, `${INTEGRATIONS_API}/connections/${String(form.get("connectionId") ?? "")}/sync`, {
+      jobType: String(form.get("jobType") ?? "MANUAL"),
+    });
+    if (res.ok) notice = "Sync queued.";
+    else formError = res.message;
+  } else if (intent === "cancel") {
+    const res = await intPost(token, `${INTEGRATIONS_API}/sync-jobs/${String(form.get("jobId") ?? "")}/cancel`, {});
+    if (res.ok) notice = "Job cancelled.";
+    else formError = res.message;
+  }
+}
+
+const url = new URL(Astro.request.url);
+const statusFilter = url.searchParams.get("status") ?? "";
+
+const [providersRes, connectionsRes, jobsRes, auditRes] = await Promise.all([
+  intGet(token, `${INTEGRATIONS_API}/providers`),
+  intGet(token, `${INTEGRATIONS_API}/connections`),
+  intGet(token, `${INTEGRATIONS_API}/sync-jobs?limit=100${statusFilter ? `&status=${encodeURIComponent(statusFilter)}` : ""}`),
+  intGet(token, `${INTEGRATIONS_API}/audit?limit=30`),
+]);
+
+const providers = rowsOf<ProviderRow>(providersRes);
+const providerName = (id: unknown) =>
+  providers.find((p) => String(p.provider_id) === String(id))?.canonical_name ?? String(id ?? "—");
+const connections = rowsOf<ConnectionRow>(connectionsRes);
+const jobs = rowsOf<SyncJobRow>(jobsRes);
+const audit = rowsOf<AuditRow>(auditRes);
+const connectionsReason = emptyReason(connectionsRes, "Connections are not available yet");
+const jobsReason = emptyReason(jobsRes, "Sync jobs are not available yet");
+
+const connById = new Map(connections.map((c) => [String(c.id), c]));
+const supportsManualSync = (providerId: unknown) =>
+  providers.find((p) => String(p.provider_id) === String(providerId))?.manifest?.supports?.manualSync === true;
+
+const JOB_STATUSES = ["", "QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "PARTIAL"];
+const activeJobs = jobs.filter((j) => j.status === "RUNNING" || j.status === "QUEUED");
+
+const freshnessCounts = {
+  FRESH: connections.filter((c) => c.freshness === "FRESH").length,
+  STALE: connections.filter((c) => c.freshness === "STALE").length,
+  NO_DATA: connections.filter((c) => c.freshness !== "FRESH" && c.freshness !== "STALE").length,
+};
+---
+
+<AdminLayout title="Sync Operations" description="Data freshness and sync jobs across every SEO integration connection.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Sync Operations</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+          Every connection's data freshness and every sync job. <strong>NO DATA</strong> means nothing has ever synced
+          successfully — it is not the same as <strong>STALE</strong>, which means real data exists but is older than
+          the connection's cadence.
+        </p>
+      </div>
+      <a href="/admin/seo/integrations" class="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-brand-dark hover:bg-gray-50">← Marketplace</a>
+    </div>
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+      <div class="rounded-2xl border border-gray-200 bg-white p-5">
+        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Connections</p>
+        <p class="text-2xl font-black text-brand-dark">{num(connections.length)}</p>
+      </div>
+      <div class="rounded-2xl border border-gray-200 bg-white p-5">
+        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Fresh</p>
+        <p class="text-2xl font-black text-emerald-700">{num(freshnessCounts.FRESH)}</p>
+      </div>
+      <div class="rounded-2xl border border-gray-200 bg-white p-5">
+        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Stale</p>
+        <p class="text-2xl font-black text-amber-700">{num(freshnessCounts.STALE)}</p>
+      </div>
+      <div class="rounded-2xl border border-gray-200 bg-white p-5">
+        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">No data</p>
+        <p class="text-2xl font-black text-gray-500">{num(freshnessCounts.NO_DATA)}</p>
+      </div>
+    </div>
+
+    {/* Freshness board */}
+    <section class="mb-12">
+      <h3 class="font-black text-brand-dark mb-3">Data freshness by connection</h3>
+      {connectionsReason ? (
+        <div role="status" class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">{connectionsReason}</div>
+      ) : connections.length === 0 ? (
+        <div role="status" class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
+          No provider has been connected yet, so nothing syncs.
+          <a href="/admin/seo/integrations" class="ml-1 font-bold underline">Set one up.</a>
+        </div>
+      ) : (
+        <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+          <table class="w-full text-xs">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+              <th class="p-3">Provider</th><th>Connection</th><th>Status</th><th>Freshness</th><th>Last success</th><th>Cadence</th><th>Last error</th><th class="text-right p-3">Action</th>
+            </tr></thead>
+            <tbody>
+              {connections.map((c) => (
+                <tr class="border-b border-gray-50">
+                  <td class="p-3 font-bold text-brand-dark">
+                    <a href={`/admin/seo/integrations/${c.provider_id}`} class="hover:underline">{providerName(c.provider_id)}</a>
+                  </td>
+                  <td>{str(c.name)}</td>
+                  <td><span class={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusBadgeClass(String(c.status ?? ""))}`}>{str(c.status)}</span></td>
+                  <td><span class={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${freshnessBadgeClass(String(c.freshness ?? "NO_DATA"))}`}>{c.freshness === "NO_DATA" || !c.freshness ? "NO DATA" : c.freshness}</span></td>
+                  <td>{c.last_success_at ? fmtWhen(c.last_success_at) : "Never"}</td>
+                  <td class="font-mono">{str(c.sync_frequency)}</td>
+                  <td class="max-w-xs truncate text-red-800">{str(c.last_error)}</td>
+                  <td class="p-3 text-right">
+                    {supportsManualSync(c.provider_id) && c.status !== "DISABLED" ? (
+                      <form method="POST" class="inline">
+                        <input type="hidden" name="intent" value="sync" />
+                        <input type="hidden" name="connectionId" value={c.id} />
+                        <input type="hidden" name="jobType" value="MANUAL" />
+                        <button type="submit" class="rounded-lg border border-gray-300 px-2 py-1 text-[11px] font-bold text-brand-dark hover:bg-gray-50">Sync now</button>
+                      </form>
+                    ) : (
+                      <span class="text-[11px] text-gray-400">{c.status === "DISABLED" ? "Disabled" : "No manual sync"}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    {/* Active jobs */}
+    <section class="mb-12">
+      <h3 class="font-black text-brand-dark mb-3">In flight</h3>
+      {activeJobs.length === 0 ? (
+        <p class="text-sm text-gray-600 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">No sync job is queued or running.</p>
+      ) : (
+        <ul class="space-y-2">
+          {activeJobs.map((j) => (
+            <li class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 text-xs">
+              <span>
+                <strong class="text-brand-dark">{providerName(connById.get(String(j.connection_id))?.provider_id)}</strong>
+                <span class="text-gray-500"> · {str(j.job_type)} · {str(j.status)} · requested {fmtWhen(j.requested_at)}</span>
+              </span>
+              <form method="POST">
+                <input type="hidden" name="intent" value="cancel" />
+                <input type="hidden" name="jobId" value={j.id} />
+                <button type="submit" class="rounded-lg border border-gray-300 px-3 py-1 text-[11px] font-bold text-gray-600 hover:bg-gray-50">Cancel</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+
+    {/* Job history */}
+    <section class="mb-12">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h3 class="font-black text-brand-dark">Sync job history</h3>
+        <nav class="flex flex-wrap gap-1">
+          {JOB_STATUSES.map((s) => (
+            <a href={s ? `/admin/seo/integrations/sync?status=${s}` : "/admin/seo/integrations/sync"}
+              class={`rounded-full border px-3 py-1 text-[11px] font-bold ${statusFilter === s ? "border-brand-dark bg-brand-dark text-white" : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"}`}
+            >{s || "ALL"}</a>
+          ))}
+        </nav>
+      </div>
+      {jobsReason ? (
+        <div role="status" class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">{jobsReason}</div>
+      ) : jobs.length === 0 ? (
+        <p class="text-sm text-gray-600 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
+          No sync job matches this filter.
+        </p>
+      ) : (
+        <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+          <table class="w-full text-xs">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+              <th class="p-3">Provider</th><th>Type</th><th>Status</th><th>Started</th><th>Duration</th><th>Read</th><th>Ins</th><th>Upd</th><th>Rej</th><th class="p-3">Error</th>
+            </tr></thead>
+            <tbody>
+              {jobs.map((j) => (
+                <tr class="border-b border-gray-50">
+                  <td class="p-3">{providerName(connById.get(String(j.connection_id))?.provider_id)}</td>
+                  <td class="font-mono">{str(j.job_type)}</td>
+                  <td class="font-bold">{str(j.status)}</td>
+                  <td>{fmtWhen(j.started_at)}</td>
+                  <td>{durationOf(j.started_at, j.completed_at)}</td>
+                  <td>{num(j.records_read)}</td>
+                  <td>{num(j.records_inserted)}</td>
+                  <td>{num(j.records_updated)}</td>
+                  <td>{num(j.records_rejected)}</td>
+                  <td class="p-3 max-w-xs truncate text-red-800">{str(j.error)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    {/* Audit */}
+    <section class="mb-16">
+      <h3 class="font-black text-brand-dark mb-3">Recent integration actions</h3>
+      {audit.length === 0 ? (
+        <p class="text-sm text-gray-600 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">No integration actions have been recorded yet.</p>
+      ) : (
+        <ul class="space-y-1">
+          {audit.map((a) => (
+            <li class="border-b border-gray-100 py-2 text-xs">
+              <span class="font-mono font-bold text-brand-dark">{str(a.action)}</span>
+              <span class="text-gray-400"> · {providerName(a.provider_id)} · {fmtWhen(a.created_at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  </div>
+</AdminLayout>
