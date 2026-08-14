@@ -1,146 +1,156 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import {
-  channelPreferences,
   communicationPreferences,
+  customerChannelGuidance,
   customerRightsGuidance,
   dataUsePrinciples,
-  inactiveCapabilities,
-  launchReadinessChecklist,
-  loyaltyReadinessPreferences,
-  memoryLaneReadinessPreferences,
-  personalisationReadinessPreferences,
   preferenceCentreStatus,
-  productEducationPreferences,
-  riskControls,
   servicePreferences,
   supportActions,
 } from "../lib/preference-centre";
 
-const statusClass = "inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-amber-900";
-const preferenceGroups = [
-  { id: "communication", eyebrow: "Communication categories", title: "Understand what each message type is for", description: "Service communication and optional marketing need different purposes, evidence and controls.", items: communicationPreferences },
-  { id: "service", eyebrow: "Service and order support", title: "Get help with a request you started", description: "Support can help today, but may need an order reference or identity check before discussing protected details.", items: servicePreferences },
-  { id: "education", eyebrow: "Product education", title: "Prepare useful, optional learning choices", description: "These future preferences are intended for practical product guidance—not pressure, fake urgency or hidden targeting.", items: productEducationPreferences },
-];
-const readinessGroups = [
-  { id: "loyalty", title: "Loyalty participation readiness", items: loyaltyReadinessPreferences },
-  { id: "memory-lane", title: "Memory Lane readiness", items: memoryLaneReadinessPreferences },
-  { id: "personalisation", title: "Personalisation and offer readiness", items: personalisationReadinessPreferences },
-];
+/**
+ * The public Preference Centre.
+ *
+ * This page answers two customer questions and nothing else: what does GoldPlus
+ * send me, and how do I change it. The internal readiness model that also lives
+ * in `preference-centre.ts` — activation blockers, risk controls, launch gates,
+ * unreleased programme concepts — is deliberately not imported here. See the
+ * header comment in that file for why.
+ */
+
+// Only the categories that describe what happens today. The two "future
+// optional" entries are roadmap, and a customer cannot act on a roadmap.
+const messagesWeSend = communicationPreferences.filter((item) =>
+  ["essential-service", "support-follow-up"].includes(item.id),
+);
 ---
 
 <BaseLayout
-  title="Your GoldPlus preferences | Preview"
-  description="A transparent preview of future GoldPlus communication and data-use preferences. Nothing is saved or sent from this page."
+  title="Your GoldPlus preferences"
+  description="What GoldPlus sends you, what it never sends, and how to change your communication settings."
 >
   <main data-preference-centre>
     <section class="relative overflow-hidden border-b border-slate-800 bg-slate-950 text-white">
       <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(150,204,6,0.18),transparent_40%)]"></div>
       <div class="container relative mx-auto max-w-6xl px-4 py-16 sm:py-20 lg:px-8 lg:py-24">
-        <span class="inline-flex rounded-full border border-brand-primary/40 bg-brand-primary/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-brand-primary">Preference Centre preview · no changes are saved</span>
-        <h1 class="mt-6 max-w-4xl text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">Your GoldPlus preferences</h1>
+        <h1 class="max-w-4xl text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">Your GoldPlus preferences</h1>
         <p class="mt-5 max-w-3xl text-lg leading-relaxed text-slate-300">{preferenceCentreStatus.publicMessage}</p>
-        <div class="mt-8 grid gap-3 sm:grid-cols-2" role="status" aria-label="Preference Centre current status">
+        <div class="mt-8 grid gap-3 sm:grid-cols-2" role="status" aria-label="Communication summary">
           <p class="rounded-xl border border-emerald-300/30 bg-emerald-100/10 p-4 text-sm font-bold text-emerald-100">{preferenceCentreStatus.sendMessage}</p>
-          <p class="rounded-xl border border-amber-300/30 bg-amber-100/10 p-4 text-sm font-bold text-amber-100">Nothing you view or select here is recorded as a customer preference.</p>
+          <p class="rounded-xl border border-slate-300/20 bg-white/5 p-4 text-sm font-bold text-slate-100">{preferenceCentreStatus.verificationMessage}</p>
         </div>
         <div class="mt-8">
           <a href="/account/preferences" class="inline-flex min-h-12 items-center justify-center rounded-full px-6 text-sm font-bold outline-none focus-visible:ring-4 focus-visible:ring-white/40" style="background:#93D500;color:#0A0A0A">Manage your preferences &rarr;</a>
-          <p class="mt-2 text-xs text-slate-400">Sign in to set your real communication choices — this page is a public overview only.</p>
+          <p class="mt-2 text-xs text-slate-400">{preferenceCentreStatus.signedInMessage}</p>
         </div>
         <nav aria-label="Preference Centre sections" class="mt-8 flex flex-wrap gap-3 text-sm font-bold">
-          <a href="#communication" class="rounded-full border border-slate-600 px-4 py-3 text-white focus-visible:ring-2 focus-visible:ring-brand-primary">Communication</a>
+          <a href="#communication" class="rounded-full border border-slate-600 px-4 py-3 text-white focus-visible:ring-2 focus-visible:ring-brand-primary">What we send</a>
           <a href="#channels" class="rounded-full border border-slate-600 px-4 py-3 text-white focus-visible:ring-2 focus-visible:ring-brand-primary">Channels</a>
           <a href="#data-use" class="rounded-full border border-slate-600 px-4 py-3 text-white focus-visible:ring-2 focus-visible:ring-brand-primary">Data use</a>
-          <a href="#support" class="rounded-full bg-brand-primary px-4 py-3 text-slate-950 focus-visible:ring-2 focus-visible:ring-white">Update with support</a>
+          <a href="#support" class="rounded-full bg-brand-primary px-4 py-3 text-slate-950 focus-visible:ring-2 focus-visible:ring-white">Get help</a>
         </nav>
       </div>
     </section>
 
-    <section aria-labelledby="purpose-heading" class="border-b border-slate-200 bg-white">
-      <div class="container mx-auto grid max-w-6xl gap-8 px-4 py-14 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
-        <div><p class="text-sm font-bold text-brand-primary">What this centre is for</p><h2 id="purpose-heading" class="mt-2 text-3xl font-black text-slate-950">Clarity before activation</h2></div>
-        <div class="space-y-4 text-sm leading-relaxed text-slate-600 sm:text-base">
-          <p>This page explains preference categories GoldPlus may support and the controls required before any customer-specific choice can be applied.</p>
-          <p>{preferenceCentreStatus.verificationMessage}</p>
-          <p class="font-bold text-slate-950">This is a read-only preview. It contains no form, save button, account lookup, tracking control or provider connection.</p>
-        </div>
-      </div>
-    </section>
-
-    {preferenceGroups.map((group, groupIndex) => (
-      <section id={group.id} aria-labelledby={`${group.id}-heading`} class:list={["scroll-mt-24", groupIndex % 2 === 0 ? "bg-slate-50" : "bg-white"]}>
-        <div class="container mx-auto max-w-6xl px-4 py-14 lg:px-8">
-          <div class="max-w-3xl"><p class="text-sm font-bold text-brand-primary">{group.eyebrow}</p><h2 id={`${group.id}-heading`} class="mt-2 text-3xl font-black text-slate-950">{group.title}</h2><p class="mt-3 text-sm leading-relaxed text-slate-600">{group.description}</p></div>
-          <div class="mt-8 grid gap-5 md:grid-cols-2">
-            {group.items.map((item) => (
-              <article class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div class="flex flex-wrap items-start justify-between gap-3"><h3 class="text-lg font-black text-slate-950">{item.title}</h3><span class={statusClass}>{item.status}</span></div>
-                <p class="mt-4 text-sm leading-relaxed text-slate-600">{item.description}</p>
-                <p class="mt-5 border-t border-slate-100 pt-4 text-xs leading-relaxed text-slate-500"><strong class="text-slate-700">Before activation:</strong> {item.activationRequirement}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-    ))}
-
-    <section id="readiness" aria-labelledby="readiness-heading" class="border-y border-slate-800 bg-slate-950 text-white">
+    <section id="communication" aria-labelledby="communication-heading" class="scroll-mt-24 bg-slate-50">
       <div class="container mx-auto max-w-6xl px-4 py-14 lg:px-8">
-        <p class="text-sm font-bold text-brand-primary">Future programme choices</p>
-        <h2 id="readiness-heading" class="mt-2 text-3xl font-black">Readiness, not enrolment</h2>
-        <p class="mt-3 max-w-3xl text-sm leading-relaxed text-slate-300">{preferenceCentreStatus.futureProgrammeMessage}</p>
-        <div class="mt-8 grid gap-5 lg:grid-cols-3">
-          {readinessGroups.map((group) => (
-            <article class="rounded-2xl border border-slate-700 bg-slate-900 p-6">
-              <h3 class="text-lg font-black">{group.title}</h3>
-              <div class="mt-5 space-y-5">{group.items.map((item) => <div><span class="inline-flex rounded-full border border-amber-300/30 bg-amber-100/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-amber-200">{item.status}</span><h4 class="mt-3 font-black">{item.title}</h4><p class="mt-2 text-sm leading-relaxed text-slate-300">{item.description}</p><p class="mt-3 text-xs leading-relaxed text-slate-400">Requires: {item.activationRequirement}</p></div>)}</div>
+        <div class="max-w-3xl">
+          <p class="text-sm font-bold text-brand-primary">What GoldPlus sends you</p>
+          <h2 id="communication-heading" class="mt-2 text-3xl font-black text-slate-950">Messages about your orders, and replies when you ask for help</h2>
+          <p class="mt-3 text-sm leading-relaxed text-slate-600">These are the messages tied to something you started — an order you placed or a question you sent us.</p>
+        </div>
+        <div class="mt-8 grid gap-5 md:grid-cols-2">
+          {messagesWeSend.map((item) => (
+            <article class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 class="text-lg font-black text-slate-950">{item.title}</h3>
+              <p class="mt-4 text-sm leading-relaxed text-slate-600">{item.description}</p>
             </article>
           ))}
         </div>
       </div>
     </section>
 
-    <section id="channels" aria-labelledby="channels-heading" class="scroll-mt-24 bg-white">
+    <section id="service" aria-labelledby="service-heading" class="bg-white">
       <div class="container mx-auto max-w-6xl px-4 py-14 lg:px-8">
-        <div class="max-w-3xl"><p class="text-sm font-bold text-brand-primary">Channel preferences</p><h2 id="channels-heading" class="mt-2 text-3xl font-black text-slate-950">A channel choice must be explicit and verifiable</h2><p class="mt-3 text-sm leading-relaxed text-slate-600">These cards explain readiness only. They are not toggles and do not subscribe, unsubscribe or update anyone.</p></div>
+        <div class="max-w-3xl">
+          <p class="text-sm font-bold text-brand-primary">Getting help</p>
+          <h2 id="service-heading" class="mt-2 text-3xl font-black text-slate-950">What support can help you with</h2>
+          <p class="mt-3 text-sm leading-relaxed text-slate-600">Support may ask for an order reference, or confirm who you are, before discussing details tied to your account.</p>
+        </div>
+        <div class="mt-8 grid gap-5 md:grid-cols-3">
+          {servicePreferences.map((item) => (
+            <article class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 class="text-lg font-black text-slate-950">{item.title}</h3>
+              <p class="mt-4 text-sm leading-relaxed text-slate-600">{item.description}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section id="channels" aria-labelledby="channels-heading" class="scroll-mt-24 border-y border-slate-200 bg-slate-50">
+      <div class="container mx-auto max-w-6xl px-4 py-14 lg:px-8">
+        <div class="max-w-3xl">
+          <p class="text-sm font-bold text-brand-primary">Channels</p>
+          <h2 id="channels-heading" class="mt-2 text-3xl font-black text-slate-950">How GoldPlus uses each channel</h2>
+          <p class="mt-3 text-sm leading-relaxed text-slate-600">{preferenceCentreStatus.sendMessage} Each channel below is used only for the purpose described.</p>
+        </div>
         <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {channelPreferences.map((channel) => <article class="rounded-2xl border border-slate-200 bg-slate-50 p-5"><div class="flex flex-wrap items-start justify-between gap-3"><h3 class="font-black text-slate-950">{channel.name}</h3><span class={statusClass}>{channel.status}</span></div><p class="mt-4 text-sm leading-relaxed text-slate-600">{channel.guidance}</p></article>)}
+          {customerChannelGuidance.map((channel) => (
+            <article class="rounded-2xl border border-slate-200 bg-white p-5">
+              <h3 class="font-black text-slate-950">{channel.name}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-slate-600">{channel.usedFor}</p>
+              <p class="mt-4 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-500">{channel.note}</p>
+            </article>
+          ))}
         </div>
       </div>
     </section>
 
-    <section id="data-use" aria-labelledby="data-heading" class="scroll-mt-24 border-y border-slate-200 bg-slate-50">
-      <div class="container mx-auto grid max-w-6xl gap-8 px-4 py-14 lg:grid-cols-2 lg:px-8">
-        <div class="rounded-2xl border border-blue-200 bg-blue-50 p-6 sm:p-8"><h2 id="data-heading" class="text-2xl font-black text-blue-950">How preference data should be used</h2><ul class="mt-6 space-y-3">{dataUsePrinciples.map((item) => <li class="flex gap-3 text-sm leading-relaxed text-blue-950"><span aria-hidden="true" class="font-black">—</span><span>{item}</span></li>)}</ul></div>
-        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-6 sm:p-8"><h2 class="text-2xl font-black text-amber-950">What is not active</h2><ul class="mt-6 space-y-3">{inactiveCapabilities.map((item) => <li class="flex gap-3 text-sm leading-relaxed text-amber-950"><span aria-hidden="true" class="font-black">□</span><span>{item}</span></li>)}</ul></div>
-      </div>
-    </section>
-
-    <section aria-labelledby="rights-heading" class="bg-white">
+    <section id="data-use" aria-labelledby="data-heading" class="scroll-mt-24 bg-white">
       <div class="container mx-auto grid max-w-6xl gap-8 px-4 py-14 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
-        <div><p class="text-sm font-bold text-brand-primary">Customer guidance</p><h2 id="rights-heading" class="mt-2 text-3xl font-black text-slate-950">Questions and choices you can raise</h2></div>
-        <ul class="grid gap-3 sm:grid-cols-2">{customerRightsGuidance.map((item) => <li class="rounded-xl border border-slate-200 p-4 text-sm leading-relaxed text-slate-700">{item}</li>)}</ul>
-      </div>
-    </section>
-
-    <section aria-labelledby="controls-heading" class="border-y border-slate-800 bg-slate-950 text-white">
-      <div class="container mx-auto max-w-6xl px-4 py-14 lg:px-8">
-        <div class="grid gap-8 lg:grid-cols-2">
-          <div><p class="text-sm font-bold text-brand-primary">Risk controls</p><h2 id="controls-heading" class="mt-2 text-3xl font-black">What must remain blocked</h2><ul class="mt-7 space-y-3">{riskControls.map((item) => <li class="flex gap-3 text-sm leading-relaxed text-slate-300"><span aria-hidden="true" class="font-black text-brand-primary">×</span><span>{item}</span></li>)}</ul></div>
-          <div><p class="text-sm font-bold text-brand-primary">Launch readiness checklist</p><h2 class="mt-2 text-3xl font-black">What must be proven first</h2><ol class="mt-7 grid gap-3 sm:grid-cols-2">{launchReadinessChecklist.map((item, index) => <li class="flex gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-200"><span class="font-black text-brand-primary">{String(index + 1).padStart(2, "0")}</span><span>{item}</span></li>)}</ol></div>
+        <div>
+          <p class="text-sm font-bold text-brand-primary">Data use</p>
+          <h2 id="data-heading" class="mt-2 text-3xl font-black text-slate-950">How GoldPlus treats your preference information</h2>
         </div>
+        <ul class="grid gap-3 sm:grid-cols-2">
+          {dataUsePrinciples.map((item) => (
+            <li class="rounded-xl border border-slate-200 p-4 text-sm leading-relaxed text-slate-700">{item}</li>
+          ))}
+        </ul>
       </div>
     </section>
 
-    <section id="support" aria-labelledby="support-heading" class="scroll-mt-24 bg-slate-50">
+    <section aria-labelledby="rights-heading" class="border-y border-slate-200 bg-slate-50">
+      <div class="container mx-auto grid max-w-6xl gap-8 px-4 py-14 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
+        <div>
+          <p class="text-sm font-bold text-brand-primary">Your choices</p>
+          <h2 id="rights-heading" class="mt-2 text-3xl font-black text-slate-950">Questions you can raise with GoldPlus</h2>
+        </div>
+        <ul class="grid gap-3 sm:grid-cols-2">
+          {customerRightsGuidance.map((item) => (
+            <li class="rounded-xl border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-700">{item}</li>
+          ))}
+        </ul>
+      </div>
+    </section>
+
+    <section id="support" aria-labelledby="support-heading" class="scroll-mt-24 bg-white">
       <div class="container mx-auto max-w-5xl px-4 py-14 lg:px-8">
-        <div class="rounded-3xl border border-slate-200 bg-white p-7 text-center shadow-sm sm:p-10">
-          <p class="text-sm font-bold text-brand-primary">How to update a preference today</p>
-          <h2 id="support-heading" class="mt-3 text-3xl font-black text-slate-950">Ask support to confirm the safe next step</h2>
-          <p class="mx-auto mt-4 max-w-3xl text-sm leading-relaxed text-slate-600">{preferenceCentreStatus.supportMessage} A support conversation does not itself prove identity or automatically change a customer record.</p>
-          <nav aria-label="Preference support and policy links" class="mt-8 flex flex-wrap justify-center gap-3">{supportActions.map((action, index) => <a href={action.href} title={action.description} class:list={["inline-flex min-h-11 items-center rounded-full px-6 py-3 text-sm font-bold outline-none focus-visible:ring-2 focus-visible:ring-brand-primary", index === 0 ? "bg-slate-950 text-white" : "border border-slate-300 text-slate-800"]}>{action.label}</a>)}</nav>
+        <div class="rounded-3xl border border-slate-200 bg-slate-50 p-7 text-center shadow-sm sm:p-10">
+          <p class="text-sm font-bold text-brand-primary">Changing a preference</p>
+          <h2 id="support-heading" class="mt-3 text-3xl font-black text-slate-950">Two ways to change your settings</h2>
+          <p class="mx-auto mt-4 max-w-3xl text-sm leading-relaxed text-slate-600">
+            {preferenceCentreStatus.signedInMessage} {preferenceCentreStatus.supportMessage}
+          </p>
+          <nav aria-label="Preference support and policy links" class="mt-8 flex flex-wrap justify-center gap-3">
+            <a href="/account/preferences" class="inline-flex min-h-11 items-center rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">Manage in your account</a>
+            {supportActions.map((action) => (
+              <a href={action.href} title={action.description} class="inline-flex min-h-11 items-center rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">{action.label}</a>
+            ))}
+          </nav>
         </div>
       </div>
     </section>

@@ -12,17 +12,38 @@ export interface PreferenceItem {
   activationRequirement: string;
 }
 
+/**
+ * The public Preference Centre (`/preferences`) and the internal readiness model
+ * both live in this file, and the split between them is deliberate.
+ *
+ * Everything below marked BACK OFFICE describes how GoldPlus governs messaging
+ * internally — activation blockers, risk controls, launch gates. It is the real
+ * governance model and it is exercised by tests, but it must never reach a
+ * customer page. A shopper reading "Requires: consent, margin floors, budget
+ * caps" learns nothing they can act on and quite a lot we would rather not
+ * publish; and a launch checklist on a public URL is a roadmap anyone can read.
+ *
+ * The customer-facing exports answer only the two questions a customer actually
+ * has: what does GoldPlus send me, and how do I change it.
+ */
+
 export const preferenceCentreStatus = Object.freeze({
-  label: "Preview only",
+  // Safety flags. These stay false until the corresponding capability is built,
+  // and the public page renders nothing that contradicts them.
   active: false,
   persistenceEnabled: false,
   customerSpecific: false,
   providerSendsEnabled: false,
-  publicMessage: "GoldPlus is preparing a clearer Preference Centre.",
-  sendMessage: "No marketing messages are sent from this page.",
-  verificationMessage: "Some preferences may require account verification before they can be applied.",
-  supportMessage: "GoldPlus support can help confirm or update your preferences.",
-  futureProgrammeMessage: "Loyalty, Memory Lane and personalised offers are not active yet.",
+  // Customer-facing statements. Written to be true regardless of provider
+  // health, so none of them promises a message will arrive.
+  publicMessage:
+    "GoldPlus keeps messages about your orders separate from optional marketing, and explains what each one is for.",
+  sendMessage: "GoldPlus does not send marketing messages on any channel.",
+  verificationMessage:
+    "Some changes need GoldPlus to confirm who you are first, so that nobody else can change your details.",
+  supportMessage: "GoldPlus support can help you confirm or update your preferences.",
+  signedInMessage:
+    "Your communication settings live in your account. Sign in to see and change them.",
 });
 
 export const communicationPreferences: readonly PreferenceItem[] = Object.freeze([
@@ -111,6 +132,7 @@ export const productEducationPreferences: readonly PreferenceItem[] = Object.fre
   },
 ]);
 
+/** BACK OFFICE. Future-programme activation blockers. Never render publicly. */
 export const loyaltyReadinessPreferences: readonly PreferenceItem[] = Object.freeze([
   {
     id: "loyalty-participation",
@@ -148,6 +170,10 @@ export const personalisationReadinessPreferences: readonly PreferenceItem[] = Ob
   },
 ]);
 
+/**
+ * BACK OFFICE. Per-channel activation blockers. Not for the public page — the
+ * customer-facing equivalent is `customerChannelGuidance` below.
+ */
 export const channelPreferences = Object.freeze([
   { name: "WhatsApp", status: "Not active yet" as const, guidance: "Future marketing use requires explicit consent, verified contact details and a clear opt-out path." },
   { name: "Email", status: "Not active yet" as const, guidance: "Future optional email requires explicit consent, approved purpose, frequency and unsubscribe handling." },
@@ -155,6 +181,51 @@ export const channelPreferences = Object.freeze([
   { name: "Phone call", status: "Requires verification" as const, guidance: "Support may need to verify identity and the reason for contact before discussing protected details." },
   { name: "In-account notifications", status: "Not active yet" as const, guidance: "Requires a verified account, notification controls and an approved account experience." },
   { name: "Support-assisted updates", status: "Support-assisted today" as const, guidance: "Customers can contact support to ask for help confirming or updating a preference." },
+]);
+
+export interface CustomerChannelGuidance {
+  name: string;
+  usedFor: string;
+  note: string;
+}
+
+/**
+ * What each channel is used for, in the terms a customer needs. These describe
+ * PURPOSE, never delivery — "messages about an order" is true whether or not a
+ * given provider is healthy on a given day, where "we will email you" is not.
+ */
+export const customerChannelGuidance: readonly CustomerChannelGuidance[] = Object.freeze([
+  {
+    name: "WhatsApp",
+    usedFor: "Replies from GoldPlus support, when you start the conversation.",
+    note: "No marketing is sent on WhatsApp.",
+  },
+  {
+    name: "Email",
+    usedFor:
+      "Messages about an order you placed — confirmation, payment and delivery — and replies to enquiries you send us.",
+    note: "No marketing email is sent.",
+  },
+  {
+    name: "SMS",
+    usedFor: "Short notices tied to an order, such as payment and delivery updates.",
+    note: "No marketing SMS is sent.",
+  },
+  {
+    name: "Phone call",
+    usedFor: "Support calls about an order or a request you raised.",
+    note: "GoldPlus may confirm your identity before discussing order or account details, and does not call to sell.",
+  },
+  {
+    name: "In-account notifications",
+    usedFor: "Messages shown to you while you are signed in to your GoldPlus account.",
+    note: "These relate to your account or your orders.",
+  },
+  {
+    name: "Support-assisted updates",
+    usedFor: "Ask GoldPlus support to help you confirm or change a preference.",
+    note: "Support can explain what a change affects before anything is changed.",
+  },
 ]);
 
 export const dataUsePrinciples = Object.freeze([
@@ -168,6 +239,7 @@ export const dataUsePrinciples = Object.freeze([
   "Protect preference records with access controls, retention rules and an audit trail before persistence is enabled.",
 ]);
 
+/** BACK OFFICE. Register of capabilities not yet switched on. */
 export const inactiveCapabilities = Object.freeze([
   "Marketing sends from this page",
   "Saved public-page preferences",
@@ -187,6 +259,7 @@ export const customerRightsGuidance = Object.freeze([
   "Escalate an unresolved privacy or communication concern through GoldPlus support.",
 ]);
 
+/** BACK OFFICE. Operator readiness grid. */
 export const adminConsentReadinessRows = Object.freeze([
   { area: "Purpose catalogue", status: "Prepared as future preference" as const, blocker: "Accountable approval and legal/privacy review." },
   { area: "Identity verification", status: "Requires verification" as const, blocker: "Approved account or support-assisted verification flow." },
@@ -198,6 +271,7 @@ export const adminConsentReadinessRows = Object.freeze([
   { area: "Utilisation-aware offers", status: "Not active yet" as const, blocker: "Consent, margin, budget, eligibility and support controls." },
 ]);
 
+/** BACK OFFICE. Control register — what must stay blocked until proven. */
 export const riskControls = Object.freeze([
   "No marketing message without explicit consent.",
   "No WhatsApp send without explicit consent and an approved opt-out path.",
@@ -216,6 +290,7 @@ export const riskControls = Object.freeze([
   "No optional messaging programme without a tested unsubscribe or withdrawal path.",
 ]);
 
+/** BACK OFFICE. Launch gates. A public launch checklist is a published roadmap. */
 export const launchReadinessChecklist = Object.freeze([
   "Approved preference purpose catalogue",
   "Privacy and legal review",

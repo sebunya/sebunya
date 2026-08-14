@@ -5,6 +5,7 @@ import {
   adminConsentReadinessRows,
   channelPreferences,
   communicationPreferences,
+  customerChannelGuidance,
   customerRightsGuidance,
   dataUsePrinciples,
   forbiddenClaims,
@@ -40,11 +41,24 @@ describe("Slice 9-B Preference Centre foundation truth", () => {
   it("keeps persistence disabled", () => expect(preferenceCentreStatus.persistenceEnabled).toBe(false));
   it("keeps the preview non-customer-specific", () => expect(preferenceCentreStatus.customerSpecific).toBe(false));
   it("keeps provider sends disabled", () => expect(preferenceCentreStatus.providerSendsEnabled).toBe(false));
-  it("uses the required preparation statement", () => expect(preferenceCentreStatus.publicMessage).toBe("GoldPlus is preparing a clearer Preference Centre."));
-  it("uses the required no-send statement", () => expect(preferenceCentreStatus.sendMessage).toBe("No marketing messages are sent from this page."));
-  it("uses the required verification statement", () => expect(preferenceCentreStatus.verificationMessage).toBe("Some preferences may require account verification before they can be applied."));
-  it("uses the required support statement", () => expect(preferenceCentreStatus.supportMessage).toBe("GoldPlus support can help confirm or update your preferences."));
-  it("uses the required future-programme statement", () => expect(preferenceCentreStatus.futureProgrammeMessage).toBe("Loyalty, Memory Lane and personalised offers are not active yet."));
+  it("uses the required no-send statement", () => expect(preferenceCentreStatus.sendMessage).toBe("GoldPlus does not send marketing messages on any channel."));
+  it("states every customer message in plain, actionable terms", () => {
+    for (const key of ["publicMessage", "sendMessage", "verificationMessage", "supportMessage", "signedInMessage"] as const) {
+      expect(preferenceCentreStatus[key].length).toBeGreaterThan(40);
+    }
+  });
+  it("promises no delivery, because a provider outage must not make the page a lie", () => {
+    // "We will email you" is false the moment a provider is unhealthy. Purpose
+    // statements ("messages about an order") stay true either way.
+    const statements = Object.values(preferenceCentreStatus).filter((v) => typeof v === "string").join(" ");
+    expect(statements).not.toMatch(/we will (email|text|message|send)|you will receive|delivered to your/i);
+  });
+  it("claims nothing about programmes that are already live", () => {
+    // The page previously told customers loyalty was "not active yet" while
+    // /loyalty was selling points. A public page must not contradict another.
+    const statements = Object.values(preferenceCentreStatus).filter((v) => typeof v === "string").join(" ");
+    expect(statements).not.toMatch(/loyalty|memory lane|not active yet/i);
+  });
   it("has no live customer state or automation", () => expect(preferenceCentreSafetySummary()).toMatchObject({ customerState: false, automation: false }));
   it("has no checkout or payment mutation", () => expect(preferenceCentreSafetySummary()).toMatchObject({ checkoutMutation: false, paymentMutation: false }));
   it("has no active loyalty, Memory Lane, personalisation or utilisation offers", () => expect(preferenceCentreSafetySummary()).toMatchObject({ loyaltyEnrolment: false, memoryLane: false, personalisation: false, utilisationOffers: false }));
@@ -128,10 +142,15 @@ describe("Slice 9-B data-use, risk and launch controls", () => {
 
 describe("Slice 9-B public route, copy and artifact safety", () => {
   it("renders the public Preference Centre title", () => expect(page).toContain("Your GoldPlus preferences"));
-  it("renders all five required truth statements", () => {
-    for (const statement of [preferenceCentreStatus.publicMessage, preferenceCentreStatus.sendMessage, preferenceCentreStatus.verificationMessage, preferenceCentreStatus.supportMessage, preferenceCentreStatus.futureProgrammeMessage]) {
-      expect(page).toContain(`preferenceCentreStatus.${statement === preferenceCentreStatus.publicMessage ? "publicMessage" : statement === preferenceCentreStatus.sendMessage ? "sendMessage" : statement === preferenceCentreStatus.verificationMessage ? "verificationMessage" : statement === preferenceCentreStatus.supportMessage ? "supportMessage" : "futureProgrammeMessage"}`);
+  it("renders every customer statement from the single source of truth", () => {
+    for (const key of ["publicMessage", "sendMessage", "verificationMessage", "supportMessage", "signedInMessage"]) {
+      expect(page).toContain(`preferenceCentreStatus.${key}`);
     }
+  });
+  it("does not label itself a preview", () => {
+    // "| Preview" was the page title, so it reached the browser tab and any
+    // search result for the page.
+    expect(page).not.toMatch(/\bpreview\b/i);
   });
   it("contains no forbidden customer-state claims", () => forbiddenClaims.forEach((claim) => expect(publicSurface).not.toContain(claim)));
   it("contains no form, input, toggle or save button", () => expect(page).not.toMatch(/<form|<input|type=["']checkbox|<button|Save preferences/i));
@@ -153,4 +172,62 @@ describe("Slice 9-B public route, copy and artifact safety", () => {
     expect(footer).toContain('href="/preferences"');
   });
   it("provides five customer guidance actions", () => expect(customerRightsGuidance).toHaveLength(5));
+});
+
+describe("Slice 9-B the public page publishes no back-office material", () => {
+  // The readiness model below stays fully tested above — it is the real
+  // governance model and it keeps its home in preference-centre.ts. What
+  // changed is that the customer page no longer renders it.
+  it("imports no internal readiness, risk or launch data", () => {
+    for (const symbol of [
+      "launchReadinessChecklist",
+      "riskControls",
+      "inactiveCapabilities",
+      "adminConsentReadinessRows",
+      "loyaltyReadinessPreferences",
+      "memoryLaneReadinessPreferences",
+      "personalisationReadinessPreferences",
+      "channelPreferences",
+    ]) {
+      expect(page).not.toContain(symbol);
+    }
+  });
+
+  it("shows no activation blocker or internal readiness status", () => {
+    expect(page).not.toMatch(/activationRequirement|Before activation|\.status\b/);
+    for (const status of allowedStatuses) expect(page).not.toContain(status);
+  });
+
+  it("publishes no launch checklist, control register or roadmap heading", () => {
+    expect(page).not.toMatch(
+      /launch readiness|readiness checklist|must be proven|must remain blocked|readiness, not enrolment|future programme|margin floor|budget cap|utilisation-aware/i,
+    );
+  });
+
+  it("keeps the internal model intact rather than deleting it", () => {
+    // The fix is "stop publishing it", not "throw it away".
+    expect(launchReadinessChecklist).toHaveLength(21);
+    expect(riskControls).toHaveLength(15);
+    expect(adminConsentReadinessRows).toHaveLength(8);
+  });
+});
+
+describe("Slice 9-B customer channel guidance", () => {
+  it("covers the same six channels as the internal model", () => {
+    expect(customerChannelGuidance.map((c) => c.name)).toEqual(channelPreferences.map((c) => c.name));
+  });
+
+  it.each(customerChannelGuidance)("describes $name by purpose, not by blocker", (channel) => {
+    expect(channel.usedFor.length).toBeGreaterThan(30);
+    expect(channel.note.length).toBeGreaterThan(20);
+    expect(`${channel.usedFor} ${channel.note}`).not.toMatch(
+      /consent|opt-out|unsubscribe|approved|verified contact details|not active yet|requires/i,
+    );
+  });
+
+  it("tells a customer plainly that no channel carries marketing", () => {
+    const marketingChannels = customerChannelGuidance.filter((c) => ["WhatsApp", "Email", "SMS"].includes(c.name));
+    expect(marketingChannels).toHaveLength(3);
+    for (const channel of marketingChannels) expect(channel.note).toMatch(/^No marketing/i);
+  });
 });
