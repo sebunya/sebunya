@@ -123,6 +123,25 @@ suite('outbox reliability on real PostgreSQL', () => {
       expect(again.length).toBe(0);
     });
 
+    it('runs the real metrics() query, not a hand-written copy of it', async () => {
+      // This test exists because the first version of the compatible read
+      // interpolated the state list as a bound parameter. Drizzle emitted a
+      // record, PostgreSQL said "cannot cast type record to text[]", and the
+      // whole outbox_operations health probe started returning `unknown` — in
+      // production, because every unit test asserted on the SQL *string* and
+      // none of them ever asked the database to run it.
+      const { DrizzleOutboxRepository } = await import(
+        '../../apps/api/src/infrastructure/db/repositories/DrizzleOutboxRepository'
+      );
+      const metrics = await new DrizzleOutboxRepository().metrics();
+
+      expect(typeof metrics.deadLettered).toBe('number');
+      expect(Number.isNaN(metrics.deadLettered)).toBe(false);
+      // Both spellings seeded above are counted.
+      expect(metrics.deadLettered).toBeGreaterThanOrEqual(2);
+      expect(typeof metrics.pending).toBe('number');
+    });
+
     it('agrees with the domain predicate on what production actually holds', async () => {
       const rows = await raw`
         select distinct status from outbox_events where status = any(${[...DEAD_LETTER_STATES]})`;

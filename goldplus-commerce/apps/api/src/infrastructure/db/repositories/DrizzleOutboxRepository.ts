@@ -9,8 +9,15 @@ import {
 } from '../../../application/ports/IOutboxRepository';
 import { DEAD_LETTER_STATE, DEAD_LETTER_STATES } from '../../../domain/outbox/TerminalState';
 
-/** The read-compatible state list, as a bound array parameter. */
-const DEAD_LETTER_STATES_SQL = sql`${[...DEAD_LETTER_STATES]}::text[]`;
+/**
+ * The read-compatible state list as a literal IN-list.
+ *
+ * Interpolating the JS array as a bound parameter makes Drizzle emit a record,
+ * and `status = any(row(...))` fails with "cannot cast type record to text[]".
+ * These are compile-time constants from TerminalState, never user input, so a
+ * raw literal list is both safe and the thing PostgreSQL actually wants.
+ */
+const DEAD_LETTER_STATES_SQL = sql.raw(DEAD_LETTER_STATES.map((s) => `'${s}'`).join(', '));
 
 function rowToPersisted(row: typeof outboxEvents.$inferSelect): PersistedOutboxEvent {
   return {
@@ -188,7 +195,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         pending: sql<number>`count(*) filter (where is_processed = false)::int`,
         due: sql<number>`count(*) filter (where is_processed = false and next_attempt_at <= ${now})::int`,
         processing: sql<number>`count(*) filter (where status = 'processing')::int`,
-        deadLettered: sql<number>`count(*) filter (where status = any(${DEAD_LETTER_STATES_SQL}))::int`,
+        deadLettered: sql<number>`count(*) filter (where status in (${DEAD_LETTER_STATES_SQL}))::int`,
         oldest: sql<number | null>`extract(epoch from (${now} - min(created_at) filter (where is_processed = false)))::int`,
         expiredLeases: sql<number>`count(*) filter (where status = 'processing' and lease_expires_at < ${now})::int`,
       })
