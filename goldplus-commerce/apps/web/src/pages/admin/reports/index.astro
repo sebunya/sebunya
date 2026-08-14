@@ -1,31 +1,230 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+import { VALUE_BEARING_STATES } from "@goldplus/shared";
 
+/** Business reporting, built from the canonical commerce analytics contract.
+ *
+ *  This page previously described itself as "Simulated analytical performance
+ *  streams" behind a Phase 2 card. Nothing needed simulating: the analytics
+ *  API already computes these figures from real orders and payments, with
+ *  per-metric state so an unavailable source is never rendered as a zero.
+ *
+ *  Metric definitions are NOT redefined here. Reports and every other surface
+ *  read the same contract, so a number cannot change meaning depending on
+ *  which admin page an operator happens to open. */
 const token = readSessionToken(Astro.request);
-if (!token) {
-  return Astro.redirect("/admin/login?returnTo=/admin/reports", 303);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/reports", 303);
+
+const url = new URL(Astro.request.url);
+const days = Math.min(Math.max(Number(url.searchParams.get("days")) || 30, 1), 366);
+
+async function get<T>(path: string): Promise<{ ok: boolean; data: T | null; error: string | null }> {
+  try {
+    const res = await fetch(`${apiBase}${path}`, {
+      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    });
+    const json: any = await res.json().catch(() => null);
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, data: null, error: "Your account does not carry the analytics permission." };
+    }
+    if (!res.ok || !json?.success) {
+      return { ok: false, data: null, error: json?.error?.message ?? `The analytics API declined the request (HTTP ${res.status}).` };
+    }
+    return { ok: true, data: json.data as T, error: null };
+  } catch {
+    return { ok: false, data: null, error: "The analytics API could not be reached." };
+  }
 }
+
+const [overviewRes, paymentsRes, catalogueRes] = await Promise.all([
+  get<any>(`/admin/analytics/overview?days=${days}`),
+  get<any>(`/admin/analytics/payments?days=${days}`),
+  get<any>(`/admin/analytics/catalogue?days=${days}`),
+]);
+
+const overview = overviewRes.data;
+const metrics: any[] = Array.isArray(overview?.metrics) ? overview.metrics : [];
+const freshness: any[] = Array.isArray(overview?.sourceFreshness) ? overview.sourceFreshness : [];
+const quality = overview?.quality ?? null;
+const period = overview?.period ?? null;
+
+const PERIODS = [7, 30, 90, 365];
+
+/** A null value is never printed as 0 — the state says why it is absent. */
+const fmt = (m: any) => {
+  if (!VALUE_BEARING_STATES.has(m.state) || m.value === null) return "—";
+  if (m.unit === "UGX") return `UGX ${Number(m.value).toLocaleString("en-UG", { maximumFractionDigits: 0 })}`;
+  if (m.unit === "rate") return `${(Number(m.value) * 100).toFixed(1)}%`;
+  return Number(m.value).toLocaleString("en-UG");
+};
+
+const stateNote = (state: string) => {
+  switch (state) {
+    case "VALUE": return null;
+    case "NO_DATA": return "No qualifying activity in this period.";
+    case "INSUFFICIENT_EVIDENCE": return "Too few observations to report responsibly.";
+    case "SOURCE_UNAVAILABLE": return "The underlying source could not be read.";
+    case "STALE": return "Computed from data older than its freshness window.";
+    case "PARTIAL": return "Computed from an incomplete source.";
+    case "NOT_APPLICABLE": return "Not applicable for this period.";
+    default: return state;
+  }
+};
+
+const assessmentClass = (a: string) =>
+  a === "IMPROVED" ? "text-emerald-700" : a === "DECLINED" ? "text-red-700" : "text-gray-500";
+
+const changeLabel = (m: any) => {
+  if (m.relativeChange === null || !VALUE_BEARING_STATES.has(m.previousState)) return "no comparison";
+  const pct = (Number(m.relativeChange) * 100).toFixed(1);
+  return `${Number(m.relativeChange) >= 0 ? "+" : ""}${pct}% vs previous`;
+};
+
+const freshnessClass = (s: string) =>
+  s === "HEALTHY" ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+  : s === "QUIET" ? "border-gray-300 bg-gray-50 text-gray-600"
+  : s === "STALE" ? "border-orange-300 bg-orange-50 text-orange-900"
+  : s === "DEGRADED" ? "border-amber-300 bg-amber-50 text-amber-900"
+  : "border-red-300 bg-red-50 text-red-900";
 ---
 
-<AdminLayout 
-  title="Business Intelligence" 
-  description="Simulated analytical performance streams."
->
+<AdminLayout title="Business Reports" description="Commerce performance from canonical order and payment records.">
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
+    <div class="mb-6 pb-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
       <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Reports & Dashboards</h2>
-        <p class="text-sm text-gray-500 mt-1">Comprehensive physical and financial metrics analysis.</p>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Business Reports</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+          Computed from real orders and payments. Where a source cannot be read the metric says so rather than
+          showing zero — a measured zero and an unreadable source are different facts.
+        </p>
+        {period && (
+          <p class="text-xs text-gray-400 mt-2 font-mono">
+            {period.startDay} → {period.endDay} · compared with {period.previousStart?.slice(0, 10)} → {period.previousEnd?.slice(0, 10)}
+          </p>
+        )}
       </div>
+      <nav class="flex gap-2">
+        {PERIODS.map((d) => (
+          <a href={`/admin/reports?days=${d}`}
+            class={`rounded-full border px-3 py-1 text-xs font-bold ${days === d ? "border-brand-dark bg-brand-dark text-white" : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"}`}
+          >{d}d</a>
+        ))}
+      </nav>
     </div>
 
-    <div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-12 text-center max-w-2xl">
-      <h3 class="text-base font-black text-yellow-800 uppercase tracking-wider">API Connection Required</h3>
-      <p class="text-xs text-yellow-700 leading-relaxed mt-2 max-w-md mx-auto">
-        This analytical reporting suite requires live timeseries DB connections that are planned for Phase 2 deployment. Relational operational counts are currently visible on the Control Centre overview.
-      </p>
-    </div>
+    {overviewRes.error ? (
+      <div role="alert" class="rounded-2xl border border-red-300 bg-red-50 p-6 text-sm text-red-900">
+        <strong class="block font-black uppercase tracking-widest text-xs mb-1">Reports unavailable</strong>
+        {overviewRes.error}
+      </div>
+    ) : (
+      <>
+        {quality && quality.status !== "HEALTHY" && (
+          <div class="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+            <strong>Partial source coverage.</strong> {quality.availableSources} of {quality.totalSources} sources
+            responded. Metrics from unavailable sources are shown as “—”, never as zero.
+            {(quality.warnings ?? []).length > 0 && (
+              <ul class="mt-2 space-y-0.5">{quality.warnings.map((w: string) => <li>· {w}</li>)}</ul>
+            )}
+          </div>
+        )}
+
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-10">
+          {metrics.map((m) => (
+            <div class="rounded-2xl border border-gray-200 bg-white p-5">
+              <div class="flex items-start justify-between gap-3">
+                <h3 class="text-xs font-black uppercase tracking-widest text-gray-500">{m.label}</h3>
+                {!VALUE_BEARING_STATES.has(m.state) && (
+                  <span class="rounded-full border border-gray-300 bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-500">{m.state}</span>
+                )}
+              </div>
+              <p class="mt-2 text-2xl font-black text-brand-dark">{fmt(m)}</p>
+              {VALUE_BEARING_STATES.has(m.state) ? (
+                <p class={`mt-1 text-xs font-bold ${assessmentClass(m.assessment)}`}>{changeLabel(m)}</p>
+              ) : (
+                <p class="mt-1 text-xs text-gray-500">{stateNote(m.state)}</p>
+              )}
+              <p class="mt-3 text-[11px] leading-relaxed text-gray-500">{m.definition}</p>
+              {m.sampleSize !== null && (
+                <p class="mt-1 text-[11px] text-gray-400">Sample: {Number(m.sampleSize).toLocaleString("en-UG")}</p>
+              )}
+              {m.drilldownRoute && (
+                <a href={m.drilldownRoute} class="mt-3 inline-block text-[11px] font-bold text-brand-dark hover:underline">Open detail →</a>
+              )}
+            </div>
+          ))}
+          {metrics.length === 0 && (
+            <p class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600 md:col-span-2 xl:col-span-3">
+              The analytics contract returned no metrics for this period.
+            </p>
+          )}
+        </div>
+
+        <section class="mb-10">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Payments</h3>
+          {paymentsRes.ok ? (
+            <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+              <table class="w-full text-xs">
+                <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+                  <th class="p-3">Provider</th><th>Attempts</th><th>Succeeded</th><th>Failed</th><th class="p-3">Success rate</th>
+                </tr></thead>
+                <tbody>
+                  {(paymentsRes.data?.providers ?? []).map((p: any) => (
+                    <tr class="border-b border-gray-50">
+                      <td class="p-3 font-bold text-brand-dark">{p.provider ?? p.key ?? "—"}</td>
+                      <td>{p.attempts ?? "—"}</td>
+                      <td class="text-emerald-800">{p.succeeded ?? "—"}</td>
+                      <td class="text-red-800">{p.failed ?? "—"}</td>
+                      <td class="p-3">{p.successRate === null || p.successRate === undefined ? "—" : `${(Number(p.successRate) * 100).toFixed(1)}%`}</td>
+                    </tr>
+                  ))}
+                  {(paymentsRes.data?.providers ?? []).length === 0 && (
+                    <tr><td colspan="5" class="p-4 text-gray-500">No payment attempts in this period.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-xs text-gray-600">{paymentsRes.error}</p>
+          )}
+        </section>
+
+        <section class="mb-10">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Catalogue</h3>
+          {catalogueRes.ok ? (
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Object.entries(catalogueRes.data ?? {}).filter(([, v]) => typeof v === "number").map(([k, v]) => (
+                <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                  <p class="text-[10px] font-black uppercase tracking-widest text-gray-400">{k.replace(/([A-Z])/g, " $1")}</p>
+                  <p class="mt-1 text-xl font-black text-brand-dark">{Number(v).toLocaleString("en-UG")}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-xs text-gray-600">{catalogueRes.error}</p>
+          )}
+        </section>
+
+        <section class="mb-16">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Source freshness</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {freshness.map((s) => (
+              <div class={`rounded-xl border p-3 text-xs ${freshnessClass(String(s.status))}`}>
+                <div class="flex items-center justify-between">
+                  <strong class="font-mono">{s.key}</strong>
+                  <span class="text-[10px] font-black uppercase tracking-widest">{s.status}</span>
+                </div>
+                <p class="mt-1 opacity-90">
+                  {s.lastRecordAt ? `Newest record ${new Date(s.lastRecordAt).toLocaleString("en-GB")}` : "No records reported."}
+                </p>
+                {s.detail && <p class="mt-1 opacity-80">{s.detail}</p>}
+              </div>
+            ))}
+          </div>
+        </section>
+      </>
+    )}
   </div>
 </AdminLayout>
-
