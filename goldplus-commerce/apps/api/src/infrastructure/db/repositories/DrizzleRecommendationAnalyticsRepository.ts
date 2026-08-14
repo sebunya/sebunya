@@ -273,6 +273,24 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
         // Scoped to client producers: api-engine rows carry no anonymous id BY
         // DESIGN, and counting them made this warning a permanent false alarm.
         missingAnonymousId: sql<number>`count(case when ${recommendationEvents.anonymousId} is null and coalesce(${recommendationEvents.producer}, '') <> 'api-engine' then 1 end)::int`,
+        // Events that could carry a browser identifier at all. Server-rendered
+        // events (api-engine serving records, SSR search) are excluded: they
+        // identify the visitor through the visit profile instead, and counting
+        // them as "missing anonymousId" measures an absence that was never a
+        // gap.
+        identityEligibleEvents: sql<number>`count(case when coalesce(${recommendationEvents.producer}, '') <> 'api-engine' and ${recommendationEvents.eventType} <> 'PRODUCT_SEARCHED' then 1 end)::int`,
+        // Numerator scoped to EXACTLY the same population as the denominator
+        // above. Reusing the older missingAnonymousId here would mix
+        // populations — it excludes api-engine but still counts SSR search —
+        // and produce a share above 100%.
+        missingAnonymousIdEligible: sql<number>`count(case when ${recommendationEvents.anonymousId} is null and coalesce(${recommendationEvents.producer}, '') <> 'api-engine' and ${recommendationEvents.eventType} <> 'PRODUCT_SEARCHED' then 1 end)::int`,
+        // The question that actually matters: is this event attributable to
+        // ANY visitor at all? An event with a profile but no anonymousId is
+        // fully attributable.
+        eventsWithoutAnyIdentity: sql<number>`count(case when ${recommendationEvents.anonymousId} is null and ${recommendationEvents.profileId} is null and ${recommendationEvents.customerId} is null then 1 end)::int`,
+        // Placement is only meaningful for the events that have one.
+        placementEligibleEvents: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_IMPRESSION','RECOMMENDATION_CLICKED','RECOMMENDATION_ADD_TO_CART') then 1 end)::int`,
+        missingPlacementEligible: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_IMPRESSION','RECOMMENDATION_CLICKED','RECOMMENDATION_ADD_TO_CART') and ${recommendationEvents.placement} is null then 1 end)::int`,
         latestEventAt: sql<Date>`max(${recommendationEvents.createdAt})`,
       })
       .from(recommendationEvents)
@@ -293,7 +311,8 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
     }
 
     return {
-      ...(rows[0] || { totalEvents: 0, missingAttributionId: 0, missingPlacement: 0, missingProductId: 0, missingAnonymousId: 0, latestEventAt: null }),
+      ...(rows[0] || { totalEvents: 0, missingAttributionId: 0, missingPlacement: 0, missingProductId: 0, missingAnonymousId: 0,
+        identityEligibleEvents: 0, missingAnonymousIdEligible: 0, eventsWithoutAnyIdentity: 0, placementEligibleEvents: 0, missingPlacementEligible: 0, latestEventAt: null }),
       eventsByType
     };
   }

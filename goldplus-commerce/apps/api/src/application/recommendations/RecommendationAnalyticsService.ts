@@ -162,16 +162,57 @@ export class RecommendationAnalyticsService {
     return "healthy";
   }
 
-  private generateQualityWarnings(health: { totalEvents: number; missingAnonymousId: number; missingPlacement: number }): string[] {
+  /**
+   * Quality warnings, measured against the population each field applies to.
+   *
+   * These previously divided by TOTAL events, which is dominated by
+   * server-rendered serving records that can never carry a browser identifier
+   * or a placement. That inflated denominator worked in both directions and
+   * neither was honest: it reported 4% missing identity when 87% of the
+   * numerator's own population lacked one, and it would equally have raised a
+   * false alarm about placement on events that never have a placement.
+   *
+   * The warning now asks the question an operator actually needs answered: is
+   * any event unattributable to a visitor at all? An event carrying a visit
+   * profile but no anonymousId is fully attributable and is not a gap.
+   */
+  private generateQualityWarnings(health: {
+    totalEvents: number; missingAnonymousId: number; missingPlacement: number;
+    identityEligibleEvents?: number; missingAnonymousIdEligible?: number; eventsWithoutAnyIdentity?: number;
+    placementEligibleEvents?: number; missingPlacementEligible?: number;
+  }): string[] {
     const warnings: string[] = [];
-    if (health.totalEvents > 0) {
-      if (health.missingAnonymousId / health.totalEvents > 0.1) {
-        warnings.push("High volume of events missing anonymousId.");
-      }
-      if (health.missingPlacement / health.totalEvents > 0.05) {
-        warnings.push("Some events are missing placement context.");
+
+    const orphanedIdentity = health.eventsWithoutAnyIdentity ?? 0;
+    if (orphanedIdentity > 0 && health.totalEvents > 0) {
+      const share = orphanedIdentity / health.totalEvents;
+      warnings.push(
+        `${orphanedIdentity} event(s) carry no visitor identity of any kind (${(share * 100).toFixed(1)}% of all events); they cannot be attributed.`,
+      );
+    }
+
+    const identityEligible = health.identityEligibleEvents ?? 0;
+    if (identityEligible > 0) {
+      // Matched pair: both sides count client-produced events only.
+      const missingShare = (health.missingAnonymousIdEligible ?? 0) / identityEligible;
+      // Only client-produced events are expected to hold a browser id.
+      if (missingShare > 0.1) {
+        warnings.push(
+          `${(missingShare * 100).toFixed(1)}% of client-produced events are missing anonymousId, which usually means browser storage is unavailable for those visitors.`,
+        );
       }
     }
+
+    const placementEligible = health.placementEligibleEvents ?? 0;
+    if (placementEligible > 0) {
+      const missingPlacementShare = (health.missingPlacementEligible ?? 0) / placementEligible;
+      if (missingPlacementShare > 0.05) {
+        warnings.push(
+          `${(missingPlacementShare * 100).toFixed(1)}% of recommendation events are missing placement context.`,
+        );
+      }
+    }
+
     return warnings;
   }
 

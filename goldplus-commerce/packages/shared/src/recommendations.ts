@@ -344,6 +344,15 @@ export interface RecommendationAnalyticsResponse {
     missingPlacement: number;
     missingProductId: number;
     missingAnonymousId: number;
+    /** Client-produced events, the only population that can hold a browser id. */
+    identityEligibleEvents?: number;
+    /** Missing count scoped to that same population, so the share is valid. */
+    missingAnonymousIdEligible?: number;
+    /** Events attributable to no visitor at all — the figure that matters. */
+    eventsWithoutAnyIdentity?: number;
+    /** Recommendation events, the only population that carries a placement. */
+    placementEligibleEvents?: number;
+    missingPlacementEligible?: number;
     latestEventAt: string | null;
     trackingStatus: AnalyticsTrackingStatus;
     dataQualityWarnings: string[];
