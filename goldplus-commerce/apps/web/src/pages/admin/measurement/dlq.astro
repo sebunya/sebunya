@@ -289,7 +289,7 @@ if (!token) {
       if (!tbody) return;
 
       if (rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="table-empty">🎉 No unresolved DLQ entries — measurement pipeline is healthy.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="table-empty">No unresolved DLQ entries. Nothing is currently failing.</td></tr>`;
         if (meta) meta.textContent = '0 entries';
         return;
       }

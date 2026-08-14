@@ -33,7 +33,10 @@ async function request<T>(
     });
     const json = await res.json().catch(() => null);
     if (res.status === 404) {
-      return { ok: false, notFound: true, message: "This part of the Organic Growth API is not available yet." };
+      // A 404 here means the endpoint did not match — a deployment or routing
+      // problem, not an unbuilt feature. The old wording ("not available yet")
+      // told operators to wait for something that already exists.
+      return { ok: false, notFound: true, message: "This endpoint did not respond. It may not be available on the currently deployed API version." };
     }
     if (res.status === 401 || res.status === 403) {
       return { ok: false, denied: true, message: "Your account does not carry the permission for this SEO module." };

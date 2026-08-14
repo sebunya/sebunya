@@ -1,0 +1,2023 @@
+{
+ "generated_for": "ADMIN_ZERO_LOSS_CLOSURE",
+ "module_count": 122,
+ "modules": [
+  {
+   "route": "/admin",
+   "file": "apps/web/src/pages/admin/index.astro",
+   "loc": 149,
+   "title": "Admin Trust Centre",
+   "nav_label": "Control Centre",
+   "nav_group": "Dashboard",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/audit",
+    "/admin/commerce-os",
+    "/admin/release-readiness"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/analytics",
+   "file": "apps/web/src/pages/admin/analytics/index.astro",
+   "loc": 384,
+   "title": "Commerce Analytics",
+   "nav_label": "Commerce Analytics",
+   "nav_group": "Dashboard",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/analytics",
+    "/admin/measurement-control-tower",
+    "/admin/orders",
+    "/admin/recommendations/analytics"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/audit",
+   "file": "apps/web/src/pages/admin/audit/index.astro",
+   "loc": 102,
+   "title": "System Audit Logs",
+   "nav_label": "Audit log",
+   "nav_group": "System",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/automation",
+   "file": "apps/web/src/pages/admin/automation/index.astro",
+   "loc": 99,
+   "title": "Automation Operations",
+   "nav_label": "Automation",
+   "nav_group": "Measurement",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/automation/${definition.id}",
+    "/admin/automation/executions/${execution.id}"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/automation/[id]",
+   "file": "apps/web/src/pages/admin/automation/[id].astro",
+   "loc": 97,
+   "title": "Automation Definition",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/automation",
+    "/admin/automation/executions/${execution.id}"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/automation/executions/[id]",
+   "file": "apps/web/src/pages/admin/automation/executions/[id].astro",
+   "loc": 69,
+   "title": "Automation Execution",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/automation"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/behavioural-interventions",
+   "file": "apps/web/src/pages/admin/behavioural-interventions/index.astro",
+   "loc": 7,
+   "title": "Behavioral Interventions",
+   "nav_label": "Behavioural interventions",
+   "nav_group": "Marketing",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/behavioural-interventions/${item.id}"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/behavioural-interventions/[id]",
+   "file": "apps/web/src/pages/admin/behavioural-interventions/[id].astro",
+   "loc": 9,
+   "title": "Intervention detail",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/behavioural-interventions"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/business-info",
+   "file": "apps/web/src/pages/admin/business-info.astro",
+   "loc": 150,
+   "title": "Business info",
+   "nav_label": "Business info",
+   "nav_group": "Storefront",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/business-info"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/campaigns",
+   "file": "apps/web/src/pages/admin/campaigns/index.astro",
+   "loc": 178,
+   "title": "Campaigns",
+   "nav_label": "Campaigns",
+   "nav_group": "Marketing",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/carts",
+   "file": "apps/web/src/pages/admin/carts/index.astro",
+   "loc": 350,
+   "title": "Cart diagnostics",
+   "nav_label": "Carts",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/carts",
+    "/admin/products"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/categories",
+   "file": "apps/web/src/pages/admin/categories/index.astro",
+   "loc": 160,
+   "title": "Categories & taxonomy",
+   "nav_label": "Categories & taxonomy",
+   "nav_group": "Storefront",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/commerce-os",
+   "file": "apps/web/src/pages/admin/commerce-os.astro",
+   "loc": 90,
+   "title": "Commerce Operating System",
+   "nav_label": "Commerce OS",
+   "nav_group": "Dashboard",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/control-centre-approvals"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/compatibility",
+   "file": "apps/web/src/pages/admin/compatibility.astro",
+   "loc": 160,
+   "title": "Compatibility Mappings",
+   "nav_label": "Compatibility",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/consent-operating",
+   "file": "apps/web/src/pages/admin/consent-operating.astro",
+   "loc": 126,
+   "title": "Consent Operating Layer P0",
+   "nav_label": "Consent Operations",
+   "nav_group": "Measurement",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/consent-operations",
+   "file": "apps/web/src/pages/admin/consent-operations.astro",
+   "loc": 181,
+   "title": "Consent Operations Control Room",
+   "nav_label": "Consent Control Room",
+   "nav_group": "Measurement",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/control-centre-approvals",
+   "file": "apps/web/src/pages/admin/control-centre-approvals.astro",
+   "loc": 155,
+   "title": "Module activation approvals",
+   "nav_label": "Module approvals",
+   "nav_group": "System",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/controlled-activation",
+   "file": "apps/web/src/pages/admin/controlled-activation.astro",
+   "loc": 13,
+   "title": "Controlled Activation Governance",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/controlled-activation-dry-run",
+   "file": "apps/web/src/pages/admin/controlled-activation-dry-run.astro",
+   "loc": 13,
+   "title": "Controlled Activation Dry-Run Orchestrator",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/controlled-live-canary",
+   "file": "apps/web/src/pages/admin/controlled-live-canary.astro",
+   "loc": 13,
+   "title": "Controlled Live Canary Activation",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/copy-quality",
+   "file": "apps/web/src/pages/admin/copy-quality.astro",
+   "loc": 5,
+   "title": "Copy Quality",
+   "nav_label": "Copy quality",
+   "nav_group": "Storefront",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/customer-dna",
+   "file": "apps/web/src/pages/admin/customer-dna/index.astro",
+   "loc": 104,
+   "title": "Customer DNA",
+   "nav_label": "Customer DNA",
+   "nav_group": "Merchandising",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/customer-dna/[id]",
+   "file": "apps/web/src/pages/admin/customer-dna/[id].astro",
+   "loc": 160,
+   "title": "Customer profile",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/customer-dna"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/dealers",
+   "file": "apps/web/src/pages/admin/dealers/index.astro",
+   "loc": 86,
+   "title": "Dealer Applications",
+   "nav_label": "Dealer requests",
+   "nav_group": "Customers",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/decision-intelligence",
+   "file": "apps/web/src/pages/admin/decision-intelligence/index.astro",
+   "loc": 120,
+   "title": "Decision Intelligence",
+   "nav_label": "Decision Intelligence",
+   "nav_group": "Merchandising",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/decision-intelligence/${i.id}"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/decision-intelligence/[id]",
+   "file": "apps/web/src/pages/admin/decision-intelligence/[id].astro",
+   "loc": 145,
+   "title": "Insight",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/decision-intelligence",
+    "/admin/decision-intelligence/${id}"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/delivery",
+   "file": "apps/web/src/pages/admin/delivery/index.astro",
+   "loc": 276,
+   "title": "Delivery",
+   "nav_label": "Delivery Control Centre",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/delivery/awaiting-cost",
+    "/admin/delivery/calibration",
+    "/admin/delivery/config-registry",
+    "/admin/delivery/config/versions",
+    "/admin/delivery/launch",
+    "/admin/delivery/setup",
+    "/admin/delivery/variance/pending"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/delivery/calibration",
+   "file": "apps/web/src/pages/admin/delivery/calibration.astro",
+   "loc": 205,
+   "title": "Delivery calibration",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/delivery/calibration/proposals",
+    "/admin/delivery/reports/fallback-rate",
+    "/admin/delivery/reports/margin",
+    "/admin/delivery/reports/variance"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/delivery/launch",
+   "file": "apps/web/src/pages/admin/delivery/launch.astro",
+   "loc": 483,
+   "title": "Set up delivery pricing",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/delivery",
+    "/admin/delivery/config/draft",
+    "/admin/delivery/launch",
+    "/admin/delivery/wizard/derive"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/demand",
+   "file": "apps/web/src/pages/admin/demand/index.astro",
+   "loc": 186,
+   "title": "Search Demand",
+   "nav_label": "Demand signals",
+   "nav_group": "Marketing",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/demand"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/experiments",
+   "file": "apps/web/src/pages/admin/experiments/index.astro",
+   "loc": 30,
+   "title": "Experiments",
+   "nav_label": "Experiments",
+   "nav_group": "Marketing",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/experiments/${experiment.id}"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/experiments/[id]",
+   "file": "apps/web/src/pages/admin/experiments/[id].astro",
+   "loc": 20,
+   "title": "Experiment detail",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/experiments"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/feeds",
+   "file": "apps/web/src/pages/admin/feeds/index.astro",
+   "loc": 32,
+   "title": "Product Feeds",
+   "nav_label": "Product feeds",
+   "nav_group": "Marketing",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [
+    "halted",
+    "scheduled for phase"
+   ],
+   "baseline_state": "PLACEHOLDER"
+  },
+  {
+   "route": "/admin/fraud",
+   "file": "apps/web/src/pages/admin/fraud/index.astro",
+   "loc": 29,
+   "title": "Fraud Triage",
+   "nav_label": "Fraud Triage",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/fraud/${item.id}"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/fraud/[id]",
+   "file": "apps/web/src/pages/admin/fraud/[id].astro",
+   "loc": 28,
+   "title": "Fraud case",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/fraud"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/fulfilment",
+   "file": "apps/web/src/pages/admin/fulfilment/index.astro",
+   "loc": 347,
+   "title": "Fulfilment Queue",
+   "nav_label": "Fulfilment",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/fulfilment/${task.id}/delivery",
+    "/admin/fulfilment/${task.id}/dispatch",
+    "/admin/fulfilment/${task.id}/packing",
+    "/admin/fulfilment/report"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/fulfilment/[id]/delivery",
+   "file": "apps/web/src/pages/admin/fulfilment/[id]/delivery.astro",
+   "loc": 202,
+   "title": "Delivery",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/fulfilment",
+    "/admin/fulfilment/report"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/fulfilment/[id]/dispatch",
+   "file": "apps/web/src/pages/admin/fulfilment/[id]/dispatch.astro",
+   "loc": 214,
+   "title": "Dispatch",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/fulfilment"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/fulfilment/[id]/packing",
+   "file": "apps/web/src/pages/admin/fulfilment/[id]/packing.astro",
+   "loc": 387,
+   "title": "Packing Workspace",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/fulfilment"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/fulfilment/report",
+   "file": "apps/web/src/pages/admin/fulfilment/report.astro",
+   "loc": 126,
+   "title": "Fulfilment Report",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/fulfilment"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/governance",
+   "file": "apps/web/src/pages/admin/governance/index.astro",
+   "loc": 212,
+   "title": "Access and roles",
+   "nav_label": "Access",
+   "nav_group": "System",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [
+    "not available yet"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/hero",
+   "file": "apps/web/src/pages/admin/hero.astro",
+   "loc": 308,
+   "title": "Homepage hero",
+   "nav_label": "Homepage hero",
+   "nav_group": "Storefront",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/hero",
+    "/admin/hero/settings"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/homepage",
+   "file": "apps/web/src/pages/admin/homepage.astro",
+   "loc": 119,
+   "title": "Homepage content",
+   "nav_label": "Homepage content",
+   "nav_group": "Storefront",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/homepage"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/inventory",
+   "file": "apps/web/src/pages/admin/inventory/index.astro",
+   "loc": 171,
+   "title": "Inventory Oversight",
+   "nav_label": "Inventory",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/legal",
+   "file": "apps/web/src/pages/admin/legal/index.astro",
+   "loc": 668,
+   "title": "Legal Policy CMS",
+   "nav_label": "Legal pages",
+   "nav_group": "Storefront",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/legal"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/lifecycle",
+   "file": "apps/web/src/pages/admin/lifecycle.astro",
+   "loc": 130,
+   "title": "Customer Lifecycle",
+   "nav_label": "Lifecycle",
+   "nav_group": "Marketing",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/locations",
+   "file": "apps/web/src/pages/admin/locations.astro",
+   "loc": 357,
+   "title": "Locations",
+   "nav_label": "Locations",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/locations/data-exceptions",
+    "/admin/locations/landmarks",
+    "/admin/locations/pickup-points",
+    "/admin/locations/review-queue",
+    "/admin/locations/zones"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/login",
+   "file": "apps/web/src/pages/admin/login.astro",
+   "loc": 88,
+   "title": "Admin sign-in",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": false,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/login"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/loyalty",
+   "file": "apps/web/src/pages/admin/loyalty.astro",
+   "loc": 206,
+   "title": "Loyalty foundation preview",
+   "nav_label": "Loyalty & rewards",
+   "nav_group": "Marketing",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/loyalty/gamification"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/loyalty/gamification",
+   "file": "apps/web/src/pages/admin/loyalty/gamification.astro",
+   "loc": 141,
+   "title": "Gamification",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/measurement",
+   "file": "apps/web/src/pages/admin/measurement/index.astro",
+   "loc": 658,
+   "title": "Measurement Control Tower",
+   "nav_label": "Measurement Tower",
+   "nav_group": "Measurement",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/measurement/attribution",
+    "/admin/measurement/consent",
+    "/admin/measurement/dlq",
+    "/admin/system"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/measurement-control-tower",
+   "file": "apps/web/src/pages/admin/measurement-control-tower.astro",
+   "loc": 135,
+   "title": "Measurement Control Tower",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/measurement-control-tower"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/measurement-handover",
+   "file": "apps/web/src/pages/admin/measurement-handover.astro",
+   "loc": 23,
+   "title": "Phase 2 Operational Handover",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [
+    "phase 2"
+   ],
+   "baseline_state": "PLACEHOLDER"
+  },
+  {
+   "route": "/admin/measurement/attribution",
+   "file": "apps/web/src/pages/admin/measurement/attribution.astro",
+   "loc": 459,
+   "title": "Attribution Intelligence \u00b7 Measurement",
+   "nav_label": "Attribution",
+   "nav_group": "Measurement",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/measurement"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/measurement/consent",
+   "file": "apps/web/src/pages/admin/measurement/consent.astro",
+   "loc": 320,
+   "title": "Consent Audit Trail \u00b7 Measurement",
+   "nav_label": "Consent Audit",
+   "nav_group": "Measurement",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/measurement"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/measurement/control-tower/controlled-activation/live-review",
+   "file": "apps/web/src/pages/admin/measurement/control-tower/controlled-activation/live-review/index.astro",
+   "loc": 50,
+   "title": "Live Review Candidates | Controlled Activation | Control Tower",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/controlled-activation-live-review/live-review-candidates"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/measurement/control-tower/controlled-activation/live-review/[id]",
+   "file": "apps/web/src/pages/admin/measurement/control-tower/controlled-activation/live-review/[id].astro",
+   "loc": 273,
+   "title": "",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/controlled-activation-live-review/live-review-candidates/${id}",
+    "/admin/measurement/control-tower/controlled-activation/live-review"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/measurement/dlq",
+   "file": "apps/web/src/pages/admin/measurement/dlq.astro",
+   "loc": 326,
+   "title": "Dead Letter Queue \u00b7 Measurement",
+   "nav_label": "Dead Letter Queue",
+   "nav_group": "Measurement",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/measurement"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/media",
+   "file": "apps/web/src/pages/admin/media/index.astro",
+   "loc": 520,
+   "title": "Media Library",
+   "nav_label": "Media library",
+   "nav_group": "Storefront",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/media"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/media-costs",
+   "file": "apps/web/src/pages/admin/media-costs.astro",
+   "loc": 396,
+   "title": "Media costs",
+   "nav_label": "Media costs",
+   "nav_group": "Marketing",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/recommendations/media-costs/batch",
+    "/admin/recommendations/media-costs/correct"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/merchandising",
+   "file": "apps/web/src/pages/admin/merchandising/index.astro",
+   "loc": 266,
+   "title": "Homepage merchandising",
+   "nav_label": "Merchandising",
+   "nav_group": "Merchandising",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/products",
+    "/admin/recommendations/preview",
+    "/admin/recommendations/rules",
+    "/admin/settings"
+   ],
+   "placeholder_copy": [
+    "not available yet"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/nav",
+   "file": "apps/web/src/pages/admin/nav.astro",
+   "loc": 255,
+   "title": "Header (navigation)",
+   "nav_label": "Header & navigation",
+   "nav_group": "Storefront",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/nav"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/notifications",
+   "file": "apps/web/src/pages/admin/notifications/index.astro",
+   "loc": 182,
+   "title": "Notifications Ledger",
+   "nav_label": "Notifications",
+   "nav_group": "Marketing",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [
+    "halted"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/notifications/order-emails",
+   "file": "apps/web/src/pages/admin/notifications/order-emails.astro",
+   "loc": 133,
+   "title": "Admin Order Emails",
+   "nav_label": "Order Emails",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/orders",
+   "file": "apps/web/src/pages/admin/orders/index.astro",
+   "loc": 258,
+   "title": "Order Operations Control Tower",
+   "nav_label": "Orders",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/orders",
+    "/admin/orders/${order.id}"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/orders/[id]",
+   "file": "apps/web/src/pages/admin/orders/[id].astro",
+   "loc": 982,
+   "title": "",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/orders"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/payments",
+   "file": "apps/web/src/pages/admin/payments/index.astro",
+   "loc": 201,
+   "title": "Payments",
+   "nav_label": "Payments",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/payments/funnel",
+    "/admin/payments/ops-config",
+    "/admin/payments/queue"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/pim-imports",
+   "file": "apps/web/src/pages/admin/pim-imports/index.astro",
+   "loc": 10,
+   "title": "PIM Imports",
+   "nav_label": "PIM Imports",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/pim-imports/${item.id}"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/pim-imports/[id]",
+   "file": "apps/web/src/pages/admin/pim-imports/[id].astro",
+   "loc": 13,
+   "title": "PIM Import detail",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/pim-imports"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/platform-modules",
+   "file": "apps/web/src/pages/admin/platform-modules.astro",
+   "loc": 195,
+   "title": "Platform Modules",
+   "nav_label": "Platform Modules",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/campaigns",
+    "/admin/carts",
+    "/admin/compatibility",
+    "/admin/legal",
+    "/admin/media",
+    "/admin/orders",
+    "/admin/pim-imports",
+    "/admin/platform-modules"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/pricing",
+   "file": "apps/web/src/pages/admin/pricing/index.astro",
+   "loc": 81,
+   "title": "Pricing Operations",
+   "nav_label": "Pricing",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/pricing/${definition.id}",
+    "/admin/pricing/delivery-zones"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/pricing/[id]",
+   "file": "apps/web/src/pages/admin/pricing/[id].astro",
+   "loc": 33,
+   "title": "Promotion detail",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/pricing"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/pricing/delivery-zones",
+   "file": "apps/web/src/pages/admin/pricing/delivery-zones.astro",
+   "loc": 319,
+   "title": "Delivery Zones",
+   "nav_label": "Delivery zones",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/product-costs",
+   "file": "apps/web/src/pages/admin/product-costs.astro",
+   "loc": 325,
+   "title": "Product costs",
+   "nav_label": "Product costs",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/product-costs/import",
+    "/admin/product-costs/import/preview"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/products",
+   "file": "apps/web/src/pages/admin/products/index.astro",
+   "loc": 277,
+   "title": "Products",
+   "nav_label": "Products",
+   "nav_group": "Commerce",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/media",
+    "/admin/products",
+    "/admin/products/${p.id}",
+    "/admin/products/new"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/products/[id]",
+   "file": "apps/web/src/pages/admin/products/[id].astro",
+   "loc": 246,
+   "title": "Product Not Found",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/products",
+    "/admin/products/${product.id}/edit",
+    "/admin/products/${product.id}/edit-properties"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/products/[id]/edit",
+   "file": "apps/web/src/pages/admin/products/[id]/edit.astro",
+   "loc": 268,
+   "title": "Asset Unavailable",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/products"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/products/[id]/edit-properties",
+   "file": "apps/web/src/pages/admin/products/[id]/edit-properties.astro",
+   "loc": 305,
+   "title": "",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/products",
+    "/admin/products/${product.id}",
+    "/admin/products/categories"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/products/new",
+   "file": "apps/web/src/pages/admin/products/new.astro",
+   "loc": 291,
+   "title": "Add New Product",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/products",
+    "/admin/products/categories"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/quotes",
+   "file": "apps/web/src/pages/admin/quotes/index.astro",
+   "loc": 108,
+   "title": "Price Quotes",
+   "nav_label": "Quote requests",
+   "nav_group": "Customers",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/recommendations",
+   "file": "apps/web/src/pages/admin/recommendations/index.astro",
+   "loc": 230,
+   "title": "Recommendations",
+   "nav_label": "Recommendations",
+   "nav_group": "Recommendations",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/recommendations/analytics",
+    "/admin/recommendations/preview",
+    "/admin/recommendations/rules"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/recommendations/analytics",
+   "file": "apps/web/src/pages/admin/recommendations/analytics.astro",
+   "loc": 834,
+   "title": "Recommendation analytics",
+   "nav_label": "Recommendation Analytics",
+   "nav_group": "Recommendations",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/recommendations/analytics",
+    "/admin/recommendations/preview"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/recommendations/preview",
+   "file": "apps/web/src/pages/admin/recommendations/preview.astro",
+   "loc": 175,
+   "title": "Preview",
+   "nav_label": "Preview",
+   "nav_group": "Recommendations",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/recommendations"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/recommendations/rules",
+   "file": "apps/web/src/pages/admin/recommendations/rules/index.astro",
+   "loc": 239,
+   "title": "Recommendation rules",
+   "nav_label": "Rules",
+   "nav_group": "Recommendations",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/recommendations/preview",
+    "/admin/recommendations/rules",
+    "/admin/recommendations/rules/${rule.id}",
+    "/admin/recommendations/rules/new"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/recommendations/rules/[id]",
+   "file": "apps/web/src/pages/admin/recommendations/rules/[id].astro",
+   "loc": 310,
+   "title": "Resource Not Found",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/recommendations/rules"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/recommendations/rules/new",
+   "file": "apps/web/src/pages/admin/recommendations/rules/new.astro",
+   "loc": 307,
+   "title": "New rule",
+   "nav_label": "Create rule",
+   "nav_group": "Recommendations",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/recommendations/rules"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/release-readiness",
+   "file": "apps/web/src/pages/admin/release-readiness.astro",
+   "loc": 19,
+   "title": "",
+   "nav_label": "Release readiness",
+   "nav_group": "System",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/reports",
+   "file": "apps/web/src/pages/admin/reports/index.astro",
+   "loc": 31,
+   "title": "Business Intelligence",
+   "nav_label": "Reports",
+   "nav_group": "Dashboard",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [
+    "phase 2",
+    "simulated"
+   ],
+   "baseline_state": "PLACEHOLDER"
+  },
+  {
+   "route": "/admin/roles",
+   "file": "apps/web/src/pages/admin/roles/index.astro",
+   "loc": 91,
+   "title": "Security Roles",
+   "nav_label": "Roles & permissions",
+   "nav_group": "System",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo",
+   "file": "apps/web/src/pages/admin/seo/index.astro",
+   "loc": 201,
+   "title": "SEO & Organic Growth",
+   "nav_label": "SEO Overview",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/seo/aeo",
+    "/admin/seo/competitors",
+    "/admin/seo/content",
+    "/admin/seo/integrations",
+    "/admin/seo/market-share",
+    "/admin/seo/opportunities",
+    "/admin/seo/overview",
+    "/admin/seo/queries",
+    "/admin/seo/serp",
+    "/admin/seo/technical"
+   ],
+   "placeholder_copy": [
+    "not available yet"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/seo/aeo",
+   "file": "apps/web/src/pages/admin/seo/aeo.astro",
+   "loc": 172,
+   "title": "AEO",
+   "nav_label": "AEO",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/aeo",
+    "/admin/seo/aeo/coverage"
+   ],
+   "placeholder_copy": [
+    "simulated"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/seo/battery-compatibility",
+   "file": "apps/web/src/pages/admin/seo/battery-compatibility.astro",
+   "loc": 215,
+   "title": "Battery Compatibility",
+   "nav_label": "Battery Compatibility",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/battery-compatibility",
+    "/admin/seo/catalogue/battery"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/category-matrix",
+   "file": "apps/web/src/pages/admin/seo/category-matrix.astro",
+   "loc": 188,
+   "title": "Category \u00d7 Competitor Matrix",
+   "nav_label": "Category \u00d7 Competitor",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [
+    "not available yet"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/seo/competitors",
+   "file": "apps/web/src/pages/admin/seo/competitors.astro",
+   "loc": 190,
+   "title": "SEO Competitors",
+   "nav_label": "Competitors",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/competitors"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/content",
+   "file": "apps/web/src/pages/admin/seo/content.astro",
+   "loc": 190,
+   "title": "SEO Content & Experiments",
+   "nav_label": "Content & Experiments",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/change-ledger",
+    "/admin/seo/experiments",
+    "/admin/seo/gaps"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/crawler-logs",
+   "file": "apps/web/src/pages/admin/seo/crawler-logs.astro",
+   "loc": 283,
+   "title": "Crawler Logs",
+   "nav_label": "Crawler Logs",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/observability/ingest-log"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/integrations",
+   "file": "apps/web/src/pages/admin/seo/integrations/index.astro",
+   "loc": 159,
+   "title": "SEO Integrations",
+   "nav_label": "Integrations",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/seo/integrations/sync"
+   ],
+   "placeholder_copy": [
+    "not available yet"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/seo/integrations/[provider]",
+   "file": "apps/web/src/pages/admin/seo/integrations/[provider].astro",
+   "loc": 519,
+   "title": "",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/integrations"
+   ],
+   "placeholder_copy": [
+    "not available yet"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/seo/integrations/[provider]/connect",
+   "file": "apps/web/src/pages/admin/seo/integrations/[provider]/connect.astro",
+   "loc": 174,
+   "title": "",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [],
+   "placeholder_copy": [
+    "not available yet"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/seo/integrations/sync",
+   "file": "apps/web/src/pages/admin/seo/integrations/sync.astro",
+   "loc": 243,
+   "title": "Sync Operations",
+   "nav_label": "Sync Operations",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/integrations",
+    "/admin/seo/integrations/sync"
+   ],
+   "placeholder_copy": [
+    "not available yet"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/seo/intelligence",
+   "file": "apps/web/src/pages/admin/seo/intelligence.astro",
+   "loc": 283,
+   "title": "Organic Intelligence domains",
+   "nav_label": "Intelligence Domains",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/seo/workqueue/intel/action-requests",
+    "/admin/seo/workqueue/intel/cannibalisation",
+    "/admin/seo/workqueue/intel/clusters",
+    "/admin/seo/workqueue/intel/content",
+    "/admin/seo/workqueue/intel/content-gaps"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/market-share",
+   "file": "apps/web/src/pages/admin/seo/market-share.astro",
+   "loc": 145,
+   "title": "Organic Market Share",
+   "nav_label": "Market Share",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/integrations",
+    "/admin/seo/serp"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/opportunities",
+   "file": "apps/web/src/pages/admin/seo/opportunities.astro",
+   "loc": 120,
+   "title": "SEO Opportunities",
+   "nav_label": "Opportunities",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/opportunities",
+    "/admin/seo/opportunities/generate"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/opportunities-intel",
+   "file": "apps/web/src/pages/admin/seo/opportunities-intel.astro",
+   "loc": 186,
+   "title": "Organic Intelligence",
+   "nav_label": "Organic Intelligence",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [
+    "/admin/seo/opportunities-intel",
+    "/admin/seo/workqueue/intel/runs"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/product-lifecycle",
+   "file": "apps/web/src/pages/admin/seo/product-lifecycle.astro",
+   "loc": 191,
+   "title": "Product Lifecycle SEO",
+   "nav_label": "Product Lifecycle SEO",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/catalogue/lifecycle",
+    "/admin/seo/catalogue/vocabulary",
+    "/admin/seo/product-lifecycle"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/queries",
+   "file": "apps/web/src/pages/admin/seo/queries.astro",
+   "loc": 197,
+   "title": "SEO Queries",
+   "nav_label": "Queries",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/queries",
+    "/admin/seo/queries/import-csv"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/render-diff",
+   "file": "apps/web/src/pages/admin/seo/render-diff.astro",
+   "loc": 228,
+   "title": "Raw vs Rendered",
+   "nav_label": "Raw vs Rendered",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/observability/render-diff",
+    "/admin/seo/observability/render-diff/compare"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/robots",
+   "file": "apps/web/src/pages/admin/seo/robots.astro",
+   "loc": 288,
+   "title": "robots.txt Governance",
+   "nav_label": "robots.txt",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/robots"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/serp",
+   "file": "apps/web/src/pages/admin/seo/serp.astro",
+   "loc": 169,
+   "title": "SERP Intelligence",
+   "nav_label": "SERP Intelligence",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/integrations",
+    "/admin/seo/queries",
+    "/admin/seo/serp/observations"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/storage-tests",
+   "file": "apps/web/src/pages/admin/seo/storage-tests.astro",
+   "loc": 185,
+   "title": "Storage Testing",
+   "nav_label": "Storage Testing",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/catalogue/storage"
+   ],
+   "placeholder_copy": [
+    "not available yet"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/seo/technical",
+   "file": "apps/web/src/pages/admin/seo/technical.astro",
+   "loc": 194,
+   "title": "Technical SEO",
+   "nav_label": "Technical SEO",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/alerts",
+    "/admin/seo/crawl/runs",
+    "/admin/seo/crawl/start"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/web-vitals",
+   "file": "apps/web/src/pages/admin/seo/web-vitals.astro",
+   "loc": 227,
+   "title": "Core Web Vitals",
+   "nav_label": "Core Web Vitals",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/vitals/sync"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/seo/work-queue",
+   "file": "apps/web/src/pages/admin/seo/work-queue.astro",
+   "loc": 275,
+   "title": "SEO Work Queue",
+   "nav_label": "Work Queue",
+   "nav_group": "Search Growth",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/seo/work-queue",
+    "/admin/seo/workqueue/items",
+    "/admin/seo/workqueue/items/promote",
+    "/admin/seo/workqueue/vocabulary"
+   ],
+   "placeholder_copy": [
+    "not available yet"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/settings",
+   "file": "apps/web/src/pages/admin/settings/index.astro",
+   "loc": 146,
+   "title": "Settings",
+   "nav_label": "Settings",
+   "nav_group": "System",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/storefront-copy",
+   "file": "apps/web/src/pages/admin/storefront-copy.astro",
+   "loc": 106,
+   "title": "Storefront copy",
+   "nav_label": "Storefront copy",
+   "nav_group": "Storefront",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/storefront-copy"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/support",
+   "file": "apps/web/src/pages/admin/support/index.astro",
+   "loc": 189,
+   "title": "Support Tickets",
+   "nav_label": "Support tickets",
+   "nav_group": "Customers",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/surveys",
+   "file": "apps/web/src/pages/admin/surveys/index.astro",
+   "loc": 9,
+   "title": "Surveys",
+   "nav_label": "Surveys",
+   "nav_group": "Marketing",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/surveys/${item.id}"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/surveys/[id]",
+   "file": "apps/web/src/pages/admin/surveys/[id].astro",
+   "loc": 9,
+   "title": "Survey detail",
+   "nav_label": null,
+   "nav_group": null,
+   "in_nav": false,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [
+    "/admin/surveys"
+   ],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/system",
+   "file": "apps/web/src/pages/admin/system/index.astro",
+   "loc": 217,
+   "title": "System status",
+   "nav_label": "System status",
+   "nav_group": "System",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  },
+  {
+   "route": "/admin/users",
+   "file": "apps/web/src/pages/admin/users/index.astro",
+   "loc": 210,
+   "title": "Operator Accounts",
+   "nav_label": "Users",
+   "nav_group": "System",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": true,
+   "admin_apis": [],
+   "placeholder_copy": [
+    "halted"
+   ],
+   "baseline_state": "PARTIAL"
+  },
+  {
+   "route": "/admin/utm-builder",
+   "file": "apps/web/src/pages/admin/utm-builder/index.astro",
+   "loc": 32,
+   "title": "Tagging Utilities",
+   "nav_label": "UTM builder",
+   "nav_group": "Marketing",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [
+    "in the interim",
+    "unconnected"
+   ],
+   "baseline_state": "PLACEHOLDER"
+  },
+  {
+   "route": "/admin/verification",
+   "file": "apps/web/src/pages/admin/verification/index.astro",
+   "loc": 68,
+   "title": "Authenticity Center",
+   "nav_label": "Verification checks",
+   "nav_group": "Customers",
+   "in_nav": true,
+   "auth_required": true,
+   "has_write_form": false,
+   "admin_apis": [],
+   "placeholder_copy": [],
+   "baseline_state": "OPERATIONAL"
+  }
+ ]
+}

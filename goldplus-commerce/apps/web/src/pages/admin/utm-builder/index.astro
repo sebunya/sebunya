@@ -1,32 +1,165 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
+import { buildUtmUrl, reviewTaxonomy, COMMON_MEDIUMS } from "@goldplus/shared";
 
+/** Campaign URL builder.
+ *
+ *  This runs entirely server-side on POST — no external analytics account is
+ *  involved, and never was. The page previously said the builder "requires
+ *  analytical tracking setup", which described an unfinished implementation
+ *  rather than a real dependency. */
 const token = readSessionToken(Astro.request);
-if (!token) {
-  return Astro.redirect("/admin/login?returnTo=/admin/utm-builder", 303);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/utm-builder", 303);
+
+let form = { url: "", source: "", medium: "", campaign: "", content: "", term: "", id: "", normalize: true };
+let result: ReturnType<typeof buildUtmUrl> | null = null;
+let taxonomy: ReturnType<typeof reviewTaxonomy> = [];
+
+if (Astro.request.method === "POST") {
+  const data = await Astro.request.formData();
+  const str = (k: string) => String(data.get(k) ?? "").trim();
+
+  if (String(data.get("intent") ?? "") === "reset") {
+    form = { url: "", source: "", medium: "", campaign: "", content: "", term: "", id: "", normalize: true };
+  } else {
+    form = {
+      url: str("url"), source: str("source"), medium: str("medium"), campaign: str("campaign"),
+      content: str("content"), term: str("term"), id: str("id"),
+      normalize: data.get("normalize") !== null,
+    };
+    result = buildUtmUrl({ ...form, normalizeValues: form.normalize });
+    taxonomy = reviewTaxonomy({ source: form.source, medium: form.medium, campaign: form.campaign });
+  }
 }
+
+const errors = (result?.issues ?? []).filter((i) => i.severity === "ERROR");
+const warnings = [...(result?.issues ?? []).filter((i) => i.severity === "WARNING"), ...taxonomy];
+const field = (name: string) => errors.find((e) => e.field === name)?.message ?? null;
 ---
 
-<AdminLayout 
-  title="Tagging Utilities" 
-  description="Ensure standard analytics parameters across internal links."
->
+<AdminLayout title="UTM Builder" description="Build consistently tagged campaign links from any destination URL.">
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
-      <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">UTM Builder</h2>
-        <p class="text-sm text-gray-500 mt-1">Link tagging tool to strictly enforce consistent source and medium attributes.</p>
-      </div>
-    </div>
-
-    <div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-12 text-center max-w-2xl">
-      <div class="text-xs font-black text-yellow-600 uppercase tracking-widest mb-4">Tagging Tool</div>
-      <h3 class="text-base font-black text-yellow-800 uppercase tracking-wider">Parameter Builder Unconnected</h3>
-      <p class="text-xs text-yellow-700 leading-relaxed mt-2 max-w-md mx-auto">
-        The dynamic parameter constructor requires analytical tracking setup. In the interim, campaigns can be registered directly within the main Marketing dashboard with static labels.
+    <div class="mb-8 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">UTM Builder</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+        Tag a destination URL so campaign traffic can be attributed. Values are normalised to lower-case and
+        hyphenated by default, because analytics tools treat <strong>Facebook</strong> and <strong>facebook</strong> as
+        two different sources and split one campaign across several rows.
       </p>
     </div>
-  </div>
-</AdminLayout>
 
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <form method="POST" class="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
+        <div>
+          <label for="url" class="block text-xs font-black uppercase tracking-widest text-gray-500 mb-1">Destination URL <span class="text-red-600">*</span></label>
+          <input id="url" name="url" type="text" value={form.url} required
+            placeholder="https://shopgoldplus.com/shop?category=power"
+            class="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-brand-dark focus:outline-none" />
+          {field("url") && <p class="mt-1 text-xs font-bold text-red-700">{field("url")}</p>}
+          <p class="mt-1 text-[11px] text-gray-500">Existing query parameters are kept; existing UTM values are replaced.</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label for="source" class="block text-xs font-black uppercase tracking-widest text-gray-500 mb-1">Source <span class="text-red-600">*</span></label>
+            <input id="source" name="source" type="text" value={form.source} required placeholder="google"
+              class="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-brand-dark focus:outline-none" />
+            {field("utm_source") && <p class="mt-1 text-xs font-bold text-red-700">{field("utm_source")}</p>}
+          </div>
+          <div>
+            <label for="medium" class="block text-xs font-black uppercase tracking-widest text-gray-500 mb-1">Medium <span class="text-red-600">*</span></label>
+            <input id="medium" name="medium" type="text" value={form.medium} required placeholder="cpc" list="mediums"
+              class="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-brand-dark focus:outline-none" />
+            <datalist id="mediums">{COMMON_MEDIUMS.map((m) => <option value={m}></option>)}</datalist>
+            {field("utm_medium") && <p class="mt-1 text-xs font-bold text-red-700">{field("utm_medium")}</p>}
+          </div>
+        </div>
+
+        <div>
+          <label for="campaign" class="block text-xs font-black uppercase tracking-widest text-gray-500 mb-1">Campaign <span class="text-red-600">*</span></label>
+          <input id="campaign" name="campaign" type="text" value={form.campaign} required placeholder="december-power-sale"
+            class="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-brand-dark focus:outline-none" />
+          {field("utm_campaign") && <p class="mt-1 text-xs font-bold text-red-700">{field("utm_campaign")}</p>}
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label for="content" class="block text-xs font-black uppercase tracking-widest text-gray-500 mb-1">Content</label>
+            <input id="content" name="content" type="text" value={form.content} placeholder="hero-banner"
+              class="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-brand-dark focus:outline-none" />
+          </div>
+          <div>
+            <label for="term" class="block text-xs font-black uppercase tracking-widest text-gray-500 mb-1">Term</label>
+            <input id="term" name="term" type="text" value={form.term} placeholder="power-bank"
+              class="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-brand-dark focus:outline-none" />
+          </div>
+          <div>
+            <label for="id" class="block text-xs font-black uppercase tracking-widest text-gray-500 mb-1">Campaign ID</label>
+            <input id="id" name="id" type="text" value={form.id} placeholder="gp-2026-12"
+              class="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-brand-dark focus:outline-none" />
+          </div>
+        </div>
+
+        <label class="flex items-center gap-2 text-xs text-gray-600">
+          <input type="checkbox" name="normalize" checked={form.normalize} class="rounded border-gray-300" />
+          Normalise values to lower-case and hyphens (recommended)
+        </label>
+
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="rounded-xl bg-brand-dark px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white hover:opacity-90">Build link</button>
+          <button type="submit" name="intent" value="reset" class="rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-widest text-gray-600 hover:bg-gray-50">Reset</button>
+        </div>
+      </form>
+
+      <div class="space-y-4">
+        {result?.ok && result.url ? (
+          <div class="rounded-2xl border border-emerald-300 bg-emerald-50 p-6">
+            <h3 class="text-xs font-black uppercase tracking-widest text-emerald-800">Tagged link</h3>
+            <p id="built-url" class="mt-3 break-all font-mono text-xs text-emerald-950 bg-white rounded-xl border border-emerald-200 p-3">{result.url}</p>
+            <button type="button" id="copy-url"
+              class="mt-3 rounded-xl border border-emerald-400 bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-900 hover:bg-emerald-100">Copy</button>
+            <span id="copy-done" class="ml-2 hidden text-xs font-bold text-emerald-800">Copied</span>
+            {result.preserved.length > 0 && (
+              <p class="mt-3 text-[11px] text-emerald-900">Kept existing parameters: {result.preserved.join(", ")}</p>
+            )}
+          </div>
+        ) : (
+          <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
+            {errors.length > 0
+              ? "Fix the highlighted fields to build the link."
+              : "Fill in the destination, source, medium and campaign, then build the link."}
+          </div>
+        )}
+
+        {warnings.length > 0 && (
+          <div class="rounded-2xl border border-amber-300 bg-amber-50 p-5">
+            <h3 class="text-xs font-black uppercase tracking-widest text-amber-800">Worth checking</h3>
+            <ul class="mt-2 space-y-1.5 text-xs text-amber-900">
+              {warnings.map((w) => <li>· {w.message}</li>)}
+            </ul>
+          </div>
+        )}
+
+        <div class="rounded-2xl border border-gray-200 bg-white p-5 text-xs text-gray-600">
+          <h3 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">How these are used</h3>
+          <p><strong>Source</strong> is where the visit came from, <strong>medium</strong> is how it arrived, and
+          <strong> campaign</strong> is which initiative it belongs to. Reports group by all three, so keeping the
+          spelling consistent matters more than the exact words you choose.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline>
+    document.getElementById('copy-url')?.addEventListener('click', async () => {
+      const text = document.getElementById('built-url')?.textContent ?? '';
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        const done = document.getElementById('copy-done');
+        if (done) { done.classList.remove('hidden'); setTimeout(() => done.classList.add('hidden'), 2000); }
+      } catch { /* clipboard unavailable; the URL stays selectable on the page */ }
+    });
+  </script>
+</AdminLayout>

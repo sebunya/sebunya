@@ -39,3 +39,5 @@ export * from './locations/uganda-geo';
 export * from './locations/folding';
 export * from './phone/uganda';
 export * from './time/eat';
+export * from './admin/status';
+export * from './admin/utm';
