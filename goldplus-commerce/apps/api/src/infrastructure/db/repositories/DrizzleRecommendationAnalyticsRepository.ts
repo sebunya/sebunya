@@ -16,6 +16,9 @@ import { identityLinks } from "../schema/identity";
 import { products } from "../schema/products";
 import { db } from "../client";
 
+/** postgres-js returns an array; some drivers wrap it in `.rows`. */
+const rowsOf = (r: unknown): any[] => (Array.isArray(r) ? r : (r as any)?.rows ?? []);
+
 export class DrizzleRecommendationAnalyticsRepository implements IRecommendationAnalyticsRepository {
   /**
    * Serving truth (R6, 2026-08-06) — computed from the engine's own
@@ -23,6 +26,93 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
    * serving, are placements filled, and how deep into the fallback ladder are
    * we living?" are answerable even with zero client JavaScript.
    */
+  /**
+   * The commercial attribution chain, joined through the cart.
+   *
+   *   recommendation_events.cart_id -> orders.cart_id -> order_items
+   *
+   * A line only counts as revenue when the order was genuinely paid and not
+   * cancelled; both facts travel with the row so the calculator can exclude
+   * them explicitly rather than the query silently dropping them. COGS comes
+   * from order_items.cogs_snapshot_ugx — the cost captured at the time of sale,
+   * not today's cost — and stays null when it was never captured.
+   */
+  async getCommercialAttribution(startDate: Date, endDate: Date): Promise<any> {
+    const start = startDate.toISOString();
+    const end = endDate.toISOString();
+
+    const lines = rowsOf(await db.execute(sql`
+      select distinct
+        o.id::text            as order_id,
+        oi.product_id::text   as product_id,
+        oi.final_line_total   as line_total,
+        oi.cogs_snapshot_ugx  as cogs,
+        (o.payment_status = 'paid')                         as paid,
+        (o.status in ('cancelled', 'CANCELLED'))            as cancelled,
+        o.customer_id::text   as customer_id,
+        coalesce(o.pricing_currency, 'UGX')                 as currency
+      from recommendation_events e
+      join orders o       on o.cart_id = e.cart_id
+      join order_items oi on oi.order_id = o.id
+                         and oi.product_id = e.recommendation_product_id
+      where e.cart_id is not null
+        and e.recommendation_product_id is not null
+        and e.created_at >= ${start}::timestamptz
+        and e.created_at <= ${end}::timestamptz
+    `));
+
+    const attributedLines = lines.map((r: any) => ({
+      orderId: String(r.order_id),
+      productId: String(r.product_id),
+      lineTotalUgx: Number(r.line_total ?? 0),
+      // Null, never 0: an unrecorded cost must not read as free goods.
+      cogsUgx: r.cogs === null || r.cogs === undefined ? null : Number(r.cogs),
+      paid: Boolean(r.paid),
+      cancelled: Boolean(r.cancelled),
+      refundedUgx: 0,
+      customerId: r.customer_id ? String(r.customer_id) : null,
+      currency: String(r.currency ?? 'UGX'),
+    }));
+
+    const attributedCompletedOrders = new Set(
+      attributedLines.filter((l) => l.paid && !l.cancelled).map((l) => l.orderId),
+    ).size;
+
+    // Media spend: null when NO record exists at all, which is a different
+    // fact from a recorded spend of zero and must not become a ROAS of 0.
+    const spendRows = rowsOf(await db.execute(sql`
+      select coalesce(sum(spend_minor + coalesce(tax_or_fee_minor, 0)), 0) as spend_minor,
+             count(*)::int as rows
+      from media_cost_facts
+      where spend_date >= ${start}::date and spend_date <= ${end}::date
+    `));
+    const spendRowCount = Number(spendRows[0]?.rows ?? 0);
+    const mediaSpendUgx = spendRowCount === 0 ? null : Number(spendRows[0]?.spend_minor ?? 0) / 100;
+
+    // Realised value per identified customer, across all history.
+    const customerRows = rowsOf(await db.execute(sql`
+      select customer_id::text as customer_id,
+             count(*)::int      as completed_orders,
+             coalesce(sum(total_amount), 0) as total_paid
+      from orders
+      where customer_id is not null
+        and payment_status = 'paid'
+        and status not in ('cancelled', 'CANCELLED')
+      group by customer_id
+    `));
+
+    return {
+      attributedLines,
+      attributedCompletedOrders,
+      mediaSpendUgx,
+      customerOrderTotals: customerRows.map((r: any) => ({
+        customerId: String(r.customer_id),
+        completedOrders: Number(r.completed_orders ?? 0),
+        totalPaidUgx: Number(r.total_paid ?? 0),
+      })),
+    };
+  }
+
   async getServingHealth(sinceDays: number): Promise<{
     windowDays: number;
     placements: Array<{

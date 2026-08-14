@@ -98,10 +98,28 @@ describe("RecommendationAnalyticsService", () => {
       .rejects.toThrow("startDate must be before endDate.");
   });
 
-  it("includes unavailable metrics", async () => {
+  it("reports commercial metrics instead of declaring them unavailable", async () => {
     const result = await service.getAnalytics({});
-    expect(result.unavailableMetrics).toEqual(expect.arrayContaining([
-      expect.objectContaining({ metric: "revenueAttribution" })
-    ]));
+    // These five used to be a hardcoded list of reasons they could not be
+    // produced. They are now computed, so nothing remains unavailable.
+    expect(result.unavailableMetrics).toEqual([]);
+    expect(result.commercialMetrics).toBeDefined();
+    expect(result.commercialMetrics!.length).toBeGreaterThan(0);
+  });
+
+  it("never claims a metric is deferred to a later pass", async () => {
+    const result = await service.getAnalytics({});
+    expect(JSON.stringify(result.commercialMetrics ?? []))
+      .not.toMatch(/not available in this pass|deferred until|phase 2/i);
+  });
+
+  it("carries a state and a reason on every commercial metric", async () => {
+    const result = await service.getAnalytics({});
+    for (const m of result.commercialMetrics ?? []) {
+      expect(m.state).toBeTruthy();
+      expect(m.reason.length).toBeGreaterThan(10);
+      // A null value must never be rendered as zero downstream.
+      if (m.value === null) expect(['NO_DATA', 'MEDIA_COST_MISSING', 'INSUFFICIENT_EVIDENCE', 'PRODUCT_COST_COVERAGE_PARTIAL', 'IDENTITY_COVERAGE_PARTIAL']).toContain(m.state);
+    }
   });
 });

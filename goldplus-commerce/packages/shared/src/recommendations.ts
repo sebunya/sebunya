@@ -359,6 +359,22 @@ export interface RecommendationAnalyticsResponse {
     anonymousToCustomerLinks: number;
     identityLinkRate: number | null;
   };
+  /**
+   * Commercial outcome metrics, each carrying its own evidence state so an
+   * absent input is never rendered as a zero. Added alongside
+   * `unavailableMetrics` rather than replacing it, so existing consumers keep
+   * working; that field is now always empty because these are implemented.
+   */
+  commercialMetrics?: Array<{
+    key: string;
+    label: string;
+    definition: string;
+    state: string;
+    value: number | null;
+    unit: 'UGX' | 'rate' | 'count';
+    sampleSize: number | null;
+    reason: string;
+  }>;
   unavailableMetrics: UnavailableMetric[];
 }
 
