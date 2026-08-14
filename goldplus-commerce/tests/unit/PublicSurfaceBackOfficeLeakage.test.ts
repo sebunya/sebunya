@@ -25,23 +25,30 @@ import { describe, expect, it } from "vitest";
  */
 
 const PAGES = "apps/web/src/pages";
+const COMPONENTS = "apps/web/src/components";
 
-/** Every page a shopper can reach — admin surfaces are exempt by definition. */
-const publicPages = (): string[] => {
-  const out: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir)) {
-      const p = join(dir, entry);
-      if (statSync(p).isDirectory()) {
-        if (entry !== "admin") walk(p);
-      } else if (p.endsWith(".astro")) {
-        out.push(p);
-      }
+const walkAstro = (dir: string, out: string[]): string[] => {
+  for (const entry of readdirSync(dir)) {
+    const p = join(dir, entry);
+    if (statSync(p).isDirectory()) {
+      if (entry !== "admin") walkAstro(p, out);
+    } else if (p.endsWith(".astro")) {
+      out.push(p);
     }
-  };
-  walk(PAGES);
+  }
   return out;
 };
+
+/** Every page a shopper can reach — admin surfaces are exempt by definition. */
+const publicPages = (): string[] => walkAstro(PAGES, []);
+
+/**
+ * Pages and the components they render. The leak this file was written for had
+ * a sibling one level down: `CanonicalConsentForm.astro` showed signed-in
+ * customers "Canonical consent P0" and a "Gated UAT only" badge. A guard that
+ * reads only `pages/` would have missed it.
+ */
+const publicSurfaces = (): string[] => [...publicPages(), ...walkAstro(COMPONENTS, [])];
 
 /**
  * Rendered prose only. Attribute values (placeholders, class names, aria labels)
@@ -92,6 +99,43 @@ describe("no public page publishes back-office material", () => {
 
   it("excludes admin pages, where this vocabulary is correct and expected", () => {
     expect(publicPages().some((p) => p.includes(`${PAGES}/admin`))).toBe(false);
+  });
+});
+
+describe("no customer surface exposes our release process", () => {
+  // A customer reading "Canonical consent P0 — Gated UAT only" learns our slice
+  // naming and our rollout state, and nothing about their own choice.
+  const RELEASE_VOCABULARY = [
+    /canonical (consent|persistence|purpose|saving)/i,
+    /\bgated UAT\b/i,
+    /\bUAT only\b/i,
+    /consent P0\b/,
+    /purpose-specific (preference|choice) was not saved/i,
+    /legacy (account settings|compatibility surface)/i,
+  ];
+
+  it("finds no release-process vocabulary on any page or rendered component", () => {
+    const offenders: string[] = [];
+    for (const file of publicSurfaces()) {
+      const text = prose(readFileSync(file, "utf8"));
+      for (const pattern of RELEASE_VOCABULARY) {
+        const hit = text.match(pattern);
+        if (hit) offenders.push(`${relative("apps/web/src", file)}: ${hit[0]}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("reads components as well as pages", () => {
+    expect(publicSurfaces().length).toBeGreaterThan(publicPages().length);
+  });
+
+  it("renders no dead form when the optional-marketing capability is off", () => {
+    // A disabled form with a dead submit button reads as a broken page. When the
+    // capability is off the component explains that instead of rendering it.
+    const form = readFileSync(`${COMPONENTS}/preferences/CanonicalConsentForm.astro`, "utf8");
+    expect(form).toMatch(/\{enabled \? \(/);
+    expect(form).not.toMatch(/disabled=\{!enabled\}/);
   });
 });
 

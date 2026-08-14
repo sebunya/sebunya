@@ -1,54 +1,80 @@
 ---
+/**
+ * The signed-in opt-in control for optional marketing.
+ *
+ * This surface is read by customers, so it carries none of the internal
+ * vocabulary the capability is built from. It previously showed "Canonical
+ * consent P0", a "Gated UAT only" / "Not live" badge, and a submit button
+ * reading "Canonical saving is not live" — none of which a shopper can act on,
+ * and all of which describe our release process rather than their choice.
+ *
+ * When the capability is off, the form is not rendered at all. A disabled form
+ * with a dead button is indistinguishable from a broken page; a sentence saying
+ * there is nothing to opt in to yet is honest and complete.
+ */
 interface Props {
   enabled: boolean;
 }
 const { enabled } = Astro.props;
 ---
 
-<section class="mb-10 rounded-2xl border border-slate-200 bg-slate-50 p-6" aria-labelledby="canonical-consent-title">
-  <div class="flex flex-wrap items-start justify-between gap-3">
-    <div>
-      <p class="text-xs font-black uppercase tracking-wider text-brand-primary">Canonical consent P0</p>
-      <h2 id="canonical-consent-title" class="mt-2 text-lg font-black text-brand-charcoal">Purpose-specific communication choice</h2>
+<section class="mb-10 rounded-2xl border border-slate-200 bg-slate-50 p-6" aria-labelledby="optional-marketing-title">
+  <p class="text-xs font-black uppercase tracking-wider text-brand-primary">Optional marketing</p>
+  <h2 id="optional-marketing-title" class="mt-2 text-lg font-black text-brand-charcoal">Offers and GoldPlus news</h2>
+
+  {enabled ? (
+    <>
+      <p class="mt-4 text-sm leading-relaxed text-slate-600">
+        Choose one channel at a time. Saving records your choice — it does not start any messages on its own, and it
+        never affects the messages you get about an order you placed.
+      </p>
+
+      <form method="POST" class="mt-6 grid gap-4">
+        <input type="hidden" name="formKind" value="canonical-consent" />
+        <input type="hidden" name="purpose_key" value="marketing_offers_campaigns" />
+        <input type="hidden" name="copy_version_id" value="account-consent-p0-v1" />
+
+        <label class="grid gap-2 text-sm font-bold text-slate-800">
+          Channel
+          <select name="channel_key" required class="rounded-xl border border-slate-300 bg-white px-4 py-3">
+            <option value="email">Email</option>
+            <option value="sms">SMS</option>
+            <option value="whatsapp">WhatsApp</option>
+          </select>
+        </label>
+
+        <fieldset class="grid gap-3">
+          <legend class="text-sm font-bold text-slate-800">Your choice</legend>
+          <label class="flex gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            <input type="radio" name="requested_state" value="granted" required />
+            <span><strong class="block text-slate-950">Allow optional GoldPlus offers</strong>On the channel selected above, and nothing else.</span>
+          </label>
+          <label class="flex gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            <input type="radio" name="requested_state" value="withdrawn" required />
+            <span><strong class="block text-slate-950">Withdraw this choice</strong>You will still get messages about orders you place.</span>
+          </label>
+        </fieldset>
+
+        <button type="submit" class="justify-self-start rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white">
+          Save this choice
+        </button>
+      </form>
+    </>
+  ) : (
+    <div class="mt-4 space-y-3 text-sm leading-relaxed text-slate-600">
+      <p>
+        GoldPlus does not send optional marketing on any channel at the moment, so there is nothing here to opt in to.
+      </p>
+      <p>
+        If that changes you will be asked to choose, for one channel at a time. Nothing will be switched on for you, and
+        it will not affect the messages you get about an order you placed.
+      </p>
+      <p>
+        <a href="/support" class="font-bold text-brand-charcoal underline decoration-brand-primary underline-offset-4">
+          Contact support
+        </a>{" "}
+        with any question about how GoldPlus contacts you.
+      </p>
     </div>
-    <span class:list={[
-      "rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider",
-      enabled ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800",
-    ]}>{enabled ? "Gated UAT only" : "Not live"}</span>
-  </div>
-
-  <p class="mt-4 text-sm leading-relaxed text-slate-600">
-    This control records one explicit purpose and channel at a time. It never activates email, SMS or WhatsApp delivery.
-  </p>
-
-  <form method="POST" class="mt-6 grid gap-4">
-    <input type="hidden" name="formKind" value="canonical-consent" />
-    <input type="hidden" name="purpose_key" value="marketing_offers_campaigns" />
-    <input type="hidden" name="copy_version_id" value="account-consent-p0-v1" />
-
-    <label class="grid gap-2 text-sm font-bold text-slate-800">
-      Channel
-      <select name="channel_key" required disabled={!enabled} class="rounded-xl border border-slate-300 bg-white px-4 py-3">
-        <option value="email">Email</option>
-        <option value="sms">SMS</option>
-        <option value="whatsapp">WhatsApp</option>
-      </select>
-    </label>
-
-    <fieldset disabled={!enabled} class="grid gap-3">
-      <legend class="text-sm font-bold text-slate-800">Choice</legend>
-      <label class="flex gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-        <input type="radio" name="requested_state" value="granted" required />
-        <span><strong class="block text-slate-950">Allow optional GoldPlus offers</strong>For the selected channel only. No send is activated by saving.</span>
-      </label>
-      <label class="flex gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-        <input type="radio" name="requested_state" value="withdrawn" required />
-        <span><strong class="block text-slate-950">Withdraw this optional choice</strong>Withdrawal remains separate from necessary service communication.</span>
-      </label>
-    </fieldset>
-
-    <button type="submit" disabled={!enabled} class="justify-self-start rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">
-      {enabled ? "Save purpose-specific choice" : "Canonical saving is not live"}
-    </button>
-  </form>
+  )}
 </section>

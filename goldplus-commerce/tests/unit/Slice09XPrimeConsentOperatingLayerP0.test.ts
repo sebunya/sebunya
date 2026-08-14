@@ -632,25 +632,49 @@ describe("customer API and Preference Centre truth", () => {
     it(`customer route contains ${term}`, () => expect(customerRouteSource).toContain(term));
   });
   [
-    "canonical saving is not live",
-    "disabled={!enabled}",
     "marketing_offers_campaigns",
-    "no send is activated by saving",
-    "withdraw this optional choice",
-    "purpose-specific choice",
+    "account-consent-p0-v1",
   ].forEach(term => {
     it(`canonical form contains ${term}`, () => expect(canonicalFormSource).toContain(term));
   });
+
+  // These assertions used to pin the literal customer copy, which meant the
+  // internal vocabulary on the page ("Canonical saving is not live", "Canonical
+  // consent P0", "Gated UAT only") was contractually frozen in front of
+  // customers. They now pin the BEHAVIOUR that copy was standing in for, so the
+  // wording can be written for shoppers without weakening the gate.
+  it("canonical form renders nothing submittable unless the capability is enabled", () => {
+    expect(canonicalFormSource).toMatch(/\{enabled \? \(/);
+    // The form, its submit button and the grant/withdraw choices all sit inside
+    // the enabled branch — there is no disabled-but-present dead form.
+    const offBranch = canonicalFormSource.split(/\) : \(/)[1] ?? "";
+    expect(offBranch).not.toMatch(/<form|<button|type="radio"/);
+  });
+
+  it("canonical form still offers both an explicit grant and an explicit withdrawal", () => {
+    expect(canonicalFormSource).toMatch(/value="granted"/);
+    expect(canonicalFormSource).toMatch(/value="withdrawn"/);
+  });
+
+  it("canonical form still tells the customer that saving starts no messages", () => {
+    expect(canonicalFormSource).toMatch(/does not start any messages|nothing will be switched on for you/i);
+  });
+
   [
     "result?.data?.saved === true",
     "was not saved",
-    "no communication setting changed",
     "x-correlation-id",
     "idempotency-key",
-    "legacy account settings",
-    "not canonical purpose consent",
   ].forEach(term => {
     it(`Preference Centre page contains ${term}`, () => expect(preferencePageSource).toContain(term));
+  });
+
+  it("Preference Centre page states that a failed save changed nothing", () => {
+    expect(preferencePageSource).toMatch(/nothing about how GoldPlus contacts you has changed/i);
+  });
+
+  it("Preference Centre page keeps the account settings distinct from marketing consent", () => {
+    expect(preferencePageSource).toMatch(/do not switch on marketing messages/i);
   });
 });
 

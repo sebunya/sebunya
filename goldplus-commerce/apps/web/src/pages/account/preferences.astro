@@ -24,7 +24,7 @@ if (Astro.request.method === 'POST') {
 
     if (formKind === 'canonical-consent') {
       if (!consentOperatingEnabled) {
-        saveError = 'This purpose-specific preference was not saved because canonical persistence is not live.';
+        saveError = 'That choice was not saved. GoldPlus is not offering optional marketing at the moment, so there is nothing to opt in to.';
       } else {
         const correlationId = crypto.randomUUID();
         const res = await fetch(`${apiBase}/account/consent-operating/preferences`, {
@@ -47,7 +47,7 @@ if (Astro.request.method === 'POST') {
         if (res.ok && result?.success === true && result?.data?.saved === true) {
           saveSuccess = true;
         } else {
-          saveError = 'Your purpose-specific choice was not saved. No communication setting changed.';
+          saveError = 'Your choice was not saved, so nothing about how GoldPlus contacts you has changed. Please try again, or contact support.';
         }
       }
     } else {
@@ -142,7 +142,7 @@ try {
 
     <CanonicalConsentForm enabled={consentOperatingEnabled} />
     <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-      The controls below are the existing legacy account settings. They are not canonical purpose consent and cannot authorize marketing sends.
+      The settings below cover your account and shopping experience. They do not switch on marketing messages &mdash; GoldPlus does not send those.
     </div>
     <PreferenceCentreForm preferences={preferences} />
   </div>
