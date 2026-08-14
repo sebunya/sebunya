@@ -12,7 +12,6 @@ export function safeShare(numerator: number, denominator: number): { pct: number
   return { pct: Math.round((numerator / denominator) * 1000) / 10, reason: null };
 }
 
-import { computeCommercialMetrics } from './RecommendationCommercialMetrics';
 import type { 
   RecommendationAnalyticsQuery, 
   RecommendationAnalyticsResponse,
@@ -98,12 +97,12 @@ export class RecommendationAnalyticsService {
         ...identity,
         identityLinkRate: this.ratio(identity.eventsWithLeadId + identity.eventsWithCustomerId, identity.eventsWithAnonymousId)
       },
-      // Computed from real order, payment and cost evidence. Each metric
-      // carries its own state, so an absent media cost reads as
-      // MEDIA_COST_MISSING rather than a ROAS of zero.
-      commercialMetrics: await this.getCommercialMetrics(startDate, endDate, health),
-      // Retained for consumers that still read it; now always empty, because
-      // every one of these metrics is implemented.
+      // Empty by design. These five metrics ARE implemented — by
+      // RecommendationCommercialService, which the analytics page already
+      // renders above. This list previously declared them unavailable while
+      // the working panels sat directly above it, so the page contradicted
+      // itself. The field stays for backward compatibility with existing
+      // consumers.
       unavailableMetrics: []
     };
   }
@@ -174,45 +173,6 @@ export class RecommendationAnalyticsService {
       }
     }
     return warnings;
-  }
-
-  /**
-   * The five commercial outcome metrics.
-   *
-   * These were previously a hardcoded list of reasons they could not be
-   * produced — a description of unfinished work rather than of the data. The
-   * evidence they need has been available throughout: recommendation events
-   * carry a cart id, orders carry payment status, order lines carry a
-   * point-in-time cost, and media spend has its own table.
-   *
-   * A failure to read that evidence is reported as such; it never becomes a
-   * zero, because a zero here is a business claim.
-   */
-  private async getCommercialMetrics(startDate: Date, endDate: Date, health: { totalImpressions?: number; totalClicks?: number } & Record<string, any>) {
-    try {
-      const evidence = await this.repo.getCommercialAttribution(startDate, endDate);
-      return computeCommercialMetrics({
-        attributedLines: evidence.attributedLines,
-        exposures: Number(health.totalImpressions ?? 0),
-        clicks: Number(health.totalClicks ?? 0),
-        attributedCompletedOrders: evidence.attributedCompletedOrders,
-        mediaSpendUgx: evidence.mediaSpendUgx,
-        customerOrderTotals: evidence.customerOrderTotals,
-      });
-    } catch (error) {
-      // Surfaced, not swallowed into an empty array that would look like
-      // "nothing to report".
-      return [{
-        key: 'commercialMetrics',
-        label: 'Commercial outcomes',
-        definition: 'Revenue, conversion, customer value, ROAS and profit contribution attributed to recommendations.',
-        state: 'INSUFFICIENT_EVIDENCE' as const,
-        value: null,
-        unit: 'count' as const,
-        sampleSize: null,
-        reason: `The attribution query could not be completed: ${error instanceof Error ? error.message : 'unknown error'}`,
-      }];
-    }
   }
 
   /** §19 depth metrics: coverage, placement integrity, concentration, source mix. */

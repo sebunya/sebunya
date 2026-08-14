@@ -80,8 +80,6 @@ export interface DepthMetricsRaw {
 }
 
 export interface IRecommendationAnalyticsRepository {
-  /** Evidence for the five commercial outcome metrics over a date window. */
-  getCommercialAttribution(startDate: Date, endDate: Date): Promise<CommercialAttributionEvidence>;
 
   getServingHealth(sinceDays: number): Promise<{
     windowDays: number;
@@ -118,29 +116,4 @@ export interface IRecommendationAnalyticsRepository {
   getProductPerformance(query: Omit<RecommendationAnalyticsQuery, "startDate" | "endDate"> & { startDate: Date; endDate: Date }): Promise<ProductPerformanceRecord[]>;
   getEventHealth(query: Omit<RecommendationAnalyticsQuery, "startDate" | "endDate"> & { startDate: Date; endDate: Date }): Promise<EventHealthMetrics>;
   getIdentityHealth(query: Omit<RecommendationAnalyticsQuery, "startDate" | "endDate"> & { startDate: Date; endDate: Date }): Promise<IdentityHealthMetrics>;
-}
-
-/**
- * Commercial attribution evidence for the recommendation dashboard.
- *
- * The join is deliberately explicit about what counts: an attributed line only
- * becomes revenue when its order was actually paid and not cancelled. Carts and
- * started checkouts reach this query but are marked, not counted.
- */
-export interface CommercialAttributionEvidence {
-  attributedLines: Array<{
-    orderId: string;
-    productId: string;
-    lineTotalUgx: number;
-    cogsUgx: number | null;
-    paid: boolean;
-    cancelled: boolean;
-    refundedUgx: number;
-    customerId: string | null;
-    currency: string;
-  }>;
-  attributedCompletedOrders: number;
-  /** Null when NO media spend record exists — never coerced to zero. */
-  mediaSpendUgx: number | null;
-  customerOrderTotals: Array<{ customerId: string; completedOrders: number; totalPaidUgx: number }>;
 }
