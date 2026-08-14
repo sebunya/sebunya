@@ -1,4 +1,22 @@
+import type { MetricState } from '../analytics/contracts';
+
 /**
+ * Operational status for an admin SURFACE.
+ *
+ * This is deliberately a different question from `MetricState` in
+ * analytics/contracts.ts, and the two must not be merged or duplicated:
+ *
+ *   MetricState  describes the EVIDENCE behind a number — can this metric be
+ *                reported, and if not, why. It is the canonical vocabulary for
+ *                anything numeric and is not redefined here.
+ *   AdminStatus  describes the HEALTH of a surface or dependency — is this
+ *                thing working, and if not, what kind of not-working.
+ *
+ * They overlap on NO_DATA and STALE because those words mean the same thing in
+ * both. `fromMetricState` below is the single projection between them, so a
+ * metric's evidence state can drive a surface badge without either vocabulary
+ * being restated.
+ *
  * One status vocabulary for the whole admin control plane.
  *
  * The defect this exists to prevent is specific and common: a dashboard
@@ -162,5 +180,26 @@ export function adminStatusClass(status: AdminStatus): string {
     case 'READ_ONLY': return 'border-gray-300 bg-gray-50 text-gray-600';
     case 'NO_DATA': return 'border-gray-300 bg-gray-50 text-gray-500';
     default: return 'border-gray-300 bg-gray-50 text-gray-500';
+  }
+}
+
+
+/**
+ * Project a metric's evidence state onto a surface status.
+ *
+ * The mapping exists so admin surfaces can render an analytics metric without
+ * inventing a second set of names for the same conditions. It is the ONLY
+ * place the two vocabularies meet.
+ */
+export function fromMetricState(state: MetricState): AdminStatus {
+  switch (state) {
+    case 'VALUE': return 'HEALTHY';
+    case 'NO_DATA': return 'NO_DATA';
+    case 'STALE': return 'STALE';
+    case 'PARTIAL': return 'DEGRADED';
+    case 'SOURCE_UNAVAILABLE': return 'FAILED';
+    case 'INSUFFICIENT_EVIDENCE': return 'UNKNOWN';
+    case 'NOT_APPLICABLE': return 'DISABLED_BY_POLICY';
+    default: return 'UNKNOWN';
   }
 }
