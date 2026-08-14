@@ -92,7 +92,19 @@ describe("no tracking loader without real configuration (§32)", () => {
 
   it("GTM renders only with a real container id — GTM-MOCKID never ships again", () => {
     expect(layout).not.toContain("|| 'GTM-MOCKID'");
-    expect(layout).toContain("{import.meta.env.PUBLIC_GTM_ID && (");
+    // The readiness condition now covers the ENDPOINT as well as the id. The
+    // endpoint used to fall back to https://metrics.shopgoldplus.com, a host
+    // with no DNS record, so an id-only deploy would have shipped a loader
+    // aimed at nothing. Both, or neither.
+    expect(layout).toContain("{measurement.configured && (");
+    // No hard-coded endpoint fallback left in the code (the comment explaining
+    // why it was removed may still name the host).
+    expect(layout).not.toMatch(/\|\|\s*'https:\/\/metrics\.shopgoldplus\.com'/);
+  });
+
+  it("treats a half-configured integration as unconfigured", () => {
+    const lib = read("apps/web/src/lib/measurement.ts");
+    expect(lib).toContain("gtmId.length > 0 && metricsUrl.length > 0");
   });
 
   it("PostHog loads only with a real key — the mock key connected to app.posthog.com on every page", () => {

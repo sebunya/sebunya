@@ -7,6 +7,10 @@ import {
   OutboxClaimFilter,
   PersistedOutboxEvent,
 } from '../../../application/ports/IOutboxRepository';
+import { DEAD_LETTER_STATE, DEAD_LETTER_STATES } from '../../../domain/outbox/TerminalState';
+
+/** The read-compatible state list, as a bound array parameter. */
+const DEAD_LETTER_STATES_SQL = sql`${[...DEAD_LETTER_STATES]}::text[]`;
 
 function rowToPersisted(row: typeof outboxEvents.$inferSelect): PersistedOutboxEvent {
   return {
@@ -140,7 +144,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         isProcessed: true,
         processedAt: now,
         deadLetteredAt: now,
-        status: 'dead_letter',
+        status: DEAD_LETTER_STATE,
         lastError: error,
         workerId: null,
         leaseExpiresAt: null,
@@ -184,7 +188,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         pending: sql<number>`count(*) filter (where is_processed = false)::int`,
         due: sql<number>`count(*) filter (where is_processed = false and next_attempt_at <= ${now})::int`,
         processing: sql<number>`count(*) filter (where status = 'processing')::int`,
-        deadLettered: sql<number>`count(*) filter (where status = 'dead_letter')::int`,
+        deadLettered: sql<number>`count(*) filter (where status = any(${DEAD_LETTER_STATES_SQL}))::int`,
         oldest: sql<number | null>`extract(epoch from (${now} - min(created_at) filter (where is_processed = false)))::int`,
         expiredLeases: sql<number>`count(*) filter (where status = 'processing' and lease_expires_at < ${now})::int`,
       })
@@ -203,7 +207,9 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
     const rows = await db
       .select()
       .from(outboxEvents)
-      .where(eq(outboxEvents.status, 'dead_letter'))
+      // Both historical spellings. Filtering on one hid every telemetry dead
+      // letter from the operator list entirely.
+      .where(inArray(outboxEvents.status, [...DEAD_LETTER_STATES]))
       .orderBy(desc(outboxEvents.deadLetteredAt))
       .limit(Math.min(Math.max(1, limit), 500));
     return rows.map(rowToPersisted);
@@ -230,7 +236,9 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         workerId: null,
         leaseExpiresAt: null,
       })
-      .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.status, 'dead_letter')))
+      // Accepts either spelling, so a telemetry dead letter can actually be
+      // replayed. Before this it matched nothing and returned false forever.
+      .where(and(eq(outboxEvents.id, eventId), inArray(outboxEvents.status, [...DEAD_LETTER_STATES])))
       .returning({ id: outboxEvents.id });
     return updated.length === 1;
   }

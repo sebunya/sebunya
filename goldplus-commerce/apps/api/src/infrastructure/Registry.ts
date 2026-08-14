@@ -1505,6 +1505,60 @@ export class Registry {
             return { status: 'HANDLED' };
           },
         },
+        /**
+         * The safety net, finally hung up.
+         *
+         * `StartOrderPaymentUseCase` has always recorded this event for the case
+         * the callback design cannot cover — the customer who pays and never
+         * comes back. Nothing consumed it, so two real events sat pending for ten
+         * days at 339 and 279 attempts.
+         *
+         * It delegates. `SettlePaymentUseCase` is THE settlement path, shared with
+         * the IPN, the browser callback and the reconciliation poller, so this
+         * handler adds a fourth door onto the same room rather than a second
+         * payment engine. Consequences that matter here:
+         *
+         *   - It VERIFIES, never charges. There is no code path from here that
+         *     creates a provider transaction or moves money.
+         *   - Only the provider's own answer is written. This handler cannot
+         *     express "assume paid".
+         *   - Replay is safe by construction: settlement advances the stage with a
+         *     compare-and-set against SETTLEABLE_STAGES, so a second delivery of
+         *     the same event finds the stage already advanced and performs no
+         *     effect at all.
+         */
+        ORDER_PAYMENT_VERIFICATION_REQUIRED: {
+          handle: async (event) => {
+            const attempts = await this.pesapalPaymentRepo.findAttemptsByOrderId(event.orderId);
+            if (attempts.length === 0) {
+              // No attempt row means payment never started. No amount of waiting
+              // creates one, and there is nothing to ask the provider about.
+              return { status: 'FINAL', error: 'NO_PAYMENT_ATTEMPT_FOR_ORDER' };
+            }
+
+            // Only attempts the provider actually knows about can be verified. An
+            // attempt with no tracking id means SubmitOrderRequest never succeeded:
+            // no payment page existed, so no money is possible by construction.
+            const askable = attempts.filter((attempt) => attempt.orderTrackingId);
+            if (askable.length === 0) {
+              return { status: 'FINAL', error: 'NO_PROVIDER_TRANSACTION_TO_VERIFY' };
+            }
+
+            for (const attempt of askable) {
+              await this.settlePaymentUseCase.execute({
+                orderTrackingId: attempt.orderTrackingId as string,
+                merchantReference: attempt.merchantReference,
+                source: 'poll',
+                traceId: `outbox:${event.id}`,
+              });
+            }
+
+            // HANDLED means "we asked and recorded the answer", not "the payment
+            // succeeded". A payment still pending at the provider is a truthful
+            // outcome for this event; the reconciliation ticker keeps asking.
+            return { status: 'HANDLED' };
+          },
+        },
       },
       {
         // No customer data: an unhandled type and a dead letter are both operator

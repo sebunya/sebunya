@@ -232,32 +232,53 @@ routes.get('/deep', async (c) => {
   }
 
   // 4. sGTM Upstream Reachability
-  const startSgtm = Date.now();
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000); // 2-second timeout
-    const response = await fetch(`${env.metricsInternalUrl}/healthy`, { signal: controller.signal });
-    clearTimeout(timeoutId);
+  //
+  // "Never configured" and "configured and down" are different facts and must not
+  // share a status. sGTM has no container config, no PUBLIC_GTM_ID and no DNS for
+  // its host, so the probe could only ever time out — and that timeout held the
+  // whole API at `degraded` for days, which is an alert that says "GoldPlus is
+  // failing" about an optional integration nobody ever switched on. A real
+  // outage would then have looked exactly like the steady state.
+  //
+  // An unconfigured optional provider is SETUP_REQUIRED and does not degrade the
+  // platform. A CONFIGURED one that stops answering still degrades it.
+  const sgtmConfigured = (process.env.GTM_CONTAINER_CONFIG ?? '').trim().length > 0;
 
-    if (response.ok) {
-      subsystems.external_sgtm = {
-        status: 'healthy',
-        latency_ms: Date.now() - startSgtm,
-      };
-    } else {
+  if (!sgtmConfigured) {
+    // No probe at all: there is nothing to probe, and a 2s timeout on every deep
+    // health call is a cost paid to learn something already known from config.
+    subsystems.external_sgtm = {
+      status: 'setup_required',
+      error: 'sGTM has never been provisioned (no container config). Not an outage.',
+    };
+  } else {
+    const startSgtm = Date.now();
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2-second timeout
+      const response = await fetch(`${env.metricsInternalUrl}/healthy`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        subsystems.external_sgtm = {
+          status: 'healthy',
+          latency_ms: Date.now() - startSgtm,
+        };
+      } else {
+        if (overallStatus === 'healthy') overallStatus = 'degraded';
+        subsystems.external_sgtm = {
+          status: 'degraded',
+          error: `sGTM returned status ${response.status}`,
+          latency_ms: Date.now() - startSgtm,
+        };
+      }
+    } catch (err: unknown) {
       if (overallStatus === 'healthy') overallStatus = 'degraded';
       subsystems.external_sgtm = {
-        status: 'degraded',
-        error: `sGTM returned status ${response.status}`,
-        latency_ms: Date.now() - startSgtm,
+        status: 'offline',
+        error: err instanceof Error && err.name === 'AbortError' ? 'Timeout' : errorMessage(err),
       };
     }
-  } catch (err: unknown) {
-    if (overallStatus === 'healthy') overallStatus = 'degraded';
-    subsystems.external_sgtm = {
-      status: 'offline',
-      error: err instanceof Error && err.name === 'AbortError' ? 'Timeout' : errorMessage(err),
-    };
   }
 
   const durationMs = Date.now() - start;

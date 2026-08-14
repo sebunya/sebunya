@@ -4,6 +4,7 @@ import GpNav from '../components/GpNav.astro';
 
 import { whatsappSupportNumber } from '../lib/api';
 import { getBusinessInfo } from '../lib/businessInfo';
+import { resolveMeasurementConfig } from '../lib/measurement';
 
 // Business/contact info — admin-editable, DB-backed (falls back to DEFAULT).
 const biz = await getBusinessInfo();
@@ -101,6 +102,7 @@ const footerSocialLinks = [
 ];
 
 const canonical = canonicalUrl ?? Astro.url.toString();
+const measurement = resolveMeasurementConfig(import.meta.env);
 ---
 
 <!doctype html>
@@ -131,9 +133,13 @@ const canonical = canonicalUrl ?? Astro.url.toString();
     {/* Server-Side Google Tag Manager — R7 (§32): only rendered when a REAL
         container id is configured. The old fallback shipped GTM-MOCKID in
         production HTML: a tracking loader firing for a container that does
-        not exist, on every page, before any consent consideration. */}
-    {import.meta.env.PUBLIC_GTM_ID && (
-      <script define:vars={{ metricsUrl: import.meta.env.PUBLIC_METRICS_URL || 'https://metrics.shopgoldplus.com', gtmId: import.meta.env.PUBLIC_GTM_ID }}>
+        not exist, on every page, before any consent consideration.
+
+        The endpoint is now part of the same readiness condition. It used to
+        default to https://metrics.shopgoldplus.com, which has no DNS record —
+        so setting the id alone would have shipped a loader aimed at nothing. */}
+    {measurement.configured && (
+      <script define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId }}>
         (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
         new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
         j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
@@ -166,10 +172,10 @@ const canonical = canonicalUrl ?? Astro.url.toString();
     <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:bg-slate-950 focus:px-4 focus:py-2 focus:text-sm focus:font-bold focus:text-white">Skip to content</a>
 
     {/* GTM noscript fallback — rendered only alongside a real container id */}
-    {import.meta.env.PUBLIC_GTM_ID && (
+    {measurement.configured && (
       <noscript>
         <iframe
-          src={`${import.meta.env.PUBLIC_METRICS_URL || 'https://metrics.shopgoldplus.com'}/ns.html?id=${import.meta.env.PUBLIC_GTM_ID}`}
+          src={`${measurement.metricsUrl}/ns.html?id=${measurement.gtmId}`}
           height="0"
           width="0"
           style="display:none;visibility:hidden"

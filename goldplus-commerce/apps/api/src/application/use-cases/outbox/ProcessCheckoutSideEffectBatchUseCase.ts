@@ -44,12 +44,62 @@ export interface CheckoutSideEffectHandler {
   }): Promise<SideEffectHandlerResult>;
 }
 
+/**
+ * Event types that are COMPLETE once recorded, and so have no handler by design.
+ *
+ * `ReconcileOrderPaymentUseCase` emits these three on a confirmed payment and
+ * says so in its own words: "These are RECORDED, not performed." The work they
+ * describe is already carried out inline by `SettlePaymentUseCase` — fulfilment,
+ * loyalty, the admin email, measurement. The event is the audit fact that the
+ * order became eligible, and an audit fact is finished the moment it is written.
+ *
+ * This is a POLICY, not an absence. "No handler because none is needed" and "no
+ * handler because somebody forgot" are indistinguishable at runtime, and the
+ * second one cost 339 retries of a real payment event. Declaring the first kind
+ * here is what lets the architecture test treat the second kind as a defect.
+ */
+export interface TerminalSideEffectPolicy {
+  /**
+   * RETIRE      — the event is genuinely complete once recorded.
+   * DEAD_LETTER — nothing should be emitting this; if one appears, make it loud.
+   *               Never silently retire an unexpected event: that is the failure
+   *               mode this whole file exists to prevent.
+   */
+  disposition: 'RETIRE' | 'DEAD_LETTER';
+  reason: string;
+}
+
+export const TERMINAL_SIDE_EFFECT_POLICY: Partial<Record<CheckoutSideEffectType, TerminalSideEffectPolicy>> = {
+  ORDER_CUSTOMER_NOTIFICATION_ELIGIBLE: {
+    disposition: 'RETIRE',
+    reason: 'RECORDED_ONLY: eligibility audit fact; the send is performed by SettlePaymentUseCase.',
+  },
+  ORDER_LOYALTY_ELIGIBILITY_RECORDED: {
+    disposition: 'RETIRE',
+    reason: 'RECORDED_ONLY: eligibility audit fact; settlement is performed by SettlePaymentUseCase.',
+  },
+  ORDER_MEASUREMENT_ELIGIBILITY_RECORDED: {
+    disposition: 'RETIRE',
+    reason: 'RECORDED_ONLY: eligibility audit fact; measurement is performed by SettlePaymentUseCase.',
+  },
+  ORDER_PAYMENT_INITIATION_REQUIRED: {
+    // Declared in the union but emitted by nothing, and it stays declared so the
+    // worker partition cannot silently change meaning. It is deliberately NOT
+    // retired-on-sight: an event of a type nobody emits is a surprise, and a
+    // surprise about payment initiation should stop and be looked at.
+    disposition: 'DEAD_LETTER',
+    reason: 'NOT_IN_SERVICE: no producer emits this type; a handler is required before use.',
+  },
+};
+
 export interface ProcessCheckoutSideEffectBatchResult {
   claimed: number;
   handled: number;
   retried: number;
   deadLettered: number;
   unhandledType: number;
+  /** Retired by explicit policy rather than by a handler. */
+  terminalByPolicy: number;
 }
 
 const BATCH_SIZE = 25;
@@ -65,6 +115,9 @@ export class ProcessCheckoutSideEffectBatchUseCase {
       onDeadLettered(eventType: string, eventId: string, error: string): void;
     },
     private readonly random: () => number = Math.random,
+    /** Types that are complete once recorded. Injected so a test can vary it. */
+    private readonly terminalPolicy: Partial<Record<CheckoutSideEffectType, TerminalSideEffectPolicy>> =
+      TERMINAL_SIDE_EFFECT_POLICY,
   ) {}
 
   async execute(now: Date = new Date()): Promise<ProcessCheckoutSideEffectBatchResult> {
@@ -78,20 +131,41 @@ export class ProcessCheckoutSideEffectBatchUseCase {
       retried: 0,
       deadLettered: 0,
       unhandledType: 0,
+      terminalByPolicy: 0,
     };
 
     for (const event of events) {
       const eventType = event.eventType as CheckoutSideEffectType;
       const handler = this.handlers[eventType];
 
+      const policy = this.terminalPolicy[eventType];
+      if (!handler && policy) {
+        if (policy.disposition === 'RETIRE') {
+          // Complete by design. Retiring it is the correct outcome, not a shortcut.
+          await this.outbox.markProcessed(event.id, { lastError: policy.reason });
+        } else {
+          await this.deadLetter(event, policy.reason);
+          result.deadLettered++;
+        }
+        result.terminalByPolicy++;
+        continue;
+      }
+
       if (!handler) {
-        // Left claimed-and-failing on purpose. Marking it processed would discard
-        // owed work to make a queue look clean; this way the backlog is visible
-        // and the event survives a deploy that adds the handler.
+        // Neither a handler nor a declared policy: a structural defect, and the
+        // backlog must stay visible rather than be marked processed — that would
+        // discard owed work to make a queue look clean.
+        //
+        // But visible is not the same as forever. This branch used to call retry()
+        // directly, skipping the MAX_ATTEMPTS ceiling every other branch obeys, so
+        // a real ORDER_PAYMENT_VERIFICATION_REQUIRED event was re-attempted 339
+        // times across ten days and would never have stopped. Bounded retry still
+        // survives a deploy that adds the handler — eight attempts with backoff
+        // span hours — and what it cannot do is churn indefinitely. After the
+        // ceiling it dead-letters, which is both loud and replayable.
         this.observer?.onUnhandledType(event.eventType, event.id);
-        await this.retry(event, `NO_HANDLER_FOR_${event.eventType}`);
         result.unhandledType++;
-        result.retried++;
+        await this.failWithinCeiling(event, `NO_HANDLER_FOR_${event.eventType}`, result);
         continue;
       }
 
@@ -128,19 +202,33 @@ export class ProcessCheckoutSideEffectBatchUseCase {
       } else if (outcome.status === 'FINAL') {
         await this.deadLetter(event, outcome.error);
         result.deadLettered++;
-      } else if (event.attemptCount + 1 >= MAX_ATTEMPTS) {
-        await this.deadLetter(
-          event,
-          `Exhausted after ${MAX_ATTEMPTS} attempts. Last error: ${outcome.error}`,
-        );
-        result.deadLettered++;
       } else {
-        await this.retry(event, outcome.error);
-        result.retried++;
+        await this.failWithinCeiling(event, outcome.error, result);
       }
     }
 
     return result;
+  }
+
+  /**
+   * THE ONLY WAY A FAILURE MAY BE RECORDED.
+   *
+   * Every failing branch goes through here, so the attempt ceiling cannot be
+   * bypassed by adding a new one. That is the whole point: the previous bug was
+   * not a wrong limit, it was a branch that never consulted the limit at all.
+   */
+  private async failWithinCeiling(
+    event: { id: string; eventType: string; attemptCount: number },
+    error: string,
+    result: ProcessCheckoutSideEffectBatchResult,
+  ): Promise<void> {
+    if (event.attemptCount + 1 >= MAX_ATTEMPTS) {
+      await this.deadLetter(event, `Exhausted after ${MAX_ATTEMPTS} attempts. Last error: ${error}`);
+      result.deadLettered++;
+      return;
+    }
+    await this.retry(event, error);
+    result.retried++;
   }
 
   private async retry(

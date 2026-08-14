@@ -3,6 +3,7 @@ import { INotificationRouter, NotificationRoutingTarget } from '../../applicatio
 import { parseAdminRecipients } from '../../domain/notifications/AdminOrderEmail';
 import { IAutomationActionRepository } from '../../application/ports/IAutomationActionRepository';
 import { AutomationOutcomeTrackingProvider } from '../automation/AutomationOutcomeTrackingProvider';
+import { toRelatedEntityId } from '../../domain/notifications/RelatedEntityId';
 
 export class DefaultNotificationRouter implements INotificationRouter {
   constructor(
@@ -18,7 +19,8 @@ export class DefaultNotificationRouter implements INotificationRouter {
     const opsWhatsapp = (process.env.OPS_ALERT_WHATSAPP || '').trim();
 
     const relatedEntity = String(payload.relatedEntity || '');
-    const relatedEntityId = String(payload.relatedEntityId || payload.id || '');
+    // Canonical absence is null, never ''. See domain/notifications/RelatedEntityId.
+    const relatedEntityId = toRelatedEntityId(payload.relatedEntityId ?? payload.id);
 
     switch (eventType) {
       case 'AUTOMATION_ACTION_REQUESTED': {

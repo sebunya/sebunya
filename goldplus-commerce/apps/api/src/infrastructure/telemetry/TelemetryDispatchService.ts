@@ -7,6 +7,7 @@ import { env } from '../../config/env';
 import type { CanonicalTelemetryEvent } from '@goldplus/shared';
 import * as client from 'prom-client';
 import crypto from 'crypto';
+import { DEAD_LETTER_STATE } from '../../domain/outbox/TerminalState';
 
 const gtmOutboundLatency = new client.Histogram({
   name: 'goldplus_gtm_outbound_latency_seconds',
@@ -126,7 +127,17 @@ export class TelemetryDispatchService {
           await this.sendToDlq(row.id, event, attempt, errMsg);
           await db
             .update(outboxEvents)
-            .set({ isProcessed: true, processedAt: new Date(), status: 'dead_lettered', lastError: errMsg })
+            // One canonical spelling. This writer's private 'dead_lettered' made
+            // its dead letters invisible to every reader in the outbox repository,
+            // including the replay lookup. Existing rows keep their spelling and
+            // are still read, via DEAD_LETTER_STATES.
+            .set({
+              isProcessed: true,
+              processedAt: new Date(),
+              deadLetteredAt: new Date(),
+              status: DEAD_LETTER_STATE,
+              lastError: errMsg,
+            })
             .where(eq(outboxEvents.id, row.id));
           deadLettered++;
           logger.error({ eventId: event.event_id, attempt }, '[Telemetry] Event dead-lettered after max retries');

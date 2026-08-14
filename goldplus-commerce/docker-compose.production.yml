@@ -313,8 +313,20 @@ services:
     ports:
       - "127.0.0.1:9100:9100"
 
+  # ── Server-side GTM ─────────────────────────────────────────────────────────
+  # Behind the `measurement` profile because the integration is NOT PROVISIONED:
+  # GTM_CONTAINER_CONFIG, PUBLIC_GTM_ID and DNS for metrics.shopgoldplus.com do
+  # not exist. The image exits immediately on an empty CONTAINER_CONFIG, and
+  # `restart: always` turned that into 6,301 restarts in four days — pure churn,
+  # plus a permanent false `degraded` on /health/deep.
+  #
+  # The capability is preserved, not removed. Once the owner supplies the three
+  # inputs, bring it back with:
+  #     docker compose --env-file .env.production -f docker-compose.production.yml \
+  #       --profile measurement up -d sgtm-production sgtm-preview
   sgtm-production:
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
+    profiles: ["measurement"]
     restart: always
     environment:
       - CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG}
@@ -331,6 +343,7 @@ services:
 
   sgtm-preview:
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
+    profiles: ["measurement"]
     restart: always
     environment:
       - CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG}

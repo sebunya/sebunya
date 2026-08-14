@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ProcessOutboxBatchUseCase } from '../../apps/api/src/application/use-cases/outbox/ProcessOutboxBatchUseCase';
+import { DEAD_LETTER_STATE } from '../../apps/api/src/domain/outbox/TerminalState';
 
 /**
  * Two defects motivated this.
@@ -73,8 +74,13 @@ describe('lease ownership', () => {
 
 describe('dead letters are not deliveries', () => {
   it('has a distinct terminal state', () => {
-    expect(repoSource).toContain("status: 'dead_letter'");
+    // The literal moved into domain/outbox/TerminalState so that writes use one
+    // spelling and reads accept both — production holds `dead_letter` from this
+    // repository and `dead_lettered` from the telemetry service, and every
+    // reader here used to see only the first.
+    expect(repoSource).toContain('status: DEAD_LETTER_STATE');
     expect(repoSource).toContain('deadLetteredAt');
+    expect(DEAD_LETTER_STATE).toBe('dead_letter');
   });
 
   it('routes exhaustion to dead-letter rather than processed', () => {
@@ -96,7 +102,9 @@ describe('dead letters are not deliveries', () => {
 
   it('counts from status, not from the processed boolean', () => {
     const metrics = repoSource.slice(repoSource.indexOf('async metrics('), repoSource.indexOf('async listDeadLettered'));
-    expect(metrics).toContain("status = 'dead_letter'");
+    // Counts both historical spellings: filtering on one made the five
+    // telemetry dead letters count as zero, which read as "nothing failed".
+    expect(metrics).toContain('DEAD_LETTER_STATES_SQL');
     expect(metrics).toContain('deadLettered');
   });
 
@@ -110,7 +118,10 @@ describe('dead letters are not deliveries', () => {
   it('makes replay idempotent by requiring the dead-letter state', () => {
     const start = repoSource.indexOf('async replayDeadLettered');
     const replay = repoSource.slice(start, repoSource.indexOf('\n  }', start));
-    expect(replay).toContain("eq(outboxEvents.status, 'dead_letter')");
+    // Still state-guarded, so a second replay returns false rather than
+    // queueing two copies — but guarded on BOTH spellings, so a telemetry dead
+    // letter can actually be replayed. Before this it matched nothing.
+    expect(replay).toContain('inArray(outboxEvents.status, [...DEAD_LETTER_STATES])');
     // The idempotency key is untouched, so a consumer that already saw the
     // original still deduplicates it.
     expect(replay).not.toContain('idempotencyKey');
