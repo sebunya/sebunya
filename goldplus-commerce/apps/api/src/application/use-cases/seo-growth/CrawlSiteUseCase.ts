@@ -171,6 +171,31 @@ const toPath = (url: string): string => {
 
 const isCommercialPath = (path: string) => path.startsWith('/products/') || path.startsWith('/shop');
 
+/**
+ * A commercial page that is EXPECTED to be indexable.
+ *
+ * The alert exists to catch a page that should rank but silently carries
+ * noindex. It was firing on every filtered /shop URL, which the canonical
+ * CrawlPolicy noindexes on purpose: search results, stacked filters and sort
+ * variants are never indexable, and a category facet is indexable only once an
+ * operator has written unique copy for it. With no category copy authored,
+ * noindex on those URLs is the policy working, not a defect — so a CRITICAL
+ * alert there trains operators to ignore the alert.
+ *
+ * Product pages and the bare /shop listing keep their alert: those genuinely
+ * should be indexable, and noindex on them is a real problem.
+ */
+const isExpectedIndexable = (path: string, url: string) => {
+  if (path.startsWith('/products/')) return true;
+  if (!path.startsWith('/shop')) return false;
+  try {
+    // Any query parameter makes this a facet, governed by CrawlPolicy.
+    return new URL(url).searchParams.toString() === '';
+  } catch {
+    return !url.includes('?');
+  }
+};
+
 export interface CrawlOutcome {
   status: 'COMPLETE' | 'FAILED' | 'CANCELLED' | 'REFUSED';
   pagesCrawled: number;
@@ -275,8 +300,12 @@ export class CrawlSiteUseCase {
           if (!facts.h1) issues.push('MISSING_H1');
           const robots = (facts.metaRobots ?? '').toLowerCase();
           if (robots.includes('noindex') && isCommercialPath(toPath(finalUrl))) {
+            // Recorded on the page either way, so the evidence is never lost.
             issues.push('NOINDEX_COMMERCIAL');
-            noindexCommercial.push(toPath(finalUrl));
+            // Escalated only when the page was supposed to be indexable.
+            if (isExpectedIndexable(toPath(finalUrl), finalUrl)) {
+              noindexCommercial.push(toPath(finalUrl));
+            }
           }
         }
       }
