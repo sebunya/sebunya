@@ -599,6 +599,23 @@ import { AutomationInternalActionExecutor } from './automation/AutomationInterna
 import { DrizzleAutomationOperationsRepository } from './db/repositories/DrizzleAutomationOperationsRepository';
 import { AutomationOperationsUseCase } from '../application/use-cases/automation/AutomationOperationsUseCase';
 
+/**
+ * Payment-attempt statuses the provider has already given a final answer for.
+ *
+ * `pending` and `verification_pending` are the only ones still worth asking
+ * about. Everything here is settled — and time never moves an attempt into this
+ * set on its own, only the provider's own answer does.
+ */
+const TERMINAL_PAYMENT_ATTEMPT_STATUSES = new Set([
+  'completed',
+  'failed',
+  'invalid',
+  'reversed',
+  'cancelled',
+  'abandoned',
+  'verification_failed',
+]);
+
 export class Registry {
 
   private static _instance: Registry;
@@ -1544,7 +1561,20 @@ export class Registry {
               return { status: 'FINAL', error: 'NO_PROVIDER_TRANSACTION_TO_VERIFY' };
             }
 
-            for (const attempt of askable) {
+            // An attempt the provider has already answered needs no second
+            // question. Both production events were like this: the provider said
+            // `invalid` days ago and the order has sat at payment_status=failed
+            // ever since. Re-asking would change nothing, and a verification call
+            // against a long-dead transaction is a way to get a surprising answer
+            // about a settled matter.
+            const unresolved = askable.filter(
+              (attempt) => !TERMINAL_PAYMENT_ATTEMPT_STATUSES.has(attempt.status),
+            );
+            if (unresolved.length === 0) {
+              return { status: 'HANDLED' };
+            }
+
+            for (const attempt of unresolved) {
               await this.settlePaymentUseCase.execute({
                 orderTrackingId: attempt.orderTrackingId as string,
                 merchantReference: attempt.merchantReference,

@@ -259,6 +259,30 @@ describe("the payment verification handler verifies and never charges", () => {
   it("treats a missing attempt as final rather than retrying forever", () => {
     expect(handlerBody()).toMatch(/status: 'FINAL', error: 'NO_PAYMENT_ATTEMPT_FOR_ORDER'/);
   });
+
+  it("does not re-ask the provider about an attempt it has already answered", () => {
+    // Both stuck production events were exactly this: provider said `invalid`,
+    // order settled at payment_status=failed, and the event still owed a
+    // question nobody needed the answer to.
+    const body = handlerBody();
+    expect(body).toMatch(/TERMINAL_PAYMENT_ATTEMPT_STATUSES/);
+    expect(body).toMatch(/unresolved\.length === 0/);
+    // And it settles only what is genuinely unresolved.
+    expect(body).toMatch(/for \(const attempt of unresolved\)/);
+  });
+
+  it("counts only the provider's own answer as terminal, never elapsed time", () => {
+    const registry = readFileSync(REGISTRY, "utf8");
+    const set = registry.slice(
+      registry.indexOf("const TERMINAL_PAYMENT_ATTEMPT_STATUSES"),
+      registry.indexOf("]);", registry.indexOf("const TERMINAL_PAYMENT_ATTEMPT_STATUSES")),
+    );
+    // 'pending' must NOT be terminal: a Ugandan mobile-money customer takes
+    // 60-120 seconds to find their phone, and telcos settle later still.
+    expect(set).not.toMatch(/'pending'/);
+    expect(set).not.toMatch(/'verification_pending'/);
+    expect(set).toMatch(/'completed'/);
+  });
 });
 
 describe("an absent relation never reaches a uuid column", () => {
