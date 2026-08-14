@@ -162,6 +162,21 @@ export async function trackRecommendationClick(input: {
 
 const CLICK_ATTRIBUTION_KEY = "goldplus_last_clicked_recommendation";
 
+/**
+ * In-memory mirror of the click attribution.
+ *
+ * sessionStorage is unavailable in private browsing, embedded webviews and
+ * under strict privacy settings. Relying on it alone meant the placement and
+ * attribution id linking a recommendation click to the cart action that
+ * followed were silently dropped for those visitors — which is how a click
+ * arrives with no placement, and how an add-to-cart arrives with no
+ * recommendation to credit.
+ *
+ * The mirror survives navigation within a single-page transition and is the
+ * fallback when storage refuses. It holds no personal data.
+ */
+let clickAttributionMemory: Record<string, unknown> | null = null;
+
 export function persistClickAttribution(attribution: {
   attributionId: string;
   railRenderId?: string;
@@ -171,6 +186,8 @@ export function persistClickAttribution(attribution: {
   productId: string;
 }): void {
   if (typeof window === "undefined") return;
+  const payload = { ...attribution, timestamp: Date.now() };
+  clickAttributionMemory = payload;
   try {
     window.sessionStorage.setItem(
       CLICK_ATTRIBUTION_KEY,
@@ -186,15 +203,27 @@ export function persistClickAttribution(attribution: {
 
 export function getAndClearClickAttribution(targetProductId?: string): Record<string, any> | null {
   if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(CLICK_ATTRIBUTION_KEY);
-    if (!raw) return null;
 
-    const parsed = JSON.parse(raw);
+  /** Reads storage, falling back to the memory mirror when storage refuses. */
+  const readRaw = (): Record<string, any> | null => {
+    try {
+      const raw = window.sessionStorage.getItem(CLICK_ATTRIBUTION_KEY);
+      if (raw) {
+        window.sessionStorage.removeItem(CLICK_ATTRIBUTION_KEY);
+        return JSON.parse(raw);
+      }
+    } catch {
+      /* storage blocked — the mirror below is the answer, not a failure */
+    }
+    const mirrored = clickAttributionMemory;
+    clickAttributionMemory = null;
+    return mirrored as Record<string, any> | null;
+  };
+
+  try {
+    const parsed = readRaw();
+    if (!parsed) return null;
     const ageMs = Date.now() - (parsed.timestamp || 0);
-    
-    // Clear it so it's only used once
-    window.sessionStorage.removeItem(CLICK_ATTRIBUTION_KEY);
 
     // 30 minute expiry
     if (ageMs > 30 * 60 * 1000) return null;
