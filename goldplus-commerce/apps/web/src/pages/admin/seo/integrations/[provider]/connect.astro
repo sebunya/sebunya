@@ -22,7 +22,7 @@ const provider = rowsOf<ProviderRow>(providersRes).find((p) => String(p.provider
 const manifest = provider?.manifest ?? {};
 const configFields = (manifest.configurationSchema ?? []) as ManifestField[];
 const capabilities = provider?.capabilities ?? [];
-const providerReason = emptyReason(providersRes, "The provider registry is not available yet");
+const providerReason = emptyReason(providersRes, "The provider registry could not be loaded");
 
 const existingRes = await intGet(token, `${INTEGRATIONS_API}/connections?providerId=${encodeURIComponent(providerId)}`);
 const existing = rowsOf<ConnectionRow>(existingRes);

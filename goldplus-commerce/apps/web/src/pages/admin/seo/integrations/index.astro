@@ -28,7 +28,7 @@ const [providersRes, connectionsRes] = await Promise.all([
 ]);
 const providers = rowsOf<ProviderRow>(providersRes);
 const connections = rowsOf<ConnectionRow>(connectionsRes);
-const reason = emptyReason(providersRes, "The provider registry is not available yet");
+const reason = emptyReason(providersRes, "The provider registry could not be loaded");
 
 const connectionsFor = (providerId: string) => connections.filter((c) => c.provider_id === providerId);
 

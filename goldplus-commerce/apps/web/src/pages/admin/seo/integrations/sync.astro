@@ -50,8 +50,8 @@ const providerName = (id: unknown) =>
 const connections = rowsOf<ConnectionRow>(connectionsRes);
 const jobs = rowsOf<SyncJobRow>(jobsRes);
 const audit = rowsOf<AuditRow>(auditRes);
-const connectionsReason = emptyReason(connectionsRes, "Connections are not available yet");
-const jobsReason = emptyReason(jobsRes, "Sync jobs are not available yet");
+const connectionsReason = emptyReason(connectionsRes, "Connections could not be loaded");
+const jobsReason = emptyReason(jobsRes, "Sync jobs could not be loaded");
 
 const connById = new Map(connections.map((c) => [String(c.id), c]));
 /** `supports` is a top-level provider field, NOT part of the manifest JSON.

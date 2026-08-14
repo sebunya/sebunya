@@ -183,15 +183,15 @@ const matrixRows = [
           <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-3">User management status</h3>
           
           <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs text-gray-500 leading-relaxed space-y-3">
-            <p class="font-medium text-brand-dark">Adding new admin users is not available in this console yet.</p>
-            <p>For now, admin users are created through the secure bootstrap process executed by operations engineering via direct seeding configurations.</p>
+            <p class="font-medium text-brand-dark">Admin accounts are created outside this console by design.</p>
+            <p>Administrator access is granted through the controlled bootstrap process run by operations engineering. Keeping account creation off a web surface is a deliberate security decision, not a missing feature — a console that can mint administrators is a console worth attacking.</p>
           </div>
 
           <button 
             disabled 
             class="w-full bg-gray-50 border border-gray-200 text-gray-400 text-xs font-black py-3 rounded-xl cursor-not-allowed select-none"
           >
-            Invite admin user &mdash; not available yet
+            Invite admin user &mdash; disabled by security policy
           </button>
         </div>
 

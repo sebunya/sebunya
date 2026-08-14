@@ -39,7 +39,7 @@ const data = res.ok ? res.data : {};
 const tests = Array.isArray(data.tests) ? data.tests : [];
 const coverage = Array.isArray(data.coverage) ? data.coverage : [];
 const notTested = typeof data.notTested === "number" ? data.notTested : null;
-const reason = emptyReason(res, "Storage test records are not available yet");
+const reason = emptyReason(res, "Storage test records could not be loaded");
 
 const METHODS = ["FULL_WRITE_VERIFY", "SAMPLED_WRITE_VERIFY", "CAPACITY_REPORT_ONLY"];
 const stateBadge = (s: string) =>

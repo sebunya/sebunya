@@ -27,7 +27,7 @@ const competitors = Array.isArray(data.competitors) ? data.competitors : [];
 const cells = Array.isArray(data.cells) ? data.cells : [];
 const coverage = data.coverage ?? null;
 const gaps = Array.isArray(data.outrankGaps) ? data.outrankGaps : [];
-const reason = emptyReason(res, "The competitor matrix is not available yet");
+const reason = emptyReason(res, "The competitor matrix could not be loaded");
 
 const cellAt = (category: string, competitorId: string) =>
   cells.find((c: any) => c.category === category && c.competitorId === competitorId);

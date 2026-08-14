@@ -125,7 +125,7 @@ const jobs = rowsOf<SyncJobRow>(jobsRes).filter((j) => connectionIds.has(String(
 const audit = rowsOf<AuditRow>(auditRes).filter((a) => String(a.provider_id ?? "") === providerId || connectionIds.has(String(a.connection_id ?? "")));
 const usage = usageRes.ok ? ((usageRes.data as any)?.usage ?? []) : [];
 const dailyCap = usageRes.ok ? ((usageRes.data as any)?.dailyCaps?.[providerId] ?? null) : null;
-const providerReason = emptyReason(providersRes, "The provider registry is not available yet");
+const providerReason = emptyReason(providersRes, "The provider registry could not be loaded");
 const derivedStatus = deriveProviderStatus(connections);
 
 // Credentials are fetched per connection (a more restricted permission than
