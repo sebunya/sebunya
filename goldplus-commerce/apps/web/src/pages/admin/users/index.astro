@@ -101,7 +101,10 @@ try {
 
     {fetchError && (
       <div class="mb-6">
-        <Notice kind="not-configured" title="Directory Synchronization Halted" message={fetchError} />
+        {/* This renders when the user list could not be loaded. "Directory
+            Synchronization Halted" implied a suspended feature; there is no
+            directory sync here, and the real condition is a failed read. */}
+        <Notice kind="warning" title="Could not load the user list" message={fetchError} />
       </div>
     )}
 
