@@ -7,5 +7,10 @@ const { title, doc } = Astro.props;
 ---
 <div class="bg-white border border-gray-200 shadow-sm rounded-lg p-4 flex justify-between items-center">
   <div class="font-medium text-gray-900">{title}</div>
-  <div class="text-sm text-gray-500 font-mono">{doc}</div>
+  {/* A repository path, not a link — these runbooks live with the code so they
+      version alongside it. Labelled so it is not mistaken for a dead link. */}
+  <div class="text-right">
+    <div class="text-sm text-gray-500 font-mono">{doc}</div>
+    <div class="text-[10px] uppercase tracking-widest text-gray-400">docs/measurement-control-tower/</div>
+  </div>
 </div>

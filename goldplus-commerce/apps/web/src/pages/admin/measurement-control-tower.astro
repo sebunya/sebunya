@@ -20,6 +20,8 @@ if (!token) {
   return Astro.redirect('/admin/login?returnTo=/admin/measurement-control-tower', 303);
 }
 
+import { deriveAdminStatus } from '@goldplus/shared';
+
 // Existing API permissions remain authoritative; this page only improves safe UI states.
 //
 // This frontmatter previously read a PUBLIC_API_* variable no deployment sets — so
@@ -54,6 +56,26 @@ try {
   // Only an unreachable/timed-out API lands here now.
   errorMsg = 'SERVICE_UNAVAILABLE';
 }
+
+/* Two separate questions, answered separately.
+   COLLECTOR HEALTH: did the summary endpoint answer at all?
+   EVENT ACTIVITY:   did anything actually flow in this window?
+   A healthy collector with no activity is a legitimate, common state. */
+const h = summaryData?.health ?? null;
+const totalEvents = Number(h?.totalSafeEvents ?? 0) + Number(h?.eventsQueued ?? 0)
+  + Number(h?.eventsFailed ?? 0) + Number(h?.eventsBlockedByConsent ?? 0);
+const hasActivity = totalEvents > 0;
+const collectorStatus = deriveAdminStatus({
+  available: Boolean(summaryData),
+  // The endpoint answering IS the successful operation being reported on.
+  lastSuccessAt: summaryData ? new Date().toISOString() : null,
+  lastError: errorMsg === 'LOAD_FAILED' ? 'The summary endpoint returned an error.' : null,
+  observed: totalEvents,
+});
+const collectorHealthy = collectorStatus.status === 'HEALTHY';
+/* A count of zero is a measured zero, not health. NEUTRAL renders it as a
+   number without claiming anything about the pipeline. */
+const countStatus = (v: unknown) => (Number(v ?? 0) > 0 ? 'HEALTHY' : 'NO_DATA_AVAILABLE');
 ---
 
 <AdminLayout title="Measurement Control Tower">
@@ -98,10 +120,32 @@ try {
       />
     ) : (
       <ControlTowerShell>
+        {/* Pipeline health and event activity are DIFFERENT questions.
+            These cards previously hardcoded status="HEALTHY" on the event
+            counters, so a pipeline that had processed nothing at all rendered
+            entirely green — zero failures out of zero attempts read as health,
+            which is exactly the reading that stops an operator investigating. */}
+        <div class={`mb-4 rounded-2xl border p-5 ${collectorHealthy ? 'border-emerald-300 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p class={`text-[10px] font-black uppercase tracking-widest ${collectorHealthy ? 'text-emerald-700' : 'text-amber-700'}`}>Collector health</p>
+              <p class={`mt-1 text-lg font-black ${collectorHealthy ? 'text-emerald-900' : 'text-amber-900'}`}>{collectorStatus.label}</p>
+              <p class={`mt-1 text-xs ${collectorHealthy ? 'text-emerald-800' : 'text-amber-800'}`}>{collectorStatus.reason}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Recent event activity</p>
+              <p class="mt-1 text-lg font-black text-slate-800">{hasActivity ? `${totalEvents.toLocaleString('en-UG')} events` : 'NO DATA'}</p>
+              <p class="mt-1 text-xs text-slate-600">
+                {hasActivity ? 'Observed in the reported window.' : 'Nothing observed in this window. That is an absence of activity, not a fault.'}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <HealthCard title="Safe Events" value={summaryData.health.totalSafeEvents} status="HEALTHY" />
-          <HealthCard title="Events Queued" value={summaryData.health.eventsQueued} status="HEALTHY" />
-          <HealthCard title="Events Failed" value={summaryData.health.eventsFailed} status={summaryData.health.eventsFailed > 0 ? 'WARNING' : 'HEALTHY'} />
+          <HealthCard title="Safe Events" value={summaryData.health.totalSafeEvents} status={countStatus(summaryData.health.totalSafeEvents)} />
+          <HealthCard title="Events Queued" value={summaryData.health.eventsQueued} status={countStatus(summaryData.health.eventsQueued)} />
+          <HealthCard title="Events Failed" value={summaryData.health.eventsFailed} status={summaryData.health.eventsFailed > 0 ? 'WARNING' : countStatus(summaryData.health.eventsFailed)} />
           <HealthCard title="Blocked by Consent" value={summaryData.health.eventsBlockedByConsent} status="CONSENT_BLOCKED" />
         </div>
 

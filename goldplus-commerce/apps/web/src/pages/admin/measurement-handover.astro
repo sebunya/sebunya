@@ -9,13 +9,15 @@ if (!token) {
   return Astro.redirect('/admin/login?returnTo=/admin/measurement-handover', 303);
 }
 
-// No dynamic metric generation, purely static read-only instructions
+/* Read-only by design: an index of the measurement runbooks and the exact
+   verification commands. There is no data path to complete here — the value is
+   that an operator can find the right procedure without searching the repo. */
 ---
 
-<AdminLayout title="Phase 2 Operational Handover">
+<AdminLayout title="Measurement Operations Handbook">
   <AdminPageHeader 
-    title="Phase 2 Operational Handover" 
-    description="Measurement Control Tower phase closeout instructions and runbooks." 
+    title="Measurement Operations Handbook" 
+    description="Runbooks and verification commands for operating the measurement pipeline." 
   />
   <div class="px-4 sm:px-6 lg:px-8 mt-6">
     <HandoverShell />
