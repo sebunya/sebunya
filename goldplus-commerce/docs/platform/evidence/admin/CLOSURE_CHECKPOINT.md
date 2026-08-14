@@ -7,10 +7,10 @@ nodes.
 ## Position
 
 ```
-CURRENT_HEAD        1106d211
+CURRENT_HEAD        0bdeb7ee
 BRANCH              claude/amazon-grade-goldplus-commerce-os-v5-production-20260802
-PRODUCTION_HEAD     68c3ce75   (4 admin commits unreleased)
-TESTS               6886 passing; 1 failing (ZeroSkipGate, environmental — local Docker down)
+PRODUCTION_HEAD     68c3ce75   (7 admin commits unreleased)
+TESTS               6936 passing; 1 failing (ZeroSkipGate, environmental — local Docker down)
 WEB_BUILD           exit 0, no errors
 ZERO_LOSS_GATE      GREEN — 122/122 modules, 89/89 nav, 0 routes removed
 ```
@@ -27,15 +27,19 @@ ZERO_LOSS_GATE      GREEN — 122/122 modules, 89/89 nav, 0 routes removed
 | measurement-handover | READ_ONLY_INTENTIONAL | all 6 runbooks verified present |
 | Measurement Control Tower | health/activity separated | `deriveAdminStatus`; `NO_DATA_AVAILABLE` for measured zero |
 | Decorative emoji | 0 | was 3 |
+| anonymousId producer | GREEN | 3-tier durability; 16 tests; mutation-verified |
+| placement producer | GREEN | memory mirror for blocked storage; mutation-verified |
+| Revenue attribution | OPERATIONAL | cart→order→line join; 32 tests |
+| Completed-order conversion | OPERATIONAL | exposure and click denominators separated |
+| Customer value | OPERATIONAL | realised, not predicted |
+| ROAS | OPERATIONAL | MEDIA_COST_MISSING when no spend recorded |
+| Profit contribution | OPERATIONAL | gross; never assumes zero cost |
 
 ## Remaining nodes
 
 ```
-D  Recommendation Analytics
-   1 anonymousId producer          5 completed-order conversion
-   2 placement producer            6 customer lifetime value
-   3 orphan-click quality          7 ROAS
-   4 revenue attribution           8 profit contribution
+D  Recommendation Analytics — orphan-click quality (3 of 8); the analytics
+   page must also surface commercialMetrics
 E  13 baseline PARTIAL modules — individual review
 F  Technical SEO — authenticated verification (endpoints confirmed mounted, 401 not 404)
 G  Admin-wide copy / action / API audit
