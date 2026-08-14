@@ -24,7 +24,7 @@ const knownExposedRoutes = [
   ['apps/web/src/pages/admin/controlled-activation-dry-run.astro', '/admin/controlled-activation-dry-run', 'Controlled Activation Dry-Run Orchestrator'],
   ['apps/web/src/pages/admin/controlled-activation.astro', '/admin/controlled-activation', 'Controlled Activation Governance'],
   ['apps/web/src/pages/admin/controlled-live-canary.astro', '/admin/controlled-live-canary', 'Controlled Live Canary Activation'],
-  ['apps/web/src/pages/admin/measurement-handover.astro', '/admin/measurement-handover', 'Phase 2 Operational Handover'],
+  ['apps/web/src/pages/admin/measurement-handover.astro', '/admin/measurement-handover', 'Measurement Operations Handbook'],
   ['apps/web/src/pages/admin/release-readiness.astro', '/admin/release-readiness', 'Release Readiness - Measurement Control Tower'],
 ] as const;
 const measurementRoutes = [
