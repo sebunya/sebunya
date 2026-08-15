@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import { db } from '../client';
 import { notificationAttempts } from '../schema/phase11';
 import { INotificationAttemptRepository, PersistedNotificationAttempt } from '../../../application/ports/INotificationAttemptRepository';
@@ -52,5 +52,41 @@ export class DrizzleNotificationAttemptRepository implements INotificationAttemp
       orderBy: [desc(notificationAttempts.attemptedAt)],
     });
     return rows.map(rowToPersisted);
+  }
+
+  /**
+   * Compare-and-set on the attempt's status.
+   *
+   * The expected status is IN the WHERE clause, so PostgreSQL decides the race
+   * rather than whichever worker happened to read first. A stale writer matches
+   * no row and is told so; it must not proceed as though it had won.
+   *
+   * The legality of the edge itself is a domain question, checked by the caller
+   * against AttemptLifecycle — this layer's job is only to make the write
+   * atomic and honest about whether it happened.
+   */
+  async transitionStatus(input: {
+    attemptId: string;
+    expectedStatus: NotificationStatus;
+    nextStatus: NotificationStatus;
+    providerCode?: string | null;
+    providerMessage?: string | null;
+  }): Promise<boolean> {
+    const updated = await db
+      .update(notificationAttempts)
+      .set({
+        status: input.nextStatus,
+        ...(input.providerCode !== undefined ? { providerCode: input.providerCode } : {}),
+        ...(input.providerMessage !== undefined ? { providerMessage: input.providerMessage } : {}),
+      })
+      .where(
+        and(
+          eq(notificationAttempts.id, input.attemptId),
+          eq(notificationAttempts.status, input.expectedStatus),
+        ),
+      )
+      .returning({ id: notificationAttempts.id });
+
+    return updated.length === 1;
   }
 }

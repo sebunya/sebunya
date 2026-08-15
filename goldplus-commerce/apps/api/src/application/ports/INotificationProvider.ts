@@ -1,4 +1,26 @@
-export type NotificationStatus = 'SENT' | 'FAILED' | 'OUTCOME_UNKNOWN' | 'DRY_RUN' | 'NOT_CONFIGURED' | 'DISABLED';
+/**
+ * Terminal outcomes AND the non-terminal lifecycle phases.
+ *
+ * The phases are not decoration: after a crash, PREPARED and DISPATCH_STARTED
+ * are the only things that distinguish "we never sent it" from "the provider
+ * may already have it" — which decides whether replacing a reset credential is
+ * safe. PENDING is included because the database column has always defaulted to
+ * it; the union simply never admitted a state the schema could produce.
+ *
+ * Semantics and the legal transition graph live in
+ * domain/notifications/AttemptLifecycle.
+ */
+export type NotificationStatus =
+  | 'PENDING'
+  | 'PREPARED'
+  | 'DISPATCH_STARTED'
+  | 'SENT'
+  | 'FAILED'
+  | 'OUTCOME_UNKNOWN'
+  | 'NOT_DISPATCHED'
+  | 'DRY_RUN'
+  | 'NOT_CONFIGURED'
+  | 'DISABLED';
 
 export interface NotificationDispatchPayload {
   recipient: string;

@@ -5,6 +5,18 @@ import {
   NotificationDispatchResult,
 } from '../../application/ports/INotificationProvider';
 
+/**
+ * The outcomes an automation action can actually END at.
+ *
+ * Narrower than NotificationStatus on purpose: the lifecycle phases
+ * (PENDING/PREPARED/DISPATCH_STARTED/NOT_DISPATCHED) describe a send in
+ * progress, and an automation OUTCOME is by definition finished.
+ */
+type AutomationOutcomeStatus = 'SENT' | 'FAILED' | 'OUTCOME_UNKNOWN' | 'DRY_RUN' | 'NOT_CONFIGURED' | 'DISABLED';
+const AUTOMATION_OUTCOME_STATUSES: readonly AutomationOutcomeStatus[] = [
+  'SENT', 'FAILED', 'OUTCOME_UNKNOWN', 'DRY_RUN', 'NOT_CONFIGURED', 'DISABLED',
+];
+
 const NON_ATTEMPT_FAILURE_CODES = new Set(['INVALID_RECIPIENT']);
 const AMBIGUOUS_FAILURE_CODES = new Set(['PROVIDER_ERROR', 'ADAPTER_THREW']);
 const PROVIDER_ATTEMPT_LEASE_MS = 5 * 60_000;
@@ -66,9 +78,20 @@ export class AutomationOutcomeTrackingProvider implements INotificationProvider 
         status = 'OUTCOME_UNKNOWN';
         attempted = true;
       }
+      // An automation OUTCOME is terminal by definition, so the lifecycle
+      // phases (PENDING/PREPARED/DISPATCH_STARTED/NOT_DISPATCHED) have no
+      // meaning here. No adapter returns one from dispatch(), but the type now
+      // admits them, and the honest reading of "a dispatch came back still in
+      // flight" is that we cannot prove what happened — which is exactly
+      // OUTCOME_UNKNOWN. Fail closed rather than widening an outcome store to
+      // hold states it has no way to interpret.
+      const terminalStatus = AUTOMATION_OUTCOME_STATUSES.includes(status as AutomationOutcomeStatus)
+        ? (status as AutomationOutcomeStatus)
+        : 'OUTCOME_UNKNOWN';
+
       await this.outcomes.recordProviderOutcome({
         actionExecutionId: this.actionExecutionId,
-        status,
+        status: terminalStatus,
         attempted,
         providerCode: result.providerCode,
         providerMessage: result.providerMessage,
