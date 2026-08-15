@@ -188,8 +188,81 @@ describe("a provider refusal keeps the provider's reason", () => {
     expect(block).toMatch(/slice\(0, 300\)/);
   });
 
-  it("carries the status in the provider code, so failures group by cause", () => {
-    expect(adapter).toContain("PROVIDER_HTTP_${response.status}");
+  it("still reports the raw status alongside the classification", () => {
+    const block = adapter.slice(adapter.indexOf("if (!response.ok)"), adapter.indexOf("const resJson"));
+    expect(block).toMatch(/HTTP error status \$\{response\.status\}/);
+  });
+});
+
+describe("a provider refusal is classified by cause, not by status code", () => {
+  const adapter = readFileSync(ZEPTOMAIL, "utf8");
+
+  it("uses the canonical forensics classifier rather than a second taxonomy", () => {
+    expect(adapter).toContain("classifyTransactionalEmailFailure");
+    const block = adapter.slice(adapter.indexOf("if (!response.ok)"), adapter.indexOf("const resJson"));
+    // The provider's own words are what let the classifier distinguish
+    // domain_not_verified from a genuine rate limit.
+    expect(block).toMatch(/provider_code: detail/);
+  });
+
+  it("groups failures by classification, so causes are countable", () => {
+    expect(adapter).toContain("PROVIDER_${failure.classification.toUpperCase()}");
+  });
+
+  it("carries retryability and whether the owner must act", () => {
+    const block = adapter.slice(adapter.indexOf("if (!response.ok)"), adapter.indexOf("const resJson"));
+    expect(block).toMatch(/retryable=\$\{failure\.retryable\}/);
+    expect(block).toMatch(/requires_provider_action/);
+  });
+
+  it("classifies a real ZeptoMail-style body beyond the status fallback", async () => {
+    const { classifyTransactionalEmailFailure } = await import(
+      "../../apps/api/src/application/services/consent/TransactionalEmailFailureForensics"
+    );
+    // Status alone can only ever say "rate_limited". The body is what tells an
+    // operator whether to wait or to go and verify a domain.
+    expect(classifyTransactionalEmailFailure({ response_status: 429 }).classification).toBe(
+      "rate_limited",
+    );
+    expect(
+      classifyTransactionalEmailFailure({
+        response_status: 429,
+        provider_code: '{"error":{"message":"sending domain is not verified"}}',
+      }).classification,
+    ).toBe("domain_not_verified");
+    // And that one is not something waiting will fix.
+    expect(
+      classifyTransactionalEmailFailure({
+        response_status: 429,
+        provider_code: "sending domain is not verified",
+      }).requires_provider_action,
+    ).toBe(true);
+  });
+});
+
+describe("a failed password reset leaves durable evidence", () => {
+  const delivery = readFileSync(
+    "apps/api/src/infrastructure/identity/NotificationResetDelivery.ts",
+    "utf8",
+  );
+
+  it("records the attempt, because this path bypasses the outbox worker", () => {
+    // Production had a reset refused with 429 and notification_attempts showed
+    // nothing at all — which is why the first diagnosis of it was wrong.
+    expect(delivery).toContain("this.recordAttempt");
+    expect(delivery).toMatch(/template: 'PASSWORD_RESET'/);
+    expect(delivery).toMatch(/channel: 'email'/);
+  });
+
+  it("never lets recording break the reset itself", () => {
+    expect(delivery).toMatch(/\.catch\(\(\) => undefined\)/);
+  });
+
+  it("keeps the token and the reset URL out of the record", () => {
+    const record = delivery.slice(delivery.indexOf("this.recordAttempt"), delivery.indexOf("return { status, detail"));
+    expect(record).not.toMatch(/rawToken|resetUrl/);
+    // The related id is deliberately null rather than the recipient address.
+    expect(record).toMatch(/relatedEntityId: null/);
   });
 });
 

@@ -1674,6 +1674,7 @@ export class Registry {
     new NotificationResetDelivery(
       this.zeptoMailAdapter,
       process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com',
+      this.recordNotificationAttemptUseCase,
     ),
   );
 

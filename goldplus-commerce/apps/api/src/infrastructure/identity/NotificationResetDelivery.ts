@@ -18,6 +18,31 @@ export class NotificationResetDelivery implements ResetDeliveryPort {
   constructor(
     private readonly provider: INotificationProvider,
     private readonly publicBaseUrl: string,
+    /**
+     * Records the attempt, so "what happened to my reset email?" is a query
+     * rather than a log search.
+     *
+     * This path calls the provider directly instead of going through the
+     * outbox, and the outbox worker is what writes attempt rows — so a failed
+     * password reset previously left NO row anywhere. Production had a reset
+     * refused by the provider with 429 and `notification_attempts` showed
+     * nothing at all, which is why the first diagnosis of it was wrong.
+     *
+     * Optional so existing construction sites keep working; recording is
+     * best-effort and must never fail the reset itself.
+     */
+    private readonly recordAttempt?: {
+      execute(input: {
+        channel: string;
+        recipient: string;
+        template: string;
+        status: string;
+        providerCode: string | null;
+        providerMessage: string | null;
+        relatedEntity: string | null;
+        relatedEntityId: string | null;
+      }): Promise<unknown>;
+    },
   ) {}
 
   async sendPasswordReset(input: { email: string; rawToken: string; expiresAt: Date }): Promise<{
@@ -63,6 +88,22 @@ export class NotificationResetDelivery implements ResetDeliveryPort {
             : 'PASSWORD_RESET_DELIVERY_BLOCKED_BY_POLICY',
         );
       }
+
+      // Durable, queryable evidence of the attempt. The recipient is the
+      // related id — never the token, which appears in nothing but the message
+      // body handed to the provider.
+      await this.recordAttempt
+        ?.execute({
+          channel: 'email',
+          recipient: input.email,
+          template: 'PASSWORD_RESET',
+          status,
+          providerCode: result.providerCode,
+          providerMessage: result.providerMessage,
+          relatedEntity: 'password_reset',
+          relatedEntityId: null,
+        })
+        .catch(() => undefined);
 
       return { status, detail: result.providerMessage };
     } catch (error) {

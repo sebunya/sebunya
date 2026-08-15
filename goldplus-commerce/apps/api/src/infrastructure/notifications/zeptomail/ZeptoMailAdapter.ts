@@ -9,6 +9,7 @@ import {
 } from '../../../application/ports/INotificationProvider';
 import { NotificationTemplateRenderer } from '../../../application/use-cases/notifications/NotificationTemplateRenderer';
 import { resilientFetch } from '../../http/HttpClient';
+import { classifyTransactionalEmailFailure } from '../../../application/services/consent/TransactionalEmailFailureForensics';
 
 export class ZeptoMailAdapter implements INotificationProvider {
   private readonly renderer = new NotificationTemplateRenderer();
@@ -281,11 +282,28 @@ export class ZeptoMailAdapter implements INotificationProvider {
         // provider message cannot become an unbounded log of customer data.
         const detail = await response.text().catch(() => '');
         const retryAfter = response.headers.get('retry-after');
+
+        // Classified through the CANONICAL forensics classifier, not a second
+        // taxonomy invented here. It already distinguishes domain_not_verified,
+        // forbidden_sender, invalid_credential and recipient_rejected from a
+        // genuine rate_limited — but it can only do that when it is handed the
+        // provider's own words, and this adapter never captured them. So every
+        // 429 collapsed to the status-code fallback, `rate_limited`, which is
+        // the least actionable answer of the set.
+        const failure = classifyTransactionalEmailFailure({
+          response_status: response.status,
+          provider_code: detail,
+        });
         return {
           status: 'FAILED' as NotificationStatus,
-          providerCode: `PROVIDER_HTTP_${response.status}`,
+          // The cause, so failures group by what is actually wrong rather than
+          // by which HTTP number the provider chose to express it with.
+          providerCode: `PROVIDER_${failure.classification.toUpperCase()}`,
           providerMessage: [
             `HTTP error status ${response.status}`,
+            `class=${failure.classification}`,
+            `retryable=${failure.retryable}`,
+            failure.requires_provider_action ? 'requires_provider_action=true' : '',
             retryAfter ? `retry-after=${retryAfter}` : '',
             detail ? detail.replace(/\s+/g, ' ').slice(0, 300) : '',
           ]
