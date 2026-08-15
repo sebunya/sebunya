@@ -1,4 +1,5 @@
 import { CHECKOUT_SIDE_EFFECT_EVENT_TYPES } from '../../ports/ICheckoutSideEffectRecorder';
+import { PASSWORD_RESET_DELIVERY_EVENT_TYPE } from '../../ports/IPasswordResetDelivery';
 import { IOutboxRepository } from '../../ports/IOutboxRepository';
 import { INotificationProvider, NotificationDispatchPayload, NotificationStatus } from '../../ports/INotificationProvider';
 import { RecordNotificationAttemptUseCase } from '../notifications/RecordNotificationAttemptUseCase';
@@ -72,8 +73,14 @@ export class ProcessOutboxBatchUseCase {
     // would find no route, mark them processed as "unroutable", and report success
     // while the fulfilment task the order depends on was discarded.
     // `ProcessCheckoutSideEffectBatchUseCase` claims them instead.
+    //
+    // Password-reset delivery is excluded for the same reason and a sharper
+    // one: at retry time the credential does not exist yet, so there is no
+    // recipient payload to route. Claimed here it would be found unroutable and
+    // marked processed — silently destroying a customer's reset delivery. Its
+    // own processor mints the token first, then sends.
     const events = await this.outboxRepo.claimDueBatch(now, BATCH_SIZE, {
-      excludeEventTypes: CHECKOUT_SIDE_EFFECT_EVENT_TYPES,
+      excludeEventTypes: [...CHECKOUT_SIDE_EFFECT_EVENT_TYPES, PASSWORD_RESET_DELIVERY_EVENT_TYPE],
     });
 
     const result: ProcessOutboxBatchResult = {
