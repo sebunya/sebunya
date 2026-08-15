@@ -178,10 +178,25 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
   consumedAt: timestamp('consumed_at', { withTimezone: true }),
   requestedIp: varchar('requested_ip', { length: 64 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  /**
+   * The reset OPERATION this token attempt belongs to — the root token's own
+   * id, shared by every rotation of the same customer request.
+   *
+   * Nullable only for the rolling-deploy window (migration 0125 is EXPAND);
+   * M2 tightens it once no instance writes legacy rows.
+   */
+  operationId: uuid('operation_id'),
+  /**
+   * Retired by rotation. Deliberately distinct from `consumedAt` (the customer
+   * used it) and from expiry (time passed) — three different endings that an
+   * operator has to be able to tell apart.
+   */
+  supersededAt: timestamp('superseded_at', { withTimezone: true }),
 }, (table) => ({
   hashUq: uniqueIndex('password_reset_tokens_hash_uq').on(table.tokenHash),
   userIdx: index('password_reset_tokens_user_idx').on(table.userId, table.createdAt),
   expiryIdx: index('password_reset_tokens_expiry_idx').on(table.expiresAt),
+  operationIdx: index('password_reset_tokens_operation_idx').on(table.operationId, table.createdAt),
 }));
 
 /**
