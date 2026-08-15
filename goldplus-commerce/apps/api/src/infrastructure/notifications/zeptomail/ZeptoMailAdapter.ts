@@ -268,10 +268,29 @@ export class ZeptoMailAdapter implements INotificationProvider {
       });
 
       if (!response.ok) {
+        // The provider's own explanation, kept.
+        //
+        // This used to report only `HTTP error status 429`, which is why nobody
+        // could tell whether ZeptoMail was rate-limiting a burst, refusing a
+        // daily quota, or declining because the account itself was restricted —
+        // three problems with three different fixes, and 128 dead-lettered
+        // emails that all looked identical. A status code is a symptom; the body
+        // is the diagnosis.
+        //
+        // Bounded to 300 characters and never logged with the payload, so a
+        // provider message cannot become an unbounded log of customer data.
+        const detail = await response.text().catch(() => '');
+        const retryAfter = response.headers.get('retry-after');
         return {
           status: 'FAILED' as NotificationStatus,
-          providerCode: 'PROVIDER_HTTP_ERROR',
-          providerMessage: `HTTP error status ${response.status}`,
+          providerCode: `PROVIDER_HTTP_${response.status}`,
+          providerMessage: [
+            `HTTP error status ${response.status}`,
+            retryAfter ? `retry-after=${retryAfter}` : '',
+            detail ? detail.replace(/\s+/g, ' ').slice(0, 300) : '',
+          ]
+            .filter(Boolean)
+            .join(' | '),
         };
       }
 

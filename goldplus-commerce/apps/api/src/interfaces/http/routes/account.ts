@@ -256,6 +256,24 @@ routes.post('/phone/request-verification', async (c) => {
   return c.json({ success: true, data: { sent: true } });
 });
 
+/**
+ * Is a verification in progress?
+ *
+ * Exists so the Rewards page can render "enter the code we sent you" from
+ * DURABLE state instead of from the request that sent it. Before this the only
+ * thing that ever said a code was outstanding was the POST response, so a
+ * customer who navigated away lost the thread entirely.
+ *
+ * Returns presentation-safe facts only — masked destination, expiry, resend
+ * timing. Never the code or its hash. Authenticated, and scoped to the caller's
+ * own user id, so it discloses nothing about anyone else.
+ */
+routes.get('/phone/verification-state', async (c) => {
+  const userId = c.get('userId') as string;
+  const state = await Registry.getInstance().getPhoneVerificationStateUseCase.execute({ userId });
+  return c.json({ success: true, data: state });
+});
+
 routes.post('/phone/verify', async (c) => {
   const userId = c.get('userId') as string;
   const body = await c.req.json().catch(() => null);

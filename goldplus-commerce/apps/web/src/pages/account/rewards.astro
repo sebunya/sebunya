@@ -82,11 +82,17 @@ let data: any = null;
 let me: any = null;
 let programme: any = null;
 let draw: any = null;
+/** Durable "is a code outstanding?" state. Server truth, not POST-response memory. */
+let verificationState: any = null;
 let loadError = '';
 try {
   const authed = { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) };
-  const [res, meRes, programmeRes, drawRes] = await Promise.all([
+  const [res, verifyStateRes, meRes, programmeRes, drawRes] = await Promise.all([
     fetch(`${apiBase}/account/gamification`, authed),
+    // Is a verification already in progress? Asked on EVERY load, so leaving
+    // the page and coming back finds the same challenge instead of a bare code
+    // box with no explanation.
+    fetch(`${apiBase}/account/phone/verification-state`, authed).catch(() => null),
     // 0087: which earn actions are still open to this customer.
     fetch(`${apiBase}/account/me`, authed).catch(() => null),
     fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(4000) }).catch(() => null),
@@ -106,6 +112,8 @@ try {
   if (programmeJson?.success && programmeJson.data?.active) programme = programmeJson.data;
   const drawJson: any = drawRes ? await drawRes.json().catch(() => null) : null;
   if (drawJson?.success && drawJson.data?.enabled) draw = drawJson.data;
+  const verifyStateJson: any = verifyStateRes ? await verifyStateRes.json().catch(() => null) : null;
+  if (verifyStateJson?.success) verificationState = verifyStateJson.data;
 } catch {
   loadError = 'The rewards service is unreachable right now.';
 }
@@ -114,6 +122,16 @@ try {
 // customer has not already claimed them.
 const src = programme?.earnSources ?? null;
 const canVerifyPhone = Boolean(src?.phoneVerification) && me && !me.phoneVerified;
+
+// Durable verification-in-progress state. Derived from the server, never from
+// the POST that sent the code — that response is gone the moment the customer
+// navigates away, and the challenge is not.
+const verificationPending = verificationState?.status === 'ACTIVE';
+const verificationExpired = verificationState?.status === 'EXPIRED';
+const asTime = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : null;
+const verificationExpiresAt = verificationPending ? asTime(verificationState?.expiresAt) : null;
+const verificationResendAt = asTime(verificationState?.resendAvailableAt);
 const canAddBirthday = Boolean(src?.birthday) && me && !me.dateOfBirthSet;
 
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
@@ -219,46 +237,81 @@ const pct = (progress: number, threshold: number) =>
             <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Points you can claim now</h2>
             <div class="space-y-5">
               {canVerifyPhone && (
-                <div>
+                <div id="verify-phone-card">
                   <p class="font-bold text-brand-charcoal">
                     Verify your phone number
                     <span class="ml-2 text-[10px] font-black uppercase tracking-widest text-brand-primary">{src.phoneVerification} pts</span>
                   </p>
-                  <p class="text-xs text-brand-mutedGrey mt-1 leading-relaxed">
-                    A verified number keeps one account per customer and is how we reach you about a delivery. Once only.
-                  </p>
-                  <form method="POST" class="mt-3 flex flex-wrap items-center gap-2">
-                    <input type="hidden" name="intent" value="phone-request" />
-                    <label class="sr-only" for="verify-phone">Phone number to verify</label>
-                    <input
-                      id="verify-phone"
-                      name="phone"
-                      type="tel"
-                      inputmode="tel"
-                      autocomplete="tel"
-                      placeholder="07XX XXX XXX"
-                      required
-                      class="min-h-11 rounded-xl border border-brand-borderGrey px-4 py-2 text-sm"
-                      value={me?.phone ?? ''}
-                    />
-                    <button type="submit" class="min-h-11 rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white">Send code</button>
-                  </form>
-                  <form method="POST" class="mt-3 flex flex-wrap items-center gap-2">
-                    <input type="hidden" name="intent" value="phone-verify" />
-                    <label class="sr-only" for="verify-code">Verification code</label>
-                    <input
-                      id="verify-code"
-                      name="code"
-                      type="text"
-                      inputmode="numeric"
-                      autocomplete="one-time-code"
-                      maxlength="6"
-                      placeholder="6-digit code"
-                      required
-                      class="min-h-11 w-40 rounded-xl border border-brand-borderGrey px-4 py-2 text-sm tracking-widest"
-                    />
-                    <button type="submit" class="min-h-11 rounded-full bg-brand-primary px-5 py-2.5 text-xs font-black uppercase tracking-wider text-gray-955">Verify</button>
-                  </form>
+
+                  {/* A code is outstanding. This state is read from the server on
+                      every load, so leaving the page and coming back finds it
+                      again — the code lives in an SMS, but the journey lives in
+                      the database. */}
+                  {verificationPending ? (
+                    <>
+                      <p class="text-xs text-brand-mutedGrey mt-1 leading-relaxed">
+                        We sent a 6-digit code by SMS to <span class="font-bold text-brand-charcoal">{verificationState.maskedPhone}</span>. Enter it below.
+                        {verificationExpiresAt && <> It expires at {verificationExpiresAt}.</>}
+                      </p>
+                      <form method="POST" class="mt-3 flex flex-wrap items-center gap-2">
+                        <input type="hidden" name="intent" value="phone-verify" />
+                        <label class="sr-only" for="verify-code">6-digit verification code</label>
+                        <input
+                          id="verify-code"
+                          name="code"
+                          type="text"
+                          inputmode="numeric"
+                          autocomplete="one-time-code"
+                          maxlength="6"
+                          placeholder="6-digit code"
+                          required
+                          autofocus
+                          class="min-h-11 w-40 rounded-xl border border-brand-borderGrey px-4 py-2 text-sm tracking-widest"
+                        />
+                        <button type="submit" class="min-h-11 rounded-full bg-brand-primary px-5 py-2.5 text-xs font-black uppercase tracking-wider text-gray-955">Verify</button>
+                      </form>
+
+                      {/* Resending is bounded, so the button tells the truth about
+                          when it is actually available rather than failing later. */}
+                      <form method="POST" class="mt-3 flex flex-wrap items-center gap-2">
+                        <input type="hidden" name="intent" value="phone-request" />
+                        <input type="hidden" name="phone" value={me?.phone ?? ''} />
+                        {verificationResendAt ? (
+                          <p class="text-xs text-brand-mutedGrey">
+                            You can ask for another code from {verificationResendAt}.
+                          </p>
+                        ) : (
+                          <button type="submit" class="min-h-11 rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-black uppercase tracking-wider text-brand-charcoal">
+                            Send a new code
+                          </button>
+                        )}
+                      </form>
+                    </>
+                  ) : (
+                    <>
+                      <p class="text-xs text-brand-mutedGrey mt-1 leading-relaxed">
+                        {verificationExpired
+                          ? 'That code has expired. Ask for a new one below.'
+                          : 'A verified number keeps one account per customer and is how we reach you about a delivery. Once only.'}
+                      </p>
+                      <form method="POST" class="mt-3 flex flex-wrap items-center gap-2">
+                        <input type="hidden" name="intent" value="phone-request" />
+                        <label class="sr-only" for="verify-phone">Phone number to verify</label>
+                        <input
+                          id="verify-phone"
+                          name="phone"
+                          type="tel"
+                          inputmode="tel"
+                          autocomplete="tel"
+                          placeholder="07XX XXX XXX"
+                          required
+                          class="min-h-11 rounded-xl border border-brand-borderGrey px-4 py-2 text-sm"
+                          value={me?.phone ?? ''}
+                        />
+                        <button type="submit" class="min-h-11 rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white">Send code</button>
+                      </form>
+                    </>
+                  )}
                 </div>
               )}
 

@@ -192,7 +192,7 @@ import { DrizzleLocationAdminRepository } from './db/repositories/DrizzleLocatio
 import { CodPolicyReader, CheckoutVelocitySignal } from './locations/CodPolicyReader';
 import { DrizzleLoyaltyCompletionRepository } from './db/repositories/DrizzleLoyaltyCompletionRepository';
 import { LoyaltyOutboxNotifier } from './loyalty/LoyaltyOutboxNotifier';
-import { RequestPhoneVerificationUseCase, VerifyPhoneUseCase, BackfillGuestOrdersUseCase, MergeLoyaltyAccountsUseCase } from '../application/use-cases/loyalty/LoyaltyIdentityUseCases';
+import { RequestPhoneVerificationUseCase, VerifyPhoneUseCase, GetPhoneVerificationStateUseCase, BackfillGuestOrdersUseCase, MergeLoyaltyAccountsUseCase } from '../application/use-cases/loyalty/LoyaltyIdentityUseCases';
 import { EarnForVerificationScanUseCase, ManualAdjustLoyaltyUseCase, EvaluateTiersUseCase } from '../application/use-cases/loyalty/LoyaltyProgrammeUseCases';
 import {
   AwardBirthdayPointsUseCase,
@@ -1150,6 +1150,9 @@ export class Registry {
     new OutboxOtpSender(),
     otpHash,
     otpRandom,
+  );
+  public readonly getPhoneVerificationStateUseCase = new GetPhoneVerificationStateUseCase(
+    this.loyaltyIdentityRepo,
   );
   public readonly verifyPhoneUseCase = new VerifyPhoneUseCase(
     this.loyaltyIdentityRepo,

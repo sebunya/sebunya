@@ -98,6 +98,67 @@ export class RequestPhoneVerificationUseCase {
   }
 }
 
+/**
+ * Whether a verification is currently in progress, for the UI to render.
+ *
+ * The CODE is ephemeral by design — it lives in an SMS and in a hash. The
+ * JOURNEY is not, and it used to behave as though it were: the only thing that
+ * ever said "we sent you a code" was the POST response, so a customer who sent
+ * a code and then looked at their orders came back to a bare six-digit box with
+ * no indication that a code was outstanding, when it expired, or whether to ask
+ * for another. The challenge was alive in PostgreSQL the whole time; nothing
+ * asked it.
+ *
+ * Returns presentation-safe facts only. Never the code, never its hash, and the
+ * destination masked — this is read by a page, and a page is a place secrets
+ * end up in screenshots.
+ */
+export type PhoneVerificationState =
+  | { status: 'NONE' }
+  | {
+      status: 'ACTIVE' | 'EXPIRED';
+      maskedPhone: string;
+      expiresAt: string;
+      /** When another code may be requested. Null when one may be requested now. */
+      resendAvailableAt: string | null;
+      attemptsRemaining: number;
+    };
+
+/** Keeps the last three digits, so the customer can recognise their own number. */
+export const maskPhone = (e164: string): string => {
+  const tail = e164.slice(-3);
+  return `${'•'.repeat(Math.max(0, e164.length - 3))}${tail}`;
+};
+
+export class GetPhoneVerificationStateUseCase {
+  constructor(
+    private readonly identity: ILoyaltyIdentityRepository,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
+
+  async execute(input: { userId: string }): Promise<PhoneVerificationState> {
+    const otp = await this.identity.latestOtp(input.userId);
+    if (!otp || otp.consumedAt) return { status: 'NONE' };
+
+    const at = this.now();
+    const lastIssuedAt = await this.identity.lastOtpIssuedAt(input.userId);
+    const resendReadyAt = lastIssuedAt
+      ? new Date(lastIssuedAt.getTime() + OTP_RESEND_COOLDOWN_MS)
+      : null;
+
+    return {
+      // Expired is a real, separate state: "that code has expired, ask for
+      // another" is actionable, where a silently missing form is not.
+      status: otp.expiresAt.getTime() <= at.getTime() ? 'EXPIRED' : 'ACTIVE',
+      maskedPhone: maskPhone(otp.phoneE164),
+      expiresAt: otp.expiresAt.toISOString(),
+      resendAvailableAt:
+        resendReadyAt && resendReadyAt.getTime() > at.getTime() ? resendReadyAt.toISOString() : null,
+      attemptsRemaining: Math.max(0, 5 - otp.attempts),
+    };
+  }
+}
+
 export class VerifyPhoneUseCase {
   constructor(
     private readonly identity: ILoyaltyIdentityRepository,
