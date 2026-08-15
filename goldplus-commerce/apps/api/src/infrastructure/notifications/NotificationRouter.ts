@@ -149,6 +149,36 @@ export class DefaultNotificationRouter implements INotificationRouter {
         }
         break;
 
+      /**
+       * Phone verification (security). SMS only.
+       *
+       * Deliberately NOT folded into the loyalty case below, even though the
+       * routing is identical. The template it emits is what governance
+       * classifies from, and PHONE_VERIFICATION is TRANSACTIONAL while the
+       * loyalty templates are MARKETING. Sharing the case would mean sharing
+       * the template, which is how the OTP ended up requiring marketing consent
+       * in the first place.
+       *
+       * No email fallback: a code sent to prove control of a PHONE has no
+       * meaning delivered to an address.
+       */
+      case 'PHONE_VERIFICATION_REQUESTED': {
+        const customerPhone = typeof payload.customerPhone === 'string' ? payload.customerPhone : '';
+        if (!customerPhone) break;
+        targets.push({
+          channel: 'sms',
+          provider: this.smsProvider,
+          payload: {
+            recipient: customerPhone,
+            template: 'PHONE_VERIFICATION',
+            data: payload,
+            relatedEntity: 'user_phone',
+            relatedEntityId,
+          },
+        });
+        break;
+      }
+
       // ── Customer loyalty messaging (loyalty brief PART M) ────────────────
       // Transactional, consent-gated at enqueue time. Channel order for this
       // market: SMS ahead of email (WhatsApp API is a deferred channel).

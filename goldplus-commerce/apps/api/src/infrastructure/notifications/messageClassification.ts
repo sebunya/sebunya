@@ -63,6 +63,18 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   // told a link was coming and never got one, because they had not opted in to
   // receiving offers. Nobody consents to being able to reset their password.
   'PASSWORD_RESET',
+  // Phone verification (0087 identity spine). The same defect as PASSWORD_RESET
+  // above, found in production on 2026-08-14: the OTP producer enqueued its
+  // challenge as LOYALTY_EXPIRY_WARNING — "routed identically: SMS-first
+  // customer message" — so a security challenge inherited a loyalty event's
+  // identity, fell through to MARKETING, and was refused with
+  // NO_CONSENT_FOR_MARKETING. Phone verification has therefore never delivered
+  // a code, on a fully configured SMS provider.
+  //
+  // Nobody consents to being allowed to prove they own their own phone. The
+  // customer asked for this code seconds ago; its lawful basis is that request,
+  // not a marketing opt-in.
+  'PHONE_VERIFICATION',
 ]);
 
 export function classifyTemplate(template: string): MessageClass {

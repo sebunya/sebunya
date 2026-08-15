@@ -1,5 +1,5 @@
 import { createHash, randomInt } from 'node:crypto';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, gte, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { users } from '../db/schema/identity';
 import { loyaltyAccountMerges, phoneVerificationCodes } from '../db/schema/loyalty';
@@ -14,6 +14,28 @@ export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityReposit
       codeHash: input.codeHash,
       expiresAt: input.expiresAt,
     });
+  }
+
+  /** Most recent issue, consumed or not — the cooldown is about ISSUING. */
+  async lastOtpIssuedAt(userId: string): Promise<Date | null> {
+    const row = await db.query.phoneVerificationCodes.findFirst({
+      where: eq(phoneVerificationCodes.userId, userId),
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+    });
+    return row?.createdAt ?? null;
+  }
+
+  async otpCountSince(userId: string, since: Date): Promise<number> {
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(phoneVerificationCodes)
+      .where(
+        and(
+          eq(phoneVerificationCodes.userId, userId),
+          gte(phoneVerificationCodes.createdAt, since),
+        ),
+      );
+    return row?.n ?? 0;
   }
 
   async latestOtp(userId: string) {
@@ -108,13 +130,32 @@ export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityReposit
   }
 }
 
-/** OTP through the existing outbox → SMS path — never a parallel sender. */
+/**
+ * OTP through the existing outbox → SMS path — never a parallel sender.
+ *
+ * The event type is its own, and that is the entire point of this class.
+ *
+ * It used to enqueue as LOYALTY_EXPIRY_WARNING, on the reasoning that both are
+ * "SMS-first customer messages". They are routed identically, but they are not
+ * the same KIND of message, and the routing table is not the only thing reading
+ * the event type: governance classifies from it too. A loyalty expiry warning
+ * is marketing and correctly requires consent; a verification code is a
+ * security challenge the customer asked for seconds ago. Wearing the loyalty
+ * event's identity meant every OTP was refused NO_CONSENT_FOR_MARKETING, and
+ * phone verification never delivered a single code.
+ *
+ * PHONE_VERIFICATION_REQUESTED classifies as TRANSACTIONAL, exactly as
+ * PASSWORD_RESET does after the same defect was found there. Marketing consent
+ * is untouched — a genuine LOYALTY_EXPIRY_WARNING still requires it.
+ */
+export const PHONE_VERIFICATION_EVENT_TYPE = 'PHONE_VERIFICATION_REQUESTED';
+
 export class OutboxOtpSender implements IOtpSender {
   async send(phoneE164: string, code: string): Promise<'sent' | 'skipped'> {
     await db
       .insert(outboxEvents)
       .values({
-        eventType: 'LOYALTY_EXPIRY_WARNING', // routed identically: SMS-first customer message
+        eventType: PHONE_VERIFICATION_EVENT_TYPE,
         payload: {
           kind: 'phone_verification',
           message: `Your GoldPlus verification code is ${code}. It expires in 10 minutes.`,

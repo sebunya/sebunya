@@ -12,6 +12,15 @@ const fail = (code: string, message: string): Fail => ({ ok: false, code, messag
  */
 export interface ILoyaltyIdentityRepository {
   createOtp(input: { userId: string; phoneE164: string; codeHash: string; expiresAt: Date }): Promise<void>;
+  /**
+   * When this user last had a code issued, consumed or not, and how many were
+   * issued since a given moment. Both are needed to bound resends, and neither
+   * can be answered by `latestOtp`, which only returns unconsumed codes — a
+   * user who consumed a code a second ago would look like a user who had never
+   * asked for one.
+   */
+  lastOtpIssuedAt(userId: string): Promise<Date | null>;
+  otpCountSince(userId: string, since: Date): Promise<number>;
   latestOtp(userId: string): Promise<{ id: string; phoneE164: string; codeHash: string; attempts: number; expiresAt: Date; consumedAt: Date | null } | null>;
   bumpOtpAttempts(id: string): Promise<number>;
   consumeOtp(id: string): Promise<void>;
@@ -29,17 +38,53 @@ export interface IOtpSender {
   send(phoneE164: string, code: string): Promise<'sent' | 'skipped'>;
 }
 
+/**
+ * How often a customer may ask for a verification code.
+ *
+ * These existed nowhere before. While every OTP was being suppressed as
+ * marketing the absence cost nothing, because no request could produce an SMS.
+ * Restoring delivery without bounding resends would convert a dormant defect
+ * into a live one: an authenticated user could bill us for unlimited SMS and
+ * flood someone else's handset by re-submitting their number.
+ *
+ * The cooldown is the anti-flood control and the hourly cap is the anti-abuse
+ * one; they answer different questions, so both are enforced.
+ */
+export const OTP_RESEND_COOLDOWN_MS = 60_000;
+export const OTP_MAX_PER_HOUR = 5;
+
 export class RequestPhoneVerificationUseCase {
   constructor(
     private readonly identity: ILoyaltyIdentityRepository,
     private readonly sender: IOtpSender,
     private readonly hash: (v: string) => string,
     private readonly random: () => string,
+    private readonly now: () => Date = () => new Date(),
   ) {}
 
   async execute(input: { userId: string; phone: string }): Promise<{ ok: true } | Fail> {
     const phone = normalizeUgandanPhone(input.phone);
     if (!phone) return fail('INVALID_PHONE', 'Enter a valid Ugandan phone number.');
+
+    // Bounded BEFORE the code is generated and stored. Checking after would
+    // still write a row and still invalidate the customer's previous code, so a
+    // refused request would damage the flow it refused to advance.
+    const at = this.now();
+    const lastIssuedAt = await this.identity.lastOtpIssuedAt(input.userId);
+    if (lastIssuedAt && at.getTime() - lastIssuedAt.getTime() < OTP_RESEND_COOLDOWN_MS) {
+      const seconds = Math.ceil(
+        (OTP_RESEND_COOLDOWN_MS - (at.getTime() - lastIssuedAt.getTime())) / 1000,
+      );
+      return fail('RESEND_TOO_SOON', `Wait ${seconds} seconds before asking for another code.`);
+    }
+    const issuedThisHour = await this.identity.otpCountSince(
+      input.userId,
+      new Date(at.getTime() - 3_600_000),
+    );
+    if (issuedThisHour >= OTP_MAX_PER_HOUR) {
+      return fail('TOO_MANY_CODES', 'Too many verification codes requested. Try again later.');
+    }
+
     const code = this.random();
     await this.identity.createOtp({
       userId: input.userId,
