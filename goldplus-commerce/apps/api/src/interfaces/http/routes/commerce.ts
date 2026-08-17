@@ -274,6 +274,11 @@ routes.get('/storefront-discount', async (c) => {
         active: true,
         percentBps: benefit.value,
         percent: Math.round(benefit.value / 100),
+        // The evaluator caps every line at this floor
+        // (`available = base - prior - priceFloorUgx * quantity`). Omitting it
+        // here made the display promise a price the checkout would refuse to
+        // charge — the exact divergence this endpoint exists to prevent.
+        priceFloorUgx: version.priceFloorUgx,
         endsIso: version.schedule.endsAt.toISOString(),
         name: definition.name,
       },

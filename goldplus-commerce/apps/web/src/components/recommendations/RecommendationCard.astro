@@ -21,7 +21,7 @@ const formattedPrice = hasValidPrice ? formatUgx(item.price!) : "Price on reques
 // The SAME campaign discount every other card shows (display mirrors charge).
 const discount = await getStorefrontDiscount();
 const onSale = hasValidPrice && discount.active && discount.percentBps > 0;
-const saleUgx = onSale ? salePriceUgx(item.price!, discount.percentBps) : null;
+const saleUgx = onSale ? salePriceUgx(item.price!, discount.percentBps, discount.priceFloorUgx) : null;
 
 // Honest stock: the REAL tracked count when the engine carried one — amber
 // urgency only when genuinely low. Computed here to keep `<=` out of the

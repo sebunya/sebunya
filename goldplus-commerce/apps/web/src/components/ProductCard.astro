@@ -23,7 +23,7 @@ const formattedPrice = hasValidPrice ? formatUgx(product.retailPriceUgx!) : "Pri
 // Active campaign discount (display only; mirrors what checkout charges).
 const discount = await getStorefrontDiscount();
 const onSale = hasValidPrice && discount.active && discount.percentBps > 0;
-const saleUgx = onSale ? salePriceUgx(product.retailPriceUgx!, discount.percentBps) : null;
+const saleUgx = onSale ? salePriceUgx(product.retailPriceUgx!, discount.percentBps, discount.priceFloorUgx) : null;
 
 const lowerName = product.name.toLowerCase();
 const productType = lowerName.includes("charger") ? "Charger"

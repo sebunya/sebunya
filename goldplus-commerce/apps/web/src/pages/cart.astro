@@ -248,7 +248,7 @@ const subtotal = items.reduce((acc, item) => acc + (item.unitPriceUgx * item.qua
 const cartDiscount = await getStorefrontDiscount();
 const cartOnSale = cartDiscount.active && cartDiscount.percentBps > 0 && subtotal > 0;
 const saleSubtotal = cartOnSale
-  ? items.reduce((acc, i) => acc + salePriceUgx(i.unitPriceUgx * i.quantity, cartDiscount.percentBps), 0)
+  ? items.reduce((acc, i) => acc + salePriceUgx(i.unitPriceUgx * i.quantity, cartDiscount.percentBps, cartDiscount.priceFloorUgx * i.quantity), 0)
   : subtotal;
 const cartSavings = subtotal - saleSubtotal;
 

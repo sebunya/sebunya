@@ -549,7 +549,7 @@ const cutoffLine = cut.closed
 const checkoutDiscount = await getStorefrontDiscount();
 const checkoutOnSale = checkoutDiscount.active && checkoutDiscount.percentBps > 0 && cart.subtotalUgx > 0;
 const checkoutSaleSubtotal = checkoutOnSale
-  ? cart.items.reduce((acc: number, i: any) => acc + salePriceUgx((i.unitPriceUgx || i.priceUgx) * i.quantity, checkoutDiscount.percentBps), 0)
+  ? cart.items.reduce((acc: number, i: any) => acc + salePriceUgx((i.unitPriceUgx || i.priceUgx) * i.quantity, checkoutDiscount.percentBps, checkoutDiscount.priceFloorUgx * i.quantity), 0)
   : cart.subtotalUgx;
 const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
 ---
