@@ -162,8 +162,24 @@ export class GetRecommendationsUseCase {
             productIds: mapped.map((c) => c.productId),
             limit: mapped.length,
           });
-          const stillEligibleIds = new Set(liveRows.map((r) => r.id));
-          const revalidated = mapped.filter((c) => stillEligibleIds.has(c.productId));
+          // Eligibility AND the volatile display fields come from `liveRows`.
+          // Filtering on them while still SERVING the cached blob's price meant
+          // a price change was advertised at its old value for the whole TTL —
+          // and a promotion floor computed off that stale base is a price the
+          // checkout will not honour. The cache decides WHICH products; the
+          // database decides what they cost.
+          const liveById = new Map(liveRows.map((r) => [r.id, r]));
+          const revalidated = mapped
+            .filter((c) => liveById.has(c.productId))
+            .map((c) => {
+              const live = liveById.get(c.productId)!;
+              return {
+                ...c,
+                price: typeof live.price === 'number' ? live.price : c.price,
+                stockQuantity:
+                  typeof live.stockQuantity === 'number' ? live.stockQuantity : c.stockQuantity,
+              };
+            });
           const filtered = this.eligibility.filter(revalidated, {
             placement: input.placement,
             contextProductId: input.productId,

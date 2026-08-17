@@ -462,3 +462,94 @@ describe("the evidence stream cannot be quietly poisoned", () => {
     }
   });
 });
+
+// ─── B5: the materialized cache decides WHICH products, never what they cost ──
+
+describe("B5 — a cached rail serves the live price, not the price it froze", () => {
+  const STALE = 110_000;
+  const LIVE = 175_000;
+
+  function engineWithCache(cachedPrice: number, livePrice: number) {
+    const live: RecommendationProductRecord = {
+      id: "p1",
+      slug: "portable-audio-headset",
+      name: "Portable Audio Headset",
+      categoryId: "c1",
+      imageUrl: "https://img/1",
+      price: livePrice,
+      stockStatus: "in_stock",
+      stockQuantity: 12,
+      isActive: true,
+    };
+    const reader = {
+      async findPublicProducts() { return [live]; },
+      async findProductById() { return null; },
+      async findProductsByIds() { return []; },
+      async findBestsellerProductIds() { return []; },
+      async findCompatibilityTargetIds() { return []; },
+      async findRecentPaidProductIdsForProfile() { return []; },
+      async findCachedRecommendations() {
+        return {
+          // The blob the cron materialized BEFORE the price change.
+          items: [{
+            productId: "p1",
+            slug: "portable-audio-headset",
+            name: "Portable Audio Headset",
+            imageUrl: "https://img/1",
+            price: cachedPrice,
+            categoryId: "c1",
+            stockQuantity: 12,
+            signals: { isActive: true, isVisible: true, isInStock: true, categoryId: "c1" },
+            score: 10,
+            reasonCodes: [],
+          }],
+          updatedAt: new Date(),
+        };
+      },
+      async saveCachedRecommendations() {},
+    };
+    const events = {
+      async save() { return true; },
+      async existsRecentSimilarEvent() { return false; },
+      async findRecentlyViewed() { return []; },
+      async findRecentlyShownProductIds() { return []; },
+      async findRecentSearchQueries() { return []; },
+      async getTrendingEvents() { return []; },
+    };
+    return new GetRecommendationsUseCase(
+      reader as never,
+      new ProductSignalExtractor(),
+      new RecommendationScoringService(new CompatibilityRuleService()),
+      new TrendingScoreService(events as never),
+      new RecommendationEligibilityService(),
+      new RecommendationDeduplicationService(),
+      new RecommendationDiversityService(),
+      new RecommendationRuleApplicationService(
+        { async findActiveRulesForPlacement() { return []; } } as never,
+        new RecommendationEligibilityService(),
+        new RecommendationRuleConflictService(),
+      ),
+      events as never,
+    );
+  }
+
+  it("re-reads the price from the database instead of serving the frozen one", async () => {
+    // The rail was advertising a price the catalogue no longer had, for the
+    // whole cache TTL — and a percentage promotion computed off that stale
+    // base lands below the floor the checkout enforces.
+    const result = await engineWithCache(STALE, LIVE).execute({ placement: "home_trending", limit: 4 });
+    // Prove the CACHED path actually served this — otherwise the assertion
+    // below is satisfied by the live ladder and proves nothing.
+    expect(result.meta.sources.map((s: any) => s.source)).toContain("MATERIALIZED_CACHE");
+    expect(result.meta.sources.find((s: any) => s.source === "MATERIALIZED_CACHE")!.state).toBe("SUPPORTED");
+    const item = result.items.find((i) => i.productId === "p1");
+    expect(item).toBeDefined();
+    expect(item!.price).toBe(LIVE);
+    expect(item!.price).not.toBe(STALE);
+  });
+
+  it("still serves the cached rail (the fix refreshes, it does not discard)", async () => {
+    const result = await engineWithCache(LIVE, LIVE).execute({ placement: "home_trending", limit: 4 });
+    expect(result.items.map((i) => i.productId)).toContain("p1");
+  });
+});

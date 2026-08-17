@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { salePriceUgx } from '../../apps/web/src/lib/storefrontDiscount';
+
 /**
  * Promo-code entry + product-card commercial signals (2026-08-10).
  *
@@ -70,7 +72,7 @@ describe('product-card commercial signals', () => {
     // CartAddon / CategoryPopular rails and the cart page) carries sale price,
     // % pill, countdown chip and the honest stock count.
     const rec = read('apps/web/src/components/recommendations/RecommendationCard.astro');
-    expect(rec).toContain('salePriceUgx(item.price!, discount.percentBps)');
+    expect(rec).toContain('salePriceUgx(item.price!, discount.percentBps, discount.priceFloorUgx)');
     expect(rec).toContain('data-card-sale-ends={discount.endsIso}');
     expect(rec).toContain('Only ${stockCount} left in stock');
     expect(rec).toContain('${stockCount} in stock');
@@ -133,8 +135,65 @@ describe('product-card commercial signals', () => {
   });
 
   it('sale price still mirrors the evaluator formula (display equals charge)', () => {
-    expect(card).toContain('salePriceUgx(product.retailPriceUgx!, discount.percentBps)');
+    expect(card).toContain('salePriceUgx(product.retailPriceUgx!, discount.percentBps, discount.priceFloorUgx)');
     const lib = read('apps/web/src/lib/storefrontDiscount.ts');
     expect(lib).toContain('Math.floor((regularUgx * percentBps) / 10_000)');
+  });
+
+  it('every call site passes a floor, and the line-total ones scale it by quantity', () => {
+    // A caller that forgets the floor advertises a price the evaluator will not
+    // honour. The two basket callers discount a LINE, so their floor is
+    // per-unit * quantity — exactly `priceFloorUgx * line.quantity` in
+    // PricingEvaluator.
+    for (const f of [
+      'apps/web/src/components/ProductCard.astro',
+      'apps/web/src/components/GpNav.astro',
+      'apps/web/src/components/recommendations/RecommendationCard.astro',
+      'apps/web/src/pages/cart.astro',
+      'apps/web/src/pages/checkout.astro',
+    ]) {
+      const src = read(f).replace(/^\s*(\/\/|\*|\/\*).*$/gm, '');
+      for (const call of src.match(/salePriceUgx\([^;]*?\)\s*(?=[,);:]|$)/gm) ?? []) {
+        // three arguments: base, bps, floor
+        expect(call.split(',').length).toBeGreaterThanOrEqual(3);
+        expect(call).toMatch(/priceFloorUgx/);
+      }
+    }
+    expect(read('apps/web/src/pages/cart.astro')).toContain('cartDiscount.priceFloorUgx * i.quantity');
+    expect(read('apps/web/src/pages/checkout.astro')).toContain('checkoutDiscount.priceFloorUgx * i.quantity');
+  });
+});
+
+describe('the displayed sale price cannot cross the promotion price floor', () => {
+  /** PricingEvaluator L129-L134, per line, with no prior discount. */
+  const evaluatorCharge = (base: number, bps: number, floor: number, qty: number) => {
+    const available = Math.max(0, base - floor * qty);
+    const desired = Math.floor((base * bps) / 10_000);
+    return base - Math.min(available, desired);
+  };
+
+  it('agrees with the evaluator to the shilling across the catalogue', () => {
+    const FLOOR = 145_000;
+    for (const unit of [145_000, 149_000, 155_000, 159_000, 165_000, 175_000, 185_000, 150_000]) {
+      for (const qty of [1, 2, 7]) {
+        const base = unit * qty;
+        expect(salePriceUgx(base, 1000, FLOOR * qty)).toBe(evaluatorCharge(base, 1000, FLOOR, qty));
+        // The point of the floor: never a shilling under it.
+        expect(salePriceUgx(base, 1000, FLOOR * qty)).toBeGreaterThanOrEqual(FLOOR * qty);
+      }
+    }
+  });
+
+  it('discounts normally when the floor is out of reach', () => {
+    expect(salePriceUgx(500_000, 1000, 145_000)).toBe(450_000);
+  });
+
+  it('never discounts a price already at or under the floor', () => {
+    expect(salePriceUgx(145_000, 1000, 145_000)).toBe(145_000);
+    expect(salePriceUgx(100_000, 1000, 145_000)).toBe(100_000);
+  });
+
+  it('a zero floor behaves exactly as before', () => {
+    expect(salePriceUgx(149_000, 1000, 0)).toBe(134_100);
   });
 });

@@ -412,7 +412,7 @@ const nbaJson = escNav(JSON.stringify(nba));
             <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(0)!.imageUrl} alt={featAt(0)!.name} loading="lazy" decoding="async"></div>
             <div><small>{navDeal.active ? 'On sale now' : featAt(0)!.label}</small><p>{featAt(0)!.name}</p>
               {navDeal.active && featAt(0)!.priceUgx ? (
-                <span>{formatUgx(featAt(0)!.priceUgx!)} → <b style="color:var(--gpn-green)">{formatUgx(salePriceUgx(featAt(0)!.priceUgx!, navDeal.percentBps))}</b></span>
+                <span>{formatUgx(featAt(0)!.priceUgx!)} → <b style="color:var(--gpn-green)">{formatUgx(salePriceUgx(featAt(0)!.priceUgx!, navDeal.percentBps, navDeal.priceFloorUgx))}</b></span>
               ) : (
                 <span>{featAt(0)!.blurb}</span>
               )}
