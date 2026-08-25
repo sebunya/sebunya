@@ -1697,6 +1697,9 @@ export class Registry {
   /** Lets the header check a link lands on stock before it advertises it. */
   public readonly navAvailabilityService = new NavAvailabilityService(
     new ListPublicProductsUseCase(this.productRepo),
+    // The nav's `category=power` is an ALIAS of `power-devices`; without the
+    // taxonomy every Power link counts zero and the gate misfires.
+    { getPublicConfig: () => this.taxonomyService.getPublicConfig() },
   );
   public readonly businessInfoRepo = new DrizzleBusinessInfoRepository();
   public readonly businessInfoService = new BusinessInfoService(this.businessInfoRepo);

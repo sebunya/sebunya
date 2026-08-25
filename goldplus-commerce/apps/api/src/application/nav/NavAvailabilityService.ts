@@ -1,4 +1,4 @@
-import type { NavConfig } from '@goldplus/shared';
+import type { NavConfig, Taxonomy } from '@goldplus/shared';
 
 /** What the header needs to know before it advertises a link: does it land on anything? */
 export interface NavAvailability {
@@ -39,14 +39,45 @@ export function navHrefQuery(href: string): { category?: string; search?: string
   return { category, search };
 }
 
-export class NavAvailabilityService {
-  constructor(private readonly counter: NavProductCounter) {}
+/** Where the taxonomy comes from; the shop resolves category aliases through it. */
+export interface TaxonomyProvider {
+  getPublicConfig(): Promise<Taxonomy>;
+}
 
-  private async countFor(href: string): Promise<number> {
+/**
+ * Resolve a category the way `/shop` does — through the taxonomy's aliases.
+ *
+ * The nav links say `category=power`; the catalogue stores `power-devices` and
+ * carries `power` only as an ALIAS. Counting the raw param therefore returned 0
+ * for every Power link, which would have hidden the finder even with batteries
+ * in stock. The count must resolve exactly what the customer's URL resolves to.
+ */
+export function resolveCategory(raw: string | undefined, taxonomy: Taxonomy): string | undefined {
+  if (!raw) return undefined;
+  const candidate = raw.trim().toLowerCase();
+  const canonical =
+    taxonomy.find((t) => t.slug === candidate)?.slug ??
+    taxonomy.find((t) => (t.aliases ?? []).some((a) => a.toLowerCase() === candidate))?.slug;
+  // An unknown category is not "no filter" — that would count the whole shop
+  // and claim stock the link cannot show.
+  return canonical ?? raw;
+}
+
+export class NavAvailabilityService {
+  constructor(
+    private readonly counter: NavProductCounter,
+    private readonly taxonomy?: TaxonomyProvider,
+  ) {}
+
+  private async countFor(href: string, taxonomy: Taxonomy): Promise<number> {
     const query = navHrefQuery(href);
     if (!query) return 0;
     try {
-      const rows = await this.counter.execute({ ...query, limit: COUNT_CAP });
+      const rows = await this.counter.execute({
+        ...query,
+        category: resolveCategory(query.category, taxonomy),
+        limit: COUNT_CAP,
+      });
       return rows.length;
     } catch {
       // A catalogue failure must not be read as "we stock this". Fail closed:
@@ -61,12 +92,15 @@ export class NavAvailabilityService {
     const finder = config.panels.find((p) => p.batteryFinder)?.batteryFinder;
     if (!finder) return { counts: {}, finderTotal: 0 };
 
+    const taxonomy = (await this.taxonomy?.getPublicConfig().catch(() => [])) ?? [];
     const hrefs = Array.from(new Set(finder.brandChips.map((c) => c.href)));
-    const counted = await Promise.all(hrefs.map(async (h) => [h, await this.countFor(h)] as const));
+    const counted = await Promise.all(
+      hrefs.map(async (h) => [h, await this.countFor(h, taxonomy)] as const),
+    );
 
     return {
       counts: Object.fromEntries(counted),
-      finderTotal: await this.countFor(finder.formAction),
+      finderTotal: await this.countFor(finder.formAction, taxonomy),
     };
   }
 }

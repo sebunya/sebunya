@@ -7,6 +7,7 @@ import { computeNbaCandidates, DEFAULT_NAV_CONFIG, type NbaContext } from '@gold
 import {
   NavAvailabilityService,
   navHrefQuery,
+  resolveCategory,
 } from '../../apps/api/src/application/nav/NavAvailabilityService';
 
 /**
@@ -28,11 +29,25 @@ const code = (p: string) =>
 
 const NAV = code('apps/web/src/components/GpNav.astro');
 
-/** A counter standing in for the catalogue: only these queries have products. */
+/**
+ * A counter standing in for the catalogue. It insists on the CANONICAL category
+ * slug, exactly as the real repository does: production stores `power-devices`
+ * and treats `power` only as an alias, so a counter that accepted the raw param
+ * would hide the very bug this guards.
+ */
+const CANONICAL = 'power-devices';
 const counterFor = (stocked: Record<string, number>) => ({
   execute: async (o: { search?: string; category?: string }) =>
-    Array.from({ length: stocked[o.search ?? ''] ?? 0 }, (_, i) => ({ id: i })),
+    o.category && o.category !== CANONICAL
+      ? []
+      : Array.from({ length: stocked[o.search ?? ''] ?? 0 }, (_, i) => ({ id: i })),
 });
+
+/** The shape production actually serves: canonical slug, `power` as an alias. */
+const TAXONOMY = [
+  { slug: CANONICAL, name: 'Power Devices', aliases: ['power'], subcategories: [] },
+] as any;
+const taxonomyProvider = { getPublicConfig: async () => TAXONOMY };
 
 describe('navHrefQuery — the count runs the link\'s own query', () => {
   it('recovers the category and search a chip href encodes', () => {
@@ -49,9 +64,29 @@ describe('navHrefQuery — the count runs the link\'s own query', () => {
   });
 });
 
+describe('resolveCategory — the count resolves what the customer\'s URL resolves to', () => {
+  it('maps the nav\'s alias onto the slug the catalogue stores', () => {
+    // `/shop?category=power` reaches `power-devices` via the taxonomy alias.
+    // Counting the raw `power` returned 0 for every Power link and would have
+    // hidden the finder even with batteries in stock.
+    expect(resolveCategory('power', TAXONOMY)).toBe(CANONICAL);
+  });
+
+  it('leaves a canonical slug alone, and is case-insensitive', () => {
+    expect(resolveCategory(CANONICAL, TAXONOMY)).toBe(CANONICAL);
+    expect(resolveCategory('POWER', TAXONOMY)).toBe(CANONICAL);
+  });
+
+  it('never turns an unknown category into "no filter"', () => {
+    // Dropping it would count the entire shop and claim stock the link cannot show.
+    expect(resolveCategory('nonsense', TAXONOMY)).toBe('nonsense');
+    expect(resolveCategory(undefined, TAXONOMY)).toBeUndefined();
+  });
+});
+
 describe('NavAvailabilityService', () => {
   it('counts every chip against the catalogue, keyed by its own href', async () => {
-    const svc = new NavAvailabilityService(counterFor({ tecno: 3, battery: 3 }));
+    const svc = new NavAvailabilityService(counterFor({ tecno: 3, battery: 3 }), taxonomyProvider);
     const out = await svc.forBatteryFinder(DEFAULT_NAV_CONFIG);
 
     expect(out.counts['/shop?category=power&q=tecno']).toBe(3);
@@ -60,7 +95,7 @@ describe('NavAvailabilityService', () => {
   });
 
   it('reports the live catalogue — today that is nothing at all', async () => {
-    const svc = new NavAvailabilityService(counterFor({}));
+    const svc = new NavAvailabilityService(counterFor({}), taxonomyProvider);
     const out = await svc.forBatteryFinder(DEFAULT_NAV_CONFIG);
 
     expect(out.finderTotal).toBe(0);
@@ -68,13 +103,23 @@ describe('NavAvailabilityService', () => {
   });
 
   it('fails CLOSED when the catalogue throws — an outage is not stock', async () => {
-    const svc = new NavAvailabilityService({
-      execute: async () => { throw new Error('db down'); },
-    });
+    const svc = new NavAvailabilityService(
+      { execute: async () => { throw new Error('db down'); } },
+      taxonomyProvider,
+    );
     const out = await svc.forBatteryFinder(DEFAULT_NAV_CONFIG);
 
     expect(out.finderTotal).toBe(0);
     expect(Object.values(out.counts).every((n) => n === 0)).toBe(true);
+  });
+
+  it('fails CLOSED when the TAXONOMY is unavailable, rather than counting raw', async () => {
+    const svc = new NavAvailabilityService(counterFor({ battery: 5 }), {
+      getPublicConfig: async () => { throw new Error('taxonomy down'); },
+    });
+    const out = await svc.forBatteryFinder(DEFAULT_NAV_CONFIG);
+
+    expect(out.finderTotal).toBe(0);
   });
 });
 
