@@ -202,8 +202,7 @@ export const customerChannelGuidance: readonly CustomerChannelGuidance[] = Objec
   },
   {
     name: "Email",
-    usedFor:
-      "Messages about an order you placed — confirmation, payment and delivery — and replies to enquiries you send us.",
+    usedFor: "Replies to enquiries you send us, and messages about an order you placed.",
     note: "No marketing email is sent.",
   },
   {

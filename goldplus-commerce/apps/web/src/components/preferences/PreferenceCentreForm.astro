@@ -10,7 +10,7 @@ const { preferences } = Astro.props;
 <form method="POST" class="max-w-2xl">
   <div class="mb-10">
     <h2 class="text-lg font-black text-brand-charcoal mb-4 tracking-tight">Privacy & Consent</h2>
-    <p class="text-sm text-brand-mutedGrey mb-6">Manage how we use your data. Essential cookies are required for the site to function properly.</p>
+    <p class="text-sm text-brand-mutedGrey mb-6">Choose how we use your data. Some cookies are needed for the site to work — your cart, and staying signed in.</p>
     
     <ConsentToggle 
       id="consent_essential" 
@@ -44,8 +44,8 @@ const { preferences } = Astro.props;
   </div>
 
   <div class="mb-10">
-    <h2 class="text-lg font-black text-brand-charcoal mb-4 tracking-tight">Communication Channels</h2>
-    <p class="text-sm text-brand-mutedGrey mb-6">How would you like us to contact you?</p>
+    <h2 class="text-lg font-black text-brand-charcoal mb-4 tracking-tight">How would you like us to contact you?</h2>
+    <p class="text-sm text-brand-mutedGrey mb-6">Only about your orders and the questions you send us. GoldPlus does not send marketing messages.</p>
 
     <ConsentToggle 
       id="channel_email" 

@@ -66,7 +66,7 @@ if (Astro.request.method === 'POST') {
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'received';
-      message = 'Quote request received successfully. A specialized sales agent will analyze the capacity and respond using the contact information you provided.';
+      message = 'We have your quote request. Someone from our sales team will call you to confirm what you need and give you a price.';
       values = {};
     } else {
       status = 'error';
@@ -76,7 +76,7 @@ if (Astro.request.method === 'POST') {
     }
   } else {
     status = 'error';
-    message = 'Please fix errors before requesting a quote.';
+    message = 'Some details are missing. Check the highlighted fields below.';
   }
 }
 
@@ -101,7 +101,7 @@ const checkedKind = values.kind || initialKind;
   <div class="container mx-auto px-4 lg:px-8 py-14">
     <div class="max-w-2xl mx-auto space-y-6">
       <FormFeedback status={status} message={message} reference={reference} />
-      <Notice kind="info" message="Pricing for volume orders is calculated dynamically based on current inventory and routing. Submit this form and a sales agent will prepare a non-binding estimate for you." />
+      <Notice kind="info" title="How quotes work" message="Prices for large orders depend on the quantity and where you are. Send this form and our sales team will prepare a quote for you. A quote is an estimate, not a final bill." />
 
       <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs">
         <form method="POST" action="/quote-request" novalidate id="quoteForm" class="space-y-8">
@@ -130,7 +130,7 @@ const checkedKind = values.kind || initialKind;
             <FormField id="customerName" name="customerName" label="Your name" required defaultValue={values.customerName} autocomplete="name" errorMessage={errors.customerName} />
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField id="email" name="email" label="Email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
-              <FormField id="phone" name="phone" label="Phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="+2567..." errorMessage={errors.phone} />
+              <FormField id="phone" name="phone" label="Phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="07XX XXX XXX" errorMessage={errors.phone} />
             </div>
           </fieldset>
 

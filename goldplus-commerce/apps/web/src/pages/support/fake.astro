@@ -58,7 +58,7 @@ if (Astro.request.method === 'POST') {
     }
   } else {
     status = 'error';
-    message = 'Please correct inputs before reporting.';
+    message = 'Some details are missing. Check the highlighted fields below.';
   }
 }
 ---
@@ -146,7 +146,7 @@ if (Astro.request.method === 'POST') {
                   required 
                   defaultValue={values.reporterPhone} 
                   autocomplete="tel"
-                  placeholder="+2567..."
+                  placeholder="07XX XXX XXX"
                   errorMessage={errors.reporterPhone}
                 />
              </div>

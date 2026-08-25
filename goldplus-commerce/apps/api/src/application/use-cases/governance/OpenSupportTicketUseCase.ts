@@ -37,11 +37,14 @@ export class OpenSupportTicketUseCase {
     const finalEmail = email || (input.contact && isValidEmail(input.contact) ? normalizeEmail(input.contact) : '');
     const finalPhone = phone || (input.contact && isValidUgandanPhone(input.contact) ? normalizePhone(input.contact) : '');
 
-    if (!isValidEmail(finalEmail)) {
-      return { ok: false, code: 'BAD_INPUT', message: 'A valid email address is required.' };
-    }
+    // The phone number is the reply channel and is required. Email is
+    // optional: it used to be mandatory, which forced customers to give us a
+    // channel we do not reply on, and rejected the ticket if they left it out.
     if (!isValidUgandanPhone(finalPhone)) {
       return { ok: false, code: 'BAD_INPUT', message: 'A valid Ugandan phone number is required.' };
+    }
+    if (finalEmail && !isValidEmail(finalEmail)) {
+      return { ok: false, code: 'BAD_INPUT', message: 'That email address does not look right. Check it, or leave it blank.' };
     }
 
     const id = randomUUID();

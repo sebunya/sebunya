@@ -43,7 +43,7 @@ if (Astro.request.method === 'POST') {
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'success';
-      message = 'Application received. A GoldPlus partnerships officer will review your details and contact you on the email and phone provided.';
+      message = 'We have your application. Our team will review it and call you on the number you gave.';
       values = {};
     } else {
       status = 'error';
@@ -53,7 +53,7 @@ if (Astro.request.method === 'POST') {
     }
   } else {
     status = 'error';
-    message = 'Please correct the errors below.';
+    message = 'Some details are missing. Check the highlighted fields below.';
   }
 }
 ---
@@ -82,11 +82,11 @@ if (Astro.request.method === 'POST') {
         </div>
         <div class="space-y-2">
           <h3 class="font-bold text-gray-900 text-sm">✓ Marketing Support</h3>
-          <p class="text-xs text-slate-500 leading-relaxed font-medium">Get point-of-sale branding, customer referrals in your region, and access to promotional merchandise assets.</p>
+          <p class="text-xs text-slate-500 leading-relaxed font-medium">Shop branding, customers in your area sent your way, and posters and branded material for your counter.</p>
         </div>
         <div class="space-y-2">
-          <h3 class="font-bold text-gray-900 text-sm">✓ Dynamic Pricing</h3>
-          <p class="text-xs text-slate-500 leading-relaxed font-medium">Unlock volume-based wholesale discounts, price protection policies, and guaranteed margins.</p>
+          <h3 class="font-bold text-gray-900 text-sm">✓ Wholesale pricing</h3>
+          <p class="text-xs text-slate-500 leading-relaxed font-medium">Better prices as your volumes grow, and a margin you can plan around.</p>
         </div>
       </div>
 
@@ -108,7 +108,7 @@ if (Astro.request.method === 'POST') {
               <FormField id="contactName" name="contactName" label="Contact person" required defaultValue={values.contactName} autocomplete="name" errorMessage={errors.contactName} />
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField id="email" name="email" label="Business email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
-                <FormField id="phone" name="phone" label="Business phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="+2567..." errorMessage={errors.phone} />
+                <FormField id="phone" name="phone" label="Business phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="07XX XXX XXX" errorMessage={errors.phone} />
               </div>
             </fieldset>
 

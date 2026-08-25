@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import { whatsappSupportNumber } from "../../lib/api";
 
 /**
  * Dealer portal placeholder.
@@ -14,7 +15,8 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
  * visitor to the channels that do work. It is noindex because it is an
  * account-adjacent utility page with nothing to rank for.
  */
-const supportEmail = "support@shopgoldplus.com";
+// WhatsApp, not mailto: it is the channel a reply actually comes back on.
+const supportWhatsapp = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent("Hello GoldPlus, I have a question about becoming a dealer.")}`;
 ---
 
 <BaseLayout
@@ -43,9 +45,9 @@ const supportEmail = "support@shopgoldplus.com";
           class="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-center text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
         >Contact support</a>
         <a
-          href={`mailto:${supportEmail}`}
+          href={supportWhatsapp}
           class="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-center text-sm font-bold text-slate-900 outline-none hover:border-slate-500 focus-visible:ring-2 focus-visible:ring-brand-primary"
-        >{supportEmail}</a>
+        >Ask on WhatsApp</a>
       </div>
     </div>
 

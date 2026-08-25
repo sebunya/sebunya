@@ -101,7 +101,11 @@ const footerSocialLinks = [
   }
 ];
 
-const canonical = canonicalUrl ?? Astro.url.toString();
+// Default canonical is origin + path. The query string is never part of it:
+// it carried payment-return parameters (and, once, provider text) into
+// <link rel="canonical"> and og:url. Pages whose query IS the resource
+// (/shop filters, via crawlPolicy) pass canonicalUrl explicitly.
+const canonical = canonicalUrl ?? `${Astro.url.origin}${Astro.url.pathname}`;
 const measurement = resolveMeasurementConfig(import.meta.env);
 ---
 
@@ -115,14 +119,14 @@ const measurement = resolveMeasurementConfig(import.meta.env);
 
     {/* Open Graph */}
     <meta property="og:type" content="website" />
-    <meta property="og:url" content={Astro.url} />
+    <meta property="og:url" content={canonical} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={image} />
 
     {/* Twitter */}
     <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content={Astro.url} />
+    <meta property="twitter:url" content={canonical} />
     <meta property="twitter:title" content={title} />
     <meta property="twitter:description" content={description} />
     <meta property="twitter:image" content={image} />

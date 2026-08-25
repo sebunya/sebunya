@@ -38,8 +38,11 @@ const MAX_REQUESTS_PER_HOUR = 3;
 const MIN_PASSWORD_LENGTH = 8;
 
 /** The generic answer. Identical for every input, by design. */
+// "is on its way" was a claim about a message in transit; delivery is not
+// something this layer can vouch for. The sentence now describes what was
+// DONE (a link was issued) and what to do if it never arrives.
 export const GENERIC_RESET_ACKNOWLEDGEMENT =
-  'If that email address has an account, a password reset link is on its way. The link expires in an hour.';
+  'If that email address has an account, a reset link has been issued for it. It expires in an hour. If nothing arrives, contact us and we will help.';
 
 export const hashResetToken = (raw: string): string => createHash('sha256').update(raw).digest('hex');
 

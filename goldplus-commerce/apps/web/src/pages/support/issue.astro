@@ -34,11 +34,12 @@ if (Astro.request.method === 'POST') {
     errors.description = 'Please describe the issue in at least 20 characters.';
   }
   
-  if (!isValidEmail(email)) {
-    errors.email = 'A valid email address is required.';
+  // Email is optional: the phone number is the channel we reply on.
+  if (email && !isValidEmail(email)) {
+    errors.email = 'That email address does not look right. Check it, or leave it blank.';
   }
   if (!isValidUgandanPhone(phone)) {
-    errors.phone = 'A valid Ugandan phone number is required (e.g., +256700000000).';
+    errors.phone = 'A valid Ugandan phone number is required (e.g. 07XX XXX XXX).';
   }
 
   // Location optional per audit guideline
@@ -76,7 +77,7 @@ if (Astro.request.method === 'POST') {
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'received';
-      message = 'Your support request has been received. Our team can contact you using the email or phone number provided.';
+      message = 'We have your request. Our team will contact you on the phone number you gave. Keep the reference below in case you need to ask about it.';
       values = {};
     } else {
       status = 'error';
@@ -86,7 +87,7 @@ if (Astro.request.method === 'POST') {
     }
   } else {
     status = 'error';
-    message = 'Please correct the errors below before submitting.';
+    message = 'Some details are missing. Check the highlighted fields below.';
   }
 }
 ---
@@ -164,9 +165,8 @@ if (Astro.request.method === 'POST') {
                 <FormField 
                   id="email" 
                   name="email" 
-                  label="Email address" 
+                  label="Email address (optional)" 
                   type="email"
-                  required 
                   defaultValue={values.email} 
                   autocomplete="email"
                   errorMessage={errors.email}
@@ -179,7 +179,7 @@ if (Astro.request.method === 'POST') {
                   required 
                   defaultValue={values.phone} 
                   autocomplete="tel"
-                  placeholder="+2567..."
+                  placeholder="07XX XXX XXX"
                   errorMessage={errors.phone}
                 />
              </div>

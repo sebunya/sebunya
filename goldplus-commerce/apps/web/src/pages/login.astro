@@ -74,7 +74,15 @@ if (Astro.request.method === 'POST') {
         message = json.error.message;
       } else {
         status = 'error';
-        message = json?.error?.message ?? `Login failed (HTTP ${res.status}).`;
+        // Never the API's own text, and never an HTTP number: neither is
+        // something a customer can act on. A wrong password and an unknown
+        // email get the same sentence on purpose (no account enumeration).
+        message =
+          res.status === 401 ? 'That email and password do not match. Check them and try again, or reset your password.'
+          : res.status === 400 ? 'Check the email and password fields and try again.'
+          : res.status === 429 ? 'Too many attempts. Please wait a few minutes and try again.'
+          : res.status === 403 ? 'This account cannot be used right now. Please contact us and we will help.'
+          : 'We could not sign you in right now. Please try again in a moment.';
       }
     } catch {
       status = 'error';
@@ -92,7 +100,7 @@ if (Astro.request.method === 'POST') {
 
       {notConfigured && (
         <div class="mb-6">
-          <Notice kind="not-configured" title="Sign-in not configured" message={message} />
+          <Notice kind="warning" title="Sign-in is temporarily unavailable" message="Please try again shortly. If you need an order urgently, look it up on the track-order page with its reference, or contact us." />
         </div>
       )}
       {!notConfigured && <FormFeedback status={status} message={message} />}

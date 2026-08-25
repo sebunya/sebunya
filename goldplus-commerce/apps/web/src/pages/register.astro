@@ -93,7 +93,12 @@ if (Astro.request.method === 'POST') {
         message = json.error.message;
       } else {
         status = 'error';
-        message = json?.error?.message ?? `Registration failed (HTTP ${res.status}).`;
+        // Never the API's own text, and never an HTTP number.
+        message = res.status === 409
+          ? 'There is already an account with that email. Try signing in, or reset your password.'
+          : res.status === 400
+            ? 'Some details do not look right. Check the highlighted fields and try again.'
+            : 'We could not create your account right now. Please try again in a moment.';
       }
     } catch {
       status = 'error';
@@ -111,7 +116,7 @@ if (Astro.request.method === 'POST') {
 
       {notConfigured && (
         <div class="mb-6">
-          <Notice kind="not-configured" title="Registration not configured" message={message} />
+          <Notice kind="warning" title="Sign-up is temporarily unavailable" message="Please try again shortly. You can still shop and check out as a guest." />
         </div>
       )}
       {!notConfigured && <FormFeedback status={status} message={message} />}
