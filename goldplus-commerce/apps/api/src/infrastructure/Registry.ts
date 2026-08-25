@@ -91,6 +91,8 @@ import { HeroSignalsService } from './hero/HeroSignalsService';
 import { HeroTelemetryService } from './hero/HeroTelemetryService';
 import { DrizzleNavRepository } from './db/repositories/DrizzleNavRepository';
 import { NavContentService } from '../application/nav/NavContentService';
+import { NavAvailabilityService } from '../application/nav/NavAvailabilityService';
+import { ListPublicProductsUseCase } from '../application/use-cases/products/ListPublicProductsUseCase';
 import { DrizzleBusinessInfoRepository } from './db/repositories/DrizzleBusinessInfoRepository';
 import { BusinessInfoService } from '../application/business/BusinessInfoService';
 import { DrizzleTaxonomyRepository } from './db/repositories/DrizzleTaxonomyRepository';
@@ -1692,6 +1694,10 @@ export class Registry {
   /** Header/nav CMS (0109/0110): the editable header document + its telemetry. */
   public readonly navRepo = new DrizzleNavRepository();
   public readonly navContentService = new NavContentService(this.navRepo);
+  /** Lets the header check a link lands on stock before it advertises it. */
+  public readonly navAvailabilityService = new NavAvailabilityService(
+    new ListPublicProductsUseCase(this.productRepo),
+  );
   public readonly businessInfoRepo = new DrizzleBusinessInfoRepository();
   public readonly businessInfoService = new BusinessInfoService(this.businessInfoRepo);
   public readonly taxonomyRepo = new DrizzleTaxonomyRepository();

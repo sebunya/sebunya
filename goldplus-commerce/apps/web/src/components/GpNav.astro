@@ -10,7 +10,7 @@ import { getNavFeatured } from '../lib/navFeatured';
 import { getStorefrontDiscount, salePriceUgx } from '../lib/storefrontDiscount';
 import { formatUgx } from '../lib/money';
 import { getNavConfig } from '../lib/navConfig';
-import { getBusinessInfo } from '../lib/businessInfo';
+import { getNavAvailability, hasStock } from '../lib/navAvailability';
 
 /**
  * GoldPlus site navigation.
@@ -41,6 +41,19 @@ const biz = await getBusinessInfo();
 /** WhatsApp deep link with an optional prefilled message. */
 const waLink = (prefill?: string) =>
   prefill ? `${biz.whatsappUrl}?text=${encodeURIComponent(prefill)}` : biz.whatsappUrl;
+
+// ---- battery finder: gated on the catalogue, not on hope ----
+// The finder shipped as a search box and eleven brand chips over a catalogue
+// carrying zero batteries: every chip landed on "no results". Nothing here was
+// invented — the category was simply unstocked — but eleven dead ends is still a
+// promise the shop cannot keep. So each chip must prove it lands on stock, using
+// the SAME query its own link runs, and the whole block hides when nothing does.
+// It comes back by itself the moment batteries are stocked; no redeploy.
+const navAvail = await getNavAvailability();
+const batteryFinder = nav.panels.find((p) => p.batteryFinder)?.batteryFinder;
+const batteryChips = (batteryFinder?.brandChips ?? []).filter((c) => hasStock(navAvail, c.href));
+/** One real brand is enough to show the finder; zero makes it a dead end. */
+const batteryLive = navAvail.finderTotal > 0 && batteryChips.length > 0;
 
 // ---- cart: read through the SIGNED credential, never an id in a URL ----
 const headerUserId = await resolveAuthenticatedUserId(Astro.cookies);
@@ -152,6 +165,7 @@ const cut = kampalaCutoff(new Date(), { cutoffHour: biz.sameDayCutoffHour, close
 const nba = computeNbaCandidates({
   signedIn, visits, cart: cartCount, points, lastOrderDays, orderInTransit,
   beforeCutoff: cut.beforeCutoff, minsToCutoff: cut.minsToCutoff, sunday: cut.sunday, saleLive,
+  batteriesInStock: batteryLive,
   cutoffLabel: cut.cutoffLabel,
 }, {
   // the CMS offer figures drive the copy, so the server strip and the editor agree
@@ -174,6 +188,11 @@ const navConfigJson = escNav(JSON.stringify({
   // WhatsApp URL has to reach the client too — otherwise that one link keeps
   // pointing at a number the admin can no longer change.
   whatsappUrl: biz.whatsappUrl,
+  // The "your battery is N months old" nudge is built in the browser and sends
+  // the customer to the battery search. It has to know the same thing the
+  // server-rendered finder knows, or it survives the gate and prompts a reorder
+  // the shop cannot fulfil.
+  batteryLive,
 }));
 const nbaJson = escNav(JSON.stringify(nba));
 ---
@@ -291,30 +310,24 @@ const nbaJson = escNav(JSON.stringify(nba));
             <li><a href="/shop?category=power"><b>All Power →</b></a></li>
           </ul>
         </div>
+        {batteryLive && batteryFinder && (
         <div class="gp-nav__finder">
-          <h3>Phone batteries</h3>
-          <p class="gp-nav__note">Find yours by phone model</p>
-          <form action="/shop?category=power&q=battery" role="search">
-            <input type="search" name="model" placeholder="Type your phone, e.g. Tecno Spark 10" aria-label="Find a battery for your phone model">
+          <h3>{batteryFinder.heading}</h3>
+          <p class="gp-nav__note">{batteryFinder.note}</p>
+          <form action={batteryFinder.formAction} role="search">
+            <input type="search" name={batteryFinder.inputName} placeholder={batteryFinder.inputPlaceholder} aria-label="Find a battery for your phone model">
           </form>
           <div class="gp-nav__chips">
-            <a href="/shop?category=power&q=tecno">Tecno</a>
-            <a href="/shop?category=power&q=infinix">Infinix</a>
-            <a href="/shop?category=power&q=itel">itel</a>
-            <a href="/shop?category=power&q=samsung">Samsung</a>
-            <a href="/shop?category=power&q=iphone">iPhone</a>
-            <a href="/shop?category=power&q=redmi">Redmi</a>
-            <a href="/shop?category=power&q=xiaomi">Xiaomi</a>
-            <a href="/shop?category=power&q=huawei">Huawei</a>
-            <a href="/shop?category=power&q=nokia">Nokia</a>
-            <a href="/shop?category=power&q=oppo">Oppo</a>
-            <a href="/shop?category=power&q=battery" style="color:var(--gpn-green)">All brands →</a>
+            {batteryChips.map((chip) => (
+              <a href={chip.href} style={chip.style === 'green' ? 'color:var(--gpn-green)' : undefined}>{chip.label}</a>
+            ))}
           </div>
           <a class="gp-nav__ask" href={waLink(nav.contact.whatsappBatteryPrefill)}>
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.66.15-.2.3-.76.96-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.47-1.75-1.65-2.05-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.66-1.6-.9-2.19-.24-.57-.48-.5-.66-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.03 1.01-1.03 2.46s1.06 2.85 1.2 3.05c.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.71.22 1.35.19 1.86.12.57-.08 1.75-.71 1.99-1.4.25-.69.25-1.28.17-1.4-.07-.13-.27-.2-.57-.35z"></path><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.15h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.17 8.17 0 0 1-1.25-4.38c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.25 8.23z"></path></svg>
-            Can't find your model? Send us a photo of the old one
+            {batteryFinder.askAction.label}
           </a>
         </div>
+        )}
         {featAt(0) && (
           <a class="gp-nav__feat" href={`/products/${featAt(0)!.slug}`}>
             <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(0)!.imageUrl} alt={featAt(0)!.name} loading="lazy" decoding="async"></div>
@@ -483,16 +496,18 @@ const nbaJson = escNav(JSON.stringify(nba));
             <li><a href="/shop?category=power&q=wall+charger">Wall chargers</a></li>
             <li><a href="/shop?category=power&q=adapter">Adapters</a></li>
             <li><a href="/shop?category=power&q=cable">Cables</a></li>
-            <li><h4>Phone batteries</h4>
-              <form class="gp-nav__mfinder" action="/shop?category=power&q=battery" role="search">
-                <input type="search" name="model" placeholder="Type your phone, e.g. Tecno Spark 10" aria-label="Find a battery for your phone model">
+            {batteryLive && batteryFinder && (
+            <li><h4>{batteryFinder.heading}</h4>
+              <form class="gp-nav__mfinder" action={batteryFinder.formAction} role="search">
+                <input type="search" name={batteryFinder.inputName} placeholder={batteryFinder.inputPlaceholder} aria-label="Find a battery for your phone model">
               </form>
-              <div class="gp-nav__chips"><a href="/shop?category=power&q=tecno">Tecno</a><a href="/shop?category=power&q=infinix">Infinix</a><a href="/shop?category=power&q=itel">itel</a><a href="/shop?category=power&q=samsung">Samsung</a><a href="/shop?category=power&q=iphone">iPhone</a><a href="/shop?category=power&q=redmi">Redmi</a><a href="/shop?category=power&q=xiaomi">Xiaomi</a><a href="/shop?category=power&q=huawei">Huawei</a><a href="/shop?category=power&q=nokia">Nokia</a><a href="/shop?category=power&q=oppo">Oppo</a><a href="/shop?category=power&q=battery" style="color:var(--gpn-green)">All brands →</a></div>
+              <div class="gp-nav__chips">{batteryChips.map((chip) => (<a href={chip.href} style={chip.style === 'green' ? 'color:var(--gpn-green)' : undefined}>{chip.label}</a>))}</div>
               <a class="gp-nav__ask" href={waLink(nav.contact.whatsappBatteryPrefill)}>
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.66.15-.2.3-.76.96-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.47-1.75-1.65-2.05-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.66-1.6-.9-2.19-.24-.57-.48-.5-.66-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.03 1.01-1.03 2.46s1.06 2.85 1.2 3.05c.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.71.22 1.35.19 1.86.12.57-.08 1.75-.71 1.99-1.4.25-.69.25-1.28.17-1.4-.07-.13-.27-.2-.57-.35z"></path><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.15h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.17 8.17 0 0 1-1.25-4.38c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.25 8.23z"></path></svg>
-                Can't find your model? Send us a photo of the old one
+                {batteryFinder.askAction.label}
               </a>
             </li>
+            )}
           </ul>
         </div>
         <div class="gp-nav__acc" data-acc="sound">
@@ -1776,7 +1791,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         short:'<em>' + money(CTX.points * RATE_PTS) + '</em> in points to spend',
         cta:'Spend them', href:'/account/rewards' });
 
-      if (CTX.signedIn && CTX.lastOrderDays !== null && CTX.lastOrderDays > 150) c.push({ id:'reorder', score:84,
+      if (CFG.batteryLive && CTX.signedIn && CTX.lastOrderDays !== null && CTX.lastOrderDays > 150) c.push({ id:'reorder', score:84,
         text:'Phone battery fading? Yours is <b>' + Math.round(CTX.lastOrderDays/30) + ' months</b> old',
         short:'Your battery is <b>' + Math.round(CTX.lastOrderDays/30) + ' months</b> old',
         cta:'Find your model', href:'/shop?category=power&q=battery' });

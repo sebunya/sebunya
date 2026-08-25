@@ -30,6 +30,24 @@ routes.get('/', async (c) => {
   return c.json({ success: true, data: { config } });
 });
 
+/**
+ * Which nav links currently land on stock. The header uses this to gate the
+ * battery finder: 11 brand chips over a catalogue with no batteries is 11 dead
+ * ends. Public and safe — it reveals only whether a public search has results.
+ */
+routes.get('/availability', async (c) => {
+  try {
+    const config = await registry.navContentService.getPublicConfig();
+    const data = await registry.navAvailabilityService.forBatteryFinder(config);
+    c.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    return c.json({ success: true, data });
+  } catch {
+    // Fail closed: an empty answer hides the finder, it never invents stock.
+    c.header('Cache-Control', 'no-store');
+    return c.json({ success: true, data: { counts: {}, finderTotal: 0 } });
+  }
+});
+
 routes.post('/events', async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Invalid body' } }, 400);
