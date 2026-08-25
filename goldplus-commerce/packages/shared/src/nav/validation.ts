@@ -111,18 +111,10 @@ export function validateNavConfig(cfg: NavConfig): NavConfigError[] {
   // flash panel
   if (cfg.flash) {
     if (!isRealHref(cfg.flash.cta.href)) push('flash.cta.href', 'The flash CTA link must be real.');
-    cfg.flash.discountRows.forEach((r, i) => { if (!isRealHref(r.href)) push(`flash.discountRows[${i}].href`, 'Link must be a real page.'); });
     validateFeatured(cfg.flash.featured, 'flash', push);
     // NOTE: an EXPIRED saleEndsIso is a non-blocking warning (navConfigWarnings),
     // NOT a hard error — the deadline is hero-owned and not editable here, so
     // blocking on it would make the whole header un-saveable once the sale ends.
-    const s = cfg.flash.stock;
-    if (s) {
-      if (!Number.isFinite(s.left) || s.left < 0) push('flash.stock.left', 'Stock left must be zero or more.');
-      if (!Number.isFinite(s.of) || s.of < 1) push('flash.stock.of', 'Stock total must be at least 1.');
-      if (Number.isFinite(s.left) && Number.isFinite(s.of) && s.left > s.of) push('flash.stock.left', 'Stock left cannot exceed the total.');
-      if (!Number.isFinite(s.barWidthPct) || s.barWidthPct < 0 || s.barWidthPct > 100) push('flash.stock.barWidthPct', 'Bar width must be between 0 and 100.');
-    }
   }
 
   // trending terms: written by the editor, rendered into an href — same href

@@ -106,11 +106,9 @@ if (signedIn) {
 // never show a first-order promo we cannot gate.
 if (!signedIn) visits = Astro.locals.gpVisitIsNew ? 1 : 2;
 
-// ---- the sale clock: the CMS-owned deadline (nav.settings), which is itself
-// seeded from — and kept equal to — the hero's, so there is never a second one.
+// The sale clock is resolved AFTER navDeal (below), because the only honest
+// deadline is the one the promotion actually carries.
 const flash = HERO_SLIDE_LIBRARY.find((sl) => sl.slideKey === 'flash');
-const saleEnds = nav.settings?.saleEndsIso || (flash?.extras?.saleEndsIso as string) || '';
-const saleLive = saleEnds ? Date.now() < new Date(saleEnds).getTime() : false;
 
 // ---- points redemption value: ONE source of truth (the loyalty programme,
 // the same endpoint checkout uses). We claim a shilling value ONLY when
@@ -128,13 +126,29 @@ try {
 // ---- Next Best Action, computed on the SERVER from real signals ----
 // The browser keeps an identical offline set as the fallback; this is what makes
 // the strip right for new vs existing customers before the page even paints.
-const bizNav = await getBusinessInfo();
 // The featured cross-sell cards, from REAL catalogue data (a card must never
 // name a product the shop does not carry, or quote a price no one set).
 const navFeatured = await getNavFeatured();
 const navDeal = await getStorefrontDiscount();
+
+// ---- the sale clock, from the RUNNING promotion and nothing else ----
+//
+// This used to read `nav.settings.saleEndsIso`, a hand-typed date that nobody
+// had to keep true. It said 2026-08-09 while the header still advertised a
+// "Live" flash sale, so the countdown rendered 00:00:00:00 against a deadline
+// that had already passed. The promotion evaluator knows when the discount
+// really ends; that is the only deadline allowed to drive a clock.
+//
+// saleLive is now "a real, site-wide discount is running RIGHT NOW". Every
+// piece of sale furniture — the rail chip, the flash panel, the countdown —
+// hangs off it, so when no promotion is running the header says nothing about
+// a sale instead of inventing one.
+const saleEnds = navDeal.active ? (navDeal.endsIso ?? '') : '';
+const saleLive = saleEnds ? Date.now() < new Date(saleEnds).getTime() : false;
+/** The rail's "Flash sale — Live" chip is a claim; drop it when it is untrue. */
+const railItems = saleLive ? nav.rail : nav.rail.filter((c) => c.key !== 'flash');
 const featAt = (i: number) => navFeatured.length ? navFeatured[i % navFeatured.length] : null;
-const cut = kampalaCutoff(new Date(), { cutoffHour: bizNav.sameDayCutoffHour, closedDays: bizNav.closedDays });
+const cut = kampalaCutoff(new Date(), { cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays });
 const nba = computeNbaCandidates({
   signedIn, visits, cart: cartCount, points, lastOrderDays, orderInTransit,
   beforeCutoff: cut.beforeCutoff, minsToCutoff: cut.minsToCutoff, sunday: cut.sunday, saleLive,
@@ -236,7 +250,7 @@ const nbaJson = escNav(JSON.stringify(nba));
 
   <nav class="gp-nav__rail" aria-label="Product categories">
     <div class="gp-nav__rail-in gpn-container" id="gpNavRail">
-      {nav.rail.map((cat) => (
+      {railItems.map((cat) => (
         <a class={cat.key === 'flash' ? 'gp-nav__cat gp-nav__cat--flash' : 'gp-nav__cat'} href={cat.href} data-cat={cat.key}>{cat.label}{cat.tag && <span class="gp-nav__cat-tag">{cat.tag}</span>}</a>
       ))}
       <span class="gp-nav__spark" id="gpNavSpark" aria-hidden="true"></span>
@@ -279,7 +293,7 @@ const nbaJson = escNav(JSON.stringify(nba));
         </div>
         <div class="gp-nav__finder">
           <h3>Phone batteries</h3>
-          <p class="gp-nav__note"><b>80+ models</b> in stock — find yours by phone</p>
+          <p class="gp-nav__note">Find yours by phone model</p>
           <form action="/shop?category=power&q=battery" role="search">
             <input type="search" name="model" placeholder="Type your phone, e.g. Tecno Spark 10" aria-label="Find a battery for your phone model">
           </form>
@@ -397,6 +411,7 @@ const nbaJson = escNav(JSON.stringify(nba));
         )}
       </div>
 
+      {saleLive && (
       <div class="gp-nav__panel" data-panel="flash">
         <div>
           <h3>Ends in</h3>
@@ -407,21 +422,25 @@ const nbaJson = escNav(JSON.stringify(nba));
             <span><b data-cd="s">00</b><small>Sec</small></span>
           </div>
           <p class="gp-nav__note" id="gpNavCdNote">{nav.flash.noteDefault}</p>
-          <div class="gp-nav__stock">
-            <div class="gp-nav__stock-bar"><i style="width:23%"></i></div>
-            <span><b>14 left</b> of 60 at this price</span>
-          </div>
+          {/*
+            A stock meter used to sit here reading "14 left of 60 at this price"
+            behind a hard-coded 23% bar — no product, no sale, no source. There
+            is no per-price stock figure in the model to render honestly, so the
+            meter is gone rather than wired to a number an operator could type.
+          */}
           <a class="gp-nav__flashcta" href={nav.flash.cta.href}>{nav.flash.cta.label}</a>
         </div>
         <div>
-          <h3>Biggest cuts</h3>
+          <h3>What's discounted</h3>
+          {/*
+            These rows used to advertise −40% / −35% / −30% / −25% by category.
+            No such promotion existed: the ONE running campaign is a single
+            site-wide percentage, and the categories were invented. The panel
+            now states that campaign and nothing more.
+          */}
           <ul>
-            <li><a href="/shop?promo=flash-sale">Power banks <em>−40%</em></a></li>
-            <li><a href="/shop?promo=flash-sale">Earbuds <em>−35%</em></a></li>
-            <li><a href="/shop?promo=flash-sale">Memory cards <em>−30%</em></a></li>
-            <li><a href="/shop?promo=flash-sale">Phone batteries <em>−25%</em></a></li>
-            <li><a href="/shop?promo=flash-sale">Everything discounted</a></li>
-            <li><a href="/shop?promo=flash-sale"><b>Everything on sale →</b></a></li>
+            <li><a href={nav.flash.cta.href}>Everything in the shop <em>−{navDeal.percent}%</em></a></li>
+            <li><a href={nav.flash.cta.href}><b>See what's on sale →</b></a></li>
           </ul>
         </div>
         {featAt(0) && (
@@ -437,6 +456,7 @@ const nbaJson = escNav(JSON.stringify(nba));
           </a>
         )}
       </div>
+      )}
 
       <div class="gp-nav__mob">
         <div class="gp-nav__mhi" id="gpNavMhi"></div>
@@ -447,12 +467,14 @@ const nbaJson = escNav(JSON.stringify(nba));
         </form>
         <div class="gp-nav__quick">
           <a href="/shop">Shop All</a>
-          <a href="/shop?promo=flash-sale">Flash sale <span class="gp-nav__cat-tag">Live</span></a>
+          {saleLive && <a href={nav.flash.cta.href}>Flash sale <span class="gp-nav__cat-tag">Live</span></a>}
         </div>
-        <a class="gp-nav__mflash" href="/shop?promo=flash-sale">
-          <span>Flash sale ends in <b id="gpNavMcd">—</b></span>
-          <span class="gp-nav__mflash-go">Shop →</span>
+        {saleLive && (
+        <a class="gp-nav__mflash" href={nav.flash.cta.href}>
+          <span>{nav.mobile.mflashPrefix} <b id="gpNavMcd">—</b></span>
+          <span class="gp-nav__mflash-go">{nav.mobile.mflashGo}</span>
         </a>
+        )}
 
         <div class="gp-nav__acc" data-acc="power">
           <div class="gp-nav__acc-head"><a href="/shop?category=power">Power</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show Power subcategories">+</button></div>
@@ -461,7 +483,7 @@ const nbaJson = escNav(JSON.stringify(nba));
             <li><a href="/shop?category=power&q=wall+charger">Wall chargers</a></li>
             <li><a href="/shop?category=power&q=adapter">Adapters</a></li>
             <li><a href="/shop?category=power&q=cable">Cables</a></li>
-            <li><h4>Phone batteries — 80+ models</h4>
+            <li><h4>Phone batteries</h4>
               <form class="gp-nav__mfinder" action="/shop?category=power&q=battery" role="search">
                 <input type="search" name="model" placeholder="Type your phone, e.g. Tecno Spark 10" aria-label="Find a battery for your phone model">
               </form>
@@ -763,11 +785,6 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__feat span{display:block;margin-top:3px;font-size:12.5px;color:var(--gpn-muted);}
 
 .gp-nav__cat--flash .gp-nav__cat-tag{animation:gpn-live 2.6s ease-out infinite;}
-.gp-nav__stock{margin:0 0 14px;font-size:12px;color:var(--gpn-muted);}
-.gp-nav__stock b{color:var(--gpn-cream);font-weight:600;}
-.gp-nav__stock-bar{height:4px;border-radius:2px;background:rgba(243,239,228,.13);margin-bottom:7px;overflow:hidden;}
-.gp-nav__stock-bar i{display:block;height:100%;border-radius:2px;background:var(--gpn-green);
-  box-shadow:0 0 10px rgba(147,213,0,.5);}
 .gp-nav__cd{display:flex;gap:8px;margin-bottom:14px;}
 .gp-nav__cd span{
   min-width:56px;padding:9px 8px 7px;text-align:center;
@@ -1081,7 +1098,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__note{margin:-8px 0 12px;font-size:12px;color:var(--gpn-muted);}
 .gp-nav__note b{color:var(--gpn-cream);font-weight:600;}
 
-/* battery finder — 80+ SKUs is a search problem, not a list problem */
+/* battery finder — searching beats listing once the range is wide */
 .gp-nav__finder form{margin:0;}
 .gp-nav__finder input{
   width:100%;height:42px;padding:0 15px;margin-bottom:12px;

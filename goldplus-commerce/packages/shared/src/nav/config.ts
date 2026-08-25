@@ -82,7 +82,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
     { key: 'storage', label: 'Storage', href: '/shop?category=storage' },
     { key: 'car', label: 'Car', href: '/shop?category=car' },
     { key: 'pc', label: 'PC', href: '/shop?category=pc' },
-    { key: 'flash', label: 'Flash sale', href: '/shop?promo=flash-sale', tag: 'Live' },
+    { key: 'flash', label: 'On sale', href: '/shop', tag: 'Live' },
   ],
   panels: [
     {
@@ -101,7 +101,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
         rows: [
           { label: 'New this month', href: '/shop' },
           { label: 'Best sellers', href: '/shop' },
-          { label: 'Under UGX 100,000', href: '/shop' },
+          { label: 'Best value picks', href: '/shop' },
           { label: 'How we verify stock', href: '/verification' },
         ],
       },
@@ -120,7 +120,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
       ],
       batteryFinder: {
         heading: 'Phone batteries',
-        note: '80+ models in stock — find yours by phone',
+        note: 'Find yours by phone model',
         formAction: '/shop?category=power&q=battery',
         inputName: 'model',
         inputPlaceholder: 'Type your phone, e.g. Tecno Spark 10',
@@ -189,31 +189,21 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
     countdownLabels: { d: 'Days', h: 'Hrs', m: 'Min', s: 'Sec' },
     noteDefault: 'Same verified stock. Less money, until the clock runs out.',
     noteFinalHours: 'Final hours. Same verified stock, less money.',
-    stock: { left: 14, of: 60, label: 'at this price', barWidthPct: 23 },
-    cta: { label: 'Shop the flash sale →', href: '/shop?promo=flash-sale' },
-    discountRowsHeading: 'Biggest cuts',
-    discountRows: [
-      { label: 'Power banks', pct: '−40%', href: '/shop?promo=flash-sale' },
-      { label: 'Earbuds', pct: '−35%', href: '/shop?promo=flash-sale' },
-      { label: 'Memory cards', pct: '−30%', href: '/shop?promo=flash-sale' },
-      { label: 'Phone batteries', pct: '−25%', href: '/shop?promo=flash-sale' },
-      { label: 'Everything under UGX 100,000', pct: null, href: '/shop?promo=flash-sale' },
-      { label: 'Everything on sale →', pct: null, href: '/shop?promo=flash-sale', bold: true },
-    ],
+    cta: { label: "See what's on sale →", href: '/shop' },
     featured: {
-      eyebrow: 'Best seller, on sale', name: 'Magnetic Power Bank', line: 'UGX 185,000 → <b>UGX 111,000</b>',
-      href: '/shop?promo=flash-sale', alt: 'Magnetic Power Bank', img: FEAT,
+      eyebrow: 'Best seller, on sale', name: 'Magnetic Power Bank', line: 'On sale now',
+      href: '/shop', alt: 'Magnetic Power Bank', img: FEAT,
     },
   },
   mobile: {
     quickLinks: [
       { key: 'all', label: 'Shop All', href: '/shop' },
-      { key: 'flash', label: 'Flash sale', href: '/shop?promo=flash-sale', tag: 'Live' },
+      { key: 'flash', label: 'On sale', href: '/shop', tag: 'Live' },
     ],
-    mflashPrefix: 'Flash sale ends in',
+    mflashPrefix: 'Sale ends in',
     mflashGo: 'Shop →',
-    mflashHref: '/shop?promo=flash-sale',
-    batteryAccordionHeading: 'Phone batteries — 80+ models',
+    mflashHref: '/shop',
+    batteryAccordionHeading: 'Phone batteries',
   },
   popover: {
     signedIn: {

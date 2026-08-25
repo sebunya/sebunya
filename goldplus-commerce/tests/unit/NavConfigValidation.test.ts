@@ -91,11 +91,15 @@ describe('validateNavConfig', () => {
     expect(validateNavConfig(c).some((e) => e.path === 'settings.firstOrderDiscountPct')).toBe(true);
   });
 
-  it('refuses a nonsensical flash stock (left greater than total, bad bar width)', () => {
-    const c = clone(); c.flash.stock.left = 99; c.flash.stock.of = 10; c.flash.stock.barWidthPct = 500;
-    const errs = validateNavConfig(c).map((e) => e.path);
-    expect(errs).toContain('flash.stock.left');
-    expect(errs).toContain('flash.stock.barWidthPct');
+  it('offers no flash stock meter to validate in the first place', () => {
+    // This used to check that "left" could not exceed "of" and that the bar
+    // width was a sane percentage — careful validation of a number with
+    // nothing behind it. The meter advertised "14 left of 60 at this price"
+    // for a sale with no items. Validating invented scarcity is not the fix;
+    // the field is gone, so there is nothing to get wrong.
+    const c = clone() as Record<string, any>;
+    expect(c.flash.stock).toBeUndefined();
+    expect(c.flash.discountRows).toBeUndefined();
   });
 });
 

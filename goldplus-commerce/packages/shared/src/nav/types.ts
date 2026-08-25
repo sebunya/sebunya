@@ -54,17 +54,19 @@ export interface NavCapacityRow {
   caps: NavLink[];
 }
 
-export interface NavFlashDiscountRow { label: string; pct: string | null; href: string; bold?: boolean; }
-
+/**
+ * The sale panel. It deliberately carries NO stock meter and NO per-category
+ * discount rows: both existed once, both were operator-typed numbers with
+ * nothing behind them ("14 left of 60", "-40% power banks" against a sale with
+ * zero items), and a config field is an invitation to invent one again. The
+ * panel states the ONE running campaign, which the pricing engine knows.
+ */
 export interface NavFlashPanel {
   countdownHeading: string;
   countdownLabels: { d: string; h: string; m: string; s: string };
   noteDefault: string;
   noteFinalHours: string;
-  stock: { left: number; of: number; label: string; barWidthPct: number };
   cta: NavLink;
-  discountRowsHeading: string;
-  discountRows: NavFlashDiscountRow[];
   featured: NavFeatured;
 }
 
@@ -150,7 +152,7 @@ export interface NavConfig {
   search: NavSearch;
   rail: NavRailItem[];
   panels: NavMegaPanel[]; // the 6 non-flash panels; mobile accordions render from the SAME records
-  flash: NavFlashPanel; // the flash panel (distinct: countdown/stock/discounts)
+  flash: NavFlashPanel; // the sale panel (countdown + CTA; no invented stock or cuts)
   mobile: NavMobileExtras;
   popover: NavPopoverCopy;
   miniCart: NavMiniCartCopy;
