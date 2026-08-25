@@ -6,6 +6,7 @@ import EmptyState from '../../components/EmptyState.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
+import { orderStatusCopy, STATUS_TONE_CLASS } from '../../lib/orderStatusCopy';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -41,15 +42,6 @@ if (unauthorised) {
 
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
 
-const statusBadge: Record<string, string> = {
-  PENDING_PAYMENT: 'bg-orange-50 text-orange-700 border-orange-200',
-  PAID: 'bg-green-50 text-green-700 border-green-200',
-  PAYMENT_FAILED: 'bg-red-50 text-red-700 border-red-200',
-  PROCESSING: 'bg-blue-50 text-blue-700 border-blue-200',
-  SHIPPED: 'bg-blue-50 text-blue-700 border-blue-200',
-  DELIVERED: 'bg-green-50 text-green-700 border-green-200',
-  CANCELLED: 'bg-gray-100 text-gray-700 border-gray-200',
-};
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="My account">
@@ -110,7 +102,12 @@ const statusBadge: Record<string, string> = {
               {overview.orderCount > 0 && <a href="/account/orders" class="text-xs font-bold text-brand-mutedGrey hover:text-brand-charcoal">View all &rarr;</a>}
             </div>
             {overview.recentOrders.length === 0 ? (
-              <EmptyState title="No orders yet" message="Orders placed while signed in appear here — and earn GoldPlus points when paid." />
+              <EmptyState title="No orders yet" message="Orders placed while signed in appear here — and earn GoldPlus points when paid. Ordered as a guest? Look it up with your order reference.">
+                <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                  <a href="/shop" class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-black">Start shopping</a>
+                  <a href="/track-order" class="inline-flex items-center justify-center rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-brand-charcoal hover:bg-brand-softGrey">Find a guest order</a>
+                </div>
+              </EmptyState>
             ) : (
               <ul class="divide-y divide-brand-borderGrey">
                 {overview.recentOrders.map((o: any) => (
@@ -120,7 +117,7 @@ const statusBadge: Record<string, string> = {
                       <p class="text-xs text-brand-mutedGrey mt-1">{formatDate(o.createdAt)} · {o.itemCount} item{o.itemCount === 1 ? '' : 's'}</p>
                     </div>
                     <div class="flex items-center gap-3">
-                      <span class={`inline-flex items-center px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${statusBadge[o.status] ?? statusBadge.CANCELLED}`}>{o.status.replace(/_/g, ' ')}</span>
+                      <span class={`inline-flex items-center px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${STATUS_TONE_CLASS[orderStatusCopy(o.status).tone]}`}>{orderStatusCopy(o.status).label}</span>
                       <span class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(o.totalAmountUgx)}</span>
                     </div>
                   </li>

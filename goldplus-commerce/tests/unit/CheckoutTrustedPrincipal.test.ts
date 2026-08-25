@@ -308,9 +308,11 @@ describe('the checkout response never publishes the domain order', () => {
   });
 
   it('does not leak internal error text to public callers', () => {
-    // The route now maps typed outcomes; only an allowlisted business code is
-    // named back to the customer.
-    expect(checkoutHandler).toContain('TERMINAL_PUBLIC_CODES.includes(outcome.reason)');
+    // The route maps typed outcomes to a stable public code plus a sentence.
+    // The code is for the storefront to map; it is never prefixed onto the
+    // sentence — "PRICE_CHANGED: The price changed…" put a SCREAMING_SNAKE
+    // enum in front of the customer on the most sensitive refusal there is.
+    expect(checkoutHandler).not.toMatch(/\$\{outcome\.reason\}:\s*\$\{mapped\.message\}/);
     expect(checkoutHandler).toContain("message: 'The order could not be completed. Please try again.'");
     const useCase = readFileSync(
       join(__dirname, '../../apps/api/src/application/use-cases/commerce/ExecuteCheckoutIntentUseCase.ts'),

@@ -16,16 +16,20 @@ const config = {
     glyph: 'i',
   },
   warning: {
-    title: title ?? 'Warning',
-    message: message ?? 'Something went wrong.',
+    title: title ?? 'Something went wrong',
+    message: message ?? 'Please try again. If it keeps happening, contact us and we will sort it out with you.',
     bg: 'bg-red-50',
     border: 'border-red-200',
     text: 'text-red-900',
     glyph: '!',
   },
   'not-configured': {
-    title: title ?? 'Not configured',
-    message: message ?? 'This integration is not configured. It will activate once credentials are supplied.',
+    // The old default — "This integration is not configured. It will activate
+    // once credentials are supplied." — was written for whoever deploys the
+    // system and reached six customer pages. A shopper needs the consequence
+    // and a way forward, not the cause.
+    title: title ?? 'Temporarily unavailable',
+    message: message ?? 'This part of the site is not available right now. Please try again shortly, or contact us and we will help.',
     bg: 'bg-gray-50',
     border: 'border-gray-200',
     text: 'text-gray-700',
@@ -52,7 +56,8 @@ const config = {
 const c = config[kind];
 ---
 
-<div class={`${c.bg} border ${c.border} ${c.text} rounded-xl p-4 flex items-start gap-3`} role="status">
+{/* A failure is announced assertively; an informational notice politely. */}
+<div class={`${c.bg} border ${c.border} ${c.text} rounded-xl p-4 flex items-start gap-3`} role={kind === 'warning' ? 'alert' : 'status'}>
   <span aria-hidden="true" class="w-6 h-6 rounded-full bg-white/70 flex items-center justify-center font-black text-sm shrink-0">{c.glyph}</span>
   <div class="flex-1 min-w-0">
     <p class="text-sm font-bold">{c.title}</p>

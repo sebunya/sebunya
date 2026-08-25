@@ -192,18 +192,20 @@ const whyYoullLikeIt = (() => {
       "Built for simple everyday use"
     ];
   }
+  // These bullets are per CATEGORY, so nothing here may be a specification —
+  // "Two USB ports" and "Compact charging case" were being asserted for every
+  // product in the category, wired earphones and single-port chargers
+  // included. Specs come from the verified attributes table below, or not at all.
   if (product?.categoryName === 'Sound Devices') {
     return [
-      "Wireless everyday listening",
-      "Compact charging case",
-      "Useful for music, calls and videos",
-      "Easy to carry through the day"
+      "For music, calls and videos",
+      "Easy to carry through the day",
+      "Simple GoldPlus design"
     ];
   }
   if (product?.categoryName === 'Car Accessories') {
     return [
-      "Everyday car charging",
-      "Two USB ports",
+      "For everyday use in the car",
       "Compact for travel",
       "Clean GoldPlus design"
     ];

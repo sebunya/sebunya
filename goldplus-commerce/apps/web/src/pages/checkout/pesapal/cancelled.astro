@@ -1,32 +1,44 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getBusinessInfo } from '../../../lib/businessInfo';
+
+/**
+ * The customer pressed Cancel on the PesaPal page. The ORDER already exists —
+ * it was created before the handoff — and the checkout intent is retained so
+ * going back reaches the same order, not a second one. The old copy said only
+ * "no charges have been made" and sent them to a cart that had just been
+ * emptied; it never mentioned the order at all.
+ */
+const biz = await getBusinessInfo();
+const helpHref = `${biz.whatsappUrl}?text=${encodeURIComponent('Hello GoldPlus, I cancelled a payment and want to finish my order.')}`;
 ---
 
-<BaseLayout robotsMeta="noindex,follow" title="Payment Cancelled">
+<BaseLayout robotsMeta="noindex,follow" title="Payment cancelled">
   <div class="bg-brand-softGrey py-10 border-b border-brand-borderGrey">
     <div class="container mx-auto px-4 lg:px-8 text-center">
-      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-brand-charcoal mb-2">Payment Cancelled</h1>
-      <p class="text-brand-mutedGrey max-w-xl mx-auto">
-        Your transaction was not completed. No charges have been made.
-      </p>
+      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-brand-charcoal mb-2">Payment cancelled</h1>
+      <p class="text-brand-mutedGrey max-w-xl mx-auto">You have not been charged.</p>
     </div>
   </div>
 
   <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-xl mx-auto bg-white border border-brand-borderGrey rounded-3xl shadow-sm p-8 text-center">
       <div class="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
-        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
         </svg>
       </div>
-      <h2 class="text-2xl font-black text-brand-charcoal mb-4">Transaction Cancelled</h2>
+      <p class="text-lg font-bold text-brand-charcoal mb-3" role="status">Your order is saved and still unpaid.</p>
       <p class="text-gray-600 mb-8 leading-relaxed">
-        You can return to your cart and complete checkout using a different payment option, or retry when you are ready.
+        Go back to pay when you are ready — it will not create a second order. If the checkout looks empty, send us a message and we will help you finish.
       </p>
       <div class="flex flex-col sm:flex-row gap-4 justify-center">
-        <a href="/cart" class="bg-brand-charcoal text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-all">Return to Cart</a>
-        <a href="/checkout" class="border border-brand-borderGrey text-brand-charcoal px-6 py-3 rounded-xl font-bold hover:bg-brand-softGrey transition-all">Retry Checkout</a>
+        <a href="/checkout" class="bg-brand-charcoal text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-all">Pay for this order</a>
+        <a href="/shop" class="border border-brand-borderGrey text-brand-charcoal px-6 py-3 rounded-xl font-bold hover:bg-brand-softGrey transition-all">Back to the shop</a>
       </div>
+      <p class="mt-8 text-sm text-gray-600">
+        Need a hand? <a href={helpHref} class="font-bold text-brand-charcoal underline">Ask us on WhatsApp</a> or call {biz.phoneDisplay}.
+      </p>
     </div>
   </div>
 </BaseLayout>

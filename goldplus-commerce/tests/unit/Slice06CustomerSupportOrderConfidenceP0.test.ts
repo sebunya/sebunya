@@ -30,8 +30,11 @@ describe('Slice 06 customer support and order confidence P0', () => {
     for (const stage of ['Order placed', 'Confirmed & preparing', 'Dispatched', 'Delivered']) {
       expect(orderHelp).toContain(stage);
     }
+    // ONE disclaimer is enough; the page used to carry two ("not a live map"
+    // and "not live courier tracking"). What the contract protects is the
+    // absence of a live-tracking CLAIM, so that is what is asserted.
     expect(orderHelp).toContain('not a live map');
-    expect(orderHelp).toContain('not live courier tracking');
+    expect(orderHelp).not.toMatch(/real[- ]time tracking|track (it|your rider|your order) (live|in real[- ]time)|see your rider on a map/i);
   });
 
   it('keeps WhatsApp support link-only; back-office sends only on explicit submit', () => {

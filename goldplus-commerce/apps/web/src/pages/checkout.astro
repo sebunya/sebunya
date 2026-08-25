@@ -102,7 +102,6 @@ let reference: string | undefined;
 let createdOrderId: string | undefined;
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
-let isOfflineDraft = false;
 
 // The checkout intent is resolved on EVERY render, including the initial GET.
 //
@@ -422,7 +421,7 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
         } else if (outcome.status === 'awaiting_payment') {
            // Payable, but the customer chose the offline path.
            status = 'received';
-           message = 'Order successfully created for review. Our logistics team will contact you with final pricing.';
+           message = 'We have your order. Our team will call you to confirm the total before you pay.';
            clearCheckoutIntent(Astro.cookies);
            Astro.cookies.delete('goldplus_cart_data', { path: '/' });
         } else {
@@ -445,29 +444,19 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
         status = 'error';
         message = outcome.message;
      } else {
-        const allowDraft = String(formData.get('allowOfflineDraft') || '') === 'true';
-        if (allowDraft) {
-           status = 'received';
-           isOfflineDraft = true;
-           reference = `GP-DRAFT-${Math.floor(100000 + Math.random() * 900000)}`;
-           message = 'Offline draft saved on this device. Order was not submitted to the server.';
-           
-           // Clear browser cart cookie contents only when explicitly choosing a local draft
-           Astro.cookies.delete('goldplus_cart_data', { path: '/' });
-        } else {
-           status = 'error';
-           // `res` was a leftover from the untyped postJson call this branch used
-           // to make. It is scoped to the cart-fetch block far above, so reaching
-           // this line threw a ReferenceError and the customer got a 500 instead
-           // of a message — on the ONE path that exists to explain a failure.
-           // Found by the end-to-end harness; typecheck and build both passed.
-           message = outcome.message || 'Failed to submit order. The checkout service is temporarily offline. You may retry, or check "Save as offline draft on this device" below to proceed in local demonstration mode.';
-           // Preserve the cart cookie on failure so items are not lost!
-        }
+        // There used to be a "Save as offline draft on this device" checkbox
+        // here that, on any refusal, rendered a green "Order Received" with a
+        // random GP-DRAFT-###### reference — an order-shaped number that
+        // existed nowhere, could never be paid (every payment path refuses the
+        // prefix), and deleted the customer's cart cookie on the way out. It
+        // was demo scaffolding on a production money path. A refusal is now
+        // simply a refusal, with the basket kept so nothing is lost.
+        status = 'error';
+        message = outcome.message;
      }
   } else {
      status = 'error';
-     message = 'Fix form errors before submitting.';
+     message = 'Some details are missing. Check the highlighted fields below.';
   }
 }
 
@@ -566,38 +555,22 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
     
     {status === 'received' ? (
       <div class="max-w-2xl mx-auto text-center py-16 bg-white border border-slate-200/80 rounded-2xl shadow-xs px-6">
-         {isOfflineDraft ? (
-           <>
-              <div class="w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6 border border-amber-100 shadow-xs">
-               <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-             </div>
-             <h2 class="text-2xl font-black text-gray-900 mb-2">Offline Draft Saved</h2>
-             <p class="text-[10px] font-black text-amber-800 bg-amber-50 border border-amber-200/60 px-3 py-1 rounded-full inline-block mb-6 uppercase tracking-wider">Local Demo Mode Only</p>
-             <p class="text-slate-550 text-base mb-6">Local Draft Reference: <strong class="font-mono bg-slate-50 px-2 py-0.5 rounded text-gray-900 border border-slate-200/40">{reference}</strong></p>
-             <p class="text-amber-700 font-semibold max-w-md mx-auto mb-10 leading-relaxed bg-amber-50/50 border border-amber-200/60 p-4 rounded-xl text-xs text-left shadow-xs">
-               Notice: The server is currently offline. This order has <strong>not</strong> been submitted to the GoldPlus distribution team. Please screenshot this reference page or retry when connection is restored.
-             </p>
-           </>
-         ) : (
-           <>
-              <div class="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-100 shadow-xs">
-               <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
-             </div>
-             <h2 class="text-2xl font-black text-gray-900 mb-2">Order Received</h2>
-             <p class="text-slate-550 text-base mb-6">Reference: <strong class="font-mono bg-slate-50 px-2 py-0.5 rounded text-gray-900 border border-slate-200/40">{reference}</strong></p>
-             <p class="text-slate-500 max-w-md mx-auto mb-10 leading-relaxed text-sm">Our distribution center will evaluate transit routing and contact you soon to confirm final delivery logistics.</p>
-           </>
-         )}
+         <div class="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-100 shadow-xs">
+           <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+         </div>
+         <h2 class="text-2xl font-black text-gray-900 mb-2">We have your order</h2>
+         <p class="text-slate-550 text-base mb-6">Order number: <strong class="font-mono bg-slate-50 px-2 py-0.5 rounded text-gray-900 border border-slate-200/40">{reference}</strong></p>
+         <p class="text-slate-500 max-w-md mx-auto mb-10 leading-relaxed text-sm">{message || 'Our team will call you to confirm your delivery and the total before you pay.'}</p>
          <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-           {!isOfflineDraft && createdOrderId && (
+           {createdOrderId && (
              <a href={`/orders/${createdOrderId}`} class="inline-block bg-brand-primary text-gray-950 px-8 py-2.5 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 transition-all text-xs tracking-wider uppercase cursor-pointer hover:scale-[1.01] active:scale-95">View &amp; track this order</a>
            )}
            <a href="/shop" class="inline-block bg-slate-900 text-white px-8 py-2.5 rounded-full font-bold hover:bg-slate-950 transition-all text-xs tracking-wider uppercase cursor-pointer hover:scale-[1.01] active:scale-95">Continue shopping</a>
          </div>
-         {!isOfflineDraft && !authenticatedUserId && (
+         {!authenticatedUserId && (
            <div class="mt-8 mx-auto max-w-md rounded-xl border border-amber-200/60 bg-amber-50 px-5 py-4 text-left">
              <p class="text-sm font-bold text-amber-900">Create a free account to get more from GoldPlus</p>
-             <p class="text-xs text-amber-800 mt-1.5 leading-relaxed">Track orders in one place, save delivery addresses for one-tap checkout, and earn GoldPlus points on every paid order.</p>
+             <p class="text-xs text-amber-800 mt-1.5 leading-relaxed">Track orders in one place, check out faster with saved addresses, and earn GoldPlus points on every paid order.</p>
              <a href="/register?returnTo=/account" class="inline-block mt-3 rounded-full bg-brand-dark px-5 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:bg-black">Create account</a>
            </div>
          )}
@@ -606,8 +579,13 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
       <div class="flex flex-col lg:flex-row gap-10">
 
         <div class="w-full lg:w-2/3">
-          <FormFeedback status={status} message={message} />
-          
+          {/*
+            `reference` is passed through: on a payment-start failure the copy
+            says "quote your order number", and the page used to show the
+            sentence without the number.
+          */}
+          <FormFeedback status={status} message={message} reference={status === 'error' ? reference : undefined} />
+
           <form id="checkout-form" method="POST" action="/checkout" novalidate class="space-y-6 mt-4">
             <input type="hidden" name="attribution" id="attribution-field" />
             <!-- Slice 3B: idempotency key — a resubmitted/double-clicked form returns the same order -->
@@ -659,7 +637,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
                    <div id="new-address-fields" class="space-y-4">
                      {pickupPoints.length > 0 && (
               <div class="space-y-2" id="delivery-method-block">
-                <span class="block text-sm font-bold text-brand-charcoal">How should you get this order?</span>
+                <span class="block text-sm font-bold text-brand-charcoal">How would you like to get this order?</span>
                 <div class="flex gap-3">
                   <label class="flex items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="door" checked class="js-method-radio" /> Deliver to me</label>
                   <label class="flex items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="pickup" class="js-method-radio" /> I'll collect from a pickup point</label>
@@ -724,16 +702,6 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
               </div>
             </div>
 
-            {status === 'error' && (
-              <div class="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-sm flex items-start gap-3">
-                <input type="checkbox" id="allowOfflineDraft" name="allowOfflineDraft" value="true" class="mt-1 rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4" />
-                <div>
-                  <label for="allowOfflineDraft" class="font-bold cursor-pointer select-none">Save as offline draft on this device</label>
-                  <p class="text-xs text-amber-700 mt-1">If the checkout service is unreachable, checking this lets you complete the transaction flow as a local demonstration. The draft reference will be stored on your device and labeled explicitly.</p>
-                </div>
-              </div>
-            )}
-
             <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               {/*
                 The button says what pressing it DOES. It used to read "Pay Online"
@@ -793,7 +761,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
                   {initialDeliveryEstimate?.kind === 'CONFIRMED' && initialDeliveryEstimate.feeUgx !== null ? (
                     <span class="font-bold text-gray-900 tabular-nums">{formatUgx(initialDeliveryEstimate.feeUgx)}</span>
                   ) : initialDeliveryEstimate?.kind === 'ESTIMATED' && initialDeliveryEstimate.feeUgx !== null ? (
-                    <span class="font-bold text-gray-900 tabular-nums">about {formatUgx(initialDeliveryEstimate.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">confirmed before dispatch</span></span>
+                    <span class="font-bold text-gray-900 tabular-nums">about {formatUgx(initialDeliveryEstimate.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">confirmed before the rider leaves</span></span>
                   ) : (
                     <span class="text-[11px] font-bold text-slate-400">Shown when you pick a location</span>
                   )}
@@ -818,7 +786,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
                 </dd>
               </div>
               {initialDeliveryEstimate?.kind === 'ESTIMATED' && (
-                <p class="text-[10px] text-slate-400 text-right -mt-1">Delivery is added on top and confirmed before dispatch.</p>
+                <p class="text-[10px] text-slate-400 text-right -mt-1">Delivery is added on top and confirmed before the rider leaves.</p>
               )}
             </dl>
             {loyaltyProgramme.active && loyaltyProgramme.redemption.configured && loyaltyAvailablePoints >= (loyaltyProgramme.redemption.minPoints ?? 1) && (
@@ -840,7 +808,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
                     class="w-32 px-3 py-2 bg-white border border-brand-borderGrey rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-primary"
                     data-point-value={loyaltyProgramme.redemption.pointValueUgx}
                   />
-                  <span class="text-xs font-semibold text-slate-500" id="redeem-value-preview">points → discount shown at confirmation</span>
+                  <span class="text-xs font-semibold text-slate-500" id="redeem-value-preview">We will show the discount before you pay</span>
                 </div>
                 <p class="text-[11px] text-slate-500">Points can cover up to {Math.floor((loyaltyProgramme.redemption.maxShareBps ?? 0) / 100)}% of the goods total. The exact discount is confirmed when you place the order.</p>
               </div>
@@ -988,7 +956,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
       } else if (est && est.kind === 'ESTIMATED' && est.feeUgx !== null) {
         // An estimate is not a commitment: it is shown, but only a CONFIRMED
         // operator-zone fee joins the committed total (Slice 03 P0 contract).
-        estimateEl.innerHTML = `<span class="font-bold text-gray-900 tabular-nums">about ${ugx(est.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">confirmed before dispatch</span></span>`;
+        estimateEl.innerHTML = `<span class="font-bold text-gray-900 tabular-nums">about ${ugx(est.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">confirmed before the rider leaves</span></span>`;
         totalLabelEl.textContent = 'Estimated total';
         totalEl.textContent = ugx(goodsTotal());
       } else {
@@ -1137,7 +1105,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
       const pts = parseInt(redeemInput.value, 10);
       if (redeemPreview) {
         redeemPreview.textContent =
-          Number.isInteger(pts) && pts > 0 && pv > 0 ? `= ${ugx(pts * pv)} off this order` : 'points → discount shown at confirmation';
+          Number.isInteger(pts) && pts > 0 && pv > 0 ? `= ${ugx(pts * pv)} off this order` : 'We will show the discount before you pay';
       }
     });
 
@@ -1178,11 +1146,25 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
 
     // ── add_payment_info — fires when user submits the checkout form ──────────
     const form = document.querySelector<HTMLFormElement>('form[action="/checkout"]');
+    // The button is really disabled, not just styled as disabled: a second
+    // tap on a slow connection re-POSTed the form. The intent fingerprint made
+    // that idempotent server-side, but the customer then saw "already being
+    // processed" as a red error. Deferred one tick so the submit itself
+    // carries the button's value.
+    const submitLabel = submitBtn?.textContent ?? '';
     form?.addEventListener('submit', () => {
-      if (submitBtn) {
-        submitBtn.textContent = 'Processing…';
-        submitBtn.classList.add('opacity-80', 'cursor-not-allowed');
-      }
+      if (!submitBtn) return;
+      submitBtn.textContent = 'Sending your order…';
+      submitBtn.classList.add('opacity-80', 'cursor-not-allowed');
+      setTimeout(() => { submitBtn.disabled = true; }, 0);
+    });
+    // Browser Back from the PesaPal page restores this document from the
+    // back-forward cache with the button still frozen. Give it back.
+    window.addEventListener('pageshow', (ev) => {
+      if (!ev.persisted || !submitBtn) return;
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('opacity-80', 'cursor-not-allowed');
+      submitBtn.textContent = submitLabel;
     });
     form?.addEventListener('submit', () => {
       const paymentMethod = (

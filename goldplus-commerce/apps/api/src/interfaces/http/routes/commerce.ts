@@ -12,13 +12,6 @@ import { paymentDidConfirm } from '../../../application/use-cases/commerce/Recon
 import { isCartApplied, type CartOutcome } from '../../../application/use-cases/commerce/MutateCartUseCase';
 import { resolveCartCredential, cartRefusalStatus } from '../middleware/cartCredential';
 
-/** Rejections whose code is safe and useful to name back to the customer. */
-const TERMINAL_PUBLIC_CODES = [
-  'PRODUCT_UNAVAILABLE',
-  'PRICE_UNAVAILABLE',
-  'PRICE_CHANGED',
-  'PROMOTION_CHANGED',
-];
 import {
   applyOptionalCustomerSession,
   resolveCheckoutIntent,
@@ -729,11 +722,12 @@ routes.post('/orders/create', async (c) => {
     'CHECKOUT_REFUSED',
   );
 
-  // A known business rejection names itself; an unexpected one never leaks
-  // internal text, which can carry query fragments.
-  const publicMessage = TERMINAL_PUBLIC_CODES.includes(outcome.reason)
-    ? `${outcome.reason}: ${mapped.message}`
-    : mapped.message;
+  // A known business rejection is named by its CODE (the storefront maps it to
+  // its own wording); an unexpected one never leaks internal text, which can
+  // carry query fragments. The code used to be prefixed onto the sentence as
+  // well — "PRICE_CHANGED: The price changed…" — which put a SCREAMING_SNAKE
+  // enum in front of the customer on the most sensitive refusal there is.
+  const publicMessage = mapped.message;
 
   return c.json({
     success: false,
@@ -1019,7 +1013,9 @@ routes.get('/payments/pesapal/callback', async (c) => {
   const frontendCallbackUrl = process.env.PESAPAL_CALLBACK_URL || 'http://localhost:3000/checkout/pesapal/callback';
 
   if (!trackingId || !reference) {
-    return c.redirect(`${frontendCallbackUrl}?status=failed&message=Missing+required+parameters`);
+    // Without both ids nothing can be settled, so nothing is known about the
+    // money — "unknown", not "failed", which the page renders as "not charged".
+    return c.redirect(`${frontendCallbackUrl}?status=unknown_attempt`);
   }
 
   try {
@@ -1047,7 +1043,10 @@ routes.get('/payments/pesapal/callback', async (c) => {
     return c.redirect(`${frontendCallbackUrl}?status=${encodeURIComponent(settlement.kind.toLowerCase())}&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}&code=${encodeURIComponent(settlement.reason)}`);
   } catch (err: any) {
     console.error('[API_ERROR] PesaPal callback failed:', err);
-    return c.redirect(`${frontendCallbackUrl}?status=failed&message=${encodeURIComponent(err.message)}`);
+    // An exception here means we do NOT know what happened to the money, so
+    // the customer is told exactly that — never "failed" (which the page
+    // renders as "you have not been charged"), and never the exception text.
+    return c.redirect(`${frontendCallbackUrl}?status=unknown_attempt&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}`);
   }
 });
 

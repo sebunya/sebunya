@@ -2,21 +2,15 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { postJson, whatsappSupportNumber } from '../lib/api';
 import { formatUgx } from '../lib/money';
+import { orderStatusCopy, paymentStatusCopy, STATUS_TONE_CLASS } from '../lib/orderStatusCopy';
 
 const orderHelpWhatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(
   'Hello GoldPlus, I need help with an order. I have my order reference ready.'
 )}`;
 
-const label = (s: unknown) =>
-  String(s ?? '').replace(/[_-]+/g, ' ').toLowerCase().replace(/\b\w/g, (m) => m.toUpperCase()) || 'Unknown';
-
-const toneFor = (s: string) => {
-  const v = String(s ?? '').toUpperCase();
-  if (/PAID|DELIVERED|COMPLETE|CONFIRM/.test(v)) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
-  if (/PENDING|PROCESS|DISPATCH|TRANSIT|REVIEW/.test(v)) return 'bg-amber-50 text-amber-900 border-amber-200';
-  if (/FAIL|CANCEL|REFUND/.test(v)) return 'bg-red-50 text-red-800 border-red-200';
-  return 'bg-slate-50 text-slate-700 border-slate-200';
-};
+// Status words come from orderStatusCopy — the page used to title-case the
+// raw enum ("Pending Owner Review", "Payment: Review") with no sentence about
+// what it meant for the customer's money.
 
 const fmtDate = (iso: unknown) => {
   const t = iso ? new Date(String(iso)).getTime() : NaN;
@@ -26,7 +20,7 @@ const fmtDate = (iso: unknown) => {
 // Dispatch stages the customer cares about — fulfilment progress, NOT live GPS.
 const STAGES = [
   { key: 'placed', title: 'Order placed', desc: 'We have your order.' },
-  { key: 'preparing', title: 'Confirmed & preparing', desc: 'Payment reviewed; your items are being prepared at our shop.' },
+  { key: 'preparing', title: 'Confirmed & preparing', desc: 'We have checked your payment. Your items are being packed at our shop.' },
   { key: 'dispatched', title: 'Dispatched', desc: 'Handed to our rider and on the way to you.' },
   { key: 'delivered', title: 'Delivered', desc: 'Order completed.' },
 ];
@@ -44,7 +38,9 @@ async function lookupOrder(reference: string, contact: string) {
 
 let order: any = null;
 let errorMsg: string | undefined;
-let submittedRef = '';
+// The payment-return page links here with the order number already known;
+// prefill it so the customer only has to add their phone number or email.
+let submittedRef = (Astro.url.searchParams.get('reference') ?? '').trim().slice(0, 80);
 let followupOk = false;
 let followupError: string | undefined;
 
@@ -92,8 +88,15 @@ if (Astro.request.method === 'POST') {
 }
 
 const currentStage = order ? stageIndexOf(order.orderStatus) : -1;
-const isCancelled = order && ['cancelled', 'failed'].includes(String(order.orderStatus ?? '').toLowerCase());
-const isDeliveryFailed = order && String(order.orderStatus ?? '').toLowerCase() === 'delivery_failed';
+const orderStatusKey = String(order?.orderStatus ?? '').toLowerCase();
+const isCancelled = order && ['cancelled', 'failed'].includes(orderStatusKey);
+const isDeliveryFailed = order && orderStatusKey === 'delivery_failed';
+// An unpaid order used to get the same optimistic four-stage ladder as a paid
+// one, with "Payment reviewed" as the next step. It is not being prepared; it
+// is waiting for money — say so instead of implying progress.
+const isUnpaid = order && orderStatusKey === 'pending_payment';
+const orderCopy = order ? orderStatusCopy(order.orderStatus) : null;
+const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="Track your order | GoldPlus">
@@ -118,7 +121,7 @@ const isDeliveryFailed = order && String(order.orderStatus ?? '').toLowerCase() 
             <label class="block">
               <span class="text-xs font-bold text-slate-700">Order reference</span>
               <input name="reference" required maxlength="80" value={submittedRef}
-                placeholder="e.g. GP-2026-01234"
+                placeholder="e.g. GP-202608-3F7A"
                 class="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand-primary" />
             </label>
             <label class="block">
@@ -147,15 +150,21 @@ const isDeliveryFailed = order && String(order.orderStatus ?? '').toLowerCase() 
                   <p class="text-lg font-black text-gray-900">{order.orderNumber}</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                  <span class={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${toneFor(order.orderStatus)}`}>{label(order.orderStatus)}</span>
-                  <span class={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${toneFor(order.paymentStatus)}`}>Payment: {label(order.paymentStatus)}</span>
+                  <span class={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${STATUS_TONE_CLASS[orderCopy!.tone]}`}>{orderCopy!.label}</span>
+                  <span class={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${STATUS_TONE_CLASS[paymentCopy!.tone]}`}>{paymentCopy!.label}</span>
                 </div>
               </div>
+              <p class="mt-3 text-sm text-slate-700">{orderCopy!.meaning} {paymentCopy!.meaning}</p>
 
               {/* Dispatch progress — fulfilment stages, not live GPS tracking. */}
               {isCancelled ? (
                 <div class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
-                  This order is <strong>{label(order.orderStatus)}</strong>. If you think this is wrong, request a follow-up below and our team will check.
+                  This order is <strong>{orderCopy!.label.toLowerCase()}</strong>. If you think this is wrong, or you paid and have not heard from us, request a follow-up below and our team will check.
+                </div>
+              ) : isUnpaid ? (
+                <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <p class="font-semibold">Waiting for payment before we prepare it.</p>
+                  <p class="mt-1 text-xs">If you started paying online and it has not cleared, please do not pay again — request a follow-up below or ask us on WhatsApp and we will check.</p>
                 </div>
               ) : (
                 <ol class="mt-6 space-y-0" aria-label="Dispatch progress">
@@ -232,7 +241,7 @@ const isDeliveryFailed = order && String(order.orderStatus ?? '').toLowerCase() 
                       </label>
                       {followupError && <p role="alert" class="text-xs font-semibold text-red-700">{followupError}</p>}
                       <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-brand-primary px-5 text-sm font-bold text-gray-900 outline-none hover:bg-brand-primary/10 focus-visible:ring-4 focus-visible:ring-brand-primary/30">Request a follow-up</button>
-                      <p class="text-xs text-slate-500">This notifies our back office. We reply on the phone or email from your order — not live courier tracking.</p>
+                      <p class="text-xs text-slate-500">Our team will see this and reply on the phone number from your order.</p>
                     </form>
                   </details>
                 )}

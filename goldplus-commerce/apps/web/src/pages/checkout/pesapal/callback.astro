@@ -1,78 +1,73 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getBusinessInfo } from '../../../lib/businessInfo';
+import {
+  normalisePaymentReturnKind,
+  orderNumberFromMerchantReference,
+  paymentReturnCopy,
+} from '../../../lib/paymentReturn';
 
-const trackingId = Astro.url.searchParams.get('trackingId') || '';
+/**
+ * Where PesaPal sends the customer back.
+ *
+ * The API has already settled (or parked) the payment before redirecting here,
+ * and passes the settlement KIND as `status`. Every kind gets its own words —
+ * see paymentReturn.ts for why. The `message` query parameter the old page
+ * printed verbatim is deliberately ignored: it was raw provider or exception
+ * text on a page the customer reads.
+ */
 const reference = Astro.url.searchParams.get('reference') || '';
-const status = Astro.url.searchParams.get('status') || '';
-const message = Astro.url.searchParams.get('message') || '';
+const kind = normalisePaymentReturnKind(Astro.url.searchParams.get('status') || '');
+const orderNumber = orderNumberFromMerchantReference(reference);
+const copy = paymentReturnCopy(kind, orderNumber);
 
-const isSuccess = status === 'success';
-
-if (isSuccess) {
-  // Delete storefront cart data cookie on verified successful checkout completion
+if (kind === 'success' || kind === 'already_settled') {
+  // The basket has become a paid order; leaving the cookie would re-add the
+  // same items to the next checkout.
   Astro.cookies.delete('goldplus_cart_data', { path: '/' });
 }
+
+const biz = await getBusinessInfo();
+const helpPrefill = orderNumber
+  ? `Hello GoldPlus, I need help with the payment for order ${orderNumber}.`
+  : 'Hello GoldPlus, I need help with a payment I just made.';
+const helpHref = `${biz.whatsappUrl}?text=${encodeURIComponent(helpPrefill)}`;
+
+const tone = {
+  success: { ring: 'bg-green-100 text-green-600', glyph: 'M5 13l4 4L19 7', width: 3 },
+  wait: { ring: 'bg-amber-100 text-amber-700', glyph: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', width: 2 },
+  failed: { ring: 'bg-red-100 text-red-600', glyph: 'M6 18L18 6M6 6l12 12', width: 2 },
+}[copy.tone];
 ---
 
-<BaseLayout robotsMeta="noindex,follow" title="Payment Verification">
+<BaseLayout robotsMeta="noindex,follow" title={copy.title}>
   <div class="bg-brand-softGrey py-10 border-b border-brand-borderGrey">
     <div class="container mx-auto px-4 lg:px-8 text-center">
-      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-brand-charcoal mb-2">
-        {isSuccess ? 'Payment received. We are confirming your transaction.' : 'Payment Status Unresolved'}
-      </h1>
-      <p class="text-brand-mutedGrey max-w-xl mx-auto">
-        {isSuccess 
-          ? 'Your payment is being confirmed. Please wait while we securely settle and verify with PesaPal.' 
-          : 'We could not complete your payment verification at this moment.'}
-      </p>
+      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-brand-charcoal mb-2">{copy.title}</h1>
+      {orderNumber && <p class="text-brand-mutedGrey">Order <strong class="font-mono text-brand-charcoal">{orderNumber}</strong></p>}
     </div>
   </div>
 
   <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-xl mx-auto bg-white border border-brand-borderGrey rounded-3xl shadow-sm p-8 text-center">
-      {isSuccess ? (
-        <>
-          <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
-            </svg>
-          </div>
-          <h2 class="text-2xl font-black text-brand-charcoal mb-4">Your payment is being confirmed.</h2>
-          <div class="bg-brand-softGrey p-4 rounded-xl mb-6 text-sm text-left font-mono text-brand-charcoal space-y-1">
-            <div><span class="font-bold text-gray-500">Tracking Reference:</span> {trackingId}</div>
-            <div><span class="font-bold text-gray-500">Merchant Reference:</span> {reference}</div>
-          </div>
-          <p class="text-gray-600 mb-8 leading-relaxed">
-            Our logistics team is already preparing your package. You can track this order's processing real-time on our support portal.
-          </p>
-          <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="/track-order" class="bg-brand-charcoal text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-all">Track Order</a>
-            <a href="/shop" class="border border-brand-borderGrey text-brand-charcoal px-6 py-3 rounded-xl font-bold hover:bg-brand-softGrey transition-all">Continue Shopping</a>
-          </div>
-        </>
-      ) : (
-        <>
-          <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-            </svg>
-          </div>
-          <h2 class="text-2xl font-black text-brand-charcoal mb-4">Payment Verification Failed</h2>
-          
-          {message && (
-            <div class="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl mb-6 text-sm text-left">
-              <strong>Error Reason:</strong> {message}
-            </div>
-          )}
+      <div class={`w-16 h-16 ${tone.ring} rounded-full flex items-center justify-center mx-auto mb-6`}>
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width={tone.width} d={tone.glyph}></path>
+        </svg>
+      </div>
 
-          <p class="text-gray-600 mb-8 leading-relaxed">
-            No funds have been charged from your wallet or card for invalid attempts. You may safely retry checkout using mobile money or cards.
-          </p>
-          <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="/cart" class="bg-brand-charcoal text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-all">Return to Cart</a>
-            <a href="/checkout" class="border border-brand-borderGrey text-brand-charcoal px-6 py-3 rounded-xl font-bold hover:bg-brand-softGrey transition-all">Retry Checkout</a>
-          </div>
-        </>
+      <p class="text-lg font-bold text-brand-charcoal mb-3" role="status">{copy.money}</p>
+      <p class="text-gray-600 mb-8 leading-relaxed">{copy.next}</p>
+
+      <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a href={copy.primaryCta.href} class="bg-brand-charcoal text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-all">{copy.primaryCta.label}</a>
+        <a href={copy.secondaryCta.href} class="border border-brand-borderGrey text-brand-charcoal px-6 py-3 rounded-xl font-bold hover:bg-brand-softGrey transition-all">{copy.secondaryCta.label}</a>
+      </div>
+
+      {copy.offerHelp && (
+        <p class="mt-8 text-sm text-gray-600">
+          Not sure what happened? <a href={helpHref} class="font-bold text-brand-charcoal underline">Ask us on WhatsApp</a> or call {biz.phoneDisplay} — have your order number ready.
+        </p>
       )}
     </div>
   </div>

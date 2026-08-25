@@ -90,7 +90,8 @@ export async function submitCheckout(args: {
     ok: false,
     status: res.status,
     code: (json?.error?.code as CheckoutErrorCode) ?? 'ORDER_FAILED',
-    message: json?.error?.message ?? `Checkout failed (HTTP ${res.status}).`,
+    // No HTTP number: it is not something a customer can act on.
+    message: json?.error?.message ?? 'We could not place your order. Please try again.',
     ...(Number.isFinite(retryAfterSeconds) ? { retryAfterSeconds } : {}),
     ...(json?.error?.details ? { details: json.error.details } : {}),
   };
@@ -172,7 +173,10 @@ export function paymentStartMessageFor(code: PaymentStartErrorCode | 'NETWORK'):
       return 'Your checkout session expired. Please reload the page and try again.';
     case 'ORDER_NOT_FOUND':
     case 'PAYMENT_START_FAILED':
-      return 'We could not start payment for this order. Please contact support and quote your order number.';
+    default:
+      // `default` so a code this client does not know (the API once returned
+      // ORDER_ID_REQUIRED) cannot yield `undefined` and a blank error box.
+      return 'We could not start payment for this order. Your order is saved — please contact us and quote the order number shown here.';
   }
 }
 
@@ -235,7 +239,46 @@ export function customerMessageFor(result: CheckoutCallResult): {
         status: 'retry',
         message: 'We could not reach the order service. Please retry — your order will not be duplicated.',
       };
+    // The terminal business refusals. Each names what changed and what to do;
+    // none of them fall through to the API's text. Nothing has been charged
+    // on any of these — the order was refused before payment.
+    case 'PRICE_CHANGED':
+      return {
+        status: 'error',
+        message: 'A price changed while you were checking out. Please check the new total below, then place the order again. You have not been charged.',
+      };
+    case 'PROMOTION_CHANGED':
+      return {
+        status: 'error',
+        message: 'An offer on your basket ended while you were checking out. Please check the new total below, then place the order again. You have not been charged.',
+      };
+    case 'PRODUCT_UNAVAILABLE':
+      return {
+        status: 'error',
+        message: 'One of the items in your basket is no longer available. Please remove it from your cart and try again. You have not been charged.',
+      };
+    case 'PRICE_UNAVAILABLE':
+      return {
+        status: 'error',
+        message: 'We could not confirm the price of an item in your basket. Please try again in a moment, or ask us about it. You have not been charged.',
+      };
+    case 'CHECKOUT_SESSION_UNAVAILABLE':
+    case 'DB_NOT_CONFIGURED':
+      return {
+        status: 'retry',
+        message: 'Checkout is temporarily unavailable. Please try again in a few minutes — your basket is saved and you have not been charged.',
+      };
+    case 'INVALID_CHECKOUT':
+      return {
+        status: 'error',
+        message: 'Some details are missing or do not look right. Please check the highlighted fields and try again.',
+      };
+    case 'ORDER_FAILED':
+    case 'CHECKOUT_FAILED':
     default:
-      return { status: 'error', message: result.message };
+      return {
+        status: 'error',
+        message: 'We could not place your order. Please try again — you have not been charged. If it keeps failing, message us and we will take the order by phone.',
+      };
   }
 }

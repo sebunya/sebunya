@@ -7,6 +7,7 @@ import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
 import type { OrderSummaryDto } from '@goldplus/shared';
+import { orderStatusCopy, STATUS_TONE_CLASS } from '../../lib/orderStatusCopy';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -31,15 +32,6 @@ try {
   loadError = 'The account service is unreachable right now.';
 }
 
-const statusBadge: Record<string, string> = {
-  PENDING_PAYMENT: 'bg-orange-50 text-orange-700 border-orange-200',
-  PAID: 'bg-green-50 text-green-700 border-green-200',
-  PAYMENT_FAILED: 'bg-red-50 text-red-700 border-red-200',
-  PROCESSING: 'bg-blue-50 text-blue-700 border-blue-200',
-  SHIPPED: 'bg-blue-50 text-blue-700 border-blue-200',
-  DELIVERED: 'bg-green-50 text-green-700 border-green-200',
-  CANCELLED: 'bg-gray-100 text-gray-700 border-gray-200',
-};
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="My orders">
@@ -51,7 +43,7 @@ const statusBadge: Record<string, string> = {
 
     <AccountNav active="orders" />
 
-    {loadError && <Notice kind="not-configured" title="Orders unavailable" message={loadError} />}
+    {loadError && <Notice kind="warning" title="We could not load your orders" message="Please try again in a moment. If you need an order urgently, look it up on the track-order page with its reference, or contact us." />}
 
     {!loadError && (
       orders.length === 0 ? (
@@ -68,7 +60,7 @@ const statusBadge: Record<string, string> = {
                   </p>
                 </div>
                 <div class="flex items-center gap-3">
-                  <span class={`inline-flex items-center px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${statusBadge[o.status] ?? statusBadge.CANCELLED}`}>{o.status.replace(/_/g, ' ')}</span>
+                  <span class={`inline-flex items-center px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${STATUS_TONE_CLASS[orderStatusCopy(o.status).tone]}`}>{orderStatusCopy(o.status).label}</span>
                   <span class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(o.totalAmountUgx)}</span>
                   <a href={`/orders/${o.id}`} class="text-xs font-bold text-brand-mutedGrey hover:text-brand-charcoal whitespace-nowrap">Details &rarr;</a>
                 </div>
