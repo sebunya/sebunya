@@ -11,6 +11,12 @@ describe('classifyPublicEndpoint — stable, bounded route families', () => {
   it('maps each declared public endpoint to its family', () => {
     expect(classifyPublicEndpoint('POST', '/auth/login')).toBe('auth-customer-login');
     expect(classifyPublicEndpoint('POST', '/auth/admin/login')).toBe('auth-admin-login');
+    // Account recovery sends an SMS or an email per request and completing it
+    // is a code-guessing surface: never the 1,000 a minute global budget.
+    expect(classifyPublicEndpoint('POST', '/auth/password/forgot')).toBe('auth-recovery');
+    expect(classifyPublicEndpoint('POST', '/auth/password/forgot-sms')).toBe('auth-recovery');
+    expect(classifyPublicEndpoint('POST', '/auth/password/reset')).toBe('auth-recovery');
+    expect(classifyPublicEndpoint('POST', '/auth/password/reset-sms')).toBe('auth-recovery');
     expect(classifyPublicEndpoint('POST', '/governance/dealers/apply')).toBe('dealer-application');
     expect(classifyPublicEndpoint('POST', '/governance/quotes/request')).toBe('quote-request');
     expect(classifyPublicEndpoint('POST', '/governance/support/report-issue')).toBe('issue-report');
@@ -80,6 +86,8 @@ describe('publicEndpointPolicy — per-family risk posture', () => {
   it('gives credential surfaces a tight budget and human forms a low ceiling', () => {
     expect(publicEndpointPolicy('auth-customer-login').limit).toBeLessThanOrEqual(10);
     expect(publicEndpointPolicy('auth-admin-login').limit).toBeLessThanOrEqual(10);
+    expect(publicEndpointPolicy('auth-recovery').limit).toBeLessThanOrEqual(5);
+    expect(publicEndpointPolicy('auth-recovery').outage).toBe('STRICT');
     expect(publicEndpointPolicy('dealer-application').limit).toBeLessThanOrEqual(5);
   });
 

@@ -24,6 +24,7 @@
 export type RouteFamily =
   | 'auth-customer-login'
   | 'auth-admin-login'
+  | 'auth-recovery'
   | 'order-lookup'
   | 'dealer-application'
   | 'quote-request'
@@ -72,6 +73,10 @@ const POLICIES: Record<RouteFamily, FamilyPolicy> = {
   // Credential-guessing surfaces: tight, strict local fallback.
   'auth-customer-login': { family: 'auth-customer-login', limit: 10, windowMs: MINUTE, class: 'AUTH', outage: 'STRICT' },
   'auth-admin-login': { family: 'auth-admin-login', limit: 10, windowMs: MINUTE, class: 'AUTH', outage: 'STRICT' },
+  // Account recovery: requesting a reset sends an SMS or an email, and
+  // completing one is a code-guessing surface. Tight per client, on top of the
+  // per-account cooldown and hourly cap inside the use cases.
+  'auth-recovery': { family: 'auth-recovery', limit: 5, windowMs: MINUTE, class: 'AUTH', outage: 'STRICT' },
   // Authenticated reads that could be walked for enumeration.
   'order-lookup': { family: 'order-lookup', limit: 60, windowMs: MINUTE, class: 'READ', outage: 'STRICT' },
   // Public human forms. Low ceilings — a person fills these a few times, a
@@ -154,6 +159,7 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
   // Auth.
   if (post && path === '/auth/login') return 'auth-customer-login';
   if (post && path === '/auth/admin/login') return 'auth-admin-login';
+  if (post && isUnder(path, '/auth/password')) return 'auth-recovery';
 
   // Telemetry beacons.
   if (isUnder(path, '/telemetry/collect')) return 'telemetry';
