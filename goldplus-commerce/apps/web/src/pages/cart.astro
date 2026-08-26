@@ -266,9 +266,9 @@ const cartPotentialPoints = cartLoyaltyRate > 0 ? Math.floor(subtotal / 1000) * 
 const bizCart = await getBusinessInfo();
 const cut = kampalaCutoff(new Date(), { cutoffHour: bizCart.sameDayCutoffHour, closedDays: bizCart.closedDays });
 const cutoffLine = cut.closed
-  ? 'Closed today — this goes out on the next working day'
+  ? 'Closed today. This goes out on the next working day'
   : !cut.beforeCutoff
-    ? "Today's run has left — this goes out tomorrow morning"
+    ? "Today's run has left. This goes out tomorrow morning"
     : cut.minsToCutoff <= 60
       ? `Only ${cut.minsToCutoff} minutes left to get this today`
       : `Order in ${Math.floor(cut.minsToCutoff / 60)}h ${cut.minsToCutoff % 60}m and this arrives today`;

@@ -97,7 +97,7 @@ const WARRANTY_FAQ: HubFaq = { question: 'Is there a warranty on these products?
 const SHOP_FAQ: HubFaq = {
   question: 'Where is the GoldPlus shop?',
   answer:
-    'The GoldPlus shop is on Wilson Road in central Kampala. You can buy online on this site or visit the shop in person — contact details and directions are in the footer of every page.',
+    'The GoldPlus shop is on Wilson Road in central Kampala. You can buy online on this site or visit the shop in person. Contact details and directions are in the footer of every page.',
 };
 
 export const CATEGORY_HUBS: CategoryHubConfig[] = [
@@ -108,15 +108,15 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     metaDescription:
       'GoldPlus power banks, chargers and charging accessories, sold from our Wilson Road shop in Kampala with delivery in Kampala & Wakiso.',
     intro: [
-      'GoldPlus stocks its own house-brand power accessories — power banks, wall chargers and charging cables — sold from our shop on Wilson Road, Kampala.',
+      'GoldPlus stocks its own house-brand power accessories. Power banks, wall chargers and charging cables. Sold from our shop on Wilson Road, Kampala.',
       'Every item ships from real stock: what you see in stock here is what is on the shelf. Orders can be delivered in Kampala & Wakiso or picked up at the shop, and warranty support is handled directly by us.',
     ],
     categorySlug: 'power-devices',
     taxonomyMapped: true,
     buyingCriteria: [
       {
-        heading: 'Capacity (mAh) — what it means',
-        body: 'A power bank’s mAh rating is the size of its internal battery. As a rule of thumb, a full phone charge uses roughly 3,000–5,000 mAh depending on the phone, and some capacity is always lost in conversion — so a 10,000 mAh bank typically delivers one to two full phone charges, not three.',
+        heading: 'Capacity (mAh). What it means',
+        body: 'A power bank’s mAh rating is the size of its internal battery. As a rule of thumb, a full phone charge uses roughly 3,000–5,000 mAh depending on the phone, and some capacity is always lost in conversion, so a 10,000 mAh bank typically delivers one to two full phone charges, not three.',
       },
       {
         heading: 'Ports and connectors',
@@ -124,7 +124,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
       },
       {
         heading: 'What is in the box',
-        body: 'Accessories differ in whether a cable is included. Check the individual product page — we list what each product actually comes with, and if a detail is missing from a listing we say so rather than guess.',
+        body: 'Accessories differ in whether a cable is included. Check the individual product page. We list what each product actually comes with, and if a detail is missing from a listing we say so rather than guess.',
       },
     ],
     faqs: [DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
@@ -137,7 +137,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         metaDescription:
           'GoldPlus power banks in stock at our Wilson Road shop in Kampala, with delivery in Kampala & Wakiso and direct warranty support.',
         intro:
-          'Portable power banks from the GoldPlus house range. Capacities and prices are listed per product from live stock — nothing shown here is estimated.',
+          'Portable power banks from the GoldPlus house range. Capacities and prices are listed per product from live stock. Nothing shown here is estimated.',
         subcategorySlug: 'power-banks',
         taxonomyMapped: true,
       },
@@ -157,9 +157,9 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         title: 'Charging cables | GoldPlus Uganda',
         h1: 'Charging cables',
         metaDescription:
-          'Charging cables from the GoldPlus range in Kampala — USB-C, Micro-USB and Lightning options as stocked, with local delivery.',
+          'Charging cables from the GoldPlus range in Kampala. USB-C, Micro-USB and Lightning options as stocked, with local delivery.',
         intro:
-          'Charging and data cables from the GoldPlus range. Availability varies — this page lists whatever cable stock is live right now.',
+          'Charging and data cables from the GoldPlus range. Availability varies. This page lists whatever cable stock is live right now.',
         // The live taxonomy has no cables subcategory — flagged, keyword-gathered.
         subcategorySlug: null,
         keywordFilter: ['cable'],
@@ -190,7 +190,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
       },
       {
         heading: 'Fit and controls',
-        body: 'Check whether a product uses touch or button controls and what ear-tip sizes are included — details are on each product page where recorded.',
+        body: 'Check whether a product uses touch or button controls and what ear-tip sizes are included. Details are on each product page where recorded.',
       },
     ],
     faqs: [DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
@@ -201,7 +201,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         title: 'Wireless earbuds | GoldPlus Uganda',
         h1: 'Wireless earbuds',
         metaDescription:
-          'GoldPlus wireless earbuds in stock in Kampala — live prices and stock from our Wilson Road shop, delivery in Kampala & Wakiso.',
+          'GoldPlus wireless earbuds in stock in Kampala. Live prices and stock from our Wilson Road shop, delivery in Kampala & Wakiso.',
         intro: 'Wireless earbuds from the GoldPlus range, listed from live stock.',
         subcategorySlug: 'earbuds',
         taxonomyMapped: true,
@@ -211,7 +211,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         title: 'Headphones | GoldPlus Uganda',
         h1: 'Headphones',
         metaDescription:
-          'Headphones from the GoldPlus range in Kampala — current stock listed live, with delivery in Kampala & Wakiso or shop pickup.',
+          'Headphones from the GoldPlus range in Kampala. Current stock listed live, with delivery in Kampala & Wakiso or shop pickup.',
         intro: 'Headphones from the GoldPlus range. This page lists whatever headphone stock is live right now.',
         // The live taxonomy folds headphones into the earbuds subcategory —
         // no dedicated subcategory exists, so this child is keyword-gathered.
@@ -243,7 +243,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
       },
       {
         heading: 'Formatted capacity',
-        body: 'All storage devices show slightly less usable space than the advertised size once formatted — this is normal across the industry, not a fault.',
+        body: 'All storage devices show slightly less usable space than the advertised size once formatted. This is normal across the industry, not a fault.',
       },
     ],
     faqs: [DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
@@ -254,7 +254,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         title: 'USB flash drives | GoldPlus Uganda',
         h1: 'USB flash drives',
         metaDescription:
-          'GoldPlus USB flash drives in stock in Kampala — live capacities and prices from our Wilson Road shop, with local delivery.',
+          'GoldPlus USB flash drives in stock in Kampala. Live capacities and prices from our Wilson Road shop, with local delivery.',
         intro: 'USB flash drives from the GoldPlus range, listed from live stock.',
         subcategorySlug: 'flash-drives',
         taxonomyMapped: true,
@@ -264,7 +264,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         title: 'Memory cards | GoldPlus Uganda',
         h1: 'Memory cards',
         metaDescription:
-          'GoldPlus memory cards in Kampala — live stock and prices from our Wilson Road shop, with delivery in Kampala & Wakiso.',
+          'GoldPlus memory cards in Kampala. Live stock and prices from our Wilson Road shop, with delivery in Kampala & Wakiso.',
         intro: 'Memory cards from the GoldPlus range, listed from live stock.',
         subcategorySlug: 'memory-cards',
         taxonomyMapped: true,
@@ -276,7 +276,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     title: 'Phone batteries | GoldPlus Uganda',
     h1: 'Phone batteries',
     metaDescription:
-      'Replacement phone batteries from GoldPlus in Kampala — live stock from our Wilson Road shop, with delivery in Kampala & Wakiso.',
+      'Replacement phone batteries from GoldPlus in Kampala. Live stock from our Wilson Road shop, with delivery in Kampala & Wakiso.',
     intro: [
       'Replacement phone batteries from the GoldPlus range, sold from our shop on Wilson Road, Kampala. Everything listed below is live stock.',
     ],
@@ -304,7 +304,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     title: 'Computer accessories | GoldPlus Uganda',
     h1: 'Computer accessories',
     metaDescription:
-      'GoldPlus computer accessories — mice, sound cards and more from our Wilson Road shop in Kampala, with delivery in Kampala & Wakiso.',
+      'GoldPlus computer accessories. Mice, sound cards and more from our Wilson Road shop in Kampala, with delivery in Kampala & Wakiso.',
     intro: [
       'Computer and PC accessories from the GoldPlus range, sold from our shop on Wilson Road, Kampala with delivery in Kampala & Wakiso.',
     ],
@@ -313,7 +313,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     buyingCriteria: [
       {
         heading: 'Check the connection type',
-        body: 'PC accessories connect over USB-A, USB-C or wirelessly. Check which ports your computer has before choosing — many laptops now carry only USB-C ports.',
+        body: 'PC accessories connect over USB-A, USB-C or wirelessly. Check which ports your computer has before choosing. Many laptops now carry only USB-C ports.',
       },
     ],
     faqs: [DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
@@ -325,7 +325,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     title: 'Car accessories | GoldPlus Uganda',
     h1: 'Car accessories',
     metaDescription:
-      'GoldPlus car accessories — car chargers, mounts and Bluetooth kits from our Kampala shop, with delivery in Kampala & Wakiso.',
+      'GoldPlus car accessories. Car chargers, mounts and Bluetooth kits from our Kampala shop, with delivery in Kampala & Wakiso.',
     intro: [
       'Car chargers, phone mounts and in-car accessories from the GoldPlus range, sold from our shop on Wilson Road, Kampala.',
     ],
@@ -338,7 +338,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
       },
       {
         heading: 'Mount types',
-        body: 'Phone mounts attach to the dashboard, windscreen or air vent. Which works best depends on your car’s layout — details for each mount are on its product page.',
+        body: 'Phone mounts attach to the dashboard, windscreen or air vent. Which works best depends on your car’s layout. Details for each mount are on its product page.',
       },
     ],
     faqs: [DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],

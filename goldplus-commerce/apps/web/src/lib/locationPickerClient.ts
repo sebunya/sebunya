@@ -146,7 +146,7 @@
         ...(district ? { district } : {}),
       });
       if (cardPrimary) cardPrimary.textContent = text.slice(0, 60);
-      if (cardSecondary) cardSecondary.textContent = district ? `District: ${district} · written directions` : 'Written directions — our team confirms by phone';
+      if (cardSecondary) cardSecondary.textContent = district ? `District: ${district} · written directions` : 'Written directions. Our team confirms by phone';
       finishCommit();
       // The learning loop: what the customer typed and could not find.
       const missed = input!.value.trim();
@@ -176,7 +176,7 @@
       if (list.length === 0) {
         const li = document.createElement('li');
         li.className = 'px-4 py-3 text-sm text-gray-500';
-        li.textContent = 'No match — pick your district below, or write directions instead.';
+        li.textContent = 'No match. Pick your district below, or write directions instead.';
         dropdown!.appendChild(li);
       } else {
         list.forEach((opt, i) => {
@@ -315,13 +315,13 @@
           if (pinStatus) {
             pinStatus.textContent =
               pos.coords.accuracy > 100
-                ? `Pin captured, but accuracy is about ${Math.round(pos.coords.accuracy)} m — keep it if the area looks right.`
+                ? `Pin captured, but accuracy is about ${Math.round(pos.coords.accuracy)} m. Keep it if the area looks right.`
                 : 'Pin captured ✓';
           }
           refreshPayloadPin();
         },
         () => {
-          if (pinStatus) pinStatus.textContent = 'Could not get your location — you can paste a maps link instead.';
+          if (pinStatus) pinStatus.textContent = 'Could not get your location. You can paste a maps link instead.';
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
       );
@@ -353,7 +353,7 @@
         if (pinStatus) pinStatus.textContent = 'Pin captured from the link ✓';
         refreshPayloadPin();
       } else if (pinStatus) {
-        pinStatus.textContent = 'That link has no readable location — the order still works without a pin.';
+        pinStatus.textContent = 'That link has no readable location, the order still works without a pin.';
       }
     }
     pinLink?.addEventListener('change', () => void handlePinLink());

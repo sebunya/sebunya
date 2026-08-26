@@ -64,7 +64,7 @@ const showWarrantyFaq = hasVerifiedWarrantyFact(products);
 const faqs = hub.faqs
   .map((f) => {
     if (f.source === 'delivery') {
-      const answer = `Yes — ${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. The exact fee for your address is shown at checkout before you pay.`;
+      const answer = `Yes. ${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. The exact fee for your address is shown at checkout before you pay.`;
       return { question: f.question, answer };
     }
     if (f.source === 'warranty') {
@@ -148,7 +148,7 @@ const intro = child ? [child.intro] : hub.intro;
     ) : (
       <section class="mt-7 rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10">
         <h2 class="text-xl font-black text-slate-900">Range being stocked</h2>
-        <p class="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600">This range has no live listings right now — see the full shop for what is in stock today.</p>
+        <p class="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600">This range has no live listings right now. See the full shop for what is in stock today.</p>
         <a href="/shop" class="mt-5 inline-block rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Browse the shop</a>
       </section>
     )}

@@ -135,8 +135,8 @@ const configJson = JSON.stringify({ ...config, preferredArch })
   {/* One stable page heading, decoupled from the rotation. The rotating slide
       titles are <h2>; if the h1 lived on a slide it would vanish when the
       engine removed that slide (e.g. flash after its sale ends), leaving the
-      homepage with no h1. Visually hidden — the hero's design has no fixed
-      headline — but always present for screen readers and SEO. */}
+      homepage with no h1. Visually hidden, the hero's design has no fixed
+      headline, but always present for screen readers and SEO. */}
   <h1 class="gp-hero__sr">GoldPlus, verified original electronics for Uganda</h1>
   <div class="gp-hero__box" id="gpHero" role="region" aria-roledescription="carousel" aria-label="GoldPlus featured offers">
     <p class="gp-hero__sr" aria-live="polite" id="gpHeroLive"></p>
@@ -173,7 +173,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
             {/*
               The sale figure comes from the live promotion. This used to print
               a hand-typed "UGX 185,000 → UGX 111,000, Save 40%" from the slide
-              row — numbers no product carried, for a sale that had ended.
+              row. Numbers no product carried, for a sale that had ended.
             */}
             {s.slideKey === 'flash' && config.flashPercent && (
               <div class="gp-hero__price"><b>{config.flashPercent}% off everything</b> <em>comes off at checkout</em></div>
@@ -282,7 +282,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
    (container mx-auto px-4 lg:px-8), the same one every rail and section uses,
    so it aligns to the page grid rather than imposing its own width. It fills
    that container (width:100%) and adds NO horizontal padding or max-width of
-   its own — the container owns both, which is what keeps the hero's left/right
+   its own, the container owns both, which is what keeps the hero's left/right
    edges flush with everything below it. Only a small top gap and the brand
    font are the hero's own. */
 .gp-hero{width:100%;margin:16px 0 0;padding:0;font-family:'Poppins',system-ui,sans-serif;}
@@ -394,13 +394,13 @@ const configJson = JSON.stringify({ ...config, preferredArch })
 .gp-hero__stage::after{display:none;}
 
 /* Persistent arch: ONE stage for the whole carousel. It does not fade with the
-   slides — products cross-dissolve inside a stage that never moves. JS measures
+   slides. Products cross-dissolve inside a stage that never moves. JS measures
    the active slide's stage box and parks this over it. */
 .gp-hero__arch{
   position:absolute;z-index:1;pointer-events:none;opacity:0;left:-9999px;top:0;
   /* clip to the arch silhouette: the product is a SQUARE inset in a ROUND-topped
      stage, so without this its corners fall outside the cream and multiply
-     against the green field — the bright square corners that broke the shape */
+     against the green field, the bright square corners that broke the shape */
   border-radius:999px 999px 30px 30px;
   overflow:hidden;
   isolation:isolate;           /* Safari: without this multiply can escape the arch */
@@ -427,7 +427,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
 }
 /* seal removed — the arch reads cleaner without it */
 /* the product lives INSIDE the arch so mix-blend-mode has the cream as its
-   backdrop — that is what dissolves the photo's white studio background */
+   backdrop. That is what dissolves the photo's white studio background */
 .gp-hero__arch img{
   position:absolute;inset:13%;width:74%;height:74%;object-fit:contain;
   filter:brightness(1.09) contrast(1.04);
@@ -665,7 +665,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
 }
 
 /* =====================================================================
-   MOBILE — 70% of traffic. A deliberate vertical composition, not the
+   MOBILE. 70% of traffic. A deliberate vertical composition, not the
    desktop layout squeezed. Selectors are .gp-hero__box .gp-hero__slide
    (0,2,0) so they beat the [data-media] rules instead of losing to them.
    ===================================================================== */
@@ -701,7 +701,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
   }
 
   /* the arch never meets the circuit on mobile, so the contact reads as
-     a stray line — retire it rather than fake the idea */
+     a stray line. Retire it rather than fake the idea */
   .gp-hero__contact{display:none;}
 
   .gp-hero__title{font-size:25.5px;line-height:1.05;margin-bottom:9px;}
@@ -925,7 +925,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
      Selection, ordering and enrichment now happen on the SERVER: the rendered
      slides are already the chosen set, in funnel order, lead first. The engine
      just reveals them, wires the progress nav, and rotates. No client selection,
-     no signals fetch, no consent gate — personalisation is delivered by SSR. */
+     no signals fetch, no consent gate. Personalisation is delivered by SSR. */
   var slides = [].slice.call(box.querySelectorAll('.gp-hero__slide'));
   var total = slides.length;
   var index = 0;                       // the server rendered the lead first + active
@@ -1106,7 +1106,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
   }
 
   /* ---------------- day / night ----------------
-     Fully automatic from the visitor's own clock — no control, nothing extra
+     Fully automatic from the visitor's own clock. No control, nothing extra
      in the UI. Uganda sits on the equator, where sunrise and sunset move by
      only about fifteen minutes across the whole year, so a fixed split is
      accurate here in a way it would not be at higher latitudes. Reading the
@@ -1114,8 +1114,8 @@ const configJson = JSON.stringify({ ...config, preferredArch })
      local day or night. ?mode=day / ?mode=night forces it for QA. */
   (function(){
     var hero = box.closest('.gp-hero') || box.parentNode;
-    var DAY_START = 6.5;    // 06:30 — first light in Kampala
-    var DAY_END   = 18.75;  // 18:45 — dusk
+    var DAY_START = 6.5;    // 06:30. First light in Kampala
+    var DAY_END   = 18.75;  // 18:45. Dusk
 
     function current(){
       var d = new Date(), h = d.getHours() + d.getMinutes()/60;

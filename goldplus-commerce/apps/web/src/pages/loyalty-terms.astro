@@ -92,7 +92,7 @@ const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.th
             <p class="mt-2">
               You earn <strong>{programme.earnRatePer1000Ugx} points for every 1,000 UGX</strong> of an order's total.
               Points are <strong>earned when the order is delivered</strong>, not when it is placed or paid for. An order that is
-              never delivered — cancelled, refused at the door, or returned — does not earn points.
+              never delivered. Cancelled, refused at the door, or returned. Does not earn points.
             </p>
             {(src?.verificationScan || src?.counterfeitReport || src?.phoneVerification || src?.referral?.referrer || src?.birthday || src?.streak) && (
               <>
@@ -168,12 +168,12 @@ const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.th
               <ul class="mt-2 space-y-1 pl-5">
                 {tiers.map((t) => (
                   <li class="list-disc">
-                    <strong>{t.name}</strong> — {t.threshold === 0 ? "on joining" : `${t.threshold.toLocaleString("en-UG")} lifetime points`}
+                    <strong>{t.name}</strong>. {t.threshold === 0 ? "on joining" : `${t.threshold.toLocaleString("en-UG")} lifetime points`}
                   </li>
                 ))}
               </ul>
               <p class="mt-2">
-                Level benefits are service benefits — how your orders and support requests are handled. They are not additional discounts.
+                Level benefits are service benefits. How your orders and support requests are handled. They are not additional discounts.
               </p>
             </section>
           )}
@@ -192,14 +192,14 @@ const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.th
               <h2 class="text-lg font-black text-slate-900">6a. Scratch cards</h2>
               <p class="mt-2">
                 A scratch card is <strong>given to you</strong> when an order is delivered. You never buy a card, and you never
-                pay anything to play one — the order that earned it is complete before the card exists.
+                pay anything to play one, the order that earned it is complete before the card exists.
                 <strong> Every card wins points.</strong> There is no losing card; only the number of points varies.
               </p>
               <p class="mt-2">Current chances, which are the same for every customer:</p>
               <ul class="mt-2 space-y-1 pl-5">
                 {draw.odds.map((o) => (
                   <li class="list-disc">
-                    <strong>{o.label}</strong> — {o.soldOut ? 'all claimed' : `${(o.oddsBps / 100).toFixed(2)}%`}
+                    <strong>{o.label}</strong>. {o.soldOut ? 'all claimed' : `${(o.oddsBps / 100).toFixed(2)}%`}
                   </li>
                 ))}
               </ul>
@@ -226,7 +226,7 @@ const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.th
             <h2 class="text-lg font-black text-slate-900">8. Your account and your data</h2>
             <p class="mt-2">
               Your points belong to your account and cannot be transferred to another person. If you have more than one account,
-              contact support and we will merge them — your earning history and expiry dates are preserved exactly as they were.
+              contact support and we will merge them. Your earning history and expiry dates are preserved exactly as they were.
               If you close your account, any outstanding points are forfeited; we will tell you 30 days before closure takes effect
               so you have the opportunity to use them. How we handle your personal data is described in our
               <a href="/privacy" class="font-bold underline underline-offset-2">Privacy Policy</a>.

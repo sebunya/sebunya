@@ -64,7 +64,7 @@ describe('product-card commercial signals', () => {
     // ONE ticker owns every chip, in BaseLayout — rails inject cards on any page.
     const layout = read('apps/web/src/layouts/BaseLayout.astro');
     expect(layout).toContain('Sale ends in');
-    expect(layout).toContain('Sale ended — regular price applies');
+    expect(layout).toContain('Sale ended. Regular price applies');
   });
 
   it('EVERY module renders the same commercial signals — rails are uniform with the card', () => {

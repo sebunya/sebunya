@@ -591,7 +591,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
             <!-- Slice 3B: idempotency key — a resubmitted/double-clicked form returns the same order -->
             {/*
               No hidden order key. A hidden field is caller-controlled, so it can
-              never be the authoritative operation identity — a client could vary
+              never be the authoritative operation identity, a client could vary
               it to force a duplicate order, or reuse another customer's. The
               identity is derived server-side from the verified principal and the
               signed intent id.
@@ -705,7 +705,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
             <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               {/*
                 The button says what pressing it DOES. It used to read "Pay Online"
-                while the preselected method was the offline invoice — the wrong
+                while the preselected method was the offline invoice, the wrong
                 promise at the most decisive moment of the whole funnel.
               */}
               <button
@@ -1073,7 +1073,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
         const payloadEl = formEl?.querySelector('.js-final-payload') as HTMLInputElement | null;
         if (payloadEl?.value) data.locationJson = payloadEl.value;
         localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
-      } catch { /* storage full/blocked — drafts are a convenience */ }
+      } catch { /* storage full/blocked. Drafts are a convenience */ }
     }
     function restoreDraft() {
       try {

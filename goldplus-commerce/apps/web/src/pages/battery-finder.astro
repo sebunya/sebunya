@@ -55,7 +55,7 @@ const ugx = (n: number) => `UGX ${n.toLocaleString('en-UG')}`;
 ---
 
 <BaseLayout
-  title="Phone battery finder — find the right battery for your phone"
+  title="Phone battery finder. Find the right battery for your phone"
   description="Search your phone model to see which replacement batteries we have checked as a fit."
   canonicalUrl={canonicalUrl}
   robotsMeta={robotsMeta}
@@ -63,7 +63,7 @@ const ugx = (n: number) => `UGX ${n.toLocaleString('en-UG')}`;
   <div class="container mx-auto px-4 py-10 max-w-4xl">
     <h1 class="text-3xl font-black text-brand-dark tracking-tight">Battery finder</h1>
     <p class="text-gray-600 mt-2 max-w-2xl">
-      Type your phone brand and model. We only list batteries we have actually checked against that phone — if we
+      Type your phone brand and model. We only list batteries we have actually checked against that phone. If we
       have not checked yours, we say so rather than guess.
     </p>
 
@@ -103,7 +103,7 @@ const ugx = (n: number) => `UGX ${n.toLocaleString('en-UG')}`;
       <div role="status" class="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
         <p class="font-bold">We have not checked a battery for "{query}" yet.</p>
         <p class="mt-1">
-          That does not mean one does not exist — it means we have not verified the fit, and we will not guess with
+          That does not mean one does not exist. It means we have not verified the fit, and we will not guess with
           your phone. Send us the model and we will confirm before you buy.
         </p>
       </div>
@@ -140,7 +140,7 @@ const ugx = (n: number) => `UGX ${n.toLocaleString('en-UG')}`;
             )}
             {!m.product && (
               <p class="text-xs text-gray-500 max-w-[200px]">
-                We have confirmed this fit but do not have it listed for online purchase right now — ask us about
+                We have confirmed this fit but do not have it listed for online purchase right now. Ask us about
                 availability.
               </p>
             )}
@@ -148,7 +148,7 @@ const ugx = (n: number) => `UGX ${n.toLocaleString('en-UG')}`;
         ))}
         <p class="text-xs text-gray-500">
           "Verified fit" means we checked this battery against this phone. "Likely fit" means the evidence points
-          that way but we have not confirmed it ourselves — ask us before you buy.
+          that way but we have not confirmed it ourselves. Ask us before you buy.
         </p>
       </div>
     )}

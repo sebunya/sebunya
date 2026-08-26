@@ -350,7 +350,7 @@ const nbaJson = escNav(JSON.stringify(nba));
           <a class="gp-nav__tile" href="/shop?category=sound&q=over-ear"><b>Over-ear headphones</b><span>Full cups, for studio and travel</span></a>
         </div>
         <!-- Cross-sell slot. Every card must name the product actually in the
-             photo — the only GoldPlus photography available is the power range,
+             photo, the only GoldPlus photography available is the power range,
              so non-power panels feature a power product deliberately rather than
              captioning a power bank as an earbud. Swap in real category
              photography when it exists and restore the category product. -->
@@ -419,7 +419,7 @@ const nbaJson = escNav(JSON.stringify(nba));
           <p class="gp-nav__note" id="gpNavCdNote">{nav.flash.noteDefault}</p>
           {/*
             A stock meter used to sit here reading "14 left of 60 at this price"
-            behind a hard-coded 23% bar — no product, no sale, no source. There
+            behind a hard-coded 23% bar. No product, no sale, no source. There
             is no per-price stock figure in the model to render honestly, so the
             meter is gone rather than wired to a number an operator could type.
           */}
@@ -578,7 +578,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav,.gp-nav *,.gp-nav *::before,.gp-nav *::after{box-sizing:border-box;}
 /* The reset must NOT outweigh component rules: `.gp-nav a` is (0,1,1) and
    silently beat every single-class colour rule at (0,1,0), so styled links
-   fell back to cream — including cream-on-green CTAs at 1.76:1.
+   fell back to cream, including cream-on-green CTAs at 1.76:1.
    `:where()` contributes zero specificity, so this lands at (0,0,1): it still
    overrides the global `a` colour, but any component class beats it. */
 :where(.gp-nav) a{text-decoration:none;color:inherit;}
@@ -864,7 +864,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     transition:max-height .42s var(--gpn-ease);}
   .gp-nav__acc[data-exp] ul{max-height:360px;}
   /* :where() zero-weights the accordion default (0,0,1) so component classes
-     like .gp-nav__ask keep their own colour — (0,2,1) beat them before. */
+     like .gp-nav__ask keep their own colour. (0,2,1) beat them before. */
   :where(.gp-nav__acc li) a{display:block;padding:13px 0 13px 15px;font-size:14.5px;color:var(--gpn-muted);}
   .gp-nav__acc li:last-child a{padding-bottom:18px;}
 
@@ -1190,7 +1190,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
      distinguishes a first-time visitor from a returning one depends on this,
      so it is incremented ONCE per load, HERE, before any block (segment,
      greeting, NBA) reads it. In private browsing localStorage throws and the
-     visitor is treated as returning — never show a first-order promo you
+     visitor is treated as returning, never show a first-order promo you
      cannot gate. */
   var gpVisits = 0, gpVisitsKnown = false;
   (function(){
@@ -1710,7 +1710,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
      before this script runs, or resolve window.GP_NBA_PROMISE (a promise of
      that array). Anything returned replaces the local candidates entirely.
      The local set below is the offline fallback and must always be safe to
-     show — it never claims anything the site cannot honour. */
+     show. It never claims anything the site cannot honour. */
   (function(){
     var slot = document.getElementById('gpNavNbaSlot');
     var txt  = document.getElementById('gpNavNbaText');

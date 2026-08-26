@@ -44,7 +44,7 @@ const {
   id = 'loc_' + Math.random().toString(36).substr(2, 9),
   name,
   label = 'Delivery location',
-  placeholder = 'Type your area, town or district — e.g. Najjera, Seeta, Mbarara',
+  placeholder = 'Type your area, town or district, e.g. Najjera, Seeta, Mbarara',
   helperText = '',
   required = false,
   defaultValue = '',
@@ -61,7 +61,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
     const prior = JSON.parse(defaultValue);
     if (prior?.manual && prior?.rawAddressText) {
       initialPrimary = String(prior.rawAddressText).slice(0, 60);
-      initialSecondary = prior.district ? `District: ${prior.district} · written directions` : 'Written directions — our team confirms';
+      initialSecondary = prior.district ? `District: ${prior.district} · written directions` : 'Written directions. Our team confirms';
     } else if (prior?.district) {
       initialPrimary = String(prior.area || prior.parishWard || prior.district);
       initialSecondary = `District: ${prior.district} · Uganda`;
@@ -138,7 +138,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
 
     {/* PART H: the sale never blocks on a data gap — always visible */}
     <button type="button" class="js-manual-toggle text-sm font-bold text-brand-charcoal underline underline-offset-4 decoration-brand-primary">
-      I can't find my area — write directions instead
+      I can't find my area. Write directions instead
     </button>
 
     <div class="js-manual-mode hidden space-y-2 bg-amber-50 border border-amber-200 rounded-xl p-4">
@@ -160,7 +160,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
 
   {withPin && (
     <div class="js-pin-section border border-gray-200 rounded-xl p-4 space-y-3">
-      <p class="text-sm font-bold text-brand-charcoal">Location pin <span class="font-normal text-gray-500">(optional — helps the rider find you)</span></p>
+      <p class="text-sm font-bold text-brand-charcoal">Location pin <span class="font-normal text-gray-500">(optional. Helps the rider find you)</span></p>
       <div class="flex flex-wrap gap-2">
         <button type="button" class="js-pin-gps text-sm font-bold bg-white border border-brand-borderGrey px-4 py-2.5 rounded-lg hover:border-brand-primary">
           📍 Use my current location

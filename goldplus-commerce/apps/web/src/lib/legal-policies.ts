@@ -31,7 +31,7 @@ export interface LegalPolicy {
 export const POLICY_STATUS_LABEL: Record<PolicyStatus, string> = {
   in_force: 'In force',
   interim_guidance: 'Interim public guidance',
-  draft_pending_legal_review: 'Draft — pending legal review',
+  draft_pending_legal_review: 'Draft. Pending legal review',
 };
 
 /** The date the owner approved every policy below for production. */

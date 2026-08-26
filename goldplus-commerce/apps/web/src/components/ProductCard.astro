@@ -128,7 +128,7 @@ const availabilityBadgeClass = (() => {
         </p>
       )}
       {onSale && discount.endsIso && (
-        <p class="mt-1 text-[11px] font-bold text-amber-700 tabular-nums" data-card-sale-ends={discount.endsIso}>Sale price — limited time</p>
+        <p class="mt-1 text-[11px] font-bold text-amber-700 tabular-nums" data-card-sale-ends={discount.endsIso}>Sale price. Limited time</p>
       )}
       <div class="mt-1 flex items-center justify-between gap-2">
         {stockCount !== null ? (
@@ -170,4 +170,4 @@ const availabilityBadgeClass = (() => {
 </article>
 
 {/* The sale-countdown ticker for [data-card-sale-ends] chips lives in
-    BaseLayout — one owner, every page (rails inject cards on ANY page). */}
+    BaseLayout. One owner, every page (rails inject cards on ANY page). */}

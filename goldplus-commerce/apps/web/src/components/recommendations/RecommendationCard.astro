@@ -110,7 +110,7 @@ const productType = lowerName.includes("charger") ? "Charger"
               <span class="text-[9px] font-black uppercase tracking-wider rounded-full px-1.5 py-0.5" style="background:#93D500;color:#0A0A0A">{discount.percent}% off</span>
             </span>
             {variant !== "cart-compact" && discount.endsIso && (
-              <span class="mt-0.5 text-[10px] font-bold text-amber-700 tabular-nums" data-card-sale-ends={discount.endsIso}>Sale price — limited time</span>
+              <span class="mt-0.5 text-[10px] font-bold text-amber-700 tabular-nums" data-card-sale-ends={discount.endsIso}>Sale price. Limited time</span>
             )}
           </span>
         ) : (

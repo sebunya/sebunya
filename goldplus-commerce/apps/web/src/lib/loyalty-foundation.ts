@@ -40,7 +40,7 @@ export const FORBIDDEN_LOYALTY_CLAIMS = Object.freeze([
 
 export const VISUAL_PROGRESS_PREVIEW = Object.freeze({
   title: "Programme setup preview",
-  label: "Preview only — not customer progress",
+  label: "Preview only, not customer progress",
   setupPercent: 25,
   steps: Object.freeze([
     { label: "Foundation and safeguards", state: "Prepared" },

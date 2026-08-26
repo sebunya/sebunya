@@ -120,7 +120,7 @@ const { apiBase, compatibleWith = null } = Astro.props;
     qContainer.classList.add('hidden'); actions.classList.add('hidden'); progress.classList.add('hidden'); rContainer.classList.remove('hidden'); rContainer.replaceChildren();
     if (resultStatus === 'NO_MATCH' || resultStatus === 'NO_EXACT_MATCH') {
       rContainer.append(text('h2', 'No exact match found', 'text-2xl font-bold mb-4'), text('p', 'No eligible product satisfied the answers and current safety gates. Browse the catalogue without an invented recommendation.', 'text-gray-600 mb-6'));
-      const link = text('a', 'Browse all products', 'inline-block bg-[#96cc06] text-white px-6 py-3 rounded font-medium') as HTMLAnchorElement; link.href = '/shop'; rContainer.append(link); status.textContent = 'No match yet. We would rather say so than guess — browse the shop or ask us.'; return;
+      const link = text('a', 'Browse all products', 'inline-block bg-[#96cc06] text-white px-6 py-3 rounded font-medium') as HTMLAnchorElement; link.href = '/shop'; rContainer.append(link); status.textContent = 'No match yet. We would rather say so than guess. Browse the shop or ask us.'; return;
     }
     rContainer.append(text('h2', 'Your GoldPlus matches', 'text-2xl font-bold mb-6'));
     for (const rec of recommendations) {
@@ -131,8 +131,8 @@ const { apiBase, compatibleWith = null } = Astro.props;
       // (compatibility was not part of this session — nothing to claim).
       const humanEvidence = (value: string): string | null => {
         if (value === 'NOT_REQUESTED') return null;
-        if (value === 'CANONICAL_CATALOGUE_PRICE') return 'Current catalogue price — revalidated at checkout';
-        if (value === 'APPROVED_NON_PERSISTENT_PRICING_SIMULATION') return 'Includes an approved promotion — final price confirmed at checkout';
+        if (value === 'CANONICAL_CATALOGUE_PRICE') return 'Current catalogue price. Revalidated at checkout';
+        if (value === 'APPROVED_NON_PERSISTENT_PRICING_SIMULATION') return 'Includes an approved promotion. Final price confirmed at checkout';
         if (value.startsWith('DECLARED_')) return `Compatibility on record: ${value.slice('DECLARED_'.length).toLowerCase().replace(/_/g, ' ')}`;
         return value;
       };
@@ -149,7 +149,7 @@ const { apiBase, compatibleWith = null } = Astro.props;
   }
 
   async function recordIntent(action: string, productId: string) {
-    try { await request(`/product-finder/sessions/${sessionId}/actions`, { method: 'POST', headers: finderHeaders(), body: JSON.stringify({ action, productId }) }); status.textContent = action === 'add_to_cart_intent' ? 'Noted — nothing was added to your cart.' : 'Opening the product…'; } catch { status.textContent = 'We could not save that. Nothing was added to your cart.'; }
+    try { await request(`/product-finder/sessions/${sessionId}/actions`, { method: 'POST', headers: finderHeaders(), body: JSON.stringify({ action, productId }) }); status.textContent = action === 'add_to_cart_intent' ? 'Noted. Nothing was added to your cart.' : 'Opening the product…'; } catch { status.textContent = 'We could not save that. Nothing was added to your cart.'; }
   }
 
   void startSession();

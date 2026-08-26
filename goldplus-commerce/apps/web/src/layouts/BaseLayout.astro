@@ -20,7 +20,7 @@ interface Props {
 
 const {
   title,
-  description = 'GoldPlus — Premium electronics in Uganda',
+  description = 'GoldPlus. Premium electronics in Uganda',
   image = '/icon-512.svg',
   canonicalUrl,
   robotsMeta,
@@ -350,7 +350,7 @@ const measurement = resolveMeasurementConfig(import.meta.env);
           const end = new Date(el.getAttribute('data-card-sale-ends') ?? '').getTime();
           if (!Number.isFinite(end)) continue;
           const ms = end - Date.now();
-          if (ms <= 0) { el.textContent = 'Sale ended — regular price applies'; continue; }
+          if (ms <= 0) { el.textContent = 'Sale ended. Regular price applies'; continue; }
           const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000), m = Math.floor((ms % 3600000) / 60000);
           el.textContent = d > 0 ? `Sale ends in ${d}d ${h}h` : h > 0 ? `Sale ends in ${h}h ${m}m` : `Sale ends in ${m}m`;
         }

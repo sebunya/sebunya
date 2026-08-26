@@ -150,7 +150,7 @@ export const cartClient = {
 export function cartMessageFor(code: CartErrorCode): string {
   switch (code) {
     case 'VERSION_CONFLICT':
-      return 'Your basket changed in another tab. We have refreshed it — please check and try again.';
+      return 'Your basket changed in another tab. We have refreshed it. Please check and try again.';
     case 'PRODUCT_UNAVAILABLE':
       return 'One or more items are no longer available. Please review your basket.';
     case 'QUANTITY_OUT_OF_BOUNDS':
