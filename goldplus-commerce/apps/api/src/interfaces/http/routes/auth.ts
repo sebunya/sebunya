@@ -468,4 +468,67 @@ routes.post('/password/reset', async (c) => {
   return c.json(res);
 });
 
+/**
+ * Request a reset CODE by SMS.
+ *
+ * The phone is the account for most customers and SMS is the channel that
+ * arrives. Same discipline as the email request: one answer for every input,
+ * and the interesting detail goes to the log, never to the caller.
+ */
+routes.post('/password/forgot-sms', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.requestSmsPasswordResetUseCase.execute({
+    phone: String(body?.phone ?? ''),
+    ip: clientIp(c),
+  });
+
+  logger.info(
+    {
+      delivery: result.internal.delivery,
+      deliveryDetail: result.internal.deliveryDetail,
+      userFound: result.internal.userFound,
+      throttled: result.internal.throttled,
+    },
+    'PASSWORD_RESET_SMS_REQUESTED',
+  );
+
+  const res: ApiResponse<{ message: string }> = { success: true, data: { message: result.message } };
+  return c.json(res);
+});
+
+/** Complete a reset with the SMS code. Revokes every existing session on success. */
+routes.post('/password/reset-sms', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.resetPasswordWithSmsCodeUseCase.execute({
+    phone: String(body?.phone ?? ''),
+    code: String(body?.code ?? ''),
+    newPassword: String(body?.password ?? ''),
+  });
+
+  if (!result.ok) {
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, result.code === 'TOO_MANY_ATTEMPTS' ? 429 : 400);
+  }
+
+  await registry.sessionService.logoutAll(result.userId, 'password_change').catch(() => undefined);
+  await registry.createAuditLogUseCase
+    .execute({
+      actorId: result.userId,
+      action: 'PASSWORD_RESET_COMPLETED',
+      entity: 'user',
+      entityId: result.userId,
+      previousState: null,
+      newState: { sessionsRevoked: true, method: 'sms_code' },
+    })
+    .catch(() => undefined);
+
+  const res: ApiResponse<{ message: string }> = {
+    success: true,
+    data: { message: 'Your password has been changed and you have been signed out everywhere. Sign in with your new password.' },
+  };
+  return c.json(res);
+});
+
 export default routes;

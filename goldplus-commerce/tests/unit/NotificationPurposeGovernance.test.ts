@@ -32,7 +32,7 @@ const ROUTER = "apps/api/src/infrastructure/notifications/NotificationRouter.ts"
 const OTP_SENDER = "apps/api/src/infrastructure/loyalty/LoyaltyIdentityInfrastructure.ts";
 
 /** Templates carrying a security/authentication purpose. */
-const SECURITY_TEMPLATES = ["PHONE_VERIFICATION", "PASSWORD_RESET"];
+const SECURITY_TEMPLATES = ["PHONE_VERIFICATION", "PASSWORD_RESET", "PASSWORD_RESET_CODE"];
 
 /** Templates that are genuinely marketing and must stay consent-gated. */
 const MARKETING_TEMPLATES = [

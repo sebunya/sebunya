@@ -62,7 +62,11 @@ try {
                 <div class="flex items-center gap-3">
                   <span class={`inline-flex items-center px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${STATUS_TONE_CLASS[orderStatusCopy(o.status).tone]}`}>{orderStatusCopy(o.status).label}</span>
                   <span class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(o.totalAmountUgx)}</span>
-                  <a href={`/orders/${o.id}`} class="text-xs font-bold text-brand-mutedGrey hover:text-brand-charcoal whitespace-nowrap">Details &rarr;</a>
+                  {o.status === 'PENDING_PAYMENT' ? (
+                    <a href={`/orders/${o.id}#pay`} class="inline-flex items-center rounded-full bg-brand-charcoal px-3 py-1.5 text-xs font-bold text-white hover:bg-black whitespace-nowrap">Pay for this order</a>
+                  ) : (
+                    <a href={`/orders/${o.id}`} class="text-xs font-bold text-brand-mutedGrey hover:text-brand-charcoal whitespace-nowrap">Details &rarr;</a>
+                  )}
                 </div>
               </li>
             ))}

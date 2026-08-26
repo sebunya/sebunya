@@ -6,6 +6,10 @@ import { apiBase } from '../../lib/api';
 import { readSessionToken, clearSessionCookie } from '../../lib/session';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import { orderStatusCopy, STATUS_TONE_CLASS } from '../../lib/orderStatusCopy';
+import { resolveCheckoutIntent } from '../../lib/checkoutIntent';
+import { resolveAuthenticatedUserId } from '../../lib/customerAuth';
+import { startPayment, paymentStartMessageFor } from '../../lib/checkoutClient';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../lib/requestOrigin';
 import type { OrderDetailDto, ApiResponse } from '@goldplus/shared';
 
 const { id } = Astro.params;
@@ -43,6 +47,35 @@ try {
 const biz = await getBusinessInfo();
 const status = order ? orderStatusCopy(order.status) : null;
 const isUnpaid = order?.status === 'PENDING_PAYMENT';
+
+/**
+ * Pay now (B6). An unpaid order used to be a dead end: the page said "not
+ * paid yet" and offered a phone number. The customer who abandoned the bank
+ * page, or whose connection dropped on the way there, can now pick the same
+ * order up again. The API authorises the caller through the checkout intent,
+ * which the storefront mints for the signed-in principal here, exactly as
+ * checkout does; a live provider attempt is reused rather than duplicated.
+ */
+let payMessage: string | null = null;
+if (Astro.request.method === 'POST' && order && isUnpaid) {
+  const originDecision = checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>);
+  if (!originDecision.allowed) {
+    payMessage = CROSS_SITE_MESSAGE;
+  } else {
+    const userId = await resolveAuthenticatedUserId(Astro.cookies);
+    const intent = userId ? resolveCheckoutIntent(Astro.cookies, userId) : null;
+    if (!intent) {
+      payMessage = 'We could not start the payment from here. Sign in again and try once more, or message us and we will send you a payment link.';
+    } else {
+      const payRes = await startPayment({ orderId: order.id, intentToken: intent.token, sessionToken: token });
+      if (payRes.ok) {
+        return Astro.redirect(payRes.data.redirectUrl, 303);
+      }
+      payMessage = paymentStartMessageFor(payRes.code);
+    }
+  }
+}
+
 const helpHref = order
   ? `${biz.whatsappUrl}?text=${encodeURIComponent(`Hello GoldPlus, I have a question about order ${order.orderNumber}.`)}`
   : biz.whatsappUrl;
@@ -109,12 +142,18 @@ const helpHref = order
                 </div>
 
                 {isUnpaid && (
+                <div id="pay">
                 <Notice kind="info" title="This order is not paid yet">
                   <p class="text-xs mt-1 leading-relaxed">
-                    You have not been charged. If you started paying online and it has not cleared, please do not pay again. Send us the order number and we will check. Otherwise our team will contact you on the number from your order to arrange payment.
+                    You have not been charged. Pay for this order and we get it moving as soon as the payment clears. If you started paying online and it has not cleared, please do not pay again. Send us the order number and we will check.
                   </p>
+                  {payMessage && <p class="mt-3 text-xs font-bold" role="alert">{payMessage}</p>}
+                  <form method="POST" action={Astro.url.pathname} class="mt-4">
+                    <button type="submit" class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-6 py-3 text-sm font-bold text-white hover:bg-black">Pay for this order</button>
+                  </form>
                   <p class="mt-3 text-xs"><a href={helpHref} class="font-bold underline">Message us on WhatsApp</a> · <a href={biz.phoneDial} class="font-bold underline">Call {biz.phoneDisplay}</a></p>
                 </Notice>
+                </div>
                 )}
 
                 <div class="mt-6 flex flex-col sm:flex-row gap-3">

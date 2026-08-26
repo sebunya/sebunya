@@ -27,6 +27,7 @@ export type CustomerTemplate =
   | 'ORDER_CANCELLED_BY_SHOP'
   | 'PHONE_VERIFICATION'
   | 'PASSWORD_RESET'
+  | 'PASSWORD_RESET_CODE'
   | 'LOYALTY_POINTS_EARNED'
   | 'LOYALTY_EXPIRY_WARNING'
   | 'LOYALTY_REDEMPTION_CONFIRMED'
@@ -164,6 +165,10 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'PASSWORD_RESET':
       return d.resetUrl
         ? `${SHOP_NAME}: set a new password here: ${d.resetUrl} The link works once and expires in ${d.expiresInMinutes ?? 60} minutes. If you did not ask for this, ignore it.`
+        : null;
+    case 'PASSWORD_RESET_CODE':
+      return d.code
+        ? `${SHOP_NAME}: your password reset code is ${d.code}. It works once and expires in ${d.expiresInMinutes ?? 10} minutes. If you did not ask for it, ignore this message and nothing changes. Never share this code.`
         : null;
     case 'LOYALTY_POINTS_EARNED':
       return `${SHOP_NAME}: you earned ${pointsWord(d.points)}${ref ? ` on order${ref}` : ''}. Points come off your next order at checkout. See your balance: ${publicBaseUrl()}/account/loyalty`;
@@ -385,6 +390,7 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         tone: 'neutral',
       };
     case 'PHONE_VERIFICATION':
+    case 'PASSWORD_RESET_CODE':
       // A code proves control of a phone; it has no email form.
       return null;
     default:
@@ -405,6 +411,7 @@ export const CUSTOMER_TRANSACTIONAL_TEMPLATES: readonly string[] = Object.freeze
   'ORDER_CANCELLED_BY_SHOP',
   'PHONE_VERIFICATION',
   'PASSWORD_RESET',
+  'PASSWORD_RESET_CODE',
   'password_reset',
   'SUPPORT_REQUEST_RECEIVED',
   'QUOTE_REQUEST_RECEIVED',

@@ -170,9 +170,9 @@ export class VerifyPhoneUseCase {
   async execute(input: { userId: string; code: string }): Promise<{ ok: true; backfilledPoints: number } | Fail> {
     const otp = await this.identity.latestOtp(input.userId);
     if (!otp || otp.consumedAt) return fail('NO_CODE', 'Request a new verification code.');
-    if (otp.expiresAt.getTime() < Date.now()) return fail('EXPIRED', 'The code expired — request a new one.');
+    if (otp.expiresAt.getTime() < Date.now()) return fail('EXPIRED', 'The code has expired. Request a new one.');
     const attempts = await this.identity.bumpOtpAttempts(otp.id);
-    if (attempts > 5) return fail('TOO_MANY_ATTEMPTS', 'Too many attempts — request a new code.');
+    if (attempts > 5) return fail('TOO_MANY_ATTEMPTS', 'Too many attempts. Request a new code.');
     if (this.hash(input.code.trim()) !== otp.codeHash) return fail('WRONG_CODE', 'That code is not correct.');
     await this.identity.consumeOtp(otp.id);
     await this.identity.markPhoneVerified(input.userId, otp.phoneE164);

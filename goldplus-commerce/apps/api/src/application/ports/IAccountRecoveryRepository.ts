@@ -59,4 +59,11 @@ export interface IAccountRecoveryRepository {
 
   /** Invalidate every outstanding token for a user (e.g. after a successful reset). */
   invalidateOutstanding(userId: string): Promise<number>;
+  /**
+   * Set a new password WITHOUT a link token, for a reset proved another way
+   * (an SMS code). Same consequences as consuming a link: every session is
+   * revoked and every outstanding reset link for the user is voided, in one
+   * transaction. Returns false when no such user exists.
+   */
+  setPasswordAndRevokeSessions(input: { userId: string; newPasswordHash: string }): Promise<boolean>;
 }

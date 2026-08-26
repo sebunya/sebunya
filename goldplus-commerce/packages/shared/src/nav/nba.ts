@@ -144,8 +144,10 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   if (ctx.signedIn && ctx.lastOrderDays !== null && ctx.lastOrderDays > 150) {
     c.push({
       id: 'reorder', score: 84,
-      text: 'Phone battery fading? Yours is <b>' + Math.round(ctx.lastOrderDays / 30) + ' months</b> old',
-      short: 'Your battery is <b>' + Math.round(ctx.lastOrderDays / 30) + ' months</b> old',
+      // The only fact we hold is the age of the last order. Never "your battery
+      // is N months old": that order may not have been a battery.
+      text: 'Your last order was <b>' + Math.round(ctx.lastOrderDays / 30) + ' months</b> ago. Phone battery fading?',
+      short: 'Last order <b>' + Math.round(ctx.lastOrderDays / 30) + ' months</b> ago. Battery fading?',
       cta: 'Find your model', href: R.batteries,
     });
   }

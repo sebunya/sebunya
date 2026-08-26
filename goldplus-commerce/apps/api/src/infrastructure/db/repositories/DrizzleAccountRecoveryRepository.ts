@@ -94,6 +94,31 @@ export class DrizzleAccountRecoveryRepository implements IAccountRecoveryReposit
     });
   }
 
+  async setPasswordAndRevokeSessions(input: { userId: string; newPasswordHash: string }): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      const updated = rowsOf(
+        await tx.execute(sql`
+          update users
+          set password_hash = ${input.newPasswordHash},
+              password_changed_at = now(),
+              -- Every session issued before this instant dies with the reset,
+              -- exactly as it does for a link-based reset.
+              sessions_invalidated_after = now()
+          where id = ${input.userId}::uuid
+          returning id
+        `),
+      );
+      if (updated.length === 0) return false;
+      // Any outstanding email link for this user is now void as well.
+      await tx.execute(sql`
+        update password_reset_tokens
+        set consumed_at = now()
+        where user_id = ${input.userId}::uuid and consumed_at is null
+      `);
+      return true;
+    });
+  }
+
   async countRecentTokens(userId: string, since: Date): Promise<number> {
     const rows = rowsOf(
       await db.execute(sql`

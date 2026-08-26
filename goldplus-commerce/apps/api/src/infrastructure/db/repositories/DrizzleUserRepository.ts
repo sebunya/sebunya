@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../client';
 import { users } from '../schema/identity';
 import { IUserRepository, PersistedUser } from '../../../application/ports/IUserRepository';
@@ -12,10 +12,24 @@ function rowToUser(row: typeof users.$inferSelect): PersistedUser {
     isActive: row.isActive,
     createdAt: row.createdAt,
     sessionsInvalidatedAfter: row.sessionsInvalidatedAfter ?? null,
+    phoneVerifiedAt: (row as { phoneVerifiedAt?: Date | null }).phoneVerifiedAt ?? null,
   };
 }
 
 export class DrizzleUserRepository implements IUserRepository {
+  async findByPhone(phoneE164: string): Promise<PersistedUser | null> {
+    const e164 = (phoneE164 ?? '').trim();
+    if (!/^\+256\d{9}$/.test(e164)) return null;
+    // Registration stores the typed shape; verification stores E.164. Both are
+    // the same number, so both are looked up. The column is unique, so at most
+    // one row per shape; two rows means two accounts claim one number, and
+    // neither may be chosen for a reset.
+    const local = e164.replace('+256', '0');
+    const rows = await db.query.users.findMany({ where: inArray(users.phone, [e164, local]), limit: 2 });
+    if (rows.length !== 1) return null;
+    return rowToUser(rows[0]);
+  }
+
   async findByEmail(email: string): Promise<PersistedUser | null> {
     const normalised = email.trim().toLowerCase();
     if (!normalised) return null;

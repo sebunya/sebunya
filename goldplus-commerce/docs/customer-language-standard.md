@@ -95,6 +95,12 @@ A label says what pressing it does, and its consequence must match:
   the reference filled in.
 - A vague label (*Submit, Continue, Confirm, OK*) is allowed only where the
   consequence is obvious and harmless.
+- An unpaid order is never a dead end. Its page and the orders list offer
+  *Pay for this order*, which reopens the same order at the payment page (a
+  live payment attempt is reused, never duplicated) and, when that cannot be
+  done, says why in customer words and offers a person.
+- *Send me a code* sends a request, not a code: the acknowledgement says what
+  was done. *Set new password* sets it and signs the customer out everywhere.
 
 ## 7. Money and status
 
@@ -121,11 +127,25 @@ instruction ("requires admin review"). Every empty state has a way forward.
   X" — unless the business has committed to them.
 - A visitor's own history used against them ("this is visit 4").
 
-## 10. Guards
+## 10. Account recovery
+
+The phone number is the account, and SMS is the channel that arrives, so
+*Reset your password* asks for the phone first and sends a 6 digit code;
+email stays as the second option. The page says the same thing whatever is
+typed ("If that number is on a GoldPlus account, we have sent it a code"),
+never "no account with that number". A wrong, expired, used or unknown code
+gets ONE answer and a way to ask for another; only the fifth wrong guess is
+told it is locked. The code message says what it is for, that it works once,
+when it expires, and that nothing changes if the customer ignores it. The
+wording lives in `CustomerMessages` (`PASSWORD_RESET_CODE`); the rules are
+pinned by `SmsPasswordReset`.
+
+## 11. Guards
 
 `CustomerCopyNeverLeaksSystemState`, `PaymentReturnTellsTheTruth`,
 `HeroSaleFromPromotion`, `NoInventedScarcityInHeader`,
-`NavBatteryFinderGatedOnStock`, `PublicSurfaceBackOfficeLeakage`,
-`CustomerFacingContentIntegrity`, `ServiceWorkerInstalls`. They protect the
+`CustomerMessagesSpeakPlainly`, `SmsPasswordReset`,
+`PublicSurfaceBackOfficeLeakage`, `CustomerFacingContentIntegrity`,
+`ServiceWorkerInstalls`. They protect the
 defect class, not a sentence: realign a test after an intended change; never
 weaken it to pass.

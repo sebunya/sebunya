@@ -1782,8 +1782,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         cta:'Spend them', href:'/account/rewards' });
 
       if (CTX.signedIn && CTX.lastOrderDays !== null && CTX.lastOrderDays > 150) c.push({ id:'reorder', score:84,
-        text:'Phone battery fading? Yours is <b>' + Math.round(CTX.lastOrderDays/30) + ' months</b> old',
-        short:'Your battery is <b>' + Math.round(CTX.lastOrderDays/30) + ' months</b> old',
+        text:'Your last order was <b>' + Math.round(CTX.lastOrderDays/30) + ' months</b> ago. Phone battery fading?',
+        short:'Last order <b>' + Math.round(CTX.lastOrderDays/30) + ' months</b> ago. Battery fading?',
         cta:'Find your model', href:'/shop?category=power&q=battery' });
 
       if (CTX.signedIn) c.push({ id:'refer', score:62,

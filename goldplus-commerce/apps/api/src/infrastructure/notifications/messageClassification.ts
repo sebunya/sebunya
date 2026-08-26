@@ -64,6 +64,9 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   // receiving offers. Nobody consents to being able to reset their password.
   'PASSWORD_RESET',
   'password_reset',
+  // The SMS form of the same security challenge. A reset code the customer
+  // asked for seconds ago is not marketing, and must never wait on consent.
+  'PASSWORD_RESET_CODE',
   // Order lifecycle messages routed as CUSTOMER_ORDER_MESSAGE, and the
   // acknowledgements a customer gets for a request they just made. All are a
   // direct consequence of the customer's own action.

@@ -84,6 +84,8 @@ import { DrizzleAccountRecoveryRepository } from './db/repositories/DrizzleAccou
 import { DrizzleSocialIdentityRepository } from './db/repositories/DrizzleSocialIdentityRepository';
 import { NotificationResetDelivery } from './identity/NotificationResetDelivery';
 import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../application/use-cases/identity/PasswordResetUseCases';
+import { SmsResetCodeDelivery } from './identity/SmsResetCodeDelivery';
+import { RequestSmsPasswordResetUseCase, ResetPasswordWithSmsCodeUseCase } from '../application/use-cases/identity/SmsPasswordResetUseCases';
 import { DrizzleProductCostRepository } from './db/repositories/DrizzleProductCostRepository';
 import { DrizzleHeroRepository } from './db/repositories/DrizzleHeroRepository';
 import { HeroContentService } from '../application/hero/HeroContentService';
@@ -1685,6 +1687,24 @@ export class Registry {
   public readonly resetPasswordUseCase = new ResetPasswordUseCase(
     this.accountRecoveryRepo,
     this.passwordHasher,
+  );
+
+  // Reset by SMS code: the channel that actually reaches customers. The code
+  // shares the phone verification table and bounds, with a domain-separated
+  // hash, and is delivered synchronously so it is never persisted in the clear.
+  public readonly requestSmsPasswordResetUseCase = new RequestSmsPasswordResetUseCase(
+    this.userRepo,
+    this.loyaltyIdentityRepo,
+    new SmsResetCodeDelivery(this.smsAdapter, this.recordNotificationAttemptUseCase),
+    otpHash,
+    otpRandom,
+  );
+  public readonly resetPasswordWithSmsCodeUseCase = new ResetPasswordWithSmsCodeUseCase(
+    this.userRepo,
+    this.loyaltyIdentityRepo,
+    this.accountRecoveryRepo,
+    this.passwordHasher,
+    otpHash,
   );
 
   /** Homepage hero content (0107): the 12-slide library and its settings. */
