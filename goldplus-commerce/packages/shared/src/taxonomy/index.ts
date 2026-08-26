@@ -48,6 +48,13 @@ export const DEFAULT_TAXONOMY: Taxonomy = [
     subcategories: [
       { slug: 'chargers', name: 'Chargers', keywords: ['charger', 'adapter', 'charging brick'] },
       { slug: 'power-banks', name: 'Power Banks', keywords: ['power bank'] },
+      // 2026-08-26: replacement batteries are their own shelf. A router or MiFi
+      // battery is NOT a phone battery, so the two never share a subcategory:
+      // the finder, the compatibility rules and the navigation all depend on
+      // that separation. The battery module sets these on every battery it
+      // creates (BATTERY_CATEGORY_LABELS).
+      { slug: 'phone-batteries', name: 'Phone Batteries', keywords: ['phone battery', 'replacement battery', 'battery'] },
+      { slug: 'mifi-router-batteries', name: 'MiFi & Router Batteries', keywords: ['mifi battery', 'router battery'] },
     ],
   },
   {

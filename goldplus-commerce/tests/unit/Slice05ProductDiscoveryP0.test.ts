@@ -46,11 +46,16 @@ describe('Slice 05 product discovery P0', () => {
 
   it('uses exactly the approved category and subcategory taxonomy', () => {
     // 2026-08-08: PC Accessories (Mice, Sound Cards) joined as the fifth category.
+    // 2026-08-26: Phone Batteries and MiFi & Router Batteries joined Power
+    // Devices with the battery module. They are deliberately two shelves, not
+    // one: a router battery is not a phone battery, and the finder, the
+    // compatibility rules and the navigation all rely on the separation.
     expect(DISCOVERY_TAXONOMY.map(({ name }) => name)).toEqual([
       'Power Devices', 'Sound Devices', 'Storage Devices', 'Car Accessories', 'PC Accessories',
     ]);
     expect(DISCOVERY_TAXONOMY.flatMap(({ subcategories }) => subcategories.map(({ name }) => name))).toEqual([
-      'Chargers', 'Power Banks', 'Earbuds', 'Speakers', 'Flash Drives', 'Memory Cards', 'Mounts', 'Car Chargers', 'Mice', 'Sound Cards',
+      'Chargers', 'Power Banks', 'Phone Batteries', 'MiFi & Router Batteries',
+      'Earbuds', 'Speakers', 'Flash Drives', 'Memory Cards', 'Mounts', 'Car Chargers', 'Mice', 'Sound Cards',
     ]);
   });
 
