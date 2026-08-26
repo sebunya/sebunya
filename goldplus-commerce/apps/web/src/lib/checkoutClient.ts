@@ -7,12 +7,19 @@ import type {
   PaymentStartResponseDto,
 } from '@goldplus/shared';
 import { CHECKOUT_INTENT_HEADER } from '@goldplus/shared';
+import { apiBase } from './api';
 
-const API_BASE = (
-  import.meta.env.PUBLIC_API_BASE_URL ||
-  process.env.PUBLIC_API_BASE_URL ||
-  'http://localhost:3000'
-).replace(/\/+$/, '');
+/**
+ * The canonical, context-aware origin (apps/web/src/lib/api.ts): the internal
+ * compose origin during SSR, the public origin in the browser.
+ *
+ * This file used to resolve PUBLIC_API_BASE_URL on its own. The checkout POST
+ * runs in Astro frontmatter — server side — so every order creation hairpinned
+ * out to the public edge, where Cloudflare answered Node's fetch with a 403
+ * "Just a moment..." challenge page. The customer saw "Checkout failed" and no
+ * order was ever created. Never resolve the API origin here; ask api.ts.
+ */
+const API_BASE = apiBase;
 
 /**
  * Typed checkout client for the storefront BFF.
@@ -78,12 +85,42 @@ export async function submitCheckout(args: {
   const retryAfterRaw = res.headers.get('Retry-After');
   const retryAfterSeconds = retryAfterRaw ? Number(retryAfterRaw) : undefined;
 
-  const json = (await res.json().catch(() => null)) as
+  // Read the body ONCE as text, then parse. A refusal that is not JSON (an edge
+  // challenge page, an HTML error page) is the case that used to vanish: the
+  // customer saw a generic "could not place your order" and the operator had
+  // nothing at all to go on.
+  const raw = await res.text().catch(() => '');
+  let json:
     | { success?: boolean; data?: CheckoutResponseDto; error?: { code?: string; message?: string; details?: CheckoutResponseDto } }
-    | null;
+    | null = null;
+  try {
+    json = raw ? JSON.parse(raw) : null;
+  } catch {
+    json = null;
+  }
 
   if (res.ok && json?.success && json.data) {
     return { ok: true, data: json.data, status: res.status };
+  }
+
+  /**
+   * One diagnostic line, server side only, so a broken order path is findable
+   * in the logs. Deliberately NOTHING from the customer's request: only where
+   * we called, what came back, and a short snippet of the RESPONSE when it was
+   * not the JSON we expect.
+   */
+  if (import.meta.env.SSR) {
+    console.error(
+      '[checkout] order create refused ' +
+        JSON.stringify({
+          origin: API_BASE,
+          status: res.status,
+          contentType: res.headers.get('content-type'),
+          bodyWasJson: json !== null,
+          errorCode: json?.error?.code ?? null,
+          snippet: json ? undefined : raw.slice(0, 160).replace(/\s+/g, ' '),
+        }),
+    );
   }
 
   return {

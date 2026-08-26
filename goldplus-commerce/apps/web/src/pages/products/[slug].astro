@@ -253,10 +253,16 @@ if (product?.categoryName === 'Sound Devices') {
 // Active campaign discount (display only; mirrors the checkout charge).
 const pdpHasPrice = product && typeof product.retailPriceUgx === 'number' && product.retailPriceUgx > 0;
 const pdpDiscount = await getStorefrontDiscount();
-const pdpOnSale = pdpHasPrice && pdpDiscount.active && pdpDiscount.percentBps > 0;
+const pdpCampaignRunning = pdpHasPrice && pdpDiscount.active && pdpDiscount.percentBps > 0;
 // The floor is a required argument: without it the page would advertise a price
 // the checkout refuses to honour.
-const pdpSaleUgx = pdpOnSale ? salePriceUgx(product!.retailPriceUgx!, pdpDiscount.percentBps, pdpDiscount.priceFloorUgx) : null;
+const pdpSaleUgx = pdpCampaignRunning ? salePriceUgx(product!.retailPriceUgx!, pdpDiscount.percentBps, pdpDiscount.priceFloorUgx) : null;
+/**
+ * Only call it a sale when the price actually drops. At the per-unit price
+ * floor the evaluator discounts nothing, and the page was showing a struck
+ * through price identical to the one beside it with a "10% discount" badge.
+ */
+const pdpOnSale = pdpCampaignRunning && pdpSaleUgx !== null && pdpSaleUgx < product!.retailPriceUgx!;
 
 /**
  * Battery block. A battery product carries its verified device list, its specs

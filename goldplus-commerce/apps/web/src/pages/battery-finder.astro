@@ -2,7 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { getBusinessInfo } from '../lib/businessInfo';
-import { publicBattery, DEVICE_COOKIE, serialiseDeviceCookie, ugx, FIT_BADGE } from '../lib/batteries';
+import { publicBattery, submitBatteryRequest, DEVICE_COOKIE, serialiseDeviceCookie, ugx, FIT_BADGE } from '../lib/batteries';
 import type { BatteryFinderConfig, FinderBatteryResultDto, FinderBrandDto, FinderDeviceDto, FinderSeriesDto } from '@goldplus/shared';
 
 /**
@@ -21,25 +21,19 @@ let requestNotice: { kind: 'success' | 'error'; text: string } | null = null;
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   if (String(form.get('website') ?? '') === '') {
-    const res = await fetch(`${new URL(Astro.request.url).origin}/api/battery-request`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        queryText: String(form.get('queryText') ?? '').slice(0, 200) || null,
-        brandText: String(form.get('brandText') ?? '').slice(0, 80) || null,
-        deviceText: String(form.get('deviceText') ?? '').slice(0, 120) || null,
-        modelNumberText: String(form.get('modelNumberText') ?? '').slice(0, 80) || null,
-        batteryCodeText: String(form.get('batteryCodeText') ?? '').slice(0, 120) || null,
-        contactName: String(form.get('contactName') ?? '').slice(0, 120) || null,
-        contactPhone: String(form.get('contactPhone') ?? '').slice(0, 32) || null,
-        notes: String(form.get('notes') ?? '').slice(0, 1000) || null,
-        source: 'FINDER_NO_RESULT',
-      }),
-    }).catch(() => null);
-    const json = res ? await res.json().catch(() => null) : null;
-    requestNotice = json?.success
-      ? { kind: 'success', text: 'Thank you. We have your phone details and will confirm the right battery before you buy.' }
-      : { kind: 'error', text: json?.error?.message ?? 'We could not record that just now. Please send it to us on WhatsApp instead.' };
+    const clip = (k: string, n: number) => String(form.get(k) ?? '').slice(0, n) || null;
+    const result = await submitBatteryRequest({
+      queryText: clip('queryText', 200),
+      brandText: clip('brandText', 80),
+      deviceText: clip('deviceText', 120),
+      modelNumberText: clip('modelNumberText', 80),
+      batteryCodeText: clip('batteryCodeText', 120),
+      contactName: clip('contactName', 120),
+      contactPhone: clip('contactPhone', 32),
+      notes: clip('notes', 1000),
+      source: 'FINDER_NO_RESULT',
+    });
+    requestNotice = { kind: result.ok ? 'success' : 'error', text: result.message };
   } else {
     requestNotice = { kind: 'success', text: 'Thank you.' };
   }

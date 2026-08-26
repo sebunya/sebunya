@@ -536,11 +536,19 @@ const cutoffLine = cut.closed
 
 // Active campaign discount (display; per-line to match what the evaluator charges).
 const checkoutDiscount = await getStorefrontDiscount();
-const checkoutOnSale = checkoutDiscount.active && checkoutDiscount.percentBps > 0 && cart.subtotalUgx > 0;
-const checkoutSaleSubtotal = checkoutOnSale
+const campaignRunning = checkoutDiscount.active && checkoutDiscount.percentBps > 0 && cart.subtotalUgx > 0;
+const checkoutSaleSubtotal = campaignRunning
   ? cart.items.reduce((acc: number, i: any) => acc + salePriceUgx((i.unitPriceUgx || i.priceUgx) * i.quantity, checkoutDiscount.percentBps, checkoutDiscount.priceFloorUgx * i.quantity), 0)
   : cart.subtotalUgx;
 const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
+/**
+ * A running campaign is not the same thing as money off THIS basket. The
+ * evaluator will not discount below the per-unit price floor, so a basket of
+ * items already at the floor saves nothing, and the summary was announcing
+ * "10% discount ... -UGX 0": a claim the checkout does not honour. The row
+ * appears only when the customer actually saves something.
+ */
+const checkoutOnSale = campaignRunning && checkoutSavings > 0;
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="Checkout">

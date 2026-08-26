@@ -1,4 +1,5 @@
 import { CART_CREDENTIAL_HEADER } from '@goldplus/shared';
+import { apiBase } from './api';
 
 /**
  * Typed cart client for the storefront BFF.
@@ -13,11 +14,13 @@ import { CART_CREDENTIAL_HEADER } from '@goldplus/shared';
  * basket so the caller can reconcile instead of assuming.
  */
 
-const API_BASE = (
-  import.meta.env.PUBLIC_API_BASE_URL ||
-  process.env.PUBLIC_API_BASE_URL ||
-  'http://localhost:3000'
-).replace(/\/+$/, '');
+/**
+ * Context-aware origin from api.ts: internal during SSR, public in the browser.
+ * The cart pages call this from Astro frontmatter, so resolving the public
+ * origin here sent server-side basket writes out through the public edge, where
+ * Cloudflare answers Node's fetch with a 403 challenge page.
+ */
+const API_BASE = apiBase;
 
 export interface CartLineView {
   productId: string;

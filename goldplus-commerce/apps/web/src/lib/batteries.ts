@@ -45,6 +45,44 @@ export function batteryMessage(error: { code: string; message: string } | null):
 
 export type PublicResult<T> = { ok: true; data: T } | { ok: false; unavailable: true };
 
+export interface BatteryRequestInput {
+  queryText: string | null;
+  brandText: string | null;
+  deviceText: string | null;
+  modelNumberText: string | null;
+  batteryCodeText: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  notes: string | null;
+  source: 'FINDER_NO_RESULT' | 'PRODUCT_PAGE';
+}
+
+/**
+ * Record a customer's battery request from the server.
+ *
+ * This calls the API through `apiBase`, which is the internal compose origin
+ * during SSR. It must never post to our own public origin: a server-side fetch
+ * out to the edge and back is answered by Cloudflare with a 403 challenge page,
+ * which is exactly how the checkout funnel was silently dying.
+ */
+export async function submitBatteryRequest(input: BatteryRequestInput): Promise<{ ok: boolean; message: string }> {
+  try {
+    const res = await fetch(`${apiBase}/batteries/finder/requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(8000),
+    });
+    const json = await res.json().catch(() => null);
+    if (json?.success) {
+      return { ok: true, message: 'Thank you. We have your phone details and will confirm the right battery before you buy.' };
+    }
+    return { ok: false, message: json?.error?.message ?? 'We could not record that just now. Please send it to us on WhatsApp instead.' };
+  } catch {
+    return { ok: false, message: 'We could not record that just now. Please send it to us on WhatsApp instead.' };
+  }
+}
+
 export async function publicBattery<T>(path: string, sessionId?: string | null): Promise<PublicResult<T>> {
   try {
     const res = await fetch(`${apiBase}/batteries${path}`, {

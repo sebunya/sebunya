@@ -1,8 +1,13 @@
 import type { AstroCookies } from 'astro';
+import { apiBase } from './api';
 
-const API_BASE = (
-  import.meta.env.PUBLIC_API_BASE_URL || process.env.PUBLIC_API_BASE_URL || 'http://localhost:3000'
-).replace(/\/+$/, '');
+/**
+ * Context-aware origin from api.ts. This module only ever runs server side (it
+ * reads AstroCookies), so resolving the public origin here meant every
+ * "is this shopper signed in?" check left the box and came back as a Cloudflare
+ * 403 challenge page, silently downgrading real customers to guests.
+ */
+const API_BASE = apiBase;
 
 /**
  * The one place the storefront decides whether a real customer is signed in.

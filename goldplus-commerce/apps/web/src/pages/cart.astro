@@ -263,11 +263,14 @@ const subtotal = items.reduce((acc, item) => acc + (item.unitPriceUgx * item.qua
 
 // Active campaign discount (display; per-line to match the checkout evaluator).
 const cartDiscount = await getStorefrontDiscount();
-const cartOnSale = cartDiscount.active && cartDiscount.percentBps > 0 && subtotal > 0;
-const saleSubtotal = cartOnSale
+const cartCampaignRunning = cartDiscount.active && cartDiscount.percentBps > 0 && subtotal > 0;
+const saleSubtotal = cartCampaignRunning
   ? items.reduce((acc, i) => acc + salePriceUgx(i.unitPriceUgx * i.quantity, cartDiscount.percentBps, cartDiscount.priceFloorUgx * i.quantity), 0)
   : subtotal;
 const cartSavings = subtotal - saleSubtotal;
+// A running campaign that saves this basket nothing (every line already at the
+// price floor) must not be announced as a discount. See checkout.astro.
+const cartOnSale = cartCampaignRunning && cartSavings > 0;
 
 // Loyalty earn preview at the point of decision (loyalty brief PART G).
 let cartLoyaltyRate = 0;
