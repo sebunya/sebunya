@@ -107,6 +107,38 @@ if (slides.length === 0) {
   leadKey = slides[0].slideKey;
 }
 
+// Delivery fees on the "fees" slide come from the ONE quoting service (delivery
+// contract, guarantee 1 and 4), never from the slide row. The row may name a few
+// sample areas (extras.sampleAreas); the numbers are asked for at render and
+// shown only when the service actually quotes them. When it does not, the slide
+// simply shows no figures. It used to print "UGX 5,000 / UGX 8,000" typed into
+// the row while the service had no published fees at all.
+const feesSlide = slides.find((s) => s.slideKey === 'fees');
+if (feesSlide) {
+  const sample = Array.isArray((feesSlide.extras as any)?.sampleAreas) ? ((feesSlide.extras as any).sampleAreas as Array<{ slug?: string; label?: string }>) : [];
+  const quoted = await Promise.all(
+    sample.slice(0, 3).map(async (a) => {
+      if (!a?.slug || !a?.label) return null;
+      try {
+        const res = await fetch(`${apiBase}/delivery/quote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ areaSlug: a.slug }),
+          signal: AbortSignal.timeout(2500),
+        });
+        const j: any = await res.json().catch(() => null);
+        const d = j?.success ? j.data : null;
+        return d && d.tone === 'quoted' && typeof d.feeUgx === 'number'
+          ? { amount: `UGX ${Math.round(d.feeUgx).toLocaleString('en-UG')}`, label: String(a.label) }
+          : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  feesSlide.extras = { ...(feesSlide.extras as any), fees: quoted.filter(Boolean) };
+}
+
 // The <em> boundary, on the render side too. The headline is set:html; escape
 // everything, then restore ONLY <em>/</em>. Belt-and-braces with the API's own
 // sanitiser, and it protects the in-code fallback path as well.
@@ -181,7 +213,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
               <div class="gp-hero__cutoff" id="gpCutoff"><span class="gp-hero__dot"></span><span id="gpCutoffText">Order now and we deliver today</span></div>
             )}
 
-            {s.slideKey === 'fees' && Array.isArray(ex.fees) && (
+            {s.slideKey === 'fees' && Array.isArray(ex.fees) && ex.fees.length > 0 && (
               <div class="gp-hero__fees">
                 {ex.fees.map((f: any) => (<span class="gp-hero__fee"><b>{f.amount}</b><span>{f.label}</span></span>))}
               </div>

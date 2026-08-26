@@ -116,3 +116,19 @@ describe('the header popover names only the live sale', () => {
     expect(JSON.stringify(noPct)).not.toMatch(/% off/);
   });
 });
+
+describe('the fees slide reads delivery fees from the quoting service', () => {
+  it('the seed carries no typed fee amounts, only sample areas', () => {
+    const fees = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === 'fees')!;
+    expect(fees.extras?.fees).toBeUndefined();
+    expect(JSON.stringify(fees)).not.toMatch(/UGX\s*[0-9]/);
+    expect(Array.isArray(fees.extras?.sampleAreas)).toBe(true);
+  });
+
+  it('the slider asks the ONE quoting service and shows a figure only when it quotes one', () => {
+    const slider = code('apps/web/src/components/hero/HeroSlider.astro');
+    expect(slider).toMatch(/\/delivery\/quote/);
+    expect(slider).toMatch(/d\.tone === 'quoted' && typeof d\.feeUgx === 'number'/);
+    expect(slider).toMatch(/ex\.fees\.length > 0/);
+  });
+});

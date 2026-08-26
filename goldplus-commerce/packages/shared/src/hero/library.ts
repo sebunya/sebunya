@@ -117,15 +117,16 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
     headline: 'No haggling with the <em>boda guy</em>',
     subcopy: 'You see the fee before you pay. We settle the rider. You just open the door.',
     ctaLabel: 'See delivery rates', ctaUrl: '/delivery/kampala-wakiso',
-    finePrint: 'Indicative rates · Exact fee shown at checkout',
+    finePrint: 'Exact fee shown at checkout. Or collect free from Wilson Road.',
     imageUrl: P('goldplus-100w-portable-power-station-gp-09'),
     imageAlt: 'GoldPlus 100W portable power station',
     priority: 0,
+    // Areas are content; the fees are read from the delivery quoting service at render.
     extras: {
-      fees: [
-        { amount: 'UGX 5,000', label: 'City centre' },
-        { amount: 'UGX 8,000', label: 'Greater Kampala' },
-        { amount: 'Quoted', label: 'Upcountry' },
+      sampleAreas: [
+        { slug: 'kampala-nakasero-i-10105', label: 'Nakasero' },
+        { slug: 'kampala-ntinda-10302', label: 'Ntinda' },
+        { slug: 'wakiso-kira-31340', label: 'Kira' },
       ],
     },
   },
