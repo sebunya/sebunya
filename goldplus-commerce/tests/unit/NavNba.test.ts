@@ -76,15 +76,17 @@ describe('NBA — offer figures come from real rates, never a typed promise', ()
   });
   it('the sale candidate carries the live percentage and only appears while the sale runs', () => {
     const on = computeNbaCandidates({ ...base, saleLive: true }, { ...DEFAULT_NBA_RATES, salePct: 10 }).find((x) => x.id === 'sale')!;
-    expect(on.text).toContain('10% off');
+    expect(on.text).toContain('10% discount');
     expect(on.href).toBe('/shop');
     expect(computeNbaCandidates({ ...base, saleLive: true }, { ...DEFAULT_NBA_RATES, salePct: 0 }).map((x) => x.id)).not.toContain('sale');
     expect(computeNbaCandidates({ ...base, saleLive: false }, { ...DEFAULT_NBA_RATES, salePct: 10 }).map((x) => x.id)).not.toContain('sale');
   });
   it('custom rates flow into the copy (edit in /admin/nav is reflected)', () => {
     const rates = { firstOrderPct: 15, referralPct: 12, pointsToUgxRate: 20, firstOrderEstimate: 'UGX 30,000' };
+    // The referral programme pays points, never a percentage, so no rate flows into that line.
     const refer = computeNbaCandidates({ ...base, signedIn: true }, rates).find((x) => x.id === 'refer')!;
-    expect(refer.text).toContain('12%');
+    expect(refer.text).toContain('points');
+    expect(refer.text).not.toContain('%');
     const points = computeNbaCandidates({ ...base, signedIn: true, points: 1000 }, rates).find((x) => x.id === 'points')!;
     expect(points.text).toContain('UGX 20,000'); // 1,000 × 20
   });

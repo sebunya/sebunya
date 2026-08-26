@@ -1579,7 +1579,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<div class="gp-nav__acct-links">' +
             '<a href="/account">Your orders</a>' +
             '<a href="/account/rewards">Rewards <b>' + POINTS.toLocaleString() + ' pts</b></a>' +
-            '<a href="/account/rewards">Refer a friend <b>Give ' + RATE_REFER + '%</b></a>' +
+            '<a href="/account/rewards">Refer a friend <b>Earn points</b></a>' +
             '<a href="/account#settings">Account settings</a>' +
             '<a href="/logout">Sign out</a>' +
           '</div>';
@@ -1589,7 +1589,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       var saleBlock = SALE_ON
         ? '<div class="gp-nav__hold">' +
             '<span class="gp-nav__hold-tag">On now</span>' +
-            '<b>' + RATE_SALE + '% off everything</b>' +
+            '<b>' + RATE_SALE + '% discount on everything</b>' +
             '<span>Comes off at checkout. No code needed</span>' +
           '</div>'
         : '';
@@ -1621,7 +1621,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<p>You have <b>' + POINTS.toLocaleString() + ' points</b> waiting' + (RATE_PTS > 0 ? ' &mdash; UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' off your next order' : '') + '.</p>' +
           '<div class="gp-nav__mhi-row"><a href="/account/rewards">Your rewards</a><a href="/account">Your orders</a></div>';
       }
-      var saleLine = SALE_ON ? '<b>' + RATE_SALE + '% off everything</b> right now. It comes off at checkout. ' : '';
+      var saleLine = SALE_ON ? '<b>' + RATE_SALE + '% discount on everything</b> right now. It comes off at checkout. ' : '';
       if (returning){
         return '<h2>Welcome back</h2>' +
           '<p>' + saleLine + 'Points start counting from the order you make today.</p>' +
@@ -1779,8 +1779,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         cta:'Find your model', href:'/shop?category=power&q=battery' });
 
       if (CTX.signedIn) c.push({ id:'refer', score:62,
-        text:'Send a friend here &mdash; they save <em>' + RATE_REFER + '%</em>, you earn <em>' + RATE_REFER + '%</em>',
-        short:'They save <em>' + RATE_REFER + '%</em>, you earn <em>' + RATE_REFER + '%</em>',
+        text:'Introduce a friend. You both earn <em>points</em> when their first order is delivered',
+        short:'Introduce a friend. You both earn <em>points</em>',
         cta:'Get your link', href:'/account/rewards' });
 
       /* ---- not signed in: the useful, honest defaults (mirrors nba.ts) ---- */
@@ -1796,9 +1796,9 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
       /* the live sale with its real percentage — never a typed figure */
       if (CTX.saleLive && RATE_SALE > 0) c.push({ id:'sale', score:92,
-        text:'<em>' + RATE_SALE + '% off</em> everything right now. It comes off at checkout',
-        short:'<em>' + RATE_SALE + '% off</em> everything, on now',
-        cta:'Shop the sale', href:'/shop' });
+        text:'<em>' + RATE_SALE + '% discount</em> on everything right now. It comes off at checkout',
+        short:'<em>' + RATE_SALE + '% discount</em> on everything, on now',
+        cta:'Get the discount', href:'/shop' });
 
       /* ---- always available, and always true ---- */
       if (CTX.sunday) c.push({ id:'sunday', score:40,

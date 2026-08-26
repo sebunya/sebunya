@@ -158,7 +158,8 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
     });
   }
   if (ctx.signedIn) {
-    c.push({ id: 'refer', score: 62, text: 'Send a friend here &mdash; they save <em>' + r.referralPct + '%</em>, you earn <em>' + r.referralPct + '%</em>', short: 'They save <em>' + r.referralPct + '%</em>, you earn <em>' + r.referralPct + '%</em>', cta: 'Get your link', href: R.refer });
+    // The referral programme pays POINTS to both sides when the friend's first order is delivered. It never paid a percentage.
+    c.push({ id: 'refer', score: 62, text: 'Introduce a friend. You both earn <em>points</em> when their first order is delivered', short: 'Introduce a friend. You both earn <em>points</em>', cta: 'Get your link', href: R.refer });
   }
 
   // not signed in: the useful, honest defaults. These used to promise
@@ -176,7 +177,7 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   // line said "up to 40% off" for a sale that had no such cut.
   const salePct = Number(r.salePct) || 0;
   if (ctx.saleLive && salePct > 0) {
-    c.push({ id: 'sale', score: 92, text: '<em>' + salePct + '% off</em> everything right now. It comes off at checkout', short: '<em>' + salePct + '% off</em> everything, on now', cta: 'Shop the sale', href: R.all });
+    c.push({ id: 'sale', score: 92, text: '<em>' + salePct + '% discount</em> on everything right now. It comes off at checkout', short: '<em>' + salePct + '% discount</em> on everything, on now', cta: 'Get the discount', href: R.all });
   }
 
   // always available, and always true

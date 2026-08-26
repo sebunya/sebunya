@@ -160,7 +160,8 @@ const configJson = JSON.stringify({ ...config, preferredArch })
           <div class="gp-hero__copy">
             <div class="gp-hero__eyebrow"><span class="gp-hero__rule"></span><span class="gp-hero__plus" aria-hidden="true"></span><span class="gp-hero__kicker" id={s.slideKey === 'flash' ? 'gpFlashKicker' : undefined}>{s.kicker}</span></div>
 
-            <h2 class="gp-hero__title" set:html={safeHeadline(s.headline)} />
+            {/* {pct} is the live promotion percentage; the slide row never carries a number. */}
+            <h2 class="gp-hero__title" set:html={safeHeadline(s.slideKey === 'flash' ? s.headline.replace(/\{pct\}/g, String(config.flashPercent ?? '')) : s.headline)} />
 
             {s.slideKey === 'flash' && (
               <div class="gp-hero__count" id="gpCountdown" aria-label="Time remaining in the flash sale">
@@ -170,15 +171,6 @@ const configJson = JSON.stringify({ ...config, preferredArch })
                 <span class="gp-hero__count-unit"><b class="gp-hero__count-n" data-cd="s">00</b><span class="gp-hero__count-l">Sec</span></span>
               </div>
             )}
-            {/*
-              The sale figure comes from the live promotion. This used to print
-              a hand-typed "UGX 185,000 → UGX 111,000, Save 40%" from the slide
-              row. Numbers no product carried, for a sale that had ended.
-            */}
-            {s.slideKey === 'flash' && config.flashPercent && (
-              <div class="gp-hero__price"><b>{config.flashPercent}% off everything</b> <em>comes off at checkout</em></div>
-            )}
-
             {s.subcopy && <p class="gp-hero__sub" id={s.slideKey === 'scratch' ? 'gpScratchSub' : undefined}>{s.subcopy}</p>}
 
             {s.slideKey === 'welcome' && ex.promoCode && (
