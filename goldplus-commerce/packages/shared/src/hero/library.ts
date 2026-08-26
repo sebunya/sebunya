@@ -116,7 +116,7 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
     kicker: 'Delivery, priced upfront',
     headline: 'No haggling with the <em>boda guy</em>',
     subcopy: 'You see the fee before you pay. We settle the rider. You just open the door.',
-    ctaLabel: 'See delivery rates', ctaUrl: '/delivery/kampala-wakiso',
+    ctaLabel: 'How delivery works', ctaUrl: '/delivery/kampala-wakiso',
     finePrint: 'Exact fee shown at checkout. Or collect free from Wilson Road.',
     imageUrl: P('goldplus-100w-portable-power-station-gp-09'),
     imageAlt: 'GoldPlus 100W portable power station',
