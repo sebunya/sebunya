@@ -58,7 +58,8 @@ describe("Shopping Assistant safety", () => {
     expect(source).not.toContain("innerHTML");
     expect(source).not.toContain("Added to cart!");
     expect(source).not.toContain("Opening WhatsApp");
-    expect(source).toContain("Your cart was not changed");
+    // Recording interest must SAY the cart was untouched — whatever the wording.
+    expect(source).toMatch(/nothing was added to your cart|cart was not changed/i);
     expect(source).toContain("NO_MATCH");
     expect(route).not.toContain("x-user-id");
   });

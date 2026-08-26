@@ -205,7 +205,7 @@ const nbaJson = escNav(JSON.stringify(nba));
 <header class="gp-nav" id="gpNav" data-sale-ends={saleEnds}>
   <div class="gp-nav__top">
     <div class="gp-nav__top-in gpn-container">
-      <div class="gp-nav__nba" id="gpNavNba" role="status" aria-live="off" aria-label="Recommended next step">
+      <div class="gp-nav__nba" id="gpNavNba" role="status" aria-live="polite" aria-label="Recommended next step">
         <span class="gp-nav__dot" aria-hidden="true"></span>
         <a class="gp-nav__nba-slot" id="gpNavNbaSlot" href="/support" data-in=""><span class="gp-nav__nba-txt" id="gpNavNbaText">Order before <b>5:00pm</b> for same-day delivery in Kampala</span><u id="gpNavNbaCta" hidden=""></u></a>
         <button class="gp-nav__nba-x" id="gpNavNbaX" type="button" aria-label="Dismiss this message">×</button>
@@ -249,7 +249,7 @@ const nbaJson = escNav(JSON.stringify(nba));
         <div class="gp-nav__acct-pop" id="gpNavAcctPop"></div>
       </div>
       <div class="gp-nav__cartwrap" id="gpNavCartWrap">
-      <a class="gp-nav__act" href="/cart" aria-label="Cart, 3 items">
+      <a class="gp-nav__act" href="/cart" aria-label={cartCount > 0 ? `Cart, ${cartCount} item${cartCount === 1 ? "" : "s"}` : "Cart, empty"}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 7h13l-1.4 8.4a2 2 0 0 1-2 1.6H9a2 2 0 0 1-2-1.6L5.2 4H3"></path><circle cx="9.5" cy="20" r="1.2"></circle><circle cx="16.5" cy="20" r="1.2"></circle></svg>
         <span class="gp-nav__badge" id="gpNavCart" hidden="">0</span>
       </a>
@@ -287,9 +287,9 @@ const nbaJson = escNav(JSON.stringify(nba));
 
       <div class="gp-nav__panel" data-panel="all" data-shape="wide">
         <div class="gp-nav__tiles gp-nav__tiles--five">
-          <a class="gp-nav__tile" href="/shop?category=power"><b>Power</b><span>Banks, batteries, chargers</span></a>
+          <a class="gp-nav__tile" href="/shop?category=power"><b>Power</b><span>Power banks, chargers, cables</span></a>
           <a class="gp-nav__tile" href="/shop?category=sound"><b>Sound</b><span>Earbuds and headphones</span></a>
-          <a class="gp-nav__tile" href="/shop?category=storage"><b>Storage</b><span>1GB to 512GB</span></a>
+          <a class="gp-nav__tile" href="/shop?category=storage"><b>Storage</b><span>Flash drives and memory cards</span></a>
           <a class="gp-nav__tile" href="/shop?category=car"><b>Car</b><span>Chargers and Bluetooth</span></a>
           <a class="gp-nav__tile" href="/shop?category=pc"><b>PC</b><span>Mouse and sound cards</span></a>
           <a class="gp-nav__tile gp-nav__tile--go" href="/shop"><b>Everything →</b><span>The full range</span></a>
@@ -365,34 +365,10 @@ const nbaJson = escNav(JSON.stringify(nba));
       <div class="gp-nav__panel" data-panel="storage" data-shape="wide">
         <div class="gp-nav__matrix">
           <div class="gp-nav__matrix-row">
-            <h4><img class="gp-nav__matrix-img" src="/nav/flash-drive.webp" alt="" loading="lazy" decoding="async">Flash drives <a href="/shop?category=storage&q=flash+drive">All sizes →</a></h4>
-            <div class="gp-nav__caps">
-              <a href="/shop?category=storage&q=1gb">1GB</a>
-              <a href="/shop?category=storage&q=2gb">2GB</a>
-              <a href="/shop?category=storage&q=4gb">4GB</a>
-              <a href="/shop?category=storage&q=8gb">8GB</a>
-              <a href="/shop?category=storage&q=16gb">16GB</a>
-              <a href="/shop?category=storage&q=32gb">32GB</a>
-              <a href="/shop?category=storage&q=64gb">64GB</a>
-              <a href="/shop?category=storage&q=128gb">128GB</a>
-              <a href="/shop?category=storage&q=256gb">256GB</a>
-              <a href="/shop?category=storage&q=512gb">512GB</a>
-            </div>
+            <h4><img class="gp-nav__matrix-img" src="/nav/flash-drive.webp" alt="" loading="lazy" decoding="async">Flash drives <a href="/shop?category=storage&q=flash+drive">See all flash drives →</a></h4>
           </div>
           <div class="gp-nav__matrix-row">
-            <h4><img class="gp-nav__matrix-img" src="/nav/memory-card.webp" alt="" loading="lazy" decoding="async">Memory cards <a href="/shop?category=storage&q=memory+card">All sizes →</a></h4>
-            <div class="gp-nav__caps">
-              <a href="/shop?category=storage&q=1gb">1GB</a>
-              <a href="/shop?category=storage&q=2gb">2GB</a>
-              <a href="/shop?category=storage&q=4gb">4GB</a>
-              <a href="/shop?category=storage&q=8gb">8GB</a>
-              <a href="/shop?category=storage&q=16gb">16GB</a>
-              <a href="/shop?category=storage&q=32gb">32GB</a>
-              <a href="/shop?category=storage&q=64gb">64GB</a>
-              <a href="/shop?category=storage&q=128gb">128GB</a>
-              <a href="/shop?category=storage&q=256gb">256GB</a>
-              <a href="/shop?category=storage&q=512gb">512GB</a>
-            </div>
+            <h4><img class="gp-nav__matrix-img" src="/nav/memory-card.webp" alt="" loading="lazy" decoding="async">Memory cards <a href="/shop?category=storage&q=memory+card">See all memory cards →</a></h4>
           </div>
           <p class="gp-nav__note">Every card is written full and read back before it is sold. <b>The size on the box is the size you get.</b></p>
         </div>
@@ -406,7 +382,7 @@ const nbaJson = escNav(JSON.stringify(nba));
 
       <div class="gp-nav__panel" data-panel="car" data-shape="wide">
         <div class="gp-nav__tiles">
-          <a class="gp-nav__tile" href="/shop?category=car&q=charger"><b>Car chargers</b><span>Fast charging that survives a Kampala pothole</span></a>
+          <a class="gp-nav__tile" href="/shop?category=car&q=charger"><b>Car chargers</b><span>Fast charging built for Kampala potholes</span></a>
           <a class="gp-nav__tile" href="/shop?category=car&q=bluetooth"><b>Bluetooth for cars</b><span>Calls and music in a car with no Bluetooth</span></a>
         </div>
         {featAt(3) && (
@@ -528,8 +504,8 @@ const nbaJson = escNav(JSON.stringify(nba));
         <div class="gp-nav__acc" data-acc="storage">
           <div class="gp-nav__acc-head"><a href="/shop?category=storage">Storage</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show Storage sizes">+</button></div>
           <ul>
-            <li><h4>Flash drives</h4><div class="gp-nav__caps"><a href="/shop?category=storage&q=1gb">1GB</a><a href="/shop?category=storage&q=2gb">2GB</a><a href="/shop?category=storage&q=4gb">4GB</a><a href="/shop?category=storage&q=8gb">8GB</a><a href="/shop?category=storage&q=16gb">16GB</a><a href="/shop?category=storage&q=32gb">32GB</a><a href="/shop?category=storage&q=64gb">64GB</a><a href="/shop?category=storage&q=128gb">128GB</a><a href="/shop?category=storage&q=256gb">256GB</a><a href="/shop?category=storage&q=512gb">512GB</a></div></li>
-            <li><h4>Memory cards</h4><div class="gp-nav__caps"><a href="/shop?category=storage&q=1gb">1GB</a><a href="/shop?category=storage&q=2gb">2GB</a><a href="/shop?category=storage&q=4gb">4GB</a><a href="/shop?category=storage&q=8gb">8GB</a><a href="/shop?category=storage&q=16gb">16GB</a><a href="/shop?category=storage&q=32gb">32GB</a><a href="/shop?category=storage&q=64gb">64GB</a><a href="/shop?category=storage&q=128gb">128GB</a><a href="/shop?category=storage&q=256gb">256GB</a><a href="/shop?category=storage&q=512gb">512GB</a></div></li>
+            <li><a href="/shop?category=storage&q=flash+drive">Flash drives</a></li>
+            <li><a href="/shop?category=storage&q=memory+card">Memory cards</a></li>
           </ul>
         </div>
         <div class="gp-nav__acc" data-acc="car">
@@ -1472,9 +1448,11 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           h += r.map(function(q){ return '<a href="/shop?q=' + encodeURIComponent(q) + '" data-opt><span class="gp-nav__sug-t"><b>' + esc(q) + '</b></span></a>'; }).join('');
           h += '</div></div>';
         }
-        h += '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Trending in Kampala</p><div class="gp-nav__trend">';
-        h += TREND.map(function(t,i){ return '<a href="' + esc(t[1]) + '" data-opt><i>' + (i+1) + '</i>' + esc(t[0]) + '</a>'; }).join('');
-        h += '</div></div>';
+        if (TREND.length){
+          h += '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Trending in Kampala</p><div class="gp-nav__trend">';
+          h += TREND.map(function(t,i){ return '<a href="' + esc(t[1]) + '" data-opt><i>' + (i+1) + '</i>' + esc(t[0]) + '</a>'; }).join('');
+          h += '</div></div>';
+        }
         h += foot();
         sheet.innerHTML = h;
       }

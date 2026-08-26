@@ -39,13 +39,11 @@ const brandChips = [
   { label: 'All brands →', href: '/shop?category=power&q=battery', style: 'green' as const },
 ];
 
-// The capacity chips search by SIZE within the storage category, exactly as the
-// rendered header markup does (the per-row allSizes link carries the kind). Kept
-// in lock-step with that markup so the seed and the page never diverge.
-const caps = () => {
-  const sizes = ['1gb', '2gb', '4gb', '8gb', '16gb', '32gb', '64gb', '128gb', '256gb', '512gb'];
-  return sizes.map((s) => ({ label: s.toUpperCase(), href: `/shop?category=storage&q=${s}` }));
-};
+// No per-size chips. Twenty capacity links (1GB…512GB, twice) advertised a
+// range the catalogue does not hold — eighteen of them landed on "No matching
+// products yet". Each row now links to everything of its kind; the sizes in
+// stock are whatever the shop page shows.
+const caps = () => [] as { label: string; href: string }[];
 
 export const DEFAULT_NAV_CONFIG: NavConfig = {
   contact: {
@@ -92,9 +90,9 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
       key: 'all',
       shape: 'wide',
       tiles: [
-        { label: 'Power', descriptor: 'Banks, batteries, chargers', href: '/shop?category=power' },
+        { label: 'Power', descriptor: 'Power banks, chargers, cables', href: '/shop?category=power' },
         { label: 'Sound', descriptor: 'Earbuds and headphones', href: '/shop?category=sound' },
-        { label: 'Storage', descriptor: '1GB to 512GB', href: '/shop?category=storage' },
+        { label: 'Storage', descriptor: 'Flash drives and memory cards', href: '/shop?category=storage' },
         { label: 'Car', descriptor: 'Chargers and Bluetooth', href: '/shop?category=car' },
         { label: 'PC', descriptor: 'Mouse and sound cards', href: '/shop?category=pc' },
         { label: 'Everything →', descriptor: 'The full range', href: '/shop', variant: 'go' },

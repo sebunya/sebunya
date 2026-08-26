@@ -183,7 +183,7 @@ const activeFilters = [
     )}
 
     <div class="mt-7 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
-      <p aria-live="polite" class="text-sm font-semibold text-slate-700">{products.length} matching product{products.length === 1 ? '' : 's'}</p>
+      <p aria-live="polite" class="text-sm font-semibold text-slate-700">{catalogueNotice ? 'Products could not be loaded' : `${products.length} matching product${products.length === 1 ? '' : 's'}`}</p>
       <label class="flex items-center gap-2 text-sm font-bold text-slate-700">
         Sort products
         <select onchange="window.location.href = this.value" class="rounded-lg border border-slate-300 bg-white px-3 py-2" aria-label="Sort products">
@@ -207,14 +207,21 @@ const activeFilters = [
           {subcategoryLabel || categoryLabel ? <>The selected {subcategoryLabel || categoryLabel} filter has no matching products. </> : null}
           Try another search or browse the categories.
         </p>
+        {/*
+          One obvious next step. Four equal pills used to compete, with the
+          most useful one (capturing what the customer actually wanted) third;
+          and the "browse" anchor pointed at a section that is not rendered
+          when the catalogue itself is down.
+        */}
         <div class="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
-          <a href="/shop" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Reset filters</a>
-          <a href="#browse-available-products" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Browse available products</a>
-          {search && (
-            <a href={`/quote-request?requested=${encodeURIComponent(search)}`} class="rounded-full border border-brand-primary bg-brand-primary/10 px-6 py-3 text-sm font-bold text-slate-900 hover:bg-brand-primary hover:text-slate-950">Request this product</a>
+          {search ? (
+            <a href={`/quote-request?requested=${encodeURIComponent(search)}`} class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Ask us for “{search}”</a>
+          ) : (
+            <a href="/shop" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Clear filters</a>
           )}
-          {search && (
-            <a href="/support" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Ask support</a>
+          {search && <a href="/shop" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Clear search</a>}
+          {browseFallback.length > 0 && (
+            <a href="#browse-available-products" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">See what is in stock</a>
           )}
         </div>
       </section>

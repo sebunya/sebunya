@@ -844,13 +844,13 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
             {potentialPoints > 0 && (
               authenticatedUserId ? (
                 <p class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-700">
-                  You'll earn <strong style="color:#456B00">{potentialPoints.toLocaleString('en-US')} GoldPlus points</strong> when this order is delivered.
+                  You'll earn <strong style="color:#456B00">{potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> when this order is delivered.
                 </p>
               ) : (
                 <p class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-700">
                   <a href="/login?returnTo=/checkout" class="underline font-bold">Sign in</a> or
                   <a href="/register?returnTo=/checkout" class="underline font-bold">create an account</a> to earn
-                  <strong style="color:#456B00"> {potentialPoints.toLocaleString('en-US')} GoldPlus points</strong> on this order.
+                  <strong style="color:#456B00"> {potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> on this order.
                 </p>
               )
             )}
