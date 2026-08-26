@@ -146,6 +146,21 @@ export const PERMISSIONS = {
   // from reading payments and from confirming them. If money has been taken
   // wrongly there must be a way to return it, and that way must be guarded.
   PAYMENTS_REFUND: 'payments.refund',
+  // Battery catalogue, devices, compatibility and finder (2026-08-26). Four
+  // responsibilities, four rights: a catalogue editor records batteries and
+  // aliases; a device editor owns brands, series and exact models; anyone who
+  // may PROPOSE a compatibility claim cannot VERIFY one (maker/checker is
+  // enforced in the use case); a publisher decides what customers see. Demand
+  // triage (no-result searches, battery requests) is its own right so support
+  // staff can work the queue without editing the catalogue. Stock movements use
+  // inventory.adjust, unit costs product_costs.manage, imports pim.*.
+  BATTERIES_READ: 'batteries.read',
+  BATTERIES_CATALOGUE_MANAGE: 'batteries.catalogue.manage',
+  BATTERIES_DEVICES_MANAGE: 'batteries.devices.manage',
+  BATTERIES_COMPAT_PROPOSE: 'batteries.compatibility.propose',
+  BATTERIES_COMPAT_VERIFY: 'batteries.compatibility.verify',
+  BATTERIES_PUBLISH: 'batteries.publish',
+  BATTERIES_DEMAND_MANAGE: 'batteries.demand.manage',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

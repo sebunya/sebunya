@@ -58,6 +58,9 @@ import adminLoyaltyRoutes from './routes/admin/loyalty';
 import adminFulfilmentRoutes from './routes/admin/fulfilment';
 import adminControlCentreRoutes, { registerMountedPrefixes } from './routes/admin/control-centre';
 import adminInventoryRoutes from './routes/admin/inventory';
+import adminBatteriesRoutes from './routes/admin/batteries';
+import adminBatteryImportsRoutes from './routes/admin/battery-imports';
+import batteriesPublicRoutes from './routes/batteries';
 import recommendationRoutes from './routes/recommendations';
 import telemetryRoutes from './routes/telemetry';
 import healthRoutes from './routes/health';
@@ -248,6 +251,10 @@ app.route('/legal', publicLegalRoutes);
 app.route('/admin/loyalty', adminLoyaltyRoutes);
 app.route('/admin/fulfilment', adminFulfilmentRoutes);
 app.route('/admin/inventory', adminInventoryRoutes);
+// Imports are mounted before the catalogue so the more specific prefix keeps priority.
+app.route('/admin/batteries/imports', adminBatteryImportsRoutes);
+app.route('/admin/batteries', adminBatteriesRoutes);
+app.route('/batteries', batteriesPublicRoutes);
 app.route('/admin/control-centre', adminControlCentreRoutes);
 app.route('/recommendations', recommendationRoutes);
 app.route('/hero', heroPublicRoutes);
@@ -375,6 +382,9 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/fraud',
   '/admin/fulfilment',
   '/admin/inventory',
+  '/admin/batteries',
+  '/admin/batteries/imports',
+  '/batteries',
   '/admin/legal',
   '/admin/loyalty',
   '/admin/measurement',

@@ -7,6 +7,19 @@ import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository
 import { DrizzleOrderAttributionRepository } from './db/repositories/DrizzleOrderAttributionRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
 import { DrizzleDeviceRepository } from './db/repositories/DrizzleDeviceRepository';
+import { DrizzleBatteryCatalogueRepository } from './db/repositories/DrizzleBatteryCatalogueRepository';
+import { DrizzleDeviceCatalogueRepository } from './db/repositories/DrizzleDeviceCatalogueRepository';
+import { DrizzleBatteryCompatibilityRepository } from './db/repositories/DrizzleBatteryCompatibilityRepository';
+import { DrizzleInventoryLedgerRepository } from './db/repositories/DrizzleInventoryLedgerRepository';
+import { DrizzleBatteryFinderRepository } from './db/repositories/DrizzleBatteryFinderRepository';
+import { DrizzleBatteryImportRepository } from './db/repositories/DrizzleBatteryImportRepository';
+import { XlsxSpreadsheetParser } from './batteries/XlsxSpreadsheetParser';
+import { BatteryCatalogueUseCases } from '../application/use-cases/batteries/BatteryCatalogueUseCases';
+import { DeviceCatalogueUseCases } from '../application/use-cases/batteries/DeviceCatalogueUseCases';
+import { BatteryCompatibilityUseCases } from '../application/use-cases/batteries/BatteryCompatibilityUseCases';
+import { InventoryLedgerUseCases } from '../application/use-cases/batteries/InventoryLedgerUseCases';
+import { BatteryFinderUseCases } from '../application/use-cases/batteries/BatteryFinderUseCases';
+import { BatteryImportUseCases } from '../application/use-cases/batteries/BatteryImportUseCases';
 import { DrizzlePricingRepository } from './db/repositories/DrizzlePricingRepository';
 import { DrizzlePricingQuoteRepository } from './db/repositories/DrizzlePricingQuoteRepository';
 import { DrizzlePricingCapacityRepository } from './db/repositories/DrizzlePricingCapacityRepository';
@@ -724,6 +737,33 @@ export class Registry {
     this.mediaLibraryRepo,
     this.productImageStorage,
     new SharpVariantGenerator(),
+  );
+
+  // Battery catalogue, device hierarchy, compatibility workflow, inventory
+  // ledger, staged imports and the public finder (0125, 2026-08-26). One
+  // contiguous block; every mutation audits through CreateAuditLogUseCase.
+  public readonly batteryCatalogueRepo = new DrizzleBatteryCatalogueRepository();
+  public readonly deviceCatalogueRepo = new DrizzleDeviceCatalogueRepository();
+  public readonly batteryCompatibilityRepo = new DrizzleBatteryCompatibilityRepository();
+  public readonly inventoryLedgerRepo = new DrizzleInventoryLedgerRepository();
+  public readonly batteryFinderRepo = new DrizzleBatteryFinderRepository();
+  public readonly batteryImportRepo = new DrizzleBatteryImportRepository();
+  public readonly batteryCatalogueUseCases = new BatteryCatalogueUseCases(this.batteryCatalogueRepo, this.batteryCompatibilityRepo, this.inventoryLedgerRepo, this.mediaLibraryUseCase, this.mediaLibraryRepo, this.auditRepo);
+  public readonly deviceCatalogueUseCases = new DeviceCatalogueUseCases(this.deviceCatalogueRepo, this.auditRepo);
+  public readonly batteryCompatibilityUseCases = new BatteryCompatibilityUseCases(this.batteryCompatibilityRepo, this.batteryCatalogueRepo, this.deviceCatalogueRepo, this.auditRepo);
+  public readonly inventoryLedgerUseCases = new InventoryLedgerUseCases(this.inventoryLedgerRepo, this.batteryCatalogueRepo, this.auditRepo);
+  public readonly batteryFinderUseCases = new BatteryFinderUseCases(this.batteryFinderRepo, this.batteryCatalogueRepo, this.auditRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
+  public readonly batteryImportUseCases = new BatteryImportUseCases(
+    this.batteryImportRepo,
+    new XlsxSpreadsheetParser(),
+    this.batteryCatalogueRepo,
+    this.batteryCompatibilityRepo,
+    this.deviceCatalogueRepo,
+    this.inventoryLedgerRepo,
+    this.batteryCatalogueUseCases,
+    this.batteryCompatibilityUseCases,
+    this.deviceCatalogueUseCases,
+    this.inventoryLedgerUseCases,
   );
 
   public readonly adminUserReadRepo = new DrizzleAdminUserReadRepository();

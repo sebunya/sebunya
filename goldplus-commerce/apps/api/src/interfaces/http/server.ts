@@ -25,6 +25,7 @@ import { runBusinessInfoSeedAtBoot } from '../../infrastructure/business/Busines
 import { runTaxonomySeedAtBoot } from '../../infrastructure/taxonomy/TaxonomySeeder';
 import { runHomepageContentSeedAtBoot } from '../../infrastructure/homepage/HomepageContentSeeder';
 import { runStorefrontCopySeedAtBoot } from '../../infrastructure/storefront-copy/StorefrontCopySeeder';
+import { runBatterySeedAtBoot } from '../../infrastructure/batteries/BatterySeeder';
 import { templateOverrideCache } from '../../infrastructure/notifications/TemplateOverrideCache';
 import { endDbConnection } from '../../infrastructure/db/client';
 import { QueueService } from '../../infrastructure/queues/QueueService';
@@ -57,6 +58,8 @@ const server = serve({
     void runTaxonomySeedAtBoot();
     void runHomepageContentSeedAtBoot();
     void runStorefrontCopySeedAtBoot();
+    // Battery module defaults: the default stock location and the finder copy.
+    void runBatterySeedAtBoot();
     // Notification wording overrides: load published rows now, refresh every minute.
     templateOverrideCache.start();
   }

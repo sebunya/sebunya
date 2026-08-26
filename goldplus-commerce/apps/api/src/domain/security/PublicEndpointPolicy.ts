@@ -163,6 +163,10 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
 
   // Telemetry beacons.
   if (isUnder(path, '/telemetry/collect')) return 'telemetry';
+  // Battery finder: a request is a human form (contact details, a row per
+  // submission); an event is a beacon.
+  if (post && path === '/batteries/finder/requests') return 'quote-request';
+  if (post && path === '/batteries/finder/events') return 'telemetry';
 
   // Public human forms (governance).
   if (path === '/governance/dealers/apply') return 'dealer-application';
