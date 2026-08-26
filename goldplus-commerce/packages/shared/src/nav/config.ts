@@ -20,7 +20,10 @@ const WA = 'https://wa.me/256705004545';
 const WA_BATTERY = 'https://wa.me/256705004545?text=Hi%20GoldPlus%2C%20I%20need%20a%20battery%20for%20my%20';
 const FEAT = '/nav/featured-default.png';
 const flashSlide = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === 'flash');
-const SALE_ENDS_ISO = (flashSlide?.extras?.saleEndsIso as string) ?? '2026-08-09T23:59:59+03:00';
+// No deadline is typed anywhere any more: the header reads the live promotion
+// (/commerce/storefront-discount) and so does the hero. Kept as a field for
+// older stored documents; always empty in the seed.
+const SALE_ENDS_ISO = '';
 
 const brandChips = [
   { label: 'Tecno', href: '/shop?category=power&q=tecno' },
@@ -222,26 +225,26 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
     },
     returning: {
       heading: 'Welcome back',
-      holdTag: 'Still reserved',
-      holdTitle: '{discountPct}% off your first order',
-      holdSubManyVisits: 'This is visit <em>{visits}</em> — none of them have earned points yet',
-      holdSubDefault: 'Points start counting from the order you make today',
+      holdTag: 'On now',
+      holdTitle: '{discountPct}% off everything',
+      holdSubManyVisits: 'Comes off at checkout — no code needed',
+      holdSubDefault: 'Comes off at checkout — no code needed',
       formAction: '/register',
       formInputPlaceholder: '07XX XXX XXX',
       submit: 'Claim it',
       altLink: { label: 'Sign in instead', href: '/account' },
-      mobileSub: '<b>{discountPct}% off your first order</b> is still reserved. Points start counting from today.',
+      mobileSub: '<b>{discountPct}% off everything</b> right now — it comes off at checkout. Points start counting from today.',
     },
     firstTime: {
-      holdTag: 'Reserved for you',
-      holdTitle: '{discountPct}% off your first order',
-      holdSub: 'About <em>{estimate}</em> back on a typical order',
+      holdTag: 'On now',
+      holdTitle: '{discountPct}% off everything',
+      holdSub: 'Comes off at checkout — no code needed',
       formAction: '/register',
       formInputPlaceholder: '07XX XXX XXX',
       submit: 'Claim it',
       joinNote: 'Your number is your account. Nothing else to fill in.',
       altLink: { label: 'I already have an account', href: '/account' },
-      mobileSub: '<b>{discountPct}% off your first order</b> is reserved — about <b>{estimate}</b> back. Your phone number is your account.',
+      mobileSub: '<b>{discountPct}% off everything</b> right now — it comes off at checkout. Your phone number is your account.',
     },
   },
   miniCart: {

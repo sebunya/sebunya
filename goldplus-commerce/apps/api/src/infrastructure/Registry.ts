@@ -92,6 +92,7 @@ import { HeroTelemetryService } from './hero/HeroTelemetryService';
 import { DrizzleNavRepository } from './db/repositories/DrizzleNavRepository';
 import { NavContentService } from '../application/nav/NavContentService';
 import { NavAvailabilityService } from '../application/nav/NavAvailabilityService';
+import { resolveStorefrontDiscount } from '../application/pricing/StorefrontDiscountQuery';
 import { ListPublicProductsUseCase } from '../application/use-cases/products/ListPublicProductsUseCase';
 import { DrizzleBusinessInfoRepository } from './db/repositories/DrizzleBusinessInfoRepository';
 import { BusinessInfoService } from '../application/business/BusinessInfoService';
@@ -1687,7 +1688,11 @@ export class Registry {
 
   /** Homepage hero content (0107): the 12-slide library and its settings. */
   public readonly heroRepo = new DrizzleHeroRepository();
-  public readonly heroContentService = new HeroContentService(this.heroRepo);
+  // The hero's sale slide reads the SAME live promotion as the header and the
+  // card prices — never a hand-typed deadline or figure in the slide row.
+  public readonly heroContentService = new HeroContentService(this.heroRepo, () =>
+    resolveStorefrontDiscount(this.pricingRepo),
+  );
   public readonly heroSignalsService = new HeroSignalsService();
   public readonly heroTelemetryService = new HeroTelemetryService();
 

@@ -51,8 +51,13 @@ describe('eligibility responds to real signals', () => {
   });
 
   it('a first-time non-customer sees the welcome promo; a customer never does', () => {
-    expect(keys({ ...base, isNew: true, hasOrdered: false })).toContain('welcome');
-    expect(keys({ ...base, isNew: true, hasOrdered: true })).not.toContain('welcome');
+    // The welcome slide is DISABLED in the seed — it promised a first-order
+    // discount no pricing rule provides — so the eligibility rule is tested
+    // against a library where an operator has switched it back on.
+    const withWelcome = HERO_SLIDE_LIBRARY.map((s) => (s.slideKey === 'welcome' ? { ...s, enabled: true } : s)).filter((s) => s.enabled);
+    const k = (ctx: HeroSelectionContext) => selectHeroSlides(withWelcome, ctx).map((s) => s.slideKey);
+    expect(k({ ...base, isNew: true, hasOrdered: false })).toContain('welcome');
+    expect(k({ ...base, isNew: true, hasOrdered: true })).not.toContain('welcome');
   });
 
   it('loyalty is shown to someone who has ordered, even on a fresh (isNew) device', () => {

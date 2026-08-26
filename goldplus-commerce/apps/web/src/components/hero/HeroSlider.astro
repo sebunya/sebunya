@@ -34,7 +34,9 @@ interface HeroPublicSlide {
 }
 interface HeroConfig {
   show: number; dwell: number; autoplay: boolean;
-  flashSaleEnds: string | null; cutoffHour: number;
+  // Both from the live promotion (the API resolves it); the slide row carries
+  // no deadline and no prices of its own.
+  flashSaleEnds: string | null; flashPercent?: number | null; cutoffHour: number;
   prizes: Array<{ pct: number; code: string; w: number }>;
 }
 
@@ -77,13 +79,14 @@ try {
 // visit) context \u2014 so the fallback rail is coherent, not the whole library.
 if (slides.length === 0) {
   const lib = HERO_SLIDE_LIBRARY.filter((s) => s.enabled);
-  const flash = lib.find((s) => s.slideKey === 'flash');
   const sameday = lib.find((s) => s.slideKey === 'sameday');
   const scratch = lib.find((s) => s.slideKey === 'scratch');
-  const saleEndsIso = (flash?.extras?.saleEndsIso as string) ?? null;
+  // With the API unreachable the live promotion is unknown, so no sale is
+  // claimed: the flash slide simply does not run in the fallback.
+  const saleEndsIso: string | null = null;
   const neutral: HeroSelectionContext = {
     isNew: true, isReturning: false, isRegular: false, hasOrdered: false,
-    saleLive: saleEndsIso ? Date.now() < new Date(saleEndsIso).getTime() : false,
+    saleLive: false,
     beforeCutoff: true, cartItems: 0, scratched: false, referred: false, serverCats: [],
   };
   const chosen = selectHeroSlides(lib, neutral, { ...HERO_SELECTION_TUNING, show: HERO_SETTINGS_DEFAULT.slidesShown });
@@ -97,6 +100,7 @@ if (slides.length === 0) {
   config = {
     show: HERO_SETTINGS_DEFAULT.slidesShown, dwell: HERO_SETTINGS_DEFAULT.dwellMs, autoplay: HERO_SETTINGS_DEFAULT.autoplay,
     flashSaleEnds: saleEndsIso,
+    flashPercent: null,
     cutoffHour: Number(sameday?.extras?.cutoffHour ?? 17),
     prizes: Array.isArray(scratch?.extras?.prizes) ? (scratch!.extras.prizes as HeroConfig['prizes']) : [],
   };
@@ -166,8 +170,13 @@ const configJson = JSON.stringify({ ...config, preferredArch })
                 <span class="gp-hero__count-unit"><b class="gp-hero__count-n" data-cd="s">00</b><span class="gp-hero__count-l">Sec</span></span>
               </div>
             )}
-            {s.slideKey === 'flash' && ex.originalPriceUgx && (
-              <div class="gp-hero__price"><s>{ugx(ex.originalPriceUgx)}</s> <b>{ugx(ex.salePriceUgx)}</b> {ex.savePct && <em>Save {ex.savePct}%</em>}</div>
+            {/*
+              The sale figure comes from the live promotion. This used to print
+              a hand-typed "UGX 185,000 → UGX 111,000, Save 40%" from the slide
+              row — numbers no product carried, for a sale that had ended.
+            */}
+            {s.slideKey === 'flash' && config.flashPercent && (
+              <div class="gp-hero__price"><b>{config.flashPercent}% off everything</b> <em>comes off at checkout</em></div>
             )}
 
             {s.subcopy && s.slideKey !== 'flash' && <p class="gp-hero__sub" id={s.slideKey === 'scratch' ? 'gpScratchSub' : undefined}>{s.subcopy}</p>}

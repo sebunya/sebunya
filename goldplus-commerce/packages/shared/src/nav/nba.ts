@@ -68,10 +68,14 @@ export interface NbaItem {
  * browser fallback (GpNav) mirrors these from window.__GPNAV — one source, no drift.
  */
 export interface NbaRates {
+  /** @deprecated No first-order pricing rule exists; kept so stored configs still type-check. Unused. */
   firstOrderPct: number;
   referralPct: number;
   pointsToUgxRate: number;
+  /** @deprecated See firstOrderPct. Unused. */
   firstOrderEstimate: string;
+  /** The LIVE storewide promotion's percentage, or 0 when no sale runs. */
+  salePct?: number;
 }
 
 export const DEFAULT_NBA_RATES: NbaRates = {
@@ -79,6 +83,7 @@ export const DEFAULT_NBA_RATES: NbaRates = {
   referralPct: 10,
   pointsToUgxRate: 10,
   firstOrderEstimate: 'UGX 18,500',
+  salePct: 0,
 };
 
 const money = (n: number) => 'UGX ' + n.toLocaleString('en-UG');
@@ -92,7 +97,7 @@ const R = {
   register: '/register',
   account: '/account',
   batteries: '/shop?category=power&q=battery',
-  flash: '/shop?promo=flash-sale',
+  flash: '/shop',
   verify: '/verification',
   all: '/shop',
 };
@@ -156,16 +161,22 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
     c.push({ id: 'refer', score: 62, text: 'Send a friend here &mdash; they save <em>' + r.referralPct + '%</em>, you earn <em>' + r.referralPct + '%</em>', short: 'They save <em>' + r.referralPct + '%</em>, you earn <em>' + r.referralPct + '%</em>', cta: 'Get your link', href: R.refer });
   }
 
-  // not signed in: the useful, honest defaults
+  // not signed in: the useful, honest defaults. These used to promise
+  // "10% off your first order is reserved — about UGX 18,500 back", from CMS
+  // numbers with no pricing rule behind them. The only discount that exists
+  // is the live storewide sale, and it is named below when it runs.
   if (!ctx.signedIn && ctx.visits <= 1) {
-    c.push({ id: 'welcome', score: 92, text: '<em>' + r.firstOrderPct + '% off</em> your first order is reserved &mdash; about <b>' + r.firstOrderEstimate + '</b> back', short: '<em>' + r.firstOrderPct + '% off</em> your first order, reserved', cta: 'Claim it', href: R.register });
+    c.push({ id: 'welcome', score: 60, text: 'Your phone number is your account &mdash; join free and earn <em>points</em> on every paid order', short: 'Join free &mdash; earn <em>points</em> on every order', cta: 'Join free', href: R.register });
   }
   if (!ctx.signedIn && ctx.visits > 1) {
-    c.push({ id: 'signup', score: 70, text: 'Your <em>' + r.firstOrderPct + '% off</em> is still reserved &mdash; your phone number is the account', short: 'Your <em>' + r.firstOrderPct + '% off</em> is still reserved', cta: 'Claim it', href: R.register });
+    c.push({ id: 'signup', score: 55, text: 'Join free &mdash; your phone number is the account, and points start with your next order', short: 'Join free &mdash; points start with your next order', cta: 'Join free', href: R.register });
   }
 
-  if (ctx.saleLive) {
-    c.push({ id: 'sale', score: 86, text: 'Flash sale is <em>live</em> &mdash; up to <b>40% off</b>', cta: 'See the cuts', href: R.flash });
+  // The live sale, with its real percentage. Never a typed figure: the old
+  // line said "up to 40% off" for a sale that had no such cut.
+  const salePct = Number(r.salePct) || 0;
+  if (ctx.saleLive && salePct > 0) {
+    c.push({ id: 'sale', score: 92, text: '<em>' + salePct + '% off</em> everything right now &mdash; it comes off at checkout', short: '<em>' + salePct + '% off</em> everything, on now', cta: 'Shop the sale', href: R.all });
   }
 
   // always available, and always true

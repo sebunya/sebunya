@@ -32,9 +32,13 @@ describe('DEFAULT_NAV_CONFIG', () => {
     for (const p of DEFAULT_NAV_CONFIG.panels) expect(railKeys.has(p.key)).toBe(true);
   });
 
-  it('mirrors the hero flash deadline — never a second, forkable clock', () => {
+  it('types no sale deadline anywhere — the live promotion is the only clock', () => {
+    // The nav used to mirror a hand-typed hero deadline, which expired while a
+    // real promotion ran. Now neither seed carries one: header and hero both
+    // read /commerce/storefront-discount.
     const heroFlash = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === 'flash');
-    expect(DEFAULT_NAV_CONFIG.settings.saleEndsIso).toBe(heroFlash?.extras?.saleEndsIso);
+    expect(heroFlash?.extras?.saleEndsIso).toBeUndefined();
+    expect(DEFAULT_NAV_CONFIG.settings.saleEndsIso).toBe('');
   });
 
   it('the first-order estimate is one field, and the refer link is not double-account', () => {

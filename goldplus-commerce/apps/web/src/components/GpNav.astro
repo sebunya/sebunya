@@ -173,6 +173,7 @@ const nba = computeNbaCandidates({
   referralPct: nav.settings.referralPct,
   pointsToUgxRate: pointsRedeemUgx, // the loyalty redemption value, or 0 = no money claim
   firstOrderEstimate: nav.settings.firstOrderEstimateUgx,
+  salePct: navDeal.active ? navDeal.percent : 0, // the live promotion, or nothing
 });
 
 const escNav = (str: string) => str.replace(/&/g, '\\u0026').replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
@@ -188,6 +189,11 @@ const navConfigJson = escNav(JSON.stringify({
   // WhatsApp URL has to reach the client too — otherwise that one link keeps
   // pointing at a number the admin can no longer change.
   whatsappUrl: biz.whatsappUrl,
+  // The popover's offer is the LIVE promotion or nothing. It used to promise
+  // "10% off your first order — still reserved" from a CMS number with no
+  // pricing rule behind it; the only real discount is a storewide one.
+  saleActive: navDeal.active,
+  salePct: navDeal.active ? navDeal.percent : 0,
   // The "your battery is N months old" nudge is built in the browser and sends
   // the customer to the battery search. It has to know the same thing the
   // server-rendered finder knows, or it survives the gate and prompts a reorder
@@ -1197,10 +1203,11 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   var CFG = window.__GPNAV || {};  // server-injected per-visitor truth
   // CMS-owned offer figures, fanned out to every copy site so editing them in
   // /admin/nav is reflected everywhere (no hardcoded percentages that drift).
-  var RATE_FIRST = CFG.firstOrderPct != null ? CFG.firstOrderPct : 10;
+  // The only discount the popover may name is the live storewide promotion.
+  var SALE_ON = CFG.saleActive === true && Number(CFG.salePct) > 0;
+  var RATE_SALE = SALE_ON ? Number(CFG.salePct) : 0;
   var RATE_REFER = CFG.referralPct != null ? CFG.referralPct : 10;
   var RATE_PTS = CFG.pointsRate != null ? CFG.pointsRate : 0; // 0 = redemption not configured; claim no shilling value
-  var EST_FIRST = CFG.firstOrderEstimate || 'UGX 18,500';
 
   /* ---- visitor counter ----
      First-party, non-identifying: a count and a timestamp. Everything that
@@ -1599,18 +1606,18 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
             '<a href="/logout">Sign out</a>' +
           '</div>';
       }
+      /* The offer block shows the live sale or nothing. No "reserved" tag, no
+         counting the visitor's visits back at them: neither was true. */
+      var saleBlock = SALE_ON
+        ? '<div class="gp-nav__hold">' +
+            '<span class="gp-nav__hold-tag">On now</span>' +
+            '<b>' + RATE_SALE + '% off everything</b>' +
+            '<span>Comes off at checkout &mdash; no code needed</span>' +
+          '</div>'
+        : '';
       if (returning){
-        /* loss framing beats gain framing: this is the Nth visit, and every
-           one so far earned nothing. Concrete, true, and their own history. */
-        var missed = Math.max(1, CTX_visits - 1);
         return '<p class="gp-nav__hi">Welcome back</p>' +
-          '<div class="gp-nav__hold">' +
-            '<span class="gp-nav__hold-tag">Still reserved</span>' +
-            '<b>' + RATE_FIRST + '% off your first order</b>' +
-            '<span>' + (missed > 2
-              ? 'This is visit <em>' + CTX_visits + '</em> &mdash; none of them have earned points yet'
-              : 'Points start counting from the order you make today') + '</span>' +
-          '</div>' +
+          saleBlock +
           '<form class="gp-nav__join" action="/register" method="get">' +
             '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" ' +
               'placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
@@ -1618,13 +1625,9 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '</form>' +
           '<a class="gp-nav__acct-alt" href="/account">Sign in instead</a>';
       }
-      /* first-time visitor: the reward is held, not handed over */
+      /* first-time visitor */
       return '<p class="gp-nav__hi">' + partOfDay() + '</p>' +
-        '<div class="gp-nav__hold">' +
-          '<span class="gp-nav__hold-tag">Reserved for you</span>' +
-          '<b>' + RATE_FIRST + '% off your first order</b>' +
-          '<span>About <em>' + EST_FIRST + '</em> back on a typical order</span>' +
-        '</div>' +
+        saleBlock +
         '<form class="gp-nav__join" action="/register" method="get">' +
           '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" ' +
             'placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
@@ -1640,9 +1643,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<p>You have <b>' + POINTS.toLocaleString() + ' points</b> waiting' + (RATE_PTS > 0 ? ' &mdash; UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' off your next order' : '') + '.</p>' +
           '<div class="gp-nav__mhi-row"><a href="/account/rewards">Your rewards</a><a href="/account">Your orders</a></div>';
       }
+      var saleLine = SALE_ON ? '<b>' + RATE_SALE + '% off everything</b> right now &mdash; it comes off at checkout. ' : '';
       if (returning){
         return '<h2>Welcome back</h2>' +
-          '<p><b>' + RATE_FIRST + '% off your first order</b> is still reserved. Points start counting from today.</p>' +
+          '<p>' + saleLine + 'Points start counting from the order you make today.</p>' +
           '<form class="gp-nav__mjoin" action="/register" method="get">' +
             '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
             '<button type="submit">Claim it</button>' +
@@ -1650,7 +1654,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<a class="gp-nav__mhi-alt" href="/account">Sign in instead</a>';
       }
       return '<h2>' + partOfDay() + '</h2>' +
-        '<p><b>' + RATE_FIRST + '% off your first order</b> is reserved &mdash; about <b>' + EST_FIRST + '</b> back. Your phone number is your account.</p>' +
+        '<p>' + saleLine + 'Your phone number is your account.</p>' +
         '<form class="gp-nav__mjoin" action="/register" method="get">' +
           '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
           '<button type="submit">Claim it</button>' +
@@ -1801,20 +1805,22 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         short:'They save <em>' + RATE_REFER + '%</em>, you earn <em>' + RATE_REFER + '%</em>',
         cta:'Get your link', href:'/account/rewards' });
 
-      /* ---- not signed in: the useful, honest defaults ---- */
-      if (!CTX.signedIn && CTX.visits <= 1) c.push({ id:'welcome', score:92,
-        text:'<em>' + RATE_FIRST + '% off</em> your first order is reserved &mdash; about <b>' + EST_FIRST + '</b> back',
-        short:'<em>' + RATE_FIRST + '% off</em> your first order, reserved',
-        cta:'Claim it', href:'/register' });
+      /* ---- not signed in: the useful, honest defaults (mirrors nba.ts) ---- */
+      if (!CTX.signedIn && CTX.visits <= 1) c.push({ id:'welcome', score:60,
+        text:'Your phone number is your account &mdash; join free and earn <em>points</em> on every paid order',
+        short:'Join free &mdash; earn <em>points</em> on every order',
+        cta:'Join free', href:'/register' });
 
-      if (!CTX.signedIn && CTX.visits > 1) c.push({ id:'signup', score:70,
-        text:'Your <em>' + RATE_FIRST + '% off</em> is still reserved &mdash; your phone number is the account',
-        short:'Your <em>' + RATE_FIRST + '% off</em> is still reserved',
-        cta:'Claim it', href:'/register' });
+      if (!CTX.signedIn && CTX.visits > 1) c.push({ id:'signup', score:55,
+        text:'Join free &mdash; your phone number is the account, and points start with your next order',
+        short:'Join free &mdash; points start with your next order',
+        cta:'Join free', href:'/register' });
 
-      if (CTX.saleLive) c.push({ id:'sale', score:86,
-        text:'Flash sale is <em>live</em> &mdash; up to <b>40% off</b>',
-        cta:'See the cuts', href:'/shop?promo=flash-sale' });
+      /* the live sale with its real percentage — never a typed figure */
+      if (CTX.saleLive && RATE_SALE > 0) c.push({ id:'sale', score:92,
+        text:'<em>' + RATE_SALE + '% off</em> everything right now &mdash; it comes off at checkout',
+        short:'<em>' + RATE_SALE + '% off</em> everything, on now',
+        cta:'Shop the sale', href:'/shop' });
 
       /* ---- always available, and always true ---- */
       if (CTX.sunday) c.push({ id:'sunday', score:40,

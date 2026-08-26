@@ -45,7 +45,13 @@ export interface HeroEngineConfig {
   show: number;
   dwell: number;
   autoplay: boolean;
+  /**
+   * From the live promotion, never from the slide row. A hand-typed
+   * `extras.saleEndsIso` once expired while a real sale ran unadvertised.
+   */
   flashSaleEnds: string | null;
+  /** The live promotion's percentage, so the slide can say a true number. */
+  flashPercent: number | null;
   cutoffHour: number;
   prizes: Array<{ pct: number; code: string; w: number }>;
 }
@@ -95,8 +101,26 @@ export interface HeroAdminSlide extends StoredHeroSlide {
 
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 
+/** Shape of the live storefront discount the sale slide is driven by. */
+export type HeroDiscountSource = () => Promise<
+  { active: false } | { active: true; percent: number; endsIso: string }
+>;
+
 export class HeroContentService {
-  constructor(private readonly repo: IHeroRepository) {}
+  constructor(
+    private readonly repo: IHeroRepository,
+    /** Optional so tests and tools without pricing still get a hero. */
+    private readonly discount: HeroDiscountSource = async () => ({ active: false }),
+  ) {}
+
+  /** The sale, or nothing — an outage must never invent one. */
+  private async liveDiscount(): Promise<{ active: false } | { active: true; percent: number; endsIso: string }> {
+    try {
+      return await this.discount();
+    } catch {
+      return { active: false };
+    }
+  }
 
   private toPublic(s: StoredHeroSlide): HeroPublicSlide {
     // Blank a dead CTA so the template hides the button (§2.5) rather than
@@ -112,16 +136,17 @@ export class HeroContentService {
     };
   }
 
-  private deriveConfig(slides: StoredHeroSlide[], settings: HeroSettingsSeed): HeroEngineConfig {
-    const flash = slides.find((s) => s.slideKey === 'flash');
+  private async deriveConfig(slides: StoredHeroSlide[], settings: HeroSettingsSeed): Promise<HeroEngineConfig> {
     const sameday = slides.find((s) => s.slideKey === 'sameday');
     const scratch = slides.find((s) => s.slideKey === 'scratch');
     const prizes = Array.isArray(scratch?.extras?.prizes) ? (scratch!.extras.prizes as HeroEngineConfig['prizes']) : [];
+    const sale = await this.liveDiscount();
     return {
       show: settings.slidesShown,
       dwell: settings.dwellMs,
       autoplay: settings.autoplay,
-      flashSaleEnds: typeof flash?.extras?.saleEndsIso === 'string' ? (flash!.extras.saleEndsIso as string) : null,
+      flashSaleEnds: sale.active ? sale.endsIso : null,
+      flashPercent: sale.active ? sale.percent : null,
       cutoffHour: num(sameday?.extras?.cutoffHour, 17),
       prizes,
     };
@@ -143,11 +168,11 @@ export class HeroContentService {
       const authentic = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === HERO_FALLBACK_KEY)!;
       return {
         slides: [this.toPublic({ ...authentic, id: 'fallback', updatedAt: new Date() })],
-        config: this.deriveConfig([], settings),
+        config: await this.deriveConfig([], settings),
       };
     }
 
-    return { slides: slides.map((s) => this.toPublic(s)), config: this.deriveConfig(slides, settings) };
+    return { slides: slides.map((s) => this.toPublic(s)), config: await this.deriveConfig(slides, settings) };
   }
 
   /** Enabled slides + settings, falling back to the library if the DB is unreachable. */
@@ -180,7 +205,7 @@ export class HeroContentService {
     input: HeroPersonalisationInput,
   ): Promise<HeroPersonalisedPayload> {
     const { slides: stored, settings } = await this.loadStored();
-    const config = this.deriveConfig(stored, settings);
+    const config = await this.deriveConfig(stored, settings);
 
     // Visitor tier mirrors the old client counter; hasOrdered stays a separate
     // flag (the rules use both). Regular does NOT fold in hasOrdered, to avoid
@@ -260,10 +285,10 @@ export class HeroContentService {
     };
   }
 
-  private libraryFallback(): HeroPublicPayload {
+  private async libraryFallback(): Promise<HeroPublicPayload> {
     const slides = HERO_SLIDE_LIBRARY.filter((s) => s.enabled).map((s) => this.toPublic({ ...s, id: s.slideKey, updatedAt: new Date() }));
     const asStored = HERO_SLIDE_LIBRARY.map((s) => ({ ...s, id: s.slideKey, updatedAt: new Date() }));
-    return { slides, config: this.deriveConfig(asStored, HERO_SETTINGS_DEFAULT) };
+    return { slides, config: await this.deriveConfig(asStored, HERO_SETTINGS_DEFAULT) };
   }
 
   /** Every slide with its validation state, for the editor. */

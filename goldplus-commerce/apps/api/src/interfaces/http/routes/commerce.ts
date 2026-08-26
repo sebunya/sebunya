@@ -11,6 +11,7 @@ import { isRedirectReady } from '../../../application/use-cases/commerce/StartOr
 import { paymentDidConfirm } from '../../../application/use-cases/commerce/ReconcileOrderPaymentUseCase';
 import { isCartApplied, type CartOutcome } from '../../../application/use-cases/commerce/MutateCartUseCase';
 import { resolveCartCredential, cartRefusalStatus } from '../middleware/cartCredential';
+import { resolveStorefrontDiscount } from '../../../application/pricing/StorefrontDiscountQuery';
 
 import {
   applyOptionalCustomerSession,
@@ -247,38 +248,10 @@ routes.get('/storefront-copy', async (c) => {
  * it only reveals the public discount percentage and its end date.
  */
 routes.get('/storefront-discount', async (c) => {
-  try {
-    const now = new Date();
-    const active = await registry.pricingRepo.listActiveVersions(now);
-    const qualifying = active.filter(({ version }) =>
-      version.conditions.length === 0 &&
-      version.exclusions.length === 0 &&
-      !version.couponCode &&
-      version.schedule.startsAt <= now && now < version.schedule.endsAt &&
-      version.benefits.some((b) => b.type === 'PERCENTAGE_OFF' && (!b.targetProductIds || b.targetProductIds.length === 0)),
-    );
-    if (qualifying.length !== 1) return c.json({ success: true, data: { active: false } });
-    const { definition, version } = qualifying[0];
-    const benefit = version.benefits.find((b) => b.type === 'PERCENTAGE_OFF' && (!b.targetProductIds || b.targetProductIds.length === 0))!;
-    if (!Number.isFinite(benefit.value) || benefit.value <= 0 || benefit.value >= 10_000) return c.json({ success: true, data: { active: false } });
-    return c.json({
-      success: true,
-      data: {
-        active: true,
-        percentBps: benefit.value,
-        percent: Math.round(benefit.value / 100),
-        // The evaluator caps every line at this floor
-        // (`available = base - prior - priceFloorUgx * quantity`). Omitting it
-        // here made the display promise a price the checkout would refuse to
-        // charge — the exact divergence this endpoint exists to prevent.
-        priceFloorUgx: version.priceFloorUgx,
-        endsIso: version.schedule.endsAt.toISOString(),
-        name: definition.name,
-      },
-    });
-  } catch {
-    return c.json({ success: true, data: { active: false } });
-  }
+  // One resolver shared with the homepage hero, so the header clock, the card
+  // prices and the hero sale slide can never disagree about the sale.
+  const data = await resolveStorefrontDiscount(registry.pricingRepo);
+  return c.json({ success: true, data });
 });
 
 /**
