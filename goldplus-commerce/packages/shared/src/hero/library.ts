@@ -58,7 +58,8 @@ export const HERO_SETTINGS_DEFAULT: HeroSettingsSeed = {
 };
 
 /** Product cut-out images for stage slides — real GoldPlus catalogue shots. */
-const P = (slug: string) => `https://shopgoldplus.com/products/${slug}.webp`;
+// Same-origin path: an absolute apex-host URL was blocked by img-src on www.
+const P = (slug: string) => `/products/${slug}.webp`;
 
 export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
   {
