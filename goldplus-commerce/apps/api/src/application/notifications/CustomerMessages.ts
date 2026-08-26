@@ -128,6 +128,13 @@ function dateWord(iso: string | null | undefined): string {
  * adapter refuses instead of sending the template's name as the text.
  */
 export function smsText(template: string, d: CustomerMessageData = {}): string | null {
+  const raw = smsTextRaw(template, d);
+  if (!raw) return null;
+  // "GoldPlus: We have your payment", not "GoldPlus: we have your payment".
+  return raw.replace(/^GoldPlus: ([a-z])/, (_, c: string) => `GoldPlus: ${c.toUpperCase()}`);
+}
+
+function smsTextRaw(template: string, d: CustomerMessageData = {}): string | null {
   const phone = supportPhoneDisplay();
   const ref = orderRef(d);
   const track = trackOrderUrl(d.orderNumber);

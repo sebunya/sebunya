@@ -315,7 +315,7 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
     const [, calledInit] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
     const parsedBody = JSON.parse(calledInit.body as string);
     // The old fallback put the enum on the customer's phone. Now the wording table answers.
-    expect(parsedBody.msgdata[0].message).toContain('GoldPlus: we have your payment');
+    expect(parsedBody.msgdata[0].message).toContain('GoldPlus: We have your payment');
     expect(parsedBody.msgdata[0].message).not.toContain('ORDER_PAYMENT_SUCCESS');
   });
 });
