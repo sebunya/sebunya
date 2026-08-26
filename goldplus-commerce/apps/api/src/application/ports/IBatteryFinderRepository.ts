@@ -76,7 +76,8 @@ export interface IBatteryFinderRepository {
   seedConfig(config: BatteryFinderConfig): Promise<{ inserted: boolean }>;
   saveConfig(config: BatteryFinderConfig, expectedVersion: number, actorId: string): Promise<{ version: number } | null>;
 
-  brands(showAwaiting: boolean): Promise<FinderBrandDto[]>;
+  /** Ordering inputs travel with the brand so the use case can apply the admin's chosen mode. */
+  brands(showAwaiting: boolean): Promise<Array<FinderBrandDto & { displayOrder: number; demandCount: number }>>;
   brandBySlug(slug: string, showAwaiting: boolean): Promise<{ brand: FinderBrandDto; series: FinderSeriesDto[]; devices: Array<FinderDeviceDto & { seriesId: string | null; displayOrder: number; demandCount: number }> } | null>;
   deviceBySlug(slug: string): Promise<FinderDeviceDto | null>;
   deviceById(id: string): Promise<FinderDeviceDto | null>;

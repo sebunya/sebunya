@@ -1,0 +1,267 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../../lib/session';
+import { adminBattery, batteryMessage, LIFECYCLE_BADGE, ugx } from '../../../../lib/batteries';
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/batteries/catalogue', 303);
+
+interface Row {
+  profile: { canonicalCode: string; codeStatus: string; batteryCategory: string; lifecycleStatus: string; verificationStatus: string; capacityMah: number | null; nominalVoltageMv: number | null };
+  product: { productId: string; sku: string; name: string; priceUgx: number; stockQuantity: number; primaryImageUrl: string | null; movementCount: number };
+  aliasCount: number;
+  compatibility: { total: number; active: number; verified: number };
+}
+interface Lookup {
+  kind: 'FOUND' | 'AMBIGUOUS' | 'NOT_FOUND';
+  battery?: { profile: { canonicalCode: string }; product: { productId: string; name: string } } | null;
+  matchedOn?: string;
+  matches?: Array<{ productId: string; canonicalCode: string }>;
+  suggestions?: Array<{ productId: string; canonicalCode: string; slug: string; name: string }>;
+  proposedSku?: string;
+  normalised?: string;
+}
+
+let notice: { kind: 'success' | 'error' | 'info'; text: string } | null = null;
+let lookup: Lookup | null = null;
+let lookupQuery = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  if (intent === 'lookup') {
+    lookupQuery = String(form.get('query') ?? '').trim();
+    const res = await adminBattery<Lookup>('/catalogue/lookup', token, { method: 'POST', body: JSON.stringify({ query: lookupQuery }) });
+    if (res.ok) lookup = res.data;
+    else notice = { kind: 'error', text: batteryMessage(res.error) };
+  } else if (intent === 'create') {
+    const payload = {
+      canonicalCode: String(form.get('canonicalCode') ?? '').trim(),
+      brand: String(form.get('brand') ?? '').trim() || null,
+      name: String(form.get('name') ?? '').trim() || null,
+      batteryCategory: String(form.get('batteryCategory') ?? 'PHONE'),
+      codeStatus: String(form.get('codeStatus') ?? 'PROVISIONAL'),
+      supplierName: String(form.get('supplierName') ?? '').trim() || null,
+      supplierReference: String(form.get('supplierReference') ?? '').trim() || null,
+      barcode: String(form.get('barcode') ?? '').trim() || null,
+      capacityMah: Number(form.get('capacityMah')) || null,
+      nominalVoltageMv: Number(form.get('voltageV')) ? Math.round(Number(form.get('voltageV')) * 1000) : null,
+      warrantyMonths: Number(form.get('warrantyMonths')) || null,
+      priceUgx: Number(form.get('priceUgx')) || 0,
+      aliases: String(form.get('aliases') ?? '').split(',').map((a) => a.trim()).filter(Boolean).map((alias) => ({ alias, aliasType: 'SEARCH' as const, source: 'quick add' })),
+    };
+    const res = await adminBattery<{ productId: string }>('/catalogue', token, { method: 'POST', body: JSON.stringify(payload) });
+    if (res.ok && res.data) return Astro.redirect(`/admin/batteries/catalogue/${res.data.productId}`, 303);
+    notice = { kind: 'error', text: batteryMessage(res.error) };
+  } else if (intent === 'bulk') {
+    const ids = form.getAll('productIds').map(String).filter(Boolean);
+    const action = String(form.get('action') ?? '');
+    if (!ids.length) notice = { kind: 'error', text: 'Select at least one battery.' };
+    else {
+      const res = await adminBattery<Array<{ productId: string; ok: boolean; message?: string }>>('/catalogue/bulk', token, { method: 'POST', body: JSON.stringify({ productIds: ids, action }) });
+      if (res.ok && res.data) {
+        const done = res.data.filter((r) => r.ok).length;
+        const failed = res.data.filter((r) => !r.ok);
+        notice = failed.length
+          ? { kind: 'info', text: `${done} changed. ${failed.length} refused: ${failed.map((f) => f.message).join(' ')}` }
+          : { kind: 'success', text: `${done} batter${done === 1 ? 'y' : 'ies'} changed.` };
+      } else notice = { kind: 'error', text: batteryMessage(res.error) };
+    }
+  }
+}
+
+const url = new URL(Astro.request.url);
+const q = url.searchParams.get('q') ?? '';
+const status = url.searchParams.get('status') ?? '';
+const category = url.searchParams.get('category') ?? '';
+const missing = url.searchParams.get('missing') ?? '';
+const verification = url.searchParams.get('verification') ?? '';
+const query = new URLSearchParams();
+if (q) query.set('q', q);
+if (status) query.set('status', status);
+if (category) query.set('category', category);
+if (missing) query.set('missing', missing);
+if (verification) query.set('verification', verification);
+
+const list = await adminBattery<Row[]>(`/catalogue?${query.toString()}`, token);
+const rows = list.data ?? [];
+const STATUSES = ['', 'DRAFT', 'REVIEW', 'READY', 'ACTIVE', 'ARCHIVED', 'ALL'];
+const MISSING = [['', 'Anything'], ['price', 'No price'], ['image', 'No image'], ['stock', 'No stock recorded'], ['specs', 'No capacity or voltage'], ['compatibility', 'No verified fit'], ['code', 'Code unconfirmed']];
+---
+
+<AdminLayout title="Battery catalogue" description="Every physical battery SKU, its aliases, stock and verified fits." activePath="/admin/batteries">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-6 pb-6 border-b border-gray-200">
+      <p class="text-[10px] uppercase font-black tracking-widest text-gray-400"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Catalogue</p>
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight mt-1">Battery catalogue</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-3xl">Search by battery code, alias, barcode, supplier code, SKU or a phone that fits.</p>
+    </div>
+
+    {notice && (
+      <div role="status" class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : notice.kind === 'info' ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>
+    )}
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-6">
+      <h3 class="text-sm font-black text-brand-dark mb-1">Quick add: scan or type the battery code</h3>
+      <p class="text-xs text-gray-500 mb-4">We check the code, its aliases and the barcode first, so the same battery is never created twice.</p>
+      <form method="POST" class="flex flex-wrap gap-3 items-end">
+        <input type="hidden" name="intent" value="lookup" />
+        <label class="flex-1 min-w-[240px] block">
+          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery code or barcode</span>
+          <input name="query" value={lookupQuery} required maxlength="120" inputmode="text" autocomplete="off" placeholder="BL-49FT, GP-49FT, 49FT or a scanned barcode" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-mono" />
+        </label>
+        <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Check</button>
+      </form>
+
+      {lookup?.kind === 'FOUND' && lookup.battery && (
+        <div class="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm">
+          <p class="font-bold text-green-800">This battery already exists: {lookup.battery.profile.canonicalCode} ({lookup.battery.product.name}), matched on {lookup.matchedOn}.</p>
+          <a href={`/admin/batteries/catalogue/${lookup.battery.product.productId}`} class="mt-2 inline-block text-[10px] font-black uppercase tracking-widest text-green-900 underline">Open it instead of creating a duplicate</a>
+        </div>
+      )}
+      {lookup?.kind === 'AMBIGUOUS' && (
+        <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
+          <p class="font-bold text-amber-900">That code matches more than one battery. Open the right one:</p>
+          <ul class="mt-2 space-y-1">
+            {(lookup.matches ?? []).map((m) => <li><a href={`/admin/batteries/catalogue/${m.productId}`} class="font-mono text-xs underline">{m.canonicalCode}</a></li>)}
+          </ul>
+        </div>
+      )}
+      {lookup?.kind === 'NOT_FOUND' && (
+        <div class="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p class="text-sm font-bold text-brand-dark">No battery matches "{lookupQuery}". Create it as a draft.</p>
+          {(lookup.suggestions ?? []).length > 0 && (
+            <p class="text-xs text-gray-600 mt-1">
+              Close matches, in case one of these is the same battery: {(lookup.suggestions ?? []).map((s) => <a href={`/admin/batteries/catalogue/${s.productId}`} class="font-mono underline mr-2">{s.canonicalCode}</a>)}
+            </p>
+          )}
+          <form method="POST" class="mt-4 grid gap-3 md:grid-cols-3">
+            <input type="hidden" name="intent" value="create" />
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery code</span>
+              <input name="canonicalCode" required maxlength="80" value={lookupQuery} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Code confirmed from the pack?</span>
+              <select name="codeStatus" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="PROVISIONAL">Not yet, provisional</option>
+                <option value="CONFIRMED">Yes, read from the pack</option>
+                <option value="DEVICE_NAMED">This is a phone name, not a code</option>
+              </select></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery type</span>
+              <select name="batteryCategory" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="PHONE">Phone Battery</option>
+                <option value="MIFI_ROUTER">MiFi &amp; Router Battery</option>
+                <option value="OTHER">Other</option>
+              </select></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Phone brand it is sold for</span>
+              <input name="brand" maxlength="60" placeholder="TECNO" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Product name (optional)</span>
+              <input name="name" maxlength="255" placeholder="Leave blank to name it from the brand and code" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Capacity mAh (from the pack)</span>
+              <input name="capacityMah" type="number" min="1" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Voltage V (from the pack)</span>
+              <input name="voltageV" type="number" step="0.01" min="0.01" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Barcode</span>
+              <input name="barcode" maxlength="14" inputmode="numeric" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier</span>
+              <input name="supplierName" maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier reference</span>
+              <input name="supplierReference" maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Warranty months</span>
+              <input name="warrantyMonths" type="number" min="0" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Retail price UGX (optional now)</span>
+              <input name="priceUgx" type="number" min="0" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Other codes customers or suppliers use (comma separated)</span>
+              <input name="aliases" maxlength="500" placeholder="GP-49FT, 49FT" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+            <div class="md:col-span-3">
+              <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Create draft battery</button>
+              <span class="ml-3 text-xs text-gray-500">Leave a field blank if you do not know it. Nothing is guessed for you.</span>
+            </div>
+          </form>
+        </div>
+      )}
+    </section>
+
+    <form method="GET" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap gap-3 items-end">
+      <label class="flex-1 min-w-[220px] block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Search</span>
+        <input name="q" value={q} maxlength="120" placeholder="Code, alias, barcode, SKU or a phone" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+      <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Status</span>
+        <select name="status" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          {STATUSES.map((s) => <option value={s} selected={s === status}>{s === '' ? 'Not archived' : s === 'ALL' ? 'Everything' : s}</option>)}
+        </select></label>
+      <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Type</span>
+        <select name="category" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <option value="" selected={category === ''}>All types</option>
+          <option value="PHONE" selected={category === 'PHONE'}>Phone</option>
+          <option value="MIFI_ROUTER" selected={category === 'MIFI_ROUTER'}>MiFi and router</option>
+          <option value="OTHER" selected={category === 'OTHER'}>Other</option>
+        </select></label>
+      <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Missing</span>
+        <select name="missing" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          {MISSING.map(([v, l]) => <option value={v} selected={v === missing}>{l}</option>)}
+        </select></label>
+      <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Filter</button>
+      <a href="/admin/batteries/catalogue" class="text-[10px] font-black uppercase tracking-widest text-gray-500 py-3">Clear</a>
+    </form>
+
+    {!list.ok && (
+      <div role="status" class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{batteryMessage(list.error)}</div>
+    )}
+
+    <form method="POST">
+      <input type="hidden" name="intent" value="bulk" />
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+                <th class="p-4"><span class="sr-only">Select</span></th>
+                <th class="p-4">Battery</th>
+                <th class="p-4">Type</th>
+                <th class="p-4 text-center">Status</th>
+                <th class="p-4 text-right">Price</th>
+                <th class="p-4 text-right">Stock</th>
+                <th class="p-4 text-center">Fits</th>
+                <th class="p-4">Specs</th>
+              </tr>
+            </thead>
+            <tbody class="text-xs">
+              {rows.map((r) => (
+                <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                  <td class="p-4"><input type="checkbox" name="productIds" value={r.product.productId} class="w-4 h-4 border-gray-300 rounded" aria-label={`Select ${r.profile.canonicalCode}`} /></td>
+                  <td class="p-4">
+                    <a href={`/admin/batteries/catalogue/${r.product.productId}`} class="font-black text-brand-dark hover:text-brand-primary font-mono">{r.profile.canonicalCode}</a>
+                    <p class="text-gray-500 mt-0.5">{r.product.name}</p>
+                    <p class="text-gray-400 mt-0.5">{r.product.sku}{r.aliasCount > 1 ? ` · ${r.aliasCount - 1} other code${r.aliasCount === 2 ? '' : 's'}` : ''}{r.profile.codeStatus !== 'CONFIRMED' ? ' · code unconfirmed' : ''}</p>
+                  </td>
+                  <td class="p-4 text-gray-600">{r.profile.batteryCategory === 'MIFI_ROUTER' ? 'MiFi / router' : r.profile.batteryCategory === 'PHONE' ? 'Phone' : 'Other'}</td>
+                  <td class="p-4 text-center"><span class={`text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border ${LIFECYCLE_BADGE[r.profile.lifecycleStatus] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>{r.profile.lifecycleStatus}</span></td>
+                  <td class="p-4 text-right tabular-nums">{r.product.priceUgx > 0 ? ugx(r.product.priceUgx) : <span class="text-amber-700">Not set</span>}</td>
+                  <td class="p-4 text-right tabular-nums">{r.product.movementCount === 0 ? <span class="text-amber-700">Not counted</span> : r.product.stockQuantity}</td>
+                  <td class="p-4 text-center tabular-nums">{r.compatibility.verified} verified<span class="text-gray-400"> / {r.compatibility.total}</span></td>
+                  <td class="p-4 text-gray-600">{r.profile.capacityMah ? `${r.profile.capacityMah} mAh` : <span class="text-amber-700">No capacity</span>}{r.profile.nominalVoltageMv ? ` · ${(r.profile.nominalVoltageMv / 1000).toFixed(2)} V` : ''}</td>
+                </tr>
+              ))}
+              {rows.length === 0 && list.ok && (
+                <tr><td colspan="8" class="p-12 text-center text-gray-400 italic">No battery matches these filters. Use Quick add above to create the first one.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {rows.length > 0 && (
+          <div class="flex flex-wrap items-center gap-3 border-t border-gray-100 bg-gray-50 px-4 py-3">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">With the selected batteries</span>
+            <select name="action" class="rounded-lg border border-gray-300 px-3 py-2 text-xs">
+              <option value="SUBMIT_REVIEW">Submit for review</option>
+              <option value="MARK_READY">Mark ready</option>
+              <option value="PUBLISH">Publish</option>
+              <option value="UNPUBLISH">Unpublish</option>
+              <option value="ARCHIVE">Archive</option>
+              <option value="RESTORE">Restore</option>
+            </select>
+            <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Apply</button>
+            <span class="text-xs text-gray-500">A battery that is not ready is refused and told why; the rest still go through.</span>
+          </div>
+        )}
+      </div>
+    </form>
+  </div>
+</AdminLayout>

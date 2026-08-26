@@ -44,9 +44,9 @@ function profileRecord(row: typeof batteryProfiles.$inferSelect): BatteryProfile
   };
 }
 
-const MOVEMENTS = sql<number>`(SELECT count(*) FROM inventory_movements m WHERE m.product_id = ${products.id})::int`;
-const IMAGES = sql<number>`(SELECT count(*) FROM product_images i WHERE i.product_id = ${products.id})::int`;
-const PRIMARY_IMAGE = sql<string | null>`COALESCE(${products.imageUrl}, (SELECT i.url FROM product_images i WHERE i.product_id = ${products.id} ORDER BY i.is_primary DESC, i.display_order ASC LIMIT 1))`;
+const MOVEMENTS = sql<number>`(SELECT count(*) FROM inventory_movements m WHERE m.product_id = ${sql.raw("products.id")})::int`;
+const IMAGES = sql<number>`(SELECT count(*) FROM product_images i WHERE i.product_id = ${sql.raw("products.id")})::int`;
+const PRIMARY_IMAGE = sql<string | null>`COALESCE(${products.imageUrl}, (SELECT i.url FROM product_images i WHERE i.product_id = ${sql.raw("products.id")} ORDER BY i.is_primary DESC, i.display_order ASC LIMIT 1))`;
 
 function productFacts(row: {
   id: string; sku: string; slug: string; name: string; shortDescription: string; longDescription: string; categoryName: string | null; subcategory: string | null;
@@ -193,29 +193,29 @@ export class DrizzleBatteryCatalogueRepository implements IBatteryCatalogueRepos
         ilike(products.sku, needle),
         eq(batteryProfiles.barcode, filters.q.trim()),
         ilike(batteryProfiles.supplierCode, needle),
-        sql`EXISTS (SELECT 1 FROM battery_aliases a WHERE a.battery_product_id = ${products.id} AND a.is_active AND a.alias_normalised LIKE ${`%${norm}%`})`,
-        sql`EXISTS (SELECT 1 FROM product_device_compatibility c JOIN devices d ON d.id = c.device_id WHERE c.product_id = ${products.id} AND (d.model ILIKE ${needle} OR d.brand ILIKE ${needle} OR d.model_number ILIKE ${needle}))`,
+        sql`EXISTS (SELECT 1 FROM battery_aliases a WHERE a.battery_product_id = ${sql.raw("products.id")} AND a.is_active AND a.alias_normalised LIKE ${`%${norm}%`})`,
+        sql`EXISTS (SELECT 1 FROM product_device_compatibility c JOIN devices d ON d.id = c.device_id WHERE c.product_id = ${sql.raw("products.id")} AND (d.model ILIKE ${needle} OR d.brand ILIKE ${needle} OR d.model_number ILIKE ${needle}))`,
       )!);
     }
     switch (filters.missing) {
       case 'price': conditions.push(sql`${products.priceUgx} <= 0`); break;
-      case 'image': conditions.push(sql`${products.imageUrl} IS NULL AND NOT EXISTS (SELECT 1 FROM product_images i WHERE i.product_id = ${products.id})`); break;
+      case 'image': conditions.push(sql`${products.imageUrl} IS NULL AND NOT EXISTS (SELECT 1 FROM product_images i WHERE i.product_id = ${sql.raw("products.id")})`); break;
       case 'stock': conditions.push(sql`${products.stockQuantity} <= 0`); break;
       case 'specs': conditions.push(sql`(${batteryProfiles.capacityMah} IS NULL OR ${batteryProfiles.nominalVoltageMv} IS NULL)`); break;
-      case 'compatibility': conditions.push(sql`NOT EXISTS (SELECT 1 FROM product_device_compatibility c WHERE c.product_id = ${products.id} AND c.workflow_status IN ('READY','ACTIVE') AND c.evidence_status IN ('PACKAGE_VERIFIED','FIT_TESTED','VERIFIED_EXACT','CONDITIONAL'))`); break;
+      case 'compatibility': conditions.push(sql`NOT EXISTS (SELECT 1 FROM product_device_compatibility c WHERE c.product_id = ${sql.raw("products.id")} AND c.workflow_status IN ('READY','ACTIVE') AND c.evidence_status IN ('PACKAGE_VERIFIED','FIT_TESTED','VERIFIED_EXACT','CONDITIONAL'))`); break;
       case 'code': conditions.push(sql`${batteryProfiles.codeStatus} <> 'CONFIRMED'`); break;
     }
     const rows = await db
       .select({
         profile: batteryProfiles,
         product: productSelection,
-        aliasCount: sql<number>`(SELECT count(*) FROM battery_aliases a WHERE a.battery_product_id = ${products.id} AND a.is_active)::int`,
-        compatTotal: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${products.id})::int`,
-        compatActive: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${products.id} AND c.workflow_status = 'ACTIVE')::int`,
-        compatReady: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${products.id} AND c.workflow_status = 'READY')::int`,
-        compatReview: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${products.id} AND c.workflow_status = 'REVIEW')::int`,
-        compatDraft: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${products.id} AND c.workflow_status = 'DRAFT')::int`,
-        compatVerified: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${products.id} AND c.workflow_status IN ('READY','ACTIVE') AND c.evidence_status IN ('PACKAGE_VERIFIED','FIT_TESTED','VERIFIED_EXACT'))::int`,
+        aliasCount: sql<number>`(SELECT count(*) FROM battery_aliases a WHERE a.battery_product_id = ${sql.raw("products.id")} AND a.is_active)::int`,
+        compatTotal: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${sql.raw("products.id")})::int`,
+        compatActive: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${sql.raw("products.id")} AND c.workflow_status = 'ACTIVE')::int`,
+        compatReady: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${sql.raw("products.id")} AND c.workflow_status = 'READY')::int`,
+        compatReview: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${sql.raw("products.id")} AND c.workflow_status = 'REVIEW')::int`,
+        compatDraft: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${sql.raw("products.id")} AND c.workflow_status = 'DRAFT')::int`,
+        compatVerified: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.product_id = ${sql.raw("products.id")} AND c.workflow_status IN ('READY','ACTIVE') AND c.evidence_status IN ('PACKAGE_VERIFIED','FIT_TESTED','VERIFIED_EXACT'))::int`,
       })
       .from(batteryProfiles)
       .innerJoin(products, eq(products.id, batteryProfiles.productId))
@@ -322,9 +322,13 @@ export class DrizzleBatteryCatalogueRepository implements IBatteryCatalogueRepos
       out.push(...rows.map((r) => ({ ...r, matchedOn: 'barcode' })));
     }
     if (keys.length) {
+      // A bound JS array is ONE parameter to Postgres, so `= ANY($1)` asks it to
+      // read a code as an array literal and fails. The candidate forms are
+      // expanded into a real IN list instead, each its own parameter.
+      const keyList = sql.join(keys.map((k) => sql`${k}`), sql`, `);
       const byCode = await db.select({ productId: batteryProfiles.productId, canonicalCode: batteryProfiles.canonicalCode, lifecycleStatus: batteryProfiles.lifecycleStatus }).from(batteryProfiles).where(and(inArray(batteryProfiles.canonicalCodeNormalised, keys), sql`${batteryProfiles.lifecycleStatus} <> 'ARCHIVED'`));
       out.push(...byCode.map((r) => ({ ...r, matchedOn: 'canonical' })));
-      const bySupplier = await db.select({ productId: batteryProfiles.productId, canonicalCode: batteryProfiles.canonicalCode, lifecycleStatus: batteryProfiles.lifecycleStatus }).from(batteryProfiles).where(and(sql`upper(regexp_replace(coalesce(${batteryProfiles.supplierCode}, ''), '[^A-Za-z0-9]', '', 'g')) = ANY(${keys})`, sql`${batteryProfiles.lifecycleStatus} <> 'ARCHIVED'`));
+      const bySupplier = await db.select({ productId: batteryProfiles.productId, canonicalCode: batteryProfiles.canonicalCode, lifecycleStatus: batteryProfiles.lifecycleStatus }).from(batteryProfiles).where(and(sql`upper(regexp_replace(coalesce(${batteryProfiles.supplierCode}, ''), '[^A-Za-z0-9]', '', 'g')) IN (${keyList})`, sql`${batteryProfiles.lifecycleStatus} <> 'ARCHIVED'`));
       out.push(...bySupplier.map((r) => ({ ...r, matchedOn: 'supplier' })));
       const byAlias = await db
         .select({ productId: batteryAliases.batteryProductId, canonicalCode: batteryProfiles.canonicalCode, lifecycleStatus: batteryProfiles.lifecycleStatus, alias: batteryAliases.alias })
@@ -336,7 +340,7 @@ export class DrizzleBatteryCatalogueRepository implements IBatteryCatalogueRepos
         .select({ productId: batteryProfiles.productId, canonicalCode: batteryProfiles.canonicalCode, lifecycleStatus: batteryProfiles.lifecycleStatus })
         .from(batteryProfiles)
         .innerJoin(products, eq(products.id, batteryProfiles.productId))
-        .where(and(sql`upper(regexp_replace(${products.sku}, '[^A-Za-z0-9]', '', 'g')) = ANY(${keys})`, sql`${batteryProfiles.lifecycleStatus} <> 'ARCHIVED'`));
+        .where(and(sql`upper(regexp_replace(${products.sku}, '[^A-Za-z0-9]', '', 'g')) IN (${keyList})`, sql`${batteryProfiles.lifecycleStatus} <> 'ARCHIVED'`));
       out.push(...bySku.map((r) => ({ ...r, matchedOn: 'sku' })));
     }
     return out;

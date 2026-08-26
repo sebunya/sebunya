@@ -20,9 +20,9 @@ const VERIFIED = sql`c.workflow_status = 'ACTIVE' AND c.evidence_status IN ('PAC
 const brandSelection = {
   b: deviceBrands,
   logoUrl: mediaAssets.url,
-  deviceCount: sql<number>`(SELECT count(*) FROM devices d WHERE d.brand_id = ${deviceBrands.id} AND d.status = 'ACTIVE')::int`,
-  verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN devices d ON d.id = c.device_id WHERE d.brand_id = ${deviceBrands.id} AND ${VERIFIED})::int`,
-  demandCount: sql<number>`(SELECT count(*) FROM battery_finder_events e WHERE e.brand_id = ${deviceBrands.id} AND e.occurred_at > now() - interval '90 days')::int`,
+  deviceCount: sql<number>`(SELECT count(*) FROM devices d WHERE d.brand_id = ${sql.raw("device_brands.id")} AND d.status = 'ACTIVE')::int`,
+  verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN devices d ON d.id = c.device_id WHERE d.brand_id = ${sql.raw("device_brands.id")} AND ${VERIFIED})::int`,
+  demandCount: sql<number>`(SELECT count(*) FROM battery_finder_events e WHERE e.brand_id = ${sql.raw("device_brands.id")} AND e.occurred_at > now() - interval '90 days')::int`,
 };
 
 function brandRecord(r: { b: typeof deviceBrands.$inferSelect; logoUrl: string | null; deviceCount: number; verifiedFits: number; demandCount: number }): DeviceBrandRecord {
@@ -31,9 +31,9 @@ function brandRecord(r: { b: typeof deviceBrands.$inferSelect; logoUrl: string |
 
 const seriesSelection = {
   s: deviceSeries,
-  deviceCount: sql<number>`(SELECT count(*) FROM devices d WHERE d.series_id = ${deviceSeries.id} AND d.status = 'ACTIVE')::int`,
-  verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN devices d ON d.id = c.device_id WHERE d.series_id = ${deviceSeries.id} AND ${VERIFIED})::int`,
-  demandCount: sql<number>`(SELECT count(*) FROM battery_finder_events e JOIN devices d ON d.id = e.device_id WHERE d.series_id = ${deviceSeries.id} AND e.occurred_at > now() - interval '90 days')::int`,
+  deviceCount: sql<number>`(SELECT count(*) FROM devices d WHERE d.series_id = ${sql.raw("device_series.id")} AND d.status = 'ACTIVE')::int`,
+  verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN devices d ON d.id = c.device_id WHERE d.series_id = ${sql.raw("device_series.id")} AND ${VERIFIED})::int`,
+  demandCount: sql<number>`(SELECT count(*) FROM battery_finder_events e JOIN devices d ON d.id = e.device_id WHERE d.series_id = ${sql.raw("device_series.id")} AND e.occurred_at > now() - interval '90 days')::int`,
 };
 
 function seriesRecord(r: { s: typeof deviceSeries.$inferSelect; deviceCount: number; verifiedFits: number; demandCount: number }): DeviceSeriesRecord {
@@ -43,9 +43,9 @@ function seriesRecord(r: { s: typeof deviceSeries.$inferSelect; deviceCount: num
 const deviceSelection = {
   d: devices,
   seriesName: deviceSeries.name,
-  claimCount: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.device_id = ${devices.id} AND c.workflow_status <> 'ARCHIVED')::int`,
-  verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.device_id = ${devices.id} AND ${VERIFIED})::int`,
-  demandCount: sql<number>`(SELECT count(*) FROM battery_finder_events e WHERE e.device_id = ${devices.id} AND e.occurred_at > now() - interval '90 days')::int`,
+  claimCount: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.device_id = ${sql.raw("devices.id")} AND c.workflow_status <> 'ARCHIVED')::int`,
+  verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c WHERE c.device_id = ${sql.raw("devices.id")} AND ${VERIFIED})::int`,
+  demandCount: sql<number>`(SELECT count(*) FROM battery_finder_events e WHERE e.device_id = ${sql.raw("devices.id")} AND e.occurred_at > now() - interval '90 days')::int`,
 };
 
 function deviceRecord(r: { d: typeof devices.$inferSelect; seriesName: string | null; claimCount: number; verifiedFits: number; demandCount: number }): DeviceRecord {

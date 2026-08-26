@@ -144,7 +144,11 @@ export class BatteryCatalogueUseCases {
       lifecycleStatus: found.profile.lifecycleStatus,
       hasPrimaryImage: found.product.hasImage || !!found.product.primaryImageUrl,
       priceUgx: found.product.priceUgx,
-      productApproved: found.product.approvalStatus === 'approved' || found.profile.lifecycleStatus !== 'ACTIVE',
+      // Publishing is what approves the product, so a battery that is not yet
+      // live must not be blocked for the approval it is about to receive. The
+      // check has teeth for a LIVE battery whose product was unapproved
+      // elsewhere: that combination is a real defect and is reported.
+      productApproved: found.profile.lifecycleStatus !== 'ACTIVE' || found.product.approvalStatus === 'approved',
       stockQuantity: found.product.stockQuantity,
       movementCount: found.product.movementCount,
       capacityMah: found.profile.capacityMah,

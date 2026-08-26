@@ -63,30 +63,31 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
   }
 
   // ---------------------------------------------------------------- browse
-  async brands(showAwaiting: boolean): Promise<FinderBrandDto[]> {
+  async brands(showAwaiting: boolean): Promise<Array<FinderBrandDto & { displayOrder: number; demandCount: number }>> {
     const awaiting = showAwaiting ? sql`OR (c.workflow_status = 'ACTIVE' AND c.evidence_status = 'SUPPLIER_LISTED' AND bp.lifecycle_status = 'ACTIVE' AND p.approval_status = 'approved' AND p.active)` : sql``;
     const rows = (await db.execute(sql`
-      SELECT b.id, b.name, b.slug, b.is_featured AS "isFeatured",
+      SELECT b.id, b.name, b.slug, b.is_featured AS "isFeatured", b.display_order AS "displayOrder",
         (SELECT count(*) FROM devices d WHERE d.brand_id = b.id AND d.status = 'ACTIVE')::int AS "deviceCount",
         (SELECT count(*) FROM product_device_compatibility c JOIN devices d ON d.id = c.device_id JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id
-           WHERE d.brand_id = b.id AND d.status = 'ACTIVE' AND (${VERIFIED_PUBLIC} ${awaiting}))::int AS "verifiedFits"
+           WHERE d.brand_id = b.id AND d.status = 'ACTIVE' AND (${VERIFIED_PUBLIC} ${awaiting}))::int AS "verifiedFits",
+        (SELECT count(*) FROM battery_finder_events e WHERE e.brand_id = b.id AND e.occurred_at > now() - interval '90 days')::int AS "demandCount"
       FROM device_brands b WHERE b.status = 'ACTIVE'
-      ORDER BY b.is_featured DESC, b.display_order ASC, b.name ASC`)) as unknown as FinderBrandDto[];
-    return rows;
+      ORDER BY b.is_featured DESC, b.display_order ASC, b.name ASC`)) as unknown as Array<FinderBrandDto & { displayOrder: number; demandCount: number }>;
+    return rows.map((r) => ({ ...r, displayOrder: Number(r.displayOrder), demandCount: Number(r.demandCount) }));
   }
 
   async brandBySlug(slug: string, showAwaiting: boolean) {
     const brands = await this.brands(showAwaiting);
     const brand = brands.find((b) => b.slug === slug);
     if (!brand) return null;
-    const seriesRows = await db.select({ s: deviceSeries, deviceCount: sql<number>`(SELECT count(*) FROM devices d WHERE d.series_id = ${deviceSeries.id} AND d.status = 'ACTIVE')::int` })
+    const seriesRows = await db.select({ s: deviceSeries, deviceCount: sql<number>`(SELECT count(*) FROM devices d WHERE d.series_id = ${sql.raw("device_series.id")} AND d.status = 'ACTIVE')::int` })
       .from(deviceSeries).where(and(eq(deviceSeries.brandId, brand.id), eq(deviceSeries.status, 'ACTIVE'))).orderBy(deviceSeries.displayOrder, deviceSeries.name);
     const series: FinderSeriesDto[] = seriesRows.map((r) => ({ id: r.s.id, name: r.s.name, slug: r.s.slug, deviceCount: r.deviceCount }));
     const deviceRows = await db.select({
       d: devices,
       seriesName: deviceSeries.name,
-      verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${devices.id} AND ${VERIFIED_PUBLIC})::int`,
-      demandCount: sql<number>`(SELECT count(*) FROM battery_finder_events e WHERE e.device_id = ${devices.id} AND e.occurred_at > now() - interval '90 days')::int`,
+      verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${sql.raw("devices.id")} AND ${VERIFIED_PUBLIC})::int`,
+      demandCount: sql<number>`(SELECT count(*) FROM battery_finder_events e WHERE e.device_id = ${sql.raw("devices.id")} AND e.occurred_at > now() - interval '90 days')::int`,
     }).from(devices).leftJoin(deviceSeries, eq(deviceSeries.id, devices.seriesId)).where(and(eq(devices.brandId, brand.id), eq(devices.status, 'ACTIVE'))).orderBy(devices.model, devices.modelNumber);
     return {
       brand,
@@ -99,7 +100,7 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
     const [row] = await db.select({
       d: devices,
       seriesName: deviceSeries.name,
-      verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${devices.id} AND ${VERIFIED_PUBLIC})::int`,
+      verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${sql.raw("devices.id")} AND ${VERIFIED_PUBLIC})::int`,
     }).from(devices).leftJoin(deviceSeries, eq(deviceSeries.id, devices.seriesId)).where(where).limit(1);
     if (!row) return null;
     // A merged device answers as its target so old links keep working.
@@ -191,7 +192,7 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
       supplierCodeNormalised: sql<string | null>`NULLIF(upper(regexp_replace(coalesce(${batteryProfiles.supplierCode}, ''), '[^A-Za-z0-9]', '', 'g')), '')`,
       barcode: batteryProfiles.barcode,
       lifecycleStatus: batteryProfiles.lifecycleStatus,
-      aliasesNormalised: sql<string[]>`COALESCE((SELECT array_agg(a.alias_normalised) FROM battery_aliases a WHERE a.battery_product_id = ${batteryProfiles.productId} AND a.is_active), '{}')`,
+      aliasesNormalised: sql<string[]>`COALESCE((SELECT array_agg(a.alias_normalised) FROM battery_aliases a WHERE a.battery_product_id = ${sql.raw("battery_profiles.product_id")} AND a.is_active), '{}')`,
     }).from(batteryProfiles).where(sql`${batteryProfiles.lifecycleStatus} <> 'ARCHIVED'`);
     return rows;
   }

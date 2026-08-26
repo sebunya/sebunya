@@ -141,44 +141,35 @@ export class BatteryImportUseCases {
   }
 
   // --------------------------------------------------------------- preview
-  private async catalogueContext(): Promise<CatalogueContext> {
+  /**
+   * The preview is a PURE pass over the rows (the domain validator takes no
+   * promises), so everything it will ask the database is loaded first and
+   * answered from these maps. `preload` fills the code cache; the caller adds
+   * the claim, stock and receipt caches for the import types that need them.
+   */
+  private async catalogueContext(): Promise<CatalogueContext & { preload(codes: string[]): Promise<void> }> {
     const repo = this.batteryRepo;
-    const compat = this.compatRepo;
-    const devices = this.deviceRepo;
-    const ledger = this.ledgerRepo;
-    const locations = await ledger.listLocations();
-    const cache = new Map<string, ReturnType<CatalogueContext['resolveBattery']>>();
-    // Preview runs synchronously over rows; preload what the rows will ask for.
+    const locations = await this.ledgerRepo.listLocations();
+    const codes = new Map<string, ReturnType<CatalogueContext['resolveBattery']>>();
     return {
-      resolveBattery: (code: string) => {
-        const key = normaliseBatteryCode(code);
-        if (!key) return null;
-        return cache.get(key) ?? null;
-      },
+      resolveBattery: (code: string) => codes.get(normaliseBatteryCode(code)) ?? null,
       findClaim: () => null,
       locationExists: (code) => locations.some((l) => l.code === code.trim().toUpperCase() && l.status === 'ACTIVE'),
       receiptAlreadyApplied: () => false,
       currentStock: () => null,
-      // Async preload helpers (not part of the domain interface).
-      ...({
-        async preload(rows: Array<{ code: string | null }>) {
-          for (const r of rows) {
-            if (!r.code) continue;
-            const key = normaliseBatteryCode(r.code);
-            if (!key || cache.has(key)) continue;
-            const barcode = /^\d{8,14}$/.test(r.code.replace(/\s+/g, '')) ? r.code.replace(/\s+/g, '') : null;
-            const hits = await repo.resolveCode(batteryCodeCandidates(r.code), barcode);
-            const distinct = Array.from(new Map(hits.map((h) => [h.productId, h])).values());
-            if (distinct.length === 1) cache.set(key, { productId: distinct[0].productId, canonicalCode: distinct[0].canonicalCode, lifecycle: distinct[0].lifecycleStatus });
-            else if (distinct.length > 1) cache.set(key, { ambiguous: distinct.map((d) => d.canonicalCode) });
-            else cache.set(key, null);
-          }
-        },
-        compat,
-        devices,
-        ledger,
-      } as Record<string, unknown>),
-    } as CatalogueContext;
+      async preload(rawCodes: string[]) {
+        for (const raw of rawCodes) {
+          const key = normaliseBatteryCode(raw);
+          if (!key || codes.has(key)) continue;
+          const digits = raw.replace(/\s+/g, '');
+          const hits = await repo.resolveCode(batteryCodeCandidates(raw), /^\d{8,14}$/.test(digits) ? digits : null);
+          const distinct = Array.from(new Map(hits.map((h) => [h.productId, h])).values());
+          if (distinct.length === 1) codes.set(key, { productId: distinct[0].productId, canonicalCode: distinct[0].canonicalCode, lifecycle: distinct[0].lifecycleStatus });
+          else if (distinct.length > 1) codes.set(key, { ambiguous: distinct.map((d) => d.canonicalCode) });
+          else codes.set(key, null);
+        }
+      },
+    };
   }
 
   async preview(input: { id: string; expectedVersion: number; actorId: string }) {
@@ -189,9 +180,8 @@ export class BatteryImportUseCases {
     const rows = await this.repo.rows(input.id);
     const mapping = session.mapping;
     const ctx = await this.catalogueContext();
-    const codeField = session.importType === 'BATTERY_CATALOGUE' ? ['canonicalCode', 'sourceItem'] : ['batteryCode'];
-    const codes = rows.flatMap((r) => codeField.map((f) => (mapping[f] ? String(r.sourceData[mapping[f]] ?? '').trim() : '')).filter(Boolean).map((code) => ({ code })));
-    await (ctx as unknown as { preload: (r: Array<{ code: string | null }>) => Promise<void> }).preload(codes);
+    const codeFields = session.importType === 'BATTERY_CATALOGUE' ? ['canonicalCode', 'sourceItem'] : ['batteryCode'];
+    await ctx.preload(rows.flatMap((r) => codeFields.map((f) => (mapping[f] ? String(r.sourceData[mapping[f]] ?? '').trim() : '')).filter(Boolean)));
 
     // Type-specific context that needs the database.
     if (session.importType === 'COMPATIBILITY') {
@@ -393,8 +383,12 @@ export class BatteryImportUseCases {
       try {
         const ids = row.appliedRecordIds ?? {};
         switch (session.importType) {
-          case 'BATTERY_CATALOGUE':
-            for (const productId of ids.profiles ? ids.products ?? [] : []) {
+          case 'BATTERY_CATALOGUE': {
+            // Only batteries this import CREATED are rolled back. A row that
+            // filled in blanks on a battery that already existed leaves that
+            // battery alone: it was not ours to remove.
+            const createdBatteries = ids.profiles?.length ? ids.products ?? [] : [];
+            for (const productId of createdBatteries) {
               const found = await this.batteryRepo.findByProductId(productId);
               if (!found) continue;
               if (found.profile.lifecycleStatus === 'ACTIVE') throw new Error(`${found.profile.canonicalCode} was published since import; not rolled back.`);
@@ -402,6 +396,7 @@ export class BatteryImportUseCases {
               await this.batteries.transition(productId, 'ARCHIVE', input.actorId, `Import rollback: ${input.reason}`);
             }
             break;
+          }
           case 'COMPATIBILITY':
             for (const claimId of ids.claims ?? []) {
               const claim = await this.compatRepo.find(claimId);

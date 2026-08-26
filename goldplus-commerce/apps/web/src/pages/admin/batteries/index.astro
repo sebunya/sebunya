@@ -1,0 +1,140 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { adminBattery, batteryMessage } from '../../../lib/batteries';
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/batteries', 303);
+
+interface Dashboard {
+  total: number; active: number; draft: number; review: number; ready: number; archived: number;
+  withoutStock: number; withoutPrice: number; withoutImage: number; missingSpecs: number;
+  unverifiedBatteries: number; unverifiedClaims: number; claimsInReview: number; conditionalClaims: number;
+  aliasConflicts: number; unresolvedImportRows: number; openRequests: number;
+  recentChanges: Array<{ entity: string; entityId: string; action: string; at: string; actorId: string | null; label: string | null }>;
+}
+interface DemandRow { query: string; searches: number }
+interface Demand { noResultQueries: DemandRow[]; devicesWithoutBattery: Array<{ deviceId: string; label: string; searches: number }> }
+
+const [dash, demand] = await Promise.all([
+  adminBattery<Dashboard>('/dashboard', token),
+  adminBattery<Demand>('/demand/overview?days=30', token),
+]);
+const d = dash.data;
+
+// Every number links to the work queue that contains exactly those records.
+const tiles: Array<{ label: string; value: number; href: string; tone: 'plain' | 'work' | 'block' }> = d ? [
+  { label: 'Battery SKUs', value: d.total, href: '/admin/batteries/catalogue', tone: 'plain' },
+  { label: 'Live', value: d.active, href: '/admin/batteries/catalogue?status=ACTIVE', tone: 'plain' },
+  { label: 'Ready to publish', value: d.ready, href: '/admin/batteries/catalogue?status=READY', tone: 'work' },
+  { label: 'In review', value: d.review, href: '/admin/batteries/catalogue?status=REVIEW', tone: 'work' },
+  { label: 'Drafts', value: d.draft, href: '/admin/batteries/catalogue?status=DRAFT', tone: 'work' },
+  { label: 'No stock recorded', value: d.withoutStock, href: '/admin/batteries/catalogue?missing=stock', tone: 'block' },
+  { label: 'No price', value: d.withoutPrice, href: '/admin/batteries/catalogue?missing=price', tone: 'block' },
+  { label: 'No image', value: d.withoutImage, href: '/admin/batteries/catalogue?missing=image', tone: 'block' },
+  { label: 'Missing capacity or voltage', value: d.missingSpecs, href: '/admin/batteries/catalogue?missing=specs', tone: 'block' },
+  { label: 'Battery code unconfirmed', value: d.unverifiedBatteries, href: '/admin/batteries/catalogue?verification=UNVERIFIED', tone: 'block' },
+  { label: 'Compatibility awaiting review', value: d.claimsInReview, href: '/admin/batteries/compatibility?workflowStatus=REVIEW', tone: 'work' },
+  { label: 'Unverified compatibility claims', value: d.unverifiedClaims, href: '/admin/batteries/compatibility?workflowStatus=DRAFT', tone: 'work' },
+  { label: 'Conditional fits', value: d.conditionalClaims, href: '/admin/batteries/compatibility?evidenceStatus=CONDITIONAL', tone: 'plain' },
+  { label: 'Alias conflicts', value: d.aliasConflicts, href: '/admin/batteries/catalogue?missing=code', tone: 'block' },
+  { label: 'Unresolved import rows', value: d.unresolvedImportRows, href: '/admin/batteries/imports', tone: 'work' },
+  { label: 'Open battery requests', value: d.openRequests, href: '/admin/batteries/demand', tone: 'work' },
+] : [];
+
+const toneClass = (tone: string, value: number) =>
+  value === 0 ? 'border-slate-200 bg-white text-slate-400'
+    : tone === 'block' ? 'border-amber-200 bg-amber-50 text-amber-900'
+    : tone === 'work' ? 'border-blue-200 bg-blue-50 text-blue-900'
+    : 'border-slate-200 bg-white text-brand-dark';
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+---
+
+<AdminLayout title="Batteries" description="Battery catalogue, devices, compatibility, stock and customer demand.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <div class="mb-8 pb-6 border-b border-gray-200 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Battery operations</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+          One physical battery is one product with one price and one stock balance, and it fits as many phones as you
+          have checked. Every number below opens the exact records it counts.
+        </p>
+      </div>
+      <nav class="flex flex-wrap gap-2 text-xs font-black uppercase tracking-widest">
+        <a href="/admin/batteries/catalogue" class="rounded-lg border border-gray-300 px-3 py-2 hover:border-brand-primary">Catalogue</a>
+        <a href="/admin/batteries/devices" class="rounded-lg border border-gray-300 px-3 py-2 hover:border-brand-primary">Devices</a>
+        <a href="/admin/batteries/compatibility" class="rounded-lg border border-gray-300 px-3 py-2 hover:border-brand-primary">Compatibility</a>
+        <a href="/admin/batteries/stock" class="rounded-lg border border-gray-300 px-3 py-2 hover:border-brand-primary">Stock</a>
+        <a href="/admin/batteries/imports" class="rounded-lg border border-gray-300 px-3 py-2 hover:border-brand-primary">Imports</a>
+        <a href="/admin/batteries/demand" class="rounded-lg border border-gray-300 px-3 py-2 hover:border-brand-primary">Demand</a>
+        <a href="/admin/batteries/finder-settings" class="rounded-lg border border-gray-300 px-3 py-2 hover:border-brand-primary">Finder settings</a>
+      </nav>
+    </div>
+
+    {!dash.ok && (
+      <div role="status" class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+        {batteryMessage(dash.error)} No figures are shown rather than figures we cannot stand behind.
+      </div>
+    )}
+
+    {d && (
+      <>
+        <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-4 gap-3 mb-10">
+          {tiles.map((t) => (
+            <a href={t.href} class={`rounded-2xl border p-4 shadow-sm transition-colors hover:border-brand-primary ${toneClass(t.tone, t.value)}`}>
+              <p class="text-3xl font-black tabular-nums">{t.value}</p>
+              <p class="text-[10px] uppercase font-black tracking-widest mt-1">{t.label}</p>
+            </a>
+          ))}
+        </div>
+
+        <div class="grid lg:grid-cols-2 gap-6">
+          <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+            <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">Searches we could not answer (last 30 days)</h3>
+            {demand.data && demand.data.noResultQueries.length > 0 ? (
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+                    <th class="px-5 py-3">What a customer typed</th>
+                    <th class="px-5 py-3 text-right">Times</th>
+                  </tr>
+                </thead>
+                <tbody class="text-xs">
+                  {demand.data.noResultQueries.slice(0, 10).map((q) => (
+                    <tr class="border-b border-gray-50">
+                      <td class="px-5 py-3 font-mono text-brand-dark">{q.query}</td>
+                      <td class="px-5 py-3 text-right font-bold tabular-nums">{q.searches}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p class="px-5 py-8 text-center text-sm text-gray-400 italic">
+                {demand.ok ? 'No unanswered searches recorded yet.' : 'Demand figures could not be loaded.'}
+              </p>
+            )}
+            <div class="px-5 py-3 border-t border-gray-100"><a href="/admin/batteries/demand" class="text-[10px] font-black uppercase tracking-widest text-brand-primary">Open the demand queue</a></div>
+          </section>
+
+          <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+            <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">Recently changed</h3>
+            {d.recentChanges.length > 0 ? (
+              <ul class="divide-y divide-gray-50 text-xs">
+                {d.recentChanges.map((c) => (
+                  <li class="px-5 py-3 flex items-center justify-between gap-3">
+                    <span class="font-bold text-brand-dark">{c.action.replace(/_/g, ' ').toLowerCase()}</span>
+                    <span class="text-gray-500 truncate max-w-[45%]">{c.label ?? c.entity}</span>
+                    <span class="text-gray-400 whitespace-nowrap">{when(c.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p class="px-5 py-8 text-center text-sm text-gray-400 italic">Nothing has been changed yet.</p>
+            )}
+            <div class="px-5 py-3 border-t border-gray-100"><a href="/admin/audit" class="text-[10px] font-black uppercase tracking-widest text-brand-primary">Open the full audit log</a></div>
+          </section>
+        </div>
+      </>
+    )}
+  </div>
+</AdminLayout>

@@ -1,0 +1,192 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { adminBattery, batteryMessage } from '../../../lib/batteries';
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/batteries/compatibility', 303);
+
+interface Claim {
+  id: string; workflowStatus: string; evidenceStatus: string; evidenceSource: string | null; publicCondition: string | null; notes: string | null;
+  createdBy: string | null; submittedBy: string | null; reviewedBy: string | null; reviewNote: string | null; updatedAt: string;
+  battery: { canonicalCode: string; name: string; slug: string; lifecycleStatus: string };
+  device: { brandName: string; model: string; modelNumber: string | null; variant: string | null; slug: string; status: string; label: string };
+}
+interface Battery { profile: { canonicalCode: string }; product: { productId: string; name: string } }
+interface Device { id: string; brandName: string; model: string; modelNumber: string | null; variant: string | null; status: string }
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  const call = async (path: string, body: unknown, okText: string) => {
+    const res = await adminBattery(path, token, { method: 'POST', body: JSON.stringify(body) });
+    notice = res.ok ? { kind: 'success', text: okText } : { kind: 'error', text: batteryMessage(res.error) };
+  };
+  if (intent === 'create') {
+    const deviceIds = form.getAll('deviceIds').map(String).filter(Boolean);
+    const res = await adminBattery<{ created: unknown[]; skipped: Array<{ reason: string }> }>('/compatibility', token, { method: 'POST', body: JSON.stringify({
+      productId: String(form.get('productId')),
+      deviceIds,
+      evidenceStatus: String(form.get('evidenceStatus') ?? 'SUPPLIER_LISTED'),
+      evidenceSource: String(form.get('evidenceSource') ?? '').trim() || null,
+      publicCondition: String(form.get('publicCondition') ?? '').trim() || null,
+      notes: String(form.get('notes') ?? '').trim() || null,
+    }) });
+    notice = res.ok
+      ? { kind: 'success', text: `${res.data?.created.length ?? 0} claim(s) created as drafts, one per phone.${res.data?.skipped.length ? ` Skipped: ${res.data.skipped.map((s) => s.reason).join(' ')}` : ''}` }
+      : { kind: 'error', text: batteryMessage(res.error) };
+  } else if (intent === 'transition') {
+    await call(`/compatibility/${String(form.get('claimId'))}/transition`, {
+      action: String(form.get('action')),
+      evidenceStatus: String(form.get('evidenceStatus') ?? '') || undefined,
+      publicCondition: String(form.get('publicCondition') ?? '').trim() || null,
+      reason: String(form.get('reason') ?? '').trim() || null,
+    }, 'Claim updated.');
+  }
+}
+
+const url = new URL(Astro.request.url);
+const workflowStatus = url.searchParams.get('workflowStatus') ?? 'REVIEW';
+const evidenceStatus = url.searchParams.get('evidenceStatus') ?? '';
+const productId = url.searchParams.get('productId') ?? '';
+const query = new URLSearchParams();
+if (workflowStatus) query.set('workflowStatus', workflowStatus);
+if (evidenceStatus) query.set('evidenceStatus', evidenceStatus);
+if (productId) query.set('productId', productId);
+query.set('limit', '300');
+
+const [claimsRes, batteriesRes, devicesRes] = await Promise.all([
+  adminBattery<Claim[]>(`/compatibility?${query.toString()}`, token),
+  adminBattery<Battery[]>('/catalogue?status=ALL&limit=500', token),
+  adminBattery<Device[]>('/devices?limit=500', token),
+]);
+const claims = claimsRes.data ?? [];
+const batteries = batteriesRes.data ?? [];
+const devices = (devicesRes.data ?? []).filter((d) => d.status === 'ACTIVE');
+const EVIDENCE = [['SUPPLIER_LISTED', 'A supplier lists it (not checked by us)'], ['PACKAGE_VERIFIED', 'The GoldPlus pack says so'], ['FIT_TESTED', 'We fitted it to the phone'], ['VERIFIED_EXACT', 'Confirmed exact for this model number'], ['CONDITIONAL', 'Fits with a condition']];
+const STATUS_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-800 border-green-200', READY: 'bg-blue-50 text-blue-800 border-blue-200', REVIEW: 'bg-amber-50 text-amber-900 border-amber-200', DRAFT: 'bg-slate-100 text-slate-700 border-slate-200', ARCHIVED: 'bg-slate-50 text-slate-500 border-slate-200' };
+const TABS = [['REVIEW', 'Waiting for a checker'], ['DRAFT', 'Drafts'], ['READY', 'Verified, not published'], ['ACTIVE', 'Live'], ['ARCHIVED', 'Archived'], ['ALL', 'Everything']];
+---
+
+<AdminLayout title="Battery compatibility" description="Connect a battery to an exact phone, check the evidence, then publish." activePath="/admin/batteries">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Compatibility</p>
+    <div class="mb-6 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Compatibility</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+        A claim starts as a draft, is submitted, is checked by a second person against real evidence, and only then can
+        be published. A customer never sees a claim that has not been published, and an unchecked one is labelled as
+        unchecked.
+      </p>
+    </div>
+
+    {notice && <div role="status" class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+    {!claimsRes.ok && <div role="status" class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{batteryMessage(claimsRes.error)}</div>}
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-6">
+      <h3 class="text-sm font-black text-brand-dark mb-1">Connect a battery to phones</h3>
+      <p class="text-xs text-gray-500 mb-4">Pick several phones to save typing. Each one still becomes its own claim and is reviewed on its own.</p>
+      <form method="POST" class="grid gap-3 md:grid-cols-2">
+        <input type="hidden" name="intent" value="create" />
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery</span>
+          <select name="productId" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="">Choose a battery</option>
+            {batteries.map((b) => <option value={b.product.productId} selected={b.product.productId === productId}>{b.profile.canonicalCode} · {b.product.name}</option>)}
+          </select></label>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Phones (hold to pick several)</span>
+          <select name="deviceIds" multiple size="6" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {devices.map((d) => <option value={d.id}>{d.brandName} {d.model}{d.modelNumber ? ` (${d.modelNumber})` : ''}{d.variant ? ` ${d.variant}` : ''}</option>)}
+          </select></label>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">What proves it</span>
+          <select name="evidenceStatus" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {EVIDENCE.map(([v, l]) => <option value={v}>{l}</option>)}
+          </select></label>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Evidence source (needed for anything above a supplier listing)</span>
+          <input name="evidenceSource" maxlength="300" placeholder="Fitted on the bench, 26 Aug, by ..." class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Condition shown to the customer (needed for a conditional fit)</span>
+          <input name="publicCondition" maxlength="300" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Internal note</span>
+          <input name="notes" maxlength="1000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <div class="md:col-span-2"><button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Create draft claims</button></div>
+      </form>
+    </section>
+
+    <nav class="flex flex-wrap gap-2 mb-4">
+      {TABS.map(([v, l]) => (
+        <a href={`/admin/batteries/compatibility?workflowStatus=${v}`} class={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-widest ${v === workflowStatus ? 'border-brand-primary bg-brand-primary/10 text-brand-dark' : 'border-gray-300 text-gray-600 hover:border-brand-primary'}`}>{l}</a>
+      ))}
+    </nav>
+
+    <div class="space-y-3">
+      {claims.map((c) => (
+        <article class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="font-black text-brand-dark"><span class="font-mono">{c.battery.canonicalCode}</span> fits {c.device.label}</p>
+              <p class="text-xs text-gray-500 mt-1">
+                {c.evidenceStatus.replace(/_/g, ' ').toLowerCase()}
+                {c.evidenceSource ? ` · ${c.evidenceSource}` : ' · no evidence source recorded'}
+                {c.device.status !== 'ACTIVE' ? ` · the phone is ${c.device.status.toLowerCase()}` : ''}
+                {c.battery.lifecycleStatus !== 'ACTIVE' ? ` · the battery is ${c.battery.lifecycleStatus.toLowerCase()}, so this fit is not public yet` : ''}
+              </p>
+              {c.publicCondition && <p class="text-xs text-amber-900 mt-1">Condition shown to the customer: {c.publicCondition}</p>}
+              {c.notes && <p class="text-xs text-gray-400 mt-1">{c.notes}</p>}
+            </div>
+            <span class={`text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border ${STATUS_BADGE[c.workflowStatus]}`}>{c.workflowStatus}</span>
+          </div>
+
+          <div class="mt-4 flex flex-wrap gap-2 items-end border-t border-gray-100 pt-4">
+            {c.workflowStatus === 'DRAFT' && (
+              <form method="POST" class="inline"><input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="SUBMIT" />
+                <button type="submit" class="rounded-lg bg-brand-dark px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white">Submit for checking</button></form>
+            )}
+            {c.workflowStatus === 'REVIEW' && (
+              <>
+                <form method="POST" class="flex flex-wrap gap-2 items-end">
+                  <input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="VERIFY" />
+                  <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Verdict</span>
+                    <select name="evidenceStatus" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs">
+                      {EVIDENCE.filter(([v]) => v !== 'SUPPLIER_LISTED').map(([v, l]) => <option value={v} selected={v === c.evidenceStatus}>{l}</option>)}
+                    </select></label>
+                  <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Condition, if conditional</span>
+                    <input name="publicCondition" value={c.publicCondition ?? ''} maxlength="300" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs" /></label>
+                  <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">What you checked</span>
+                    <input name="reason" maxlength="500" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs" /></label>
+                  <button type="submit" class="rounded-lg bg-brand-primary px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white">Verify</button>
+                </form>
+                <form method="POST" class="flex gap-2 items-end">
+                  <input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="REJECT" />
+                  <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Why it does not fit</span>
+                    <input name="reason" required maxlength="500" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs" /></label>
+                  <button type="submit" class="rounded-lg border border-red-300 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-red-700">Reject</button>
+                </form>
+              </>
+            )}
+            {c.workflowStatus === 'READY' && (
+              <form method="POST" class="inline"><input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="PUBLISH" />
+                <button type="submit" class="rounded-lg bg-brand-primary px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white">Publish this fit</button></form>
+            )}
+            {c.workflowStatus === 'ACTIVE' && (
+              <form method="POST" class="inline"><input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="UNPUBLISH" />
+                <button type="submit" class="rounded-lg border border-gray-300 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-gray-700">Take it off the site</button></form>
+            )}
+            {c.workflowStatus !== 'ARCHIVED' && (
+              <form method="POST" class="inline"><input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="ARCHIVE" />
+                <button type="submit" class="rounded-lg border border-gray-300 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-gray-600">Archive</button></form>
+            )}
+            {c.workflowStatus === 'ARCHIVED' && (
+              <form method="POST" class="inline"><input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="RESTORE" />
+                <button type="submit" class="rounded-lg border border-gray-300 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-gray-600">Restore</button></form>
+            )}
+          </div>
+          {c.reviewNote && <p class="text-xs text-gray-400 mt-3">Checker note: {c.reviewNote}</p>}
+        </article>
+      ))}
+      {claims.length === 0 && claimsRes.ok && (
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-12 text-center text-gray-400 italic">Nothing in this queue.</div>
+      )}
+    </div>
+  </div>
+</AdminLayout>

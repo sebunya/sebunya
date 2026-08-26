@@ -5,6 +5,7 @@ import {
   type BatteryFinderConfig,
   type BatteryRequestStatus,
   type FinderBatteryResultDto,
+  type FinderBrandDto,
   type FinderDeviceDto,
   type FinderResolution,
   type PublicFitState,
@@ -13,7 +14,7 @@ import type { IBatteryFinderRepository, PublicFitRow, FinderEventWrite } from '.
 import type { IBatteryCatalogueRepository } from '../../ports/IBatteryCatalogueRepository';
 import type { IAuditRepository } from '../../ports/IAuditRepository';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
-import { orderBrands, orderModels, orderSeries } from '../../../domain/batteries/DeviceHierarchy';
+import { orderBrands, orderModels } from '../../../domain/batteries/DeviceHierarchy';
 import { publicFitLabel, publicFitRank, publicFitState } from '../../../domain/batteries/CompatibilityWorkflow';
 import { isExactTier, rankSearch } from '../../../domain/batteries/FinderRanking';
 import { normaliseBatteryCode } from '../../../domain/batteries/BatteryCodes';
@@ -65,19 +66,22 @@ export class BatteryFinderUseCases {
   }
 
   // ---------------------------------------------------------------- browse
-  async brands() {
+  async brands(): Promise<FinderBrandDto[]> {
     const cfg = await this.config();
     const brands = await this.repo.brands(cfg.showAwaitingVerification);
-    return orderBrands(brands.map((b) => ({ ...b, displayOrder: 0, demandCount: 0 })), cfg.brandOrderMode === 'MANUAL' ? 'MANUAL' : cfg.brandOrderMode).map(({ displayOrder: _o, demandCount: _d, ...b }) => b);
+    // The admin's chosen mode decides the order; the repository only supplies
+    // the inputs (manual order, verified coverage, recent demand).
+    return orderBrands(brands, cfg.brandOrderMode).map(({ displayOrder: _o, demandCount: _d, ...b }) => b);
   }
 
   async brand(slug: string) {
     const cfg = await this.config();
     const found = await this.repo.brandBySlug(slug, cfg.showAwaitingVerification);
     if (!found) throw notFound('Brand');
-    const series = orderSeries(found.series.map((s) => ({ ...s, displayOrder: 0, demandCount: 0, verifiedFits: 0 }))).map(({ displayOrder: _o, demandCount: _d, verifiedFits: _v, ...s }) => s);
-    const devices = orderModels(found.devices.map((d) => ({ ...d, modelNumber: d.modelNumber, demandCount: d.demandCount }))).map(({ displayOrder: _o, demandCount: _d, ...d }) => d);
-    return { brand: found.brand, series, devices };
+    // The repository already returns series in their manual order; models are
+    // ordered here so featured, newer and more-searched phones come first.
+    const devices = orderModels(found.devices).map(({ displayOrder: _o, demandCount: _d, seriesId: _s, ...d }) => d);
+    return { brand: found.brand, series: found.series, devices };
   }
 
   private toResult(row: PublicFitRow, state: PublicFitState): FinderBatteryResultDto {

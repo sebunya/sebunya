@@ -16,6 +16,7 @@ import { getTaxonomy } from '../../lib/taxonomy';
 import { previewRecommendationRules, productToRecommendationItem } from '../../lib/recommendation-display';
 import { breadcrumbJsonLd, serializeJsonLd } from '../../lib/jsonld';
 import { getBusinessInfo } from '../../lib/businessInfo';
+import { publicBattery, parseDeviceCookie, serialiseDeviceCookie, DEVICE_COOKIE, FIT_BADGE } from '../../lib/batteries';
 
 const { slug } = Astro.params;
 const searchQuery = Astro.url.searchParams.get('searchQuery') ?? '';
@@ -253,7 +254,36 @@ if (product?.categoryName === 'Sound Devices') {
 const pdpHasPrice = product && typeof product.retailPriceUgx === 'number' && product.retailPriceUgx > 0;
 const pdpDiscount = await getStorefrontDiscount();
 const pdpOnSale = pdpHasPrice && pdpDiscount.active && pdpDiscount.percentBps > 0;
-const pdpSaleUgx = pdpOnSale ? salePriceUgx(product!.retailPriceUgx!, pdpDiscount.percentBps) : null;
+// The floor is a required argument: without it the page would advertise a price
+// the checkout refuses to honour.
+const pdpSaleUgx = pdpOnSale ? salePriceUgx(product!.retailPriceUgx!, pdpDiscount.percentBps, pdpDiscount.priceFloorUgx) : null;
+
+/**
+ * Battery block. A battery product carries its verified device list, its specs
+ * and, when the customer came from the finder, whether it fits the phone they
+ * picked. A mismatch is stated; it is never silently dropped.
+ */
+const selectedDeviceParam = (Astro.url.searchParams.get('device') ?? '').trim().slice(0, 160);
+if (selectedDeviceParam && /^[a-z0-9-]{1,160}$/.test(selectedDeviceParam)) {
+  const chosen = await publicBattery<{ device: { slug: string; label: string } }>(`/finder/devices/${encodeURIComponent(selectedDeviceParam)}`);
+  if (chosen.ok) {
+    Astro.cookies.set(DEVICE_COOKIE, serialiseDeviceCookie(chosen.data.device), {
+      path: '/', httpOnly: false, sameSite: 'lax', secure: Astro.url.protocol === 'https:', maxAge: 60 * 60 * 24 * 30,
+    });
+  }
+}
+const selectedDevice = parseDeviceCookie(Astro.cookies.get(DEVICE_COOKIE)?.value);
+
+interface BatteryPublic {
+  battery: { productId: string; canonicalCode: string; capacityMah: number | null; nominalVoltageMv: number | null; warrantyMonths: number | null; chemistry: string | null; publicNotes: string | null; lifecycleStatus: string };
+  devices: Array<{ slug: string; label: string; modelNumber: string | null; fitState: string; fitLabel: string; condition: string | null }>;
+  config: { modelNumberHelp: string; requestCta: string; awaitingVerificationNote: string; conditionalNote: string; whatsappPrefill: string };
+  isPublished: boolean;
+}
+const batteryRes = product ? await publicBattery<BatteryPublic>(`/products/${encodeURIComponent(product.slug)}`) : null;
+const battery = batteryRes && batteryRes.ok && batteryRes.data.isPublished ? batteryRes.data : null;
+const fitForSelected = battery && selectedDevice ? battery.devices.find((dv) => dv.slug === selectedDevice.slug) ?? null : null;
+const CHEMISTRY_LABEL: Record<string, string> = { LI_ION: 'Li-ion', LI_POLYMER: 'Li-polymer', NIMH: 'NiMH', OTHER: 'Other' };
 
 const pdpCopy = product ? pdpDescriptions[product.slug] : null;
 // DB copy (admin-editable) is the source of truth; the hardcoded map is only a
@@ -408,6 +438,20 @@ if (product) {
             )}
           </div>
 
+          {battery && selectedDevice && (
+            <div role="status" class={`mb-6 rounded-xl border px-4 py-3 text-sm ${fitForSelected ? FIT_BADGE[fitForSelected.fitState] ?? 'border-gray-200 bg-gray-50' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
+              <p class="font-bold">Buying for your {selectedDevice.label}</p>
+              {fitForSelected ? (
+                <p class="mt-1">{fitForSelected.fitLabel}.{fitForSelected.condition ? ` ${fitForSelected.condition}` : ''}</p>
+              ) : (
+                <p class="mt-1">
+                  We have not checked this battery against the {selectedDevice.label}. That does not mean it will not fit,
+                  it means we have not confirmed it. <a href={`/battery-finder?device=${encodeURIComponent(selectedDevice.slug)}`} class="font-bold underline">See what we have checked for it</a>.
+                </p>
+              )}
+            </div>
+          )}
+
           {(descIntro || descBody) && (
             <div class="mb-6 prose prose-sm max-w-none text-slate-600 leading-relaxed">
               {descIntro && <p class="font-bold text-gray-900 text-base mb-2">{descIntro}</p>}
@@ -508,9 +552,15 @@ if (product) {
             </p>
           )}
 
-          <a href={`/product-finder?compatibleWith=${encodeURIComponent(product.id)}`} class="block mb-8 rounded-xl border border-brand-primary/40 bg-brand-primary/5 px-5 py-4 text-sm font-semibold text-gray-900 hover:border-brand-primary">
-            See what works with this
-          </a>
+          {battery ? (
+            <a href="/battery-finder" class="block mb-8 rounded-xl border border-brand-primary/40 bg-brand-primary/5 px-5 py-4 text-sm font-semibold text-gray-900 hover:border-brand-primary">
+              Not sure this is your battery? Find it by your phone
+            </a>
+          ) : (
+            <a href={`/product-finder?compatibleWith=${encodeURIComponent(product.id)}`} class="block mb-8 rounded-xl border border-brand-primary/40 bg-brand-primary/5 px-5 py-4 text-sm font-semibold text-gray-900 hover:border-brand-primary">
+              See what works with this
+            </a>
+          )}
 
           </div>
 
@@ -530,6 +580,49 @@ if (product) {
         data-product-price={product.retailPriceUgx ?? ''}
         data-product-category={product.categoryName ?? ''}
       >
+        {battery && (
+          <div class="border-t border-slate-100 pt-10" aria-labelledby="battery-fits-heading">
+            <h2 id="battery-fits-heading" class="text-xl font-black text-slate-900">Phones this battery fits</h2>
+            <p class="mt-1 text-sm text-slate-600">
+              Every phone below has been checked and published by GoldPlus staff. A phone that is not listed has not been
+              checked; we will confirm it for you rather than guess.
+            </p>
+            {battery.devices.length > 0 ? (
+              <ul class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {battery.devices.map((dv) => (
+                  <li class="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div class="flex items-start justify-between gap-3">
+                      <a href={`/battery-finder?device=${encodeURIComponent(dv.slug)}`} class="text-sm font-bold text-slate-900 hover:text-brand-primary">{dv.label}</a>
+                      <span class={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${FIT_BADGE[dv.fitState] ?? 'border-slate-200 bg-slate-50 text-slate-600'}`}>{dv.fitLabel}</span>
+                    </div>
+                    {dv.modelNumber && <p class="mt-1 text-xs font-mono text-slate-500">{dv.modelNumber}</p>}
+                    {dv.fitState === 'CONDITIONAL' && dv.condition && <p class="mt-2 text-xs leading-relaxed text-amber-900">{dv.condition}</p>}
+                    {dv.fitState === 'AWAITING_VERIFICATION' && <p class="mt-2 text-xs leading-relaxed text-blue-900">{battery.config.awaitingVerificationNote}</p>}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                We have not published a checked phone for this battery yet. Ask us before you buy.
+              </p>
+            )}
+            <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 class="text-sm font-bold text-slate-900">Check your exact model number first</h3>
+              <p class="mt-1 text-xs leading-relaxed text-slate-600">{battery.config.modelNumberHelp}</p>
+              <a href="/battery-finder" class="mt-3 inline-block rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-900 hover:border-brand-primary">Find a battery by phone</a>
+            </div>
+            {(battery.battery.capacityMah || battery.battery.nominalVoltageMv || battery.battery.warrantyMonths || battery.battery.chemistry) && (
+              <dl class="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                {battery.battery.capacityMah && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-400">Capacity</dt><dd class="font-bold text-slate-900 mt-1">{battery.battery.capacityMah} mAh</dd></div>}
+                {battery.battery.nominalVoltageMv && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-400">Voltage</dt><dd class="font-bold text-slate-900 mt-1">{(battery.battery.nominalVoltageMv / 1000).toFixed(2)} V</dd></div>}
+                {battery.battery.chemistry && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-400">Chemistry</dt><dd class="font-bold text-slate-900 mt-1">{CHEMISTRY_LABEL[battery.battery.chemistry] ?? battery.battery.chemistry}</dd></div>}
+                {battery.battery.warrantyMonths != null && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-400">Warranty</dt><dd class="font-bold text-slate-900 mt-1">{battery.battery.warrantyMonths} months</dd></div>}
+              </dl>
+            )}
+            {battery.battery.publicNotes && <p class="mt-4 text-sm text-slate-600">{battery.battery.publicNotes}</p>}
+          </div>
+        )}
+
         {compatibilityEntries.length > 0 && (
           <div class="border-t border-slate-100 pt-10" aria-labelledby="compat-heading">
             <h2 id="compat-heading" class="text-xl font-black text-slate-900">Verified compatibility</h2>

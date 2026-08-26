@@ -1,0 +1,112 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { adminBattery, batteryMessage } from '../../../lib/batteries';
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/batteries/finder-settings', 303);
+
+interface Config {
+  headline: string; intro: string; findByPhoneLabel: string; searchByCodeLabel: string; searchPlaceholder: string;
+  modelNumberHelp: string; noResultHeadline: string; noResultBody: string; requestCta: string; whatsappPrefill: string;
+  awaitingVerificationNote: string; conditionalNote: string; outOfStockNote: string;
+  brandOrderMode: string; showAwaitingVerification: boolean; minVerifiedFitsForIndexing: number;
+}
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+let details: string[] = [];
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const text = (k: string) => String(form.get(k) ?? '');
+  const config = {
+    headline: text('headline'), intro: text('intro'), findByPhoneLabel: text('findByPhoneLabel'), searchByCodeLabel: text('searchByCodeLabel'),
+    searchPlaceholder: text('searchPlaceholder'), modelNumberHelp: text('modelNumberHelp'), noResultHeadline: text('noResultHeadline'),
+    noResultBody: text('noResultBody'), requestCta: text('requestCta'), whatsappPrefill: text('whatsappPrefill'),
+    awaitingVerificationNote: text('awaitingVerificationNote'), conditionalNote: text('conditionalNote'), outOfStockNote: text('outOfStockNote'),
+    brandOrderMode: text('brandOrderMode'),
+    showAwaitingVerification: !!form.get('showAwaitingVerification'),
+    minVerifiedFitsForIndexing: Number(form.get('minVerifiedFitsForIndexing')) || 0,
+  };
+  const res = await adminBattery<{ version: number }>('/finder-config', token, { method: 'PUT', body: JSON.stringify({ expectedVersion: Number(form.get('expectedVersion')), config }) });
+  if (res.ok) notice = { kind: 'success', text: 'Finder wording saved. Customers see it within a minute.' };
+  else {
+    notice = { kind: 'error', text: batteryMessage(res.error) };
+    details = Array.isArray(res.error?.details) ? (res.error!.details as string[]) : [];
+  }
+}
+
+const current = await adminBattery<{ config: Config; version: number }>('/finder-config', token);
+const c = current.data?.config;
+const version = current.data?.version ?? 0;
+const FIELDS: Array<[keyof Config, string, string, 'input' | 'textarea']> = [
+  ['headline', 'Headline', 'The first line a customer reads.', 'input'],
+  ['intro', 'Introduction', 'What the finder does and what it will not guess.', 'textarea'],
+  ['findByPhoneLabel', 'Find by phone tab', '', 'input'],
+  ['searchByCodeLabel', 'Search by code tab', '', 'input'],
+  ['searchPlaceholder', 'Search box placeholder', '', 'input'],
+  ['modelNumberHelp', 'How to find the exact model number', 'Shown when a search matches more than one phone, and on the no-result page.', 'textarea'],
+  ['noResultHeadline', 'No result headline', '', 'input'],
+  ['noResultBody', 'No result explanation', 'Say plainly that we have not checked it, and what to do next.', 'textarea'],
+  ['requestCta', 'Request button', '', 'input'],
+  ['whatsappPrefill', 'WhatsApp message prefix', 'The phone model is added to the end of this.', 'input'],
+  ['awaitingVerificationNote', 'Note on an unchecked fit', 'Shown beside a fit a supplier lists but we have not confirmed.', 'textarea'],
+  ['conditionalNote', 'Note on a conditional fit', '', 'input'],
+  ['outOfStockNote', 'Note when a verified battery is out of stock', '', 'input'],
+];
+---
+
+<AdminLayout title="Finder settings" description="The wording, ordering and honesty rules of the public battery finder." activePath="/admin/batteries">
+  <div class="container mx-auto px-6 lg:px-8 max-w-4xl">
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Finder settings</p>
+    <div class="mb-6 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Finder settings</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        Everything a customer reads on the battery finder, and how brands are ordered. No em or en dashes; the save is
+        refused if one slips in. <a href="/battery-finder" class="underline">Open the finder</a>.
+      </p>
+    </div>
+
+    {notice && (
+      <div role="status" class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+        {notice.text}
+        {details.length > 0 && <ul class="mt-2 font-normal list-disc pl-5">{details.map((d) => <li>{d}</li>)}</ul>}
+      </div>
+    )}
+    {!current.ok && <div role="status" class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{batteryMessage(current.error)}</div>}
+
+    {c && (
+      <form method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+        <input type="hidden" name="expectedVersion" value={version} />
+        {FIELDS.map(([key, label, hint, kind]) => (
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">{label}</span>
+            {hint && <span class="block text-xs text-gray-500 mt-0.5">{hint}</span>}
+            {kind === 'textarea'
+              ? <textarea name={key} rows="3" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{String(c[key])}</textarea>
+              : <input name={key} value={String(c[key])} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />}
+          </label>
+        ))}
+        <div class="grid md:grid-cols-3 gap-4 border-t border-gray-100 pt-4">
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Brand order</span>
+            <select name="brandOrderMode" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <option value="FEATURED_THEN_COVERAGE" selected={c.brandOrderMode === 'FEATURED_THEN_COVERAGE'}>Featured first, then coverage and demand</option>
+              <option value="MANUAL" selected={c.brandOrderMode === 'MANUAL'}>Exactly the order I set</option>
+              <option value="ALPHABETICAL" selected={c.brandOrderMode === 'ALPHABETICAL'}>Alphabetical</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Verified fits before the page is indexed</span>
+            <input name="minVerifiedFitsForIndexing" type="number" min="0" max="1000" value={c.minVerifiedFitsForIndexing} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <label class="flex items-start gap-2 text-xs font-bold text-gray-600 pt-6">
+            <input type="checkbox" name="showAwaitingVerification" checked={c.showAwaitingVerification} class="w-4 h-4 border-gray-300 rounded mt-0.5" />
+            <span>Show fits a supplier lists but we have not checked, labelled as unchecked. Turn this off to show only fits we have verified ourselves.</span>
+          </label>
+        </div>
+        <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Save finder wording</button>
+      </form>
+    )}
+  </div>
+</AdminLayout>

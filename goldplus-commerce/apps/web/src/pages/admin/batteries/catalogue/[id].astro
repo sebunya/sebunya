@@ -1,0 +1,359 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../../lib/session';
+import { adminBattery, batteryMessage, LIFECYCLE_BADGE, ugx } from '../../../../lib/batteries';
+
+const token = readSessionToken(Astro.request);
+const { id } = Astro.params;
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/batteries/catalogue/${id ?? ''}`, 303);
+
+interface Detail {
+  profile: Record<string, any>;
+  product: { productId: string; sku: string; slug: string; name: string; shortDescription: string; longDescription: string; priceUgx: number; primaryImageUrl: string | null; stockQuantity: number; approvalStatus: string; movementCount: number };
+  aliases: Array<{ id: string; alias: string; aliasType: string; source: string | null; isActive: boolean }>;
+  evidence: Array<{ id: string; url: string; kind: string; note: string | null; createdAt: string }>;
+  compatibility: Array<{ id: string; workflowStatus: string; evidenceStatus: string; publicCondition: string | null; device: { label: string; slug: string; status: string } }>;
+  inventory: { stock: number; reserved: number; available: number; movements: Array<{ id: string; movementType: string; quantityDelta: number; quantityAfter: number; reason: string; occurredAt: string; referenceNumber: string | null; unitCostUgx: number | null }> };
+  price: { retailUgx: number; hasRetailPrice: boolean };
+  readiness: { ready: boolean; blockers: Array<{ code: string; message: string }>; warnings: Array<{ code: string; message: string }> };
+  timeline: Array<{ id: string; action: string; entity: string; createdAt: string; actorId: string | null }>;
+}
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+
+if (Astro.request.method === 'POST' && id) {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  const call = async (path: string, body: unknown, okText: string, method: 'POST' | 'PUT' = 'POST') => {
+    const res = await adminBattery(`${path}`, token, { method, body: JSON.stringify(body) });
+    notice = res.ok ? { kind: 'success', text: okText } : { kind: 'error', text: batteryMessage(res.error) };
+  };
+  if (intent === 'profile') {
+    const num = (k: string) => (String(form.get(k) ?? '').trim() === '' ? null : Number(form.get(k)));
+    const text = (k: string) => (String(form.get(k) ?? '').trim() === '' ? null : String(form.get(k)).trim());
+    await call(`/catalogue/${id}`, {
+      canonicalCode: String(form.get('canonicalCode') ?? '').trim() || undefined,
+      name: String(form.get('name') ?? '').trim() || undefined,
+      shortDescription: String(form.get('shortDescription') ?? ''),
+      longDescription: String(form.get('longDescription') ?? ''),
+      codeStatus: String(form.get('codeStatus') ?? 'PROVISIONAL'),
+      batteryCategory: String(form.get('batteryCategory') ?? 'PHONE'),
+      chemistry: text('chemistry'),
+      capacityMah: num('capacityMah'),
+      nominalVoltageMv: form.get('voltageV') && String(form.get('voltageV')).trim() !== '' ? Math.round(Number(form.get('voltageV')) * 1000) : null,
+      warrantyMonths: num('warrantyMonths'),
+      barcode: text('barcode'),
+      supplierCode: text('supplierCode'),
+      supplierName: text('supplierName'),
+      supplierReference: text('supplierReference'),
+      connectorNotes: text('connectorNotes'),
+      packagingNotes: text('packagingNotes'),
+      safetyNotes: text('safetyNotes'),
+      internalNotes: text('internalNotes'),
+      publicNotes: text('publicNotes'),
+      priceUgx: num('priceUgx'),
+    }, 'Saved.', 'PUT');
+  } else if (intent === 'alias') {
+    await call(`/catalogue/${id}/aliases`, { alias: String(form.get('alias') ?? '').trim(), aliasType: String(form.get('aliasType') ?? 'SEARCH'), source: String(form.get('source') ?? '').trim() || null }, 'Alias added.');
+  } else if (intent === 'alias-archive' || intent === 'alias-restore') {
+    await call(`/catalogue/${id}/aliases/${String(form.get('aliasId'))}/${intent === 'alias-archive' ? 'archive' : 'restore'}`, {}, intent === 'alias-archive' ? 'Alias archived.' : 'Alias restored.');
+  } else if (intent === 'verify') {
+    await call(`/catalogue/${id}/verify`, { note: String(form.get('note') ?? '').trim() || null }, 'Battery verified against its pack.');
+  } else if (intent === 'transition') {
+    await call(`/catalogue/${id}/transition`, { action: String(form.get('action')), reason: String(form.get('reason') ?? '').trim() || null }, 'Status changed.');
+  } else if (intent === 'stock') {
+    const res = await adminBattery('/stock/movements', token, { method: 'POST', body: JSON.stringify({
+      productId: id,
+      movementType: String(form.get('movementType')),
+      quantity: Number(form.get('quantity')),
+      reason: String(form.get('reason') ?? '').trim(),
+      supplierName: String(form.get('supplierName') ?? '').trim() || null,
+      referenceNumber: String(form.get('referenceNumber') ?? '').trim() || null,
+      unitCostUgx: Number(form.get('unitCostUgx')) || null,
+    }) });
+    notice = res.ok ? { kind: 'success', text: 'Stock movement recorded.' } : { kind: 'error', text: batteryMessage(res.error) };
+  } else if (intent === 'evidence') {
+    const upload = new FormData();
+    for (const file of form.getAll('files')) if (file instanceof File && file.size > 0) upload.append('files', file);
+    upload.set('kind', String(form.get('kind') ?? 'OTHER'));
+    upload.set('note', String(form.get('note') ?? ''));
+    if (form.get('setPrimaryImage')) upload.set('setPrimaryImage', 'true');
+    const res = await adminBattery<{ stored: unknown[]; rejected: Array<{ filename: string; reason: string }> }>(`/catalogue/${id}/evidence`, token, { method: 'POST', form: upload });
+    notice = res.ok
+      ? { kind: 'success', text: `${res.data?.stored.length ?? 0} photo(s) stored.${res.data?.rejected.length ? ` Refused: ${res.data.rejected.map((r) => `${r.filename} (${r.reason.toLowerCase().replace(/_/g, ' ')})`).join(', ')}.` : ''}` }
+      : { kind: 'error', text: batteryMessage(res.error) };
+  }
+}
+
+const detail = await adminBattery<Detail>(`/catalogue/${id}`, token);
+const d = detail.data;
+const p = d?.profile;
+const voltage = p?.nominalVoltageMv ? (p.nominalVoltageMv / 1000).toFixed(2) : '';
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-800 border-green-200', READY: 'bg-blue-50 text-blue-800 border-blue-200', REVIEW: 'bg-amber-50 text-amber-900 border-amber-200', DRAFT: 'bg-slate-100 text-slate-700 border-slate-200', ARCHIVED: 'bg-slate-50 text-slate-500 border-slate-200' };
+---
+
+<AdminLayout title={p ? `Battery ${p.canonicalCode}` : 'Battery'} description="One battery: its identity, evidence, fits, price and stock." activePath="/admin/batteries">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1">
+      <a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / <a href="/admin/batteries/catalogue" class="hover:text-brand-primary">Catalogue</a> / {p?.canonicalCode ?? id}
+    </p>
+
+    {!detail.ok && (
+      <div role="status" class="my-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{batteryMessage(detail.error)}</div>
+    )}
+    {notice && (
+      <div role="status" class={`my-4 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>
+    )}
+
+    {d && p && (
+      <>
+        <div class="flex flex-wrap items-start justify-between gap-4 mb-6 pb-6 border-b border-gray-200">
+          <div>
+            <h2 class="text-2xl font-black text-brand-dark tracking-tight font-mono">{p.canonicalCode}</h2>
+            <p class="text-sm text-gray-500 mt-1">{d.product.name} · {d.product.sku} · <a href={`/products/${d.product.slug}`} class="underline">public page</a></p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class={`text-[9px] font-black px-3 py-1.5 rounded uppercase tracking-widest border ${LIFECYCLE_BADGE[p.lifecycleStatus] ?? ''}`}>{p.lifecycleStatus}</span>
+            <span class={`text-[9px] font-black px-3 py-1.5 rounded uppercase tracking-widest border ${p.verificationStatus === 'VERIFIED' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-amber-50 text-amber-900 border-amber-200'}`}>{p.verificationStatus === 'VERIFIED' ? 'Pack verified' : 'Pack not verified'}</span>
+          </div>
+        </div>
+
+        <div class="grid xl:grid-cols-[2fr_1fr] gap-6">
+          <div class="space-y-6">
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+              <h3 class="text-sm font-black text-brand-dark mb-4">Identity and specifications</h3>
+              <p class="text-xs text-gray-500 mb-4">Read every figure off the physical pack. A blank field is honest; a guessed one is not.</p>
+              <form method="POST" class="grid gap-3 md:grid-cols-3">
+                <input type="hidden" name="intent" value="profile" />
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery code</span>
+                  <input name="canonicalCode" value={p.canonicalCode} maxlength="80" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Code status</span>
+                  <select name="codeStatus" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {['CONFIRMED', 'PROVISIONAL', 'DEVICE_NAMED', 'MISSING'].map((s) => <option value={s} selected={s === p.codeStatus}>{s === 'CONFIRMED' ? 'Confirmed from the pack' : s === 'PROVISIONAL' ? 'Provisional' : s === 'DEVICE_NAMED' ? 'A phone name, not a code' : 'Missing'}</option>)}
+                  </select></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery type</span>
+                  <select name="batteryCategory" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {[['PHONE', 'Phone Battery'], ['MIFI_ROUTER', 'MiFi & Router Battery'], ['OTHER', 'Other']].map(([v, l]) => <option value={v} selected={v === p.batteryCategory}>{l}</option>)}
+                  </select></label>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Product name</span>
+                  <input name="name" value={d.product.name} maxlength="255" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Capacity mAh</span>
+                  <input name="capacityMah" type="number" min="1" value={p.capacityMah ?? ''} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Voltage V</span>
+                  <input name="voltageV" type="number" step="0.01" min="0.01" value={voltage} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Chemistry</span>
+                  <select name="chemistry" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="" selected={!p.chemistry}>Not recorded</option>
+                    {[['LI_ION', 'Li-ion'], ['LI_POLYMER', 'Li-polymer'], ['NIMH', 'NiMH'], ['OTHER', 'Other']].map(([v, l]) => <option value={v} selected={v === p.chemistry}>{l}</option>)}
+                  </select></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Barcode</span>
+                  <input name="barcode" value={p.barcode ?? ''} maxlength="14" inputmode="numeric" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier code</span>
+                  <input name="supplierCode" value={p.supplierCode ?? ''} maxlength="120" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Warranty months</span>
+                  <input name="warrantyMonths" type="number" min="0" value={p.warrantyMonths ?? ''} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier</span>
+                  <input name="supplierName" value={p.supplierName ?? ''} maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier reference</span>
+                  <input name="supplierReference" value={p.supplierReference ?? ''} maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Retail price UGX</span>
+                  <input name="priceUgx" type="number" min="0" value={d.product.priceUgx || ''} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Connector or flex notes</span>
+                  <input name="connectorNotes" value={p.connectorNotes ?? ''} maxlength="300" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Short description (customer facing)</span>
+                  <input name="shortDescription" value={d.product.shortDescription} maxlength="500" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Full description (customer facing)</span>
+                  <textarea name="longDescription" rows="3" maxlength="5000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{d.product.longDescription}</textarea></label>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Customer notes shown on the page</span>
+                  <input name="publicNotes" value={p.publicNotes ?? ''} maxlength="5000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Internal notes (never shown to a customer)</span>
+                  <textarea name="internalNotes" rows="2" maxlength="5000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{p.internalNotes ?? ''}</textarea></label>
+                <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Packaging notes</span>
+                  <input name="packagingNotes" value={p.packagingNotes ?? ''} maxlength="5000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Safety notes</span>
+                  <input name="safetyNotes" value={p.safetyNotes ?? ''} maxlength="5000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <div class="md:col-span-3"><button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Save battery</button></div>
+              </form>
+            </section>
+
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+              <h3 class="text-sm font-black text-brand-dark mb-1">Other codes for this battery</h3>
+              <p class="text-xs text-gray-500 mb-4">A code resolves to one battery only. If a code already points elsewhere, the save is refused and says where.</p>
+              <ul class="mb-4 flex flex-wrap gap-2">
+                {d.aliases.map((a) => (
+                  <li class={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${a.isActive ? 'border-gray-200 bg-gray-50' : 'border-gray-100 bg-white text-gray-400 line-through'}`}>
+                    <span class="font-mono font-bold">{a.alias}</span>
+                    <span class="text-[9px] uppercase tracking-widest text-gray-400">{a.aliasType.toLowerCase()}</span>
+                    {a.aliasType !== 'CANONICAL' && (
+                      <form method="POST" class="inline">
+                        <input type="hidden" name="intent" value={a.isActive ? 'alias-archive' : 'alias-restore'} />
+                        <input type="hidden" name="aliasId" value={a.id} />
+                        <button type="submit" class="text-[9px] font-black uppercase tracking-widest text-red-600 hover:text-red-800">{a.isActive ? 'Archive' : 'Restore'}</button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <form method="POST" class="flex flex-wrap gap-3 items-end">
+                <input type="hidden" name="intent" value="alias" />
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Code</span>
+                  <input name="alias" required maxlength="120" placeholder="49FT" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Kind</span>
+                  <select name="aliasType" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {[['SEARCH', 'What customers type'], ['SUPPLIER', 'Supplier code'], ['LEGACY', 'Old code'], ['DEVICE_NAME', 'Phone name'], ['BARCODE', 'Barcode']].map(([v, l]) => <option value={v}>{l}</option>)}
+                  </select></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Where it came from</span>
+                  <input name="source" maxlength="200" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Add code</button>
+              </form>
+            </section>
+
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-black text-brand-dark">Phones this battery fits</h3>
+                <a href={`/admin/batteries/compatibility?productId=${d.product.productId}`} class="text-[10px] font-black uppercase tracking-widest text-brand-primary">Add or review fits</a>
+              </div>
+              {d.compatibility.length > 0 ? (
+                <ul class="divide-y divide-gray-50 text-xs">
+                  {d.compatibility.map((c) => (
+                    <li class="py-3 flex flex-wrap items-center justify-between gap-2">
+                      <a href={`/admin/batteries/compatibility?deviceId=${c.device.slug}`} class="font-bold text-brand-dark">{c.device.label}</a>
+                      <span class="flex items-center gap-2">
+                        <span class="text-gray-500">{c.evidenceStatus.replace(/_/g, ' ').toLowerCase()}</span>
+                        <span class={`text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest border ${CLAIM_BADGE[c.workflowStatus]}`}>{c.workflowStatus}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p class="text-sm text-gray-400 italic">No phone has been connected to this battery yet.</p>}
+            </section>
+
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+              <h3 class="text-sm font-black text-brand-dark mb-1">Stock</h3>
+              <p class="text-xs text-gray-500 mb-4">On hand {d.inventory.stock} · reserved for open orders {d.inventory.reserved} · available {d.inventory.available}. Every change is a movement with a reason.</p>
+              <form method="POST" class="grid gap-3 md:grid-cols-3 mb-5">
+                <input type="hidden" name="intent" value="stock" />
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Movement</span>
+                  <select name="movementType" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {[['OPENING', 'Opening stock'], ['RECEIPT', 'Received from a supplier'], ['COUNT', 'Counted (set the balance)'], ['DAMAGED', 'Damaged'], ['LOST', 'Lost'], ['RETURN', 'Returned by a customer'], ['CORRECTION', 'Correction (set the balance)']].map(([v, l]) => <option value={v}>{l}</option>)}
+                  </select></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Quantity</span>
+                  <input name="quantity" type="number" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Reason (required)</span>
+                  <input name="reason" required maxlength="500" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier (for a receipt)</span>
+                  <input name="supplierName" maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Reference</span>
+                  <input name="referenceNumber" maxlength="120" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Unit cost UGX</span>
+                  <input name="unitCostUgx" type="number" min="0" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <div class="md:col-span-3"><button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Record movement</button></div>
+              </form>
+              {d.inventory.movements.length > 0 ? (
+                <table class="w-full text-left border-collapse text-xs">
+                  <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest"><th class="p-3">When</th><th class="p-3">Movement</th><th class="p-3 text-right">Change</th><th class="p-3 text-right">Balance</th><th class="p-3">Reason</th></tr></thead>
+                  <tbody>
+                    {d.inventory.movements.map((m) => (
+                      <tr class="border-b border-gray-50">
+                        <td class="p-3 text-gray-500 whitespace-nowrap">{when(m.occurredAt)}</td>
+                        <td class="p-3 font-bold text-brand-dark">{m.movementType.toLowerCase()}</td>
+                        <td class="p-3 text-right tabular-nums">{m.quantityDelta > 0 ? `+${m.quantityDelta}` : m.quantityDelta}</td>
+                        <td class="p-3 text-right tabular-nums">{m.quantityAfter}</td>
+                        <td class="p-3 text-gray-600">{m.reason}{m.referenceNumber ? ` (${m.referenceNumber})` : ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : <p class="text-sm text-gray-400 italic">No stock has ever been recorded for this battery.</p>}
+            </section>
+
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+              <h3 class="text-sm font-black text-brand-dark mb-1">Photographs and evidence</h3>
+              <p class="text-xs text-gray-500 mb-4">Front, back, the printed label, the connector, the packaging and the barcode. One of them can become the product photo.</p>
+              <form method="POST" enctype="multipart/form-data" class="flex flex-wrap gap-3 items-end mb-5">
+                <input type="hidden" name="intent" value="evidence" />
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Photos</span>
+                  <input type="file" name="files" multiple accept="image/*" capture="environment" class="mt-1 block text-xs" /></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">What it shows</span>
+                  <select name="kind" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {['FRONT', 'BACK', 'LABEL', 'CONNECTOR', 'PACKAGING', 'BARCODE', 'FIT_TEST', 'DOCUMENT', 'OTHER'].map((k) => <option value={k}>{k.replace(/_/g, ' ').toLowerCase()}</option>)}
+                  </select></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Note</span>
+                  <input name="note" maxlength="300" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-600 py-3"><input type="checkbox" name="setPrimaryImage" class="w-4 h-4 border-gray-300 rounded" /> Use the first as the product photo</label>
+                <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Upload</button>
+              </form>
+              {d.evidence.length > 0 ? (
+                <ul class="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  {d.evidence.map((e) => (
+                    <li class="text-center">
+                      <img src={e.url} alt={`${e.kind.toLowerCase()} evidence`} width="120" height="120" loading="lazy" class="w-full aspect-square object-cover rounded-xl border border-gray-200" />
+                      <p class="text-[9px] uppercase font-black tracking-widest text-gray-400 mt-1">{e.kind.replace(/_/g, ' ').toLowerCase()}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p class="text-sm text-gray-400 italic">No photographs yet.</p>}
+            </section>
+          </div>
+
+          <div class="space-y-6">
+            <section class={`rounded-2xl border p-6 shadow-sm ${d.readiness.ready ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}>
+              <h3 class="text-sm font-black text-brand-dark mb-2">{d.readiness.ready ? 'Ready to publish' : 'Not ready to publish'}</h3>
+              {d.readiness.blockers.length > 0 && (
+                <ul class="space-y-2 text-xs text-amber-900 mb-3">
+                  {d.readiness.blockers.map((b) => <li class="flex gap-2"><span aria-hidden="true">·</span><span>{b.message}</span></li>)}
+                </ul>
+              )}
+              {d.readiness.warnings.length > 0 && (
+                <details class="text-xs text-gray-600">
+                  <summary class="font-black uppercase tracking-widest text-[10px] cursor-pointer">{d.readiness.warnings.length} thing(s) worth knowing</summary>
+                  <ul class="mt-2 space-y-1">{d.readiness.warnings.map((w) => <li>{w.message}</li>)}</ul>
+                </details>
+              )}
+              <div class="mt-4 flex flex-wrap gap-2">
+                {[['SUBMIT_REVIEW', 'Submit for review'], ['MARK_READY', 'Mark ready'], ['PUBLISH', 'Publish'], ['UNPUBLISH', 'Unpublish'], ['ARCHIVE', 'Archive'], ['RESTORE', 'Restore']].map(([action, label]) => (
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="intent" value="transition" />
+                    <input type="hidden" name="action" value={action} />
+                    <button type="submit" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:border-brand-primary">{label}</button>
+                  </form>
+                ))}
+              </div>
+            </section>
+
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+              <h3 class="text-sm font-black text-brand-dark mb-2">Confirm the pack</h3>
+              <p class="text-xs text-gray-500 mb-3">Set the code status to confirmed first. A second person should do this, not the person who entered the battery.</p>
+              <form method="POST" class="flex gap-2">
+                <input type="hidden" name="intent" value="verify" />
+                <input name="note" maxlength="500" placeholder="What you checked" class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-4 rounded-lg">Verify</button>
+              </form>
+            </section>
+
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+              <h3 class="text-sm font-black text-brand-dark mb-3">Price</h3>
+              <p class="text-2xl font-black text-brand-dark tabular-nums">{ugx(d.price.retailUgx)}</p>
+              <p class="text-xs text-gray-500 mt-1">Edit it in the form on the left. It writes both price stores together.</p>
+            </section>
+
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+              <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">History</h3>
+              {d.timeline.length > 0 ? (
+                <ul class="divide-y divide-gray-50 text-xs max-h-96 overflow-y-auto">
+                  {d.timeline.map((t) => (
+                    <li class="px-5 py-3">
+                      <p class="font-bold text-brand-dark">{t.action.replace(/_/g, ' ').toLowerCase()}</p>
+                      <p class="text-gray-400 mt-0.5">{when(t.createdAt)}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p class="px-5 py-8 text-center text-sm text-gray-400 italic">Nothing recorded yet.</p>}
+            </section>
+          </div>
+        </div>
+      </>
+    )}
+  </div>
+</AdminLayout>

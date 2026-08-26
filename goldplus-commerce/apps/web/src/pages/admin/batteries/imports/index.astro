@@ -1,0 +1,120 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../../lib/session';
+import { apiBase } from '../../../../lib/api';
+import { adminBattery, batteryMessage } from '../../../../lib/batteries';
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/batteries/imports', 303);
+
+interface Session {
+  id: string; importType: string; name: string; sourceFilename: string; sourceSheet: string | null; status: string;
+  totalRows: number; validRows: number; invalidRows: number; heldRows: number; appliedRows: number; failedRows: number; createdAt: string;
+}
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+let sheets: string[] = [];
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  const file = form.get('file');
+  if (!(file instanceof File) || file.size === 0) {
+    notice = { kind: 'error', text: 'Choose a .xlsx or .csv file.' };
+  } else {
+    const upload = new FormData();
+    upload.set('file', file, file.name);
+    upload.set('importType', String(form.get('importType') ?? ''));
+    upload.set('name', String(form.get('name') ?? '').trim() || file.name);
+    const sheet = String(form.get('sheet') ?? '');
+    if (sheet) upload.set('sheet', sheet);
+    if (intent === 'sheets') {
+      const res = await fetch(`${apiBase}/admin/batteries/imports/sheets`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: upload });
+      const json = await res.json().catch(() => null);
+      if (json?.success) {
+        sheets = json.data.sheets as string[];
+        notice = { kind: 'success', text: `${sheets.length} sheet(s) in that file. Pick the one to stage, then upload it.` };
+      } else notice = { kind: 'error', text: json?.error?.message ?? 'Could not read that file.' };
+    } else {
+      const res = await fetch(`${apiBase}/admin/batteries/imports`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: upload });
+      const json = await res.json().catch(() => null);
+      if (json?.success) return Astro.redirect(`/admin/batteries/imports/${json.data.session.id}`, 303);
+      notice = { kind: 'error', text: json?.error?.message ?? 'The upload was refused.' };
+    }
+  }
+}
+
+const list = await adminBattery<Session[]>('/imports?limit=50', token);
+const sessions = list.data ?? [];
+const TYPES = [
+  ['BATTERY_CATALOGUE', 'Battery catalogue'],
+  ['COMPATIBILITY', 'Compatibility (battery to phone)'],
+  ['STOCK_RECEIPT', 'Stock received'],
+  ['STOCK_COUNT', 'Stock count'],
+  ['PRICE_UPDATE', 'Price update'],
+];
+const tone = (s: string) => ['APPLIED', 'ROLLED_BACK'].includes(s) ? 'bg-green-50 text-green-800 border-green-200'
+  : ['FAILED', 'ROLLBACK_PARTIAL', 'REJECTED'].includes(s) ? 'bg-red-50 text-red-700 border-red-200'
+  : ['READY_FOR_APPROVAL', 'APPROVED', 'PARTIALLY_APPLIED'].includes(s) ? 'bg-amber-50 text-amber-900 border-amber-200'
+  : 'bg-slate-100 text-slate-700 border-slate-200';
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+---
+
+<AdminLayout title="Battery imports" description="Stage a spreadsheet, check it, have it approved, then apply it." activePath="/admin/batteries">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Imports</p>
+    <div class="mb-6 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Spreadsheet imports</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+        Upload, map the columns, run a dry run, resolve anything held, have a second person approve it, then apply.
+        Uploading the same file twice reuses the same import instead of creating duplicates, and an import never
+        publishes anything.
+      </p>
+    </div>
+
+    {notice && <div role="status" class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-6">
+      <h3 class="text-sm font-black text-brand-dark mb-4">Upload a file</h3>
+      <form method="POST" enctype="multipart/form-data" class="grid gap-3 md:grid-cols-4 items-end">
+        <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">File (.xlsx or .csv, up to 5 MB)</span>
+          <input type="file" name="file" required accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="mt-1 block w-full text-xs" /></label>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">What it contains</span>
+          <select name="importType" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {TYPES.map(([v, l]) => <option value={v}>{l}</option>)}
+          </select></label>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Name this import</span>
+          <input name="name" maxlength="160" placeholder="Defaults to the file name" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        {sheets.length > 0 && (
+          <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Sheet</span>
+            <select name="sheet" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{sheets.map((s) => <option value={s}>{s}</option>)}</select></label>
+        )}
+        <div class="md:col-span-4 flex flex-wrap gap-3">
+          <button type="submit" name="intent" value="sheets" class="rounded-lg border border-gray-300 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-gray-700">List the sheets first</button>
+          <button type="submit" name="intent" value="upload" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Stage this file</button>
+        </div>
+      </form>
+    </section>
+
+    {!list.ok && <div role="status" class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{batteryMessage(list.error)}</div>}
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+      <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">Imports</h3>
+      <ul class="divide-y divide-gray-50">
+        {sessions.map((s) => (
+          <li class="px-5 py-4">
+            <a href={`/admin/batteries/imports/${s.id}`} class="flex flex-wrap items-center justify-between gap-3">
+              <span>
+                <span class="font-black text-brand-dark">{s.name}</span>
+                <span class="block text-xs text-gray-500 mt-0.5">{s.sourceFilename}{s.sourceSheet ? ` · ${s.sourceSheet}` : ''} · {TYPES.find(([v]) => v === s.importType)?.[1] ?? s.importType} · {when(s.createdAt)}</span>
+                <span class="block text-xs text-gray-400 mt-0.5">{s.totalRows} rows · {s.validRows} ready · {s.heldRows} held · {s.invalidRows} with errors{s.appliedRows ? ` · ${s.appliedRows} applied` : ''}{s.failedRows ? ` · ${s.failedRows} failed` : ''}</span>
+              </span>
+              <span class={`text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border ${tone(s.status)}`}>{s.status.replace(/_/g, ' ')}</span>
+            </a>
+          </li>
+        ))}
+        {sessions.length === 0 && list.ok && <li class="px-5 py-12 text-center text-gray-400 italic">No import staged yet.</li>}
+      </ul>
+    </section>
+  </div>
+</AdminLayout>

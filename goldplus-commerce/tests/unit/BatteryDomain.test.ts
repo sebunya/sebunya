@@ -116,6 +116,21 @@ describe('compatibility workflow: maker/checker and publication', () => {
     expect(legacyConfidence('SUPPLIER_LISTED', 'ACTIVE')).toBe('declared');
     expect(legacyConfidence('CONDITIONAL', 'READY')).toBe('inferred');
   });
+
+  it('archiving a verified claim does not discard the verification, so it can be restored', () => {
+    // Regression: archiving used to clear verifiedBy/verifiedAt because the
+    // projected confidence was no longer 'verified'. Restoring then wrote
+    // confidence='verified' with no actor and the 0070 evidence CHECK rejected
+    // it, so a live fit could be archived but never brought back.
+    const verified = { ...base, workflowStatus: 'ACTIVE' as const, evidenceStatus: 'FIT_TESTED' as const, reviewedBy: 'checker' };
+    const archived = transitionClaim(verified, 'ARCHIVE', 'publisher');
+    expect(archived).toEqual({ ok: true, next: 'ARCHIVED', evidenceStatus: 'FIT_TESTED' });
+    const restored = transitionClaim({ ...verified, workflowStatus: 'ARCHIVED' }, 'RESTORE', 'publisher');
+    expect(restored).toEqual({ ok: true, next: 'READY', evidenceStatus: 'FIT_TESTED' });
+    // The projection is only 'verified' where the evidence trail survives.
+    expect(legacyConfidence('FIT_TESTED', 'READY')).toBe('verified');
+    expect(legacyConfidence('FIT_TESTED', 'ARCHIVED')).toBe('declared');
+  });
 });
 
 describe('battery readiness: every blocker says why', () => {

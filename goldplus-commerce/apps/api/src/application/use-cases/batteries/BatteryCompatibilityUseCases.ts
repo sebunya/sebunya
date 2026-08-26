@@ -148,8 +148,19 @@ export class BatteryCompatibilityUseCases {
     if (action === 'ARCHIVE') write.archivedAt = now;
     if (action === 'RESTORE') { write.archivedAt = null; if (next === 'DRAFT') { write.reviewedBy = null; write.reviewedAt = null; write.verifiedBy = null; write.verifiedAt = null; } }
     if (action === 'REOPEN') { write.publishedBy = null; write.publishedAt = null; write.reviewedBy = null; write.reviewedAt = null; write.verifiedBy = null; write.verifiedAt = null; write.archivedAt = null; }
-    write.confidence = legacyConfidence(result.evidenceStatus, next);
-    if (write.confidence !== 'verified') { write.verifiedBy = null; write.verifiedAt = null; }
+
+    /**
+     * The legacy `confidence` column (0070) may only say 'verified' while the
+     * row still carries who verified it, when, and against what. Archiving is
+     * not a loss of that history, so the actor and timestamp are kept; only a
+     * rejection or a reopen clears them. If they are gone, the column is
+     * downgraded rather than the write being refused by the database CHECK.
+     */
+    const verifiedBy = 'verifiedBy' in write ? write.verifiedBy : claim.verifiedBy;
+    const verifiedAt = 'verifiedAt' in write ? write.verifiedAt : claim.verifiedAt;
+    const evidenceSource = 'evidenceSource' in write ? write.evidenceSource : claim.evidenceSource;
+    const projected = legacyConfidence(result.evidenceStatus, next);
+    write.confidence = projected === 'verified' && (!verifiedBy || !verifiedAt || !evidenceSource) ? 'declared' : projected;
     const updated = await this.repo.update(id, write);
     await this.audit.execute({ actorId, action: `BATTERY_COMPAT_${action}`, entity: 'battery_compatibility', entityId: id, previousState: { workflowStatus: claim.workflowStatus, evidenceStatus: claim.evidenceStatus }, newState: { workflowStatus: next, evidenceStatus: result.evidenceStatus, reason: detail.reason ?? null } });
     return updated;

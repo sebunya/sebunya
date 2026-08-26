@@ -1,156 +1,275 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { apiBase } from '../lib/api';
 import { SITE_ORIGIN } from '../lib/sitemap';
-import type { ApiResponse } from '@goldplus/shared';
+import { getBusinessInfo } from '../lib/businessInfo';
+import { publicBattery, DEVICE_COOKIE, serialiseDeviceCookie, ugx, FIT_BADGE } from '../lib/batteries';
+import type { BatteryFinderConfig, FinderBatteryResultDto, FinderBrandDto, FinderDeviceDto, FinderSeriesDto } from '@goldplus/shared';
 
 /**
- * Public battery finder. Shows ONLY compatibility facts an operator recorded
- * and evidenced — a VERIFIED fit is stated as verified, a PROVISIONAL one is
- * stated as needing confirmation, and nothing else is shown at all. There is
- * no guessing, no "probably fits", and no per-model page generated for a
- * combination we have not checked.
- *
- * The page is noindex until the registry holds enough verified fits to be
- * genuinely useful, so it never ships as a thin page competing for queries it
- * cannot answer.
+ * The public battery finder. It shows only fits an operator has verified and
+ * published, and it labels each one for what it is: verified, verified but out
+ * of stock, conditional, or listed by a supplier and not yet checked by us. It
+ * never presents a similar-looking code or phone name as a fit.
  */
-const query = (new URL(Astro.request.url).searchParams.get('q') ?? '').trim().slice(0, 80);
+const url = new URL(Astro.request.url);
+const q = (url.searchParams.get('q') ?? '').trim().slice(0, 120);
+const brandSlug = (url.searchParams.get('brand') ?? '').trim().slice(0, 80);
+const deviceSlug = (url.searchParams.get('device') ?? '').trim().slice(0, 160);
+const sessionId = Astro.cookies.get('goldplus_cart_session')?.value ?? Astro.cookies.get('gp_finder')?.value ?? null;
 
-type FinderResult = {
-  query: string;
-  matches: Array<{
-    id: string;
-    phoneBrand: string;
-    phoneModel: string;
-    modelNumber: string | null;
-    variant: string | null;
-    batteryReference: string;
-    status: string;
-    statusLabel: string;
-    product: { id: string; name: string; slug: string; priceUgx: number; imageUrl: string | null } | null;
-  }>;
-  verifiedCount: number;
-  indexable: boolean;
-};
-
-let result: FinderResult | null = null;
-let unavailable = false;
-try {
-  const res = await fetch(`${apiBase}/seo/battery-finder?q=${encodeURIComponent(query)}`, {
-    headers: { Accept: 'application/json' },
-  });
-  const json = (await res.json()) as ApiResponse<FinderResult>;
-  if (json.success) result = json.data;
-  else unavailable = true;
-} catch {
-  unavailable = true;
+let requestNotice: { kind: 'success' | 'error'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (String(form.get('website') ?? '') === '') {
+    const res = await fetch(`${new URL(Astro.request.url).origin}/api/battery-request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        queryText: String(form.get('queryText') ?? '').slice(0, 200) || null,
+        brandText: String(form.get('brandText') ?? '').slice(0, 80) || null,
+        deviceText: String(form.get('deviceText') ?? '').slice(0, 120) || null,
+        modelNumberText: String(form.get('modelNumberText') ?? '').slice(0, 80) || null,
+        batteryCodeText: String(form.get('batteryCodeText') ?? '').slice(0, 120) || null,
+        contactName: String(form.get('contactName') ?? '').slice(0, 120) || null,
+        contactPhone: String(form.get('contactPhone') ?? '').slice(0, 32) || null,
+        notes: String(form.get('notes') ?? '').slice(0, 1000) || null,
+        source: 'FINDER_NO_RESULT',
+      }),
+    }).catch(() => null);
+    const json = res ? await res.json().catch(() => null) : null;
+    requestNotice = json?.success
+      ? { kind: 'success', text: 'Thank you. We have your phone details and will confirm the right battery before you buy.' }
+      : { kind: 'error', text: json?.error?.message ?? 'We could not record that just now. Please send it to us on WhatsApp instead.' };
+  } else {
+    requestNotice = { kind: 'success', text: 'Thank you.' };
+  }
 }
 
-const matches = result?.matches ?? [];
-const indexable = result?.indexable === true;
-const robotsMeta = indexable ? undefined : 'noindex,follow';
+// The device the customer is shopping for travels with them.
+if (deviceSlug) {
+  const chosen = await publicBattery<{ device: FinderDeviceDto }>(`/finder/devices/${encodeURIComponent(deviceSlug)}`, sessionId);
+  if (chosen.ok) {
+    Astro.cookies.set(DEVICE_COOKIE, serialiseDeviceCookie({ slug: chosen.data.device.slug, label: chosen.data.device.label }), {
+      path: '/', httpOnly: false, sameSite: 'lax', secure: url.protocol === 'https:', maxAge: 60 * 60 * 24 * 30,
+    });
+  }
+}
+
+type SearchResult =
+  | { kind: 'DEVICE'; device: FinderDeviceDto; results: FinderBatteryResultDto[]; query: string; config: BatteryFinderConfig }
+  | { kind: 'BATTERY'; battery: FinderBatteryResultDto; devices: FinderDeviceDto[]; query: string; config: BatteryFinderConfig }
+  | { kind: 'AMBIGUOUS_DEVICE'; devices: FinderDeviceDto[]; message: string; query: string; config: BatteryFinderConfig }
+  | { kind: 'SUGGESTIONS'; devices: FinderDeviceDto[]; batteries: Array<{ canonicalCode: string; slug: string; name: string }>; message: string; query: string; config: BatteryFinderConfig }
+  | { kind: 'NO_RESULT'; message: string; query: string; config: BatteryFinderConfig };
+
+const configRes = await publicBattery<{ config: BatteryFinderConfig; indexable: boolean }>('/finder/config', sessionId);
+const cfg = configRes.ok ? configRes.data.config : null;
+const indexable = configRes.ok ? configRes.data.indexable : false;
+const unavailable = !configRes.ok;
+
+const [brandsRes, searchRes, brandRes, deviceRes] = await Promise.all([
+  publicBattery<FinderBrandDto[]>('/finder/brands', sessionId),
+  q ? publicBattery<SearchResult>(`/finder/search?q=${encodeURIComponent(q)}`, sessionId) : Promise.resolve(null),
+  brandSlug ? publicBattery<{ brand: FinderBrandDto; series: FinderSeriesDto[]; devices: FinderDeviceDto[] }>(`/finder/brands/${encodeURIComponent(brandSlug)}`, sessionId) : Promise.resolve(null),
+  deviceSlug ? publicBattery<{ device: FinderDeviceDto; results: FinderBatteryResultDto[] }>(`/finder/devices/${encodeURIComponent(deviceSlug)}`, sessionId) : Promise.resolve(null),
+]);
+
+const brands = brandsRes.ok ? brandsRes.data : [];
+const search = searchRes && searchRes.ok ? searchRes.data : null;
+const brand = brandRes && brandRes.ok ? brandRes.data : null;
+const device = deviceRes && deviceRes.ok ? deviceRes.data : null;
+
+const biz = await getBusinessInfo();
+const waHref = (text: string) => `${biz.whatsappUrl}?text=${encodeURIComponent(text)}`;
 const canonicalUrl = `${SITE_ORIGIN}/battery-finder`;
-const ugx = (n: number) => `UGX ${n.toLocaleString('en-UG')}`;
+const robotsMeta = indexable && !q && !brandSlug && !deviceSlug ? undefined : 'noindex,follow';
+const headline = cfg?.headline ?? 'Find the right battery for your phone';
+const noResult = search?.kind === 'NO_RESULT' ? search : null;
+const results: FinderBatteryResultDto[] = device?.results ?? (search?.kind === 'DEVICE' ? search.results : []);
+const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 'DEVICE' ? search.device : null);
 ---
 
-<BaseLayout
-  title="Phone battery finder. Find the right battery for your phone"
-  description="Search your phone model to see which replacement batteries we have checked as a fit."
-  canonicalUrl={canonicalUrl}
-  robotsMeta={robotsMeta}
->
-  <div class="container mx-auto px-4 py-10 max-w-4xl">
-    <h1 class="text-3xl font-black text-brand-dark tracking-tight">Battery finder</h1>
-    <p class="text-gray-600 mt-2 max-w-2xl">
-      Type your phone brand and model. We only list batteries we have actually checked against that phone. If we
-      have not checked yours, we say so rather than guess.
-    </p>
-
-    <form method="GET" class="mt-6 flex flex-wrap gap-2">
-      <label class="sr-only" for="q">Your phone brand and model</label>
-      <input
-        id="q"
-        name="q"
-        value={query}
-        maxlength="80"
-        placeholder="e.g. Samsung Galaxy S21"
-        class="flex-1 min-w-[240px] rounded-xl border border-gray-300 px-4 py-3 text-base"
-      />
-      <button type="submit" class="rounded-xl bg-brand-dark px-6 py-3 font-bold text-white hover:opacity-90">
-        Find batteries
-      </button>
-    </form>
+<BaseLayout title={headline} description={cfg?.intro ?? 'Search your phone or a battery code to see the batteries we have checked.'} canonicalUrl={canonicalUrl} robotsMeta={robotsMeta}>
+  <div class="container mx-auto px-4 py-8 sm:py-10 max-w-4xl">
+    <h1 class="text-2xl sm:text-3xl font-black text-brand-dark tracking-tight">{headline}</h1>
+    {cfg && <p class="text-gray-600 mt-2 max-w-2xl text-sm sm:text-base">{cfg.intro}</p>}
 
     {unavailable && (
       <div role="status" class="mt-8 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
-        The battery finder is temporarily unavailable. Please call or WhatsApp us and we will check the fit for you.
+        The battery finder is temporarily unavailable. Call or <a href={waHref('Hello GoldPlus, I need a battery for my ')} class="font-bold underline">message us on WhatsApp</a> and we will check the fit for you.
       </div>
     )}
 
-    {!unavailable && query === '' && (
-      <div class="mt-8 rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
-        Enter your phone model above to see checked fits.
-        {result && result.verifiedCount === 0 && (
-          <p class="mt-2 text-gray-500">
-            We have not published any verified fits yet. If you tell us your model, we will check it for you.
-          </p>
+    {!unavailable && (
+      <>
+        <form method="GET" role="search" class="mt-6 flex flex-wrap gap-2">
+          <label class="sr-only" for="q">{cfg?.searchByCodeLabel ?? 'Search by battery code'}</label>
+          <input id="q" name="q" value={q} maxlength="120" enterkeyhint="search" autocomplete="off"
+            placeholder={cfg?.searchPlaceholder ?? 'Phone model or battery code'}
+            class="flex-1 min-w-[220px] rounded-xl border border-gray-300 px-4 py-3 text-base" />
+          <button type="submit" class="rounded-xl bg-brand-dark px-6 py-3 font-bold text-white hover:opacity-90">Search</button>
+        </form>
+
+        {brands.length > 0 && !q && !brandSlug && !deviceSlug && (
+          <section class="mt-8" aria-labelledby="brands-heading">
+            <h2 id="brands-heading" class="text-sm font-black uppercase tracking-widest text-gray-500">{cfg?.findByPhoneLabel ?? 'Find by phone'}</h2>
+            <ul class="mt-3 flex flex-wrap gap-2">
+              {brands.map((b) => (
+                <li><a href={`/battery-finder?brand=${encodeURIComponent(b.slug)}`} class="inline-block rounded-full border border-gray-300 px-4 py-2 text-sm font-bold text-brand-dark hover:border-brand-primary">
+                  {b.name}<span class="text-gray-400 font-normal"> · {b.verifiedFits}</span>
+                </a></li>
+              ))}
+            </ul>
+            <p class="mt-2 text-xs text-gray-500">The number is how many batteries we have checked for that brand.</p>
+          </section>
         )}
-      </div>
-    )}
 
-    {!unavailable && query !== '' && matches.length === 0 && (
-      <div role="status" class="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
-        <p class="font-bold">We have not checked a battery for "{query}" yet.</p>
-        <p class="mt-1">
-          That does not mean one does not exist. It means we have not verified the fit, and we will not guess with
-          your phone. Send us the model and we will confirm before you buy.
-        </p>
-      </div>
-    )}
-
-    {!unavailable && matches.length > 0 && (
-      <div class="mt-8 space-y-4">
-        <p class="text-sm text-gray-500">{matches.length} checked {matches.length === 1 ? 'fit' : 'fits'} for "{query}".</p>
-        {matches.map((m) => (
-          <article class="rounded-2xl border border-gray-200 bg-white p-5 flex flex-wrap items-center gap-4">
-            {m.product?.imageUrl && (
-              <img src={m.product.imageUrl} alt={m.product.name} width="72" height="72" loading="lazy" class="rounded-xl object-cover" />
+        {brand && (
+          <section class="mt-8" aria-labelledby="brand-heading">
+            <h2 id="brand-heading" class="text-lg font-black text-brand-dark">Choose your {brand.brand.name}</h2>
+            {brand.devices.length > 0 ? (
+              <ul class="mt-3 grid gap-2 sm:grid-cols-2">
+                {brand.devices.map((dv) => (
+                  <li><a href={`/battery-finder?device=${encodeURIComponent(dv.slug)}`} class="block rounded-xl border border-gray-200 bg-white px-4 py-3 hover:border-brand-primary">
+                    <span class="font-bold text-brand-dark">{dv.model}</span>
+                    {dv.modelNumber && <span class="block text-xs text-gray-500 font-mono mt-0.5">{dv.modelNumber}{dv.variant ? ` · ${dv.variant}` : ''}</span>}
+                    <span class="block text-xs text-gray-500 mt-1">{dv.verifiedFits > 0 ? `${dv.verifiedFits} battery we have checked` : 'No checked battery yet'}</span>
+                  </a></li>
+                ))}
+              </ul>
+            ) : (
+              <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">We have not listed any {brand.brand.name} phone yet. Tell us your model below and we will check it.</p>
             )}
-            <div class="flex-1 min-w-[200px]">
-              <h2 class="font-black text-brand-dark">
-                {m.product ? m.product.name : m.batteryReference}
-              </h2>
-              <p class="text-xs text-gray-500 mt-1">
-                Fits {m.phoneBrand} {m.phoneModel}{m.variant ? ` (${m.variant})` : ''} · battery reference
-                <span class="font-mono"> {m.batteryReference}</span>
-              </p>
-              <span class={`inline-block mt-2 rounded-full border px-3 py-1 text-[11px] font-bold ${m.status === 'VERIFIED' ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
-                {m.statusLabel}
-              </span>
-            </div>
-            {m.product && (
+            <p class="mt-3 text-xs text-gray-500">{cfg?.modelNumberHelp}</p>
+          </section>
+        )}
+
+        {search?.kind === 'AMBIGUOUS_DEVICE' && (
+          <section class="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5" role="status">
+            <p class="font-bold text-amber-900">{search.message}</p>
+            <ul class="mt-3 grid gap-2 sm:grid-cols-2">
+              {search.devices.map((dv) => (
+                <li><a href={`/battery-finder?device=${encodeURIComponent(dv.slug)}`} class="block rounded-xl border border-amber-300 bg-white px-4 py-3 hover:border-brand-primary">
+                  <span class="font-bold text-brand-dark">{dv.label}</span>
+                </a></li>
+              ))}
+            </ul>
+            <p class="mt-3 text-xs text-amber-900">{cfg?.modelNumberHelp}</p>
+          </section>
+        )}
+
+        {search?.kind === 'SUGGESTIONS' && (
+          <section class="mt-8 rounded-xl border border-gray-200 bg-white p-5" role="status">
+            <p class="font-bold text-brand-dark">{search.message}</p>
+            <ul class="mt-3 flex flex-wrap gap-2">
+              {search.devices.map((dv) => <li><a href={`/battery-finder?device=${encodeURIComponent(dv.slug)}`} class="inline-block rounded-full border border-gray-300 px-4 py-2 text-sm font-bold hover:border-brand-primary">{dv.label}</a></li>)}
+              {search.batteries.map((b) => <li><a href={`/products/${b.slug}`} class="inline-block rounded-full border border-gray-300 px-4 py-2 text-sm font-mono font-bold hover:border-brand-primary">{b.canonicalCode}</a></li>)}
+            </ul>
+          </section>
+        )}
+
+        {search?.kind === 'BATTERY' && (
+          <section class="mt-8" aria-labelledby="battery-heading">
+            <h2 id="battery-heading" class="text-lg font-black text-brand-dark">Battery <span class="font-mono">{search.battery.canonicalCode}</span></h2>
+            <article class="mt-3 rounded-2xl border border-gray-200 bg-white p-5 flex flex-wrap items-center gap-4">
+              {search.battery.imageUrl && <img src={search.battery.imageUrl} alt={search.battery.name} width="72" height="72" loading="lazy" class="rounded-xl object-cover" />}
+              <div class="flex-1 min-w-[200px]">
+                <p class="font-black text-brand-dark">{search.battery.name}</p>
+                <span class={`inline-block mt-2 rounded-full border px-3 py-1 text-[11px] font-bold ${FIT_BADGE[search.battery.fitState] ?? ''}`}>{search.battery.fitLabel}</span>
+              </div>
               <div class="text-right">
-                {/* A missing price is stated, never rendered as UGX 0. */}
-                <p class="font-black text-brand-dark">
-                  {m.product.priceUgx > 0 ? ugx(m.product.priceUgx) : "Price on request"}
+                <p class="font-black text-brand-dark">{ugx(search.battery.priceUgx)}</p>
+                <a href={`/products/${search.battery.slug}`} class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
+              </div>
+            </article>
+            {search.devices.length > 0 && (
+              <>
+                <h3 class="mt-6 text-sm font-black uppercase tracking-widest text-gray-500">Phones we have checked it against</h3>
+                <ul class="mt-2 flex flex-wrap gap-2">
+                  {search.devices.map((dv) => <li><a href={`/battery-finder?device=${encodeURIComponent(dv.slug)}`} class="inline-block rounded-full border border-gray-300 px-3 py-1.5 text-xs font-bold hover:border-brand-primary">{dv.label}</a></li>)}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
+
+        {shownDevice && (
+          <section class="mt-8" aria-labelledby="results-heading">
+            <h2 id="results-heading" class="text-lg font-black text-brand-dark">Batteries for the {shownDevice.label}</h2>
+            {results.length > 0 ? (
+              <div class="mt-3 space-y-3">
+                {results.map((r) => (
+                  <article class="rounded-2xl border border-gray-200 bg-white p-5 flex flex-wrap items-center gap-4">
+                    {r.imageUrl && <img src={r.imageUrl} alt={r.name} width="72" height="72" loading="lazy" class="rounded-xl object-cover" />}
+                    <div class="flex-1 min-w-[200px]">
+                      <p class="font-black text-brand-dark">{r.name}</p>
+                      <p class="text-xs text-gray-500 mt-1">Battery reference <span class="font-mono">{r.canonicalCode}</span>{r.capacityMah ? ` · ${r.capacityMah} mAh` : ''}{r.nominalVoltageMv ? ` · ${(r.nominalVoltageMv / 1000).toFixed(2)} V` : ''}</p>
+                      <span class={`inline-block mt-2 rounded-full border px-3 py-1 text-[11px] font-bold ${FIT_BADGE[r.fitState] ?? ''}`}>{r.fitLabel}</span>
+                      {r.fitState === 'CONDITIONAL' && r.condition && <p class="mt-2 text-xs text-amber-900">{cfg?.conditionalNote} {r.condition}</p>}
+                      {r.fitState === 'AWAITING_VERIFICATION' && <p class="mt-2 text-xs text-blue-900">{cfg?.awaitingVerificationNote}</p>}
+                      {r.fitState === 'VERIFIED_OUT_OF_STOCK' && <p class="mt-2 text-xs text-gray-600">{cfg?.outOfStockNote}</p>}
+                    </div>
+                    <div class="text-right">
+                      <p class="font-black text-brand-dark">{ugx(r.priceUgx)}</p>
+                      <a href={`/products/${r.slug}?device=${encodeURIComponent(shownDevice.slug)}`} class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
+                    </div>
+                  </article>
+                ))}
+                <p class="text-xs text-gray-500">
+                  "Verified fit" means we checked this battery against this phone ourselves. Anything else is labelled for
+                  what it is. Ask us before you buy if you are unsure.
                 </p>
-                <a href={`/products/${m.product.slug}`} class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
+              </div>
+            ) : (
+              <div role="status" class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+                <p class="font-bold">{cfg?.noResultHeadline}</p>
+                <p class="mt-1">{cfg?.noResultBody}</p>
               </div>
             )}
-            {!m.product && (
-              <p class="text-xs text-gray-500 max-w-[200px]">
-                We have confirmed this fit but do not have it listed for online purchase right now. Ask us about
-                availability.
-              </p>
-            )}
-          </article>
-        ))}
-        <p class="text-xs text-gray-500">
-          "Verified fit" means we checked this battery against this phone. "Likely fit" means the evidence points
-          that way but we have not confirmed it ourselves. Ask us before you buy.
-        </p>
-      </div>
+          </section>
+        )}
+
+        {noResult && (
+          <section class="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5" role="status">
+            <p class="font-bold text-amber-900">{cfg?.noResultHeadline}</p>
+            <p class="mt-1 text-sm text-amber-900">{noResult.message}</p>
+            <p class="mt-3 text-xs text-amber-900">{cfg?.modelNumberHelp}</p>
+          </section>
+        )}
+
+        {requestNotice && (
+          <div role="status" class={`mt-6 rounded-xl border px-4 py-3 text-sm font-bold ${requestNotice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700'}`}>{requestNotice.text}</div>
+        )}
+
+        {(noResult || (shownDevice && results.length === 0) || (brand && brand.devices.length === 0)) && !requestNotice && (
+          <section class="mt-6 rounded-2xl border border-gray-200 bg-white p-5" aria-labelledby="request-heading">
+            <h2 id="request-heading" class="text-sm font-black text-brand-dark">{cfg?.requestCta ?? 'Ask us to find this battery'}</h2>
+            <p class="text-xs text-gray-500 mt-1">Tell us the phone and we will confirm the right battery. Your phone number is only used to answer you.</p>
+            <form method="POST" class="mt-4 grid gap-3 sm:grid-cols-2">
+              <input type="hidden" name="queryText" value={q} />
+              <input type="text" name="website" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true" />
+              <label class="block"><span class="text-xs font-bold text-gray-600">Phone brand</span>
+                <input name="brandText" maxlength="80" value={brand?.brand.name ?? ''} class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base" /></label>
+              <label class="block"><span class="text-xs font-bold text-gray-600">Phone model</span>
+                <input name="deviceText" maxlength="120" value={shownDevice?.model ?? q} class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base" /></label>
+              <label class="block"><span class="text-xs font-bold text-gray-600">Exact model number, if you have it</span>
+                <input name="modelNumberText" maxlength="80" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base font-mono" /></label>
+              <label class="block"><span class="text-xs font-bold text-gray-600">Battery code on the old battery</span>
+                <input name="batteryCodeText" maxlength="120" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base font-mono" /></label>
+              <label class="block"><span class="text-xs font-bold text-gray-600">Your name</span>
+                <input name="contactName" maxlength="120" autocomplete="name" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base" /></label>
+              <label class="block"><span class="text-xs font-bold text-gray-600">Your phone number</span>
+                <input name="contactPhone" maxlength="32" inputmode="tel" autocomplete="tel" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base" /></label>
+              <label class="block sm:col-span-2"><span class="text-xs font-bold text-gray-600">Anything else</span>
+                <input name="notes" maxlength="1000" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base" /></label>
+              <div class="sm:col-span-2 flex flex-wrap gap-3">
+                <button type="submit" class="rounded-xl bg-brand-dark px-6 py-3 font-bold text-white hover:opacity-90">Send it to us</button>
+                <a href={waHref(`${cfg?.whatsappPrefill ?? 'Hello GoldPlus, I need a battery for my '}${shownDevice?.label ?? q}`)} class="rounded-xl border border-gray-300 px-6 py-3 font-bold text-brand-dark hover:border-brand-primary">Or send a photo on WhatsApp</a>
+              </div>
+            </form>
+          </section>
+        )}
+      </>
     )}
   </div>
 </BaseLayout>

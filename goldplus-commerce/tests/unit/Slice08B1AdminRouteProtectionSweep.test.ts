@@ -69,7 +69,12 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 121 adds the Organic Intelligence portfolio (2026-08-13).
     // 122 adds the Organic Intelligence domains surface — query clusters,
     // cannibalisation, content, gaps and proposed actions (2026-08-13).
-    expect(adminPages).toHaveLength(122);
+    // 132 adds the ten Batteries surfaces (2026-08-26): the operations
+    // dashboard, the catalogue list and one battery's detail, phones and
+    // brands, the compatibility review queue, stock, the demand queue, the
+    // finder wording editor, and the staged import list and detail. They are
+    // what makes the battery catalogue operable without a deploy.
+    expect(adminPages).toHaveLength(132);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/analytics/index.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -86,7 +91,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(121);
+    expect(protectedPages).toHaveLength(131);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');
@@ -127,7 +132,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
   it('keeps every dynamic admin route explicitly guarded', () => {
     const dynamicPages = adminPages.filter((page) => page.includes('['));
     // 21: +2 for the integration detail page and its connection wizard.
-    expect(dynamicPages).toHaveLength(21);
+    // 23: +2 for one battery's detail page and one staged import's detail page.
+    expect(dynamicPages).toHaveLength(23);
     for (const page of dynamicPages) {
       expect(read(page), `${page} requires source-level protection`).toContain('readSessionToken(Astro.request)');
     }

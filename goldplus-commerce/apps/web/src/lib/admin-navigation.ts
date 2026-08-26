@@ -49,6 +49,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Stage, validate, approve, apply and safely roll back catalogue imports.'
   },
   {
+    label: 'Batteries',
+    href: '/admin/batteries',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Battery catalogue, phones, verified compatibility, stock movements, imports and customer demand.'
+  },
+  {
     label: 'Carts',
     href: '/admin/carts',
     group: 'Commerce',

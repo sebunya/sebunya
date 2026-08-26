@@ -1,0 +1,279 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { adminBattery, batteryMessage } from '../../../lib/batteries';
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/batteries/devices', 303);
+
+interface Brand { id: string; name: string; slug: string; searchAliases: string[]; isFeatured: boolean; displayOrder: number; status: string; deviceCount: number; verifiedFits: number }
+interface Series { id: string; brandId: string; name: string; slug: string; displayOrder: number; status: string; deviceCount: number }
+interface Device { id: string; brandName: string; seriesName: string | null; model: string; modelNumber: string | null; variant: string | null; slug: string; modelAliases: string[]; releaseYear: number | null; status: string; claimCount: number; verifiedFits: number; mergedIntoDeviceId: string | null }
+interface MergePreview { source: Device; target: Device; impact: { mappingsToMove: number; mappingsAlreadyOnTarget: number; aliasesToCarry: string[]; requestsToRepoint: number; blocked: string | null } }
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+let mergePreview: MergePreview | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  const aliases = (k: string) => String(form.get(k) ?? '').split(',').map((a) => a.trim()).filter(Boolean);
+  const call = async (path: string, body: unknown, okText: string, method: 'POST' | 'PUT' = 'POST') => {
+    const res = await adminBattery(path, token, { method, body: JSON.stringify(body) });
+    notice = res.ok ? { kind: 'success', text: okText } : { kind: 'error', text: batteryMessage(res.error) };
+    return res.ok;
+  };
+  if (intent === 'brand-create') await call('/brands', { name: String(form.get('name') ?? '').trim(), searchAliases: aliases('searchAliases'), isFeatured: !!form.get('isFeatured') }, 'Brand added.');
+  else if (intent === 'brand-update') await call(`/brands/${String(form.get('brandId'))}`, { name: String(form.get('name') ?? '').trim(), searchAliases: aliases('searchAliases'), isFeatured: !!form.get('isFeatured'), displayOrder: Number(form.get('displayOrder')) || 0 }, 'Brand saved.', 'PUT');
+  else if (intent === 'brand-archive') await call(`/brands/${String(form.get('brandId'))}/archive`, {}, 'Brand archived.');
+  else if (intent === 'brand-restore') await call(`/brands/${String(form.get('brandId'))}/restore`, {}, 'Brand restored.');
+  else if (intent === 'series-create') await call('/series', { brandId: String(form.get('brandId')), name: String(form.get('name') ?? '').trim(), searchAliases: aliases('searchAliases'), displayOrder: Number(form.get('displayOrder')) || 0 }, 'Series added.');
+  else if (intent === 'series-archive') await call(`/series/${String(form.get('seriesId'))}/archive`, {}, 'Series archived.');
+  else if (intent === 'device-create') {
+    await call('/devices', {
+      brandId: String(form.get('brandId')),
+      seriesId: String(form.get('seriesId') ?? '') || null,
+      model: String(form.get('model') ?? '').trim(),
+      modelNumber: String(form.get('modelNumber') ?? '').trim() || null,
+      variant: String(form.get('variant') ?? '').trim() || null,
+      modelAliases: aliases('modelAliases'),
+      releaseYear: Number(form.get('releaseYear')) || null,
+    }, 'Phone added.');
+  } else if (intent === 'device-archive') await call(`/devices/${String(form.get('deviceId'))}/archive`, {}, 'Phone archived.');
+  else if (intent === 'device-restore') await call(`/devices/${String(form.get('deviceId'))}/restore`, {}, 'Phone restored.');
+  else if (intent === 'merge-preview') {
+    const res = await adminBattery<MergePreview>('/devices/merge/preview', token, { method: 'POST', body: JSON.stringify({ sourceId: String(form.get('sourceId')), targetId: String(form.get('targetId')) }) });
+    if (res.ok) mergePreview = res.data;
+    else notice = { kind: 'error', text: batteryMessage(res.error) };
+  } else if (intent === 'merge') {
+    await call('/devices/merge', { sourceId: String(form.get('sourceId')), targetId: String(form.get('targetId')), reason: String(form.get('reason') ?? '').trim() }, 'Merged. Compatibility moved and history kept.');
+  }
+}
+
+const url = new URL(Astro.request.url);
+const brandId = url.searchParams.get('brandId') ?? '';
+const q = url.searchParams.get('q') ?? '';
+const [brandsRes, seriesRes, devicesRes] = await Promise.all([
+  adminBattery<Brand[]>('/brands?includeArchived=true', token),
+  brandId ? adminBattery<Series[]>(`/brands/${brandId}/series?includeArchived=true`, token) : Promise.resolve({ ok: true, data: [] as Series[], error: null, status: 200 }),
+  adminBattery<Device[]>(`/devices?status=ALL&limit=500${brandId ? `&brandId=${brandId}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`, token),
+]);
+const brands = brandsRes.data ?? [];
+const series = seriesRes.data ?? [];
+const devices = devicesRes.data ?? [];
+const activeBrands = brands.filter((b) => b.status === 'ACTIVE');
+const current = brands.find((b) => b.id === brandId) ?? null;
+---
+
+<AdminLayout title="Phones and brands" description="Brands, series and exact phone models a battery can be matched to." activePath="/admin/batteries">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Phones</p>
+    <div class="mb-6 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Phones and brands</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+        A phone is identified by its brand, its marketing name and its exact model number. "Galaxy A32 5G" and
+        "SM-A326B" are kept apart on purpose, because one marketing name can hide several different phones.
+      </p>
+    </div>
+
+    {notice && <div role="status" class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+    {!brandsRes.ok && <div role="status" class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{batteryMessage(brandsRes.error)}</div>}
+
+    <div class="grid lg:grid-cols-[320px_1fr] gap-6">
+      <div class="space-y-6">
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">Brands</h3>
+          <ul class="divide-y divide-gray-50 text-xs max-h-[420px] overflow-y-auto">
+            {brands.map((b) => (
+              <li class={`px-5 py-3 ${b.id === brandId ? 'bg-brand-primary/5' : ''}`}>
+                <div class="flex items-center justify-between gap-2">
+                  <a href={`/admin/batteries/devices?brandId=${b.id}`} class="font-black text-brand-dark hover:text-brand-primary">{b.name}</a>
+                  <span class="text-gray-400">{b.deviceCount} phone{b.deviceCount === 1 ? '' : 's'}</span>
+                </div>
+                <p class="text-gray-400 mt-0.5">{b.verifiedFits} live fit{b.verifiedFits === 1 ? '' : 's'}{b.isFeatured ? ' · featured' : ''}{b.status !== 'ACTIVE' ? ' · archived' : ''}</p>
+              </li>
+            ))}
+            {brands.length === 0 && brandsRes.ok && <li class="px-5 py-8 text-center text-gray-400 italic">No brand yet. Add the first one below.</li>}
+          </ul>
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+          <h3 class="text-sm font-black text-brand-dark mb-3">Add a brand</h3>
+          <form method="POST" class="space-y-3">
+            <input type="hidden" name="intent" value="brand-create" />
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Name</span>
+              <input name="name" required maxlength="60" placeholder="TECNO" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Other spellings customers use</span>
+              <input name="searchAliases" maxlength="300" placeholder="Techno, Tecno Mobile" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-600"><input type="checkbox" name="isFeatured" class="w-4 h-4 border-gray-300 rounded" /> Show first in the finder</label>
+            <button type="submit" class="w-full bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:opacity-90">Add brand</button>
+          </form>
+        </section>
+
+        {current && (
+          <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+            <h3 class="text-sm font-black text-brand-dark mb-3">Edit {current.name}</h3>
+            <form method="POST" class="space-y-3">
+              <input type="hidden" name="intent" value="brand-update" />
+              <input type="hidden" name="brandId" value={current.id} />
+              <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Name</span>
+                <input name="name" value={current.name} required maxlength="60" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Other spellings</span>
+                <input name="searchAliases" value={current.searchAliases.join(', ')} maxlength="300" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Order among featured brands</span>
+                <input name="displayOrder" type="number" min="0" value={current.displayOrder} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-600"><input type="checkbox" name="isFeatured" checked={current.isFeatured} class="w-4 h-4 border-gray-300 rounded" /> Featured</label>
+              <button type="submit" class="w-full bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Save brand</button>
+            </form>
+            <form method="POST" class="mt-2">
+              <input type="hidden" name="intent" value={current.status === 'ACTIVE' ? 'brand-archive' : 'brand-restore'} />
+              <input type="hidden" name="brandId" value={current.id} />
+              <button type="submit" class="w-full rounded-lg border border-gray-300 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-gray-600">{current.status === 'ACTIVE' ? 'Archive brand' : 'Restore brand'}</button>
+            </form>
+          </section>
+        )}
+      </div>
+
+      <div class="space-y-6">
+        {current && (
+          <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+            <h3 class="text-sm font-black text-brand-dark mb-3">Series under {current.name}</h3>
+            <ul class="flex flex-wrap gap-2 mb-4">
+              {series.map((s) => (
+                <li class={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${s.status === 'ACTIVE' ? 'border-gray-200 bg-gray-50' : 'border-gray-100 text-gray-400'}`}>
+                  <span class="font-bold">{s.name}</span><span class="text-gray-400">{s.deviceCount}</span>
+                  {s.status === 'ACTIVE' && (
+                    <form method="POST" class="inline"><input type="hidden" name="intent" value="series-archive" /><input type="hidden" name="seriesId" value={s.id} />
+                      <button type="submit" class="text-[9px] font-black uppercase tracking-widest text-red-600">Archive</button></form>
+                  )}
+                </li>
+              ))}
+              {series.length === 0 && <li class="text-xs text-gray-400 italic">No series yet.</li>}
+            </ul>
+            <form method="POST" class="flex flex-wrap gap-3 items-end">
+              <input type="hidden" name="intent" value="series-create" />
+              <input type="hidden" name="brandId" value={current.id} />
+              <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Series name</span>
+                <input name="name" required maxlength="80" placeholder="Spark" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Order</span>
+                <input name="displayOrder" type="number" min="0" value="0" class="mt-1 w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Add series</button>
+            </form>
+          </section>
+        )}
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+          <h3 class="text-sm font-black text-brand-dark mb-3">Add an exact phone</h3>
+          <form method="POST" class="grid gap-3 md:grid-cols-3">
+            <input type="hidden" name="intent" value="device-create" />
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Brand</span>
+              <select name="brandId" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="">Choose</option>
+                {activeBrands.map((b) => <option value={b.id} selected={b.id === brandId}>{b.name}</option>)}
+              </select></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Series (optional)</span>
+              <select name="seriesId" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="">None</option>
+                {series.filter((s) => s.status === 'ACTIVE').map((s) => <option value={s.id}>{s.name}</option>)}
+              </select></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Marketing name</span>
+              <input name="model" required maxlength="120" placeholder="Spark 7" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Exact model number</span>
+              <input name="modelNumber" maxlength="80" placeholder="KF6n" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Regional variant</span>
+              <input name="variant" maxlength="80" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Release year</span>
+              <input name="releaseYear" type="number" min="1995" max="2100" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Other names customers use (comma separated)</span>
+              <input name="modelAliases" maxlength="500" placeholder="Spark seven, KF6n" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <div class="md:col-span-3"><button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Add phone</button></div>
+          </form>
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+            <h3 class="text-sm font-black text-brand-dark">Phones{current ? ` under ${current.name}` : ''}</h3>
+            <form method="GET" class="flex gap-2">
+              {brandId && <input type="hidden" name="brandId" value={brandId} />}
+              <input name="q" value={q} maxlength="120" placeholder="Search a phone" class="rounded-lg border border-gray-300 px-3 py-2 text-xs" />
+              <button type="submit" class="rounded-lg border border-gray-300 px-3 py-2 text-[10px] font-black uppercase tracking-widest">Search</button>
+            </form>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+                <th class="p-4">Phone</th><th class="p-4">Exact model</th><th class="p-4 text-center">Fits</th><th class="p-4 text-center">Status</th><th class="p-4 text-right">Action</th>
+              </tr></thead>
+              <tbody class="text-xs">
+                {devices.map((dv) => (
+                  <tr class="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td class="p-4"><span class="font-bold text-brand-dark">{dv.brandName} {dv.model}</span>{dv.seriesName && <span class="text-gray-400"> · {dv.seriesName}</span>}
+                      {dv.modelAliases.length > 0 && <p class="text-gray-400 mt-0.5">also: {dv.modelAliases.join(', ')}</p>}</td>
+                    <td class="p-4 font-mono text-gray-600">{dv.modelNumber ?? <span class="text-amber-700">not recorded</span>}{dv.variant ? ` (${dv.variant})` : ''}</td>
+                    <td class="p-4 text-center tabular-nums">{dv.verifiedFits}<span class="text-gray-400"> / {dv.claimCount}</span></td>
+                    <td class="p-4 text-center"><span class="text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest border border-gray-200 bg-gray-50 text-gray-600">{dv.status}</span></td>
+                    <td class="p-4 text-right">
+                      {dv.status !== 'MERGED' && (
+                        <form method="POST" class="inline">
+                          <input type="hidden" name="intent" value={dv.status === 'ACTIVE' ? 'device-archive' : 'device-restore'} />
+                          <input type="hidden" name="deviceId" value={dv.id} />
+                          <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-gray-600 hover:text-brand-dark">{dv.status === 'ACTIVE' ? 'Archive' : 'Restore'}</button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {devices.length === 0 && devicesRes.ok && <tr><td colspan="5" class="p-12 text-center text-gray-400 italic">No phone recorded yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+          <h3 class="text-sm font-black text-brand-dark mb-1">Merge two phones</h3>
+          <p class="text-xs text-gray-500 mb-4">Use this when the same phone was recorded twice. Compatibility moves to the phone you keep, names are carried over, and nothing is deleted.</p>
+          <form method="POST" class="flex flex-wrap gap-3 items-end">
+            <input type="hidden" name="intent" value="merge-preview" />
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Duplicate to fold in</span>
+              <select name="sourceId" required class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm max-w-[240px]">
+                <option value="">Choose</option>
+                {devices.filter((dv) => dv.status === 'ACTIVE').map((dv) => <option value={dv.id}>{dv.brandName} {dv.model} {dv.modelNumber ?? ''}</option>)}
+              </select></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Phone to keep</span>
+              <select name="targetId" required class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm max-w-[240px]">
+                <option value="">Choose</option>
+                {devices.filter((dv) => dv.status === 'ACTIVE').map((dv) => <option value={dv.id}>{dv.brandName} {dv.model} {dv.modelNumber ?? ''}</option>)}
+              </select></label>
+            <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Preview the impact</button>
+          </form>
+
+          {mergePreview && (
+            <div class={`mt-4 rounded-xl border p-4 ${mergePreview.impact.blocked ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
+              <p class="text-sm font-bold text-brand-dark">{mergePreview.source.brandName} {mergePreview.source.model} would be folded into {mergePreview.target.brandName} {mergePreview.target.model}.</p>
+              {mergePreview.impact.blocked ? (
+                <p class="text-sm text-red-700 mt-2 font-bold">{mergePreview.impact.blocked}</p>
+              ) : (
+                <>
+                  <ul class="text-xs text-gray-700 mt-2 space-y-1">
+                    <li>{mergePreview.impact.mappingsToMove} compatibility record(s) move across.</li>
+                    <li>{mergePreview.impact.mappingsAlreadyOnTarget} already exist on the phone you keep and will be archived, not deleted.</li>
+                    <li>Names carried over: {mergePreview.impact.aliasesToCarry.join(', ') || 'none'}.</li>
+                    <li>{mergePreview.impact.requestsToRepoint} customer request(s) repointed.</li>
+                  </ul>
+                  <form method="POST" class="mt-3 flex flex-wrap gap-2 items-end">
+                    <input type="hidden" name="intent" value="merge" />
+                    <input type="hidden" name="sourceId" value={mergePreview.source.id} />
+                    <input type="hidden" name="targetId" value={mergePreview.target.id} />
+                    <label class="block flex-1 min-w-[200px]"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Reason</span>
+                      <input name="reason" required minlength="3" maxlength="500" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                    <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Confirm merge</button>
+                  </form>
+                </>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

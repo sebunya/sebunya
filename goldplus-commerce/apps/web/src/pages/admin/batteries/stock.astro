@@ -1,0 +1,213 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { adminBattery, batteryMessage } from '../../../lib/batteries';
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/batteries/stock', 303);
+
+interface Battery { profile: { canonicalCode: string }; product: { productId: string; name: string; stockQuantity: number; movementCount: number } }
+interface Location { id: string; code: string; name: string; isDefault: boolean }
+interface Receipt { id: string; supplierName: string; supplierReference: string | null; status: string; createdAt: string; lines: Array<{ id: string; canonicalCode: string | null; productName: string | null; scannedCode: string | null; matchKind: string; quantity: number; unitCostUgx: number | null }> }
+interface Count { id: string; countType: string; status: string; createdAt: string; lines: Array<{ id: string; canonicalCode: string | null; systemQuantity: number; countedQuantity: number; reason: string | null }> }
+interface Movement { id: string; movementType: string; quantityDelta: number; quantityAfter: number; reason: string; occurredAt: string; canonicalCode: string | null; productName: string }
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  const call = async (path: string, body: unknown, okText: string) => {
+    const res = await adminBattery(path, token, { method: 'POST', body: JSON.stringify(body) });
+    notice = res.ok ? { kind: 'success', text: okText } : { kind: 'error', text: batteryMessage(res.error) };
+  };
+  if (intent === 'receipt-create') {
+    const codes = form.getAll('lineCode').map(String);
+    const productIds = form.getAll('lineProductId').map(String);
+    const quantities = form.getAll('lineQuantity').map((v) => Number(v));
+    const costs = form.getAll('lineCost').map((v) => (String(v).trim() === '' ? null : Number(v)));
+    const lines = quantities.map((quantity, i) => ({ scannedCode: codes[i]?.trim() || null, productId: productIds[i] || null, quantity, unitCostUgx: costs[i], notes: null }))
+      .filter((l) => (l.productId || l.scannedCode) && Number.isFinite(l.quantity) && l.quantity > 0);
+    if (!lines.length) notice = { kind: 'error', text: 'Add at least one line with a battery and a quantity.' };
+    else await call('/stock/receipts', { supplierName: String(form.get('supplierName') ?? '').trim(), supplierReference: String(form.get('supplierReference') ?? '').trim() || null, locationCode: String(form.get('locationCode') ?? '') || null, notes: String(form.get('notes') ?? '').trim() || null, lines }, 'Receipt drafted. Check it, then apply it to move stock.');
+  } else if (intent === 'receipt-apply') await call(`/stock/receipts/${String(form.get('receiptId'))}/apply`, {}, 'Receipt applied. Stock moved and every line recorded.');
+  else if (intent === 'receipt-cancel') await call(`/stock/receipts/${String(form.get('receiptId'))}/cancel`, { reason: String(form.get('reason') ?? 'cancelled by operator') }, 'Receipt cancelled.');
+  else if (intent === 'count-create') {
+    const productIds = form.getAll('countProductId').map(String);
+    const counted = form.getAll('countQuantity').map((v) => Number(v));
+    const reasons = form.getAll('countReason').map(String);
+    const lines = productIds.map((productId, i) => ({ productId, countedQuantity: counted[i], reason: reasons[i]?.trim() || null }))
+      .filter((l) => l.productId && Number.isFinite(l.countedQuantity) && l.countedQuantity >= 0);
+    if (!lines.length) notice = { kind: 'error', text: 'Count at least one battery.' };
+    else await call('/stock/counts', { countType: String(form.get('countType') ?? 'CYCLE'), locationCode: String(form.get('locationCode') ?? '') || null, notes: null, lines }, 'Count drafted. Apply it to correct the balances.');
+  } else if (intent === 'count-apply') await call(`/stock/counts/${String(form.get('countId'))}/apply`, {}, 'Count applied.');
+  else if (intent === 'count-cancel') await call(`/stock/counts/${String(form.get('countId'))}/cancel`, { reason: String(form.get('reason') ?? 'cancelled by operator') }, 'Count cancelled.');
+}
+
+const [batteriesRes, locationsRes, receiptsRes, countsRes, movementsRes] = await Promise.all([
+  adminBattery<Battery[]>('/catalogue?status=ALL&limit=500', token),
+  adminBattery<Location[]>('/stock/locations', token),
+  adminBattery<Receipt[]>('/stock/receipts?limit=25', token),
+  adminBattery<Count[]>('/stock/counts?limit=25', token),
+  adminBattery<Movement[]>('/stock/movements?limit=40', token),
+]);
+const batteries = batteriesRes.data ?? [];
+const locations = locationsRes.data ?? [];
+const receipts = receiptsRes.data ?? [];
+const counts = countsRes.data ?? [];
+const movements = movementsRes.data ?? [];
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+const LINES = [0, 1, 2, 3, 4, 5, 6, 7];
+---
+
+<AdminLayout title="Battery stock" description="Receive a delivery, count the shelf, and see every movement." activePath="/admin/batteries">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Stock</p>
+    <div class="mb-6 pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Stock</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-3xl">
+        Nothing changes a balance without a movement: a receipt, a count, damage, loss, a return or a correction. Every
+        movement carries a reason and the person who made it.
+      </p>
+    </div>
+
+    {notice && <div role="status" class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+    {!batteriesRes.ok && <div role="status" class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{batteryMessage(batteriesRes.error)}</div>}
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-6">
+      <h3 class="text-sm font-black text-brand-dark mb-1">Receive a delivery</h3>
+      <p class="text-xs text-gray-500 mb-4">Pick each battery and how many arrived. A battery that is not in the catalogue yet must be created first; the receipt will say so rather than guess.</p>
+      <form method="POST" class="space-y-3">
+        <input type="hidden" name="intent" value="receipt-create" />
+        <div class="grid gap-3 md:grid-cols-4">
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier</span>
+            <input name="supplierName" required maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Invoice or delivery note</span>
+            <input name="supplierReference" maxlength="120" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Location</span>
+            <select name="locationCode" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              {locations.map((l) => <option value={l.code} selected={l.isDefault}>{l.name}</option>)}
+            </select></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Note</span>
+            <input name="notes" maxlength="1000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        </div>
+        <table class="w-full text-left border-collapse text-xs">
+          <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest"><th class="p-3">Battery</th><th class="p-3">Or scan a code</th><th class="p-3 w-28">Quantity</th><th class="p-3 w-32">Unit cost UGX</th></tr></thead>
+          <tbody>
+            {LINES.map(() => (
+              <tr class="border-b border-gray-50">
+                <td class="p-2"><select name="lineProductId" class="w-full rounded-lg border border-gray-300 px-2 py-2 text-xs"><option value="">Choose</option>{batteries.map((b) => <option value={b.product.productId}>{b.profile.canonicalCode} · {b.product.name}</option>)}</select></td>
+                <td class="p-2"><input name="lineCode" maxlength="120" placeholder="BL-49FT or barcode" class="w-full rounded-lg border border-gray-300 px-2 py-2 text-xs font-mono" /></td>
+                <td class="p-2"><input name="lineQuantity" type="number" min="0" class="w-full rounded-lg border border-gray-300 px-2 py-2 text-xs" /></td>
+                <td class="p-2"><input name="lineCost" type="number" min="0" class="w-full rounded-lg border border-gray-300 px-2 py-2 text-xs" /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Draft the receipt</button>
+      </form>
+    </section>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-6">
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">Receipts</h3>
+        <ul class="divide-y divide-gray-50">
+          {receipts.map((r) => (
+            <li class="px-5 py-4 text-xs">
+              <div class="flex items-center justify-between gap-3">
+                <span class="font-black text-brand-dark">{r.supplierName}{r.supplierReference ? ` · ${r.supplierReference}` : ''}</span>
+                <span class={`text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest border ${r.status === 'APPLIED' ? 'bg-green-50 text-green-800 border-green-200' : r.status === 'CANCELLED' ? 'bg-slate-50 text-slate-500 border-slate-200' : 'bg-amber-50 text-amber-900 border-amber-200'}`}>{r.status}</span>
+              </div>
+              <p class="text-gray-400 mt-1">{when(r.createdAt)} · {r.lines.length} line(s)</p>
+              <ul class="mt-2 space-y-1 text-gray-600">
+                {r.lines.map((l) => <li>{l.canonicalCode ?? l.scannedCode ?? 'unmatched'} × {l.quantity}{l.matchKind !== 'EXISTING' ? ` (${l.matchKind.toLowerCase()})` : ''}</li>)}
+              </ul>
+              {r.status === 'DRAFT' && (
+                <div class="mt-3 flex gap-2">
+                  <form method="POST"><input type="hidden" name="intent" value="receipt-apply" /><input type="hidden" name="receiptId" value={r.id} />
+                    <button type="submit" class="rounded-lg bg-brand-dark px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white">Apply to stock</button></form>
+                  <form method="POST" class="flex gap-2"><input type="hidden" name="intent" value="receipt-cancel" /><input type="hidden" name="receiptId" value={r.id} />
+                    <input name="reason" required maxlength="500" placeholder="Reason" class="rounded-lg border border-gray-300 px-2 py-2 text-xs" />
+                    <button type="submit" class="rounded-lg border border-gray-300 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-600">Cancel</button></form>
+                </div>
+              )}
+            </li>
+          ))}
+          {receipts.length === 0 && receiptsRes.ok && <li class="px-5 py-10 text-center text-gray-400 italic">No receipt yet.</li>}
+        </ul>
+      </section>
+
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+        <h3 class="text-sm font-black text-brand-dark mb-1">Count the shelf</h3>
+        <p class="text-xs text-gray-500 mb-4">Enter what you actually counted. Any difference from the system needs a reason before it can be applied.</p>
+        <form method="POST" class="space-y-3">
+          <input type="hidden" name="intent" value="count-create" />
+          <div class="flex gap-3">
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Kind</span>
+              <select name="countType" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value="CYCLE">Cycle count</option><option value="FULL">Full count</option></select></label>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Location</span>
+              <select name="locationCode" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">{locations.map((l) => <option value={l.code} selected={l.isDefault}>{l.name}</option>)}</select></label>
+          </div>
+          <table class="w-full text-left border-collapse text-xs">
+            <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest"><th class="p-2">Battery</th><th class="p-2 w-24">Counted</th><th class="p-2">Reason if it differs</th></tr></thead>
+            <tbody>
+              {LINES.slice(0, 6).map(() => (
+                <tr class="border-b border-gray-50">
+                  <td class="p-2"><select name="countProductId" class="w-full rounded-lg border border-gray-300 px-2 py-2 text-xs"><option value="">Choose</option>{batteries.map((b) => <option value={b.product.productId}>{b.profile.canonicalCode} (system {b.product.stockQuantity})</option>)}</select></td>
+                  <td class="p-2"><input name="countQuantity" type="number" min="0" class="w-full rounded-lg border border-gray-300 px-2 py-2 text-xs" /></td>
+                  <td class="p-2"><input name="countReason" maxlength="300" class="w-full rounded-lg border border-gray-300 px-2 py-2 text-xs" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Draft the count</button>
+        </form>
+        <ul class="divide-y divide-gray-50 mt-4 text-xs">
+          {counts.map((c) => (
+            <li class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <span class="font-black text-brand-dark">{c.countType.toLowerCase()} count · {c.lines.length} line(s)</span>
+                <span class={`text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest border ${c.status === 'APPLIED' ? 'bg-green-50 text-green-800 border-green-200' : c.status === 'CANCELLED' ? 'bg-slate-50 text-slate-500 border-slate-200' : 'bg-amber-50 text-amber-900 border-amber-200'}`}>{c.status}</span>
+              </div>
+              <p class="text-gray-400 mt-1">{when(c.createdAt)}</p>
+              {c.status === 'DRAFT' && (
+                <div class="mt-2 flex gap-2">
+                  <form method="POST"><input type="hidden" name="intent" value="count-apply" /><input type="hidden" name="countId" value={c.id} />
+                    <button type="submit" class="rounded-lg bg-brand-dark px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white">Apply</button></form>
+                  <form method="POST" class="flex gap-2"><input type="hidden" name="intent" value="count-cancel" /><input type="hidden" name="countId" value={c.id} />
+                    <input name="reason" required maxlength="500" placeholder="Reason" class="rounded-lg border border-gray-300 px-2 py-2 text-xs" />
+                    <button type="submit" class="rounded-lg border border-gray-300 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-600">Cancel</button></form>
+                </div>
+              )}
+            </li>
+          ))}
+          {counts.length === 0 && countsRes.ok && <li class="py-8 text-center text-gray-400 italic">No count yet.</li>}
+        </ul>
+      </section>
+    </div>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+      <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">Every recent movement</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+            <th class="p-4">When</th><th class="p-4">Battery</th><th class="p-4">Movement</th><th class="p-4 text-right">Change</th><th class="p-4 text-right">Balance</th><th class="p-4">Reason</th>
+          </tr></thead>
+          <tbody class="text-xs">
+            {movements.map((m) => (
+              <tr class="border-b border-gray-50">
+                <td class="p-4 text-gray-500 whitespace-nowrap">{when(m.occurredAt)}</td>
+                <td class="p-4 font-mono font-bold text-brand-dark">{m.canonicalCode ?? m.productName}</td>
+                <td class="p-4">{m.movementType.toLowerCase()}</td>
+                <td class="p-4 text-right tabular-nums">{m.quantityDelta > 0 ? `+${m.quantityDelta}` : m.quantityDelta}</td>
+                <td class="p-4 text-right tabular-nums">{m.quantityAfter}</td>
+                <td class="p-4 text-gray-600">{m.reason}</td>
+              </tr>
+            ))}
+            {movements.length === 0 && movementsRes.ok && <tr><td colspan="6" class="p-12 text-center text-gray-400 italic">No stock has been moved yet.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</AdminLayout>

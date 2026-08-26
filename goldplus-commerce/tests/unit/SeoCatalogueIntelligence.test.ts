@@ -331,9 +331,23 @@ describe('catalogue intelligence is wired end to end', () => {
   });
 
   it('keeps the public finder page noindex until it is genuinely useful', () => {
+    // The finder was rebuilt on the battery module (0125). The guarantee is
+    // unchanged and now stricter: the page is indexable ONLY once the verified
+    // fit count passes the admin threshold AND the visitor is on the bare page,
+    // so a search, brand or device view is never indexed. The honest
+    // "we have not checked" wording is still required.
     const page = read('apps/web/src/pages/battery-finder.astro');
-    expect(page).toContain("robotsMeta = indexable ? undefined : 'noindex,follow'");
-    expect(page).toMatch(/have not checked/i);
+    expect(page).toContain("robotsMeta = indexable && !q && !brandSlug && !deviceSlug ? undefined : 'noindex,follow'");
+    expect(page).toMatch(/indexable = configRes\.ok \? configRes\.data\.indexable : false/);
+    // The honest no-result wording is now admin-editable, so the guarantee is
+    // asserted where it lives: the seeded default the page renders. An operator
+    // may reword it, but there is no build in which the default pretends we
+    // checked a fit we did not.
+    const defaults = read('packages/shared/src/batteries/index.ts');
+    expect(defaults).toMatch(/have not matched a battery to this phone yet/i);
+    expect(defaults).toMatch(/have not checked the fit ourselves yet/i);
+    expect(page).toContain('cfg?.noResultHeadline');
+    expect(page).toContain('cfg?.noResultBody');
   });
 });
 

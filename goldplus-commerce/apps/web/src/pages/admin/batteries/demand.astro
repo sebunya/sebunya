@@ -1,0 +1,165 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { adminBattery, batteryMessage } from '../../../lib/batteries';
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/batteries/demand', 303);
+
+interface Overview {
+  since: string;
+  topBrands: Array<{ name: string; searches: number }>;
+  topDevices: Array<{ deviceId: string; label: string; searches: number; verifiedFits: number }>;
+  topCodes: Array<{ query: string; searches: number }>;
+  noResultQueries: Array<{ query: string; searches: number; lastAt: string }>;
+  devicesWithoutBattery: Array<{ deviceId: string; label: string; searches: number }>;
+  outOfStockDemand: Array<{ productId: string; canonicalCode: string; name: string; views: number }>;
+  searchToProduct: { searches: number; productViews: number; rate: number };
+  searchToCart: { searches: number; cartAdds: number; rate: number };
+  aliasCorrections: Array<{ query: string; searches: number }>;
+  ambiguousQueries: Array<{ query: string; searches: number }>;
+}
+interface Request {
+  id: string; createdAt: string; source: string; queryText: string | null; brandText: string | null; deviceText: string | null;
+  modelNumberText: string | null; batteryCodeText: string | null; contactName: string | null; contactPhone: string | null;
+  notes: string | null; status: string; resolutionNote: string | null;
+}
+interface Device { id: string; brandName: string; model: string; modelNumber: string | null }
+interface Battery { profile: { canonicalCode: string }; product: { productId: string; name: string } }
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const res = await adminBattery(`/demand/requests/${String(form.get('requestId'))}/resolve`, token, { method: 'POST', body: JSON.stringify({
+    action: String(form.get('action')),
+    note: String(form.get('note') ?? '').trim() || null,
+    deviceId: String(form.get('deviceId') ?? '') || null,
+    batteryProductId: String(form.get('batteryProductId') ?? '') || null,
+  }) });
+  notice = res.ok ? { kind: 'success', text: 'Request updated.' } : { kind: 'error', text: batteryMessage(res.error) };
+}
+
+const url = new URL(Astro.request.url);
+const status = url.searchParams.get('status') ?? 'OPEN';
+const days = Number(url.searchParams.get('days')) || 30;
+const [overviewRes, requestsRes, devicesRes, batteriesRes] = await Promise.all([
+  adminBattery<Overview>(`/demand/overview?days=${days}`, token),
+  adminBattery<Request[]>(`/demand/requests?status=${status}`, token),
+  adminBattery<Device[]>('/devices?limit=500', token),
+  adminBattery<Battery[]>('/catalogue?status=ALL&limit=500', token),
+]);
+const o = overviewRes.data;
+const requests = requestsRes.data ?? [];
+const devices = devicesRes.data ?? [];
+const batteries = batteriesRes.data ?? [];
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+const STATUSES = ['OPEN', 'MAPPED_DEVICE', 'ALIAS_ADDED', 'BATTERY_MAPPED', 'DRAFT_CREATED', 'INVALID', 'RESOLVED', 'ALL'];
+---
+
+<AdminLayout title="Battery demand" description="What customers searched for, what we could not answer, and the requests they left." activePath="/admin/batteries">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Demand</p>
+    <div class="mb-6 pb-6 border-b border-gray-200 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Customer demand</h2>
+        <p class="text-sm text-gray-500 mt-1 max-w-3xl">Anonymous counts of what people looked for. Working a row here is how the catalogue improves without a code change.</p>
+      </div>
+      <form method="GET" class="flex gap-2 items-end">
+        <input type="hidden" name="status" value={status} />
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Period</span>
+          <select name="days" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {[7, 30, 90, 365].map((d) => <option value={d} selected={d === days}>Last {d} days</option>)}
+          </select></label>
+        <button type="submit" class="rounded-lg border border-gray-300 px-3 py-2 text-[10px] font-black uppercase tracking-widest">Apply</button>
+      </form>
+    </div>
+
+    {notice && <div role="status" class={`mb-6 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+    {!overviewRes.ok && <div role="status" class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{batteryMessage(overviewRes.error)}</div>}
+
+    {o && (
+      <>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+          <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-3xl font-black tabular-nums text-brand-dark">{o.searchToProduct.searches}</p><p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mt-1">People who searched</p></div>
+          <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-3xl font-black tabular-nums text-brand-dark">{o.searchToProduct.rate}%</p><p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mt-1">Went on to a battery page</p></div>
+          <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-3xl font-black tabular-nums text-brand-dark">{o.searchToCart.rate}%</p><p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mt-1">Added one to the cart</p></div>
+          <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p class="text-3xl font-black tabular-nums text-amber-900">{o.noResultQueries.length}</p><p class="text-[10px] uppercase font-black tracking-widest text-amber-900 mt-1">Distinct unanswered searches</p></div>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-4 mb-8">
+          {[
+            { title: 'Most searched phones', rows: o.topDevices.map((d) => [d.label, `${d.searches} search${d.searches === 1 ? '' : 'es'}${d.verifiedFits === 0 ? ', no battery yet' : ''}`]) },
+            { title: 'Most searched battery codes', rows: o.topCodes.map((c) => [c.query, `${c.searches}`]) },
+            { title: 'Most searched brands', rows: o.topBrands.map((b) => [b.name, `${b.searches}`]) },
+            { title: 'Phones with demand and no battery', rows: o.devicesWithoutBattery.map((d) => [d.label, `${d.searches}`]) },
+            { title: 'Found but out of stock', rows: o.outOfStockDemand.map((b) => [`${b.canonicalCode} · ${b.name}`, `${b.views}`]) },
+            { title: 'Searches that only worked through an alias', rows: o.aliasCorrections.map((a) => [a.query, `${a.searches}`]) },
+            { title: 'Searches that matched more than one phone', rows: o.ambiguousQueries.map((a) => [a.query, `${a.searches}`]) },
+            { title: 'Searches we could not answer', rows: o.noResultQueries.map((q) => [q.query, `${q.searches}`]) },
+          ].map((panel) => (
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+              <h3 class="text-xs font-black text-brand-dark px-4 py-3 border-b border-gray-100">{panel.title}</h3>
+              {panel.rows.length > 0 ? (
+                <ul class="divide-y divide-gray-50 text-xs max-h-64 overflow-y-auto">
+                  {panel.rows.slice(0, 15).map(([label, value]) => (
+                    <li class="px-4 py-2.5 flex justify-between gap-3"><span class="text-brand-dark truncate">{label}</span><span class="text-gray-500 tabular-nums whitespace-nowrap">{value}</span></li>
+                  ))}
+                </ul>
+              ) : <p class="px-4 py-8 text-center text-gray-400 italic text-xs">Nothing recorded in this period.</p>}
+            </section>
+          ))}
+        </div>
+      </>
+    )}
+
+    <div class="mb-4 flex flex-wrap gap-2">
+      {STATUSES.map((s) => (
+        <a href={`/admin/batteries/demand?status=${s}&days=${days}`} class={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-widest ${s === status ? 'border-brand-primary bg-brand-primary/10 text-brand-dark' : 'border-gray-300 text-gray-600 hover:border-brand-primary'}`}>{s.replace(/_/g, ' ').toLowerCase()}</a>
+      ))}
+    </div>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+      <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">Battery requests from customers</h3>
+      <ul class="divide-y divide-gray-50">
+        {requests.map((r) => (
+          <li class="px-5 py-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="text-xs">
+                <p class="font-black text-brand-dark">{r.deviceText ?? r.queryText ?? r.batteryCodeText ?? 'No phone given'}</p>
+                <p class="text-gray-500 mt-1">
+                  {r.brandText ? `${r.brandText} · ` : ''}{r.modelNumberText ? `model ${r.modelNumberText} · ` : ''}{r.batteryCodeText ? `code ${r.batteryCodeText} · ` : ''}{when(r.createdAt)}
+                </p>
+                {(r.contactName || r.contactPhone) && <p class="text-gray-600 mt-1">Contact: {[r.contactName, r.contactPhone].filter(Boolean).join(' · ')}</p>}
+                {r.notes && <p class="text-gray-400 mt-1">{r.notes}</p>}
+                {r.resolutionNote && <p class="text-green-700 mt-1">Resolved: {r.resolutionNote}</p>}
+              </div>
+              <span class="text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest border border-gray-200 bg-gray-50 text-gray-600">{r.status.replace(/_/g, ' ').toLowerCase()}</span>
+            </div>
+            {r.status === 'OPEN' && (
+              <form method="POST" class="mt-3 flex flex-wrap gap-2 items-end border-t border-gray-100 pt-3">
+                <input type="hidden" name="requestId" value={r.id} />
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">What to do</span>
+                  <select name="action" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs">
+                    <option value="MAP_DEVICE">This is a phone we have</option>
+                    <option value="MAP_BATTERY">We have a battery for it</option>
+                    <option value="CREATE_DRAFT">A draft battery was created</option>
+                    <option value="INVALID">Not a real request</option>
+                    <option value="RESOLVED">Answered the customer</option>
+                  </select></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Phone</span>
+                  <select name="deviceId" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs max-w-[220px]"><option value="">None</option>{devices.map((d) => <option value={d.id}>{d.brandName} {d.model} {d.modelNumber ?? ''}</option>)}</select></label>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery</span>
+                  <select name="batteryProductId" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs max-w-[220px]"><option value="">None</option>{batteries.map((b) => <option value={b.product.productId}>{b.profile.canonicalCode}</option>)}</select></label>
+                <label class="block flex-1 min-w-[160px]"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Note</span>
+                  <input name="note" maxlength="500" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs" /></label>
+                <button type="submit" class="rounded-lg bg-brand-dark px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white">Record</button>
+              </form>
+            )}
+          </li>
+        ))}
+        {requests.length === 0 && requestsRes.ok && <li class="px-5 py-12 text-center text-gray-400 italic">No request in this queue.</li>}
+      </ul>
+    </section>
+  </div>
+</AdminLayout>

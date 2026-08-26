@@ -300,8 +300,8 @@ const nbaJson = escNav(JSON.stringify(nba));
         <div class="gp-nav__finder">
           <h3>Phone batteries</h3>
           <p class="gp-nav__note">Find yours by phone model</p>
-          <form action="/shop?category=power&q=battery" role="search">
-            <input type="search" name="model" placeholder="Type your phone, e.g. Tecno Spark 10" aria-label="Find a battery for your phone model">
+          <form action="/battery-finder" role="search">
+            <input type="search" name="q" placeholder="Type your phone, e.g. Tecno Spark 10" aria-label="Find a battery for your phone model">
           </form>
           <div class="gp-nav__chips">
             <a href="/shop?category=power&q=tecno">Tecno</a>
@@ -490,8 +490,8 @@ const nbaJson = escNav(JSON.stringify(nba));
             <li><a href="/shop?category=power&q=adapter">Adapters</a></li>
             <li><a href="/shop?category=power&q=cable">Cables</a></li>
             <li><h4>Phone batteries</h4>
-              <form class="gp-nav__mfinder" action="/shop?category=power&q=battery" role="search">
-                <input type="search" name="model" placeholder="Type your phone, e.g. Tecno Spark 10" aria-label="Find a battery for your phone model">
+              <form class="gp-nav__mfinder" action="/battery-finder" role="search">
+                <input type="search" name="q" placeholder="Type your phone, e.g. Tecno Spark 10" aria-label="Find a battery for your phone model">
               </form>
               <div class="gp-nav__chips"><a href="/shop?category=power&q=tecno">Tecno</a><a href="/shop?category=power&q=infinix">Infinix</a><a href="/shop?category=power&q=itel">itel</a><a href="/shop?category=power&q=samsung">Samsung</a><a href="/shop?category=power&q=iphone">iPhone</a><a href="/shop?category=power&q=redmi">Redmi</a><a href="/shop?category=power&q=xiaomi">Xiaomi</a><a href="/shop?category=power&q=huawei">Huawei</a><a href="/shop?category=power&q=nokia">Nokia</a><a href="/shop?category=power&q=oppo">Oppo</a><a href="/shop?category=power&q=battery" style="color:var(--gpn-green)">All brands →</a></div>
               <a class="gp-nav__ask" href={waLink(nav.contact.whatsappBatteryPrefill)}>
@@ -1238,7 +1238,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   nav.addEventListener('submit', function(e){
     var f = e.target;
     if (f && f.closest && (f.closest('.gp-nav__finder') || f.closest('.gp-nav__mfinder'))){
-      var mi = f.querySelector('input[name=model]');
+      var mi = f.querySelector('input[name=q]') || f.querySelector('input[name=model]');
       window.gpNavTrack('BATTERY_FINDER_SUBMIT', { itemKey: 'power', term: mi ? mi.value : '' });
     }
   }, true);

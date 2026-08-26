@@ -124,8 +124,8 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
       batteryFinder: {
         heading: 'Phone batteries',
         note: 'Find yours by phone model',
-        formAction: '/shop?category=power&q=battery',
-        inputName: 'model',
+        formAction: '/battery-finder',
+        inputName: 'q',
         inputPlaceholder: 'Type your phone, e.g. Tecno Spark 10',
         brandChips,
         askAction: { label: "Can't find your model? Send us a photo of the old one", href: WA_BATTERY },

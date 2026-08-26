@@ -191,6 +191,34 @@ describe('Batteries module wiring', () => {
     expect(finderRepo).not.toMatch(/unit_cost|unitCost|supplier_name|supplierName|dealer|cost_price|internal_notes|internalNotes/);
   });
 
+  it('binds candidate code lists as an IN list, never a single array parameter', () => {
+    // Regression: `= ANY(${keys})` binds a JS array as ONE parameter, so
+    // Postgres tried to read a battery code as an array literal and every
+    // supplier-code and SKU lookup threw "malformed array literal".
+    const repo = read('apps/api/src/infrastructure/db/repositories/DrizzleBatteryCatalogueRepository.ts');
+    expect(repo).not.toMatch(/= ANY\(\$\{keys\}\)/);
+    expect(repo).toContain('sql.join(keys.map((k) => sql`${k}`), sql`, `)');
+  });
+
+  it('qualifies every correlated subquery reference with its table', () => {
+    // Regression: with no join in the outer query drizzle emits a bare "id",
+    // which collided with the `devices d` alias inside these subqueries and
+    // made brand, series and device reads fail with "column reference id is
+    // ambiguous".
+    for (const file of [
+      'apps/api/src/infrastructure/db/repositories/DrizzleDeviceCatalogueRepository.ts',
+      'apps/api/src/infrastructure/db/repositories/DrizzleBatteryFinderRepository.ts',
+      'apps/api/src/infrastructure/db/repositories/DrizzleBatteryCatalogueRepository.ts',
+    ]) {
+      const src = read(file);
+      for (const [, subquery] of src.matchAll(/sql<number>`\(SELECT[^`]*`/g)) {
+        if (/\bFROM\s+\w+\s+\w\b/.test(subquery) && /\$\{/.test(subquery)) {
+          expect(subquery, `${file}: correlated reference must name its table`).toMatch(/sql\.raw\("[a-z_]+\.[a-z_]+"\)/);
+        }
+      }
+    }
+  });
+
   it('the migration holds the invariants the domain relies on', () => {
     const sql = read('apps/api/src/infrastructure/db/migrations/0125_battery_catalogue.sql');
     expect(sql).toContain("CREATE UNIQUE INDEX IF NOT EXISTS battery_aliases_active_idx ON battery_aliases (alias_normalised) WHERE is_active");

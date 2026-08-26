@@ -1,0 +1,258 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../../lib/session';
+import { adminBattery, batteryMessage } from '../../../../lib/batteries';
+
+const token = readSessionToken(Astro.request);
+const { id } = Astro.params;
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/batteries/imports/${id ?? ''}`, 303);
+
+interface Field { key: string; label: string; required: boolean; hint: string }
+interface Row {
+  id: string; rowNumber: number; rowKey: string | null; sourceData: Record<string, unknown>; normalizedData: Record<string, unknown> | null;
+  proposedAction: string; validationWarnings: string[]; validationErrors: string[]; status: string; resolution: string | null; resolutionNote: string | null; error: string | null;
+}
+interface Session {
+  id: string; importType: string; name: string; sourceFilename: string; sourceSheet: string | null; sourceColumns: string[]; status: string; version: number;
+  mapping: Record<string, string> | null; totalRows: number; validRows: number; invalidRows: number; heldRows: number; excludedRows: number; appliedRows: number; failedRows: number;
+  previewDigest: string | null; createdBy: string; approvedBy: string | null;
+}
+interface Detail { session: Session; rows: Row[]; events: Array<{ id: string; action: string; reason: string; createdAt: string }>; templates: Array<{ id: string; name: string }>; fields: Field[]; suggestedMapping: Record<string, string> }
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+
+if (Astro.request.method === 'POST' && id) {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  const expectedVersion = Number(form.get('expectedVersion'));
+  const call = async (path: string, body: unknown, okText: string) => {
+    const res = await adminBattery(path, token, { method: 'POST', body: JSON.stringify(body) });
+    notice = res.ok ? { kind: 'success', text: okText } : { kind: 'error', text: batteryMessage(res.error) };
+  };
+  if (intent === 'mapping') {
+    const mapping: Record<string, string> = {};
+    for (const [k, v] of form.entries()) if (k.startsWith('map.') && String(v)) mapping[k.slice(4)] = String(v);
+    await call(`/imports/${id}/mapping`, { expectedVersion, mapping, templateId: String(form.get('templateId') ?? '') || null, saveAsTemplate: String(form.get('saveAsTemplate') ?? '').trim() || null }, 'Mapping saved. Run the dry run next.');
+  } else if (intent === 'preview') await call(`/imports/${id}/preview`, { expectedVersion }, 'Dry run finished. Nothing was written.');
+  else if (intent === 'resolve') {
+    const override = String(form.get('canonicalCode') ?? '').trim() ? { canonicalCode: String(form.get('canonicalCode')).trim() } : null;
+    await call(`/imports/${id}/rows/${String(form.get('rowId'))}/resolve`, { resolution: String(form.get('resolution')), note: String(form.get('note') ?? '').trim() || null, override }, 'Row updated.');
+  } else if (intent === 'approve') await call(`/imports/${id}/approval`, { expectedVersion, decision: String(form.get('decision')), reason: String(form.get('reason') ?? '').trim() }, 'Decision recorded.');
+  else if (intent === 'apply') await call(`/imports/${id}/apply`, { expectedVersion }, 'Applied. Everything created is a draft until someone publishes it.');
+  else if (intent === 'rollback') await call(`/imports/${id}/rollback`, { expectedVersion, reason: String(form.get('reason') ?? '').trim() }, 'Rollback finished. Anything touched since the import was left alone and is listed.');
+}
+
+const detail = await adminBattery<Detail>(`/imports/${id}`, token);
+const d = detail.data;
+const s = d?.session;
+const mapping = s?.mapping ?? d?.suggestedMapping ?? {};
+const rowsByStatus = (status: string) => (d?.rows ?? []).filter((r) => r.status === status);
+const held = rowsByStatus('HELD');
+const invalid = rowsByStatus('INVALID');
+const valid = rowsByStatus('VALID');
+const excluded = rowsByStatus('EXCLUDED');
+const applied = (d?.rows ?? []).filter((r) => ['APPLIED', 'SKIPPED', 'FAILED', 'ROLLED_BACK'].includes(r.status));
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+const holdReason = (r: Row) => String((r.normalizedData as Record<string, unknown> | null)?.hold ?? '');
+const canMap = s && ['UPLOADED', 'MAPPED', 'READY_FOR_APPROVAL'].includes(s.status);
+const canPreview = s && ['MAPPED', 'READY_FOR_APPROVAL'].includes(s.status);
+const canResolve = s && ['MAPPED', 'READY_FOR_APPROVAL'].includes(s.status);
+const canApprove = s && s.status === 'READY_FOR_APPROVAL';
+const canApply = s && s.status === 'APPROVED';
+const canRollback = s && ['APPLIED', 'PARTIALLY_APPLIED'].includes(s.status);
+---
+
+<AdminLayout title={s ? `Import ${s.name}` : 'Import'} description="Map, dry run, resolve, approve, apply." activePath="/admin/batteries">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1">
+      <a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / <a href="/admin/batteries/imports" class="hover:text-brand-primary">Imports</a> / {s?.name ?? id}
+    </p>
+
+    {!detail.ok && <div role="status" class="my-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{batteryMessage(detail.error)}</div>}
+    {notice && <div role="status" class={`my-4 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+
+    {d && s && (
+      <>
+        <div class="mb-6 pb-6 border-b border-gray-200 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 class="text-2xl font-black text-brand-dark tracking-tight">{s.name}</h2>
+            <p class="text-sm text-gray-500 mt-1">{s.sourceFilename}{s.sourceSheet ? ` · sheet ${s.sourceSheet}` : ''} · {s.totalRows} rows · version {s.version}</p>
+          </div>
+          <span class="text-[10px] font-black px-3 py-1.5 rounded uppercase tracking-widest border border-gray-200 bg-gray-50 text-gray-700">{s.status.replace(/_/g, ' ')}</span>
+        </div>
+
+        <ol class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-6 text-[10px] uppercase font-black tracking-widest">
+          {[['1 Map columns', !!s.mapping], ['2 Dry run', !!s.previewDigest], ['3 Resolve held rows', held.length === 0], ['4 Approve', !!s.approvedBy], ['5 Apply', s.appliedRows > 0]].map(([label, done]) => (
+            <li class={`rounded-lg border px-3 py-2 ${done ? 'border-green-200 bg-green-50 text-green-800' : 'border-gray-200 bg-white text-gray-500'}`}>{label}</li>
+          ))}
+        </ol>
+
+        <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6 text-center">
+          {[['Rows', s.totalRows], ['Ready', s.validRows], ['Held', s.heldRows], ['With errors', s.invalidRows], ['Excluded', s.excludedRows], ['Applied', s.appliedRows]].map(([label, value]) => (
+            <div class="rounded-2xl border border-gray-200 bg-white p-3"><p class="text-2xl font-black tabular-nums text-brand-dark">{value}</p><p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mt-1">{label}</p></div>
+          ))}
+        </div>
+
+        {canMap && (
+          <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-6">
+            <h3 class="text-sm font-black text-brand-dark mb-1">1. Map the columns</h3>
+            <p class="text-xs text-gray-500 mb-4">We have suggested a mapping from the headers. Check it, then save.</p>
+            <form method="POST" class="grid gap-3 md:grid-cols-2">
+              <input type="hidden" name="intent" value="mapping" />
+              <input type="hidden" name="expectedVersion" value={s.version} />
+              {d.fields.map((f) => (
+                <label class="block">
+                  <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">{f.label}{f.required ? ' (required)' : ''}</span>
+                  {f.hint && <span class="block text-[11px] text-gray-400">{f.hint}</span>}
+                  <select name={`map.${f.key}`} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Not in this file</option>
+                    {s.sourceColumns.map((col) => <option value={col} selected={mapping[f.key] === col}>{col}</option>)}
+                  </select>
+                </label>
+              ))}
+              <div class="md:col-span-2 flex flex-wrap gap-3 items-end border-t border-gray-100 pt-4">
+                {d.templates.length > 0 && (
+                  <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Start from a saved mapping</span>
+                    <select name="templateId" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value="">None</option>{d.templates.map((t) => <option value={t.id}>{t.name}</option>)}</select></label>
+                )}
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Save this mapping as</span>
+                  <input name="saveAsTemplate" maxlength="120" placeholder="Optional name" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+                <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Save mapping</button>
+              </div>
+            </form>
+          </section>
+        )}
+
+        <div class="flex flex-wrap gap-3 mb-6">
+          {canPreview && (
+            <form method="POST"><input type="hidden" name="intent" value="preview" /><input type="hidden" name="expectedVersion" value={s.version} />
+              <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg">2. Run the dry run</button></form>
+          )}
+          <a href={`/api/admin/batteries/imports/${s.id}/error-report`} class="rounded-lg border border-gray-300 px-5 py-3 text-xs font-black uppercase tracking-widest text-gray-700">Download the error report</a>
+        </div>
+
+        {(held.length > 0 || invalid.length > 0) && (
+          <section class="bg-white border border-amber-200 rounded-2xl shadow-sm overflow-hidden mb-6">
+            <h3 class="text-sm font-black text-amber-900 px-5 py-4 border-b border-amber-100 bg-amber-50">3. Rows that need you ({held.length} held, {invalid.length} with errors)</h3>
+            <ul class="divide-y divide-gray-50">
+              {[...held, ...invalid].slice(0, 100).map((r) => (
+                <li class="px-5 py-4 text-xs">
+                  <p class="font-black text-brand-dark">Row {r.rowNumber}{r.rowKey ? ` · ${r.rowKey}` : ''} <span class="font-normal text-gray-400">{r.proposedAction.replace(/_/g, ' ').toLowerCase()}</span></p>
+                  {holdReason(r) && <p class="text-amber-900 mt-1">{holdReason(r)}</p>}
+                  {r.validationErrors.map((e) => <p class="text-red-700 mt-1">{e}</p>)}
+                  {r.validationWarnings.map((w) => <p class="text-gray-500 mt-1">{w}</p>)}
+                  <p class="text-gray-400 mt-1 font-mono truncate">{Object.entries(r.sourceData).filter(([, v]) => String(v).trim()).map(([k, v]) => `${k}: ${v}`).join(' · ')}</p>
+                  {canResolve && (
+                    <form method="POST" class="mt-3 flex flex-wrap gap-2 items-end">
+                      <input type="hidden" name="intent" value="resolve" />
+                      <input type="hidden" name="rowId" value={r.id} />
+                      <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Decision</span>
+                        <select name="resolution" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs">
+                          <option value="EXCLUDE">Leave it out of this import</option>
+                          <option value="INCLUDE">Include it (I have resolved it)</option>
+                          <option value="HOLD">Keep holding it</option>
+                        </select></label>
+                      {s.importType === 'BATTERY_CATALOGUE' && (
+                        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">The single code it becomes</span>
+                          <input name="canonicalCode" maxlength="80" placeholder="BL-49CI" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs font-mono" /></label>
+                      )}
+                      <label class="block flex-1 min-w-[160px]"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Note</span>
+                        <input name="note" maxlength="500" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs" /></label>
+                      <button type="submit" class="rounded-lg bg-brand-dark px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white">Record</button>
+                    </form>
+                  )}
+                  {r.resolutionNote && <p class="text-green-700 mt-2">Decision: {r.resolution?.toLowerCase()} — {r.resolutionNote}</p>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {valid.length > 0 && (
+          <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-6">
+            <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">What will be created or changed ({valid.length})</h3>
+            <div class="overflow-x-auto max-h-96 overflow-y-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead class="sticky top-0"><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest"><th class="p-3">Row</th><th class="p-3">Action</th><th class="p-3">Key</th><th class="p-3">What we read</th></tr></thead>
+                <tbody>
+                  {valid.slice(0, 300).map((r) => (
+                    <tr class="border-b border-gray-50">
+                      <td class="p-3 text-gray-500">{r.rowNumber}</td>
+                      <td class="p-3 font-bold text-brand-dark">{r.proposedAction.replace(/_/g, ' ').toLowerCase()}</td>
+                      <td class="p-3 font-mono">{r.rowKey}</td>
+                      <td class="p-3 text-gray-600 truncate max-w-md">{Object.entries(r.normalizedData ?? {}).filter(([k, v]) => v !== null && v !== '' && k !== 'aliases').slice(0, 6).map(([k, v]) => `${k}: ${v}`).join(' · ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {excluded.length > 0 && (
+          <p class="text-xs text-gray-500 mb-6">{excluded.length} row(s) were deliberately left out of this import.</p>
+        )}
+
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+          {canApprove && (
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+              <h3 class="text-sm font-black text-brand-dark mb-1">4. Approve</h3>
+              <p class="text-xs text-gray-500 mb-3">A second person must approve. The person who uploaded it cannot.</p>
+              <form method="POST" class="space-y-3">
+                <input type="hidden" name="intent" value="approve" />
+                <input type="hidden" name="expectedVersion" value={s.version} />
+                <input name="reason" required minlength="3" maxlength="2000" placeholder="What you checked" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <div class="flex gap-2">
+                  <button type="submit" name="decision" value="APPROVED" class="flex-1 rounded-lg bg-brand-primary px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-white">Approve</button>
+                  <button type="submit" name="decision" value="REJECTED" class="flex-1 rounded-lg border border-red-300 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-red-700">Reject</button>
+                </div>
+              </form>
+            </section>
+          )}
+          {canApply && (
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+              <h3 class="text-sm font-black text-brand-dark mb-1">5. Apply</h3>
+              <p class="text-xs text-gray-500 mb-3">Creates drafts and staged claims. Nothing becomes visible to a customer until someone publishes it.</p>
+              <form method="POST"><input type="hidden" name="intent" value="apply" /><input type="hidden" name="expectedVersion" value={s.version} />
+                <button type="submit" class="w-full rounded-lg bg-brand-primary px-4 py-3 text-xs font-black uppercase tracking-widest text-white">Apply this import</button></form>
+            </section>
+          )}
+          {canRollback && (
+            <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+              <h3 class="text-sm font-black text-brand-dark mb-1">Roll back</h3>
+              <p class="text-xs text-gray-500 mb-3">Archives what this import created and reverses its stock movements. Anything published or moved since is left alone and reported.</p>
+              <form method="POST" class="flex gap-2">
+                <input type="hidden" name="intent" value="rollback" /><input type="hidden" name="expectedVersion" value={s.version} />
+                <input name="reason" required minlength="3" maxlength="2000" placeholder="Why" class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <button type="submit" class="rounded-lg border border-red-300 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-red-700">Roll back</button>
+              </form>
+            </section>
+          )}
+        </div>
+
+        {applied.length > 0 && (
+          <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-6">
+            <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">What happened when it was applied</h3>
+            <ul class="divide-y divide-gray-50 text-xs max-h-80 overflow-y-auto">
+              {applied.map((r) => (
+                <li class="px-5 py-3 flex justify-between gap-3">
+                  <span class="text-brand-dark">Row {r.rowNumber} · {r.rowKey}</span>
+                  <span class={r.status === 'FAILED' ? 'text-red-700' : 'text-gray-500'}>{r.status.toLowerCase()}{r.error ? `: ${r.error}` : ''}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">Import history</h3>
+          <ul class="divide-y divide-gray-50 text-xs">
+            {d.events.map((e) => (
+              <li class="px-5 py-3"><span class="font-bold text-brand-dark">{e.action.replace(/_/g, ' ').toLowerCase()}</span><span class="text-gray-500"> — {e.reason}</span><span class="block text-gray-400 mt-0.5">{when(e.createdAt)}</span></li>
+            ))}
+          </ul>
+        </section>
+      </>
+    )}
+  </div>
+</AdminLayout>

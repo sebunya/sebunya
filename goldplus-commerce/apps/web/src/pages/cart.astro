@@ -17,6 +17,7 @@ import { cartClient, cartMessageFor } from '../lib/cartClient';
 import { resolveCartCredential } from '../lib/cartCredential';
 import { resolveAuthenticatedUserId } from '../lib/customerAuth';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
+import { publicBattery, parseDeviceCookie, DEVICE_COOKIE, FIT_BADGE } from '../lib/batteries';
 
 import crypto from 'node:crypto';
 
@@ -224,6 +225,22 @@ if (items.length === 0) {
 
 const cartProductIds = items.map(i => i.productId);
 
+/**
+ * The phone the customer chose in the battery finder travels with them. Each
+ * battery line is checked against it: a verified fit says so, and a battery we
+ * have not checked for that phone is stated plainly rather than dropped.
+ */
+const selectedDevice = parseDeviceCookie(Astro.cookies.get(DEVICE_COOKIE)?.value);
+let deviceFits: Record<string, { fitState: string | null; fitLabel: string | null; condition: string | null }> = {};
+if (selectedDevice && cartProductIds.length) {
+  const check = await publicBattery<{ device: unknown; fits: typeof deviceFits }>(
+    `/finder/check?device=${encodeURIComponent(selectedDevice.slug)}&productIds=${cartProductIds.join(',')}`,
+  );
+  if (check.ok) deviceFits = check.data.fits;
+}
+const checkedLines = Object.values(deviceFits).filter((f) => f.fitState !== null).length;
+const uncheckedBatteryLines = selectedDevice ? Object.entries(deviceFits).filter(([, f]) => f.fitState === null).length : 0;
+
 // R9 (m9): line images come from the live catalogue in ONE request — the
 // retired seed-catalogue lookup is not replaced with per-line fetches.
 let productImageById = new Map<string, string>();
@@ -314,6 +331,17 @@ const cutoffLine = cut.closed
     ) : (
       <div class="flex flex-col lg:flex-row gap-10">
         <div class="w-full lg:w-2/3">
+          {selectedDevice && (checkedLines > 0 || uncheckedBatteryLines > 0) && (
+            <div role="status" class="mb-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm">
+              <p class="font-bold text-slate-900">Buying for your {selectedDevice.label}</p>
+              <p class="mt-1 text-slate-600">
+                {checkedLines > 0
+                  ? `${checkedLines} item in your cart ${checkedLines === 1 ? 'has' : 'have'} been checked against this phone.`
+                  : 'None of the batteries in your cart have been checked against this phone.'}
+                {' '}<a href={`/battery-finder?device=${encodeURIComponent(selectedDevice.slug)}`} class="font-bold underline">See what we have checked for it</a>.
+              </p>
+            </div>
+          )}
           <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
             <ul class="divide-y divide-slate-100" aria-label="Cart items">
               {items.map((item) => {
@@ -344,6 +372,17 @@ const cutoffLine = cut.closed
                       )}
                       <a href={`/products/${item.slug}`} class="font-bold text-gray-900 hover:text-brand-primary transition-colors line-clamp-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50 rounded leading-snug">{item.name}</a>
                       <p class="text-sm font-bold text-brand-primaryInk mt-1.5">{formatUgx(item.unitPriceUgx)} <span class="text-xs font-normal text-slate-400 ml-1">each</span></p>
+                      {selectedDevice && deviceFits[item.productId] && (
+                        deviceFits[item.productId].fitState ? (
+                          <span class={`inline-block mt-2 self-start rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${FIT_BADGE[deviceFits[item.productId].fitState!] ?? ''}`}>
+                            {deviceFits[item.productId].fitLabel} for your {selectedDevice.label}
+                          </span>
+                        ) : (
+                          <span class="inline-block mt-2 self-start rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-900">
+                            Not checked against your {selectedDevice.label}
+                          </span>
+                        )
+                      )}
                     </div>
                     
                     {/* Quantity Selector controls */}
