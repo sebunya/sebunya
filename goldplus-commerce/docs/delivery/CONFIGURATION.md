@@ -46,10 +46,10 @@ promise rather than a default.
 | `copy_unavailable_area_unserviceable` | string | — | `We are not able to deliver to this area at the moment. You a` | — | Area we do not serve |
 | `copy_unavailable_water_access` | string | — | `This address is reached by boat, so we cannot deliver there ` | — | Lake-access areas |
 | `copy_unavailable_area_unresolved` | string | — | `Place your order and our team will confirm your delivery fee` | — | Address did not resolve |
-| `copy_pickup_offer` | string | — | `Collect free from GoldPlus, Wilson Road — next to Uhuru Rest` | — | Pickup offer |
+| `copy_pickup_offer` | string | — | `Collect free from GoldPlus, Wilson Road, next to Uhuru Resta` | — | Pickup offer |
 | `copy_unavailable_area_too_coarse` | string | — | `We found your district. Choose the specific area you are in ` | — | District known, area not yet chosen |
 | `copy_variance_agreement_request` | string | — | `Your delivery address turned out to be in a different area f` | — | Asking a customer to agree a changed fee |
-| `copy_carrier_required` | string | — | `We ship to your area by bus. Your parcel travels to a parcel` | — | Served by bus rather than by our rider |
+| `copy_carrier_required` | string | — | `We send to your area by bus. Your parcel travels to a parcel` | — | Served by bus rather than by our rider |
 | `copy_unavailable_no_rate_card` | string | — | `We ship to your area by bus, but we do not have a current pr` | — | Bus-served, no current rate card |
 | `copy_fee_exceeds_value` | string | — | `Getting this to you costs more than the items in your basket` | — | Delivery costs more than the goods |
 | `copy_below_minimum_order` | string | — | `This order is below our minimum for this destination. You ca` | — | Order below the minimum for its destination |

@@ -448,7 +448,7 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'Place your order and our team will confirm your delivery fee before dispatch — or collect free from our Wilson Road shop.',
+      'Place your order and our team will confirm your delivery fee before the rider leaves. Or collect free from our Wilson Road shop.',
     label: 'Address did not resolve',
     help: 'A data gap never blocks a sale — the order completes through the manual path.',
   },
@@ -459,7 +459,7 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'Collect free from GoldPlus, Wilson Road — next to Uhuru Restaurant, opposite the Pioneer Mall parking area.',
+      'Collect free from GoldPlus, Wilson Road, next to Uhuru Restaurant, opposite the Pioneer Mall parking area.',
     label: 'Pickup offer',
     help: 'Shown alongside every quote. Uhuru Restaurant first, Pioneer Mall as the wider fallback.',
   },
@@ -497,7 +497,7 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'We ship to your area by bus. Your parcel travels to a parcel office in your town and you collect it from there — our rider does not come to your door outside Kampala.',
+      'We send to your area by bus. Your parcel travels to a parcel office in your town and you collect it from there. Our rider does not come to your door outside Kampala.',
     label: 'Served by bus rather than by our rider',
     help: 'Never reads as a refusal: the customer IS served. Say shipment and collection, never delivery to the door.',
   },
@@ -530,7 +530,7 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'This order is below our minimum for this destination. You can still place it — we will confirm the arrangement with you before we send it.',
+      'This order is below our minimum for this destination. You can still place it, and we will confirm the arrangement with you before we send it.',
     label: 'Order below the minimum for its destination',
     help: 'Informative, never a block, and shown with the minimum and the shortfall.',
   },
