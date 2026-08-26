@@ -56,12 +56,8 @@ describe('NBA — signed-in signals', () => {
     expect(t.id).toBe('points');
     expect(t.text).toContain('UGX 12,400'); // 1,240 pts x UGX 10
   });
-  it('a long-idle customer is nudged to check their battery age — but only if we sell batteries', () => {
-    // The nudge sends them to the battery search, so it is gated on real stock
-    // the same way `points` is gated on a redemption rate. See
-    // NavBatteryFinderGatedOnStock.test.ts.
-    expect(ids({ ...base, signedIn: true, lastOrderDays: 400, batteriesInStock: true })).toContain('reorder');
-    expect(ids({ ...base, signedIn: true, lastOrderDays: 400 })).not.toContain('reorder');
+  it('a long-idle customer is nudged to check their battery age', () => {
+    expect(ids({ ...base, signedIn: true, lastOrderDays: 400 })).toContain('reorder');
   });
 });
 

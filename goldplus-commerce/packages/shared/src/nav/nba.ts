@@ -34,12 +34,6 @@ export interface NbaContext {
   beforeCutoff: boolean;
   /** whole minutes to the cutoff (only meaningful when beforeCutoff) */
   minsToCutoff: number;
-  /**
-   * The catalogue actually carries batteries right now. Optional and absent
-   * means NO: telling someone their battery is old is only useful next to a
-   * battery we can sell them, so this fails closed like the finder it mirrors.
-   */
-  batteriesInStock?: boolean;
   /** Sunday in Kampala (kept as the back-compat "closed today" flag) */
   sunday: boolean;
   /** the flash sale is still running */
@@ -147,9 +141,7 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
       cta: 'Spend them', href: R.rewards,
     });
   }
-  // Gated on real stock for the same reason `points` is gated on a redemption
-  // rate: never assert a next step the shop cannot complete.
-  if (ctx.batteriesInStock && ctx.signedIn && ctx.lastOrderDays !== null && ctx.lastOrderDays > 150) {
+  if (ctx.signedIn && ctx.lastOrderDays !== null && ctx.lastOrderDays > 150) {
     c.push({
       id: 'reorder', score: 84,
       text: 'Phone battery fading? Yours is <b>' + Math.round(ctx.lastOrderDays / 30) + ' months</b> old',

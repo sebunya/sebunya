@@ -43,7 +43,7 @@ export const DEFAULT_TAXONOMY: Taxonomy = [
     slug: 'power-devices',
     name: 'Power Devices',
     showOnHomepage: true,
-    homepageBlurb: 'Power banks, chargers, cables',
+    homepageBlurb: 'Banks, batteries, chargers',
     aliases: ['power'],
     subcategories: [
       { slug: 'chargers', name: 'Chargers', keywords: ['charger', 'adapter', 'charging brick'] },
