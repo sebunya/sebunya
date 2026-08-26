@@ -43,7 +43,7 @@ try {
     // database has never contained. A product the API does not know is a 404.
     return Astro.redirect('/404', 404);
   } else {
-    fetchError = `API responded with HTTP ${res.status}.`;
+    fetchError = 'We could not load this product right now.';
   }
 } catch {
   fetchError = 'Cannot reach the product service right now.';
@@ -504,7 +504,7 @@ if (product) {
           {!canBuy && (
             <p class="mt-3 text-sm text-slate-600">
               {/* An out-of-stock product used to end at a greyed button and nothing else — the strongest-intent visitor on the site, with nowhere to go. */}
-              Want this one? <a href={askAboutHref} class="font-bold text-gray-900 underline">Ask us on WhatsApp</a> and we will tell you when it is back, or suggest the closest match.
+              Want this one? <a href={askAboutHref} class="font-bold text-gray-900 underline">Ask us on WhatsApp</a> and we will tell you what we have.
             </p>
           )}
 

@@ -205,7 +205,7 @@ const nbaJson = escNav(JSON.stringify(nba));
 <header class="gp-nav" id="gpNav" data-sale-ends={saleEnds}>
   <div class="gp-nav__top">
     <div class="gp-nav__top-in gpn-container">
-      <div class="gp-nav__nba" id="gpNavNba" role="status" aria-live="polite" aria-label="Recommended next step">
+      <div class="gp-nav__nba" id="gpNavNba" role="status" aria-live="off" aria-label="Recommended next step">
         <span class="gp-nav__dot" aria-hidden="true"></span>
         <a class="gp-nav__nba-slot" id="gpNavNbaSlot" href="/support" data-in=""><span class="gp-nav__nba-txt" id="gpNavNbaText">Order before <b>5:00pm</b> for same-day delivery in Kampala</span><u id="gpNavNbaCta" hidden=""></u></a>
         <button class="gp-nav__nba-x" id="gpNavNbaX" type="button" aria-label="Dismiss this message">×</button>
@@ -502,7 +502,7 @@ const nbaJson = escNav(JSON.stringify(nba));
           </ul>
         </div>
         <div class="gp-nav__acc" data-acc="storage">
-          <div class="gp-nav__acc-head"><a href="/shop?category=storage">Storage</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show Storage sizes">+</button></div>
+          <div class="gp-nav__acc-head"><a href="/shop?category=storage">Storage</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show Storage subcategories">+</button></div>
           <ul>
             <li><a href="/shop?category=storage&q=flash+drive">Flash drives</a></li>
             <li><a href="/shop?category=storage&q=memory+card">Memory cards</a></li>
@@ -1599,7 +1599,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<form class="gp-nav__join" action="/register" method="get">' +
             '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" ' +
               'placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
-            '<button class="gp-nav__acct-cta" type="submit">Claim it</button>' +
+            '<button class="gp-nav__acct-cta" type="submit">Join free</button>' +
           '</form>' +
           '<a class="gp-nav__acct-alt" href="/account">Sign in instead</a>';
       }
@@ -1609,7 +1609,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         '<form class="gp-nav__join" action="/register" method="get">' +
           '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" ' +
             'placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
-          '<button class="gp-nav__acct-cta" type="submit">Claim it</button>' +
+          '<button class="gp-nav__acct-cta" type="submit">Join free</button>' +
         '</form>' +
         '<p class="gp-nav__join-note">Your number is your account. Nothing else to fill in.</p>' +
         '<a class="gp-nav__acct-alt" href="/account">I already have an account</a>';
@@ -1627,7 +1627,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<p>' + saleLine + 'Points start counting from the order you make today.</p>' +
           '<form class="gp-nav__mjoin" action="/register" method="get">' +
             '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
-            '<button type="submit">Claim it</button>' +
+            '<button type="submit">Join free</button>' +
           '</form>' +
           '<a class="gp-nav__mhi-alt" href="/account">Sign in instead</a>';
       }
@@ -1635,7 +1635,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         '<p>' + saleLine + 'Your phone number is your account.</p>' +
         '<form class="gp-nav__mjoin" action="/register" method="get">' +
           '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
-          '<button type="submit">Claim it</button>' +
+          '<button type="submit">Join free</button>' +
         '</form>' +
         '<a class="gp-nav__mhi-alt" href="/account">I already have an account</a>';
     }

@@ -179,7 +179,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
               <div class="gp-hero__price"><b>{config.flashPercent}% off everything</b> <em>comes off at checkout</em></div>
             )}
 
-            {s.subcopy && s.slideKey !== 'flash' && <p class="gp-hero__sub" id={s.slideKey === 'scratch' ? 'gpScratchSub' : undefined}>{s.subcopy}</p>}
+            {s.subcopy && <p class="gp-hero__sub" id={s.slideKey === 'scratch' ? 'gpScratchSub' : undefined}>{s.subcopy}</p>}
 
             {s.slideKey === 'welcome' && ex.promoCode && (
               <button class="gp-hero__chip" type="button" id="gpCode" data-code={ex.promoCode}>{ex.promoCode} <small id="gpCodeState">Copy</small></button>

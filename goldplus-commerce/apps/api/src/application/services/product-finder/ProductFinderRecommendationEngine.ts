@@ -189,7 +189,7 @@ export class ProductFinderRecommendationEngine {
               : ["A great overall match"],
           stockStatus: match.product.stockStatus,
           primaryCta: "View Product",
-          secondaryCta: "I want this one",
+          secondaryCta: "Tell us you are interested",
           availabilityEvidence: `${match.product.availableQuantity} available after reservations`,
           compatibilityEvidence: match.product.compatibilityVerdict
             ? `DECLARED_${match.product.compatibilityVerdict.toUpperCase()}`

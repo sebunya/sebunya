@@ -149,7 +149,7 @@ const { apiBase, compatibleWith = null } = Astro.props;
   }
 
   async function recordIntent(action: string, productId: string) {
-    try { await request(`/product-finder/sessions/${sessionId}/actions`, { method: 'POST', headers: finderHeaders(), body: JSON.stringify({ action, productId }) }); status.textContent = action === 'add_to_cart_intent' ? 'Noted — nothing was added to your cart.' : ''; } catch { status.textContent = 'We could not save that. Nothing was added to your cart.'; }
+    try { await request(`/product-finder/sessions/${sessionId}/actions`, { method: 'POST', headers: finderHeaders(), body: JSON.stringify({ action, productId }) }); status.textContent = action === 'add_to_cart_intent' ? 'Noted — nothing was added to your cart.' : 'Opening the product…'; } catch { status.textContent = 'We could not save that. Nothing was added to your cart.'; }
   }
 
   void startSession();

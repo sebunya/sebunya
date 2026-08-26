@@ -36,7 +36,7 @@ const ORDER: Record<string, StatusCopy> = {
   },
   payment_failed: {
     label: 'Payment did not go through',
-    meaning: 'You have not been charged. You can try paying again, or ask us for help.',
+    meaning: 'The payment did not go through, so this order is not paid. If money left your phone or card, it will come back. You can try paying again, or ask us for help.',
     tone: 'bad',
   },
   pending_owner_review: {
@@ -76,7 +76,7 @@ const ORDER: Record<string, StatusCopy> = {
   },
   cancelled: {
     label: 'Cancelled',
-    meaning: 'This order was cancelled. If you paid for it, a refund is arranged by our team — ask us if you have not heard from us.',
+    meaning: 'This order was cancelled. If you paid for it, our team arranges the refund — ask us if you have not heard from us.',
     tone: 'bad',
   },
   failed: {
@@ -122,12 +122,14 @@ const PAYMENT: Record<string, StatusCopy> = {
   settled: { label: 'Paid', meaning: 'We have your payment.', tone: 'good' },
   failed: {
     label: 'Payment did not go through',
-    meaning: 'You have not been charged.',
+    // "failed" includes a provider reversal, where money did leave and is
+    // on its way back — so never a flat "not charged".
+    meaning: 'This payment did not go through. If money left your phone or card, it will come back.',
     tone: 'bad',
   },
   cancelled: {
     label: 'Payment cancelled',
-    meaning: 'You have not been charged.',
+    meaning: 'This payment was cancelled before any money moved.',
     tone: 'bad',
   },
   refunded: {

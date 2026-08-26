@@ -89,7 +89,8 @@ export async function postJson(path: string, body: unknown): Promise<FormPostRes
       return {
         ok: false,
         code: 'API_ERROR',
-        message: json?.error?.message ?? `Request failed (HTTP ${res.status}).`,
+        // Never an HTTP number: a customer cannot act on it.
+        message: json?.error?.message ?? 'We could not send that just now. Please try again in a moment.',
       };
     }
     const reference = (json.meta?.requestId as string | undefined) ?? undefined;
@@ -132,7 +133,7 @@ export async function getOrderNotificationTimeline(
       }
     });
     if (!res.ok) {
-      return { items: [], isSample: true, reason: `Timeline query failed (HTTP ${res.status})` };
+      return { items: [], isSample: true, reason: 'The timeline could not be loaded.' };
     }
     const json = (await res.json().catch(() => null)) as ApiEnvelope<FrontendTimelineItem[]> | null;
     if (!json || !json.success || !Array.isArray(json.data)) {

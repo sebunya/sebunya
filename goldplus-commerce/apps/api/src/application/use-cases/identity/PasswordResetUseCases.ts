@@ -42,7 +42,7 @@ const MIN_PASSWORD_LENGTH = 8;
 // something this layer can vouch for. The sentence now describes what was
 // DONE (a link was issued) and what to do if it never arrives.
 export const GENERIC_RESET_ACKNOWLEDGEMENT =
-  'If that email address has an account, a reset link has been issued for it. It expires in an hour. If nothing arrives, contact us and we will help.';
+  'If that email address has an account, we have made a reset link for it. It expires in an hour. If nothing arrives, contact us and we will get you back in.';
 
 export const hashResetToken = (raw: string): string => createHash('sha256').update(raw).digest('hex');
 

@@ -124,7 +124,7 @@ export function paymentReturnCopy(kind: PaymentReturnKind, orderNumber: string |
         // FAILED covers a provider "reversed" as well as a plain decline, so
         // this cannot flatly say "not charged": on a reversal money did leave
         // and is on its way back.
-        money: `Your payment for order${ref} did not go through, so the order is not paid. If money left your phone or card, the provider returns it — ask us if it has not come back.`,
+        money: `Your payment for order${ref} did not go through, so the order is not paid. If money left your phone or card, it will come back. Tell us if it does not.`,
         next: 'Your order is saved, and paying again will not create a second one. If the checkout looks empty when you go back, send us your order number on WhatsApp and we will help you pay.',
         primaryCta: { label: 'Try payment again', href: '/checkout' },
         secondaryCta: { label: 'Back to the shop', href: '/shop' },
@@ -136,7 +136,9 @@ export function paymentReturnCopy(kind: PaymentReturnKind, orderNumber: string |
         kind: 'unknown_attempt',
         tone: 'wait',
         title: 'We could not confirm your payment',
-        money: `We could not match this payment to an order${ref ? ` (${orderNumber})` : ''}, so we cannot yet say whether it went through.`,
+        money: orderNumber
+          ? `We cannot yet confirm the payment for order ${orderNumber}.`
+          : 'We cannot yet confirm this payment.',
         next: 'Please do not pay again until we have checked. Send us your order number on WhatsApp and we will confirm what happened.',
         primaryCta: { label: 'Check this order', href: trackHref },
         secondaryCta: { label: 'Back to the shop', href: '/shop' },

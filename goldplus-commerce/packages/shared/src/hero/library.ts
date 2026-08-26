@@ -64,7 +64,7 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
   {
     slideKey: 'flash', position: 1, enabled: true, theme: 'offer', tint: 'a', media: 'stage',
     kicker: 'Sale on now',
-    headline: 'Everything in the shop, <em>reduced</em>',
+    headline: 'Everything in the shop is <em>cheaper right now</em>',
     subcopy: 'Same verified stock. The discount comes off at checkout — no code needed.',
     ctaLabel: "See what's on sale", ctaUrl: '/shop',
     finePrint: 'Same verified stock. Less money, for now.',

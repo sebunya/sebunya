@@ -122,9 +122,10 @@ const generateRemoveLink = (idToRemove: string) => {
                 const kind = item.availability.kind;
                 const stockLabel = kind === 'in_stock' ? 'In stock' : kind === 'pre_order' ? 'Pre-order' : kind === 'unknown' ? 'Stock not confirmed' : 'Out of stock';
                 const isInStock = kind === 'in_stock';
+                const stockTone = isInStock ? 'bg-brand-charcoal text-white' : kind === 'out_of_stock' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900';
                 return (
                   <td class="p-4 text-center">
-                    <span class={`font-bold px-2 py-1 rounded text-xs uppercase ${isInStock ? 'bg-brand-charcoal text-white' : 'bg-red-100 text-red-800'}`}>
+                    <span class={`font-bold px-2 py-1 rounded text-xs uppercase ${stockTone}`}>
                       {stockLabel}
                     </span>
                   </td>
