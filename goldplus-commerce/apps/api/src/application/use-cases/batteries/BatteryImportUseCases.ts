@@ -17,7 +17,7 @@ import {
   type CatalogueContext,
   type ImportMapping,
 } from '../../../domain/batteries/BatteryImport';
-import { batteryCodeCandidates, normaliseBatteryCode } from '../../../domain/batteries/BatteryCodes';
+import { batteryCodeCandidates, normaliseBatteryCode, stripCodeQualifier } from '../../../domain/batteries/BatteryCodes';
 import { normaliseDeviceToken } from '../../../domain/products/Devices';
 import { normaliseOptional } from '../../../domain/batteries/DeviceHierarchy';
 import { toCsv } from '../../../domain/pricing/CsvSafe';
@@ -181,7 +181,10 @@ export class BatteryImportUseCases {
     const mapping = session.mapping;
     const ctx = await this.catalogueContext();
     const codeFields = session.importType === 'BATTERY_CATALOGUE' ? ['canonicalCode', 'sourceItem'] : ['batteryCode'];
-    await ctx.preload(rows.flatMap((r) => codeFields.map((f) => (mapping[f] ? String(r.sourceData[mapping[f]] ?? '').trim() : '')).filter(Boolean)));
+    await ctx.preload(rows.flatMap((r) => codeFields.flatMap((f) => {
+      const raw = mapping[f] ? String(r.sourceData[mapping[f]] ?? '').trim() : '';
+      return raw ? [raw, stripCodeQualifier(raw)] : [];
+    })));
 
     // Type-specific context that needs the database.
     if (session.importType === 'COMPATIBILITY') {

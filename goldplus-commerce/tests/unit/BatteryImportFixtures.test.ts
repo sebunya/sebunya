@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import { IMPORT_FIELDS, markDuplicateKeys, normaliseImportRow, suggestMapping, validateMapping, type CatalogueContext } from '../../apps/api/src/domain/batteries/BatteryImport';
 import { XlsxSpreadsheetParser } from '../../apps/api/src/infrastructure/batteries/XlsxSpreadsheetParser';
+import { stripCodeQualifier } from '../../apps/api/src/domain/batteries/BatteryCodes';
 
 /**
  * Regression fixtures for the 2026-08-26 source list (brief §8): compound
@@ -128,6 +129,21 @@ describe('audit workbook import (01 Battery Master and 02 Compatibility Map)', (
     const row = normaliseImportRow('COMPATIBILITY', { 'Battery Reference': 'BL-49FT', 'Device Brand': 'TECNO', 'Marketing Name': 'Spark 7', 'Evidence Status': 'VERIFIED_EXACT' }, claimMapping, withBattery);
     expect(row.value?.evidenceStatus).toBe('SUPPLIER_LISTED');
     expect(row.warnings.join(' ')).toMatch(/cannot be set by an import/);
+  });
+
+  it('a workbook confidence qualifier is not part of the code', () => {
+    // Regression: the audit workbook writes "EB-BA505ABU (candidate)". The
+    // catalogue import stored it as EB-BA505ABU, but the compatibility import
+    // looked up the raw cell, so nine real Samsung and itel claims were
+    // rejected as "no battery for ...". The qualifier is stripped in one place
+    // and both forms are resolvable.
+    expect(stripCodeQualifier('EB-BA505ABU (candidate)')).toBe('EB-BA505ABU');
+    expect(stripCodeQualifier('BL-39LT (probable)')).toBe('BL-39LT');
+    expect(stripCodeQualifier('BL-49FT')).toBe('BL-49FT');
+    const ctx: CatalogueContext = { ...emptyContext, resolveBattery: (code) => (code === 'EB-BA505ABU' ? { productId: 'p-eb', canonicalCode: 'EB-BA505ABU', lifecycle: 'DRAFT' } : null) };
+    const row = normaliseImportRow('COMPATIBILITY', { 'Battery Reference': 'EB-BA505ABU (candidate)', 'Device Brand': 'Samsung', 'Marketing Name': 'Galaxy A20', 'Exact Model Number': 'SM-A205' }, claimMapping, ctx);
+    expect(row.action).toBe('CREATE_CLAIM');
+    expect(row.value?.batteryProductId).toBe('p-eb');
   });
 
   it('a claim for a verified or live pair is skipped, never changed', () => {

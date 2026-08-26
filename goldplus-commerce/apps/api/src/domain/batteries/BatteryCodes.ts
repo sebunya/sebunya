@@ -41,6 +41,16 @@ export function batteryCodeCandidates(query: string): string[] {
   return Array.from(out);
 }
 
+/**
+ * Drop a source workbook's confidence qualifier: "EB-BA505ABU (candidate)" and
+ * "BL-39LT (probable)" name the same part as the bare code. The qualifier is a
+ * note about certainty, not part of the identifier, and it is carried on the
+ * record as `code_status`, never inside the code itself.
+ */
+export function stripCodeQualifier(value: string): string {
+  return value.replace(/\s*\((?:candidate|probable|likely|assumed)\)\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+}
+
 /** True when a string looks like one battery part code rather than a phone name. */
 export function looksLikeBatteryCode(value: string): boolean {
   const n = normaliseBatteryCode(value);

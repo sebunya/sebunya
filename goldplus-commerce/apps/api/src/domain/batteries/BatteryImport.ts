@@ -11,7 +11,7 @@ import {
   type CompatEvidenceStatus,
 } from '@goldplus/shared';
 import { normaliseDeviceToken } from '../products/Devices';
-import { analyseSourceLine, displayCode, knownConflict, looksLikeRouterBattery, normaliseBatteryCode } from './BatteryCodes';
+import { analyseSourceLine, displayCode, knownConflict, looksLikeRouterBattery, normaliseBatteryCode, stripCodeQualifier } from './BatteryCodes';
 
 /**
  * Staged spreadsheet import rules. Pure domain.
@@ -283,7 +283,7 @@ export function normaliseImportRow(
       // Canonical code: the workbook candidate reference when present, otherwise the cleaned label.
       let canonicalCode: string;
       let codeStatus: 'PROVISIONAL' | 'DEVICE_NAMED' | 'MISSING';
-      const candidate = pendingToNull(codeCell.replace(/\s*\(candidate\)\s*/i, '').replace(/\s*\(probable\)\s*/i, ''));
+      const candidate = pendingToNull(stripCodeQualifier(codeCell));
       if (candidate && !/battery code missing/i.test(candidate)) {
         canonicalCode = candidate.toUpperCase();
         codeStatus = 'PROVISIONAL';
@@ -400,7 +400,7 @@ export function normaliseImportRow(
         warnings.push(`"${evidenceCell}" cannot be set by an import; the claim is staged as supplier listed for a verifier to decide.`);
       }
 
-      const battery = batteryCode && !errors.length ? ctx.resolveBattery(batteryCode.replace(/\s*\((candidate|probable)\)\s*/i, '')) : null;
+      const battery = batteryCode && !errors.length ? ctx.resolveBattery(stripCodeQualifier(batteryCode)) : null;
       if (!errors.length) {
         if (!battery) errors.push(`No battery for "${batteryCode}". Import the catalogue first or add "${batteryCode}" as an alias of the right battery.`);
         else if ('ambiguous' in battery) errors.push(`"${batteryCode}" resolves to more than one battery.`);
