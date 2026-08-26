@@ -145,7 +145,7 @@ try {
       <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
         <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Saved addresses</h2>
         {addresses.length === 0 ? (
-          <EmptyState title="No addresses saved" message="Save one and checkout opens pre-filled — no retyping." />
+          <EmptyState title="No addresses saved" message="Save one and checkout opens already filled in. No retyping." />
         ) : (
           <ul class="space-y-4">
             {addresses.map((a) => (
@@ -184,11 +184,11 @@ try {
           <FormField id="label" name="label" label="Label (e.g. Home, Shop)" required />
           <FormField id="recipientName" name="recipientName" label="Recipient name" required autocomplete="name" />
           <FormField id="phone" name="phone" label="Phone" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel" />
-          <FormField id="phoneSecondary" name="phoneSecondary" label="Alternative phone (optional — a second number the rider can try)" type="tel" inputmode="tel" placeholder="07XX XXX XXX" />
+          <FormField id="phoneSecondary" name="phoneSecondary" label="Alternative phone (optional, a second number the rider can try)" type="tel" inputmode="tel" placeholder="07XX XXX XXX" />
           <UgandaLocationPicker
             name="locationJson"
             label="Location"
-            helperText="Type the area, town or district — e.g. Najjera, Seeta, Mbarara."
+            helperText="Type the area, town or district, for example Najjera, Seeta or Mbarara."
             required={true}
             withPin={true}
           />

@@ -275,6 +275,7 @@ describe('SettlePaymentUseCase — one path for callback, IPN, poller and ops', 
         },
         enqueueAdminEmail: async () => void effectLog.push('email'),
         recordMeasurement: async () => void effectLog.push('measurement'),
+        enqueueCustomerMessage: async (_orderId, template) => void effectLog.push(`customer:${template}`),
         onEffectFailed: (effect) => void failures.push(effect),
       },
     );
@@ -285,16 +286,17 @@ describe('SettlePaymentUseCase — one path for callback, IPN, poller and ops', 
     const { settle, effectLog, failures } = makeWorld({ verifyStatus: 'completed', verifyOk: true, settleKind: 'CONFIRMED' });
     const result = await settle.execute({ orderTrackingId: 't', merchantReference: 'r', source: 'poll', traceId: 'x' });
     expect(result.confirmed).toBe(true);
-    expect(effectLog).toEqual(['fulfilment', 'loyalty', 'email', 'measurement']);
+    expect(effectLog).toEqual(['fulfilment', 'loyalty', 'email', 'measurement', 'customer:ORDER_PAYMENT_SUCCESS']);
     // Non-fatal AND non-silent: the loyalty failure surfaced by name.
     expect(failures).toEqual(['loyalty_settlement']);
   });
 
-  it('runs NO effects when settlement is not CONFIRMED', async () => {
+  it('runs NO money effects when settlement is not CONFIRMED, but tells the customer on FAILED', async () => {
     const { settle, effectLog } = makeWorld({ verifyStatus: 'invalid', verifyOk: false, settleKind: 'FAILED' });
     const result = await settle.execute({ orderTrackingId: 't', merchantReference: 'r', source: 'ipn', traceId: 'x' });
     expect(result.confirmed).toBe(false);
-    expect(effectLog).toEqual([]);
+    // Nothing that moves money or stock; only the message the customer needs.
+    expect(effectLog).toEqual(['customer:ORDER_PAYMENT_FAILED']);
   });
 
   it('replay tolerance: ALREADY_SETTLED runs no effects a second time', async () => {

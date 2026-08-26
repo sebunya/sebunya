@@ -298,7 +298,7 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
     expect(res.providerMessage).toContain('timed out');
   });
 
-  test('15. Empty custom message falls back to template key safely', async () => {
+  test('15. Empty custom message falls back to the customer wording, never the template key', async () => {
     const mockJsonPromise = Promise.resolve({ Status: 'OK', Message: 'Successfully Sent!' });
     const mockFetchPromise = Promise.resolve({
       ok: true,
@@ -314,6 +314,8 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
 
     const [, calledInit] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
     const parsedBody = JSON.parse(calledInit.body as string);
-    expect(parsedBody.msgdata[0].message).toBe('ORDER_PAYMENT_SUCCESS');
+    // The old fallback put the enum on the customer's phone. Now the wording table answers.
+    expect(parsedBody.msgdata[0].message).toContain('GoldPlus: we have your payment');
+    expect(parsedBody.msgdata[0].message).not.toContain('ORDER_PAYMENT_SUCCESS');
   });
 });

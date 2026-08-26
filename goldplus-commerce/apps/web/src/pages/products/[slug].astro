@@ -282,7 +282,7 @@ const verdictBadge: Record<string, string> = {
 const canBuy = product?.availability.kind === 'in_stock';
 const pageTitle = product ? product.name : 'Product unavailable';
 const description = product
-  ? `${product.name} — ${product.categoryName} from GoldPlus Uganda.`
+  ? `${product.name}, ${product.categoryName} from GoldPlus Uganda.`
   : 'This product is temporarily unavailable.';
 // Path only: ?searchQuery=…&searchRank=… must never become the canonical.
 const canonical = `${Astro.url.origin}${Astro.url.pathname}`;
@@ -533,7 +533,7 @@ if (product) {
         {compatibilityEntries.length > 0 && (
           <div class="border-t border-slate-100 pt-10" aria-labelledby="compat-heading">
             <h2 id="compat-heading" class="text-xl font-black text-slate-900">Verified compatibility</h2>
-            <p class="mt-1 text-sm text-slate-600">Checked and declared by GoldPlus staff — not guesses.</p>
+            <p class="mt-1 text-sm text-slate-600">Checked and declared by GoldPlus staff, not guesses.</p>
             <ul class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {compatibilityEntries.map((entry) => (
                 <li class="rounded-2xl border border-slate-200 bg-white p-4">

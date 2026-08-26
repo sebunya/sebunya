@@ -100,7 +100,7 @@ export function paymentReturnCopy(kind: PaymentReturnKind, orderNumber: string |
         tone: 'wait',
         title: 'Waiting for your payment to clear',
         money: `Your payment for order${ref} has started but has not cleared yet. If you approved it on your phone, it usually clears within a few minutes.`,
-        next: 'Please do not pay again — that could charge you twice. Check the order in a few minutes, or ask us and we will check for you.',
+        next: 'Please do not pay again, because that could charge you twice. Check the order in a few minutes, or ask us and we will check for you.',
         primaryCta: { label: 'Check this order', href: trackHref },
         secondaryCta: { label: 'Back to the shop', href: '/shop' },
         offerHelp: true,

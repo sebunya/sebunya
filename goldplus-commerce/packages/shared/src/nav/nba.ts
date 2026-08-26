@@ -166,17 +166,17 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   // numbers with no pricing rule behind them. The only discount that exists
   // is the live storewide sale, and it is named below when it runs.
   if (!ctx.signedIn && ctx.visits <= 1) {
-    c.push({ id: 'welcome', score: 60, text: 'Your phone number is your account &mdash; join free and earn <em>points</em> on every paid order', short: 'Join free &mdash; earn <em>points</em> on every order', cta: 'Join free', href: R.register });
+    c.push({ id: 'welcome', score: 60, text: 'Your phone number is your account. Join free and earn <em>points</em> on every paid order', short: 'Join free and earn <em>points</em> on every order', cta: 'Join free', href: R.register });
   }
   if (!ctx.signedIn && ctx.visits > 1) {
-    c.push({ id: 'signup', score: 55, text: 'Join free &mdash; your phone number is the account, and points start with your next order', short: 'Join free &mdash; points start with your next order', cta: 'Join free', href: R.register });
+    c.push({ id: 'signup', score: 55, text: 'Join free. Your phone number is the account, and points start with your next order', short: 'Join free. Points start with your next order', cta: 'Join free', href: R.register });
   }
 
   // The live sale, with its real percentage. Never a typed figure: the old
   // line said "up to 40% off" for a sale that had no such cut.
   const salePct = Number(r.salePct) || 0;
   if (ctx.saleLive && salePct > 0) {
-    c.push({ id: 'sale', score: 92, text: '<em>' + salePct + '% off</em> everything right now &mdash; it comes off at checkout', short: '<em>' + salePct + '% off</em> everything, on now', cta: 'Shop the sale', href: R.all });
+    c.push({ id: 'sale', score: 92, text: '<em>' + salePct + '% off</em> everything right now. It comes off at checkout', short: '<em>' + salePct + '% off</em> everything, on now', cta: 'Shop the sale', href: R.all });
   }
 
   // always available, and always true

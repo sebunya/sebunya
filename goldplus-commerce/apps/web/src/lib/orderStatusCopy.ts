@@ -76,7 +76,7 @@ const ORDER: Record<string, StatusCopy> = {
   },
   cancelled: {
     label: 'Cancelled',
-    meaning: 'This order was cancelled. If you paid for it, our team arranges the refund — ask us if you have not heard from us.',
+    meaning: 'This order was cancelled. If you paid for it, our team arranges the refund. Ask us if you have not heard from us.',
     tone: 'bad',
   },
   failed: {

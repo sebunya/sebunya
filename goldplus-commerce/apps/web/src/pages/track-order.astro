@@ -72,7 +72,7 @@ if (Astro.request.method === 'POST') {
             `A customer asked our team to follow up on their order.\n` +
             `Order: ${order.orderNumber}\n` +
             `Order status: ${label(order.orderStatus)} · Payment: ${label(order.paymentStatus)}\n` +
-            `Delivery area: ${order.deliveryArea ?? '—'}\n` +
+            `Delivery area: ${order.deliveryArea ?? 'not given'}\n` +
             (note ? `\nCustomer note:\n${note}\n` : '') +
             `\nRaised from the Track Order page.`,
           productModel: 'Order follow-up',
@@ -135,7 +135,7 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
               style="background:#93D500;color:#0A0A0A">
               Track order
             </button>
-            <p class="text-center text-xs text-slate-500">We only show order details when the reference and contact match — for your privacy.</p>
+            <p class="text-center text-xs text-slate-500">We only show order details when the reference and contact match. That is for your privacy.</p>
           </form>
 
           {errorMsg && (
@@ -164,7 +164,7 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
               ) : isUnpaid ? (
                 <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                   <p class="font-semibold">Waiting for payment before we prepare it.</p>
-                  <p class="mt-1 text-xs">If you started paying online and it has not cleared, please do not pay again — request a follow-up below or ask us on WhatsApp and we will check.</p>
+                  <p class="mt-1 text-xs">If you started paying online and it has not cleared, please do not pay again. Request a follow-up below or ask us on WhatsApp and we will check.</p>
                 </div>
               ) : (
                 <ol class="mt-6 space-y-0" aria-label="Dispatch progress">
@@ -181,7 +181,7 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
                         <div class={active ? '' : done ? '' : 'opacity-55'}>
                           <p class={`text-sm font-black ${active ? 'text-brand-primaryInk' : 'text-gray-900'}`}>{stage.title}{active && <span class="ml-2 rounded-full bg-brand-primary/15 px-2 py-0.5 text-[10px] font-bold text-brand-primaryInk align-middle">Now</span>}</p>
                           <p class="mt-0.5 text-xs leading-relaxed text-slate-600">{stage.desc}</p>
-                          {active && isDeliveryFailed && <p class="mt-1 text-xs font-semibold text-amber-800">A delivery attempt didn't succeed — our team will re-attempt or contact you.</p>}
+                          {active && isDeliveryFailed && <p class="mt-1 text-xs font-semibold text-amber-800">A delivery attempt did not succeed. Our team will try again or contact you.</p>}
                         </div>
                       </li>
                     );
@@ -215,7 +215,7 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
               <div class="mt-5 border-t border-slate-200 pt-4">
                 {followupOk ? (
                   <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-                    Thanks — our team has been notified and will follow up on order {order.orderNumber} using your checkout contact.
+                    Thanks. Our team has been notified and will follow up on order {order.orderNumber} using your checkout contact.
                   </div>
                 ) : (
                   <details class="group">

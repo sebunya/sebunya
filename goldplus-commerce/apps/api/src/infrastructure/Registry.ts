@@ -195,6 +195,7 @@ import { DrizzleLocationAdminRepository } from './db/repositories/DrizzleLocatio
 import { CodPolicyReader, CheckoutVelocitySignal } from './locations/CodPolicyReader';
 import { DrizzleLoyaltyCompletionRepository } from './db/repositories/DrizzleLoyaltyCompletionRepository';
 import { LoyaltyOutboxNotifier } from './loyalty/LoyaltyOutboxNotifier';
+import { CustomerOutboxNotifier } from './notifications/CustomerOutboxNotifier';
 import { RequestPhoneVerificationUseCase, VerifyPhoneUseCase, GetPhoneVerificationStateUseCase, BackfillGuestOrdersUseCase, MergeLoyaltyAccountsUseCase } from '../application/use-cases/loyalty/LoyaltyIdentityUseCases';
 import { EarnForVerificationScanUseCase, ManualAdjustLoyaltyUseCase, EvaluateTiersUseCase } from '../application/use-cases/loyalty/LoyaltyProgrammeUseCases';
 import {
@@ -1129,6 +1130,8 @@ export class Registry {
   // ── Loyalty completion (loyalty brief stages 2–4) ───────────────────────
   public readonly loyaltyCompletionRepo = new DrizzleLoyaltyCompletionRepository();
   public readonly loyaltyOutboxNotifier = new LoyaltyOutboxNotifier();
+  /** Every non-loyalty, non-OTP customer message goes through this. */
+  public readonly customerOutboxNotifier = new CustomerOutboxNotifier();
   public readonly vestLoyaltyOnDeliveryUseCase = new VestLoyaltyOnDeliveryUseCase(
     this.earnLoyaltyPointsUseCase,
     this.orderRepo,
@@ -1767,6 +1770,29 @@ export class Registry {
         if (!result.ok && result.code !== 'NOT_FOUND') {
           throw new Error(`redemption consume failed: ${result.code}`);
         }
+      },
+      enqueueCustomerMessage: async (orderId, template) => {
+        const order = await this.orderRepo.findById(orderId);
+        if (!order) return;
+        await this.customerOutboxNotifier.enqueue({
+          eventType: 'CUSTOMER_ORDER_MESSAGE',
+          template,
+          customerPhone: order.customerPhone,
+          customerEmail: order.customerEmail ?? null,
+          data: {
+            template,
+            customerName: order.customerName,
+            orderNumber: order.orderNumber,
+            totalUgx: order.totalUgx,
+          },
+          idempotencyKey: `customer-order-message:${orderId}:${template}`,
+          relatedEntity: 'order',
+          relatedEntityId: orderId,
+          // The notification registry marks order messages DEFERRED: they are
+          // recorded as DRY_RUN until the owner switches live customer
+          // messaging on. Wording and routing are exercised either way.
+          dryRunOnly: process.env.CUSTOMER_ORDER_MESSAGES_LIVE !== 'true',
+        });
       },
       enqueueAdminEmail: async (orderId) => {
         const paidOrder = await this.orderRepo.findById(orderId);

@@ -137,7 +137,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
       engine removed that slide (e.g. flash after its sale ends), leaving the
       homepage with no h1. Visually hidden — the hero's design has no fixed
       headline — but always present for screen readers and SEO. */}
-  <h1 class="gp-hero__sr">GoldPlus — verified original electronics for Uganda</h1>
+  <h1 class="gp-hero__sr">GoldPlus, verified original electronics for Uganda</h1>
   <div class="gp-hero__box" id="gpHero" role="region" aria-roledescription="carousel" aria-label="GoldPlus featured offers">
     <p class="gp-hero__sr" aria-live="polite" id="gpHeroLive"></p>
 
@@ -1171,10 +1171,10 @@ const configJson = JSON.stringify({ ...config, preferredArch })
   if (cut){
     var end = new Date(); end.setHours(CONFIG.cutoffHour,0,0,0);
     var mins = Math.floor((end - Date.now())/60000);
-    if (CTX.day === 0) cut.textContent = 'Closed Sunday — ordering now ships Monday';
+    if (CTX.day === 0) cut.textContent = 'Closed Sunday. Order now and it goes out Monday';
     else if (mins > 90) cut.textContent = Math.floor(mins/60) + 'h ' + (mins%60) + 'm left for today\u2019s run';
     else if (mins > 0)  cut.textContent = mins + ' minutes left for today\u2019s run';
-    else cut.textContent = 'Today\u2019s run has left — order now for tomorrow';
+    else cut.textContent = 'Today\u2019s run has left. Order now for tomorrow';
   }
 
   /* ---------------- copy code ---------------- */
@@ -1228,7 +1228,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
       var _arr = document.createElement('span'); _arr.setAttribute('aria-hidden','true'); _arr.textContent = '\u2192';
       cta.appendChild(_arr);
       cta.setAttribute('href','/rewards?promo=' + prize.code);
-      sub.textContent = 'That ' + prize.pct + '% is yours — open a free rewards account to lock it to your next order.';
+      sub.textContent = 'That ' + prize.pct + '% is yours. Open a free rewards account to lock it to your next order.';
       if (liveP) liveP.textContent = 'You revealed ' + prize.pct + '% off. Code ' + prize.code + '.';
       store.set(CONFIG.keys.scratch, JSON.stringify({pct:prize.pct,code:prize.code,revealed:true}));
     }

@@ -29,6 +29,12 @@ export interface SettlePaymentEffects {
   settleLoyalty(orderId: string): Promise<void>;
   /** Transactional admin email. Enqueued, not sent inline. */
   enqueueAdminEmail(orderId: string): Promise<void>;
+  /**
+   * What the CUSTOMER is told. Enqueued through the outbox, never sent
+   * inline, and governed by the same gates as every customer message. The
+   * template names the outcome the settlement actually reached.
+   */
+  enqueueCustomerMessage(orderId: string, template: 'ORDER_PAYMENT_SUCCESS' | 'ORDER_PAYMENT_FAILED' | 'ORDER_PAYMENT_PENDING'): Promise<void>;
   /** Purchase measurement reconciliation. */
   recordMeasurement(input: {
     verification: VerifyPesaPalPaymentOutput;
@@ -87,6 +93,15 @@ export class SettlePaymentUseCase {
       await this.effects
         .recordMeasurement({ verification, trackingId: input.orderTrackingId, reference: input.merchantReference })
         .catch((e) => this.effects.onEffectFailed('measurement', verification.orderId, e));
+      await this.effects
+        .enqueueCustomerMessage(verification.orderId, 'ORDER_PAYMENT_SUCCESS')
+        .catch((e) => this.effects.onEffectFailed('customer_message', verification.orderId, e));
+    } else if (settlement.kind === 'FAILED' && settlement.orderId) {
+      // A decline or reversal is the moment the customer most needs to hear
+      // from us. Nothing else runs on this branch.
+      await this.effects
+        .enqueueCustomerMessage(settlement.orderId, 'ORDER_PAYMENT_FAILED')
+        .catch((e) => this.effects.onEffectFailed('customer_message', settlement.orderId!, e));
     }
 
     return { verification, settlement, confirmed: paymentDidConfirm(settlement) };

@@ -1,5 +1,6 @@
 import { outboundGovernance } from '../OutboundGovernanceService';
 import { classifyMessage } from '../messageClassification';
+import { smsText } from '../../../application/notifications/CustomerMessages';
 import {
   INotificationProvider,
   NotificationDispatchPayload,
@@ -120,7 +121,19 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
       };
     }
 
-    // 4. Live Send Dispatch
+    // 4. The text. A producer may attach one; otherwise it comes from the one
+    // customer wording table. It used to fall back to `payload.template`, which
+    // would have put "LOYALTY_EXPIRY_WARNING" on a customer's phone.
+    const text = String(payload.data?.message || smsText(payload.template, (payload.data || {}) as never) || '').trim();
+    if (!text) {
+      return {
+        status: 'FAILED' as NotificationStatus,
+        providerCode: 'NO_MESSAGE_BODY',
+        providerMessage: `SMS not sent: no customer wording for template ${payload.template}.`,
+      };
+    }
+
+    // 5. Live Send Dispatch
     try {
       const body = {
         method: 'SendSms',
@@ -131,7 +144,7 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
         msgdata: [
           {
             number: normalizedNumber,
-            message: String(payload.data.message || payload.template),
+            message: text,
             senderid: senderId,
             priority: priority,
           },

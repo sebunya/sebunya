@@ -165,10 +165,10 @@ export function paymentStartMessageFor(code: PaymentStartErrorCode | 'NETWORK'):
     case 'OFFLINE_DRAFT_NOT_PAYABLE':
       return 'This is a local draft saved on your device and cannot be paid for online.';
     case 'PAYMENT_NOT_CONFIGURED':
-      return 'Online payment is temporarily unavailable. Your order is saved — our team will contact you.';
+      return 'Online payment is temporarily unavailable. Your order is saved. Our team will contact you.';
     case 'PAYMENT_PROVIDER_UNAVAILABLE':
     case 'NETWORK':
-      return 'We could not reach the payment service. Your order is saved — please try again shortly.';
+      return 'We could not reach the payment service. Your order is saved. Please try again shortly.';
     case 'CHECKOUT_INTENT_REQUIRED':
       return 'Your checkout session expired. Please reload the page and try again.';
     case 'ORDER_NOT_FOUND':
@@ -176,7 +176,7 @@ export function paymentStartMessageFor(code: PaymentStartErrorCode | 'NETWORK'):
     default:
       // `default` so a code this client does not know (the API once returned
       // ORDER_ID_REQUIRED) cannot yield `undefined` and a blank error box.
-      return 'We could not start payment for this order. Your order is saved — please contact us and quote the order number shown here.';
+      return 'We could not start payment for this order. Your order is saved. Please contact us and quote the order number shown here.';
   }
 }
 
@@ -237,7 +237,7 @@ export function customerMessageFor(result: CheckoutCallResult): {
     case 'NETWORK':
       return {
         status: 'retry',
-        message: 'We could not reach the order service. Please retry — your order will not be duplicated.',
+        message: 'We could not reach the order service. Please retry. Your order will not be duplicated.',
       };
     // The terminal business refusals. Each names what changed and what to do;
     // none of them fall through to the API's text. Nothing has been charged
@@ -266,7 +266,7 @@ export function customerMessageFor(result: CheckoutCallResult): {
     case 'DB_NOT_CONFIGURED':
       return {
         status: 'retry',
-        message: 'Checkout is temporarily unavailable. Please try again in a few minutes — your basket is saved and you have not been charged.',
+        message: 'Checkout is temporarily unavailable. Please try again in a few minutes. Your basket is saved and you have not been charged.',
       };
     case 'INVALID_CHECKOUT':
       return {
@@ -278,7 +278,7 @@ export function customerMessageFor(result: CheckoutCallResult): {
     default:
       return {
         status: 'error',
-        message: 'We could not place your order. Please try again — you have not been charged. If it keeps failing, message us and we will take the order by phone.',
+        message: 'We could not place your order. Please try again. You have not been charged. If it keeps failing, message us and we will take the order by phone.',
       };
   }
 }

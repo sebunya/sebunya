@@ -73,7 +73,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
     sheetHeadings: { recent: 'Recent', recentClear: 'Clear', trending: 'Trending in Kampala', products: 'Products' },
     footerCtaLabel: 'Ask us on WhatsApp',
     footerCtaHref: WA,
-    zeroResultCopy: 'No match for <b>{q}</b>. Try a phone model, a size, or a category — or ask us directly.',
+    zeroResultCopy: 'No match for <b>{q}</b>. Try a phone model, a size, or a category, or ask us directly.',
     trendingTerms: [],
   },
   rail: [
@@ -208,7 +208,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
   },
   popover: {
     signedIn: {
-      subTemplate: 'You have <b>{points} points</b> — that is {money} off your next order.',
+      subTemplate: 'You have <b>{points} points</b>. That is {money} off your next order.',
       links: [
         { label: 'Your orders', href: '/account' },
         { label: 'Rewards', value: '{points} pts', href: '/account/rewards' },
@@ -225,24 +225,24 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
       heading: 'Welcome back',
       holdTag: 'On now',
       holdTitle: '{discountPct}% off everything',
-      holdSubManyVisits: 'Comes off at checkout — no code needed',
-      holdSubDefault: 'Comes off at checkout — no code needed',
+      holdSubManyVisits: 'Comes off at checkout. No code needed',
+      holdSubDefault: 'Comes off at checkout. No code needed',
       formAction: '/register',
       formInputPlaceholder: '07XX XXX XXX',
       submit: 'Claim it',
       altLink: { label: 'Sign in instead', href: '/account' },
-      mobileSub: '<b>{discountPct}% off everything</b> right now — it comes off at checkout. Points start counting from today.',
+      mobileSub: '<b>{discountPct}% off everything</b> right now. It comes off at checkout. Points start counting from today.',
     },
     firstTime: {
       holdTag: 'On now',
       holdTitle: '{discountPct}% off everything',
-      holdSub: 'Comes off at checkout — no code needed',
+      holdSub: 'Comes off at checkout. No code needed',
       formAction: '/register',
       formInputPlaceholder: '07XX XXX XXX',
       submit: 'Claim it',
       joinNote: 'Your number is your account. Nothing else to fill in.',
       altLink: { label: 'I already have an account', href: '/account' },
-      mobileSub: '<b>{discountPct}% off everything</b> right now — it comes off at checkout. Your phone number is your account.',
+      mobileSub: '<b>{discountPct}% off everything</b> right now. It comes off at checkout. Your phone number is your account.',
     },
   },
   miniCart: {
@@ -250,8 +250,8 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
     subtotalLabel: 'Subtotal',
     checkoutCta: { label: 'Checkout', href: '/checkout' },
     viewCartCta: { label: 'View cart', href: '/cart' },
-    cutoffSunday: 'Closed Sunday — this order goes out <b>Monday morning</b>',
-    cutoffAfter: "Today's run has left — this order goes out <b>tomorrow morning</b>",
+    cutoffSunday: 'Closed Sunday. This order goes out <b>Monday morning</b>',
+    cutoffAfter: "Today's run has left. This order goes out <b>tomorrow morning</b>",
     cutoffBefore: 'Check out in <b>{left}</b> and this arrives <b>today</b>.',
   },
   settings: {

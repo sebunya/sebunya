@@ -1,3 +1,4 @@
+import { emailCopy } from '../../../application/notifications/CustomerMessages';
 import { outboundGovernance } from '../OutboundGovernanceService';
 import { failsReleaseReadiness } from '../../../domain/notifications/OutboundGovernancePolicy';
 import { classifyMessage } from '../messageClassification';
@@ -203,6 +204,16 @@ export class ZeptoMailAdapter implements INotificationProvider {
       subject = this.renderer.getSubject(mappedTemplate);
       htmlContent = this.renderer.renderEmail(mappedTemplate, orderModel);
       textContent = this.renderer.renderTextBody(mappedTemplate, orderModel);
+    } else if (emailCopy(payload.template === 'password_reset' ? 'PASSWORD_RESET' : payload.template, (payload.data || {}) as never)) {
+      // A customer email that is not an order receipt: password reset, loyalty,
+      // and the acknowledgements. These used to fall into the operations dump
+      // below ("A system event regarding password_reset occurred" plus the
+      // reset link as a key:value row).
+      const key = payload.template === 'password_reset' ? 'PASSWORD_RESET' : payload.template;
+      const copy = emailCopy(key, (payload.data || {}) as never)!;
+      subject = copy.subject;
+      htmlContent = this.renderer.renderCustomerEmail(copy, (payload.data as any)?.customerName ?? null);
+      textContent = this.renderer.renderCustomerText(copy, (payload.data as any)?.customerName ?? null);
     } else {
       // Operations alerts, dealer app, quote request alerts
       const message = String(payload.data?.message || `A system event regarding ${payload.relatedEntity} occurred.`);

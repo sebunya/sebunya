@@ -102,7 +102,7 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
               {overview.orderCount > 0 && <a href="/account/orders" class="text-xs font-bold text-brand-mutedGrey hover:text-brand-charcoal">View all &rarr;</a>}
             </div>
             {overview.recentOrders.length === 0 ? (
-              <EmptyState title="No orders yet" message="Orders placed while signed in appear here — and earn GoldPlus points when paid. Ordered as a guest? Look it up with your order reference.">
+              <EmptyState title="No orders yet" message="Orders placed while signed in appear here, and earn GoldPlus points when paid. Ordered as a guest? Look it up with your order reference.">
                 <div class="flex flex-col sm:flex-row gap-3 justify-center">
                   <a href="/shop" class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-black">Start shopping</a>
                   <a href="/track-order" class="inline-flex items-center justify-center rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-brand-charcoal hover:bg-brand-softGrey">Find a guest order</a>

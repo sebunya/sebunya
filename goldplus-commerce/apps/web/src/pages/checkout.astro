@@ -527,9 +527,9 @@ const bizCheckout = await getBusinessInfo();
 const paymentCopy = (await getStorefrontCopy()).payment;
 const cut = kampalaCutoff(new Date(), { cutoffHour: bizCheckout.sameDayCutoffHour, closedDays: bizCheckout.closedDays });
 const cutoffLine = cut.closed
-  ? 'Closed today — this goes out on the next working day'
+  ? 'Closed today. This goes out on the next working day'
   : !cut.beforeCutoff
-    ? "Today's run has left — this goes out tomorrow morning"
+    ? "Today's run has left. This goes out tomorrow morning"
     : cut.minsToCutoff <= 60
       ? `Only ${cut.minsToCutoff} minutes left to get this today`
       : `Order in ${Math.floor(cut.minsToCutoff / 60)}h ${cut.minsToCutoff % 60}m and this arrives today`;
@@ -654,7 +654,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
               withPin={true}
                        name="locationJson"
                        label="Delivery location"
-                       helperText="Type the area, town or district you know — e.g. Najjera, Seeta, Mbarara."
+                       helperText="Type the area, town or district you know, for example Najjera, Seeta or Mbarara."
                        required={savedAddresses.length === 0}
                        defaultValue={values.locationJson}
                        errorMessage={errors.locationJson}
@@ -662,7 +662,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
                      <FormField
                        id="deliveryAddress"
                        name="deliveryAddress"
-                       label="Exact address — estate, road, building or landmark"
+                       label="Exact address: estate, road, building or landmark"
                        placeholder="e.g. Kigoowa Road, gate after Capital Shoppers"
                        required
                        defaultValue={values.deliveryAddress}
@@ -792,7 +792,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
             {loyaltyProgramme.active && loyaltyProgramme.redemption.configured && loyaltyAvailablePoints >= (loyaltyProgramme.redemption.minPoints ?? 1) && (
               <div class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 space-y-2">
                 <label for="redeemPoints" class="block text-xs font-black uppercase tracking-wider text-slate-600">
-                  Use your points — balance {loyaltyAvailablePoints.toLocaleString('en-UG')} (worth {formatUgx(loyaltyAvailablePoints * (loyaltyProgramme.redemption.pointValueUgx ?? 0))})
+                  Use your points. Balance {loyaltyAvailablePoints.toLocaleString('en-UG')} (worth {formatUgx(loyaltyAvailablePoints * (loyaltyProgramme.redemption.pointValueUgx ?? 0))})
                 </label>
                 <div class="flex items-center gap-2">
                   <input
@@ -1128,7 +1128,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
       if (opt && opt.value) {
         payloadEl.value = JSON.stringify({
           manual: true,
-          rawAddressText: `Pickup point: ${opt.dataset.name}${opt.dataset.address ? ' — ' + opt.dataset.address : ''}`,
+          rawAddressText: `Pickup point: ${opt.dataset.name}${opt.dataset.address ? ', ' + opt.dataset.address : ''}`,
         });
         payloadEl.dispatchEvent(new Event('change', { bubbles: true }));
       }

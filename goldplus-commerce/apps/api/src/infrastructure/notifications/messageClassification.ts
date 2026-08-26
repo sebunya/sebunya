@@ -63,6 +63,17 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   // told a link was coming and never got one, because they had not opted in to
   // receiving offers. Nobody consents to being able to reset their password.
   'PASSWORD_RESET',
+  'password_reset',
+  // Order lifecycle messages routed as CUSTOMER_ORDER_MESSAGE, and the
+  // acknowledgements a customer gets for a request they just made. All are a
+  // direct consequence of the customer's own action.
+  'CUSTOMER_ORDER_MESSAGE',
+  'ORDER_DISPATCHED',
+  'ORDER_CANCELLED_BY_SHOP',
+  'SUPPORT_REQUEST_RECEIVED',
+  'QUOTE_REQUEST_RECEIVED',
+  'DEALER_APPLICATION_RECEIVED',
+  'FAKE_REPORT_RECEIVED',
   // Phone verification (0087 identity spine). The same defect as PASSWORD_RESET
   // above, found in production on 2026-08-14: the OTP producer enqueued its
   // challenge as LOYALTY_EXPIRY_WARNING — "routed identically: SMS-first

@@ -43,6 +43,19 @@ routes.post('/dealers/apply', async (c) => {
     newState: { source: 'public_form' },
   });
 
+
+  // Tell the customer we have it. SMS first (the channel that delivers), email
+  // as the fallback. The body comes from CustomerMessages; never a template key.
+  await registry.customerOutboxNotifier.enqueue({
+    eventType: 'DEALER_APPLICATION_RECEIVED',
+    template: 'DEALER_APPLICATION_RECEIVED',
+    customerPhone: typeof body?.phone === 'string' ? body.phone : null,
+    customerEmail: typeof body?.email === 'string' ? body.email : null,
+    data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: dealerId },
+    idempotencyKey: `ack:dealer_application:${dealerId}`,
+    relatedEntity: 'dealer_application',
+    relatedEntityId: dealerId,
+  }).catch(() => undefined);
   const res: ApiResponse<{ dealerId: string }> = { success: true, data: { dealerId } };
   return c.json(res, 201);
 });
@@ -71,6 +84,19 @@ routes.post('/quotes/request', async (c) => {
     newState: { source: 'public_form', kind: String(body.kind ?? 'retail') },
   });
 
+
+  // Tell the customer we have it. SMS first (the channel that delivers), email
+  // as the fallback. The body comes from CustomerMessages; never a template key.
+  await registry.customerOutboxNotifier.enqueue({
+    eventType: 'QUOTE_REQUEST_RECEIVED',
+    template: 'QUOTE_REQUEST_RECEIVED',
+    customerPhone: typeof body?.phone === 'string' ? body.phone : null,
+    customerEmail: typeof body?.email === 'string' ? body.email : null,
+    data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: result.quoteId },
+    idempotencyKey: `ack:quote_request:${result.quoteId}`,
+    relatedEntity: 'quote_request',
+    relatedEntityId: result.quoteId,
+  }).catch(() => undefined);
   const res: ApiResponse<{ quoteId: string }> = { success: true, data: { quoteId: result.quoteId } };
   return c.json(res, 201);
 });
@@ -99,6 +125,19 @@ routes.post('/support/report-issue', async (c) => {
     newState: { source: 'public_form' },
   });
 
+
+  // Tell the customer we have it. SMS first (the channel that delivers), email
+  // as the fallback. The body comes from CustomerMessages; never a template key.
+  await registry.customerOutboxNotifier.enqueue({
+    eventType: 'SUPPORT_REQUEST_RECEIVED',
+    template: 'SUPPORT_REQUEST_RECEIVED',
+    customerPhone: typeof body?.phone === 'string' ? body.phone : null,
+    customerEmail: typeof body?.email === 'string' ? body.email : null,
+    data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: result.ticketId },
+    idempotencyKey: `ack:support_ticket:${result.ticketId}`,
+    relatedEntity: 'support_ticket',
+    relatedEntityId: result.ticketId,
+  }).catch(() => undefined);
   const res: ApiResponse<{ ticketId: string }> = { success: true, data: { ticketId: result.ticketId } };
   return c.json(res, 201);
 });
@@ -137,6 +176,19 @@ routes.post('/support/report-fake', async (c) => {
     newState: { source: 'public_form', hologramCodeProvided: Boolean((body as any).hologramCode) },
   });
 
+
+  // Tell the customer we have it. SMS first (the channel that delivers), email
+  // as the fallback. The body comes from CustomerMessages; never a template key.
+  await registry.customerOutboxNotifier.enqueue({
+    eventType: 'FAKE_REPORT_RECEIVED',
+    template: 'FAKE_REPORT_RECEIVED',
+    customerPhone: typeof body?.reporterPhone === 'string' ? body.reporterPhone : null,
+    customerEmail: typeof body?.reporterEmail === 'string' ? body.reporterEmail : null,
+    data: { customerName: typeof body?.reporterName === 'string' ? body.reporterName : null, reference: result.reportId },
+    idempotencyKey: `ack:fake_product_report:${result.reportId}`,
+    relatedEntity: 'fake_product_report',
+    relatedEntityId: result.reportId,
+  }).catch(() => undefined);
   const res: ApiResponse<{ reportId: string }> = { success: true, data: { reportId: result.reportId } };
   return c.json(res, 201);
 });

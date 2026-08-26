@@ -9,7 +9,7 @@ const { kind, title, message } = Astro.props;
 const config = {
   sample: {
     title: title ?? 'Live data unavailable',
-    message: message ?? 'The live data could not be loaded from the API. Showing an empty list rather than sample records — retry once the service is reachable.',
+    message: message ?? 'The live data could not be loaded from the API. Showing an empty list rather than sample records. Retry once the service is reachable.',
     bg: 'bg-amber-50',
     border: 'border-amber-200',
     text: 'text-amber-900',

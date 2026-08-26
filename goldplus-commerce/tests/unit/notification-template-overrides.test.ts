@@ -29,14 +29,14 @@ describe('notification template overrides', () => {
     );
     expect(renderer.getSubject('ORDER_PAYMENT_SUCCESS')).toBe('Asante! Payment confirmed');
     // preheader had no override → code default remains.
-    expect(renderer.getPreheader('ORDER_PAYMENT_SUCCESS')).toBe('Your payment has been verified.');
+    expect(renderer.getPreheader('ORDER_PAYMENT_SUCCESS')).toBe('We have your payment. Your items are being prepared.');
     // other templates untouched.
-    expect(renderer.getSubject('ORDER_PAYMENT_FAILED')).toBe('Your GoldPlus payment did not go through');
+    expect(renderer.getSubject('ORDER_PAYMENT_FAILED')).toBe('Your payment for this order did not go through');
   });
 
   it('treats empty-string overrides as absent (never blank wording)', () => {
     setTemplateOverrideProvider(() => ({ subject: '', preheader: null }));
-    expect(renderer.getSubject('ORDER_RECEIVED_UNPAID')).toBe('We received your GoldPlus order');
-    expect(renderer.getPreheader('ORDER_RECEIVED_UNPAID')).toBe('Complete payment to move your order forward.');
+    expect(renderer.getSubject('ORDER_RECEIVED_UNPAID')).toBe('We have your GoldPlus order');
+    expect(renderer.getPreheader('ORDER_RECEIVED_UNPAID')).toBe('It is not paid yet. Our team will call you to confirm it.');
   });
 });

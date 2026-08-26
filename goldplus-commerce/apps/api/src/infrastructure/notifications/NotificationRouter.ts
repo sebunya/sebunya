@@ -217,6 +217,37 @@ export class DefaultNotificationRouter implements INotificationRouter {
         break;
       }
 
+      // ── Customer acknowledgements and order messages ─────────────────────
+      // Everything a customer receives about their own request or order. The
+      // body was attached at enqueue (CustomerOutboxNotifier), so the SMS
+      // adapter never has to invent one. SMS first, email as the fallback.
+      case 'SUPPORT_REQUEST_RECEIVED':
+      case 'QUOTE_REQUEST_RECEIVED':
+      case 'DEALER_APPLICATION_RECEIVED':
+      case 'FAKE_REPORT_RECEIVED':
+      case 'CUSTOMER_ORDER_MESSAGE': {
+        const customerPhone = typeof payload.customerPhone === 'string' ? payload.customerPhone : '';
+        const customerEmail = typeof payload.customerEmail === 'string' ? payload.customerEmail : '';
+        const template = eventType === 'CUSTOMER_ORDER_MESSAGE' && typeof payload.template === 'string'
+          ? payload.template
+          : eventType;
+        const entity = eventType === 'CUSTOMER_ORDER_MESSAGE' ? 'order' : relatedEntity || 'customer_request';
+        if (customerPhone) {
+          targets.push({
+            channel: 'sms',
+            provider: this.smsProvider,
+            payload: { recipient: customerPhone, template, data: payload, relatedEntity: entity, relatedEntityId },
+          });
+        } else if (customerEmail) {
+          targets.push({
+            channel: 'email',
+            provider: this.emailProvider,
+            payload: { recipient: customerEmail, template, data: payload, relatedEntity: entity, relatedEntityId },
+          });
+        }
+        break;
+      }
+
       case 'FAKE_PRODUCT_REPORTED':
         if (opsEmail) {
           targets.push({
