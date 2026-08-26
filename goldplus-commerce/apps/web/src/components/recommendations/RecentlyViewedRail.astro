@@ -197,9 +197,9 @@ const railDiscount = await getStorefrontDiscount();
                <span class="flex flex-wrap items-baseline gap-x-2">
                  <span class="font-black tracking-tight tabular-nums text-lg text-brand-charcoal">UGX ${salePriceOf(item.price).toLocaleString("en-US")}</span>
                  <span class="text-[11px] font-semibold text-slate-400 line-through tabular-nums">UGX ${item.price.toLocaleString("en-US")}</span>
-                 <span class="text-[9px] font-black uppercase tracking-wider rounded-full px-1.5 py-0.5" style="background:#93D500;color:#0A0A0A">${salePercent}% off</span>
+                 <span class="text-[9px] font-black uppercase tracking-wider rounded-full px-1.5 py-0.5" style="background:#93D500;color:#0A0A0A">${salePercent}% discount</span>
                </span>
-               ${saleEndsIso ? `<span class="mt-0.5 text-[10px] font-bold text-amber-700 tabular-nums" data-card-sale-ends="${escapeHtml(saleEndsIso)}">Sale price \u2014 limited time</span>` : ""}
+               ${saleEndsIso ? `<span class="mt-0.5 text-[10px] font-bold text-amber-700 tabular-nums" data-card-sale-ends="${escapeHtml(saleEndsIso)}">Discounted price. Limited time</span>` : ""}
              </span>`
           : `<span class="font-black tracking-tight ${hasPrice ? 'text-lg text-brand-charcoal' : 'text-xs text-brand-mutedGrey font-bold'}">${priceLabel}</span>`;
 

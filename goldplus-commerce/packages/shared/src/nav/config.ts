@@ -252,7 +252,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
     viewCartCta: { label: 'View cart', href: '/cart' },
     cutoffSunday: 'Closed Sunday. This order goes out <b>Monday morning</b>',
     cutoffAfter: "Today's run has left. This order goes out <b>tomorrow morning</b>",
-    cutoffBefore: 'Check out in <b>{left}</b> and this arrives <b>today</b>.',
+    cutoffBefore: 'Check out in <b>{left}</b> and we deliver <b>today</b>.',
   },
   settings: {
     firstOrderEstimateUgx: 'UGX 18,500',

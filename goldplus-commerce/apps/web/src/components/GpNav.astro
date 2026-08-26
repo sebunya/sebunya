@@ -1182,7 +1182,6 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   // The only discount the popover may name is the live storewide promotion.
   var SALE_ON = CFG.saleActive === true && Number(CFG.salePct) > 0;
   var RATE_SALE = SALE_ON ? Number(CFG.salePct) : 0;
-  var RATE_REFER = CFG.referralPct != null ? CFG.referralPct : 10;
   var RATE_PTS = CFG.pointsRate != null ? CFG.pointsRate : 0; // 0 = redemption not configured; claim no shilling value
 
   /* ---- visitor counter ----
@@ -1364,11 +1363,11 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     function tick(){
       if (!cut) return;
       var d = new Date(), h = d.getHours(), m = d.getMinutes();
-      if (d.getDay() === 0){ cut.innerHTML = 'Closed Sunday &mdash; this order goes out <b>Monday morning</b>'; return; }
-      if (h >= 17){ cut.innerHTML = "Today's run has left &mdash; this order goes out <b>tomorrow morning</b>"; return; }
+      if (d.getDay() === 0){ cut.innerHTML = 'Closed Sunday. This order goes out <b>Monday morning</b>'; return; }
+      if (h >= 17){ cut.innerHTML = "Today's run has left. This order goes out <b>tomorrow morning</b>"; return; }
       var mins = (17 - h) * 60 - m;
       var left = mins >= 60 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm' : mins + ' minutes';
-      cut.innerHTML = 'Check out in <b>' + left + '</b> and this arrives <b>today</b>.';
+      cut.innerHTML = 'Check out in <b>' + left + '</b> and we deliver <b>today</b>.';
     }
     tick(); setInterval(tick, 60000);
   })();
@@ -1575,7 +1574,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     function popHTML(){
       if (known){
         return '<p class="gp-nav__hi">' + partOfDay() + ', ' + name + '</p>' +
-          '<p class="gp-nav__hi-sub">You have <b>' + POINTS.toLocaleString() + ' points</b>' + (RATE_PTS > 0 ? ' &mdash; that is UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' off your next order' : '') + '.</p>' +
+          '<p class="gp-nav__hi-sub">You have <b>' + POINTS.toLocaleString() + ' points</b>' + (RATE_PTS > 0 ? '. That is a UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' discount on your next order' : '') + '.</p>' +
           '<div class="gp-nav__acct-links">' +
             '<a href="/account">Your orders</a>' +
             '<a href="/account/rewards">Rewards <b>' + POINTS.toLocaleString() + ' pts</b></a>' +
@@ -1618,7 +1617,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     function mobileHTML(){
       if (known){
         return '<h2>' + partOfDay() + ', ' + name + '</h2>' +
-          '<p>You have <b>' + POINTS.toLocaleString() + ' points</b> waiting' + (RATE_PTS > 0 ? ' &mdash; UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' off your next order' : '') + '.</p>' +
+          '<p>You have <b>' + POINTS.toLocaleString() + ' points</b> waiting' + (RATE_PTS > 0 ? '. That is a UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' discount on your next order' : '') + '.</p>' +
           '<div class="gp-nav__mhi-row"><a href="/account/rewards">Your rewards</a><a href="/account">Your orders</a></div>';
       }
       var saleLine = SALE_ON ? '<b>' + RATE_SALE + '% discount on everything</b> right now. It comes off at checkout. ' : '';
@@ -1755,7 +1754,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
          being signed in left them with a generic delivery line. */
       if (CTX.cart > 0 && CTX.beforeCutoff) c.push({ id:'cart-cutoff', score:96,
         text: CTX.minsToCutoff <= 60
-          ? 'Only <em>' + CTX.minsToCutoff + ' minutes</em> left &mdash; check out and it arrives today'
+          ? 'Only <em>' + CTX.minsToCutoff + ' minutes</em> left. Check out now and we deliver today'
           : 'Check out in <b>' + Math.floor(CTX.minsToCutoff/60) + 'h ' + (CTX.minsToCutoff%60) + 'm</b> and it arrives today',
         short: CTX.minsToCutoff <= 60
           ? '<em>' + CTX.minsToCutoff + ' min</em> left to get it today'
@@ -1764,12 +1763,12 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
       /* same cart, past the cut-off: still worth finishing, honest promise */
       if (CTX.cart > 0 && !CTX.beforeCutoff) c.push({ id:'cart-later', score:94,
-        text:'Your basket is waiting &mdash; order now for <b>' + (CTX.sunday ? 'Monday' : 'tomorrow') + ' morning</b>',
-        short:'Basket saved &mdash; arrives <b>' + (CTX.sunday ? 'Monday' : 'tomorrow') + '</b>',
+        text:'Your basket is waiting. Order now and we deliver <b>' + (CTX.sunday ? 'Monday' : 'tomorrow') + ' morning</b>',
+        short:'Basket saved. We deliver <b>' + (CTX.sunday ? 'Monday' : 'tomorrow') + '</b>',
         cta:'Finish order', href:'/cart' });
 
       if (CTX.signedIn && CTX.points >= 1000 && RATE_PTS > 0) c.push({ id:'points', score:88,
-        text:'You have <em>' + CTX.points.toLocaleString() + ' points</em> &mdash; that is ' + money(CTX.points * RATE_PTS) + ' off',
+        text:'You have <em>' + CTX.points.toLocaleString() + ' points</em>. That is a ' + money(CTX.points * RATE_PTS) + ' discount',
         short:'<em>' + money(CTX.points * RATE_PTS) + '</em> in points to spend',
         cta:'Spend them', href:'/account/rewards' });
 
@@ -1802,18 +1801,18 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
       /* ---- always available, and always true ---- */
       if (CTX.sunday) c.push({ id:'sunday', score:40,
-        text:'Closed Sunday &mdash; same-day delivery resumes <b>Monday</b>',
+        text:'Closed Sunday. Same day delivery resumes <b>Monday</b>',
         short:'Delivery resumes <b>Monday</b>', href:'/support' });
       else if (CTX.beforeCutoff) c.push({ id:'cutoff', score:CTX.minsToCutoff <= 60 ? 90 : 50, urgent:CTX.minsToCutoff <= 60,
         text: CTX.minsToCutoff <= 60
-          ? 'Only <em>' + CTX.minsToCutoff + ' minutes</em> left for same-day delivery in Kampala'
-          : 'Order before <b>5:00pm</b> for same-day delivery in Kampala',
+          ? 'Only <em>' + CTX.minsToCutoff + ' minutes</em> left to order for delivery today'
+          : 'Order before <b>5:00pm</b> and we deliver today in Kampala and Wakiso',
         short: CTX.minsToCutoff <= 60
           ? '<em>' + CTX.minsToCutoff + ' min</em> left for delivery today'
           : 'Order by <b>5:00pm</b> for delivery today',
         href:'/support' });
       else c.push({ id:'aftercutoff', score:44,
-        text:"Today's run has left &mdash; order now for <b>tomorrow morning</b>",
+        text:"Today's run has left. Order now and we deliver <b>tomorrow morning</b>",
         short:'Next delivery run is <b>tomorrow</b>', href:'/support' });
 
       c.push({ id:'verify', score:30,

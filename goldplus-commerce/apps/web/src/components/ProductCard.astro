@@ -120,7 +120,7 @@ const availabilityBadgeClass = (() => {
         <div class="flex flex-wrap items-baseline gap-2">
           <span class="font-black tracking-tight tabular-nums text-lg text-gray-900">{formatUgx(saleUgx)}</span>
           <span class="text-xs font-semibold text-slate-400 line-through tabular-nums">{formatUgx(product.retailPriceUgx)}</span>
-          <span class="text-[10px] font-black uppercase tracking-wider rounded-full px-2 py-0.5" style="background:#93D500;color:#0A0A0A">{discount.percent}% off</span>
+          <span class="text-[10px] font-black uppercase tracking-wider rounded-full px-2 py-0.5" style="background:#93D500;color:#0A0A0A">{discount.percent}% discount</span>
         </div>
       ) : (
         <p class={`font-black tracking-tight tabular-nums ${hasValidPrice ? 'text-lg text-gray-900' : 'text-xs text-slate-500 font-bold'}`}>
@@ -128,7 +128,7 @@ const availabilityBadgeClass = (() => {
         </p>
       )}
       {onSale && discount.endsIso && (
-        <p class="mt-1 text-[11px] font-bold text-amber-700 tabular-nums" data-card-sale-ends={discount.endsIso}>Sale price. Limited time</p>
+        <p class="mt-1 text-[11px] font-bold text-amber-700 tabular-nums" data-card-sale-ends={discount.endsIso}>Discounted price. Limited time</p>
       )}
       <div class="mt-1 flex items-center justify-between gap-2">
         {stockCount !== null ? (

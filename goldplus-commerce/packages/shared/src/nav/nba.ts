@@ -120,7 +120,7 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
     c.push({
       id: 'cart-cutoff', score: 96,
       text: ctx.minsToCutoff <= 60
-        ? 'Only <em>' + ctx.minsToCutoff + ' minutes</em> left &mdash; check out and it arrives today'
+        ? 'Only <em>' + ctx.minsToCutoff + ' minutes</em> left. Check out now and we deliver today'
         : 'Check out in <b>' + Math.floor(ctx.minsToCutoff / 60) + 'h ' + (ctx.minsToCutoff % 60) + 'm</b> and it arrives today',
       short: ctx.minsToCutoff <= 60
         ? '<em>' + ctx.minsToCutoff + ' min</em> left to get it today'
@@ -131,8 +131,8 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   if (ctx.cart > 0 && !ctx.beforeCutoff) {
     c.push({
       id: 'cart-later', score: 94,
-      text: 'Your basket is waiting &mdash; order now for <b>' + (ctx.sunday ? 'Monday' : 'tomorrow') + ' morning</b>',
-      short: 'Basket saved &mdash; arrives <b>' + (ctx.sunday ? 'Monday' : 'tomorrow') + '</b>',
+      text: 'Your basket is waiting. Order now and we deliver <b>' + (ctx.sunday ? 'Monday' : 'tomorrow') + ' morning</b>',
+      short: 'Basket saved. We deliver <b>' + (ctx.sunday ? 'Monday' : 'tomorrow') + '</b>',
       cta: 'Finish order', href: R.cart,
     });
   }
@@ -142,7 +142,7 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   if (ctx.signedIn && ctx.points >= 1000 && r.pointsToUgxRate > 0) {
     c.push({
       id: 'points', score: 88,
-      text: 'You have <em>' + ctx.points.toLocaleString('en-UG') + ' points</em> &mdash; that is ' + money(ctx.points * r.pointsToUgxRate) + ' off',
+      text: 'You have <em>' + ctx.points.toLocaleString('en-UG') + ' points</em>. That is a ' + money(ctx.points * r.pointsToUgxRate) + ' discount',
       short: '<em>' + money(ctx.points * r.pointsToUgxRate) + '</em> in points to spend',
       cta: 'Spend them', href: R.rewards,
     });
@@ -183,18 +183,18 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   // always available, and always true
   const cutoffLabel = ctx.cutoffLabel || '5:00pm';
   if (ctx.sunday) {
-    c.push({ id: 'sunday', score: 40, text: 'Closed today &mdash; same-day delivery resumes the <b>next working day</b>', short: 'Delivery resumes <b>next working day</b>', href: R.delivery });
+    c.push({ id: 'sunday', score: 40, text: 'Closed today. Same day delivery resumes the <b>next working day</b>', short: 'Delivery resumes <b>next working day</b>', href: R.delivery });
   } else if (ctx.beforeCutoff) {
     c.push({
       id: 'cutoff', score: ctx.minsToCutoff <= 60 ? 90 : 50, urgent: ctx.minsToCutoff <= 60,
       text: ctx.minsToCutoff <= 60
-        ? 'Only <em>' + ctx.minsToCutoff + ' minutes</em> left for same-day delivery in Kampala'
-        : 'Order before <b>' + cutoffLabel + '</b> for same-day delivery in Kampala',
+        ? 'Only <em>' + ctx.minsToCutoff + ' minutes</em> left to order for delivery today'
+        : 'Order before <b>' + cutoffLabel + '</b> and we deliver today in Kampala and Wakiso',
       short: ctx.minsToCutoff <= 60 ? '<em>' + ctx.minsToCutoff + ' min</em> left for delivery today' : 'Order by <b>' + cutoffLabel + '</b> for delivery today',
       href: R.delivery,
     });
   } else {
-    c.push({ id: 'aftercutoff', score: 44, text: "Today's run has left &mdash; order now for <b>tomorrow morning</b>", short: 'Next delivery run is <b>tomorrow</b>', href: R.delivery });
+    c.push({ id: 'aftercutoff', score: 44, text: "Today's run has left. Order now and we deliver <b>tomorrow morning</b>", short: 'Next delivery run is <b>tomorrow</b>', href: R.delivery });
   }
 
   c.push({ id: 'verify', score: 30, text: 'Every unit is tested before it is sold', cta: 'How we verify', href: R.verify });

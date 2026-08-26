@@ -81,9 +81,13 @@ describe('eligibility responds to real signals', () => {
   it('the scratch card is withheld once the visitor has already revealed a prize', () => {
     // A returning visitor with no live flash sale scores scratch (84) into the
     // rail; the `when` gate then removes it once the prize has been revealed.
+    // The scratch slide is DISABLED in the seed (its codes were honoured by no
+    // promotion), so the gate is tested on a library where it is switched on.
+    const withScratch = HERO_SLIDE_LIBRARY.map((s) => (s.slideKey === 'scratch' ? { ...s, enabled: true } : s)).filter((s) => s.enabled);
+    const k = (ctx: HeroSelectionContext) => selectHeroSlides(withScratch, ctx).map((s) => s.slideKey);
     const returning: HeroSelectionContext = { ...base, isNew: false, isReturning: true, saleLive: false };
-    expect(keys(returning)).toContain('scratch');
-    expect(keys({ ...returning, scratched: true })).not.toContain('scratch');
+    expect(k(returning)).toContain('scratch');
+    expect(k({ ...returning, scratched: true })).not.toContain('scratch');
   });
 
   it('always fills to `show` even when eligibility is restrictive', () => {

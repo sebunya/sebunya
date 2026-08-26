@@ -78,7 +78,7 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
   {
     slideKey: 'welcome', position: 2, enabled: false, theme: 'offer', tint: 'c', media: 'stage',
     kicker: 'First time here',
-    headline: "<em>10% off</em>, because you don't know us yet",
+    headline: "<em>10% discount</em>, because you don't know us yet",
     subcopy: 'Fair enough. Buy one thing and judge us on how it holds up.',
     ctaLabel: 'Start with one', ctaUrl: '/shop',
     finePrint: 'First order only · One use per customer',
@@ -177,8 +177,11 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
     priority: 0,
     extras: {},
   },
+  // Disabled: it dealt percentage codes (GP5..GP20) that no promotion honours,
+  // and its button led to /rewards, which does not exist. The real scratch card
+  // pays points and lives on the rewards page.
   {
-    slideKey: 'scratch', position: 10, enabled: true, theme: 'offer', tint: 'd', media: 'card',
+    slideKey: 'scratch', position: 10, enabled: false, theme: 'offer', tint: 'd', media: 'card',
     kicker: 'Scratch & save',
     headline: 'Scratch to reveal <em>your price</em>',
     subcopy: 'One scratch, one member discount. Reveal it, then keep it with a free rewards account.',

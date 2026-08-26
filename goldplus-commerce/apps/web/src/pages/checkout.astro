@@ -747,7 +747,7 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
               </div>
               {checkoutOnSale && (
                 <div class="flex items-center justify-between">
-                  <dt class="font-medium" style="color:#456B00">{checkoutDiscount.percent}% off{checkoutDiscount.name ? ` · ${checkoutDiscount.name}` : ''}</dt>
+                  <dt class="font-medium" style="color:#456B00">{checkoutDiscount.percent}% discount{checkoutDiscount.name ? ` · ${checkoutDiscount.name}` : ''}</dt>
                   <dd class="font-bold tabular-nums" style="color:#456B00">&minus;{formatUgx(checkoutSavings)}</dd>
                 </div>
               )}
@@ -1041,15 +1041,15 @@ const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
         if (json?.success && json.data) {
           if (json.data.couponApplied) {
             if (promoQuoteField) promoQuoteField.value = String(json.data.quoteId || '');
-            setPromo(Number(json.data.couponDiscountUgx) || 0, `Code applied \u2014 you save ${ugx(Number(json.data.couponDiscountUgx) || 0)}.`, 'ok');
+            setPromo(Number(json.data.couponDiscountUgx) || 0, `Code applied. You save ${ugx(Number(json.data.couponDiscountUgx) || 0)}.`, 'ok');
           } else {
             setPromo(0, json.data.couponMessage || 'This code cannot be applied to this basket.', 'error');
           }
         } else {
-          setPromo(0, json?.error?.message || 'Could not check the code right now \u2014 it will still be applied when you place the order if valid.', 'muted');
+          setPromo(0, json?.error?.message || 'Could not check the code right now. It will still be applied when you place the order if it is valid.', 'muted');
         }
       } catch {
-        setPromo(0, 'Could not check the code right now \u2014 it will still be applied when you place the order if valid.', 'muted');
+        setPromo(0, 'Could not check the code right now. It will still be applied when you place the order if it is valid.', 'muted');
       } finally {
         promoApply.disabled = false;
       }

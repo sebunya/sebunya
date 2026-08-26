@@ -411,7 +411,7 @@ const cutoffLine = cut.closed
               </div>
               {cartOnSale && (
                 <div class="flex items-center justify-between">
-                  <dt class="font-medium" style="color:#456B00">{cartDiscount.percent}% off {cartDiscount.name ? `(${cartDiscount.name})` : ''}</dt>
+                  <dt class="font-medium" style="color:#456B00">{cartDiscount.percent}% discount {cartDiscount.name ? `(${cartDiscount.name})` : ''}</dt>
                   <dd class="font-bold tabular-nums" style="color:#456B00">&minus;{formatUgx(cartSavings)}</dd>
                 </div>
               )}
