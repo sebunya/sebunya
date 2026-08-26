@@ -53,7 +53,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
     whatsappUrl: WA,
     whatsappNumber: '256705004545',
     whatsappBatteryPrefill: WA_BATTERY,
-    businessHoursNote: '0705 004545 · 9am–7pm, Monday to Saturday',
+    businessHoursNote: '',
     reachCallLabel: 'Call us',
     reachWhatsappLabel: 'WhatsApp',
   },
