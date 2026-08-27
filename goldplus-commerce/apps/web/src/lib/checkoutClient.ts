@@ -47,6 +47,11 @@ export type CheckoutCallResult =
       retryAfterSeconds?: number;
       /** Present on a blocked-stock refusal, which still carries the order. */
       details?: CheckoutResponseDto;
+      /**
+       * Present on CHECKOUT_ALREADY_ORDERED: the order this checkout already
+       * produced, so the page can name it instead of refusing with nothing to act on.
+       */
+      existingOrder?: { orderId: string; orderNumber: string; paymentStatus: string };
     };
 
 
@@ -91,7 +96,16 @@ export async function submitCheckout(args: {
   // nothing at all to go on.
   const raw = await res.text().catch(() => '');
   let json:
-    | { success?: boolean; data?: CheckoutResponseDto; error?: { code?: string; message?: string; details?: CheckoutResponseDto } }
+    | {
+        success?: boolean;
+        data?: CheckoutResponseDto;
+        error?: {
+          code?: string;
+          message?: string;
+          details?: CheckoutResponseDto;
+          existingOrder?: { orderId: string; orderNumber: string; paymentStatus: string };
+        };
+      }
     | null = null;
   try {
     json = raw ? JSON.parse(raw) : null;
@@ -131,6 +145,7 @@ export async function submitCheckout(args: {
     message: json?.error?.message ?? 'We could not place your order. Please try again.',
     ...(Number.isFinite(retryAfterSeconds) ? { retryAfterSeconds } : {}),
     ...(json?.error?.details ? { details: json.error.details } : {}),
+    ...(json?.error?.existingOrder ? { existingOrder: json.error.existingOrder } : {}),
   };
 }
 
@@ -254,9 +269,28 @@ export function customerMessageFor(result: CheckoutCallResult): {
         message: 'This order is already being processed. Please wait a moment before retrying.',
       };
     case 'IDEMPOTENCY_CONFLICT':
+      // A LIVE claim for a different basket: two submissions are racing. This is
+      // a wait, not a dead end. It used to read "your basket changed since this
+      // checkout started", which was also shown for a spent intent — telling a
+      // customer whose basket had not changed to review a basket that was fine,
+      // with no way forward.
+      return {
+        status: 'retry',
+        message: 'This checkout is already being submitted. Please wait a moment, then try again.',
+      };
+    case 'CHECKOUT_INTENT_SPENT':
+      // The page mints a fresh intent and resubmits, so this wording is only
+      // ever reached if that recovery itself fails.
+      return {
+        status: 'retry',
+        message: 'That checkout session had already been used. Please submit the form again.',
+      };
+    case 'CHECKOUT_ALREADY_ORDERED':
+      // Deliberately NOT a second order. The page names the existing one and
+      // links to it; this is the fallback wording.
       return {
         status: 'error',
-        message: 'Your basket changed since this checkout started. Please review it and submit again.',
+        message: 'You already have an order from this checkout. Open it to pay for it or to check it, rather than ordering the same thing twice.',
       };
     case 'CHECKOUT_INTENT_EXPIRED':
     case 'CHECKOUT_INTENT_INVALID':

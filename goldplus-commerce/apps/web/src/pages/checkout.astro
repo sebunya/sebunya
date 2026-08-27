@@ -10,7 +10,7 @@ import { formatUgx } from '../lib/money';
 import { readCartSessionId } from '../lib/cart-session';
 import { prepareCheckoutPayload, validateCheckoutPayload } from '../lib/checkout';
 import { parseLocalCartCookie } from '../lib/cart';
-import { resolveCheckoutIntent, clearCheckoutIntent } from '../lib/checkoutIntent';
+import { resolveCheckoutIntent, issueFreshCheckoutIntent, clearCheckoutIntent } from '../lib/checkoutIntent';
 import { resolveAuthenticatedUserId } from '../lib/customerAuth';
 import { cartClient } from '../lib/cartClient';
 import { resolveCartCredential, clearCartCredential } from '../lib/cartCredential';
@@ -100,6 +100,8 @@ let status: 'success' | 'error' | 'received' | null = null;
 let message: string | undefined;
 let reference: string | undefined;
 let createdOrderId: string | undefined;
+/** Set only when a refusal has somewhere useful to send the customer. */
+let feedbackAction: { href: string; label: string } | undefined;
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
 
@@ -301,7 +303,10 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
      // DTO returning `orderId` went unnoticed while this page read `res.data.id`:
      // the value was simply undefined, the PesaPal branch was skipped, and the
      // customer saw the offline-review message instead of being sent to pay.
-     const result = await submitCheckout({
+     // Held in a variable because the intent can be re-minted below, and the
+     // payment handoff must then use the token the order was actually created under.
+     let activeIntentToken = checkoutIntent.token;
+     const checkoutArgs = {
         // R3.1: SSR-only visit token so the API stamps the order's experience
         // profile — the identity join for commercial attribution.
         visitToken: Astro.locals.gpVisit ?? null,
@@ -327,9 +332,31 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            // Marketing attribution captured client-side; recorded best-effort, never priced.
            ...( (() => { try { const a = JSON.parse(String(formData.get('attribution') || 'null')); return a && typeof a === 'object' ? { attribution: a } : {}; } catch { return {}; } })() ),
         },
-        intentToken: checkoutIntent.token,
+        intentToken: activeIntentToken,
         sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null,
-     });
+     };
+
+     let result = await submitCheckout(checkoutArgs);
+
+     // The stored intent had already been spent AND produced no order, so there
+     // is nothing to duplicate. Mint a fresh one and submit once more.
+     //
+     // Without this, an ordinary journey was a dead end: a checkout refused for
+     // an unavailable item, or an online payment that failed, left an intent the
+     // customer could not clear. Anything they changed afterwards — removing the
+     // unavailable item, switching to pay on delivery — made the request differ
+     // from the stored fingerprint and was refused, for twelve hours, with
+     // "your basket changed since this checkout started".
+     //
+     // Bounded to ONE retry, and only on this code, which the API returns only
+     // when the spent intent left no order behind.
+     if (!result.ok && result.code === 'CHECKOUT_INTENT_SPENT') {
+        const freshIntent = issueFreshCheckoutIntent(Astro.cookies, authenticatedUserId);
+        if (freshIntent) {
+           activeIntentToken = freshIntent.token;
+           result = await submitCheckout({ ...checkoutArgs, intentToken: freshIntent.token });
+        }
+     }
 
      const outcome = customerMessageFor(result);
 
@@ -386,7 +413,7 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            // own error text to the customer on failure.
            const payRes = await startPayment({
               orderId: dto.orderId,
-              intentToken: checkoutIntent.token,
+              intentToken: activeIntentToken,
               sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null,
            });
 
@@ -432,6 +459,20 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
               Astro.cookies.delete('goldplus_cart_data', { path: '/' });
            }
         }
+     } else if (result.code === 'CHECKOUT_ALREADY_ORDERED' && result.existingOrder) {
+        // This checkout already produced an order. Creating a second one for a
+        // customer who wanted to change how they pay is not a fix, so the order
+        // they have is named and offered instead.
+        const paid = result.existingOrder.paymentStatus === 'paid';
+        status = 'error';
+        reference = result.existingOrder.orderNumber;
+        message = paid
+          ? 'You have already paid for this order. There is nothing more to do, and we have not taken a second payment.'
+          : 'You already have an order from this checkout, and it is not paid yet. Open it to pay for it, so you do not order the same thing twice.';
+        feedbackAction = {
+          href: `/orders/${result.existingOrder.orderId}`,
+          label: paid ? 'View this order' : 'Open this order to pay',
+        };
      } else if (result.code === 'STOCK_NOT_RESERVED' && result.details) {
         // The order exists and is recorded truthfully; it simply cannot be paid.
         status = 'error';
@@ -592,7 +633,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
             says "quote your order number", and the page used to show the
             sentence without the number.
           */}
-          <FormFeedback status={status} message={message} reference={status === 'error' ? reference : undefined} />
+          <FormFeedback status={status} message={message} reference={status === 'error' ? reference : undefined} actionHref={feedbackAction?.href} actionLabel={feedbackAction?.label} />
 
           <form id="checkout-form" method="POST" action="/checkout" novalidate class="space-y-6 mt-4">
             <input type="hidden" name="attribution" id="attribution-field" />

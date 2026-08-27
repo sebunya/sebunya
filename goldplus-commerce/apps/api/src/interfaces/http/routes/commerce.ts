@@ -655,7 +655,19 @@ routes.post('/orders/create', async (c) => {
     },
     IDEMPOTENCY_CONFLICT: {
       status: 409, code: 'IDEMPOTENCY_CONFLICT',
-      message: 'This checkout reference was already used for a different order. Start a new checkout.',
+      message: 'This checkout is already being submitted. Please wait a moment and try again.',
+    },
+    // The intent is spent and left nothing behind. The storefront mints a fresh
+    // one and submits again, so the customer never sees this.
+    INTENT_SPENT: {
+      status: 409, code: 'CHECKOUT_INTENT_SPENT',
+      message: 'This checkout session was already used. Please try again.',
+    },
+    // The intent already produced an order. Never answered by quietly creating a
+    // second one: the storefront names the existing order and offers it.
+    SUPERSEDED_BY_ORDER: {
+      status: 409, code: 'CHECKOUT_ALREADY_ORDERED',
+      message: 'You already have an order from this checkout.',
     },
     LEASE_LOST: {
       status: 409, code: 'CHECKOUT_IN_PROGRESS',
@@ -704,7 +716,13 @@ routes.post('/orders/create', async (c) => {
 
   return c.json({
     success: false,
-    error: { code: mapped.code, message: publicMessage },
+    error: {
+      code: mapped.code,
+      message: publicMessage,
+      // Only ever the customer's OWN order, reached through their own verified
+      // intent, so this discloses nothing they cannot already see.
+      ...(outcome.existingOrder ? { existingOrder: outcome.existingOrder } : {}),
+    },
     meta: { traceId },
   }, mapped.status);
 });

@@ -5,8 +5,16 @@ interface Props {
   status: Status;
   message?: string;
   reference?: string;
+  /**
+   * A way forward, when there is one.
+   *
+   * A refusal that names something the customer can actually do — open the order
+   * they already have, rather than re-reading a basket that was never the problem.
+   */
+  actionHref?: string;
+  actionLabel?: string;
 }
-const { status, message, reference } = Astro.props;
+const { status, message, reference, actionHref, actionLabel } = Astro.props;
 
 const palette = {
   success: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-900', label: 'Success' },
@@ -22,6 +30,9 @@ const c = status ? palette[status] : null;
       <p class="text-sm font-bold">{c.label}</p>
       {message && <p class="text-xs mt-1 leading-relaxed">{message}</p>}
       {reference && <p class="text-xs mt-2 font-mono text-gray-700">Ref: {reference}</p>}
+      {actionHref && actionLabel && (
+        <a href={actionHref} class="inline-block mt-3 text-xs font-bold underline underline-offset-2">{actionLabel}</a>
+      )}
     </div>
   </div>
 )}

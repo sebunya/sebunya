@@ -58,6 +58,10 @@ export type CheckoutErrorCode =
   | 'CHECKOUT_INTENT_INVALID'
   | 'CHECKOUT_INTENT_REVOKED'
   | 'IDEMPOTENCY_CONFLICT'
+  /** The intent was already spent; the storefront re-mints and resubmits. */
+  | 'CHECKOUT_INTENT_SPENT'
+  /** The intent already produced an order, named in `existingOrder`. */
+  | 'CHECKOUT_ALREADY_ORDERED'
   | 'CHECKOUT_IN_PROGRESS'
   | 'STOCK_NOT_RESERVED'
   | 'CHECKOUT_FAILED'

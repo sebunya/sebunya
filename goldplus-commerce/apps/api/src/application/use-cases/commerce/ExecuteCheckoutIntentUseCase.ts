@@ -48,6 +48,10 @@ export type CheckoutOutcomeKind =
   | 'BLOCKED_STOCK'
   | 'CHECKOUT_IN_PROGRESS'
   | 'IDEMPOTENCY_CONFLICT'
+  /** The intent already produced an order; this request asks for something else. */
+  | 'SUPERSEDED_BY_ORDER'
+  /** The intent is spent and produced nothing; a fresh one may proceed at once. */
+  | 'INTENT_SPENT'
   | 'PRICE_REVIEW_REQUIRED'
   | 'INTENT_INVALID'
   | 'SESSION_INVALID'
@@ -71,6 +75,13 @@ export interface CheckoutRefusalOutcome {
   /** Stable code for the storefront. Never an internal message. */
   reason: string;
   retryAfterSeconds?: number;
+  /**
+   * The order this intent already produced, on SUPERSEDED_BY_ORDER.
+   *
+   * Carried so the customer can be told WHICH order they already have and sent
+   * to it, instead of being refused with nothing to act on.
+   */
+  existingOrder?: { orderId: string; orderNumber: string; paymentStatus: string };
 }
 
 export type CheckoutOutcome = CheckoutSuccessOutcome | CheckoutRefusalOutcome;
@@ -495,6 +506,26 @@ export class ExecuteCheckoutIntentUseCase {
     switch (decision.action) {
       case 'CONFLICT':
         return { kind: 'IDEMPOTENCY_CONFLICT', reason: decision.reason };
+      case 'INTENT_SPENT':
+        // Nothing was created under the old intent, so nothing can be
+        // duplicated. The caller mints a fresh intent and submits again.
+        return { kind: 'INTENT_SPENT', reason: 'INTENT_SPENT' };
+      case 'SUPERSEDED_BY_ORDER': {
+        // Name the order the customer already has. If it can no longer be
+        // loaded there is nothing to point them at and nothing to duplicate,
+        // so this degrades to a spent intent rather than a dead end.
+        const existing = await this.deps.orderReader.findById(decision.orderId);
+        if (!existing) return { kind: 'INTENT_SPENT', reason: 'INTENT_SPENT' };
+        return {
+          kind: 'SUPERSEDED_BY_ORDER',
+          reason: 'INTENT_ALREADY_ORDERED',
+          existingOrder: {
+            orderId: existing.id,
+            orderNumber: existing.orderNumber,
+            paymentStatus: existing.paymentStatus,
+          },
+        };
+      }
       case 'IN_FLIGHT':
         return {
           kind: 'CHECKOUT_IN_PROGRESS',

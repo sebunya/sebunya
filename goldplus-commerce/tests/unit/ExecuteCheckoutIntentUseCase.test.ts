@@ -448,10 +448,41 @@ describe('an existing record is answered without doing commerce work', () => {
     expect(isCheckoutSuccess(outcome) && outcome.stage).toBe('PAYMENT_READY');
   });
 
-  it('conflicts on a different fingerprint rather than replaying the wrong order', async () => {
-    const { useCase, trace } = build(notClaimed(record({ fingerprint: 'DIFFERENT' })));
+  // CHANGED 2026-08-27: a settled record with a different fingerprint is no
+  // longer a permanent refusal. The guarantee under test — never replay the wrong
+  // order, never quietly create a second one — is asserted in both cases below.
+  it('conflicts on a different fingerprint while a claim is live', async () => {
+    const { useCase, trace } = build(
+      notClaimed(record({ fingerprint: 'DIFFERENT', state: 'IN_PROGRESS', updatedAt: new Date() })),
+    );
     const outcome = await useCase.execute(command);
     expect(outcome.kind).toBe('IDEMPOTENCY_CONFLICT');
+    expect(trace.ordersCreated).toBe(0);
+  });
+
+  it('names the order a spent intent already produced instead of creating a second', async () => {
+    const { useCase, trace } = build(
+      notClaimed(record({ fingerprint: 'DIFFERENT', state: 'COMPLETED', orderId: 'order-1' })),
+    );
+    const outcome = await useCase.execute(command);
+    expect(outcome.kind).toBe('SUPERSEDED_BY_ORDER');
+    expect(trace.ordersCreated).toBe(0);
+    if (!isCheckoutSuccess(outcome)) expect(outcome.existingOrder?.orderId).toBe('order-1');
+  });
+
+  it('reports a spent intent that produced nothing, so the caller can start afresh', async () => {
+    const { useCase, trace } = build(
+      notClaimed(
+        record({
+          fingerprint: 'DIFFERENT',
+          state: 'FAILED_FINAL',
+          orderId: null,
+          failureReason: 'PRODUCT_UNAVAILABLE',
+        }),
+      ),
+    );
+    const outcome = await useCase.execute(command);
+    expect(outcome.kind).toBe('INTENT_SPENT');
     expect(trace.ordersCreated).toBe(0);
   });
 
