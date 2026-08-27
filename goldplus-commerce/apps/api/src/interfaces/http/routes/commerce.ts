@@ -21,6 +21,7 @@ import { checkoutOperationIdentity, intentPrincipalKey, normalizeUgandaDistrict 
 import type { PaymentStartResponseDto } from '@goldplus/shared';
 import { logger } from '../../../infrastructure/logging/logger';
 import { toCheckoutResponseDto } from '../../../application/mappers/toCheckoutResponseDto';
+import { GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
 
 // Slice 3B: server-authoritative checkout input. Client prices/sku/names are
 // deliberately absent — only productId + quantity are trusted; extra fields
@@ -899,18 +900,41 @@ routes.post('/orders/lookup', async (c) => {
   }
 });
 
+/**
+ * One customer's own order.
+ *
+ * WHAT WAS WRONG
+ * This required a session but never checked WHOSE order it was, and answered
+ * with the raw domain object: unmasked phone and email, the delivery address,
+ * the delivery GPS coordinates, the line items, the internal user id and the
+ * pricing snapshot. `findById` also resolves a non-UUID as an ORDER NUMBER, and
+ * order numbers are `GP-YYYYMM-` plus four hex characters (Order.ts) — 65,536
+ * per month. So any free account could walk the whole month's orders and read
+ * every customer's personal details out of them.
+ *
+ * "Requires a session" is not "belongs to this customer". Ownership is now
+ * enforced in the use case, against the session's own verified user id, exactly
+ * as GET /account/orders/:id does. Two consequences are deliberate:
+ *   - the reply is an OrderDetailDto, never the domain object;
+ *   - lookup is by order ID only, so the enumerable order number stops being a
+ *     key here at all. The public order-number path is POST /orders/lookup,
+ *     which verifies a matching contact and masks what it returns.
+ */
 routes.get('/orders/:id', customerSessionMiddleware, async (c) => {
   try {
     const id = c.req.param('id') || '';
-    const order = await registry.getOrderByIdUseCase.execute(id);
-    
-    if (!order) {
+    const userId = c.get('userId') as string;
+    const result = await new GetMyOrderUseCase(registry.orderRepo).execute(id, userId);
+
+    // Someone else's order and a nonexistent one are answered identically, so
+    // this cannot be used to test whether an order id exists.
+    if (!result.ok) {
       return c.json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } }, 404);
     }
 
-    const res: ApiResponse<any> = {
+    const res: ApiResponse<typeof result.order> = {
       success: true,
-      data: order,
+      data: result.order,
     };
     return c.json(res);
   } catch (err: any) {

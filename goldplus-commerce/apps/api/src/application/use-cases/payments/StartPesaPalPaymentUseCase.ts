@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { IPesaPalPaymentRepository } from '../../ports/IPesaPalPaymentRepository';
 import { IOrderRepository } from '../commerce/CheckoutUseCase';
 import { IPesaPalClient } from '../../ports/IPesaPalClient';
+import { TERMINAL_ATTEMPT_STATUSES } from '../../../domain/payments/PaymentAttemptState';
 
 export interface StartPesaPalPaymentInput {
   orderId: string;
@@ -45,13 +47,37 @@ export class StartPesaPalPaymentUseCase {
       throw new Error('ORDER_ALREADY_PAID: This order has already been successfully paid.');
     }
 
-    // 3. Generate a clean URL-safe merchant reference <= 50 chars
-    // Format: GP-PAY-[:orderNo]-[:randomSuffix]
+    // 3. Generate a clean URL-safe merchant reference <= 50 chars.
+    // Kept under 43 so a retry suffix still fits inside the provider's limit.
     const shortId = order.id.slice(0, 8);
-    const merchantReference = `GP-${order.orderNumber}-${shortId}`.slice(0, 50);
+    const baseReference = `GP-${order.orderNumber}-${shortId}`.slice(0, 43);
 
-    // 4. Check if there's an existing payment attempt that succeeded or is pending
+    // 4. Reuse a live attempt; NEVER try to revive a dead one.
+    //
+    // WHAT WAS WRONG
+    // The merchant reference was derived only from the order, so it was the same
+    // on every retry, and the column is UNIQUE. After a declined or abandoned
+    // payment — the most common outcome on Ugandan mobile money — the lookup
+    // returned that same TERMINAL attempt (`failed`, `invalid`, `reversed`,
+    // `abandoned` have no legal exit). The provider was then asked for a NEW live
+    // transaction, and only afterwards did the write to `pending` throw
+    // PAYMENT_STATE_ILLEGAL_TRANSITION.
+    //
+    // So the customer could never pay for that order again — every attempt ended
+    // as "payment could not be started" — and worse, each one opened a real
+    // provider transaction whose tracking id was never stored, so if it WAS paid
+    // it matched nothing on our side.
+    //
+    // A terminal attempt is history. A retry gets a genuinely new attempt under
+    // its own reference, which is what the caller already documents it needs.
+    let merchantReference = baseReference;
     let attempt = await this.paymentRepo.findByMerchantReference(merchantReference);
+
+    if (attempt && (TERMINAL_ATTEMPT_STATUSES as readonly string[]).includes(attempt.status)) {
+      merchantReference = `${baseReference}-${randomUUID().replace(/-/g, '').slice(0, 6)}`;
+      attempt = null;
+    }
+
     if (!attempt) {
       attempt = await this.paymentRepo.createPaymentAttempt({
         orderId: order.id,
@@ -81,7 +107,9 @@ export class StartPesaPalPaymentUseCase {
     const cancellationUrl = process.env.PESAPAL_CANCELLATION_URL || 'http://localhost:3000/checkout/pesapal/cancelled';
 
     const pesapalResponse = await this.pesapalClient.submitOrderRequest({
-      id: merchantReference,
+      // The reference this attempt was created under, so the provider
+      // transaction and our row always name each other.
+      id: attempt.merchantReference,
       // Retry integrity: once the attempt exists, its committed order-derived
       // amount/currency are immutable and remain the provider request source.
       currency: attempt.currency,
@@ -108,7 +136,8 @@ export class StartPesaPalPaymentUseCase {
     return {
       redirectUrl: pesapalResponse.redirect_url,
       orderTrackingId: pesapalResponse.order_tracking_id,
-      merchantReference,
+      // The stored reference, not the local one, so caller and row cannot drift.
+      merchantReference: attempt.merchantReference,
     };
   }
 }
