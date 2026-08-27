@@ -7,6 +7,7 @@ import { PricingOperationsError } from '../../../../application/use-cases/pricin
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { requireStepUp } from '../../middleware/requireStepUp';
+import { STOREFRONT_PRICE_FLOOR_UGX } from '@goldplus/shared';
 
 // audit-exempt: every commercial mutation delegates to Pricing governance/operations, which writes shared audit evidence.
 const routes = new Hono<{ Variables: { user?: { id: string; email: string; permissions: string[] } } }>();
@@ -20,7 +21,7 @@ const version = z.object({
   conditions: z.array(condition).max(50), benefits: z.array(benefit).min(1).max(10), exclusions: z.array(exclusion).max(50),
   schedule: z.object({ startsAt: z.coerce.date(), endsAt: z.coerce.date() }),
   usagePolicy: z.object({ globalLimit: z.number().int().min(1).nullable(), perCustomerLimit: z.number().int().min(1).nullable(), perCouponLimit: z.number().int().min(1).nullable(), reservationTtlSeconds: z.number().int().min(60).max(86_400) }),
-  priority: z.number().int().min(0).max(10_000), stackable: z.boolean(), couponCode: z.string().trim().min(3).max(40).nullable().optional(), priceFloorUgx: z.number().int().min(0),
+  priority: z.number().int().min(0).max(10_000), stackable: z.boolean(), couponCode: z.string().trim().min(3).max(40).nullable().optional(), priceFloorUgx: z.number().int().min(STOREFRONT_PRICE_FLOOR_UGX),
 });
 const createBody = z.object({ key: z.string().regex(/^[a-z0-9_-]{2,80}$/i), name: z.string().trim().min(1).max(160), description: z.string().trim().min(1).max(4000), version });
 const versionBody = z.object({ expectedRevision: z.number().int().min(1), version });

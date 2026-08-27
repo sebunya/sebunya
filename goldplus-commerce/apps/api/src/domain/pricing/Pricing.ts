@@ -1,3 +1,4 @@
+import { STOREFRONT_PRICE_FLOOR_UGX } from '@goldplus/shared';
 export const PROMOTION_STATUSES = [
   'DRAFT',
   'READY_FOR_REVIEW',
@@ -120,6 +121,18 @@ export function validatePromotionVersion(input: PromotionVersionDraft): string[]
   if (input.schedule.startsAt >= input.schedule.endsAt) errors.push('Promotion end time must be after its start time.');
   if (!Number.isInteger(input.priority) || input.priority < 0 || input.priority > 10_000) errors.push('Priority must be an integer from 0 to 10000.');
   if (!Number.isInteger(input.priceFloorUgx) || input.priceFloorUgx < 0) errors.push('Price floor must be a non-negative integer UGX amount.');
+  // The owner's standing rule: no customer price may fall below the storefront
+  // floor. A promotion carries its own floor, and the evaluator honours whatever
+  // it is told, so a version created with a LOWER floor quietly reopens the rule
+  // the catalogue and the display already hold. The admin "new version" form
+  // sent 0 on every submission, so the next version of the live launch promotion
+  // would have discounted straight through it. Same constant the battery
+  // readiness check uses, so there is one floor, stated once.
+  else if (input.priceFloorUgx < STOREFRONT_PRICE_FLOOR_UGX) {
+    errors.push(
+      `Price floor must be at least UGX ${STOREFRONT_PRICE_FLOOR_UGX.toLocaleString('en-UG')}, the storefront floor.`,
+    );
+  }
   if (input.benefits.length === 0) errors.push('At least one benefit is required.');
   if (input.benefits.length > 10) errors.push('At most ten benefits are supported.');
   for (const benefit of input.benefits) {

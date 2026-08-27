@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { STOREFRONT_PRICE_FLOOR_UGX } from '../../packages/shared/src/batteries';
 import {
   assertActivationWindow,
   canTransitionPromotion,
@@ -16,7 +17,9 @@ const version = (overrides: Partial<PromotionVersionDraft> = {}): PromotionVersi
   priority: 10,
   stackable: false,
   couponCode: ' july-safe ',
-  priceFloorUgx: 1,
+  // Was 1, an arbitrary value. A promotion floor may not sit below the
+  // storefront floor (owner rule), so the fixture uses the real one.
+  priceFloorUgx: STOREFRONT_PRICE_FLOOR_UGX,
   ...overrides,
 });
 

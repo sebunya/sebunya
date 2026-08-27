@@ -2,6 +2,7 @@
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { apiBase } from '../../../lib/api';
 import { readSessionToken } from '../../../lib/session';
+import { STOREFRONT_PRICE_FLOOR_UGX } from '@goldplus/shared';
 
 const token = readSessionToken(Astro.request);
 if (!token) return Astro.redirect('/admin/login?returnTo=/admin/pricing', 303);
@@ -17,7 +18,7 @@ const versionFrom = (form: FormData) => ({
   exclusions: form.get('excludedProductId') ? [{ type: 'PRODUCT', value: String(form.get('excludedProductId')) }] : [],
   schedule: { startsAt: form.get('startsAt'), endsAt: form.get('endsAt') },
   usagePolicy: { globalLimit: optionalInteger(form.get('globalLimit')), perCustomerLimit: optionalInteger(form.get('perCustomerLimit')), perCouponLimit: optionalInteger(form.get('perCouponLimit')), reservationTtlSeconds: Number(form.get('reservationTtlSeconds') || 900) },
-  priority: Number(form.get('priority') || 0), stackable: form.get('stackable') === 'on', couponCode: form.get('couponCode') || null, priceFloorUgx: Number(form.get('priceFloorUgx') || 0),
+  priority: Number(form.get('priority') || 0), stackable: form.get('stackable') === 'on', couponCode: form.get('couponCode') || null, priceFloorUgx: Number(form.get('priceFloorUgx') || STOREFRONT_PRICE_FLOOR_UGX),
 });
 
 if (Astro.request.method === 'POST') {
@@ -68,7 +69,7 @@ const tone = (state: string) => state === 'ACTIVE' || state === 'APPROVED' || st
         <p class="text-[11px] text-gray-500 -mt-1">Value units: <b>PERCENTAGE_OFF</b> is basis points, so <b>1000 = 10%</b> (500 = 5%). <b>FIXED_AMOUNT_OFF</b> / <b>FIXED_PRICE</b> are in UGX. Leave coupon empty for an automatic site-wide discount that shows on every product; set start/end for the countdown. After creating, approve &amp; activate it below to make it live.</p>
         <div class="grid md:grid-cols-3 gap-3"><input name="minimumSubtotal" type="number" min="0" placeholder="Minimum subtotal" class="border rounded-xl p-2"/><input name="excludedProductId" placeholder="Excluded product UUID" class="border rounded-xl p-2"/><input name="couponCode" placeholder="Optional coupon" class="border rounded-xl p-2"/></div>
         <div class="grid md:grid-cols-4 gap-3"><input name="globalLimit" type="number" min="1" placeholder="Global limit" class="border rounded-xl p-2"/><input name="perCustomerLimit" type="number" min="1" placeholder="Customer limit" class="border rounded-xl p-2"/><input name="perCouponLimit" type="number" min="1" placeholder="Coupon limit" class="border rounded-xl p-2"/><input name="reservationTtlSeconds" type="number" value="900" min="60" max="86400" class="border rounded-xl p-2"/></div>
-        <div class="grid md:grid-cols-3 gap-3"><input name="priority" type="number" value="0" min="0" max="10000" class="border rounded-xl p-2"/><input name="priceFloorUgx" type="number" value="0" min="0" class="border rounded-xl p-2"/><label class="text-xs flex items-center gap-2"><input name="stackable" type="checkbox"/> Stackable</label></div>
+        <div class="grid md:grid-cols-3 gap-3"><input name="priority" type="number" value="0" min="0" max="10000" class="border rounded-xl p-2"/><input name="priceFloorUgx" type="number" value={STOREFRONT_PRICE_FLOOR_UGX} min={STOREFRONT_PRICE_FLOOR_UGX} title="Lowest price a discount may reach" class="border rounded-xl p-2"/><label class="text-xs flex items-center gap-2"><input name="stackable" type="checkbox"/> Stackable</label></div>
         <button class="bg-brand-gold text-brand-dark font-black rounded-xl px-4 py-2">Create draft</button><p class="text-[11px] text-gray-500">Requires pricing.create. Creation does not approve or activate the rule.</p>
       </form>
       <form method="POST" class="bg-white border rounded-2xl p-5 h-fit space-y-3"><input type="hidden" name="operation" value="simulate"/><h3 class="font-black">Safe pricing simulation</h3><p class="text-xs text-gray-500">Canonical product read and current eligibility trace. Creates no quote, reservation, redemption, order, payment or provider call.</p><input name="productId" required placeholder="Product UUID" class="w-full border rounded-xl p-2"/><div class="grid grid-cols-3 gap-3"><input name="quantity" type="number" value="1" min="1" max="99" class="border rounded-xl p-2"/><input name="simulationCoupon" placeholder="Coupon" class="border rounded-xl p-2"/><input name="shippingUgx" type="number" value="0" min="0" class="border rounded-xl p-2"/></div><button class="border border-brand-gold font-black rounded-xl px-4 py-2">Simulate only</button>
