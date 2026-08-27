@@ -380,7 +380,7 @@ const CART_REFUSAL_STATUS: Record<string, 404 | 409 | 422 | 503> = {
 const CART_REFUSAL_MESSAGE: Record<string, string> = {
   CART_NOT_FOUND: 'This basket is no longer available. Please start a new one.',
   NOT_OWNED: 'This basket is no longer available. Please start a new one.',
-  VERSION_CONFLICT: 'Your basket changed in another tab. It has been refreshed — please try again.',
+  VERSION_CONFLICT: 'Your basket changed in another tab. It has been refreshed, so please try again.',
   PRODUCT_UNAVAILABLE: 'One or more items are no longer available. Please review your basket.',
   QUANTITY_OUT_OF_BOUNDS: 'That quantity is not allowed.',
   CART_LIMIT_EXCEEDED: 'Your basket has too many different products.',

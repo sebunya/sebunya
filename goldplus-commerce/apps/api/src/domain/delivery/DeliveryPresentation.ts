@@ -184,7 +184,9 @@ export function cutoffCountdown(input: { now: Date; cutoffClock: string | null }
     minutesRemaining,
     sentence: result.beforeCutoff
       ? `Order within ${remaining} for dispatch today (before ${input.cutoffClock} ${EAT_LABEL}).`
-      : `Today's ${input.cutoffClock} ${EAT_LABEL} cut-off has passed — this goes out on the next dispatch day.`,
+      // Two sentences, not a dash: the owner's rule is that no customer-facing
+      // sentence carries an em or en dash.
+      : `Today's ${input.cutoffClock} ${EAT_LABEL} cut-off has passed. This goes out on the next dispatch day.`,
   };
 }
 

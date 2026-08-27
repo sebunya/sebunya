@@ -116,7 +116,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     buyingCriteria: [
       {
         heading: 'Capacity (mAh). What it means',
-        body: 'A power bank’s mAh rating is the size of its internal battery. As a rule of thumb, a full phone charge uses roughly 3,000–5,000 mAh depending on the phone, and some capacity is always lost in conversion, so a 10,000 mAh bank typically delivers one to two full phone charges, not three.',
+        body: 'A power bank’s mAh rating is the size of its internal battery. As a rule of thumb, a full phone charge uses roughly 3,000 to 5,000 mAh depending on the phone, and some capacity is always lost in conversion, so a 10,000 mAh bank typically delivers one to two full phone charges, not three.',
       },
       {
         heading: 'Ports and connectors',

@@ -85,6 +85,6 @@ export const OWN_RIDER_MAX_BAND_KEY = 'own_rider_max_band';
 export const FULFILMENT_MODE_LABELS: Record<FulfilmentMode, string> = {
   own_rider: 'Our own rider delivers to the door',
   bus_parcel: 'We put it on a bus; the customer collects from a parcel office',
-  pickup_only: 'Collection only — we cannot reach it',
+  pickup_only: 'Collection only, because we cannot reach it',
   unserviceable: 'We do not serve this area at all',
 };

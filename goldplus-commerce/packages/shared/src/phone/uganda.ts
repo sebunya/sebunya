@@ -36,7 +36,7 @@ export function normalizeUgandanPhone(raw: string | null | undefined): Normalise
   const prefix = national.slice(0, 2);
   const warning =
     isMobile && !KNOWN_PREFIXES.has(prefix)
-      ? `Prefix 0${prefix} is not a recognised Ugandan mobile allocation — double-check the number.`
+      ? `Prefix 0${prefix} is not a recognised Ugandan mobile allocation. Please double-check the number.`
       : null;
   return { e164: `+256${national}`, warning };
 }
