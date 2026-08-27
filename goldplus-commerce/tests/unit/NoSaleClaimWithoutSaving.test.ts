@@ -53,6 +53,17 @@ describe('no surface claims a sale it does not give', () => {
     expect(src).toMatch(/const onSale = campaignRunning && saleUgx !== null && saleUgx < product\.retailPriceUgx!/);
   });
 
+  it('gates the header featured card on a price that actually drops', () => {
+    // The header was missed by the original sweep: it said "On sale now" and
+    // printed "UGX 145,000 -> UGX 145,000" for a product priced at the floor.
+    const src = read('apps/web/src/components/GpNav.astro');
+    expect(src).toMatch(/const dealFeatOnSale =\s*\n?\s*dealFeatSaleUgx !== null && dealFeat\?\.priceUgx != null && dealFeatSaleUgx < dealFeat\.priceUgx;/);
+    // Both the words and the price row hang off the saving, not the campaign.
+    expect(src).toMatch(/\{dealFeatOnSale \? 'On sale now'/);
+    expect(src).toMatch(/\{dealFeatOnSale \? \(/);
+    expect(src).not.toMatch(/navDeal\.active \? 'On sale now'/);
+  });
+
   it('never lets a surface treat "campaign active" as "discount given"', () => {
     // The defect shape: deciding to show a sale straight from the campaign
     // flags, with no comparison against the discounted figure.
@@ -61,6 +72,7 @@ describe('no surface claims a sale it does not give', () => {
       'apps/web/src/pages/cart.astro',
       'apps/web/src/pages/products/[slug].astro',
       'apps/web/src/components/ProductCard.astro',
+      'apps/web/src/components/GpNav.astro',
     ]) {
       const src = read(file);
       const bad = /const \w*[Oo]nSale\s*=\s*[^;\n]*percentBps > 0\s*(?:&&\s*[\w.]+\s*>\s*0\s*)?;/.exec(src);

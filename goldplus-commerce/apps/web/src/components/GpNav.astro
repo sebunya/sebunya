@@ -148,6 +148,23 @@ const saleLive = saleEnds ? Date.now() < new Date(saleEnds).getTime() : false;
 /** The rail's "Flash sale — Live" chip is a claim; drop it when it is untrue. */
 const railItems = saleLive ? nav.rail : nav.rail.filter((c) => c.key !== 'flash');
 const featAt = (i: number) => navFeatured.length ? navFeatured[i % navFeatured.length] : null;
+
+/**
+ * The deal panel's featured card, and whether it is HONESTLY on sale.
+ *
+ * A running campaign is not a discount. At the UGX 145,000 floor a 10% campaign
+ * takes nothing off a product already priced at the floor, yet this card said
+ * "On sale now" and printed "UGX 145,000 → UGX 145,000". The storefront's other
+ * surfaces (cart, checkout, product page, product card) were corrected to gate
+ * on the SAVING rather than the campaign; the header was missed.
+ */
+const dealFeat = featAt(0);
+const dealFeatSaleUgx =
+  navDeal.active && dealFeat?.priceUgx
+    ? salePriceUgx(dealFeat.priceUgx, navDeal.percentBps, navDeal.priceFloorUgx)
+    : null;
+const dealFeatOnSale =
+  dealFeatSaleUgx !== null && dealFeat?.priceUgx != null && dealFeatSaleUgx < dealFeat.priceUgx;
 const cut = kampalaCutoff(new Date(), { cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays });
 const nba = computeNbaCandidates({
   signedIn, visits, cart: cartCount, points, lastOrderDays, orderInTransit,
@@ -452,9 +469,9 @@ const nbaJson = escNav(JSON.stringify(nba));
         {featAt(0) && (
           <a class="gp-nav__feat" href={`/products/${featAt(0)!.slug}`}>
             <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(0)!.imageUrl} alt={featAt(0)!.name} loading="lazy" decoding="async"></div>
-            <div><small>{navDeal.active ? 'On sale now' : featAt(0)!.label}</small><p>{featAt(0)!.name}</p>
-              {navDeal.active && featAt(0)!.priceUgx ? (
-                <span>{formatUgx(featAt(0)!.priceUgx!)} → <b style="color:var(--gpn-green)">{formatUgx(salePriceUgx(featAt(0)!.priceUgx!, navDeal.percentBps, navDeal.priceFloorUgx))}</b></span>
+            <div><small>{dealFeatOnSale ? 'On sale now' : featAt(0)!.label}</small><p>{featAt(0)!.name}</p>
+              {dealFeatOnSale ? (
+                <span>{formatUgx(featAt(0)!.priceUgx!)} → <b style="color:var(--gpn-green)">{formatUgx(dealFeatSaleUgx!)}</b></span>
               ) : (
                 <span>{featAt(0)!.blurb}</span>
               )}
