@@ -78,10 +78,12 @@ describe('product-card commercial signals', () => {
     expect(rec).toContain('${stockCount} in stock');
 
     // The client-built RecentlyViewedRail applies the SAME formula from the
-    // server-stamped campaign (never a client-invented number).
+    // server-stamped campaign (never a client-invented number). It now calls
+    // the shared helper rather than restating the arithmetic, because the
+    // restated copy had left out the campaign price floor.
     const rv = read('apps/web/src/components/recommendations/RecentlyViewedRail.astro');
     expect(rv).toContain('getStorefrontDiscount');
-    expect(rv).toContain('Math.floor((regular * saleBps) / 10_000)');
+    expect(rv).toContain('salePriceUgx(regular, saleBps, saleFloor)');
     expect(rv).toContain('data-card-sale-ends=');
     expect(rv).toContain('Only ${qty} left in stock');
 

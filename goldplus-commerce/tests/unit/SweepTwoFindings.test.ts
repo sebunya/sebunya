@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { likeContains } from '../../apps/api/src/infrastructure/db/like';
 import { csvCell } from '../../apps/api/src/interfaces/http/csv';
 import { sniffImageMime } from '../../apps/api/src/application/use-cases/media/MediaLibraryUseCase';
+import { salePriceUgx } from '../../apps/web/src/lib/storefrontDiscount';
 
 /** Second sweep (the 17 subsystems the first audit never reached), fixes pinned. */
 const ROOT = resolve(__dirname, '../..');
@@ -119,5 +120,31 @@ describe('what production actually receives', () => {
   it('the PesaPal provider callback override reaches the container', () => {
     const compose = readFileSync(resolve(__dirname, '../../docker-compose.production.yml'), 'utf8');
     expect(compose).toMatch(/PESAPAL_PROVIDER_CALLBACK_URL=\$\{PESAPAL_PROVIDER_CALLBACK_URL:-\}/);
+  });
+});
+
+describe('the browse rail advertises what the basket charges', () => {
+  const rail = () =>
+    readFileSync(resolve(__dirname, '../../apps/web/src/components/recommendations/RecentlyViewedRail.astro'), 'utf8');
+
+  it('stamps the campaign floor alongside the percentage', () => {
+    expect(rail()).toMatch(/data-sale-floor=\{railDiscount\.active \? String\(railDiscount\.priceFloorUgx\) : ""\}/);
+  });
+
+  it('prices through the one shared helper, floor included', () => {
+    const src = rail();
+    expect(src).toMatch(/import \{ salePriceUgx \} from "\.\.\/\.\.\/lib\/storefrontDiscount"/);
+    expect(src).toMatch(/salePriceUgx\(regular, saleBps, saleFloor\)/);
+    // The unfloored formula this replaced must not come back.
+    expect(src).not.toMatch(/regular - Math\.floor\(\(regular \* saleBps\)/);
+  });
+
+  it('calls it a sale only when the price actually drops', () => {
+    expect(rail()).toMatch(/const onSale = saleActive && hasPrice && salePriceOf\(item\.price\) < item\.price;/);
+  });
+
+  it('the shared helper stops the cut at the floor', () => {
+    expect(salePriceUgx(155_000, 1000, 145_000)).toBe(145_000);
+    expect(salePriceUgx(200_000, 1000, 145_000)).toBe(180_000);
   });
 });

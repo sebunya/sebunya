@@ -66,6 +66,7 @@ const railDiscount = await getStorefrontDiscount();
   data-live-products={JSON.stringify(liveByProduct)}
   data-sale-bps={railDiscount.active ? String(railDiscount.percentBps) : ""}
   data-sale-percent={railDiscount.active ? String(railDiscount.percent) : ""}
+  data-sale-floor={railDiscount.active ? String(railDiscount.priceFloorUgx) : ""}
   data-sale-ends-iso={railDiscount.active ? (railDiscount.endsIso ?? "") : ""}
 >
   <div class="mb-6">
@@ -82,6 +83,7 @@ const railDiscount = await getStorefrontDiscount();
 
 <script>
   import { shouldShowPickUpWhereYouLeftOff, getRecentlyViewedHistory } from "../../lib/returning-user";
+  import { salePriceUgx } from "../../lib/storefrontDiscount";
 
   document.addEventListener("DOMContentLoaded", () => {
     const rail = document.querySelector("[data-recently-viewed-rail]") as HTMLElement | null;
@@ -149,8 +151,12 @@ const railDiscount = await getStorefrontDiscount();
     const saleBps = Number(rail.getAttribute("data-sale-bps") || 0);
     const salePercent = Number(rail.getAttribute("data-sale-percent") || 0);
     const saleEndsIso = rail.getAttribute("data-sale-ends-iso") || "";
+    const saleFloor = Number(rail.getAttribute("data-sale-floor") || 0);
     const saleActive = Number.isFinite(saleBps) && saleBps > 0;
-    const salePriceOf = (regular: number) => Math.max(0, regular - Math.floor((regular * saleBps) / 10_000));
+    // The evaluator's exact per-line formula, from the one shared helper,
+    // INCLUDING the floor. Without the floor this rail advertised 155,000 down
+    // to 139,500 on a product the basket charges 145,000 for.
+    const salePriceOf = (regular: number) => salePriceUgx(regular, saleBps, saleFloor);
 
     const sharedRailRenderId = crypto.randomUUID();
     list.innerHTML = items
@@ -191,7 +197,10 @@ const railDiscount = await getStorefrontDiscount();
         const availabilityClass = stockIsLow ? "text-amber-700 font-bold" : "text-brand-mutedGrey";
 
         const hasPrice = typeof item.price === "number" && item.price > 0;
-        const onSale = saleActive && hasPrice;
+        // A campaign is not a sale unless this product's price actually
+        // drops. At the floor the cut is nothing, and "145,000 was 145,000,
+        // 10% discount" is a claim the basket does not honour.
+        const onSale = saleActive && hasPrice && salePriceOf(item.price) < item.price;
         const priceHtml = onSale
           ? `<span class="flex flex-col min-w-0">
                <span class="flex flex-wrap items-baseline gap-x-2">
