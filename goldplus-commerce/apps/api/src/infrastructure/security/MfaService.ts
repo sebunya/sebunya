@@ -89,20 +89,44 @@ export class MfaService {
   }
 
   /** Verify a TOTP code as a step-up; stamps freshness on success. */
-  async verify(userId: string, code: string, now = new Date()): Promise<boolean> {
+  /**
+   * Whether step-up is locked: too many consecutive failures inside the window.
+   *
+   * `failed_attempts` existed and was reset on success, but nothing ever
+   * incremented or checked it, so a six-digit TOTP (three valid codes per
+   * thirty-second step) could be brute-forced from a stolen bearer token, which
+   * is precisely the case step-up exists for.
+   */
+  static readonly MAX_FAILURES = 5;
+  static readonly LOCK_WINDOW_MS = 15 * 60_000;
+
+  isLocked(record: { failedAttempts: number; updatedAt: Date }, now: Date): boolean {
+    return (
+      record.failedAttempts >= MfaService.MAX_FAILURES &&
+      now.getTime() - record.updatedAt.getTime() < MfaService.LOCK_WINDOW_MS
+    );
+  }
+
+  async verify(userId: string, code: string, now = new Date()): Promise<boolean | 'LOCKED'> {
     const record = await this.repo.get(userId);
     if (!record || !record.confirmedAt) return false;
-    if (!verifyTotp(decryptSecret(record.secretCiphertext), code, now.getTime())) return false;
+    if (this.isLocked(record, now)) return 'LOCKED';
+    if (!verifyTotp(decryptSecret(record.secretCiphertext), code, now.getTime())) {
+      await this.repo.recordFailure(userId, now);
+      return false;
+    }
     await this.repo.recordVerification(userId, now);
     return true;
   }
 
   /** Consume a single-use recovery code as a step-up; stamps freshness. */
-  async useRecoveryCode(userId: string, code: string, now = new Date()): Promise<boolean> {
+  async useRecoveryCode(userId: string, code: string, now = new Date()): Promise<boolean | 'LOCKED'> {
     const record = await this.repo.get(userId);
     if (!record || !record.confirmedAt) return false;
+    if (this.isLocked(record, now)) return 'LOCKED';
     const consumed = await this.repo.consumeRecoveryCode(userId, hashRecoveryCode(code), now);
     if (consumed) await this.repo.recordVerification(userId, now);
+    else await this.repo.recordFailure(userId, now);
     return consumed;
   }
 

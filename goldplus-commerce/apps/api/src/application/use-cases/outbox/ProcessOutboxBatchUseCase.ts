@@ -72,8 +72,12 @@ export class ProcessOutboxBatchUseCase {
     // would find no route, mark them processed as "unroutable", and report success
     // while the fulfilment task the order depends on was discarded.
     // `ProcessCheckoutSideEffectBatchUseCase` claims them instead.
+    // TELEMETRY_DISPATCH is owned by the telemetry dispatcher, which runs in the
+    // same tick. This worker also claimed those rows, found no notification
+    // route, and retired them as "unroutable": every claim it won was a
+    // measurement event silently dropped.
     const events = await this.outboxRepo.claimDueBatch(now, BATCH_SIZE, {
-      excludeEventTypes: CHECKOUT_SIDE_EFFECT_EVENT_TYPES,
+      excludeEventTypes: [...CHECKOUT_SIDE_EFFECT_EVENT_TYPES, 'TELEMETRY_DISPATCH'],
     });
 
     const result: ProcessOutboxBatchResult = {

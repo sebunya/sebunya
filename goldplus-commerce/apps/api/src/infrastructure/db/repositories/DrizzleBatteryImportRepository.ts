@@ -103,8 +103,13 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
   async savePreview(id: string, expectedVersion: number, digest: string, rows: PreviewRowWrite[], actorId: string) {
     return db.transaction(async (tx) => {
       // Keep operator resolutions from an earlier preview of the same session.
-      const existing = await tx.select({ id: batteryImportRows.id, resolution: batteryImportRows.resolution, resolutionNote: batteryImportRows.resolutionNote }).from(batteryImportRows).where(eq(batteryImportRows.sessionId, id));
+      const existing = await tx.select({ id: batteryImportRows.id, resolution: batteryImportRows.resolution, resolutionNote: batteryImportRows.resolutionNote, normalizedData: batteryImportRows.normalizedData, proposedAction: batteryImportRows.proposedAction }).from(batteryImportRows).where(eq(batteryImportRows.sessionId, id));
       const resolutions = new Map(existing.map((e) => [e.id, e.resolution]));
+      // An INCLUDE with an operator override is a decision, not a derivation.
+      // Recomputing the row from the source discarded the override and reverted
+      // the proposed action, so an included compound row counted as valid and
+      // was then silently SKIPPED at apply. The override wins over the re-run.
+      const overridden = new Map(existing.filter((e) => e.resolution === 'INCLUDE' && (e.normalizedData as Record<string, unknown> | null)?.overridden === true).map((e) => [e.id, e]));
       let valid = 0, invalid = 0, held = 0, excluded = 0;
       for (const r of rows) {
         const resolution = resolutions.get(r.rowId);
@@ -114,10 +119,11 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
         else if (r.hold && resolution !== 'INCLUDE') { status = 'HELD'; held += 1; }
         else if (resolution === 'HOLD') { status = 'HELD'; held += 1; }
         else { status = 'VALID'; valid += 1; }
+        const kept = overridden.get(r.rowId);
         await tx.update(batteryImportRows).set({
           rowKey: r.rowKey.slice(0, 200) || null,
-          normalizedData: r.normalizedData ? (jsonb({ ...r.normalizedData, ...(r.hold ? { hold: r.hold } : {}) }) as never) : (r.hold ? (jsonb({ hold: r.hold }) as never) : null),
-          proposedAction: r.proposedAction,
+          normalizedData: kept ? (kept.normalizedData as never) : r.normalizedData ? (jsonb({ ...r.normalizedData, ...(r.hold ? { hold: r.hold } : {}) }) as never) : (r.hold ? (jsonb({ hold: r.hold }) as never) : null),
+          proposedAction: kept ? kept.proposedAction : r.proposedAction,
           validationWarnings: jsonb(r.warnings) as never,
           validationErrors: jsonb(r.errors) as never,
           status,

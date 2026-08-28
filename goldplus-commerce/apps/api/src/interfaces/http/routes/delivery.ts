@@ -25,6 +25,20 @@ const routes = new Hono();
 /** In-process, per-replica. A miss costs one recomputation; a stale quote costs trust. */
 const CACHE = new Map<string, { at: number; body: unknown }>();
 const CACHE_TTL_MS = 60_000;
+/**
+ * Bounded. The key is built from unauthenticated input (any area slug, any
+ * subtotal, up to 100 line pairs) and expiry was only checked on READ, so a
+ * client looping over subtotals grew this map without limit for the life of
+ * the process. Oldest entry out when full; expired entries swept on write.
+ */
+const CACHE_MAX = 5_000;
+function cacheSet(key: string, body: unknown, at: number) {
+  if (CACHE.size >= CACHE_MAX) {
+    for (const [k, v] of CACHE) if (at - v.at >= CACHE_TTL_MS) CACHE.delete(k);
+    if (CACHE.size >= CACHE_MAX) CACHE.delete(CACHE.keys().next().value as string);
+  }
+  CACHE.set(key, { at, body });
+}
 
 routes.post('/quote', async (c) => {
   const body = await c.req.json().catch(() => null);

@@ -941,7 +941,12 @@ export class Registry {
   public readonly fulfilmentRepo = new DrizzleFulfilmentRepository();
   public readonly createFulfilmentTaskOnOrderPlacedUseCase = new CreateFulfilmentTaskOnOrderPlacedUseCase(this.fulfilmentRepo);
   public readonly markFulfilmentPaymentConfirmedUseCase = new MarkFulfilmentPaymentConfirmedUseCase(this.fulfilmentRepo);
-  public readonly transitionFulfilmentTaskUseCase = new TransitionFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, this.orderTransitionService);
+  public readonly transitionFulfilmentTaskUseCase = new TransitionFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, this.orderTransitionService, {
+    // Closures: both repositories are declared later in this class, and a
+    // class field initialiser may not read a field that has not run yet.
+    dispatches: { getByTask: (taskId: string) => this.fulfilmentDispatchRepo.getByTask(taskId) },
+    packingSessions: { getByTask: (taskId: string) => this.packingSessionRepo.getByTask(taskId) },
+  });
   public readonly listFulfilmentQueueUseCase = new ListFulfilmentQueueUseCase(this.fulfilmentRepo);
   public readonly fulfilmentSlaEventRepo = new DrizzleFulfilmentSlaEventRepository();
   public readonly getFulfilmentOverviewUseCase = new GetFulfilmentOverviewUseCase(this.fulfilmentRepo, this.fulfilmentSlaEventRepo);
@@ -1063,7 +1068,7 @@ export class Registry {
   // Fulfilment F4: dispatch tracking (stock consumed once at READY_FOR_DISPATCH).
   public readonly fulfilmentDispatchRepo = new DrizzleFulfilmentDispatchRepository();
   public readonly getDispatchUseCase = new GetDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo);
-  public readonly recordDispatchUseCase = new RecordDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo, this.inventoryRepo, this.auditRepo, this.orderTransitionService);
+  public readonly recordDispatchUseCase = new RecordDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo, this.inventoryRepo, this.auditRepo, this.orderTransitionService, { listForOrder: (orderId: string) => this.deliveryVarianceRepo.listForOrder(orderId) });
   public readonly updateDispatchTrackingUseCase = new UpdateDispatchTrackingUseCase(this.fulfilmentDispatchRepo, this.auditRepo);
 
   // Fulfilment F5: delivery confirmation and pipeline reporting.

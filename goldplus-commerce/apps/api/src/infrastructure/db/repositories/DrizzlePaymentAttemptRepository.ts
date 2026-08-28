@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { orders, paymentAttempts } from '../schema/commerce';
+import { paymentRefunds } from '../schema/commerce';
 import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../../application/ports/IPesaPalPaymentRepository';
 import { POLLABLE_ATTEMPT_STATUSES, assertAttemptTransition } from '../../../domain/payments/PaymentAttemptState';
 
@@ -117,6 +118,18 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
    * non-terminal after the threshold. The provider holds truth we have not
    * heard — a customer who paid and closed the tab looks exactly like this.
    */
+  async listCompletedAttemptsAwaitingRefund(limit: number): Promise<RecordedPaymentAttempt[]> {
+    const rows = await db
+      .select({ attempt: paymentAttempts })
+      .from(paymentAttempts)
+      .innerJoin(paymentRefunds, eq(paymentRefunds.paymentAttemptId, paymentAttempts.id))
+      .where(and(eq(paymentAttempts.status, 'completed'), eq(paymentRefunds.status, 'requested'), isNotNull(paymentAttempts.orderTrackingId)))
+      .orderBy(desc(paymentAttempts.createdAt))
+      .limit(Math.max(1, Math.min(limit, 200)));
+    const seen = new Set<string>();
+    return rows.map((r) => r.attempt).filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true))).map(rowToPaymentAttempt);
+  }
+
   async listAttemptsForReconciliation(olderThan: Date, limit: number): Promise<RecordedPaymentAttempt[]> {
     const rows = await db.query.paymentAttempts.findMany({
       where: and(

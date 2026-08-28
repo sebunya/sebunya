@@ -48,6 +48,8 @@ export class ReconcilePendingPaymentsUseCase {
   constructor(
     private readonly attempts: {
       listAttemptsForReconciliation(olderThan: Date, limit: number): Promise<RecordedPaymentAttempt[]>;
+      /** Optional: an adapter without it simply never revisits paid attempts for refunds. */
+      listCompletedAttemptsAwaitingRefund?(limit: number): Promise<RecordedPaymentAttempt[]>;
       listStartFailuresForAbandonment(olderThan: Date, limit: number): Promise<RecordedPaymentAttempt[]>;
       updatePaymentAttemptStatus(id: string, update: { status: string }): Promise<RecordedPaymentAttempt>;
     },
@@ -72,7 +74,13 @@ export class ReconcilePendingPaymentsUseCase {
     };
 
     const pollBefore = new Date(now.getTime() - this.config.pollAfterMinutes * 60_000);
-    const stale = await this.attempts.listAttemptsForReconciliation(pollBefore, this.config.batchLimit);
+    // Live attempts the provider may have settled, PLUS paid attempts with a
+    // refund outstanding: those were never polled, so a refund landed only if
+    // the provider chose to tell us.
+    const stale = [
+      ...(await this.attempts.listAttemptsForReconciliation(pollBefore, this.config.batchLimit)),
+      ...((await this.attempts.listCompletedAttemptsAwaitingRefund?.(this.config.batchLimit)) ?? []),
+    ];
 
     for (const attempt of stale) {
       result.polled++;

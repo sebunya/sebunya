@@ -52,6 +52,12 @@ export interface IPesaPalPaymentRepository {
 
   /** Non-terminal attempts with a provider transaction, for the poller. */
   listAttemptsForReconciliation(olderThan: Date, limit: number): Promise<RecordedPaymentAttempt[]>;
+  /**
+   * Completed attempts with a refund still 'requested'. The completed->reversed
+   * edge and the refund's settlement otherwise depended entirely on the provider
+   * pushing an IPN or an operator pressing re-verify.
+   */
+  listCompletedAttemptsAwaitingRefund(limit: number): Promise<RecordedPaymentAttempt[]>;
   /** not_started attempts with no tracking id — nothing to ask, no money possible. */
   listStartFailuresForAbandonment(olderThan: Date, limit: number): Promise<RecordedPaymentAttempt[]>;
 

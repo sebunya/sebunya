@@ -178,9 +178,15 @@ export class BatteryImportUseCases {
           const digits = raw.replace(/\s+/g, '');
           const hits = await repo.resolveCode(batteryCodeCandidates(raw), /^\d{8,14}$/.test(digits) ? digits : null);
           const distinct = Array.from(new Map(hits.map((h) => [h.productId, h])).values());
-          if (distinct.length === 1) codes.set(key, { productId: distinct[0].productId, canonicalCode: distinct[0].canonicalCode, lifecycle: distinct[0].lifecycleStatus });
-          else if (distinct.length > 1) codes.set(key, { ambiguous: distinct.map((d) => d.canonicalCode) });
-          else codes.set(key, null);
+          const resolved = distinct.length === 1
+            ? { productId: distinct[0].productId, canonicalCode: distinct[0].canonicalCode, lifecycle: distinct[0].lifecycleStatus }
+            : distinct.length > 1 ? { ambiguous: distinct.map((d) => d.canonicalCode) } : null;
+          // The row asks by the DERIVED canonical code ("BL-49FT"), not by the raw
+          // label it came from ("GP-49FT"). Keyed by the raw label only, an
+          // existing or ambiguous battery was never detected for the shop's own
+          // label format and was proposed as a fresh create.
+          const keys = new Set<string>([key, ...batteryCodeCandidates(raw).map(normaliseBatteryCode), ...distinct.map((d) => normaliseBatteryCode(d.canonicalCode))]);
+          for (const k of keys) if (k && !codes.has(k)) codes.set(k, resolved);
         }
       },
     };
@@ -462,6 +468,14 @@ export class BatteryImportUseCases {
           }
           case 'PRICE_UPDATE': {
             const productId = String((row.normalizedData as Record<string, unknown>).productId);
+            // Same rule as stock two cases above: a value that moved since the
+            // import is reported, not clobbered. Restoring blindly overwrote a
+            // price an operator had set by hand after the import.
+            const setByImport = Number((row.afterSnapshot as Record<string, unknown> | null)?.priceUgx);
+            const current = await this.batteryRepo.findByProductId(productId);
+            if (current && Number.isFinite(setByImport) && current.product.priceUgx !== setByImport) {
+              throw new Error(`Price changed since import (now ${current.product.priceUgx}, import set ${setByImport}); not restored.`);
+            }
             const before = Number((row.beforeSnapshot as Record<string, unknown> | null)?.priceUgx);
             const found = await this.batteryRepo.findByProductId(productId);
             if (found && Number.isInteger(before)) await this.batteries.update(productId, { priceUgx: before }, input.actorId);

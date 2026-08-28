@@ -261,6 +261,17 @@ export class InventoryLedgerUseCases {
     if (count.status !== 'DRAFT') throw unprocessable('COUNT_NOT_DRAFT', `The count is already ${count.status.toLowerCase()}.`);
     const blockers = countBlockers(count.lines.map((l) => ({ productId: l.productId, systemQuantity: l.systemQuantity, countedQuantity: l.countedQuantity, reason: l.reason })));
     if (blockers.length) throw unprocessable('COUNT_BLOCKED', blockers.join(' '), blockers);
+    // The reason rule is about the DIFFERENCE the count will post, and that is
+    // measured against the balance at apply time, not the one on the draft. A
+    // receipt applied between drafting and applying moved the balance, so a
+    // "no difference, no reason" draft posted a real change with no reason.
+    const liveByProduct = new Map<string, number>();
+    for (const line of count.lines) {
+      const live = await this.repo.currentStock(line.productId);
+      if (live) liveByProduct.set(line.productId, live.stock);
+    }
+    const liveBlockers = countBlockers(count.lines.filter((l) => liveByProduct.has(l.productId)).map((l) => ({ productId: l.productId, systemQuantity: liveByProduct.get(l.productId)!, countedQuantity: l.countedQuantity, reason: l.reason })));
+    if (liveBlockers.length) throw unprocessable('COUNT_STALE', `Stock moved since this count was drafted. ${liveBlockers.join(' ')} Re-count or add a reason.`, liveBlockers);
     const lineMovements: Array<{ lineId: string; movementId: string }> = [];
     for (const line of count.lines) {
       const live = await this.repo.currentStock(line.productId);

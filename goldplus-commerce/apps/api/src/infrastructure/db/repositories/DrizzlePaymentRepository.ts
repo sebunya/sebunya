@@ -51,7 +51,7 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
     requiresReview?: boolean;
   }): Promise<RecordedPayment> {
     const signatureVerified = input.signatureVerified ?? true;
-    const requiresReview = input.requiresReview ?? false;
+    const requestedReview = input.requiresReview ?? false;
     // Resolve the matching order: do NOT create one here.
     // Webhooks must operate on existing orders only.
     const order = await db.query.orders.findFirst({
@@ -60,6 +60,14 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
     if (!order) {
       throw new Error(`MISSING_ORDER: orderId ${input.orderId} not found`);
     }
+
+    // A second SUCCESS under a NEW reference for an order already paid is either
+    // a double charge or a provider re-send; both need a person. It used to
+    // reach the order transition, which threw, rolling back the payment row and
+    // answering the provider with a 500 so it retried forever. It is recorded,
+    // flagged for review, and moves nothing.
+    const alreadyPaid = input.outcome === 'SUCCESS' && order.paymentStatus === 'paid';
+    const requiresReview = requestedReview || alreadyPaid;
 
     try {
       const inserted = await db.transaction(async (tx) => {

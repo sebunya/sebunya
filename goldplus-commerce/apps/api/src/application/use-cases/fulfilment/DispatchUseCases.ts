@@ -17,6 +17,7 @@ import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 
 export type DispatchError =
   | 'NOT_FOUND'
+  | 'VARIANCE_AGREEMENT_PENDING'
   | 'TASK_ON_HOLD'
   | 'TASK_NOT_DISPATCHABLE'
   | 'NOT_READY_FOR_DISPATCH'
@@ -61,6 +62,14 @@ export class RecordDispatchUseCase {
     private readonly inventory: IInventoryRepository,
     private readonly audit: IAuditRepository,
     private readonly orderTransitions?: IOrderTransitionPort,
+    /**
+     * Fee variances awaiting the customer's agreement. A variance above the
+     * absorption threshold is recorded as 'pending' and the fee is unchanged
+     * until the customer agrees; dispatching before that sent the rider out
+     * with the OLD total on the card, and the agreement could still be recorded
+     * after the rider had left. Optional so existing callers construct unchanged.
+     */
+    private readonly variances?: { listForOrder(orderId: string): Promise<Array<{ agreement: string }>> },
   ) {}
 
   async execute(input: {
@@ -83,6 +92,11 @@ export class RecordDispatchUseCase {
     // record, no re-transition, no inventory effect.
     const existing = await this.dispatches.getByTask(input.taskId);
     if (existing) return { ok: true, dispatch: existing, created: false };
+
+    if (this.variances) {
+      const pending = (await this.variances.listForOrder(snapshot.orderId)).some((v) => v.agreement === 'pending');
+      if (pending) return fail('VARIANCE_AGREEMENT_PENDING', 'The customer has not yet agreed the changed delivery fee. Record their agreement before dispatching.');
+    }
 
     const guard = canDispatch({
       status: snapshot.status,

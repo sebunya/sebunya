@@ -47,7 +47,11 @@ routes.get('/finder/check', (c) => {
 });
 routes.get('/products/:slug', (c) => run(c, async () => {
   const found = await uc().battery(param(c, 'slug'));
-  if (!found) throw new BatteryOperationError('NOT_FOUND', 'Battery not found.', 404);
+  // Public route: a battery that is not published does not exist here. The
+  // use case answers for drafts too (the admin preview needs it), and this
+  // route used to pass that straight through, exposing DRAFT, REVIEW and READY
+  // batteries by slug with their code, price and every claimed device.
+  if (!found || !found.isPublished) throw new BatteryOperationError('NOT_FOUND', 'Battery not found.', 404);
   return found;
 }, 30));
 

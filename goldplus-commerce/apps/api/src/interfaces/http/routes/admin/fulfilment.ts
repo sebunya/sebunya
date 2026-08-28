@@ -343,7 +343,7 @@ routes.post('/:id/packing/exception', requirePermissions([PERMISSIONS.ORDERS_MAN
 
 function dispatchErrStatus(code: string): 400 | 404 | 409 {
   if (code === 'NOT_FOUND' || code === 'NO_DISPATCH') return 404;
-  if (code === 'STALE_DISPATCH_VERSION') return 409;
+  if (code === 'STALE_DISPATCH_VERSION' || code === 'VARIANCE_AGREEMENT_PENDING') return 409;
   return 400;
 }
 

@@ -7,6 +7,7 @@ import {
   DELIVERY_CONFIG_REGISTRY,
   LAUNCH_KEYS,
   validateConfigValue,
+  missingMandatoryKeys,
 } from '../../../../domain/delivery/DeliveryConfigRegistry';
 import { missingLaunchKeys } from '../../../../domain/delivery/DeliveryModel';
 import { VARIANCE_REASONS } from '../../../../domain/delivery/DeliveryVariance';
@@ -55,12 +56,18 @@ routes.get('/setup', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) =
     if (Number.isFinite(n)) numeric[k] = n;
   }
   const missing = missingLaunchKeys(numeric);
+  // quotingEnabled must mean the quoting service can actually quote. The five
+  // launch keys are numbers; own_rider_max_band is mandatory too, and without
+  // it every metro quote was CONFIG_INCOMPLETE while this page said quoting
+  // was on.
+  const missingMandatory = missingMandatoryKeys(live);
 
   return c.json({
     success: true,
     data: {
-      quotingEnabled: missing.length === 0 && origins.active > 0,
-      blockedBy: missing.length > 0 ? 'CONFIG_INCOMPLETE' : origins.active === 0 ? 'NO_ACTIVE_ORIGIN' : null,
+      quotingEnabled: missing.length === 0 && missingMandatory.length === 0 && origins.active > 0,
+      blockedBy: missing.length > 0 || missingMandatory.length > 0 ? 'CONFIG_INCOMPLETE' : origins.active === 0 ? 'NO_ACTIVE_ORIGIN' : null,
+      missingMandatoryKeys: missingMandatory,
       launchValues: LAUNCH_KEYS.map((key) => {
         const entry = DELIVERY_CONFIG_REGISTRY.find((e) => e.key === key)!;
         return {

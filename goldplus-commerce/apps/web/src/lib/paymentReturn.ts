@@ -42,7 +42,8 @@ export interface PaymentReturnCopy {
  * `GP-YYYYMM-XXXX`, so the middle is what the tracking page asks for.
  */
 export function orderNumberFromMerchantReference(reference: string): string | null {
-  const m = /^GP-(GP-\d{6}-[A-Z0-9]{4})-/i.exec(reference.trim());
+  // Four characters for orders before 2026-08-28, eight after.
+  const m = /^GP-(GP-\d{6}-[A-Z0-9]{4,8})-/i.exec(reference.trim());
   return m ? m[1].toUpperCase() : null;
 }
 

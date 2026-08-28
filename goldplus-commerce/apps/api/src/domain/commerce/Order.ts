@@ -130,7 +130,11 @@ export class Order {
 
     return new Order(
       id,
-      `GP-${timestamp.getFullYear()}${(timestamp.getMonth()+1).toString().padStart(2,'0')}-${id.substring(0, 4).toUpperCase()}`,
+      // Eight hex characters, not four. order_number is UNIQUE, and four hex
+      // characters is 65,536 values per month: at 300 orders in a month the
+      // odds of a collision were about even, and a collision made a live
+      // checkout fail at the final INSERT. Eight characters is 4 billion.
+      `GP-${timestamp.getFullYear()}${(timestamp.getMonth()+1).toString().padStart(2,'0')}-${id.substring(0, 8).toUpperCase()}`,
       customer.name,
       customer.phone,
       customer.email,

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { STOREFRONT_PRICE_FLOOR_UGX } from "@goldplus/shared";
 
 export const PIM_TARGET_FIELDS = [
   "sku",
@@ -82,6 +83,10 @@ export function normalizePimRow(
     errors.push("Descriptions exceed catalogue limits.");
   if (!Number.isInteger(value.retailPriceUgx) || value.retailPriceUgx <= 0)
     errors.push("Retail price must be a positive integer in UGX.");
+  // The owner's floor. An UPSERT wrote any positive price onto a live product,
+  // so a spreadsheet could reopen the floor that every other price path holds.
+  else if (value.retailPriceUgx < STOREFRONT_PRICE_FLOOR_UGX)
+    errors.push(`Retail price must be at least UGX ${STOREFRONT_PRICE_FLOOR_UGX.toLocaleString("en-UG")}, the storefront floor.`);
   return { value: errors.length ? null : value, errors };
 }
 

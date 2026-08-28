@@ -69,7 +69,9 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
       SELECT b.id, b.name, b.slug, b.is_featured AS "isFeatured", b.display_order AS "displayOrder",
         (SELECT count(*) FROM devices d WHERE d.brand_id = b.id AND d.status = 'ACTIVE')::int AS "deviceCount",
         (SELECT count(*) FROM product_device_compatibility c JOIN devices d ON d.id = c.device_id JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id
-           WHERE d.brand_id = b.id AND d.status = 'ACTIVE' AND (${VERIFIED_PUBLIC} ${awaiting}))::int AS "verifiedFits",
+           WHERE d.brand_id = b.id AND d.status = 'ACTIVE' AND (${VERIFIED_PUBLIC}))::int AS "verifiedFits",
+        (SELECT count(*) FROM product_device_compatibility c JOIN devices d ON d.id = c.device_id JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id
+           WHERE d.brand_id = b.id AND d.status = 'ACTIVE' AND (${VERIFIED_PUBLIC} ${awaiting}))::int AS "coverageCount",
         (SELECT count(*) FROM battery_finder_events e WHERE e.brand_id = b.id AND e.occurred_at > now() - interval '90 days')::int AS "demandCount"
       FROM device_brands b WHERE b.status = 'ACTIVE'
       ORDER BY b.is_featured DESC, b.display_order ASC, b.name ASC`)) as unknown as Array<FinderBrandDto & { displayOrder: number; demandCount: number }>;

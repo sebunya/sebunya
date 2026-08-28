@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { userMfa, userMfaRecoveryCodes } from '../schema/identity';
 import { IMfaRepository, MfaRecord } from '../../../application/ports/IMfaRepository';
@@ -12,7 +12,18 @@ export class DrizzleMfaRepository implements IMfaRepository {
       secretCiphertext: row.secretCiphertext,
       confirmedAt: row.confirmedAt ?? null,
       lastVerifiedAt: row.lastVerifiedAt ?? null,
+      failedAttempts: row.failedAttempts ?? 0,
+      updatedAt: row.updatedAt,
     };
+  }
+
+  async recordFailure(userId: string, at: Date): Promise<number> {
+    const [row] = await db
+      .update(userMfa)
+      .set({ failedAttempts: sql`${userMfa.failedAttempts} + 1`, updatedAt: at })
+      .where(eq(userMfa.userId, userId))
+      .returning({ failedAttempts: userMfa.failedAttempts });
+    return row?.failedAttempts ?? 0;
   }
 
   async upsertEnrolment(userId: string, secretCiphertext: string): Promise<void> {

@@ -145,7 +145,22 @@ export class RefundPesaPalPaymentUseCase {
 
     // The confirmation code lives at the provider; re-fetch rather than trust a
     // stored copy that may predate a renegotiated transaction.
-    const status = await this.client.getTransactionStatus(attempt.orderTrackingId as string);
+    // A lookup failure here used to throw straight out: the reservation stayed
+    // 'requested' (counted against the refundable balance, subtracted from
+    // revenue) with nothing ever sent, and every retry answered "already
+    // requested, no second payout was sent". Nothing can have moved before
+    // RequestRefund, so a failed lookup is a rejected reservation.
+    let status: Awaited<ReturnType<typeof this.client.getTransactionStatus>>;
+    try {
+      status = await this.client.getTransactionStatus(attempt.orderTrackingId as string);
+    } catch (error) {
+      await this.ledger.recordProviderOutcome(refund.id, {
+        status: 'rejected',
+        providerStatus: 'STATUS_LOOKUP_FAILED',
+        providerMessage: error instanceof Error ? error.message.slice(0, 200) : 'Status lookup failed.',
+      });
+      return fail('PROVIDER_UNAVAILABLE', 'The provider could not be reached to confirm the transaction. Nothing was sent; try again shortly.');
+    }
     if (!status.confirmation_code) {
       await this.ledger.recordProviderOutcome(refund.id, {
         status: 'rejected',

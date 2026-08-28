@@ -693,10 +693,18 @@ routes.post('/orders/create', async (c) => {
     },
   };
 
-  const mapped = mapping[outcome.kind] ?? {
+  let mapped = mapping[outcome.kind] ?? {
     status: 400 as const, code: 'ORDER_FAILED',
     message: 'The order could not be completed. Please try again.',
   };
+  // A terminal refusal carries WHY. Collapsing PRODUCT_UNAVAILABLE or
+  // PRICE_CHANGED to ORDER_FAILED told the customer to "try again" for a
+  // refusal that trying again cannot fix, and left the storefront's specific
+  // wording for each of these unreachable.
+  const PUBLIC_TERMINAL_REASONS = new Set(['PRICE_CHANGED', 'PROMOTION_CHANGED', 'PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE']);
+  if (outcome.kind === 'FAILED_FINAL' && PUBLIC_TERMINAL_REASONS.has(outcome.reason)) {
+    mapped = { status: 409, code: outcome.reason, message: mapped.message };
+  }
   if (outcome.retryAfterSeconds) c.header('Retry-After', String(outcome.retryAfterSeconds));
 
   // The kind AND the typed reason, together. The public body carries a collapsed

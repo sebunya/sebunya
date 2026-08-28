@@ -76,7 +76,10 @@ export class DrizzleUserRepository implements IUserRepository {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (/duplicate key|unique constraint|UNIQUE/i.test(message)) {
-        throw new Error('USER_EMAIL_TAKEN');
+        // The use case matches on Postgres code 23505. This used to throw a
+        // plain Error with no code, so that branch was dead and a duplicate
+        // PHONE registered as a 500 instead of "already registered".
+        throw Object.assign(new Error('USER_EMAIL_TAKEN'), { code: '23505' });
       }
       throw err;
     }

@@ -16,7 +16,7 @@ import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import type { MediaLibraryUseCase } from '../media/MediaLibraryUseCase';
 import { batteryCodeCandidates, batterySku, batterySlug, normaliseBatteryCode } from '../../../domain/batteries/BatteryCodes';
 import { assessReadiness, transitionBattery, type BatteryAction, type ReadinessReport } from '../../../domain/batteries/BatteryReadiness';
-import { BatteryOperationError, conflict, invalid, notFound, unprocessable } from './BatteryOperationError';
+import { BatteryOperationError, conflict, forbidden, invalid, notFound, unprocessable } from './BatteryOperationError';
 
 /** The catalogue category every battery product hangs off (the products FK). */
 export const BATTERY_PARENT_CATEGORY_SLUG = 'power-devices';
@@ -328,6 +328,12 @@ export class BatteryCatalogueUseCases {
     const found = await this.repo.findByProductId(productId);
     if (!found) throw notFound('Battery');
     if (found.profile.codeStatus !== 'CONFIRMED') throw unprocessable('CODE_NOT_CONFIRMED', 'Confirm the printed battery code from the pack before verifying the battery.');
+    // The admin page says a second person checks the pack. The use case did not
+    // enforce it, so one operator with both permissions could enter a battery
+    // and verify it in the same minute. Maker/checker lives here, not in the UI.
+    if (found.profile.createdBy && found.profile.createdBy === actorId) {
+      throw forbidden('MAKER_CHECKER', 'The person who entered the battery cannot verify it against the pack. A second person must check it.');
+    }
     const updated = await this.repo.updateProfile(productId, { verificationStatus: 'VERIFIED', verifiedBy: actorId, verifiedAt: new Date(), codeStatus: 'CONFIRMED' }, actorId);
     await this.audit.execute({ actorId, action: 'BATTERY_VERIFIED', entity: 'battery', entityId: productId, previousState: { verificationStatus: found.profile.verificationStatus }, newState: { verificationStatus: 'VERIFIED', note } });
     return updated;

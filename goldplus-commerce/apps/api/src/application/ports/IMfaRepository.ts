@@ -3,6 +3,10 @@ export interface MfaRecord {
   secretCiphertext: string;
   confirmedAt: Date | null;
   lastVerifiedAt: Date | null;
+  /** Consecutive failed step-up codes since the last success. */
+  failedAttempts: number;
+  /** When the record last changed; bounds the failure window. */
+  updatedAt: Date;
 }
 
 /**
@@ -18,6 +22,8 @@ export interface IMfaRepository {
   confirm(userId: string, at: Date): Promise<void>;
   /** Stamp a successful step-up verification. */
   recordVerification(userId: string, at: Date): Promise<void>;
+  /** Count a failed step-up code. Returns the new consecutive-failure count. */
+  recordFailure(userId: string, at: Date): Promise<number>;
   /** Replace all recovery codes with a fresh set of hashes. */
   replaceRecoveryCodes(userId: string, codeHashes: string[]): Promise<void>;
   /** Atomically consume an unused recovery code; false if already used/unknown. */

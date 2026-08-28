@@ -148,7 +148,7 @@ export class BatteryFinderUseCases {
   // ---------------------------------------------------------------- search
   async search(rawQuery: string, sessionId?: string | null): Promise<FinderResolution & { query: string; config: BatteryFinderConfig }> {
     const cfg = await this.config();
-    const query = rawQuery.replace(/[ -]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_QUERY);
+    const query = rawQuery.replace(/[\x00-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_QUERY);
     if (query.length < 2) return { kind: 'NO_RESULT', message: 'Type at least two characters.', query, config: cfg };
     const [devices, batteries] = await Promise.all([this.repo.deviceCandidates(), this.repo.batteryCandidates()]);
     const qDev = normaliseDeviceToken(query);
@@ -201,7 +201,13 @@ export class BatteryFinderUseCases {
     if (suggestions.length) {
       const deviceList = (await Promise.all(suggestions.filter((s): s is Extract<typeof s, { kind: 'DEVICE' }> => s.kind === 'DEVICE').map((s) => this.repo.deviceById(s.deviceId)))).filter((d): d is FinderDeviceDto => !!d);
       const batteryIds = suggestions.filter((s): s is Extract<typeof s, { kind: 'BATTERY' }> => s.kind === 'BATTERY').map((s) => s.productId);
-      const batteryList = (await Promise.all(batteryIds.map((id) => this.repo.batteryPublic(id)))).filter((b): b is NonNullable<typeof b> => !!b).map((b) => ({ canonicalCode: b.canonicalCode, slug: b.slug, name: b.name }));
+      // Only published, approved, active batteries are suggested. The candidate
+      // set behind the prefix tier is every non-archived battery, which includes
+      // drafts from Quick Add and imports, and those were suggested to the public
+      // with their code, slug and name.
+      const batteryList = (await Promise.all(batteryIds.map((id) => this.repo.batteryPublic(id))))
+        .filter((b): b is NonNullable<typeof b> => !!b && b.lifecycleStatus === 'ACTIVE' && b.productApproved && b.productActive)
+        .map((b) => ({ canonicalCode: b.canonicalCode, slug: b.slug, name: b.name }));
       void event('NO_RESULT', { resultCount: 0 });
       return { kind: 'SUGGESTIONS', devices: deviceList, batteries: batteryList, message: 'No exact match. Did you mean one of these? Pick it to see checked batteries; we never guess a fit from a similar name.', query, config: cfg };
     }

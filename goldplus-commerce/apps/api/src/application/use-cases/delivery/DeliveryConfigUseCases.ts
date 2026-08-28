@@ -356,6 +356,12 @@ export class PublishConfigVersionUseCase {
     if (!input.previewConfirmed) {
       return fail('PREVIEW_NOT_CONFIRMED', 'Publish is only possible after the preview has been shown and confirmed.');
     }
+    // scheduledFor was stored and never honoured: the version went live the
+    // moment it was published, while the operator believed it would wait. Until
+    // scheduling exists, a scheduled publish is refused rather than lied about.
+    if (input.scheduledFor) {
+      return fail('SCHEDULING_NOT_SUPPORTED', 'Scheduled publishing is not available yet. Publish it now, or come back at the time you want it live.');
+    }
     const values = await this.repo.valuesForVersion(input.versionId);
     const problems = validateConfigDraft(values);
     if (problems.length > 0) return fail('INVALID_DRAFT', problems[0].message, problems);
@@ -377,7 +383,7 @@ export class PublishConfigVersionUseCase {
         publishedVersionId: input.versionId,
         reason: version.reason,
         keys: Object.keys(values),
-        scheduledFor: input.scheduledFor?.toISOString() ?? null,
+        scheduledFor: null,
       },
     });
     return { ok: true, version: published };

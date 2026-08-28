@@ -193,7 +193,10 @@ export class DrizzleProductRepository implements IProductRepository {
     const row = await db.query.products.findFirst({
       where: eq(products.slug, slug),
     });
-    if (!row || row.approvalStatus !== 'approved') return null;
+    // Approved AND active. The SEO lifecycle, the sitemap and the recommender
+    // all treat active = false as discontinued; the public readers ignored it,
+    // so a deactivated product stayed listed, searchable and purchasable.
+    if (!row || row.approvalStatus !== 'approved' || !row.active) return null;
 
     const [priceRow, categoryRow, imageRows, valueRows] = await Promise.all([
       db.query.productPrices.findFirst({ where: eq(productPrices.productId, row.id) }),
@@ -279,6 +282,7 @@ export class DrizzleProductRepository implements IProductRepository {
 
     const conditions: (SQL | undefined)[] = [
       eq(products.approvalStatus, 'approved'),
+      eq(products.active, true),
     ];
 
     if (targetCategoryId) {

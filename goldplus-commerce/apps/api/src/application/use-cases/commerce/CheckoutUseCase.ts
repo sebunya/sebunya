@@ -6,6 +6,7 @@ import { EvaluateCartPricingUseCase } from '../pricing/EvaluateCartPricingUseCas
 import { ManagePromotionCapacityUseCase } from '../pricing/ManagePromotionCapacityUseCase';
 import { IPricingQuoteRepository } from '../../ports/IPricingQuoteRepository';
 import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
+import { normalizeUgandaDistrict } from '@goldplus/shared';
 
 export interface IOrderRepository {
   save(order: Order, opts?: { clientOrderKey?: string | null }): Promise<void>;
@@ -89,6 +90,20 @@ export interface CheckoutResult {
 
 const MAX_LINE_ITEMS = 50;
 const MAX_QUANTITY_PER_LINE = 99;
+
+/**
+ * The district named in a typed area line such as "Layibi, Gulu", when no
+ * structured location was supplied. Last comma segment first, then any.
+ */
+function districtFromAreaLine(area: string | null | undefined): string | null {
+  if (!area) return null;
+  const parts = area.split(',').map((p) => p.trim()).filter(Boolean).reverse();
+  for (const part of parts) {
+    const d = normalizeUgandaDistrict(part);
+    if (d) return normalizeDistrict(d);
+  }
+  return null;
+}
 
 export class CheckoutUseCase {
   constructor(
@@ -185,9 +200,13 @@ export class CheckoutUseCase {
     }
 
     // Delivery fee from configured zones; unconfigured districts stay truthful (0, unconfirmed).
+    // deliveryLocation is optional on the wire. Taking the district ONLY from it
+    // let a request omit it and skip the zone's cash-on-delivery policy for a
+    // destination where COD is refused. The typed area line names the district
+    // too, so it is the fallback.
     const district = dto.customerDetails.deliveryLocation?.district
       ? normalizeDistrict(dto.customerDetails.deliveryLocation.district)
-      : null;
+      : districtFromAreaLine(dto.customerDetails.deliveryArea);
     const zone = district && this.deliveryZones ? await this.deliveryZones.findByDistrict(district) : null;
 
     // THE quoting service answers first. The legacy zone path is a fallback for
@@ -313,7 +332,12 @@ export class CheckoutUseCase {
             // this fresh reservation must not linger against the balance.
             await this.loyaltyRedemption.release({ reservationId: loyaltyReservation.reservationId }).catch(() => undefined);
           } else {
-            await this.loyaltyRedemption.attach(loyaltyReservation.reservationId, saved.order.id);
+            // The order is COMMITTED with this redemption on it. A transient
+            // fault attaching the reservation used to fall through to the
+            // compensating catch below, which released the very reservation the
+            // committed order's discount depends on. Past this point nothing
+            // may release.
+            await this.loyaltyRedemption.attach(loyaltyReservation.reservationId, saved.order.id).catch(() => undefined);
           }
         }
         if (!saved.duplicate && this.checkoutSignals) {

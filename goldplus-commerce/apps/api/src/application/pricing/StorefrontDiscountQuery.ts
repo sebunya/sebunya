@@ -37,11 +37,15 @@ export async function resolveStorefrontDiscount(
       version.exclusions.length === 0 &&
       !version.couponCode &&
       version.schedule.startsAt <= now && now < version.schedule.endsAt &&
-      version.benefits.some((b) => b.type === 'PERCENTAGE_OFF' && (!b.targetProductIds || b.targetProductIds.length === 0)),
+      // A CAPPED percentage is not a simple storefront discount: the evaluator
+      // stops at maximumDiscountUgx, so advertising the bare percent showed a
+      // lower price than the basket was charged. Only an uncapped, site-wide
+      // percentage can be displayed as "X% off".
+      version.benefits.some((b) => b.type === 'PERCENTAGE_OFF' && b.maximumDiscountUgx == null && (!b.targetProductIds || b.targetProductIds.length === 0)),
     );
     if (qualifying.length !== 1) return INACTIVE_DISCOUNT;
     const { definition, version } = qualifying[0];
-    const benefit = version.benefits.find((b) => b.type === 'PERCENTAGE_OFF' && (!b.targetProductIds || b.targetProductIds.length === 0))!;
+    const benefit = version.benefits.find((b) => b.type === 'PERCENTAGE_OFF' && b.maximumDiscountUgx == null && (!b.targetProductIds || b.targetProductIds.length === 0))!;
     if (!Number.isFinite(benefit.value) || benefit.value <= 0 || benefit.value >= 10_000) return INACTIVE_DISCOUNT;
     return {
       active: true,

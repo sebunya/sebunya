@@ -31,7 +31,7 @@ describe("PIM Import domain", () => {
         category: "power",
         short: "",
         long: "",
-        price: 120000,
+        price: 150000,
         invented: "ignored",
       },
       mapping,
@@ -45,7 +45,7 @@ describe("PIM Import domain", () => {
       categorySlug: "power",
       shortDescription: "",
       longDescription: "",
-      retailPriceUgx: 120000,
+      retailPriceUgx: 150000,
     });
     expect(result.value).not.toHaveProperty("invented");
   });

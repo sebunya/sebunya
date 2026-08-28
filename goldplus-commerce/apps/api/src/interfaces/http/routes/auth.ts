@@ -10,6 +10,7 @@ import { SESSION_LIFETIMES } from '../../../domain/identity/SessionPolicy';
 
 import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { bearerTokenFrom, resolveLiveSession } from '../middleware/liveSession';
+import { MfaService } from '../../../infrastructure/security/MfaService';
 
 const routes = new Hono();
 
@@ -411,9 +412,15 @@ routes.post('/mfa/verify', async (c) => {
   }
   const svc = Registry.getInstance().mfaService;
   const code = String(body?.code ?? '');
-  const verified =
-    (await svc.verify(user.id, code)) || (body?.recovery ? await svc.useRecoveryCode(user.id, code) : false);
-  if (!verified) {
+  const first = body?.recovery ? await svc.useRecoveryCode(user.id, code) : await svc.verify(user.id, code);
+  if (first === 'LOCKED') {
+    c.header('Retry-After', String(Math.ceil(MfaService.LOCK_WINDOW_MS / 1000)));
+    return c.json(
+      { success: false, error: { code: 'MFA_LOCKED', message: 'Too many wrong codes. Wait fifteen minutes and try again.' } },
+      429,
+    );
+  }
+  if (first !== true) {
     return c.json({ success: false, error: { code: 'MFA_CODE_INVALID', message: 'That code was not valid.' } }, 400);
   }
   return c.json({ success: true, data: { verified: true } });
