@@ -74,14 +74,43 @@ export class DrizzleProductRepository implements IProductRepository {
     );
   }
 
-  async save(product: ProductEntity): Promise<void> {
+  /**
+   * Write a product, insert or update.
+   *
+   * TWO DEFECTS THIS CLOSES
+   *
+   * 1. The INSERT wrote a placeholder categoryId of all zeroes and relied on a
+   *    follow-up UPDATE to put the real one in. `products.category_id` is NOT
+   *    NULL with a NON-DEFERRABLE foreign key to `categories`, and no migration,
+   *    baseline or seed ever creates a category with that id (confirmed against
+   *    production: zero such rows). So the INSERT always raised a foreign-key
+   *    violation and POST /admin/products answered 500: a product could not be
+   *    created through the admin at all. The real category id is now written by
+   *    the INSERT itself, which is also what makes the row valid at every instant
+   *    rather than only after a second statement.
+   *
+   * 2. The conflict branch updated six columns. An operator editing a product
+   *    could change its slug, its descriptions, its subcategory, its compare-at
+   *    price, its stock status, its image, its features, its warranty, its
+   *    specifications or its active flag, be told "Product updated", and have
+   *    every one of those silently discarded. Everything the caller supplies is
+   *    now written.
+   *
+   * `stockQuantity` remains deliberately absent from the update: on-hand stock is
+   * owned by setStockQuantity, whose conditional UPDATE carries the
+   * reserved <= stock invariant in its WHERE clause. Rewriting it from a property
+   * save would reopen the read-then-write window that exists to close, and could
+   * trip the database constraint as a raw 500. The INSERT still sets the initial
+   * value when the product is created.
+   */
+  async save(product: ProductEntity, categoryId: string): Promise<void> {
     await db.insert(products).values({
       id: product.id,
       sku: product.sku,
       modelNumber: product.modelNumber,
       name: product.name,
       slug: product.slug,
-      categoryId: '00000000-0000-0000-0000-000000000000', // Generic Category placeholder
+      categoryId,
       categoryName: product.category,
       subcategory: product.subcategory,
       shortDescription: product.shortDescription,
@@ -102,19 +131,31 @@ export class DrizzleProductRepository implements IProductRepository {
       stockQuantity: product.stockQuantity,
     }).onConflictDoUpdate({
       target: products.id,
-      // stockQuantity is deliberately NOT updated here. On-hand stock is owned by
-      // setStockQuantity, whose conditional UPDATE carries the
-      // reserved <= stock invariant in its WHERE clause. Rewriting stock from a
-      // property save would reopen the read-then-write window this exists to
-      // close, and could trip the database constraint as a raw 500. The insert
-      // above still sets the initial value when the product is created.
+      // Every editable property, so an operator's save is not partly discarded.
+      // See the note above for why stockQuantity is the one exception.
       set: {
         sku: product.sku,
         modelNumber: product.modelNumber,
         name: product.name,
+        slug: product.slug,
+        categoryId,
         categoryName: product.category,
+        subcategory: product.subcategory,
+        shortDescription: product.shortDescription,
+        longDescription: product.longDescription,
         priceUgx: product.priceUgx,
+        compareAtPriceUgx: product.compareAtPriceUgx,
+        stockStatus: product.stockStatus,
+        imageUrl: product.imageUrl,
+        features: product.features,
+        warrantyPeriod: product.warrantyPeriod,
+        verificationEligible: product.verificationEligible,
+        active: product.active,
+        specifications: product.specifications,
         approvalStatus: product.approvalStatus,
+        isPreOrderEnabled: product.isPreOrderEnabled,
+        hasRetailPrice: product.hasRetailPrice,
+        hasImage: product.hasImage,
       }
     });
   }
@@ -379,8 +420,9 @@ export class DrizzleProductRepository implements IProductRepository {
   }
 
   async createProduct(product: ProductEntity, categoryId: string): Promise<void> {
-    await this.save(product);
-    await db.update(products).set({ categoryId }).where(eq(products.id, product.id));
+    // The real category goes in with the INSERT; there is no window in which the
+    // row names a category that does not exist.
+    await this.save(product, categoryId);
     await db.insert(productPrices).values({
       productId: product.id,
       retailPrice: product.priceUgx,
@@ -388,8 +430,7 @@ export class DrizzleProductRepository implements IProductRepository {
   }
 
   async updateProductProperties(product: ProductEntity, categoryId: string): Promise<void> {
-    await this.save(product);
-    await db.update(products).set({ categoryId }).where(eq(products.id, product.id));
+    await this.save(product, categoryId);
     const priceRow = await db.query.productPrices.findFirst({ where: eq(productPrices.productId, product.id) });
     if (priceRow) {
       await db.update(productPrices).set({ retailPrice: product.priceUgx }).where(eq(productPrices.productId, product.id));
