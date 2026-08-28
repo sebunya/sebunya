@@ -117,6 +117,15 @@ export interface IInventoryLedgerRepository {
   findReceipt(id: string): Promise<ReceiptRecord | null>;
   listReceipts(limit: number): Promise<ReceiptRecord[]>;
   updateReceiptLines(id: string, lines: Array<{ id?: string; productId: string | null; scannedCode: string | null; matchKind: 'EXISTING' | 'NEW' | 'AMBIGUOUS'; quantity: number; unitCostUgx: number | null; notes: string | null }>): Promise<ReceiptRecord | null>;
+  /**
+   * Take exclusive ownership of a DRAFT receipt before any stock moves.
+   *
+   * Returns false when somebody else already holds it. This is the whole
+   * protection against a double apply: reading the status and then moving stock
+   * is a read-then-write, and two operators (or one double-click on a plain
+   * HTML form) both passed it and both posted every line.
+   */
+  claimReceiptForApply(id: string, actorId: string): Promise<boolean>;
   markReceipt(id: string, status: 'APPLIED' | 'CANCELLED', actorId: string, lineMovements: Array<{ lineId: string; movementId: string }>): Promise<ReceiptRecord | null>;
 
   createCount(input: { countType: 'CYCLE' | 'FULL'; locationId: string | null; notes: string | null; createdBy: string; lines: Array<{ productId: string; systemQuantity: number; countedQuantity: number; reason: string | null }> }): Promise<CountRecord>;

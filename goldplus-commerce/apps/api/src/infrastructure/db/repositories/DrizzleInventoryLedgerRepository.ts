@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { products } from '../schema/products';
 import { batteryProfiles, inventoryMovements, stockCountLines, stockCounts, stockLocations, stockReceiptLines, stockReceipts } from '../schema/batteries';
@@ -164,10 +164,30 @@ export class DrizzleInventoryLedgerRepository implements IInventoryLedgerReposit
     return this.receiptById(id);
   }
 
+  /**
+   * Atomic claim: exactly one caller can move a given receipt's stock.
+   *
+   * `applied_by` doubles as the claim marker because the status CHECK allows
+   * only DRAFT, APPLIED and CANCELLED, so there is no intermediate state to move
+   * through without a migration. The row stays DRAFT until the movements are
+   * posted; a caller that crashes mid-apply leaves it claimed and therefore
+   * refused, which is the correct direction to fail on a stock ledger.
+   */
+  async claimReceiptForApply(id: string, actorId: string): Promise<boolean> {
+    const claimed = await db
+      .update(stockReceipts)
+      .set({ appliedBy: actorId, updatedAt: new Date() })
+      .where(and(eq(stockReceipts.id, id), eq(stockReceipts.status, 'DRAFT'), isNull(stockReceipts.appliedBy)))
+      .returning({ id: stockReceipts.id });
+    return claimed.length === 1;
+  }
+
   async markReceipt(id: string, status: 'APPLIED' | 'CANCELLED', actorId: string, lineMovements: Array<{ lineId: string; movementId: string }>) {
     await db.transaction(async (tx) => {
       for (const lm of lineMovements) await tx.update(stockReceiptLines).set({ movementId: lm.movementId }).where(eq(stockReceiptLines.id, lm.lineId));
-      await tx.update(stockReceipts).set(status === 'APPLIED' ? { status, appliedBy: actorId, appliedAt: new Date(), updatedAt: new Date() } : { status, cancelledBy: actorId, cancelledAt: new Date(), updatedAt: new Date() }).where(eq(stockReceipts.id, id));
+      // Conditional on DRAFT: a late duplicate matches nothing and changes
+      // nothing, rather than restamping a receipt that already settled.
+      await tx.update(stockReceipts).set(status === 'APPLIED' ? { status, appliedBy: actorId, appliedAt: new Date(), updatedAt: new Date() } : { status, cancelledBy: actorId, cancelledAt: new Date(), updatedAt: new Date() }).where(and(eq(stockReceipts.id, id), eq(stockReceipts.status, 'DRAFT')));
     });
     return this.receiptById(id);
   }

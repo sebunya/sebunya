@@ -178,6 +178,16 @@ export class InventoryLedgerUseCases {
     if (receipt.status !== 'DRAFT') throw unprocessable('RECEIPT_NOT_DRAFT', `The receipt is already ${receipt.status.toLowerCase()}.`);
     const blockers = receiptBlockers(receipt.lines.map((l) => ({ productId: l.productId, scannedCode: l.scannedCode, quantity: l.quantity, unitCostUgx: l.unitCostUgx, matchKind: l.matchKind })));
     if (blockers.length) throw unprocessable('RECEIPT_BLOCKED', blockers.join(' '), blockers);
+
+    // Claim it before ANY stock moves. Reading the status above and then posting
+    // movements is a read-then-write: a double-click on the plain HTML form, or
+    // two operators on the same draft, both passed that check and both posted
+    // every line, so a receipt of 20 units added 40 and the ledger disagreed
+    // with the shelf. Exactly one caller can win this.
+    if (!(await this.repo.claimReceiptForApply(id, actorId))) {
+      throw unprocessable('RECEIPT_NOT_DRAFT', 'This receipt is already being applied.');
+    }
+
     const location = receipt.locationId ? (await this.repo.listLocations()).find((l) => l.id === receipt.locationId) ?? null : await this.repo.defaultLocation();
     const lineMovements: Array<{ lineId: string; movementId: string }> = [];
     for (const line of receipt.lines) {

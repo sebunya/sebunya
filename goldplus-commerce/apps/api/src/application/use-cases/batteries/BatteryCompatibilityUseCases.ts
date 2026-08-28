@@ -110,12 +110,28 @@ export class BatteryCompatibilityUseCases {
     if (!changed.length) return before;
     const finalEvidence = write.evidenceStatus ?? before.evidenceStatus;
     if (finalEvidence === 'CONDITIONAL' && !((write.publicCondition ?? before.publicCondition) ?? '').trim()) throw unprocessable('CONDITION_REQUIRED', 'A conditional fit must state the customer-facing condition.');
-    // A material edit on a verified or live claim reopens it for review.
-    if (isMaterialEdit(changed) && (before.workflowStatus === 'READY' || before.workflowStatus === 'ACTIVE')) {
-      write.workflowStatus = 'DRAFT';
+    // A MATERIAL EDIT INVALIDATES THE VERIFICATION, WHATEVER THE CLAIM'S STATUS.
+    //
+    // This used to fire only for READY and ACTIVE claims, so an ARCHIVED claim
+    // kept its reviewedBy through a change of device or evidence. RESTORE decides
+    // between READY and DRAFT from exactly that field
+    // (CompatibilityWorkflow: `const verified = !!state.reviewedBy && ...`), so
+    // the archived claim came back READY and could be published, carrying one
+    // person's verification of a DIFFERENT device. That is the maker/checker rule
+    // defeated by a detour through the archive.
+    //
+    // The verification is cleared whenever there is one to clear. The workflow
+    // status is only reopened from READY or ACTIVE, so an archived claim stays
+    // archived: it simply comes back as a draft, needing a real second pair of
+    // eyes, which is what it should always have needed.
+    const hadVerification = !!(before.reviewedBy || before.verifiedBy || before.publishedBy);
+    if (isMaterialEdit(changed) && (hadVerification || before.workflowStatus === 'READY' || before.workflowStatus === 'ACTIVE')) {
+      if (before.workflowStatus === 'READY' || before.workflowStatus === 'ACTIVE') {
+        write.workflowStatus = 'DRAFT';
+        changed.push('workflowStatus');
+      }
       write.publishedBy = null; write.publishedAt = null; write.reviewedBy = null; write.reviewedAt = null; write.verifiedBy = null; write.verifiedAt = null;
       write.confidence = 'declared';
-      changed.push('workflowStatus');
     }
     const updated = await this.repo.update(id, write);
     await this.audit.execute({ actorId, action: 'BATTERY_COMPAT_UPDATED', entity: 'battery_compatibility', entityId: id, previousState: pick(before, changed), newState: pick(updated ?? before, changed) });
