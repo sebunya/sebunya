@@ -340,11 +340,55 @@ export class BatteryCatalogueUseCases {
     const result = transitionBattery(found.profile.lifecycleStatus, action, readiness);
     if (!result.ok) throw unprocessable(result.code, result.message, readiness.blockers);
     const next: BatteryLifecycleStatus = result.next;
+
+    // ARCHIVING RELEASES THE CODE, AND COMING BACK MUST RE-CLAIM IT.
+    //
+    // `aliasOwners` treats an archived battery as owning nothing
+    // (lifecycle_status <> 'ARCHIVED'), but the database's uniqueness rule is the
+    // partial index battery_aliases_active_idx, which is on `is_active` alone and
+    // knows nothing about lifecycle. Archiving never touched the alias rows, so
+    // the two disagreed: the use case reported the code free, the INSERT then
+    // violated the index, and the operator got a raw 500 from Quick Add or every
+    // row of a re-import marked FAILED with constraint text.
+    //
+    // Deactivating the aliases here makes the database agree with the rule the
+    // application already states.
+    const aliases = await this.repo.aliasesFor(productId);
+
+    if (action === 'RESTORE' || action === 'REOPEN') {
+      // Coming back is a fresh claim, not a right. Another battery may have taken
+      // the canonical code or an alias while this one was away, and reactivating
+      // blindly would trip the same index from the other direction.
+      const wanted = [
+        found.profile.canonicalCodeNormalised,
+        ...aliases.filter((a) => !a.isActive).map((a) => a.aliasNormalised),
+      ].filter(Boolean);
+      const owners = await this.repo.aliasOwners(wanted);
+      const taken = owners.find((o) => o.productId !== productId);
+      if (taken) {
+        throw conflict(
+          'ALIAS_CONFLICT',
+          `"${taken.canonicalCode}" now belongs to another battery, so this one cannot be restored under the same code. Change one of them first.`,
+          owners,
+        );
+      }
+    }
+
     const patch: Partial<BatteryProfileRecord> = { lifecycleStatus: next };
     if (next === 'ACTIVE') { patch.publishedBy = actorId; patch.publishedAt = new Date(); patch.archivedAt = null; }
     if (next === 'ARCHIVED') patch.archivedAt = new Date();
     if (action === 'RESTORE' || action === 'REOPEN') { patch.archivedAt = null; }
     await this.repo.updateProfile(productId, patch, actorId);
+
+    if (next === 'ARCHIVED') {
+      for (const alias of aliases.filter((a) => a.isActive)) {
+        await this.repo.setAliasActive(alias.id, false);
+      }
+    } else if (action === 'RESTORE' || action === 'REOPEN') {
+      for (const alias of aliases.filter((a) => !a.isActive)) {
+        await this.repo.setAliasActive(alias.id, true);
+      }
+    }
     await this.repo.setProductPublication(productId, next === 'ACTIVE');
     await this.audit.execute({ actorId, action: `BATTERY_${action}`, entity: 'battery', entityId: productId, previousState: { lifecycleStatus: found.profile.lifecycleStatus }, newState: { lifecycleStatus: next, reason } });
     return this.repo.findByProductId(productId);
