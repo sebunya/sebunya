@@ -1,4 +1,5 @@
 ---
+import { safeReturnTo } from '../lib/safeReturnTo';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
@@ -19,7 +20,7 @@ let notConfigured = false;
 
 const returnToParam = Astro.url.searchParams.get('returnTo');
 const returnTo =
-  returnToParam && returnToParam.startsWith('/') && !returnToParam.startsWith('//') ? returnToParam : '/account';
+  safeReturnTo(returnToParam);
 
 // 0087 referrals: ?ref=CODE arrives from a shared invite link and rides the
 // form through registration. An invalid code never blocks the signup — the API

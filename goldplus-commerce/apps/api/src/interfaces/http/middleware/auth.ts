@@ -1,7 +1,7 @@
 import { Context, Next } from 'hono';
 import { ApiResponse } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
-import { isInvalidatedByCutoff } from '../../../domain/identity/SessionPolicy';
+import { bearerTokenFrom, resolveLiveSession } from './liveSession';
 
 type AdminContext = Context<{
   Variables: {
@@ -15,27 +15,19 @@ export const authMiddleware = async (c: AdminContext, next: Next) => {
     return c.json(res, status);
   };
 
-  const header = c.req.header('Authorization');
-  const token = header && header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : null;
+  const token = bearerTokenFrom(c.req.header('Authorization'));
   if (!token) return fail('UNAUTHENTICATED', 'Missing or invalid authentication token.');
 
-  const registry = Registry.getInstance();
-  const verified = await registry.tokenSigner.verify(token);
-  if (!verified) return fail('UNAUTHENTICATED', 'Invalid or expired session.');
-
-  const user = await registry.userRepo.findById(verified.subject);
-  if (!user) return fail('UNAUTHENTICATED', 'User no longer exists.');
-  if (!user.isActive) return fail('ACCOUNT_DISABLED', 'This account has been disabled.', 403);
-
-  // Slice 3B: immediate hard revocation. A password change, disable, or admin
-  // "log out everywhere" sets sessions_invalidated_after; any token issued at or
-  // before that instant is dead now, not after its 15-minute TTL. This is why
-  // the admin path — which already loads the user — is the right place to check.
-  if (verified.issuedAt && isInvalidatedByCutoff(verified.issuedAt, user.sessionsInvalidatedAfter)) {
-    return fail('UNAUTHENTICATED', 'This session has been revoked. Please sign in again.');
+  // The live-session rule (account exists, is enabled, and its token predates no
+  // revocation cutoff) is shared with the customer middleware and bearerUser, so
+  // the three cannot drift apart. Admin additionally requires permissions.
+  const session = await resolveLiveSession(token);
+  if (!session.ok) {
+    return fail(session.code, session.message, session.code === 'ACCOUNT_DISABLED' ? 403 : 401);
   }
+  const user = session.user;
 
-  const permissions = await registry.roleRepo.findPermissionsForUser(user.id);
+  const permissions = await Registry.getInstance().roleRepo.findPermissionsForUser(user.id);
   if (permissions.length === 0) {
     return fail('FORBIDDEN', 'This account does not have admin access.', 403);
   }

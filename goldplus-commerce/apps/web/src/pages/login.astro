@@ -1,4 +1,5 @@
 ---
+import { safeReturnTo } from '../lib/safeReturnTo';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
@@ -65,7 +66,7 @@ if (Astro.request.method === 'POST') {
           }
         }
         const returnTo = Astro.url.searchParams.get('returnTo');
-        const safe = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/account';
+        const safe = safeReturnTo(returnTo);
         return Astro.redirect(safe, 303);
       }
 

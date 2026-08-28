@@ -9,6 +9,7 @@ import { clientIp } from '../clientAddress';
 import { SESSION_LIFETIMES } from '../../../domain/identity/SessionPolicy';
 
 import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
+import { bearerTokenFrom, resolveLiveSession } from '../middleware/liveSession';
 
 const routes = new Hono();
 
@@ -39,12 +40,17 @@ async function issueSessionSafely(
 }
 
 /** Resolve the authenticated user from a bearer token, or null. */
+/**
+ * The caller behind a bearer token, or null.
+ *
+ * This used to stop at the signature, so /logout-all, /sessions and every
+ * /mfa/* route accepted a token belonging to a disabled account, a deleted user,
+ * or a session already revoked by a password reset. It now applies the same
+ * live-session rule as the admin and customer middleware.
+ */
 async function bearerUser(c: Context): Promise<{ id: string; email: string } | null> {
-  const header = c.req.header('Authorization');
-  const token = header && header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : null;
-  if (!token) return null;
-  const verified = await Registry.getInstance().tokenSigner.verify(token);
-  return verified ? { id: verified.subject, email: verified.email } : null;
+  const session = await resolveLiveSession(bearerTokenFrom(c.req.header('Authorization')));
+  return session.ok ? { id: session.user.id, email: session.user.email } : null;
 }
 
 routes.post('/login', async (c) => {

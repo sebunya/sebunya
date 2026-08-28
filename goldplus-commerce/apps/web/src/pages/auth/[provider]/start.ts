@@ -1,3 +1,4 @@
+import { safeReturnTo } from '../../../lib/safeReturnTo';
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../../lib/api';
 
@@ -15,12 +16,6 @@ import { apiBase } from '../../../lib/api';
 
 const FLOW_COOKIE = 'gp_oauth_flow';
 const FLOW_TTL_SECONDS = 600;
-
-/** Only local paths: an open redirect here would be a phishing gift. */
-const safeReturnTo = (value: string | null): string => {
-  const candidate = (value ?? '/account').trim();
-  return candidate.startsWith('/') && !candidate.startsWith('//') ? candidate : '/account';
-};
 
 export const GET: APIRoute = async ({ params, url, request }) => {
   const provider = String(params.provider ?? '');

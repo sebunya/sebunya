@@ -1,3 +1,4 @@
+import { safeReturnTo } from '../../../lib/safeReturnTo';
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../../lib/api';
 import { sessionCookieValue } from '../../../lib/session';
@@ -28,10 +29,6 @@ const readFlowCookie = (request: Request): { sealedFlow: string; returnTo: strin
   }
 };
 
-const safeReturnTo = (value: string | undefined): string => {
-  const candidate = (value ?? '/account').trim();
-  return candidate.startsWith('/') && !candidate.startsWith('//') ? candidate : '/account';
-};
 
 const handle: APIRoute = async ({ params, request, url }) => {
   const provider = String(params.provider ?? '');
