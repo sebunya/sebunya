@@ -78,6 +78,7 @@ import { DrizzleRecommendationRuleRepository } from './db/repositories/DrizzleRe
 import { RecommendationRuleConflictService } from '../application/recommendations/RecommendationRuleConflictService';
 import { RecommendationRuleApplicationService } from '../application/recommendations/RecommendationRuleApplicationService';
 import { DrizzleRecommendationAnalyticsRepository } from './db/repositories/DrizzleRecommendationAnalyticsRepository';
+import { providerCallbackUrl } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
 import { DrizzleExperienceProfileRepository } from './db/repositories/DrizzleExperienceProfileRepository';
 import { DrizzleSearchAffinityReader } from './db/repositories/DrizzleSearchAffinityReader';
 import { DrizzleRecommendationCommercialRepository } from './db/repositories/DrizzleRecommendationCommercialRepository';
@@ -2069,7 +2070,8 @@ export class Registry {
         ).status,
     },
     {
-      callbackUrl: process.env.PESAPAL_CALLBACK_URL ?? '',
+      // The provider's destination, which is our API, not the storefront page.
+      callbackUrl: providerCallbackUrl(),
       cancellationUrl: process.env.PESAPAL_CANCELLATION_URL ?? '',
       ipnId: process.env.PESAPAL_IPN_ID ?? '',
       ipnUrl: process.env.PESAPAL_IPN_URL ?? '',

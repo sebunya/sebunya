@@ -14,6 +14,25 @@ export interface StartPesaPalPaymentOutput {
   merchantReference: string;
 }
 
+/**
+ * The provider's return destination: our API, never the storefront.
+ *
+ * Derived from PUBLIC_API_BASE_URL when unset, so this works without a new
+ * environment variable, and refuses a value that points at the storefront page,
+ * which is the misconfiguration this replaced.
+ */
+export const PESAPAL_CALLBACK_PATH = '/commerce/payments/pesapal/callback';
+
+export function providerCallbackUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const explicit = (env.PESAPAL_PROVIDER_CALLBACK_URL ?? '').trim();
+  if (explicit) return explicit;
+
+  const apiOrigin = (env.PUBLIC_API_BASE_URL ?? '').trim().replace(/\/+$/, '');
+  if (apiOrigin) return `${apiOrigin}${PESAPAL_CALLBACK_PATH}`;
+
+  return `http://localhost:3000${PESAPAL_CALLBACK_PATH}`;
+}
+
 export class StartPesaPalPaymentUseCase {
   private paymentRepo: IPesaPalPaymentRepository;
   private orderRepo: IOrderRepository;
@@ -103,7 +122,28 @@ export class StartPesaPalPaymentUseCase {
       throw new Error('PESAPAL_CONFIG_MISSING: The server-side PesaPal IPN notification identifier (PESAPAL_IPN_ID) is not configured.');
     }
 
-    const callbackUrl = process.env.PESAPAL_CALLBACK_URL || 'http://localhost:3000/checkout/pesapal/callback';
+    // WHERE THE PROVIDER SENDS THE CUSTOMER BACK.
+    //
+    // This is NOT the storefront page. PesaPal must return to the API route
+    // GET /commerce/payments/pesapal/callback, which settles the payment and
+    // only then redirects to the storefront with the parameters that page reads.
+    //
+    // One variable used to serve both roles, and production set it to the
+    // storefront page. So PesaPal sent the paying customer straight there,
+    // carrying OrderTrackingId and OrderMerchantReference, while the page reads
+    // `status` and `reference`. Both were absent, so every payment — including
+    // every SUCCESSFUL one — rendered "We could not confirm your payment.
+    // Please do not pay again until we have checked", with no order number, and
+    // the basket cookie was left in place so the next checkout re-added the
+    // items just paid for. Settlement happened later via the IPN or the poller,
+    // which is why the money arrived while the customer was being alarmed.
+    //
+    // Pointing the single variable at the API instead only moved the fault: the
+    // API would redirect to itself. The two destinations are genuinely
+    // different things and now have their own values. The default is derived
+    // from the API's own public origin so a deployment that never sets it still
+    // returns to the right place.
+    const callbackUrl = providerCallbackUrl();
     const cancellationUrl = process.env.PESAPAL_CANCELLATION_URL || 'http://localhost:3000/checkout/pesapal/cancelled';
 
     const pesapalResponse = await this.pesapalClient.submitOrderRequest({
