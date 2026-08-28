@@ -858,3 +858,41 @@ review, and the whole-repo bad-pattern sweep.
 **Why it is wrong:** Demand figures are presented to the operator as anonymous counts of what people looked for; doubling device selections misstates them and skews FEATURED_THEN_COVERAGE ordering.
 
 **Proposed fix:** Fetch the device once: reuse the line-68 result to set the cookie after Promise.all (or move the cookie write below and drop the line-44 fetch). Test: a page-level test asserting one call to /finder/devices per render, or make device() record only when a query flag is set by the rendering fetch.
+
+## Sweep two (2026-08-28): the seventeen subsystems the first pass never reached
+
+The parallel finder agents for these slices all terminated on a session limit,
+so the sweep was done by hand: mechanical checks for each known bug class,
+every hit read in context. All fixes ship with a guard in
+`tests/unit/SweepTwoFindings.test.ts`.
+
+**Verified clean:** every admin mutating route carries a permission; no Drizzle
+array bound as one parameter; no `sql.raw` with user input; no server-side
+hairpin through the public edge; every scheduler body catches its own errors;
+the analytics explorer is catalogue-driven; inline JSON scripts escape angle
+brackets; public product, search and recommendation limits are capped; JSON-LD
+ratings come only from real reviews; the webhook path verifies a timing-safe
+signature; storefront JSON parses sit inside graceful try/catch; the EAT time
+helpers are correct at the day boundary.
+
+**Fixed:**
+- Five repositories interpolated search text straight into ILIKE; `%` matched
+  everything. One `likeContains` helper, used everywhere.
+- Three admin CSV exports had no formula-injection escaping. The domain's
+  `csvSafeCell` existed for coupon exports; every export now goes through it.
+- Uploads were typed by the client-declared MIME; now by magic bytes.
+- Four external POSTs (IndexNow, Search Console x2, Google service-account
+  token, canary transport) had no timeout.
+- The public recently-viewed limit was unbounded.
+- Telemetry dispatch signed with a baked-in default secret when unconfigured.
+- The service worker and robots.txt excluded /account but not /orders or
+  /track-order, which show a customer's name, phone and address.
+- Telemetry ingest never consulted consent_current_state, so a withdrawn
+  analytics consent changed nothing and the "blocked by consent" count was
+  never fed.
+
+**Judged not defects:** the schedulers run on both API replicas, but each is
+idempotent (outbox claims, settlement, loyalty sweep keys), so the cost is
+duplicated work, not duplicated effects. Storefront POST pages that do not call
+`checkRequestOrigin` are protected by SameSite=Lax session cookies; the checkout
+and cart pages, which mint identities, do check it.

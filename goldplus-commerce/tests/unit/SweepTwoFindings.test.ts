@@ -73,3 +73,26 @@ describe('bounded inputs and bounded waits', () => {
     });
   }
 });
+
+describe('telemetry respects a withdrawn analytics consent', () => {
+  it('asks the consent state before enriching or queueing, and records the block', () => {
+    const src = read('apps/api/src/application/use-cases/telemetry/TrackBrowserTelemetryEventUseCase.ts');
+    const gate = src.indexOf('consentRepo');
+    expect(gate).toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(src.indexOf('identityRepo\n'));
+    expect(gate).toBeLessThan(src.indexOf('.insert(outboxEvents)'));
+    expect(src).toMatch(/consent\.analyticsGranted === false/);
+    expect(src).toMatch(/action: 'CONSENT_BLOCKED'/);
+  });
+
+  it('telemetry dispatch refuses to sign with a default secret', () => {
+    const src = read('apps/api/src/infrastructure/telemetry/TelemetryDispatchService.ts');
+    expect(src).not.toMatch(/gtm-default-secret/);
+    expect(src).toMatch(/GTM_NOT_CONFIGURED/);
+  });
+
+  it('order pages are excluded from the PWA cache and from crawlers', () => {
+    expect(read('apps/web/public/sw.js')).toMatch(/'\/orders',\s*\n\s*'\/track-order',/);
+    expect(read('apps/web/src/pages/robots.txt.ts')).toMatch(/Disallow: \/orders/);
+  });
+});

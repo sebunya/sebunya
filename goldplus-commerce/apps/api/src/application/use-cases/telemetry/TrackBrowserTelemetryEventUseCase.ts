@@ -1,10 +1,13 @@
 import { db } from '../../../infrastructure/db/client';
 import { outboxEvents } from '../../../infrastructure/db/schema/system';
 import { DrizzleIdentityRepository } from '../../../infrastructure/db/repositories/DrizzleIdentityRepository';
+import { DrizzleConsentRepository } from '../../../infrastructure/measurement/DrizzleConsentRepository';
+import { measurementAuditLogs } from '../../../infrastructure/db/schema/measurement-advanced';
 import { logger } from '../../../infrastructure/logging/logger';
 import type { CanonicalTelemetryEvent, BrowserTelemetryEvent } from '@goldplus/shared';
 
 const identityRepo = new DrizzleIdentityRepository();
+const consentRepo = new DrizzleConsentRepository();
 const EVENT_TYPE_TELEMETRY = 'TELEMETRY_DISPATCH';
 
 export class TrackBrowserTelemetryEventUseCase {
@@ -23,8 +26,25 @@ export class TrackBrowserTelemetryEventUseCase {
       },
     };
 
-    // Fire-and-forget identity graph enrichment
+    // CONSENT FIRST. A visitor who withdrew analytics consent has a row in
+    // consent_current_state saying so; this use case never asked, so their
+    // events were enriched into the identity graph and queued for dispatch
+    // exactly like everyone else's. The control tower's "blocked by consent"
+    // count existed with nothing feeding it. A visitor with no recorded
+    // decision is not blocked here: the ads dispatch is gated downstream.
     const fpClientId = event.user_data?.fp_client_id;
+    const { row: consent } = await consentRepo
+      .getCurrentState(fpClientId, event.user_data?.user_id)
+      .catch(() => ({ row: null }));
+    if (consent && consent.analyticsGranted === false) {
+      await db
+        .insert(measurementAuditLogs)
+        .values({ entityType: 'telemetry_event', entityId: String(event.event_id ?? 'unknown').slice(0, 255), action: 'CONSENT_BLOCKED', changes: { event_name: event.event_name } })
+        .catch((err) => logger.warn({ err }, '[Telemetry] consent-block audit failed'));
+      return;
+    }
+
+    // Fire-and-forget identity graph enrichment
     if (fpClientId) {
       identityRepo
         .upsertByFpClientId(fpClientId, {
