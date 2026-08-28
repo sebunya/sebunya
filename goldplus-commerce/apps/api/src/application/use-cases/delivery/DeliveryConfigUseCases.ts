@@ -94,15 +94,46 @@ export class DraftConfigVersionUseCase {
       return fail('INVALID_DRAFT', problems[0].message, problems);
     }
 
+    // A VERSION IS A COMPLETE SNAPSHOT, not a patch.
+    //
+    // The reader resolves the live configuration as registry defaults overlaid
+    // with the rows of the ONE published version. A version holding a single key
+    // therefore does not mean "change this key", it means "these are all the
+    // values", and publishing it drops every other live value back to its
+    // registry default.
+    //
+    // The preview did not show that: it computed { ...live, ...draft } and
+    // reported the merged result, so an operator changing one cutoff saw
+    // everything still in place, confirmed, and silently lost the speed, the
+    // rider cost, the handling minutes, the margin, the minimum fee and the
+    // rider band. Under docs/delivery/CONTRACT.md that is the fee AND the
+    // delivery window for every metro quote.
+    //
+    // Carrying the live values forward makes the version match what the preview
+    // promised, and keeps each carried value's own origin and sample size rather
+    // than restamping somebody else's number as this operator's.
+    const publishedNow = await this.repo.publishedVersion();
+    const carried = publishedNow ? await this.repo.valueRowsForVersion(publishedNow.id) : [];
+    const supplied = new Map(
+      entries.map(([key, value]) => [
+        key,
+        {
+          key,
+          value,
+          origin: input.origin ?? 'human',
+          sampleSize: input.sampleSizes?.[key] ?? null,
+        } as ConfigValueInput,
+      ]),
+    );
+    const snapshot: ConfigValueInput[] = [
+      ...carried.filter((row) => !supplied.has(row.key)),
+      ...supplied.values(),
+    ];
+
     const version = await this.repo.createDraft({
       createdBy: input.actorId,
       reason: input.reason,
-      values: entries.map(([key, value]) => ({
-        key,
-        value,
-        origin: input.origin ?? 'human',
-        sampleSize: input.sampleSizes?.[key] ?? null,
-      })),
+      values: snapshot,
     });
 
     await new CreateAuditLogUseCase(this.audit).execute({
