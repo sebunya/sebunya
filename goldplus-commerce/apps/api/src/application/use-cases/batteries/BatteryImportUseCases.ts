@@ -49,6 +49,20 @@ const ACCEPTED_MIME = new Set([
   'application/octet-stream',
 ]);
 
+/**
+ * Whether a row carries anything apply could actually use.
+ *
+ * `hold` and `overridden` are bookkeeping the dry run adds; a row whose only
+ * keys are those was never successfully read.
+ */
+function hasUsableValue(row: { normalizedData: Record<string, unknown> | null }): boolean {
+  const data = row.normalizedData;
+  if (!data) return false;
+  return Object.entries(data).some(
+    ([key, value]) => key !== 'hold' && key !== 'overridden' && value !== null && value !== undefined,
+  );
+}
+
 export class BatteryImportUseCases {
   constructor(
     private readonly repo: IBatteryImportRepository,
@@ -244,11 +258,35 @@ export class BatteryImportUseCases {
     const session = await this.repo.find(input.id);
     if (!session) throw notFound('Import');
     if (!['READY_FOR_APPROVAL', 'MAPPED'].includes(session.status)) throw unprocessable('INVALID_STATE', 'Rows can be resolved after the dry run and before approval.');
-    if (input.resolution === 'INCLUDE' && input.override) {
-      // A compound row may be included only with an explicit single canonical code chosen by the operator.
-      const code = typeof input.override.canonicalCode === 'string' ? input.override.canonicalCode.trim() : '';
-      if (session.importType === 'BATTERY_CATALOGUE' && !code) throw invalid('To include a held battery row, state the single canonical code it becomes.');
+    const row = (await this.repo.rows(input.id)).find((r) => r.id === input.rowId);
+    if (!row) throw notFound('Import row');
+    if (input.resolution === 'INCLUDE') {
+      // THE GUARD RUNS WHETHER OR NOT AN OVERRIDE WAS SENT.
+      //
+      // It used to be conditional on `input.override` being present, so
+      // including a held row with no override at all skipped every check. The
+      // admin page offers "Include it (I have resolved it)" for every held row
+      // but only shows the canonical-code box for BATTERY_CATALOGUE, so that is
+      // the ordinary path, not an unusual one.
+      const code = typeof input.override?.canonicalCode === 'string' ? input.override.canonicalCode.trim() : '';
       if (code && (/\//.test(code) || /\bAND\b/i.test(code))) throw invalid('The canonical code must be one battery reference.');
+
+      if (row.status === 'HELD') {
+        if (session.importType === 'BATTERY_CATALOGUE') {
+          // A compound row becomes one battery only when a person says which.
+          if (!code) throw invalid('To include a held battery row, state the single canonical code it becomes.');
+        } else if (!hasUsableValue(row)) {
+          // A COMPATIBILITY, STOCK or PRICE row that was held could not be read
+          // at all: the dry run stored no normalised value for it. Including it
+          // sent nothing to apply, which went on to create a brand and a device
+          // literally named "undefined" before failing. An override cannot
+          // supply what the row never had.
+          throw unprocessable(
+            'ROW_NOT_REPAIRABLE',
+            'This row was held because it could not be read, and it cannot be repaired here. Correct it in the spreadsheet and upload the file again.',
+          );
+        }
+      }
     }
     if ((input.resolution === 'EXCLUDE' || input.resolution === 'HOLD') && !(input.note ?? '').trim()) throw invalid('A note is required when excluding or holding a row.');
     const result = await this.repo.resolveRow(input.id, input.rowId, input.resolution, input.note, input.override, input.actorId);
