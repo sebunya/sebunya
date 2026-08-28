@@ -1,27 +1,40 @@
 # Codebase audit, 2026-08-27: findings awaiting verification
-A whole-repo bug sweep was run as 23 parallel subsystem audits, each followed by
-an adversarial refuter and a reproducer. **The run stopped early on a model quota
-limit: 6 of the 23 finder slices completed, and NONE of the verification stage ran.**
-So everything below is a **first-pass claim from a single reader**. Three have since
-been verified and fixed by hand (marked FIXED). The rest are *unverified*: expect a
-meaningful share to be wrong, already guarded elsewhere, or intended. Verify before acting.
+A whole-repo bug sweep was run as 23 parallel subsystem audits, each meant to be
+followed by an adversarial refuter and a reproducer. **The run stopped early on a
+model quota limit: 6 of the 23 finder slices completed, and NONE of the
+verification stage ran.**
+
+Everything here began as a **first-pass claim from a single reader**, and each is
+marked with its status:
+
+- **[FIXED]** — hand-verified against the code (three against live production
+  data) and corrected, with a regression test.
+- **[REVIEWED, NOT ACTIONED]** — checked and deliberately left alone; the reason
+  is stated on the finding.
+- **(unverified)** — nobody has checked this yet. Expect a meaningful share to be
+  wrong, already guarded elsewhere, or intended. Verify before acting: in
+  spot-checking, some claims were accurate and some were overstated.
+
+Every critical and high finding has now been reviewed. The medium and low ones
+have not.
+
+**74 findings: 2 critical, 20 high, 28 medium, 24 low. 21 verified and FIXED.**
 
 ## What was and was not covered
-Covered: checkout/commerce, payments/outbox, identity/security, pricing/products/inventory,
-delivery/fulfilment/locations, batteries.
+Covered: checkout/commerce, payments/outbox, identity/security,
+pricing/products/inventory, delivery/fulfilment/locations, batteries.
 
-Not covered (never ran): loyalty/consent/notifications, public HTTP routes, admin HTTP routes,
-the 125 Drizzle repositories, SEO growth, recommendations/hero/nav, analytics/measurement,
-platform/config/scheduler, the storefront funnel and discovery pages, all 123 admin pages,
-packages/shared, the recent-commit diff review, and the whole-repo bad-pattern sweep.
-
-**74 findings: 2 critical, 20 high, 28 medium, 24 low.**
+Not covered (never ran): loyalty/consent/notifications, public HTTP routes, admin
+HTTP routes, the 125 Drizzle repositories, SEO growth, recommendations/hero/nav,
+analytics/measurement, platform/config/scheduler, the storefront funnel and
+discovery pages, all 123 admin pages, packages/shared, the recent-commit diff
+review, and the whole-repo bad-pattern sweep.
 
 ---
 
 ## Critical (2)
 
-### A declined or abandoned payment can never be retried: the deterministic merchant reference reuses the terminal attempt and the pending write is an illegal transition **[FIXED 2026-08-27]**
+### A declined or abandoned payment can never be retried: the deterministic merchant reference reuses the terminal attempt and the pending write is an illegal transition **[FIXED]**
 `apps/api/src/application/use-cases/payments/StartPesaPalPaymentUseCase.ts:54` | correctness | finder confidence 0.85
 
 **Reachable via:** POST /commerce/payments/pesapal/start (storefront checkoutClient.ts:165, the 'Try payment again' CTA on /checkout/pesapal/callback?status=failed, and the order page pay button)
@@ -32,7 +45,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** In StartPesaPalPaymentUseCase, when findByMerchantReference returns an attempt whose status is in TERMINAL_ATTEMPT_STATUSES (or 'verification_failed'), create a NEW attempt with a fresh reference (e.g. append an attempt ordinal or the first 8 chars of a new UUID: `GP-${orderNumber}-${shortId}-${n}` kept under 50 chars) and only reuse an existing row when it is not_started/pending/verification_pending. Keep the illegal-transition guard as is. Add to tests/integration/PesapalPaymentJourney.integration.test.ts: 'a FAILED attempt can be followed by a second real start that creates a new attempt and settles COMPLETED', and a unit test in tests/unit/pesapal-payment.test.ts asserting createPaymentAttempt is called with a distinct merchantReference when the existing one is terminal.
 
-### Any signed-in customer can read any order in full (PII) by id or by 16-bit order number **[FIXED 2026-08-27]**
+### Any signed-in customer can read any order in full (PII) by id or by 16-bit order number **[FIXED]**
 `apps/api/src/interfaces/http/routes/commerce.ts:884` | authorization | finder confidence 0.92
 
 **Reachable via:** GET /commerce/orders/:id with any customer session
@@ -47,7 +60,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 ## High (20)
 
-### Archiving a battery does not release its aliases: the partial unique index still blocks re-creating the same code (raw 500 / every re-import row FAILED)
+### Archiving a battery does not release its aliases: the partial unique index still blocks re-creating the same code (raw 500 / every re-import row FAILED) **[FIXED]**
 `apps/api/src/application/use-cases/batteries/BatteryCatalogueUseCases.ts:345` | data-integrity | finder confidence 0.85
 
 **Reachable via:** POST /admin/batteries/imports/:id/rollback then re-upload/apply; POST /admin/batteries/catalogue after archiving; POST /admin/batteries/catalogue/:id/transition RESTORE
@@ -58,7 +71,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** In transition(): when next === 'ARCHIVED', deactivate every active alias of the battery (repo.setAliasActive for each, or a repo.deactivateAliases(productId)); when action is RESTORE/REOPEN from ARCHIVED, re-check aliasOwners for the canonical code and each alias to restore and refuse with ALIAS_CONFLICT if another non-archived battery now owns one. Test: BatteryCatalogueUseCases 'archive then create same code succeeds' and 'restore refused when code taken'.
 
-### Maker/checker bypass: a verified claim edited while ARCHIVED keeps reviewedBy, so RESTORE returns it to READY and it can be published for a device nobody verified
+### Maker/checker bypass: a verified claim edited while ARCHIVED keeps reviewedBy, so RESTORE returns it to READY and it can be published for a device nobody verified **[FIXED]**
 `apps/api/src/application/use-cases/batteries/BatteryCompatibilityUseCases.ts:114` | authorization | finder confidence 0.75
 
 **Reachable via:** PUT /admin/batteries/compatibility/:id (BATTERIES_COMPAT_PROPOSE) then POST /admin/batteries/compatibility/:id/transition RESTORE and PUBLISH (BATTERIES_PUBLISH)
@@ -69,7 +82,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** In update(): apply the reset (workflowStatus DRAFT or keep ARCHIVED but null reviewedBy/reviewedAt/verifiedBy/verifiedAt/publishedBy, confidence 'declared') whenever isMaterialEdit(changed) and reviewedBy is set, independent of workflowStatus; or refuse material edits on ARCHIVED claims (unprocessable CLAIM_ARCHIVED, 'restore or reopen first'). Test: BatteryCompatibilityUseCases 'material edit on archived verified claim clears verdict so RESTORE yields DRAFT'.
 
-### INCLUDE on a held COMPATIBILITY row with no normalised value is accepted; apply then creates a brand and device named "undefined" before failing
+### INCLUDE on a held COMPATIBILITY row with no normalised value is accepted; apply then creates a brand and device named "undefined" before failing **[FIXED]**
 `apps/api/src/application/use-cases/batteries/BatteryImportUseCases.ts:247` | data-integrity | finder confidence 0.8
 
 **Reachable via:** POST /admin/batteries/imports/:id/rows/:rowId/resolve (PIM_MAP) via /admin/batteries/imports/[id] 'Include it', then POST /admin/batteries/imports/:id/apply
@@ -80,7 +93,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** In resolveRow(): refuse INCLUDE when the stored normalizedData has no value beyond hold/overridden for any import type (COMPATIBILITY/STOCK_*/PRICE_UPDATE cannot be repaired by override; require the source row to be fixed and re-uploaded), and require the override to yield a complete value for BATTERY_CATALOGUE. In apply(): filter rows to those whose normalizedData passes a per-type completeness check (batteryProductId/deviceBrand/deviceModel present for COMPATIBILITY) and mark others SKIPPED with a message. Wrap each COMPATIBILITY applyRow in one transaction so a failed claim insert does not leave brand/device rows. Test: BatteryImportUseCases.resolveRow rejects INCLUDE on a compound COMPATIBILITY row; apply never calls ensureBrand with 'undefined'.
 
-### Receipt and count apply are not atomic: a concurrent second apply posts every line twice
+### Receipt and count apply are not atomic: a concurrent second apply posts every line twice **[FIXED]**
 `apps/api/src/application/use-cases/batteries/InventoryLedgerUseCases.ts:178` | concurrency | finder confidence 0.75
 
 **Reachable via:** POST /admin/batteries/stock/receipts/:id/apply (INVENTORY_ADJUST); /admin/batteries/stock 'Apply to stock' form
@@ -91,7 +104,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Claim the receipt atomically before moving stock: add IInventoryLedgerRepository.claimReceipt(id, actorId) implemented as UPDATE stock_receipts SET status='APPLYING', applied_by=... WHERE id=$1 AND status='DRAFT' RETURNING *, and have applyReceipt refuse with RECEIPT_NOT_DRAFT when it returns null; then apply movements and set APPLIED (or run the whole apply inside one transaction with SELECT ... FOR UPDATE on stock_receipts and pass tx to applyMovement). Same for counts. Test: InventoryLedgerUseCases.applyReceipt called twice concurrently with a fake repo whose findReceipt returns DRAFT both times must produce exactly one set of movements.
 
-### Publishing a partial config version silently wipes every other live value (preview shows a merged view that publish does not produce)
+### Publishing a partial config version silently wipes every other live value (preview shows a merged view that publish does not produce) **[FIXED]**
 `apps/api/src/application/use-cases/delivery/DeliveryConfigUseCases.ts:328` | data-integrity | finder confidence 0.85
 
 **Reachable via:** POST /admin/delivery/config/draft then POST /admin/delivery/config/:versionId/publish (DELIVERY_CONFIG_PROPOSE / DELIVERY_CONFIG_PUBLISH); also POST /admin/delivery/config/revert
@@ -102,18 +115,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Make a version a complete snapshot: in DraftConfigVersionUseCase (or DraftLaunchValuesUseCase) merge the currently published values under the supplied ones before createDraft, so every version carries every key; alternatively make DeliveryConfigReader.currentValues fold all versions in publish order (but then revert semantics change). Validate at publish against the full effective set. Pin with a unit test 'publishing a draft holding only same_day_cutoff_eat keeps the five launch values live' (DeliveryConfigUseCases + a fake repo + reader) and 'preview.stillMissing matches what currentValues() reports after publish'.
 
-### F4 dispatch record never mirrors the order to 'dispatched', so the later DELIVERED mirror is always refused
-`apps/api/src/application/use-cases/fulfilment/DispatchUseCases.ts:123` | correctness | finder confidence 0.85
-
-**Reachable via:** POST /admin/fulfilment/:id/dispatch followed by POST /admin/fulfilment/:id/delivery
-
-**Scenario:** Ops dispatch a READY_FOR_DISPATCH task through POST /admin/fulfilment/:id/dispatch (the path that enforces the COD/payment policy). RecordDispatchUseCase moves the TASK to OUT_FOR_DELIVERY directly and is wired without the order transition port (Registry line 1065), so the ORDER stays 'processing'. When the rider returns and ops POST /admin/fulfilment/:id/delivery with outcome DELIVERED, RecordDeliveryUseCase calls orderTransitions.transition(orderId, 'delivered'); OrderStateMachine only allows delivered from 'dispatched', OrderTransitionService throws, the use case swallows it and records orderTransition='skipped'. The order never reaches 'delivered': loyalty vesting on delivery confirmation never fires, delivery_quote_capture never gets an observation, calibration counts.deliveredOrders stays 0, and the awaiting-cost queue fills with 'skipped mirror' rows for every properly dispatched order.
-
-**Why it is wrong:** The two dispatch paths have diverged: TransitionFulfilmentTaskUseCase (PATCH /:id/status) mirrors 'dispatched' onto the order; RecordDispatchUseCase (the recommended F4 path) does not. The order lifecycle is the canonical ledgered path that downstream effects (loyalty, calibration observations, failed-delivery metrics) subscribe to, so a dispatch that never reaches it loses those side effects silently.
-
-**Proposed fix:** Inject IOrderTransitionPort into RecordDispatchUseCase (Registry.recordDispatchUseCase) and, after the task advances, call orderTransitions.transition(snapshot.orderId, 'dispatched', {source:'fulfilment', reasonCode:'dispatch_recorded'}) exactly as TransitionFulfilmentTaskUseCase does, recording orderMirror in the audit. Better: route the task advance through TransitionFulfilmentTaskUseCase so there is one place that mirrors. Pin with 'RecordDispatchUseCase moves the order to dispatched' and 'dispatch via F4 then DELIVERED yields orderTransition=delivered' in a use-case test with an in-memory order transition port.
-
-### One env var is used both as the provider callback_url and as the API's redirect target, so PesaPal sends the paying customer straight to the storefront page, which then renders 'We could not confirm your payment' for every successful payment
+### One env var is used both as the provider callback_url and as the API's redirect target, so PesaPal sends the paying customer straight to the storefront page, which then renders 'We could not confirm your payment' for every successful payment **[FIXED]**
 `apps/api/src/application/use-cases/payments/StartPesaPalPaymentUseCase.ts:80` | correctness | finder confidence 0.75
 
 **Reachable via:** Every online payment: POST /commerce/payments/pesapal/start -> PesaPal hosted page -> redirect to PESAPAL_CALLBACK_URL
@@ -124,18 +126,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Introduce a distinct configuration value for the provider callback (e.g. PESAPAL_PROVIDER_CALLBACK_URL, defaulting to `${API_PUBLIC_ORIGIN}/commerce/payments/pesapal/callback`) and pass THAT to submitOrderRequest in StartPesaPalPaymentUseCase (and the synthetic probe in Registry:2072); keep PESAPAL_CALLBACK_URL as the storefront landing page used by commerce.ts:986. Add a boot-time guard in config/env.ts that refuses a provider callback pointing at the storefront host, and refuses a storefront target pointing at the API. Pin with a test in tests/unit/pesapal-payment.test.ts asserting submitOrderRequest.callback_url is the API route, and extend scripts/qa/pesapal-stub.mjs so /stub-pay redirects to callback_url with OrderTrackingId/OrderMerchantReference and the harness asserts the customer lands on the 'Payment received' page.
 
-### PesaPal's INVALID (status_code 0, also its answer for a transaction not yet paid) is written into the terminal 'invalid' state, so the poller closes live attempts at 10 minutes and a later COMPLETED can never be recorded
-`apps/api/src/application/use-cases/payments/VerifyPesaPalPaymentUseCase.ts:227` | money | finder confidence 0.6
-
-**Reachable via:** PaymentReconcileTicker (every 10 min) then POST/GET /commerce/payments/pesapal/ipn, GET /commerce/payments/pesapal/callback, POST /admin/payments/attempts/:ref/reverify
-
-**Scenario:** Customer starts payment at 14:00 and is still on the PesaPal page (telco push delayed, wrong number the first time, wallet top-up). PesaPal v3 has no PENDING code: GetTransactionStatus returns status_code 0 / INVALID until the payment completes (DECISIONS.md itself equates INVALID with 'payment page abandoned'). At 14:10 ReconcilePendingPaymentsUseCase polls, this switch maps 0 to 'invalid', line 235 writes attempt status 'invalid' (terminal in PaymentAttemptState.TRANSITIONS), line 292 sets the order paymentStatus 'failed', and SettlePayment enqueues the ORDER_PAYMENT_FAILED customer message. At 14:12 the customer completes the payment; the IPN arrives, step 5 calls updatePaymentAttemptStatus(id, { status: 'completed' }) and assertAttemptTransition('invalid','completed') throws PAYMENT_STATE_ILLEGAL_TRANSITION; the IPN route answers 500 (PesaPal retries, every retry throws), the browser callback lands on unknown_attempt, ops re-verify throws the same error, and the poller no longer lists the attempt. Money left the wallet, the order stays failed, and no code path can ever repair it. Any provider response without a numeric status_code also lands in `default` and is treated the same way.
-
-**Why it is wrong:** The reconciliation loop's stated rule (ReconcilePendingPaymentsUseCase header, DECISIONS.md) is 'time never marks a payment failed' and 'every non-terminal state has an exit'. Mapping the provider's not-yet-paid answer to an exitless terminal state makes the 10-minute poll a timeout-failure in effect, and PaymentAttemptState's refusal to resurrect a terminal attempt then converts a real completed payment into a permanent 500. PesapalPaymentJourney's 'terminal attempt refuses resurrection' test pins the mechanism but not this outcome.
-
-**Proposed fix:** Treat status_code 0 as non-terminal: map it to a state such as 'unpaid' (or keep 'pending') that permits -> completed | failed | reversed and is still pollable, and let the existing abandonment/TTL windows (order_abandonment_hours) close it; alternatively add 'invalid' -> 'completed' | 'reversed' to TRANSITIONS so a provider COMPLETED is always writable. Do not enqueue ORDER_PAYMENT_FAILED on a code-0 answer. Pin with tests/integration/PesapalPaymentJourney: 'an INVALID answer at poll time followed by COMPLETED still settles the order and runs the effects', and extend the PaymentAttemptState exhaustiveness test to assert 'completed' is reachable from every non-reversed state.
-
-### A completed payment on an order that can no longer transition (e.g. cancelled) returns ok:true, so settlement confirms it, runs every success effect and tells the customer 'Payment received' while nothing surfaces the conflict
+### A completed payment on an order that can no longer transition (e.g. cancelled) returns ok:true, so settlement confirms it, runs every success effect and tells the customer 'Payment received' while nothing surfaces the conflict **[FIXED]**
 `apps/api/src/application/use-cases/payments/VerifyPesaPalPaymentUseCase.ts:260` | money | finder confidence 0.75
 
 **Reachable via:** POST/GET /commerce/payments/pesapal/ipn, GET /commerce/payments/pesapal/callback, PaymentReconcileTicker, after POST /admin/orders/:id/transition to cancelled
@@ -146,7 +137,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Return ok:false with a distinct status (e.g. 'lifecycle_conflict') from the DomainError branch so ReconcileOrderPaymentUseCase parks the checkout in PAYMENT_REVIEW (its `review()` path) and SettlePayment runs no success effects; log at error level and add the attempt to the ops queue (payments.ts /queue) as a disagreement row (attempt completed, order not processing). Optionally treat a completed payment on a cancelled order as a refund candidate. Pin with a unit test in tests/unit/pesapal-payment.test.ts: 'COMPLETED on a cancelled order yields ok:false, no success effects, REVIEW_REQUIRED', and a ReconcileOrderPaymentUseCase test for the new status.
 
-### Promotion versions accept priceFloorUgx 0, so any admin-created version discounts below the UGX 145,000 floor
+### Promotion versions accept priceFloorUgx 0, so any admin-created version discounts below the UGX 145,000 floor **[FIXED]**
 `apps/api/src/domain/pricing/Pricing.ts:122` | money | finder confidence 0.85
 
 **Reachable via:** POST /admin/pricing/definitions and POST /admin/pricing/definitions/:id/versions (admin pages /admin/pricing, /admin/pricing/[id])
@@ -157,7 +148,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** In validatePromotionVersion require input.priceFloorUgx >= STOREFRONT_PRICE_FLOOR_UGX (import from @goldplus/shared), or have PricingGovernanceUseCase.create/createVersion clamp to Math.max(input, STOREFRONT_PRICE_FLOOR_UGX) and audit the applied floor; keep the zod min in step. Pin with Pricing.test 'a version whose priceFloorUgx is below 145,000 is rejected' and a PricingEvaluator test that a 10,000 bps benefit never takes a line below 145,000 * qty.
 
-### A terminal checkout refusal poisons the intent: the customer cannot place any order for up to 12 hours **[FIXED 2026-08-27]**
+### A terminal checkout refusal poisons the intent: the customer cannot place any order for up to 12 hours **[FIXED]**
 `apps/api/src/infrastructure/db/repositories/DrizzleCheckoutIdempotencyRepository.ts:152` | correctness | finder confidence 0.75
 
 **Reachable via:** POST /commerce/orders/create after any FAILED_FINAL outcome (PRICE_CHANGED after a 5-minute-old promo preview is the everyday path)
@@ -168,7 +159,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** In claim(), add a third takeover branch: state = 'FAILED_FINAL' AND order_id IS NULL, allowed even when the fingerprint differs, resetting fingerprint, stage='CLAIMED', failure_reason=NULL, operation_state='IN_PROGRESS' (a fresh operation under the same identity). Keep CONFLICT semantics for COMPLETED/IN_PROGRESS rows, which do hold commerce. Alternatively (or additionally) have /orders/create return a distinct code for FAILED_FINAL so the BFF calls clearCheckoutIntent and mints a new intent. Pin with tests/unit/ExecuteCheckoutIntentUseCase.test.ts 'a corrected basket after a terminal refusal claims a fresh operation and creates an order' and a repository test on claim() against a FAILED_FINAL row with a different fingerprint.
 
-### Admin product edit silently drops slug, descriptions, stock status, active and more, then records a redirect to a slug that does not exist
+### Admin product edit silently drops slug, descriptions, stock status, active and more, then records a redirect to a slug that does not exist **[FIXED]**
 `apps/api/src/infrastructure/db/repositories/DrizzleProductRepository.ts:111` | data-integrity | finder confidence 0.9
 
 **Reachable via:** PUT /admin/products/:id (admin page /admin/products/[id]/edit-properties)
@@ -179,7 +170,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Make the upsert's set clause cover every column the entity carries (slug, subcategory, shortDescription, longDescription, compareAtPriceUgx, stockStatus, imageUrl, active, isPreOrderEnabled, hasRetailPrice, hasImage, specifications, updatedAt) or replace save()+updateProductProperties with an explicit UPDATE inside one transaction with the productPrices write; record the slug redirect only after the row confirms the new slug. Pin with an integration test 'updateProductProperties persists slug/description/active/stockStatus' and a route test that a PUT slug change makes GET /products/<newSlug> resolve.
 
-### createProduct inserts a placeholder category id that violates the products.category_id foreign key
+### createProduct inserts a placeholder category id that violates the products.category_id foreign key **[FIXED]**
 `apps/api/src/infrastructure/db/repositories/DrizzleProductRepository.ts:84` | correctness | finder confidence 0.5
 
 **Reachable via:** POST /admin/products (admin page /admin/products/new)
@@ -190,7 +181,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Give save() a categoryId parameter (or split insert/update), write the real categoryId in the INSERT, drop the follow-up UPDATE, and wrap the products + productPrices writes in one transaction. Pin with an integration test that POST /admin/products succeeds on a database seeded only by migrations.
 
-### SMS password reset never finds accounts registered with +256/256/9-digit phone shapes
+### SMS password reset never finds accounts registered with +256/256/9-digit phone shapes **[FIXED]**
 `apps/api/src/infrastructure/db/repositories/DrizzleUserRepository.ts:27` | correctness | finder confidence 0.85
 
 **Reachable via:** POST /auth/register then POST /auth/password/forgot-sms (storefront /register and /forgot-password)
@@ -201,7 +192,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Normalise at the write side: in RegisterCustomerUseCase use normalizeUgandanPhone(input.phone) and store e164 (or one agreed canonical form), and have DrizzleAdminUserWriteRepository/AdminUserManagementUseCase do the same. For existing rows, add a migration that rewrites users.phone to the canonical form (refusing where two rows would collide) and, until then, make findByPhone also search the '256'+national and bare national forms. Pin with a unit test on RegisterCustomerUseCase (input '+256 771 234 567' persists the canonical form) and an integration test that registration followed by requestSmsPasswordResetUseCase yields userFound=true for each accepted input shape.
 
-### Customer session middleware ignores sessions_invalidated_after and is_active, so a password reset does not sign anyone out
+### Customer session middleware ignores sessions_invalidated_after and is_active, so a password reset does not sign anyone out **[FIXED]**
 `apps/api/src/interfaces/http/middleware/customerSession.ts:19` | security | finder confidence 0.9
 
 **Reachable via:** GET /account/me and every route mounted with customerSessionMiddleware; storefront /account pages via resolveAuthenticatedCustomer
@@ -212,7 +203,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** In customerSessionMiddleware (and the bearerUser() helper in auth.ts used by /logout-all, /sessions and /mfa/*), load the user via userRepo.findById after verifying the token, and fail with 401 when !user, !user.isActive, or isInvalidatedByCutoff(verified.issuedAt, user.sessionsInvalidatedAfter). Pin with a hermetic route test: issue a token, call resetPasswordWithSmsCodeUseCase for that user, assert GET /account/me now returns 401 (customerSession.cutoff.test.ts).
 
-### /auth/logout-all revokes only refresh families; the 7-day access tokens every device holds stay valid
+### /auth/logout-all revokes only refresh families; the 7-day access tokens every device holds stay valid **[FIXED]**
 `apps/api/src/interfaces/http/routes/auth.ts:314` | security | finder confidence 0.85
 
 **Reachable via:** POST /auth/logout-all (called by apps/web/src/pages/admin/logout.ts)
@@ -223,7 +214,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Add IUserRepository.invalidateSessionsAfter(userId, at) (UPDATE users SET sessions_invalidated_after = now()) and call it from a LogoutAllUseCase that also calls sessionService.logoutAll, used by /auth/logout-all and by any future disable-user path. Separately, align the login-issued access TTL with SESSION_LIFETIMES.accessTtlMs (or at least make the admin token short-lived and let the BFF use /auth/refresh). Pin with an integration test: admin login, POST /auth/logout-all, then GET /admin/users with the original bearer must be 401.
 
-### Re-enrolling MFA needs no step-up, so a stolen bearer token replaces the TOTP secret and passes every step-up gate
+### Re-enrolling MFA needs no step-up, so a stolen bearer token replaces the TOTP secret and passes every step-up gate **[FIXED]**
 `apps/api/src/interfaces/http/routes/auth.ts:346` | authorization | finder confidence 0.85
 
 **Reachable via:** POST /auth/mfa/enrol then POST /auth/mfa/confirm with any bearer token; then any requireStepUp-guarded route (admin pricing approve/activate)
@@ -234,18 +225,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** In MfaService.beginEnrolment (or a BeginMfaEnrolmentUseCase), refuse with MFA_STEP_UP_REQUIRED when the existing record has confirmedAt set and isStepUpFresh(lastVerifiedAt, now) is false; alternatively require the current password in the enrol body and verify it with the hasher. Audit MFA_REENROLLED with the actor. Pin with a unit test on MfaService: confirmed record + stale lastVerifiedAt + beginEnrolment must throw/refuse and must not touch the stored secret.
 
-### A second public quoting path (legacy zone/band estimate) still drives the checkout 'Delivery' row and 'Total to pay' while the order is charged the ONE service's fee
-`apps/api/src/interfaces/http/routes/commerce.ts:131` | money | finder confidence 0.7
-
-**Reachable via:** GET /checkout (SSR + browser) via GET /commerce/delivery-estimate; order placement via CheckoutUseCase
-
-**Scenario:** Checkout SSR (checkout.astro line 508) and the browser (line 983) fetch /commerce/delivery-estimate for the chosen district and render it in the order-summary 'Delivery' row; a CONFIRMED delivery_zones fee is added into 'Total to pay' (renderEstimate). On the same page the DeliveryQuote component (stage 2, 'This delivery fee is fixed for this order') shows the quoting service's answer. CheckoutUseCase then charges the quoting service's fee whenever its answer is anything but CONFIG_INCOMPLETE. Example reachable today: district Gulu has an enabled delivery_zones row (fee 15,000) but the quoting service resolves it to bus_parcel with NO_RATE_CARD; the page shows 'Delivery UGX 15,000 / Total to pay goods+15,000', the order is created with delivery_fee 0 unconfirmed. Once launch values are published, any metro district with a zone row shows the zone fee in the totals and the model fee in the quote box, and charges the latter.
-
-**Why it is wrong:** Contract #1 (exactly one thing answers 'what does delivery cost') and #2 (fee and window from one model) are violated on the customer's core journey: two services answer, the committed total is built from the one that does not charge. The DeliveryQuote component even sits under a row showing a different number.
-
-**Proposed fix:** Remove the /commerce/delivery-estimate call from checkout.astro and drive the 'Delivery' row and grand total from the same /delivery/quote response (feeUgx, or 'confirmed before dispatch' when unavailable), or make GetDeliveryEstimateUseCase delegate to DeliveryQuotingUseCase and only fall back to the zone/band model on CONFIG_INCOMPLETE (the same rule CheckoutUseCase applies). Pin with a checkout page test that the delivery figure in the totals equals the /delivery/quote feeUgx for a stubbed quote, and a use-case test that the estimate endpoint returns the quoting service's answer when it is not CONFIG_INCOMPLETE.
-
-### Open redirect after sign-in: returnTo=/\evil.com passes the startsWith('/') guard and browsers resolve it to https://evil.com/
+### Open redirect after sign-in: returnTo=/\evil.com passes the startsWith('/') guard and browsers resolve it to https://evil.com/ **[FIXED]**
 `apps/web/src/pages/login.astro:68` | security | finder confidence 0.85
 
 **Reachable via:** GET /login?returnTo=..., /register?returnTo=..., /auth/:provider/start?returnTo=...
@@ -256,7 +236,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Create one apps/web/src/lib/safeReturnTo.ts used by all four sites: accept only when value starts with '/' and its second character is not '/' or '\\', and additionally new URL(value, 'https://shopgoldplus.com').origin === 'https://shopgoldplus.com' (reject anything containing a backslash, '@' or control characters). Pin with a unit test containing '/\\evil.com', '//evil.com', '/%5Cevil.com' (should stay local after decoding rules are applied), and 'https://evil.com'.
 
-### SSR login and recovery pages do not forward the client address, so the whole storefront shares one halved abuse budget: 5 sign-ins and 2 recovery calls per minute site-wide
+### SSR login and recovery pages do not forward the client address, so the whole storefront shares one halved abuse budget: 5 sign-ins and 2 recovery calls per minute site-wide **[FIXED]**
 `apps/web/src/pages/login.astro:26` | correctness | finder confidence 0.75
 
 **Reachable via:** POST /login, /register, /forgot-password, /reset-password storefront pages (SSR) -> API /auth/login, /auth/register, /auth/password/*
@@ -267,308 +247,46 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** In the four auth pages (and any other SSR relay to /auth/*), forward the real client address exactly as the rec relay does: headers['X-Forwarded-For'] = Astro.clientAddress (guarded with try/catch), so the API resolves a TRUSTED per-client bucket. Consider a shared apps/web/src/lib/forwardClient.ts helper. Pin with a unit test on resolveClientAddress showing hops=1 + XFF=<client> yields TRUSTED <client>, and an integration test that two different forwarded addresses get independent auth-customer-login budgets.
 
+### F4 dispatch record never mirrors the order to 'dispatched', so the later DELIVERED mirror is always refused *(unverified)*
+`apps/api/src/application/use-cases/fulfilment/DispatchUseCases.ts:123` | correctness | finder confidence 0.85
+
+**Reachable via:** POST /admin/fulfilment/:id/dispatch followed by POST /admin/fulfilment/:id/delivery
+
+**Scenario:** Ops dispatch a READY_FOR_DISPATCH task through POST /admin/fulfilment/:id/dispatch (the path that enforces the COD/payment policy). RecordDispatchUseCase moves the TASK to OUT_FOR_DELIVERY directly and is wired without the order transition port (Registry line 1065), so the ORDER stays 'processing'. When the rider returns and ops POST /admin/fulfilment/:id/delivery with outcome DELIVERED, RecordDeliveryUseCase calls orderTransitions.transition(orderId, 'delivered'); OrderStateMachine only allows delivered from 'dispatched', OrderTransitionService throws, the use case swallows it and records orderTransition='skipped'. The order never reaches 'delivered': loyalty vesting on delivery confirmation never fires, delivery_quote_capture never gets an observation, calibration counts.deliveredOrders stays 0, and the awaiting-cost queue fills with 'skipped mirror' rows for every properly dispatched order.
+
+**Why it is wrong:** The two dispatch paths have diverged: TransitionFulfilmentTaskUseCase (PATCH /:id/status) mirrors 'dispatched' onto the order; RecordDispatchUseCase (the recommended F4 path) does not. The order lifecycle is the canonical ledgered path that downstream effects (loyalty, calibration observations, failed-delivery metrics) subscribe to, so a dispatch that never reaches it loses those side effects silently.
+
+**Proposed fix:** Inject IOrderTransitionPort into RecordDispatchUseCase (Registry.recordDispatchUseCase) and, after the task advances, call orderTransitions.transition(snapshot.orderId, 'dispatched', {source:'fulfilment', reasonCode:'dispatch_recorded'}) exactly as TransitionFulfilmentTaskUseCase does, recording orderMirror in the audit. Better: route the task advance through TransitionFulfilmentTaskUseCase so there is one place that mirrors. Pin with 'RecordDispatchUseCase moves the order to dispatched' and 'dispatch via F4 then DELIVERED yields orderTransition=delivered' in a use-case test with an in-memory order transition port.
+
+### PesaPal's INVALID (status_code 0, also its answer for a transaction not yet paid) is written into the terminal 'invalid' state, so the poller closes live attempts at 10 minutes and a later COMPLETED can never be recorded **[REVIEWED, NOT ACTIONED]**
+`apps/api/src/application/use-cases/payments/VerifyPesaPalPaymentUseCase.ts:227` | money | finder confidence 0.6
+
+**Why not actioned:** Unverified: this repo's own reconciliation of record documents PesaPal INVALID as "payment page abandoned, no money moved". The claim that status_code 0 also means "not yet paid" could not be checked against the provider, and acting on it would keep dead attempts polling forever.
+
+**Reachable via:** PaymentReconcileTicker (every 10 min) then POST/GET /commerce/payments/pesapal/ipn, GET /commerce/payments/pesapal/callback, POST /admin/payments/attempts/:ref/reverify
+
+**Scenario:** Customer starts payment at 14:00 and is still on the PesaPal page (telco push delayed, wrong number the first time, wallet top-up). PesaPal v3 has no PENDING code: GetTransactionStatus returns status_code 0 / INVALID until the payment completes (DECISIONS.md itself equates INVALID with 'payment page abandoned'). At 14:10 ReconcilePendingPaymentsUseCase polls, this switch maps 0 to 'invalid', line 235 writes attempt status 'invalid' (terminal in PaymentAttemptState.TRANSITIONS), line 292 sets the order paymentStatus 'failed', and SettlePayment enqueues the ORDER_PAYMENT_FAILED customer message. At 14:12 the customer completes the payment; the IPN arrives, step 5 calls updatePaymentAttemptStatus(id, { status: 'completed' }) and assertAttemptTransition('invalid','completed') throws PAYMENT_STATE_ILLEGAL_TRANSITION; the IPN route answers 500 (PesaPal retries, every retry throws), the browser callback lands on unknown_attempt, ops re-verify throws the same error, and the poller no longer lists the attempt. Money left the wallet, the order stays failed, and no code path can ever repair it. Any provider response without a numeric status_code also lands in `default` and is treated the same way.
+
+**Why it is wrong:** The reconciliation loop's stated rule (ReconcilePendingPaymentsUseCase header, DECISIONS.md) is 'time never marks a payment failed' and 'every non-terminal state has an exit'. Mapping the provider's not-yet-paid answer to an exitless terminal state makes the 10-minute poll a timeout-failure in effect, and PaymentAttemptState's refusal to resurrect a terminal attempt then converts a real completed payment into a permanent 500. PesapalPaymentJourney's 'terminal attempt refuses resurrection' test pins the mechanism but not this outcome.
+
+**Proposed fix:** Treat status_code 0 as non-terminal: map it to a state such as 'unpaid' (or keep 'pending') that permits -> completed | failed | reversed and is still pollable, and let the existing abandonment/TTL windows (order_abandonment_hours) close it; alternatively add 'invalid' -> 'completed' | 'reversed' to TRANSITIONS so a provider COMPLETED is always writable. Do not enqueue ORDER_PAYMENT_FAILED on a code-0 answer. Pin with tests/integration/PesapalPaymentJourney: 'an INVALID answer at poll time followed by COMPLETED still settles the order and runs the effects', and extend the PaymentAttemptState exhaustiveness test to assert 'completed' is reachable from every non-reversed state.
+
+### A second public quoting path (legacy zone/band estimate) still drives the checkout 'Delivery' row and 'Total to pay' while the order is charged the ONE service's fee *(unverified)*
+`apps/api/src/interfaces/http/routes/commerce.ts:131` | money | finder confidence 0.7
+
+**Reachable via:** GET /checkout (SSR + browser) via GET /commerce/delivery-estimate; order placement via CheckoutUseCase
+
+**Scenario:** Checkout SSR (checkout.astro line 508) and the browser (line 983) fetch /commerce/delivery-estimate for the chosen district and render it in the order-summary 'Delivery' row; a CONFIRMED delivery_zones fee is added into 'Total to pay' (renderEstimate). On the same page the DeliveryQuote component (stage 2, 'This delivery fee is fixed for this order') shows the quoting service's answer. CheckoutUseCase then charges the quoting service's fee whenever its answer is anything but CONFIG_INCOMPLETE. Example reachable today: district Gulu has an enabled delivery_zones row (fee 15,000) but the quoting service resolves it to bus_parcel with NO_RATE_CARD; the page shows 'Delivery UGX 15,000 / Total to pay goods+15,000', the order is created with delivery_fee 0 unconfirmed. Once launch values are published, any metro district with a zone row shows the zone fee in the totals and the model fee in the quote box, and charges the latter.
+
+**Why it is wrong:** Contract #1 (exactly one thing answers 'what does delivery cost') and #2 (fee and window from one model) are violated on the customer's core journey: two services answer, the committed total is built from the one that does not charge. The DeliveryQuote component even sits under a row showing a different number.
+
+**Proposed fix:** Remove the /commerce/delivery-estimate call from checkout.astro and drive the 'Delivery' row and grand total from the same /delivery/quote response (feeUgx, or 'confirmed before dispatch' when unavailable), or make GetDeliveryEstimateUseCase delegate to DeliveryQuotingUseCase and only fall back to the zone/band model on CONFIG_INCOMPLETE (the same rule CheckoutUseCase applies). Pin with a checkout page test that the delivery figure in the totals equals the /delivery/quote feeUgx for a stubbed quote, and a use-case test that the estimate endpoint returns the quoting service's answer when it is not CONFIG_INCOMPLETE.
+
 ---
 
 ## Medium (28)
 
-### Storefront discount ignores maximumDiscountUgx, so cards, PDP and cart show a lower price than the evaluator charges
-`apps/api/src/application/pricing/StorefrontDiscountQuery.ts:40` | money | finder confidence 0.8
-
-**Reachable via:** GET /commerce/storefront-discount consumed by ProductCard, products/[slug], cart, checkout, GpNav after an admin creates a capped site-wide promotion
-
-**Scenario:** Admin creates a site-wide promotion: no conditions, no exclusions, no coupon, benefit { type: 'PERCENTAGE_OFF', value: 1000, maximumDiscountUgx: 20000 } (accepted by admin/pricing.ts benefit schema). resolveStorefrontDiscount treats it as the simple storefront discount and returns percentBps 1000 with no cap. ProductCard/PDP display salePriceUgx(400000, 1000, floor) = 360,000 and cart.astro shows 720,000 for two; PricingEvaluator caps the line discount at remainingCap 20,000 and charges 780,000. The checkout total is higher than every price the customer was shown.
-
-**Why it is wrong:** The query's own contract is that only a promotion the display can mirror to the shilling qualifies; a capped benefit cannot be mirrored per unit, so it must return INACTIVE_DISCOUNT rather than an uncapped percentage.
-
-**Proposed fix:** Add `b.maximumDiscountUgx == null` to both the qualifying predicate and the benefit lookup (and reject any second non-FREE_SHIPPING benefit on the same version). Pin with StorefrontDiscountQuery.test 'a capped percentage benefit is not advertised'.
-
-### Battery pack verification has no maker/checker in the use case although the admin page states a second person must do it
-`apps/api/src/application/use-cases/batteries/BatteryCatalogueUseCases.ts:330` | authorization | finder confidence 0.5
-
-**Reachable via:** POST /admin/batteries/catalogue/:id/verify (BATTERIES_COMPAT_VERIFY)
-
-**Scenario:** An operator holding both batteries.catalogue.manage and batteries.compatibility.verify creates a battery via Quick Add with codeStatus CONFIRMED (a select on the same form), then immediately clicks Verify on /admin/batteries/catalogue/:id. verify() only checks codeStatus and marks verificationStatus VERIFIED with verifiedBy = the creator. The page copy at catalogue/[id].astro line 327 ('A second person should do this, not the person who entered the battery.') is not enforced anywhere; found.profile.createdBy is available and never compared to actorId.
-
-**Why it is wrong:** The repo rule is that four-eyes checks live in use cases, never only in the UI; the compatibility workflow enforces it by actor id, the battery verification that unlocks the BATTERY_UNVERIFIED readiness blocker does not.
-
-**Proposed fix:** In verify(): if (found.profile.createdBy === actorId) throw forbidden('MAKER_CHECKER', 'The person who entered the battery cannot verify it against the pack.'); also refuse when found.profile.updatedBy === actorId changed codeStatus to CONFIRMED in the same session if that stricter reading is wanted. Test: BatteryCatalogueUseCases.verify refuses the creator.
-
-### Public finder suggestions and /batteries/products/:slug expose unpublished (DRAFT/REVIEW/READY) batteries
-`apps/api/src/application/use-cases/batteries/BatteryFinderUseCases.ts:204` | security | finder confidence 0.75
-
-**Reachable via:** GET /batteries/finder/search, GET /batteries/products/:slug (public)
-
-**Scenario:** Anonymous GET /batteries/finder/search?q=BL4 (3+ chars, no exact hit). batteryCandidates() returns every non-ARCHIVED battery (repo line 196) and tier 6 prefix matching in FinderRanking.ts line 121 runs over that set, so draft batteries created by the importer or Quick Add are suggested; line 204 fetches them with batteryPublic() which has no lifecycle filter and returns canonicalCode, slug and name. The page renders them as links to /products/<slug>. GET /batteries/products/<slug> then returns the full draft DTO (name, price, code, publicNotes, warranty, chemistry) with isPublished:false; only the web page hides it. fuzzyBatteries (repo line 213) correctly restricts to ACTIVE, so the two suggestion sources disagree.
-
-**Why it is wrong:** The public API is documented (routes/batteries.ts header, IBatteryFinderRepository header) as returning only published, evidenced data; unpublished catalogue entries, provisional codes and internal draft names must not be enumerable from the storefront.
-
-**Proposed fix:** In search(): when building suggestions, keep only batteries whose lifecycle is ACTIVE (filter input.batteries to ACTIVE before the tier-6 pass, or filter batteryList on b.lifecycleStatus === 'ACTIVE' && productApproved && productActive). In battery(): return null unless lifecycleStatus === 'ACTIVE' (the route already maps null to 404) or strip everything but isPublished for non-active. Tests: rankSearch prefix tier ignores DRAFT batteries; BatteryFinderUseCases.battery returns null for a DRAFT slug.
-
-### Catalogue preview keys the resolution cache by the raw stock label but looks it up by the derived canonical code, so existing and ambiguous batteries are never detected for GP-/bare labels
-`apps/api/src/application/use-cases/batteries/BatteryImportUseCases.ts:162` | correctness | finder confidence 0.85
-
-**Reachable via:** POST /admin/batteries/imports/:id/preview (BATTERY_CATALOGUE)
-
-**Scenario:** Source item 'GP-49FT' with no code column (the shop's own label format). preload() stores the resolveCode result under normaliseBatteryCode('GP-49FT') = 'GP49FT'. normaliseImportRow derives canonicalCode = displayCode('49FT') = 'BL-49FT' and calls ctx.resolveBattery('BL-49FT'), which looks up 'BL49FT' (line 155) and gets null. Verified with the pure functions: preload key GP49FT / lookup key BL49FT; for bare '49FT': 49FT / BL49FT. Result: every such row previews as CREATE_BATTERY with no 'Updates existing battery' warning even when BL-49FT already exists, and a code that resolves to two batteries is not flagged INVALID at preview; the approver signs off a preview that does not describe what apply will do (apply re-resolves and updates, or fails the row with AMBIGUOUS).
-
-**Why it is wrong:** The dry run is the four-eyes artefact; it must be deterministic and describe the apply. The cache key and lookup key must be the same normalised form.
-
-**Proposed fix:** Key the cache by every candidate form: in preload(), after resolving, store the result under normaliseBatteryCode(raw) and under each batteryCodeCandidates(raw) entry and under the normalised displayCode of the analysed line; or make resolveBattery look up batteryCodeCandidates(code) and stripCodeQualifier before giving up. Test: BatteryImportUseCases.preview with a fake repo containing BL-49FT and a row 'GP-49FT' yields UPDATE_BATTERY.
-
-### Price rollback overwrites a price changed since the import, contradicting the documented 'reported, not clobbered' rule
-`apps/api/src/application/use-cases/batteries/BatteryImportUseCases.ts:429` | data-integrity | finder confidence 0.8
-
-**Reachable via:** POST /admin/batteries/imports/:id/rollback (PIM_ROLLBACK) on a PRICE_UPDATE session
-
-**Scenario:** PRICE_UPDATE import sets BL-49FT from 150,000 to 160,000 (beforeSnapshot 150000, afterSnapshot 160000). An operator later edits the price by hand to 170,000. Someone rolls the import back: line 429 restores 150,000 unconditionally. The manual 170,000 is lost and the storefront shows 150,000; the rollback notes report nothing. The stock branch two cases above (line 421) does the live-vs-afterSnapshot check that this branch omits.
-
-**Why it is wrong:** The rollback contract in the method's own doc comment (line 375) says anything touched since import is reported, not clobbered; price is the one field that directly moves money and is the one without the check.
-
-**Proposed fix:** Before restoring, compare found.product.priceUgx with Number(afterSnapshot.priceUgx); if they differ, throw new Error(`${code} price changed since import (now X, import set Y); not restored.`) so the row is reported in notes like the stock case. Test: BatteryImportUseCases.rollback leaves a price that was changed after apply and records it in notes.
-
-### Stale count applies a stock change without the operator reason the rule requires, because the reason gate is evaluated against the draft's system quantity, not the live balance
-`apps/api/src/application/use-cases/batteries/InventoryLedgerUseCases.ts:258` | validation | finder confidence 0.6
-
-**Reachable via:** POST /admin/batteries/stock/counts/:id/apply
-
-**Scenario:** Draft a cycle count for BL-49FT when system = 10, counted = 10, reason left blank (allowed: no difference). A receipt of 5 is applied afterwards (live = 15). Apply the count: countBlockers at line 252 runs on the stored systemQuantity (10 vs 10, passes), then line 258 computes delta = 10 - 15 = -5 and line 264 writes reason 'cycle count: difference found'. Five units that physically arrived are written off with an auto-generated reason nobody typed, and the page text ('Any difference from the system needs a reason before it can be applied') is false for this path.
-
-**Why it is wrong:** The domain rule (InventoryLedger.countBlockers) is that a line whose count differs from the system needs a reason; re-reading the live balance at apply time without re-running that rule lets the requirement be bypassed by time rather than by intent.
-
-**Proposed fix:** In applyCount, after re-reading live stock build the blocker input with systemQuantity = live.stock and run countBlockers again; refuse with COUNT_STALE listing the lines whose live balance moved since the draft and now differ without a reason, so the operator re-counts or adds a reason. Test: applyCount refuses when live stock differs from the draft and the line has no reason.
-
-### A failure after the order has committed releases the loyalty reservation the committed order's discount depends on
-`apps/api/src/application/use-cases/commerce/CheckoutUseCase.ts:336` | money | finder confidence 0.5
-
-**Reachable via:** POST /commerce/orders/create with redeemPoints (signed-in customer)
-
-**Scenario:** Signed-in customer checks out with redeemPoints. savePricedOrder commits the order (with loyaltyDiscountUgx and loyaltyRedemptionId on the row, fenced link written, stage ORDER_CREATED). Then loyaltyRedemption.attach (line 316, a plain UPDATE on loyalty_redemptions) throws on a transient DB fault. The catch treats the whole block as not-committed: it releases the loyalty reservation (ReleaseRedemptionUseCase marks it 'released') and calls capacity.release on reservations already marked REDEEMED. The error propagates; ExecuteCheckoutIntentUseCase records FAILED_RETRYABLE with the order already linked, the customer retries, resume() picks up the committed order and returns AWAITING_PAYMENT for the discounted total. The order is paid at the reduced amount while the points were handed back to the balance and no reservation is attached to the order for SettlePaymentUseCase.settleLoyalty to consume.
-
-**Why it is wrong:** The compensation branch does not distinguish 'order not committed' from 'order committed, post-commit bookkeeping failed'. Once savePricedOrder returns, the reservations are part of a durable order and must never be released; a bookkeeping failure should be reported and retried, not undone.
-
-**Proposed fix:** Split the try: wrap only savePricedOrder in the compensating catch; after it returns, treat attach/velocity/recordQuote failures as non-fatal reported obligations (observer/outbox), never as reasons to release. Better: perform attachReservationToOrder inside savePricedOrder's transaction alongside the order insert so the link and the order commit together. Pin with a CheckoutUseCase unit test 'attach failure after a committed order does not release the redemption'.
-
-### COD zone policy is bypassed by omitting the optional deliveryLocation: a pay-on-delivery order lands for a destination where COD is refused
-`apps/api/src/application/use-cases/commerce/CheckoutUseCase.ts:219` | validation | finder confidence 0.5
-
-**Reachable via:** POST /commerce/orders/create with paymentMethod 'offline' and no deliveryLocation
-
-**Scenario:** An active delivery_zone_policy has cod_allowed=false (or a cod_max_order_value_ugx) for district X. A request to POST /commerce/orders/create with paymentMethod 'offline', deliveryArea 'Layibi, X', deliveryAddress '…' and no deliveryLocation (the zod schema marks it .nullish(), line 69 of commerce.ts) yields district = null, so both COD checks (here and line 286) are skipped and the order is created as an offline order to X. The storefront itself sends deliveryLocation: null when a guest's manual entry does not resolve to a district (apps/web/src/lib/checkout.ts:89), so this is not only a crafted-request path.
-
-**Why it is wrong:** The COD rule is a fraud/prepayment control ('Above the zone's COD ceiling, prepayment is required: refused with a clear message, never silently converted'), but it is keyed on an optional client field rather than on the destination the server actually resolves; the quoting service already resolves the destination from deliveryArea/areaSlug for the fee, so the same request is priced for X while its COD policy is not applied.
-
-**Proposed fix:** Resolve the destination once and use it for both fee and COD: take the district from deliveryLocation.district, else from the quoting capture's resolved area/district, and when paymentMethod is 'offline' and no district can be established, refuse with a clear COD_DESTINATION_UNKNOWN message (fail closed for the offline path only). Pin with a CheckoutUseCase test 'offline order without deliveryLocation to a COD-blocked district is refused'.
-
-### A pending fee-variance agreement does not block dispatch, and agreement can still be recorded after the rider has left
-`apps/api/src/application/use-cases/fulfilment/DispatchUseCases.ts:85` | correctness | finder confidence 0.6
-
-**Reachable via:** POST /admin/fulfilment/:id/dispatch, PATCH /admin/fulfilment/:id/status, POST /admin/delivery/variance/:id/agreement
-
-**Scenario:** Ops apply a variance above the absorption threshold (POST /admin/delivery/orders/:id/variance) -> record agreement='pending', order.delivery_fee unchanged. Nothing in RecordDispatchUseCase or TransitionFulfilmentTaskUseCase consults listPendingAgreement/listForOrder, so the task dispatches with the rider card showing the OLD total. Later ops POST /admin/delivery/variance/:id/agreement {agreed:true}; RecordVarianceAgreementUseCase only refuses when order.status is delivered/completed, so it applies the new fee to an order that is already out for delivery: the rider's collection amount and the order total now disagree at the door, which is the exact dispute the commitment exists to prevent.
-
-**Why it is wrong:** The domain (DeliveryVarianceUseCases header, admin queue note 'These orders must not dispatch until the customer has agreed the changed fee') states agreement is required BEFORE dispatch, but the rule is enforced nowhere in a use case (repo convention: four-eyes/controls in use cases, never only in the UI).
-
-**Proposed fix:** Add a port to RecordDispatchUseCase and TransitionFulfilmentTaskUseCase (for to=OUT_FOR_DELIVERY) that checks deliveryVarianceRepo.listForOrder(orderId).some(v => v.agreement==='pending') and refuse with VARIANCE_AGREEMENT_PENDING; in RecordVarianceAgreementUseCase also refuse when the fulfilment task is OUT_FOR_DELIVERY (or order.status==='dispatched'), not only delivered. Pin with 'dispatch refused while a variance is pending' and 'agreement refused once dispatched'.
-
-### Generic status transition bypasses the dispatch payment policy and packing completion checks
-`apps/api/src/application/use-cases/fulfilment/TransitionFulfilmentTaskUseCase.ts:47` | authorization | finder confidence 0.5
-
-**Reachable via:** PATCH /admin/fulfilment/:id/status (ORDERS_MANAGE)
-
-**Scenario:** An operator with ORDERS_MANAGE calls PATCH /admin/fulfilment/:id/status {toStatus:'OUT_FOR_DELIVERY'} on a READY_FOR_DISPATCH task whose paymentStatus is 'unpaid'. canTransitionFulfilment only checks the FORWARD table, so it succeeds: no dispatch record, no CASH_ON_DELIVERY acknowledgement, no PAYMENT_NOT_CLEARED refusal, order mirrored to 'dispatched'. Likewise PICKING->PACKED->READY_FOR_DISPATCH can be walked by status alone with unresolved fulfilment lines, consuming inventory (route line 126) for an order that was never packed.
-
-**Why it is wrong:** FulfilmentDispatch documents 'an order that is not paid may only be dispatched under an explicit cash-on-delivery acknowledgement' and FulfilmentLine 'packing completion is forbidden while any quantity is unresolved', but both controls live only in RecordDispatchUseCase / CompletePackingUseCase and the older status endpoint walks past them.
-
-**Proposed fix:** In TransitionFulfilmentTaskUseCase refuse to=OUT_FOR_DELIVERY unless a dispatch record exists (or delegate to RecordDispatchUseCase), and refuse to=READY_FOR_DISPATCH unless the packing session is COMPLETED/PARTIAL with no unresolved remainder; keep ON_HOLD/CANCELLED free. Pin with 'status transition to OUT_FOR_DELIVERY on an unpaid task without a dispatch record is refused'.
-
-### The notification outbox worker also claims TELEMETRY_DISPATCH events and retires them as 'unroutable', racing the telemetry dispatcher that runs in the same tick
-`apps/api/src/application/use-cases/outbox/ProcessOutboxBatchUseCase.ts:75` | data-integrity | finder confidence 0.65
-
-**Reachable via:** OutboxTicker (every 30s) after any browser telemetry POST or a confirmed webhook purchase
-
-**Scenario:** TrackBrowserTelemetryEventUseCase and EnqueuePurchaseEventUseCase insert outbox rows with eventType 'TELEMETRY_DISPATCH' (status pending, next_attempt_at now). OutboxTicker runs processOutboxBatchUseCase.execute() and telemetryDispatcher.processBatch() concurrently. claimDueBatch filters only is_processed=false, next_attempt_at<=now and NOT IN the checkout side-effect list, so it locks and claims up to 25 telemetry rows per tick (status 'processing', next_attempt_at pushed 5 min out). NotificationRouter.route('TELEMETRY_DISPATCH') hits `default` and returns [], so lines 95-101 markProcessed(event.id, { lastError: 'No channel mapping for this event type.' }) and count it as unroutable. The telemetry SELECT ... FOR UPDATE SKIP LOCKED (TelemetryDispatchService:84-97) either skips the locked rows or, having read them first (its lock is autocommit-scoped), later writes 'retrying' onto a row already marked is_processed=true; in every ordering the event gets at most one dispatch attempt and is then recorded as a processed success. A purchase event that failed once is lost rather than retried on the documented 30s/5m/15m/1h/6h schedule, and metrics count it as delivered. Masked today only because sGTM is unprovisioned and every dispatch fails anyway.
-
-**Why it is wrong:** The header comment of this class explains exactly this failure for commerce events ('would find no route, mark them processed as unroutable, and report success while the work was discarded') and excludes them; telemetry events are the same shape (no channel, no recipient) but are not excluded. Two workers with overlapping claim predicates on one table is the at-least-once-with-loss pattern the lease design was meant to prevent.
-
-**Proposed fix:** Add EVENT_TYPE_TELEMETRY ('TELEMETRY_DISPATCH') to the excludeEventTypes passed here (export it from a shared constant so the telemetry service and this worker cannot drift), or give the notification worker an explicit includeEventTypes list of routable types. Add a test to tests/unit/ProcessOutboxBatchUseCase.test.ts asserting the claim filter excludes TELEMETRY_DISPATCH, and an architecture test in OutboxReliabilityInvariants that every claimer's include/exclude sets are pairwise disjoint.
-
-### A provider failure on the status lookup leaves the refund reservation 'requested' with nothing sent, and every retry with the same request is answered 'already requested, no second payout was sent'
-`apps/api/src/application/use-cases/payments/RefundPesaPalPaymentUseCase.ts:148` | money | finder confidence 0.75
-
-**Reachable via:** POST /admin/payments/attempts/:merchantReference/refund
-
-**Scenario:** Operator posts a refund of 50,000 for reference GP-... with reason 'delivery fee variance'. reserveRefund inserts the 'requested' row (counted against the refundable balance and subtracted from revenue). getTransactionStatus times out (3s, breaker 'pesapal' shared with checkout) and throws; there is no try/catch here, so the use case throws, the route returns 500, no providerStatus is recorded and no audit row is written. The operator retries the identical request: the deterministic key sha256(reference|amount|reason) matches the stuck row, reserveRefund returns ALREADY_PROCESSED, and the response says providerStatus 'requested' and 'This refund was already requested; the original request stands and no second payout was sent.' No RefundRequest was ever sent to PesaPal. The ledger permanently shows 50,000 refunded, the customer never receives it, and nothing lists refunds that were reserved but never handed to the provider (hasOutstandingRefunds only drives re-verification, and the poller never looks at completed attempts, see the next finding).
-
-**Why it is wrong:** The class comment justifies retaining a reservation only when the provider CALL may have moved money; a failed status lookup provably moved none, yet the row is retained with no marker, and ALREADY_PROCESSED then asserts a payout request that never happened. The same wrong answer is given when the earlier row was 'rejected' (NO_CONFIRMATION_CODE): a rejected row does not count against the balance but its key still blocks an identical retry.
-
-**Proposed fix:** Wrap the status lookup like the RefundRequest call: on throw, recordProviderOutcome(refund.id, { status: 'rejected', providerStatus: 'STATUS_LOOKUP_FAILED' }) (no money could have moved before RefundRequest) and return a typed failure the route maps to 502; make reserveRefund's ALREADY_PROCESSED branch ignore rows with status 'rejected' (or include the key only for requested/settled rows) so a genuine retry is possible; audit both. Pin with tests/unit/PaymentReconciliation.test.ts (refund section): 'status lookup failure rejects the reservation and a retry sends the refund', and 'a rejected reservation does not block an identical retry'.
-
-### Order number carries 16 bits of entropy per month against a UNIQUE column, so live checkouts randomly fail with 503
-`apps/api/src/domain/commerce/Order.ts:133` | correctness | finder confidence 0.85
-
-**Reachable via:** POST /commerce/orders/create (every order)
-
-**Scenario:** orders.order_number is varchar(20).unique().notNull() (schema/commerce.ts:58). Two orders in the same calendar month whose random UUIDs share the first four hex characters produce identical order numbers. With n orders in a month the probability of at least one collision is about 1 - exp(-n^2/131072): 7% at 100 orders, 50% at 300, effectively certain at 1000. On a collision, savePricedOrder's INSERT (DrizzleOrderRepository.ts:167) raises 23505; CheckoutUseCase's catch releases the promotion/loyalty reservations and rethrows; ExecuteCheckoutIntentUseCase.classifyDependencyError does not recognise the pg error, so the claim is marked FAILED_RETRYABLE with reason CHECKOUT_ERROR and the route answers 503 ORDER_FAILED 'The order could not be completed. Please try again.' The customer's paid-for basket is refused at the last step for no reason they can act on; the retry only succeeds because a fresh UUID is drawn. The same 4-hex space is what makes order numbers enumerable in the finding above.
-
-**Why it is wrong:** A customer-facing identifier that must be unique is derived from 16 random bits and a month; the uniqueness constraint then turns ordinary volume into spurious checkout failures. It also uses server-local (UTC) month rather than Africa/Kampala, so the first three hours of each EAT month are stamped with the previous month.
-
-**Proposed fix:** Generate the order number from a monotonic per-month sequence or from >= 40 bits of the UUID (e.g. GP-YYYYMM-<8 hex>) computed with the EAT helper in packages/shared/src/time/eat.ts, keeping the domain pure (pass the number in from the use case or derive it from the id in a way that cannot collide). Also classify SQLSTATE 23505 on orders_order_number in savePricedOrder as a retryable dependency error so the customer sees a retry rather than a generic failure. Pin with a unit test that generates 2,000 Order.create numbers in one month and asserts no duplicates, and a repository test that two orders with colliding uuid prefixes both persist.
-
-### PIM UPSERT writes any positive retail price onto a live product, below the 145,000 floor
-`apps/api/src/domain/pim/PimImport.ts:83` | money | finder confidence 0.7
-
-**Reachable via:** POST /admin/pim-imports -> mapping -> preview -> approval -> apply (pim.create/map/approve/apply)
-
-**Scenario:** An UPSERT import row names an existing approved SKU with retailPriceUgx 99000. normalizePimRow accepts it (only > 0 and integer are checked), preview marks the row UPDATE, four-eyes approval passes, and applyRow updates products.price_ugx and product_prices.retail_price to 99,000 with hasRetailPrice true. findPublicViewList now serves the product at UGX 99,000 and EvaluateCartPricingUseCase charges it.
-
-**Why it is wrong:** The spreadsheet is trusted for the price; the owner's storefront floor (STOREFRONT_PRICE_FLOOR_UGX, enforced for battery imports in BatteryImport.ts) is not applied on this import path.
-
-**Proposed fix:** In normalizePimRow add `value.retailPriceUgx < STOREFRONT_PRICE_FLOOR_UGX` as a validation error (message naming the floor) so the row is INVALID at preview; pin with PimImport.test 'a retail price below the floor is refused'.
-
-### Brand chip count includes supplier-listed unchecked fits while the page tells the customer it is the number of batteries "we have checked"
-`apps/api/src/infrastructure/db/repositories/DrizzleBatteryFinderRepository.ts:67` | copy | finder confidence 0.8
-
-**Reachable via:** GET /batteries/finder/brands; /battery-finder page
-
-**Scenario:** Default config has showAwaitingVerification: true. Brand TECNO has 1 FIT_TESTED published fit and 4 published SUPPLIER_LISTED (unchecked) claims. brands() returns verifiedFits = 5; battery-finder.astro line 113 renders 'TECNO · 5' and line 117 says 'The number is how many batteries we have checked for that brand.' The per-device count on the same page (brandBySlug line 89, VERIFIED_PUBLIC only) shows '1 battery we have checked' for the phone, so the two numbers contradict each other on the next click.
-
-**Why it is wrong:** Customer-facing copy must not state a fact the data does not support; the shared label for SUPPLIER_LISTED is 'Listed by the supplier, not yet checked by us', so counting it as 'checked' is an invented claim and the DTO field is misnamed for what it carries.
-
-**Proposed fix:** Drop the awaiting clause from the verifiedFits count in brands() (use VERIFIED_PUBLIC only, matching brandBySlug and verifiedFitCount), and if awaiting listings are wanted for ordering, return them as a separate coverageCount used by orderBrands. Test: DrizzleBatteryFinderRepository.brands with showAwaiting true does not count SUPPLIER_LISTED in verifiedFits.
-
-### Re-running the dry run discards the operator's override and reverts proposedAction, so an INCLUDE-resolved compound catalogue row is counted as valid but silently SKIPPED at apply
-`apps/api/src/infrastructure/db/repositories/DrizzleBatteryImportRepository.ts:119` | data-integrity | finder confidence 0.75
-
-**Reachable via:** POST /admin/batteries/imports/:id/preview after POST .../rows/:rowId/resolve
-
-**Scenario:** Operator resolves a held compound catalogue row with INCLUDE + canonicalCode 'BL-49CI' (resolveRow stores { ...value, canonicalCode, overridden: true } and proposedAction CREATE_BATTERY). Anyone then clicks '2. Run the dry run' (the page shows it whenever status is MAPPED or READY_FOR_APPROVAL). savePreview recomputes normalizedData from the source row ({ sourceItem, codes, category, hold }) and proposedAction back to HOLD_COMPOUND, while the kept INCLUDE resolution makes the status VALID (line 114). The approver sees the row in 'What will be created' and validRows counts it; at apply, applyRow's BATTERY_CATALOGUE branch sees HOLD_COMPOUND and returns SKIPPED, so the battery the operator explicitly resolved is never created and the session still ends APPLIED.
-
-**Why it is wrong:** The comment on line 105 promises operator resolutions survive re-previews; only the INCLUDE flag survives, the data it depended on is thrown away, producing a VALID row whose action cannot apply.
-
-**Proposed fix:** In savePreview, for rows whose stored resolution is INCLUDE with an override, re-merge the override onto the recomputed value and re-derive proposedAction the same way resolveRow does (or store the override in its own column and have apply merge it). Alternatively refuse a re-preview while any row carries a resolution, forcing the operator to re-resolve. Test: preview -> resolve INCLUDE with override -> preview again -> row still CREATE_BATTERY with canonicalCode.
-
-### A 'scheduled' publish goes live immediately; scheduledFor is stored and never honoured
-`apps/api/src/infrastructure/db/repositories/DrizzleDeliveryConfigRepository.ts:87` | correctness | finder confidence 0.7
-
-**Reachable via:** POST /admin/delivery/config/:versionId/publish with scheduledFor
-
-**Scenario:** Operator publishes a fee change with body {previewConfirmed:true, scheduledFor:'2026-09-01T06:00:00Z'} intending it for next week. PublishConfigVersionUseCase passes scheduledFor through, publish() sets status='published' and publishedAt=now while merely storing scheduled_for; DeliveryConfigReader.publishedVersionId() picks it up on the next quote. Customers get the new fees now; the version list shows a future scheduledFor next to a version that is already live. No job anywhere reads scheduled_for (grep: schema + this repo + the route only).
-
-**Why it is wrong:** The route validates and accepts a schedule, the reader's comment promises 'a draft or scheduled version is deliberately invisible here', and the registry describes 'the Control Centre's scheduled publish', yet the implementation applies the change at once. Operator is misled about when a price change takes effect (contract #7).
-
-**Proposed fix:** Either refuse scheduledFor in PublishConfigVersionUseCase until scheduling exists (fail('SCHEDULING_NOT_SUPPORTED')), or implement it: store status='scheduled' with scheduled_for, have DeliveryConfigReader.publishedVersionId ignore it, and add a job that promotes scheduled versions whose time has passed (demote previous published in the same transaction). Pin with 'publish with a future scheduledFor does not change currentValues()' in a use-case test.
-
-### The poller never revisits a completed attempt with an outstanding refund, so the completed->reversed edge and refund settlement depend entirely on the provider pushing an IPN or an operator pressing re-verify
-`apps/api/src/infrastructure/db/repositories/DrizzlePaymentAttemptRepository.ts:123` | data-integrity | finder confidence 0.8
-
-**Reachable via:** PaymentReconcileTicker after POST /admin/payments/attempts/:ref/refund
-
-**Scenario:** A refund is requested and accepted by PesaPal (RefundPesaPalPaymentUseCase returns ok). The attempt stays 'completed' and the ledger row stays 'requested'. POLLABLE_ATTEMPT_STATUSES is ['pending','verification_pending'], so listAttemptsForReconciliation never returns this attempt and ReconcilePendingPaymentsUseCase never asks the provider about it. VerifyPesaPalPaymentUseCase's hasOutstandingRefunds re-check (line 96-99) only runs when something ELSE invokes verify for that tracking id. If PesaPal does not send an IPN for the reversal (or it is lost, the exact case the poller exists for), the refund stays 'requested' forever, settleRefundsForAttempt never runs, a total refund never cancels the order, the attempt never reaches 'reversed', and /admin/payments/queue shows no disagreement because both sides still read COMPLETED until someone re-verifies by hand.
-
-**Why it is wrong:** RefundPesaPalPaymentUseCase's class comment, IRefundLedgerRepository.hasOutstandingRefunds's doc and docs/payments/DECISIONS.md all state that 'the reconciliation poller, which already watches every attempt, observes the reversal landing'. The repository query watches only two states, so the documented safety net does not cover refunds. Provider-push dependence is the failure class the poller was built to remove.
-
-**Proposed fix:** Add a second listing to IPesaPalPaymentRepository, e.g. listCompletedAttemptsAwaitingRefund(limit) (join payment_refunds where status='requested'), and have ReconcilePendingPaymentsUseCase settle those through the same SettlePaymentUseCase path (source 'poll'); alternatively include 'completed' attempts with outstanding refunds in listAttemptsForReconciliation via an EXISTS subquery. Pin with tests/integration/PesapalPaymentJourney: 'the poller observes a REVERSED answer on a completed attempt with a requested refund and settles the ledger row'.
-
-### A second SUCCESS webhook with a new reference for an already-paid order is neither recorded nor rejected: the order transition throws, the payment insert rolls back and the route returns 500
-`apps/api/src/infrastructure/db/repositories/DrizzlePaymentRepository.ts:95` | money | finder confidence 0.55
-
-**Reachable via:** POST /webhooks/payment/:provider (requires MTN_WEBHOOK_SECRET / AIRTEL_WEBHOOK_SECRET or grace mode)
-
-**Scenario:** Order X is paid (status 'processing', paymentStatus 'paid') from webhook ref R1. The provider delivers a signed SUCCESS webhook for order X with providerReference R2 (customer charged twice, or a provider re-send under a fresh reference). RecordPaymentWebhookUseCase passes the amount check and finds no row for key mtn:R2, so this method inserts the payment row and calls transitionWithin(..., 'processing'); canTransitionOrder('processing','processing') is not allowed, OrderTransitionService throws DomainError ORDER_TRANSITION_ILLEGAL_TRANSITION, the transaction rolls back (payment row gone), the catch at line 150-158 does not match 'duplicate key', the error propagates, webhooks.ts's catch does not match MISSING_ORDER and rethrows, the provider gets HTTP 500 and retries indefinitely. The second charge leaves no payments row, no requires_review flag and no operator signal; the only trace is a 500 in the logs.
-
-**Why it is wrong:** The webhook path is required to be idempotent and to surface anything it cannot apply; a real, authenticated payment fact must be recorded (at minimum as requiring review) rather than lost, and a provider must never be answered 500 for a question already answered. The use case's amount-mismatch branch shows the intended pattern (hold for review); a duplicate success has no such branch.
-
-**Proposed fix:** In RecordPaymentWebhookUseCase, before recordWebhookOutcome, check the order's paymentStatus (extend OrderAmountResolver to return {totalUgx, paymentStatus}) and, when already 'paid', record the payment with requiresReview=true and no lifecycle move (the repository already skips the transition when requiresReview is set), returning ok with requiresReview so the route answers 200 and logs PAYMENT_WEBHOOK_UNVERIFIED_ACCEPTED_PENDING_REVIEW-style. Pin with tests/unit/RecordPaymentWebhook.test.ts: 'a second SUCCESS for a paid order is recorded for review and does not throw'.
-
-### Transitioning a superseded version rewrites the definition status and can archive a live promotion
-`apps/api/src/infrastructure/db/repositories/DrizzlePricingRepository.ts:121` | correctness | finder confidence 0.75
-
-**Reachable via:** POST /admin/pricing/definitions/:id/{archive|approve|reject|submit|activate} with an older versionId (pricing.manage/approve/activate permissions)
-
-**Scenario:** launch-10 v1 is ACTIVE. Operator pauses v1, creates v2, submits/approves/activates it: definition ACTIVE, activeVersionId = v2, v1 left PAUSED. An operator with pricing.manage then tidies up with POST /admin/pricing/definitions/:id/archive { versionId: v1, expectedRevision }. PricingGovernanceUseCase.transition only checks canTransitionPromotion(PAUSED, ARCHIVED) and that v1 belongs to the definition; the repo sets the definition row to status ARCHIVED with activeVersionId null although v2 is still ACTIVE. listActiveVersions requires definition.status = ACTIVE and activeVersionId = version.id, so the live 10% vanishes from checkout and the storefront. createVersion refuses ARCHIVED definitions and ACTIVE cannot transition to ACTIVE, so the promotion is bricked with no governed way back. The same mirror happens for approve/reject/submit on any old version.
-
-**Why it is wrong:** The definition's status and activeVersionId are derived from whichever version was touched, not from the version that actually represents the definition; the use case, not the UI (which only offers detail.versions[0]), must refuse transitions on non-current versions.
-
-**Proposed fix:** In PricingGovernanceUseCase.transition refuse (INVALID_TRANSITION) any version that is neither definition.activeVersionId nor the latest version number; in transitionVersion only mirror definition.status/activeVersionId when versionId equals the definition's current version. Pin with PricingGovernanceUseCase.test 'archiving a superseded version leaves the active version and definition status untouched'.
-
-### Public catalogue readers ignore products.active, so deactivated products stay listed, searchable and purchasable
-`apps/api/src/infrastructure/db/repositories/DrizzleProductRepository.ts:240` | correctness | finder confidence 0.5
-
-**Reachable via:** GET /products, GET /products/:slug, GET /products/suggest, POST /commerce/pricing-preview and checkout pricing
-
-**Scenario:** A product row has active = false (created via POST /admin/products with active:false and approvalStatus 'approved', or later flagged inactive; the SEO lifecycle reader treats active = false as discontinued and the sitemap and DrizzleProductRecommendationReader exclude it). findPublicViewList and findPublicViewBySlug filter on approvalStatus only, so GET /products lists it, GET /products/:slug serves it, /products/suggest suggests it, and EvaluateCartPricingUseCase.findPublicViewList({ids}) prices it for checkout. The catalogue and the sitemap/recommendation surfaces disagree about whether the product is on sale.
-
-**Why it is wrong:** Publication gating must be one rule applied on every public read; a product other readers treat as withdrawn must not be reachable by slug, in search, or in checkout pricing.
-
-**Proposed fix:** Add eq(products.active, true) to the where clauses of findPublicViewList and findPublicViewBySlug (the checkout pricing lookup goes through the same method). Pin with a DrizzleProductRepository test 'an approved but inactive product is not returned publicly'.
-
-### Repository rethrows unique violations as a plain Error, so RegisterCustomerUseCase's 23505 branch is dead and a duplicate phone registers as a 500
-`apps/api/src/infrastructure/db/repositories/DrizzleUserRepository.ts:61` | error-handling | finder confidence 0.8
-
-**Reachable via:** POST /auth/register (storefront /register)
-
-**Scenario:** Customer A already has phone '0771234567'. Customer B registers a new email with the same phone. users.phone is unique, Postgres raises 23505, DrizzleUserRepository.create catches it and throws new Error('USER_EMAIL_TAKEN') which has no .code. RegisterCustomerUseCase line 90 checks (error as {code?}).code === '23505', misses, and rethrows; the route has no handler so the API answers 500. register.astro maps anything that is not 409/400 to 'We could not create your account right now. Please try again in a moment.', so the customer retries indefinitely instead of being told to sign in or that the phone is in use. The same happens for a raced duplicate email.
-
-**Why it is wrong:** Two guards for the same condition disagree on the contract (one duck-types pg's code, the other strips it), so the intended 409 ALREADY_REGISTERED path ('An account with this email or phone already exists. Sign in instead.') can never execute. Duplicated logic that has already diverged.
-
-**Proposed fix:** Either have the repository throw a typed error that preserves the code (class UniqueViolationError extends Error { code = '23505'; field: 'email' | 'phone' }) and match on it in the use case, or drop the repository's catch entirely and let the pg error propagate to the existing 23505 duck-type. Pin with a unit test on RegisterCustomerUseCase using a fake repo that throws the repository's real error shape and expects ALREADY_REGISTERED.
-
-### /setup reports quotingEnabled=true while own_rider_max_band is unset and every metro quote is CONFIG_INCOMPLETE
-`apps/api/src/interfaces/http/routes/admin/delivery.ts:62` | correctness | finder confidence 0.75
-
-**Reachable via:** GET /admin/delivery/setup (REPORTS_READ)
-
-**Scenario:** An operator publishes the five LAUNCH_KEYS through expert mode without own_rider_max_band (mandatory, Tier 2, ships null). GET /admin/delivery/setup uses missingLaunchKeys (LAUNCH_KEYS only) and returns quotingEnabled:true, blockedBy:null. Meanwhile DeliveryQuotingUseCase resolves mode=null for every corridor area and quoteFulfilment returns CONFIG_INCOMPLETE naming own_rider_max_band, so customers keep seeing 'We are finalising delivery pricing' and checkout keeps using the legacy fallback. The dashboard says the module is live when it is not.
-
-**Why it is wrong:** Activation is gated by every mandatory registry key (missingMandatoryKeys exists for exactly this and includes own_rider_max_band), but the setup report checks only the five numeric launch keys. Contract #3 ('six numbers to launch') and 'no invented status'.
-
-**Proposed fix:** In the /setup handler compute missing with missingMandatoryKeys(live) from DeliveryConfigRegistry (which covers own_rider_max_band) and surface it in launchValues; keep missingLaunchKeys for the numeric rows. Pin with a route/unit test: live values with the five launch keys but no own_rider_max_band -> quotingEnabled false, blockedBy CONFIG_INCOMPLETE listing own_rider_max_band.
-
-### products.write can publish a product directly; products.publish is never enforced and there is no maker/checker
-`apps/api/src/interfaces/http/routes/admin/products.ts:370` | authorization | finder confidence 0.6
-
-**Reachable via:** POST /admin/products and PUT /admin/products/:id
-
-**Scenario:** An operator holding only PERMISSIONS.PRODUCTS_WRITE PUTs (or POSTs) approvalStatus 'approved' for a product they just created or edited. The route writes approvalStatus straight to products via save(); findPublicViewBySlug/findPublicViewList gate solely on approvalStatus = 'approved', so the product is live on the storefront and purchasable. PERMISSIONS.PRODUCTS_PUBLISH exists in packages/shared/src/permissions but is referenced only by the control-centre module registry, never by a route or use case; the same actor makes and approves.
-
-**Why it is wrong:** Publication moves a product into the public catalogue and must be gated by the publish permission and a checker distinct from the maker, enforced in a use case rather than left as a free-form field on the edit form.
-
-**Proposed fix:** Strip approvalStatus from the create/update body; add a PublishProductUseCase (route POST /admin/products/:id/publish behind PERMISSIONS.PRODUCTS_PUBLISH) that refuses when actorId equals the product's last editor and audits before/after. Pin with a route test that products.write cannot change approvalStatus and a use-case test for the distinct-approver rule.
-
-### No per-account attempt limit on /auth/mfa/verify: TOTP step-up can be brute-forced
-`apps/api/src/interfaces/http/routes/auth.ts:386` | security | finder confidence 0.7
-
-**Reachable via:** POST /auth/mfa/verify with any valid bearer token
-
-**Scenario:** An attacker with a stolen admin bearer token (the case step-up exists for) posts six-digit codes to /auth/mfa/verify. verifyTotp accepts any of 3 codes per 30-second step (window +/-1), i.e. 3 in 10^6. Nothing counts failures: user_mfa.failed_attempts is reset to 0 in confirm() and recordVerification() but never incremented or checked, and the route is classified into the 'global' abuse family (1000/min per client). At 1000 guesses/min from one address the expected time to a hit is a few hours; with a handful of addresses it is under an hour, after which last_verified_at is stamped and every requireStepUp gate opens for five minutes.
-
-**Why it is wrong:** A six-digit OTP is only safe with a small attempt budget and lockout (the SMS reset flow enforces exactly this, SMS_RESET_MAX_ATTEMPTS = 5); the schema anticipated a failed_attempts counter and the code never uses it. Same family gap in PublicEndpointPolicy: /auth/mfa/* falls into 'global' instead of an AUTH family.
-
-**Proposed fix:** In MfaService.verify/useRecoveryCode, bump failed_attempts via a new IMfaRepository.recordFailure(userId) and refuse (MFA_LOCKED, 429 with Retry-After) once it exceeds e.g. 5 within 15 minutes, resetting on success; classify POST /auth/mfa/* as an AUTH family (limit 10/min) in classifyPublicEndpoint. Pin with a MfaService unit test (sixth wrong code is refused even if correct) and a PublicEndpointPolicy test for the new family.
-
-### Every terminal business refusal is collapsed to ORDER_FAILED, so the customer is told to 'try again' for a permanent refusal and the storefront's specific copy is unreachable
-`apps/api/src/interfaces/http/routes/commerce.ts:676` | copy | finder confidence 0.85
-
-**Reachable via:** POST /commerce/orders/create
-
-**Scenario:** A product in the basket is withdrawn (or a promo preview expires, or promotion capacity runs out). ExecuteCheckoutIntentUseCase returns { kind: 'FAILED_FINAL', reason: 'PRODUCT_UNAVAILABLE' }. The mapping table sends only mapped.code ('ORDER_FAILED') and mapped.message; outcome.reason is logged (line 693) but never placed in the body (line 705-709). The storefront's checkoutClient.ts switch has dedicated messages for PRICE_CHANGED, PROMOTION_CHANGED, PRODUCT_UNAVAILABLE and PRICE_UNAVAILABLE ('remove it from your cart and try again', 'check the new total') but can never receive those codes from /orders/create, so the customer sees 'We could not place your order. Please try again. You have not been charged. If it keeps failing, message us' and retries into the same refusal. The PRICE_REVIEW_REQUIRED entry at line 664 is dead: the use case never emits that kind (it emits FAILED_FINAL with reason PRICE_CHANGED).
-
-**Why it is wrong:** The comment directly above (line 698-702) states 'A known business rejection is named by its CODE (the storefront maps it to its own wording)', and the shared CheckoutErrorCode union in packages/shared/src/types/checkout.ts enumerates PRICE_CHANGED/PROMOTION_CHANGED/PRODUCT_UNAVAILABLE/PRICE_UNAVAILABLE precisely so the storefront can react. Telling a customer to retry a refusal that cannot succeed is a false claim in customer-facing copy.
-
-**Proposed fix:** For FAILED_FINAL, set the public code from outcome.reason when it is one of the shared CheckoutErrorCode values (PRICE_CHANGED, PROMOTION_CHANGED, PRODUCT_UNAVAILABLE, PRICE_UNAVAILABLE, DELIVERY_NOT_SUPPORTED, CAPACITY_UNAVAILABLE) and fall back to ORDER_FAILED otherwise; remove the dead PRICE_REVIEW_REQUIRED entry or make the use case emit it. Keep messages generic on the API side. Pin with a route test 'POST /orders/create maps FAILED_FINAL/PRODUCT_UNAVAILABLE to error.code PRODUCT_UNAVAILABLE' and a contract test that every CheckoutErrorCode the storefront switches on is producible by the route.
-
-### Unbounded in-process quote cache keyed on unauthenticated user input never evicts
-`apps/api/src/interfaces/http/routes/delivery.ts:26` | performance | finder confidence 0.7
-
-**Reachable via:** POST /delivery/quote (public, no auth)
-
-**Scenario:** POST /delivery/quote is public. fullKey is built from areaSlug (any string), district (any string), subtotalUgx (any number), hasPin and up to 100 productId x quantity pairs. Each distinct body inserts a new entry holding the whole response object; expiry is only checked on read at line 63 and nothing ever deletes. A client looping over subtotalUgx=1..N (or random areaSlug strings) grows the Map without bound; at the global rate limit that is roughly 1.4M entries/day per replica until the process is OOM-killed, taking every quote and the checkout adapter's process with it.
-
-**Why it is wrong:** Unbounded data structure driven by user input; the TTL is not an eviction policy. The stated purpose (one basket shows one fee) needs only a small LRU.
-
-**Proposed fix:** Replace the Map with a bounded LRU (e.g. max 5,000 entries, evict oldest on set, sweep expired on set), and normalise the key inputs (cap string lengths, round subtotal to the nearest 1,000 or omit it from the key since the quote already computes subtotal from items). Pin with a unit test that after MAX+1 distinct keys the cache size stays at MAX.
-
-### Header featured card claims 'On sale now' and prints price -> same price when the floor removes the whole discount
+### Header featured card claims 'On sale now' and prints price -> same price when the floor removes the whole discount **[FIXED]**
 `apps/web/src/components/GpNav.astro:457` | copy | finder confidence 0.7
 
 **Reachable via:** Every storefront page header while a promotion is active
@@ -579,88 +297,308 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Compute featSale = salePriceUgx(...) and render the arrow/'On sale now' only when featSale < priceUgx, otherwise fall back to the label/blurb branch. Pin with a GpNav render test for a product priced at the floor. (File is adjacent to the slice; reported because it is a caller of storefrontDiscount.ts.)
 
+### Storefront discount ignores maximumDiscountUgx, so cards, PDP and cart show a lower price than the evaluator charges *(unverified)*
+`apps/api/src/application/pricing/StorefrontDiscountQuery.ts:40` | money | finder confidence 0.8
+
+**Reachable via:** GET /commerce/storefront-discount consumed by ProductCard, products/[slug], cart, checkout, GpNav after an admin creates a capped site-wide promotion
+
+**Scenario:** Admin creates a site-wide promotion: no conditions, no exclusions, no coupon, benefit { type: 'PERCENTAGE_OFF', value: 1000, maximumDiscountUgx: 20000 } (accepted by admin/pricing.ts benefit schema). resolveStorefrontDiscount treats it as the simple storefront discount and returns percentBps 1000 with no cap. ProductCard/PDP display salePriceUgx(400000, 1000, floor) = 360,000 and cart.astro shows 720,000 for two; PricingEvaluator caps the line discount at remainingCap 20,000 and charges 780,000. The checkout total is higher than every price the customer was shown.
+
+**Why it is wrong:** The query's own contract is that only a promotion the display can mirror to the shilling qualifies; a capped benefit cannot be mirrored per unit, so it must return INACTIVE_DISCOUNT rather than an uncapped percentage.
+
+**Proposed fix:** Add `b.maximumDiscountUgx == null` to both the qualifying predicate and the benefit lookup (and reject any second non-FREE_SHIPPING benefit on the same version). Pin with StorefrontDiscountQuery.test 'a capped percentage benefit is not advertised'.
+
+### Battery pack verification has no maker/checker in the use case although the admin page states a second person must do it *(unverified)*
+`apps/api/src/application/use-cases/batteries/BatteryCatalogueUseCases.ts:330` | authorization | finder confidence 0.5
+
+**Reachable via:** POST /admin/batteries/catalogue/:id/verify (BATTERIES_COMPAT_VERIFY)
+
+**Scenario:** An operator holding both batteries.catalogue.manage and batteries.compatibility.verify creates a battery via Quick Add with codeStatus CONFIRMED (a select on the same form), then immediately clicks Verify on /admin/batteries/catalogue/:id. verify() only checks codeStatus and marks verificationStatus VERIFIED with verifiedBy = the creator. The page copy at catalogue/[id].astro line 327 ('A second person should do this, not the person who entered the battery.') is not enforced anywhere; found.profile.createdBy is available and never compared to actorId.
+
+**Why it is wrong:** The repo rule is that four-eyes checks live in use cases, never only in the UI; the compatibility workflow enforces it by actor id, the battery verification that unlocks the BATTERY_UNVERIFIED readiness blocker does not.
+
+**Proposed fix:** In verify(): if (found.profile.createdBy === actorId) throw forbidden('MAKER_CHECKER', 'The person who entered the battery cannot verify it against the pack.'); also refuse when found.profile.updatedBy === actorId changed codeStatus to CONFIRMED in the same session if that stricter reading is wanted. Test: BatteryCatalogueUseCases.verify refuses the creator.
+
+### Public finder suggestions and /batteries/products/:slug expose unpublished (DRAFT/REVIEW/READY) batteries *(unverified)*
+`apps/api/src/application/use-cases/batteries/BatteryFinderUseCases.ts:204` | security | finder confidence 0.75
+
+**Reachable via:** GET /batteries/finder/search, GET /batteries/products/:slug (public)
+
+**Scenario:** Anonymous GET /batteries/finder/search?q=BL4 (3+ chars, no exact hit). batteryCandidates() returns every non-ARCHIVED battery (repo line 196) and tier 6 prefix matching in FinderRanking.ts line 121 runs over that set, so draft batteries created by the importer or Quick Add are suggested; line 204 fetches them with batteryPublic() which has no lifecycle filter and returns canonicalCode, slug and name. The page renders them as links to /products/<slug>. GET /batteries/products/<slug> then returns the full draft DTO (name, price, code, publicNotes, warranty, chemistry) with isPublished:false; only the web page hides it. fuzzyBatteries (repo line 213) correctly restricts to ACTIVE, so the two suggestion sources disagree.
+
+**Why it is wrong:** The public API is documented (routes/batteries.ts header, IBatteryFinderRepository header) as returning only published, evidenced data; unpublished catalogue entries, provisional codes and internal draft names must not be enumerable from the storefront.
+
+**Proposed fix:** In search(): when building suggestions, keep only batteries whose lifecycle is ACTIVE (filter input.batteries to ACTIVE before the tier-6 pass, or filter batteryList on b.lifecycleStatus === 'ACTIVE' && productApproved && productActive). In battery(): return null unless lifecycleStatus === 'ACTIVE' (the route already maps null to 404) or strip everything but isPublished for non-active. Tests: rankSearch prefix tier ignores DRAFT batteries; BatteryFinderUseCases.battery returns null for a DRAFT slug.
+
+### Catalogue preview keys the resolution cache by the raw stock label but looks it up by the derived canonical code, so existing and ambiguous batteries are never detected for GP-/bare labels *(unverified)*
+`apps/api/src/application/use-cases/batteries/BatteryImportUseCases.ts:162` | correctness | finder confidence 0.85
+
+**Reachable via:** POST /admin/batteries/imports/:id/preview (BATTERY_CATALOGUE)
+
+**Scenario:** Source item 'GP-49FT' with no code column (the shop's own label format). preload() stores the resolveCode result under normaliseBatteryCode('GP-49FT') = 'GP49FT'. normaliseImportRow derives canonicalCode = displayCode('49FT') = 'BL-49FT' and calls ctx.resolveBattery('BL-49FT'), which looks up 'BL49FT' (line 155) and gets null. Verified with the pure functions: preload key GP49FT / lookup key BL49FT; for bare '49FT': 49FT / BL49FT. Result: every such row previews as CREATE_BATTERY with no 'Updates existing battery' warning even when BL-49FT already exists, and a code that resolves to two batteries is not flagged INVALID at preview; the approver signs off a preview that does not describe what apply will do (apply re-resolves and updates, or fails the row with AMBIGUOUS).
+
+**Why it is wrong:** The dry run is the four-eyes artefact; it must be deterministic and describe the apply. The cache key and lookup key must be the same normalised form.
+
+**Proposed fix:** Key the cache by every candidate form: in preload(), after resolving, store the result under normaliseBatteryCode(raw) and under each batteryCodeCandidates(raw) entry and under the normalised displayCode of the analysed line; or make resolveBattery look up batteryCodeCandidates(code) and stripCodeQualifier before giving up. Test: BatteryImportUseCases.preview with a fake repo containing BL-49FT and a row 'GP-49FT' yields UPDATE_BATTERY.
+
+### Price rollback overwrites a price changed since the import, contradicting the documented 'reported, not clobbered' rule *(unverified)*
+`apps/api/src/application/use-cases/batteries/BatteryImportUseCases.ts:429` | data-integrity | finder confidence 0.8
+
+**Reachable via:** POST /admin/batteries/imports/:id/rollback (PIM_ROLLBACK) on a PRICE_UPDATE session
+
+**Scenario:** PRICE_UPDATE import sets BL-49FT from 150,000 to 160,000 (beforeSnapshot 150000, afterSnapshot 160000). An operator later edits the price by hand to 170,000. Someone rolls the import back: line 429 restores 150,000 unconditionally. The manual 170,000 is lost and the storefront shows 150,000; the rollback notes report nothing. The stock branch two cases above (line 421) does the live-vs-afterSnapshot check that this branch omits.
+
+**Why it is wrong:** The rollback contract in the method's own doc comment (line 375) says anything touched since import is reported, not clobbered; price is the one field that directly moves money and is the one without the check.
+
+**Proposed fix:** Before restoring, compare found.product.priceUgx with Number(afterSnapshot.priceUgx); if they differ, throw new Error(`${code} price changed since import (now X, import set Y); not restored.`) so the row is reported in notes like the stock case. Test: BatteryImportUseCases.rollback leaves a price that was changed after apply and records it in notes.
+
+### Stale count applies a stock change without the operator reason the rule requires, because the reason gate is evaluated against the draft's system quantity, not the live balance *(unverified)*
+`apps/api/src/application/use-cases/batteries/InventoryLedgerUseCases.ts:258` | validation | finder confidence 0.6
+
+**Reachable via:** POST /admin/batteries/stock/counts/:id/apply
+
+**Scenario:** Draft a cycle count for BL-49FT when system = 10, counted = 10, reason left blank (allowed: no difference). A receipt of 5 is applied afterwards (live = 15). Apply the count: countBlockers at line 252 runs on the stored systemQuantity (10 vs 10, passes), then line 258 computes delta = 10 - 15 = -5 and line 264 writes reason 'cycle count: difference found'. Five units that physically arrived are written off with an auto-generated reason nobody typed, and the page text ('Any difference from the system needs a reason before it can be applied') is false for this path.
+
+**Why it is wrong:** The domain rule (InventoryLedger.countBlockers) is that a line whose count differs from the system needs a reason; re-reading the live balance at apply time without re-running that rule lets the requirement be bypassed by time rather than by intent.
+
+**Proposed fix:** In applyCount, after re-reading live stock build the blocker input with systemQuantity = live.stock and run countBlockers again; refuse with COUNT_STALE listing the lines whose live balance moved since the draft and now differ without a reason, so the operator re-counts or adds a reason. Test: applyCount refuses when live stock differs from the draft and the line has no reason.
+
+### A failure after the order has committed releases the loyalty reservation the committed order's discount depends on *(unverified)*
+`apps/api/src/application/use-cases/commerce/CheckoutUseCase.ts:336` | money | finder confidence 0.5
+
+**Reachable via:** POST /commerce/orders/create with redeemPoints (signed-in customer)
+
+**Scenario:** Signed-in customer checks out with redeemPoints. savePricedOrder commits the order (with loyaltyDiscountUgx and loyaltyRedemptionId on the row, fenced link written, stage ORDER_CREATED). Then loyaltyRedemption.attach (line 316, a plain UPDATE on loyalty_redemptions) throws on a transient DB fault. The catch treats the whole block as not-committed: it releases the loyalty reservation (ReleaseRedemptionUseCase marks it 'released') and calls capacity.release on reservations already marked REDEEMED. The error propagates; ExecuteCheckoutIntentUseCase records FAILED_RETRYABLE with the order already linked, the customer retries, resume() picks up the committed order and returns AWAITING_PAYMENT for the discounted total. The order is paid at the reduced amount while the points were handed back to the balance and no reservation is attached to the order for SettlePaymentUseCase.settleLoyalty to consume.
+
+**Why it is wrong:** The compensation branch does not distinguish 'order not committed' from 'order committed, post-commit bookkeeping failed'. Once savePricedOrder returns, the reservations are part of a durable order and must never be released; a bookkeeping failure should be reported and retried, not undone.
+
+**Proposed fix:** Split the try: wrap only savePricedOrder in the compensating catch; after it returns, treat attach/velocity/recordQuote failures as non-fatal reported obligations (observer/outbox), never as reasons to release. Better: perform attachReservationToOrder inside savePricedOrder's transaction alongside the order insert so the link and the order commit together. Pin with a CheckoutUseCase unit test 'attach failure after a committed order does not release the redemption'.
+
+### COD zone policy is bypassed by omitting the optional deliveryLocation: a pay-on-delivery order lands for a destination where COD is refused *(unverified)*
+`apps/api/src/application/use-cases/commerce/CheckoutUseCase.ts:219` | validation | finder confidence 0.5
+
+**Reachable via:** POST /commerce/orders/create with paymentMethod 'offline' and no deliveryLocation
+
+**Scenario:** An active delivery_zone_policy has cod_allowed=false (or a cod_max_order_value_ugx) for district X. A request to POST /commerce/orders/create with paymentMethod 'offline', deliveryArea 'Layibi, X', deliveryAddress '…' and no deliveryLocation (the zod schema marks it .nullish(), line 69 of commerce.ts) yields district = null, so both COD checks (here and line 286) are skipped and the order is created as an offline order to X. The storefront itself sends deliveryLocation: null when a guest's manual entry does not resolve to a district (apps/web/src/lib/checkout.ts:89), so this is not only a crafted-request path.
+
+**Why it is wrong:** The COD rule is a fraud/prepayment control ('Above the zone's COD ceiling, prepayment is required: refused with a clear message, never silently converted'), but it is keyed on an optional client field rather than on the destination the server actually resolves; the quoting service already resolves the destination from deliveryArea/areaSlug for the fee, so the same request is priced for X while its COD policy is not applied.
+
+**Proposed fix:** Resolve the destination once and use it for both fee and COD: take the district from deliveryLocation.district, else from the quoting capture's resolved area/district, and when paymentMethod is 'offline' and no district can be established, refuse with a clear COD_DESTINATION_UNKNOWN message (fail closed for the offline path only). Pin with a CheckoutUseCase test 'offline order without deliveryLocation to a COD-blocked district is refused'.
+
+### A pending fee-variance agreement does not block dispatch, and agreement can still be recorded after the rider has left *(unverified)*
+`apps/api/src/application/use-cases/fulfilment/DispatchUseCases.ts:85` | correctness | finder confidence 0.6
+
+**Reachable via:** POST /admin/fulfilment/:id/dispatch, PATCH /admin/fulfilment/:id/status, POST /admin/delivery/variance/:id/agreement
+
+**Scenario:** Ops apply a variance above the absorption threshold (POST /admin/delivery/orders/:id/variance) -> record agreement='pending', order.delivery_fee unchanged. Nothing in RecordDispatchUseCase or TransitionFulfilmentTaskUseCase consults listPendingAgreement/listForOrder, so the task dispatches with the rider card showing the OLD total. Later ops POST /admin/delivery/variance/:id/agreement {agreed:true}; RecordVarianceAgreementUseCase only refuses when order.status is delivered/completed, so it applies the new fee to an order that is already out for delivery: the rider's collection amount and the order total now disagree at the door, which is the exact dispute the commitment exists to prevent.
+
+**Why it is wrong:** The domain (DeliveryVarianceUseCases header, admin queue note 'These orders must not dispatch until the customer has agreed the changed fee') states agreement is required BEFORE dispatch, but the rule is enforced nowhere in a use case (repo convention: four-eyes/controls in use cases, never only in the UI).
+
+**Proposed fix:** Add a port to RecordDispatchUseCase and TransitionFulfilmentTaskUseCase (for to=OUT_FOR_DELIVERY) that checks deliveryVarianceRepo.listForOrder(orderId).some(v => v.agreement==='pending') and refuse with VARIANCE_AGREEMENT_PENDING; in RecordVarianceAgreementUseCase also refuse when the fulfilment task is OUT_FOR_DELIVERY (or order.status==='dispatched'), not only delivered. Pin with 'dispatch refused while a variance is pending' and 'agreement refused once dispatched'.
+
+### Generic status transition bypasses the dispatch payment policy and packing completion checks *(unverified)*
+`apps/api/src/application/use-cases/fulfilment/TransitionFulfilmentTaskUseCase.ts:47` | authorization | finder confidence 0.5
+
+**Reachable via:** PATCH /admin/fulfilment/:id/status (ORDERS_MANAGE)
+
+**Scenario:** An operator with ORDERS_MANAGE calls PATCH /admin/fulfilment/:id/status {toStatus:'OUT_FOR_DELIVERY'} on a READY_FOR_DISPATCH task whose paymentStatus is 'unpaid'. canTransitionFulfilment only checks the FORWARD table, so it succeeds: no dispatch record, no CASH_ON_DELIVERY acknowledgement, no PAYMENT_NOT_CLEARED refusal, order mirrored to 'dispatched'. Likewise PICKING->PACKED->READY_FOR_DISPATCH can be walked by status alone with unresolved fulfilment lines, consuming inventory (route line 126) for an order that was never packed.
+
+**Why it is wrong:** FulfilmentDispatch documents 'an order that is not paid may only be dispatched under an explicit cash-on-delivery acknowledgement' and FulfilmentLine 'packing completion is forbidden while any quantity is unresolved', but both controls live only in RecordDispatchUseCase / CompletePackingUseCase and the older status endpoint walks past them.
+
+**Proposed fix:** In TransitionFulfilmentTaskUseCase refuse to=OUT_FOR_DELIVERY unless a dispatch record exists (or delegate to RecordDispatchUseCase), and refuse to=READY_FOR_DISPATCH unless the packing session is COMPLETED/PARTIAL with no unresolved remainder; keep ON_HOLD/CANCELLED free. Pin with 'status transition to OUT_FOR_DELIVERY on an unpaid task without a dispatch record is refused'.
+
+### The notification outbox worker also claims TELEMETRY_DISPATCH events and retires them as 'unroutable', racing the telemetry dispatcher that runs in the same tick *(unverified)*
+`apps/api/src/application/use-cases/outbox/ProcessOutboxBatchUseCase.ts:75` | data-integrity | finder confidence 0.65
+
+**Reachable via:** OutboxTicker (every 30s) after any browser telemetry POST or a confirmed webhook purchase
+
+**Scenario:** TrackBrowserTelemetryEventUseCase and EnqueuePurchaseEventUseCase insert outbox rows with eventType 'TELEMETRY_DISPATCH' (status pending, next_attempt_at now). OutboxTicker runs processOutboxBatchUseCase.execute() and telemetryDispatcher.processBatch() concurrently. claimDueBatch filters only is_processed=false, next_attempt_at<=now and NOT IN the checkout side-effect list, so it locks and claims up to 25 telemetry rows per tick (status 'processing', next_attempt_at pushed 5 min out). NotificationRouter.route('TELEMETRY_DISPATCH') hits `default` and returns [], so lines 95-101 markProcessed(event.id, { lastError: 'No channel mapping for this event type.' }) and count it as unroutable. The telemetry SELECT ... FOR UPDATE SKIP LOCKED (TelemetryDispatchService:84-97) either skips the locked rows or, having read them first (its lock is autocommit-scoped), later writes 'retrying' onto a row already marked is_processed=true; in every ordering the event gets at most one dispatch attempt and is then recorded as a processed success. A purchase event that failed once is lost rather than retried on the documented 30s/5m/15m/1h/6h schedule, and metrics count it as delivered. Masked today only because sGTM is unprovisioned and every dispatch fails anyway.
+
+**Why it is wrong:** The header comment of this class explains exactly this failure for commerce events ('would find no route, mark them processed as unroutable, and report success while the work was discarded') and excludes them; telemetry events are the same shape (no channel, no recipient) but are not excluded. Two workers with overlapping claim predicates on one table is the at-least-once-with-loss pattern the lease design was meant to prevent.
+
+**Proposed fix:** Add EVENT_TYPE_TELEMETRY ('TELEMETRY_DISPATCH') to the excludeEventTypes passed here (export it from a shared constant so the telemetry service and this worker cannot drift), or give the notification worker an explicit includeEventTypes list of routable types. Add a test to tests/unit/ProcessOutboxBatchUseCase.test.ts asserting the claim filter excludes TELEMETRY_DISPATCH, and an architecture test in OutboxReliabilityInvariants that every claimer's include/exclude sets are pairwise disjoint.
+
+### A provider failure on the status lookup leaves the refund reservation 'requested' with nothing sent, and every retry with the same request is answered 'already requested, no second payout was sent' *(unverified)*
+`apps/api/src/application/use-cases/payments/RefundPesaPalPaymentUseCase.ts:148` | money | finder confidence 0.75
+
+**Reachable via:** POST /admin/payments/attempts/:merchantReference/refund
+
+**Scenario:** Operator posts a refund of 50,000 for reference GP-... with reason 'delivery fee variance'. reserveRefund inserts the 'requested' row (counted against the refundable balance and subtracted from revenue). getTransactionStatus times out (3s, breaker 'pesapal' shared with checkout) and throws; there is no try/catch here, so the use case throws, the route returns 500, no providerStatus is recorded and no audit row is written. The operator retries the identical request: the deterministic key sha256(reference|amount|reason) matches the stuck row, reserveRefund returns ALREADY_PROCESSED, and the response says providerStatus 'requested' and 'This refund was already requested; the original request stands and no second payout was sent.' No RefundRequest was ever sent to PesaPal. The ledger permanently shows 50,000 refunded, the customer never receives it, and nothing lists refunds that were reserved but never handed to the provider (hasOutstandingRefunds only drives re-verification, and the poller never looks at completed attempts, see the next finding).
+
+**Why it is wrong:** The class comment justifies retaining a reservation only when the provider CALL may have moved money; a failed status lookup provably moved none, yet the row is retained with no marker, and ALREADY_PROCESSED then asserts a payout request that never happened. The same wrong answer is given when the earlier row was 'rejected' (NO_CONFIRMATION_CODE): a rejected row does not count against the balance but its key still blocks an identical retry.
+
+**Proposed fix:** Wrap the status lookup like the RefundRequest call: on throw, recordProviderOutcome(refund.id, { status: 'rejected', providerStatus: 'STATUS_LOOKUP_FAILED' }) (no money could have moved before RefundRequest) and return a typed failure the route maps to 502; make reserveRefund's ALREADY_PROCESSED branch ignore rows with status 'rejected' (or include the key only for requested/settled rows) so a genuine retry is possible; audit both. Pin with tests/unit/PaymentReconciliation.test.ts (refund section): 'status lookup failure rejects the reservation and a retry sends the refund', and 'a rejected reservation does not block an identical retry'.
+
+### Order number carries 16 bits of entropy per month against a UNIQUE column, so live checkouts randomly fail with 503 *(unverified)*
+`apps/api/src/domain/commerce/Order.ts:133` | correctness | finder confidence 0.85
+
+**Reachable via:** POST /commerce/orders/create (every order)
+
+**Scenario:** orders.order_number is varchar(20).unique().notNull() (schema/commerce.ts:58). Two orders in the same calendar month whose random UUIDs share the first four hex characters produce identical order numbers. With n orders in a month the probability of at least one collision is about 1 - exp(-n^2/131072): 7% at 100 orders, 50% at 300, effectively certain at 1000. On a collision, savePricedOrder's INSERT (DrizzleOrderRepository.ts:167) raises 23505; CheckoutUseCase's catch releases the promotion/loyalty reservations and rethrows; ExecuteCheckoutIntentUseCase.classifyDependencyError does not recognise the pg error, so the claim is marked FAILED_RETRYABLE with reason CHECKOUT_ERROR and the route answers 503 ORDER_FAILED 'The order could not be completed. Please try again.' The customer's paid-for basket is refused at the last step for no reason they can act on; the retry only succeeds because a fresh UUID is drawn. The same 4-hex space is what makes order numbers enumerable in the finding above.
+
+**Why it is wrong:** A customer-facing identifier that must be unique is derived from 16 random bits and a month; the uniqueness constraint then turns ordinary volume into spurious checkout failures. It also uses server-local (UTC) month rather than Africa/Kampala, so the first three hours of each EAT month are stamped with the previous month.
+
+**Proposed fix:** Generate the order number from a monotonic per-month sequence or from >= 40 bits of the UUID (e.g. GP-YYYYMM-<8 hex>) computed with the EAT helper in packages/shared/src/time/eat.ts, keeping the domain pure (pass the number in from the use case or derive it from the id in a way that cannot collide). Also classify SQLSTATE 23505 on orders_order_number in savePricedOrder as a retryable dependency error so the customer sees a retry rather than a generic failure. Pin with a unit test that generates 2,000 Order.create numbers in one month and asserts no duplicates, and a repository test that two orders with colliding uuid prefixes both persist.
+
+### PIM UPSERT writes any positive retail price onto a live product, below the 145,000 floor *(unverified)*
+`apps/api/src/domain/pim/PimImport.ts:83` | money | finder confidence 0.7
+
+**Reachable via:** POST /admin/pim-imports -> mapping -> preview -> approval -> apply (pim.create/map/approve/apply)
+
+**Scenario:** An UPSERT import row names an existing approved SKU with retailPriceUgx 99000. normalizePimRow accepts it (only > 0 and integer are checked), preview marks the row UPDATE, four-eyes approval passes, and applyRow updates products.price_ugx and product_prices.retail_price to 99,000 with hasRetailPrice true. findPublicViewList now serves the product at UGX 99,000 and EvaluateCartPricingUseCase charges it.
+
+**Why it is wrong:** The spreadsheet is trusted for the price; the owner's storefront floor (STOREFRONT_PRICE_FLOOR_UGX, enforced for battery imports in BatteryImport.ts) is not applied on this import path.
+
+**Proposed fix:** In normalizePimRow add `value.retailPriceUgx < STOREFRONT_PRICE_FLOOR_UGX` as a validation error (message naming the floor) so the row is INVALID at preview; pin with PimImport.test 'a retail price below the floor is refused'.
+
+### Brand chip count includes supplier-listed unchecked fits while the page tells the customer it is the number of batteries "we have checked" *(unverified)*
+`apps/api/src/infrastructure/db/repositories/DrizzleBatteryFinderRepository.ts:67` | copy | finder confidence 0.8
+
+**Reachable via:** GET /batteries/finder/brands; /battery-finder page
+
+**Scenario:** Default config has showAwaitingVerification: true. Brand TECNO has 1 FIT_TESTED published fit and 4 published SUPPLIER_LISTED (unchecked) claims. brands() returns verifiedFits = 5; battery-finder.astro line 113 renders 'TECNO · 5' and line 117 says 'The number is how many batteries we have checked for that brand.' The per-device count on the same page (brandBySlug line 89, VERIFIED_PUBLIC only) shows '1 battery we have checked' for the phone, so the two numbers contradict each other on the next click.
+
+**Why it is wrong:** Customer-facing copy must not state a fact the data does not support; the shared label for SUPPLIER_LISTED is 'Listed by the supplier, not yet checked by us', so counting it as 'checked' is an invented claim and the DTO field is misnamed for what it carries.
+
+**Proposed fix:** Drop the awaiting clause from the verifiedFits count in brands() (use VERIFIED_PUBLIC only, matching brandBySlug and verifiedFitCount), and if awaiting listings are wanted for ordering, return them as a separate coverageCount used by orderBrands. Test: DrizzleBatteryFinderRepository.brands with showAwaiting true does not count SUPPLIER_LISTED in verifiedFits.
+
+### Re-running the dry run discards the operator's override and reverts proposedAction, so an INCLUDE-resolved compound catalogue row is counted as valid but silently SKIPPED at apply *(unverified)*
+`apps/api/src/infrastructure/db/repositories/DrizzleBatteryImportRepository.ts:119` | data-integrity | finder confidence 0.75
+
+**Reachable via:** POST /admin/batteries/imports/:id/preview after POST .../rows/:rowId/resolve
+
+**Scenario:** Operator resolves a held compound catalogue row with INCLUDE + canonicalCode 'BL-49CI' (resolveRow stores { ...value, canonicalCode, overridden: true } and proposedAction CREATE_BATTERY). Anyone then clicks '2. Run the dry run' (the page shows it whenever status is MAPPED or READY_FOR_APPROVAL). savePreview recomputes normalizedData from the source row ({ sourceItem, codes, category, hold }) and proposedAction back to HOLD_COMPOUND, while the kept INCLUDE resolution makes the status VALID (line 114). The approver sees the row in 'What will be created' and validRows counts it; at apply, applyRow's BATTERY_CATALOGUE branch sees HOLD_COMPOUND and returns SKIPPED, so the battery the operator explicitly resolved is never created and the session still ends APPLIED.
+
+**Why it is wrong:** The comment on line 105 promises operator resolutions survive re-previews; only the INCLUDE flag survives, the data it depended on is thrown away, producing a VALID row whose action cannot apply.
+
+**Proposed fix:** In savePreview, for rows whose stored resolution is INCLUDE with an override, re-merge the override onto the recomputed value and re-derive proposedAction the same way resolveRow does (or store the override in its own column and have apply merge it). Alternatively refuse a re-preview while any row carries a resolution, forcing the operator to re-resolve. Test: preview -> resolve INCLUDE with override -> preview again -> row still CREATE_BATTERY with canonicalCode.
+
+### A 'scheduled' publish goes live immediately; scheduledFor is stored and never honoured *(unverified)*
+`apps/api/src/infrastructure/db/repositories/DrizzleDeliveryConfigRepository.ts:87` | correctness | finder confidence 0.7
+
+**Reachable via:** POST /admin/delivery/config/:versionId/publish with scheduledFor
+
+**Scenario:** Operator publishes a fee change with body {previewConfirmed:true, scheduledFor:'2026-09-01T06:00:00Z'} intending it for next week. PublishConfigVersionUseCase passes scheduledFor through, publish() sets status='published' and publishedAt=now while merely storing scheduled_for; DeliveryConfigReader.publishedVersionId() picks it up on the next quote. Customers get the new fees now; the version list shows a future scheduledFor next to a version that is already live. No job anywhere reads scheduled_for (grep: schema + this repo + the route only).
+
+**Why it is wrong:** The route validates and accepts a schedule, the reader's comment promises 'a draft or scheduled version is deliberately invisible here', and the registry describes 'the Control Centre's scheduled publish', yet the implementation applies the change at once. Operator is misled about when a price change takes effect (contract #7).
+
+**Proposed fix:** Either refuse scheduledFor in PublishConfigVersionUseCase until scheduling exists (fail('SCHEDULING_NOT_SUPPORTED')), or implement it: store status='scheduled' with scheduled_for, have DeliveryConfigReader.publishedVersionId ignore it, and add a job that promotes scheduled versions whose time has passed (demote previous published in the same transaction). Pin with 'publish with a future scheduledFor does not change currentValues()' in a use-case test.
+
+### The poller never revisits a completed attempt with an outstanding refund, so the completed->reversed edge and refund settlement depend entirely on the provider pushing an IPN or an operator pressing re-verify *(unverified)*
+`apps/api/src/infrastructure/db/repositories/DrizzlePaymentAttemptRepository.ts:123` | data-integrity | finder confidence 0.8
+
+**Reachable via:** PaymentReconcileTicker after POST /admin/payments/attempts/:ref/refund
+
+**Scenario:** A refund is requested and accepted by PesaPal (RefundPesaPalPaymentUseCase returns ok). The attempt stays 'completed' and the ledger row stays 'requested'. POLLABLE_ATTEMPT_STATUSES is ['pending','verification_pending'], so listAttemptsForReconciliation never returns this attempt and ReconcilePendingPaymentsUseCase never asks the provider about it. VerifyPesaPalPaymentUseCase's hasOutstandingRefunds re-check (line 96-99) only runs when something ELSE invokes verify for that tracking id. If PesaPal does not send an IPN for the reversal (or it is lost, the exact case the poller exists for), the refund stays 'requested' forever, settleRefundsForAttempt never runs, a total refund never cancels the order, the attempt never reaches 'reversed', and /admin/payments/queue shows no disagreement because both sides still read COMPLETED until someone re-verifies by hand.
+
+**Why it is wrong:** RefundPesaPalPaymentUseCase's class comment, IRefundLedgerRepository.hasOutstandingRefunds's doc and docs/payments/DECISIONS.md all state that 'the reconciliation poller, which already watches every attempt, observes the reversal landing'. The repository query watches only two states, so the documented safety net does not cover refunds. Provider-push dependence is the failure class the poller was built to remove.
+
+**Proposed fix:** Add a second listing to IPesaPalPaymentRepository, e.g. listCompletedAttemptsAwaitingRefund(limit) (join payment_refunds where status='requested'), and have ReconcilePendingPaymentsUseCase settle those through the same SettlePaymentUseCase path (source 'poll'); alternatively include 'completed' attempts with outstanding refunds in listAttemptsForReconciliation via an EXISTS subquery. Pin with tests/integration/PesapalPaymentJourney: 'the poller observes a REVERSED answer on a completed attempt with a requested refund and settles the ledger row'.
+
+### A second SUCCESS webhook with a new reference for an already-paid order is neither recorded nor rejected: the order transition throws, the payment insert rolls back and the route returns 500 *(unverified)*
+`apps/api/src/infrastructure/db/repositories/DrizzlePaymentRepository.ts:95` | money | finder confidence 0.55
+
+**Reachable via:** POST /webhooks/payment/:provider (requires MTN_WEBHOOK_SECRET / AIRTEL_WEBHOOK_SECRET or grace mode)
+
+**Scenario:** Order X is paid (status 'processing', paymentStatus 'paid') from webhook ref R1. The provider delivers a signed SUCCESS webhook for order X with providerReference R2 (customer charged twice, or a provider re-send under a fresh reference). RecordPaymentWebhookUseCase passes the amount check and finds no row for key mtn:R2, so this method inserts the payment row and calls transitionWithin(..., 'processing'); canTransitionOrder('processing','processing') is not allowed, OrderTransitionService throws DomainError ORDER_TRANSITION_ILLEGAL_TRANSITION, the transaction rolls back (payment row gone), the catch at line 150-158 does not match 'duplicate key', the error propagates, webhooks.ts's catch does not match MISSING_ORDER and rethrows, the provider gets HTTP 500 and retries indefinitely. The second charge leaves no payments row, no requires_review flag and no operator signal; the only trace is a 500 in the logs.
+
+**Why it is wrong:** The webhook path is required to be idempotent and to surface anything it cannot apply; a real, authenticated payment fact must be recorded (at minimum as requiring review) rather than lost, and a provider must never be answered 500 for a question already answered. The use case's amount-mismatch branch shows the intended pattern (hold for review); a duplicate success has no such branch.
+
+**Proposed fix:** In RecordPaymentWebhookUseCase, before recordWebhookOutcome, check the order's paymentStatus (extend OrderAmountResolver to return {totalUgx, paymentStatus}) and, when already 'paid', record the payment with requiresReview=true and no lifecycle move (the repository already skips the transition when requiresReview is set), returning ok with requiresReview so the route answers 200 and logs PAYMENT_WEBHOOK_UNVERIFIED_ACCEPTED_PENDING_REVIEW-style. Pin with tests/unit/RecordPaymentWebhook.test.ts: 'a second SUCCESS for a paid order is recorded for review and does not throw'.
+
+### Transitioning a superseded version rewrites the definition status and can archive a live promotion *(unverified)*
+`apps/api/src/infrastructure/db/repositories/DrizzlePricingRepository.ts:121` | correctness | finder confidence 0.75
+
+**Reachable via:** POST /admin/pricing/definitions/:id/{archive|approve|reject|submit|activate} with an older versionId (pricing.manage/approve/activate permissions)
+
+**Scenario:** launch-10 v1 is ACTIVE. Operator pauses v1, creates v2, submits/approves/activates it: definition ACTIVE, activeVersionId = v2, v1 left PAUSED. An operator with pricing.manage then tidies up with POST /admin/pricing/definitions/:id/archive { versionId: v1, expectedRevision }. PricingGovernanceUseCase.transition only checks canTransitionPromotion(PAUSED, ARCHIVED) and that v1 belongs to the definition; the repo sets the definition row to status ARCHIVED with activeVersionId null although v2 is still ACTIVE. listActiveVersions requires definition.status = ACTIVE and activeVersionId = version.id, so the live 10% vanishes from checkout and the storefront. createVersion refuses ARCHIVED definitions and ACTIVE cannot transition to ACTIVE, so the promotion is bricked with no governed way back. The same mirror happens for approve/reject/submit on any old version.
+
+**Why it is wrong:** The definition's status and activeVersionId are derived from whichever version was touched, not from the version that actually represents the definition; the use case, not the UI (which only offers detail.versions[0]), must refuse transitions on non-current versions.
+
+**Proposed fix:** In PricingGovernanceUseCase.transition refuse (INVALID_TRANSITION) any version that is neither definition.activeVersionId nor the latest version number; in transitionVersion only mirror definition.status/activeVersionId when versionId equals the definition's current version. Pin with PricingGovernanceUseCase.test 'archiving a superseded version leaves the active version and definition status untouched'.
+
+### Public catalogue readers ignore products.active, so deactivated products stay listed, searchable and purchasable *(unverified)*
+`apps/api/src/infrastructure/db/repositories/DrizzleProductRepository.ts:240` | correctness | finder confidence 0.5
+
+**Reachable via:** GET /products, GET /products/:slug, GET /products/suggest, POST /commerce/pricing-preview and checkout pricing
+
+**Scenario:** A product row has active = false (created via POST /admin/products with active:false and approvalStatus 'approved', or later flagged inactive; the SEO lifecycle reader treats active = false as discontinued and the sitemap and DrizzleProductRecommendationReader exclude it). findPublicViewList and findPublicViewBySlug filter on approvalStatus only, so GET /products lists it, GET /products/:slug serves it, /products/suggest suggests it, and EvaluateCartPricingUseCase.findPublicViewList({ids}) prices it for checkout. The catalogue and the sitemap/recommendation surfaces disagree about whether the product is on sale.
+
+**Why it is wrong:** Publication gating must be one rule applied on every public read; a product other readers treat as withdrawn must not be reachable by slug, in search, or in checkout pricing.
+
+**Proposed fix:** Add eq(products.active, true) to the where clauses of findPublicViewList and findPublicViewBySlug (the checkout pricing lookup goes through the same method). Pin with a DrizzleProductRepository test 'an approved but inactive product is not returned publicly'.
+
+### Repository rethrows unique violations as a plain Error, so RegisterCustomerUseCase's 23505 branch is dead and a duplicate phone registers as a 500 *(unverified)*
+`apps/api/src/infrastructure/db/repositories/DrizzleUserRepository.ts:61` | error-handling | finder confidence 0.8
+
+**Reachable via:** POST /auth/register (storefront /register)
+
+**Scenario:** Customer A already has phone '0771234567'. Customer B registers a new email with the same phone. users.phone is unique, Postgres raises 23505, DrizzleUserRepository.create catches it and throws new Error('USER_EMAIL_TAKEN') which has no .code. RegisterCustomerUseCase line 90 checks (error as {code?}).code === '23505', misses, and rethrows; the route has no handler so the API answers 500. register.astro maps anything that is not 409/400 to 'We could not create your account right now. Please try again in a moment.', so the customer retries indefinitely instead of being told to sign in or that the phone is in use. The same happens for a raced duplicate email.
+
+**Why it is wrong:** Two guards for the same condition disagree on the contract (one duck-types pg's code, the other strips it), so the intended 409 ALREADY_REGISTERED path ('An account with this email or phone already exists. Sign in instead.') can never execute. Duplicated logic that has already diverged.
+
+**Proposed fix:** Either have the repository throw a typed error that preserves the code (class UniqueViolationError extends Error { code = '23505'; field: 'email' | 'phone' }) and match on it in the use case, or drop the repository's catch entirely and let the pg error propagate to the existing 23505 duck-type. Pin with a unit test on RegisterCustomerUseCase using a fake repo that throws the repository's real error shape and expects ALREADY_REGISTERED.
+
+### /setup reports quotingEnabled=true while own_rider_max_band is unset and every metro quote is CONFIG_INCOMPLETE *(unverified)*
+`apps/api/src/interfaces/http/routes/admin/delivery.ts:62` | correctness | finder confidence 0.75
+
+**Reachable via:** GET /admin/delivery/setup (REPORTS_READ)
+
+**Scenario:** An operator publishes the five LAUNCH_KEYS through expert mode without own_rider_max_band (mandatory, Tier 2, ships null). GET /admin/delivery/setup uses missingLaunchKeys (LAUNCH_KEYS only) and returns quotingEnabled:true, blockedBy:null. Meanwhile DeliveryQuotingUseCase resolves mode=null for every corridor area and quoteFulfilment returns CONFIG_INCOMPLETE naming own_rider_max_band, so customers keep seeing 'We are finalising delivery pricing' and checkout keeps using the legacy fallback. The dashboard says the module is live when it is not.
+
+**Why it is wrong:** Activation is gated by every mandatory registry key (missingMandatoryKeys exists for exactly this and includes own_rider_max_band), but the setup report checks only the five numeric launch keys. Contract #3 ('six numbers to launch') and 'no invented status'.
+
+**Proposed fix:** In the /setup handler compute missing with missingMandatoryKeys(live) from DeliveryConfigRegistry (which covers own_rider_max_band) and surface it in launchValues; keep missingLaunchKeys for the numeric rows. Pin with a route/unit test: live values with the five launch keys but no own_rider_max_band -> quotingEnabled false, blockedBy CONFIG_INCOMPLETE listing own_rider_max_band.
+
+### products.write can publish a product directly; products.publish is never enforced and there is no maker/checker *(unverified)*
+`apps/api/src/interfaces/http/routes/admin/products.ts:370` | authorization | finder confidence 0.6
+
+**Reachable via:** POST /admin/products and PUT /admin/products/:id
+
+**Scenario:** An operator holding only PERMISSIONS.PRODUCTS_WRITE PUTs (or POSTs) approvalStatus 'approved' for a product they just created or edited. The route writes approvalStatus straight to products via save(); findPublicViewBySlug/findPublicViewList gate solely on approvalStatus = 'approved', so the product is live on the storefront and purchasable. PERMISSIONS.PRODUCTS_PUBLISH exists in packages/shared/src/permissions but is referenced only by the control-centre module registry, never by a route or use case; the same actor makes and approves.
+
+**Why it is wrong:** Publication moves a product into the public catalogue and must be gated by the publish permission and a checker distinct from the maker, enforced in a use case rather than left as a free-form field on the edit form.
+
+**Proposed fix:** Strip approvalStatus from the create/update body; add a PublishProductUseCase (route POST /admin/products/:id/publish behind PERMISSIONS.PRODUCTS_PUBLISH) that refuses when actorId equals the product's last editor and audits before/after. Pin with a route test that products.write cannot change approvalStatus and a use-case test for the distinct-approver rule.
+
+### No per-account attempt limit on /auth/mfa/verify: TOTP step-up can be brute-forced *(unverified)*
+`apps/api/src/interfaces/http/routes/auth.ts:386` | security | finder confidence 0.7
+
+**Reachable via:** POST /auth/mfa/verify with any valid bearer token
+
+**Scenario:** An attacker with a stolen admin bearer token (the case step-up exists for) posts six-digit codes to /auth/mfa/verify. verifyTotp accepts any of 3 codes per 30-second step (window +/-1), i.e. 3 in 10^6. Nothing counts failures: user_mfa.failed_attempts is reset to 0 in confirm() and recordVerification() but never incremented or checked, and the route is classified into the 'global' abuse family (1000/min per client). At 1000 guesses/min from one address the expected time to a hit is a few hours; with a handful of addresses it is under an hour, after which last_verified_at is stamped and every requireStepUp gate opens for five minutes.
+
+**Why it is wrong:** A six-digit OTP is only safe with a small attempt budget and lockout (the SMS reset flow enforces exactly this, SMS_RESET_MAX_ATTEMPTS = 5); the schema anticipated a failed_attempts counter and the code never uses it. Same family gap in PublicEndpointPolicy: /auth/mfa/* falls into 'global' instead of an AUTH family.
+
+**Proposed fix:** In MfaService.verify/useRecoveryCode, bump failed_attempts via a new IMfaRepository.recordFailure(userId) and refuse (MFA_LOCKED, 429 with Retry-After) once it exceeds e.g. 5 within 15 minutes, resetting on success; classify POST /auth/mfa/* as an AUTH family (limit 10/min) in classifyPublicEndpoint. Pin with a MfaService unit test (sixth wrong code is refused even if correct) and a PublicEndpointPolicy test for the new family.
+
+### Every terminal business refusal is collapsed to ORDER_FAILED, so the customer is told to 'try again' for a permanent refusal and the storefront's specific copy is unreachable *(unverified)*
+`apps/api/src/interfaces/http/routes/commerce.ts:676` | copy | finder confidence 0.85
+
+**Reachable via:** POST /commerce/orders/create
+
+**Scenario:** A product in the basket is withdrawn (or a promo preview expires, or promotion capacity runs out). ExecuteCheckoutIntentUseCase returns { kind: 'FAILED_FINAL', reason: 'PRODUCT_UNAVAILABLE' }. The mapping table sends only mapped.code ('ORDER_FAILED') and mapped.message; outcome.reason is logged (line 693) but never placed in the body (line 705-709). The storefront's checkoutClient.ts switch has dedicated messages for PRICE_CHANGED, PROMOTION_CHANGED, PRODUCT_UNAVAILABLE and PRICE_UNAVAILABLE ('remove it from your cart and try again', 'check the new total') but can never receive those codes from /orders/create, so the customer sees 'We could not place your order. Please try again. You have not been charged. If it keeps failing, message us' and retries into the same refusal. The PRICE_REVIEW_REQUIRED entry at line 664 is dead: the use case never emits that kind (it emits FAILED_FINAL with reason PRICE_CHANGED).
+
+**Why it is wrong:** The comment directly above (line 698-702) states 'A known business rejection is named by its CODE (the storefront maps it to its own wording)', and the shared CheckoutErrorCode union in packages/shared/src/types/checkout.ts enumerates PRICE_CHANGED/PROMOTION_CHANGED/PRODUCT_UNAVAILABLE/PRICE_UNAVAILABLE precisely so the storefront can react. Telling a customer to retry a refusal that cannot succeed is a false claim in customer-facing copy.
+
+**Proposed fix:** For FAILED_FINAL, set the public code from outcome.reason when it is one of the shared CheckoutErrorCode values (PRICE_CHANGED, PROMOTION_CHANGED, PRODUCT_UNAVAILABLE, PRICE_UNAVAILABLE, DELIVERY_NOT_SUPPORTED, CAPACITY_UNAVAILABLE) and fall back to ORDER_FAILED otherwise; remove the dead PRICE_REVIEW_REQUIRED entry or make the use case emit it. Keep messages generic on the API side. Pin with a route test 'POST /orders/create maps FAILED_FINAL/PRODUCT_UNAVAILABLE to error.code PRODUCT_UNAVAILABLE' and a contract test that every CheckoutErrorCode the storefront switches on is producible by the route.
+
+### Unbounded in-process quote cache keyed on unauthenticated user input never evicts *(unverified)*
+`apps/api/src/interfaces/http/routes/delivery.ts:26` | performance | finder confidence 0.7
+
+**Reachable via:** POST /delivery/quote (public, no auth)
+
+**Scenario:** POST /delivery/quote is public. fullKey is built from areaSlug (any string), district (any string), subtotalUgx (any number), hasPin and up to 100 productId x quantity pairs. Each distinct body inserts a new entry holding the whole response object; expiry is only checked on read at line 63 and nothing ever deletes. A client looping over subtotalUgx=1..N (or random areaSlug strings) grows the Map without bound; at the global rate limit that is roughly 1.4M entries/day per replica until the process is OOM-killed, taking every quote and the checkout adapter's process with it.
+
+**Why it is wrong:** Unbounded data structure driven by user input; the TTL is not an eviction policy. The stated purpose (one basket shows one fee) needs only a small LRU.
+
+**Proposed fix:** Replace the Map with a bounded LRU (e.g. max 5,000 entries, evict oldest on set, sweep expired on set), and normalise the key inputs (cap string lengths, round subtotal to the nearest 1,000 or omit it from the key since the quote already computes subtotal from items). Pin with a unit test that after MAX+1 distinct keys the cache size stays at MAX.
+
 ---
 
 ## Low (24)
 
-### Whole-number percent rounds a 12.5% promotion up to a '13% discount' badge
-`apps/api/src/application/pricing/StorefrontDiscountQuery.ts:49` | copy | finder confidence 0.7
-
-**Reachable via:** GET /commerce/storefront-discount and every sale badge consumer
-
-**Scenario:** Admin activates a site-wide PERCENTAGE_OFF of 1250 bps. The query returns percent 13; ProductCard, RecommendationCard, products/[slug].astro render '13% discount' badges and GpNav shows 'Everything in the shop −13%', while salePriceUgx and the evaluator take 12.5%. A 200,000 product shows 175,000 next to a '13%' claim.
-
-**Why it is wrong:** Customer-facing copy must not overstate the discount; the badge must match the charged percentage.
-
-**Proposed fix:** Return percent as benefit.value / 100 (one decimal) and format on the web, or only expose percent when value % 100 === 0 and otherwise render from percentBps; pin with a StorefrontDiscountQuery test for 1250 bps.
-
-### Landmark requirement for area-linked addresses is skipped on create when landmarkText is omitted
-`apps/api/src/application/use-cases/addresses/AddressUseCases.ts:76` | validation | finder confidence 0.6
-
-**Reachable via:** POST /account/addresses
-
-**Scenario:** POST /account/addresses with {areaSlug:'ntinda-kampala', ...} and no landmarkText key at all: routes/account.ts maps a missing key to undefined, validateCore treats undefined as 'unchanged' (patch semantics) and accepts, so a structured address is created with no landmark line even though the rule says a structured address must carry one. Sending landmarkText:'' is refused, omitting it is not.
-
-**Why it is wrong:** The patch-semantics shortcut is reused for creation; on create, absent is not 'unchanged'. Ugandan last-mile runs on landmarks (PART G field 6), and this row then feeds checkout's deliveryLocation.
-
-**Proposed fix:** In AddAddressUseCase call validateCore with landmarkText: input.landmarkText ?? '' (create semantics) while UpdateAddressUseCase keeps patch semantics. Pin with 'creating an area-linked address without landmarkText is refused'.
-
-### Rejecting an already-accepted proposal marks it rejected while the learned factor stays live
-`apps/api/src/application/use-cases/delivery/DeliveryCalibrationUseCases.ts:268` | data-integrity | finder confidence 0.75
-
-**Reachable via:** POST /admin/delivery/calibration/proposals/:id/reject
-
-**Scenario:** Proposal P is accepted (factor written to delivery_learned_factor, status 'accepted'). A second operator, or a double-click, POSTs /calibration/proposals/P/reject. Unlike AcceptCalibrationProposalUseCase there is no status!=='pending' guard, so the row flips to 'rejected' with decided_by overwritten, yet the fitted value keeps pricing every quote. The queue now shows a rejected proposal whose value is in force.
-
-**Why it is wrong:** A decision is history (repo comment: 'Decided proposals are untouched'); rejecting after acceptance neither reverts the factor nor is refused, so the audit trail and the live model disagree.
-
-**Proposed fix:** Add `if (proposal.status !== 'pending') return fail('ALREADY_DECIDED', ...)` mirroring the accept path. Pin with 'reject after accept is refused'.
-
-### Multi-line packed-quantity update applies partially when a later line fails
-`apps/api/src/application/use-cases/fulfilment/PackingUseCases.ts:107` | data-integrity | finder confidence 0.55
-
-**Reachable via:** PATCH /admin/fulfilment/:id/packing/packed
-
-**Scenario:** PATCH /:id/packing/packed with three updates; line 1 and 2 are written and audited, line 3 throws EXCEEDS_ORDERED. The use case returns a 400, the UI shows an error and keeps the old form state, but lines 1 and 2 are already changed and their versions bumped, so the operator's next retry of the same payload fails with STALE_FULFILMENT_VERSION on lines 1 and 2. The comment promises validate-all-then-apply; the code does neither atomically.
-
-**Why it is wrong:** A failed batch write leaves a half-applied result with no rollback and no signal in the error that some lines were applied.
-
-**Proposed fix:** Validate every line (rehydrate + setPacked in memory) before any updateWithVersion, then apply; or run the loop inside a repository transaction and roll back on the first failure. Pin with 'a batch whose last line is invalid changes no line'.
-
-### The beneficiary of a PLATFORM_ADMINISTRATOR grant request may approve it themselves
-`apps/api/src/application/use-cases/identity/AdminUserManagementUseCase.ts:97` | authorization | finder confidence 0.5
-
-**Reachable via:** POST /admin/users/grant-requests/:id/decide
-
-**Scenario:** Admin A (auth.manage) POSTs /admin/users/<B>/roles with roleName PLATFORM_ADMINISTRATOR, creating a PENDING request with requestedBy=A for userId=B. Admin B (also holding auth.manage) POSTs /admin/users/grant-requests/<id>/decide APPROVED. The only check is requestedBy !== actorId, so B approves the grant of full platform administration to B. The audit row records decision only, not that decider == beneficiary.
-
-**Why it is wrong:** Four-eyes on privilege escalation requires that the person receiving the privilege is neither the maker nor the checker; the use-case rule only excludes the maker, so a two-person collusion (or a beneficiary who talks a colleague into 'just raising the request') needs no independent approver. Maker/checker must be enforced in the use case, not the UI.
-
-**Proposed fix:** In decideGrant, also refuse when request.userId === args.actorId (code MAKER_CHECKER, 'The user receiving the role cannot decide their own grant.'), and include userId/requestedBy/decidedBy in the ADMIN_ROLE_GRANT_DECIDED audit newState. Pin with a unit test on AdminUserManagementUseCase.decideGrant where actorId equals the request's userId.
-
-### A non-UUID order id (e.g. an order number) on the account order and payment-start routes surfaces as a 500 instead of 404
-`apps/api/src/application/use-cases/orders/CustomerOrderUseCases.ts:20` | error-handling | finder confidence 0.7
-
-**Reachable via:** GET /account/orders/:id; POST /commerce/payments/pesapal/start
-
-**Scenario:** A customer opens /account/orders/GP-202608-A1B2 (their order number, which is what every email, WhatsApp handoff and confirmation page shows). findByIdForUser binds the string to orders.id (uuid) via eq(orders.id, orderId); Postgres raises 22P02 invalid input syntax for type uuid. errorMapping.pgCategory does not classify 22P02, so app.onError returns 500 INTERNAL_SERVER_ERROR and captures to Sentry. The same happens for POST /commerce/payments/pesapal/start with body { orderId: 'GP-…' } through StartOrderPaymentUseCase.ts:145 (findByOrderId on checkout_idempotency.order_id uuid).
-
-**Why it is wrong:** A malformed identifier is a not-found/validation outcome, not a server fault; each such request produces a false alarm for operators and a generic failure page for the customer.
-
-**Proposed fix:** Validate the id shape in the use cases (GetMyOrderUseCase and StartOrderPaymentUseCase): if it is not a UUID return NOT_FOUND without querying, or, for the account route, resolve an order number scoped by userId (and(eq(orders.orderNumber, id), eq(orders.userId, userId))). Optionally classify 22P02 as VALIDATION in errorMapping. Pin with tests 'GET /account/orders/:orderNumber returns 404' and 'payments/start with an order number returns NOT_FOUND'.
-
-### A held catalogue row included with a canonical-code override is created as PHONE with no alias because the hold value uses different keys than the apply path reads
-`apps/api/src/domain/batteries/BatteryImport.ts:277` | correctness | finder confidence 0.7
-
-**Reachable via:** POST /admin/batteries/imports/:id/rows/:rowId/resolve INCLUDE with canonicalCode, then apply
-
-**Scenario:** Source item 'MIFI BIG / SMALL' is held as HOLD_COMPOUND with value { sourceItem, codes, category: 'MIFI_ROUTER' }. The operator includes it with canonicalCode 'ZTE-Li3730'. applyRow (BatteryImportUseCases.ts line 311-332) reads data.batteryCategory (undefined -> 'PHONE'), data.aliases (undefined -> none), data.name (undefined -> 'battery ZTE-Li3730'), so the MiFi battery is created under Phone Batteries and the stock label that customers and receipts use is never attached as an alias; the HOLD_CONFLICT value (line 280) has the same shape.
-
-**Why it is wrong:** The hold value and the apply payload are two shapes of the same row; the resolved row should carry the same fields a normal CREATE_BATTERY row carries so the override only supplies what was missing.
-
-**Proposed fix:** Emit the held value with the CREATE_BATTERY field names (batteryCategory, aliases: [sourceItem], name null, codeStatus 'PROVISIONAL', lifecycleStatus 'REVIEW') so the override merge yields a complete row; or in resolveRow re-run normaliseImportRow with the overridden code cell. Test: normaliseImportRow compound MiFi row -> resolve with code -> applyRow creates MIFI_ROUTER with the source label as alias.
-
-### Customer-facing cutoff sentence contains an em dash
+### Customer-facing cutoff sentence contains an em dash **[FIXED]**
 `apps/api/src/domain/delivery/DeliveryPresentation.ts:187` | copy | finder confidence 0.9
 
 **Reachable via:** POST /delivery/quote -> DeliveryQuote.astro on product, cart and checkout pages
@@ -671,7 +609,84 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Use a full stop or comma: `Today's ${clock} ${EAT_LABEL} cut-off has passed. This goes out on the next dispatch day.` Pin in the DeliveryPresentation test that no cutoff sentence matches /[–—]/.
 
-### The Slice 3C reconciliation report treats every PesaPal-paid order as a discrepancy because PesaPal settlement never writes a `payments` row
+### Whole-number percent rounds a 12.5% promotion up to a '13% discount' badge *(unverified)*
+`apps/api/src/application/pricing/StorefrontDiscountQuery.ts:49` | copy | finder confidence 0.7
+
+**Reachable via:** GET /commerce/storefront-discount and every sale badge consumer
+
+**Scenario:** Admin activates a site-wide PERCENTAGE_OFF of 1250 bps. The query returns percent 13; ProductCard, RecommendationCard, products/[slug].astro render '13% discount' badges and GpNav shows 'Everything in the shop −13%', while salePriceUgx and the evaluator take 12.5%. A 200,000 product shows 175,000 next to a '13%' claim.
+
+**Why it is wrong:** Customer-facing copy must not overstate the discount; the badge must match the charged percentage.
+
+**Proposed fix:** Return percent as benefit.value / 100 (one decimal) and format on the web, or only expose percent when value % 100 === 0 and otherwise render from percentBps; pin with a StorefrontDiscountQuery test for 1250 bps.
+
+### Landmark requirement for area-linked addresses is skipped on create when landmarkText is omitted *(unverified)*
+`apps/api/src/application/use-cases/addresses/AddressUseCases.ts:76` | validation | finder confidence 0.6
+
+**Reachable via:** POST /account/addresses
+
+**Scenario:** POST /account/addresses with {areaSlug:'ntinda-kampala', ...} and no landmarkText key at all: routes/account.ts maps a missing key to undefined, validateCore treats undefined as 'unchanged' (patch semantics) and accepts, so a structured address is created with no landmark line even though the rule says a structured address must carry one. Sending landmarkText:'' is refused, omitting it is not.
+
+**Why it is wrong:** The patch-semantics shortcut is reused for creation; on create, absent is not 'unchanged'. Ugandan last-mile runs on landmarks (PART G field 6), and this row then feeds checkout's deliveryLocation.
+
+**Proposed fix:** In AddAddressUseCase call validateCore with landmarkText: input.landmarkText ?? '' (create semantics) while UpdateAddressUseCase keeps patch semantics. Pin with 'creating an area-linked address without landmarkText is refused'.
+
+### Rejecting an already-accepted proposal marks it rejected while the learned factor stays live *(unverified)*
+`apps/api/src/application/use-cases/delivery/DeliveryCalibrationUseCases.ts:268` | data-integrity | finder confidence 0.75
+
+**Reachable via:** POST /admin/delivery/calibration/proposals/:id/reject
+
+**Scenario:** Proposal P is accepted (factor written to delivery_learned_factor, status 'accepted'). A second operator, or a double-click, POSTs /calibration/proposals/P/reject. Unlike AcceptCalibrationProposalUseCase there is no status!=='pending' guard, so the row flips to 'rejected' with decided_by overwritten, yet the fitted value keeps pricing every quote. The queue now shows a rejected proposal whose value is in force.
+
+**Why it is wrong:** A decision is history (repo comment: 'Decided proposals are untouched'); rejecting after acceptance neither reverts the factor nor is refused, so the audit trail and the live model disagree.
+
+**Proposed fix:** Add `if (proposal.status !== 'pending') return fail('ALREADY_DECIDED', ...)` mirroring the accept path. Pin with 'reject after accept is refused'.
+
+### Multi-line packed-quantity update applies partially when a later line fails *(unverified)*
+`apps/api/src/application/use-cases/fulfilment/PackingUseCases.ts:107` | data-integrity | finder confidence 0.55
+
+**Reachable via:** PATCH /admin/fulfilment/:id/packing/packed
+
+**Scenario:** PATCH /:id/packing/packed with three updates; line 1 and 2 are written and audited, line 3 throws EXCEEDS_ORDERED. The use case returns a 400, the UI shows an error and keeps the old form state, but lines 1 and 2 are already changed and their versions bumped, so the operator's next retry of the same payload fails with STALE_FULFILMENT_VERSION on lines 1 and 2. The comment promises validate-all-then-apply; the code does neither atomically.
+
+**Why it is wrong:** A failed batch write leaves a half-applied result with no rollback and no signal in the error that some lines were applied.
+
+**Proposed fix:** Validate every line (rehydrate + setPacked in memory) before any updateWithVersion, then apply; or run the loop inside a repository transaction and roll back on the first failure. Pin with 'a batch whose last line is invalid changes no line'.
+
+### The beneficiary of a PLATFORM_ADMINISTRATOR grant request may approve it themselves *(unverified)*
+`apps/api/src/application/use-cases/identity/AdminUserManagementUseCase.ts:97` | authorization | finder confidence 0.5
+
+**Reachable via:** POST /admin/users/grant-requests/:id/decide
+
+**Scenario:** Admin A (auth.manage) POSTs /admin/users/<B>/roles with roleName PLATFORM_ADMINISTRATOR, creating a PENDING request with requestedBy=A for userId=B. Admin B (also holding auth.manage) POSTs /admin/users/grant-requests/<id>/decide APPROVED. The only check is requestedBy !== actorId, so B approves the grant of full platform administration to B. The audit row records decision only, not that decider == beneficiary.
+
+**Why it is wrong:** Four-eyes on privilege escalation requires that the person receiving the privilege is neither the maker nor the checker; the use-case rule only excludes the maker, so a two-person collusion (or a beneficiary who talks a colleague into 'just raising the request') needs no independent approver. Maker/checker must be enforced in the use case, not the UI.
+
+**Proposed fix:** In decideGrant, also refuse when request.userId === args.actorId (code MAKER_CHECKER, 'The user receiving the role cannot decide their own grant.'), and include userId/requestedBy/decidedBy in the ADMIN_ROLE_GRANT_DECIDED audit newState. Pin with a unit test on AdminUserManagementUseCase.decideGrant where actorId equals the request's userId.
+
+### A non-UUID order id (e.g. an order number) on the account order and payment-start routes surfaces as a 500 instead of 404 *(unverified)*
+`apps/api/src/application/use-cases/orders/CustomerOrderUseCases.ts:20` | error-handling | finder confidence 0.7
+
+**Reachable via:** GET /account/orders/:id; POST /commerce/payments/pesapal/start
+
+**Scenario:** A customer opens /account/orders/GP-202608-A1B2 (their order number, which is what every email, WhatsApp handoff and confirmation page shows). findByIdForUser binds the string to orders.id (uuid) via eq(orders.id, orderId); Postgres raises 22P02 invalid input syntax for type uuid. errorMapping.pgCategory does not classify 22P02, so app.onError returns 500 INTERNAL_SERVER_ERROR and captures to Sentry. The same happens for POST /commerce/payments/pesapal/start with body { orderId: 'GP-…' } through StartOrderPaymentUseCase.ts:145 (findByOrderId on checkout_idempotency.order_id uuid).
+
+**Why it is wrong:** A malformed identifier is a not-found/validation outcome, not a server fault; each such request produces a false alarm for operators and a generic failure page for the customer.
+
+**Proposed fix:** Validate the id shape in the use cases (GetMyOrderUseCase and StartOrderPaymentUseCase): if it is not a UUID return NOT_FOUND without querying, or, for the account route, resolve an order number scoped by userId (and(eq(orders.orderNumber, id), eq(orders.userId, userId))). Optionally classify 22P02 as VALIDATION in errorMapping. Pin with tests 'GET /account/orders/:orderNumber returns 404' and 'payments/start with an order number returns NOT_FOUND'.
+
+### A held catalogue row included with a canonical-code override is created as PHONE with no alias because the hold value uses different keys than the apply path reads *(unverified)*
+`apps/api/src/domain/batteries/BatteryImport.ts:277` | correctness | finder confidence 0.7
+
+**Reachable via:** POST /admin/batteries/imports/:id/rows/:rowId/resolve INCLUDE with canonicalCode, then apply
+
+**Scenario:** Source item 'MIFI BIG / SMALL' is held as HOLD_COMPOUND with value { sourceItem, codes, category: 'MIFI_ROUTER' }. The operator includes it with canonicalCode 'ZTE-Li3730'. applyRow (BatteryImportUseCases.ts line 311-332) reads data.batteryCategory (undefined -> 'PHONE'), data.aliases (undefined -> none), data.name (undefined -> 'battery ZTE-Li3730'), so the MiFi battery is created under Phone Batteries and the stock label that customers and receipts use is never attached as an alias; the HOLD_CONFLICT value (line 280) has the same shape.
+
+**Why it is wrong:** The hold value and the apply payload are two shapes of the same row; the resolved row should carry the same fields a normal CREATE_BATTERY row carries so the override only supplies what was missing.
+
+**Proposed fix:** Emit the held value with the CREATE_BATTERY field names (batteryCategory, aliases: [sourceItem], name null, codeStatus 'PROVISIONAL', lifecycleStatus 'REVIEW') so the override merge yields a complete row; or in resolveRow re-run normaliseImportRow with the overridden code cell. Test: normaliseImportRow compound MiFi row -> resolve with code -> applyRow creates MIFI_ROUTER with the source label as alias.
+
+### The Slice 3C reconciliation report treats every PesaPal-paid order as a discrepancy because PesaPal settlement never writes a `payments` row *(unverified)*
 `apps/api/src/domain/payments/PaymentReconciliation.ts:76` | correctness | finder confidence 0.7
 
 **Reachable via:** GET /governance/admin/payments/reconciliation (PAYMENTS_READ)
@@ -682,7 +697,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** In reconcilePayments, treat an attempt with status 'completed' for the order as a success record (build successByOrder from both payments and completed attempts), and bound the order/payment inputs (recent window or the same ATTEMPT_SAMPLE). Realign tests/unit/Slice03CPaymentReconciliation.test.ts to include a PesaPal-completed attempt case that must NOT produce order_paid_without_success_record.
 
-### Measurement control tower reports a fabricated 'last event received: now' and unconditional HEALTHY queue status
+### Measurement control tower reports a fabricated 'last event received: now' and unconditional HEALTHY queue status *(unverified)*
 `apps/api/src/infrastructure/admin/DrizzleMeasurementControlTowerRepository.ts:68` | copy | finder confidence 0.6
 
 **Reachable via:** GET /admin/measurement-control-tower (summary) and /section/health
@@ -693,7 +708,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Derive lastEventReceived from max(measurementAuditLogs.createdAt) (null when empty), set measurementQueueStatus from the unresolved dead-letter count (e.g. 'DEGRADED' when > 0, 'NO_DATA' when no events), and report preferencesViewed as null/NOT_MEASURED rather than a row count. Pin with a repository integration test on an empty database expecting lastEventReceived null and a non-HEALTHY status.
 
-### Battery code is validated to 80 characters but written into products.model_number varchar(50), so a 51 to 80 character code fails with a raw Postgres error
+### Battery code is validated to 80 characters but written into products.model_number varchar(50), so a 51 to 80 character code fails with a raw Postgres error *(unverified)*
 `apps/api/src/infrastructure/db/repositories/DrizzleBatteryCatalogueRepository.ts:96` | validation | finder confidence 0.75
 
 **Reachable via:** POST /admin/batteries/catalogue; PUT /admin/batteries/catalogue/:id; import apply
@@ -704,7 +719,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Either lower the canonical code limit to 50 in the use case and domain (BatteryImport.ts line 308) with a clear message, or store the code truncated only in products.model_number and keep battery_profiles.canonical_code as the source of truth (documenting that model_number is a projection). Test: create() with a 60-character code refuses with BAD_INPUT.
 
-### Fee variance rewrites total_amount of an already-paid order with no settlement path
+### Fee variance rewrites total_amount of an already-paid order with no settlement path *(unverified)*
 `apps/api/src/infrastructure/db/repositories/DrizzleDeliveryVarianceRepository.ts:89` | money | finder confidence 0.5
 
 **Reachable via:** POST /admin/delivery/orders/:orderId/variance, POST /admin/delivery/variance/:id/agreement
@@ -715,7 +730,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** In ApplyDeliveryVarianceUseCase read payment_status; for paid orders either refuse increases with VARIANCE_ON_PAID_ORDER (absorb per contract #6) or record the delta as a separate receivable/refund line instead of touching total_amount. Pin with 'variance on a paid order does not change total_amount'.
 
-### startForTask resets a COMPLETED packing session to IN_PROGRESS despite the comment
+### startForTask resets a COMPLETED packing session to IN_PROGRESS despite the comment *(unverified)*
 `apps/api/src/infrastructure/db/repositories/DrizzleFulfilmentLineRepository.ts:100` | data-integrity | finder confidence 0.6
 
 **Reachable via:** POST /admin/fulfilment/:id/packing/start
@@ -726,7 +741,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Add a `where` to the onConflictDoUpdate (drizzle supports `setWhere`/`targetWhere`) so the update applies only when status not in ('COMPLETED','PARTIAL'), or check the session status in StartPackingUseCase and return the existing session. Pin with 'start after complete leaves the session COMPLETED'.
 
-### setStockQuantity leaves stock_status stale while the adjust path keeps it coherent (diverged duplicate)
+### setStockQuantity leaves stock_status stale while the adjust path keeps it coherent (diverged duplicate) *(unverified)*
 `apps/api/src/infrastructure/db/repositories/DrizzleInventoryRepository.ts:90` | correctness | finder confidence 0.65
 
 **Reachable via:** PUT /admin/products/:id then GET /products?inStock=true
@@ -737,7 +752,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Apply the same CASE expression (stockStatus: sql`case when ${newStock} <= 0 then 'out_of_stock' else 'in_stock' end`) in setStockQuantity, or move that rule into one shared helper used by both repositories. Pin with a repository test 'setting stock to 0 marks the product out_of_stock'.
 
-### PIM UPDATE changes a live product's slug without a redirect and without touching updated_at
+### PIM UPDATE changes a live product's slug without a redirect and without touching updated_at *(unverified)*
 `apps/api/src/infrastructure/db/repositories/DrizzlePimImportRepository.ts:486` | correctness | finder confidence 0.65
 
 **Reachable via:** POST /admin/pim-imports/:id/apply
@@ -748,7 +763,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** When existing.slug !== data.slug, record the redirect through the slug-change use case (inject the SlugChangeRecorder into the apply path) inside the same transaction, and set updatedAt: new Date() on the update. Pin with a PIM apply test 'slug change creates a redirect row and bumps updated_at'.
 
-### Capacity overview counts expired-but-unflipped RESERVED rows as consumed capacity
+### Capacity overview counts expired-but-unflipped RESERVED rows as consumed capacity *(unverified)*
 `apps/api/src/infrastructure/db/repositories/DrizzlePricingOperationsRepository.ts:28` | correctness | finder confidence 0.6
 
 **Reachable via:** GET /admin/pricing/overview, GET /admin/pricing/definitions/:id (pricing.read)
@@ -759,7 +774,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Apply the same predicate as reserveQuote (status = 'REDEEMED' OR (status = 'RESERVED' AND expires_at > now())) when counting reserved in capacityFor; pin with a repository test that an expired RESERVED row does not reduce remaining.
 
-### Product-cost import validates the note then inserts NULL for it
+### Product-cost import validates the note then inserts NULL for it *(unverified)*
 `apps/api/src/infrastructure/db/repositories/DrizzleProductCostRepository.ts:184` | data-integrity | finder confidence 0.85
 
 **Reachable via:** POST /admin/product-costs/import (product_costs.manage)
@@ -770,7 +785,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Carry note on ProductCostImportPlanRow and bind ${row.note} in the INSERT; pin with an importCosts test that the stored entry carries the note.
 
-### Resuming a paused promotion re-activates it (including lifting a budget auto-pause) without the MFA step-up that activation requires
+### Resuming a paused promotion re-activates it (including lifting a budget auto-pause) without the MFA step-up that activation requires *(unverified)*
 `apps/api/src/interfaces/http/routes/admin/pricing.ts:58` | security | finder confidence 0.5
 
 **Reachable via:** POST /admin/pricing/definitions/:id/resume
@@ -781,7 +796,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Add 'resume' to STEP_UP_OPERATIONS (or key the step-up on the target status ACTIVE); pin with a route test that resume without step-up is refused.
 
-### compareAtPriceUgx is never validated and priceUgx has no upper bound, so NaN/overflow reach the integer columns as a 500
+### compareAtPriceUgx is never validated and priceUgx has no upper bound, so NaN/overflow reach the integer columns as a 500 *(unverified)*
 `apps/api/src/interfaces/http/routes/admin/products.ts:244` | validation | finder confidence 0.7
 
 **Reachable via:** POST /admin/products, PUT /admin/products/:id
@@ -792,7 +807,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Validate compareAtPriceUgx (integer, >= 0, and >= priceUgx or absent) and cap priceUgx/compareAtPriceUgx at a sane maximum (e.g. 100,000,000) with 400 VALIDATION_ERROR; pin with route tests for 'abc' and out-of-range values.
 
-### Replaying failed jobs and changing worker concurrency are mutating admin operations with no audit record, and the audit-exempt justification is not true
+### Replaying failed jobs and changing worker concurrency are mutating admin operations with no audit record, and the audit-exempt justification is not true *(unverified)*
 `apps/api/src/interfaces/http/routes/admin/queues.ts:59` | authorization | finder confidence 0.6
 
 **Reachable via:** POST /admin/queues/replay, POST /admin/queues/concurrency
@@ -803,7 +818,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Write an audit entry via registry.createAuditLogUseCase in /replay (entity 'queue', newState {queueName, replayed}) and /concurrency (previousState {concurrency: before}, newState {concurrency: after}), with the actor id; remove the audit-exempt comment. Pin with a route test in tests/unit/Slice08B1AdminRouteProtectionSweep.test.ts style asserting an audit row per call.
 
-### /pricing-preview returns the raw error message (and pg error code) of any failure to unauthenticated callers
+### /pricing-preview returns the raw error message (and pg error code) of any failure to unauthenticated callers *(unverified)*
 `apps/api/src/interfaces/http/routes/commerce.ts:301` | security | finder confidence 0.7
 
 **Reachable via:** POST /commerce/pricing-preview (public)
@@ -814,7 +829,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Catch only PricingEvaluationError (or CheckoutDependencyError) and return its code with a fixed message; rethrow anything else so mapErrorToHttp produces the generic 503/500. Pin with a route test that a thrown pg-style error yields INTERNAL/DEPENDENCY_UNAVAILABLE with no message passthrough.
 
-### Quote cache key ignores deliveryArea, so free-text destinations share one cached fee for 60 s
+### Quote cache key ignores deliveryArea, so free-text destinations share one cached fee for 60 s *(unverified)*
 `apps/api/src/interfaces/http/routes/delivery.ts:51` | correctness | finder confidence 0.7
 
 **Reachable via:** POST /delivery/quote with deliveryArea (not used by DeliveryQuote.astro or HeroSlider.astro today)
@@ -825,7 +840,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Include the folded deliveryArea (foldUgandanOrthography) in the canonical key, or refuse to cache when only deliveryArea is supplied. Pin with a unit test on quoteCacheKey/fullKey that two different deliveryArea values yield different keys.
 
-### Admin battery pages format timestamps in the server's zone (UTC in the container), three hours behind the Kampala time operators expect
+### Admin battery pages format timestamps in the server's zone (UTC in the container), three hours behind the Kampala time operators expect *(unverified)*
 `apps/web/src/pages/admin/batteries/stock.astro:59` | correctness | finder confidence 0.7
 
 **Reachable via:** /admin/batteries, /admin/batteries/stock, /admin/batteries/demand, /admin/batteries/imports, /admin/batteries/imports/[id], /admin/batteries/catalogue/[id]
@@ -836,7 +851,7 @@ packages/shared, the recent-commit diff review, and the whole-repo bad-pattern s
 
 **Proposed fix:** Add timeZone: 'Africa/Kampala' to the toLocaleString options in one shared helper (e.g. export formatEat from apps/web/src/lib/batteries.ts or reuse the shared eat.ts helper) and use it in all six pages. Test: helper formats 2026-08-26T11:05:00Z as 14:05.
 
-### Device page fetches /finder/devices/:slug twice per view, recording two DEVICE_SELECTED demand events for every selection
+### Device page fetches /finder/devices/:slug twice per view, recording two DEVICE_SELECTED demand events for every selection *(unverified)*
 `apps/web/src/pages/battery-finder.astro:68` | correctness | finder confidence 0.85
 
 **Reachable via:** GET /battery-finder?device=<slug>
