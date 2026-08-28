@@ -392,13 +392,12 @@ routes.post("/media-costs/batch", requirePermissions([PERMISSIONS.RECOMMENDATION
   }
 
   const repo = Registry.getInstance().recommendationCommercialRepo;
-  let inserted = 0;
-  let duplicates = 0;
-  for (const fact of facts) {
-    const result = await repo.insertMediaCostFact({ ...(fact as any), ingestedBy: (c.get("user") as { id: string }).id });
-    if (result.inserted) inserted += 1;
-    else duplicates += 1;
-  }
+  // All of it or none of it, in one transaction — the contract this handler
+  // states above. Row-by-row inserts left a partially applied file behind on
+  // any mid-file failure, and the audit entry below never ran.
+  const { inserted, duplicates } = await repo.insertMediaCostFacts(
+    facts.map((fact) => ({ ...(fact as any), ingestedBy: (c.get("user") as { id: string }).id })),
+  );
 
   await Registry.getInstance().createAuditLogUseCase.execute({
     actorId: (c.get("user") as { id: string }).id,

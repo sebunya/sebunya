@@ -1417,6 +1417,9 @@ export class Registry {
         confirmed: q.kind !== 'unavailable',
         pricedBy: outcome.pricedBy,
         mayFallBackToLegacy: outcome.mayFallBackToLegacy,
+        // Why it refused, so a caller without a basket can tell a destination we
+        // cannot serve from a question it did not ask properly.
+        unavailableReason: q.kind === 'unavailable' ? q.reason : null,
         capture: {
           // A district-only resolution carries an EMPTY slug, which is not a
           // slug. Stored as null so "no area" reads as absence rather than as

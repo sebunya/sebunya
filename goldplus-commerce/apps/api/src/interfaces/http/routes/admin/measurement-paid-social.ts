@@ -28,11 +28,22 @@ measurementPaidSocialRoutes.post('/destinations/:id/update', requirePermissions(
   return c.json({ success: true, status: 'OK', data: result });
 });
 
-// audit-exempt: Retries are transient operational commands
-measurementPaidSocialRoutes.post('/delivery/:eventId/retry', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+// Re-sending a conversion event to an ad platform is an outbound mutation with
+// a privacy dimension, not a "transient operational command": it needs a
+// mutating right and a record of who did it.
+measurementPaidSocialRoutes.post('/delivery/:eventId/retry', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const eventId = c.req.param('eventId');
-  if (!eventId) return c.json({ success: false, status: 'ERROR', error: 'Missing eventId' });
+  if (!eventId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) {
+    return c.json({ success: false, status: 'ERROR', error: 'Missing or malformed eventId' }, 400);
+  }
   const result = await registry.retryPaidSocialDeliveryUseCase.execute(eventId);
+  await registry.createAuditLogUseCase.execute({
+    actorId: (c.get('user') as { id?: string } | undefined)?.id ?? 'unknown',
+    action: 'PAID_SOCIAL_DELIVERY_RETRIED',
+    entity: 'paid_social_delivery',
+    entityId: eventId,
+    newState: { retried: true },
+  }).catch(() => undefined);
   return c.json({ success: true, status: 'OK', data: result });
 });
 

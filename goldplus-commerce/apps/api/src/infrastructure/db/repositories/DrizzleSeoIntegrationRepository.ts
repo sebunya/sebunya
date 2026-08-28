@@ -178,21 +178,28 @@ export class DrizzleSeoIntegrationRepository {
     createdBy?: string | null;
     expiresAt?: Date | null;
   }): Promise<any> {
-    const prev = rowsOf(await db.execute(sql`
-      update seo_integration_credentials
-      set status = 'ROTATED', last_rotated_at = now(), updated_at = now()
-      where connection_id = ${input.connectionId} and status = 'ACTIVE'
-      returning version
-    `));
-    const version = prev.length > 0 ? Math.max(...prev.map((r) => Number(r.version) || 1)) + 1 : 1;
-    const rows = rowsOf(await db.execute(sql`
-      insert into seo_integration_credentials
-        (connection_id, auth_type, ciphertext, mask, version, status, created_by, expires_at)
-      values
-        (${input.connectionId}, ${input.authType}, ${input.ciphertext}, ${input.mask},
-         ${version}, 'ACTIVE', ${input.createdBy ?? null}, ${input.expiresAt ?? null})
-      returning id, connection_id, auth_type, mask, version, status, expires_at, created_at
-    `));
+    // ONE transaction. Demoting the live credential and inserting its
+    // replacement were two autocommits: if the insert failed, the connection
+    // was left with NO active credential and the integration silently reported
+    // itself unconfigured, with no way back. The version is allocated inside
+    // the insert rather than from a prior read, so two concurrent rotations
+    // cannot compute the same number.
+    const rows = await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        update seo_integration_credentials
+        set status = 'ROTATED', last_rotated_at = now(), updated_at = now()
+        where connection_id = ${input.connectionId} and status = 'ACTIVE'
+      `);
+      return rowsOf(await tx.execute(sql`
+        insert into seo_integration_credentials
+          (connection_id, auth_type, ciphertext, mask, version, status, created_by, expires_at)
+        select ${input.connectionId}, ${input.authType}, ${input.ciphertext}, ${input.mask},
+               coalesce(max(version), 0) + 1, 'ACTIVE', ${input.createdBy ?? null}, ${input.expiresAt ?? null}
+        from seo_integration_credentials
+        where connection_id = ${input.connectionId}
+        returning id, connection_id, auth_type, mask, version, status, expires_at, created_at
+      `));
+    });
     return rows[0] ?? null;
   }
 

@@ -33,10 +33,20 @@ export class TrackBrowserTelemetryEventUseCase {
     // count existed with nothing feeding it. A visitor with no recorded
     // decision is not blocked here: the ads dispatch is gated downstream.
     const fpClientId = event.user_data?.fp_client_id;
+    // ONLY AN EXPLICIT, LIVE REFUSAL BLOCKS.
+    //
+    // Two things make the stored boolean alone the wrong test. An EXPIRED
+    // decision is no decision — ConsentService treats it that way and this must
+    // agree. And `analytics_granted` is false in the owner default, so a row
+    // materialised by an unrelated preference save (marketing email off) would
+    // otherwise read as an analytics refusal for a customer who never made one,
+    // silently dropping their events forever.
     const { row: consent } = await consentRepo
       .getCurrentState(fpClientId, event.user_data?.user_id)
       .catch(() => ({ row: null }));
-    if (consent && consent.analyticsGranted === false) {
+    const expired = !!consent?.expiresAt && new Date(consent.expiresAt) < new Date();
+    const decided = !!consent && consent.lastGrantType !== 'unknown';
+    if (consent && decided && !expired && consent.analyticsGranted === false) {
       await db
         .insert(measurementAuditLogs)
         .values({ entityType: 'telemetry_event', entityId: String(event.event_id ?? 'unknown').slice(0, 255), action: 'CONSENT_BLOCKED', changes: { event_name: event.event_name } })

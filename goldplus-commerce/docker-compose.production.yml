@@ -126,6 +126,10 @@ services:
       - PESAPAL_BRANCH=${PESAPAL_BRANCH}
       - PESAPAL_REDIRECT_MODE=${PESAPAL_REDIRECT_MODE}
       - PESAPAL_CALLBACK_URL=${PESAPAL_CALLBACK_URL}
+      # The provider's return destination (our API). Defaults from
+      # PUBLIC_API_BASE_URL when unset; listed here because a variable that is
+      # only in .env.production never reaches the container.
+      - PESAPAL_PROVIDER_CALLBACK_URL=${PESAPAL_PROVIDER_CALLBACK_URL:-}
       - PESAPAL_CANCELLATION_URL=${PESAPAL_CANCELLATION_URL}
       - PESAPAL_IPN_URL=${PESAPAL_IPN_URL}
       - PESAPAL_IPN_ID=${PESAPAL_IPN_ID}

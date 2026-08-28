@@ -96,3 +96,28 @@ describe('telemetry respects a withdrawn analytics consent', () => {
     expect(read('apps/web/src/pages/robots.txt.ts')).toMatch(/Disallow: \/orders/);
   });
 });
+
+describe('the 125 Drizzle repositories', () => {
+  const readRepo = (f: string) =>
+    readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/db/repositories', f), 'utf8');
+
+  it('a redemption settles once, so spent points are never handed back twice', () => {
+    const src = readRepo('DrizzleLoyaltyCompletionRepository.ts');
+    expect(src).toMatch(/reversed: \['reserved', 'applied'\]/);
+    expect(src).toMatch(/inArray\(loyaltyRedemptions\.status, PRIOR_STATES\[status\]\)/);
+  });
+
+  it('renaming a brand renames its devices in the same transaction', () => {
+    const src = readRepo('DrizzleDeviceCatalogueRepository.ts');
+    const body = src.slice(src.indexOf('async updateBrand'), src.indexOf('async setBrandStatus'));
+    expect(body).toMatch(/db\.transaction/);
+    expect(body).not.toMatch(/await db\.update\(devices\)/);
+  });
+});
+
+describe('what production actually receives', () => {
+  it('the PesaPal provider callback override reaches the container', () => {
+    const compose = readFileSync(resolve(__dirname, '../../docker-compose.production.yml'), 'utf8');
+    expect(compose).toMatch(/PESAPAL_PROVIDER_CALLBACK_URL=\$\{PESAPAL_PROVIDER_CALLBACK_URL:-\}/);
+  });
+});

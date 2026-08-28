@@ -1,4 +1,5 @@
-import { and, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+
 import { db } from '../client';
 import {
   loyaltyAccounts,
@@ -16,6 +17,14 @@ import {
   LoyaltyRuleRow,
 } from '../../../application/ports/ILoyaltyCompletion';
 import { LoyaltyLedgerEntry, LoyaltyProgrammeConfig } from '../../../domain/loyalty/LoyaltyLedger';
+
+// Which statuses each settlement may legally follow. A reversal is the only
+// transition allowed out of 'applied'; everything else must still be reserved.
+const PRIOR_STATES: Record<'applied' | 'released' | 'reversed', string[]> = {
+  applied: ['reserved'],
+  released: ['reserved'],
+  reversed: ['reserved', 'applied'],
+};
 
 function toEntry(row: typeof loyaltyLedgerEntries.$inferSelect): LoyaltyLedgerEntry {
   return {
@@ -151,11 +160,15 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
       .where(and(eq(loyaltyRedemptions.id, reservationId), eq(loyaltyRedemptions.status, 'reserved')));
   }
 
+
   async markReservation(reservationId: string, status: 'applied' | 'released' | 'reversed', ledgerEntryId?: string | null): Promise<boolean> {
     const rows = await db
       .update(loyaltyRedemptions)
       .set({ status, updatedAt: new Date(), ...(ledgerEntryId !== undefined ? { ledgerEntryId } : {}) })
-      .where(eq(loyaltyRedemptions.id, reservationId))
+      // A reservation settles once. Without this the sweeper could write
+      // 'released' over an 'applied' redemption, handing back points the
+      // customer had already spent on a paid order (or the reverse).
+      .where(and(eq(loyaltyRedemptions.id, reservationId), inArray(loyaltyRedemptions.status, PRIOR_STATES[status])))
       .returning();
     return rows.length > 0;
   }

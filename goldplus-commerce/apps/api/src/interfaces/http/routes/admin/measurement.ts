@@ -50,10 +50,12 @@ routes.get('/dlq', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => 
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /admin/measurement/dlq/:id/replay — replay a DLQ entry
-// audit-exempt: Audit is handled internally by ReplayMeasurementDlqUseCase
+// Replay re-enqueues an outbound dispatch and resolves the DLQ row: a write.
+// It sat on reports.read, the dashboard bar, while its twin
+// (measurement-payments POST /:orderId/retry) required a mutating right.
 // ─────────────────────────────────────────────────────────────────────────────
 
-routes.post('/dlq/:id/replay', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+routes.post('/dlq/:id/replay', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const id = c.req.param('id');
   if (!id) return c.json({ success: false, error: 'MISSING_ID' }, 400);
 
@@ -62,6 +64,15 @@ routes.post('/dlq/:id/replay', requirePermissions([PERMISSIONS.REPORTS_READ]), a
 
   try {
     const result = await replayDlqUseCase.execute(id, actorId);
+    // Replaying a dead-lettered event re-emits it to the measurement
+    // providers. Record who did it; the use case writes no audit of its own.
+    await registry.createAuditLogUseCase.execute({
+      actorId,
+      action: 'MEASUREMENT_DLQ_REPLAYED',
+      entity: 'measurement_dlq',
+      entityId: id,
+      newState: { message: result.message },
+    }).catch((err: unknown) => loggerAdapter.error({ err, dlqId: id }, '[AdminMeasurement] audit write failed'));
     return c.json({ success: true, message: result.message });
   } catch (err: any) {
     if (err.message === 'NOT_FOUND') return c.json({ success: false, error: 'NOT_FOUND' }, 404);

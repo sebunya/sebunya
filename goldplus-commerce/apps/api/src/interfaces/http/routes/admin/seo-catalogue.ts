@@ -157,7 +157,11 @@ routes.post('/lifecycle', requirePermissions([PERMISSIONS.SEO_REDIRECTS_MANAGE])
   const blanket = rejectBlanketRedirect(decisions);
   if (!blanket.ok) return bad(c, 'BLANKET_REDIRECT', blanket.message ?? 'Blanket redirect refused.', 422);
 
-  const saved: unknown[] = [];
+  // Validate EVERY decision before writing ANY of them. Validating inside the
+  // write loop meant a refusal at decision 3 left decisions 1 and 2 already
+  // applied, including live redirects, while the operator read a 422 and
+  // reasonably believed nothing had been saved.
+  const validated: Array<ReturnType<typeof validateLifecycleDecision> & { ok: true }> = [];
   for (const decision of decisions) {
     const validation = validateLifecycleDecision(decision);
     if (!validation.ok) {
@@ -168,6 +172,11 @@ routes.post('/lifecycle', requirePermissions([PERMISSIONS.SEO_REDIRECTS_MANAGE])
         ['SUCCESSOR_REQUIRED', 'RATIONALE_REQUIRED', 'DISPOSITION_NOT_DEFENSIBLE'].includes(validation.code) ? 422 : 400,
       );
     }
+    validated.push(validation as never);
+  }
+
+  const saved: unknown[] = [];
+  for (const validation of validated) {
     const row = await repo().upsertLifecycle(validation.input, actorId(c));
     saved.push(row);
     await audit(c, 'SEO_PRODUCT_LIFECYCLE_DECIDED', {

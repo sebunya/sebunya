@@ -35,7 +35,7 @@ interface Deps {
       district?: string | null;
       deliveryArea?: string | null;
       items: ReadonlyArray<{ productId: string; quantity: number }>;
-    }): Promise<{ feeUgx: number | null; confirmed: boolean; mayFallBackToLegacy: boolean }>;
+    }): Promise<{ feeUgx: number | null; confirmed: boolean; mayFallBackToLegacy: boolean; unavailableReason?: string | null }>;
   } | null;
 }
 
@@ -71,7 +71,16 @@ export class GetDeliveryEstimateUseCase {
     // The customer saw a total the order did not charge.
     if (this.deps.quoting) {
       const quoted = await this.deps.quoting.quote({ district, deliveryArea: area, items: [] });
-      if (!quoted.mayFallBackToLegacy) {
+      // THIS ENDPOINT HAS NO BASKET, and a bus-parcel quote is priced per parcel.
+      // With an empty item list planParcels answers EMPTY_BASKET, which the quote
+      // service reports as NO_RATE_CARD — so every upcountry district came back
+      // UNAVAILABLE even where a real rate card exists. That refusal is a fact
+      // about the question, not about the destination, so the legacy model
+      // answers it as it did before. A refusal we CAN trust (outside the service
+      // area, no origin) still stands.
+      const basketDerived = quoted.feeUgx === null
+        && (quoted.unavailableReason === 'NO_RATE_CARD' || quoted.unavailableReason === 'PARCEL_CLASS_UNKNOWN');
+      if (!quoted.mayFallBackToLegacy && !basketDerived) {
         const estimate: DeliveryEstimate = quoted.feeUgx === null
           ? { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false }
           : { kind: quoted.confirmed ? 'CONFIRMED' : 'ESTIMATED', feeUgx: quoted.feeUgx, source: 'MODEL', band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false };

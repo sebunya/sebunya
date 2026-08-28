@@ -3,8 +3,23 @@ import { deploymentService } from '../../../../infrastructure/deployment/Deploym
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { Registry } from '../../../../infrastructure/Registry';
 
-// audit-exempt: deployment mode updates are tracked via dedicated deployment logging in DeploymentService
+/** Who did it, on a site-wide operational change. */
+const audit = (c: { get(k: string): unknown }, action: string, newState: Record<string, unknown>) =>
+  Registry.getInstance().createAuditLogUseCase.execute({
+    actorId: (c.get('user') as { id?: string } | undefined)?.id ?? 'unknown',
+    action,
+    entity: 'deployment',
+    entityId: 'global',
+    newState,
+  }).catch(() => undefined);
+
+// Maintenance mode, health score and shadow traffic are site-wide operational
+// mutations. They used to carry an audit exemption that was not true:
+// DeploymentService logs the new VALUE without the actor, and logs nothing at
+// all for shadow traffic, so afterwards nobody could say who took the site
+// down. Each handler now records the actor, as the queue routes do.
 const routes = new Hono();
 
 // Enforce auth globally for all deployment admin actions
@@ -50,7 +65,9 @@ routes.post('/maintenance', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), a
     return c.json(res, 400);
   }
 
+  const wasEnabled = deploymentService.getMaintenanceMode();
   deploymentService.setMaintenanceMode(enabled);
+  await audit(c, 'DEPLOYMENT_MAINTENANCE_MODE_SET', { enabled, previous: wasEnabled });
 
   const res: ApiResponse<{ maintenanceMode: boolean }> = {
     success: true,
@@ -76,6 +93,7 @@ routes.post('/health-score', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), 
   }
 
   deploymentService.updateHealthScore(score);
+  await audit(c, 'DEPLOYMENT_HEALTH_SCORE_SET', { score });
 
   const res: ApiResponse<{ healthScore: number }> = {
     success: true,
@@ -121,6 +139,7 @@ routes.post('/shadow-traffic', requirePermissions([PERMISSIONS.SETTINGS_MANAGE])
   }
 
   deploymentService.setShadowTrafficRatio(ratio);
+  await audit(c, 'DEPLOYMENT_SHADOW_TRAFFIC_SET', { ratio, shadowUrl: shadowUrl ?? null });
 
   const res: ApiResponse<{ shadowRatio: number; shadowUrl: string; shadowConfigured: boolean }> = {
     success: true,

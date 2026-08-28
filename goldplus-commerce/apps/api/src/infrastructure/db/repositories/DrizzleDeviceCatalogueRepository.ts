@@ -105,8 +105,12 @@ export class DrizzleDeviceCatalogueRepository implements IDeviceCatalogueReposit
     const { actorId, ...rest } = patch;
     const set: Record<string, unknown> = { ...rest, updatedAt: new Date() };
     if (actorId) set.updatedBy = actorId;
-    await db.update(deviceBrands).set(set as never).where(eq(deviceBrands.id, id));
-    if (patch.name) await db.update(devices).set({ brand: patch.name, brandNormalised: patch.nameNormalised ?? undefined, updatedAt: new Date() }).where(eq(devices.brandId, id));
+    // One transaction: a rename that updated the brand but not its devices
+    // left the finder searching for a name no device carries any more.
+    await db.transaction(async (tx) => {
+      await tx.update(deviceBrands).set(set as never).where(eq(deviceBrands.id, id));
+      if (patch.name) await tx.update(devices).set({ brand: patch.name, brandNormalised: patch.nameNormalised ?? undefined, updatedAt: new Date() }).where(eq(devices.brandId, id));
+    });
     return this.findBrand(id);
   }
 

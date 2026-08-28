@@ -131,9 +131,23 @@ routes.put('/landmarks', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), asyn
 
 routes.post('/landmarks/:id/verify', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => ({}));
-  const ok = await Registry.getInstance().manageLandmarksUseCase.verify(String(c.req.param('id')), body?.verified !== false);
+  // Explicit boolean: anything that was not literally false used to read as true.
+  if (typeof body?.verified !== 'boolean') {
+    return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'verified must be true or false.' } } satisfies ApiResponse<never>, 400);
+  }
+  const verified: boolean = body.verified;
+  const ok = await Registry.getInstance().manageLandmarksUseCase.verify(String(c.req.param('id')), verified);
   if (!ok) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Landmark not found.' } } satisfies ApiResponse<never>, 404);
-  return c.json({ success: true, data: { verified: body?.verified !== false } } satisfies ApiResponse<{ verified: boolean }>);
+  // Verification is the trust signal riders and address resolution rely on, and
+  // this is its only writer. Every sibling mutation in this file audits.
+  await new CreateAuditLogUseCase(Registry.getInstance().auditRepo).execute({
+    actorId: actor(c),
+    action: 'LOCATION_LANDMARK_VERIFIED',
+    entity: 'ug_landmark',
+    entityId: String(c.req.param('id')),
+    newState: { verified },
+  });
+  return c.json({ success: true, data: { verified } } satisfies ApiResponse<{ verified: boolean }>);
 });
 
 routes.post('/landmarks/merge', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {

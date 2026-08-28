@@ -34,14 +34,16 @@ measurementGtmRoutes.post('/diff', requirePermissions([PERMISSIONS.REPORTS_READ]
 });
 
 // audit-exempt: CreateGtmWorkspaceUseCase handles its own safe operations
-measurementGtmRoutes.post('/workspace', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
-  const body = await c.req.json();
+// Creates a workspace in the live tag container: a settings-grade mutation,
+// not a dashboard read.
+measurementGtmRoutes.post('/workspace', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
   const result = await registry.createGtmWorkspaceUseCase.execute(body.containerPath, body.name);
   return c.json({ success: true, status: result.status, data: result.data, error: result.error });
 });
 
 // audit-exempt: CreateGtmVersionDraftUseCase handles its own safe operations
-measurementGtmRoutes.post('/version-draft', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+measurementGtmRoutes.post('/version-draft', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json();
   const result = await registry.createGtmVersionDraftUseCase.execute(body.workspacePath, body.name, body.notes);
   return c.json({ success: true, status: result.status, data: result.data, error: result.error });

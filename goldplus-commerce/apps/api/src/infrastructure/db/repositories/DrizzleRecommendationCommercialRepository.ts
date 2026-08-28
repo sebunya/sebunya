@@ -688,6 +688,39 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
     return { inserted: rows.length > 0 };
   }
 
+  /**
+   * A spend FILE, applied all-or-nothing.
+   *
+   * The route validated the whole file and then inserted row by row outside any
+   * transaction, so a failure at row 3,000 of 5,000 left the first 2,999
+   * committed, returned a 500, and skipped the audit entry written after the
+   * loop. ROAS for the period then blended the new numbers with the old with
+   * nothing recording which — exactly what the route's own contract forbids.
+   */
+  async insertMediaCostFacts(
+    facts: Array<Parameters<DrizzleRecommendationCommercialRepository['insertMediaCostFact']>[0]>,
+  ): Promise<{ inserted: number; duplicates: number }> {
+    return db.transaction(async (tx) => {
+      let inserted = 0;
+      for (const input of facts) {
+        const rows = (await tx.execute(sql`
+          insert into media_cost_facts
+            (spend_date, channel, platform, account, campaign, ad_set_or_group, ad_or_creative,
+             currency, spend_minor, tax_or_fee_minor, source, source_reference, ingested_by)
+          values
+            (${input.spendDate}::date, ${input.channel}, ${input.platform}, ${input.account},
+             ${input.campaign}, ${input.adSetOrGroup ?? null}, ${input.adOrCreative ?? null},
+             ${input.currency}, ${input.spendMinor}, ${input.taxOrFeeMinor}, ${input.source},
+             ${input.sourceReference ?? null}, ${input.ingestedBy}::uuid)
+          on conflict do nothing
+          returning id
+        `)) as unknown as Array<{ id: string }>;
+        if (rows.length > 0) inserted += 1;
+      }
+      return { inserted, duplicates: facts.length - inserted };
+    });
+  }
+
   /** Commercial data-quality checks (§19) — counted, never silently absorbed. */
   async getCommercialDataQuality(windowDays: number): Promise<{
     windowDays: number;
