@@ -1,4 +1,5 @@
 ---
+import { jsonApiHeaders } from '../lib/forwardClient';
 import { safeReturnTo } from '../lib/safeReturnTo';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import FormField from '../components/FormField.astro';
@@ -7,6 +8,19 @@ import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import SocialSignIn from '../components/auth/SocialSignIn.astro';
 import { SESSION_COOKIE_NAME } from '../lib/session';
+
+/**
+ * The visitor's address, forwarded so abuse control counts THEM and not this
+ * container. Reading it can throw in a prerendered context, so it degrades to
+ * the shared bucket rather than breaking the page.
+ */
+let clientAddress: string | null = null;
+try {
+  clientAddress = Astro.clientAddress ?? null;
+} catch {
+  clientAddress = null;
+}
+
 
 // Already signed in? Registration has nothing to offer — go to the account.
 if (Astro.cookies.get('goldplus_session')?.value && Astro.request.method !== 'POST') {
@@ -48,7 +62,7 @@ if (Astro.request.method === 'POST') {
     try {
       const res = await fetch(`${apiBase}/auth/register`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: jsonApiHeaders(clientAddress),
         body: JSON.stringify({ email, phone, password, ...(referralCode ? { referralCode } : {}) }),
       });
       const json: any = await res.json().catch(() => null);
