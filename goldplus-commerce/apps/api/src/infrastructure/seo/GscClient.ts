@@ -97,6 +97,8 @@ export class GscClient {
     const assertion = this.signJwt(Math.floor(now / 1000));
     const res = await fetch(TOKEN_URL, {
       method: 'POST',
+      // A hung provider must not hold this request open forever.
+      signal: AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
@@ -117,6 +119,8 @@ export class GscClient {
     const url = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(this.siteUrl)}/searchAnalytics/query`;
     const res = await fetch(url, {
       method: 'POST',
+      // A hung provider must not hold this request open forever.
+      signal: AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         startDate: input.startDate,

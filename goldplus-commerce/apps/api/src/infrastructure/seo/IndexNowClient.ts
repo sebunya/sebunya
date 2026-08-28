@@ -14,6 +14,8 @@ export class IndexNowClient implements IndexNowSubmitPort {
   async submit(payload: { host: string; key: string; keyLocation: string; urlList: string[] }): Promise<{ status: number }> {
     const res = await fetch(INDEXNOW_ENDPOINT, {
       method: 'POST',
+      // A hung provider must not hold this request open forever.
+      signal: AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify(payload),
     });

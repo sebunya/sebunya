@@ -11,6 +11,7 @@ import {
 } from '../../../../domain/delivery/DeliveryConfigRegistry';
 import { missingLaunchKeys } from '../../../../domain/delivery/DeliveryModel';
 import { VARIANCE_REASONS } from '../../../../domain/delivery/DeliveryVariance';
+import { csvCell } from '../../csv';
 
 /**
  * Delivery admin (brief v7, stages A–B).
@@ -512,11 +513,7 @@ routes.get('/corridors/export.csv', requirePermissions([PERMISSIONS.DELIVERY_CON
     'area_slug', 'postcode', 'delivery_zone', 'district', 'sub_county_or_division', 'area',
     'corridor', 'distance_band', 'access_mode', 'serviceable', 'fulfilment_mode',
   ];
-  const esc = (v: unknown) => {
-    const s = v === null || v === undefined ? '' : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const csv = [header.join(','), ...rows.map((r) => header.map((h) => esc(r[h])).join(','))].join('\n');
+  const csv = [header.join(','), ...rows.map((r) => header.map((h) => csvCell(r[h])).join(','))].join('\n');
   return new Response(csv, {
     headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename=goldplus_delivery_corridors_export.csv' },
   });

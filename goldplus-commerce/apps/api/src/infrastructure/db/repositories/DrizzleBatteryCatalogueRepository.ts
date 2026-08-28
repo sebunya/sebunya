@@ -26,6 +26,7 @@ import type {
 } from '../../../application/ports/IBatteryCatalogueRepository';
 import type { BatteryAliasType, BatteryCategory, BatteryChemistry, BatteryLifecycleStatus, EvidenceKind } from '@goldplus/shared';
 import { VERIFIED_EVIDENCE_STATUSES } from '@goldplus/shared';
+import { likeContains } from '../like';
 
 const jsonb = (value: unknown) => sql`${client.json(value as never)}::jsonb`;
 const num = (v: string | number | null | undefined): number | null => (v == null ? null : Number(v));
@@ -185,7 +186,7 @@ export class DrizzleBatteryCatalogueRepository implements IBatteryCatalogueRepos
     if (filters.category) conditions.push(eq(batteryProfiles.batteryCategory, filters.category));
     if (filters.verification) conditions.push(eq(batteryProfiles.verificationStatus, filters.verification));
     if (filters.q && filters.q.trim()) {
-      const needle = `%${filters.q.trim()}%`;
+      const needle = likeContains(filters.q.trim());
       const norm = filters.q.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '');
       conditions.push(or(
         ilike(batteryProfiles.canonicalCode, needle),
@@ -193,7 +194,7 @@ export class DrizzleBatteryCatalogueRepository implements IBatteryCatalogueRepos
         ilike(products.sku, needle),
         eq(batteryProfiles.barcode, filters.q.trim()),
         ilike(batteryProfiles.supplierCode, needle),
-        sql`EXISTS (SELECT 1 FROM battery_aliases a WHERE a.battery_product_id = ${sql.raw("products.id")} AND a.is_active AND a.alias_normalised LIKE ${`%${norm}%`})`,
+        sql`EXISTS (SELECT 1 FROM battery_aliases a WHERE a.battery_product_id = ${sql.raw("products.id")} AND a.is_active AND a.alias_normalised LIKE ${likeContains(norm)})`,
         sql`EXISTS (SELECT 1 FROM product_device_compatibility c JOIN devices d ON d.id = c.device_id WHERE c.product_id = ${sql.raw("products.id")} AND (d.model ILIKE ${needle} OR d.brand ILIKE ${needle} OR d.model_number ILIKE ${needle}))`,
       )!);
     }

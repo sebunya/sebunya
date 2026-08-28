@@ -4,6 +4,7 @@ import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
+import { csvCell } from '../../csv';
 
 // Audit entity ids are uuids; the loyalty config is a singleton, so it gets a
 // fixed, well-known uuid rather than a free-text marker.
@@ -315,11 +316,7 @@ routes.put('/draws/compliance', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
 routes.get('/draws/regulatory-export.csv', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const rows = await Registry.getInstance().loyaltyDrawRepo.regulatoryExport();
   const headers = ['created_at', 'result_id', 'campaign_code', 'prize_label', 'weight', 'points_awarded', 'user_id', 'token_id', 'source_type', 'source_id', 'card_granted_at', 'ledger_entry_id'];
-  const escape = (v: unknown) => {
-    const s = v === null || v === undefined ? '' : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const csv = [headers.join(','), ...rows.map((r) => headers.map((h) => escape(r[h])).join(','))].join('\n');
+  const csv = [headers.join(','), ...rows.map((r) => headers.map((h) => csvCell(r[h])).join(','))].join('\n');
   c.header('Content-Type', 'text/csv; charset=utf-8');
   c.header('Content-Disposition', 'attachment; filename="goldplus-draw-regulatory-export.csv"');
   return c.body(csv);

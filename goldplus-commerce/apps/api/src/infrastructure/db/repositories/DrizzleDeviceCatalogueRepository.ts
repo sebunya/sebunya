@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { db } from '../client';
+import { likeContains } from '../like';
 import { deviceBrands, deviceSeries, devices, productDeviceCompatibility } from '../schema/devices';
 import { batteryRequests } from '../schema/batteries';
 import { mediaAssets } from '../schema/media';
@@ -179,7 +180,7 @@ export class DrizzleDeviceCatalogueRepository implements IDeviceCatalogueReposit
     if (filters.status && filters.status !== 'ALL') conditions.push(eq(devices.status, filters.status));
     else if (!filters.status) conditions.push(eq(devices.status, 'ACTIVE'));
     if (filters.q && filters.q.trim()) {
-      const needle = `%${filters.q.trim()}%`;
+      const needle = likeContains(filters.q.trim());
       conditions.push(or(ilike(devices.model, needle), ilike(devices.modelNumber, needle), ilike(devices.brand, needle), ilike(devices.variant, needle), sql`EXISTS (SELECT 1 FROM unnest(${devices.modelAliases}) a WHERE a ILIKE ${needle})`)!);
     }
     const rows = await db.select(deviceSelection).from(devices).leftJoin(deviceSeries, eq(deviceSeries.id, devices.seriesId))

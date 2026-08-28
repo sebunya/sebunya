@@ -17,7 +17,8 @@ export class GetRecentlyViewedUseCase {
     customerId?: string;
     limit?: number;
   }): Promise<RecommendationResponseDto> {
-    const limit = input.limit ?? 6;
+    // Bounded: this is a public endpoint and the value came straight from the query string.
+    const limit = Math.max(1, Math.min(Number.isInteger(input.limit) ? (input.limit as number) : 6, 24));
 
     if (!input.anonymousId && !input.customerId) {
       return this.empty();

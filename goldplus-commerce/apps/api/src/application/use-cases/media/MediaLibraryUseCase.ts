@@ -20,6 +20,26 @@ export interface MediaStoragePort {
 }
 
 const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif']);
+
+/**
+ * The MIME type the BYTES say, not the one the browser sent.
+ *
+ * `file.mime` is the client's claim (the multipart part's content type). An
+ * upload could be any bytes at all, served back later under the image type
+ * it claimed. The allow-list is enforced against the file's magic bytes.
+ */
+export function sniffImageMime(buffer: Buffer): string | null {
+  if (buffer.length < 12) return null;
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'image/png';
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer.toString('ascii', 0, 6) === 'GIF87a' || buffer.toString('ascii', 0, 6) === 'GIF89a') return 'image/gif';
+  if (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (buffer.toString('ascii', 4, 8) === 'ftyp') {
+    const brand = buffer.toString('ascii', 8, 12);
+    if (brand === 'avif' || brand === 'avis') return 'image/avif';
+  }
+  return null;
+}
 const MAX_BYTES = 15 * 1024 * 1024;
 
 export type UploadOutcome =
@@ -40,15 +60,18 @@ export class MediaLibraryUseCase {
     actorId: string | null;
   }): Promise<UploadOutcome[]> {
     const outcomes: UploadOutcome[] = [];
-    for (const file of args.files) {
+    for (let file of args.files) {
       if (!file.buffer || file.buffer.length === 0) {
         outcomes.push({ kind: 'REJECTED', filename: file.filename, reason: 'EMPTY' });
         continue;
       }
-      if (!ALLOWED_MIME.has(file.mime)) {
+      const sniffed = sniffImageMime(file.buffer);
+      if (!sniffed || !ALLOWED_MIME.has(sniffed)) {
         outcomes.push({ kind: 'REJECTED', filename: file.filename, reason: 'UNSUPPORTED_TYPE' });
         continue;
       }
+      // From here on the stored type is what the bytes are.
+      file = { ...file, mime: sniffed };
       if (file.buffer.length > MAX_BYTES) {
         outcomes.push({ kind: 'REJECTED', filename: file.filename, reason: 'TOO_LARGE' });
         continue;

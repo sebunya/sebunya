@@ -3,6 +3,7 @@ import { db } from '../client';
 import { mediaAssets, mediaAssetVariants, mediaUsages } from '../schema/media';
 import { products } from '../schema/products';
 import { productImages } from '../schema/phase11';
+import { likeContains } from '../like';
 import {
   IMediaLibraryRepository,
   MediaAssetRecord,
@@ -109,9 +110,9 @@ export class DrizzleMediaLibraryRepository implements IMediaLibraryRepository {
     if (args.query) {
       conditions.push(
         or(
-          ilike(mediaAssets.filename, `%${args.query}%`),
-          ilike(mediaAssets.altText, `%${args.query}%`),
-          ilike(mediaAssets.caption, `%${args.query}%`),
+          ilike(mediaAssets.filename, likeContains(args.query)),
+          ilike(mediaAssets.altText, likeContains(args.query)),
+          ilike(mediaAssets.caption, likeContains(args.query)),
         )!,
       );
     }

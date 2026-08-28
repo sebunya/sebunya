@@ -4,6 +4,7 @@ import { productImages, productAttributeValues, attributes as attributesTable } 
 import { eq, inArray, and, or, ilike, SQL, asc } from 'drizzle-orm';
 import { ProductEntity, StockStatus } from '../../../domain/products/ProductEntity';
 import { IProductRepository, ProductWithPrice } from '../../../application/ports/IProductRepository';
+import { likeContains } from '../like';
 
 export class DrizzleProductRepository implements IProductRepository {
   async findBySlug(slug: string): Promise<ProductEntity | null> {
@@ -294,7 +295,7 @@ export class DrizzleProductRepository implements IProductRepository {
     }
 
     if (opts.search) {
-      const needle = `%${opts.search}%`;
+      const needle = likeContains(opts.search);
       conditions.push(
         or(
           ilike(products.name, needle),

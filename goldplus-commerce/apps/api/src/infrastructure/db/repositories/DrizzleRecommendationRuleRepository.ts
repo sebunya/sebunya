@@ -14,6 +14,7 @@ import type {
   RecommendationRuleAction,
 } from "../../../domain/recommendations/RecommendationRuleTypes";
 import type { RecommendationPlacement } from "../../../domain/recommendations/RecommendationTypes";
+import { likeContains } from '../like';
 
 export class DrizzleRecommendationRuleRepository implements IRecommendationRuleRepository {
   
@@ -185,7 +186,7 @@ export class DrizzleRecommendationRuleRepository implements IRecommendationRuleR
     if (input.targetValue) c.push(eq(recommendationRules.targetValue, input.targetValue));
     
     if (input.search) {
-      const likeSearch = `%${input.search}%`;
+      const likeSearch = likeContains(input.search);
       c.push(
         or(
           ilike(recommendationRules.name, likeSearch),

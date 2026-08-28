@@ -28,6 +28,8 @@ const SENSITIVE_ROUTES = [
   '/api',
   '/dealers/dashboard',
   '/account',
+  '/orders',
+  '/track-order',
 ];
 
 self.addEventListener('install', (event) => {

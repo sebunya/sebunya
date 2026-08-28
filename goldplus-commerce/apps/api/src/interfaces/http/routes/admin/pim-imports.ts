@@ -5,6 +5,7 @@ import { Registry } from "../../../../infrastructure/Registry";
 import { PimImportOperationError } from "../../../../application/use-cases/pim/PimImportOperationsUseCase";
 import { authMiddleware } from "../../middleware/auth";
 import { requirePermissions } from "../../middleware/permissions";
+import { csvCell } from "../../csv";
 
 // audit-exempt: all mutations append PIM import events and row snapshots transactionally.
 const routes = new Hono();
@@ -241,10 +242,9 @@ routes.post(
 routes.get("/:id/error-report", requirePermissions([PERMISSIONS.PIM_READ]), async (c) => {
   const id = c.req.param("id") ?? "";
   const report = await Registry.getInstance().pimImportOperationsUseCase.errorReport(id);
-  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = ["row_number,errors,source_json"];
   for (const row of report.rows) {
-    lines.push([row.rowNumber, esc(row.errors.join(" | ")), esc(JSON.stringify(row.source))].join(","));
+    lines.push([row.rowNumber, csvCell(row.errors.join(" | ")), csvCell(JSON.stringify(row.source))].join(","));
   }
   c.header("Content-Type", "text/csv; charset=utf-8");
   c.header("Content-Disposition", `attachment; filename="pim-import-${id}-errors.csv"`);

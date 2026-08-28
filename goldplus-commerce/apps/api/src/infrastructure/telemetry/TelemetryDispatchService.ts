@@ -188,7 +188,12 @@ export class TelemetryDispatchService {
 
     const start = Date.now();
     const bodyStr = JSON.stringify(event);
-    const signature = crypto.createHmac('sha256', process.env.GTM_HMAC_SECRET || 'gtm-default-secret')
+    // No secret, no signature. Signing with a baked-in default produced a
+    // signature anyone could forge and made an unconfigured integration look
+    // configured, which is exactly the "fake integration" the repo forbids.
+    const hmacSecret = (process.env.GTM_HMAC_SECRET ?? '').trim();
+    if (!hmacSecret) throw new Error('GTM_NOT_CONFIGURED: GTM_HMAC_SECRET is not set; telemetry dispatch is not configured.');
+    const signature = crypto.createHmac('sha256', hmacSecret)
       .update(bodyStr)
       .digest('hex');
 

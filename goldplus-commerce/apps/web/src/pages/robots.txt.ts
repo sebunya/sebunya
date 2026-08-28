@@ -28,6 +28,8 @@ function staticRobots(base: string): string {
     'Disallow: /cart\n' +
     'Disallow: /dealers/dashboard\n' +
     'Disallow: /account\n' +
+    'Disallow: /orders\n' +
+    'Disallow: /track-order\n' +
     'Disallow: /api/\n' +
     '\n' +
     `Sitemap: ${base}/sitemap.xml\n`

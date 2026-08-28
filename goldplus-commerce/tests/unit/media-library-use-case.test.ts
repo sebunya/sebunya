@@ -87,7 +87,10 @@ const noVariants: IMediaVariantGenerator = {
   async generate() { return { width: null, height: null, variants: [] }; },
 };
 
-const png = (content: string) => ({ filename: 'photo.png', mime: 'image/png', buffer: Buffer.from(content) });
+// Real PNG magic bytes: the use case now types an upload by what the bytes are,
+// not by the MIME the client declared.
+const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+const png = (content: string) => ({ filename: 'photo.png', mime: 'image/png', buffer: Buffer.concat([PNG_HEADER, Buffer.from(content)]) });
 
 describe('MediaLibraryUseCase', () => {
   it('stores a new file and deduplicates identical bytes to the same asset', async () => {
@@ -99,7 +102,7 @@ describe('MediaLibraryUseCase', () => {
     expect(second[0]).toMatchObject({ kind: 'STORED', deduplicated: true });
     expect(repo.assets.size).toBe(1);
     const stored = [...repo.assets.values()][0];
-    expect(stored.checksum).toBe(createHash('sha256').update('same-bytes').digest('hex'));
+    expect(stored.checksum).toBe(createHash('sha256').update(png('same-bytes').buffer).digest('hex'));
   });
 
   it('refuses unsupported types and oversized files per-file, without failing the batch', async () => {
@@ -108,7 +111,7 @@ describe('MediaLibraryUseCase', () => {
     const outcomes = await useCase.upload({
       files: [
         { filename: 'doc.pdf', mime: 'application/pdf', buffer: Buffer.from('x') },
-        { filename: 'big.png', mime: 'image/png', buffer: Buffer.alloc(16 * 1024 * 1024) },
+        { filename: 'big.png', mime: 'image/png', buffer: Buffer.concat([PNG_HEADER, Buffer.alloc(16 * 1024 * 1024)]) },
         png('fine'),
       ],
       actorId: null,
