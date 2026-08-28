@@ -545,6 +545,7 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
         .from(pimImportSessions)
         .where(eq(pimImportSessions.id, id))
         .limit(1);
+      if (!current) throw new Error("NOT_FOUND");
       const status =
         counts.applied > 0 && (counts.failed > 0 || current.invalidRows > 0)
           ? "PARTIALLY_APPLIED"
@@ -567,6 +568,18 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
           ),
         )
         .returning();
+      // Another worker finished this apply first: the guarded update matched
+      // nothing. Report its result rather than spreading undefined, which
+      // turned a lost race into a TypeError instead of a quiet no-op.
+      if (!row) {
+        const [settled] = await tx
+          .select()
+          .from(pimImportSessions)
+          .where(eq(pimImportSessions.id, id))
+          .limit(1);
+        if (!settled) throw new Error("NOT_FOUND");
+        return sessionRecord(settled);
+      }
       await this.event(
         tx,
         id,

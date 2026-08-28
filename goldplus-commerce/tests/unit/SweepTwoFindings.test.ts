@@ -148,3 +148,63 @@ describe('the browse rail advertises what the basket charges', () => {
     expect(salePriceUgx(200_000, 1000, 145_000)).toBe(180_000);
   });
 });
+
+describe('a repository write is all of it or none of it', () => {
+  const repo = (f: string) =>
+    readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/db/repositories', f), 'utf8');
+
+  it('replacing a page link graph does not leave it emptied', () => {
+    const src = repo('DrizzleSeoGrowthRepository.ts');
+    const body = src.slice(src.indexOf('async replaceLinkGraphForPath'), src.indexOf('linkGraphStats'));
+    expect(body).toMatch(/db\.transaction/);
+    expect(body).not.toMatch(/await db\.execute\(sql`delete from seo_link_graph/);
+  });
+
+  it('a SERP batch commits its counters with its observations', () => {
+    const src = repo('DrizzleSeoGrowthRepository.ts');
+    const body = src.slice(src.indexOf('async recordSerpObservations'), src.indexOf('async listSerpObservations'));
+    expect(body).toMatch(/return db\.transaction/);
+    expect(body).not.toMatch(/await db\.execute/);
+  });
+
+  it('opportunity paging has a total order, not just a timestamp', () => {
+    expect(repo('DrizzleSeoGrowthRepository.ts')).toMatch(/order by created_at desc, id desc/);
+  });
+
+  it('a primary image is never half-assigned', () => {
+    const src = repo('DrizzleMediaLibraryRepository.ts');
+    const body = src.slice(src.indexOf('async assignPrimaryProductImage'));
+    expect(body).toMatch(/return db\.transaction/);
+    expect(body).not.toMatch(/await db\.update\(productImages\)/);
+  });
+
+  it('an NBA decision keeps the candidates it was chosen from', () => {
+    const src = repo('DrizzleCustomerDnaRepositories.ts');
+    const body = src.slice(src.indexOf('async saveDecision'), src.indexOf('async listRecent'));
+    expect(body).toMatch(/return db\.transaction/);
+    expect(body).not.toMatch(/await db\.insert\(nbaCandidates\)/);
+  });
+
+  it('a landmark merge increments usage in SQL, not in JavaScript', () => {
+    expect(repo('DrizzleLocationAdminRepository.ts')).toMatch(/usageCount: sql`\$\{ugLandmark\.usageCount\} \+ \$\{merge\.usageCount\}`/);
+  });
+
+  it('a patch writes the columns it was given and no others', () => {
+    const src = repo('DrizzleSeoIntegrationRepository.ts');
+    expect(src.match(/if \(sets\.length === 0\)/g)?.length).toBe(3);
+    expect(src).not.toMatch(/status = \$\{patch\.status \?\? existing\.status\}/);
+    expect(src).not.toMatch(/existing\.records_read/);
+  });
+
+  it('a lost finishApply race is a no-op, not a TypeError', () => {
+    expect(repo('DrizzlePimImportRepository.ts')).toMatch(/if \(!row\) \{[\s\S]{0,400}?return sessionRecord\(settled\);/);
+  });
+});
+
+describe('what the public catalogue may publish', () => {
+  it('the SEO battery finder joins only approved products', () => {
+    const src = readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleSeoCatalogueRepository.ts'), 'utf8');
+    expect(src).toMatch(/p\.active = true and p\.approval_status = 'approved'/);
+    expect(src).not.toMatch(/on p\.id = c\.battery_product_id and p\.active = true\n/);
+  });
+});

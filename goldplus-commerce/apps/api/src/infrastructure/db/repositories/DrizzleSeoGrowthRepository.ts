@@ -330,72 +330,79 @@ export class DrizzleSeoGrowthRepository {
    */
   async recordSerpObservations(batch: SerpObservationInput[]): Promise<{ inserted: number; candidatesCreated: string[] }> {
     if (batch.length === 0) return { inserted: 0, candidatesCreated: [] };
+    // One batch, one transaction. Written row by row, a provider timeout
+    // mid-batch left observations counted whose occurrence counters and
+    // competitor promotions had not been written, and the batch is not
+    // replayable: a retry double-counts every row that did land.
+    return db.transaction(async (tx) => {
 
-    for (const o of batch) {
-      await db.execute(sql`
-        insert into seo_serp_observations (
-          query_id, engine, provider, country, city, device, language, observed_at,
-          rank, url, domain, title, result_type, serp_features, competitor_id,
-          raw_provider_id, evidence_ref
-        ) values (
-          ${o.queryId}, ${o.engine ?? 'GOOGLE'}, ${o.provider}, ${o.country ?? 'UG'},
-          ${o.city ?? null}, ${o.device ?? 'MOBILE'}, ${o.language ?? 'en'}, ${o.observedAt},
-          ${o.rank ?? null}, ${o.url ?? null}, ${o.domain ?? null}, ${o.title ?? null},
-          ${o.resultType ?? 'ORGANIC'},
-          ${JSON.stringify(o.serpFeatures ?? [])}::text::jsonb,
-          ${o.competitorId ?? null}, ${o.rawProviderId ?? null}, ${o.evidenceRef ?? null}
-        )
-      `);
-    }
-
-    // Occurrence upsert (one round per distinct domain in the batch).
-    const domainCounts = new Map<string, { count: number; lastSeen: Date }>();
-    for (const o of batch) {
-      const d = (o.domain ?? '').trim().toLowerCase();
-      if (!d) continue;
-      const cur = domainCounts.get(d);
-      const seen = o.observedAt ?? new Date();
-      if (cur) { cur.count += 1; if (seen > cur.lastSeen) cur.lastSeen = seen; }
-      else domainCounts.set(d, { count: 1, lastSeen: seen });
-    }
-    for (const [domain, { count, lastSeen }] of domainCounts) {
-      await db.execute(sql`
-        insert into seo_serp_domains (domain, occurrences, first_seen_at, last_seen_at)
-        values (${domain}, ${count}, ${lastSeen}, ${lastSeen})
-        on conflict (domain) do update set
-          occurrences = seo_serp_domains.occurrences + ${count},
-          last_seen_at = greatest(seo_serp_domains.last_seen_at, excluded.last_seen_at)
-      `);
-    }
-
-    // Promote recurring unclassified domains to competitor CANDIDATEs.
-    const candidatesCreated: string[] = [];
-    const recurring = rowsOf(await db.execute(sql`
-      select id, domain from seo_serp_domains
-      where occurrences >= 3 and classification = 'UNREVIEWED' and competitor_id is null
-        and domain <> ${OUR_DOMAIN} and domain not like ${'%.' + OUR_DOMAIN}
-    `));
-    for (const row of recurring) {
-      const domain = String(row.domain);
-      const inserted = rowsOf(await db.execute(sql`
-        insert into seo_competitors (
-          canonical_name, domains, business_type, uganda_relevance, directness,
-          status, evidence_source, evidence_state
-        ) values (
-          ${domain}, ${JSON.stringify([domain])}::text::jsonb, 'UNRESOLVED', 'UNKNOWN',
-          'UNRESOLVED', 'CANDIDATE', ${'SERP observation: domain seen >= 3 times'}, 'OBSERVED'
-        )
-        on conflict (canonical_name) do nothing
-        returning id
-      `));
-      const competitorId = inserted[0]?.id
-        ?? rowsOf(await db.execute(sql`select id from seo_competitors where canonical_name = ${domain}`))[0]?.id;
-      if (competitorId) {
-        await db.execute(sql`update seo_serp_domains set competitor_id = ${competitorId} where id = ${row.id}`);
-        if (inserted[0]?.id) candidatesCreated.push(domain);
+      for (const o of batch) {
+        await tx.execute(sql`
+          insert into seo_serp_observations (
+            query_id, engine, provider, country, city, device, language, observed_at,
+            rank, url, domain, title, result_type, serp_features, competitor_id,
+            raw_provider_id, evidence_ref
+          ) values (
+            ${o.queryId}, ${o.engine ?? 'GOOGLE'}, ${o.provider}, ${o.country ?? 'UG'},
+            ${o.city ?? null}, ${o.device ?? 'MOBILE'}, ${o.language ?? 'en'}, ${o.observedAt},
+            ${o.rank ?? null}, ${o.url ?? null}, ${o.domain ?? null}, ${o.title ?? null},
+            ${o.resultType ?? 'ORGANIC'},
+            ${JSON.stringify(o.serpFeatures ?? [])}::text::jsonb,
+            ${o.competitorId ?? null}, ${o.rawProviderId ?? null}, ${o.evidenceRef ?? null}
+          )
+        `);
       }
-    }
-    return { inserted: batch.length, candidatesCreated };
+
+      // Occurrence upsert (one round per distinct domain in the batch).
+      const domainCounts = new Map<string, { count: number; lastSeen: Date }>();
+      for (const o of batch) {
+        const d = (o.domain ?? '').trim().toLowerCase();
+        if (!d) continue;
+        const cur = domainCounts.get(d);
+        const seen = o.observedAt ?? new Date();
+        if (cur) { cur.count += 1; if (seen > cur.lastSeen) cur.lastSeen = seen; }
+        else domainCounts.set(d, { count: 1, lastSeen: seen });
+      }
+      for (const [domain, { count, lastSeen }] of domainCounts) {
+        await tx.execute(sql`
+          insert into seo_serp_domains (domain, occurrences, first_seen_at, last_seen_at)
+          values (${domain}, ${count}, ${lastSeen}, ${lastSeen})
+          on conflict (domain) do update set
+            occurrences = seo_serp_domains.occurrences + ${count},
+            last_seen_at = greatest(seo_serp_domains.last_seen_at, excluded.last_seen_at)
+        `);
+      }
+
+      // Promote recurring unclassified domains to competitor CANDIDATEs.
+      const candidatesCreated: string[] = [];
+      const recurring = rowsOf(await tx.execute(sql`
+        select id, domain from seo_serp_domains
+        where occurrences >= 3 and classification = 'UNREVIEWED' and competitor_id is null
+          and domain <> ${OUR_DOMAIN} and domain not like ${'%.' + OUR_DOMAIN}
+      `));
+      for (const row of recurring) {
+        const domain = String(row.domain);
+        const inserted = rowsOf(await tx.execute(sql`
+          insert into seo_competitors (
+            canonical_name, domains, business_type, uganda_relevance, directness,
+            status, evidence_source, evidence_state
+          ) values (
+            ${domain}, ${JSON.stringify([domain])}::text::jsonb, 'UNRESOLVED', 'UNKNOWN',
+            'UNRESOLVED', 'CANDIDATE', ${'SERP observation: domain seen >= 3 times'}, 'OBSERVED'
+          )
+          on conflict (canonical_name) do nothing
+          returning id
+        `));
+        const competitorId = inserted[0]?.id
+          ?? rowsOf(await tx.execute(sql`select id from seo_competitors where canonical_name = ${domain}`))[0]?.id;
+        if (competitorId) {
+          await tx.execute(sql`update seo_serp_domains set competitor_id = ${competitorId} where id = ${row.id}`);
+          if (inserted[0]?.id) candidatesCreated.push(domain);
+        }
+      }
+
+      return { inserted: batch.length, candidatesCreated };
+    });
   }
 
   async listSerpObservations(queryId: string, paging?: { limit?: number }): Promise<any[]> {
@@ -416,7 +423,9 @@ export class DrizzleSeoGrowthRepository {
     const offset = Math.max(filter?.offset ?? 0, 0);
     return rowsOf(await db.execute(sql`
       select * from seo_opportunities where ${sql.join(where, sql` and `)}
-      order by created_at desc limit ${limit} offset ${offset}
+      -- id breaks the tie: a generator run stamps a whole batch with the same
+      -- created_at, and without a total order page 2 repeats or skips rows.
+      order by created_at desc, id desc limit ${limit} offset ${offset}
     `));
   }
 
@@ -677,15 +686,20 @@ export class DrizzleSeoGrowthRepository {
   // ── Link graph ───────────────────────────────────────────────────────────
 
   async replaceLinkGraphForPath(fromPath: string, links: LinkGraphLink[]): Promise<number> {
-    await db.execute(sql`delete from seo_link_graph where from_path = ${fromPath}`);
-    for (const l of links) {
-      await db.execute(sql`
-        insert into seo_link_graph (from_path, to_path, anchor, rel, last_seen_at)
-        values (${fromPath}, ${l.toPath}, ${l.anchor ?? null}, ${l.rel ?? null}, now())
-        on conflict (from_path, to_path, coalesce(anchor, '')) do update set
-          rel = excluded.rel, last_seen_at = now()
-      `);
-    }
+    // Replace means replace: the delete and every insert are one transaction.
+    // Autocommitted, a failure partway through left the page's link graph
+    // emptied or half written, and the orphan report then invented orphans.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`delete from seo_link_graph where from_path = ${fromPath}`);
+      for (const l of links) {
+        await tx.execute(sql`
+          insert into seo_link_graph (from_path, to_path, anchor, rel, last_seen_at)
+          values (${fromPath}, ${l.toPath}, ${l.anchor ?? null}, ${l.rel ?? null}, now())
+          on conflict (from_path, to_path, coalesce(anchor, '')) do update set
+            rel = excluded.rel, last_seen_at = now()
+        `);
+      }
+    });
     return links.length;
   }
 

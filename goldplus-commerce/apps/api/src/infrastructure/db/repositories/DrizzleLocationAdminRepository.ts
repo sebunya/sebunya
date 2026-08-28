@@ -245,7 +245,9 @@ export class DrizzleLocationAdminRepository implements ILocationAdminRepository 
       if (!keep || !merge) return false;
       await tx
         .update(ugLandmark)
-        .set({ usageCount: keep.usageCount + merge.usageCount, updatedAt: new Date() })
+        // Increment in SQL, not in JavaScript. Adding to the value we read
+        // discards any usage the survivor recorded since that read.
+        .set({ usageCount: sql`${ugLandmark.usageCount} + ${merge.usageCount}`, updatedAt: new Date() })
         .where(eq(ugLandmark.id, keepId));
       // The merged duplicate is retired, not hard-deleted — usage history is
       // aggregated onto the survivor and the row is de-listed by renaming.

@@ -99,19 +99,19 @@ export class DrizzleSeoIntegrationRepository {
   }
 
   async updateConnection(id: string, patch: Partial<SeoConnectionInput> & { status?: string }): Promise<any | null> {
-    const existing = await this.getConnection(id);
-    if (!existing) return null;
+    const sets: ReturnType<typeof sql>[] = [];
+    if (patch.name !== undefined) sets.push(sql`name = ${patch.name}`);
+    if (patch.config !== undefined) sets.push(sql`config = ${pgJsonb(patch.config as never)}`);
+    if (patch.enabledCapabilities !== undefined) sets.push(sql`enabled_capabilities = ${JSON.stringify(patch.enabledCapabilities)}::text::jsonb`);
+    if (patch.syncFrequency !== undefined) sets.push(sql`sync_frequency = ${patch.syncFrequency}`);
+    if (patch.backfillWindowDays !== undefined) sets.push(sql`backfill_window_days = ${patch.backfillWindowDays}`);
+    if (patch.accountRef !== undefined) sets.push(sql`account_ref = ${patch.accountRef}`);
+    if (patch.propertyRef !== undefined) sets.push(sql`property_ref = ${patch.propertyRef}`);
+    if (patch.status !== undefined) sets.push(sql`status = ${patch.status}`);
+    if (sets.length === 0) return this.getConnection(id);
+    sets.push(sql`updated_at = now()`);
     const rows = rowsOf(await db.execute(sql`
-      update seo_integration_connections set
-        name = ${patch.name ?? existing.name},
-        config = ${((patch.config ?? existing.config ?? {}) as never)}::jsonb,
-        enabled_capabilities = ${JSON.stringify(patch.enabledCapabilities ?? existing.enabled_capabilities ?? [])}::text::jsonb,
-        sync_frequency = ${patch.syncFrequency !== undefined ? patch.syncFrequency : existing.sync_frequency},
-        backfill_window_days = ${patch.backfillWindowDays !== undefined ? patch.backfillWindowDays : existing.backfill_window_days},
-        account_ref = ${patch.accountRef !== undefined ? patch.accountRef : existing.account_ref},
-        property_ref = ${patch.propertyRef !== undefined ? patch.propertyRef : existing.property_ref},
-        status = ${patch.status ?? existing.status},
-        updated_at = now()
+      update seo_integration_connections set ${sql.join(sets, sql`, `)}
       where id = ${id}
       returning *
     `));
@@ -126,17 +126,19 @@ export class DrizzleSeoIntegrationRepository {
     dataFreshnessAt?: Date | null;
     quotaState?: Record<string, unknown> | null;
   }): Promise<any | null> {
-    const existing = await this.getConnection(id);
-    if (!existing) return null;
+    // Only the passed columns; see updateSyncJob for why a full-row writeback
+    // silently reverts whatever another writer changed since the read.
+    const sets: ReturnType<typeof sql>[] = [];
+    if (patch.status !== undefined) sets.push(sql`status = ${patch.status}`);
+    if (patch.lastSuccessAt !== undefined) sets.push(sql`last_success_at = ${patch.lastSuccessAt}`);
+    if (patch.lastAttemptAt !== undefined) sets.push(sql`last_attempt_at = ${patch.lastAttemptAt}`);
+    if (patch.lastError !== undefined) sets.push(sql`last_error = ${patch.lastError}`);
+    if (patch.dataFreshnessAt !== undefined) sets.push(sql`data_freshness_at = ${patch.dataFreshnessAt}`);
+    if (patch.quotaState !== undefined) sets.push(sql`quota_state = ${pgJsonb(patch.quotaState as never)}`);
+    if (sets.length === 0) return this.getConnection(id);
+    sets.push(sql`updated_at = now()`);
     const rows = rowsOf(await db.execute(sql`
-      update seo_integration_connections set
-        status = ${patch.status ?? existing.status},
-        last_success_at = ${patch.lastSuccessAt !== undefined ? patch.lastSuccessAt : existing.last_success_at},
-        last_attempt_at = ${patch.lastAttemptAt !== undefined ? patch.lastAttemptAt : existing.last_attempt_at},
-        last_error = ${patch.lastError !== undefined ? patch.lastError : existing.last_error},
-        data_freshness_at = ${patch.dataFreshnessAt !== undefined ? patch.dataFreshnessAt : existing.data_freshness_at},
-        quota_state = ${pgJsonb(patch.quotaState !== undefined ? (patch.quotaState as never) : (existing.quota_state as never))},
-        updated_at = now()
+      update seo_integration_connections set ${sql.join(sets, sql`, `)}
       where id = ${id}
       returning *
     `));
@@ -277,22 +279,28 @@ export class DrizzleSeoIntegrationRepository {
     cursor?: Record<string, unknown> | null;
     error?: string | null;
   }): Promise<any | null> {
-    const existingRows = rowsOf(await db.execute(sql`
-      select * from seo_integration_sync_jobs where id = ${id} limit 1
-    `));
-    const existing = existingRows[0];
-    if (!existing) return null;
+    // Write only the columns the caller actually passed. Reading the whole
+    // row and writing every column back meant a progress update from the
+    // running job silently reverted a cancellation, or any other concurrent
+    // change, to whatever this reader had seen a moment earlier.
+    const sets: ReturnType<typeof sql>[] = [];
+    if (patch.status !== undefined) sets.push(sql`status = ${patch.status}`);
+    if (patch.startedAt !== undefined) sets.push(sql`started_at = ${patch.startedAt}`);
+    if (patch.completedAt !== undefined) sets.push(sql`completed_at = ${patch.completedAt}`);
+    if (patch.recordsRead !== undefined) sets.push(sql`records_read = ${patch.recordsRead}`);
+    if (patch.recordsInserted !== undefined) sets.push(sql`records_inserted = ${patch.recordsInserted}`);
+    if (patch.recordsUpdated !== undefined) sets.push(sql`records_updated = ${patch.recordsUpdated}`);
+    if (patch.recordsRejected !== undefined) sets.push(sql`records_rejected = ${patch.recordsRejected}`);
+    if (patch.cursor !== undefined) sets.push(sql`cursor = ${pgJsonb(patch.cursor as never)}`);
+    if (patch.error !== undefined) sets.push(sql`error = ${patch.error}`);
+    if (sets.length === 0) {
+      const current = rowsOf(await db.execute(sql`
+        select * from seo_integration_sync_jobs where id = ${id} limit 1
+      `));
+      return current[0] ?? null;
+    }
     const rows = rowsOf(await db.execute(sql`
-      update seo_integration_sync_jobs set
-        status = ${patch.status ?? existing.status},
-        started_at = ${patch.startedAt !== undefined ? patch.startedAt : existing.started_at},
-        completed_at = ${patch.completedAt !== undefined ? patch.completedAt : existing.completed_at},
-        records_read = ${patch.recordsRead ?? existing.records_read},
-        records_inserted = ${patch.recordsInserted ?? existing.records_inserted},
-        records_updated = ${patch.recordsUpdated ?? existing.records_updated},
-        records_rejected = ${patch.recordsRejected ?? existing.records_rejected},
-        cursor = ${pgJsonb(patch.cursor !== undefined ? (patch.cursor as never) : (existing.cursor as never))},
-        error = ${patch.error !== undefined ? patch.error : existing.error}
+      update seo_integration_sync_jobs set ${sql.join(sets, sql`, `)}
       where id = ${id}
       returning *
     `));

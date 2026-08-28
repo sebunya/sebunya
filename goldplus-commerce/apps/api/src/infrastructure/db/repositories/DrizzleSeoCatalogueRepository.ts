@@ -104,7 +104,10 @@ export class DrizzleSeoCatalogueRepository {
              p.price_ugx as product_price, p.image_url as product_image_url
       from seo_battery_compat c
       left join products p
-        on p.id = c.battery_product_id and p.active = true
+        -- active alone is not published: approval_status defaults to 'draft',
+        -- so this joined and printed the name, slug and price of a product
+        -- nobody had approved. Same gate as the battery finder.
+        on p.id = c.battery_product_id and p.active = true and p.approval_status = 'approved'
       where c.status in ('VERIFIED', 'PROVISIONAL')
         and ${sql.join(conditions, sql` and `)}
       order by (c.status = 'VERIFIED') desc, c.phone_brand, c.phone_model, c.id

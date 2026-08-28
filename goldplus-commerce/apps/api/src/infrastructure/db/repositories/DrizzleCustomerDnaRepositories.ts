@@ -149,24 +149,32 @@ export class DrizzleCustomerLifecycleRepository implements ICustomerLifecycleRep
 
 export class DrizzleNbaDecisionRepository implements INbaDecisionRepository {
   async saveDecision(input: { canonicalCustomerId: string; profileVersion: number; decision: NbaDecision; decisionKey: string; expiresAt: Date | null }): Promise<{ created: boolean; decisionId: string }> {
-    const inserted = await db.insert(nbaDecisions).values({
-      canonicalCustomerId: input.canonicalCustomerId, profileVersion: input.profileVersion,
-      selectedAction: input.decision.selectedAction, selectedTargetRef: input.decision.selectedTargetRef,
-      reasonCodes: input.decision.reasonCodes as unknown as object, policyVersion: input.decision.policyVersion,
-      decisionKey: input.decisionKey, expiresAt: input.expiresAt,
-    }).onConflictDoNothing({ target: nbaDecisions.decisionKey }).returning({ id: nbaDecisions.id });
-    if (inserted.length === 0) {
-      const [existing] = await db.select({ id: nbaDecisions.id }).from(nbaDecisions).where(eq(nbaDecisions.decisionKey, input.decisionKey)).limit(1);
-      return { created: false, decisionId: existing.id };
-    }
-    const decisionId = inserted[0].id;
-    if (input.decision.candidates.length > 0) {
-      await db.insert(nbaCandidates).values(input.decision.candidates.map((c) => ({
-        decisionId, actionType: c.actionType, targetRef: c.targetRef ?? null,
-        eligible: c.eligible, exclusionReason: c.exclusionReason, score: c.score, reasonCodes: c.reasonCodes as unknown as object,
-      })));
-    }
-    return { created: true, decisionId };
+    // The decision and the candidate set it was chosen from are one record.
+    // Committed separately, a failure between them left a decision whose
+    // reasoning could never be reconstructed, and the decisionKey conflict
+    // made that permanent: the retry found the decision already there and
+    // never wrote the candidates.
+    return db.transaction(async (tx) => {
+      const inserted = await tx.insert(nbaDecisions).values({
+        canonicalCustomerId: input.canonicalCustomerId, profileVersion: input.profileVersion,
+        selectedAction: input.decision.selectedAction, selectedTargetRef: input.decision.selectedTargetRef,
+        reasonCodes: input.decision.reasonCodes as unknown as object, policyVersion: input.decision.policyVersion,
+        decisionKey: input.decisionKey, expiresAt: input.expiresAt,
+      }).onConflictDoNothing({ target: nbaDecisions.decisionKey }).returning({ id: nbaDecisions.id });
+      if (inserted.length === 0) {
+        const [existing] = await tx.select({ id: nbaDecisions.id }).from(nbaDecisions).where(eq(nbaDecisions.decisionKey, input.decisionKey)).limit(1);
+        if (!existing) throw new Error('NBA_DECISION_VANISHED');
+        return { created: false, decisionId: existing.id };
+      }
+      const decisionId = inserted[0].id;
+      if (input.decision.candidates.length > 0) {
+        await tx.insert(nbaCandidates).values(input.decision.candidates.map((c) => ({
+          decisionId, actionType: c.actionType, targetRef: c.targetRef ?? null,
+          eligible: c.eligible, exclusionReason: c.exclusionReason, score: c.score, reasonCodes: c.reasonCodes as unknown as object,
+        })));
+      }
+      return { created: true, decisionId };
+    });
   }
   async listRecent(canonicalCustomerId: string, limit: number) {
     const decisions = await db.select().from(nbaDecisions)
