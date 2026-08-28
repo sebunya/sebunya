@@ -27,4 +27,13 @@ export interface IUserRepository {
     phone: string | null;
     passwordHash: string;
   }): Promise<PersistedUser>;
+  /**
+   * Kill every token issued at or before `at`.
+   *
+   * Revoking the refresh families is not enough on its own: the access token
+   * each device already holds keeps verifying until its own TTL runs out. This
+   * is the cutoff the auth middleware checks, and it is what makes
+   * "sign out everywhere" true at the moment it is pressed.
+   */
+  invalidateSessionsAfter(userId: string, at: Date): Promise<void>;
 }

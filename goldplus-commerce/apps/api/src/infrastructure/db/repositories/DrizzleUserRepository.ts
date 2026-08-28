@@ -43,6 +43,11 @@ export class DrizzleUserRepository implements IUserRepository {
     return rowToUser(rows[0]);
   }
 
+  async invalidateSessionsAfter(userId: string, at: Date): Promise<void> {
+    if (!userId) return;
+    await db.update(users).set({ sessionsInvalidatedAfter: at }).where(eq(users.id, userId));
+  }
+
   async findByEmail(email: string): Promise<PersistedUser | null> {
     const normalised = email.trim().toLowerCase();
     if (!normalised) return null;

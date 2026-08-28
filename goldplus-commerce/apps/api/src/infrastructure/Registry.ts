@@ -873,7 +873,7 @@ export class Registry {
   public readonly loginAttemptStore = new RedisLoginAttemptStore();
   // Slice 3B: durable, revocable sessions (PostgreSQL source of truth).
   public readonly sessionRepository = new DrizzleSessionRepository();
-  public readonly sessionService = new SessionService(this.sessionRepository);
+  public readonly sessionService = new SessionService(this.sessionRepository, this.userRepo);
   // Slice 3C: privileged MFA + step-up.
   public readonly mfaRepository = new DrizzleMfaRepository();
   public readonly mfaService = new MfaService(this.mfaRepository);

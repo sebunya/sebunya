@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ISessionRepository } from '../../application/ports/ISessionRepository';
+import { IUserRepository } from '../../application/ports/IUserRepository';
 import {
   decideRefresh,
   sessionExpiries,
@@ -31,7 +32,10 @@ export type RotateResult =
  * one would only add a rotation liability.
  */
 export class SessionService {
-  constructor(private readonly repo: ISessionRepository) {}
+  constructor(
+    private readonly repo: ISessionRepository,
+    private readonly users: IUserRepository,
+  ) {}
 
   private hash(token: string): string {
     return createHash('sha256').update(token).digest('hex');
@@ -137,12 +141,27 @@ export class SessionService {
     if (row) await this.repo.revokeFamily(row.familyId, 'logout', now);
   }
 
-  /** Revoke every session for a user (logout everywhere / disable). */
+  /**
+   * Revoke every session for a user (logout everywhere / disable).
+   *
+   * Revoking the refresh families alone did NOT end the sessions. Each device
+   * still holds an access token that keeps verifying until its own TTL runs
+   * out, so "sign out on every device" was a promise about refresh credentials
+   * that the thing actually authorising requests ignored. An administrator
+   * signing out on a shared machine, and an account being disabled, both left
+   * live tokens behind.
+   *
+   * Stamping the revocation cutoff is what makes the sentence true at the
+   * moment it is pressed. It is done here rather than at each call site so
+   * logout-all, account-disabled and both password-change paths all get it.
+   */
   async logoutAll(
     userId: string,
     reason: RevocationReason = 'logout_all',
     now = new Date(),
   ): Promise<number> {
-    return this.repo.revokeAllForUser(userId, reason, now);
+    const revoked = await this.repo.revokeAllForUser(userId, reason, now);
+    await this.users.invalidateSessionsAfter(userId, now);
+    return revoked;
   }
 }

@@ -115,6 +115,23 @@ describe('a signature alone is never a live session', () => {
     }
   });
 
+  it('signing out everywhere actually ends the access tokens too', () => {
+    // Revoking the refresh families alone left every device's access token
+    // verifying until its own TTL ran out, so "sign out on every device" was a
+    // promise about refresh credentials that the thing authorising requests
+    // ignored. Stamped in SessionService.logoutAll so logout-all,
+    // account-disabled and both password-change paths all get it.
+    const service = read('apps/api/src/infrastructure/security/SessionService.ts');
+    const logoutAll = service.slice(service.indexOf('async logoutAll('));
+    expect(logoutAll).toMatch(/this\.users\.invalidateSessionsAfter\(userId, now\)/);
+
+    const port = read('apps/api/src/application/ports/IUserRepository.ts');
+    expect(port).toMatch(/invalidateSessionsAfter\(userId: string, at: Date\): Promise<void>;/);
+
+    const repo = read('apps/api/src/infrastructure/db/repositories/DrizzleUserRepository.ts');
+    expect(repo).toMatch(/set\(\{ sessionsInvalidatedAfter: at \}\)/);
+  });
+
   it('the promise the reset page makes is the one the API now keeps', () => {
     // If this sentence is ever removed the test should be revisited, not deleted:
     // the point is that the claim and the enforcement travel together.
