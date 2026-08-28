@@ -13,6 +13,7 @@ import { IFulfilmentDispatchRepository } from '../../ports/IFulfilmentDispatchRe
 import { IInventoryRepository } from '../../ports/IInventoryRepository';
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
+import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 
 export type DispatchError =
   | 'NOT_FOUND'
@@ -58,7 +59,8 @@ export class RecordDispatchUseCase {
     private readonly tasks: IFulfilmentRepository,
     private readonly dispatches: IFulfilmentDispatchRepository,
     private readonly inventory: IInventoryRepository,
-    private readonly audit: IAuditRepository
+    private readonly audit: IAuditRepository,
+    private readonly orderTransitions?: IOrderTransitionPort,
   ) {}
 
   async execute(input: {
@@ -121,11 +123,39 @@ export class RecordDispatchUseCase {
 
     // Advance the lifecycle READY_FOR_DISPATCH → OUT_FOR_DELIVERY (single point).
     const task = FulfilmentTask.rehydrate(snapshot);
+    let taskAdvanced = false;
     try {
       task.transition('OUT_FOR_DELIVERY', { now });
       await this.tasks.update(task);
+      taskAdvanced = true;
     } catch {
       // Dispatch is recorded; the status advance is best-effort and audited below.
+    }
+
+    // MIRROR THE ORDER, exactly as TransitionFulfilmentTaskUseCase does.
+    //
+    // This path, the one that enforces the cash-on-delivery policy and is the
+    // one ops actually use, moved the TASK and left the ORDER at 'processing'.
+    // The order state machine allows 'delivered' only from 'dispatched', so when
+    // the rider came back and delivery was recorded, the order mirror was refused
+    // and recorded as 'skipped' for every properly dispatched order. The order
+    // never reached 'delivered': loyalty never vested, the delivery quote never
+    // received its observation, calibration counted zero deliveries, and the
+    // awaiting-cost queue filled with skipped mirrors.
+    let orderMirror: 'dispatched' | 'skipped' | 'not_wired' = 'not_wired';
+    if (this.orderTransitions && taskAdvanced) {
+      try {
+        await this.orderTransitions.transition(snapshot.orderId, 'dispatched', {
+          actorId: input.actorId,
+          actorType: 'administrator',
+          source: 'fulfilment',
+          reasonCode: 'dispatch_recorded',
+          note: `Dispatch ${dispatch.dispatchReference} recorded`,
+        });
+        orderMirror = 'dispatched';
+      } catch {
+        orderMirror = 'skipped';
+      }
     }
 
     await audit(this.audit, input.actorId, 'FULFILMENT_DISPATCHED', input.taskId, {
@@ -133,6 +163,7 @@ export class RecordDispatchUseCase {
       method: dispatch.method,
       paymentPolicy: dispatch.paymentPolicy,
       stockConsumed: dispatch.stockConsumed,
+      orderMirror,
     });
     return { ok: true, dispatch, created: true };
   }

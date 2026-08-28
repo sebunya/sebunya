@@ -25,6 +25,18 @@ interface Deps {
   zones: IDeliveryZoneRepository;
   policy: IDeliveryPricingPolicyRepository;
   observations: IDeliveryFeeObservationReader;
+  /**
+   * THE quoting service (docs/delivery/CONTRACT.md, guarantee #1), through the
+   * same narrow adapter checkout holds. Optional only so the cockpit use case,
+   * which shares these deps, still constructs without it.
+   */
+  quoting?: {
+    quote(input: {
+      district?: string | null;
+      deliveryArea?: string | null;
+      items: ReadonlyArray<{ productId: string; quantity: number }>;
+    }): Promise<{ feeUgx: number | null; confirmed: boolean; mayFallBackToLegacy: boolean }>;
+  } | null;
 }
 
 async function effectivePolicy(repo: IDeliveryPricingPolicyRepository): Promise<DeliveryBandPolicy> {
@@ -46,6 +58,27 @@ export class GetDeliveryEstimateUseCase {
       return { ok: false, code: 'UNKNOWN_DISTRICT', message: `"${input.district}" is not a Uganda district.` };
     }
     const area = input.area?.trim() || null;
+
+    // THE quoting service answers first, under exactly the rule CheckoutUseCase
+    // applies: the legacy zone/band model is consulted only on CONFIG_INCOMPLETE.
+    //
+    // This endpoint drives the checkout page's "Delivery" row and its grand
+    // total, and it answered from the legacy model alone while the order was
+    // charged the quoting service's fee. Gulu was the concrete case: an enabled
+    // zone row said 15,000, so the totals showed goods + 15,000, while the
+    // service resolved it to a bus parcel with no rate card and the order was
+    // created with fee 0, unconfirmed. Two quoting paths, two answers, one page.
+    // The customer saw a total the order did not charge.
+    if (this.deps.quoting) {
+      const quoted = await this.deps.quoting.quote({ district, deliveryArea: area, items: [] });
+      if (!quoted.mayFallBackToLegacy) {
+        const estimate: DeliveryEstimate = quoted.feeUgx === null
+          ? { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false }
+          : { kind: quoted.confirmed ? 'CONFIRMED' : 'ESTIMATED', feeUgx: quoted.feeUgx, source: 'MODEL', band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false };
+        return { ok: true, district, area, estimate };
+      }
+    }
+
     const [policy, zone, observed] = await Promise.all([
       effectivePolicy(this.deps.policy),
       this.deps.zones.findByDistrict(district),

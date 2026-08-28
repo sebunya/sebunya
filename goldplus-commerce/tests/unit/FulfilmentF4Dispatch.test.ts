@@ -107,6 +107,27 @@ describe('F4 — record dispatch use case', () => {
     expect(dispatches.creates).toBe(1);
   });
 
+  it('mirrors the ORDER to dispatched, so delivery can later be recorded against it', async () => {
+    // The order state machine allows 'delivered' only from 'dispatched'. This
+    // path moved the task and left the order at 'processing', so every later
+    // delivery mirror was refused and recorded as 'skipped': no loyalty vesting,
+    // no delivery observation, zero deliveries in calibration.
+    const mirrored: Array<{ orderId: string; to: string }> = [];
+    const orderTransitions = { transition: async (orderId: string, to: string) => { mirrored.push({ orderId, to }); } };
+    const uc = new RecordDispatchUseCase(new TaskRepo(taskSnap()), new DispatchRepo(), new InventoryStub(consumed), new SpyAudit(), orderTransitions as any);
+    await uc.execute({ taskId: 't1', actorId: 'a', method: 'RIDER' });
+    expect(mirrored).toEqual([{ orderId: 'o1', to: 'dispatched' }]);
+  });
+
+  it('a refused order mirror does not undo the recorded dispatch', async () => {
+    const orderTransitions = { transition: async () => { throw new Error('ORDER_TRANSITION_INVALID'); } };
+    const tasks = new TaskRepo(taskSnap());
+    const uc = new RecordDispatchUseCase(tasks, new DispatchRepo(), new InventoryStub(consumed), new SpyAudit(), orderTransitions as any);
+    const r = await uc.execute({ taskId: 't1', actorId: 'a', method: 'RIDER' });
+    expect(r.ok).toBe(true);
+    expect(tasks.snap?.status).toBe('OUT_FOR_DELIVERY');
+  });
+
   it('is idempotent: a duplicate dispatch creates no second record and does not re-transition', async () => {
     const tasks = new TaskRepo(taskSnap());
     const dispatches = new DispatchRepo();

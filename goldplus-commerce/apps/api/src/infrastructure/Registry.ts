@@ -1063,7 +1063,7 @@ export class Registry {
   // Fulfilment F4: dispatch tracking (stock consumed once at READY_FOR_DISPATCH).
   public readonly fulfilmentDispatchRepo = new DrizzleFulfilmentDispatchRepository();
   public readonly getDispatchUseCase = new GetDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo);
-  public readonly recordDispatchUseCase = new RecordDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo, this.inventoryRepo, this.auditRepo);
+  public readonly recordDispatchUseCase = new RecordDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo, this.inventoryRepo, this.auditRepo, this.orderTransitionService);
   public readonly updateDispatchTrackingUseCase = new UpdateDispatchTrackingUseCase(this.fulfilmentDispatchRepo, this.auditRepo);
 
   // Fulfilment F5: delivery confirmation and pipeline reporting.
@@ -1502,6 +1502,9 @@ export class Registry {
     zones: this.deliveryZoneRepo,
     policy: this.deliveryPricingPolicyRepo,
     observations: this.deliveryFeeObservationReader,
+    // The same adapter checkout charges through, so the figure the page shows
+    // is the figure the order is charged.
+    quoting: this.checkoutDeliveryQuoting,
   });
   public readonly getDeliveryIntelligenceUseCase = new GetDeliveryIntelligenceUseCase({
     zones: this.deliveryZoneRepo,
