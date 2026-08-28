@@ -350,6 +350,29 @@ routes.post('/mfa/enrol', async (c) => {
     return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
   }
   const start = await Registry.getInstance().mfaService.beginEnrolment(user.id, user.email);
+  if ('stepUpRequired' in start) {
+    // Replacing an authenticator that is already live needs a recent proof of
+    // the current one. Without this, a stolen token was enough to swap the
+    // second factor for one the attacker holds.
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: 'MFA_STEP_UP_REQUIRED',
+          message: 'Verify your current authenticator before setting up a new one.',
+        },
+      },
+      403,
+    );
+  }
+  const audit = new CreateAuditLogUseCase(Registry.getInstance().auditRepo);
+  await audit.execute({
+    actorId: user.id,
+    action: 'MFA_ENROLMENT_STARTED',
+    entity: 'user',
+    entityId: user.id,
+    newState: { replacingConfirmed: false },
+  });
   return c.json({ success: true, data: { secret: start.secret, otpauthUri: start.otpauthUri } });
 });
 

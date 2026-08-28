@@ -3,6 +3,7 @@ import {
   RECOVERY_CODE_COUNT,
   RECOVERY_CODE_BYTES,
   decideStepUp,
+  isStepUpFresh,
   StepUpDecision,
 } from '../../domain/identity/MfaPolicy';
 import {
@@ -34,8 +35,34 @@ export interface MfaStatus {
 export class MfaService {
   constructor(private readonly repo: IMfaRepository) {}
 
-  /** Begin enrolment: a fresh secret, encrypted at rest, plus the otpauth URI. */
-  async beginEnrolment(userId: string, account: string): Promise<EnrolmentStart> {
+  /**
+   * Begin enrolment: a fresh secret, encrypted at rest, plus the otpauth URI.
+   *
+   * RE-ENROLMENT IS ITSELF A PRIVILEGED ACTION.
+   *
+   * This used to call upsertEnrolment unconditionally, so a CONFIRMED secret was
+   * overwritten by anyone who could reach the route. Holding a stolen bearer
+   * token was therefore enough to defeat MFA entirely: POST /auth/mfa/enrol
+   * returned a brand new secret, POST /auth/mfa/confirm accepted a code computed
+   * from it and issued fresh recovery codes, and every requireStepUp gate then
+   * answered ALLOW. The authenticator the administrator actually holds was
+   * silently replaced, and MFA protected nothing it was added to protect.
+   *
+   * Replacing a live authenticator now needs a recent proof of the CURRENT one,
+   * which is the same freshness rule every other privileged action uses. First
+   * enrolment, and re-enrolment of a secret that was never confirmed, are
+   * unaffected: there is nothing to protect yet.
+   */
+  async beginEnrolment(
+    userId: string,
+    account: string,
+    now = new Date(),
+  ): Promise<EnrolmentStart | { stepUpRequired: true }> {
+    const existing = await this.repo.get(userId);
+    if (existing?.confirmedAt && !isStepUpFresh(existing.lastVerifiedAt, now)) {
+      return { stepUpRequired: true };
+    }
+
     const secret = generateTotpSecret();
     await this.repo.upsertEnrolment(userId, encryptSecret(secret));
     return { secret, otpauthUri: otpauthUri(secret, account) };

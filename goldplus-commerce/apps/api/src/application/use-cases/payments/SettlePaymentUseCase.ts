@@ -73,7 +73,12 @@ export class SettlePaymentUseCase {
     // Settlement is decided ONCE, whichever door the news arrived through. An
     // unverified or unrecognised payment progresses nothing at all.
     const settlement = await this.reconcile.execute({
-      verification: { ok: verification.ok, orderId: verification.orderId, status: verification.status },
+      verification: {
+        ok: verification.ok,
+        orderId: verification.orderId,
+        status: verification.status,
+        lifecycleConflict: verification.lifecycleConflict,
+      },
       traceId: input.traceId,
     });
 

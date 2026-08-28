@@ -63,6 +63,12 @@ export interface PaymentVerificationResult {
   orderId: string;
   /** The adapter's status vocabulary. Mapped here, once. */
   status: string;
+  /**
+   * The provider's answer was established but the order refused the move.
+   * Money may have arrived against an order that cannot receive it, so this is
+   * settled by a person rather than confirmed automatically.
+   */
+  lifecycleConflict?: boolean;
 }
 
 export interface ReconcileOrderPaymentDeps {
@@ -140,6 +146,13 @@ export class ReconcileOrderPaymentUseCase {
     // establish the result, the status is not evidence of anything.
     if (!verification.ok) {
       return this.review(orderId, checkout.stage, traceId, 'VERIFICATION_FAILED');
+    }
+
+    // The provider answered, but the order's own state machine refused the move.
+    // Confirming here would mark fulfilment paid, settle loyalty and tell the
+    // customer "payment received" for an order that could not accept the payment.
+    if (verification.lifecycleConflict) {
+      return this.review(orderId, checkout.stage, traceId, 'LIFECYCLE_CONFLICT');
     }
 
     if (FAILED_STATUSES.has(status)) {

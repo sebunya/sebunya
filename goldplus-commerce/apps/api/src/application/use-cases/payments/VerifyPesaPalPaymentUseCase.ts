@@ -23,6 +23,17 @@ export interface VerifyPesaPalPaymentOutput {
   currency: string;
   orderId: string;
   message?: string;
+  /**
+   * The provider's answer was established, but the ORDER could not accept it.
+   *
+   * A completed payment against an order that can no longer transition (it was
+   * cancelled, say) is real money on an order that cannot receive it. That needs
+   * a person, not a confirmation: without this flag the caller saw a verified
+   * `completed` and ran every success effect — marking fulfilment paid, settling
+   * loyalty and telling the customer "payment received" — on an order whose own
+   * state machine had just refused the move.
+   */
+  lifecycleConflict?: boolean;
 }
 
 export class VerifyPesaPalPaymentUseCase {
@@ -258,6 +269,9 @@ export class VerifyPesaPalPaymentUseCase {
           await this.paymentRepo.updateOrderPaymentStatusSafely(attempt.orderId, orderPaymentStatus);
           return {
             ok: mappedStatus === 'completed',
+            // Named, not merely described in a message nobody reads. This is what
+            // routes the settlement to REVIEW_REQUIRED instead of CONFIRMED.
+            lifecycleConflict: true,
             status: mappedStatus,
             amount: attempt.amount,
             currency: attempt.currency,
