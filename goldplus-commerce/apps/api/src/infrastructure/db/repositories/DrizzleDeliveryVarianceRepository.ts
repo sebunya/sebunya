@@ -37,12 +37,13 @@ export class DrizzleDeliveryVarianceRepository implements IDeliveryVarianceRepos
    */
   async orderForVariance(orderId: string) {
     const rows = (await db.execute(sql`
-      select id, order_number, delivery_fee, status
+      select id, order_number, delivery_fee, status, payment_status
       from orders where id = ${orderId} limit 1`)) as unknown as Array<{
       id: string;
       order_number: string;
       delivery_fee: string | number;
       status: string;
+      payment_status: string;
     }>;
     const r = rows[0];
     if (!r) return null;
@@ -51,6 +52,7 @@ export class DrizzleDeliveryVarianceRepository implements IDeliveryVarianceRepos
       orderNumber: r.order_number,
       deliveryFeeUgx: Number(r.delivery_fee ?? 0),
       status: r.status,
+      paymentStatus: r.payment_status,
       handedOver: r.status === 'delivered' || r.status === 'completed',
     };
   }

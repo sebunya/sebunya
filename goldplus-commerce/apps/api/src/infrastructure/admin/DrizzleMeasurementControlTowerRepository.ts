@@ -1,4 +1,4 @@
-import { eq, count, sql, isNotNull, desc, isNull } from 'drizzle-orm';
+import { eq, count, sql, isNotNull, desc, isNull, max } from 'drizzle-orm';
 import { db } from '../db/client';
 import {
   IMeasurementControlTowerRepository,
@@ -59,15 +59,19 @@ export class DrizzleMeasurementControlTowerRepository implements IMeasurementCon
       .from(measurementAuditLogs)
       .where(eq(measurementAuditLogs.action, 'DRY_RUN'));
 
+    // Measured, not asserted. This said "last event: now" and HEALTHY
+    // unconditionally, with zero events and an unresolved dead-letter backlog.
+    const [last] = await db.select({ at: max(measurementAuditLogs.createdAt) }).from(measurementAuditLogs);
+    const status = dlqCountResult.value > 0 ? 'DEGRADED' : auditCountResult.value === 0 ? 'NO_DATA' : 'HEALTHY';
     return {
       totalSafeEvents: auditCountResult.value,
       eventsQueued: dlqCountResult.value,
       eventsFailed: failedCount.value,
       eventsBlockedByConsent: blockedCount.value,
       dryRunEvents: dryRunCount.value,
-      lastEventReceived: new Date(),
-      lastQueueError: null,
-      measurementQueueStatus: 'HEALTHY',
+      lastEventReceived: last?.at ?? null,
+      lastQueueError: dlqCountResult.value > 0 ? `${dlqCountResult.value} unresolved dead-letter event(s)` : null,
+      measurementQueueStatus: status,
     };
   }
 

@@ -104,8 +104,11 @@ export class UpdatePackedQuantitiesUseCase {
     const guard = packableGuard(task.status);
     if (guard) return guard;
 
-    // Validate all lines first, then apply (per-line optimistic version).
-    let updated = 0;
+    // Validate EVERY line first, then apply. The comment always said so; the
+    // loop did not. It wrote and audited line 1 and 2 before line 3 failed, so
+    // the operator saw an error, kept the old form, and their retry of the same
+    // payload failed on stale versions for the lines already changed.
+    const prepared: Array<{ u: (typeof input.updates)[number]; snap: Awaited<ReturnType<IFulfilmentLineRepository['findById']>> & object; line: FulfilmentLine }> = [];
     for (const u of input.updates) {
       const snap = await this.lines.findById(u.lineId);
       if (!snap || snap.fulfilmentTaskId !== input.taskId) return fail('UNKNOWN_LINE', `Line ${u.lineId} not found on this task.`);
@@ -117,6 +120,10 @@ export class UpdatePackedQuantitiesUseCase {
         const code = (e?.message as PackingError) ?? 'INVALID_QUANTITY';
         return fail(['INSUFFICIENT_RESERVED_STOCK', 'EXCEEDS_ORDERED', 'INVALID_QUANTITY'].includes(code) ? code : 'INVALID_QUANTITY', e?.message ?? 'Invalid quantity.');
       }
+      prepared.push({ u, snap, line });
+    }
+    let updated = 0;
+    for (const { u, snap, line } of prepared) {
       const res = await this.lines.updateWithVersion(line, u.expectedVersion);
       if (!res.updated) return fail('STALE_FULFILMENT_VERSION', `Line ${u.lineId} was modified concurrently.`);
       await audit(this.audit, input.actorId, 'PACKED_QUANTITIES_UPDATED', u.lineId, { packed: u.packed }, { packed: snap.packedQuantity });

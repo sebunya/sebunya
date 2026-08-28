@@ -4,8 +4,11 @@ import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { logger } from '../../../../infrastructure/logging/logger';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { Registry } from '../../../../infrastructure/Registry';
 
-// audit-exempt: admin queue operations are logged directly via QueueService debug channels
+// Replaying failed jobs and changing worker concurrency are mutating
+// operations. They used to carry an exemption note that was not true:
+// QueueService wrote nothing, so afterwards nobody could say who did it.
 const routes = new Hono();
 
 // Enforce auth globally for all queue admin actions
@@ -71,6 +74,13 @@ routes.post('/replay', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async 
   try {
     const queueService = QueueService.getInstance();
     const replayedCount = await queueService.replayFailedJobs(queueName);
+    await Registry.getInstance().createAuditLogUseCase.execute({
+      actorId: (c.get('user') as { id?: string } | undefined)?.id ?? 'unknown',
+      action: 'QUEUE_FAILED_JOBS_REPLAYED',
+      entity: 'queue',
+      entityId: queueName,
+      newState: { replayed: replayedCount },
+    }).catch((err: unknown) => logger.error({ err, queueName }, '[AdminQueueRoute] audit write failed'));
     
     const res: ApiResponse<{ replayed: number }> = {
       success: true,
@@ -123,6 +133,13 @@ routes.post('/concurrency', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), a
       return c.json(res, 404);
     }
 
+    await Registry.getInstance().createAuditLogUseCase.execute({
+      actorId: (c.get('user') as { id?: string } | undefined)?.id ?? 'unknown',
+      action: 'QUEUE_CONCURRENCY_CHANGED',
+      entity: 'queue',
+      entityId: queueName,
+      newState: { concurrency: updatedConcurrency },
+    }).catch((err: unknown) => logger.error({ err, queueName }, '[AdminQueueRoute] audit write failed'));
     const res: ApiResponse<{ queueName: string; concurrency: number }> = {
       success: true,
       data: { queueName, concurrency: updatedConcurrency },

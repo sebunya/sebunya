@@ -56,7 +56,7 @@ const locations = locationsRes.data ?? [];
 const receipts = receiptsRes.data ?? [];
 const counts = countsRes.data ?? [];
 const movements = movementsRes.data ?? [];
-const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Kampala' });
 const LINES = [0, 1, 2, 3, 4, 5, 6, 7];
 ---
 

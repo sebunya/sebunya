@@ -52,6 +52,8 @@ export interface ProductCostImportPlanRow {
   previousCostUgx: number | null;
   /** True when this row supersedes a live entry for the same product+date. */
   isCorrection: boolean;
+  /** The operator's note for this entry; validated, and now actually stored. */
+  note: string | null;
 }
 
 export interface ProductCostImportResult {

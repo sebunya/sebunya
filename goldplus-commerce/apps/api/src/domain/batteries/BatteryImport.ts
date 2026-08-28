@@ -274,10 +274,13 @@ export function normaliseImportRow(
       const rowKeyBase = normaliseBatteryCode(codeCell && !PENDING.test(codeCell) ? codeCell : analysis.cleaned);
 
       if (compound) {
-        return { rowKey: rowKeyBase, action: 'HOLD_COMPOUND', value: { sourceItem, codes: analysis.codes, category }, warnings, errors, hold: `One line combines more than one battery reference (${analysis.codes.join(' / ') || codeCell}). Split it, confirm it is one packaged cross-reference, or reject it.` };
+        // The held value uses the CREATE_BATTERY field names, so an operator
+        // override of the canonical code yields a complete row rather than a
+        // PHONE battery with no alias and no name.
+        return { rowKey: rowKeyBase, action: 'HOLD_COMPOUND', value: { sourceItem, codes: analysis.codes, category, batteryCategory: category, aliases: [sourceItem], name: null, codeStatus: 'PROVISIONAL', lifecycleStatus: 'REVIEW' }, warnings, errors, hold: `One line combines more than one battery reference (${analysis.codes.join(' / ') || codeCell}). Split it, confirm it is one packaged cross-reference, or reject it.` };
       }
       if (conflictReason || workbookConflict) {
-        return { rowKey: rowKeyBase, action: 'HOLD_CONFLICT', value: { sourceItem, category }, warnings, errors, hold: conflictReason ?? `${mappingStatus || identifierType}: resolve before import.` };
+        return { rowKey: rowKeyBase, action: 'HOLD_CONFLICT', value: { sourceItem, category, batteryCategory: category, aliases: [sourceItem], name: null, codeStatus: 'PROVISIONAL', lifecycleStatus: 'REVIEW' }, warnings, errors, hold: conflictReason ?? `${mappingStatus || identifierType}: resolve before import.` };
       }
 
       // Canonical code: the workbook candidate reference when present, otherwise the cleaned label.
@@ -305,7 +308,8 @@ export function normaliseImportRow(
         errors.push('Source item or battery code is required.');
         return { rowKey: '', action: 'INVALID', value: null, warnings, errors, hold: null };
       }
-      if (canonicalCode.length > 80) errors.push('Battery code is longer than 80 characters.');
+      // products.model_number is varchar(50); a longer code failed with a raw Postgres error.
+      if (canonicalCode.length > 50) errors.push('Battery code is longer than 50 characters.');
 
       const barcode = get('barcode').replace(/\s+/g, '');
       if (barcode && !/^\d{8,14}$/.test(barcode)) errors.push('Barcode must be 8 to 14 digits.');

@@ -56,7 +56,9 @@ const transitions = [
 ] as const;
 // Slice 3C: price approval and activation move money for every customer, so
 // they require a fresh MFA step-up on top of the permission (self-bypass denied).
-const STEP_UP_OPERATIONS = new Set(['approve', 'activate']);
+// 'resume' moves PAUSED -> ACTIVE through the same path as activate, including
+// lifting a budget auto-pause; it needs the same step-up.
+const STEP_UP_OPERATIONS = new Set(['approve', 'activate', 'resume']);
 for (const [operation, to, permission] of transitions) {
   const handler = async (c: any) => {
     const parsed = transitionBody.safeParse(await c.req.json().catch(() => null));

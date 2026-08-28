@@ -52,7 +52,7 @@ const invalid = rowsByStatus('INVALID');
 const valid = rowsByStatus('VALID');
 const excluded = rowsByStatus('EXCLUDED');
 const applied = (d?.rows ?? []).filter((r) => ['APPLIED', 'SKIPPED', 'FAILED', 'ROLLED_BACK'].includes(r.status));
-const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Kampala' });
 const holdReason = (r: Row) => String((r.normalizedData as Record<string, unknown> | null)?.hold ?? '');
 const canMap = s && ['UPLOADED', 'MAPPED', 'READY_FOR_APPROVAL'].includes(s.status);
 const canPreview = s && ['MAPPED', 'READY_FOR_APPROVAL'].includes(s.status);

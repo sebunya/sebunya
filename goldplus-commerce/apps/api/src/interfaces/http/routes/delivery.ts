@@ -72,7 +72,10 @@ routes.post('/quote', async (c) => {
     eatHourOfWeek: parts.weekday * 24 + parts.hour,
   });
   // The basket contents change the parcel plan, so they are part of identity.
-  const fullKey = `${key}:${items.map((i) => `${i.productId}x${i.quantity}`).sort().join(',')}`;
+  // The free-text destination is part of identity too: without it, 'Ntinda' and
+  // 'Kajjansi' with the same basket shared one cached fee for sixty seconds.
+  const areaText = typeof body?.deliveryArea === 'string' ? body.deliveryArea.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 120) : '';
+  const fullKey = `${key}:${areaText}:${items.map((i) => `${i.productId}x${i.quantity}`).sort().join(',')}`;
   const hit = CACHE.get(fullKey);
   if (hit && now.getTime() - hit.at < CACHE_TTL_MS) {
     return c.json({ success: true, data: hit.body } satisfies ApiResponse<unknown>);

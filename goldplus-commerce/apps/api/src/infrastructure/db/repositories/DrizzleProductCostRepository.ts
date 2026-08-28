@@ -133,6 +133,7 @@ export class DrizzleProductCostRepository implements IProductCostRepository {
         effectiveFrom,
         previousCostUgx: product.cost_price === null || product.cost_price === undefined ? null : Number(product.cost_price),
         isCorrection: false,
+        note,
       });
     });
 
@@ -181,7 +182,7 @@ export class DrizzleProductCostRepository implements IProductCostRepository {
             (product_id, cost_price_ugx, currency, effective_from, source, note, entered_by, corrects_entry_id)
           values
             (${row.productId}::uuid, ${row.costPriceUgx}, 'UGX', ${row.effectiveFrom}::date,
-             ${input.source}, ${null}, ${input.enteredBy}::uuid,
+             ${input.source}, ${row.note ?? null}, ${input.enteredBy}::uuid,
              ${superseded[0]?.id ? String(superseded[0].id) : null}::uuid)
         `);
         applied += 1;

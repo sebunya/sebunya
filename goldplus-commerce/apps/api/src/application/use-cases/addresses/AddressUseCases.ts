@@ -86,7 +86,8 @@ export class AddAddressUseCase {
   ) {}
 
   async execute(input: AddAddressInput): Promise<AddAddressResult> {
-    const core = validateCore(input);
+    // Create semantics: a missing landmark is an EMPTY landmark, not "unchanged".
+    const core = validateCore({ ...input, landmarkText: input.landmarkText ?? '' });
     if (!core.ok) return { ok: false, code: 'BAD_INPUT', message: core.message };
     const address = await this.addresses.createForUser({
       ...input,

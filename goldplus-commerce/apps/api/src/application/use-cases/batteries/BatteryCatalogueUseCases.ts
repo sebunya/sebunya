@@ -183,7 +183,7 @@ export class BatteryCatalogueUseCases {
   async create(input: CreateBatteryInput) {
     const canonicalCode = input.canonicalCode.trim();
     if (!canonicalCode) throw invalid('A battery code is required.');
-    if (canonicalCode.length > 80) throw invalid('Battery code must be 80 characters or fewer.');
+    if (canonicalCode.length > 50) throw invalid('Battery code must be 50 characters or fewer.');
     const normalised = normaliseBatteryCode(canonicalCode);
     if (!normalised) throw invalid('The battery code must contain letters or digits.');
     const category = input.batteryCategory ?? 'PHONE';

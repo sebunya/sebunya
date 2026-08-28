@@ -39,15 +39,6 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-// The device the customer is shopping for travels with them.
-if (deviceSlug) {
-  const chosen = await publicBattery<{ device: FinderDeviceDto }>(`/finder/devices/${encodeURIComponent(deviceSlug)}`, sessionId);
-  if (chosen.ok) {
-    Astro.cookies.set(DEVICE_COOKIE, serialiseDeviceCookie({ slug: chosen.data.device.slug, label: chosen.data.device.label }), {
-      path: '/', httpOnly: false, sameSite: 'lax', secure: url.protocol === 'https:', maxAge: 60 * 60 * 24 * 30,
-    });
-  }
-}
 
 type SearchResult =
   | { kind: 'DEVICE'; device: FinderDeviceDto; results: FinderBatteryResultDto[]; query: string; config: BatteryFinderConfig }
@@ -67,6 +58,15 @@ const [brandsRes, searchRes, brandRes, deviceRes] = await Promise.all([
   brandSlug ? publicBattery<{ brand: FinderBrandDto; series: FinderSeriesDto[]; devices: FinderDeviceDto[] }>(`/finder/brands/${encodeURIComponent(brandSlug)}`, sessionId) : Promise.resolve(null),
   deviceSlug ? publicBattery<{ device: FinderDeviceDto; results: FinderBatteryResultDto[] }>(`/finder/devices/${encodeURIComponent(deviceSlug)}`, sessionId) : Promise.resolve(null),
 ]);
+
+// The device the customer is shopping for travels with them. Set from the ONE
+// device fetch above: a second fetch of the same endpoint recorded two
+// DEVICE_SELECTED demand events for every view.
+if (deviceRes && deviceRes.ok) {
+  Astro.cookies.set(DEVICE_COOKIE, serialiseDeviceCookie({ slug: deviceRes.data.device.slug, label: deviceRes.data.device.label }), {
+    path: '/', httpOnly: false, sameSite: 'lax', secure: url.protocol === 'https:', maxAge: 60 * 60 * 24 * 30,
+  });
+}
 
 const brands = brandsRes.ok ? brandsRes.data : [];
 const search = searchRes && searchRes.ok ? searchRes.data : null;

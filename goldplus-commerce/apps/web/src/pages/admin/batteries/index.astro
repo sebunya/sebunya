@@ -47,7 +47,7 @@ const toneClass = (tone: string, value: number) =>
     : tone === 'block' ? 'border-amber-200 bg-amber-50 text-amber-900'
     : tone === 'work' ? 'border-blue-200 bg-blue-50 text-blue-900'
     : 'border-slate-200 bg-white text-brand-dark';
-const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Kampala' });
 ---
 
 <AdminLayout title="Batteries" description="Battery catalogue, devices, compatibility, stock and customer demand.">

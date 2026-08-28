@@ -483,7 +483,11 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
             .set({
               modelNumber: data.modelNumber,
               name: data.name,
-              slug: data.slug,
+              // The live slug is kept. Rewriting it here moved the URL with no
+              // redirect and no lastmod; a slug change goes through the admin
+              // edit, which records the redirect.
+              slug: existing.slug,
+              updatedAt: new Date(),
               categoryId: category.id,
               categoryName: category.name,
               shortDescription: data.shortDescription,

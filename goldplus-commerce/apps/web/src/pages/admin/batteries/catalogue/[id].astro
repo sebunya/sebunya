@@ -89,7 +89,7 @@ const detail = await adminBattery<Detail>(`/catalogue/${id}`, token);
 const d = detail.data;
 const p = d?.profile;
 const voltage = p?.nominalVoltageMv ? (p.nominalVoltageMv / 1000).toFixed(2) : '';
-const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Kampala' });
 const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-800 border-green-200', READY: 'bg-blue-50 text-blue-800 border-blue-200', REVIEW: 'bg-amber-50 text-amber-900 border-amber-200', DRAFT: 'bg-slate-100 text-slate-700 border-slate-200', ARCHIVED: 'bg-slate-50 text-slate-500 border-slate-200' };
 ---
 

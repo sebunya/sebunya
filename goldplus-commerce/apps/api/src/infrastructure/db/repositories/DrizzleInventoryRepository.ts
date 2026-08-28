@@ -87,7 +87,10 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
       db.transaction(async (tx) => {
         const updated = await tx
           .update(products)
-          .set({ stockQuantity: newStock })
+          // The same rule the adjust path applies; the two had diverged, so a
+          // quantity of 0 left stock_status 'in_stock' and the in-stock filter
+          // kept listing a product its own card showed as out of stock.
+          .set({ stockQuantity: newStock, stockStatus: sql`case when ${newStock} <= 0 then 'out_of_stock' else 'in_stock' end` })
           .where(and(eq(products.id, productId), sql`${products.reservedQuantity} <= ${newStock}`))
           .returning({ stock: products.stockQuantity, reserved: products.reservedQuantity });
 

@@ -97,6 +97,9 @@ export class AdminUserManagementUseCase {
     if (request.requestedBy === args.actorId) {
       return refuse('MAKER_CHECKER', 'The requester cannot decide their own grant. A different administrator must approve.', 403);
     }
+    if (request.userId === args.actorId) {
+      return refuse('MAKER_CHECKER', 'The person receiving the role cannot decide their own grant.', 403);
+    }
     await this.repo.decideGrantRequest(args.requestId, { status: args.decision, decidedBy: args.actorId, reason: args.reason ?? null });
     if (args.decision === 'APPROVED') {
       await this.repo.assignRole(request.userId, request.roleName);

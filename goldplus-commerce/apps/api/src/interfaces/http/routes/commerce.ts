@@ -20,6 +20,7 @@ import {
 import { checkoutOperationIdentity, intentPrincipalKey, normalizeUgandaDistrict } from '@goldplus/shared';
 import type { PaymentStartResponseDto } from '@goldplus/shared';
 import { logger } from '../../../infrastructure/logging/logger';
+import { PricingEvaluationError } from '../../../application/use-cases/pricing/EvaluateCartPricingUseCase';
 import { toCheckoutResponseDto } from '../../../application/mappers/toCheckoutResponseDto';
 import { GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
 
@@ -300,9 +301,13 @@ routes.post('/pricing-preview', async (c) => {
       },
     });
   } catch (error) {
-    const code = (error as { code?: string })?.code ?? 'PRICING_UNAVAILABLE';
-    const message = error instanceof Error ? error.message : 'Pricing preview is unavailable right now.';
-    return c.json({ success: false, error: { code, message } }, 400);
+    // Only the evaluator's own refusals are customer-safe. Anything else (a
+    // connection error, a query fault) used to reach an unauthenticated caller
+    // as its raw message and Postgres code.
+    if (error instanceof PricingEvaluationError) {
+      return c.json({ success: false, error: { code: 'PRICING_REFUSED', message: error.message } }, 400);
+    }
+    throw error;
   }
 });
 

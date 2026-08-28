@@ -52,6 +52,7 @@ export interface IDeliveryVarianceRepository {
     orderNumber: string;
     deliveryFeeUgx: number;
     status: string;
+    paymentStatus: string;
     /** Once the goods are with the customer the amount is settled. */
     handedOver: boolean;
   } | null>;
@@ -89,6 +90,12 @@ export class ApplyDeliveryVarianceUseCase {
     }
     const order = await this.repo.orderForVariance(input.orderId);
     if (!order) return fail('ORDER_NOT_FOUND', 'That order does not exist.');
+    // A prepaid order has settled its total with the provider. Raising the fee
+    // afterwards moved total_amount above the amount actually paid, with no
+    // path to collect the difference. Per contract #6 the shop absorbs it.
+    if (order.paymentStatus === 'paid' && input.newFeeUgx > order.deliveryFeeUgx) {
+      return fail('VARIANCE_ON_PAID_ORDER', 'This order is already paid. A higher delivery fee cannot be charged after payment; the difference is absorbed.');
+    }
 
     const threshold = await this.thresholds();
     const decision = decideVariance({

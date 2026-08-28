@@ -50,7 +50,9 @@ export async function resolveStorefrontDiscount(
     return {
       active: true,
       percentBps: benefit.value,
-      percent: Math.round(benefit.value / 100),
+      // Not rounded: 1250 bps is 12.5%, and a badge saying 13% next to a price
+      // cut by 12.5% is a claim the basket does not honour.
+      percent: benefit.value / 100,
       // The evaluator caps every line at this floor; the display must too.
       priceFloorUgx: version.priceFloorUgx,
       endsIso: version.schedule.endsAt.toISOString(),

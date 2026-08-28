@@ -267,6 +267,11 @@ export class RejectCalibrationProposalUseCase {
   async execute(input: { proposalId: string; actorId: string; reason: string }) {
     const proposal = await this.repo.findProposal(input.proposalId);
     if (!proposal) return { ok: false as const, code: 'PROPOSAL_NOT_FOUND', message: 'That proposal does not exist.' };
+    // Mirrors the accept path. Rejecting an already-accepted proposal flipped the
+    // row to 'rejected' while the learned factor it wrote stayed live.
+    if (proposal.status !== 'pending') {
+      return { ok: false as const, code: 'ALREADY_DECIDED', message: `That proposal was already ${proposal.status}.` };
+    }
     if (!input.reason || input.reason.trim().length < 3) {
       return { ok: false as const, code: 'REASON_REQUIRED', message: 'A rejection needs a reason.' };
     }

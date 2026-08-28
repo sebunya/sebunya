@@ -11,6 +11,9 @@ import { RecordProductSlugChangeUseCase } from '../../../../application/use-case
 import { validateStockAdjustment } from '../../../../domain/inventory/Inventory';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 
+/** Above this a value cannot be a shilling price; it is a typo or an int4 overflow. */
+const MAX_PRICE_UGX = 100_000_000;
+
 const routes = new Hono();
 routes.use('*', authMiddleware);
 
@@ -261,8 +264,11 @@ routes.post('/', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => 
   if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Slug must be a unique, URL-safe string.' } }, 400);
   }
-  if (priceUgx < 0 || !Number.isInteger(priceUgx)) {
-    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Price must be a positive integer.' } }, 400);
+  if (priceUgx < 0 || !Number.isInteger(priceUgx) || priceUgx > MAX_PRICE_UGX) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Price must be a whole number of shillings up to ${MAX_PRICE_UGX.toLocaleString('en-UG')}.` } }, 400);
+  }
+  if (compareAtPriceUgx !== undefined && (!Number.isInteger(compareAtPriceUgx) || compareAtPriceUgx < 0 || compareAtPriceUgx > MAX_PRICE_UGX)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Compare-at price must be a whole number of shillings, or left empty.' } }, 400);
   }
   if (stockQuantity < 0 || !Number.isInteger(stockQuantity)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Stock quantity must be a non-negative integer.' } }, 400);
@@ -382,8 +388,11 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
   if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Slug must be a unique, URL-safe string.' } }, 400);
   }
-  if (priceUgx < 0 || !Number.isInteger(priceUgx)) {
-    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Price must be a positive integer.' } }, 400);
+  if (priceUgx < 0 || !Number.isInteger(priceUgx) || priceUgx > MAX_PRICE_UGX) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Price must be a whole number of shillings up to ${MAX_PRICE_UGX.toLocaleString('en-UG')}.` } }, 400);
+  }
+  if (compareAtPriceUgx !== undefined && (!Number.isInteger(compareAtPriceUgx) || compareAtPriceUgx < 0 || compareAtPriceUgx > MAX_PRICE_UGX)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Compare-at price must be a whole number of shillings, or left empty.' } }, 400);
   }
   if (stockQuantity < 0 || !Number.isInteger(stockQuantity)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Stock quantity must be a non-negative integer.' } }, 400);

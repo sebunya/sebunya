@@ -10,6 +10,8 @@ import { decodePricingJsonb, encodePricingJsonb } from '../PricingJsonbCodec';
 import { ICustomerOrderRepository } from '../../../application/ports/ICustomerOrderRepository';
 import { OrderDetailDto, OrderSummaryDto, OrderStatus } from '@goldplus/shared';
 
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransactionalPricedOrderRepository {
   private hydrate(result: typeof orders.$inferSelect & { items: Array<typeof orderItems.$inferSelect> }): Order {
     const pricing = result.pricingSnapshot ? decodePricingJsonb<any>(result.pricingSnapshot) : null;
@@ -244,6 +246,9 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
   }
 
   async findByIdForUser(orderId: string, userId: string): Promise<OrderDetailDto | null> {
+    // orders.id is uuid. Binding an order NUMBER (what every email and message
+    // shows) raised 22P02 and surfaced as a 500 instead of not found.
+    if (!UUID_SHAPE.test(orderId)) return null;
     const row = await db.query.orders.findFirst({
       where: and(eq(orders.id, orderId), eq(orders.userId, userId)),
       with: { items: true },

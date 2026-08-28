@@ -53,7 +53,7 @@ const o = overviewRes.data;
 const requests = requestsRes.data ?? [];
 const devices = devicesRes.data ?? [];
 const batteries = batteriesRes.data ?? [];
-const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Kampala' });
 const STATUSES = ['OPEN', 'MAPPED_DEVICE', 'ALIAS_ADDED', 'BATTERY_MAPPED', 'DRAFT_CREATED', 'INVALID', 'RESOLVED', 'ALL'];
 ---
 

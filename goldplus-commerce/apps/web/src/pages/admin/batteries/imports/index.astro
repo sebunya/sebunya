@@ -57,7 +57,7 @@ const tone = (s: string) => ['APPLIED', 'ROLLED_BACK'].includes(s) ? 'bg-green-5
   : ['FAILED', 'ROLLBACK_PARTIAL', 'REJECTED'].includes(s) ? 'bg-red-50 text-red-700 border-red-200'
   : ['READY_FOR_APPROVAL', 'APPROVED', 'PARTIALLY_APPLIED'].includes(s) ? 'bg-amber-50 text-amber-900 border-amber-200'
   : 'bg-slate-100 text-slate-700 border-slate-200';
-const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' });
+const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Kampala' });
 ---
 
 <AdminLayout title="Battery imports" description="Stage a spreadsheet, check it, have it approved, then apply it." activePath="/admin/batteries">
