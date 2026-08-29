@@ -1,5 +1,7 @@
 import { defineMiddleware } from "astro:middleware";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
+import { apiBase } from "./lib/api";
+import { SESSION_COOKIE_NAME } from "./lib/session";
 
 /**
  * The opaque visit locator (R2, 2026-08-06).
@@ -28,7 +30,44 @@ export function visitCookieOptions() {
   } as const;
 }
 
-export const onRequest = defineMiddleware((context, next) => {
+/**
+ * Admin pages authenticated on the PRESENCE of a cookie — the same cookie a
+ * customer holds — so a signed-in customer could render the admin console. No
+ * privileged data leaked, because every admin API enforces its own permission,
+ * but the console is not theirs to see.
+ *
+ * One call to /auth/admin-session settles it: authMiddleware refuses an account with
+ * no permissions, so a 200 means a real admin.
+ *
+ * Fail CLOSED on a definite refusal (401/403): that is the case this exists for.
+ * Fail OPEN on a timeout or an unreachable API: a blip must not lock the
+ * operator out of the console they would use to diagnose it, and the pages
+ * behind this still cannot read a single privileged byte without the API.
+ */
+async function holderIsAdmin(request: Request): Promise<boolean> {
+  const cookie = request.headers.get('cookie') ?? '';
+  const token = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`))?.[1];
+  if (!token) return false;
+  try {
+    const res = await fetch(`${apiBase}/auth/admin-session`, {
+      headers: { Authorization: `Bearer ${decodeURIComponent(token)}` },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (res.status === 401 || res.status === 403) return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  const adminPath = context.url.pathname;
+  if (adminPath.startsWith('/admin') && !adminPath.startsWith('/admin/login')) {
+    if (!(await holderIsAdmin(context.request))) {
+      return context.redirect(`/admin/login?returnTo=${encodeURIComponent(adminPath)}`, 303);
+    }
+  }
+
   // Asset and API-relay requests keep whatever cookie state they arrived
   // with; only document requests mint. (The relay still READS the cookie.)
   // The extension check is anchored to the LAST path segment so a product

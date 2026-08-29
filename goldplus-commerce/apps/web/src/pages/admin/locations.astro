@@ -311,7 +311,7 @@ const fmt = new Intl.NumberFormat("en-UG");
               <input name="slaHoursMin" value={z.slaHoursMin ?? ""} placeholder="SLA min (h)" class="border border-gray-300 rounded px-2 py-1 text-xs" />
               <input name="slaHoursMax" value={z.slaHoursMax ?? ""} placeholder="SLA max (h)" class="border border-gray-300 rounded px-2 py-1 text-xs" />
               <input name="fallbackFeeUgx" value={z.fallbackFeeUgx ?? ""} placeholder="fallback fee UGX" class="border border-gray-300 rounded px-2 py-1 text-xs" />
-              <input name="freeDeliveryThresholdUgx" value={z.freeDeliveryThresholdUgx ?? ""} placeholder="free-delivery ≥ UGX (not yet applied)" title="Recorded against the zone, but delivery quoting currently uses the single shop-wide free-delivery threshold in the delivery configuration. This per-zone value does not change what a customer is charged." class="border border-gray-300 rounded px-2 py-1 text-xs" />
+              <input name="freeDeliveryThresholdUgx" value={z.freeDeliveryThresholdUgx ?? ""} placeholder="free-delivery ≥ UGX" title="Applies to orders delivered in this zone, and only while the zone is ACTIVE. Left blank, the shop-wide free-delivery threshold in the delivery configuration applies." class="border border-gray-300 rounded px-2 py-1 text-xs" />
               <select name="codAllowed" class="border border-gray-300 rounded px-2 py-1 text-xs">
                 <option value="" selected={z.codAllowed === null}>COD: unset</option>
                 <option value="true" selected={z.codAllowed === true}>COD allowed</option>

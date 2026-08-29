@@ -63,6 +63,13 @@ export interface IDeliveryQuotingRepository {
     areaSampleSize: number;
     observedMinutes: { p10: number; p90: number } | null;
   }>;
+  /**
+   * The free-delivery threshold set on this area's zone, when that zone is
+   * ACTIVE and carries one. Null means the zone says nothing and the shop-wide
+   * value applies. The operator could set this per zone and quoting never read
+   * it, so the figure sat in the database changing nothing.
+   */
+  zoneFreeDeliveryThresholdUgx(areaSlug: string): Promise<number | null>;
   cardsFor(input: { town: string; district: string }): Promise<BusRateCard[]>;
   officeFor(input: { town: string; district: string }): Promise<ParcelOffice | null>;
   /** Shipping class per product, plus its category default. */
@@ -187,6 +194,10 @@ export class DeliveryQuotingUseCase {
       configVersionId: versionId,
     };
 
+    const zoneFreeDeliveryThreshold = resolved?.input.areaSlug
+      ? await this.repo.zoneFreeDeliveryThresholdUgx(resolved.input.areaSlug)
+      : null;
+
     const quote = quoteFulfilment({
       area: resolved?.input ?? null,
       mode,
@@ -204,7 +215,9 @@ export class DeliveryQuotingUseCase {
       proportionality: {
         feeToValueRatioCeiling: numeric.fee_to_value_ratio_ceiling ?? null,
         minOrderValueUgx: minOrderValuesFromConfig(numeric),
-        freeDeliveryThresholdUgx: numeric.free_delivery_threshold_ugx ?? null,
+        // The zone's own threshold wins when its zone is active and sets one;
+        // otherwise the shop-wide figure, exactly as before.
+        freeDeliveryThresholdUgx: zoneFreeDeliveryThreshold ?? numeric.free_delivery_threshold_ugx ?? null,
       },
     });
 

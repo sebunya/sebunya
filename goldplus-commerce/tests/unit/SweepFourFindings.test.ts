@@ -197,3 +197,32 @@ describe('an operator edit reaches the site', () => {
     expect(read('apps/web/src/lib/categoryHubs.ts')).toContain(street);
   });
 });
+
+describe('the three decisions the owner signed off', () => {
+  it('an admin page needs an admin, not just a cookie', () => {
+    const mw = read('apps/web/src/middleware.ts');
+    expect(mw).toMatch(/adminPath\.startsWith\('\/admin'\) && !adminPath\.startsWith\('\/admin\/login'\)/);
+    // Closed on a definite refusal...
+    expect(mw).toMatch(/if \(res\.status === 401 \|\| res\.status === 403\) return false;/);
+    // ...open when the API cannot be reached, so a blip cannot lock the operator out.
+    expect(mw).toMatch(/\} catch \{\s*\n\s*return true;/);
+    // Lives under /auth, not /admin: every /admin route must be gated by a
+    // SPECIFIC permission, and this one deliberately asks only whether the
+    // holder has any admin permission at all.
+    expect(read('apps/api/src/interfaces/http/routes/auth.ts')).toMatch(/routes\.get\('\/admin-session', authMiddleware/);
+  });
+
+  it('an advertising event without an identity is not forwarded', () => {
+    const src = read('apps/api/src/application/use-cases/measurement/RoutePaidSocialEventUseCase.ts');
+    expect(src).toMatch(/if \(!userId && !sessionId\)/);
+    expect(src).toMatch(/NO_IDENTITY/);
+  });
+
+  it('an active zone free-delivery threshold is actually read', () => {
+    expect(read('apps/api/src/application/use-cases/delivery/DeliveryQuotingUseCase.ts'))
+      .toMatch(/zoneFreeDeliveryThreshold \?\? numeric\.free_delivery_threshold_ugx \?\? null/);
+    const repo = read('apps/api/src/infrastructure/db/repositories/DrizzleDeliveryQuotingRepository.ts');
+    expect(repo).toMatch(/p\.active = true/);
+    expect(repo).toMatch(/p\.free_delivery_threshold_ugx is not null/);
+  });
+});

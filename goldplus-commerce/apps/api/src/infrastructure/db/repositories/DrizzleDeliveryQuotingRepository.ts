@@ -67,6 +67,22 @@ export class DrizzleDeliveryQuotingRepository implements IDeliveryQuotingReposit
     };
   }
 
+  async zoneFreeDeliveryThresholdUgx(areaSlug: string): Promise<number | null> {
+    // Only an ACTIVE zone speaks. An inactive one is a draft the operator has
+    // not turned on, and must not quietly change what a customer is charged.
+    const [row] = (await db.execute(sql`
+      select p.free_delivery_threshold_ugx as threshold
+      from ug_area a
+      join delivery_zone_policy p on p.zone_code = a.delivery_zone_code
+      where a.area_slug = ${areaSlug}
+        and p.active = true
+        and p.free_delivery_threshold_ugx is not null
+      limit 1
+    `)) as unknown as Array<{ threshold: string | number | null }>;
+    const raw = row?.threshold;
+    return raw === undefined || raw === null ? null : Number(raw);
+  }
+
   async cardsFor(input: { town: string; district: string }): Promise<BusRateCard[]> {
     const rows = (await db.execute(sql`
       select id, carrier, destination_town, destination_district, parcel_class, fee_ugx,

@@ -11,6 +11,7 @@ import { SESSION_LIFETIMES } from '../../../domain/identity/SessionPolicy';
 import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { bearerTokenFrom, resolveLiveSession } from '../middleware/liveSession';
 import { MfaService } from '../../../infrastructure/security/MfaService';
+import { authMiddleware } from '../middleware/auth';
 
 const routes = new Hono();
 
@@ -565,6 +566,31 @@ routes.post('/password/reset-sms', async (c) => {
     data: { message: 'Your password has been changed and you have been signed out everywhere. Sign in with your new password.' },
   };
   return c.json(res);
+});
+
+/**
+ * GET /auth/admin-session — does this token belong to an admin?
+ *
+ * The storefront and the admin console share ONE cookie, and the admin pages
+ * used to authenticate on the mere PRESENCE of it, so a signed-in customer
+ * could render the admin shell. No privileged data leaked, because every admin
+ * API enforces its own permission, but the console is not theirs to see.
+ *
+ * It lives here, not under /admin, because it is a question about an identity
+ * rather than an admin RESOURCE: every route under /admin must be gated by a
+ * specific permission, and this one deliberately asks only whether the holder
+ * has ANY admin permission at all. authMiddleware already refuses an account
+ * with none, so mounting it behind authMiddleware IS the check.
+ *
+ * Deliberately tiny: the web middleware calls it on every admin page request.
+ */
+routes.get('/admin-session', authMiddleware, (c) => {
+  const user = c.get('user') as { id: string; email: string; permissions: string[] } | undefined;
+  const res: ApiResponse<{ id: string; email: string; permissions: string[] }> = {
+    success: true,
+    data: { id: user?.id ?? '', email: user?.email ?? '', permissions: user?.permissions ?? [] },
+  };
+  return c.json(res, 200);
 });
 
 export default routes;
