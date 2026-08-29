@@ -17,6 +17,7 @@ import { previewRecommendationRules, productToRecommendationItem } from '../../l
 import { breadcrumbJsonLd, serializeJsonLd } from '../../lib/jsonld';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import { publicBattery, parseDeviceCookie, serialiseDeviceCookie, DEVICE_COOKIE, FIT_BADGE } from '../../lib/batteries';
+import { SITE_ORIGIN } from '../../lib/sitemap';
 
 const { slug } = Astro.params;
 const searchQuery = Astro.url.searchParams.get('searchQuery') ?? '';
@@ -341,7 +342,10 @@ const description = product
   ? `${product.name}, ${product.categoryName} from GoldPlus Uganda.`
   : 'This product is temporarily unavailable.';
 // Path only: ?searchQuery=…&searchRank=… must never become the canonical.
-const canonical = `${Astro.url.origin}${Astro.url.pathname}`;
+// SITE_ORIGIN, not the request's origin: the product pages are the ones that
+// have to rank, and a canonical that agrees with whichever host the crawler
+// used left each of them competing against its own www twin.
+const canonical = `${SITE_ORIGIN}${Astro.url.pathname}`;
 
 // U6 AC4 — BreadcrumbList JSON-LD (Home → category → product) from the real
 // category already rendered on the page. The category URL is the shop filtered
@@ -353,7 +357,8 @@ let crumbCategory: { name: string; slug: string } | undefined;
 if (product) {
   const taxonomyForCrumbs = await getTaxonomy();
   crumbCategory = taxonomyForCrumbs.find((cat) => cat.name === product!.categoryName);
-  const origin = Astro.url.origin;
+  // The breadcrumb JSON-LD names the same one host as the canonical above.
+  const origin = SITE_ORIGIN;
   const crumbs = [{ name: 'Home', url: `${origin}/` }];
   if (crumbCategory) crumbs.push({ name: crumbCategory.name, url: `${origin}/shop?category=${encodeURIComponent(crumbCategory.slug)}` });
   crumbs.push({ name: product.name, url: canonical });

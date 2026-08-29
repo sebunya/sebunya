@@ -20,6 +20,7 @@ import {
 import { getTaxonomy } from '../lib/taxonomy';
 import { shopCrawlDirective } from '../lib/crawlPolicy';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
+import { SITE_ORIGIN } from '../lib/sitemap';
 
 // Operator-editable discovery taxonomy (admin/categories); drives filters + labels.
 const taxonomy = await getTaxonomy();
@@ -42,7 +43,8 @@ const { robotsMeta, canonicalUrl } = shopCrawlDirective({
   // Search results never have unique editorial copy; a category page has it
   // only when the operator wrote a description in the taxonomy.
   hasUniqueCopy: search ? false : selectedCategory ? Boolean(selectedCategory.description) : undefined,
-  origin: Astro.url.origin,
+  // One canonical host, not whichever host this request arrived on.
+  origin: SITE_ORIGIN,
 });
 
 function shopUrl(overrides: Partial<{ search: string; category: string; subcategory: string; sort: string }> = {}) {

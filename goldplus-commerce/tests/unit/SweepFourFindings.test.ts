@@ -351,6 +351,25 @@ describe('what search engines are actually told', () => {
     expect(src).not.toMatch(/\$\{Astro\.url\.origin\}\$\{Astro\.url\.pathname\}/);
   });
 
+  it('no page builds an indexable absolute URL from the request origin', () => {
+    // Canonicals, og:url and JSON-LD must all name the same host. Astro.url.origin
+    // is whatever the crawler dialled, which is how www and bare ended up
+    // competing. /shop and the product pages each had their own copy of this.
+    const fs = require('node:fs');
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = resolve(dir, e.name);
+        if (e.isDirectory()) { walk(p); continue; }
+        if (!/\.(astro|ts)$/.test(e.name)) continue;
+        const src = fs.readFileSync(p, 'utf8').replace(/\/\/[^\n]*/g, '');
+        if (/Astro\.url\.origin/.test(src)) offenders.push(p.replace(ROOT + '/', ''));
+      }
+    };
+    walk(resolve(ROOT, 'apps/web/src'));
+    expect(offenders).toEqual([]);
+  });
+
   it('Search Console figures are re-read while Google is still revising them', () => {
     const src = read('apps/api/src/application/use-cases/seo-growth/SyncGscPerformanceUseCase.ts');
     expect(src).toMatch(/const REFRESH_WINDOW_DAYS = 7;/);
