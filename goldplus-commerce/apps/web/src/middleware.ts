@@ -53,7 +53,13 @@ async function holderIsAdmin(request: Request): Promise<boolean> {
       headers: { Authorization: `Bearer ${decodeURIComponent(token)}` },
       signal: AbortSignal.timeout(4000),
     });
+    // Only a 200 proves an admin. Treating "anything that is not 401/403" as
+    // proof means a moved route, a 404 or a 502 silently stops guarding.
+    if (res.ok) return true;
     if (res.status === 401 || res.status === 403) return false;
+    // Any other status is the API misbehaving rather than a verdict on this
+    // caller, so it degrades the same way an outage does: see the fail-open
+    // note above.
     return true;
   } catch {
     return true;
@@ -62,7 +68,14 @@ async function holderIsAdmin(request: Request): Promise<boolean> {
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const adminPath = context.url.pathname;
-  if (adminPath.startsWith('/admin') && !adminPath.startsWith('/admin/login')) {
+  // /admin/logout must stay reachable: it is how a stale or downgraded session
+  // clears its cookie, and guarding it would redirect the holder to a login
+  // they cannot pass while leaving the cookie in place.
+  const adminGuarded =
+    adminPath.startsWith('/admin') &&
+    !adminPath.startsWith('/admin/login') &&
+    !adminPath.startsWith('/admin/logout');
+  if (adminGuarded) {
     if (!(await holderIsAdmin(context.request))) {
       return context.redirect(`/admin/login?returnTo=${encodeURIComponent(adminPath)}`, 303);
     }

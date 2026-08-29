@@ -899,8 +899,10 @@ const heroBiz = await getBusinessInfo();
   }
   function heroShopClosedDays(){
     var el = heroShopEl(); var raw = (el && el.getAttribute('data-closed-days')) || '';
-    var out = raw.split(',').map(function(x){ return parseInt(x, 10); }).filter(function(x){ return isFinite(x); });
-    return out.length ? out : [0];
+    // NO [0] fallback. business_info is the authority and an EMPTY closedDays
+    // means the shop is open every day; defaulting to Sunday here made the hero
+    // announce a closure the nav and the server both denied.
+    return raw.split(',').map(function(x){ return parseInt(x, 10); }).filter(function(x){ return isFinite(x); });
   }
   var CMS = (typeof window !== 'undefined' && window.__GPHERO) || {};
   var CONFIG = {

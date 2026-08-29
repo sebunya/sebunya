@@ -28,6 +28,7 @@ if (Astro.request.method === 'POST') {
     }));
     const whatsappNumber = String(form.get('whatsappNumber') ?? '').trim();
     const typedWhatsappUrl = String(form.get('whatsappUrl') ?? '').trim();
+    const whatsappDigits = whatsappNumber.replace(/\D/g, '');
     const config = {
       phoneDisplay: String(form.get('phoneDisplay') ?? '').trim(),
       phoneDial: String(form.get('phoneDial') ?? '').trim(),
@@ -37,8 +38,10 @@ if (Astro.request.method === 'POST') {
       // two could disagree. A PLAIN wa.me link now follows the number. A URL
       // the operator has customised (prefilled text, a different host) is left
       // exactly as typed, so this cannot clobber a deliberate link.
-      whatsappUrl: /^https:\/\/wa\.me\/\d+\/?$/.test(typedWhatsappUrl) || typedWhatsappUrl === ''
-        ? `https://wa.me/${whatsappNumber.replace(/\D/g, '')}`
+      whatsappUrl: whatsappDigits && (/^https:\/\/wa\.me\/\d+\/?$/.test(typedWhatsappUrl) || typedWhatsappUrl === '')
+        ? `https://wa.me/${whatsappDigits}`
+        // No digits to build a link from: keep whatever was typed rather than
+        // minting a dead "https://wa.me/" that every WhatsApp button would use.
         : typedWhatsappUrl,
       whatsappChannelUrl: String(form.get('whatsappChannelUrl') ?? '').trim(),
       addressLine1: String(form.get('addressLine1') ?? '').trim(),

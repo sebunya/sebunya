@@ -201,7 +201,8 @@ describe('an operator edit reaches the site', () => {
 describe('the three decisions the owner signed off', () => {
   it('an admin page needs an admin, not just a cookie', () => {
     const mw = read('apps/web/src/middleware.ts');
-    expect(mw).toMatch(/adminPath\.startsWith\('\/admin'\) && !adminPath\.startsWith\('\/admin\/login'\)/);
+    expect(mw).toMatch(/const adminGuarded =/);
+    expect(mw).toMatch(/!adminPath\.startsWith\('\/admin\/login'\)/);
     // Closed on a definite refusal...
     expect(mw).toMatch(/if \(res\.status === 401 \|\| res\.status === 403\) return false;/);
     // ...open when the API cannot be reached, so a blip cannot lock the operator out.
@@ -243,5 +244,32 @@ describe('the parameter-boundary rule can actually see array casts', () => {
     const src = read('apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository.ts');
     expect(src).toMatch(/any\(\$\{pgUuidArray\(settleIds\)\}\)/);
     expect(src).not.toMatch(/\$\{settleIds\}::uuid\[\]/);
+  });
+});
+
+describe('what the self-review of this session caught', () => {
+  it('the settle budget excludes refunds already settled', () => {
+    const src = read('apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository.ts');
+    expect(src).toMatch(/where payment_attempt_id = \$\{paymentAttemptId\}::uuid and status = 'settled'/);
+    expect(src).toMatch(/Math\.max\(0, settledTotalUgx - Number\(settledRows\[0\]\?\.settled \?\? 0\)\)/);
+  });
+
+  it('a blank WhatsApp number does not mint a dead link', () => {
+    const src = read('apps/web/src/pages/admin/business-info.astro');
+    expect(src).toMatch(/whatsappUrl: whatsappDigits &&/);
+  });
+
+  it('the hero and the nav agree about a shop that never closes', () => {
+    const hero = read('apps/web/src/components/hero/HeroSlider.astro');
+    const fn = hero
+      .slice(hero.indexOf('function heroShopClosedDays'), hero.indexOf('function heroShopClosedDays') + 600)
+      .replace(/\/\/[^\n]*/g, '');   // the comment explains the removed fallback
+    expect(fn).not.toMatch(/\[0\]/);
+  });
+
+  it('only a 200 proves an admin, and logout is never trapped', () => {
+    const mw = read('apps/web/src/middleware.ts');
+    expect(mw).toMatch(/if \(res\.ok\) return true;/);
+    expect(mw).toMatch(/!adminPath\.startsWith\('\/admin\/logout'\)/);
   });
 });

@@ -201,8 +201,23 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
       const rows = Array.isArray(pending) ? pending : pending?.rows ?? [];
       if (rows.length === 0) return 0;
 
-      // No figure given means the provider confirmed the whole outstanding set.
-      let budget = settledTotalUgx === undefined ? Number.POSITIVE_INFINITY : settledTotalUgx;
+      // The caller passes the total the provider has returned across this
+      // attempt, which INCLUDES anything settled on an earlier confirmation.
+      // Spending that whole figure again would let previously settled refunds
+      // pay for these ones, so the cap has to be what is left of it.
+      let budget: number;
+      if (settledTotalUgx === undefined) {
+        // No figure given means the provider confirmed the whole outstanding set.
+        budget = Number.POSITIVE_INFINITY;
+      } else {
+        const settledSoFar: any = await tx.execute(sql`
+          select coalesce(sum(amount_ugx), 0)::bigint as settled
+          from payment_refunds
+          where payment_attempt_id = ${paymentAttemptId}::uuid and status = 'settled'
+        `);
+        const settledRows = Array.isArray(settledSoFar) ? settledSoFar : settledSoFar?.rows ?? [];
+        budget = Math.max(0, settledTotalUgx - Number(settledRows[0]?.settled ?? 0));
+      }
       const settleIds: string[] = [];
       for (const r of rows) {
         const amount = Number(r.amount_ugx ?? 0);

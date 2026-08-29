@@ -13,6 +13,12 @@ const routes = new Hono<{ Variables: { userId?: string } }>();
 // straight from the request body, so anyone could grant, withdraw or read the
 // consent of any account whose uuid they had. The account is now whoever the
 // session says it is, and nobody if there is no session.
+// NOTE for whoever builds a consent banner: the account is read from the
+// Authorization header, so a call made straight from the browser (which sends
+// cookies, not bearer tokens) records against fp_client_id alone. Route it
+// through the SSR /api relay, which attaches the token server-side, if the
+// decision must be tied to the signed-in account. Nothing calls these
+// endpoints from the storefront today.
 routes.use('*', optionalCustomerSessionMiddleware);
 const registry = Registry.getInstance();
 const consentService = registry.consentService;
