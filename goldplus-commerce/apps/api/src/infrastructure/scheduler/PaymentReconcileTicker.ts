@@ -79,6 +79,26 @@ async function runOnce(): Promise<void> {
   }
   try {
     const silence = await registry.checkPaymentSilenceUseCase.execute(new Date());
+    // An alarm that is switched off looked exactly like an alarm reporting
+    // health: nothing was logged either way. It says so now, and if no payment
+    // has EVER succeeded it says that at error level, because no operator
+    // setting is needed to know that a shop taking no money is broken.
+    if (silence.state === 'off' && Date.now() - lastSilenceAlertAt > 3_600_000) {
+      lastSilenceAlertAt = Date.now();
+      if (silence.neverPaid) {
+        logger.error(
+          { reason: silence.reason },
+          'ALERT PAYMENT_SILENCE — NO PAYMENT HAS EVER SUCCEEDED, and the payment health alarm is not configured. ' +
+            'Set payment_health_alert_hours. Check that the provider can REACH the IPN endpoint: a WAF or bot rule ' +
+            'in front of it blocks server-to-server callbacks silently.',
+        );
+      } else {
+        logger.warn(
+          { reason: silence.reason },
+          '[payment-ops] payment health alarm is OFF — set payment_health_alert_hours, or a revenue outage will pass unnoticed.',
+        );
+      }
+    }
     if (silence.state === 'SILENT' && Date.now() - lastSilenceAlertAt > 3_600_000) {
       lastSilenceAlertAt = Date.now();
       logger.error(

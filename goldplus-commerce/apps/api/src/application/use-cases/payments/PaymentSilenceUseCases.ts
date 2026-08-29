@@ -42,7 +42,14 @@ export function withinTradingHours(values: Record<string, string>, now: Date): b
 }
 
 export type SilenceCheck =
-  | { state: 'off'; reason: 'window_not_configured' }
+  /**
+   * `neverPaid` is reported even here. The window is an operator decision and
+   * stays one, but "the alarm is not configured" must not be indistinguishable
+   * from "the shop is fine": a shop that has NEVER taken a payment is an
+   * emergency whatever the window says, and reporting only `off` is how four
+   * months of zero revenue passed without a single line in a log.
+   */
+  | { state: 'off'; reason: 'window_not_configured'; neverPaid: boolean }
   | { state: 'outside_trading_hours' }
   | { state: 'healthy'; lastPaymentAt: Date | null }
   | { state: 'SILENT'; hoursSilent: number | null; windowHours: number; lastPaymentAt: Date | null };
@@ -64,7 +71,11 @@ export class CheckPaymentSilenceUseCase {
   async execute(now: Date = new Date()): Promise<SilenceCheck> {
     const values = await this.config.values();
     const windowHours = intFrom(values, 'payment_health_alert_hours');
-    if (windowHours === null) return { state: 'off', reason: 'window_not_configured' };
+    if (windowHours === null) {
+      // Still ask the one question that needs no policy to answer.
+      const everPaid = await this.health.lastSuccessfulPaymentAt();
+      return { state: 'off', reason: 'window_not_configured', neverPaid: everPaid === null };
+    }
     if (!withinTradingHours(values, now)) return { state: 'outside_trading_hours' };
 
     const last = await this.health.lastSuccessfulPaymentAt();

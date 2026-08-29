@@ -376,3 +376,18 @@ describe('what search engines are actually told', () => {
     expect(src).toMatch(/nextUnseen < maturingFrom \? nextUnseen : maturingFrom/);
   });
 });
+
+describe('a shop taking no money says so', () => {
+  it('the silence check reports neverPaid even when the window is unconfigured', () => {
+    const src = read('apps/api/src/application/use-cases/payments/PaymentSilenceUseCases.ts');
+    expect(src).toMatch(/state: 'off'; reason: 'window_not_configured'; neverPaid: boolean/);
+    expect(src).toMatch(/const everPaid = await this\.health\.lastSuccessfulPaymentAt\(\);/);
+  });
+
+  it('an unconfigured alarm is logged, and never-paid is an error', () => {
+    const src = read('apps/api/src/infrastructure/scheduler/PaymentReconcileTicker.ts');
+    expect(src).toMatch(/if \(silence\.state === 'off' && Date\.now\(\) - lastSilenceAlertAt > 3_600_000\)/);
+    expect(src).toMatch(/NO PAYMENT HAS EVER SUCCEEDED, and the payment health alarm is not configured/);
+    expect(src).toMatch(/payment health alarm is OFF/);
+  });
+});
