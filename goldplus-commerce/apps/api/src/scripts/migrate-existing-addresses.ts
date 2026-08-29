@@ -136,7 +136,13 @@ async function main() {
         await db.execute(sql`update addresses set resolution_status = 'needs_ops_review', updated_at = now() where id = ${a.id}`);
         await db.execute(sql`
           insert into address_audit (address_id, actor_type, action, note)
-          values (${a.id}, 'system', 'status_changed', 'E.4 migration: no confident match — ops review')`);
+          select ${a.id}, 'system', 'status_changed', 'E.4 migration: no confident match — ops review'
+          -- Re-running --apply must not restate a fact already recorded.
+          where not exists (
+            select 1 from address_audit
+            where address_id = ${a.id} and action = 'status_changed'
+              and note like 'E.4 migration:%'
+          )`);
       }
       console.log(`ADDRESS_UNMATCHED ${a.id} "${firstToken}" (${a.district})`);
     }
@@ -159,13 +165,18 @@ async function main() {
       if (apply) {
         await db.execute(sql`
           insert into address_audit (order_id, actor_type, action, after, note)
-          values (${o.id}, 'system', 'migration_linked',
+          select ${o.id}, 'system', 'migration_linked',
             ${JSON.stringify({ areaSlug: m.slug, via: m.via, resolvedDistrict: m.district })}::jsonb,
             ${m.via === 'cross_district_correction'
               ? `E.4 migration: DISTRICT CORRECTION — "${probe}" resolves to ${m.district}, not the ${o.district} stored on the order. The order text is preserved exactly; this audit row records the true destination.`
               : m.via === 'district'
                 ? `E.4 migration: DISTRICT-LEVEL match only — the order names the district "${probe}", not an area. Linked to a representative area in ${m.district} so the delivery zone is right; the specific area is NOT known and must not be treated as confirmed.`
-                : 'E.4 migration: order destination linked'})`);
+                : 'E.4 migration: order destination linked'}
+          -- Idempotent: a second --apply would otherwise duplicate this fact for
+          -- every order that matched on the first run.
+          where not exists (
+            select 1 from address_audit where order_id = ${o.id} and action = 'migration_linked'
+          )`);
       }
       console.log(`ORDER_MATCHED ${o.order_number} "${probe}" → ${m.slug} (${m.via}${m.district !== o.district && o.district ? `, corrects district ${o.district}→${m.district}` : ''})`);
     } else {

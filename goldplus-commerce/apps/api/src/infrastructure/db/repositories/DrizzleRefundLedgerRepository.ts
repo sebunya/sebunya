@@ -201,10 +201,11 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
       const rows = Array.isArray(pending) ? pending : pending?.rows ?? [];
       if (rows.length === 0) return 0;
 
-      // The caller passes the total the provider has returned across this
-      // attempt, which INCLUDES anything settled on an earlier confirmation.
-      // Spending that whole figure again would let previously settled refunds
-      // pay for these ones, so the cap has to be what is left of it.
+      // `settledTotalUgx` is the money COLLECTED on this attempt — the most that
+      // can ever have come back. Anything settled on an earlier confirmation has
+      // already spent part of it, so the budget for this round is what remains.
+      // Never pass a figure derived from the outstanding rows themselves: it
+      // would always cover them and cap nothing.
       let budget: number;
       if (settledTotalUgx === undefined) {
         // No figure given means the provider confirmed the whole outstanding set.

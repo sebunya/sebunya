@@ -385,7 +385,20 @@ export class SyntheticMonitor {
   }> {
     const start = Date.now();
     const stages: string[] = [];
-    const baseUrl = env.publicApiBaseUrl || 'http://localhost:3000';
+    // THE monitor's own blind spot, fixed 2026-08-29.
+    //
+    // This probed env.publicApiBaseUrl — our PUBLIC hostname — from inside the
+    // API container. Cloudflare answers a Node fetch to that host with a 403
+    // challenge page, so every stage below failed on every run: the monitor
+    // logged CRITICAL every five minutes on both replicas and told us nothing
+    // about the shop, while a real outage would have looked identical.
+    //
+    // Same rule as the storefront stage just above, which already dials
+    // http://web:4321: server-side traffic uses the internal address. The
+    // monitor runs in the API process, so that is this process's own port.
+    // SYNTHETIC_MONITOR_BASE_URL can override it for a one-off investigation.
+    const baseUrl =
+      process.env.SYNTHETIC_MONITOR_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     let isDegraded = false;
 
     // The mutating stages below place a REAL order, inject a REAL payment webhook and

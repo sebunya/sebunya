@@ -40,9 +40,10 @@ if (Astro.request.method === 'POST') {
       // exactly as typed, so this cannot clobber a deliberate link.
       whatsappUrl: whatsappDigits && (/^https:\/\/wa\.me\/\d+\/?$/.test(typedWhatsappUrl) || typedWhatsappUrl === '')
         ? `https://wa.me/${whatsappDigits}`
-        // No digits to build a link from: keep whatever was typed rather than
-        // minting a dead "https://wa.me/" that every WhatsApp button would use.
-        : typedWhatsappUrl,
+        // No digits to build a link from. A bare wa.me link is now pointing at a
+        // number the shop has retired, so it goes too; anything else the
+        // operator typed is theirs and stays.
+        : (/^https:\/\/wa\.me\/\d+\/?$/.test(typedWhatsappUrl) ? '' : typedWhatsappUrl),
       whatsappChannelUrl: String(form.get('whatsappChannelUrl') ?? '').trim(),
       addressLine1: String(form.get('addressLine1') ?? '').trim(),
       addressLine2: String(form.get('addressLine2') ?? '').trim(),

@@ -18,6 +18,31 @@ import { isShippingClass } from '../../../domain/delivery/DeliveryParcelClass';
  * `sample_size=0` — and reads it as a prior, because nothing was learned. That
  * is the safe reading and the true one.
  */
+
+/**
+ * Cached for a minute: whether any ACTIVE delivery zone carries a
+ * free-delivery threshold. Keeps the per-quote lookup off the checkout path
+ * entirely until an operator actually configures one.
+ */
+let anyZoneThresholdCache: { value: boolean; at: number } | null = null;
+const ZONE_THRESHOLD_TTL_MS = 60_000;
+
+async function anyActiveZoneSetsAThreshold(): Promise<boolean> {
+  const now = Date.now();
+  if (anyZoneThresholdCache && now - anyZoneThresholdCache.at < ZONE_THRESHOLD_TTL_MS) {
+    return anyZoneThresholdCache.value;
+  }
+  const [row] = (await db.execute(sql`
+    select exists (
+      select 1 from delivery_zone_policy
+      where active = true and free_delivery_threshold_ugx is not null
+    ) as present
+  `)) as unknown as Array<{ present: boolean }>;
+  const value = Boolean(row?.present);
+  anyZoneThresholdCache = { value, at: now };
+  return value;
+}
+
 export class DrizzleDeliveryQuotingRepository implements IDeliveryQuotingRepository {
   async factorsFor(input: { areaSlug: string | null; corridor: string | null; eatHourOfWeek: number | null }) {
     const scopes = [input.areaSlug, input.corridor, input.eatHourOfWeek === null ? null : String(input.eatHourOfWeek)].filter(
@@ -68,6 +93,12 @@ export class DrizzleDeliveryQuotingRepository implements IDeliveryQuotingReposit
   }
 
   async zoneFreeDeliveryThresholdUgx(areaSlug: string): Promise<number | null> {
+    // Delivery quoting is on the checkout path, and this runs on every quote.
+    // delivery_zone_policy is four rows that change about never, so the cheap
+    // question — does ANY active zone even set a threshold? — is answered from
+    // a short-lived cache. While none does, which is the shop's state today,
+    // the per-quote join never runs at all.
+    if (!(await anyActiveZoneSetsAThreshold())) return null;
     // Only an ACTIVE zone speaks. An inactive one is a draft the operator has
     // not turned on, and must not quietly change what a customer is charged.
     const [row] = (await db.execute(sql`

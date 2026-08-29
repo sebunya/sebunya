@@ -226,16 +226,17 @@ export class VerifyPesaPalPaymentUseCase {
           reasonCode = 'pesapal_payment_reversed';
         }
 
-        // The provider has confirmed a reversal, so refunds that were in flight
-        // have landed — but only up to what actually came back. A proven
-        // partial returns `refunded`; a total reversal returns the whole
-        // attempt. Settling every outstanding row on any confirmation counted
-        // money that had not moved.
+        // The provider confirms that a reversal happened; it does NOT say which
+        // of our outstanding refund rows it corresponds to. So the ceiling here
+        // is the only figure we can actually stand behind: the money that was
+        // COLLECTED on this attempt. Outstanding refunds settle oldest first
+        // until that is exhausted, and we can never mark more money returned
+        // than was ever taken.
+        //
+        // Passing `refunded` here instead would be circular — that total is the
+        // sum of these very rows, so it always covers them all and caps nothing.
         if (this.refundLedger) {
-          await this.refundLedger.settleRefundsForAttempt(
-            attempt.id,
-            provenPartial ? refunded : attempt.amount,
-          );
+          await this.refundLedger.settleRefundsForAttempt(attempt.id, attempt.amount);
         }
         break;
       }

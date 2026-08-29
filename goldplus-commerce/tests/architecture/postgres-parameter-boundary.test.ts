@@ -43,7 +43,7 @@ const PG_PARAMS = path.join(API_SRC, 'infrastructure/db/PgParams.ts');
  * this rule was written for. Found 2026-08-29 when `any(${ids}::uuid[])` sailed
  * through it. The alternation is already specific enough to need no anchor.
  */
-const RAW_CAST = /\$\{([^{}]*?)\}::(jsonb|json|text\[\]|uuid\[\]|numeric\[\]|int\[\])/g;
+const RAW_CAST = /\$\{([^{}]*?)\}::(jsonb|json|text\[\]|uuid\[\]|numeric\[\]|int\[\])(?![a-zA-Z])/g;
 
 /**
  * Forms that cannot produce a record literal:

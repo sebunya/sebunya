@@ -106,8 +106,11 @@ describe('money moves once, and for the right amount', () => {
   it('a reversal settles only what actually came back', () => {
     expect(read('apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository.ts'))
       .toMatch(/settleRefundsForAttempt\(paymentAttemptId: string, settledTotalUgx\?: number\)/);
+    // The ceiling is the money COLLECTED. It was briefly `provenPartial ?
+    // refunded : attempt.amount`, which is circular: `refunded` is the sum of
+    // the very rows being settled, so it always covered them and capped nothing.
     expect(read('apps/api/src/application/use-cases/payments/VerifyPesaPalPaymentUseCase.ts'))
-      .toMatch(/provenPartial \? refunded : attempt\.amount/);
+      .toMatch(/settleRefundsForAttempt\(attempt\.id, attempt\.amount\)/);
   });
 
   it('two identical refund requests still collapse into one', () => {
@@ -238,6 +241,8 @@ describe('the parameter-boundary rule can actually see array casts', () => {
     const re = new RegExp(body, 'g');
     expect('where id = any(${ids}::uuid[])'.match(re)).not.toBeNull();
     expect('set c = ${x}::jsonb'.match(re)).not.toBeNull();
+    // ...and does not fire on a cast that merely STARTS with one of the names.
+    expect('select ${p}::jsonpath'.match(re)).toBeNull();
   });
 
   it('refund settlement binds its id list through the sanctioned helper', () => {
@@ -252,6 +257,11 @@ describe('what the self-review of this session caught', () => {
     const src = read('apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository.ts');
     expect(src).toMatch(/where payment_attempt_id = \$\{paymentAttemptId\}::uuid and status = 'settled'/);
     expect(src).toMatch(/Math\.max\(0, settledTotalUgx - Number\(settledRows\[0\]\?\.settled \?\? 0\)\)/);
+    // The ceiling must be the money COLLECTED, never a total derived from the
+    // outstanding rows themselves — that is circular and caps nothing.
+    const caller = read('apps/api/src/application/use-cases/payments/VerifyPesaPalPaymentUseCase.ts');
+    expect(caller).toMatch(/settleRefundsForAttempt\(attempt\.id, attempt\.amount\)/);
+    expect(caller).not.toMatch(/provenPartial \? refunded : attempt\.amount/);
   });
 
   it('a blank WhatsApp number does not mint a dead link', () => {
@@ -271,5 +281,26 @@ describe('what the self-review of this session caught', () => {
     const mw = read('apps/web/src/middleware.ts');
     expect(mw).toMatch(/if \(res\.ok\) return true;/);
     expect(mw).toMatch(/!adminPath\.startsWith\('\/admin\/logout'\)/);
+  });
+});
+
+describe('an operator script cannot be run twice, or run anonymously', () => {
+  it('a reset link is refused for a deactivated account and is audited', () => {
+    const src = read('apps/api/src/scripts/issue-password-reset-link.ts');
+    expect(src).toMatch(/is_active === false/);
+    expect(src).toMatch(/PASSWORD_RESET_LINK_ISSUED_BY_OPERATOR/);
+    expect(src).toMatch(/ACTOR_USER_ID must be the uuid of the operator/);
+  });
+
+  it('the address migration does not restate its facts on a second apply', () => {
+    const src = read('apps/api/src/scripts/migrate-existing-addresses.ts');
+    expect(src.match(/where not exists \(/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(src).not.toMatch(/values \(\$\{o\.id\}, 'system', 'migration_linked'/);
+  });
+
+  it('the synthetic monitor probes the shop from inside, not through the edge', () => {
+    const src = read('apps/api/src/infrastructure/scheduler/SyntheticMonitor.ts');
+    expect(src).toMatch(/SYNTHETIC_MONITOR_BASE_URL \|\| `http:\/\/localhost:\$\{process\.env\.PORT \|\| 3000\}`/);
+    expect(src).not.toMatch(/const baseUrl = env\.publicApiBaseUrl/);
   });
 });
