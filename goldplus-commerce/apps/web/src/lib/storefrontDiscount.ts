@@ -60,4 +60,8 @@ export async function getStorefrontDiscount(): Promise<StorefrontDiscount> {
 // The formula lives in @goldplus/shared so the API's Merchant Center feed and
 // every storefront surface use ONE copy. Re-exported here so existing callers
 // keep their import path.
-export { salePriceUgx } from '@goldplus/shared';
+// Imported from the PRICING SUBPATH, not the package barrel. The barrel
+// reaches node:crypto through checkout-intent, and this module is pulled
+// into a browser bundle by the recently-viewed rail, which fails the client
+// build outright.
+export { salePriceUgx } from '@goldplus/shared/pricing';

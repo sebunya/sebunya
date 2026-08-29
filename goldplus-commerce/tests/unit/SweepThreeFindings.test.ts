@@ -48,7 +48,11 @@ describe('nobody acts as somebody else', () => {
 
 describe('a price is the price', () => {
   it('the formula has ONE home, and the web lib re-exports it', () => {
-    expect(read('apps/web/src/lib/storefrontDiscount.ts')).toMatch(/export \{ salePriceUgx \} from '@goldplus\/shared'/);
+    // From the pricing SUBPATH. The package barrel reaches node:crypto via
+    // checkout-intent, and this module is bundled for the browser by the
+    // recently-viewed rail, so importing the barrel breaks the client build.
+    expect(read('apps/web/src/lib/storefrontDiscount.ts')).toMatch(/export \{ salePriceUgx \} from '@goldplus\/shared\/pricing'/);
+    expect(JSON.parse(read('packages/shared/package.json')).exports['./pricing']).toBeTruthy();
   });
 
   it('the floor stops the cut', () => {
