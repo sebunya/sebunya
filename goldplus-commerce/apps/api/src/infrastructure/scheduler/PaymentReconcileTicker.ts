@@ -1,5 +1,6 @@
 import { Registry } from '../Registry';
 import { logger } from '../logging/logger';
+import { checkCallbackSilence } from '../../application/use-cases/payments/PaymentSilenceUseCases';
 
 /**
  * Runs the payment reconciliation poller on a schedule.
@@ -34,6 +35,7 @@ let timer: NodeJS.Timeout | null = null;
 let running = false;
 /** Throttle: the silence alert repeats at most hourly while in breach. */
 let lastSilenceAlertAt = 0;
+let lastCallbackAlertAt = 0;
 
 async function runOnce(): Promise<void> {
   if (running) return;
@@ -110,6 +112,24 @@ async function runOnce(): Promise<void> {
     }
   } catch (error) {
     logger.error({ err: error }, '[payment-ops] silence check failed');
+  }
+  try {
+    // The provider was unable to reach us for FOUR MONTHS and nothing said so:
+    // every attempt got a redirect and then silence. This asks the one question
+    // that needed no configuration to answer, so a blocked callback URL is
+    // caught in hours instead of never.
+    const callbacks = await checkCallbackSilence(registry.paymentHealthReader, new Date());
+    if (callbacks.state === 'PROVIDER_NEVER_CALLS_BACK' && Date.now() - lastCallbackAlertAt > 3_600_000) {
+      lastCallbackAlertAt = Date.now();
+      logger.error(
+        { awaiting: callbacks.awaiting, total: callbacks.total },
+        'ALERT PAYMENT_CALLBACK_SILENCE — every recent payment attempt was handed a provider redirect and then heard ' +
+          'NOTHING back: no IPN, no return leg. The callback URL is almost certainly unreachable from the provider ' +
+          '(a WAF or bot rule in front of it, a DNS change, or a stale IPN registration). Customers cannot pay.',
+      );
+    }
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] callback silence check failed');
   }
   try {
     const probe = await registry.pesapalSyntheticProbeUseCase.execute(new Date());

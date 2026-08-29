@@ -16,6 +16,16 @@ import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 export interface IPaymentHealthReader {
   /** When money last actually landed: the newest completed attempt. */
   lastSuccessfulPaymentAt(): Promise<Date | null>;
+  /**
+   * Attempts that reached the provider (a redirect was issued) but for which
+   * the provider never called back — no IPN, no return leg — and which are old
+   * enough that it should have happened by now.
+   *
+   * This is the shape of a blocked callback URL, and it needs no configured
+   * window to interpret: if every recent attempt is in this state, the provider
+   * cannot reach us. Four months of it went unnoticed because nothing asked.
+   */
+  callbackSilence(olderThan: Date, since: Date): Promise<{ awaiting: number; total: number }>;
   /** The four funnel counters for a window. A gap between adjacent numbers IS the outage. */
   funnel(since: Date): Promise<{
     checkoutStarted: number;
@@ -39,6 +49,37 @@ export function withinTradingHours(values: Record<string, string>, now: Date): b
   const minutes = p.hour * 60 + p.minute;
   // An overnight window (22:00–06:00) is legal and wraps.
   return start <= end ? minutes >= start && minutes < end : minutes >= start || minutes < end;
+}
+
+export type CallbackSilence =
+  | { state: 'ok' }
+  | { state: 'no_attempts' }
+  | { state: 'PROVIDER_NEVER_CALLS_BACK'; awaiting: number; total: number };
+
+/**
+ * Did the provider call back about ANY recent attempt?
+ *
+ * Deliberately free of configuration: an attempt that was handed a redirect and
+ * then heard nothing for an hour is evidence on its own, and when EVERY recent
+ * attempt looks like that the callback URL is not reachable — a WAF or bot rule
+ * in front of it, a DNS change, a provider-side misregistration.
+ */
+export async function checkCallbackSilence(
+  health: Pick<IPaymentHealthReader, 'callbackSilence'>,
+  now: Date = new Date(),
+  opts: { quietMinutes?: number; windowHours?: number } = {},
+): Promise<CallbackSilence> {
+  const quietMinutes = opts.quietMinutes ?? 60;
+  const windowHours = opts.windowHours ?? 72;
+  const { awaiting, total } = await health.callbackSilence(
+    new Date(now.getTime() - quietMinutes * 60_000),
+    new Date(now.getTime() - windowHours * 3_600_000),
+  );
+  if (total === 0) return { state: 'no_attempts' };
+  // Every settled-enough attempt heard nothing back. One straggler is normal;
+  // all of them is not.
+  if (awaiting > 0 && awaiting === total) return { state: 'PROVIDER_NEVER_CALLS_BACK', awaiting, total };
+  return { state: 'ok' };
 }
 
 export type SilenceCheck =
