@@ -391,3 +391,21 @@ describe('a shop taking no money says so', () => {
     expect(src).toMatch(/payment health alarm is OFF/);
   });
 });
+
+describe('the storefront does not spin the main thread', () => {
+  it('the hero foil retry is bounded', () => {
+    const src = read('apps/web/src/components/hero/HeroSlider.astro');
+    // The bare self-rescheduling retry ran at frame rate forever whenever the
+    // card had no size, which is its normal state while hidden.
+    expect(src).not.toMatch(/if \(!paintFoil\(\)\) requestAnimationFrame\(paintFoil\);/);
+    expect(src).toMatch(/if \(\+\+foilTries > 120\) return;/);
+  });
+
+  it('the hero autoplay still stops when hidden or scrolled away', () => {
+    // Pre-existing and correct — asserted so a later "optimisation" cannot
+    // quietly remove it and leave a loop running behind the fold.
+    const src = read('apps/web/src/components/hero/HeroSlider.astro');
+    expect(src).toMatch(/document\.hidden \? stop\(\)/);
+    expect(src).toMatch(/IntersectionObserver/);
+  });
+});

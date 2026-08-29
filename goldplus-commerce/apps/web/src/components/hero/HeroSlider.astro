@@ -1308,8 +1308,25 @@ const heroBiz = await getBusinessInfo();
 
     if ((saved && saved.revealed) || reduce) clearAll();
     else {
-      if (!paintFoil()) requestAnimationFrame(paintFoil);
-      window.addEventListener('resize', function(){ if (!done){ painted=false; paintFoil(); } });
+      // paintFoil() returns false while the card has no size — which is the
+      // normal state whenever it is hidden or on an inactive slide. Retrying it
+      // with a bare requestAnimationFrame meant that case span the main thread
+      // at frame rate FOREVER, with no cap and no bail-out. Bounded to about
+      // two seconds of frames; after that the resize and visibility listeners
+      // below are what bring it back, which is what should have driven it all
+      // along.
+      var foilTries = 0;
+      (function tryPaint(){
+        if (done || painted) return;
+        if (paintFoil()) return;
+        if (++foilTries > 120) return;
+        requestAnimationFrame(tryPaint);
+      })();
+      window.addEventListener('resize', function(){ if (!done){ painted=false; foilTries = 0; paintFoil(); } });
+      // If it was hidden when we gave up, paint it when it becomes visible.
+      document.addEventListener('visibilitychange', function(){
+        if (!document.hidden && !done && !painted) { foilTries = 0; paintFoil(); }
+      });
     }
   })();
 
