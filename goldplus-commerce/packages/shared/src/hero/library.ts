@@ -105,7 +105,7 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
   {
     slideKey: 'sameday', position: 4, enabled: true, theme: 'logistics', tint: 'b', media: 'stage',
     kicker: 'Same-day delivery',
-    headline: 'Order before 5pm and we <em>deliver today</em>',
+    headline: 'Order before {cutoff} and we <em>deliver today</em>',
     subcopy: 'Same day delivery in Kampala and Wakiso. Next day everywhere else.',
     ctaLabel: 'Order for today', ctaUrl: '/shop',
     finePrint: 'Cut-off 5:00pm, Monday to Saturday',

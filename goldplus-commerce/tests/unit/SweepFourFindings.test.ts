@@ -37,7 +37,12 @@ describe('the page renders what the code defines', () => {
         let c = src.slice(3, end);
         c = c.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
         // Strings too: prose like "photo (optional)" is not a call.
-        c = c.replace(/"(\\.|[^"\\])*"/g, '""').replace(/'(\\.|[^'\\])*'/g, "''").replace(/`(\\.|[^`\\])*`/g, '``');
+        c = c.replace(/"(\\.|[^"\\])*"/g, '""').replace(/'(\\.|[^'\\])*'/g, "''");
+        // Reduce each template literal to its ${...} interpolations. Replacing
+        // the whole literal swallowed the CODE between two of them — that is
+        // how this scan silently lost `kampalaCutoff(` and reported a clean
+        // file while the page was one request away from a ReferenceError.
+        c = c.replace(/`[\s\S]*?`/g, (lit) => (lit.match(/\$\{[^}]*\}/g) ?? []).join(' '));
         const KEYWORD = new Set(['if','for','while','switch','catch','return','typeof','await','function','do','else','new','throw','delete','void','yield','import','super','in','of','instanceof','async']);
         for (const m of c.matchAll(/(?<![.\w$])([a-z_$][\w$]*)\s*\(/g)) {
           const name = m[1];
@@ -313,7 +318,16 @@ describe('an imported CONSTANT is imported too, not just called functions', () =
     // be too noisy to keep honest (hex colours, type unions, template prose),
     // so this checks the specific shared constants that actually travel between
     // files — which is where the mistake was made.
-    const SHARED = ['SITE_ORIGIN', 'STOREFRONT_PRICE_FLOOR_UGX', 'BUSINESS_SOCIAL_LABELS', 'BUSINESS_SOCIAL_KEYS'];
+    // Symbols that travel BETWEEN files and so can be referenced without an
+    // import. Explicit, because the lexical scan below is best-effort and has
+    // been fooled before — an apostrophe inside a template literal was enough
+    // to make it lose `kampalaCutoff(` and report a clean file. This list needs
+    // no lexing and cannot produce a false positive.
+    const SHARED = [
+      'SITE_ORIGIN', 'STOREFRONT_PRICE_FLOOR_UGX', 'BUSINESS_SOCIAL_LABELS', 'BUSINESS_SOCIAL_KEYS',
+      'kampalaCutoff', 'salePriceUgx', 'getBusinessInfo', 'safeReturnTo', 'formatUgx',
+      'getStorefrontDiscount', 'orderStatusCopy', 'paymentStatusCopy',
+    ];
     const fs = require('node:fs');
     const offenders: string[] = [];
     const walk = (dir: string) => {

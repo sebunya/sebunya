@@ -1,6 +1,7 @@
 ---
 import { apiBase } from '../../lib/api';
 import { getBusinessInfo } from '../../lib/businessInfo';
+import { kampalaCutoff } from '@goldplus/shared';
 import {
   HERO_SLIDE_LIBRARY, HERO_SETTINGS_DEFAULT, HERO_SELECTION_TUNING, selectHeroSlides,
   type HeroSelectionContext,
@@ -164,6 +165,21 @@ const configJson = JSON.stringify({ ...config, preferredArch })
 // hardcoded 17:00 and treat Sunday as the only closed day, on the VISITOR's
 // clock, so it could promise same-day delivery the shop was not offering.
 const heroBiz = await getBusinessInfo();
+
+// The operator's own cutoff, as copy. The sameday slide used to say "5pm" in
+// its text, so moving the cutoff in admin left the hero contradicting the nav
+// and the checkout, which read it from business_info.
+const heroCutoff = kampalaCutoff(new Date(), {
+  cutoffHour: heroBiz.sameDayCutoffHour,
+  closedDays: heroBiz.closedDays,
+});
+
+/** Slide copy carries tokens, never numbers. Applied to every slide. */
+function fillHeroTokens(text: string): string {
+  return String(text ?? '')
+    .replace(/\{pct\}/g, String(config.flashPercent ?? ''))
+    .replace(/\{cutoff\}/g, heroCutoff.cutoffLabel);
+}
 ---
 {/* Preload the lead image for LCP. A preload link in body is valid HTML and
     functions; the lead <img> also carries fetchpriority="high". */}
@@ -198,8 +214,11 @@ const heroBiz = await getBusinessInfo();
           <div class="gp-hero__copy">
             <div class="gp-hero__eyebrow"><span class="gp-hero__rule"></span><span class="gp-hero__plus" aria-hidden="true"></span><span class="gp-hero__kicker" id={s.slideKey === 'flash' ? 'gpFlashKicker' : undefined}>{s.kicker}</span></div>
 
-            {/* {pct} is the live promotion percentage; the slide row never carries a number. */}
-            <h2 class="gp-hero__title" set:html={safeHeadline(s.slideKey === 'flash' ? s.headline.replace(/\{pct\}/g, String(config.flashPercent ?? '')) : s.headline)} />
+            {/* Tokens, so no slide ever hard-codes a number that can go stale.
+                Substituted on EVERY slide: doing it only for `flash` meant the
+                same token written on any other slide reached the customer as
+                the literal text "{pct}". */}
+            <h2 class="gp-hero__title" set:html={safeHeadline(fillHeroTokens(s.headline))} />
 
             {s.slideKey === 'flash' && (
               <div class="gp-hero__count" id="gpCountdown" aria-label="Time remaining in the flash sale">
