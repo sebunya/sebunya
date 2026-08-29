@@ -651,8 +651,13 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
       PERMISSIONS.SEO_APPROVE_HIGH_RISK,
     ],
     dataDependencies: [
-      { name: 'seo_competitors', table: 'seo_competitors' },
-      { name: 'seo_queries', table: 'seo_queries' },
+      // `name` identifies the DEPENDENCY, not the table — the probe only knows
+      // how to reach 'postgres' and returns false for anything else, so naming
+      // these after their tables made the Trust Centre report SEO as DEGRADED
+      // permanently, against tables that exist and hold data. Every other
+      // module declares it this way.
+      { name: 'postgres', table: 'seo_competitors' },
+      { name: 'postgres', table: 'seo_queries' },
     ],
     providerDependencies: [],
     activationPolicy: 'AUTOMATIC',
