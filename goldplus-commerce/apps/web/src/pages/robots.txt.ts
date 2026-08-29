@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../lib/api';
+import { SITE_ORIGIN } from '../lib/sitemap';
 
 /**
  * robots.txt — served from the PUBLISHED governance version when one exists,
@@ -59,7 +60,12 @@ async function publishedRobots(base: string): Promise<{ body: string; version: n
 }
 
 export const GET: APIRoute = async ({ site }) => {
-  const base = (site?.toString() ?? 'http://localhost:4321').replace(/\/$/, '');
+  // `site` is Astro's configured site URL, which this project does not set, so
+  // this fell through to the localhost default and PRODUCTION served
+  // "Sitemap: http://localhost:4321/sitemap.xml" to Google. The sitemap was
+  // therefore never fetchable from the one file that advertises it. Falls back
+  // to the same SITE_ORIGIN the sitemaps themselves are built from.
+  const base = (site?.toString() ?? SITE_ORIGIN).replace(/\/$/, '');
 
   const published = await publishedRobots(base);
   const body = published ? published.body : staticRobots(base);

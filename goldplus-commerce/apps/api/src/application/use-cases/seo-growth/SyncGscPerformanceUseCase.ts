@@ -58,6 +58,13 @@ export type GscSyncResult =
 const ROW_LIMIT = 25_000;
 const CHUNK_DAYS = 31;
 const BACKFILL_MONTHS = 16;
+/**
+ * How far back every sync re-reads so Search Console's own revisions land.
+ * Google restates a day's impressions and clicks for several days after first
+ * reporting it; seven covers that with room to spare, and the store upserts, so
+ * re-reading a day corrects it rather than duplicating it.
+ */
+const REFRESH_WINDOW_DAYS = 7;
 const MAX_RETRIES = 3;
 
 const iso = (d: Date): string => d.toISOString().slice(0, 10);
@@ -100,14 +107,26 @@ export class SyncGscPerformanceUseCase {
     const { store } = this.deps;
     const now = (this.deps.now ?? (() => new Date()))();
 
-    // GSC data is only final ~2 days behind.
+    // GSC data is only final ~2 days behind, and keeps being revised for
+    // several days after that — hence REFRESH_WINDOW_DAYS below.
     const endDate = iso(new Date(now.getTime() - 2 * 24 * 3600 * 1000));
 
     let startDate: string;
     const integration = await store.getIntegration('GSC');
     const syncState = (integration?.sync_state ?? null) as { lastSyncedDate?: string } | null;
     if (syncState?.lastSyncedDate) {
-      startDate = addDays(syncState.lastSyncedDate, 1);
+      // Search Console keeps REVISING a day's figures for several days after
+      // it first reports them. Taking each date exactly once, the day after it
+      // appeared, froze every row at its earliest and lowest value: the shop's
+      // impressions and clicks were permanently understated, and no later sync
+      // ever went back to correct them.
+      //
+      // So the window always reaches back over the maturing days. The store
+      // upserts on (query, page, date), so re-reading a day rewrites it with
+      // Google's better numbers instead of duplicating it.
+      const nextUnseen = addDays(syncState.lastSyncedDate, 1);
+      const maturingFrom = addDays(endDate, -REFRESH_WINDOW_DAYS);
+      startDate = nextUnseen < maturingFrom ? nextUnseen : maturingFrom;
     } else {
       const backfillStart = new Date(now);
       backfillStart.setUTCMonth(backfillStart.getUTCMonth() - BACKFILL_MONTHS);

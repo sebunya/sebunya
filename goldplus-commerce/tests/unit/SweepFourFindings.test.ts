@@ -304,3 +304,56 @@ describe('an operator script cannot be run twice, or run anonymously', () => {
     expect(src).not.toMatch(/const baseUrl = env\.publicApiBaseUrl/);
   });
 });
+
+describe('an imported CONSTANT is imported too, not just called functions', () => {
+  it('every .astro file that uses a shared constant also imports it', () => {
+    // The call-shaped scan misses this: `${SITE_ORIGIN}` is a value reference,
+    // not a call, and a missing import for it throws on EVERY page that renders
+    // the layout. A general "referenced but never declared" rule turned out to
+    // be too noisy to keep honest (hex colours, type unions, template prose),
+    // so this checks the specific shared constants that actually travel between
+    // files — which is where the mistake was made.
+    const SHARED = ['SITE_ORIGIN', 'STOREFRONT_PRICE_FLOOR_UGX', 'BUSINESS_SOCIAL_LABELS', 'BUSINESS_SOCIAL_KEYS'];
+    const fs = require('node:fs');
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = resolve(dir, e.name);
+        if (e.isDirectory()) { walk(p); continue; }
+        if (!e.name.endsWith('.astro')) continue;
+        const src = fs.readFileSync(p, 'utf8');
+        const end = src.indexOf('\n---', 3);
+        if (!src.startsWith('---') || end < 0) continue;
+        const frontmatter = src.slice(3, end).replace(/\/\/[^\n]*/g, '');
+        for (const name of SHARED) {
+          const used = new RegExp('(?<![.\\w$])' + name + '\\b').test(frontmatter);
+          if (!used) continue;
+          const imported = new RegExp('import[\\s\\S]{0,400}?\\b' + name + '\\b[\\s\\S]{0,400}?from').test(frontmatter);
+          if (!imported) offenders.push(`${p.replace(ROOT + '/', '')}: ${name} used but not imported`);
+        }
+      }
+    };
+    walk(resolve(ROOT, 'apps/web/src'));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('what search engines are actually told', () => {
+  it('robots.txt advertises a sitemap on the real site, never localhost', () => {
+    const src = read('apps/web/src/pages/robots.txt.ts');
+    expect(src).toMatch(/site\?\.toString\(\) \?\? SITE_ORIGIN/);
+    expect(src).not.toMatch(/\?\? 'http:\/\/localhost:4321'/);
+  });
+
+  it('every page names ONE canonical host, not whichever the crawler used', () => {
+    const src = read('apps/web/src/layouts/BaseLayout.astro');
+    expect(src).toMatch(/const canonical = canonicalUrl \?\? `\$\{SITE_ORIGIN\}\$\{Astro\.url\.pathname\}`/);
+    expect(src).not.toMatch(/\$\{Astro\.url\.origin\}\$\{Astro\.url\.pathname\}/);
+  });
+
+  it('Search Console figures are re-read while Google is still revising them', () => {
+    const src = read('apps/api/src/application/use-cases/seo-growth/SyncGscPerformanceUseCase.ts');
+    expect(src).toMatch(/const REFRESH_WINDOW_DAYS = 7;/);
+    expect(src).toMatch(/nextUnseen < maturingFrom \? nextUnseen : maturingFrom/);
+  });
+});

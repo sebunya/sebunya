@@ -4,6 +4,7 @@ import GpNav from '../components/GpNav.astro';
 
 import { whatsappSupportNumber } from '../lib/api';
 import { getBusinessInfo } from '../lib/businessInfo';
+import { SITE_ORIGIN } from '../lib/sitemap';
 import { resolveMeasurementConfig } from '../lib/measurement';
 
 // Business/contact info — admin-editable, DB-backed (falls back to DEFAULT).
@@ -105,7 +106,14 @@ const footerSocialLinks = [
 // it carried payment-return parameters (and, once, provider text) into
 // <link rel="canonical"> and og:url. Pages whose query IS the resource
 // (/shop filters, via crawlPolicy) pass canonicalUrl explicitly.
-const canonical = canonicalUrl ?? `${Astro.url.origin}${Astro.url.pathname}`;
+// SITE_ORIGIN, not the origin this request happened to arrive on. Search
+// Console shows the shop indexed under BOTH https://www.shopgoldplus.com and
+// https://shopgoldplus.com, because a request-derived canonical simply agrees
+// with whichever host the crawler used, so each page competed with its own
+// twin and the ranking signals split between them. Every page now names one
+// canonical host — the same one the sitemaps and the pages that already pass
+// canonicalUrl explicitly use.
+const canonical = canonicalUrl ?? `${SITE_ORIGIN}${Astro.url.pathname}`;
 const measurement = resolveMeasurementConfig(import.meta.env);
 ---
 

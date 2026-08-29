@@ -169,7 +169,7 @@ describe('SyncGscPerformanceUseCase', () => {
     expect(store.patches).toHaveLength(0);
   });
 
-  it('syncs incrementally from lastSyncedDate, upserting mapped rows', async () => {
+  it('re-reads the maturing window as well as the new days, upserting mapped rows', async () => {
     const store = fakeStore({ lastSyncedDate: '2026-08-01' });
     const queries: any[] = [];
     const client = {
@@ -190,7 +190,12 @@ describe('SyncGscPerformanceUseCase', () => {
     });
     const result = await uc.execute();
     expect(result.status).toBe('SYNCED');
-    expect(queries[0].startDate).toBe('2026-08-02');
+    // Search Console REVISES a day's figures for several days after first
+    // reporting it. Resuming at lastSyncedDate + 1 (2026-08-02) froze every row
+    // at its earliest, lowest value and never went back. The window now always
+    // reaches REFRESH_WINDOW_DAYS back from the end date, so those days are
+    // re-read and upserted with Google's corrected numbers.
+    expect(queries[0].startDate).toBe('2026-07-30'); // endDate − 7
     expect(queries[0].endDate).toBe('2026-08-06'); // today − 2 days
     expect(store.upserted[0][0]).toMatchObject({
       date: '2026-08-02',
