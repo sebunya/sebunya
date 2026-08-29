@@ -492,3 +492,25 @@ describe('SEO ownership is decided on observed reality', () => {
       .toMatch(/Number\(b\.providerObserved\) - Number\(a\.providerObserved\)/);
   });
 });
+
+describe('turning on an ad platform is a privileged, recorded act', () => {
+  it('updating a paid-social destination needs a MANAGE right, not a read one', () => {
+    const src = read('apps/api/src/interfaces/http/routes/admin/measurement-paid-social.ts');
+    const block = src.slice(src.indexOf("'/destinations/:id/update'"), src.indexOf("'/delivery/:eventId/retry'"));
+    expect(block).toMatch(/requirePermissions\(\[PERMISSIONS\.SETTINGS_MANAGE\]\)/);
+    expect(block).not.toMatch(/requirePermissions\(\[PERMISSIONS\.REPORTS_READ\]\)/);
+    // Enabling a platform must be attributable, and the id must be an id.
+    expect(block).toMatch(/PAID_SOCIAL_DESTINATION_UPDATED/);
+    expect(block).toMatch(/Missing or malformed id/);
+  });
+
+  it('the battery routes keep their per-action rights, which are stricter', () => {
+    // These gate on BATTERIES_READ then check the ACTUAL right for the action
+    // requested (publish vs manage) and 403. That is finer than a blanket route
+    // guard, and a naive "no write behind a read permission" sweep must not be
+    // allowed to flatten it.
+    const src = read('apps/api/src/interfaces/http/routes/admin/batteries.ts');
+    expect(src).toMatch(/PERMISSIONS\.BATTERIES_PUBLISH : PERMISSIONS\.BATTERIES_CATALOGUE_MANAGE/);
+    expect(src).toMatch(/if \(!has\(c, needs\)\) return bad\(c, 'FORBIDDEN'/);
+  });
+});
