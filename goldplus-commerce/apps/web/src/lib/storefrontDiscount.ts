@@ -60,8 +60,11 @@ export async function getStorefrontDiscount(): Promise<StorefrontDiscount> {
 // The formula lives in @goldplus/shared so the API's Merchant Center feed and
 // every storefront surface use ONE copy. Re-exported here so existing callers
 // keep their import path.
-// Imported from the PRICING SUBPATH, not the package barrel. The barrel
-// reaches node:crypto through checkout-intent, and this module is pulled
-// into a browser bundle by the recently-viewed rail, which fails the client
-// build outright.
-export { salePriceUgx } from '@goldplus/shared/pricing';
+// Imported from the shared package's pricing LEAF by path, not through the
+// package name. Two things forbid the barrel here: it reaches node:crypto via
+// checkout-intent, and this module is bundled for the browser by the
+// recently-viewed rail, so the client build fails outright. A package.json
+// "exports" subpath fixed that but changed how the API resolves the package at
+// runtime, and the API then loaded raw TypeScript and would not boot. A
+// relative import sidesteps package resolution altogether.
+export { salePriceUgx } from '../../../../packages/shared/src/pricing/salePrice';

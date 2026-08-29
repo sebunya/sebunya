@@ -51,8 +51,11 @@ describe('a price is the price', () => {
     // From the pricing SUBPATH. The package barrel reaches node:crypto via
     // checkout-intent, and this module is bundled for the browser by the
     // recently-viewed rail, so importing the barrel breaks the client build.
-    expect(read('apps/web/src/lib/storefrontDiscount.ts')).toMatch(/export \{ salePriceUgx \} from '@goldplus\/shared\/pricing'/);
-    expect(JSON.parse(read('packages/shared/package.json')).exports['./pricing']).toBeTruthy();
+    expect(read('apps/web/src/lib/storefrontDiscount.ts'))
+      .toMatch(/export \{ salePriceUgx \} from '\.\.\/\.\.\/\.\.\/\.\.\/packages\/shared\/src\/pricing\/salePrice'/);
+    // No "exports" field: adding one changed how the API resolves the package
+    // at runtime, and it booted into raw TypeScript ("} as const") and died.
+    expect(JSON.parse(read('packages/shared/package.json')).exports).toBeUndefined();
   });
 
   it('the floor stops the cut', () => {
