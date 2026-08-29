@@ -28,13 +28,17 @@ async function main(): Promise<void> {
 
   for (const slide of slides) {
     const headline = String((slide as { headline?: string }).headline ?? '');
-    if (!/on everything/i.test(headline)) continue;
 
-    // "<em>{pct}% discount</em> on everything" -> "Up to <em>{pct}% off</em>"
+    // Two corrections, both replacing a NUMBER in the copy with a token the
+    // renderer fills from live config, so the slide cannot go stale:
+    //   "on everything"  -> the floor means it is not on everything
+    //   "5pm"            -> the cutoff is operator-set in business_info
     const corrected = headline
       .replace(/<em>\{pct\}% discount<\/em>\s*on everything/i, 'Up to <em>{pct}% off</em>')
       .replace(/\{pct\}% discount on everything/i, 'Up to {pct}% off')
-      .replace(/\s*on everything/i, '');
+      .replace(/\s*on everything/i, '')
+      .replace(/\b5\s*pm\b/i, '{cutoff}');
+    if (corrected === headline) continue;
 
     console.log(`slide=${(slide as { slideKey?: string }).slideKey}`);
     console.log(`  was: ${headline}`);
