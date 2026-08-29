@@ -167,3 +167,33 @@ describe('a redirect stays on this site', () => {
     expect(read('apps/web/src/pages/admin/login.astro')).toMatch(/safeReturnTo\(returnTo, '\/admin'\)/);
   });
 });
+
+describe('an operator edit reaches the site', () => {
+  it('the WhatsApp number drives a plain wa.me link', () => {
+    const src = read('apps/web/src/pages/admin/business-info.astro');
+    expect(src).toMatch(/whatsappNumber: whatsappNumber,/);
+    expect(src).toMatch(/https:\\\/\\\/wa\\\.me\\\/\\d\+\\\/\?\$/);
+  });
+
+  it('the nav points rate is not offered as an editable money claim', () => {
+    const src = read('apps/web/src/pages/admin/nav.astro');
+    const block = src.slice(src.indexOf('settings.pointsToUgxRate"'), src.indexOf('settings.pointsToUgxRate"') + 700);
+    expect(block).toMatch(/readonly/);
+  });
+
+  it('a failed cart write is reported, not swallowed', () => {
+    expect(read('apps/web/src/pages/cart.astro'))
+      .toMatch(/cartNotice = cartNotice \?\? 'We could not update your basket just now/);
+  });
+
+  it('the category hub copy still names the address business_info holds', () => {
+    // Those pages state the shop address in prose, 18 times. Templating marketing
+    // sentences from a config field would read badly, so instead: if the shop
+    // moves, this fails and names the pages that have to be rewritten.
+    const address = read('packages/shared/src/business/index.ts');
+    const line = address.match(/addressLine1: '([^']+)'/)?.[1] ?? '';
+    const street = line.split(',')[0].trim();
+    expect(street.length).toBeGreaterThan(3);
+    expect(read('apps/web/src/lib/categoryHubs.ts')).toContain(street);
+  });
+});

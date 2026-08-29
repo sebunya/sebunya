@@ -181,6 +181,9 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
     }
   } catch (err) {
     console.error('[CART_POST_ERROR] Failed to handle cart post:', err);
+    // Say so. Swallowed, the page re-rendered as if nothing had happened and
+    // the customer was left thinking their change had been saved.
+    cartNotice = cartNotice ?? 'We could not update your basket just now. Please check it and try again.';
   }
 }
 

@@ -26,11 +26,20 @@ if (Astro.request.method === 'POST') {
       href: String(form.get(`social.${key}.href`) ?? '').trim(),
       enabled: form.get(`social.${key}.enabled`) === 'on',
     }));
+    const whatsappNumber = String(form.get('whatsappNumber') ?? '').trim();
+    const typedWhatsappUrl = String(form.get('whatsappUrl') ?? '').trim();
     const config = {
       phoneDisplay: String(form.get('phoneDisplay') ?? '').trim(),
       phoneDial: String(form.get('phoneDial') ?? '').trim(),
-      whatsappNumber: String(form.get('whatsappNumber') ?? '').trim(),
-      whatsappUrl: String(form.get('whatsappUrl') ?? '').trim(),
+      whatsappNumber: whatsappNumber,
+      // The number was editable but nothing read it: every link on the site
+      // renders whatsappUrl, so changing the number alone did nothing and the
+      // two could disagree. A PLAIN wa.me link now follows the number. A URL
+      // the operator has customised (prefilled text, a different host) is left
+      // exactly as typed, so this cannot clobber a deliberate link.
+      whatsappUrl: /^https:\/\/wa\.me\/\d+\/?$/.test(typedWhatsappUrl) || typedWhatsappUrl === ''
+        ? `https://wa.me/${whatsappNumber.replace(/\D/g, '')}`
+        : typedWhatsappUrl,
       whatsappChannelUrl: String(form.get('whatsappChannelUrl') ?? '').trim(),
       addressLine1: String(form.get('addressLine1') ?? '').trim(),
       addressLine2: String(form.get('addressLine2') ?? '').trim(),

@@ -197,7 +197,7 @@ const rate = (n: number | null) => (n == null ? '— (below sample floor)' : `${
             <label class="mt-2 block text-xs">First-order estimate<input class="mt-1 w-full rounded border px-2 py-1" name="settings.firstOrderEstimateUgx" value={config.settings.firstOrderEstimateUgx} /></label>
             <label class="mt-2 block text-xs">First-order discount %<input type="number" class="mt-1 w-full rounded border px-2 py-1" name="settings.firstOrderDiscountPct" value={config.settings.firstOrderDiscountPct} /></label>
             <label class="mt-2 block text-xs">Referral %<input type="number" class="mt-1 w-full rounded border px-2 py-1" name="settings.referralPct" value={config.settings.referralPct} /></label>
-            <label class="mt-2 block text-xs">Points → UGX rate<input type="number" class="mt-1 w-full rounded border px-2 py-1" name="settings.pointsToUgxRate" value={config.settings.pointsToUgxRate} /></label>
+            <label class="mt-2 block text-xs">Points → UGX rate<input type="number" class="mt-1 w-full rounded border px-2 py-1 bg-gray-100 text-gray-500" name="settings.pointsToUgxRate" value={config.settings.pointsToUgxRate} readonly title="Shown for reference only. The header uses the LOYALTY PROGRAMME's redemption value, because this figure is a money claim and must come from the ledger's own settings. Edit it under Loyalty." /><span class="mt-1 block text-[10px] text-gray-500">Read only. The header uses the loyalty programme's redemption value; edit it under Loyalty.</span></label>
           </div>
         </section>
 
