@@ -2,7 +2,7 @@
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { readSessionToken } from '../../lib/session';
 import { apiBase } from '../../lib/api';
-import { BUSINESS_SOCIAL_KEYS } from '@goldplus/shared';
+import { BUSINESS_SOCIAL_KEYS, BUSINESS_SOCIAL_LABELS } from '@goldplus/shared';
 
 /**
  * Business / contact info editor (0112). Address, hours, phone, WhatsApp, the
@@ -22,7 +22,7 @@ if (Astro.request.method === 'POST') {
   try {
     const socials = BUSINESS_SOCIAL_KEYS.map((key) => ({
       key,
-      label: key.charAt(0).toUpperCase() + key.slice(1),
+      label: BUSINESS_SOCIAL_LABELS[key],
       href: String(form.get(`social.${key}.href`) ?? '').trim(),
       enabled: form.get(`social.${key}.enabled`) === 'on',
     }));

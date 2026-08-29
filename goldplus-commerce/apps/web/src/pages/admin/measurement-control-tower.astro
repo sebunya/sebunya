@@ -134,7 +134,7 @@ const countStatus = (v: unknown) => (Number(v ?? 0) > 0 ? 'HEALTHY' : 'NO_DATA_A
             </div>
             <div class="text-right">
               <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Recent event activity</p>
-              <p class="mt-1 text-lg font-black text-slate-800">{hasActivity ? `${totalEvents.toLocaleString('en-UG')} events` : 'NO DATA'}</p>
+              <p class="mt-1 text-lg font-black text-slate-800">{hasActivity ? `${totalEvents.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} events` : 'NO DATA'}</p>
               <p class="mt-1 text-xs text-slate-600">
                 {hasActivity ? 'Observed in the reported window.' : 'Nothing observed in this window. That is an absence of activity, not a fault.'}
               </p>

@@ -224,7 +224,7 @@ if (!previewData.emailHtml) {
     ctaLabel = 'View Order';
   }
 
-  const dateStr = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB');
+  const dateStr = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' }) : new Date().toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' });
   const bannerBg = isSuccessColor ? '#F3FBF2' : '#FCFAF2';
   const borderBg = isSuccessColor ? '#E1F3DF' : '#F7F3E1';
   const fontColor = isSuccessColor ? '#2B6A25' : '#8A6D1C';
@@ -541,7 +541,7 @@ if (currentStatus === 'received') {
               `Items: ${(order.items || []).reduce((n: number, i: any) => n + (Number(i.quantity) || 0), 0)}`,
               order.paymentStatus === 'paid'
                 ? 'Payment: PAID — collect nothing'
-                : `COLLECT ON DELIVERY: UGX ${Number(order.totalUgx ?? order.totalAmount ?? 0).toLocaleString('en-UG')}`,
+                : `COLLECT ON DELIVERY: UGX ${Number(order.totalUgx ?? order.totalAmount ?? 0).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}`,
             ].filter(Boolean).join('\n')}</pre>
             <p class="text-[10px] text-gray-400 mt-2 print:hidden">The copy button places this block on the clipboard, formatted for WhatsApp.</p>
           </div>
@@ -641,16 +641,16 @@ if (currentStatus === 'received') {
                       </div>
                       <div>
                         <span class="text-[8px] font-bold text-gray-400 uppercase block mb-0.5">Created At</span>
-                        <span class="font-medium text-gray-500">{new Date(attempt.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                        <span class="font-medium text-gray-500">{new Date(attempt.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala',  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </div>
 
                     <div class="border-t border-gray-200/50 pt-3 mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] font-medium text-gray-400">
                       <div>
-                        <span class="font-bold">IPN Callback Registered:</span> {attempt.ipnReceivedAt ? new Date(attempt.ipnReceivedAt).toLocaleString('en-GB') : 'No IPN received'}
+                        <span class="font-bold">IPN Callback Registered:</span> {attempt.ipnReceivedAt ? new Date(attempt.ipnReceivedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' }) : 'No IPN received'}
                       </div>
                       <div>
-                        <span class="font-bold">Callback URL Hit:</span> {attempt.callbackReceivedAt ? new Date(attempt.callbackReceivedAt).toLocaleString('en-GB') : 'No callback hit'}
+                        <span class="font-bold">Callback URL Hit:</span> {attempt.callbackReceivedAt ? new Date(attempt.callbackReceivedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' }) : 'No callback hit'}
                       </div>
                     </div>
                   </div>

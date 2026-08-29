@@ -19,6 +19,7 @@ export * from './types/product';
 export * from './types/account';
 export * from './permissions';
 export * from './recommendations';
+export * from './pricing/salePrice';
 export * from './date-validation';
 export * from './events/telemetry';
 export * from './events/consent';

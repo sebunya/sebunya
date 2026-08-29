@@ -49,8 +49,13 @@ export interface SchedulePlan {
  * pre-credential states are excluded: a disabled connection that keeps syncing
  * is the failure operators least expect.
  */
+// PROVIDER_ERROR belongs here with STALE and RATE_LIMITED: it is what one
+// failed call from the provider leaves behind, and it is transient. Excluded,
+// a single timeout parked the connection in a state the scheduler would never
+// pick up again, so the sync stopped for good with nothing to say so.
+// NOT_CONFIGURED stays out: that one really does need a person.
 const SCHEDULABLE_STATUSES = new Set([
-  'READY', 'CONNECTED', 'SYNCING', 'HEALTHY', 'STALE', 'RATE_LIMITED',
+  'READY', 'CONNECTED', 'SYNCING', 'HEALTHY', 'STALE', 'RATE_LIMITED', 'PROVIDER_ERROR',
 ]);
 
 /**

@@ -20,8 +20,15 @@ const formattedPrice = hasValidPrice ? formatUgx(item.price!) : "Price on reques
 
 // The SAME campaign discount every other card shows (display mirrors charge).
 const discount = await getStorefrontDiscount();
-const onSale = hasValidPrice && discount.active && discount.percentBps > 0;
-const saleUgx = onSale ? salePriceUgx(item.price!, discount.percentBps, discount.priceFloorUgx) : null;
+// A campaign running is not the same as this price dropping. At the floor the
+// cut is nothing, and "145,000, was 145,000, 10% discount" is a claim the
+// basket does not honour, so the saving itself is the gate.
+const campaignApplies = hasValidPrice && discount.active && discount.percentBps > 0;
+const candidateSaleUgx = campaignApplies
+  ? salePriceUgx(item.price!, discount.percentBps, discount.priceFloorUgx)
+  : null;
+const onSale = candidateSaleUgx !== null && candidateSaleUgx < item.price!;
+const saleUgx = onSale ? candidateSaleUgx : null;
 
 // Honest stock: the REAL tracked count when the engine carried one — amber
 // urgency only when genuinely low. Computed here to keep `<=` out of the

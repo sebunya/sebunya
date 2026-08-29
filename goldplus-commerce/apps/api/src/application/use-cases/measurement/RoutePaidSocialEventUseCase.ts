@@ -15,7 +15,10 @@ export class RoutePaidSocialEventUseCase {
     try {
       // 1. Consent Check
       if (userId || sessionId) {
-        const consent = await this.consentService.getCurrentState(userId, sessionId!);
+        // getCurrentState(fpClientId, userId). The arguments were the wrong way
+        // round, so every lookup here asked for a consent record under the
+        // wrong identity and got whatever that returned.
+        const consent = await this.consentService.getCurrentState(sessionId, userId);
         if (!consent.advertising || !consent.analytics) {
           this.logger.info({ userId, sessionId, reason: 'CONSENT_DENIED' }, `Measurement event ${eventName} blocked due to missing consent`);
           return;

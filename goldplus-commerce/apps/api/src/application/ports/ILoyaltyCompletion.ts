@@ -32,8 +32,18 @@ export interface ILoyaltyCompletionRepository {
   /** Sum of all positive earn points ever issued (budget-cap input). */
   lifetimeIssuedPoints(): Promise<number>;
   findEarnEntryForOrder(orderId: string): Promise<LoyaltyLedgerEntry | null>;
+  /** Points already clawed back against one earn entry, as a positive number. */
+  sumReversedPointsForEntry(earnEntryId: string): Promise<number>;
 
   createReservation(input: {
+    /**
+     * Ceiling on this account's TOTAL reserved points, checked inside the same
+     * transaction as the insert. Null returned when the reservation would
+     * breach it. Without this the balance check and the insert were separate
+     * statements, so two concurrent redemptions could both pass the check and
+     * reserve the same points twice.
+     */
+    maxTotalReservedPoints?: number;
     accountId: string;
     orderId: string | null;
     pointsReserved: number;
@@ -41,7 +51,7 @@ export interface ILoyaltyCompletionRepository {
     pointValueUgx: number;
     idempotencyKey: string;
     reservedUntil: Date | null;
-  }): Promise<LoyaltyRedemptionRow>;
+  }): Promise<LoyaltyRedemptionRow | null>;
   findReservation(id: string): Promise<LoyaltyRedemptionRow | null>;
   findReservationByOrder(orderId: string): Promise<LoyaltyRedemptionRow | null>;
   /** Points currently held by open reservations for the account (they reduce spendable balance). */

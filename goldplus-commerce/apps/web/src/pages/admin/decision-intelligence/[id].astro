@@ -48,7 +48,7 @@ try {
 
 const RESOLVE_CODES = ["ACTION_COMPLETED", "FALSE_POSITIVE", "EXPECTED_VARIATION", "DATA_QUALITY_ISSUE", "DEPENDENCY_BLOCKED", "NO_ACTION_REQUIRED"];
 const active = d && !["RESOLVED", "DISMISSED", "EXPIRED"].includes(d.status);
-function fmt(x: string | null) { return x ? new Date(x).toLocaleString("en-UG") : "—"; }
+function fmt(x: string | null) { return x ? new Date(x).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' }) : "—"; }
 ---
 
 <AdminLayout title="Insight" description="Decision Intelligence insight detail — evidence, recommendation and operating workflow.">

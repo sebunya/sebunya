@@ -1,7 +1,7 @@
 import { db } from '../db/client';
 import { telemetryDeadLetterQueue } from '../db/schema/telemetry';
 import { outboxEvents } from '../db/schema/system';
-import { eq, and, lte, sql } from 'drizzle-orm';
+import { eq, and, lte, sql, inArray } from 'drizzle-orm';
 import { logger } from '../logging/logger';
 import { env } from '../../config/env';
 import type { CanonicalTelemetryEvent } from '@goldplus/shared';
@@ -69,6 +69,19 @@ const BACKOFF_MS = [
 
 export const EVENT_TYPE_TELEMETRY = 'TELEMETRY_DISPATCH';
 
+/**
+ * How long a claimed row stays off the queue while it is being dispatched.
+ *
+ * The same outbox row is reachable by BOTH this batch sweep and the
+ * TELEMETRY_DISPATCH queue worker, and `SELECT ... FOR UPDATE` outside a
+ * transaction holds its lock only for that statement. Both readers therefore
+ * saw the row as unprocessed and both sent it, so a purchase could be counted
+ * twice by every downstream destination. Claiming is now a conditional UPDATE
+ * that moves `nextAttemptAt` forward: exactly one writer can win a row, and a
+ * process that dies mid-dispatch releases it when the lease expires.
+ */
+export const CLAIM_LEASE_MS = 300_000;
+
 export class TelemetryDispatchService {
   /**
    * Process one batch of pending telemetry outbox events.
@@ -82,8 +95,8 @@ export class TelemetryDispatchService {
   }> {
     const now = new Date();
 
-    const rows = await db
-      .select()
+    const candidates = await db
+      .select({ id: outboxEvents.id })
       .from(outboxEvents)
       .where(
         and(
@@ -95,6 +108,24 @@ export class TelemetryDispatchService {
       .orderBy(outboxEvents.nextAttemptAt)
       .limit(BATCH_SIZE)
       .for('update', { skipLocked: true });
+
+    if (candidates.length === 0) {
+      return { claimed: 0, dispatched: 0, retried: 0, deadLettered: 0 };
+    }
+
+    // The claim itself. Re-checking nextAttemptAt inside the UPDATE is what
+    // makes it exclusive: the loser of a race no longer matches the predicate.
+    const rows = await db
+      .update(outboxEvents)
+      .set({ status: 'processing', nextAttemptAt: new Date(now.getTime() + CLAIM_LEASE_MS) })
+      .where(
+        and(
+          inArray(outboxEvents.id, candidates.map((r) => r.id)),
+          eq(outboxEvents.isProcessed, false),
+          lte(outboxEvents.nextAttemptAt, now)
+        )
+      )
+      .returning();
 
     if (rows.length === 0) {
       return { claimed: 0, dispatched: 0, retried: 0, deadLettered: 0 };

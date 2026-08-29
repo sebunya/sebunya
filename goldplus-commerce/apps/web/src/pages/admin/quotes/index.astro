@@ -85,7 +85,7 @@ const statusToBadge: Record<SampleQuote['status'], { variant: 'pending' | 'info'
                     {q.quantity}
                   </td>
                   <td class="p-6 text-gray-500 font-medium">
-                    {new Date(q.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {new Date(q.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala',  day: '2-digit', month: 'short', year: 'numeric' })}
                   </td>
                   <td class="p-6 text-center">
                     <span class={`inline-block px-2.5 py-1 rounded-lg font-black text-[9px] uppercase tracking-wide border ${

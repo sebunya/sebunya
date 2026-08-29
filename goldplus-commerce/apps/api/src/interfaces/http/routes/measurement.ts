@@ -3,6 +3,9 @@ import { ZeroPartySignalSchema } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
 import { logger } from '../../../infrastructure/logging/logger';
 import { clientIp } from '../clientAddress';
+import { authMiddleware } from '../middleware/auth';
+import { requirePermissions } from '../middleware/permissions';
+import { PERMISSIONS } from '@goldplus/shared';
 
 const registry = Registry.getInstance();
 const routes = new Hono();
@@ -43,7 +46,10 @@ routes.post('/zero-party', async (c) => {
 // GET /measurement/attribution/:orderId — attribution report for an order
 // ─────────────────────────────────────────────────────────────────────────────
 
-routes.get('/attribution/:orderId', async (c) => {
+// An order's marketing journey is operator reporting, not public data, and the
+// only caller is the admin console on its own admin route. Unauthenticated,
+// this returned the full attribution trail for any order id.
+routes.get('/attribution/:orderId', authMiddleware, requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const orderId = c.req.param('orderId');
   if (!orderId) return c.json({ success: false, error: 'ORDER_ID_REQUIRED' }, 400);
 

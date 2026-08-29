@@ -76,7 +76,7 @@ const [queue, margin, variance, fallback] = await Promise.all([
   get("/admin/delivery/reports/fallback-rate"),
 ]);
 
-const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG")}`);
+const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}`);
 ---
 
 <AdminLayout title="Delivery calibration" description="What the model has learned, and what it proposes to change.">

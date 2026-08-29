@@ -3,8 +3,17 @@ import { ConsentSignalSchema, ConsentWithdrawalSchema } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
 import { logger } from '../../../infrastructure/logging/logger';
 import { clientIp } from '../clientAddress';
+import { optionalCustomerSessionMiddleware } from '../middleware/customerSession';
 
-const routes = new Hono();
+const routes = new Hono<{ Variables: { userId?: string } }>();
+
+// A logged-out browser legitimately records consent against its own
+// fp_client_id, so these stay public. What they must NOT do is take the
+// caller's word for WHICH ACCOUNT a decision belongs to: user_id used to come
+// straight from the request body, so anyone could grant, withdraw or read the
+// consent of any account whose uuid they had. The account is now whoever the
+// session says it is, and nobody if there is no session.
+routes.use('*', optionalCustomerSessionMiddleware);
 const registry = Registry.getInstance();
 const consentService = registry.consentService;
 
@@ -36,7 +45,11 @@ routes.post('/signal', async (c) => {
   }
 
   try {
-    const result = await consentService.recordSignal(parsed.data, realIp, realUa);
+    const result = await consentService.recordSignal(
+      { ...parsed.data, user_id: c.get('userId') },
+      realIp,
+      realUa,
+    );
     return c.json({ success: true, recordId: result.recordId, state: result.state }, 200);
   } catch (err) {
     logger.error({ err }, '[Consent] Failed to record signal');
@@ -50,7 +63,15 @@ routes.post('/signal', async (c) => {
 
 routes.get('/status', async (c) => {
   const fpClientId = c.req.query('fp_client_id');
-  const userId     = c.req.query('user_id');
+  const requestedUserId = c.req.query('user_id');
+  const sessionUserId = c.get('userId');
+
+  // An account's consent state is readable only by that account. Anonymous
+  // callers get the fp_client_id view and nothing else.
+  if (requestedUserId && requestedUserId !== sessionUserId) {
+    return c.json({ success: false, error: 'FORBIDDEN' }, 403);
+  }
+  const userId = requestedUserId ? sessionUserId : undefined;
 
   if (!fpClientId && !userId) {
     return c.json({ success: false, error: 'IDENTITY_REQUIRED' }, 400);
@@ -77,7 +98,11 @@ routes.post('/withdraw', async (c) => {
   const realUa = c.req.header('user-agent') || '';
 
   try {
-    const result = await consentService.recordWithdrawal(parsed.data, realIp, realUa);
+    const result = await consentService.recordWithdrawal(
+      { ...parsed.data, user_id: c.get('userId') },
+      realIp,
+      realUa,
+    );
     return c.json({ success: true, recordId: result.recordId }, 200);
   } catch (err) {
     logger.error({ err }, '[Consent] Withdrawal failed');

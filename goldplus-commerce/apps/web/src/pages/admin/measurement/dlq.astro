@@ -296,7 +296,7 @@ if (!token) {
 
       tbody.innerHTML = rows.map(r => `
         <tr>
-          <td>${new Date(r.failedAt).toLocaleString()}</td>
+          <td>${new Date(r.failedAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
           <td><span class="event-badge">${r.eventName}</span></td>
           <td><span class="event-id-mono" title="${r.eventId}">${r.eventId.slice(0, 16)}…</span></td>
           <td><span class="attempts-badge">${r.totalAttempts}x</span></td>

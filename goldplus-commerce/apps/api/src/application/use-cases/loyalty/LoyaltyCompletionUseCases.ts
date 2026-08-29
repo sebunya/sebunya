@@ -77,14 +77,24 @@ export class ClawbackOrderEarnUseCase {
     const points = computeProRataClawback(earn.points, shareBps);
     if (points <= 0) return fail('NOTHING_TO_CLAW', 'The refund share claws back zero points.');
     if (!input.reason.trim()) return fail('REASON_REQUIRED', 'A clawback requires a reason.');
+    // An order can be refunded more than once. Keyed on the earn entry alone,
+    // the second partial refund reused the first one's key, was treated as a
+    // replay and clawed back nothing while reporting success. The key is the
+    // RUNNING TOTAL clawed against this earn, so a retry of the same refund is
+    // still deduplicated but a genuine second refund is not.
+    const alreadyClawed = await this.completion.sumReversedPointsForEntry(earn.id);
+    const remaining = Math.max(0, earn.points - alreadyClawed);
+    if (remaining <= 0) return fail('NOTHING_TO_CLAW', 'This order has already been fully clawed back.');
+    const clawback = Math.min(points, remaining);
+    const cumulative = alreadyClawed + clawback;
     try {
       const { entry, replay } = await this.repo.append({
         accountId: earn.accountId,
         type: 'reversal',
-        points: -points,
+        points: -clawback,
         orderId: input.orderId,
         reason: `Clawback (${shareBps === 10_000 ? 'full' : `${(shareBps / 100).toFixed(1)}%`}): ${input.reason.trim()}`.slice(0, 300),
-        idempotencyKey: `reversal:${earn.id}`,
+        idempotencyKey: `reversal:${earn.id}:${cumulative}`,
         expiresAt: null,
         reversedEntryId: earn.id,
       });
@@ -94,9 +104,9 @@ export class ClawbackOrderEarnUseCase {
         action: 'LOYALTY_CLAWBACK',
         entity: 'loyalty_ledger_entry',
         entityId: entry.id,
-        newState: { orderId: input.orderId, points: -points, shareBps, reason: input.reason },
+        newState: { orderId: input.orderId, points: -clawback, shareBps, reason: input.reason },
       });
-      return { ok: true, points };
+      return { ok: true, points: clawback };
     } catch (error) {
       if ((error as Error).message === 'LOYALTY_IDEMPOTENCY_CONFLICT') {
         return fail('ALREADY_CLAWED', 'This earn has already been clawed back.');
@@ -142,6 +152,9 @@ export class ReserveRedemptionUseCase {
     if (!plan.ok) return fail(plan.code, plan.message);
     const ttl = Math.min(Math.max(input.ttlMinutes ?? 120, 10), 24 * 60);
     const row = await this.completion.createReservation({
+      // The check above is an early exit; this is the one that actually holds,
+      // because it is applied inside the same transaction as the insert.
+      maxTotalReservedPoints: balance.available,
       accountId: account.id,
       orderId: null,
       pointsReserved: plan.points,
@@ -150,6 +163,7 @@ export class ReserveRedemptionUseCase {
       idempotencyKey: `resv:${input.idempotencyKey}`,
       reservedUntil: new Date(Date.now() + ttl * 60_000),
     });
+    if (!row) return fail('INSUFFICIENT_POINTS', 'Those points are already committed to another order.');
     return { ok: true, reservationId: row.id, valueUgx: row.valueUgx };
   }
 }

@@ -115,7 +115,7 @@ function classChip(c: string) {
           <div class="bg-white border border-gray-200 rounded-2xl p-6">
             <h3 class="text-sm font-black text-brand-dark mb-4">Lifecycle</h3>
             {lifecycle ? (
-              <p class="text-xs text-gray-600">Stage <strong class="text-brand-dark">{lifecycle.stage.replace(/_/g, " ")}</strong> · policy v{lifecycle.policyVersion}<br/><span class="text-[11px] text-gray-400">computed {new Date(lifecycle.computedAt).toLocaleString("en-UG")}</span></p>
+              <p class="text-xs text-gray-600">Stage <strong class="text-brand-dark">{lifecycle.stage.replace(/_/g, " ")}</strong> · policy v{lifecycle.policyVersion}<br/><span class="text-[11px] text-gray-400">computed {new Date(lifecycle.computedAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</span></p>
             ) : <p class="text-xs text-gray-400">No lifecycle snapshot yet — recompute to project.</p>}
           </div>
         </div>
@@ -144,7 +144,7 @@ function classChip(c: string) {
               <div class="border border-gray-100 rounded-xl p-4">
                 <div class="flex items-center justify-between mb-1">
                   <span class="text-sm font-black text-brand-dark">{d.selectedAction.replace(/_/g, " ")}</span>
-                  <span class="text-[11px] text-gray-400">{new Date(d.createdAt).toLocaleString("en-UG")}</span>
+                  <span class="text-[11px] text-gray-400">{new Date(d.createdAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</span>
                 </div>
                 <p class="text-[11px] text-gray-500">reasons: {d.reasonCodes.join(", ") || "—"} · policy v{d.policyVersion} · {d.activationState}</p>
                 {d.candidates?.some((c: any) => !c.eligible) && (

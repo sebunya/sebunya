@@ -198,6 +198,11 @@ export class PlayDrawTokenUseCase {
     const claimed = await this.draws.claimToken(input.tokenId, input.userId, now);
     if (!claimed) return fail('TOKEN_USED', 'That card has already been used.');
 
+    // Once the points are in the ledger the card is spent, whatever fails
+    // afterwards. Releasing it then handed the customer a card whose award had
+    // already been made: replaying it hit the same idempotency key, recorded a
+    // duplicate result and returned a 500, so the card could never be used.
+    let awarded = false;
     try {
       const campaign = await this.draws.findCampaignById(existing.campaignId);
       if (!campaign) throw new Error('CAMPAIGN_MISSING');
@@ -223,6 +228,7 @@ export class PlayDrawTokenUseCase {
         ruleCode: 'reward_draw',
         ruleVersion: 1,
       });
+      awarded = true;
 
       await this.draws.recordResult({
         tokenId: claimed.id,
@@ -239,8 +245,8 @@ export class PlayDrawTokenUseCase {
 
       return { ok: true, label: prize.label, points: prize.pointsAwarded, replay: false };
     } catch (error) {
-      // The customer keeps their card if anything went wrong on our side.
-      await this.draws.releaseToken(input.tokenId).catch(() => undefined);
+      // The customer keeps their card only if nothing was awarded yet.
+      if (!awarded) await this.draws.releaseToken(input.tokenId).catch(() => undefined);
       if ((error as Error).message === 'NO_PRIZES_AVAILABLE') {
         return fail('NO_PRIZES_AVAILABLE', 'No prizes are currently available. Your card has been kept.');
       }

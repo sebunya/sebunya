@@ -153,7 +153,7 @@ const typeLabel: Record<SampleSupportTicket['type'], string> = {
                     </span>
                   </td>
                   <td class="p-6 text-gray-500 font-medium">
-                    {new Date(t.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {new Date(t.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala',  day: '2-digit', month: 'short', year: 'numeric' })}
                   </td>
                   <td class="p-6 text-center">
                     {t.sla ? (

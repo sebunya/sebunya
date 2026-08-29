@@ -1,3 +1,5 @@
+import { salePriceUgx } from '@goldplus/shared';
+
 /**
  * Merchant Center product feed + feed-quality diagnostics.
  *
@@ -27,6 +29,12 @@ export interface FeedProduct {
 
 export const STOREFRONT_BASE_URL = 'https://shopgoldplus.com';
 
+/** The live site-wide campaign, when one is running, as the feed must state it. */
+export interface FeedDiscount {
+  percentBps: number;
+  priceFloorUgx: number;
+}
+
 export function escapeXml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -50,9 +58,17 @@ export function isFeedIncluded(p: FeedProduct): boolean {
 const availability = (stockStatus: string): string =>
   stockStatus === 'in_stock' ? 'in stock' : 'out of stock';
 
-export function buildMerchantFeedXml(products: FeedProduct[], baseUrl: string = STOREFRONT_BASE_URL): string {
+export function buildMerchantFeedXml(
+  products: FeedProduct[],
+  baseUrl: string = STOREFRONT_BASE_URL,
+  discount: FeedDiscount | null = null,
+): string {
   const items = products.filter(isFeedIncluded).map((p) => {
     const link = `${baseUrl}/products/${encodeURIComponent(p.slug)}`;
+    const campaignUgx = discount && discount.percentBps > 0
+      ? salePriceUgx(p.priceUgx, discount.percentBps, discount.priceFloorUgx)
+      : null;
+    const saleUgx = campaignUgx !== null && campaignUgx < p.priceUgx ? campaignUgx : null;
     const lines = [
       '    <item>',
       `      <g:id>${escapeXml(p.sku)}</g:id>`,
@@ -62,6 +78,13 @@ export function buildMerchantFeedXml(products: FeedProduct[], baseUrl: string = 
       `      <g:image_link>${escapeXml(p.imageUrl!)}</g:image_link>`,
       `      <g:availability>${availability(p.stockStatus)}</g:availability>`,
       `      <g:price>${p.priceUgx} UGX</g:price>`,
+      // Merchant Center wants the campaign price as g:sale_price alongside the
+      // regular g:price. Publishing only the base price advertised a figure
+      // higher than the storefront charges, which Google flags as a price
+      // mismatch and which misleads the shopper who clicks through. Uses the
+      // one shared formula, floor included, so the feed cannot drift from the
+      // shop the way a hand-copied calculation did.
+      ...(saleUgx !== null ? [`      <g:sale_price>${saleUgx} UGX</g:sale_price>`] : []),
       '      <g:condition>new</g:condition>',
       '      <g:brand>GoldPlus</g:brand>',
     ];

@@ -65,7 +65,7 @@ function maskKey(k: string) { return k.length > 8 ? `${k.slice(0, 4)}…${k.slic
       <div class="bg-red-50 border border-red-200 rounded-2xl p-5 mb-6">
         <h3 class="text-sm font-black text-red-800 mb-2">Identity conflicts for review ({conflicts.length})</h3>
         <div class="space-y-1 text-[11px] text-red-700">
-          {conflicts.map((c) => <div class="font-mono">{c.signalType} · {maskKey(c.identifierKey)} · {new Date(c.createdAt).toLocaleDateString("en-UG")}</div>)}
+          {conflicts.map((c) => <div class="font-mono">{c.signalType} · {maskKey(c.identifierKey)} · {new Date(c.createdAt).toLocaleDateString("en-UG", { timeZone: 'Africa/Kampala' })}</div>)}
         </div>
       </div>
     )}
@@ -96,7 +96,7 @@ function maskKey(k: string) { return k.length > 8 ? `${k.slice(0, 4)}…${k.slic
               {p.riskFlags.map((f) => <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">{f}</span>)}
             </div>
           </div>
-          <p class="text-[11px] text-gray-400 mt-1">{p.accountUserId ? `account ${p.accountUserId.slice(0, 8)}…` : "guest"} · last seen {p.lastSeen ? new Date(p.lastSeen).toLocaleDateString("en-UG") : "—"}</p>
+          <p class="text-[11px] text-gray-400 mt-1">{p.accountUserId ? `account ${p.accountUserId.slice(0, 8)}…` : "guest"} · last seen {p.lastSeen ? new Date(p.lastSeen).toLocaleDateString("en-UG", { timeZone: 'Africa/Kampala' }) : "—"}</p>
         </a>
       ))}
     </div>

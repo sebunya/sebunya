@@ -343,7 +343,7 @@ if (!token) {
       (document.getElementById('avg-score') as HTMLElement).textContent = `${d.avgScore.toFixed(1)}%`;
       (document.getElementById('below-40-pct') as HTMLElement).textContent = `${d.below40Pct}%`;
       (document.getElementById('above-80-pct') as HTMLElement).textContent = `${d.above80Pct}%`;
-      (document.getElementById('total-events') as HTMLElement).textContent = d.totalEvents.toLocaleString();
+      (document.getElementById('total-events') as HTMLElement).textContent = d.totalEvents.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' });
       const bar = document.getElementById('avg-score-bar') as HTMLElement | null;
       if (bar) bar.style.width = `${d.avgScore}%`;
     } catch (err) {
@@ -426,7 +426,7 @@ if (!token) {
             ${r.content ? row('Content', r.content) : ''}
             ${r.landingPath ? row('Landing page', r.landingPath) : ''}
             ${r.referrer ? row('Referrer', r.referrer) : ''}
-            ${r.firstAt ? row('First seen', new Date(r.firstAt).toLocaleString()) : ''}
+            ${r.firstAt ? row('First seen', new Date(r.firstAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })) : ''}
           </div>
         </div>
       `;

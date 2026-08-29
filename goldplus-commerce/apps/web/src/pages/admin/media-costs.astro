@@ -75,7 +75,7 @@ if (Astro.request.method === "POST") {
       } else if (res.ok && json?.success) {
         const prev = json.data?.previous;
         correctionNotice = prev
-          ? `Corrected. Previous spend was ${Number(prev.spendMinor).toLocaleString("en-UG")} (+ ${Number(prev.taxOrFeeMinor).toLocaleString("en-UG")} tax/fee); the audit log holds both.`
+          ? `Corrected. Previous spend was ${Number(prev.spendMinor).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })} (+ ${Number(prev.taxOrFeeMinor).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })} tax/fee); the audit log holds both.`
           : "Corrected.";
       } else {
         submitError = json?.error?.message ?? `The correction could not be processed (HTTP ${res.status}).`;
@@ -190,8 +190,8 @@ try {
   loadError = "Could not reach the API.";
 }
 
-const money = (minor: number, currency: string) => `${currency} ${Math.round(minor).toLocaleString("en-UG")}`;
-const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+const money = (minor: number, currency: string) => `${currency} ${Math.round(minor).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}`;
+const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { timeZone: 'Africa/Kampala',  day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 ---
 
 <AdminLayout

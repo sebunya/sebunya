@@ -31,7 +31,7 @@ const hasActiveFilters = !!(query.placement || query.status || query.type || que
 function formatSchedule(starts?: string | null, ends?: string | null) {
   if (!starts && !ends) return 'No end date set';
   const parseD = (s: string) => {
-     try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return 'Invalid'; }
+     try { return new Date(s).toLocaleDateString('en-US', { timeZone: 'Africa/Kampala',  month: 'short', day: 'numeric' }); } catch { return 'Invalid'; }
   };
   if (starts && ends) return `${parseD(starts)} – ${parseD(ends)}`;
   if (starts) return `From ${parseD(starts)}`;

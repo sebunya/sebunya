@@ -462,7 +462,11 @@ const nbaJson = escNav(JSON.stringify(nba));
             now states that campaign and nothing more.
           */}
           <ul>
-            <li><a href={nav.flash.cta.href}>Everything in the shop <em>−{navDeal.percent}%</em></a></li>
+            {/* "Up to", not "everything": the campaign stops at the price
+                floor, so an item already at the floor comes down by nothing.
+                Promising the full percent on every product was a claim the
+                basket does not honour. */}
+            <li><a href={nav.flash.cta.href}>Up to <em>−{navDeal.percent}%</em> in the shop</a></li>
             <li><a href={nav.flash.cta.href}><b>See what's on sale →</b></a></li>
           </ul>
         </div>
@@ -1614,7 +1618,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       var saleBlock = SALE_ON
         ? '<div class="gp-nav__hold">' +
             '<span class="gp-nav__hold-tag">On now</span>' +
-            '<b>' + RATE_SALE + '% discount on everything</b>' +
+            '<b>Up to ' + RATE_SALE + '% off</b>' +
             '<span>Comes off at checkout. No code needed</span>' +
           '</div>'
         : '';
@@ -1646,7 +1650,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<p>You have <b>' + POINTS.toLocaleString() + ' points</b> waiting' + (RATE_PTS > 0 ? '. That is a UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' discount on your next order' : '') + '.</p>' +
           '<div class="gp-nav__mhi-row"><a href="/account/rewards">Your rewards</a><a href="/account">Your orders</a></div>';
       }
-      var saleLine = SALE_ON ? '<b>' + RATE_SALE + '% discount on everything</b> right now. It comes off at checkout. ' : '';
+      var saleLine = SALE_ON ? '<b>Up to ' + RATE_SALE + '% off</b> right now. It comes off at checkout. ' : '';
       if (returning){
         return '<h2>Welcome back</h2>' +
           '<p>' + saleLine + 'Points start counting from the order you make today.</p>' +

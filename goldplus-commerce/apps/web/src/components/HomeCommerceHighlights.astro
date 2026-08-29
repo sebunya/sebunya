@@ -1,6 +1,7 @@
 ---
 import type { ProductPublicDto } from "@goldplus/shared";
 import { formatUgx } from "../lib/money";
+import { getStorefrontDiscount, salePriceUgx } from "../lib/storefrontDiscount";
 
 /**
  * HomeCommerceHighlights.astro
@@ -19,10 +20,19 @@ if (!promoProduct && !todaysPickProduct) {
   return null;
 }
 
+// These two spots printed the catalogue price while every other card on the
+// site printed the campaign price, so the homepage quoted more than the shop.
+const highlightDiscount = await getStorefrontDiscount();
+
+function chargedPrice(p: ProductPublicDto): number | null {
+  if (typeof p.retailPriceUgx !== "number" || !(p.retailPriceUgx > 0)) return null;
+  if (!highlightDiscount.active || highlightDiscount.percentBps <= 0) return p.retailPriceUgx;
+  return salePriceUgx(p.retailPriceUgx, highlightDiscount.percentBps, highlightDiscount.priceFloorUgx);
+}
+
 function getFormattedPrice(p: ProductPublicDto) {
-  return (typeof p.retailPriceUgx === "number" && p.retailPriceUgx > 0)
-    ? formatUgx(p.retailPriceUgx)
-    : "Price on request";
+  const charged = chargedPrice(p);
+  return charged === null ? "Price on request" : formatUgx(charged);
 }
 
 // Helper to extract high-level category type for empty placeholder fallback states

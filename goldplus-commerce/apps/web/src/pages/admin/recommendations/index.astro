@@ -118,7 +118,7 @@ if (isPermissionRefusal) {
 }
 
 const fmtWhen = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "never";
+  iso ? new Date(iso).toLocaleString("en-GB", { timeZone: 'Africa/Kampala',  day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "never";
 ---
 
 <AdminLayout

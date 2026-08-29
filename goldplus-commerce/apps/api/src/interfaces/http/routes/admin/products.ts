@@ -9,7 +9,7 @@ import { SetAttributeValueUseCase } from '../../../../application/use-cases/prod
 import { DefineAttributeUseCase } from '../../../../application/use-cases/products/DefineAttributeUseCase';
 import { RecordProductSlugChangeUseCase } from '../../../../application/use-cases/products/RecordProductSlugChangeUseCase';
 import { validateStockAdjustment } from '../../../../domain/inventory/Inventory';
-import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
+import { ApiResponse, PERMISSIONS, STOREFRONT_PRICE_FLOOR_UGX } from '@goldplus/shared';
 
 /** Above this a value cannot be a shilling price; it is a typo or an int4 overflow. */
 const MAX_PRICE_UGX = 100_000_000;
@@ -267,6 +267,12 @@ routes.post('/', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => 
   if (priceUgx < 0 || !Number.isInteger(priceUgx) || priceUgx > MAX_PRICE_UGX) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Price must be a whole number of shillings up to ${MAX_PRICE_UGX.toLocaleString('en-UG')}.` } }, 400);
   }
+  // The owner's storefront floor. Only the maximum was checked, so a new or
+  // edited product could be listed under it and reopen the floor the
+  // catalogue, promotions and every display surface enforce.
+  if (priceUgx < STOREFRONT_PRICE_FLOOR_UGX) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Price must be at least UGX ${STOREFRONT_PRICE_FLOOR_UGX.toLocaleString('en-UG')}, the storefront floor.` } }, 400);
+  }
   if (compareAtPriceUgx !== undefined && (!Number.isInteger(compareAtPriceUgx) || compareAtPriceUgx < 0 || compareAtPriceUgx > MAX_PRICE_UGX)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Compare-at price must be a whole number of shillings, or left empty.' } }, 400);
   }
@@ -390,6 +396,12 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
   }
   if (priceUgx < 0 || !Number.isInteger(priceUgx) || priceUgx > MAX_PRICE_UGX) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Price must be a whole number of shillings up to ${MAX_PRICE_UGX.toLocaleString('en-UG')}.` } }, 400);
+  }
+  // The owner's storefront floor. Only the maximum was checked, so a new or
+  // edited product could be listed under it and reopen the floor the
+  // catalogue, promotions and every display surface enforce.
+  if (priceUgx < STOREFRONT_PRICE_FLOOR_UGX) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Price must be at least UGX ${STOREFRONT_PRICE_FLOOR_UGX.toLocaleString('en-UG')}, the storefront floor.` } }, 400);
   }
   if (compareAtPriceUgx !== undefined && (!Number.isInteger(compareAtPriceUgx) || compareAtPriceUgx < 0 || compareAtPriceUgx > MAX_PRICE_UGX)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Compare-at price must be a whole number of shillings, or left empty.' } }, 400);

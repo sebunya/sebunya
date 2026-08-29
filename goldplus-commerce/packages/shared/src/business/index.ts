@@ -59,3 +59,20 @@ export const DEFAULT_BUSINESS_INFO: BusinessInfo = {
 
 /** Known social platforms an admin may toggle/point (icon lives in the footer). */
 export const BUSINESS_SOCIAL_KEYS = ['instagram', 'x', 'facebook', 'youtube', 'tiktok', 'linkedin', 'threads', 'pinterest'] as const;
+
+/**
+ * How each network writes its own name. Capitalising the key gave customers
+ * "Youtube", "Tiktok" and "Linkedin" in the footer, and the admin save rewrote
+ * whatever label was stored with those, so the mistake could not be corrected
+ * from the admin either.
+ */
+export const BUSINESS_SOCIAL_LABELS: Record<(typeof BUSINESS_SOCIAL_KEYS)[number], string> = {
+  instagram: 'Instagram',
+  x: 'X',
+  facebook: 'Facebook',
+  youtube: 'YouTube',
+  tiktok: 'TikTok',
+  linkedin: 'LinkedIn',
+  threads: 'Threads',
+  pinterest: 'Pinterest',
+};

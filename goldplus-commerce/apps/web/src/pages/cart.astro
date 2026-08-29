@@ -279,7 +279,12 @@ try {
   const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
   if (lpJson?.success && lpJson.data?.active) cartLoyaltyRate = Number(lpJson.data.earnRatePer1000Ugx) || 0;
 } catch { /* preview only */ }
-const cartPotentialPoints = cartLoyaltyRate > 0 ? Math.floor(subtotal / 1000) * cartLoyaltyRate : 0;
+// Points are earned on the order TOTAL, which is what the campaign leaves to
+// pay. Previewing them on the pre-discount subtotal promised points the
+// ledger then does not award.
+const cartPotentialPoints = cartLoyaltyRate > 0 ? Math.floor(saleSubtotal / 1000) * cartLoyaltyRate : 0;
+
+
 
 // The same-day deadline, from the SAME operator-configured Kampala cutoff the
 // header uses, rendered where the decision is actually made.

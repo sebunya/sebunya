@@ -80,7 +80,7 @@ try {
 } catch {
   loadError = "Campaign service is unreachable right now.";
 }
-const fmtUgx = (n: number) => `UGX ${Number(n || 0).toLocaleString('en-US')}`;
+const fmtUgx = (n: number) => `UGX ${Number(n || 0).toLocaleString('en-US', { timeZone: 'Africa/Kampala' })}`;
 const STATUS_STYLE: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-700 border-slate-200",
   APPROVED: "bg-emerald-50 text-emerald-800 border-emerald-300",

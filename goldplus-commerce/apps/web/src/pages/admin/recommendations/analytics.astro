@@ -44,7 +44,7 @@ const commercial: CommercialReportPayload | null = commercialRes.ok ? commercial
 
 const ugxOrState = (m: CommercialMetric | undefined): string => {
   if (!m) return "—";
-  if (m.state === "OK" || m.state === "PARTIAL") return `UGX ${Math.round(m.value ?? 0).toLocaleString("en-UG")}`;
+  if (m.state === "OK" || m.state === "PARTIAL") return `UGX ${Math.round(m.value ?? 0).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}`;
   if (m.state === "NOT_ENOUGH_DATA") return "Not enough data yet";
   return "Unavailable";
 };
@@ -101,7 +101,7 @@ const fmtPct = (n: number | null) => {
 // Helper for relative time if needed, otherwise just ISO/Date string
 const fmtDate = (d: string | null) => {
   if (!d) return "Never";
-  return new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleString('en-GB', { timeZone: 'Africa/Kampala',  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
 // Fetch rules for the filter dropdown
@@ -532,7 +532,7 @@ const placements = [
                           <td class="py-1 font-mono text-xs">{l.orderNumber}</td>
                           <td class="px-2">{l.productName}</td>
                           <td class="text-right px-2">{l.quantity}</td>
-                          <td class="text-right px-2 font-black">UGX {Math.round(l.netRevenueUgx).toLocaleString("en-UG")}</td>
+                          <td class="text-right px-2 font-black">UGX {Math.round(l.netRevenueUgx).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</td>
                           <td class="px-2 text-xs">{l.mechanism === "RECOMMENDATION_ADD_TO_CART" ? "add-to-cart" : "click"}</td>
                           <td class="px-2 text-xs">{l.placement ?? "—"}</td>
                         </tr>
@@ -633,9 +633,9 @@ const placements = [
                         <tr class="border-t border-gray-100">
                           <td class="py-2 text-xs font-bold text-gray-700">{cRow.cohort.replace(/_/g, " ")}</td>
                           <td class="text-right px-3 font-black">{cRow.customers}</td>
-                          <td class="text-right px-3">UGX {Math.round(cRow.netRevenue30dUgx).toLocaleString("en-UG")}</td>
-                          <td class="text-right px-3">UGX {Math.round(cRow.netRevenue60dUgx).toLocaleString("en-UG")}</td>
-                          <td class="text-right px-3">UGX {Math.round(cRow.netRevenue90dUgx).toLocaleString("en-UG")}</td>
+                          <td class="text-right px-3">UGX {Math.round(cRow.netRevenue30dUgx).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</td>
+                          <td class="text-right px-3">UGX {Math.round(cRow.netRevenue60dUgx).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</td>
+                          <td class="text-right px-3">UGX {Math.round(cRow.netRevenue90dUgx).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</td>
                           <td class="text-right px-3 font-black">{cRow.repeatPurchasers}</td>
                         </tr>
                       ))}
@@ -671,7 +671,7 @@ const placements = [
                       <td class="text-right px-3 font-black text-brand-dark">{p.responses}</td>
                       <td class={`text-right px-3 font-black ${p.empty > 0 ? "text-red-600" : "text-brand-dark"}`}>{p.empty}</td>
                       <td class="text-right px-3 font-black text-brand-dark">{p.fallbackServed}</td>
-                      <td class="text-right px-3 text-xs text-gray-500">{p.lastResponseAt ? new Date(p.lastResponseAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : "—"}</td>
+                      <td class="text-right px-3 text-xs text-gray-500">{p.lastResponseAt ? new Date(p.lastResponseAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala',  day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -774,8 +774,8 @@ const placements = [
                     {readiness.gates.map((g) => (
                       <tr class="border-t border-gray-100">
                         <td class="py-2 text-xs font-bold text-gray-700">{g.gate.replace(/_/g, ' ')}</td>
-                        <td class="text-right px-3 font-black text-brand-dark">{g.required.toLocaleString('en-UG')}</td>
-                        <td class="text-right px-3 font-black text-brand-dark">{g.actual.toLocaleString('en-UG')}</td>
+                        <td class="text-right px-3 font-black text-brand-dark">{g.required.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
+                        <td class="text-right px-3 font-black text-brand-dark">{g.actual.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
                         <td class="text-right px-3 text-[10px] font-black uppercase">{g.met ? <span class="text-green-700">met</span> : <span class="text-gray-400">not yet</span>}</td>
                       </tr>
                     ))}

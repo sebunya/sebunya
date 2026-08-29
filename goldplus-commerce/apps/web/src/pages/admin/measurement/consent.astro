@@ -276,9 +276,9 @@ if (!token) {
       const withdrawals = records.filter(r => r.isWithdrawal).length;
       const surfaces = new Set(records.map(r => r.captureSurface)).size;
 
-      (document.getElementById('sum-total') as HTMLElement).textContent = records.length.toLocaleString();
-      (document.getElementById('sum-grants') as HTMLElement).textContent = grants.toLocaleString();
-      (document.getElementById('sum-withdrawals') as HTMLElement).textContent = withdrawals.toLocaleString();
+      (document.getElementById('sum-total') as HTMLElement).textContent = records.length.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' });
+      (document.getElementById('sum-grants') as HTMLElement).textContent = grants.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' });
+      (document.getElementById('sum-withdrawals') as HTMLElement).textContent = withdrawals.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' });
       (document.getElementById('sum-surfaces') as HTMLElement).textContent = surfaces.toString();
 
       if (!tbody) return;
@@ -290,7 +290,7 @@ if (!token) {
 
       tbody.innerHTML = records.map(r => {
         const purposes = r.purposes ?? {};
-        const time = new Date(r.createdAt).toLocaleString();
+        const time = new Date(r.createdAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' });
         const identity = r.userId
           ? `<div class="id-mono" title="${r.userId}">user: ${r.userId.slice(0,8)}…</div>`
           : `<div class="id-mono" title="${r.fpClientId}">fp: ${r.fpClientId?.slice(0,12) ?? '—'}…</div>`;

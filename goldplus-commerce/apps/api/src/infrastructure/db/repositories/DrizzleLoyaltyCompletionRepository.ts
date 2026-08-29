@@ -104,7 +104,16 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
     return row ? toEntry(row) : null;
   }
 
+  async sumReversedPointsForEntry(earnEntryId: string): Promise<number> {
+    const [row] = await db
+      .select({ total: sql<number>`coalesce(sum(-${loyaltyLedgerEntries.points}), 0)::int` })
+      .from(loyaltyLedgerEntries)
+      .where(eq(loyaltyLedgerEntries.reversedEntryId, earnEntryId));
+    return row?.total ?? 0;
+  }
+
   async createReservation(input: {
+    maxTotalReservedPoints?: number;
     accountId: string;
     orderId: string | null;
     pointsReserved: number;
@@ -112,25 +121,41 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
     pointValueUgx: number;
     idempotencyKey: string;
     reservedUntil: Date | null;
-  }): Promise<LoyaltyRedemptionRow> {
-    const [row] = await db
-      .insert(loyaltyRedemptions)
-      .values({
-        accountId: input.accountId,
-        orderId: input.orderId,
-        pointsReserved: input.pointsReserved,
-        valueUgx: input.valueUgx,
-        pointValueUgx: input.pointValueUgx,
-        idempotencyKey: input.idempotencyKey,
-        reservedUntil: input.reservedUntil,
-      })
-      .onConflictDoNothing({ target: loyaltyRedemptions.idempotencyKey })
-      .returning();
-    if (row) return toRedemption(row);
-    const existing = await db.query.loyaltyRedemptions.findFirst({
-      where: eq(loyaltyRedemptions.idempotencyKey, input.idempotencyKey),
+  }): Promise<LoyaltyRedemptionRow | null> {
+    return db.transaction(async (tx) => {
+      // Lock the account so a concurrent reservation cannot read the same
+      // reserved total we are about to add to, then re-check capacity inside
+      // the transaction. The use case's own check happens before this and is
+      // only an early exit.
+      if (input.maxTotalReservedPoints !== undefined) {
+        await tx.execute(sql`select id from loyalty_accounts where id = ${input.accountId} for update`);
+        const [current] = (await tx.execute(sql`
+          select coalesce(sum(points_reserved), 0)::bigint as reserved
+          from loyalty_redemptions
+          where account_id = ${input.accountId} and status = 'reserved'
+            and idempotency_key <> ${input.idempotencyKey}`)) as unknown as Array<{ reserved: string | number }>;
+        const alreadyReserved = Number(current?.reserved ?? 0);
+        if (alreadyReserved + input.pointsReserved > input.maxTotalReservedPoints) return null;
+      }
+      const [row] = await tx
+        .insert(loyaltyRedemptions)
+        .values({
+          accountId: input.accountId,
+          orderId: input.orderId,
+          pointsReserved: input.pointsReserved,
+          valueUgx: input.valueUgx,
+          pointValueUgx: input.pointValueUgx,
+          idempotencyKey: input.idempotencyKey,
+          reservedUntil: input.reservedUntil,
+        })
+        .onConflictDoNothing({ target: loyaltyRedemptions.idempotencyKey })
+        .returning();
+      if (row) return toRedemption(row);
+      const existing = await tx.query.loyaltyRedemptions.findFirst({
+        where: eq(loyaltyRedemptions.idempotencyKey, input.idempotencyKey),
+      });
+      return existing ? toRedemption(existing) : null;
     });
-    return toRedemption(existing!);
   }
 
   async findReservation(id: string): Promise<LoyaltyRedemptionRow | null> {
@@ -214,8 +239,16 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
   }
 
   async noticeAlreadySent(earnEntryId: string, kind: string): Promise<boolean> {
+    // A suppressed notice is one that never reached the customer, so it does
+    // NOT count as sent. Treating it as sent meant a single suppression (a
+    // provider outage, a paused channel) permanently cancelled that warning:
+    // the customer's points expired with no notice they could have acted on.
     const row = await db.query.loyaltyExpiryNotices.findFirst({
-      where: and(eq(loyaltyExpiryNotices.earnEntryId, earnEntryId), eq(loyaltyExpiryNotices.noticeKind, kind)),
+      where: and(
+        eq(loyaltyExpiryNotices.earnEntryId, earnEntryId),
+        eq(loyaltyExpiryNotices.noticeKind, kind),
+        eq(loyaltyExpiryNotices.channel, 'notification'),
+      ),
     });
     return Boolean(row);
   }
@@ -224,7 +257,12 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
     await db
       .insert(loyaltyExpiryNotices)
       .values({ accountId: input.accountId, earnEntryId: input.earnEntryId, noticeKind: input.kind, channel: input.channel })
-      .onConflictDoNothing();
+      // (earnEntryId, noticeKind) is unique, so a retry after a suppression has
+      // to UPDATE the existing row to record that it finally went out.
+      .onConflictDoUpdate({
+        target: [loyaltyExpiryNotices.earnEntryId, loyaltyExpiryNotices.noticeKind],
+        set: { channel: input.channel },
+      });
   }
 
   async ledgerTotals() {

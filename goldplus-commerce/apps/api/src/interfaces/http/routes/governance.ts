@@ -12,6 +12,8 @@ import { NotificationTemplateRenderer } from '../../../application/use-cases/not
 import { clientIp } from '../clientAddress';
 import { canTransitionOrder } from '../../../domain/commerce/OrderStateMachine';
 import type { OrderStatus } from '../../../domain/commerce/Order';
+import { DealerApplicationValidationError } from '../../../application/use-cases/DealerApplicationUseCase';
+import { logger } from '../../../infrastructure/logging/logger';
 
 
 const routes = new Hono();
@@ -29,7 +31,12 @@ routes.post('/dealers/apply', async (c) => {
   try {
     await registry.dealerApplicationUseCase.execute({ ...body, id: dealerId });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not save dealer application.';
+    const message = err instanceof DealerApplicationValidationError
+      ? err.message
+      : 'Could not save dealer application.';
+    if (!(err instanceof DealerApplicationValidationError)) {
+      logger.error({ err }, '[Governance] Dealer application failed');
+    }
     const res: ApiResponse<never> = { success: false, error: { code: 'BAD_INPUT', message } };
     return c.json(res, 400);
   }

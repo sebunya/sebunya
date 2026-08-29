@@ -287,7 +287,7 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
                     <div class="p-4 hover:bg-gray-50/80 transition-colors">
                        <div class="flex items-center justify-between mb-1 font-bold">
                           <span class={`${l.action==='CREATED'?'text-green-700':l.action==='UPDATED'?'text-blue-700':'text-gray-600'} uppercase tracking-wide text-[9px]`}>{l.action}</span>
-                          <span class="text-gray-400 text-[9px] font-medium">{new Date(l.performedAt).toLocaleDateString('en-GB', {month:'short', day:'numeric'})}</span>
+                          <span class="text-gray-400 text-[9px] font-medium">{new Date(l.performedAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', month:'short', day:'numeric'})}</span>
                        </div>
                        <div class="text-gray-400 truncate font-mono text-[8px] mt-1">ACTOR: {l.performedBy || 'System'}</div>
                        {(l.action === 'UPDATED' || l.action === 'ROLLED_BACK') && l.before && rule.status !== 'ARCHIVED' && (

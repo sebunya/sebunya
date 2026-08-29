@@ -157,7 +157,7 @@ try {
   if (json?.success) setup = json.data;
 } catch { /* the wizard still works without the banner */ }
 
-const ugx = (n: number | null) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG")}`);
+const ugx = (n: number | null) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}`);
 const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "derived" : "answers";
 ---
 

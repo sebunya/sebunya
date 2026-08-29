@@ -57,21 +57,7 @@ export async function getStorefrontDiscount(): Promise<StorefrontDiscount> {
   return inflight;
 }
 
-/**
- * The discounted price for one basket line, using the evaluator's exact formula
- * so display equals charge to the shilling:
- *
- *   desired   = floor(base * bps / 10000)
- *   available = base - priceFloor * quantity        // PricingEvaluator L129
- *   charged   = base - min(desired, available)
- *
- * `floorUgx` is the floor for THIS base, so a caller passing a unit price passes
- * the per-unit floor and a caller passing a line total passes floor * quantity.
- * It is required, not defaulted: a silently-zero floor is precisely how the
- * display came to advertise a price the checkout would not honour.
- */
-export function salePriceUgx(regularUgx: number, percentBps: number, floorUgx: number): number {
-  const desired = Math.floor((regularUgx * percentBps) / 10_000);
-  const available = Math.max(0, regularUgx - Math.max(0, floorUgx));
-  return Math.max(0, regularUgx - Math.min(desired, available));
-}
+// The formula lives in @goldplus/shared so the API's Merchant Center feed and
+// every storefront surface use ONE copy. Re-exported here so existing callers
+// keep their import path.
+export { salePriceUgx } from '@goldplus/shared';

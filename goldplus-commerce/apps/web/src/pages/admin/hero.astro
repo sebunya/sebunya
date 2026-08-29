@@ -152,8 +152,8 @@ const jsonPretty = (v: unknown) => { try { return JSON.stringify(v ?? {}, null, 
             {report.map((r) => (
               <tr>
                 <th scope="row" class="px-4 py-2 font-bold text-brand-dark text-left">{r.slideKey}</th>
-                <td class="px-4 py-2 text-right">{r.impressions.toLocaleString('en-UG')}</td>
-                <td class="px-4 py-2 text-right">{r.clicks.toLocaleString('en-UG')}</td>
+                <td class="px-4 py-2 text-right">{r.impressions.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
+                <td class="px-4 py-2 text-right">{r.clicks.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
                 <td class="px-4 py-2 text-right font-black">{r.ctr === null ? <span class="text-gray-300">not enough data</span> : `${r.ctr}%`}</td>
               </tr>
             ))}

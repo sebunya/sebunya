@@ -10,9 +10,27 @@ if (!token) {
   return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}`, 303);
 }
 
+// The products list links by id, but /products/:slug matches on SLUG ONLY, so
+// passing the uuid always returned NOT_FOUND and this page rendered empty.
+// Resolve the id to its slug on the admin route first, then read the same
+// public view the page has always rendered.
+async function resolveSlug(productId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(productId)}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const json = await res.json().catch(() => null);
+    return json?.success ? (json.data?.slug ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchProduct(productId: string) {
   try {
-    const res = await fetch(`${apiBase}/products/${encodeURIComponent(productId)}`, {
+    const slug = await resolveSlug(productId);
+    if (!slug) return null;
+    const res = await fetch(`${apiBase}/products/${encodeURIComponent(slug)}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     const json = await res.json().catch(() => null);

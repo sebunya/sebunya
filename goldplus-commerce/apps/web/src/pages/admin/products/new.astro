@@ -4,6 +4,7 @@ import FormField from '../../../components/FormField.astro';
 import FormFeedback from '../../../components/FormFeedback.astro';
 import { apiBase } from '../../../lib/api';
 import { readSessionToken } from '../../../lib/session';
+import { STOREFRONT_PRICE_FLOOR_UGX } from '@goldplus/shared';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -158,7 +159,9 @@ if (Astro.request.method === 'POST') {
             name="priceUgx"
             label="Retail Price (UGX)"
             type="number"
-            placeholder="50000"
+            placeholder={String(STOREFRONT_PRICE_FLOOR_UGX)}
+            min={STOREFRONT_PRICE_FLOOR_UGX}
+            helperText={`The storefront floor is UGX ${STOREFRONT_PRICE_FLOOR_UGX.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}. Nothing may be listed below it.`}
             required
           />
           <div>

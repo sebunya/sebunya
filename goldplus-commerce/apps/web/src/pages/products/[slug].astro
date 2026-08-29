@@ -426,8 +426,8 @@ if (product) {
                 {pdpOnSale && pdpDiscount.endsIso && (
                   <p class="mt-1.5 text-xs font-bold text-amber-700" data-pdp-sale-ends={pdpDiscount.endsIso}>Offer ends soon</p>
                 )}
-                {loyaltyRate > 0 && Math.floor(product.retailPriceUgx / 1000) * loyaltyRate > 0 && (
-                  <p class="text-xs font-bold text-brand-primaryInk mt-1">Earn {(Math.floor(product.retailPriceUgx / 1000) * loyaltyRate).toLocaleString('en-UG')} GoldPlus points on this order</p>
+                {loyaltyRate > 0 && Math.floor((pdpSaleUgx ?? product.retailPriceUgx) / 1000) * loyaltyRate > 0 && (
+                  <p class="text-xs font-bold text-brand-primaryInk mt-1">Earn {(Math.floor((pdpSaleUgx ?? product.retailPriceUgx) / 1000) * loyaltyRate).toLocaleString('en-UG')} GoldPlus points on this order</p>
                 )}
                 </>
               ) : (

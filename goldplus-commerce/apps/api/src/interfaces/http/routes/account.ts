@@ -409,9 +409,12 @@ routes.put('/preferences', async (c) => {
   }
   
   const uc = Registry.getInstance().updateCustomerPreferenceCentreUseCase;
+  // The body is spread FIRST so it can never override the identity that
+  // follows it. Spread last, a request carrying {"userId": "<someone else>"}
+  // read and rewrote that customer's preference centre.
   const data = await uc.execute({
-    userId,
     ...body,
+    userId,
     ipAddress: clientIp(c),
     userAgent: c.req.header('user-agent') || 'unknown'
   });

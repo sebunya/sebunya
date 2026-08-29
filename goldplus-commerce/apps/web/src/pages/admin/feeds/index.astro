@@ -88,16 +88,16 @@ const warnedRows = rows.filter((p) => p.included && (p.issues ?? []).length > 0)
           </div>
           <div class="rounded-2xl border border-gray-200 bg-white p-5">
             <p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Catalogue products</p>
-            <p class="mt-1 text-xl font-black text-brand-dark">{total.toLocaleString("en-UG")}</p>
+            <p class="mt-1 text-xl font-black text-brand-dark">{total.toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</p>
           </div>
           <div class="rounded-2xl border border-gray-200 bg-white p-5">
             <p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Included in feed</p>
-            <p class="mt-1 text-xl font-black text-emerald-800">{included.toLocaleString("en-UG")}</p>
+            <p class="mt-1 text-xl font-black text-emerald-800">{included.toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</p>
             <p class="mt-1 text-[11px] text-gray-500">{total > 0 ? `${((included / total) * 100).toFixed(0)}% of catalogue` : "No products yet."}</p>
           </div>
           <div class="rounded-2xl border border-gray-200 bg-white p-5">
             <p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Excluded</p>
-            <p class="mt-1 text-xl font-black text-amber-800">{excluded.toLocaleString("en-UG")}</p>
+            <p class="mt-1 text-xl font-black text-amber-800">{excluded.toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</p>
             <p class="mt-1 text-[11px] text-gray-500">Each exclusion has a stated reason.</p>
           </div>
         </div>

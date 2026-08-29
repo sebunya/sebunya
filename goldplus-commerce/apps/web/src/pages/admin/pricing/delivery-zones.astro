@@ -46,7 +46,7 @@ if (Astro.request.method === "POST") {
       });
       const json = await res.json().catch(() => null);
       notice = json?.success
-        ? { kind: "success", text: `Adopted the estimate: ${json.data.district} is now a CONFIRMED zone at ${json.data.feeUgx.toLocaleString("en-UG")} UGX.` }
+        ? { kind: "success", text: `Adopted the estimate: ${json.data.district} is now a CONFIRMED zone at ${json.data.feeUgx.toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })} UGX.` }
         : { kind: "error", text: json?.error?.message || "Could not adopt the estimate." };
     } else if (intent === "delete") {
       const id = String(form.get("id") || "");

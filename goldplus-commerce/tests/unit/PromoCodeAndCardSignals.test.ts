@@ -139,7 +139,9 @@ describe('product-card commercial signals', () => {
   it('sale price still mirrors the evaluator formula (display equals charge)', () => {
     expect(card).toContain('salePriceUgx(product.retailPriceUgx!, discount.percentBps, discount.priceFloorUgx)');
     const lib = read('apps/web/src/lib/storefrontDiscount.ts');
-    expect(lib).toContain('Math.floor((regularUgx * percentBps) / 10_000)');
+    // The formula moved to @goldplus/shared so the API's Merchant Center feed
+    // and every storefront surface use one copy; the lib re-exports it.
+    expect(lib).toContain("export { salePriceUgx } from '@goldplus/shared'");
   });
 
   it('every call site passes a floor, and the line-total ones scale it by quantity', () => {

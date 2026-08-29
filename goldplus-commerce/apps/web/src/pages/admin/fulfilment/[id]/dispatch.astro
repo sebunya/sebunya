@@ -96,7 +96,7 @@ try {
 const canDispatch = status === "READY_FOR_DISPATCH" && !dispatch;
 const METHODS = ["RIDER", "COURIER", "PICKUP", "THIRD_PARTY"];
 const TRACKING = ["DISPATCHED", "IN_TRANSIT", "HANDED_OVER"];
-function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG") : "—"; }
+function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' }) : "—"; }
 ---
 
 <AdminLayout title="Dispatch" description="Record and track the dispatch of a fulfilment task — carrier, rider, safe contact, tracking status.">

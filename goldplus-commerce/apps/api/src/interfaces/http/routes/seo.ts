@@ -1,10 +1,12 @@
 import { Hono } from 'hono';
 import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
-import { buildMerchantFeedXml } from '../../../application/use-cases/seo-growth/MerchantFeedUseCase';
+import { buildMerchantFeedXml, STOREFRONT_BASE_URL } from '../../../application/use-cases/seo-growth/MerchantFeedUseCase';
+import { resolveStorefrontDiscount } from '../../../application/pricing/StorefrontDiscountQuery';
 import { SearchBatteryFinderUseCase } from '../../../application/use-cases/seo-growth/BatteryCompatibilityUseCases';
 import { fallbackRobotsTxt } from '../../../application/use-cases/seo-growth/RobotsGovernanceUseCases';
 import { lifecycleSeoOutcome } from '../../../application/use-cases/seo-growth/ProductLifecycleSeoUseCases';
+import { logger } from '../../../infrastructure/logging/logger';
 
 /**
  * U6 — public SEO endpoints. Thin routes over Registry.seoRepo:
@@ -75,8 +77,19 @@ const FEED_TTL_MS = 15 * 60 * 1000;
 routes.get('/merchant-feed.xml', async (c) => {
   const now = Date.now();
   if (!feedCache || now - feedCache.builtAt > FEED_TTL_MS) {
-    const products = await Registry.getInstance().seoGrowthRepo.feedProducts();
-    feedCache = { xml: buildMerchantFeedXml(products), builtAt: now };
+    const registry = Registry.getInstance();
+    const products = await registry.seoGrowthRepo.feedProducts();
+    // The same one campaign the storefront reads, so the feed quotes the price
+    // the shopper is actually charged.
+    const campaign = await resolveStorefrontDiscount(registry.pricingRepo);
+    feedCache = {
+      xml: buildMerchantFeedXml(
+        products,
+        STOREFRONT_BASE_URL,
+        campaign.active ? { percentBps: campaign.percentBps, priceFloorUgx: campaign.priceFloorUgx } : null,
+      ),
+      builtAt: now,
+    };
   }
   c.header('Content-Type', 'application/xml; charset=utf-8');
   c.header('Cache-Control', 'public, max-age=900');
@@ -143,11 +156,13 @@ routes.get('/robots-published', async (c) => {
     };
     return c.json(res);
   } catch (err: any) {
+    logger.error({ err }, '[Seo] Published robots read failed');
     // The storefront falls back to its committed static content on any
     // failure — robots.txt must never be empty because a query failed.
     const res: ApiResponse<never> = {
       success: false,
-      error: { code: 'ROBOTS_READ_FAILED', message: String(err?.message ?? err).slice(0, 200) },
+      // Public endpoint: the cause is logged, not returned.
+      error: { code: 'ROBOTS_READ_FAILED', message: 'Robots configuration is unavailable.' },
     };
     return c.json(res, 503);
   }

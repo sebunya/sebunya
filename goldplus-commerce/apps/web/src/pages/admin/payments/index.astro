@@ -74,7 +74,7 @@ const [funnel, queue, opsConfig] = await Promise.all([
   get("/admin/payments/ops-config"),
 ]);
 
-const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG")}`);
+const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}`);
 const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
   ["Checkout started", "checkoutStarted"],
   ["Payment requested", "paymentRequested"],

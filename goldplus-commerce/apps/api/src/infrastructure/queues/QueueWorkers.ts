@@ -2,8 +2,11 @@ import { Job } from 'bullmq';
 import { QueueService, QUEUES } from './QueueService';
 import { db } from '../db/client';
 import { outboxEvents } from '../db/schema/system';
-import { eq } from 'drizzle-orm';
-import { telemetryDispatcher } from '../telemetry/TelemetryDispatchService';
+import { and, eq, lte } from 'drizzle-orm';
+import { telemetryDispatcher, CLAIM_LEASE_MS } from '../telemetry/TelemetryDispatchService';
+
+/** Hand a failed event back to the batch sweep, which owns backoff and the DLQ. */
+const TELEMETRY_RETRY_DELAY_MS = 30_000;
 import { logger } from '../logging/logger';
 import { RecordPaymentWebhookUseCase } from '../../application/use-cases/payments/RecordPaymentWebhookUseCase';
 import { Registry } from '../Registry';
@@ -34,21 +37,27 @@ export function registerAllWorkers(): void {
       const { outboxId } = job.data as { outboxId: string };
       logger.info({ outboxId }, '[QueueWorker] Telemetry dispatch job started');
 
+      // The SAME claim the batch sweep takes. This row is reachable by both,
+      // and a SELECT ... FOR UPDATE outside a transaction releases its lock as
+      // soon as the statement ends, so both used to dispatch the same event and
+      // every conversion was counted twice. Exactly one writer can match this
+      // predicate; the loser exits without sending.
+      const claimNow = new Date();
       const rows = await db
-        .select()
-        .from(outboxEvents)
-        .where(eq(outboxEvents.id, outboxId))
-        .limit(1)
-        .for('update', { skipLocked: true });
+        .update(outboxEvents)
+        .set({ status: 'processing', nextAttemptAt: new Date(claimNow.getTime() + CLAIM_LEASE_MS) })
+        .where(
+          and(
+            eq(outboxEvents.id, outboxId),
+            eq(outboxEvents.isProcessed, false),
+            lte(outboxEvents.nextAttemptAt, claimNow),
+          ),
+        )
+        .returning();
 
       const eventRecord = rows[0];
       if (!eventRecord) {
-        logger.info({ outboxId }, '[QueueWorker] Event locked, skipped, or not found');
-        return;
-      }
-
-      if (eventRecord.isProcessed) {
-        logger.info({ outboxId }, '[QueueWorker] Event already processed');
+        logger.info({ outboxId }, '[QueueWorker] Event already claimed, processed, or not found');
         return;
       }
 
@@ -65,12 +74,17 @@ export function registerAllWorkers(): void {
         const errMsg = err.message || String(err);
         logger.error({ outboxId, err }, '[QueueWorker] Telemetry dispatch failed');
 
+        // Release the claim onto the batch sweep's schedule instead of holding
+        // it for the whole lease. That sweep owns the backoff curve and the
+        // dead-letter cutoff; this worker only ever bumped the counter, so a
+        // permanently failing event retried forever and never dead-lettered.
         await db
           .update(outboxEvents)
           .set({
             attemptCount: eventRecord.attemptCount + 1,
             lastError: errMsg,
             status: 'retrying',
+            nextAttemptAt: new Date(Date.now() + TELEMETRY_RETRY_DELAY_MS),
           })
           .where(eq(outboxEvents.id, outboxId));
 

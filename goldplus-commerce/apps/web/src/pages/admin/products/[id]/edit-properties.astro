@@ -37,7 +37,11 @@ if (!product) {
 // Fetch categories from backend
 const catsRes = await authedJson<any[]>('/admin/products/categories');
 const categories = catsRes.data ?? [];
-const matchingCat = categories.find((c: any) => c.name === product.category) || categories[0];
+// No fallback to categories[0]. When the product's category could not be
+// matched (it was renamed, or the list failed to load), defaulting to the first
+// category meant saving anything on this form silently recategorised the
+// product. An unmatched category now stays empty and has to be chosen.
+const matchingCat = categories.find((c: any) => c.name === product.category);
 const productCategoryId = matchingCat?.id || '';
 
 if (Astro.request.method === 'POST') {
@@ -144,6 +148,13 @@ if (Astro.request.method === 'POST') {
               required
               class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-colors text-sm font-semibold"
             >
+              {/* Without this, an unmatched category left the browser selecting
+                  the first option on its own, which is the silent
+                  recategorisation this form used to perform. `required` now has
+                  something to fail on. */}
+              {!productCategoryId && (
+                <option value="" selected>{product.category ? `${product.category} (no longer in the list) - choose one` : 'Choose a category'}</option>
+              )}
               {categories.map((cat: any) => (
                 <option value={cat.id} selected={cat.id === productCategoryId}>{cat.name}</option>
               ))}

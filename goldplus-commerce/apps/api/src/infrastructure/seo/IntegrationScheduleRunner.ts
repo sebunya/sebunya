@@ -17,6 +17,9 @@ import {
 
 const rowsOf = (r: unknown): any[] => (Array.isArray(r) ? r : (r as any)?.rows ?? []);
 
+/** How long a RUNNING sync job may sit before it is treated as abandoned. */
+const STALE_RUNNING_JOB_MS = 6 * 60 * 60 * 1000;
+
 async function loadConnections(): Promise<SchedulableConnection[]> {
   const rows = rowsOf(await db.execute(sql`
     select n.id::text as id, n.provider_id, n.status, n.sync_frequency,
@@ -111,7 +114,25 @@ export async function enqueueScheduledSync(connectionId: string): Promise<{
   // second one against the same connection.
   const running = await repo.listSyncJobs({ connectionId, status: 'RUNNING', limit: 1 });
   const queued = await repo.listSyncJobs({ connectionId, status: 'QUEUED', limit: 1 });
-  if (running.length > 0 || queued.length > 0) {
+
+  // A job whose process died mid-run stays RUNNING for ever, and this guard
+  // then blocked that connection's every future sync with nothing to say why.
+  // Past the cutoff the job is abandoned, not running: fail it and carry on.
+  const staleRunning = running.filter((j: any) => {
+    const startedAt = j.started_at ?? j.startedAt ?? j.created_at ?? j.createdAt;
+    const started = startedAt ? new Date(startedAt).getTime() : 0;
+    return started > 0 && Date.now() - started > STALE_RUNNING_JOB_MS;
+  });
+  for (const stale of staleRunning) {
+    await repo.updateSyncJob(String(stale.id), {
+      status: 'FAILED',
+      completedAt: new Date(),
+      error: 'Abandoned: still RUNNING past the staleness cutoff, most likely a restart mid-sync.',
+    });
+  }
+
+  const liveRunning = running.length - staleRunning.length;
+  if (liveRunning > 0 || queued.length > 0) {
     return { enqueued: false, reason: 'A sync job is already queued or running for this connection.' };
   }
 

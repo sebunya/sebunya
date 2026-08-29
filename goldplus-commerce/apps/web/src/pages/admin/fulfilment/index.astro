@@ -252,7 +252,7 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
                 {task.customerName} · {task.customerContactMasked} · {task.deliverySummary || task.deliveryArea}
               </p>
               <p class="text-[11px] text-gray-400 mt-1">
-                SLA due {new Date(task.slaDueAt).toLocaleString("en-UG")} · {task.assignedTo ? (task.assignedTo === currentUserId ? "assigned to you" : "assigned") : "unassigned"}
+                SLA due {new Date(task.slaDueAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })} · {task.assignedTo ? (task.assignedTo === currentUserId ? "assigned to you" : "assigned") : "unassigned"}
               </p>
             </div>
             <div class="text-right">

@@ -111,7 +111,7 @@ const STATUSES = ["OPEN","ACKNOWLEDGED","ASSIGNED","IN_PROGRESS","RESOLVED","DIS
             </div>
           </div>
           <p class="text-xs text-gray-500">{i.summary}</p>
-          <p class="text-[11px] text-gray-400 mt-1">{i.category} · rec: {i.recommendation.replace(/_/g, " ")} · {i.assignedTo ? "assigned" : "unassigned"} · {new Date(i.generatedAt).toLocaleString("en-UG")}</p>
+          <p class="text-[11px] text-gray-400 mt-1">{i.category} · rec: {i.recommendation.replace(/_/g, " ")} · {i.assignedTo ? "assigned" : "unassigned"} · {new Date(i.generatedAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</p>
         </a>
       ))}
     </div>

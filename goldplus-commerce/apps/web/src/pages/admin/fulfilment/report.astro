@@ -52,7 +52,7 @@ const empty = report && report.queue.total === 0;
         <h2 class="text-2xl font-black text-brand-dark tracking-tight">Fulfilment report</h2>
         <p class="text-sm text-gray-500 mt-1">Live pipeline health across queue, SLA, packing, dispatch and delivery.</p>
       </div>
-      {report && <span class="text-[11px] text-gray-400">Generated {new Date(report.generatedAt).toLocaleString("en-UG")}</span>}
+      {report && <span class="text-[11px] text-gray-400">Generated {new Date(report.generatedAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</span>}
     </div>
 
     {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Not permitted.</strong> Your account cannot view fulfilment reports.</div>}

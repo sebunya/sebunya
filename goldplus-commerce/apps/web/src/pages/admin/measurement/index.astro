@@ -572,20 +572,20 @@ if (!token) {
       // Match Quality KPI
       const mq = d.matchQuality;
       setEl('kpi-match-quality', `${mq.avgScore.toFixed(0)}%`);
-      setEl('kpi-match-sub', `${mq.below40Pct}% below threshold · ${mq.totalEvents.toLocaleString()} events`);
+      setEl('kpi-match-sub', `${mq.below40Pct}% below threshold · ${mq.totalEvents.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} events`);
 
       // DLQ
       const dlqCount = d.dlq.unresolvedCount;
-      setEl('kpi-dlq', dlqCount.toLocaleString());
+      setEl('kpi-dlq', dlqCount.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }));
       const dlqCard = document.getElementById('kpi-dlq-card');
       if (dlqCard) dlqCard.style.borderColor = dlqCount > 0 ? '#fca5a5' : '#e2e8f0';
 
       // Consent
       setEl('kpi-ad-consent', `${d.consent.advertisingGrantedPct}%`);
-      setEl('kpi-ad-consent-sub', `${d.consent.totalIdentities.toLocaleString()} identities tracked`);
+      setEl('kpi-ad-consent-sub', `${d.consent.totalIdentities.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} identities tracked`);
 
       // Pending
-      setEl('kpi-pending', (d.outbox.pendingTelemetryEvents || 0).toLocaleString());
+      setEl('kpi-pending', (d.outbox.pendingTelemetryEvents || 0).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }));
 
       // Consent breakdown meters
       animateMeter('meter-analytics',       d.consent.analyticsGrantedPct);
@@ -594,7 +594,7 @@ if (!token) {
       setEl('pct-analytics',       `${d.consent.analyticsGrantedPct}%`);
       setEl('pct-advertising',     `${d.consent.advertisingGrantedPct}%`);
       setEl('pct-personalization', `${d.consent.personalizationGrantedPct}%`);
-      setEl('consent-total',       `${d.consent.totalIdentities.toLocaleString()} identities tracked`);
+      setEl('consent-total',       `${d.consent.totalIdentities.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} identities tracked`);
 
       // Match bars (approximated from summary)
       const above80 = mq.above80Pct ?? 0;
@@ -622,7 +622,7 @@ if (!token) {
       }
 
       if (refreshedEl) {
-        refreshedEl.textContent = `Last refreshed: ${new Date().toLocaleTimeString()}`;
+        refreshedEl.textContent = `Last refreshed: ${new Date().toLocaleTimeString('en-UG', { timeZone: 'Africa/Kampala' })}`;
       }
     } catch (err) {
       if (statusPill && statusText) {

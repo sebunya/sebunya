@@ -372,8 +372,8 @@ function derivedChip(d: string) {
             <div class="font-black uppercase tracking-wider text-gray-400 mb-2">Packing session</div>
             <div class="flex flex-wrap gap-x-6 gap-y-1">
               <span>Status: <strong class="text-brand-dark">{detail.session.status}</strong></span>
-              {detail.session.startedAt && <span>Started: {new Date(detail.session.startedAt).toLocaleString("en-UG")}</span>}
-              {detail.session.completedAt && <span>Completed: {new Date(detail.session.completedAt).toLocaleString("en-UG")}</span>}
+              {detail.session.startedAt && <span>Started: {new Date(detail.session.startedAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</span>}
+              {detail.session.completedAt && <span>Completed: {new Date(detail.session.completedAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</span>}
               {detail.session.packageCount != null && <span>Packages: {detail.session.packageCount}</span>}
               {detail.session.packageReference && <span>Ref: {detail.session.packageReference}</span>}
             </div>

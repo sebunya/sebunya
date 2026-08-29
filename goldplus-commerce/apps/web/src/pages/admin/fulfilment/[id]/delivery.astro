@@ -87,7 +87,7 @@ function outcomeChip(o: string) {
     default: return "bg-gray-100 text-gray-600 border-gray-200";
   }
 }
-function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG") : "—"; }
+function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' }) : "—"; }
 ---
 
 <AdminLayout title="Delivery" description="Record delivery attempts and outcomes for a fulfilment task and view the full delivery history.">

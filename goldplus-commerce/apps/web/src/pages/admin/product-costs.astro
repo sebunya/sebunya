@@ -128,7 +128,7 @@ try {
 }
 
 const ugx = (value: number | null) =>
-  value === null || value === undefined ? "—" : `UGX ${Math.round(value).toLocaleString("en-UG")}`;
+  value === null || value === undefined ? "—" : `UGX ${Math.round(value).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}`;
 
 const today = new Date().toISOString().slice(0, 10);
 const corrections = importResult?.plan.filter((p) => p.isCorrection).length ?? 0;

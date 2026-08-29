@@ -149,7 +149,7 @@ const percent = (rate: number) => `${(rate * 100).toFixed(1)}%`;
                 <td class="p-5 text-center">
                   <span class="text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border border-gray-200 bg-gray-50 text-gray-600">{s.status}</span>
                 </td>
-                <td class="p-5 text-right text-gray-500">{new Date(s.lastSearchedAt).toLocaleDateString("en-UG")}</td>
+                <td class="p-5 text-right text-gray-500">{new Date(s.lastSearchedAt).toLocaleDateString("en-UG", { timeZone: 'Africa/Kampala' })}</td>
                 <td class="p-5 text-right">
                   <form method="POST" class="inline-flex items-center gap-2">
                     <input type="hidden" name="id" value={s.id} />

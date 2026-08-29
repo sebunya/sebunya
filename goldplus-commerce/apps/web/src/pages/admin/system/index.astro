@@ -102,7 +102,7 @@ const criticalChecks = checks.filter(c => ['api-server', 'database', 'product-ca
 const hasOfflineCritical = criticalChecks.some(c => c.status === 'Offline');
 const overallHealth = hasOfflineCritical ? 'Offline' : 'System Online';
 
-const lastChecked = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const lastChecked = new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Kampala',  hour: '2-digit', minute: '2-digit', second: '2-digit' });
 ---
 
 <AdminLayout 

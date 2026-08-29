@@ -85,7 +85,7 @@ const shortId = (id: string | null) => (id ? id.slice(0, 8) : '—');
             <tbody class="text-xs divide-y divide-gray-50">
               {rows.map((r) => (
                 <tr class="hover:bg-gray-50 transition-colors">
-                  <td class="px-6 py-3 text-gray-500 whitespace-nowrap">{new Date(r.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td class="px-6 py-3 text-gray-500 whitespace-nowrap">{new Date(r.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala',  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
                   <td class="px-6 py-3 font-mono text-gray-400" title={r.actorId ?? 'system'}>{shortId(r.actorId)}</td>
                   <td class="px-6 py-3 font-bold text-brand-dark text-sm">{r.action}</td>
                   <td class="px-6 py-3 font-mono text-gray-400 uppercase tracking-wider">{r.entity}</td>

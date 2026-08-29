@@ -47,12 +47,12 @@ const [coupons, devices, reviews, creators, flashSales, seo] = await Promise.all
   load("flash-sales"),
   load("seo"),
 ]);
-const fmt = (n: number | null | undefined) => (n == null ? "—" : Number(n).toLocaleString());
+const fmt = (n: number | null | undefined) => (n == null ? "—" : Number(n).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }));
 
 // Wave 2D: capability hub — one honest snapshot (real row counts; -1 renders as
 // "unknown"; a schema-only capability says so instead of pretending).
 const hub = await load("hub");
-const hc = (n: number | undefined) => (n == null || n < 0 ? "unknown" : Number(n).toLocaleString());
+const hc = (n: number | undefined) => (n == null || n < 0 ? "unknown" : Number(n).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }));
 const HUB_CARDS = hub?.counts
   ? [
       { title: "Catalogue", metric: `${hc(hub.counts.products)} products`, note: hub.counts.productsMissingImages > 0 ? `${hc(hub.counts.productsMissingImages)} missing images` : "images complete", href: "/admin/pim-imports", state: "WORKING" },

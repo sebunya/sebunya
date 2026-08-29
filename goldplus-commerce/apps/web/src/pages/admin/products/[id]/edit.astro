@@ -98,8 +98,14 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const productRes = await authedJson<ProductPublicDto>(`/products/${encodeURIComponent(id ?? '')}`);
-if (productRes.status === 401 || productRes.status === 403) {
+// /products/:slug matches on SLUG ONLY; this page is reached by id, so the
+// uuid has to be resolved to its slug on the admin route first.
+const adminProductRes = await authedJson<{ slug?: string }>(`/admin/products/${encodeURIComponent(id ?? '')}`);
+const productSlug = adminProductRes.data?.slug ?? '';
+const productRes = productSlug
+  ? await authedJson<ProductPublicDto>(`/products/${encodeURIComponent(productSlug)}`)
+  : { status: adminProductRes.status, data: null as ProductPublicDto | null };
+if (adminProductRes.status === 401 || adminProductRes.status === 403 || productRes.status === 401 || productRes.status === 403) {
   Astro.response.headers.set('Set-Cookie', clearSessionCookie());
   return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}/edit`, 303);
 }
