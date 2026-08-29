@@ -36,20 +36,9 @@ async function main(): Promise<void> {
 
   const rows = (summary as any).modules ?? [];
   console.log(`MODULES=${rows.length}`);
-  for (const m of rows) {
-    console.log(
-      [
-        String(m.key ?? m.id ?? '?').padEnd(30),
-        `service=${String(m.serviceState ?? m.service ?? '?').padEnd(12)}`,
-        `access=${String(m.accessState ?? m.access ?? '?').padEnd(11)}`,
-        `activation=${String(m.activationState ?? m.activation ?? '?').padEnd(16)}`,
-        m.blockers?.length ? `blockers=${JSON.stringify(m.blockers).slice(0, 120)}` : '',
-      ].join(' '),
-    );
-  }
+  if (rows.length > 0) console.log('SHAPE=' + JSON.stringify(rows[0]));
+  for (const m of rows) console.log('ROW=' + JSON.stringify(m));
 }
-
-
 
 main()
   .then(() => endDbConnection())
