@@ -65,7 +65,10 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
   {
     slideKey: 'flash', position: 1, enabled: true, theme: 'offer', tint: 'a', media: 'stage',
     kicker: 'Sale on now',
-    headline: '<em>{pct}% discount</em> on everything',
+    // "on everything" is not true while a price floor exists: an item already
+    // at the floor comes down by nothing, so the campaign takes off less than
+    // the headline promises. "Up to" is the honest form of the same offer.
+    headline: 'Up to <em>{pct}% off</em>',
     subcopy: 'It comes off at checkout. No code needed.',
     ctaLabel: 'Get the discount', ctaUrl: '/shop',
     finePrint: '',

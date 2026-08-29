@@ -409,3 +409,30 @@ describe('the storefront does not spin the main thread', () => {
     expect(src).toMatch(/IntersectionObserver/);
   });
 });
+
+describe('the campaign is not advertised as more than it is', () => {
+  it('no customer-facing copy claims the discount applies to everything', () => {
+    // With a per-unit price floor, an item already at the floor comes down by
+    // nothing, so "on everything" overstates the offer. The nav deal panel was
+    // corrected earlier; the hero, the NBA strip and the popover templates were
+    // still saying it.
+    const files = [
+      'packages/shared/src/hero/library.ts',
+      'packages/shared/src/nav/nba.ts',
+      'packages/shared/src/nav/config.ts',
+      'apps/web/src/components/GpNav.astro',
+    ];
+    const offenders: string[] = [];
+    for (const f of files) {
+      for (const line of read(f).split('\n')) {
+        if (line.trim().startsWith('//') || line.trim().startsWith('*')) continue;
+        if (/on everything/i.test(line)) offenders.push(`${f}: ${line.trim().slice(0, 80)}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('the hero default offers "up to"', () => {
+    expect(read('packages/shared/src/hero/library.ts')).toMatch(/headline: 'Up to <em>\{pct\}% off<\/em>'/);
+  });
+});

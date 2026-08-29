@@ -72,7 +72,11 @@ describe('NBA — offer figures come from real rates, never a typed promise', ()
   });
   it('the sale candidate carries the live percentage and only appears while the sale runs', () => {
     const on = computeNbaCandidates({ ...base, saleLive: true }, { ...DEFAULT_NBA_RATES, salePct: 10 }).find((x) => x.id === 'sale')!;
-    expect(on.text).toContain('10% discount');
+    // The copy is now "Up to 10% off": with a price floor, an item already at
+    // the floor comes down by nothing, so "on everything" overstated it. The
+    // point of this assertion is that the LIVE percentage is carried through.
+    expect(on.text).toContain('10% off');
+    expect(on.text).toContain('Up to');
     expect(on.href).toBe('/shop');
     expect(computeNbaCandidates({ ...base, saleLive: true }, { ...DEFAULT_NBA_RATES, salePct: 0 }).map((x) => x.id)).not.toContain('sale');
     expect(computeNbaCandidates({ ...base, saleLive: false }, { ...DEFAULT_NBA_RATES, salePct: 10 }).map((x) => x.id)).not.toContain('sale');

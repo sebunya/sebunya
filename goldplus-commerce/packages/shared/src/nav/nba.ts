@@ -174,7 +174,7 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   // line said "up to 40% off" for a sale that had no such cut.
   const salePct = Number(r.salePct) || 0;
   if (ctx.saleLive && salePct > 0) {
-    c.push({ id: 'sale', score: 92, text: '<em>' + salePct + '% discount</em> on everything right now. It comes off at checkout', short: '<em>' + salePct + '% discount</em> on everything, on now', cta: 'Get the discount', href: R.all });
+    c.push({ id: 'sale', score: 92, text: 'Up to <em>' + salePct + '% off</em> right now. It comes off at checkout', short: 'Up to <em>' + salePct + '% off</em>, on now', cta: 'Get the discount', href: R.all });
   }
 
   // always available, and always true
