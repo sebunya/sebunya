@@ -450,3 +450,19 @@ describe('the campaign is not advertised as more than it is', () => {
     expect(read('packages/shared/src/hero/library.ts')).toMatch(/headline: 'Up to <em>\{pct\}% off<\/em>'/);
   });
 });
+
+describe('hero copy carries tokens, not numbers', () => {
+  it('tokens are filled on EVERY slide, not just the flash one', () => {
+    const src = read('apps/web/src/components/hero/HeroSlider.astro');
+    expect(src).toMatch(/set:html=\{safeHeadline\(fillHeroTokens\(s\.headline\)\)\}/);
+    // Keyed to one slide, the same token on any other reached the customer as
+    // the literal text "{pct}".
+    expect(src).not.toMatch(/s\.slideKey === 'flash' \? s\.headline\.replace/);
+  });
+
+  it('the cutoff token comes from the operator setting, not a number in the copy', () => {
+    const src = read('apps/web/src/components/hero/HeroSlider.astro');
+    expect(src).toMatch(/\.replace\(\/\\\{cutoff\\\}\/g, heroCutoff\.cutoffLabel\)/);
+    expect(read('packages/shared/src/hero/library.ts')).toMatch(/Order before \{cutoff\} and we/);
+  });
+});
