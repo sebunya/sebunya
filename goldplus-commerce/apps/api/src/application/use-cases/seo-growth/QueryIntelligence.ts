@@ -18,6 +18,12 @@ const BRAND_VARIANTS: Array<[RegExp, string]> = [
   [/\bgold\s*plus\b/gi, 'goldplus'],
   [/\bshop\s*gold\s*plus\b/gi, 'goldplus'],
   [/\bshopgoldplus(\.com|\.ug)?\b/gi, 'goldplus'],
+  // The domain without its "plus". Search Console shows real navigational
+  // demand arriving as "shopgold", which fell through every rule above and was
+  // therefore classified UNKNOWN — and an UNKNOWN intent blocks ownership,
+  // which blocks the opportunity. Runs AFTER the "shop gold plus" rule, which
+  // has already collapsed that longer form.
+  [/\bshop\s*gold\b/gi, 'goldplus'],
 ];
 
 /** Storage/capacity units normalise so "128 gb" and "128gb" cluster together. */
