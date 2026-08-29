@@ -141,7 +141,10 @@ describe('product-card commercial signals', () => {
     const lib = read('apps/web/src/lib/storefrontDiscount.ts');
     // The formula moved to @goldplus/shared so the API's Merchant Center feed
     // and every storefront surface use one copy; the lib re-exports it.
-    expect(lib).toContain("export { salePriceUgx } from '@goldplus/shared'");
+    // From the pricing LEAF by relative path: the package barrel reaches
+    // node:crypto and this module is bundled for the browser, and a package.json
+    // "exports" subpath broke how the API resolves the package at runtime.
+    expect(lib).toContain("from '../../../../packages/shared/src/pricing/salePrice'");
   });
 
   it('every call site passes a floor, and the line-total ones scale it by quantity', () => {

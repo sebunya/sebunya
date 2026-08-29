@@ -60,12 +60,13 @@ export interface IDeliveryVarianceRepository {
   findById(varianceId: string): Promise<VarianceRecord | null>;
   /** Only applied on `absorbed`, or on `agreed`. Never on `pending`. */
   applyFeeToOrder(input: { orderId: string; newFeeUgx: number }): Promise<void>;
+  /** Null when the variance was no longer awaiting an answer (someone else answered first). */
   setAgreement(input: {
     varianceId: string;
     agreement: AgreementState;
     actorId: string;
     at: Date;
-  }): Promise<VarianceRecord>;
+  }): Promise<VarianceRecord | null>;
   listPendingAgreement(limit: number): Promise<VarianceRecord[]>;
   listForOrder(orderId: string): Promise<VarianceRecord[]>;
 }
@@ -193,6 +194,13 @@ export class RecordVarianceAgreementUseCase {
     if (order.handedOver) {
       return fail('ORDER_ALREADY_HANDED_OVER', 'The goods are already with the customer. The amount is settled.');
     }
+    // Raising the variance already refuses a paid order, but the customer can
+    // pay in the window between the variance being raised and answered. Agreeing
+    // then would add a fee to an order that is settled in full, so the check has
+    // to happen HERE too, against the order as it is now.
+    if (input.agreed && order.paymentStatus === 'paid') {
+      return fail('VARIANCE_ON_PAID_ORDER', 'That order has been paid in full since this fee change was raised. It cannot be increased now.');
+    }
 
     const now = new Date();
     const updated = await this.repo.setAgreement({
@@ -201,6 +209,10 @@ export class RecordVarianceAgreementUseCase {
       actorId: input.actorId,
       at: now,
     });
+    // Someone else recorded the answer between our read and this write.
+    if (!updated) {
+      return fail('NOT_AWAITING_AGREEMENT', 'That variance is not waiting for the customer’s answer.');
+    }
 
     let cancelled = false;
     if (input.agreed) {

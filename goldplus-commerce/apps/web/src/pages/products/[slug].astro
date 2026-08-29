@@ -51,11 +51,31 @@ try {
 }
 
 if (!product) {
-  // R1: no seed rescue here either — an unreachable product service is a 404,
-  // never a fabricated product page.
-  {
-    return Astro.redirect('/404', 404);
+  // R1: no seed rescue here either — a product page is never fabricated.
+  // But "we cannot reach the catalogue" is not "this product does not exist".
+  // Answering 404 to a blip told the customer the item was gone and invited
+  // search engines to drop a live product URL. A reachability failure is a 503
+  // with Retry-After; only a real 404 from the API is a 404.
+  if (fetchError) {
+    return new Response(
+      `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+        `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+        `<meta name="robots" content="noindex,follow">` +
+        `<title>This page is not loading right now | GoldPlus</title></head>` +
+        `<body style="font-family:system-ui,sans-serif;margin:0;padding:3rem 1.5rem;color:#0A0A0A">` +
+        `<main style="max-width:32rem;margin:0 auto">` +
+        `<h1 style="font-size:1.5rem;font-weight:800">This page is not loading right now</h1>` +
+        `<p style="line-height:1.6">The product is still in our shop. We just could not load its details this moment. ` +
+        `Please try again shortly.</p>` +
+        `<p><a href="/shop" style="font-weight:700">Back to the shop</a></p>` +
+        `</main></body></html>`,
+      {
+        status: 503,
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Retry-After': '30', 'Cache-Control': 'no-store' },
+      },
+    );
   }
+  return Astro.redirect('/404', 404);
 }
 
 if (searchQuery && Number.isInteger(searchRank) && searchRank >= 1 && searchRank <= 50) {

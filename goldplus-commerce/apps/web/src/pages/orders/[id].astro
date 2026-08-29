@@ -23,7 +23,9 @@ let fetchError: string | null = null;
 let notFound = false;
 
 try {
+  // A hung API must not hold the page open indefinitely.
   const res = await fetch(`${apiBase}/account/orders/${encodeURIComponent(id ?? '')}`, {
+    signal: AbortSignal.timeout(8_000),
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) {

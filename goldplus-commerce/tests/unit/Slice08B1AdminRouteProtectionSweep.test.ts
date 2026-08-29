@@ -86,7 +86,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
   it('keeps /admin/login public and preserves safe local return targets', () => {
     const login = read(publicAllowlist[0]);
     expect(login).not.toContain('readSessionToken(Astro.request)');
-    expect(login).toContain("returnTo.startsWith('/admin') && !returnTo.startsWith('//')");
+    // Replaced by the shared safeReturnTo helper, still scoped to /admin.
+    expect(login).toContain("safeReturnTo(returnTo, '/admin')");
   });
 
   it('fails closed for every non-allowlisted admin Astro page', () => {

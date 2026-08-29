@@ -200,12 +200,15 @@ const navConfigJson = escNav(JSON.stringify({
 }));
 const nbaJson = escNav(JSON.stringify(nba));
 ---
-<header class="gp-nav" id="gpNav" data-sale-ends={saleEnds}>
+<header class="gp-nav" id="gpNav" data-sale-ends={saleEnds}
+  data-cutoff-hour={String(biz.sameDayCutoffHour)}
+  data-closed-days={biz.closedDays.join(",")}
+  data-cutoff-label={cut.cutoffLabel}>
   <div class="gp-nav__top">
     <div class="gp-nav__top-in gpn-container">
       <div class="gp-nav__nba" id="gpNavNba" role="status" aria-live="off" aria-label="Recommended next step">
         <span class="gp-nav__dot" aria-hidden="true"></span>
-        <a class="gp-nav__nba-slot" id="gpNavNbaSlot" href="/support" data-in=""><span class="gp-nav__nba-txt" id="gpNavNbaText">Order before <b>5:00pm</b> for same-day delivery in Kampala</span><u id="gpNavNbaCta" hidden=""></u></a>
+        <a class="gp-nav__nba-slot" id="gpNavNbaSlot" href="/support" data-in=""><span class="gp-nav__nba-txt" id="gpNavNbaText">Order before <b>{cut.cutoffLabel}</b> for same-day delivery in Kampala</span><u id="gpNavNbaCta" hidden=""></u></a>
         <button class="gp-nav__nba-x" id="gpNavNbaX" type="button" aria-label="Dismiss this message">×</button>
       </div>
       <span class="gp-nav__reach">
@@ -1203,6 +1206,24 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 <script is:inline set:html={`window.__GPNAV=${navConfigJson};window.GP_NBA=${nbaJson};`}></script>
 
 <script is:inline>
+  /* The shop's clock is Africa/Kampala, and its cutoff and closed days are set
+     by the operator in business_info. Both client blocks below used to read
+     the VISITOR's clock and a hardcoded 17:00/Sunday, so a customer outside
+     EAT, or one whose device clock was off, was told a deadline the shop does
+     not keep, and changing the cutoff in admin moved nothing here. */
+  function gpShopNow(){
+    try { return new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })); }
+    catch (e) { return new Date(); }
+  }
+  function gpCutoffHour(el){
+    var v = parseInt(el && el.getAttribute('data-cutoff-hour'), 10);
+    return isFinite(v) ? v : 17;
+  }
+  function gpClosedDays(el){
+    var raw = (el && el.getAttribute('data-closed-days')) || '';
+    return raw.split(',').map(function(x){ return parseInt(x, 10); }).filter(function(x){ return isFinite(x); });
+  }
+
 (function(){
   'use strict';
   var nav = document.getElementById('gpNav'); if (!nav) return;
@@ -1388,14 +1409,16 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     wrap.addEventListener('focusin', open);
     wrap.addEventListener('focusout', function(e){ if (!wrap.contains(e.relatedTarget)) shut(); });
 
-    /* the cart carries the same 5pm promise as the hero and the top strip —
-       urgency where the decision is actually made */
+    /* the cart carries the same promise as the hero and the top strip, read
+       from the operator's cutoff on the shop's own clock */
     function tick(){
       if (!cut) return;
-      var d = new Date(), h = d.getHours(), m = d.getMinutes();
-      if (d.getDay() === 0){ cut.innerHTML = 'Closed Sunday. This order goes out <b>Monday morning</b>'; return; }
-      if (h >= 17){ cut.innerHTML = "Today's run has left. This order goes out <b>tomorrow morning</b>"; return; }
-      var mins = (17 - h) * 60 - m;
+      var navEl = document.getElementById('gpNav');
+      var d = gpShopNow(), h = d.getHours(), m = d.getMinutes();
+      var cutoffHour = gpCutoffHour(navEl);
+      if (gpClosedDays(navEl).indexOf(d.getDay()) !== -1){ cut.innerHTML = 'Closed today. This order goes out on the <b>next working day</b>'; return; }
+      if (h >= cutoffHour){ cut.innerHTML = "Today's run has left. This order goes out <b>tomorrow morning</b>"; return; }
+      var mins = (cutoffHour - h) * 60 - m;
       var left = mins >= 60 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm' : mins + ' minutes';
       cut.innerHTML = 'Check out in <b>' + left + '</b> and we deliver <b>today</b>.';
     }
@@ -1751,8 +1774,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     function st(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
     function set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
 
-    var d = new Date(), hour = d.getHours(), day = d.getDay();
-    var minsToCutoff = (17 - hour) * 60 - d.getMinutes();
+    var d = gpShopNow(), hour = d.getHours(), day = d.getDay();
+    var cutoffHour = gpCutoffHour(nav), closedDays = gpClosedDays(nav);
+    var isClosedToday = closedDays.indexOf(day) !== -1;
+    var minsToCutoff = (cutoffHour - hour) * 60 - d.getMinutes();
     var saleEnd = new Date(nav.getAttribute('data-sale-ends')).getTime();
 
     var CTX = {
@@ -1763,9 +1788,9 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       points: CFG.points || 0,
       lastOrderDays: st('gp_last_order') ? (Date.now() - parseInt(st('gp_last_order'),10)) / 864e5 : null,
       orderInTransit: st('gp_order_status') === 'out_for_delivery',
-      beforeCutoff: day !== 0 && hour < 17,
+      beforeCutoff: !isClosedToday && hour < cutoffHour,
       minsToCutoff: minsToCutoff,
-      sunday: day === 0,
+      sunday: isClosedToday,
       saleLive: isFinite(saleEnd) ? Date.now() < saleEnd : false
     };
 
@@ -1793,8 +1818,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
       /* same cart, past the cut-off: still worth finishing, honest promise */
       if (CTX.cart > 0 && !CTX.beforeCutoff) c.push({ id:'cart-later', score:94,
-        text:'Your basket is waiting. Order now and we deliver <b>' + (CTX.sunday ? 'Monday' : 'tomorrow') + ' morning</b>',
-        short:'Basket saved. We deliver <b>' + (CTX.sunday ? 'Monday' : 'tomorrow') + '</b>',
+        text:'Your basket is waiting. Order now and we deliver <b>' + (CTX.sunday ? 'on the next working day' : 'tomorrow morning') + '</b>',
+        short:'Basket saved. We deliver <b>' + (CTX.sunday ? 'next working day' : 'tomorrow') + '</b>',
         cta:'Finish order', href:'/cart' });
 
       if (CTX.signedIn && CTX.points >= 1000 && RATE_PTS > 0) c.push({ id:'points', score:88,
@@ -1831,12 +1856,12 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
       /* ---- always available, and always true ---- */
       if (CTX.sunday) c.push({ id:'sunday', score:40,
-        text:'Closed Sunday. Same day delivery resumes <b>Monday</b>',
-        short:'Delivery resumes <b>Monday</b>', href:'/support' });
+        text:'Closed today. Same day delivery resumes on the <b>next working day</b>',
+        short:'Delivery resumes <b>next working day</b>', href:'/support' });
       else if (CTX.beforeCutoff) c.push({ id:'cutoff', score:CTX.minsToCutoff <= 60 ? 90 : 50, urgent:CTX.minsToCutoff <= 60,
         text: CTX.minsToCutoff <= 60
           ? 'Only <em>' + CTX.minsToCutoff + ' minutes</em> left to order for delivery today'
-          : 'Order before <b>5:00pm</b> and we deliver today in Kampala and Wakiso',
+          : 'Order before <b>' + (nav.getAttribute('data-cutoff-label') || '5:00pm') + '</b> and we deliver today in Kampala and Wakiso',
         short: CTX.minsToCutoff <= 60
           ? '<em>' + CTX.minsToCutoff + ' min</em> left for delivery today'
           : 'Order by <b>5:00pm</b> for delivery today',

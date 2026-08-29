@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { deliveryFeeVariance } from '../schema/delivery';
 import {
@@ -98,12 +98,15 @@ export class DrizzleDeliveryVarianceRepository implements IDeliveryVarianceRepos
   }
 
   async setAgreement(input: { varianceId: string; agreement: AgreementState; actorId: string; at: Date }) {
+    // Only a row still awaiting an answer may be answered. The use case checks
+    // this first, but between its read and this write a second operator could
+    // record the opposite answer and overwrite the first.
     const [row] = await db
       .update(deliveryFeeVariance)
       .set({ agreement: input.agreement, agreementBy: input.actorId, agreementAt: input.at })
-      .where(eq(deliveryFeeVariance.id, input.varianceId))
+      .where(and(eq(deliveryFeeVariance.id, input.varianceId), eq(deliveryFeeVariance.agreement, 'pending')))
       .returning();
-    return toRecord(row);
+    return row ? toRecord(row) : null;
   }
 
   async listPendingAgreement(limit: number): Promise<VarianceRecord[]> {

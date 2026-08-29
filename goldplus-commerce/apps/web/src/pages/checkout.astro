@@ -56,6 +56,23 @@ if (!cartCredential) {
   return Astro.redirect('/cart', 303);
 }
 
+
+// The basket has become an order. The COOKIE is only the offline fallback; the
+// server cart is the authority, and leaving it standing meant the customer came
+// back from paying to find their old basket still full, with the mini-cart
+// still counting items they had already bought. Best effort: a failure here
+// must never turn a placed order into an error.
+async function clearBasketAfterOrder() {
+  Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+  try {
+    await cartClient.clear(
+      cartCredential!.token,
+      {},
+      Astro.cookies.get('goldplus_session')?.value ?? null,
+    );
+  } catch { /* the order stands either way */ }
+}
+
 let cart: CartResponse | null = null;
 const serverCart = await cartClient.read(
   cartCredential.token,
@@ -76,11 +93,17 @@ if (serverCart.ok) {
 }
 
 // Fallback to local cookie state if API failed or returned empty!
+// The order is ALWAYS priced server-side (the request carries productId and
+// quantity only), so this can never change what is charged. It can, however,
+// show a stale total from the device, so when it happens the customer is told
+// rather than being quietly shown figures we could not confirm.
+let pricedFromDevice = false;
 if (!cart || cart.items.length === 0) {
   const localDataCookie = Astro.cookies.get('goldplus_cart_data')?.value;
   const items = parseLocalCartCookie(localDataCookie) as any[];
   if (items.length > 0) {
     const subtotalUgx = items.reduce((acc, item) => acc + ((item.unitPriceUgx || item.priceUgx) * item.quantity), 0);
+    pricedFromDevice = true;
     cart = {
       // The credential's cart id, so the local fallback and the server basket refer to
       // the same basket rather than to whatever the browser last held.
@@ -435,7 +458,7 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
               //
               // The cart cookie IS cleared: the basket has become an order, and leaving
               // it would re-add the same items to the next checkout.
-              Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+              await clearBasketAfterOrder();
               return Astro.redirect(payRes.data.redirectUrl, 303);
            }
 
@@ -450,13 +473,13 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            status = 'received';
            message = 'We have your order. Our team will call you to confirm the total before you pay.';
            clearCheckoutIntent(Astro.cookies);
-           Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+           await clearBasketAfterOrder();
         } else {
            status = outcome.status === 'error' ? 'error' : 'received';
            message = outcome.message;
            if (outcome.status !== 'error') {
               clearCheckoutIntent(Astro.cookies);
-              Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+              await clearBasketAfterOrder();
            }
         }
      } else if (result.code === 'CHECKOUT_ALREADY_ORDERED' && result.existingOrder) {
@@ -524,13 +547,6 @@ if (Astro.request.method !== 'POST') {
   }
 }
 
-// Same deterministic rule the ledger applies (floor per 1,000 UGX × rate).
-// The ledger's basis is the ORDER TOTAL (incl. delivery fee) — previewing on
-// the subtotal makes this an honest LOWER BOUND, and the copy says "at least".
-// Points VEST ON DELIVERY (loyalty completion, PART F) — the copy says so.
-const potentialPoints = loyaltyProgramme.active
-  ? Math.floor(cart.subtotalUgx / 1000) * loyaltyProgramme.earnRatePer1000Ugx
-  : 0;
 
 // Initial delivery estimate for the preselected saved address, so a returning
 // customer sees a delivery figure without touching anything. Guests get one
@@ -582,6 +598,18 @@ const checkoutSaleSubtotal = campaignRunning
   ? cart.items.reduce((acc: number, i: any) => acc + salePriceUgx((i.unitPriceUgx || i.priceUgx) * i.quantity, checkoutDiscount.percentBps, checkoutDiscount.priceFloorUgx * i.quantity), 0)
   : cart.subtotalUgx;
 const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
+
+// Same deterministic rule the ledger applies (floor per 1,000 UGX × rate).
+// The ledger's basis is the ORDER TOTAL, which is the DISCOUNTED subtotal plus
+// the delivery fee. Previewing on the pre-discount subtotal was not the "lower
+// bound" the old comment claimed: once a campaign runs, subtotal can exceed
+// discounted-subtotal-plus-delivery, and the preview then promised points the
+// ledger does not award. Basing it on the discounted subtotal, which delivery
+// only ever adds to, makes it a true lower bound again — so the copy says
+// "at least". Points VEST ON DELIVERY (loyalty completion, PART F).
+const potentialPoints = loyaltyProgramme.active
+  ? Math.floor(checkoutSaleSubtotal / 1000) * loyaltyProgramme.earnRatePer1000Ugx
+  : 0;
 /**
  * A running campaign is not the same thing as money off THIS basket. The
  * evaluator will not discount below the per-unit price floor, so a basket of
@@ -890,15 +918,20 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
               <p id="promo-message" class="text-[11px] font-semibold text-slate-500" aria-live="polite"></p>
               <input type="hidden" id="previewQuoteId" name="previewQuoteId" form="checkout-form" />
             </div>
+            {pricedFromDevice && (
+              <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs font-semibold text-amber-900">
+                We could not reach our pricing service just now, so these totals come from your device. We confirm the real total before you pay.
+              </p>
+            )}
             {potentialPoints > 0 && (
               authenticatedUserId ? (
                 <p class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-700">
-                  You'll earn <strong style="color:#456B00">{potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> when this order is delivered.
+                  You'll earn at least <strong style="color:#456B00">{potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> when this order is delivered.
                 </p>
               ) : (
                 <p class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-700">
                   <a href="/login?returnTo=/checkout" class="underline font-bold">Sign in</a> or
-                  <a href="/register?returnTo=/checkout" class="underline font-bold">create an account</a> to earn
+                  <a href="/register?returnTo=/checkout" class="underline font-bold">create an account</a> to earn at least
                   <strong style="color:#456B00"> {potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> on this order.
                 </p>
               )

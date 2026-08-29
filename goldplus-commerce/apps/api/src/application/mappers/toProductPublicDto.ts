@@ -23,6 +23,7 @@ function deriveAvailability(input: {
   if (input.isPreOrderEnabled) return { kind: 'pre_order' };
   if (!input.stockTracked) return { kind: 'unknown' };
   if (input.stockQuantity > 0) return { kind: 'in_stock', quantity: input.stockQuantity };
+  // (input.stockQuantity is the AVAILABLE figure; see the call site.)
   return { kind: 'out_of_stock' };
 }
 
@@ -95,7 +96,11 @@ export function toProductPublicDto(
 
   const availability = deriveAvailability({
     isPreOrderEnabled: entity.isPreOrderEnabled,
-    stockQuantity: entity.stockQuantity,
+    // AVAILABLE, not on-hand. The schema's own rule is
+    // "available = stock_quantity - reserved_quantity", and publishing the raw
+    // stock figure meant a card could promise units already committed to
+    // someone else's order.
+    stockQuantity: entity.availableQuantity(),
     stockTracked,
   });
 

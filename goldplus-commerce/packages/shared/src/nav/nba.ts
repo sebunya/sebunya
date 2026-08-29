@@ -125,8 +125,11 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   if (ctx.cart > 0 && !ctx.beforeCutoff) {
     c.push({
       id: 'cart-later', score: 94,
-      text: 'Your basket is waiting. Order now and we deliver <b>' + (ctx.sunday ? 'Monday' : 'tomorrow') + ' morning</b>',
-      short: 'Basket saved. We deliver <b>' + (ctx.sunday ? 'Monday' : 'tomorrow') + '</b>',
+      // Naming Monday assumed Sunday was the only closed day. The operator sets
+      // which days are closed, so the copy states the rule rather than a weekday
+      // that may not be the right one.
+      text: 'Your basket is waiting. Order now and we deliver <b>' + (ctx.sunday ? 'on the next working day' : 'tomorrow morning') + '</b>',
+      short: 'Basket saved. We deliver <b>' + (ctx.sunday ? 'next working day' : 'tomorrow') + '</b>',
       cta: 'Finish order', href: R.cart,
     });
   }

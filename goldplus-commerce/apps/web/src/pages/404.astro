@@ -2,6 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import EmptyState from '../components/EmptyState.astro';
 import { apiBase } from '../lib/api';
+import { safeReturnTo } from '../lib/safeReturnTo';
 
 // U6 AC6 — before giving up with a 404, ask the API whether this path has a
 // recorded redirect (product slug changes create 301s). Only the 404 path pays
@@ -18,8 +19,14 @@ if (requestPath && requestPath !== '/404') {
       const json: any = await res.json().catch(() => null);
       const to = json?.data?.to;
       const statusCode = json?.data?.statusCode;
+      // startsWith('/') alone still admits "//evil.example" and "/\evil.example",
+      // both of which a browser resolves to another origin. This is the exact
+      // check safeReturnTo was written to replace, so use it: a redirect target
+      // that is not same-origin falls through to the 404 rather than leaving
+      // the site. An admin-configured redirect is still data, not a licence.
       if (json?.success && typeof to === 'string' && to.startsWith('/')) {
-        return Astro.redirect(to, statusCode === 302 ? 302 : 301);
+        const target = safeReturnTo(to, '');
+        if (target) return Astro.redirect(target, statusCode === 302 ? 302 : 301);
       }
     }
   } catch {

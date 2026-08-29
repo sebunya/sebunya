@@ -1,3 +1,13 @@
+/**
+ * Order creation and payment handoff are the two slowest calls the customer
+ * ever waits on, and neither had a deadline: a hung API left the browser
+ * spinning until the edge gave up and showed its own error page, with no
+ * order reference and nothing the customer could act on. The timeout lands in
+ * the existing NETWORK branch, which already says: this may have been
+ * committed, retry with the SAME intent rather than creating a second order.
+ */
+const CHECKOUT_TIMEOUT_MS = 20_000;
+
 import type {
   CheckoutErrorCode,
   CheckoutRequestDto,
@@ -78,6 +88,7 @@ export async function submitCheckout(args: {
       method: 'POST',
       headers,
       body: JSON.stringify(args.request),
+      signal: AbortSignal.timeout(CHECKOUT_TIMEOUT_MS),
     });
   } catch {
     // A network failure is NOT a failed order: the request may have been
@@ -181,6 +192,7 @@ export async function startPayment(args: {
       method: 'POST',
       headers,
       body: JSON.stringify({ orderId: args.orderId } satisfies PaymentStartRequestDto),
+      signal: AbortSignal.timeout(CHECKOUT_TIMEOUT_MS),
     });
   } catch {
     return { ok: false, status: 0, code: 'NETWORK' };

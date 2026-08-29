@@ -24,8 +24,12 @@ describe('Slice 03-B auth access trust compile regression', () => {
   });
 
   it('restricts post-login redirects to local admin routes', () => {
-    expect(login).toContain("returnTo.startsWith('/admin') && !returnTo.startsWith('//')");
-    expect(login).toContain("returnTo : '/admin'");
+    // The hand-rolled guard was replaced by the shared safeReturnTo helper,
+    // which proves same-origin properly; the /admin scope is still enforced.
+    expect(login).toContain("safeReturnTo(returnTo, '/admin')");
+    expect(login).toContain("resolved.startsWith('/admin') ? resolved : '/admin'");
+    // Anything outside /admin still lands on /admin.
+    expect(login).toContain("safeReturnTo(returnTo, '/admin')");
   });
 
   it('reports unconfigured auth without activating a provider', () => {

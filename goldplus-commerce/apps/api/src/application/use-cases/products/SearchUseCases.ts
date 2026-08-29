@@ -10,6 +10,9 @@ import {
   MAX_SEARCH_RESULT_PRODUCTS,
   isSearchInteractionType,
 } from '../../../domain/products/ProductSearchService';
+import type { IPricingRepository } from '../../ports/IPricingRepository';
+import { resolveStorefrontDiscount, INACTIVE_DISCOUNT } from '../../pricing/StorefrontDiscountQuery';
+import { salePriceUgx } from '@goldplus/shared';
 
 export interface ProductSuggestionDto {
   id: string;
@@ -19,9 +22,13 @@ export interface ProductSuggestionDto {
   categoryName: string | null;
 }
 
-/** Slice 4: public autocomplete — public catalogue data only, retail price only. */
+/** Slice 4: public autocomplete — public catalogue data only, campaign-priced. */
 export class SuggestProductsUseCase {
-  constructor(private readonly products: IProductRepository) {}
+  constructor(
+    private readonly products: IProductRepository,
+    /** Optional: without it the suggestions fall back to the catalogue price. */
+    private readonly pricing?: Pick<IPricingRepository, 'listActiveVersions'>,
+  ) {}
 
   async execute(input: { query: string; limit?: number }): Promise<ProductSuggestionDto[]> {
     const q = normalizeSearchQuery(input.query ?? '');
@@ -39,11 +46,19 @@ export class SuggestProductsUseCase {
         row: r,
       }))
     );
+    // The same campaign price the card and the product page show. Quoting the
+    // catalogue price here meant the search dropdown contradicted every other
+    // surface while a campaign ran. Uses the one shared formula, floor included.
+    const campaign = this.pricing ? await resolveStorefrontDiscount(this.pricing) : INACTIVE_DISCOUNT;
+    const priced = (retail: number | null): number | null => {
+      if (retail === null || !campaign.active || campaign.percentBps <= 0) return retail;
+      return salePriceUgx(retail, campaign.percentBps, campaign.priceFloorUgx);
+    };
     return ranked.slice(0, limit).map((c) => ({
       id: c.row.entity.id,
       name: c.row.entity.name,
       slug: c.row.entity.slug,
-      priceUgx: c.row.retailPriceUgx,
+      priceUgx: priced(c.row.retailPriceUgx),
       categoryName: c.row.categoryName,
     }));
   }

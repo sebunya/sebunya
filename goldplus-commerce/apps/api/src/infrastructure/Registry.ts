@@ -845,7 +845,7 @@ export class Registry {
   public readonly deliveryZoneRepo = new DrizzleDeliveryZoneRepository();
   public readonly getPaymentReconciliationUseCase = new GetPaymentReconciliationUseCase(this.orderRepo, this.paymentRepo, this.pesapalPaymentRepo);
   public readonly searchDemandRepo = new DrizzleSearchDemandRepository();
-  public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo);
+  public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo, this.pricingRepo);
   public readonly recordSearchEventUseCase = new RecordSearchEventUseCase(this.searchDemandRepo);
   public readonly recordSearchInteractionUseCase = new RecordSearchInteractionUseCase(this.searchDemandRepo);
   public readonly listSearchDemandUseCase = new ListSearchDemandUseCase(this.searchDemandRepo);
@@ -2120,7 +2120,7 @@ export class Registry {
     orders: {
       findById: async (orderId) => {
         const order = await this.orderRepo.findById(orderId);
-        return order ? { id: order.id, paymentStatus: order.paymentStatus } : null;
+        return order ? { id: order.id, paymentStatus: order.paymentStatus, totalUgx: order.totalUgx } : null;
       },
     },
     attempts: {

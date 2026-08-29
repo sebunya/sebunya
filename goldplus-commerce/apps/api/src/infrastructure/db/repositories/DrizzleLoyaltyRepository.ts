@@ -138,8 +138,19 @@ export class DrizzleLoyaltyRepository implements ILoyaltyRepository {
         return { ok: true, entry: toDomain(existing), replay: true, expired: [] };
       }
       const expired = await expireDueInTransaction(tx, input.accountId, now);
+      // The SAME set of accounts listEntries reads. A merge leaves the source
+      // account's entries where they are and aggregates them onto the survivor,
+      // so a balance check that looked at the survivor alone refused to spend
+      // points the customer could plainly see in their account.
+      const mergedRows = (await tx.execute(
+        sql`select merged_account_id from loyalty_account_merges where survivor_account_id = ${input.accountId}`,
+      )) as unknown as Array<{ merged_account_id: string }>;
+      const balanceAccountIds = [
+        input.accountId,
+        ...(Array.isArray(mergedRows) ? mergedRows : (mergedRows as any)?.rows ?? []).map((m: any) => m.merged_account_id),
+      ];
       const rows = await tx.select().from(loyaltyLedgerEntries)
-        .where(eq(loyaltyLedgerEntries.accountId, input.accountId)).orderBy(asc(loyaltyLedgerEntries.createdAt));
+        .where(inArray(loyaltyLedgerEntries.accountId, balanceAccountIds)).orderBy(asc(loyaltyLedgerEntries.createdAt));
       const available = computeBalance(rows.map(toDomain), now).available;
       if (-input.points > available) return { ok: false, code: 'INSUFFICIENT_BALANCE', available };
       try {

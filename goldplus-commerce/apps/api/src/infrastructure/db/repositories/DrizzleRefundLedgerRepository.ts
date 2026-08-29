@@ -179,14 +179,45 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
     return (Array.isArray(rows) ? rows : rows?.rows ?? []).length > 0;
   }
 
-  async settleRefundsForAttempt(paymentAttemptId: string): Promise<number> {
-    const rows: any = await db.execute(sql`
-      update payment_refunds
-      set status = 'settled', settled_at = now()
-      where payment_attempt_id = ${paymentAttemptId}::uuid and status = 'requested'
-      returning id
-    `);
-    return (Array.isArray(rows) ? rows : rows?.rows ?? []).length;
+  /**
+   * Settle outstanding refunds against the amount the provider has actually
+   * returned, oldest first.
+   *
+   * This used to settle EVERY 'requested' row on the attempt on a single
+   * provider confirmation. With two refunds outstanding and only one really
+   * processed, both were marked settled, so the ledger's refunded total then
+   * counted money that never left, which in turn skewed the partial-versus-
+   * total reversal reading and the revenue projection.
+   */
+  async settleRefundsForAttempt(paymentAttemptId: string, settledTotalUgx?: number): Promise<number> {
+    return db.transaction(async (tx) => {
+      const pending: any = await tx.execute(sql`
+        select id, amount_ugx from payment_refunds
+        where payment_attempt_id = ${paymentAttemptId}::uuid and status = 'requested'
+        order by created_at asc
+        for update
+      `);
+      const rows = Array.isArray(pending) ? pending : pending?.rows ?? [];
+      if (rows.length === 0) return 0;
+
+      // No figure given means the provider confirmed the whole outstanding set.
+      let budget = settledTotalUgx === undefined ? Number.POSITIVE_INFINITY : settledTotalUgx;
+      const settleIds: string[] = [];
+      for (const r of rows) {
+        const amount = Number(r.amount_ugx ?? 0);
+        if (amount > budget) break;
+        budget -= amount;
+        settleIds.push(String(r.id));
+      }
+      if (settleIds.length === 0) return 0;
+
+      await tx.execute(sql`
+        update payment_refunds
+        set status = 'settled', settled_at = now()
+        where id = any(${settleIds}::uuid[])
+      `);
+      return settleIds.length;
+    });
   }
 
   async listRefundsForOrder(orderId: string): Promise<RecordedRefund[]> {

@@ -71,7 +71,10 @@ if (Astro.request.method === 'POST') {
           description:
             `A customer asked our team to follow up on their order.\n` +
             `Order: ${order.orderNumber}\n` +
-            `Order status: ${label(order.orderStatus)} · Payment: ${label(order.paymentStatus)}\n` +
+            // label() never existed. .astro frontmatter is not typechecked, so
+            // this shipped green and threw a ReferenceError the moment a customer
+            // asked for a follow-up: the POST 500'd and no ticket was raised.
+            `Order status: ${orderStatusCopy(order.orderStatus).label} · Payment: ${paymentStatusCopy(order.paymentStatus).label}\n` +
             `Delivery area: ${order.deliveryArea ?? 'not given'}\n` +
             (note ? `\nCustomer note:\n${note}\n` : '') +
             `\nRaised from the Track Order page.`,

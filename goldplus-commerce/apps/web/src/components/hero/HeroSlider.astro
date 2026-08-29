@@ -1,5 +1,6 @@
 ---
 import { apiBase } from '../../lib/api';
+import { getBusinessInfo } from '../../lib/businessInfo';
 import {
   HERO_SLIDE_LIBRARY, HERO_SETTINGS_DEFAULT, HERO_SELECTION_TUNING, selectHeroSlides,
   type HeroSelectionContext,
@@ -158,12 +159,17 @@ const ugx = (n: any) => (typeof n === 'number' ? `UGX ${n.toLocaleString('en-UG'
 // the server-chosen arch product without a client fetch.
 const configJson = JSON.stringify({ ...config, preferredArch })
   .replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+
+// The shop-wide cutoff and closed days. The hero used to default to a
+// hardcoded 17:00 and treat Sunday as the only closed day, on the VISITOR's
+// clock, so it could promise same-day delivery the shop was not offering.
+const heroBiz = await getBusinessInfo();
 ---
 {/* Preload the lead image for LCP. A preload link in body is valid HTML and
     functions; the lead <img> also carries fetchpriority="high". */}
 {leadImage && <link rel="preload" as="image" href={leadImage} fetchpriority="high" />}
 
-<section class="gp-hero">
+<section class="gp-hero" data-cutoff-hour={String(heroBiz.sameDayCutoffHour)} data-closed-days={heroBiz.closedDays.join(",")}>
   {/* One stable page heading, decoupled from the rotation. The rotating slide
       titles are <h2>; if the h1 lived on a slide it would vanish when the
       engine removed that slide (e.g. flash after its sale ends), leaving the
@@ -882,13 +888,29 @@ const configJson = JSON.stringify({ ...config, preferredArch })
 (function(){
   'use strict';
 
+  function heroShopEl(){ return document.querySelector('.gp-hero'); }
+  function heroShopNow(){
+    try { return new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })); }
+    catch (e) { return new Date(); }
+  }
+  function heroShopCutoffHour(){
+    var el = heroShopEl(); var v = parseInt(el && el.getAttribute('data-cutoff-hour'), 10);
+    return isFinite(v) ? v : 17;
+  }
+  function heroShopClosedDays(){
+    var el = heroShopEl(); var raw = (el && el.getAttribute('data-closed-days')) || '';
+    var out = raw.split(',').map(function(x){ return parseInt(x, 10); }).filter(function(x){ return isFinite(x); });
+    return out.length ? out : [0];
+  }
   var CMS = (typeof window !== 'undefined' && window.__GPHERO) || {};
   var CONFIG = {
     show: CMS.show || 4,
     dwell: CMS.dwell || 6000,
     autoplay: CMS.autoplay !== false,
     flashSaleEnds: CMS.flashSaleEnds || null,
-    cutoffHour: (typeof CMS.cutoffHour === 'number') ? CMS.cutoffHour : 17,
+    // A slide may still override it; otherwise the shop-wide value applies.
+    cutoffHour: (typeof CMS.cutoffHour === 'number') ? CMS.cutoffHour : heroShopCutoffHour(),
+    closedDays: heroShopClosedDays(),
     keys: { visits:'gp_visits', last:'gp_last', scratch:'gp_scratch', cats:'gp_cats' },
     prizes: (CMS.prizes && CMS.prizes.length) ? CMS.prizes : [ {pct:5,code:'GP5',w:45},{pct:10,code:'GP10',w:32},{pct:15,code:'GP15',w:18},{pct:20,code:'GP20',w:5} ],
     themeCap: { offer:2, logistics:1, loyalty:1, product:1, brand:1, trust:1 },
@@ -918,7 +940,9 @@ const configJson = JSON.stringify({ ...config, preferredArch })
   store.set(CONFIG.keys.last, String(Date.now()));
 
   var saleEnd = new Date(CONFIG.flashSaleEnds).getTime();
-  var now = new Date();
+  /* Africa/Kampala, not the visitor's timezone: a customer in another zone
+     was being told a same-day deadline the shop does not keep. */
+  var now = heroShopNow();
   var scratched = false;
   try { scratched = !!(JSON.parse(store.get(CONFIG.keys.scratch) || 'null') || {}).revealed; } catch(e){}
 
@@ -930,7 +954,7 @@ const configJson = JSON.stringify({ ...config, preferredArch })
     lapsedDays: lastSeen ? (Date.now() - lastSeen) / 864e5 : 0,
     hour: now.getHours(),
     day: now.getDay(),                                  // 0 = Sunday
-    beforeCutoff: now.getHours() < CONFIG.cutoffHour && now.getDay() !== 0,
+    beforeCutoff: now.getHours() < CONFIG.cutoffHour && CONFIG.closedDays.indexOf(now.getDay()) === -1,
     saleLive: isFinite(saleEnd) ? Date.now() < saleEnd : true,
     scratched: scratched,
     referred: /[?&](ref|utm_campaign=referral)/i.test(location.search),

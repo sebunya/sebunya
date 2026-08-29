@@ -98,6 +98,13 @@ export class RefundPesaPalPaymentUseCase {
       );
     }
 
+    // The derived key deliberately collapses two identical requests: same
+    // reference, same amount, same reason is treated as one refund, because a
+    // double-click must never return the customer's money twice. That does mean
+    // a GENUINE second refund of the same amount for the same reason cannot be
+    // raised on the derived key alone — it must carry an explicit
+    // `idempotencyKey`, which is exactly what that input is for. Refunding
+    // twice by accident is the worse failure, so the default stays safe.
     const idempotencyKey =
       input.idempotencyKey?.trim() ||
       createHash('sha256')

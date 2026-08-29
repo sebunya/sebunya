@@ -291,6 +291,9 @@ describe('the checkout intent survives the payment handoff', () => {
       code.indexOf('if (payRes.ok)'),
       code.indexOf('return Astro.redirect(payRes.data.redirectUrl'),
     );
-    expect(redirectBranch).toContain("Astro.cookies.delete('goldplus_cart_data'");
+    // The cookie delete moved into clearBasketAfterOrder(), which ALSO clears
+    // the server cart — the cookie alone left the basket standing after the
+    // order was placed.
+    expect(redirectBranch).toContain("await clearBasketAfterOrder();");
   });
 });

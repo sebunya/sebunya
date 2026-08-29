@@ -86,7 +86,11 @@ export interface IRefundLedgerRepository {
    * had no writer at all, so a refund that actually landed left the ledger
    * saying it was still in flight forever. Returns how many rows settled.
    */
-  settleRefundsForAttempt(paymentAttemptId: string): Promise<number>;
+  /**
+   * Mark outstanding refunds settled, oldest first, up to `settledTotalUgx`.
+   * Omit the amount only when the provider has confirmed the whole set.
+   */
+  settleRefundsForAttempt(paymentAttemptId: string, settledTotalUgx?: number): Promise<number>;
 
   listRefundsForOrder(orderId: string): Promise<RecordedRefund[]>;
 }

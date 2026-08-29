@@ -37,7 +37,8 @@ export class DrizzleProductRepository implements IProductRepository {
       result.hasRetailPrice,
       result.hasImage,
       result.stockQuantity,
-      result.specifications as Record<string, string | number>
+      result.specifications as Record<string, string | number>,
+      result.reservedQuantity ?? 0
     );
   }
 
@@ -71,7 +72,8 @@ export class DrizzleProductRepository implements IProductRepository {
       result.hasRetailPrice,
       result.hasImage,
       result.stockQuantity,
-      result.specifications as Record<string, string | number>
+      result.specifications as Record<string, string | number>,
+      result.reservedQuantity ?? 0
     );
   }
 
@@ -186,7 +188,8 @@ export class DrizzleProductRepository implements IProductRepository {
       result.hasRetailPrice,
       result.hasImage,
       result.stockQuantity,
-      result.specifications as Record<string, string | number>
+      result.specifications as Record<string, string | number>,
+      result.reservedQuantity ?? 0
     ));
   }
 
@@ -238,7 +241,8 @@ export class DrizzleProductRepository implements IProductRepository {
       row.hasRetailPrice,
       row.hasImage,
       row.stockQuantity,
-      (row.specifications ?? {}) as Record<string, string | number>
+      (row.specifications ?? {}) as Record<string, string | number>,
+      row.reservedQuantity ?? 0
     );
 
     return {
@@ -378,7 +382,8 @@ export class DrizzleProductRepository implements IProductRepository {
           row.hasRetailPrice,
           row.hasImage,
           row.stockQuantity,
-          (row.specifications ?? {}) as Record<string, string | number>
+          (row.specifications ?? {}) as Record<string, string | number>,
+          row.reservedQuantity ?? 0
         ),
         retailPriceUgx: row.hasRetailPrice ? priceByProduct.get(row.id) ?? null : null,
         categoryName: categoryById.get(row.categoryId) ?? row.categoryName ?? null,

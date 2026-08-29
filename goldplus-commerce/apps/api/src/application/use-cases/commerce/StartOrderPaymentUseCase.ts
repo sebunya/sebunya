@@ -88,12 +88,12 @@ export interface PaymentProviderStarter {
 
 export interface PaymentAttemptReader {
   findAttemptsByOrderId(orderId: string): Promise<
-    Array<{ status: string; redirectUrl: string | null; orderTrackingId: string | null; merchantReference: string }>
+    Array<{ status: string; redirectUrl: string | null; orderTrackingId: string | null; merchantReference: string; amount: number }>
   >;
 }
 
 export interface StartPaymentOrderReader {
-  findById(orderId: string): Promise<{ id: string; paymentStatus: string } | null>;
+  findById(orderId: string): Promise<{ id: string; paymentStatus: string; totalUgx: number } | null>;
 }
 
 export interface StartOrderPaymentDeps {
@@ -176,8 +176,17 @@ export class StartOrderPaymentUseCase {
     // order several concurrent provider transactions, any of which could later
     // report a payment.
     const existing = await this.deps.attempts.findAttemptsByOrderId(orderId);
+    // ...and only while it is still for the right money. A delivery variance
+    // agreed after the attempt was opened raises the order total, but the
+    // provider page still quotes the old figure, and verification compares the
+    // payment against the ATTEMPT's amount, so the order settled as fully paid
+    // at the stale, lower total and the shop silently under-collected.
     const reusable = existing.find(
-      (a) => REUSABLE_ATTEMPT_STATUSES.has(a.status) && a.redirectUrl && a.orderTrackingId,
+      (a) =>
+        REUSABLE_ATTEMPT_STATUSES.has(a.status) &&
+        a.redirectUrl &&
+        a.orderTrackingId &&
+        a.amount === order.totalUgx,
     );
     if (reusable) {
       await this.recordPaymentProgress(checkout.identity, orderId, command);

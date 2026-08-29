@@ -53,7 +53,8 @@ describe('Slice 8-B0 admin Measurement route protection', () => {
 
   it('keeps login public and preserves its local-admin return target validation', () => {
     expect(login).not.toContain('readSessionToken(Astro.request)');
-    expect(login).toContain("returnTo.startsWith('/admin') && !returnTo.startsWith('//')");
+    // Replaced by the shared safeReturnTo helper, still scoped to /admin.
+    expect(login).toContain("safeReturnTo(returnTo, '/admin')");
   });
 
   it('preserves the existing protected Admin Trust Centre route', () => {

@@ -226,9 +226,17 @@ export class VerifyPesaPalPaymentUseCase {
           reasonCode = 'pesapal_payment_reversed';
         }
 
-        // Either way the provider has confirmed it: refunds that were in
-        // flight have now landed. Nothing wrote 'settled' before this.
-        if (this.refundLedger) await this.refundLedger.settleRefundsForAttempt(attempt.id);
+        // The provider has confirmed a reversal, so refunds that were in flight
+        // have landed — but only up to what actually came back. A proven
+        // partial returns `refunded`; a total reversal returns the whole
+        // attempt. Settling every outstanding row on any confirmation counted
+        // money that had not moved.
+        if (this.refundLedger) {
+          await this.refundLedger.settleRefundsForAttempt(
+            attempt.id,
+            provenPartial ? refunded : attempt.amount,
+          );
+        }
         break;
       }
       case 2:
