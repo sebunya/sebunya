@@ -34,8 +34,16 @@ function readAllTsFiles(dir: string, fileList: string[] = []): string[] {
 const API_SRC = path.join(__dirname, '../../apps/api/src');
 const PG_PARAMS = path.join(API_SRC, 'infrastructure/db/PgParams.ts');
 
-/** `${...}::jsonb|json|text[]|uuid[]|numeric[]|int[]` */
-const RAW_CAST = /\$\{([^{}]*?)\}::(jsonb|json|text\[\]|uuid\[\]|numeric\[\]|int\[\])\b/g;
+/**
+ * `${...}::jsonb|json|text[]|uuid[]|numeric[]|int[]`
+ *
+ * NO trailing \b. Every array cast ends in `]`, and a word boundary cannot be
+ * asserted between `]` and the `)` or `,` that follows it, so the anchored
+ * version matched `::jsonb` and NEVER a single array cast — exactly the case
+ * this rule was written for. Found 2026-08-29 when `any(${ids}::uuid[])` sailed
+ * through it. The alternation is already specific enough to need no anchor.
+ */
+const RAW_CAST = /\$\{([^{}]*?)\}::(jsonb|json|text\[\]|uuid\[\]|numeric\[\]|int\[\])/g;
 
 /**
  * Forms that cannot produce a record literal:

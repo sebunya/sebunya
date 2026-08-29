@@ -226,3 +226,22 @@ describe('the three decisions the owner signed off', () => {
     expect(repo).toMatch(/p\.free_delivery_threshold_ugx is not null/);
   });
 });
+
+describe('the parameter-boundary rule can actually see array casts', () => {
+  it('the pattern matches an array cast followed by a closing paren', () => {
+    const src = read('tests/architecture/postgres-parameter-boundary.test.ts');
+    const literal = src.match(/const RAW_CAST = (\/.*\/g);/)?.[1] ?? '';
+    expect(literal).toBeTruthy();
+    // Rebuild the rule's own regex and prove it sees the shape that slipped past.
+    const body = literal.slice(1, literal.lastIndexOf('/'));
+    const re = new RegExp(body, 'g');
+    expect('where id = any(${ids}::uuid[])'.match(re)).not.toBeNull();
+    expect('set c = ${x}::jsonb'.match(re)).not.toBeNull();
+  });
+
+  it('refund settlement binds its id list through the sanctioned helper', () => {
+    const src = read('apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository.ts');
+    expect(src).toMatch(/any\(\$\{pgUuidArray\(settleIds\)\}\)/);
+    expect(src).not.toMatch(/\$\{settleIds\}::uuid\[\]/);
+  });
+});

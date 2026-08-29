@@ -6,6 +6,7 @@ import type {
   RefundLineAllocation,
   ReserveRefundOutcome,
 } from '../../../application/ports/IRefundLedgerRepository';
+import { pgUuidArray } from '../PgParams';
 
 const toRecordedRefund = (row: any): RecordedRefund => ({
   id: String(row.id),
@@ -214,7 +215,7 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
       await tx.execute(sql`
         update payment_refunds
         set status = 'settled', settled_at = now()
-        where id = any(${settleIds}::uuid[])
+        where id = any(${pgUuidArray(settleIds)})
       `);
       return settleIds.length;
     });
