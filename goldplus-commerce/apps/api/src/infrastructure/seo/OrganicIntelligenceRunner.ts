@@ -952,18 +952,48 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
       if (clusterKeys.length === 0) return out;
       // Competition is only observable where a page is actually indexable and
       // alive. A noindexed or retired URL is not competing for anything.
+      // TWO sources, and the difference between them is the whole point.
+      //
+      // gsc_performance is Search Console telling us which PAGE it actually
+      // served for which QUERY, with that page's own impressions and clicks:
+      // observed reality, and the only thing resolveOwnership is allowed to
+      // believe. Until this was joined here every candidate was lexical, every
+      // owner was therefore discarded as untrusted, and the module produced no
+      // opportunities at all.
+      //
+      // The crawl-page join stays as the fallback for demand no provider has
+      // reported yet. It matches on the query appearing IN the URL, which is a
+      // guess, so it keeps null metrics and is not marked observed.
       const rows = rowsOf(await conn.execute(sql`
-        select distinct m.cluster_key, p.final_url as url,
-               -- Demand is NOT stored per URL by any connected provider, so it
-               -- stays NULL. Writing 0 here would fabricate a measurement.
-               null::int as impressions, null::int as clicks,
-               p.canonical as canonical_target
-        from seo_intel_query_membership m
-        join seo_crawl_pages p
-          on position(lower(m.normalized_query) in lower(coalesce(p.final_url, ''))) > 0
-        where ${pgInTextList(sql`m.cluster_key`, clusterKeys)}
-          -- A noindexed page is not competing for anything.
-          and coalesce(p.meta_robots, '') not ilike '%noindex%'
+        select cluster_key, url, impressions, clicks, canonical_target, provider_observed
+        from (
+          select m.cluster_key,
+                 g.page as url,
+                 sum(g.impressions)::int as impressions,
+                 sum(g.clicks)::int as clicks,
+                 null::text as canonical_target,
+                 true as provider_observed
+          from seo_intel_query_membership m
+          join gsc_performance g
+            on lower(btrim(g.query)) = m.normalized_query
+          where ${pgInTextList(sql`m.cluster_key`, clusterKeys)}
+          group by m.cluster_key, g.page
+
+          union all
+
+          select distinct m.cluster_key, p.final_url as url,
+                 -- No provider has reported demand for this URL; writing 0
+                 -- would fabricate a measurement.
+                 null::int as impressions, null::int as clicks,
+                 p.canonical as canonical_target,
+                 false as provider_observed
+          from seo_intel_query_membership m
+          join seo_crawl_pages p
+            on position(lower(m.normalized_query) in lower(coalesce(p.final_url, ''))) > 0
+          where ${pgInTextList(sql`m.cluster_key`, clusterKeys)}
+            -- A noindexed page is not competing for anything.
+            and coalesce(p.meta_robots, '') not ilike '%noindex%'
+        ) candidates
         limit 2000
       `));
       for (const r of rows) {
@@ -979,6 +1009,7 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
           contentSimilarity: null,
           // Reached only via the indexable filter above.
           lifecycleActive: true,
+          providerObserved: Boolean(r.provider_observed),
         });
       }
       return out;

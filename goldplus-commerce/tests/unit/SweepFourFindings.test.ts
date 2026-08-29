@@ -466,3 +466,29 @@ describe('hero copy carries tokens, not numbers', () => {
     expect(read('packages/shared/src/hero/library.ts')).toMatch(/Order before \{cutoff\} and we/);
   });
 });
+
+describe('SEO ownership is decided on observed reality', () => {
+  it('competing URLs come from Search Console, flagged as provider-observed', () => {
+    const src = read('apps/api/src/infrastructure/seo/OrganicIntelligenceRunner.ts');
+    expect(src).toMatch(/join gsc_performance g/);
+    expect(src).toMatch(/true as provider_observed/);
+    // The lexical crawl join stays, as the fallback it always was.
+    expect(src).toMatch(/false as provider_observed/);
+    expect(src).toMatch(/providerObserved: Boolean\(r\.provider_observed\)/);
+    // The claim that no provider stores per-URL demand is no longer true.
+    expect(src).not.toMatch(/Demand is NOT stored per URL by any connected provider/);
+  });
+
+  it('a provider-observed incumbent is believed; a lexical one is not', () => {
+    const src = read('apps/api/src/application/use-cases/seo-growth/OrganicIntelligenceMaterialiser.ts');
+    expect(src).toMatch(/incumbent\.providerObserved \? 'PROVIDER_OBSERVED' : 'URL_LEXICAL_FALLBACK'/);
+    // Hardcoding the weak label discarded every owner and left the module
+    // producing nothing.
+    expect(src).not.toMatch(/currentOwnerEvidence: incumbent \? 'URL_LEXICAL_FALLBACK' : 'NONE'/);
+  });
+
+  it('an observed page outranks a merely plausible one', () => {
+    expect(read('apps/api/src/application/use-cases/seo-growth/OrganicIntelligenceMaterialiser.ts'))
+      .toMatch(/Number\(b\.providerObserved\) - Number\(a\.providerObserved\)/);
+  });
+});

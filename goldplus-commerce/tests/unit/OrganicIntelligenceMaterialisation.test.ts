@@ -524,14 +524,54 @@ describe('the engines that were built but never ran now actually run', () => {
         queries: [{ raw: 'samsung battery', source: 'GSC', observedAt: null, isBackfill: false }],
         entities: [],
       },
-      competingUrls: new Map([['cluster:samsung-battery', [
+      // The clusterer emits `cl:`-prefixed keys. This map was keyed
+      // 'cluster:samsung-battery', which matched nothing, so the assertion below
+      // passed without a single URL ever being loaded.
+      competingUrls: new Map([['cl:samsung-battery', [
         { url: '/a', impressions: null, clicks: null, intent: 'COMMERCIAL', ownerType: 'CATEGORY',
-          canonicalTarget: null, contentSimilarity: null, lifecycleActive: true },
+          canonicalTarget: null, contentSimilarity: null, lifecycleActive: true, providerObserved: false },
       ]]]),
     });
     await m.execute('INCREMENTAL');
     // One URL cannot cannibalise itself.
     expect(rec.cannibalisation).toHaveLength(0);
+  });
+
+  it('believes an owner the search provider actually observed, and not a lexical guess', async () => {
+    // Ownership is a claim about observed reality. Search Console reports which
+    // PAGE it served for which QUERY; a URL that merely contains the query text
+    // is a guess. Every candidate used to be sent in as the guess, so every
+    // owner was discarded as untrusted and the module produced no opportunities
+    // at all.
+    const observed = harness({
+      queryUniverse: {
+        queries: [{ raw: 'samsung battery', source: 'GSC', observedAt: null, isBackfill: false }],
+        entities: [],
+      },
+      competingUrls: new Map([['cl:samsung-battery', [
+        { url: 'https://shopgoldplus.com/products/samsung-battery', impressions: 40, clicks: 3,
+          intent: 'COMMERCIAL', ownerType: 'PRODUCT', canonicalTarget: null,
+          contentSimilarity: null, lifecycleActive: true, providerObserved: true },
+      ]]]),
+    });
+    await observed.m.execute('INCREMENTAL');
+    const withProvider = observed.rec.clusters.find((c) => c.currentOwnerUrl);
+    expect(withProvider?.currentOwnerUrl).toBe('https://shopgoldplus.com/products/samsung-battery');
+
+    const guessed = harness({
+      queryUniverse: {
+        queries: [{ raw: 'samsung battery', source: 'GSC', observedAt: null, isBackfill: false }],
+        entities: [],
+      },
+      competingUrls: new Map([['cl:samsung-battery', [
+        { url: 'https://shopgoldplus.com/blog/samsung-battery-tips', impressions: null, clicks: null,
+          intent: 'COMMERCIAL', ownerType: 'PRODUCT', canonicalTarget: null,
+          contentSimilarity: null, lifecycleActive: true, providerObserved: false },
+      ]]]),
+    });
+    await guessed.m.execute('INCREMENTAL');
+    // Recorded as a candidate, but never asserted as the owner.
+    expect(guessed.rec.clusters.every((c) => !c.currentOwnerUrl)).toBe(true);
   });
 
   it('records action requests without ever authorising them', async () => {

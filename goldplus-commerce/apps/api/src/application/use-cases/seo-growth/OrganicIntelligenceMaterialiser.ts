@@ -214,6 +214,12 @@ export interface MaterialiserPorts {
   loadCompetingUrls(clusterKeys: string[]): Promise<Map<string, Array<{
     url: string; impressions: number | null; clicks: number | null; intent: Intent;
     ownerType: OwnerType | null; canonicalTarget: string | null; contentSimilarity: number | null; lifecycleActive: boolean;
+    /**
+     * True when a SEARCH PROVIDER reported this URL against this query, rather
+     * than the URL merely containing the query text. Ownership is a claim about
+     * observed reality, so only this may be believed.
+     */
+    providerObserved: boolean;
   }>>>;
   upsertCannibalisation(input: {
     findingKey: string; clusterKey: string | null; classification: string; confidence: number;
@@ -707,7 +713,11 @@ export class OrganicIntelligenceMaterialiser {
       // The incumbent is the live URL with the strongest observed signal; with
       // no demand evidence it is simply the only lifecycle-active candidate.
       const incumbent = competing.filter((u) => u.lifecycleActive)
-        .sort((a, b) => (b.impressions ?? -1) - (a.impressions ?? -1))[0] ?? null;
+        .sort((a, b) =>
+          // An observed page outranks a merely plausible one, whatever the
+          // numbers say; within the same class, the stronger demand wins.
+          (Number(b.providerObserved) - Number(a.providerObserved)) ||
+          ((b.impressions ?? -1) - (a.impressions ?? -1)))[0] ?? null;
       // Ownership derives from the entity's canonical route, not from a URL
       // that happens to contain the query text.
       const route = cluster.entityId ? universe.entityRoutes?.get(cluster.entityId) ?? null : null;
@@ -715,9 +725,15 @@ export class OrganicIntelligenceMaterialiser {
         intent: intent.primary,
         currentOwnerUrl: incumbent?.url ?? null,
         currentOwnerType: incumbent?.ownerType ?? null,
-        // Nothing here is provider-observed yet, and the competing-URL join is
-        // lexical, so it is recorded as the weak signal it is.
-        currentOwnerEvidence: incumbent ? 'URL_LEXICAL_FALLBACK' : 'NONE',
+        // Search Console reports which PAGE it served for which QUERY, so where
+        // that exists the incumbent is observed reality and resolveOwnership may
+        // believe it. Where it does not, the join is still lexical and is
+        // recorded as the weak signal it is. Until GSC data was connected
+        // nothing here was observed, every owner was discarded as untrusted,
+        // and the module produced no opportunities at all.
+        currentOwnerEvidence: incumbent
+          ? (incumbent.providerObserved ? 'PROVIDER_OBSERVED' : 'URL_LEXICAL_FALLBACK')
+          : 'NONE',
         entityCanonicalUrl: route?.url ?? null,
         entityOwnerType: (route?.ownerType ?? null) as never,
         catalogueReady: route ? route.catalogueReady : undefined,
