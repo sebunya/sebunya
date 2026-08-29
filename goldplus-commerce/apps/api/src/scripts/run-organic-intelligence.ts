@@ -10,10 +10,10 @@ import { runOrganicIntelligence } from '../infrastructure/seo/OrganicIntelligenc
  * immediately rather than waiting for the next tick. Read-heavy; it writes only
  * the intelligence tables it owns.
  *
- * Usage: MODE=INCREMENTAL|FULL npx tsx src/scripts/run-organic-intelligence.ts
+ * Usage: MODE=INCREMENTAL|FULL_REBUILD|BACKFILL|REPLAY npx tsx src/scripts/run-organic-intelligence.ts
  */
 async function main(): Promise<void> {
-  const mode = (process.env.MODE ?? 'INCREMENTAL') as 'INCREMENTAL' | 'FULL';
+  const mode = (process.env.MODE ?? 'INCREMENTAL') as 'INCREMENTAL' | 'FULL_REBUILD' | 'BACKFILL' | 'REPLAY';
   const result = await runOrganicIntelligence(mode);
   console.log(`MODE=${mode}`);
   for (const [stage, info] of Object.entries(result.stages ?? {})) {
