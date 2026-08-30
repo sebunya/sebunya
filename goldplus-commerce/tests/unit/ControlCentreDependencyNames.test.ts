@@ -62,3 +62,49 @@ describe('the console represents the capabilities the shop actually has', () => 
     expect(offenders).toEqual([]);
   });
 });
+
+describe('a module can report that it is not achieving anything', () => {
+  it('messaging declares an outcome check, not just a table and credentials', () => {
+    const n = CONTROL_CENTRE_MODULES.find((m) => m.key === 'notifications')!;
+    expect(n.healthChecks).toEqual(['notification_delivery']);
+  });
+
+  it('a failing check degrades the module and says why', async () => {
+    const { EvaluateModuleReadinessUseCase } = await import(
+      '../../apps/api/src/application/use-cases/control-centre/EvaluateModuleReadinessUseCase'
+    );
+    const only = CONTROL_CENTRE_MODULES.filter((m) => m.key === 'notifications');
+    const useCase = new EvaluateModuleReadinessUseCase(
+      { isUp: async () => true },
+      { isMounted: () => true },
+      { isConfigured: () => true },
+      { isApproved: async () => true },
+      () => new Date('2026-08-30T00:00:00Z'),
+      only,
+      { check: async () => ({ healthy: false, detail: '33 messages dead-lettered in the last 7 days' }) },
+    );
+    const summary = await useCase.execute({ actorPermissions: [], traceId: 't' });
+    const row = (summary as { modules: Array<Record<string, unknown>> }).modules[0];
+    // Reachable, switched on — and still not working, which is the whole point.
+    expect(row.serviceStatus).toBe('DEGRADED');
+    expect(String(row.degradedReasons)).toContain('dead-lettered');
+  });
+
+  it('is LIVE when the same check passes, so the signal means something', async () => {
+    const { EvaluateModuleReadinessUseCase } = await import(
+      '../../apps/api/src/application/use-cases/control-centre/EvaluateModuleReadinessUseCase'
+    );
+    const only = CONTROL_CENTRE_MODULES.filter((m) => m.key === 'notifications');
+    const useCase = new EvaluateModuleReadinessUseCase(
+      { isUp: async () => true },
+      { isMounted: () => true },
+      { isConfigured: () => true },
+      { isApproved: async () => true },
+      () => new Date('2026-08-30T00:00:00Z'),
+      only,
+      { check: async () => ({ healthy: true }) },
+    );
+    const summary = await useCase.execute({ actorPermissions: [], traceId: 't' });
+    expect((summary as { modules: Array<Record<string, unknown>> }).modules[0].serviceStatus).toBe('LIVE');
+  });
+});

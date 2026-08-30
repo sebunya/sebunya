@@ -14,6 +14,7 @@ import { logger } from '../logging/logger';
 import type {
   ApprovalProbe,
   DependencyProbe,
+  HealthProbe,
   ProviderConfigProbe,
   RouteMountProbe,
 } from '../../application/use-cases/control-centre/EvaluateModuleReadinessUseCase';
@@ -88,6 +89,41 @@ export const envProviderConfigProbe: ProviderConfigProbe = {
     };
     const keys = envKeys[provider] ?? [];
     return keys.length > 0 && keys.some((key) => Boolean(process.env[key]));
+  },
+};
+
+/**
+ * Outcome checks: is the capability achieving anything?
+ *
+ * `notification_delivery` reads the outbox's own verdict. A dead letter is a
+ * message the system tried up to exhaustion and gave up on, so recent dead
+ * letters mean messages are not arriving however healthy the credentials look.
+ * Notifications reported LIVE for three weeks while every admin order email
+ * died at the provider; this is what makes that visible in the console.
+ */
+const DELIVERY_WINDOW_DAYS = 7;
+
+export const drizzleHealthProbe: HealthProbe = {
+  async check(name: string): Promise<{ healthy: boolean; detail?: string }> {
+    if (name !== 'notification_delivery') {
+      // An unknown check must not silently pass as healthy.
+      return { healthy: false, detail: `unknown health check "${name}"` };
+    }
+    const rows = rowsOf(await db.execute(sql`
+      select count(*)::int as dead, max(created_at) as newest
+      from outbox_events
+      where status in ('dead_letter', 'dead_lettered')
+        -- make_interval takes a typed int. Concatenating a bare parameter onto
+        -- a string before an interval cast leaves Postgres unable to infer that
+        -- parameter's type, and the whole query fails.
+        and created_at > now() - make_interval(days => ${DELIVERY_WINDOW_DAYS})
+    `));
+    const dead = Number(rows[0]?.dead ?? 0);
+    if (dead === 0) return { healthy: true };
+    return {
+      healthy: false,
+      detail: `${dead} message${dead === 1 ? '' : 's'} dead-lettered in the last ${DELIVERY_WINDOW_DAYS} days; see /admin/notifications`,
+    };
   },
 };
 

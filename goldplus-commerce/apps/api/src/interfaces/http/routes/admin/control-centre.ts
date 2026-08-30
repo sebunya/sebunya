@@ -14,6 +14,7 @@ import {
   drizzleModuleApprovalRepository,
   drizzleApprovalProbe,
   drizzleDependencyProbe,
+  drizzleHealthProbe,
   envProviderConfigProbe,
   createRouteMountProbe,
 } from '../../../../infrastructure/control-centre/DrizzleControlCentreProbes';
@@ -61,6 +62,9 @@ routes.get('/modules', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c)
       createRouteMountProbe(mountedPrefixes),
       envProviderConfigProbe,
       drizzleApprovalProbe,
+      undefined,
+      undefined,
+      drizzleHealthProbe,
     );
 
     const summary = await useCase.execute({

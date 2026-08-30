@@ -6,6 +6,7 @@ import {
   drizzleDependencyProbe,
   envProviderConfigProbe,
   createRouteMountProbe,
+  drizzleHealthProbe,
 } from '../infrastructure/control-centre/DrizzleControlCentreProbes';
 import { EvaluateModuleReadinessUseCase } from '../application/use-cases/control-centre/EvaluateModuleReadinessUseCase';
 import { MOUNTED_API_PREFIXES as MOUNTED_PREFIXES } from '../interfaces/http/app';
@@ -27,6 +28,9 @@ async function main(): Promise<void> {
     createRouteMountProbe(MOUNTED_PREFIXES),
     envProviderConfigProbe,
     drizzleApprovalProbe,
+    undefined,
+    undefined,
+    drizzleHealthProbe,
   );
 
   const summary = await useCase.execute({

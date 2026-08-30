@@ -103,6 +103,16 @@ export interface ControlCentreModule {
   readonly dataDependencies: readonly ModuleDataDependency[];
   /** External providers. Absent credentials => DORMANT, never UNAVAILABLE. */
   readonly providerDependencies: readonly string[];
+  /**
+   * Named checks on what the capability is actually ACHIEVING, as opposed to
+   * whether it is reachable and switched on.
+   *
+   * A table that answers and credentials that exist are not the same thing as
+   * work getting done: notifications reported LIVE while every admin order
+   * email of the last three weeks was dead-lettering at the provider. A failing
+   * check degrades the module and says why.
+   */
+  readonly healthChecks?: readonly string[];
   readonly activationPolicy: ModuleActivationPolicy;
   readonly supportedActions: readonly ModuleAction[];
   readonly riskClass: ModuleRiskClass;
@@ -246,6 +256,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     // the provider then accepts the send is the outbox's business, and its dead
     // letters are the evidence for that.
     providerDependencies: ['email', 'sms'],
+    healthChecks: ['notification_delivery'],
     activationPolicy: 'AUTOMATIC',
     supportedActions: [
       { key: 'open', label: 'Open notification outbox', target: '/admin/notifications', requiredPermission: P.NOTIFICATIONS_READ, kind: 'READ' },
