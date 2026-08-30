@@ -23,6 +23,7 @@ const pagesDir = join(root, 'apps/web/src/pages/admin');
 const EXCLUDED: Record<string, string> = {
   '/admin/login': 'the door, not a room',
   '/admin/products/new': 'reached from Products',
+  '/admin/blog/new': 'reached from Articles',
   '/admin/fulfilment/report': 'reached from Fulfilment',
   '/admin/delivery/calibration': 'reached from the Delivery Control Centre',
   '/admin/delivery/launch': 'reached from the Delivery Control Centre',
