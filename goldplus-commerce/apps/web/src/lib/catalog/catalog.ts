@@ -1,34 +1,29 @@
-import type { ProductPublicDto } from '@goldplus/shared';
+import type { ProductPublicDto, Taxonomy } from '@goldplus/shared';
+import { DEFAULT_TAXONOMY } from '@goldplus/shared';
 
-export function normalizeProductCategory(product: ProductPublicDto): ProductPublicDto {
-  const nameLower = product.name.toLowerCase();
+export function normalizeProductCategory(product: ProductPublicDto, taxonomy: Taxonomy = DEFAULT_TAXONOMY): ProductPublicDto {
   const rawCat = product.categoryName;
 
+  // An explicit, valid filing is the operator's decision and always wins. The
+  // keyword guess below is only a stopgap for products sitting in a category
+  // the storefront does not browse by (today "Other"), because the categories
+  // table holds fewer categories than the taxonomy does. Without this check a
+  // product deliberately filed under Storage Devices but named "Car SD Card"
+  // was silently moved to Car Accessories.
+  if (taxonomy.some((category) => category.name === rawCat)) return product;
+
+  const isStorage = /\b(flash|drive|usb|sd|storage|microsd)\b/i.test(product.name);
+  const isCar = /\b(car|mount|vehicle)\b/i.test(product.name);
+  const isPc = /\b(mouse|mice|sound card|audio card)\b/i.test(product.name);
+
   let inferredCategory = rawCat;
+  if (isPc) inferredCategory = 'PC Accessories';
+  else if (isCar) inferredCategory = 'Car Accessories';
+  else if (isStorage) inferredCategory = 'Storage Devices';
 
-  if (rawCat === 'Power Devices') {
-    inferredCategory = 'Power Devices';
-  } else if (rawCat === 'Sound Devices') {
-    inferredCategory = 'Sound Devices';
-  } else {
-    // Check keyword patterns for category inference on general/other categories
-    const isStorage = /\b(flash|drive|usb|sd|storage|microsd)\b/i.test(product.name);
-    const isCar = /\b(car|mount|vehicle)\b/i.test(product.name);
-    const isPc = /\b(mouse|mice|sound card|audio card)\b/i.test(product.name);
-
-    if (isPc) {
-      inferredCategory = 'PC Accessories';
-    } else if (isCar) {
-      inferredCategory = 'Car Accessories';
-    } else if (isStorage) {
-      inferredCategory = 'Storage Devices';
-    }
-  }
-
-  return {
-    ...product,
-    categoryName: inferredCategory
-  };
+  // No guess matched: the product keeps its own category rather than being
+  // renamed into one it does not belong to.
+  return { ...product, categoryName: inferredCategory };
 }
 
 /**
@@ -202,6 +197,6 @@ export function sortProducts(products: ProductPublicDto[], sortKey: string): Pro
  *   recommendation surface rejected the entire real catalogue and rendered
  *   empty since 2026-07-21 while /shop happily sold the same products.
  */
-export function getCleanCatalog(apiProducts: ProductPublicDto[]): ProductPublicDto[] {
-  return (apiProducts || []).filter(p => p && p.slug).map(p => normalizeProductCategory(p));
+export function getCleanCatalog(apiProducts: ProductPublicDto[], taxonomy: Taxonomy = DEFAULT_TAXONOMY): ProductPublicDto[] {
+  return (apiProducts || []).filter(p => p && p.slug).map(p => normalizeProductCategory(p, taxonomy));
 }

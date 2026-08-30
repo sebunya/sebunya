@@ -114,6 +114,19 @@ export function dedupeProductsById(products: ProductPublicDto[]): ProductPublicD
   });
 }
 
+/**
+ * Everything the shop may list. Taxonomy membership decides which CATEGORY a
+ * product browses under — it must not decide whether the product exists.
+ * `categories` holds fewer categories than the taxonomy, so a product filed
+ * under one the storefront does not browse by (today "Other") was dropped from
+ * the shop, from search and from every count: approved, active, in stock and
+ * invisible. It now lists, and simply appears under no category chip until it
+ * is filed under one.
+ */
+export function isListableProduct(product: ProductPublicDto): boolean {
+  return Boolean(product && product.slug && product.name);
+}
+
 export function isApprovedDiscoveryProduct(product: ProductPublicDto, taxonomy: Taxonomy = DEFAULT_TAXONOMY): boolean {
   return taxonomy.some((category) => category.name === product.categoryName);
 }
@@ -140,7 +153,10 @@ export function filterDiscoveryProducts(
 ): ProductPublicDto[] {
   const categoryName = categoryNameForSlug(filters.category, taxonomy);
   return dedupeProductsById(products)
-    .filter((product) => isApprovedDiscoveryProduct(product, taxonomy))
+    // Listable, not "in the taxonomy": a product filed under a category the
+    // storefront does not browse by must still be findable. The category and
+    // subcategory filters below already restrict what a chip shows.
+    .filter(isListableProduct)
     .filter((product) => !categoryName || product.categoryName === categoryName)
     .filter((product) => !filters.subcategory || getProductSubcategory(product, taxonomy) === filters.subcategory)
     .filter((product) => matchesDiscoveryQuery(product, filters.search, taxonomy));

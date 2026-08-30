@@ -24,7 +24,7 @@ export const GET: APIRoute = async () => {
   const rawProducts: ProductPublicDto[] = await fetchApprovedCatalogue(apiBase);
   const taxonomy = await getTaxonomy();
   const biz = await getBusinessInfo();
-  const catalogue = dedupeProductsById(getCleanCatalog(rawProducts)).filter((p) => isApprovedDiscoveryProduct(p, taxonomy));
+  const catalogue = dedupeProductsById(getCleanCatalog(rawProducts, taxonomy)).filter((p) => isApprovedDiscoveryProduct(p, taxonomy));
   const paths = [...gatePassingHubPaths(catalogue, taxonomy), ...localPagePaths(biz)];
   return xmlResponse(urlsetXml(paths.map((loc) => ({ loc }))));
 };

@@ -22,6 +22,7 @@ import { shopCrawlDirective } from '../lib/crawlPolicy';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { fetchApprovedCatalogue } from '../lib/catalogue';
+import { isListableProduct } from '../lib/product-discovery';
 
 // Operator-editable discovery taxonomy (admin/categories); drives filters + labels.
 const taxonomy = await getTaxonomy();
@@ -69,7 +70,7 @@ if (rawProducts.length === 0) {
   catalogueNotice = 'The live catalogue is temporarily unavailable. Please try again shortly.';
 }
 
-const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts)).filter((p) => isApprovedDiscoveryProduct(p, taxonomy));
+const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts, taxonomy)).filter(isListableProduct);
 const filteredProducts = filterDiscoveryProducts(availableProducts, { search, category, subcategory }, taxonomy);
 const products = sortDiscoveryProducts(filteredProducts, sort);
 const browseFallback = products.length === 0 ? availableProducts.slice(0, 6) : [];

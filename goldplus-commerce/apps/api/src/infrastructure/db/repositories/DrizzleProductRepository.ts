@@ -314,6 +314,14 @@ export class DrizzleProductRepository implements IProductRepository {
           or(
             ilike(products.name, needle),
             ilike(products.categoryName, needle),
+            // ...and the joined category, which is what the storefront DTO
+            // actually shows. products.category_name is a denormalised copy;
+            // matching only the copy would silently reopen the dropdown /
+            // results-page divergence the moment the two drift.
+            inArray(
+              products.categoryId,
+              db.select({ id: categories.id }).from(categories).where(ilike(categories.name, needle)),
+            ),
             ilike(products.subcategory, needle),
             ilike(products.modelNumber, needle),
             ilike(products.sku, needle)

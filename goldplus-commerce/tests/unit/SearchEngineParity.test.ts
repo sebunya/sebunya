@@ -45,6 +45,10 @@ describe('the dropdown and the results page match the same fields', () => {
     for (const field of ['products.name', 'products.categoryName', 'products.subcategory', 'products.modelNumber', 'products.sku']) {
       expect(block, field).toContain(field);
     }
+    // products.category_name is a denormalised copy of the joined category;
+    // the storefront DTO shows the JOIN, so the query must match both or the
+    // two surfaces diverge again the moment the copy goes stale.
+    expect(block).toContain('db.select({ id: categories.id }).from(categories)');
   });
 
   it('ranking never discards a row the query matched', () => {

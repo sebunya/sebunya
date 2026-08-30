@@ -8,7 +8,10 @@ import {
 import { DEFAULT_TAXONOMY, type Taxonomy } from '@goldplus/shared';
 
 const p = (name: string, categoryName = 'Power Devices'): any => ({
-  id: name, name, categoryName, sku: 'SKU-' + name, modelNumber: 'M-' + name, retailPriceUgx: 1000,
+  // slug included because every real product has one (NOT NULL UNIQUE), and a
+  // product without one cannot be linked to, so the shop does not list it.
+  id: name, name, slug: name.toLowerCase().replace(/\s+/g, '-'), categoryName,
+  sku: 'SKU-' + name, modelNumber: 'M-' + name, retailPriceUgx: 1000,
 });
 
 describe('keyword inference (longest match wins, default taxonomy)', () => {
