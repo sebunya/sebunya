@@ -435,6 +435,30 @@ export class DrizzleProductRepository implements IProductRepository {
     return await db.query.categories.findMany();
   }
 
+  /**
+   * Make every taxonomy category FILEABLE. The storefront browses by the
+   * taxonomy, but a product can only be filed into this table, so a category
+   * added to the taxonomy alone was browsable and empty forever — no product
+   * could be put in it. Additive and idempotent: it creates what is missing,
+   * matching on slug, and never renames or removes anything.
+   */
+  async ensureCategories(wanted: Array<{ name: string; slug: string }>): Promise<string[]> {
+    if (wanted.length === 0) return [];
+    const existing = await db.select({ name: categories.name, slug: categories.slug }).from(categories);
+    const haveSlug = new Set(existing.map((c) => c.slug));
+    const haveName = new Set(existing.map((c) => c.name));
+    const created: string[] = [];
+    for (const category of wanted) {
+      if (!category.name || !category.slug) continue;
+      if (haveSlug.has(category.slug) || haveName.has(category.name)) continue;
+      await db.insert(categories).values({ name: category.name, slug: category.slug }).onConflictDoNothing();
+      haveSlug.add(category.slug);
+      haveName.add(category.name);
+      created.push(category.name);
+    }
+    return created;
+  }
+
   async checkCategoryExists(categoryId: string): Promise<boolean> {
     const cat = await db.query.categories.findFirst({ where: eq(categories.id, categoryId) });
     return !!cat;
