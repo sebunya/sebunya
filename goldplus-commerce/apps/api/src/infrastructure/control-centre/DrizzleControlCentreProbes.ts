@@ -80,6 +80,11 @@ export const envProviderConfigProbe: ProviderConfigProbe = {
       google: ['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_OAUTH_CLIENT_ID'],
       tiktok: ['TIKTOK_EVENTS_ACCESS_TOKEN'],
       whatsapp: ['WHATSAPP_ACCESS_TOKEN'],
+      // Customer and admin messaging. Absent from this map, an unknown provider
+      // fell through to "not configured" by accident rather than by
+      // measurement, and notifications had no module asking the question at all.
+      email: ['ZEPTOMAIL_API_TOKEN'],
+      sms: ['SMS_API_KEY'],
     };
     const keys = envKeys[provider] ?? [];
     return keys.length > 0 && keys.some((key) => Boolean(process.env[key]));

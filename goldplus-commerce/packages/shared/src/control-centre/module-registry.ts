@@ -123,6 +123,7 @@ const P = {
   ORDERS_READ: PERMISSIONS.ORDERS_READ,
   RECOMMENDATIONS_READ: PERMISSIONS.RECOMMENDATIONS_READ,
   REPORTS_READ: PERMISSIONS.REPORTS_READ,
+  NOTIFICATIONS_READ: PERMISSIONS.NOTIFICATIONS_READ,
   SETTINGS_MANAGE: PERMISSIONS.SETTINGS_MANAGE,
   CUSTOMER_DNA_READ: PERMISSIONS.CUSTOMER_DNA_READ,
   NBA_READ: PERMISSIONS.NBA_READ,
@@ -224,6 +225,34 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     riskClass: 'HIGH',
     liveMode: true,
     owner: 'measurement',
+    runbookLink: '/docs/handover/claude/CONTROL_CENTRE_PRODUCTION_RUNBOOK.md',
+  },
+  {
+    // The console listed 27 modules and none of them was messaging, so a shop
+    // that could not send a single email still reported every capability LIVE.
+    // 33 admin order emails had dead-lettered on the provider's HTTP 429 and
+    // nothing in the Trust Centre said so.
+    key: 'notifications',
+    displayName: 'Customer and admin messaging',
+    description: 'Order, verification and loyalty messages leaving the shop by email and SMS, with the outbox that carries them.',
+    category: 'TRUST_CENTRE',
+    adminRoute: '/admin/notifications',
+    apiMount: '/admin/notifications',
+    primaryApiEndpoints: ['/admin/notifications/health-check'],
+    requiredPermissions: [P.NOTIFICATIONS_READ],
+    optionalPermissions: [P.SETTINGS_MANAGE],
+    dataDependencies: [{ name: 'postgres', table: 'outbox_events' }],
+    // Credentials being PRESENT is all an env probe can honestly answer; whether
+    // the provider then accepts the send is the outbox's business, and its dead
+    // letters are the evidence for that.
+    providerDependencies: ['email', 'sms'],
+    activationPolicy: 'AUTOMATIC',
+    supportedActions: [
+      { key: 'open', label: 'Open notification outbox', target: '/admin/notifications', requiredPermission: P.NOTIFICATIONS_READ, kind: 'READ' },
+    ],
+    riskClass: 'MEDIUM',
+    liveMode: true,
+    owner: 'support',
     runbookLink: '/docs/handover/claude/CONTROL_CENTRE_PRODUCTION_RUNBOOK.md',
   },
   {
