@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 
 const CATALOGUE_MONITOR_LIMIT = 5;
 const PUBLIC_CATALOGUE_PREDICATE_VERSION =
-  'public-catalogue-v1:approval_status=approved;limit=5;price=retail_price_when_has_retail_price';
+  'public-catalogue-v2:approval_status=approved;active=true;order=created_at desc,id asc;limit=5;price=retail_price_when_has_retail_price';
 
 export type CatalogueParityReasonCode =
   | 'CATALOGUE_PARITY_OK'
@@ -260,6 +260,7 @@ export async function loadIndependentCatalogueTruth(
     select count(*)::int as count
     from products p
     where p.approval_status = 'approved'
+      and p.active = true
   `);
   const totalEligible = Number(resultRows<{ count: number | string }>(countResult)[0]?.count ?? 0);
 
@@ -281,6 +282,14 @@ export async function loadIndependentCatalogueTruth(
       end as "canonicalPriceUgx"
     from products p
     where p.approval_status = 'approved'
+      and p.active = true
+    -- The SAME total order the public route uses. Both sides used to take a
+    -- LIMIT with no ORDER BY, so each got whatever physical order Postgres
+    -- happened to return: they agreed by luck, and any row update could have
+    -- made them disagree. With more eligible products than the page size, an
+    -- unordered limit compares two DIFFERENT subsets and the hashes cannot
+    -- match. Ordering both makes this check mean what it says.
+    order by p.created_at desc, p.id asc
     limit ${limit}
   `);
   const page = resultRows<Record<string, unknown>>(pageResult).map((row) => ({
