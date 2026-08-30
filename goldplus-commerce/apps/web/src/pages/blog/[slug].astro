@@ -14,8 +14,11 @@ import { getStorefrontDiscount, salePriceUgx } from '../../lib/storefrontDiscoun
 const { slug } = Astro.params;
 const post = await fetchPost(slug ?? '');
 
+// The same shape the product page uses for an unknown slug: a real 404 that
+// renders the 404 page, rather than a hand-rolled Response carrying a Location
+// header that a 404 never acts on.
 if (!post) {
-  return new Response(null, { status: 404, headers: { Location: '/404' } });
+  return Astro.redirect('/404', 404);
 }
 
 const canonical = `${SITE_ORIGIN}/blog/${post.slug}`;
