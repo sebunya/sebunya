@@ -17,6 +17,20 @@ const repo = readFileSync(
 );
 const truth = monitor.slice(monitor.indexOf('export async function loadIndependentCatalogueTruth'));
 
+describe('the monitor does not cry wolf about optional config', () => {
+  it('an unconfigured GTM container is not warned about every run', () => {
+    // Analytics is deliberately unprovisioned; warning every run about a
+    // feature nobody enabled buries the warnings that matter.
+    const block = monitor.slice(monitor.indexOf('const gtmConfigured'), monitor.indexOf('const gtmConfigured') + 600);
+    expect(block).toMatch(/Boolean\(process\.env\.PUBLIC_GTM_ID\?\.trim\(\)\)/);
+    expect(block).toMatch(/if \(gtmConfigured &&/);
+  });
+
+  it('but a CONFIGURED container going missing still warns', () => {
+    expect(monitor).toMatch(/the configured Google Tag Manager container was missing in HTML/);
+  });
+});
+
 describe('the monitor selects the same rows as the route it verifies', () => {
   it('the SQL page is totally ordered', () => {
     // Without this, more eligible products than the page size means the two

@@ -431,8 +431,17 @@ export class SyntheticMonitor {
           logger.warn({ status: storefrontRes.status }, '[SyntheticMonitor] Storefront internal page check failed');
         } else {
           const storefrontHtml = await storefrontRes.text();
-          if (!storefrontHtml.includes('googletagmanager.com') && !storefrontHtml.includes('gtm')) {
-            logger.warn('[SyntheticMonitor] Storefront loaded, but Google Tag Manager container was missing in HTML');
+          // Only a CONFIGURED container can go missing. Analytics is optional
+          // and deliberately unprovisioned here, and warning every run about a
+          // feature nobody has turned on is how a log stops being read — the
+          // real warnings get buried in it. When an id is set, its absence
+          // from the HTML is a genuine regression and still warns.
+          const gtmConfigured = Boolean(process.env.PUBLIC_GTM_ID?.trim());
+          if (gtmConfigured && !storefrontHtml.includes('googletagmanager.com') && !storefrontHtml.includes('gtm')) {
+            logger.warn(
+              { gtmId: 'configured' },
+              '[SyntheticMonitor] Storefront loaded, but the configured Google Tag Manager container was missing in HTML',
+            );
           }
         }
       } catch (e) {
