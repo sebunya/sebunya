@@ -67,6 +67,23 @@ class InMemoryFulfilmentRepo implements IFulfilmentRepository {
       (t) => !isTerminalFulfilmentStatus(t.status) && now.getTime() > new Date(t.slaDueAt).getTime()
     ).length;
   }
+  /**
+   * Orders whose task has gone terminal. The real query also catches orders
+   * with NO task at all, which this in-memory store cannot represent — it only
+   * holds tasks — so the drift it models is the terminal-task half.
+   */
+  public liveOrderIds = new Set<string>();
+  async findOrdersWithoutActiveTask(limit: number) {
+    return [...this.byId.values()]
+      .filter((t) => this.liveOrderIds.has(t.orderId) && isTerminalFulfilmentStatus(t.status))
+      .slice(0, limit)
+      .map((t) => ({
+        orderId: t.orderId,
+        orderNumber: t.orderNumber ?? null,
+        orderStatus: 'received',
+        taskStatus: t.status,
+      }));
+  }
 }
 
 class SpyAuditRepo implements IAuditRepository {
@@ -412,5 +429,34 @@ describe('Fulfilment SLA, priority, assignment and overdue (Section 12)', () => 
     await new AssignFulfilmentTaskUseCase(repo, new SpyAuditRepo()).execute({ taskId: snap!.id, assignedTo: 'user-x', actorId: 'a' });
     expect((await list.execute({ assignedTo: 'unassigned' })).total).toBe(0);
     expect((await list.execute({ assignedTo: 'user-x' })).total).toBe(1);
+  });
+});
+
+describe('an order nobody can pick is counted, not silently dropped', () => {
+  it('a live order whose task went terminal shows up as unworkable', async () => {
+    // Only OUT_FOR_DELIVERY mirrors a task back onto its order, so cancelling a
+    // task leaves the order exactly where it was — correctly, because
+    // cancelling a customer's order must never be a side effect of clearing a
+    // queue entry. The cost is that the two drift, and the order becomes
+    // invisible: absent from the queue, still open to the customer.
+    const repo = new InMemoryFulfilmentRepo();
+    const { task } = await repo.createForOrder(FulfilmentTask.openForOrder({
+      id: 't-live', orderId: 'order-live', orderNumber: 'GP-LIVE', paymentStatus: 'unpaid',
+      customerName: 'A', deliveryArea: 'X', deliverySummary: 'X', totalUgx: 1, deliveryFeeUgx: 0,
+      items: [{ productId: 'p', sku: 's', name: 'n', quantity: 1, unitPriceUgx: 1, lineTotalUgx: 1 }],
+    }));
+    repo.liveOrderIds.add('order-live');
+
+    const overview = new GetFulfilmentOverviewUseCase(repo);
+    expect((await overview.badge()).unworkable).toBe(0);
+
+    // The operator clears it from the queue; the ORDER is untouched.
+    const cancelled = repo.byId.get(task.id)!;
+    repo.byId.set(task.id, { ...cancelled, status: 'CANCELLED' } as typeof cancelled);
+
+    const badge = await overview.badge();
+    expect(badge.unworkable).toBe(1);
+    const rows = await overview.unworkableOrders();
+    expect(rows[0]).toMatchObject({ orderNumber: 'GP-LIVE', taskStatus: 'CANCELLED' });
   });
 });

@@ -23,9 +23,21 @@ export class GetFulfilmentOverviewUseCase {
    * Admin badges: unacknowledged NEW tasks ("New Orders") and active tasks past
    * their SLA deadline ("Overdue").
    */
-  async badge(now: Date = new Date()): Promise<{ newOrders: number; overdue: number }> {
-    const [newOrders, overdue] = await Promise.all([this.repo.countNew(), this.repo.countOverdue(now)]);
-    return { newOrders, overdue };
+  async badge(now: Date = new Date()): Promise<{ newOrders: number; overdue: number; unworkable: number }> {
+    const [newOrders, overdue, orphans] = await Promise.all([
+      this.repo.countNew(),
+      this.repo.countOverdue(now),
+      this.repo.findOrdersWithoutActiveTask(200),
+    ]);
+    // Orders nobody can pick: live, but with a terminal task or none at all.
+    // They are absent from the queue and still open to the customer, so without
+    // this they are simply never seen again.
+    return { newOrders, overdue, unworkable: orphans.length };
+  }
+
+  /** The orders behind that count, so the operator can act on them by name. */
+  async unworkableOrders(limit = 50) {
+    return this.repo.findOrdersWithoutActiveTask(limit);
   }
 
   /** Live SLA stage counts derived from active tasks, plus persisted escalation totals. */

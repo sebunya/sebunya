@@ -34,4 +34,18 @@ export interface IFulfilmentRepository {
   countOverdue(now: Date): Promise<number>;
   /** Active (non-terminal) tasks for SLA evaluation, oldest-due first. */
   findActiveForSla(limit: number): Promise<FulfilmentTaskSnapshot[]>;
+  /**
+   * Orders still in a LIVE status whose fulfilment task is terminal, or which
+   * have no task at all.
+   *
+   * Only OUT_FOR_DELIVERY mirrors a task back onto its order, so cancelling a
+   * task leaves the order exactly where it was. That is the right default —
+   * cancelling a customer's order is a bigger act than clearing a queue entry,
+   * and must never happen as a side effect. But it means the two can drift, and
+   * an order with no active task is one nobody will ever pick: invisible to the
+   * queue, still open to the customer. Reported, never auto-corrected.
+   */
+  findOrdersWithoutActiveTask(limit: number): Promise<Array<{
+    orderId: string; orderNumber: string | null; orderStatus: string; taskStatus: string | null;
+  }>>;
 }

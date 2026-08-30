@@ -118,6 +118,29 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
       .where(eq(fulfilmentTasks.id, s.id));
   }
 
+  async findOrdersWithoutActiveTask(limit: number): Promise<Array<{
+    orderId: string; orderNumber: string | null; orderStatus: string; taskStatus: string | null;
+  }>> {
+    // LEFT JOIN, so an order with no task at all is caught alongside one whose
+    // task has gone terminal. Orders that are themselves finished are not drift.
+    const rows = (await db.execute(sql`
+      select o.id::text as order_id, o.order_number, o.status as order_status, t.status as task_status
+      from orders o
+      left join fulfilment_tasks t on t.order_id = o.id
+      where o.status not in ('cancelled', 'completed', 'refunded')
+        and (t.id is null or t.status in ('DELIVERED', 'CANCELLED'))
+      order by o.created_at desc
+      limit ${limit}
+    `)) as unknown as Array<{ order_id: string; order_number: string | null; order_status: string; task_status: string | null }>;
+    const list = Array.isArray(rows) ? rows : (rows as { rows?: typeof rows }).rows ?? [];
+    return list.map((r) => ({
+      orderId: String(r.order_id),
+      orderNumber: r.order_number === null ? null : String(r.order_number),
+      orderStatus: String(r.order_status),
+      taskStatus: r.task_status === null ? null : String(r.task_status),
+    }));
+  }
+
   async listQueue(query: FulfilmentQueueQuery): Promise<FulfilmentQueuePage> {
     const conditions = [];
     if (query.status) {
