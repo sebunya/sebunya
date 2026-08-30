@@ -121,9 +121,16 @@ export function isApprovedDiscoveryProduct(product: ProductPublicDto, taxonomy: 
 export function matchesDiscoveryQuery(product: ProductPublicDto, query: string, taxonomy: Taxonomy = DEFAULT_TAXONOMY): boolean {
   if (!query) return true;
   const subcategory = subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy);
-  return [product.name, product.categoryName, subcategory, product.sku, product.modelNumber]
+  const haystack = [product.name, product.categoryName, subcategory, product.sku, product.modelNumber]
     .filter((value): value is string => typeof value === 'string')
-    .some((value) => value.toLocaleLowerCase('en').includes(query.toLocaleLowerCase('en')));
+    .join(' ')
+    .toLocaleLowerCase('en');
+  // Every word must appear, in any order, so "bank power" finds the power bank.
+  // A one-word query is the old substring behaviour exactly, and a phrase can
+  // only match MORE than before, never less. Kept in step with the API's
+  // searchTerms so the header suggestions and this page agree.
+  const terms = query.toLocaleLowerCase('en').split(/\s+/).filter(Boolean).slice(0, 6);
+  return terms.every((term) => haystack.includes(term));
 }
 
 export function filterDiscoveryProducts(

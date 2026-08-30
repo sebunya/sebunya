@@ -21,6 +21,18 @@ export function normalizeSearchQuery(raw: string): string {
     .slice(0, MAX_QUERY_LENGTH);
 }
 
+/**
+ * The words of a query, in the form both the SQL and the ranking use. Matching
+ * every word in any order is what lets "bank power" find the power bank; the
+ * cap keeps a pasted paragraph from becoming a hundred ANDed LIKEs.
+ */
+export const MAX_SEARCH_TERMS = 6;
+
+export function searchTerms(raw: string): string[] {
+  const normalized = normalizeSearchQuery(raw);
+  return normalized ? normalized.split(' ').filter(Boolean).slice(0, MAX_SEARCH_TERMS) : [];
+}
+
 /** Queries below two characters are noise and are never recorded or suggested on. */
 export function isMeaningfulQuery(normalized: string): boolean {
   return normalized.length >= 2;
@@ -31,21 +43,35 @@ export interface SuggestionCandidate {
   name: string;
   sku?: string | null;
   modelNumber?: string | null;
+  /** Matched by the results page too, so the dropdown must see it as well. */
+  categoryName?: string | null;
+  subcategory?: string | null;
 }
 
 /**
  * Deterministic suggestion ranking: name prefix > word prefix > SKU/model
- * match > substring. Ties break alphabetically so results are stable.
+ * match > name substring > matched on category or subcategory. Ties break
+ * alphabetically so results are stable.
+ *
+ * The last tier exists because the repository matches five fields; scoring
+ * only three silently threw away rows it had deliberately returned, so typing
+ * a category name offered nothing while the results page listed products.
  */
 export function rankSuggestions<T extends SuggestionCandidate>(query: string, candidates: T[]): T[] {
   const q = normalizeSearchQuery(query);
+  const terms = searchTerms(query);
   const scored = candidates.map((c) => {
     const name = c.name.toLowerCase();
+    const identifiers = `${(c.sku ?? '').toLowerCase()} ${(c.modelNumber ?? '').toLowerCase()}`;
+    const haystack = `${name} ${identifiers} ${(c.categoryName ?? '').toLowerCase()} ${(c.subcategory ?? '').toLowerCase()}`;
     let score = 0;
-    if (name.startsWith(q)) score = 4;
-    else if (name.split(/\s+/).some((w) => w.startsWith(q))) score = 3;
-    else if ((c.sku ?? '').toLowerCase().includes(q) || (c.modelNumber ?? '').toLowerCase().includes(q)) score = 2;
-    else if (name.includes(q)) score = 1;
+    if (name.startsWith(q)) score = 5;
+    else if (name.split(/\s+/).some((w) => w.startsWith(q))) score = 4;
+    else if (identifiers.includes(q)) score = 3;
+    else if (name.includes(q)) score = 2;
+    // Every word present somewhere: the multi-word and category matches that
+    // the whole-phrase tiers above cannot see.
+    else if (terms.length > 0 && terms.every((t) => haystack.includes(t))) score = 1;
     return { c, score };
   });
   return scored

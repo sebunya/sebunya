@@ -43,6 +43,8 @@ export class SuggestProductsUseCase {
         name: r.entity.name,
         sku: r.entity.sku,
         modelNumber: r.entity.modelNumber,
+        categoryName: r.categoryName,
+        subcategory: r.entity.subcategory ?? null,
         row: r,
       }))
     );

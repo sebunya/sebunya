@@ -5,6 +5,7 @@ import { eq, inArray, and, or, ilike, SQL, asc } from 'drizzle-orm';
 import { ProductEntity, StockStatus } from '../../../domain/products/ProductEntity';
 import { IProductRepository, ProductWithPrice } from '../../../application/ports/IProductRepository';
 import { likeContains } from '../like';
+import { searchTerms } from '../../../domain/products/ProductSearchService';
 
 export class DrizzleProductRepository implements IProductRepository {
   async findBySlug(slug: string): Promise<ProductEntity | null> {
@@ -299,14 +300,25 @@ export class DrizzleProductRepository implements IProductRepository {
     }
 
     if (opts.search) {
-      const needle = likeContains(opts.search);
-      conditions.push(
-        or(
-          ilike(products.name, needle),
-          ilike(products.modelNumber, needle),
-          ilike(products.sku, needle)
-        )
-      );
+      // The autocomplete and the /shop results page must agree on what a query
+      // matches, or the dropdown says "nothing found" for a term the results
+      // page has products for. These are the same five fields the storefront
+      // filter reads, and both are denormalised onto products, so no join.
+      // Every word must appear somewhere, in any order, so "bank power" finds
+      // the power bank; a whole-phrase match is simply the one-word case.
+      const terms = searchTerms(opts.search);
+      for (const term of terms) {
+        const needle = likeContains(term);
+        conditions.push(
+          or(
+            ilike(products.name, needle),
+            ilike(products.categoryName, needle),
+            ilike(products.subcategory, needle),
+            ilike(products.modelNumber, needle),
+            ilike(products.sku, needle)
+          )
+        );
+      }
     }
 
     if (opts.ids && opts.ids.length > 0) {
