@@ -221,6 +221,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   },
   // Hidden Modules
   {
+    label: 'Articles',
+    href: '/admin/blog',
+    group: 'Storefront',
+    status: 'working',
+    description: 'Guides and advice that answer what customers ask before they know what to buy.'
+  },
+  {
     label: 'Categories & taxonomy',
     href: '/admin/categories',
     group: 'Storefront',

@@ -6,6 +6,7 @@ import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRe
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
 import { DrizzleOrderAttributionRepository } from './db/repositories/DrizzleOrderAttributionRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
+import { DrizzleBlogRepository } from './db/repositories/DrizzleBlogRepository';
 import { DrizzleDeviceRepository } from './db/repositories/DrizzleDeviceRepository';
 import { DrizzleBatteryCatalogueRepository } from './db/repositories/DrizzleBatteryCatalogueRepository';
 import { DrizzleDeviceCatalogueRepository } from './db/repositories/DrizzleDeviceCatalogueRepository';
@@ -160,6 +161,16 @@ import {
   GetSearchInsightsUseCase,
   UpdateSearchDemandStatusUseCase,
 } from '../application/use-cases/products/SearchUseCases';
+import {
+  ListPublishedPostsUseCase,
+  GetPublishedPostUseCase,
+  GetPostForAdminUseCase,
+  CreatePostUseCase,
+  UpdatePostUseCase,
+  PublishPostUseCase,
+  UnpublishPostUseCase,
+  DeletePostUseCase,
+} from '../application/use-cases/blog/BlogUseCases';
 import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
 import { env } from '../config/env';
 import { DrizzleSystemHealthRepository } from './db/repositories/DrizzleSystemHealthRepository';
@@ -644,6 +655,7 @@ export class Registry {
   public readonly orderRepo = new DrizzleOrderRepository();
   public readonly orderAttributionRepo = new DrizzleOrderAttributionRepository();
   public readonly productRepo = new DrizzleProductRepository();
+  public readonly blogRepo = new DrizzleBlogRepository();
   public readonly deviceRepo = new DrizzleDeviceRepository();
   public readonly pricingRepo = new DrizzlePricingRepository();
   public readonly pricingQuoteRepo = new DrizzlePricingQuoteRepository();
@@ -846,6 +858,14 @@ export class Registry {
   public readonly getPaymentReconciliationUseCase = new GetPaymentReconciliationUseCase(this.orderRepo, this.paymentRepo, this.pesapalPaymentRepo);
   public readonly searchDemandRepo = new DrizzleSearchDemandRepository();
   public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo, this.pricingRepo);
+  public readonly listPublishedPostsUseCase = new ListPublishedPostsUseCase(this.blogRepo);
+  public readonly getPublishedPostUseCase = new GetPublishedPostUseCase(this.blogRepo);
+  public readonly getPostForAdminUseCase = new GetPostForAdminUseCase(this.blogRepo);
+  public readonly createPostUseCase = new CreatePostUseCase(this.blogRepo);
+  public readonly updatePostUseCase = new UpdatePostUseCase(this.blogRepo);
+  public readonly publishPostUseCase = new PublishPostUseCase(this.blogRepo);
+  public readonly unpublishPostUseCase = new UnpublishPostUseCase(this.blogRepo);
+  public readonly deletePostUseCase = new DeletePostUseCase(this.blogRepo);
   public readonly recordSearchEventUseCase = new RecordSearchEventUseCase(this.searchDemandRepo);
   public readonly recordSearchInteractionUseCase = new RecordSearchInteractionUseCase(this.searchDemandRepo);
   public readonly listSearchDemandUseCase = new ListSearchDemandUseCase(this.searchDemandRepo);

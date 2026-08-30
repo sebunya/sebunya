@@ -1,0 +1,88 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { apiBase } from '../../../lib/api';
+
+/** Article list. Drafts and published together — the operator's whole desk. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/blog', 303);
+
+let posts: any[] = [];
+let loadError = '';
+try {
+  const res = await fetch(`${apiBase}/admin/blog`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/blog', 303);
+  const json: any = await res.json().catch(() => null);
+  if (res.ok && json?.success) posts = Array.isArray(json.data) ? json.data : [];
+  else loadError = json?.error?.message ?? 'Could not load the articles.';
+} catch {
+  loadError = 'The service is unreachable right now.';
+}
+
+const fmt = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' }) : '—';
+const badge = (status: string) =>
+  status === 'PUBLISHED' ? 'bg-emerald-100 text-emerald-800'
+  : status === 'ARCHIVED' ? 'bg-slate-200 text-slate-700'
+  : 'bg-amber-100 text-amber-800';
+---
+<AdminLayout title="Articles">
+  <div class="mx-auto max-w-5xl px-4 py-8">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-black text-slate-900">Articles</h1>
+        <p class="mt-1 text-sm text-slate-600">
+          Guides and advice for the questions customers ask before they know what to buy. Published articles appear at
+          <a href="/blog" class="underline">/blog</a> and in the sitemap.
+        </p>
+      </div>
+      <a href="/admin/blog/new" class="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white">Write an article</a>
+    </div>
+
+    {loadError && <div class="mt-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{loadError}</div>}
+
+    {!loadError && posts.length === 0 && (
+      <div class="mt-8 rounded-2xl border border-slate-200 bg-white p-10 text-center">
+        <h2 class="text-lg font-bold text-slate-900">Nothing written yet</h2>
+        <p class="mx-auto mt-2 max-w-md text-sm text-slate-600">
+          The catalogue can only rank for people already searching for a product. An article answers the question they
+          ask first — and links them to the stock that answers it.
+        </p>
+        <a href="/admin/blog/new" class="mt-6 inline-block rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white">Write the first one</a>
+      </div>
+    )}
+
+    {posts.length > 0 && (
+      <div class="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th class="px-5 py-3">Title</th>
+              <th class="px-5 py-3">Status</th>
+              <th class="px-5 py-3">Published</th>
+              <th class="px-5 py-3">Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {posts.map((post: any) => (
+              <tr class="border-t border-slate-100">
+                <td class="px-5 py-3">
+                  <a href={`/admin/blog/${post.id}`} class="font-bold text-slate-900 hover:underline">{post.title}</a>
+                  <span class="mt-0.5 block text-xs text-slate-500">/blog/{post.slug}</span>
+                </td>
+                <td class="px-5 py-3">
+                  <span class={`rounded-full px-2.5 py-1 text-xs font-bold ${badge(post.status)}`}>{post.status}</span>
+                </td>
+                <td class="px-5 py-3 text-slate-600">{fmt(post.publishedAt)}</td>
+                <td class="px-5 py-3 text-slate-600">{fmt(post.updatedAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+</AdminLayout>

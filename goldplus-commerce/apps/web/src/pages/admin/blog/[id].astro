@@ -1,0 +1,59 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import ArticleEditor from '../../../components/admin/ArticleEditor.astro';
+import { readSessionToken } from '../../../lib/session';
+import { apiBase } from '../../../lib/api';
+
+const { id } = Astro.params;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/blog/${id}`, 303);
+
+let post: any = null;
+let relatedProductIds: string[] = [];
+let loadError = '';
+try {
+  const res = await fetch(`${apiBase}/admin/blog/${id}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (res.status === 401 || res.status === 403) return Astro.redirect(`/admin/login?returnTo=/admin/blog/${id}`, 303);
+  const json: any = await res.json().catch(() => null);
+  if (res.ok && json?.success) {
+    post = json.data.post;
+    relatedProductIds = Array.isArray(json.data.relatedProductIds) ? json.data.relatedProductIds : [];
+  } else {
+    loadError = json?.error?.message ?? 'Could not load that article.';
+  }
+} catch {
+  loadError = 'The service is unreachable right now.';
+}
+
+let products: Array<{ id: string; name: string }> = [];
+try {
+  const res = await fetch(`${apiBase}/products?limit=100`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(3000) });
+  const json: any = await res.json().catch(() => null);
+  if (res.ok && json?.success && Array.isArray(json.data)) {
+    products = json.data.map((p: any) => ({ id: p.id, name: p.name }));
+  }
+} catch {
+  // The picker degrades; the editor still works.
+}
+
+const saved = Astro.url.searchParams.get('saved') === '1';
+---
+<AdminLayout title={post ? post.title : 'Article'}>
+  <div class="mx-auto max-w-3xl px-4 py-8">
+    {loadError && <div class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{loadError}</div>}
+    {saved && <div class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">Draft saved.</div>}
+    {post && (
+      <>
+        <h1 class="text-2xl font-black text-slate-900">{post.title}</h1>
+        <p class="mt-1 text-sm text-slate-600">
+          <span class="font-bold">{post.status}</span> · /blog/{post.slug}
+          {post.status === 'PUBLISHED' && ' · the address never changes once published, so links keep working'}
+        </p>
+        <ArticleEditor post={post} relatedProductIds={relatedProductIds} products={products} />
+      </>
+    )}
+  </div>
+</AdminLayout>

@@ -1,0 +1,142 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { fetchPost, formatArticleDate } from '../../lib/blog';
+import { renderArticle, articlePlainText } from '../../lib/articleMarkup';
+import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
+import { SITE_ORIGIN } from '../../lib/sitemap';
+import { formatUgx } from '../../lib/money';
+import { getStorefrontDiscount, salePriceUgx } from '../../lib/storefrontDiscount';
+
+/**
+ * One article. Server-rendered so the words are in the HTML a crawler reads,
+ * not assembled by script after it has left.
+ */
+const { slug } = Astro.params;
+const post = await fetchPost(slug ?? '');
+
+if (!post) {
+  return new Response(null, { status: 404, headers: { Location: '/404' } });
+}
+
+const canonical = `${SITE_ORIGIN}/blog/${post.slug}`;
+const html = renderArticle(post.body);
+const description = post.seoDescription || articlePlainText(post.body, 300);
+
+// The same campaign arithmetic every other surface uses, floor included — an
+// article must never quote a price the basket will not honour.
+const discount = await getStorefrontDiscount();
+
+const jsonLd = serializeJsonLd({
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: post.title.slice(0, 110),
+  description,
+  datePublished: post.publishedAt ?? undefined,
+  dateModified: post.updatedAt,
+  author: { '@type': 'Organization', name: post.authorName },
+  publisher: {
+    '@type': 'Organization',
+    name: 'GoldPlus',
+    logo: { '@type': 'ImageObject', url: `${SITE_ORIGIN}/icon-512.svg` },
+  },
+  mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
+  ...(post.coverImageUrl ? { image: [post.coverImageUrl] } : {}),
+});
+
+const breadcrumbs = serializeJsonLd(
+  breadcrumbJsonLd([
+    { name: 'Home', url: `${SITE_ORIGIN}/` },
+    { name: 'Guides & advice', url: `${SITE_ORIGIN}/blog` },
+    { name: post.title, url: canonical },
+  ]),
+);
+---
+<BaseLayout title={post.seoTitle ? `${post.seoTitle} | GoldPlus` : `${post.title} | GoldPlus`} description={description} canonicalUrl={canonical} image={post.coverImageUrl ?? undefined}>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={jsonLd} />
+    <script type="application/ld+json" set:html={breadcrumbs} />
+  </Fragment>
+
+  <article class="mx-auto max-w-3xl px-4 py-12">
+    <nav aria-label="Breadcrumb" class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <a href="/blog" class="hover:text-slate-900">Guides &amp; advice</a>
+    </nav>
+
+    <h1 class="mt-4 text-3xl font-black leading-tight tracking-tight text-slate-900 sm:text-4xl">{post.title}</h1>
+
+    <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+      {formatArticleDate(post.publishedAt)} · {post.readingMinutes} min read · {post.authorName}
+    </p>
+
+    {post.excerpt && <p class="mt-6 border-l-4 border-brand-primary pl-4 text-lg leading-relaxed text-slate-700">{post.excerpt}</p>}
+
+    {post.coverImageUrl && (
+      <img
+        src={post.coverImageUrl}
+        alt={post.coverImageAlt ?? ''}
+        class="mt-8 aspect-[16/9] w-full rounded-2xl object-cover"
+        loading="eager"
+      />
+    )}
+
+    <div class="gp-article mt-8" set:html={html} />
+
+    {post.relatedProducts.length > 0 && (
+      <section class="mt-14 border-t border-slate-200 pt-10">
+        <h2 class="text-xl font-black text-slate-900">Products in this guide</h2>
+        <p class="mt-1 text-sm text-slate-600">Everything here is in the catalogue at the price shown.</p>
+        <div class="mt-6 grid gap-5 sm:grid-cols-2">
+          {post.relatedProducts.map((product) => {
+            const sale = product.retailPriceUgx !== null && discount.active
+              ? salePriceUgx(product.retailPriceUgx, discount.percentBps, discount.priceFloorUgx)
+              : product.retailPriceUgx;
+            const saved = product.retailPriceUgx !== null && sale !== null && sale < product.retailPriceUgx;
+            return (
+              <a href={`/products/${product.slug}`} class="flex gap-4 rounded-2xl border border-slate-200 bg-white p-4 hover:border-slate-900">
+                <span class="block h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-slate-100">
+                  {product.primaryImageUrl && <img src={product.primaryImageUrl} alt="" class="h-full w-full object-cover" loading="lazy" />}
+                </span>
+                <span class="min-w-0">
+                  <span class="block text-sm font-bold text-slate-900">{product.name}</span>
+                  {product.categoryName && <span class="mt-0.5 block text-xs text-slate-500">{product.categoryName}</span>}
+                  {sale !== null && (
+                    <span class="mt-1 block text-sm font-black text-slate-900">
+                      {formatUgx(sale)}
+                      {saved && <s class="ml-2 text-xs font-semibold text-slate-400">{formatUgx(product.retailPriceUgx as number)}</s>}
+                    </span>
+                  )}
+                </span>
+              </a>
+            );
+          })}
+        </div>
+      </section>
+    )}
+
+    <aside class="mt-14 rounded-2xl bg-brand-dark px-6 py-8 text-center text-white">
+      <h2 class="text-lg font-black">Still not sure which one?</h2>
+      <p class="mx-auto mt-2 max-w-md text-sm text-slate-300">Tell us the device and we will tell you what fits. No guesswork.</p>
+      <div class="mt-5 flex flex-wrap justify-center gap-3">
+        <a href="/product-finder" class="rounded-full bg-brand-primary px-6 py-3 text-sm font-bold text-brand-dark">Find the right product</a>
+        <a href="/shop" class="rounded-full border border-white/30 px-6 py-3 text-sm font-bold text-white">Browse the shop</a>
+      </div>
+    </aside>
+  </article>
+</BaseLayout>
+
+<style is:global>
+  /* The article body is generated from a restricted markup, so its elements are
+     styled here rather than with utility classes on every tag. */
+  .gp-article { color: #334155; font-size: 1.0625rem; line-height: 1.75; }
+  .gp-article > * + * { margin-top: 1.15em; }
+  .gp-article h2 { font-size: 1.5rem; font-weight: 800; color: #0f172a; margin-top: 2em; line-height: 1.3; }
+  .gp-article h3 { font-size: 1.2rem; font-weight: 800; color: #0f172a; margin-top: 1.6em; line-height: 1.35; }
+  .gp-article ul, .gp-article ol { padding-left: 1.35rem; }
+  .gp-article ul { list-style: disc; }
+  .gp-article ol { list-style: decimal; }
+  .gp-article li + li { margin-top: 0.45em; }
+  .gp-article blockquote { border-left: 4px solid #cbd5e1; padding-left: 1rem; font-style: italic; color: #475569; }
+  .gp-article strong { color: #0f172a; font-weight: 700; }
+  .gp-article__link { color: #0f172a; text-decoration: underline; text-underline-offset: 3px; }
+  .gp-article__link:hover { color: #000; }
+</style>

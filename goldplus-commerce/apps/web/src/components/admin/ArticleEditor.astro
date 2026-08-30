@@ -1,0 +1,153 @@
+---
+/**
+ * The article editor, used by BOTH /admin/blog/new and /admin/blog/[id].
+ * One component so the two cannot drift into offering different fields.
+ */
+interface Props {
+  post?: any;
+  relatedProductIds?: string[];
+  products: Array<{ id: string; name: string }>;
+}
+const { post = null, relatedProductIds = [], products } = Astro.props;
+const isEdit = Boolean(post?.id);
+---
+<form id="article-form" data-id={post?.id ?? ''} data-status={post?.status ?? 'DRAFT'} class="mt-8 space-y-6">
+  <div class="rounded-2xl border border-slate-200 bg-white p-6">
+    <label class="block text-sm font-bold text-slate-900" for="title">Title</label>
+    <p class="mt-1 text-xs text-slate-500">What someone searching would recognise. This becomes the page heading.</p>
+    <input id="title" name="title" required maxlength="200" value={post?.title ?? ''}
+      class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" placeholder="How to tell a real fast charger from a fake" />
+
+    <label class="mt-6 block text-sm font-bold text-slate-900" for="excerpt">Summary</label>
+    <p class="mt-1 text-xs text-slate-500">One or two sentences. This is what Google shows and what appears on the article card.</p>
+    <textarea id="excerpt" name="excerpt" rows="2" maxlength="400"
+      class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm">{post?.excerpt ?? ''}</textarea>
+
+    <label class="mt-6 block text-sm font-bold text-slate-900" for="body">Article</label>
+    <p class="mt-1 text-xs text-slate-500">
+      Plain text. <code># Heading</code>, <code>## Smaller heading</code>, <code>- bullet</code>, <code>1. numbered</code>,
+      <code>&gt; quote</code>, <code>**bold**</code>, <code>*italic*</code>, <code>[words](/shop)</code>.
+      Leave a blank line between paragraphs. HTML is not accepted and is shown as text.
+    </p>
+    <textarea id="body" name="body" rows="18"
+      class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 font-mono text-sm leading-relaxed">{post?.body ?? ''}</textarea>
+    <p class="mt-2 text-xs text-slate-500"><span id="wordcount">0</span> words · at least 80 to publish</p>
+  </div>
+
+  <div class="rounded-2xl border border-slate-200 bg-white p-6">
+    <h2 class="text-sm font-bold text-slate-900">Cover image</h2>
+    <input id="coverImageUrl" name="coverImageUrl" value={post?.coverImageUrl ?? ''} maxlength="1000"
+      class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" placeholder="https://… (optional)" />
+    <input id="coverImageAlt" name="coverImageAlt" value={post?.coverImageAlt ?? ''} maxlength="300"
+      class="mt-3 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" placeholder="Describe the image — required if there is one" />
+  </div>
+
+  <div class="rounded-2xl border border-slate-200 bg-white p-6">
+    <h2 class="text-sm font-bold text-slate-900">Products in this guide</h2>
+    <p class="mt-1 text-xs text-slate-500">Up to 6. They appear as cards at the end of the article, at the live price.</p>
+    <div class="mt-3 grid gap-2 sm:grid-cols-2">
+      {products.map((product) => (
+        <label class="flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" name="relatedProductIds" value={product.id} checked={relatedProductIds.includes(product.id)} />
+          {product.name}
+        </label>
+      ))}
+    </div>
+  </div>
+
+  <details class="rounded-2xl border border-slate-200 bg-white p-6">
+    <summary class="cursor-pointer text-sm font-bold text-slate-900">Search engine overrides (optional)</summary>
+    <p class="mt-2 text-xs text-slate-500">Leave blank to use the title and summary above, which is usually right.</p>
+    <input id="metaTitle" name="metaTitle" value={post?.metaTitle ?? ''} maxlength="200"
+      class="mt-3 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" placeholder="Meta title" />
+    <textarea id="metaDescription" name="metaDescription" rows="2" maxlength="320"
+      class="mt-3 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" placeholder="Meta description">{post?.metaDescription ?? ''}</textarea>
+  </details>
+
+  <div id="notice" class="hidden rounded-xl border p-4 text-sm"></div>
+
+  <div class="flex flex-wrap items-center gap-3">
+    <button type="button" id="save" class="rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white">
+      {isEdit ? 'Save changes' : 'Save draft'}
+    </button>
+    {isEdit && post?.status !== 'PUBLISHED' && (
+      <button type="button" id="publish" class="rounded-full bg-emerald-600 px-6 py-3 text-sm font-bold text-white">Publish</button>
+    )}
+    {isEdit && post?.status === 'PUBLISHED' && (
+      <>
+        <a href={`/blog/${post.slug}`} class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-700">View live</a>
+        <button type="button" id="unpublish" class="rounded-full border border-amber-400 px-6 py-3 text-sm font-bold text-amber-700">Unpublish</button>
+      </>
+    )}
+    <a href="/admin/blog" class="text-sm font-bold text-slate-500 hover:text-slate-900">Back to articles</a>
+  </div>
+</form>
+
+<script>
+  const form = document.getElementById('article-form');
+  const notice = document.getElementById('notice');
+  const body = document.getElementById('body');
+  const wordcount = document.getElementById('wordcount');
+
+  function say(message, ok) {
+    notice.className = 'rounded-xl border p-4 text-sm ' + (ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-red-300 bg-red-50 text-red-900');
+    notice.textContent = message;
+    notice.classList.remove('hidden');
+    notice.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function countWords() {
+    const words = (body.value || '').replace(/[#>*_`\[\]()!-]/g, ' ').trim();
+    wordcount.textContent = words ? String(words.split(/\s+/).filter(Boolean).length) : '0';
+  }
+  body?.addEventListener('input', countWords);
+  countWords();
+
+  function payload() {
+    return {
+      title: document.getElementById('title').value,
+      excerpt: document.getElementById('excerpt').value,
+      body: body.value,
+      coverImageUrl: document.getElementById('coverImageUrl').value || null,
+      coverImageAlt: document.getElementById('coverImageAlt').value || null,
+      metaTitle: document.getElementById('metaTitle').value || null,
+      metaDescription: document.getElementById('metaDescription').value || null,
+      relatedProductIds: Array.from(form.querySelectorAll('input[name="relatedProductIds"]:checked')).map((i) => i.value),
+    };
+  }
+
+  async function send(url, method, data) {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: data ? JSON.stringify(data) : undefined,
+    });
+    const json = await res.json().catch(() => null);
+    return { ok: res.ok && json && json.success, json };
+  }
+
+  document.getElementById('save')?.addEventListener('click', async () => {
+    const id = form.dataset.id;
+    const { ok, json } = id
+      ? await send('/api/admin/blog/' + id, 'PUT', payload())
+      : await send('/api/admin/blog', 'POST', payload());
+    if (!ok) return say((json && json.error && json.error.message) || 'Could not save the article.', false);
+    if (!id && json.data && json.data.id) {
+      window.location.href = '/admin/blog/' + json.data.id + '?saved=1';
+      return;
+    }
+    say('Saved.', true);
+  });
+
+  document.getElementById('publish')?.addEventListener('click', async () => {
+    const { ok, json } = await send('/api/admin/blog/' + form.dataset.id + '/publish', 'POST', {});
+    if (!ok) return say((json && json.error && json.error.message) || 'Could not publish.', false);
+    window.location.reload();
+  });
+
+  document.getElementById('unpublish')?.addEventListener('click', async () => {
+    const { ok, json } = await send('/api/admin/blog/' + form.dataset.id + '/unpublish', 'POST', { status: 'DRAFT' });
+    if (!ok) return say((json && json.error && json.error.message) || 'Could not unpublish.', false);
+    window.location.reload();
+  });
+</script>

@@ -34,6 +34,8 @@ import adminSeoRobotsRoutes from './routes/admin/seo-robots';
 import adminSeoVitalsRoutes from './routes/admin/seo-vitals';
 import adminBusinessInfoRoutes from './routes/admin/business-info';
 import adminTaxonomyRoutes from './routes/admin/taxonomy';
+import blogRoutes from './routes/blog';
+import adminBlogRoutes from './routes/admin/blog';
 import adminHomepageRoutes from './routes/admin/homepage';
 import adminStorefrontCopyRoutes from './routes/admin/storefront-copy';
 import authSocialRoutes from './routes/auth-social';
@@ -229,6 +231,8 @@ app.route('/admin/hero', adminHeroRoutes);
 app.route('/admin/nav', adminNavRoutes);
 app.route('/admin/business-info', adminBusinessInfoRoutes);
 app.route('/admin/taxonomy', adminTaxonomyRoutes);
+app.route('/blog', blogRoutes);
+app.route('/admin/blog', adminBlogRoutes);
 app.route('/admin/homepage', adminHomepageRoutes);
 app.route('/admin/storefront-copy', adminStorefrontCopyRoutes);
 app.route('/admin/notifications', adminNotificationsRoutes);
@@ -351,6 +355,8 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/nav',
   '/admin/business-info',
   '/admin/taxonomy',
+  '/blog',
+  '/admin/blog',
   '/admin/homepage',
   '/admin/storefront-copy',
   '/nav',
