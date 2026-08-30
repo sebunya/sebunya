@@ -7,6 +7,7 @@ import { getCleanCatalog } from '../../lib/catalog/catalog';
 import { dedupeProductsById, isApprovedDiscoveryProduct } from '../../lib/product-discovery';
 import { gatePassingHubPaths, localPagePaths } from '../../lib/categoryHubs';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
+import { fetchApprovedCatalogue } from '../../lib/catalogue';
 
 /**
  * CATEGORY AUTHORITY ENGINE — gate-aware sitemap for hub pages and the two
@@ -18,16 +19,9 @@ import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
  * No lastmod: hub copy carries no honest timestamp.
  */
 export const GET: APIRoute = async () => {
-  let rawProducts: ProductPublicDto[] = [];
-  try {
-    const res = await fetch(`${apiBase}/products`, { signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
-      const body = (await res.json()) as ApiResponse<ProductPublicDto[]>;
-      if (body.success && Array.isArray(body.data)) rawProducts = body.data;
-    }
-  } catch {
-    /* fail closed: no hub URLs */
-  }
+  // fail closed: no hub URLs. Paged, or hubs whose products sit past the first
+  // page of the catalogue would be left out of the sitemap entirely.
+  const rawProducts: ProductPublicDto[] = await fetchApprovedCatalogue(apiBase);
   const taxonomy = await getTaxonomy();
   const biz = await getBusinessInfo();
   const catalogue = dedupeProductsById(getCleanCatalog(rawProducts)).filter((p) => isApprovedDiscoveryProduct(p, taxonomy));

@@ -12,6 +12,7 @@ export interface IProductRepository {
   findPublicViewBySlug(slug: string): Promise<ProductWithPrice | null>;
   findPublicViewList(opts?: {
     limit?: number;
+    offset?: number;
     search?: string;
     category?: string;
     inStock?: boolean;

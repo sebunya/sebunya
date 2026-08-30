@@ -21,6 +21,7 @@ import { getTaxonomy } from '../lib/taxonomy';
 import { shopCrawlDirective } from '../lib/crawlPolicy';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
+import { fetchApprovedCatalogue } from '../lib/catalogue';
 
 // Operator-editable discovery taxonomy (admin/categories); drives filters + labels.
 const taxonomy = await getTaxonomy();
@@ -60,15 +61,7 @@ function shopUrl(overrides: Partial<{ search: string; category: string; subcateg
 
 let rawProducts: ProductPublicDto[] = [];
 let catalogueNotice = '';
-try {
-  const response = await fetch(`${apiBase}/products`, { signal: AbortSignal.timeout(3000) });
-  if (response.ok) {
-    const body = await response.json() as ApiResponse<ProductPublicDto[]>;
-    if (body.success && Array.isArray(body.data)) rawProducts = body.data;
-  }
-} catch {
-  // The existing listed-product fallback below keeps browsing available without inventing new data.
-}
+rawProducts = await fetchApprovedCatalogue(apiBase);
 
 if (rawProducts.length === 0) {
   // R1: the fabricated LOCAL_SEED_PRODUCTS fallback is retired — an
@@ -102,7 +95,9 @@ if (search && Astro.locals.gpVisit) {
 
 // Slice 4: anonymous search telemetry — query + result count only, no identifiers.
 if (search) {
-  await fetch(`${apiBase}/products/search-events`, {
+  // Fire-and-forget, like the profile event above it: awaiting this made every
+  // search wait up to half a second on telemetry before rendering results.
+  fetch(`${apiBase}/products/search-events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: search, resultCount: filteredProducts.length, rankedProductIds: products.map((product) => product.id) }),

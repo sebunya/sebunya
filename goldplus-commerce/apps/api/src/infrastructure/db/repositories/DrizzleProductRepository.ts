@@ -1,7 +1,7 @@
 import { db } from '../client';
 import { products, productPrices, categories } from '../schema/products';
 import { productImages, productAttributeValues, attributes as attributesTable } from '../schema/phase11';
-import { eq, inArray, and, or, ilike, SQL, asc } from 'drizzle-orm';
+import { eq, inArray, and, or, ilike, SQL, asc, desc } from 'drizzle-orm';
 import { ProductEntity, StockStatus } from '../../../domain/products/ProductEntity';
 import { IProductRepository, ProductWithPrice } from '../../../application/ports/IProductRepository';
 import { likeContains } from '../like';
@@ -268,6 +268,7 @@ export class DrizzleProductRepository implements IProductRepository {
 
   async findPublicViewList(opts: {
     limit?: number;
+    offset?: number;
     search?: string;
     category?: string;
     inStock?: boolean;
@@ -328,6 +329,12 @@ export class DrizzleProductRepository implements IProductRepository {
     const rows = await db.query.products.findMany({
       where: and(...conditions),
       limit: opts.limit ?? 60,
+      offset: opts.offset,
+      // Without an explicit order Postgres returns rows in physical order,
+      // which reshuffles whenever a product is edited: the shop's default
+      // order was arbitrary, and paging over it would skip and repeat rows.
+      // Newest first, id breaking ties so the sequence is total and stable.
+      orderBy: [desc(products.createdAt), asc(products.id)],
     });
     if (rows.length === 0) return [];
 

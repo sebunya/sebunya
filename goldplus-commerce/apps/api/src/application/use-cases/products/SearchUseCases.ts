@@ -14,12 +14,21 @@ import type { IPricingRepository } from '../../ports/IPricingRepository';
 import { resolveStorefrontDiscount, INACTIVE_DISCOUNT } from '../../pricing/StorefrontDiscountQuery';
 import { salePriceUgx } from '@goldplus/shared';
 
+/** The image the card and the product page lead with, or none. */
+function primaryImageUrl(images: Array<{ url: string; displayOrder: number; isPrimary: boolean }>): string | null {
+  if (images.length === 0) return null;
+  const ordered = [...images].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.displayOrder - b.displayOrder);
+  return ordered[0]?.url ?? null;
+}
+
 export interface ProductSuggestionDto {
   id: string;
   name: string;
   slug: string;
   priceUgx: number | null;
   categoryName: string | null;
+  /** Primary image, so the dropdown shows the product rather than a grey box. */
+  imageUrl: string | null;
 }
 
 /** Slice 4: public autocomplete — public catalogue data only, campaign-priced. */
@@ -62,6 +71,7 @@ export class SuggestProductsUseCase {
       slug: c.row.entity.slug,
       priceUgx: priced(c.row.retailPriceUgx),
       categoryName: c.row.categoryName,
+      imageUrl: primaryImageUrl(c.row.images),
     }));
   }
 }

@@ -19,6 +19,7 @@ import {
 } from '../../lib/categoryHubs';
 import { dedupeProductsById, isApprovedDiscoveryProduct, getProductSubcategory, subcategoryNameForSlug } from '../../lib/product-discovery';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
+import { fetchApprovedCatalogue } from '../../lib/catalogue';
 
 /**
  * CATEGORY AUTHORITY ENGINE — one dynamic route serves every registered hub
@@ -39,16 +40,10 @@ if (!hub || (childParam && !child) || childParam.includes('/')) {
 const taxonomy = await getTaxonomy();
 const biz = await getBusinessInfo();
 
-let rawProducts: ProductPublicDto[] = [];
-try {
-  const response = await fetch(`${apiBase}/products`, { signal: AbortSignal.timeout(3000) });
-  if (response.ok) {
-    const body = (await response.json()) as ApiResponse<ProductPublicDto[]>;
-    if (body.success && Array.isArray(body.data)) rawProducts = body.data;
-  }
-} catch {
-  // Gate simply fails closed (noindex + honest empty state) — never invented stock.
-}
+// The release gate below counts products, so a catalogue truncated at 60 could
+// noindex a hub for want of stock the shop actually has.
+// Gate still fails closed (noindex + honest empty state) — never invented stock.
+const rawProducts: ProductPublicDto[] = await fetchApprovedCatalogue(apiBase);
 
 const catalogue = dedupeProductsById(getCleanCatalog(rawProducts)).filter((p) => isApprovedDiscoveryProduct(p, taxonomy));
 const products = child ? productsForHubChild(hub, child, catalogue, taxonomy) : productsForHub(hub, catalogue, taxonomy);

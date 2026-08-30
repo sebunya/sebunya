@@ -1548,7 +1548,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
             var hits = rows.slice(0,6).map(function(p){
               return { t: p.name, c: p.categoryName || '',
                        p: (typeof p.priceUgx === 'number' ? 'UGX ' + p.priceUgx.toLocaleString('en-UG') : ''),
-                       u: '/products/' + p.slug, i: null };
+                       u: '/products/' + p.slug, i: p.imageUrl || null };
             });
             renderHits(q, hits);
           })

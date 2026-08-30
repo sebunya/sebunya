@@ -14,13 +14,16 @@ routes.get('/', async (c) => {
   const cat = c.req.query('category');
   const inStock = c.req.query('inStock') === 'true';
   const limitParam = c.req.query('limit');
+  const offsetParam = c.req.query('offset');
   const idsParam = c.req.query('ids');
 
   const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
+  const offset = offsetParam ? Number.parseInt(offsetParam, 10) : undefined;
   const ids = idsParam ? idsParam.split(',').map((i) => i.trim()).filter(Boolean) : undefined;
 
   const dtos = await useCase.execute({
     limit: Number.isFinite(limit) ? (limit as number) : undefined,
+    offset: Number.isFinite(offset) ? (offset as number) : undefined,
     search: q,
     category: cat,
     inStock,
