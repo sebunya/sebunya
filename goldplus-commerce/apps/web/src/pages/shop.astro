@@ -23,6 +23,7 @@ import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { fetchApprovedCatalogue } from '../lib/catalogue';
 import { isListableProduct } from '../lib/product-discovery';
+import { isLikelyHuman } from '../lib/humanTraffic';
 
 // Operator-editable discovery taxonomy (admin/categories); drives filters + labels.
 const taxonomy = await getTaxonomy();
@@ -95,7 +96,10 @@ if (search && Astro.locals.gpVisit) {
 }
 
 // Slice 4: anonymous search telemetry — query + result count only, no identifiers.
-if (search) {
+// Only people are counted: this feeds the admin demand queue that decides what
+// stock to buy, and a crawler or a curl loop is not a customer who wanted
+// something. See lib/humanTraffic.ts.
+if (search && isLikelyHuman(Astro.request.headers.get('user-agent'))) {
   // Fire-and-forget, like the profile event above it: awaiting this made every
   // search wait up to half a second on telemetry before rendering results.
   fetch(`${apiBase}/products/search-events`, {
