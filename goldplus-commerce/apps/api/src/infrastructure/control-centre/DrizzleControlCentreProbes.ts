@@ -11,6 +11,7 @@ const rowsOf = (r: unknown): Record<string, unknown>[] =>
   Array.isArray(r) ? (r as Record<string, unknown>[]) : ((r as { rows?: Record<string, unknown>[] })?.rows ?? []);
 import { db } from '../db/client';
 import { logger } from '../logging/logger';
+import { EVENT_TYPE_TELEMETRY } from '../telemetry/TelemetryDispatchService';
 import type {
   ApprovalProbe,
   DependencyProbe,
@@ -113,6 +114,11 @@ export const drizzleHealthProbe: HealthProbe = {
       select count(*)::int as dead, max(created_at) as newest
       from outbox_events
       where status in ('dead_letter', 'dead_lettered')
+        -- Telemetry shares this table but has its own dispatcher, its own
+        -- backoff and its own dead-letter meaning. Counting it here would blame
+        -- messaging for an analytics fault: harmless while email is also
+        -- failing, and a false alarm the moment it is fixed.
+        and event_type <> ${EVENT_TYPE_TELEMETRY}
         -- make_interval takes a typed int. Concatenating a bare parameter onto
         -- a string before an interval cast leaves Postgres unable to infer that
         -- parameter's type, and the whole query fails.

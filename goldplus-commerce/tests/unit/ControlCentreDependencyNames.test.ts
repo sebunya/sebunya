@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { resolve } from 'node:path';
 import { CONTROL_CENTRE_MODULES, PERMISSIONS } from '@goldplus/shared';
+
+const ROOT_DIR = resolve(__dirname, '../..');
 
 /**
  * The dependency probe (DrizzleControlCentreProbes) begins with
@@ -106,5 +109,28 @@ describe('a module can report that it is not achieving anything', () => {
     );
     const summary = await useCase.execute({ actorPermissions: [], traceId: 't' });
     expect((summary as { modules: Array<Record<string, unknown>> }).modules[0].serviceStatus).toBe('LIVE');
+  });
+});
+
+describe('the messaging check blames messaging, and nothing else', () => {
+  it('excludes telemetry, which shares the outbox but not the fault', async () => {
+    const src = require('node:fs').readFileSync(
+      resolve(ROOT_DIR, 'apps/api/src/infrastructure/control-centre/DrizzleControlCentreProbes.ts'),
+      'utf8',
+    );
+    // Telemetry has its own dispatcher, backoff and dead-letter meaning.
+    // Counting it would make notifications DEGRADED for an analytics fault the
+    // moment email is fixed — a false alarm, which is how amber gets ignored.
+    expect(src).toMatch(/and event_type <> \$\{EVENT_TYPE_TELEMETRY\}/);
+    // One source for that name, so it cannot drift from the dispatcher's.
+    expect(src).toMatch(/import \{ EVENT_TYPE_TELEMETRY \} from '\.\.\/telemetry\/TelemetryDispatchService'/);
+  });
+
+  it('an unknown check fails rather than quietly passing', () => {
+    const src = require('node:fs').readFileSync(
+      resolve(ROOT_DIR, 'apps/api/src/infrastructure/control-centre/DrizzleControlCentreProbes.ts'),
+      'utf8',
+    );
+    expect(src).toMatch(/unknown health check/);
   });
 });
