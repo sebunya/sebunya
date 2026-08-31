@@ -25,7 +25,17 @@ import { db, endDbConnection } from '../infrastructure/db/client';
  *
  *   ACTOR_USER_ID=<uuid> IMAGES_DIR=/import-images [DRY_RUN=1] npx tsx src/scripts/attach-images-by-code.ts
  */
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+/** Letters-and-digits tokens: "GP - P07 PB" → ["gp","p07","pb"]; "gp-p07-pb-2.webp" → ["gp","p07","pb","2"]. */
+const tokens = (v: string) => v.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+/** The code without its "gp" prefix: what must appear, in order, as whole tokens in the filename. */
+const codeKey = (code: string) => { const t = tokens(code); return t[0] === 'gp' || t[0] === 'gd' ? t.slice(1) : t; };
+const containsRun = (hay: string[], run: string[]) => run.length > 0 && hay.some((_, i) => run.every((tok, j) => hay[i + j] === tok));
+/** A word in the filename that names a KIND of product; used only to refuse a match, never to make one. */
+const KIND: Array<[RegExp, RegExp]> = [
+  [/power ?bank|powerbank/, /power bank/i], [/charger|charging/, /charger/i], [/cable/, /cable/i], [/earbud|earphone|headset|headphone/, /earphone|bluetooth|headset|earbud/i],
+  [/speaker/, /speaker|bluetooth/i], [/mouse/, /mouse/i], [/sound ?card/, /sound card/i], [/memory ?card|sd ?card/, /memory card/i], [/flash ?drive|usb ?drive/, /flash drive/i],
+  [/battery/, /battery/i], [/card ?reader/, /card reader/i], [/car /, /car /i],
+];
 const MIME: Record<string, string> = { '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.avif': 'image/avif' };
 const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
@@ -36,29 +46,40 @@ async function main(): Promise<void> {
   const dryRun = process.env.DRY_RUN === '1';
   const r = Registry.getInstance();
 
-  const products = rowsOf(await db.execute(sql`select id, name, slug, sku, model_number from products`)).map((p) => ({
-    id: String(p.id), name: String(p.name), slug: String(p.slug),
-    codes: [String(p.sku ?? ''), String(p.model_number ?? '')].map(norm).filter((c) => c.length >= 3),
+  const products = rowsOf(await db.execute(sql`select id, name, slug, sku, model_number, category_name from products`)).map((p) => ({
+    id: String(p.id), name: String(p.name), slug: String(p.slug), category: String(p.category_name ?? ''),
+    keys: [...new Set([String(p.sku ?? ''), String(p.model_number ?? '')].map((c) => codeKey(c).join('-')).filter((k) => k.replace(/-/g, '').length >= 2))].map((k) => k.split('-')),
   }));
   const files = readdirSync(dir).filter((f) => MIME[extname(f).toLowerCase()] && statSync(join(dir, f)).isFile()).sort();
 
-  const plan = new Map<string, string[]>(); const unmatched: string[] = []; const ambiguous: string[] = [];
+  const plan = new Map<string, string[]>(); const unmatched: string[] = []; const ambiguous: string[] = []; const conflicts: string[] = [];
   for (const file of files) {
-    const key = norm(file.replace(extname(file), ''));
+    const stem = file.replace(extname(file), '');
+    const hay = tokens(stem);
+    // Longest code that appears as a whole-token run wins; equal lengths tie.
     let best: { id: string; len: number }[] = [];
-    for (const p of products) for (const c of p.codes) {
-      if (!key.includes(c)) continue;
-      if (!best.length || c.length > best[0].len) best = [{ id: p.id, len: c.length }];
-      else if (c.length === best[0].len && !best.some((b) => b.id === p.id)) best.push({ id: p.id, len: c.length });
+    for (const p of products) for (const k of p.keys) {
+      if (!containsRun(hay, k)) continue;
+      const len = k.join('').length;
+      if (!best.length || len > best[0].len) best = [{ id: p.id, len }];
+      else if (len === best[0].len && !best.some((b) => b.id === p.id)) best.push({ id: p.id, len });
     }
-    if (best.length === 0) unmatched.push(file);
-    else if (best.length > 1) ambiguous.push(`${file} → ${best.map((b) => products.find((p) => p.id === b.id)?.name).join(' | ')}`);
-    else plan.set(best[0].id, [...(plan.get(best[0].id) ?? []), file]);
+    if (best.length === 0) { unmatched.push(file); continue; }
+    if (best.length > 1) { ambiguous.push(`${file} → ${best.map((b) => products.find((p) => p.id === b.id)?.name).join(' | ')}`); continue; }
+    const product = products.find((p) => p.id === best[0].id)!;
+    // The filename says what KIND of thing it is; if the product is a different
+    // kind, the code collided (the photo set and the price list use different
+    // schemes) and the match is refused rather than guessed.
+    const spaced = stem.toLowerCase().replace(/[^a-z0-9]+/g, ' ') + ' ';
+    const kind = KIND.find(([inFile]) => inFile.test(spaced));
+    if (kind && !kind[1].test(`${product.name} ${product.category}`)) { conflicts.push(`${file} ↛ ${product.name} (filename says a different kind of product)`); continue; }
+    plan.set(product.id, [...(plan.get(product.id) ?? []), file]);
   }
-  console.log(`files ${files.length}: matched ${[...plan.values()].flat().length} to ${plan.size} products, unmatched ${unmatched.length}, ambiguous ${ambiguous.length}`);
+  console.log(`files ${files.length}: matched ${[...plan.values()].flat().length} to ${plan.size} products, unmatched ${unmatched.length}, ambiguous ${ambiguous.length}, refused ${conflicts.length}`);
   for (const [id, fs] of plan) console.log(`  ${products.find((p) => p.id === id)?.name}: ${fs.join(', ')}`);
   for (const f of unmatched) console.log(`  UNMATCHED ${f}`);
   for (const a of ambiguous) console.log(`  AMBIGUOUS ${a}`);
+  for (const c of conflicts) console.log(`  REFUSED ${c}`);
   if (dryRun) { console.log('DRY RUN — nothing attached.'); return; }
 
   let attached = 0, skipped = 0;
