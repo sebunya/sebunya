@@ -26,7 +26,8 @@ import { db, endDbConnection } from '../infrastructure/db/client';
  *   ACTOR_USER_ID=<uuid> IMAGES_DIR=/import-images [DRY_RUN=1] npx tsx src/scripts/attach-images-by-code.ts
  */
 /** Letters-and-digits tokens: "GP - P07 PB" → ["gp","p07","pb"]; "gp-p07-pb-2.webp" → ["gp","p07","pb","2"]. */
-const tokens = (v: string) => v.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+/** Purely numeric tokens compare by VALUE: a photographer's "gp-001" is the price list's "GP01". */
+const tokens = (v: string) => v.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((t) => (/^\d+$/.test(t) ? String(Number(t)) : t));
 /** The code without its "gp" prefix: what must appear, in order, as whole tokens in the filename. */
 const codeKey = (code: string) => { const t = tokens(code); const stripped = t[0] === 'gp' || t[0] === 'gd' ? t.slice(1) : t; return stripped.length ? stripped : t; };
 /**
