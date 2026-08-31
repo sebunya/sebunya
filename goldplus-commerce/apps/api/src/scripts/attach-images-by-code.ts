@@ -26,8 +26,12 @@ import { db, endDbConnection } from '../infrastructure/db/client';
  *   ACTOR_USER_ID=<uuid> IMAGES_DIR=/import-images [DRY_RUN=1] npx tsx src/scripts/attach-images-by-code.ts
  */
 /** Letters-and-digits tokens: "GP - P07 PB" → ["gp","p07","pb"]; "gp-p07-pb-2.webp" → ["gp","p07","pb","2"]. */
-/** Purely numeric tokens compare by VALUE: a photographer's "gp-001" is the price list's "GP01". */
-const tokens = (v: string) => v.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((t) => (/^\d+$/.test(t) ? String(Number(t)) : t));
+/**
+ * Letter runs and digit runs are separate tokens ("gp01" → gp, 1; "p07" → p, 7)
+ * and digit runs compare by VALUE, so a photographer's "gp-001" is the price
+ * list's "GP01" and "GP - P07 PB" is "gp-p07-pb".
+ */
+const tokens = (v: string) => (v.toLowerCase().match(/[a-z]+|\d+/g) ?? []).map((t) => (/^\d+$/.test(t) ? String(Number(t)) : t));
 /** The code without its "gp" prefix: what must appear, in order, as whole tokens in the filename. */
 const codeKey = (code: string) => { const t = tokens(code); const stripped = t[0] === 'gp' || t[0] === 'gd' ? t.slice(1) : t; return stripped.length ? stripped : t; };
 /**
@@ -38,7 +42,10 @@ const codeKey = (code: string) => { const t = tokens(code); const stripped = t[0
  */
 const containsRun = (hay: string[], run: string[]) => {
   if (run.length === 0) return false;
-  const want = new Set([run.join(''), `gp${run.join('')}`]);
+  // A short bare key ('1', '4') would match almost any filename; it is only
+  // accepted with its gp prefix present.
+  const bare = run.join('');
+  const want = new Set(bare.length >= 3 ? [bare, `gp${bare}`] : [`gp${bare}`]);
   for (let i = 0; i < hay.length; i += 1) {
     let acc = '';
     for (let j = i; j < hay.length && acc.length < 40; j += 1) { acc += hay[j]; if (want.has(acc)) return true; }
