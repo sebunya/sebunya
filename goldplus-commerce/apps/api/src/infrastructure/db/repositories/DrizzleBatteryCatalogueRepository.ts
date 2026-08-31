@@ -255,7 +255,12 @@ export class DrizzleBatteryCatalogueRepository implements IBatteryCatalogueRepos
     return db.transaction(async (tx) => {
       const [before] = await tx.select({ price: products.priceUgx }).from(products).where(eq(products.id, productId)).for('update');
       await tx.update(products).set({ priceUgx, hasRetailPrice: priceUgx > 0, updatedAt: new Date() }).where(eq(products.id, productId));
-      const [price] = await tx.select({ id: productPrices.id }).from(productPrices).where(eq(productPrices.productId, productId)).limit(1);
+      const [price] = await tx.select({ id: productPrices.id, floor: productPrices.floorPrice }).from(productPrices).where(eq(productPrices.productId, productId)).limit(1);
+      // Defence in depth for the import path: name the rule instead of letting
+      // the CHECK constraint surface as an opaque database error.
+      if (price?.floor != null && priceUgx > 0 && priceUgx < price.floor) {
+        throw new Error(`PRICE_BELOW_FLOOR: UGX ${priceUgx} is below this battery's floor (Price A) of UGX ${price.floor}.`);
+      }
       if (price) await tx.update(productPrices).set({ retailPrice: priceUgx }).where(eq(productPrices.productId, productId));
       else await tx.insert(productPrices).values({ productId, retailPrice: priceUgx });
       return { before: before?.price ?? 0, after: priceUgx };

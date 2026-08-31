@@ -2,6 +2,7 @@
 import { apiBase } from "../../lib/api";
 import { getStorefrontDiscount } from "../../lib/storefrontDiscount";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
+import { fetchApprovedCatalogue } from '../../lib/catalogue';
 
 interface Props {
   title?: string;
@@ -29,12 +30,14 @@ let validIds: string[] = [];
 // bookmark, not a price list — what renders must match what the shop charges.
 let liveByProduct: Record<string, { price?: number; floor?: number | null; availability?: ProductPublicDto["availability"]; imageUrl?: string }> = {};
 try {
-  const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
-  if (res.ok) {
-    const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-    if (json.success && json.data) {
-      validIds = json.data.map(p => p.id).filter((id): id is string => typeof id === "string");
-      for (const p of json.data) {
+  // The whole approved catalogue, paged. With a fixed 50, a product the
+  // customer had just viewed could fall outside the list and be dropped from
+  // the rail as "invalid" — or worse, shown at a stale localStorage price.
+  const catalogue = await fetchApprovedCatalogue(apiBase);
+  if (catalogue.length > 0) {
+    {
+      validIds = catalogue.map(p => p.id).filter((id): id is string => typeof id === "string");
+      for (const p of catalogue) {
         liveByProduct[p.id] = {
           price: typeof p.retailPriceUgx === "number" && p.retailPriceUgx > 0 ? p.retailPriceUgx : undefined,
           // The product's own floor (Price A). Absent = not discountable.

@@ -1,4 +1,5 @@
 import { apiBase } from './api';
+import { fetchApprovedCatalogue } from './catalogue';
 
 /**
  * The header's featured cross-sell cards ("Most carried"), served by REAL data
@@ -38,9 +39,9 @@ async function fetchCards(): Promise<NavFeaturedCard[]> {
       if (json?.success && Array.isArray(json.data?.items)) popular = json.data.items;
     } catch { /* evidence is optional */ }
 
-    const res = await fetch(`${apiBase}/products?limit=50`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(2500) });
-    const json: any = res.ok ? await res.json().catch(() => null) : null;
-    const products: any[] = json?.success && Array.isArray(json.data) ? json.data : [];
+    // The whole approved catalogue, paged, so the featured pick is made from
+    // everything the shop sells rather than whichever 50 came first.
+    const products: any[] = await fetchApprovedCatalogue(apiBase);
     const imaged = products.filter((p) => p.primaryImageUrl && p.availability?.kind === 'in_stock');
     if (imaged.length === 0) return [];
 

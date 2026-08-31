@@ -7,6 +7,16 @@ import { IProductRepository, ProductWithPrice } from '../../../application/ports
 import { likeContains } from '../like';
 import { searchTerms } from '../../../domain/products/ProductSearchService';
 
+type PriceTierPatch = { floorPriceUgx?: number | null; tierBPriceUgx?: number | null; tierCPriceUgx?: number | null };
+/** Only the tiers the caller supplied; an omitted tier is left as it was. */
+function tierColumns(t: PriceTierPatch): Partial<typeof productPrices.$inferInsert> {
+  const out: Partial<typeof productPrices.$inferInsert> = {};
+  if (t.floorPriceUgx !== undefined) out.floorPrice = t.floorPriceUgx;
+  if (t.tierBPriceUgx !== undefined) out.tierBPrice = t.tierBPriceUgx;
+  if (t.tierCPriceUgx !== undefined) out.tierCPrice = t.tierCPriceUgx;
+  return out;
+}
+
 export class DrizzleProductRepository implements IProductRepository {
   async findBySlug(slug: string): Promise<ProductEntity | null> {
     const result = await db.query.products.findFirst({
@@ -483,13 +493,14 @@ export class DrizzleProductRepository implements IProductRepository {
     return rows.length > 0;
   }
 
-  async createProduct(product: ProductEntity, categoryId: string): Promise<void> {
+  async createProduct(product: ProductEntity, categoryId: string, tiers: PriceTierPatch = {}): Promise<void> {
     // The real category goes in with the INSERT; there is no window in which the
     // row names a category that does not exist.
     await this.save(product, categoryId);
     await db.insert(productPrices).values({
       productId: product.id,
       retailPrice: product.priceUgx,
+      ...tierColumns(tiers),
     });
   }
 
@@ -515,13 +526,16 @@ export class DrizzleProductRepository implements IProductRepository {
     return { floorPriceUgx: row?.floorPrice ?? null, tierBPriceUgx: row?.tierBPrice ?? null, tierCPriceUgx: row?.tierCPrice ?? null };
   }
 
-  async updateProductProperties(product: ProductEntity, categoryId: string): Promise<void> {
+  async updateProductProperties(product: ProductEntity, categoryId: string, tiers: PriceTierPatch = {}): Promise<void> {
     await this.save(product, categoryId);
     const priceRow = await db.query.productPrices.findFirst({ where: eq(productPrices.productId, product.id) });
+    // Retail and tiers in ONE statement. Written separately, lowering the price
+    // below the OLD floor tripped the database CHECK between the two writes and
+    // surfaced as a 500 instead of the validation message the route already gave.
     if (priceRow) {
-      await db.update(productPrices).set({ retailPrice: product.priceUgx }).where(eq(productPrices.productId, product.id));
+      await db.update(productPrices).set({ retailPrice: product.priceUgx, ...tierColumns(tiers) }).where(eq(productPrices.productId, product.id));
     } else {
-      await db.insert(productPrices).values({ productId: product.id, retailPrice: product.priceUgx });
+      await db.insert(productPrices).values({ productId: product.id, retailPrice: product.priceUgx, ...tierColumns(tiers) });
     }
   }
 }

@@ -18,6 +18,7 @@ import { breadcrumbJsonLd, serializeJsonLd } from '../../lib/jsonld';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import { publicBattery, parseDeviceCookie, serialiseDeviceCookie, DEVICE_COOKIE, FIT_BADGE } from '../../lib/batteries';
 import { SITE_ORIGIN } from '../../lib/sitemap';
+import { fetchApprovedCatalogue } from '../../lib/catalogue';
 
 const { slug } = Astro.params;
 const searchQuery = Astro.url.searchParams.get('searchQuery') ?? '';
@@ -158,14 +159,9 @@ const selectPdpFallbackProducts = (products: ProductPublicDto[]) => previewRecom
 }));
 
 try {
-  let allProducts: ProductPublicDto[] = [];
-  const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
-  if (res.ok) {
-    const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-    if (json.success && json.data) {
-      allProducts = json.data;
-    }
-  }
+  // The whole approved catalogue, paged — a fixed 50 would leave the fallback
+  // rail blind to most of a real catalogue.
+  const allProducts: ProductPublicDto[] = await fetchApprovedCatalogue(apiBase);
   // R1: fabricated seed products no longer pad the fallback rail — an
   // unreachable catalogue yields an empty rail, which renders its honest
   // empty state.

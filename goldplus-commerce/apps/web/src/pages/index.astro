@@ -13,23 +13,16 @@ import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
 import { getCleanCatalog } from '../lib/catalog/catalog';
 import { getTaxonomy } from '../lib/taxonomy';
 import { getHomepageContent } from '../lib/homepageContent';
+import { fetchApprovedCatalogue } from '../lib/catalogue';
 
 let rawProducts: ProductPublicDto[] = [];
 let hasApiError = false;
 
 try {
-  // Fetch higher depth limit to satisfy full homepage allocation without duplicates
-  const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
-  if (res.ok) {
-    const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-    if (json.success && json.data && json.data.length > 0) {
-      rawProducts = json.data;
-    } else {
-      hasApiError = true;
-    }
-  } else {
-    hasApiError = true;
-  }
+  // The WHOLE approved catalogue, paged (lib/catalogue). A fixed 50 was fine
+  // for eight products and silently hides the rest of a real one.
+  rawProducts = await fetchApprovedCatalogue(apiBase);
+  if (rawProducts.length === 0) hasApiError = true;
 } catch {
   // The flag used to be declared and never set, so an outage rendered the
   // "No featured items" empty state — a sentence with no way forward.

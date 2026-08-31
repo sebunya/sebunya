@@ -100,6 +100,35 @@ describe('the tiers a product may carry', () => {
   });
 });
 
+describe('the write paths cannot trip the CHECK by accident', () => {
+  it('admin create/update write retail and tiers in ONE statement', () => {
+    const route = read('apps/api/src/interfaces/http/routes/admin/products.ts');
+    expect(route).toMatch(/createProduct\(productEntity, categoryId, tiers\.value\)/);
+    expect(route).toMatch(/updateProductProperties\(productEntity, categoryId, tiers\.value\)/);
+    expect(route).not.toMatch(/setPriceTiers\(/);
+    const repo = read('apps/api/src/infrastructure/db/repositories/DrizzleProductRepository.ts');
+    expect(repo).toMatch(/set\(\{ retailPrice: product\.priceUgx, \.\.\.tierColumns\(tiers\) \}\)/);
+  });
+  it("a battery price below the battery's own floor is refused with a message, in the use case AND the repository", () => {
+    expect(read('apps/api/src/application/use-cases/batteries/BatteryCatalogueUseCases.ts')).toMatch(/is below this battery's floor \(Price A\)/);
+    expect(read('apps/api/src/infrastructure/db/repositories/DrizzleBatteryCatalogueRepository.ts')).toMatch(/PRICE_BELOW_FLOOR: UGX/);
+  });
+});
+
+describe('no storefront surface reads only the first 50 products', () => {
+  it('every catalogue-wide surface pages through the whole catalogue', () => {
+    for (const f of [
+      'apps/web/src/pages/index.astro',
+      'apps/web/src/pages/products/[slug].astro',
+      'apps/web/src/components/recommendations/RecentlyViewedRail.astro',
+      'apps/web/src/lib/navFeatured.ts',
+    ]) {
+      expect(read(f), f).not.toMatch(/products\?limit=50/);
+      expect(read(f), f).toMatch(/fetchApprovedCatalogue\(apiBase\)/);
+    }
+  });
+});
+
 describe('the database holds the rule too', () => {
   it('0127 adds the floor with a CHECK that it never exceeds the retail price, and backfills the eight', () => {
     const sql = read('apps/api/src/infrastructure/db/migrations/0127_product_price_floor.sql');

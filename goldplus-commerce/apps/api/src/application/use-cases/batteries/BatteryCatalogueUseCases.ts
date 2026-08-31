@@ -297,6 +297,13 @@ export class BatteryCatalogueUseCases {
     if (patch.priceUgx !== undefined && patch.priceUgx !== null) {
       const price = Math.trunc(patch.priceUgx);
       if (!Number.isInteger(price) || price < 0) throw invalid('Price must be a whole number of shillings, zero or more.');
+      // 0127: the rule is per product — the price may never sit below this
+      // battery's own floor (Price A). Refused here with a message, rather than
+      // by the database CHECK as a 500.
+      const floor = (await this.repo.floorPriceFor?.(productId)) ?? null;
+      if (floor !== null && price > 0 && price < floor) {
+        throw invalid(`Price UGX ${price.toLocaleString('en-UG')} is below this battery's floor (Price A) of UGX ${floor.toLocaleString('en-UG')}. Lower the floor first, or keep the price at or above it.`);
+      }
       if (price !== found.product.priceUgx) {
         priceChange = await this.repo.setRetailPrice(productId, price);
         changed.push('priceUgx');

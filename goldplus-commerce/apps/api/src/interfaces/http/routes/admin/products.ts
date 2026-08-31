@@ -339,8 +339,7 @@ routes.post('/', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => 
     );
 
     // Save entity through repository orchestration
-    await registry.productRepo.createProduct(productEntity, categoryId);
-    await registry.productRepo.setPriceTiers(productId, tiers.value);
+    await registry.productRepo.createProduct(productEntity, categoryId, tiers.value);
 
     const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
     await auditUc.execute({
@@ -510,8 +509,7 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
     );
 
     // Save entity through repository orchestration
-    await registry.productRepo.updateProductProperties(productEntity, categoryId);
-    await registry.productRepo.setPriceTiers(productEntity.id, tiers.value);
+    await registry.productRepo.updateProductProperties(productEntity, categoryId, tiers.value);
 
     // U6 AC6 — a slug change 301s the old product URL to the new one so inbound
     // links keep resolving. Fail-open: the product update already committed and
