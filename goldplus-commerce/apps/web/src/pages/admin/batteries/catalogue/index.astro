@@ -62,8 +62,14 @@ if (Astro.request.method === 'POST') {
       if (res.ok && res.data) {
         const done = res.data.filter((r) => r.ok).length;
         const failed = res.data.filter((r) => !r.ok);
+        // One line per REASON, not one per battery: "29 refused: Only a ready
+        // battery can be published" twenty-nine times told the operator nothing
+        // the first sentence had not.
+        const byReason = new Map<string, number>();
+        for (const f of failed) byReason.set(f.message ?? 'Refused.', (byReason.get(f.message ?? 'Refused.') ?? 0) + 1);
+        const reasons = [...byReason.entries()].map(([m, n]) => `${n} × ${m.replace(/\s*\(this one is [A-Z_]+\)\.?$/, '')}`).join(' · ');
         notice = failed.length
-          ? { kind: 'info', text: `${done} changed. ${failed.length} refused: ${failed.map((f) => f.message).join(' ')}` }
+          ? { kind: 'info', text: `${done} changed, ${failed.length} refused. ${reasons}. A battery in REVIEW publishes once its printed pack code is confirmed, it has a photo, its capacity and voltage are recorded and one phone fit is verified — open a battery to see exactly what it is missing.` }
           : { kind: 'success', text: `${done} batter${done === 1 ? 'y' : 'ies'} changed.` };
       } else notice = { kind: 'error', text: batteryMessage(res.error) };
     }

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { auditEntityId } from '../../../domain/audit/AuditEntityId';
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { AuditLogEntity } from '../../../domain/audit/AuditLogEntity';
 
@@ -40,7 +41,9 @@ export class CreateAuditLogUseCase {
       input.actorId ?? null,
       action,
       entity,
-      entityId,
+      // A singleton's name ('global', 'config') becomes a stable UUID; a real
+      // UUID passes through. See domain/audit/AuditEntityId.
+      auditEntityId(entity, entityId),
       input.previousState ?? null,
       input.newState ?? null,
     );

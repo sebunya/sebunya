@@ -237,14 +237,18 @@ routes.post('/bulk-approval', requirePermissions([PERMISSIONS.PRODUCTS_PUBLISH])
   // stock recorded, so a bulk approval cannot fill the shop with "out of stock".
   const requireStock = approvalStatus === 'approved' && body?.requireStock !== false;
   const changed = await registry.productRepo.setApprovalMany(ids, approvalStatus as 'draft' | 'approved' | 'rejected', active, { requireStock });
+  // Each batch is its own audited entity. (The first version passed 'bulk'
+  // into a UUID column: the products were approved, the audit insert threw,
+  // and the operator was shown an error for a change that had gone through.)
+  const batchId = randomUUID();
   await new CreateAuditLogUseCase(registry.auditRepo).execute({
     actorId: (c.get('user') as any).id,
     action: 'PRODUCTS_BULK_APPROVAL',
-    entity: 'product',
-    entityId: 'bulk',
+    entity: 'product_bulk_approval',
+    entityId: batchId,
     newState: { approvalStatus, active, requireStock, requested: ids.length, changed: changed.length, skipped: ids.length - changed.length, productIds: changed },
   });
-  return c.json({ success: true, data: { changed: changed.length, skipped: ids.length - changed.length, requireStock, productIds: changed } });
+  return c.json({ success: true, data: { batchId, changed: changed.length, skipped: ids.length - changed.length, requireStock, productIds: changed } });
 });
 
 // Get raw product details for administration editing

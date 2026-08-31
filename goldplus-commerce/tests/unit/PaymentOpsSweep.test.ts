@@ -1,3 +1,4 @@
+import { auditEntityId } from '../../apps/api/src/domain/audit/AuditEntityId';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   AbandonStaleUnpaidOrdersUseCase,
@@ -75,7 +76,10 @@ describe('reservation TTL — stock held by an unpaid order goes back on sale', 
     const r = await useCase().execute(NOW);
     expect(r.released).toBe(1);
     expect(releases).toEqual(['old']);
-    expect(audit.entries[0]).toMatchObject({ action: 'RESERVATION_EXPIRED', entityId: 'old' });
+    // The fixture id 'old' is not a UUID; the audit writer maps such references
+    // to a stable UUID (audit_logs.entity_id is a UUID column). A real order id
+    // passes through unchanged.
+    expect(audit.entries[0]).toMatchObject({ action: 'RESERVATION_EXPIRED', entityId: auditEntityId('order', 'old') });
     expect(audit.entries[0].newState.reason).toContain('48 hours');
   });
 

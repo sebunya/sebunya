@@ -1,4 +1,5 @@
 import { db } from '../client';
+import { auditEntityId } from '../../../domain/audit/AuditEntityId';
 import { auditLogs } from '../schema/system';
 import { eq, desc } from 'drizzle-orm';
 import { AuditLogEntity } from '../../../domain/audit/AuditLogEntity';
@@ -38,7 +39,9 @@ export class DrizzleAuditRepository implements IAuditRepository {
 
   async findByEntity(entity: string, entityId: string): Promise<AuditLogEntity[]> {
     const results = await db.query.auditLogs.findMany({
-      where: eq(auditLogs.entityId, entityId),
+      // The same mapping the writer uses, so a singleton's history is findable
+      // by the name the route knows it by.
+      where: eq(auditLogs.entityId, auditEntityId(entity, entityId)),
       orderBy: [desc(auditLogs.createdAt)],
     });
 
