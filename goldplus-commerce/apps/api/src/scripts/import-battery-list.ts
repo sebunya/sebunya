@@ -13,17 +13,18 @@ import { endDbConnection } from '../infrastructure/db/client';
  *   2. PRICE_UPDATE — Price D, resolved through that alias.
  * Four eyes: the uploader cannot approve; APPROVER_USER_ID does.
  *
- *   ACTOR_USER_ID=<uploader> APPROVER_USER_ID=<second admin> ROWS_FILE=/import/batteries.json [DRY_RUN=1] [STAGE=catalogue|price] \
+ *   ACTOR_USER_ID=<uploader> APPROVER_USER_ID=<second admin> ROWS_FILE=/import/batteries.json [DRY_RUN=1] [STAGE=catalogue|price|stock] [QUANTITY=200] \
  *     npx tsx src/scripts/import-battery-list.ts
  */
 type Row = { item: string; price: number; sourceNo: string };
 const uuid = (v: unknown) => /^[0-9a-f-]{36}$/i.test(String(v ?? ''));
 const csvCell = (v: string) => `"${v.replace(/"/g, '""')}"`;
 
-async function runSession(kind: 'BATTERY_CATALOGUE' | 'PRICE_UPDATE', rows: Row[], actorId: string, approverId: string, dryRun: boolean) {
+async function runSession(kind: 'BATTERY_CATALOGUE' | 'PRICE_UPDATE' | 'STOCK_COUNT', rows: Row[], actorId: string, approverId: string, dryRun: boolean) {
   const uc = Registry.getInstance().batteryImportUseCases;
-  const header = kind === 'BATTERY_CATALOGUE' ? 'ITEM,CATEGORY,SOURCE_NO' : 'ITEM,PRICE';
-  const lines = rows.map((r) => kind === 'BATTERY_CATALOGUE' ? `${csvCell(r.item)},Phone Battery,${r.sourceNo}` : `${csvCell(r.item)},${r.price}`);
+  const count = Number(process.env.QUANTITY ?? 200);
+  const header = kind === 'BATTERY_CATALOGUE' ? 'ITEM,CATEGORY,SOURCE_NO' : kind === 'PRICE_UPDATE' ? 'ITEM,PRICE' : 'ITEM,COUNT,REASON';
+  const lines = rows.map((r) => kind === 'BATTERY_CATALOGUE' ? `${csvCell(r.item)},Phone Battery,${r.sourceNo}` : kind === 'PRICE_UPDATE' ? `${csvCell(r.item)},${r.price}` : `${csvCell(r.item)},${count},${csvCell('Owner: 200 units of every product in stock (2026-08-31)')}`);
   const up = await uc.upload({
     importType: kind, name: `Battery price list 18-8-2026 — ${kind} (${rows.length})`, filename: `batteries-18-8-2026-${kind.toLowerCase()}.csv`,
     mime: 'text/csv', buffer: Buffer.from([header, ...lines].join('\n'), 'utf8'), sheetName: null, actorId,
@@ -31,7 +32,7 @@ async function runSession(kind: 'BATTERY_CATALOGUE' | 'PRICE_UPDATE', rows: Row[
   let s = (up as { session: { id: string; version: number; status: string } }).session;
   console.log(`[${kind}] session ${s.id} (${s.status}), ${rows.length} rows`);
   if (s.status === 'UPLOADED') {
-    const mapping = kind === 'BATTERY_CATALOGUE' ? { sourceItem: 'ITEM', batteryCategory: 'CATEGORY', sourceNo: 'SOURCE_NO' } : { batteryCode: 'ITEM', retailPriceUgx: 'PRICE' };
+    const mapping = kind === 'BATTERY_CATALOGUE' ? { sourceItem: 'ITEM', batteryCategory: 'CATEGORY', sourceNo: 'SOURCE_NO' } : kind === 'PRICE_UPDATE' ? { batteryCode: 'ITEM', retailPriceUgx: 'PRICE' } : { batteryCode: 'ITEM', countedQuantity: 'COUNT', reason: 'REASON' };
     await uc.saveMapping({ id: s.id, expectedVersion: s.version, mapping, actorId } as never);
     s = (await uc.detail(s.id)).session as typeof s;
   }
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
   const rows = JSON.parse(readFileSync(String(process.env.ROWS_FILE ?? '/import/batteries.json'), 'utf8')) as Row[];
   const stage = String(process.env.STAGE ?? 'catalogue');
   if (stage === 'catalogue') await runSession('BATTERY_CATALOGUE', rows, actorId, approverId, dryRun);
+  else if (stage === 'stock') await runSession('STOCK_COUNT', rows, actorId, approverId, dryRun);
   else await runSession('PRICE_UPDATE', rows, actorId, approverId, dryRun);
 }
 
