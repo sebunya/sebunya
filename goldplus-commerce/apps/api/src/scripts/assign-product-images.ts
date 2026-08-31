@@ -17,7 +17,11 @@ import { db, endDbConnection } from '../infrastructure/db/client';
  *
  * Usage: ACTOR_USER_ID=<uuid> IMAGES_DIR=/import-images npx tsx src/scripts/assign-product-images.ts
  */
-const MAPPING: Record<string, string> = {
+// MAPPING_FILE=<json of slug → filename> overrides the built-in map, so later
+// catalogue rounds attach their own photographs through the same pipeline.
+const MAPPING: Record<string, string> = process.env.MAPPING_FILE
+  ? (JSON.parse(readFileSync(String(process.env.MAPPING_FILE), 'utf8')) as Record<string, string>)
+  : {
   'generic-fast-charger': 'goldplus-charger-gp-101.webp',
   'heavy-duty-power-bank': 'goldplus-power-bank-with-handle-gp-x03.webp',
   'wireless-earbuds': 'goldplus-wireless-earbuds-gp-007.webp',

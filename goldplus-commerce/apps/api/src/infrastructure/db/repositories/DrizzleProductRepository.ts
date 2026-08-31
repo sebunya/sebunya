@@ -17,6 +17,8 @@ function tierColumns(t: PriceTierPatch): Partial<typeof productPrices.$inferInse
   return out;
 }
 
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export class DrizzleProductRepository implements IProductRepository {
   async findBySlug(slug: string): Promise<ProductEntity | null> {
     const result = await db.query.products.findFirst({
@@ -519,6 +521,20 @@ export class DrizzleProductRepository implements IProductRepository {
     if (tiers.tierCPriceUgx !== undefined) patch.tierCPrice = tiers.tierCPriceUgx;
     if (Object.keys(patch).length === 0) return;
     await db.update(productPrices).set(patch).where(eq(productPrices.productId, productId));
+  }
+
+  /**
+   * One approval decision for many products at once — what an import leaves
+   * behind is dozens of drafts, and approving them one edit form at a time is
+   * how a catalogue stays half-published. Returns the ids actually changed.
+   */
+  async setApprovalMany(productIds: string[], approvalStatus: 'draft' | 'approved' | 'rejected', active: boolean | null): Promise<string[]> {
+    const ids = productIds.filter((id) => UUID_SHAPE.test(id)).slice(0, 500);
+    if (ids.length === 0) return [];
+    const patch: Partial<typeof products.$inferInsert> = { approvalStatus, updatedAt: new Date() };
+    if (active !== null) patch.active = active;
+    const rows = await db.update(products).set(patch).where(inArray(products.id, ids)).returning({ id: products.id });
+    return rows.map((r) => r.id);
   }
 
   async getPriceTiers(productId: string): Promise<{ floorPriceUgx: number | null; tierBPriceUgx: number | null; tierCPriceUgx: number | null }> {

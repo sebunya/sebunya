@@ -218,6 +218,32 @@ routes.get('/categories', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async
   }
 });
 
+// Bulk approval (0127). PRODUCTS_PUBLISH, because approving is publishing:
+// an approved+active product is on the storefront. Every decision is audited
+// with the full id list, so "who put these 94 products live" has an answer.
+routes.post('/bulk-approval', requirePermissions([PERMISSIONS.PRODUCTS_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const ids: string[] = Array.isArray(body?.productIds) ? body.productIds.map(String) : [];
+  const approvalStatus = String(body?.approvalStatus ?? '');
+  if (ids.length === 0 || ids.length > 500 || !['draft', 'approved', 'rejected'].includes(approvalStatus)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'productIds (1–500) and an approvalStatus of draft, approved or rejected are required.' } }, 400);
+  }
+  // active follows the decision unless the caller says otherwise: approving
+  // without activating leaves an invisible "approved" product, which is a
+  // state nobody wants by accident.
+  const active = typeof body?.active === 'boolean' ? body.active : approvalStatus === 'approved' ? true : approvalStatus === 'rejected' ? false : null;
+  const registry = Registry.getInstance();
+  const changed = await registry.productRepo.setApprovalMany(ids, approvalStatus as 'draft' | 'approved' | 'rejected', active);
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: (c.get('user') as any).id,
+    action: 'PRODUCTS_BULK_APPROVAL',
+    entity: 'product',
+    entityId: 'bulk',
+    newState: { approvalStatus, active, requested: ids.length, changed: changed.length, productIds: changed },
+  });
+  return c.json({ success: true, data: { changed: changed.length, productIds: changed } });
+});
+
 // Get raw product details for administration editing
 routes.get('/:id', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) => {
   const productId = c.req.param('id') ?? '';
