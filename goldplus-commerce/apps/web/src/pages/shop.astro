@@ -81,7 +81,7 @@ if (rawProducts.length === 0) {
 
 const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts, taxonomy)).filter(isListableProduct);
 const filteredProducts = filterDiscoveryProducts(availableProducts, { search, category, subcategory }, taxonomy);
-const products = sortDiscoveryProducts(filteredProducts, sort);
+const products = sortDiscoveryProducts(filteredProducts, sort, taxonomy);
 const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
 // A page past the end shows the last page rather than an empty grid.
 const page = Math.min(requestedPage, totalPages);

@@ -162,7 +162,7 @@ export function filterDiscoveryProducts(
     .filter((product) => matchesDiscoveryQuery(product, filters.search, taxonomy));
 }
 
-export function sortDiscoveryProducts(products: ProductPublicDto[], sort: DiscoverySort): ProductPublicDto[] {
+export function sortDiscoveryProducts(products: ProductPublicDto[], sort: DiscoverySort, taxonomy: Taxonomy = DEFAULT_TAXONOMY): ProductPublicDto[] {
   const list = [...products];
   const safePrice = (product: ProductPublicDto) =>
     typeof product.retailPriceUgx === 'number' && Number.isFinite(product.retailPriceUgx) && product.retailPriceUgx > 0
@@ -171,5 +171,15 @@ export function sortDiscoveryProducts(products: ProductPublicDto[], sort: Discov
   if (sort === 'price-low-high') return list.sort((a, b) => safePrice(a) - safePrice(b) || a.name.localeCompare(b.name));
   if (sort === 'price-high-low') return list.sort((a, b) => safePrice(b) - safePrice(a) || a.name.localeCompare(b.name));
   if (sort === 'name-a-z') return list.sort((a, b) => a.name.localeCompare(b.name));
-  return list;
+  // Default: the order the shop is BROWSED in — taxonomy category, then
+  // subcategory, then name — never creation time. "Newest first" put the
+  // 89 batteries, imported last, on the first four pages of the shop.
+  const categoryRank = new Map(taxonomy.map((c, i) => [c.name, i]));
+  const subRank = new Map<string, number>();
+  taxonomy.forEach((c) => c.subcategories.forEach((sc, i) => subRank.set(sc.slug, i)));
+  const rank = (p: ProductPublicDto) => [categoryRank.get(p.categoryName) ?? taxonomy.length, subRank.get(getProductSubcategory(p, taxonomy)) ?? 999] as const;
+  return list.sort((a, b) => {
+    const [ca, sa] = rank(a); const [cb, sb] = rank(b);
+    return ca - cb || sa - sb || a.name.localeCompare(b.name);
+  });
 }

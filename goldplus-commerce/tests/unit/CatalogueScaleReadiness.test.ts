@@ -83,3 +83,14 @@ describe('the images arriving this week are actually shown', () => {
     expect(read('apps/web/src/components/GpNav.astro')).toMatch(/i: p\.imageUrl \|\| null/);
   });
 });
+
+describe('the default shop order is the browsing order, not creation time', () => {
+  it('sorts by taxonomy category, then subcategory, then name', async () => {
+    const { sortDiscoveryProducts } = await import('../../apps/web/src/lib/product-discovery');
+    const { DEFAULT_TAXONOMY } = await import('@goldplus/shared');
+    const p = (name: string, categoryName: string) => ({ id: name, name, slug: name, categoryName, retailPriceUgx: 10_000 }) as never;
+    const out = sortDiscoveryProducts([p('Battery Z', 'Power Devices'), p('Mouse A', 'PC Accessories'), p('Charger B', 'Power Devices'), p('Earbuds C', 'Sound Devices')], 'default', DEFAULT_TAXONOMY);
+    // Power first (chargers before batteries within it), then sound, then PC.
+    expect(out.map((x: { name: string }) => x.name)).toEqual(['Charger B', 'Battery Z', 'Earbuds C', 'Mouse A']);
+  });
+});
