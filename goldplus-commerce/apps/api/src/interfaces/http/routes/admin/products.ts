@@ -233,15 +233,18 @@ routes.post('/bulk-approval', requirePermissions([PERMISSIONS.PRODUCTS_PUBLISH])
   // state nobody wants by accident.
   const active = typeof body?.active === 'boolean' ? body.active : approvalStatus === 'approved' ? true : approvalStatus === 'rejected' ? false : null;
   const registry = Registry.getInstance();
-  const changed = await registry.productRepo.setApprovalMany(ids, approvalStatus as 'draft' | 'approved' | 'rejected', active);
+  // requireStock (default true when approving): never publish a product with no
+  // stock recorded, so a bulk approval cannot fill the shop with "out of stock".
+  const requireStock = approvalStatus === 'approved' && body?.requireStock !== false;
+  const changed = await registry.productRepo.setApprovalMany(ids, approvalStatus as 'draft' | 'approved' | 'rejected', active, { requireStock });
   await new CreateAuditLogUseCase(registry.auditRepo).execute({
     actorId: (c.get('user') as any).id,
     action: 'PRODUCTS_BULK_APPROVAL',
     entity: 'product',
     entityId: 'bulk',
-    newState: { approvalStatus, active, requested: ids.length, changed: changed.length, productIds: changed },
+    newState: { approvalStatus, active, requireStock, requested: ids.length, changed: changed.length, skipped: ids.length - changed.length, productIds: changed },
   });
-  return c.json({ success: true, data: { changed: changed.length, productIds: changed } });
+  return c.json({ success: true, data: { changed: changed.length, skipped: ids.length - changed.length, requireStock, productIds: changed } });
 });
 
 // Get raw product details for administration editing

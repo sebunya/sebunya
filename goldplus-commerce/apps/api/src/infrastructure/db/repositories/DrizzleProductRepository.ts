@@ -1,7 +1,7 @@
 import { db } from '../client';
 import { products, productPrices, categories } from '../schema/products';
 import { productImages, productAttributeValues, attributes as attributesTable } from '../schema/phase11';
-import { eq, inArray, and, or, ilike, SQL, asc, desc } from 'drizzle-orm';
+import { eq, inArray, and, or, ilike, gt, SQL, asc, desc } from 'drizzle-orm';
 import { ProductEntity, StockStatus } from '../../../domain/products/ProductEntity';
 import { IProductRepository, ProductWithPrice } from '../../../application/ports/IProductRepository';
 import { likeContains } from '../like';
@@ -528,12 +528,16 @@ export class DrizzleProductRepository implements IProductRepository {
    * behind is dozens of drafts, and approving them one edit form at a time is
    * how a catalogue stays half-published. Returns the ids actually changed.
    */
-  async setApprovalMany(productIds: string[], approvalStatus: 'draft' | 'approved' | 'rejected', active: boolean | null): Promise<string[]> {
+  async setApprovalMany(productIds: string[], approvalStatus: 'draft' | 'approved' | 'rejected', active: boolean | null, opts: { requireStock?: boolean } = {}): Promise<string[]> {
     const ids = productIds.filter((id) => UUID_SHAPE.test(id)).slice(0, 500);
     if (ids.length === 0) return [];
     const patch: Partial<typeof products.$inferInsert> = { approvalStatus, updatedAt: new Date() };
     if (active !== null) patch.active = active;
-    const rows = await db.update(products).set(patch).where(inArray(products.id, ids)).returning({ id: products.id });
+    // An import creates products with no stock recorded. Publishing those puts
+    // "out of stock" listings on the shop by accident, so approval can be
+    // limited to products that have stock — the default from the import page.
+    const where = opts.requireStock ? and(inArray(products.id, ids), gt(products.stockQuantity, 0)) : inArray(products.id, ids);
+    const rows = await db.update(products).set(patch).where(where).returning({ id: products.id });
     return rows.map((r) => r.id);
   }
 

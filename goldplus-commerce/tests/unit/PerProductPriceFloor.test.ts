@@ -115,6 +115,21 @@ describe('the write paths cannot trip the CHECK by accident', () => {
   });
 });
 
+describe('bulk approval cannot fill the shop with out-of-stock listings', () => {
+  it('is a publish permission, audited with the id list, and requires stock by default', () => {
+    const route = read('apps/api/src/interfaces/http/routes/admin/products.ts');
+    const block = route.slice(route.indexOf("routes.post('/bulk-approval'"), route.indexOf("// Get raw product details"));
+    expect(block).toMatch(/requirePermissions\(\[PERMISSIONS\.PRODUCTS_PUBLISH\]\)/);
+    expect(block).toMatch(/action: 'PRODUCTS_BULK_APPROVAL'/);
+    expect(block).toMatch(/const requireStock = approvalStatus === 'approved' && body\?\.requireStock !== false;/);
+    const repo = read('apps/api/src/infrastructure/db/repositories/DrizzleProductRepository.ts');
+    expect(repo).toMatch(/opts\.requireStock \? and\(inArray\(products\.id, ids\), gt\(products\.stockQuantity, 0\)\)/);
+    const page = read('apps/web/src/pages/admin/pim-imports/[id].astro');
+    expect(page).toMatch(/requireStock: form\.get\('allowNoStock'\) !== 'on'/);
+    expect(page).toMatch(/no stock recorded/);
+  });
+});
+
 describe('no storefront surface reads only the first 50 products', () => {
   it('every catalogue-wide surface pages through the whole catalogue', () => {
     for (const f of [
