@@ -5,7 +5,7 @@ import EmptyState from '../components/EmptyState.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import { formatUgx } from '../lib/money';
-import { getStorefrontDiscount, salePriceUgx } from '../lib/storefrontDiscount';
+import { getStorefrontDiscount, quotedGoodsTotalUgx } from '../lib/storefrontDiscount';
 import { readCartSessionId } from '../lib/cart-session';
 import type { ApiEnvelope } from '@goldplus/shared';
 import { kampalaCutoff } from '@goldplus/shared';
@@ -267,8 +267,11 @@ const subtotal = items.reduce((acc, item) => acc + (item.unitPriceUgx * item.qua
 // Active campaign discount (display; per-line to match the checkout evaluator).
 const cartDiscount = await getStorefrontDiscount();
 const cartCampaignRunning = cartDiscount.active && cartDiscount.percentBps > 0 && subtotal > 0;
+// The evaluator's own figure, per-product floors included (0127). A local
+// recomputation cannot know each product's floor; the API can. Falls back to
+// the undiscounted subtotal, never to an invented saving.
 const saleSubtotal = cartCampaignRunning
-  ? items.reduce((acc, i) => acc + salePriceUgx(i.unitPriceUgx * i.quantity, cartDiscount.percentBps, cartDiscount.priceFloorUgx * i.quantity), 0)
+  ? await quotedGoodsTotalUgx(items.map((i) => ({ productId: i.productId, quantity: i.quantity })), subtotal)
   : subtotal;
 const cartSavings = subtotal - saleSubtotal;
 // A running campaign that saves this basket nothing (every line already at the

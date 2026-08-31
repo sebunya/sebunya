@@ -179,6 +179,7 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     ]);
 
     const priceByProduct = new Map(priceRows.map((p) => [p.productId, p.retailPrice]));
+    const floorByProduct = new Map(priceRows.map((p) => [p.productId, p.floorPrice ?? null]));
     const primaryImageByProduct = new Map<string, string>();
     for (const img of imageRows) {
       if (!primaryImageByProduct.has(img.productId) || img.isPrimary) {
@@ -191,7 +192,8 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
         row.product,
         row.category,
         priceByProduct.get(row.product.id),
-        primaryImageByProduct.get(row.product.id)
+        primaryImageByProduct.get(row.product.id),
+        floorByProduct.get(row.product.id) ?? null,
       )
     );
   }
@@ -200,7 +202,8 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     product: any,
     category?: any,
     joinedPrice?: number,
-    joinedImageUrl?: string
+    joinedImageUrl?: string,
+    joinedFloor: number | null = null,
   ): RecommendationProductRecord {
     // Fallback securely if no joined value was recovered
     const finalPrice = typeof joinedPrice === 'number' ? joinedPrice : product.priceUgx;
@@ -216,6 +219,7 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       categoryName: category?.name,
       imageUrl: finalImageUrl,
       price: typeof finalPrice === 'number' ? finalPrice : undefined,
+      floorPriceUgx: joinedFloor,
       currency: "UGX",
       stockStatus: product.stockStatus,
       stockQuantity: product.stockQuantity,

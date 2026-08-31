@@ -7,7 +7,7 @@ import { apiBase } from '../lib/api';
 import { HERO_SLIDE_LIBRARY, computeNbaCandidates, kampalaCutoff, type NavConfig } from '@goldplus/shared';
 import { getBusinessInfo } from '../lib/businessInfo';
 import { getNavFeatured } from '../lib/navFeatured';
-import { getStorefrontDiscount, salePriceUgx } from '../lib/storefrontDiscount';
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
 import { formatUgx } from '../lib/money';
 import { getNavConfig } from '../lib/navConfig';
 
@@ -161,7 +161,7 @@ const featAt = (i: number) => navFeatured.length ? navFeatured[i % navFeatured.l
 const dealFeat = featAt(0);
 const dealFeatSaleUgx =
   navDeal.active && dealFeat?.priceUgx
-    ? salePriceUgx(dealFeat.priceUgx, navDeal.percentBps, navDeal.priceFloorUgx)
+    ? salePriceUgx(dealFeat.priceUgx, navDeal.percentBps, effectiveFloorUgx(navDeal.priceFloorUgx, dealFeat.floorPriceUgx, dealFeat.priceUgx))
     : null;
 const dealFeatOnSale =
   dealFeatSaleUgx !== null && dealFeat?.priceUgx != null && dealFeatSaleUgx < dealFeat.priceUgx;

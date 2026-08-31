@@ -278,10 +278,16 @@ routes.post('/pricing-preview', async (c) => {
   try {
     // Baseline first (auto promotions only), then with the code: the delta is
     // the coupon's true effect under the live stacking rules.
+    // dryRun: the cart and checkout pages ask for the evaluator's own figure so
+    // that what they DISPLAY is what the basket is CHARGED, per product floor
+    // included, without minting a quote row on every page view.
+    const persist = body?.dryRun !== true;
     const base = await registry.evaluateCartPricingUseCase.execute({ items, couponCode: null, persist: false });
     const quote = couponCode
-      ? await registry.evaluateCartPricingUseCase.execute({ items, couponCode, persist: true })
-      : await registry.evaluateCartPricingUseCase.execute({ items, couponCode: null, persist: true });
+      ? await registry.evaluateCartPricingUseCase.execute({ items, couponCode, persist })
+      : persist
+        ? await registry.evaluateCartPricingUseCase.execute({ items, couponCode: null, persist: true })
+        : base;
     const couponDiscountUgx = couponCode ? Math.max(0, quote.discountTotalUgx - base.discountTotalUgx) : 0;
     return c.json({
       success: true,

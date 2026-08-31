@@ -249,6 +249,7 @@ export class DrizzleProductRepository implements IProductRepository {
     return {
       entity,
       retailPriceUgx: row.hasRetailPrice && priceRow?.retailPrice ? priceRow.retailPrice : null,
+      floorPriceUgx: priceRow?.floorPrice ?? null,
       categoryName: categoryRow?.name ?? row.categoryName ?? null,
       images: imageRows.map((i) => ({
         url: i.url,
@@ -366,6 +367,7 @@ export class DrizzleProductRepository implements IProductRepository {
     const attrById = new Map(attrRows.map((a) => [a.id, a]));
 
     const priceByProduct = new Map(priceRows.map((p) => [p.productId, p.retailPrice]));
+    const floorByProduct = new Map(priceRows.map((p) => [p.productId, p.floorPrice ?? null]));
     const categoryById = new Map(categoryRows.map((c) => [c.id, c.name]));
 
     const imagesByProduct = new Map<string, typeof imageRows>();
@@ -413,6 +415,7 @@ export class DrizzleProductRepository implements IProductRepository {
           row.reservedQuantity ?? 0
         ),
         retailPriceUgx: row.hasRetailPrice ? priceByProduct.get(row.id) ?? null : null,
+        floorPriceUgx: floorByProduct.get(row.id) ?? null,
         categoryName: categoryById.get(row.categoryId) ?? row.categoryName ?? null,
         images: rowImages.map((i) => ({
           url: i.url,
@@ -488,6 +491,28 @@ export class DrizzleProductRepository implements IProductRepository {
       productId: product.id,
       retailPrice: product.priceUgx,
     });
+  }
+
+  /**
+   * The product's own price tiers. The floor (Price A) is the one the engine
+   * reads; B and C are preserved from the owner's price list. Validated by the
+   * caller AND by the database CHECK: a floor may never exceed the retail price.
+   */
+  async setPriceTiers(
+    productId: string,
+    tiers: { floorPriceUgx?: number | null; tierBPriceUgx?: number | null; tierCPriceUgx?: number | null },
+  ): Promise<void> {
+    const patch: Partial<typeof productPrices.$inferInsert> = {};
+    if (tiers.floorPriceUgx !== undefined) patch.floorPrice = tiers.floorPriceUgx;
+    if (tiers.tierBPriceUgx !== undefined) patch.tierBPrice = tiers.tierBPriceUgx;
+    if (tiers.tierCPriceUgx !== undefined) patch.tierCPrice = tiers.tierCPriceUgx;
+    if (Object.keys(patch).length === 0) return;
+    await db.update(productPrices).set(patch).where(eq(productPrices.productId, productId));
+  }
+
+  async getPriceTiers(productId: string): Promise<{ floorPriceUgx: number | null; tierBPriceUgx: number | null; tierCPriceUgx: number | null }> {
+    const row = await db.query.productPrices.findFirst({ where: eq(productPrices.productId, productId) });
+    return { floorPriceUgx: row?.floorPrice ?? null, tierBPriceUgx: row?.tierBPrice ?? null, tierCPriceUgx: row?.tierCPrice ?? null };
   }
 
   async updateProductProperties(product: ProductEntity, categoryId: string): Promise<void> {

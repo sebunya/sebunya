@@ -196,6 +196,7 @@ export class DrizzleBlogRepository implements IBlogRepository {
       db.select({ id: categories.id, name: categories.name }).from(categories),
     ]);
     const priceById = new Map(priceRows.map((p) => [p.productId, Number(p.retailPrice ?? 0) || null]));
+    const floorById = new Map(priceRows.map((p) => [p.productId, p.floorPrice ?? null]));
     const categoryById = new Map(categoryRows.map((c) => [c.id, c.name]));
     const imageByProduct = new Map<string, string>();
     for (const image of [...imageRows].sort(
@@ -210,6 +211,7 @@ export class DrizzleBlogRepository implements IBlogRepository {
       name: r.name,
       categoryName: categoryById.get(r.categoryId) ?? r.categoryName ?? null,
       retailPriceUgx: priceById.get(r.id) ?? null,
+      floorPriceUgx: floorById.get(r.id) ?? null,
       primaryImageUrl: imageByProduct.get(r.id) ?? null,
     }));
   }

@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { STOREFRONT_PRICE_FLOOR_UGX } from "@goldplus/shared";
 
 export const PIM_TARGET_FIELDS = [
   "sku",
@@ -12,7 +11,13 @@ export const PIM_TARGET_FIELDS = [
   "retailPriceUgx",
 ] as const;
 export type PimTargetField = (typeof PIM_TARGET_FIELDS)[number];
-export type PimMapping = Record<PimTargetField, string>;
+/**
+ * 0127 — price tiers may be supplied but need not be. A row without a floor
+ * imports as a product that is not discountable.
+ */
+export const PIM_OPTIONAL_FIELDS = ["floorPriceUgx", "tierBPriceUgx", "tierCPriceUgx"] as const;
+export type PimOptionalField = (typeof PIM_OPTIONAL_FIELDS)[number];
+export type PimMapping = Record<PimTargetField, string> & Partial<Record<PimOptionalField, string>>;
 export type PimImportMode = "CREATE_ONLY" | "UPSERT";
 export type PimImportStatus =
   | "UPLOADED"
@@ -36,6 +41,9 @@ export interface NormalizedPimProduct {
   shortDescription: string;
   longDescription: string;
   retailPriceUgx: number;
+  floorPriceUgx: number | null;
+  tierBPriceUgx: number | null;
+  tierCPriceUgx: number | null;
 }
 
 const column = /^[A-Za-z0-9_.-]{1,80}$/;
@@ -44,9 +52,21 @@ export function validatePimMapping(mapping: Partial<PimMapping>): string[] {
   for (const field of PIM_TARGET_FIELDS)
     if (!mapping[field] || !column.test(mapping[field]!))
       errors.push(`${field} requires a bounded source column.`);
-  if (new Set(Object.values(mapping)).size !== PIM_TARGET_FIELDS.length)
+  for (const field of PIM_OPTIONAL_FIELDS)
+    if (mapping[field] && !column.test(mapping[field]!))
+      errors.push(`${field} must name a bounded source column when mapped.`);
+  const mapped = Object.values(mapping).filter(Boolean);
+  if (new Set(mapped).size !== mapped.length)
     errors.push("Each target field must map to a distinct source column.");
   return errors;
+}
+
+function optionalTier(row: Record<string, unknown>, column: string | undefined): number | null {
+  if (!column) return null;
+  const raw = String(row[column] ?? "").trim();
+  if (!raw) return null;
+  const n = Number(raw.replace(/,/g, ""));
+  return Number.isFinite(n) ? n : Number.NaN;
 }
 
 export function normalizePimRow(
@@ -64,6 +84,9 @@ export function normalizePimRow(
     shortDescription: text("shortDescription"),
     longDescription: text("longDescription"),
     retailPriceUgx: Number(row[mapping.retailPriceUgx]),
+    floorPriceUgx: optionalTier(row, mapping.floorPriceUgx),
+    tierBPriceUgx: optionalTier(row, mapping.tierBPriceUgx),
+    tierCPriceUgx: optionalTier(row, mapping.tierCPriceUgx),
   };
   const errors: string[] = [];
   if (!/^[A-Z0-9._-]{1,50}$/.test(value.sku))
@@ -83,10 +106,14 @@ export function normalizePimRow(
     errors.push("Descriptions exceed catalogue limits.");
   if (!Number.isInteger(value.retailPriceUgx) || value.retailPriceUgx <= 0)
     errors.push("Retail price must be a positive integer in UGX.");
-  // The owner's floor. An UPSERT wrote any positive price onto a live product,
-  // so a spreadsheet could reopen the floor that every other price path holds.
-  else if (value.retailPriceUgx < STOREFRONT_PRICE_FLOOR_UGX)
-    errors.push(`Retail price must be at least UGX ${STOREFRONT_PRICE_FLOOR_UGX.toLocaleString("en-UG")}, the storefront floor.`);
+  // The owner's rule: a discount may never take the product below its own
+  // floor (Price A), so the floor can never sit above the selling price.
+  for (const [label, tier] of [["Floor price (Price A)", value.floorPriceUgx], ["Price B", value.tierBPriceUgx], ["Price C", value.tierCPriceUgx]] as const) {
+    if (tier !== null && (!Number.isInteger(tier) || tier <= 0))
+      errors.push(`${label} must be a whole number of shillings greater than zero, or blank.`);
+  }
+  if (value.floorPriceUgx !== null && value.floorPriceUgx > value.retailPriceUgx)
+    errors.push("Floor price (Price A) cannot be above the retail price.");
   return { value: errors.length ? null : value, errors };
 }
 

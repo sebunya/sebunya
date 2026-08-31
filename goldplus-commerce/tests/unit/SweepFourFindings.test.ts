@@ -87,7 +87,7 @@ describe('the shop has one clock and one cutoff', () => {
 describe('one price, one stock figure', () => {
   it('search suggestions carry the campaign price', () => {
     const src = read('apps/api/src/application/use-cases/products/SearchUseCases.ts');
-    expect(src).toMatch(/salePriceUgx\(retail, campaign\.percentBps, campaign\.priceFloorUgx\)/);
+    expect(src).toMatch(/salePriceUgx\(retail, campaign\.percentBps, effectiveFloorUgx\(campaign\.priceFloorUgx, floor, retail\)\)/);
   });
 
   it('the public catalogue offers available stock, not on-hand', () => {

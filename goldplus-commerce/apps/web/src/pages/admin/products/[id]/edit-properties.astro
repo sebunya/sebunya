@@ -55,6 +55,8 @@ if (Astro.request.method === 'POST') {
   const shortDescription = String(form.get('shortDescription') ?? '').trim();
   const longDescription = String(form.get('longDescription') ?? '').trim();
   const priceUgx = Number(form.get('priceUgx') ?? 0);
+  const tier = (k: string) => { const v = String(form.get(k) ?? '').trim(); return v ? Number(v) : null; };
+  const floorPriceUgx = tier('floorPriceUgx'); const tierBPriceUgx = tier('tierBPriceUgx'); const tierCPriceUgx = tier('tierCPriceUgx');
   const stockStatus = String(form.get('stockStatus') ?? 'in_stock');
   const stockQuantity = Number(form.get('stockQuantity') ?? 0);
   const imageUrl = String(form.get('imageUrl') ?? '').trim() || undefined;
@@ -65,7 +67,7 @@ if (Astro.request.method === 'POST') {
     method: 'PUT',
     body: JSON.stringify({
       name, sku, modelNumber, slug, categoryId, subcategory,
-      shortDescription, longDescription, priceUgx, stockStatus,
+      shortDescription, longDescription, priceUgx, floorPriceUgx, tierBPriceUgx, tierCPriceUgx, stockStatus,
       stockQuantity, imageUrl, active, approvalStatus
     }),
   });
@@ -177,12 +179,23 @@ if (Astro.request.method === 'POST') {
           <FormField
             id="priceUgx"
             name="priceUgx"
-            label="Retail Price (UGX)"
+            label="Selling price — Price D (UGX)"
             type="number"
             defaultValue={String(product.priceUgx)}
             placeholder="50000"
             required
           />
+          <FormField
+            id="floorPriceUgx"
+            name="floorPriceUgx"
+            label="Floor — Price A (UGX)"
+            type="number"
+            defaultValue={product.priceTiers?.floorPriceUgx ? String(product.priceTiers.floorPriceUgx) : ''}
+            placeholder="Leave empty = never discounted"
+            helperText="The lowest price any discount may reach. Must not exceed the selling price."
+          />
+          <FormField id="tierBPriceUgx" name="tierBPriceUgx" label="Price B (UGX, optional)" type="number" defaultValue={product.priceTiers?.tierBPriceUgx ? String(product.priceTiers.tierBPriceUgx) : ''} />
+          <FormField id="tierCPriceUgx" name="tierCPriceUgx" label="Price C (UGX, optional)" type="number" defaultValue={product.priceTiers?.tierCPriceUgx ? String(product.priceTiers.tierCPriceUgx) : ''} />
           <div>
             <label for="stockStatus" class="block text-sm font-bold text-brand-dark mb-2">
               Stock Status

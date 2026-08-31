@@ -4,7 +4,6 @@ import FormField from '../../../components/FormField.astro';
 import FormFeedback from '../../../components/FormFeedback.astro';
 import { apiBase } from '../../../lib/api';
 import { readSessionToken } from '../../../lib/session';
-import { STOREFRONT_PRICE_FLOOR_UGX } from '@goldplus/shared';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -47,6 +46,8 @@ if (Astro.request.method === 'POST') {
   const shortDescription = String(form.get('shortDescription') ?? '').trim();
   const longDescription = String(form.get('longDescription') ?? '').trim();
   const priceUgx = Number(form.get('priceUgx') ?? 0);
+  const tier = (k: string) => { const v = String(form.get(k) ?? '').trim(); return v ? Number(v) : null; };
+  const floorPriceUgx = tier('floorPriceUgx'); const tierBPriceUgx = tier('tierBPriceUgx'); const tierCPriceUgx = tier('tierCPriceUgx');
   const stockStatus = String(form.get('stockStatus') ?? 'in_stock');
   const stockQuantity = Number(form.get('stockQuantity') ?? 0);
   const imageUrl = String(form.get('imageUrl') ?? '').trim() || undefined;
@@ -57,7 +58,7 @@ if (Astro.request.method === 'POST') {
     method: 'POST',
     body: JSON.stringify({
       name, sku, modelNumber, slug, categoryId, subcategory,
-      shortDescription, longDescription, priceUgx, stockStatus,
+      shortDescription, longDescription, priceUgx, floorPriceUgx, tierBPriceUgx, tierCPriceUgx, stockStatus,
       stockQuantity, imageUrl, active, approvalStatus
     }),
   });
@@ -157,13 +158,24 @@ if (Astro.request.method === 'POST') {
           <FormField
             id="priceUgx"
             name="priceUgx"
-            label="Retail Price (UGX)"
+            label="Selling price — Price D (UGX)"
             type="number"
-            placeholder={String(STOREFRONT_PRICE_FLOOR_UGX)}
-            min={STOREFRONT_PRICE_FLOOR_UGX}
-            helperText={`The storefront floor is UGX ${STOREFRONT_PRICE_FLOOR_UGX.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}. Nothing may be listed below it.`}
+            placeholder="50000"
+            min="1"
+            helperText="What the website sells at."
             required
           />
+          <FormField
+            id="floorPriceUgx"
+            name="floorPriceUgx"
+            label="Floor — Price A (UGX)"
+            type="number"
+            placeholder="Leave empty = never discounted"
+            min="1"
+            helperText="The lowest price any discount may reach. Must not exceed the selling price."
+          />
+          <FormField id="tierBPriceUgx" name="tierBPriceUgx" label="Price B (UGX, optional)" type="number" min="1" placeholder="Kept from the price list" />
+          <FormField id="tierCPriceUgx" name="tierCPriceUgx" label="Price C (UGX, optional)" type="number" min="1" placeholder="Kept from the price list" />
           <div>
             <label for="stockStatus" class="block text-sm font-bold text-brand-dark mb-2">
               Stock Status

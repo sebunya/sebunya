@@ -1,4 +1,4 @@
-import { STOREFRONT_PRICE_FLOOR_UGX, VERIFIED_EVIDENCE_STATUSES, type BatteryLifecycleStatus } from '@goldplus/shared';
+import { VERIFIED_EVIDENCE_STATUSES, type BatteryLifecycleStatus } from '@goldplus/shared';
 
 /**
  * Publication readiness for one battery. Pure domain. Every blocker says
@@ -28,6 +28,8 @@ export interface ReadinessInput {
   lifecycleStatus: BatteryLifecycleStatus | string;
   hasPrimaryImage: boolean;
   priceUgx: number;
+  /** The battery's own floor (Price A), or null when none is set (then it is simply not discountable). */
+  floorPriceUgx: number | null;
   productApproved: boolean;
   stockQuantity: number;
   movementCount: number;
@@ -72,8 +74,8 @@ export function assessReadiness(input: ReadinessInput): ReadinessReport {
   }
   if (!input.hasPrimaryImage) blockers.push({ code: 'NO_PRIMARY_IMAGE', message: 'No primary image. Upload at least the front of the pack.' });
   if (!(input.priceUgx > 0)) blockers.push({ code: 'NO_PRICE', message: 'No retail price has been set.' });
-  else if (input.priceUgx < STOREFRONT_PRICE_FLOOR_UGX) {
-    blockers.push({ code: 'PRICE_BELOW_FLOOR', message: `Price UGX ${input.priceUgx.toLocaleString('en-UG')} is below the storefront floor of UGX ${STOREFRONT_PRICE_FLOOR_UGX.toLocaleString('en-UG')}.` });
+  else if (input.floorPriceUgx !== null && input.priceUgx < input.floorPriceUgx) {
+    blockers.push({ code: 'PRICE_BELOW_FLOOR', message: `Price UGX ${input.priceUgx.toLocaleString('en-UG')} is below this battery's own floor (Price A) of UGX ${input.floorPriceUgx.toLocaleString('en-UG')}. Raise the price or lower the floor.` });
   }
   if (input.movementCount === 0) blockers.push({ code: 'NO_STOCK_LINKAGE', message: 'No stock has ever been recorded for this battery. Record opening stock or a receipt, even if the count is zero.' });
   if (input.verificationStatus !== 'VERIFIED') blockers.push({ code: 'BATTERY_UNVERIFIED', message: 'The battery has not been verified against its physical pack.' });

@@ -16,6 +16,8 @@ export interface NavFeaturedCard {
   imageUrl: string;
   blurb: string;
   priceUgx: number | null;
+  /** The product's own floor (Price A); null = not discountable. */
+  floorPriceUgx: number | null;
 }
 
 const TTL_MS = 120_000;
@@ -55,6 +57,7 @@ async function fetchCards(): Promise<NavFeaturedCard[]> {
       imageUrl: p.primaryImageUrl,
       blurb: p.categoryName ? `From our ${String(p.categoryName).toLowerCase()} shelf` : 'On the shelf now',
       priceUgx: typeof p.retailPriceUgx === 'number' && p.retailPriceUgx > 0 ? p.retailPriceUgx : null,
+      floorPriceUgx: typeof p.floorPriceUgx === 'number' && p.floorPriceUgx > 0 ? p.floorPriceUgx : null,
     });
 
     cards.push(toCard(first, proven ? 'Most carried' : 'Carried in the shop'));

@@ -24,6 +24,7 @@ export interface BlogRelatedProduct {
   name: string;
   categoryName: string | null;
   retailPriceUgx: number | null;
+  floorPriceUgx: number | null;
   primaryImageUrl: string | null;
 }
 

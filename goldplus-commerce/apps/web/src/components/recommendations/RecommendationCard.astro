@@ -2,7 +2,7 @@
 import type { RecommendationItemDto, RecommendationPlacement } from "@goldplus/shared";
 import { supportedRecommendationReason } from "../../lib/recommendation-display";
 import { formatUgx } from "../../lib/money";
-import { getStorefrontDiscount, salePriceUgx } from "../../lib/storefrontDiscount";
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from "../../lib/storefrontDiscount";
 
 interface Props {
   item: RecommendationItemDto & {
@@ -25,7 +25,7 @@ const discount = await getStorefrontDiscount();
 // basket does not honour, so the saving itself is the gate.
 const campaignApplies = hasValidPrice && discount.active && discount.percentBps > 0;
 const candidateSaleUgx = campaignApplies
-  ? salePriceUgx(item.price!, discount.percentBps, discount.priceFloorUgx)
+  ? salePriceUgx(item.price!, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, item.floorPriceUgx, item.price!))
   : null;
 const onSale = candidateSaleUgx !== null && candidateSaleUgx < item.price!;
 const saleUgx = onSale ? candidateSaleUgx : null;

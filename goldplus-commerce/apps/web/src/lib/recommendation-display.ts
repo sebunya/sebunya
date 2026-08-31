@@ -26,6 +26,7 @@ export interface RecommendationCandidate {
   imageUrl?: string | null;
   primaryImageUrl?: string | null;
   price?: number | null;
+  floorPriceUgx?: number | null;
   retailPriceUgx?: number | null;
   availability?: ProductAvailability;
   archived?: boolean;
@@ -45,6 +46,7 @@ export interface NormalizedRecommendationCandidate {
   subcategory: string;
   brandOrFamily: string;
   price: number | undefined;
+  floorPriceUgx: number | null;
   priceDisplay: string;
   availability: ProductAvailability;
   availabilityDisplay: string;
@@ -158,6 +160,8 @@ export function normalizeRecommendationCandidate(
   const price = typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0
     ? rawPrice
     : undefined;
+  const rawFloor = item?.floorPriceUgx;
+  const floorPriceUgx = typeof rawFloor === "number" && Number.isFinite(rawFloor) && rawFloor > 0 ? rawFloor : null;
   const availability = item?.availability ?? { kind: "unknown" };
   const image = item?.imageUrl ?? item?.primaryImageUrl;
   const imageUrl = isSafeImageUrl(image) ? clean(image) : undefined;
@@ -183,6 +187,7 @@ export function normalizeRecommendationCandidate(
     subcategory,
     brandOrFamily,
     price,
+    floorPriceUgx,
     priceDisplay: formatRecommendationPrice(price),
     availability,
     availabilityDisplay: recommendationAvailabilityLabel(availability),
@@ -275,6 +280,7 @@ function sanitiseSelected<T extends RecommendationCandidate>(
     name: normalized.name,
     imageUrl: normalized.imageUrl,
     price: normalized.price,
+    floorPriceUgx: normalized.floorPriceUgx,
     availability: normalized.availability,
     imageAlt: normalized.imageAlt,
     // The display boundary must NOT re-explain an item the engine already

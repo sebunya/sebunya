@@ -4,6 +4,13 @@ export const PRICING_CALCULATION_VERSION = 'pricing-v1';
 export const MAX_APPLIED_PROMOTIONS = 10;
 
 export interface CanonicalPricingLine {
+  /**
+   * The product's own per-unit floor (Price A). The evaluator never discounts a
+   * line below `max(rule.priceFloorUgx, floorUnitPriceUgx) × quantity`. Callers
+   * that build lines from products pass the retail price here when no floor is
+   * set, which makes an un-floored product simply not discountable.
+   */
+  floorUnitPriceUgx?: number;
   productId: string;
   sku: string;
   name: string;
@@ -126,7 +133,7 @@ function estimateRuleBenefitUgx(
     for (const line of targets) {
       const base = baseByProduct.get(line.productId)!;
       const prior = localDiscount.get(line.productId)!;
-      const available = Math.max(0, base - prior - rule.priceFloorUgx * line.quantity);
+      const available = Math.max(0, base - prior - Math.max(rule.priceFloorUgx, line.floorUnitPriceUgx ?? 0) * line.quantity);
       let desired = 0;
       if (benefit.type === 'PERCENTAGE_OFF') desired = Math.floor(base * benefit.value / 10_000);
       if (benefit.type === 'FIXED_AMOUNT_OFF') desired = remainingFixed;
@@ -223,7 +230,7 @@ export function evaluatePricing(input: EvaluatePricingInput): PricingQuote {
         for (const line of targets) {
           const base = baseByProduct.get(line.productId)!;
           const prior = discountByProduct.get(line.productId)!;
-          const available = Math.max(0, base - prior - rule.priceFloorUgx * line.quantity);
+          const available = Math.max(0, base - prior - Math.max(rule.priceFloorUgx, line.floorUnitPriceUgx ?? 0) * line.quantity);
           let desired = 0;
           if (benefit.type === 'PERCENTAGE_OFF') desired = Math.floor(base * benefit.value / 10_000);
           if (benefit.type === 'FIXED_AMOUNT_OFF') desired = remainingFixed;

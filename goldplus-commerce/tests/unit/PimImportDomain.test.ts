@@ -46,6 +46,9 @@ describe("PIM Import domain", () => {
       shortDescription: "",
       longDescription: "",
       retailPriceUgx: 150000,
+      floorPriceUgx: null,
+      tierBPriceUgx: null,
+      tierCPriceUgx: null,
     });
     expect(result.value).not.toHaveProperty("invented");
   });

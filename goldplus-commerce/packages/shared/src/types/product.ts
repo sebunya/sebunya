@@ -35,6 +35,12 @@ export interface ProductPublicDto {
   modelNumber: string | null;
   /** Retail price in UGX minor units (no decimals). `null` if hasRetailPrice is false. */
   retailPriceUgx: number | null;
+  /**
+   * The lowest price any discount may take this product to (its Price A).
+   * `null` = no floor set = not discountable. Every price a surface shows is
+   * `salePriceUgx(retail, bps, effectiveFloorUgx(...))` so display equals charge.
+   */
+  floorPriceUgx: number | null;
   availability: ProductAvailability;
   /** `true` only when the source row has hasImage=true. */
   hasImage: boolean;

@@ -27,7 +27,7 @@ const {
 let validIds: string[] = [];
 // Fresh server truth per product (price, stock, image): local history is a
 // bookmark, not a price list — what renders must match what the shop charges.
-let liveByProduct: Record<string, { price?: number; availability?: ProductPublicDto["availability"]; imageUrl?: string }> = {};
+let liveByProduct: Record<string, { price?: number; floor?: number | null; availability?: ProductPublicDto["availability"]; imageUrl?: string }> = {};
 try {
   const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
   if (res.ok) {
@@ -37,6 +37,8 @@ try {
       for (const p of json.data) {
         liveByProduct[p.id] = {
           price: typeof p.retailPriceUgx === "number" && p.retailPriceUgx > 0 ? p.retailPriceUgx : undefined,
+          // The product's own floor (Price A). Absent = not discountable.
+          floor: typeof p.floorPriceUgx === "number" && p.floorPriceUgx > 0 ? p.floorPriceUgx : null,
           availability: p.availability,
           imageUrl: p.primaryImageUrl ?? undefined,
         };
@@ -83,7 +85,7 @@ const railDiscount = await getStorefrontDiscount();
 
 <script>
   import { shouldShowPickUpWhereYouLeftOff, getRecentlyViewedHistory } from "../../lib/returning-user";
-  import { salePriceUgx } from "../../lib/storefrontDiscount";
+  import { salePriceUgx, effectiveFloorUgx } from "../../lib/storefrontDiscount";
 
   document.addEventListener("DOMContentLoaded", () => {
     const rail = document.querySelector("[data-recently-viewed-rail]") as HTMLElement | null;
@@ -116,11 +118,11 @@ const railDiscount = await getStorefrontDiscount();
     // Overlay fresh server truth (price, stock, image) onto local history —
     // a bookmark from last week must not show last week's price.
     const liveAttr = rail.getAttribute("data-live-products");
-    const liveByProduct: Record<string, { price?: number; availability?: { kind: string; quantity?: number }; imageUrl?: string }> =
+    const liveByProduct: Record<string, { price?: number; floor?: number | null; availability?: { kind: string; quantity?: number }; imageUrl?: string }> =
       liveAttr ? JSON.parse(liveAttr) : {};
     const overlay = (item: any) => {
       const live = liveByProduct[item.productId];
-      return live ? { ...item, price: live.price ?? item.price, availability: live.availability ?? item.availability, imageUrl: live.imageUrl ?? item.imageUrl } : item;
+      return live ? { ...item, price: live.price ?? item.price, floor: live.floor ?? null, availability: live.availability ?? item.availability, imageUrl: live.imageUrl ?? item.imageUrl } : { ...item, floor: null };
     };
 
     const rawHistory = getRecentlyViewedHistory();
@@ -156,7 +158,9 @@ const railDiscount = await getStorefrontDiscount();
     // The evaluator's exact per-line formula, from the one shared helper,
     // INCLUDING the floor. Without the floor this rail advertised 155,000 down
     // to 139,500 on a product the basket charges 145,000 for.
-    const salePriceOf = (regular: number) => salePriceUgx(regular, saleBps, saleFloor);
+    // Per product: the campaign's extra floor combined with the product's own
+    // Price A; a product whose floor is unknown is shown at full price.
+    const salePriceOf = (regular: number, floor: number | null | undefined) => salePriceUgx(regular, saleBps, effectiveFloorUgx(saleFloor, floor, regular));
 
     const sharedRailRenderId = crypto.randomUUID();
     list.innerHTML = items
@@ -200,11 +204,11 @@ const railDiscount = await getStorefrontDiscount();
         // A campaign is not a sale unless this product's price actually
         // drops. At the floor the cut is nothing, and "145,000 was 145,000,
         // 10% discount" is a claim the basket does not honour.
-        const onSale = saleActive && hasPrice && salePriceOf(item.price) < item.price;
+        const onSale = saleActive && hasPrice && salePriceOf(item.price, item.floor) < item.price;
         const priceHtml = onSale
           ? `<span class="flex flex-col min-w-0">
                <span class="flex flex-wrap items-baseline gap-x-2">
-                 <span class="font-black tracking-tight tabular-nums text-lg text-brand-charcoal">UGX ${salePriceOf(item.price).toLocaleString("en-US")}</span>
+                 <span class="font-black tracking-tight tabular-nums text-lg text-brand-charcoal">UGX ${salePriceOf(item.price, item.floor).toLocaleString("en-US")}</span>
                  <span class="text-[11px] font-semibold text-slate-400 line-through tabular-nums">UGX ${item.price.toLocaleString("en-US")}</span>
                  <span class="text-[9px] font-black uppercase tracking-wider rounded-full px-1.5 py-0.5" style="background:#93D500;color:#0A0A0A">${salePercent}% discount</span>
                </span>

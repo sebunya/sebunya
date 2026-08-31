@@ -144,6 +144,7 @@ export class BatteryCatalogueUseCases {
       lifecycleStatus: found.profile.lifecycleStatus,
       hasPrimaryImage: found.product.hasImage || !!found.product.primaryImageUrl,
       priceUgx: found.product.priceUgx,
+      floorPriceUgx: (await this.repo.floorPriceFor?.(productId)) ?? null,
       // Publishing is what approves the product, so a battery that is not yet
       // live must not be blocked for the approval it is about to receive. The
       // check has teeth for a LIVE battery whose product was unapproved

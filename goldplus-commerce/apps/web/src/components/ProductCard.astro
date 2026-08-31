@@ -1,7 +1,7 @@
 ---
 import type { ProductPublicDto } from '@goldplus/shared';
 import { formatUgx } from '../lib/money';
-import { getStorefrontDiscount, salePriceUgx } from '../lib/storefrontDiscount';
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
 
 interface Props {
   product: ProductPublicDto;
@@ -23,7 +23,7 @@ const formattedPrice = hasValidPrice ? formatUgx(product.retailPriceUgx!) : "Pri
 // Active campaign discount (display only; mirrors what checkout charges).
 const discount = await getStorefrontDiscount();
 const campaignRunning = hasValidPrice && discount.active && discount.percentBps > 0;
-const saleUgx = campaignRunning ? salePriceUgx(product.retailPriceUgx!, discount.percentBps, discount.priceFloorUgx) : null;
+const saleUgx = campaignRunning ? salePriceUgx(product.retailPriceUgx!, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, product.floorPriceUgx, product.retailPriceUgx!)) : null;
 // A card only claims a sale when the price actually drops. At the per-unit
 // price floor the evaluator takes nothing off, and the card was striking
 // through a price and reprinting the same number beside it.

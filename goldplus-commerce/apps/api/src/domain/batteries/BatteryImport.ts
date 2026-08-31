@@ -4,7 +4,6 @@ import {
   BATTERY_CHEMISTRIES,
   BATTERY_IMPORT_TYPES,
   COMPAT_EVIDENCE_STATUSES,
-  STOREFRONT_PRICE_FLOOR_UGX,
   type BatteryCategory,
   type BatteryChemistry,
   type BatteryImportType,
@@ -91,7 +90,7 @@ export const IMPORT_FIELDS: Record<BatteryImportType, ImportField[]> = {
   ],
   PRICE_UPDATE: [
     { key: 'batteryCode', label: 'Battery code, alias, SKU or barcode', required: true, hint: '' },
-    { key: 'retailPriceUgx', label: 'Retail price (UGX)', required: true, hint: `Whole number, at least ${STOREFRONT_PRICE_FLOOR_UGX}.` },
+    { key: 'retailPriceUgx', label: 'Retail price (UGX)', required: true, hint: 'Whole number of shillings (Price D).' },
   ],
 };
 
@@ -484,7 +483,6 @@ export function normaliseImportRow(
       const price = parseInteger(get('retailPriceUgx'));
       if (!code) errors.push('Battery code is required.');
       if (price == null || price <= 0) errors.push('Retail price must be a whole number of shillings greater than zero.');
-      else if (price < STOREFRONT_PRICE_FLOOR_UGX) errors.push(`Retail price ${price.toLocaleString('en-UG')} is below the storefront floor of UGX ${STOREFRONT_PRICE_FLOOR_UGX.toLocaleString('en-UG')}.`);
       const battery = code ? ctx.resolveBattery(code) : null;
       if (code && !battery) errors.push(`No battery for "${code}".`);
       if (battery && 'ambiguous' in battery) errors.push(`"${code}" matches more than one battery.`);

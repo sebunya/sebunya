@@ -1,7 +1,7 @@
 ---
 import type { ProductPublicDto } from "@goldplus/shared";
 import { formatUgx } from "../lib/money";
-import { getStorefrontDiscount, salePriceUgx } from "../lib/storefrontDiscount";
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from "../lib/storefrontDiscount";
 
 /**
  * HomeCommerceHighlights.astro
@@ -27,7 +27,7 @@ const highlightDiscount = await getStorefrontDiscount();
 function chargedPrice(p: ProductPublicDto): number | null {
   if (typeof p.retailPriceUgx !== "number" || !(p.retailPriceUgx > 0)) return null;
   if (!highlightDiscount.active || highlightDiscount.percentBps <= 0) return p.retailPriceUgx;
-  return salePriceUgx(p.retailPriceUgx, highlightDiscount.percentBps, highlightDiscount.priceFloorUgx);
+  return salePriceUgx(p.retailPriceUgx, highlightDiscount.percentBps, effectiveFloorUgx(highlightDiscount.priceFloorUgx, p.floorPriceUgx, p.retailPriceUgx));
 }
 
 function getFormattedPrice(p: ProductPublicDto) {

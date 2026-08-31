@@ -72,7 +72,7 @@ describe('product-card commercial signals', () => {
     // CartAddon / CategoryPopular rails and the cart page) carries sale price,
     // % pill, countdown chip and the honest stock count.
     const rec = read('apps/web/src/components/recommendations/RecommendationCard.astro');
-    expect(rec).toContain('salePriceUgx(item.price!, discount.percentBps, discount.priceFloorUgx)');
+    expect(rec).toContain('salePriceUgx(item.price!, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, item.floorPriceUgx, item.price!))');
     expect(rec).toContain('data-card-sale-ends={discount.endsIso}');
     expect(rec).toContain('Only ${stockCount} left in stock');
     expect(rec).toContain('${stockCount} in stock');
@@ -83,7 +83,7 @@ describe('product-card commercial signals', () => {
     // restated copy had left out the campaign price floor.
     const rv = read('apps/web/src/components/recommendations/RecentlyViewedRail.astro');
     expect(rv).toContain('getStorefrontDiscount');
-    expect(rv).toContain('salePriceUgx(regular, saleBps, saleFloor)');
+    expect(rv).toContain('salePriceUgx(regular, saleBps, effectiveFloorUgx(saleFloor, floor, regular))');
     expect(rv).toContain('data-card-sale-ends=');
     expect(rv).toContain('Only ${qty} left in stock');
 
@@ -137,7 +137,7 @@ describe('product-card commercial signals', () => {
   });
 
   it('sale price still mirrors the evaluator formula (display equals charge)', () => {
-    expect(card).toContain('salePriceUgx(product.retailPriceUgx!, discount.percentBps, discount.priceFloorUgx)');
+    expect(card).toContain('salePriceUgx(product.retailPriceUgx!, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, product.floorPriceUgx, product.retailPriceUgx!))');
     const lib = read('apps/web/src/lib/storefrontDiscount.ts');
     // The formula moved to @goldplus/shared so the API's Merchant Center feed
     // and every storefront surface use one copy; the lib re-exports it.
@@ -147,27 +147,30 @@ describe('product-card commercial signals', () => {
     expect(lib).toContain("from '../../../../packages/shared/src/pricing/salePrice'");
   });
 
-  it('every call site passes a floor, and the line-total ones scale it by quantity', () => {
-    // A caller that forgets the floor advertises a price the evaluator will not
-    // honour. The two basket callers discount a LINE, so their floor is
-    // per-unit * quantity — exactly `priceFloorUgx * line.quantity` in
-    // PricingEvaluator.
+  it('every call site combines the campaign floor with the PRODUCT floor (0127)', () => {
+    // A caller that passes only the campaign floor ignores the product's own
+    // Price A and advertises a price the evaluator will not honour. Every
+    // per-unit caller goes through effectiveFloorUgx(campaign, product, retail).
     for (const f of [
       'apps/web/src/components/ProductCard.astro',
       'apps/web/src/components/GpNav.astro',
+      'apps/web/src/components/HomeCommerceHighlights.astro',
       'apps/web/src/components/recommendations/RecommendationCard.astro',
-      'apps/web/src/pages/cart.astro',
-      'apps/web/src/pages/checkout.astro',
+      'apps/web/src/pages/products/[slug].astro',
+      'apps/web/src/pages/blog/[slug].astro',
     ]) {
       const src = read(f).replace(/^\s*(\/\/|\*|\/\*).*$/gm, '');
-      for (const call of src.match(/salePriceUgx\([^;]*?\)\s*(?=[,);:]|$)/gm) ?? []) {
-        // three arguments: base, bps, floor
-        expect(call.split(',').length).toBeGreaterThanOrEqual(3);
-        expect(call).toMatch(/priceFloorUgx/);
-      }
+      const calls = src.match(/salePriceUgx\([^;]*?\)\s*(?=[,);:]|$)/gm) ?? [];
+      expect(calls.length, f).toBeGreaterThan(0);
+      for (const call of calls) expect(call, f).toMatch(/effectiveFloorUgx\(/);
     }
-    expect(read('apps/web/src/pages/cart.astro')).toContain('cartDiscount.priceFloorUgx * i.quantity');
-    expect(read('apps/web/src/pages/checkout.astro')).toContain('checkoutDiscount.priceFloorUgx * i.quantity');
+    // The two basket pages cannot know every line's floor locally, so they show
+    // the evaluator's own figure (a dry-run pricing preview) and never recompute.
+    for (const f of ['apps/web/src/pages/cart.astro', 'apps/web/src/pages/checkout.astro']) {
+      const src = read(f);
+      expect(src, f).toContain('quotedGoodsTotalUgx(');
+      expect(src, f).not.toMatch(/salePriceUgx\(/);
+    }
   });
 });
 

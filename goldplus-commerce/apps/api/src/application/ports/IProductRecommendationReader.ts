@@ -8,6 +8,8 @@ export interface RecommendationProductRecord {
   categoryName?: string | null;
   imageUrl?: string | null;
   price?: number | null;
+  /** 0127 — the product's own floor (Price A); null = not discountable. */
+  floorPriceUgx?: number | null;
   currency?: string | null;
   stockStatus?: string | null;
   stockQuantity?: number | null;

@@ -12,7 +12,7 @@ import {
 } from '../../../domain/products/ProductSearchService';
 import type { IPricingRepository } from '../../ports/IPricingRepository';
 import { resolveStorefrontDiscount, INACTIVE_DISCOUNT } from '../../pricing/StorefrontDiscountQuery';
-import { salePriceUgx } from '@goldplus/shared';
+import { salePriceUgx, effectiveFloorUgx } from '@goldplus/shared';
 
 /** The image the card and the product page lead with, or none. */
 function primaryImageUrl(images: Array<{ url: string; displayOrder: number; isPrimary: boolean }>): string | null {
@@ -61,15 +61,15 @@ export class SuggestProductsUseCase {
     // catalogue price here meant the search dropdown contradicted every other
     // surface while a campaign ran. Uses the one shared formula, floor included.
     const campaign = this.pricing ? await resolveStorefrontDiscount(this.pricing) : INACTIVE_DISCOUNT;
-    const priced = (retail: number | null): number | null => {
+    const priced = (retail: number | null, floor: number | null | undefined): number | null => {
       if (retail === null || !campaign.active || campaign.percentBps <= 0) return retail;
-      return salePriceUgx(retail, campaign.percentBps, campaign.priceFloorUgx);
+      return salePriceUgx(retail, campaign.percentBps, effectiveFloorUgx(campaign.priceFloorUgx, floor, retail));
     };
     return ranked.slice(0, limit).map((c) => ({
       id: c.row.entity.id,
       name: c.row.entity.name,
       slug: c.row.entity.slug,
-      priceUgx: priced(c.row.retailPriceUgx),
+      priceUgx: priced(c.row.retailPriceUgx, c.row.floorPriceUgx),
       categoryName: c.row.categoryName,
       imageUrl: primaryImageUrl(c.row.images),
     }));

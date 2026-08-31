@@ -135,7 +135,7 @@ describe('compatibility workflow: maker/checker and publication', () => {
 
 describe('battery readiness: every blocker says why', () => {
   const ready = {
-    canonicalCode: 'BL-49FT', codeStatus: 'CONFIRMED', verificationStatus: 'VERIFIED', lifecycleStatus: 'READY', hasPrimaryImage: true, priceUgx: 150_000,
+    canonicalCode: 'BL-49FT', codeStatus: 'CONFIRMED', verificationStatus: 'VERIFIED', lifecycleStatus: 'READY', hasPrimaryImage: true, priceUgx: 150_000, floorPriceUgx: null as number | null,
     productApproved: true, stockQuantity: 4, movementCount: 1, capacityMah: 5000, nominalVoltageMv: 3850, barcode: '6252801558806', warrantyMonths: 12, publicNotes: 'Fits the KF6n only.',
     aliasConflicts: [] as string[], mappings: [{ workflowStatus: 'READY', evidenceStatus: 'FIT_TESTED', deviceStatus: 'ACTIVE' }],
   };
@@ -153,10 +153,17 @@ describe('battery readiness: every blocker says why', () => {
     expect(report.blockers.find((b) => b.code === 'NO_CANONICAL_CODE')?.message).toMatch(/phone name/);
   });
 
-  it('holds a compound code and enforces the storefront price floor', () => {
+  it("holds a compound code and enforces the battery's OWN floor (0127), not a shop-wide one", () => {
     expect(assessReadiness({ ...ready, canonicalCode: 'BL-49CI/CT' }).blockers.map((b) => b.code)).toContain('UNRESOLVED_COMPOUND_CODE');
-    const cheap = assessReadiness({ ...ready, priceUgx: STOREFRONT_PRICE_FLOOR_UGX - 1 });
-    expect(cheap.blockers.map((b) => b.code)).toContain('PRICE_BELOW_FLOOR');
+    // Priced below its own Price A: blocked, and the message names the floor.
+    const below = assessReadiness({ ...ready, priceUgx: 40_000, floorPriceUgx: 45_000 });
+    expect(below.blockers.map((b) => b.code)).toContain('PRICE_BELOW_FLOOR');
+    expect(below.blockers.find((b) => b.code === 'PRICE_BELOW_FLOOR')?.message).toMatch(/own floor \(Price A\) of UGX 45,000/);
+    // A UGX 50,000 battery at or above its floor is fine — nearly every real
+    // battery is far below the historical 145,000.
+    expect(assessReadiness({ ...ready, priceUgx: 50_000, floorPriceUgx: 45_000 }).blockers.map((b) => b.code)).not.toContain('PRICE_BELOW_FLOOR');
+    // No floor set: not discountable, but not blocked.
+    expect(assessReadiness({ ...ready, priceUgx: 20_000, floorPriceUgx: null }).blockers.map((b) => b.code)).not.toContain('PRICE_BELOW_FLOOR');
   });
 
   it('a supplier listing alone is not verified compatibility; an archived device blocks', () => {

@@ -5,7 +5,7 @@ import { renderArticle, articlePlainText } from '../../lib/articleMarkup';
 import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
 import { SITE_ORIGIN } from '../../lib/sitemap';
 import { formatUgx } from '../../lib/money';
-import { getStorefrontDiscount, salePriceUgx } from '../../lib/storefrontDiscount';
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
 
 /**
  * One article. Server-rendered so the words are in the HTML a crawler reads,
@@ -91,7 +91,7 @@ const breadcrumbs = serializeJsonLd(
         <div class="mt-6 grid gap-5 sm:grid-cols-2">
           {post.relatedProducts.map((product) => {
             const sale = product.retailPriceUgx !== null && discount.active
-              ? salePriceUgx(product.retailPriceUgx, discount.percentBps, discount.priceFloorUgx)
+              ? salePriceUgx(product.retailPriceUgx, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, product.floorPriceUgx, product.retailPriceUgx))
               : product.retailPriceUgx;
             const saved = product.retailPriceUgx !== null && sale !== null && sale < product.retailPriceUgx;
             return (

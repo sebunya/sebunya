@@ -5,7 +5,7 @@ import ProductJsonLd from '../../components/ProductJsonLd.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
 import { formatUgx } from '../../lib/money';
-import { getStorefrontDiscount, salePriceUgx } from '../../lib/storefrontDiscount';
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
 import type { ProductPublicDto, ApiEnvelope, ApiResponse } from '@goldplus/shared';
 import CompleteSetupRail from '../../components/recommendations/CompleteSetupRail.astro';
 import RelatedProductsRail from '../../components/recommendations/RelatedProductsRail.astro';
@@ -277,7 +277,7 @@ const pdpDiscount = await getStorefrontDiscount();
 const pdpCampaignRunning = pdpHasPrice && pdpDiscount.active && pdpDiscount.percentBps > 0;
 // The floor is a required argument: without it the page would advertise a price
 // the checkout refuses to honour.
-const pdpSaleUgx = pdpCampaignRunning ? salePriceUgx(product!.retailPriceUgx!, pdpDiscount.percentBps, pdpDiscount.priceFloorUgx) : null;
+const pdpSaleUgx = pdpCampaignRunning ? salePriceUgx(product!.retailPriceUgx!, pdpDiscount.percentBps, effectiveFloorUgx(pdpDiscount.priceFloorUgx, product!.floorPriceUgx, product!.retailPriceUgx!)) : null;
 /**
  * Only call it a sale when the price actually drops. At the per-unit price
  * floor the evaluator discounts nothing, and the page was showing a struck

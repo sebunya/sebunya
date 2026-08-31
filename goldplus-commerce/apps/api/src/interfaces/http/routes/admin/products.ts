@@ -9,7 +9,8 @@ import { SetAttributeValueUseCase } from '../../../../application/use-cases/prod
 import { DefineAttributeUseCase } from '../../../../application/use-cases/products/DefineAttributeUseCase';
 import { RecordProductSlugChangeUseCase } from '../../../../application/use-cases/products/RecordProductSlugChangeUseCase';
 import { validateStockAdjustment } from '../../../../domain/inventory/Inventory';
-import { ApiResponse, PERMISSIONS, STOREFRONT_PRICE_FLOOR_UGX } from '@goldplus/shared';
+import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
+import { parsePriceTiers } from '../../../../domain/products/PriceTiers';
 
 /** Above this a value cannot be a shilling price; it is a typo or an int4 overflow. */
 const MAX_PRICE_UGX = 100_000_000;
@@ -225,7 +226,10 @@ routes.get('/:id', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) =>
   if (!product) {
     return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Product not found.' } }, 404);
   }
-  return c.json({ success: true, data: product });
+  // 0127 — the product's own price tiers travel with it so the editor can show
+  // and change the floor (Price A) beside the retail price (Price D).
+  const priceTiers = await registry.productRepo.getPriceTiers(productId);
+  return c.json({ success: true, data: { ...product, priceTiers } });
 });
 
 // Create product
@@ -267,11 +271,12 @@ routes.post('/', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => 
   if (priceUgx < 0 || !Number.isInteger(priceUgx) || priceUgx > MAX_PRICE_UGX) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Price must be a whole number of shillings up to ${MAX_PRICE_UGX.toLocaleString('en-UG')}.` } }, 400);
   }
-  // The owner's storefront floor. Only the maximum was checked, so a new or
-  // edited product could be listed under it and reopen the floor the
-  // catalogue, promotions and every display surface enforce.
-  if (priceUgx < STOREFRONT_PRICE_FLOOR_UGX) {
-    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Price must be at least UGX ${STOREFRONT_PRICE_FLOOR_UGX.toLocaleString('en-UG')}, the storefront floor.` } }, 400);
+  // The owner's rule: the site sells at the retail price (Price D) and no
+  // discount may take the product below its own floor (Price A). The floor is
+  // optional; a product without one is simply not discountable.
+  const tiers = parsePriceTiers(body, priceUgx);
+  if (!tiers.ok) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: tiers.message } }, 400);
   }
   if (compareAtPriceUgx !== undefined && (!Number.isInteger(compareAtPriceUgx) || compareAtPriceUgx < 0 || compareAtPriceUgx > MAX_PRICE_UGX)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Compare-at price must be a whole number of shillings, or left empty.' } }, 400);
@@ -335,6 +340,7 @@ routes.post('/', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => 
 
     // Save entity through repository orchestration
     await registry.productRepo.createProduct(productEntity, categoryId);
+    await registry.productRepo.setPriceTiers(productId, tiers.value);
 
     const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
     await auditUc.execute({
@@ -397,11 +403,12 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
   if (priceUgx < 0 || !Number.isInteger(priceUgx) || priceUgx > MAX_PRICE_UGX) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Price must be a whole number of shillings up to ${MAX_PRICE_UGX.toLocaleString('en-UG')}.` } }, 400);
   }
-  // The owner's storefront floor. Only the maximum was checked, so a new or
-  // edited product could be listed under it and reopen the floor the
-  // catalogue, promotions and every display surface enforce.
-  if (priceUgx < STOREFRONT_PRICE_FLOOR_UGX) {
-    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Price must be at least UGX ${STOREFRONT_PRICE_FLOOR_UGX.toLocaleString('en-UG')}, the storefront floor.` } }, 400);
+  // The owner's rule: the site sells at the retail price (Price D) and no
+  // discount may take the product below its own floor (Price A). The floor is
+  // optional; a product without one is simply not discountable.
+  const tiers = parsePriceTiers(body, priceUgx);
+  if (!tiers.ok) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: tiers.message } }, 400);
   }
   if (compareAtPriceUgx !== undefined && (!Number.isInteger(compareAtPriceUgx) || compareAtPriceUgx < 0 || compareAtPriceUgx > MAX_PRICE_UGX)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Compare-at price must be a whole number of shillings, or left empty.' } }, 400);
@@ -504,6 +511,7 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
 
     // Save entity through repository orchestration
     await registry.productRepo.updateProductProperties(productEntity, categoryId);
+    await registry.productRepo.setPriceTiers(productEntity.id, tiers.value);
 
     // U6 AC6 — a slug change 301s the old product URL to the new one so inbound
     // links keep resolving. Fail-open: the product update already committed and

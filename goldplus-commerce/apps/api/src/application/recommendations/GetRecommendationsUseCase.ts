@@ -176,6 +176,8 @@ export class GetRecommendationsUseCase {
               return {
                 ...c,
                 price: typeof live.price === 'number' ? live.price : c.price,
+                // The floor comes only from the database, never the cached blob.
+                floorPriceUgx: live.floorPriceUgx ?? null,
                 stockQuantity:
                   typeof live.stockQuantity === 'number' ? live.stockQuantity : c.stockQuantity,
               };
@@ -691,6 +693,7 @@ export class GetRecommendationsUseCase {
       name: product.name,
       imageUrl: product.imageUrl ?? undefined,
       price: product.price ?? undefined,
+      floorPriceUgx: product.floorPriceUgx ?? null,
       currency: product.currency ?? undefined,
       categoryId: product.categoryId ?? undefined,
       categorySlug: product.categorySlug ?? undefined,
@@ -710,6 +713,7 @@ export class GetRecommendationsUseCase {
       name: candidate.name,
       imageUrl: candidate.imageUrl,
       price: candidate.price,
+      floorPriceUgx: candidate.floorPriceUgx ?? null,
       currency: candidate.currency,
       score: candidate.score,
       reasonCodes: candidate.reasonCodes,

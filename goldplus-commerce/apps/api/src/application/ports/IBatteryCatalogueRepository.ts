@@ -148,6 +148,8 @@ export interface IBatteryCatalogueRepository {
   findCategoryBySlug(slug: string): Promise<{ id: string; name: string } | null>;
   create(input: BatteryCreateInput): Promise<{ productId: string; profileId: string }>;
   findByProductId(productId: string): Promise<{ profile: BatteryProfileRecord; product: BatteryProductFacts } | null>;
+  /** 0127 — the battery's own floor (Price A) from product_prices, or null when none is set. */
+  floorPriceFor?(productId: string): Promise<number | null>;
   findByProductSlug(slug: string): Promise<{ profile: BatteryProfileRecord; product: BatteryProductFacts } | null>;
   list(filters: BatteryListFilters): Promise<BatteryListRow[]>;
   updateProfile(productId: string, patch: Partial<BatteryProfileRecord>, actorId: string): Promise<BatteryProfileRecord | null>;

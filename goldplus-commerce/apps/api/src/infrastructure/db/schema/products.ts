@@ -68,6 +68,11 @@ export const productPrices = pgTable('product_prices', {
   // cost use cases; read by DrizzleOrderRepository to freeze the COGS snapshot
   // at sale. NULL means cost is unknown, which reports UNAVAILABLE, never zero.
   costPrice: integer('cost_price'),
+  /** 0127 — the product's own Price A: the lowest price any discount may reach. NULL = not discountable. */
+  floorPrice: integer('floor_price'),
+  /** 0127 — the workbook's B and C tiers, preserved exactly. No surface reads them yet. */
+  tierBPrice: integer('tier_b_price'),
+  tierCPrice: integer('tier_c_price'),
 });
 
 /**

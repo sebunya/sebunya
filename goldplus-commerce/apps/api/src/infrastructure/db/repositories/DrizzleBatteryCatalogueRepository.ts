@@ -85,6 +85,11 @@ const productSelection = {
 };
 
 export class DrizzleBatteryCatalogueRepository implements IBatteryCatalogueRepository {
+  async floorPriceFor(productId: string): Promise<number | null> {
+    const [row] = await db.select({ floor: productPrices.floorPrice }).from(productPrices).where(eq(productPrices.productId, productId)).limit(1);
+    return row?.floor ?? null;
+  }
+
   async findCategoryBySlug(slug: string) {
     const [row] = await db.select({ id: categories.id, name: categories.name }).from(categories).where(eq(categories.slug, slug)).limit(1);
     return row ?? null;

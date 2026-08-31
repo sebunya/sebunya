@@ -4,6 +4,7 @@ import { IPricingRepository } from '../../ports/IPricingRepository';
 import { IPricingQuoteRepository } from '../../ports/IPricingQuoteRepository';
 import { evaluatePricing, PricingRule } from '../../../domain/pricing/PricingEvaluator';
 import { normalizeCouponCode } from '../../../domain/pricing/Pricing';
+import { effectiveFloorUgx } from '@goldplus/shared';
 
 export interface EvaluateCartPricingInput {
   items: Array<{ productId: string; quantity: number }>;
@@ -43,7 +44,17 @@ export class EvaluateCartPricingUseCase {
       const product = byId.get(productId);
       if (!product) throw new PricingEvaluationError('PRODUCT_UNAVAILABLE', 'A requested product is not available.');
       if (!Number.isInteger(product.retailPriceUgx) || product.retailPriceUgx! <= 0) throw new PricingEvaluationError('PRICE_UNAVAILABLE', 'A requested product has no confirmed canonical retail price.');
-      return { productId, sku: product.entity.sku, name: product.entity.name, category: product.categoryName ?? product.entity.category, canonicalUnitPriceUgx: product.retailPriceUgx!, quantity: quantities.get(productId)! };
+      return {
+        productId,
+        sku: product.entity.sku,
+        name: product.entity.name,
+        category: product.categoryName ?? product.entity.category,
+        canonicalUnitPriceUgx: product.retailPriceUgx!,
+        // The product's own Price A. No floor set → floor at retail → not
+        // discountable. A missing floor must never mean "discount freely".
+        floorUnitPriceUgx: effectiveFloorUgx(0, product.floorPriceUgx, product.retailPriceUgx!),
+        quantity: quantities.get(productId)!,
+      };
     });
     const evaluatedAt = input.evaluatedAt ?? new Date();
     const ttl = input.quoteTtlSeconds ?? 300;

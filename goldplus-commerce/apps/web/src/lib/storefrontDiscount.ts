@@ -67,4 +67,34 @@ export async function getStorefrontDiscount(): Promise<StorefrontDiscount> {
 // "exports" subpath fixed that but changed how the API resolves the package at
 // runtime, and the API then loaded raw TypeScript and would not boot. A
 // relative import sidesteps package resolution altogether.
-export { salePriceUgx } from '../../../../packages/shared/src/pricing/salePrice';
+export { salePriceUgx, effectiveFloorUgx } from '../../../../packages/shared/src/pricing/salePrice';
+
+/**
+ * The goods total the evaluator would charge for these lines, from the API's
+ * own pricing preview (a dry run: no quote row is written). This is what the
+ * cart and checkout pages show, because every product now carries its own
+ * floor and only the evaluator holds all of them. On any failure it returns
+ * `fallbackUgx` — the undiscounted subtotal — so the page can never advertise a
+ * saving the basket will not honour; it can only under-promise.
+ */
+export async function quotedGoodsTotalUgx(
+  items: Array<{ productId: string; quantity: number }>,
+  fallbackUgx: number,
+): Promise<number> {
+  const lines = items.filter((i) => /^[0-9a-f-]{36}$/i.test(i.productId) && Number.isInteger(i.quantity) && i.quantity > 0);
+  if (lines.length === 0) return fallbackUgx;
+  try {
+    const res = await fetch(`${apiBase}/commerce/pricing-preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ items: lines, dryRun: true }),
+      signal: AbortSignal.timeout(2500),
+    });
+    if (!res.ok) return fallbackUgx;
+    const json: any = await res.json().catch(() => null);
+    const total = Number(json?.data?.goodsTotalUgx);
+    return json?.success && Number.isFinite(total) && total >= 0 && total <= fallbackUgx ? total : fallbackUgx;
+  } catch {
+    return fallbackUgx;
+  }
+}

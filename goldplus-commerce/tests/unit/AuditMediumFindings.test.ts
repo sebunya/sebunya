@@ -38,13 +38,20 @@ describe('money and display', () => {
     expect(src.match(/b\.maximumDiscountUgx == null/g)?.length).toBe(2);
   });
 
-  it('a PIM upsert cannot price a live product below the floor', () => {
-    const mapping = { sku: 'sku', modelNumber: 'model', name: 'name', slug: 'slug', categorySlug: 'category', shortDescription: 'short', longDescription: 'long', retailPriceUgx: 'price' } as never;
+  it('a PIM row cannot carry a floor above its selling price (0127)', () => {
+    // The rule is per product: the floor (Price A) may never exceed the
+    // retail price (Price D). A UGX 4,000 cable is a valid product; the
+    // historical 145,000 is no longer a minimum for anything.
+    const mapping = { sku: 'sku', modelNumber: 'model', name: 'name', slug: 'slug', categorySlug: 'category', shortDescription: 'short', longDescription: 'long', retailPriceUgx: 'price', floorPriceUgx: 'floor' } as never;
     const base = { sku: 'X1', model: 'M', name: 'Thing', slug: 'thing', category: 'c', short: 's', long: 'l' };
-    const low = normalizePimRow({ ...base, price: String(STOREFRONT_PRICE_FLOOR_UGX - 1) }, mapping);
-    const ok = normalizePimRow({ ...base, price: String(STOREFRONT_PRICE_FLOOR_UGX) }, mapping);
-    expect(low.errors.join(' ')).toMatch(/floor/);
-    expect(ok.errors).toEqual([]);
+    const inverted = normalizePimRow({ ...base, price: '4000', floor: '4500' }, mapping);
+    const cable = normalizePimRow({ ...base, price: '4000', floor: '2500' }, mapping);
+    const noFloor = normalizePimRow({ ...base, price: String(STOREFRONT_PRICE_FLOOR_UGX - 1), floor: '' }, mapping);
+    expect(inverted.errors.join(' ')).toMatch(/Floor price \(Price A\) cannot be above the retail price/);
+    expect(cable.errors).toEqual([]);
+    expect(cable.value?.floorPriceUgx).toBe(2500);
+    expect(noFloor.errors).toEqual([]);
+    expect(noFloor.value?.floorPriceUgx).toBeNull();
   });
 
   it('order numbers carry eight hex characters, not four', () => {

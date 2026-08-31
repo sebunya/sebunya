@@ -53,7 +53,8 @@ export async function resolveStorefrontDiscount(
       // Not rounded: 1250 bps is 12.5%, and a badge saying 13% next to a price
       // cut by 12.5% is a claim the basket does not honour.
       percent: benefit.value / 100,
-      // The evaluator caps every line at this floor; the display must too.
+      // The promotion's own EXTRA floor (usually 0). Every surface combines it
+      // with the product's floor via effectiveFloorUgx, exactly as the evaluator does.
       priceFloorUgx: version.priceFloorUgx,
       endsIso: version.schedule.endsAt.toISOString(),
       name: definition.name,

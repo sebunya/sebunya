@@ -150,6 +150,8 @@ export interface RecommendationItemDto {
   name: string;
   imageUrl?: string;
   price?: number;
+  /** 0127 — the product's own floor (Price A); null/absent = not discountable. */
+  floorPriceUgx?: number | null;
   currency?: string;
   score: number;
   reasonCodes: RecommendationReasonCode[];

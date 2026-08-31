@@ -133,14 +133,14 @@ describe('the browse rail advertises what the basket charges', () => {
 
   it('prices through the one shared helper, floor included', () => {
     const src = rail();
-    expect(src).toMatch(/import \{ salePriceUgx \} from "\.\.\/\.\.\/lib\/storefrontDiscount"/);
-    expect(src).toMatch(/salePriceUgx\(regular, saleBps, saleFloor\)/);
+    expect(src).toMatch(/import \{ salePriceUgx, effectiveFloorUgx \} from "\.\.\/\.\.\/lib\/storefrontDiscount"/);
+    expect(src).toMatch(/salePriceUgx\(regular, saleBps, effectiveFloorUgx\(saleFloor, floor, regular\)\)/);
     // The unfloored formula this replaced must not come back.
     expect(src).not.toMatch(/regular - Math\.floor\(\(regular \* saleBps\)/);
   });
 
   it('calls it a sale only when the price actually drops', () => {
-    expect(rail()).toMatch(/const onSale = saleActive && hasPrice && salePriceOf\(item\.price\) < item\.price;/);
+    expect(rail()).toMatch(/const onSale = saleActive && hasPrice && salePriceOf\(item\.price, item\.floor\) < item\.price;/);
   });
 
   it('the shared helper stops the cut at the floor', () => {

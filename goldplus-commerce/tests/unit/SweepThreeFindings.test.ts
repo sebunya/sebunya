@@ -52,7 +52,7 @@ describe('a price is the price', () => {
     // checkout-intent, and this module is bundled for the browser by the
     // recently-viewed rail, so importing the barrel breaks the client build.
     expect(read('apps/web/src/lib/storefrontDiscount.ts'))
-      .toMatch(/export \{ salePriceUgx \} from '\.\.\/\.\.\/\.\.\/\.\.\/packages\/shared\/src\/pricing\/salePrice'/);
+      .toMatch(/export \{ salePriceUgx, effectiveFloorUgx \} from '\.\.\/\.\.\/\.\.\/\.\.\/packages\/shared\/src\/pricing\/salePrice'/);
     // No "exports" field: adding one changed how the API resolves the package
     // at runtime, and it booted into raw TypeScript ("} as const") and died.
     expect(JSON.parse(read('packages/shared/package.json')).exports).toBeUndefined();
@@ -92,9 +92,13 @@ describe('a price is the price', () => {
     expect(read('apps/web/src/pages/products/[slug].astro')).toMatch(/pdpSaleUgx \?\? product\.retailPriceUgx/);
   });
 
-  it('a product cannot be saved below the owner floor', () => {
+  it('a product cannot be saved with a floor above its selling price (0127)', () => {
+    // The owner's rule is per product: sell at Price D, never discount below
+    // Price A. Both the create and the update route validate the tiers against
+    // the retail price; no route enforces the historical 145,000 minimum.
     const src = read('apps/api/src/interfaces/http/routes/admin/products.ts');
-    expect(src.match(/if \(priceUgx < STOREFRONT_PRICE_FLOOR_UGX\)/g)?.length).toBe(2);
+    expect(src.match(/const tiers = parsePriceTiers\(body, priceUgx\);/g)?.length).toBe(2);
+    expect(src).not.toMatch(/STOREFRONT_PRICE_FLOOR_UGX/);
   });
 });
 

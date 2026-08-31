@@ -446,6 +446,9 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
           await tx.insert(productPrices).values({
             productId: created.id,
             retailPrice: data.retailPriceUgx,
+            floorPrice: data.floorPriceUgx,
+            tierBPrice: data.tierBPriceUgx,
+            tierCPrice: data.tierCPriceUgx,
           });
           const after = snapshot(created, data.retailPriceUgx);
           await tx
@@ -500,12 +503,22 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
           if (price)
             await tx
               .update(productPrices)
-              .set({ retailPrice: data.retailPriceUgx })
+              .set({
+                retailPrice: data.retailPriceUgx,
+                // A tier the sheet does not carry is left as it was; only a
+                // value present in the row overwrites.
+                ...(data.floorPriceUgx !== null ? { floorPrice: data.floorPriceUgx } : {}),
+                ...(data.tierBPriceUgx !== null ? { tierBPrice: data.tierBPriceUgx } : {}),
+                ...(data.tierCPriceUgx !== null ? { tierCPrice: data.tierCPriceUgx } : {}),
+              })
               .where(eq(productPrices.productId, existing.id));
           else
             await tx.insert(productPrices).values({
               productId: existing.id,
               retailPrice: data.retailPriceUgx,
+              floorPrice: data.floorPriceUgx,
+              tierBPrice: data.tierBPriceUgx,
+              tierCPrice: data.tierCPriceUgx,
             });
           await tx
             .update(pimImportRows)

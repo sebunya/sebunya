@@ -3,20 +3,18 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { validatePromotionVersion } from '../../apps/api/src/domain/pricing/Pricing';
 import type { PromotionVersionDraft } from '../../apps/api/src/domain/pricing/Pricing';
-import { STOREFRONT_PRICE_FLOOR_UGX } from '../../packages/shared/src/batteries';
 
 /**
- * No promotion may reopen the UGX 145,000 storefront floor.
+ * The floor no promotion can reopen is each PRODUCT'S OWN (Price A, 0127).
  *
- * The floor is the owner's standing rule and the catalogue and the display both
- * hold it, but a PROMOTION carries its own `priceFloorUgx` and the evaluator
- * honours whatever it is told. Nothing checked that value against the storefront
- * floor, and the admin "create next immutable version" form did not offer the
- * field at all: it posted `priceFloorUgx: 0` on every submission.
- *
- * So the next version of the live launch promotion would have discounted
- * straight through the floor, and the storefront, which reads the floor from the
- * same version, would have advertised the lower price as if it were correct.
+ * This file used to pin a single storefront-wide floor of UGX 145,000 onto
+ * every promotion. That number was the floor of the original eight products,
+ * mistaken for a shop-wide minimum: applied to the real 184-product catalogue
+ * it blocked 90% of it from being listed and made every discount on a UGX
+ * 4,000 cable compute to nothing. The owner's actual rule is per product — sell
+ * at Price D, never discount below Price A — and the evaluator now applies
+ * max(promotion floor, product floor) per line. A promotion's own floor is an
+ * optional EXTRA, so 0 is the normal value: "the product floors govern".
  */
 
 const draft = (over: Partial<PromotionVersionDraft> = {}): PromotionVersionDraft => ({
@@ -28,59 +26,46 @@ const draft = (over: Partial<PromotionVersionDraft> = {}): PromotionVersionDraft
   priority: 0,
   stackable: false,
   couponCode: null,
-  priceFloorUgx: STOREFRONT_PRICE_FLOOR_UGX,
+  priceFloorUgx: 0,
   ...over,
 });
 
-describe('a promotion version may not price below the storefront floor', () => {
-  it('accepts the storefront floor itself', () => {
-    expect(validatePromotionVersion(draft())).toEqual([]);
+describe("a promotion's floor is an optional extra; the product floor is the rule", () => {
+  it('accepts zero — the product floors govern', () => {
+    expect(validatePromotionVersion(draft({ priceFloorUgx: 0 }))).toEqual([]);
   });
 
-  it('accepts a HIGHER floor, which protects more, not less', () => {
+  it('accepts an extra floor of any positive amount', () => {
     expect(validatePromotionVersion(draft({ priceFloorUgx: 200_000 }))).toEqual([]);
+    expect(validatePromotionVersion(draft({ priceFloorUgx: 5_000 }))).toEqual([]);
   });
 
-  it('refuses zero, which is what the admin form used to send', () => {
-    const errors = validatePromotionVersion(draft({ priceFloorUgx: 0 }));
-    expect(errors.length).toBeGreaterThan(0);
-    expect(errors.join(' ')).toMatch(/at least UGX 145,000/);
+  it('still refuses a negative or non-integer amount', () => {
+    expect(validatePromotionVersion(draft({ priceFloorUgx: -1 }))).toContain('Price floor must be a non-negative integer UGX amount.');
+    expect(validatePromotionVersion(draft({ priceFloorUgx: 145_000.5 }))).toContain('Price floor must be a non-negative integer UGX amount.');
   });
 
-  it('refuses one shilling below the floor', () => {
-    expect(validatePromotionVersion(draft({ priceFloorUgx: STOREFRONT_PRICE_FLOOR_UGX - 1 })).length)
-      .toBeGreaterThan(0);
-  });
-
-  it('still refuses a non-integer amount', () => {
-    expect(validatePromotionVersion(draft({ priceFloorUgx: 145_000.5 })))
-      .toContain('Price floor must be a non-negative integer UGX amount.');
+  it('no promotion path enforces the historical 145,000 as a minimum', () => {
+    const read = (f: string) => readFileSync(resolve(__dirname, '../..', f), 'utf8');
+    for (const f of [
+      'apps/api/src/domain/pricing/Pricing.ts',
+      'apps/api/src/interfaces/http/routes/admin/pricing.ts',
+      'apps/web/src/pages/admin/pricing/index.astro',
+      'apps/web/src/pages/admin/pricing/[id].astro',
+    ]) {
+      expect(read(f), f).not.toMatch(/STOREFRONT_PRICE_FLOOR_UGX/);
+    }
+    expect(read('apps/api/src/interfaces/http/routes/admin/pricing.ts')).toMatch(/priceFloorUgx: z\.number\(\)\.int\(\)\.min\(0\)/);
   });
 });
 
-describe('the admin pages can no longer send a floor-breaking version', () => {
+describe('the admin pages default the extra floor to 0 and still let the operator set one', () => {
   const read = (f: string) => readFileSync(resolve(__dirname, '../..', f), 'utf8');
-
-  for (const page of [
-    'apps/web/src/pages/admin/pricing/index.astro',
-    'apps/web/src/pages/admin/pricing/[id].astro',
-  ]) {
-    it(`${page} defaults the floor to the storefront floor`, () => {
+  for (const page of ['apps/web/src/pages/admin/pricing/index.astro', 'apps/web/src/pages/admin/pricing/[id].astro']) {
+    it(page, () => {
       const src = read(page);
-      expect(src).toMatch(/priceFloorUgx: Number\(form\.get\('priceFloorUgx'\) \|\| STOREFRONT_PRICE_FLOOR_UGX\)/);
-      // Used in frontmatter, so it must actually be imported: tsc does not
-      // check .astro frontmatter, and a missing import here is a runtime
-      // ReferenceError that a passing build will not reveal.
-      expect(src).toMatch(/import \{ STOREFRONT_PRICE_FLOOR_UGX \} from '@goldplus\/shared';/);
-    });
-
-    it(`${page} lets the operator see and set the floor`, () => {
-      expect(read(page)).toMatch(/name="priceFloorUgx"/);
+      expect(src).toMatch(/priceFloorUgx: Number\(form\.get\('priceFloorUgx'\) \|\| 0\)/);
+      expect(src).toMatch(/name="priceFloorUgx"/);
     });
   }
-
-  it('the admin API refuses a below-floor version at the boundary too', () => {
-    expect(read('apps/api/src/interfaces/http/routes/admin/pricing.ts'))
-      .toMatch(/priceFloorUgx: z\.number\(\)\.int\(\)\.min\(STOREFRONT_PRICE_FLOOR_UGX\)/);
-  });
 });

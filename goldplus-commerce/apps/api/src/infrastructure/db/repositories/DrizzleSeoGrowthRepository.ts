@@ -575,15 +575,17 @@ export class DrizzleSeoGrowthRepository {
    */
   async feedProducts(): Promise<Array<{
     sku: string; slug: string; name: string; shortDescription: string;
-    priceUgx: number; stockStatus: string; imageUrl: string | null;
+    priceUgx: number; floorPriceUgx: number | null; stockStatus: string; imageUrl: string | null;
     modelNumber: string | null; isFeedEligible: boolean; active: boolean; approvalStatus: string;
   }>> {
     const rows = rowsOf(await db.execute(sql`
-      select sku, slug, name, short_description, price_ugx, stock_status,
-             image_url, model_number, is_feed_eligible, active, approval_status
-      from products
-      where active = true and approval_status = 'approved'
-      order by sku asc
+      select p.sku, p.slug, p.name, p.short_description, p.price_ugx, p.stock_status,
+             p.image_url, p.model_number, p.is_feed_eligible, p.active, p.approval_status,
+             pp.floor_price
+      from products p
+      left join product_prices pp on pp.product_id = p.id
+      where p.active = true and p.approval_status = 'approved'
+      order by p.sku asc
       limit 50000
     `));
     return rows.map((r: any) => ({
@@ -592,6 +594,7 @@ export class DrizzleSeoGrowthRepository {
       name: String(r.name),
       shortDescription: String(r.short_description ?? ''),
       priceUgx: Number(r.price_ugx ?? 0),
+      floorPriceUgx: r.floor_price == null ? null : Number(r.floor_price),
       stockStatus: String(r.stock_status ?? ''),
       imageUrl: r.image_url == null ? null : String(r.image_url),
       modelNumber: r.model_number == null ? null : String(r.model_number),

@@ -22,7 +22,7 @@ import {
   paymentStartMessageFor,
 } from '../lib/checkoutClient';
 import { mayStartPayment, kampalaCutoff } from '@goldplus/shared';
-import { getStorefrontDiscount, salePriceUgx } from '../lib/storefrontDiscount';
+import { getStorefrontDiscount, quotedGoodsTotalUgx } from '../lib/storefrontDiscount';
 import { getBusinessInfo } from '../lib/businessInfo';
 import { getStorefrontCopy } from '../lib/storefrontCopy';
 import type { ApiEnvelope } from '@goldplus/shared';
@@ -594,8 +594,10 @@ const cutoffLine = cut.closed
 // Active campaign discount (display; per-line to match what the evaluator charges).
 const checkoutDiscount = await getStorefrontDiscount();
 const campaignRunning = checkoutDiscount.active && checkoutDiscount.percentBps > 0 && cart.subtotalUgx > 0;
+// The evaluator's own figure, per-product floors included (0127); the order is
+// priced server-side by the same evaluator, so this is the number it will charge.
 const checkoutSaleSubtotal = campaignRunning
-  ? cart.items.reduce((acc: number, i: any) => acc + salePriceUgx((i.unitPriceUgx || i.priceUgx) * i.quantity, checkoutDiscount.percentBps, checkoutDiscount.priceFloorUgx * i.quantity), 0)
+  ? await quotedGoodsTotalUgx(cart.items.map((i: any) => ({ productId: i.productId, quantity: i.quantity })), cart.subtotalUgx)
   : cart.subtotalUgx;
 const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
 

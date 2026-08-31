@@ -173,10 +173,14 @@ describe('stock, count and price rows', () => {
     expect(normaliseImportRow('STOCK_COUNT', { code: 'BL-49FT', counted: '2', reason: 'Two damaged' }, m, ctx).action).toBe('COUNT');
   });
 
-  it('a price below the storefront floor is refused', () => {
+  it('a real battery price is accepted; only zero or nothing is refused (0127)', () => {
+    // Batteries sell for UGX 5,500–121,000. The historical 145,000 minimum
+    // would have refused every one of them; the rule is now each battery's own
+    // floor, checked at readiness, not a shop-wide number checked at import.
     const m = { batteryCode: 'code', retailPriceUgx: 'price' };
     expect(normaliseImportRow('PRICE_UPDATE', { code: 'BL-49FT', price: '145000' }, m, ctx).action).toBe('PRICE');
-    expect(normaliseImportRow('PRICE_UPDATE', { code: 'BL-49FT', price: '60000' }, m, ctx).errors.join(' ')).toMatch(/below the storefront floor/);
+    expect(normaliseImportRow('PRICE_UPDATE', { code: 'BL-49FT', price: '60000' }, m, ctx).action).toBe('PRICE');
+    expect(normaliseImportRow('PRICE_UPDATE', { code: 'BL-49FT', price: '0' }, m, ctx).errors.join(' ')).toMatch(/greater than zero/);
   });
 
   it('duplicate row keys inside one file are refused after the first', () => {

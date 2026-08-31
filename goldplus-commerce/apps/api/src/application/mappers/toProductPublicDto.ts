@@ -60,7 +60,7 @@ export function toProductPublicDto(
   source: ProductWithPrice,
   opts: { stockTracked?: boolean } = {},
 ): ProductPublicDto {
-  const { entity, retailPriceUgx, categoryName, images, attributeValues } = source;
+  const { entity, retailPriceUgx, floorPriceUgx, categoryName, images, attributeValues } = source;
   const stockTracked = opts.stockTracked ?? true;
 
   // Build new fields
@@ -114,6 +114,10 @@ export function toProductPublicDto(
     sku,
     modelNumber,
     retailPriceUgx: safeRetailPrice,
+    floorPriceUgx:
+      typeof floorPriceUgx === 'number' && Number.isFinite(floorPriceUgx) && floorPriceUgx > 0
+        ? Math.trunc(floorPriceUgx)
+        : null,
     availability,
     hasImage: dtoImages.length > 0,
     verifiedSpecs: legacyVerifiedSpecs,

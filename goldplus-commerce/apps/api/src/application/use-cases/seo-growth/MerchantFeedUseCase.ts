@@ -1,4 +1,4 @@
-import { salePriceUgx } from '@goldplus/shared';
+import { salePriceUgx, effectiveFloorUgx } from '@goldplus/shared';
 
 /**
  * Merchant Center product feed + feed-quality diagnostics.
@@ -19,6 +19,8 @@ export interface FeedProduct {
   name: string;
   shortDescription: string;
   priceUgx: number;
+  /** The product's own floor (Price A); null = not discountable. */
+  floorPriceUgx?: number | null;
   stockStatus: string;
   imageUrl: string | null;
   modelNumber: string | null;
@@ -66,7 +68,7 @@ export function buildMerchantFeedXml(
   const items = products.filter(isFeedIncluded).map((p) => {
     const link = `${baseUrl}/products/${encodeURIComponent(p.slug)}`;
     const campaignUgx = discount && discount.percentBps > 0
-      ? salePriceUgx(p.priceUgx, discount.percentBps, discount.priceFloorUgx)
+      ? salePriceUgx(p.priceUgx, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, p.floorPriceUgx, p.priceUgx))
       : null;
     const saleUgx = campaignUgx !== null && campaignUgx < p.priceUgx ? campaignUgx : null;
     const lines = [

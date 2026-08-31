@@ -71,6 +71,14 @@ export type BatteryRequestStatus = (typeof BATTERY_REQUEST_STATUSES)[number];
  * price below this. A battery priced under it cannot be published. One named
  * constant until an admin module owns the value.
  */
+/**
+ * HISTORICAL. The price every product on the ORIGINAL eight-item catalogue was
+ * listed at or above, once mistaken for a shop-wide minimum. Since 0127 the
+ * rule is per product: the website sells at Price D and no discount may reach
+ * below that product's own Price A (`product_prices.floor_price`). This value
+ * survives only as the floor those eight products were backfilled with and for
+ * tests that describe that history. Nothing may enforce it as a minimum.
+ */
 export const STOREFRONT_PRICE_FLOOR_UGX = 145_000;
 
 export const BRAND_ORDER_MODES = ['FEATURED_THEN_COVERAGE', 'MANUAL', 'ALPHABETICAL'] as const;
