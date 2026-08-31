@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   const csv = ['ITEM,PRICE,CATEGORY,SOURCE_NO', ...rows.map((r) => `"${r.item.replace(/"/g, '""')}",${r.price},Phone Battery,${r.sourceNo}`)].join('\n');
 
   const up = await uc.upload({
-    importType: 'CATALOGUE', name: `Battery price list 18-8-2026 (${rows.length})`, filename: 'batteries-18-8-2026.csv',
+    importType: 'BATTERY_CATALOGUE', name: `Battery price list 18-8-2026 (${rows.length})`, filename: 'batteries-18-8-2026.csv',
     mime: 'text/csv', buffer: Buffer.from(csv, 'utf8'), sheetName: null, actorId,
   } as never);
   const id = up.session.id;

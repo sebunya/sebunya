@@ -24,6 +24,14 @@ async function main(): Promise<void> {
   const rows = JSON.parse(readFileSync(String(process.env.ROWS_FILE ?? '/import/rows.json'), 'utf8')) as Record<string, unknown>[];
   const dryRun = process.env.DRY_RUN === '1';
   const pim = Registry.getInstance().pimImportOperationsUseCase;
+  // Tidy-up: reject a session an earlier run left in preview, through the
+  // audited path, so the import history says what happened.
+  if (process.env.REJECT_SESSION_ID) {
+    const id = String(process.env.REJECT_SESSION_ID);
+    const v = (await pim.detail(id)).session.version;
+    await pim.approve({ id, expectedVersion: v, actorId, decision: 'REJECTED', reason: 'Superseded by a re-run of the same price list import.' });
+    console.log('rejected', id); return;
+  }
 
   const created = await pim.create({
     name: `Price list 18-8-2026 (${rows.length} rows)`,
@@ -48,7 +56,7 @@ async function main(): Promise<void> {
   });
   version = (await pim.detail(id)).session.version;
   const preview = await pim.preview({ id, expectedVersion: version, actorId });
-  const previewRows = ((preview as { rows?: unknown[] }).rows ?? preview) as Array<{ rowNumber: number; action: string; errors: string[] }>;
+  const previewRows = (preview as { rows: Array<{ rowNumber: number; action: string; validationErrors: string[] }> }).rows.map((r) => ({ rowNumber: r.rowNumber, action: r.action, errors: r.validationErrors ?? [] }));
   const byAction: Record<string, number> = {};
   for (const r of previewRows) byAction[r.errors.length ? 'INVALID' : r.action] = (byAction[r.errors.length ? 'INVALID' : r.action] ?? 0) + 1;
   console.log('preview:', JSON.stringify(byAction));
