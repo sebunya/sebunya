@@ -37,12 +37,12 @@ async function runSession(kind: 'BATTERY_CATALOGUE' | 'PRICE_UPDATE', rows: Row[
   }
   if (['MAPPED'].includes(s.status)) {
     const preview = await uc.preview({ id: s.id, expectedVersion: s.version, actorId });
-    const prows = (preview as unknown as { rows: Array<{ action: string; hold: unknown; errors: string[] }> }).rows;
+    const prows = (preview as unknown as { rows: Array<{ proposedAction: string; status: string; validationErrors: string[]; validationWarnings: string[] }> }).rows;
     const tally: Record<string, number> = {};
-    for (const r of prows) { const k = r.errors?.length ? 'INVALID' : r.hold ? 'HELD' : r.action; tally[k] = (tally[k] ?? 0) + 1; }
+    for (const r of prows) { const k = r.validationErrors?.length ? 'INVALID' : `${r.proposedAction}/${r.status}`; tally[k] = (tally[k] ?? 0) + 1; }
     console.log(`[${kind}] preview:`, JSON.stringify(tally));
-    for (const r of prows.filter((x) => x.errors?.length).slice(0, 8)) console.log('   error:', r.errors.join('; '));
-    for (const r of prows.filter((x) => x.hold).slice(0, 3)) console.log('   held:', JSON.stringify(r.hold).slice(0, 200));
+    for (const r of prows.filter((x) => x.validationErrors?.length).slice(0, 8)) console.log('   error:', r.validationErrors.join('; '));
+    for (const r of prows.filter((x) => x.status === 'HELD').slice(0, 3)) console.log('   held:', (r.validationWarnings ?? []).join('; ').slice(0, 200));
     s = (await uc.detail(s.id)).session as typeof s;
   } else {
     console.log(`[${kind}] session already at ${s.status}`);
