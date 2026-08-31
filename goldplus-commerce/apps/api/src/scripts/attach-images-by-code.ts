@@ -28,8 +28,22 @@ import { db, endDbConnection } from '../infrastructure/db/client';
 /** Letters-and-digits tokens: "GP - P07 PB" → ["gp","p07","pb"]; "gp-p07-pb-2.webp" → ["gp","p07","pb","2"]. */
 const tokens = (v: string) => v.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 /** The code without its "gp" prefix: what must appear, in order, as whole tokens in the filename. */
-const codeKey = (code: string) => { const t = tokens(code); return t[0] === 'gp' || t[0] === 'gd' ? t.slice(1) : t; };
-const containsRun = (hay: string[], run: string[]) => run.length > 0 && hay.some((_, i) => run.every((tok, j) => hay[i + j] === tok));
+const codeKey = (code: string) => { const t = tokens(code); const stripped = t[0] === 'gp' || t[0] === 'gd' ? t.slice(1) : t; return stripped.length ? stripped : t; };
+/**
+ * Does the code appear in the filename as whole tokens? Separators are free:
+ * "GP04", "gp-04" and "gp 04" all name GP04, and "gp-p07-pb" names GP-P07-PB —
+ * any run of filename tokens whose concatenation equals the code (with or
+ * without the gp prefix) counts. A code can never match INSIDE another token.
+ */
+const containsRun = (hay: string[], run: string[]) => {
+  if (run.length === 0) return false;
+  const want = new Set([run.join(''), `gp${run.join('')}`]);
+  for (let i = 0; i < hay.length; i += 1) {
+    let acc = '';
+    for (let j = i; j < hay.length && acc.length < 40; j += 1) { acc += hay[j]; if (want.has(acc)) return true; }
+  }
+  return false;
+};
 /** A word in the filename that names a KIND of product; used only to refuse a match, never to make one. */
 const KIND: Array<[RegExp, RegExp]> = [
   [/power ?bank|powerbank/, /power bank/i], [/charger|charging/, /charger/i], [/cable/, /cable/i], [/earbud|earphone|headset|headphone/, /earphone|bluetooth|headset|earbud/i],
