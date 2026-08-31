@@ -41,6 +41,21 @@ describe('every surface that filters in the page sees the whole catalogue', () =
   });
 });
 
+describe('the shop grid is paginated', () => {
+  const shop = read('apps/web/src/pages/shop.astro');
+  it('renders one page of cards, not the whole catalogue', () => {
+    expect(shop).toMatch(/const PAGE_SIZE = 24;/);
+    expect(shop).toMatch(/pageProducts\.map\(\(product, index\)/);
+    expect(shop).not.toMatch(/\{products\.map\(\(product, index\)/);
+  });
+  it('filters return to page 1; a page past the end shows the last page; crawlers get prev/next and the page in the canonical', () => {
+    expect(shop).toMatch(/page: 1, \.\.\.overrides/);
+    expect(shop).toMatch(/const page = Math\.min\(requestedPage, totalPages\);/);
+    expect(shop).toMatch(/rel="prev"/); expect(shop).toMatch(/rel="next"/);
+    expect(shop).toMatch(/crawlParams\.page = String\(requestedPage\)/);
+  });
+});
+
 describe('the public product list can be paged at all', () => {
   it('offset reaches the database through every layer', () => {
     expect(read('apps/api/src/application/ports/IProductRepository.ts')).toMatch(/offset\?: number;/);
