@@ -70,7 +70,7 @@ async function main(): Promise<void> {
 
   const products = rowsOf(await db.execute(sql`select id, name, slug, sku, model_number, category_name from products`)).map((p) => ({
     id: String(p.id), name: String(p.name), slug: String(p.slug), category: String(p.category_name ?? ''),
-    keys: [...new Set([String(p.sku ?? ''), String(p.model_number ?? '')].map((c) => codeKey(c).join('-')).filter((k) => k.replace(/-/g, '').length >= 2))].map((k) => k.split('-')),
+    keys: [...new Set([String(p.sku ?? ''), String(p.model_number ?? '')].map((c) => codeKey(c).join('-')).filter((k) => k.replace(/-/g, '').length >= 1))].map((k) => k.split('-')),
   }));
   const files = readdirSync(dir).filter((f) => MIME[extname(f).toLowerCase()] && statSync(join(dir, f)).isFile()).sort();
 
