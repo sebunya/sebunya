@@ -6,6 +6,7 @@ import { ProductEntity, StockStatus } from '../../../domain/products/ProductEnti
 import { IProductRepository, ProductWithPrice } from '../../../application/ports/IProductRepository';
 import { likeContains } from '../like';
 import { searchTerms } from '../../../domain/products/ProductSearchService';
+import { displayUrlMap } from '../mediaDisplayUrl';
 
 type PriceTierPatch = { floorPriceUgx?: number | null; tierBPriceUgx?: number | null; tierCPriceUgx?: number | null };
 /** Only the tiers the caller supplied; an omitted tier is left as it was. */
@@ -224,6 +225,7 @@ export class DrizzleProductRepository implements IProductRepository {
       }),
       db.query.productAttributeValues.findMany({ where: eq(productAttributeValues.productId, row.id) }),
     ]);
+    const display = await displayUrlMap(imageRows);
 
     const attrIds = Array.from(new Set(valueRows.map((v) => v.attributeId)));
     const attrRows = attrIds.length
@@ -264,7 +266,7 @@ export class DrizzleProductRepository implements IProductRepository {
       floorPriceUgx: priceRow?.floorPrice ?? null,
       categoryName: categoryRow?.name ?? row.categoryName ?? null,
       images: imageRows.map((i) => ({
-        url: i.url,
+        url: display.get(i.url) ?? i.url,
         altText: i.altText ?? null,
         displayOrder: i.displayOrder,
         isPrimary: i.isPrimary,
@@ -371,6 +373,7 @@ export class DrizzleProductRepository implements IProductRepository {
       }),
       db.query.productAttributeValues.findMany({ where: inArray(productAttributeValues.productId, ids) }),
     ]);
+    const display = await displayUrlMap(imageRows);
 
     const attrIds = Array.from(new Set(valueRows.map((v) => v.attributeId)));
     const attrRows = attrIds.length
@@ -430,7 +433,7 @@ export class DrizzleProductRepository implements IProductRepository {
         floorPriceUgx: floorByProduct.get(row.id) ?? null,
         categoryName: categoryById.get(row.categoryId) ?? row.categoryName ?? null,
         images: rowImages.map((i) => ({
-          url: i.url,
+          url: display.get(i.url) ?? i.url,
           altText: i.altText ?? null,
           displayOrder: i.displayOrder,
           isPrimary: i.isPrimary,

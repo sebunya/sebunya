@@ -9,6 +9,7 @@ import {
   BlogRelatedProduct,
 } from '../../../application/ports/IBlogRepository';
 import { BlogStatus } from '../../../domain/blog/BlogPost';
+import { displayUrlMap } from '../mediaDisplayUrl';
 
 type Row = typeof blogPosts.$inferSelect;
 
@@ -198,11 +199,12 @@ export class DrizzleBlogRepository implements IBlogRepository {
     const priceById = new Map(priceRows.map((p) => [p.productId, Number(p.retailPrice ?? 0) || null]));
     const floorById = new Map(priceRows.map((p) => [p.productId, p.floorPrice ?? null]));
     const categoryById = new Map(categoryRows.map((c) => [c.id, c.name]));
+    const display = await displayUrlMap(imageRows);
     const imageByProduct = new Map<string, string>();
     for (const image of [...imageRows].sort(
       (a, b) => Number(b.isPrimary) - Number(a.isPrimary) || (a.displayOrder ?? 0) - (b.displayOrder ?? 0),
     )) {
-      if (!imageByProduct.has(image.productId)) imageByProduct.set(image.productId, image.url);
+      if (!imageByProduct.has(image.productId)) imageByProduct.set(image.productId, display.get(image.url) ?? image.url);
     }
 
     return rows.map((r) => ({

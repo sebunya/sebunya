@@ -10,6 +10,7 @@ import { productCompatibilityMappings } from "../schema/compatibility";
 import { experienceProfiles } from "../schema/experience";
 import { productImages } from "../schema/phase11";
 import { recommendationMaterializedCache } from "../schema/recommendations";
+import { displayUrlMap } from '../mediaDisplayUrl';
 
 export class DrizzleProductRecommendationReader implements IProductRecommendationReader {
   async findProductById(productId: string): Promise<RecommendationProductRecord | null> {
@@ -180,10 +181,11 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
 
     const priceByProduct = new Map(priceRows.map((p) => [p.productId, p.retailPrice]));
     const floorByProduct = new Map(priceRows.map((p) => [p.productId, p.floorPrice ?? null]));
+    const display = await displayUrlMap(imageRows);
     const primaryImageByProduct = new Map<string, string>();
     for (const img of imageRows) {
       if (!primaryImageByProduct.has(img.productId) || img.isPrimary) {
-        primaryImageByProduct.set(img.productId, img.url);
+        primaryImageByProduct.set(img.productId, display.get(img.url) ?? img.url);
       }
     }
 

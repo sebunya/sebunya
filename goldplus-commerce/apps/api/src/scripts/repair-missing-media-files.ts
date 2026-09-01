@@ -49,5 +49,11 @@ async function main(): Promise<void> {
   const still = rowsOf(await db.execute(sql`select storage_key, filename from media_assets order by created_at`)).filter((a) => !existsSync(join(root, String(a.storage_key))));
   console.log(`assets still missing on disk: ${still.length}`);
   for (const a of still) console.log(`  MISSING ${a.storage_key}`);
+  // Renditions are what the storefront serves; a recorded rendition without its
+  // file is a broken image too.
+  const variantRows = rowsOf(await db.execute(sql`select v.storage_key, v.purpose, v.format, a.filename from media_asset_variants v join media_assets a on a.id = v.asset_id order by a.created_at, v.purpose, v.format`));
+  const lost = variantRows.filter((v) => !existsSync(join(root, String(v.storage_key))));
+  console.log(`rendition rows ${variantRows.length}, missing on disk: ${lost.length}`);
+  for (const v of lost) console.log(`  MISSING RENDITION ${v.storage_key}`);
 }
 main().then(() => endDbConnection()).catch(async (e) => { console.error(e); await endDbConnection(); process.exit(1); });

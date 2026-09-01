@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../client';
 import { pgJsonb } from '../PgParams';
+import { displayImageUrlSql } from '../mediaDisplayUrl';
 
 /**
  * Organic Growth OS data access (migration 0116). Raw-SQL via db.execute with
@@ -580,7 +581,8 @@ export class DrizzleSeoGrowthRepository {
   }>> {
     const rows = rowsOf(await db.execute(sql`
       select p.sku, p.slug, p.name, p.short_description, p.price_ugx, p.stock_status,
-             p.image_url, p.model_number, p.is_feed_eligible, p.active, p.approval_status,
+             coalesce(p.image_url, (select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id order by i.is_primary desc, i.display_order asc limit 1)) as image_url,
+             p.model_number, p.is_feed_eligible, p.active, p.approval_status,
              pp.floor_price
       from products p
       left join product_prices pp on pp.product_id = p.id
