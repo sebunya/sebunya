@@ -21,7 +21,13 @@ vi.mock("../../apps/api/src/interfaces/http/middleware/auth", () => ({
 const adminHeaders = { Authorization: 'Bearer admin' };
 const jsonAdminHeaders = { ...adminHeaders, 'Content-Type': 'application/json' };
 
-describe('Deployment & Maintenance Middleware API', () => {
+/**
+ * These exercise the real Hono app, so each request boots the registry and the
+ * middleware chain. Under a full parallel run that occasionally passes the
+ * default 5s budget and the file fails while passing on its own — a flaky gate
+ * teaches people to ignore red. The work is the same; only the budget changes.
+ */
+describe('Deployment & Maintenance Middleware API', { timeout: 30_000 }, () => {
   const resetDeploymentState = () => {
     deploymentService.setMaintenanceMode(false);
     deploymentService.setShadowTrafficRatio(0);
