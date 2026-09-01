@@ -17,6 +17,8 @@ import { SITE_ORIGIN } from '../lib/sitemap';
 export const prerender = false;
 
 const esc = (s: string): string => s.replace(/\s+/g, ' ').trim();
+/** Business info sentences may or may not end in a full stop; joining them must not produce "parking., open". */
+const noDot = (s: string): string => esc(s).replace(/\.$/, '');
 
 export const GET: APIRoute = async () => {
   const [biz, products] = await Promise.all([
@@ -36,7 +38,7 @@ export const GET: APIRoute = async () => {
   const lines = [
     '# GoldPlus',
     '',
-    `> GoldPlus sells phone accessories and replacement phone batteries in Kampala, Uganda: ${categories.map(([n, c]) => `${n.toLowerCase()} (${c})`).join(', ')}. ${products.length} products are listed online${range ? `, priced ${range}` : ''}. The shop is at ${esc(biz.addressLine1)}${biz.addressLine2 ? ` — ${esc(biz.addressLine2)}` : ''}, open ${esc(biz.openDays)}, ${esc(biz.shopHours)}.`,
+    `> GoldPlus sells phone accessories and replacement phone batteries in Kampala, Uganda: ${categories.map(([n, c]) => `${n.toLowerCase()} (${c})`).join(', ')}. ${products.length} products are listed online${range ? `, priced ${range}` : ''}. The shop is at ${noDot(biz.addressLine1)}${biz.addressLine2 ? ` (${noDot(biz.addressLine2)})` : ''}, open ${noDot(biz.openDays)}, ${noDot(biz.shopHours)}.`,
     '',
     '## Facts',
     '',
