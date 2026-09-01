@@ -59,7 +59,7 @@ export const GET: APIRoute = async () => {
     `- Phone battery finder (find the battery that fits a phone): ${SITE_ORIGIN}/battery-finder`,
     `- Product finder: ${SITE_ORIGIN}/product-finder`,
     `- Questions and answers (delivery, shop hours, battery fitment, payment, faults): ${SITE_ORIGIN}/faq`,
-    `- Guides and advice: ${SITE_ORIGIN}/blog`,
+    `- Guides and advice: ${SITE_ORIGIN}/blog` + ` (RSS: ${SITE_ORIGIN}/rss.xml)`,
     `- Delivery to Kampala and Wakiso: ${SITE_ORIGIN}/delivery/kampala-wakiso`,
     `- Returns: ${SITE_ORIGIN}/returns`,
     `- Warranty: ${SITE_ORIGIN}/warranty`,

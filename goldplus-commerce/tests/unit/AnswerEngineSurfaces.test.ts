@@ -161,3 +161,15 @@ describe('the icons crawlers ask for by convention exist', () => {
     expect(layout).not.toMatch(/apple-touch-icon"[^>]*\.svg/);
   });
 });
+
+describe('the blog has a feed', () => {
+  it('serves valid RSS even with nothing published, and is discoverable', () => {
+    const feed = read('apps/web/src/pages/rss.xml.ts');
+    expect(feed).toContain("'Content-Type': 'application/rss+xml; charset=utf-8'");
+    expect(feed).toContain('rel="self"');
+    // An error must not reach a feed reader, which backs off for a long time.
+    expect(feed).toContain('} catch {');
+    expect(read('apps/web/src/layouts/BaseLayout.astro')).toContain('type="application/rss+xml"');
+    expect(read('apps/web/src/pages/llms.txt.ts')).toContain('/rss.xml');
+  });
+});
