@@ -17,6 +17,8 @@ import {
 export interface MediaStoragePort {
   saveAsset(relativeDir: string, filename: string, buffer: Buffer): Promise<{ url: string; storageKey: string; physicalPath: string }>;
   deleteByKey(storageKey: string): Promise<void>;
+  /** Whether the bytes behind a storage key are really on disk. Optional: a storage that cannot tell answers nothing and dedupe trusts the record. */
+  exists?(storageKey: string): Promise<boolean>;
 }
 
 const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif']);
@@ -80,6 +82,18 @@ export class MediaLibraryUseCase {
       const checksum = createHash('sha256').update(file.buffer).digest('hex');
       const existing = await this.repo.findByChecksum(checksum);
       if (existing) {
+        // The record can outlive the file (a container that stored into its own
+        // filesystem, a volume restored from before the upload). Dedupe must not
+        // hand back a URL that 404s when the bytes are right here: put them back.
+        if (this.storage.exists && !(await this.storage.exists(existing.storageKey))) {
+          const dir = existing.storageKey.split('/').slice(0, -1).join('/');
+          const name = existing.storageKey.split('/').pop() ?? existing.filename;
+          await this.storage.saveAsset(dir, name, file.buffer);
+          await this.variants.generate({
+            buffer: file.buffer, mime: existing.mime, checksum,
+            saveVariant: async (key, buffer) => { const saved = await this.storage.saveAsset(dir, key, buffer); return { url: saved.url, storageKey: saved.storageKey }; },
+          });
+        }
         outcomes.push({ kind: 'STORED', asset: existing, deduplicated: true });
         continue;
       }

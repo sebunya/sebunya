@@ -105,6 +105,32 @@ describe('MediaLibraryUseCase', () => {
     expect(stored.checksum).toBe(createHash('sha256').update(png('same-bytes').buffer).digest('hex'));
   });
 
+  it('dedupe puts the file back when the record outlived its bytes', async () => {
+    // A container that stored into its own filesystem leaves a row whose URL
+    // 404s. The next upload of the same bytes must restore the file, not just
+    // hand the dead URL back.
+    const repo = new FakeRepo();
+    const onDisk = new Set<string>();
+    const writes: string[] = [];
+    const healing: MediaStoragePort = {
+      async saveAsset(dir, name) { writes.push(`${dir}/${name}`); onDisk.add(`${dir}/${name}`); return { url: `/${dir}/${name}`, storageKey: `${dir}/${name}`, physicalPath: `/data/media/${dir}/${name}` }; },
+      async deleteByKey() {},
+      async exists(key) { return onDisk.has(key); },
+    };
+    const useCase = new MediaLibraryUseCase(repo, healing, noVariants);
+    const [first] = await useCase.upload({ files: [png('lost-bytes')], actorId: 'u1' });
+    expect(first).toMatchObject({ kind: 'STORED', deduplicated: false });
+    onDisk.clear(); // the container died with the file
+    const [second] = await useCase.upload({ files: [png('lost-bytes')], actorId: 'u1' });
+    expect(second).toMatchObject({ kind: 'STORED', deduplicated: true });
+    expect(repo.assets.size).toBe(1);
+    expect(writes.length).toBe(2);
+    expect(onDisk.has(first.kind === 'STORED' ? first.asset.storageKey : '')).toBe(true);
+    const [third] = await useCase.upload({ files: [png('lost-bytes')], actorId: 'u1' });
+    expect(third).toMatchObject({ kind: 'STORED', deduplicated: true });
+    expect(writes.length).toBe(2); // present on disk: nothing rewritten
+  });
+
   it('refuses unsupported types and oversized files per-file, without failing the batch', async () => {
     const repo = new FakeRepo();
     const useCase = new MediaLibraryUseCase(repo, storage, noVariants);

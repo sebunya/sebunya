@@ -76,6 +76,10 @@ export class LocalProductImageStorage implements IProductImageStorage {
   }
 
   /** Deletes a library asset by its storage key, confined to the base tree. */
+  async exists(storageKey: string): Promise<boolean> {
+    try { await fs.access(path.join(this.basePublicPath, storageKey)); return true; } catch { return false; }
+  }
+
   async deleteByKey(storageKey: string): Promise<void> {
     const physicalPath = path.join(this.basePublicPath, storageKey);
     const resolved = path.resolve(physicalPath);
