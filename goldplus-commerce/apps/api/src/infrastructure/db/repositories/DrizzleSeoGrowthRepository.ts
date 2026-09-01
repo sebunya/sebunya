@@ -581,7 +581,7 @@ export class DrizzleSeoGrowthRepository {
   }>> {
     const rows = rowsOf(await db.execute(sql`
       select p.sku, p.slug, p.name, p.short_description, p.price_ugx, p.stock_status,
-             coalesce(p.image_url, (select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id order by i.is_primary desc, i.display_order asc limit 1)) as image_url,
+             coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id order by i.is_primary desc, i.display_order asc limit 1), p.image_url) as image_url,
              p.model_number, p.is_feed_eligible, p.active, p.approval_status,
              pp.floor_price
       from products p

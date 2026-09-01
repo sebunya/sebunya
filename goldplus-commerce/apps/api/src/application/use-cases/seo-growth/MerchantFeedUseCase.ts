@@ -77,7 +77,8 @@ export function buildMerchantFeedXml(
       `      <title>${escapeXml(p.name)}</title>`,
       `      <description>${escapeXml(p.shortDescription)}</description>`,
       `      <link>${escapeXml(link)}</link>`,
-      `      <g:image_link>${escapeXml(p.imageUrl!)}</g:image_link>`,
+      // Google requires an absolute image URL; stored URLs are site-relative paths.
+      `      <g:image_link>${escapeXml(/^https?:\/\//i.test(p.imageUrl!) ? p.imageUrl! : `${baseUrl}${p.imageUrl!.startsWith('/') ? '' : '/'}${p.imageUrl!}`)}</g:image_link>`,
       `      <g:availability>${availability(p.stockStatus)}</g:availability>`,
       `      <g:price>${p.priceUgx} UGX</g:price>`,
       // Merchant Center wants the campaign price as g:sale_price alongside the

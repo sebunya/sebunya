@@ -39,6 +39,13 @@ describe('the storefront serves renditions', () => {
 
   it('the merchant feed no longer depends on the legacy products.image_url column alone', () => {
     const feed = read('apps/api/src/infrastructure/db/repositories/DrizzleSeoGrowthRepository.ts');
-    expect(feed).toMatch(/coalesce\(p\.image_url, \(select \$\{displayImageUrlSql\('i'\)\} from product_images i where i\.product_id = p\.id/);
+    // The gallery's rendition first; the legacy column only when there is no gallery image.
+    expect(feed).toContain("coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id order by i.is_primary desc, i.display_order asc limit 1), p.image_url) as image_url");
+    for (const r of ['DrizzleBatteryCatalogueRepository', 'DrizzleBatteryFinderRepository']) {
+      const src = read(`apps/api/src/infrastructure/db/repositories/${r}.ts`);
+      expect(src, r).toMatch(/COALESCE\(\(SELECT \$\{displayImageUrlSql\('i'\)\}.*LIMIT 1\), \$\{products\.imageUrl\}\)/);
+    }
+    // Google requires absolute image URLs.
+    expect(read('apps/api/src/application/use-cases/seo-growth/MerchantFeedUseCase.ts')).toContain("<g:image_link>${escapeXml(/^https?:\\/\\//i.test(p.imageUrl!) ? p.imageUrl! : `${baseUrl}");
   });
 });

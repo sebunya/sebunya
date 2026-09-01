@@ -48,7 +48,7 @@ function profileRecord(row: typeof batteryProfiles.$inferSelect): BatteryProfile
 
 const MOVEMENTS = sql<number>`(SELECT count(*) FROM inventory_movements m WHERE m.product_id = ${sql.raw("products.id")})::int`;
 const IMAGES = sql<number>`(SELECT count(*) FROM product_images i WHERE i.product_id = ${sql.raw("products.id")})::int`;
-const PRIMARY_IMAGE = sql<string | null>`COALESCE(${products.imageUrl}, (SELECT ${displayImageUrlSql('i')} FROM product_images i WHERE i.product_id = ${sql.raw("products.id")} ORDER BY i.is_primary DESC, i.display_order ASC LIMIT 1))`;
+const PRIMARY_IMAGE = sql<string | null>`COALESCE((SELECT ${displayImageUrlSql('i')} FROM product_images i WHERE i.product_id = ${sql.raw("products.id")} ORDER BY i.is_primary DESC, i.display_order ASC LIMIT 1), ${products.imageUrl})`;
 
 function productFacts(row: {
   id: string; sku: string; slug: string; name: string; shortDescription: string; longDescription: string; categoryName: string | null; subcategory: string | null;
