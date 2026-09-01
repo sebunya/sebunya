@@ -116,3 +116,24 @@ describe('the FAQ answers from the site\'s own commitments', () => {
     expect(read('apps/web/src/pages/llms.txt.ts')).toContain('/faq');
   });
 });
+
+/**
+ * Every URL these pages hand to a customer or an answer engine must exist.
+ * /delivery was published in llms.txt and the FAQ while the real page is
+ * /delivery/kampala-wakiso — a 404 quoted to an assistant is worse than no
+ * link at all.
+ */
+describe('published links point at real pages', () => {
+  const pageFiles = ['apps/web/src/pages/llms.txt.ts', 'apps/web/src/pages/faq.astro'];
+  it('never links to /delivery, which does not exist', () => {
+    for (const f of pageFiles) {
+      expect(read(f), f).not.toMatch(/["'`]\/delivery["'`]|SITE_ORIGIN\}\/delivery`/);
+    }
+  });
+  it('links to the delivery page that does exist', () => {
+    expect(read('apps/web/src/pages/llms.txt.ts')).toContain('/delivery/kampala-wakiso');
+    expect(read('apps/web/src/pages/faq.astro')).toContain('/delivery/kampala-wakiso');
+    // The route file backing it.
+    expect(() => read('apps/web/src/pages/delivery/kampala-wakiso.astro')).not.toThrow();
+  });
+});
