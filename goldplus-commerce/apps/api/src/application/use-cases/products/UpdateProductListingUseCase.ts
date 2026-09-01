@@ -65,6 +65,7 @@ export class UpdateProductListingUseCase {
       if (!s.name || !s.value) return { ok: false, code: 'BAD_INPUT', message: 'Every specification needs both a name and a value.' };
       if (s.name.length > LISTING_LIMITS.specName) return { ok: false, code: 'BAD_INPUT', message: `Specification name "${s.name.slice(0, 20)}…" is too long (max ${LISTING_LIMITS.specName}).` };
       if (s.value.length > LISTING_LIMITS.specValue) return { ok: false, code: 'BAD_INPUT', message: `The value for "${s.name}" is too long (max ${LISTING_LIMITS.specValue}).` };
+      if (s.unit && s.unit.length > 20) return { ok: false, code: 'BAD_INPUT', message: `The unit for "${s.name}" is too long (max 20).` };
     }
 
     // Validation done — now write, text first.

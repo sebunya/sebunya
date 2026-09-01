@@ -84,6 +84,7 @@ describe('the listing use case owns title, descriptions, specs and the feed swit
     expect(await uc.execute({ productId: 'p1', name: 'ab' })).toMatchObject({ ok: false, code: 'BAD_INPUT' });
     expect(await uc.execute({ productId: 'p1', name: 'x'.repeat(151) })).toMatchObject({ ok: false, code: 'BAD_INPUT' });
     expect(await uc.execute({ productId: 'p1', name: 'Fine title', specs: [{ name: 'Only a name', value: '' }] })).toMatchObject({ ok: false, code: 'BAD_INPUT' });
+    expect(await uc.execute({ productId: 'p1', specs: [{ name: 'Range', value: '10', unit: 'metres and metres more' }] })).toMatchObject({ ok: false, code: 'BAD_INPUT' });
     expect(state.text).toEqual([]); expect(attrs.values).toEqual([]);
   });
 });
