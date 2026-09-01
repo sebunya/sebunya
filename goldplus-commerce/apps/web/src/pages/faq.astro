@@ -22,12 +22,12 @@ const cutoff = `${biz.sameDayCutoffHour % 12 || 12}${biz.sameDayCutoffHour >= 12
 const faqs: Array<{ q: string; a: string; links?: Array<{ label: string; href: string }> }> = [
   {
     q: 'Do you deliver, and how long does it take?',
-    a: `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays.toLowerCase()}. Order before ${cutoff} and your order goes out on the same day's run; after that it goes on the next one. The delivery fee is calculated for your address and shown before you pay — never added afterwards.`,
+    a: `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. Order before ${cutoff} and your order goes out on the same day's run; after that it goes on the next one. The delivery fee is calculated for your address and shown before you pay — never added afterwards.`,
     links: [{ label: 'Delivery details', href: '/delivery' }],
   },
   {
     q: 'Where is the GoldPlus shop and when is it open?',
-    a: `GoldPlus is at ${biz.addressLine1.replace(/\.$/, '')} — ${biz.addressLine2.replace(/\.$/, '')}. The shop is open ${biz.openDays.toLowerCase()}, ${biz.shopHours}. You can call or WhatsApp ${biz.phoneDisplay} before you come, and you are welcome to collect an online order at the shop instead of paying for delivery.`,
+    a: `GoldPlus is at ${biz.addressLine1.replace(/\.$/, '')} — ${biz.addressLine2.replace(/\.$/, '')}. The shop is open ${biz.openDays}, ${biz.shopHours}. You can call or WhatsApp ${biz.phoneDisplay} before you come, and you are welcome to collect an online order at the shop instead of paying for delivery.`,
     links: [{ label: 'Find us on the map', href: biz.mapUrl }],
   },
   {
