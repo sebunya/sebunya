@@ -173,6 +173,8 @@ function groupedCatalogue(products: ProductPublicDto[], title: string, intro: st
 /** /shop, honouring the same filters the HTML page reads. */
 async function shopDocument(url: URL): Promise<AgentDocument | null> {
   const [all, taxonomy] = await Promise.all([catalogue(), getTaxonomy().catch(() => DISCOVERY_TAXONOMY)]);
+  // No catalogue means the API did not answer; the HTML page has its own
+  // fallbacks, so defer to it rather than publishing an empty shop.
   if (all.length === 0) return null;
   const search = normalizeSearchParam(url.searchParams.get('search') ?? url.searchParams.get('q'));
   const category = normalizeCategoryParam(url.searchParams.get('category'), taxonomy);
@@ -298,9 +300,18 @@ async function homeDocument(): Promise<AgentDocument> {
   return { title: 'GoldPlus — phone accessories and replacement batteries in Kampala', description: 'What GoldPlus sells, where the shop is, and how delivery, payment and returns work.', body };
 }
 
-async function blogIndexDocument(): Promise<AgentDocument | null> {
+async function blogIndexDocument(): Promise<AgentDocument> {
   const { posts, total } = await fetchPublishedPosts(50, 0);
-  if (posts.length === 0) return null;
+  // An empty blog is a fact, not a reason to fall back to HTML: falling through
+  // would leave the Link header advertising a document we never serve.
+  if (posts.length === 0) {
+    const empty = 'GoldPlus has not published any guides yet.';
+    return {
+      title: 'GoldPlus guides and advice',
+      description: empty,
+      body: ['# GoldPlus guides and advice', '', empty, '', `For product facts, see ${SITE_ORIGIN}/shop; for delivery, payment and returns, see ${SITE_ORIGIN}/faq.`, ''].join('\n'),
+    };
+  }
   const intro = `${total} guide${total === 1 ? '' : 's'} written by GoldPlus on choosing and using phone accessories in Uganda.`;
   const body = [
     '# GoldPlus guides and advice', '', intro, '',

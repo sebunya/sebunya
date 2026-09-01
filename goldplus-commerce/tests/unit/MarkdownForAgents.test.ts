@@ -118,6 +118,16 @@ describe('markdown content negotiation', () => {
     }
   });
 
+  it('an empty blog still answers in markdown rather than silently serving HTML', () => {
+    const docs = read('apps/web/src/lib/agentDocuments.ts');
+    expect(docs).toContain('has not published any guides yet');
+    expect(docs).toContain('async function blogIndexDocument(): Promise<AgentDocument> {');
+    // Falling through is reserved for an outage or a record that does not
+    // exist — never for "this page has no content today".
+    expect(docs).toContain('if (all.length === 0) return null;');
+    expect(docs).toContain('the API did not answer');
+  });
+
   it('an explicit ?page= returns that page, matching the HTML pagination', () => {
     const docs = read('apps/web/src/lib/agentDocuments.ts');
     expect(docs).toContain('const PAGE_SIZE = 24;');
