@@ -1,4 +1,6 @@
 import { defineMiddleware } from "astro:middleware";
+import { prefersMarkdown, markdownResponse } from "./lib/agentMarkdown";
+import { agentDocumentFor } from "./lib/agentDocuments";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 import { apiBase } from "./lib/api";
 import { SESSION_COOKIE_NAME } from "./lib/session";
@@ -67,6 +69,30 @@ async function holderIsAdmin(request: Request): Promise<boolean> {
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  // Markdown for agents. An assistant that asks for text/markdown gets the
+  // page's facts without the navigation, scripts and styling an HTML fetch
+  // spends its context on. GET only, never for /admin or /api, and only for
+  // paths we can represent — anything else falls through to the HTML page, so
+  // this can never blank a route. See lib/agentMarkdown.ts.
+  const wantsMarkdown =
+    context.request.method === 'GET' &&
+    prefersMarkdown(context.request.headers.get('accept')) &&
+    !context.url.pathname.startsWith('/admin') &&
+    !context.url.pathname.startsWith('/api/');
+  if (wantsMarkdown) {
+    try {
+      const markdown = await agentDocumentFor(context.url.pathname);
+      if (markdown) {
+        const html = await next();
+        const htmlTokens = html.status === 200 ? Math.ceil((await html.clone().text()).length / 4) : undefined;
+        return markdownResponse(markdown, htmlTokens);
+      }
+    } catch {
+      // An agent asking for Markdown must never be worse off than one asking
+      // for HTML: fall through and serve the page.
+    }
+  }
+
   const adminPath = context.url.pathname;
   // /admin/logout must stay reachable: it is how a stale or downgraded session
   // clears its cookie, and guarding it would redirect the holder to a login
