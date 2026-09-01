@@ -1,0 +1,203 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import FormFeedback from '../../../../components/FormFeedback.astro';
+import { apiBase } from '../../../../lib/api';
+import { readSessionToken } from '../../../../lib/session';
+
+/**
+ * The listing editor: everything a shopper and Google read about one product
+ * on one screen — title, descriptions, specifications, photos, feed switch.
+ * Two forms: the text/specs form saves through PUT /admin/products/:id/listing
+ * (one use case, audited); the photo form uploads through the existing product
+ * image upload. Both run server-side with the admin's session; the browser
+ * never holds the API token.
+ */
+const { id } = Astro.params;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}/listing`, 303);
+const headers = { Authorization: `Bearer ${token}` };
+
+interface Spec { attributeId?: string; name: string; unit: string | null; value: string; isVerified: boolean }
+interface Listing {
+  id: string; name: string; slug: string; sku: string; modelNumber: string; categoryName: string | null; subcategory: string | null;
+  shortDescription: string; longDescription: string; isFeedEligible: boolean; approvalStatus: string; active: boolean;
+  images: Array<{ id: string; url: string; isPrimary: boolean }>; specs: Spec[]; categoryAttributes: Array<{ id: string; name: string; unit: string | null }>;
+}
+
+let status: 'success' | 'error' | null = null; let message = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? 'save');
+  if (action === 'photos') {
+    const files = form.getAll('files').filter((f): f is File => typeof f !== 'string' && f.size > 0);
+    if (files.length === 0) { status = 'error'; message = 'Choose at least one photo.'; }
+    else {
+      const body = new FormData();
+      for (const f of files) body.append('files', f, f.name);
+      body.append('makeFirstPrimary', form.get('makeFirstPrimary') === 'on' ? 'true' : 'false');
+      const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/images/upload`, { method: 'POST', headers, body });
+      const json = await res.json().catch(() => null);
+      if (json?.success) return Astro.redirect(`/admin/products/${encodeURIComponent(id ?? '')}/listing?saved=photos&n=${files.length}`, 303);
+      status = 'error'; message = json?.error?.message ?? `The photos were not saved (HTTP ${res.status}).`;
+    }
+  } else {
+    const count = Number(form.get('specCount') ?? 0);
+    const specs = Array.from({ length: Number.isFinite(count) ? count : 0 }, (_, i) => ({
+      name: String(form.get(`spec_name_${i}`) ?? ''), value: String(form.get(`spec_value_${i}`) ?? ''), unit: String(form.get(`spec_unit_${i}`) ?? ''), isVerified: form.get(`spec_verified_${i}`) === 'on',
+    })).filter((s) => s.name.trim() || s.value.trim());
+    const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/listing`, {
+      method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: String(form.get('name') ?? ''), shortDescription: String(form.get('shortDescription') ?? ''), longDescription: String(form.get('longDescription') ?? ''),
+        isFeedEligible: form.get('isFeedEligible') === 'on', specs,
+      }),
+    });
+    const json = await res.json().catch(() => null);
+    if (json?.success) return Astro.redirect(`/admin/products/${encodeURIComponent(id ?? '')}/listing?saved=listing`, 303);
+    status = 'error'; message = json?.error?.message ?? `The listing was not saved (HTTP ${res.status}).`;
+  }
+}
+
+const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/listing`, { headers, signal: AbortSignal.timeout(10000) });
+const json = await res.json().catch(() => null);
+const listing: Listing | null = json?.success ? (json.data as Listing) : null;
+if (!listing) return Astro.redirect('/admin/listing-quality', 303);
+
+const saved = new URL(Astro.request.url).searchParams.get('saved');
+if (saved === 'listing') { status = 'success'; message = 'Listing saved. The product page and the Google feed now carry it.'; }
+if (saved === 'photos') { status = 'success'; message = `Photos saved (${new URL(Astro.request.url).searchParams.get('n') ?? ''}).`; }
+
+// Rows to render: the product's values first, then the category's remaining attributes as empty rows, then three blank rows.
+const known = new Set(listing.specs.map((s) => s.name.toLowerCase()));
+const rows: Spec[] = [
+  ...listing.specs,
+  ...listing.categoryAttributes.filter((a) => !known.has(a.name.toLowerCase())).map((a) => ({ name: a.name, unit: a.unit, value: '', isVerified: false })),
+  ...Array.from({ length: 3 }, () => ({ name: '', unit: null, value: '', isVerified: false })),
+];
+const titleHint = 'Brand + model + the fact a shopper searches for: "GoldPlus GP-C10 100W USB-C PD Super Fast Charger (UK plug)". Under 150 characters.';
+---
+<AdminLayout title={`Listing — ${listing.name}`} description="Title, descriptions, specifications and photos: what shoppers and Google read." activePath="/admin/listing-quality">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl space-y-8">
+    <div class="flex items-center gap-4 pb-6 border-b border-gray-200">
+      <a href="/admin/listing-quality" class="p-2 hover:bg-gray-100 rounded-xl transition-colors border border-gray-200 bg-white shadow-xs" aria-label="Back to listing quality">&larr;</a>
+      <div class="flex-1 min-w-0">
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight truncate">{listing.name}</h2>
+        <p class="text-sm text-gray-500 mt-1 font-mono">{listing.sku} · {listing.categoryName ?? 'No category'}{listing.subcategory ? ` › ${listing.subcategory}` : ''}</p>
+      </div>
+      <a href={`/products/${listing.slug}`} target="_blank" rel="noopener" class="bg-white border border-gray-200 hover:bg-gray-50 text-brand-dark font-bold text-xs px-4 py-2 rounded-xl shadow-xs">View page &rarr;</a>
+      <a href={`/admin/products/${listing.id}`} class="bg-white border border-gray-200 hover:bg-gray-50 text-brand-dark font-bold text-xs px-4 py-2 rounded-xl shadow-xs">Prices &amp; stock</a>
+    </div>
+
+    {status && <FormFeedback status={status} message={message} />}
+
+    <!-- Photos -->
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Photos</h3>
+          <p class="text-sm text-gray-600 mt-1">First photo: the product alone on a white or light background, filling most of the frame, at least 1000 × 1000, no text or spec panels on it. Box, ports and spec panels go after it.</p>
+        </div>
+        <span class="text-xs font-black px-2.5 py-1 rounded-full border whitespace-nowrap" class:list={[listing.images.length === 0 ? 'text-amber-700 bg-amber-50 border-amber-200' : listing.images.length === 1 ? 'text-gray-700 bg-gray-100 border-gray-200' : 'text-green-700 bg-green-50 border-green-200']}>
+          {listing.images.length === 0 ? 'No photo yet' : `${listing.images.length} photo${listing.images.length === 1 ? '' : 's'}`}
+        </span>
+      </div>
+      {listing.images.length > 0 && (
+        <div class="flex flex-wrap gap-3">
+          {listing.images.map((img) => (
+            <figure class="w-28">
+              <img src={img.url} alt="" width="112" height="112" loading="lazy" class="w-28 h-28 object-contain bg-gray-50 border border-gray-200 rounded-xl" />
+              <figcaption class="text-[10px] text-gray-500 mt-1 text-center">{img.isPrimary ? 'Main photo' : 'Gallery'}</figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
+      <form method="POST" enctype="multipart/form-data" class="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="action" value="photos" />
+        <div class="flex-1 min-w-[16rem]">
+          <label for="files" class="block text-xs font-bold text-gray-700 mb-1">Add photos (JPG, PNG, WebP; several at once)</label>
+          <input id="files" name="files" type="file" accept="image/*" multiple required class="block w-full text-sm text-gray-700 file:mr-3 file:bg-brand-dark file:text-white file:font-black file:text-xs file:px-4 file:py-2.5 file:rounded-xl file:border-0 file:uppercase file:tracking-wider" />
+        </div>
+        <label class="flex items-center gap-2 text-sm text-gray-700 select-none"><input type="checkbox" name="makeFirstPrimary" checked={listing.images.length === 0} class="w-4 h-4 accent-brand-green" /> First file becomes the main photo</label>
+        <button type="submit" class="bg-white border border-gray-300 hover:bg-gray-50 text-brand-dark font-black text-xs px-5 py-3 rounded-xl uppercase tracking-wider">Upload</button>
+        <a href={`/admin/products/${listing.id}/edit`} class="text-xs font-bold text-gray-500 underline underline-offset-2">Reorder or remove</a>
+      </form>
+    </section>
+
+    <!-- Text + specs -->
+    <form method="POST" class="space-y-8" id="listing-form">
+      <input type="hidden" name="action" value="save" />
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-5">
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Title and descriptions</h3>
+        <div>
+          <label for="name" class="block text-xs font-bold text-gray-700 mb-1">Title</label>
+          <input id="name" name="name" value={listing.name} maxlength="150" required class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-bold text-brand-dark focus:ring-2 focus:ring-brand-green focus:border-brand-green" />
+          <p class="text-xs text-gray-500 mt-1">{titleHint}</p>
+        </div>
+        <div>
+          <label for="shortDescription" class="block text-xs font-bold text-gray-700 mb-1">Short description <span class="font-normal text-gray-400">(cards and search results, up to 500)</span></label>
+          <textarea id="shortDescription" name="shortDescription" rows="2" maxlength="500" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-green focus:border-brand-green">{listing.shortDescription}</textarea>
+        </div>
+        <div>
+          <label for="longDescription" class="block text-xs font-bold text-gray-700 mb-1">Long description <span class="font-normal text-gray-400">(product page and Google, up to 5000)</span></label>
+          <textarea id="longDescription" name="longDescription" rows="7" maxlength="5000" placeholder="What it is, what it does, what is in the box, what it works with. Plain sentences; the specifications below carry the numbers." class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-green focus:border-brand-green">{listing.longDescription}</textarea>
+        </div>
+      </section>
+
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+        <div>
+          <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Specifications</h3>
+          <p class="text-sm text-gray-600 mt-1">Copy them from the maker's spec panel or the box. Tick <em>verified</em> only for a value you checked against the maker's own specification — only verified values reach Google and the product page's structured data.</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" id="spec-table">
+            <thead class="text-[10px] uppercase tracking-widest text-gray-400 font-black"><tr><th class="text-left py-2 pr-3">Name</th><th class="text-left py-2 pr-3">Value</th><th class="text-left py-2 pr-3 w-24">Unit</th><th class="text-left py-2 w-24">Verified</th></tr></thead>
+            <tbody>
+              {rows.map((s, i) => (
+                <tr class="spec-row">
+                  <td class="py-1.5 pr-3"><input name={`spec_name_${i}`} value={s.name} placeholder="e.g. Output power" maxlength="100" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></td>
+                  <td class="py-1.5 pr-3"><input name={`spec_value_${i}`} value={s.value} placeholder="e.g. 100" maxlength="255" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></td>
+                  <td class="py-1.5 pr-3"><input name={`spec_unit_${i}`} value={s.unit ?? ''} placeholder="W" maxlength="20" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></td>
+                  <td class="py-1.5"><label class="flex items-center gap-2 text-xs text-gray-700"><input type="checkbox" name={`spec_verified_${i}`} checked={s.isVerified} class="w-4 h-4 accent-brand-green" /> verified</label></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <input type="hidden" name="specCount" id="specCount" value={String(rows.length)} />
+        <button type="button" id="add-spec" class="text-xs font-black text-brand-dark underline underline-offset-2">+ Add another row</button>
+      </section>
+
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+        <label class="flex items-center gap-3 select-none cursor-pointer">
+          <input type="checkbox" name="isFeedEligible" checked={listing.isFeedEligible} class="w-5 h-5 accent-brand-green rounded border-gray-300" />
+          <div>
+            <span class="text-sm font-bold text-brand-dark block">Listed in the Google Merchant feed</span>
+            <span class="text-xs text-gray-500">Sent once it is approved, active, priced and has a photo. Untick to keep it out of Google Shopping.</span>
+          </div>
+        </label>
+      </section>
+
+      <div class="flex items-center justify-end gap-4">
+        <a href="/admin/listing-quality" class="bg-white border border-gray-300 hover:bg-gray-50 text-brand-dark font-black text-xs px-6 py-3.5 rounded-xl uppercase tracking-wider">Back</a>
+        <button type="submit" class="bg-brand-dark hover:bg-black text-white font-black text-xs px-8 py-3.5 rounded-xl uppercase tracking-wider shadow-sm">Save listing</button>
+      </div>
+    </form>
+  </div>
+
+  <script is:inline>
+    (function () {
+      var add = document.getElementById('add-spec'); var count = document.getElementById('specCount'); var body = document.querySelector('#spec-table tbody');
+      if (!add || !count || !body) return;
+      add.addEventListener('click', function () {
+        var i = Number(count.value); var last = body.querySelector('tr.spec-row:last-child'); if (!last) return;
+        var row = last.cloneNode(true);
+        row.querySelectorAll('input').forEach(function (input) {
+          input.name = input.name.replace(/_\d+$/, '_' + i);
+          if (input.type === 'checkbox') input.checked = false; else input.value = '';
+        });
+        body.appendChild(row); count.value = String(i + 1); row.querySelector('input').focus();
+      });
+    })();
+  </script>
+</AdminLayout>

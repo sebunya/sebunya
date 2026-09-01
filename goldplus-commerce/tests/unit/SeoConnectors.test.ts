@@ -33,6 +33,7 @@ const product = (over: Partial<FeedProduct> = {}): FeedProduct => ({
   categoryName: 'Power Devices',
   subcategory: 'Solar',
   longDescription: 'A durable 100W monocrystalline solar panel for home and business use in Uganda, with a 25-year output warranty.',
+  verifiedSpecCount: 3,
   imageUrls: ['https://cdn.shopgoldplus.com/p/gp-100.jpg', 'https://cdn.shopgoldplus.com/p/gp-100-2.jpg'],
   ...over,
 });

@@ -1,0 +1,118 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
+
+/**
+ * Product photos by code. Choose a whole folder of photos named by product
+ * code; the preview shows exactly which file goes to which product, what
+ * matched nothing, what is ambiguous and what was refused. Nothing is attached
+ * until "Attach" is pressed. Preview stores the files in the media library
+ * (deduplicated), so the confirm step needs no re-upload.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/photos', 303);
+const headers = { Authorization: `Bearer ${token}` };
+
+interface Plan {
+  matched: Array<{ file: string; productId: string; productName: string; assetId: string; url: string }>;
+  unmatched: string[]; ambiguous: Array<{ file: string; candidates: string[] }>; refused: Array<{ file: string; productName: string; reason: string }>;
+}
+let plan: Plan | null = null; let notice: { kind: 'success' | 'error'; text: string } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? 'preview');
+  if (action === 'preview') {
+    const files = form.getAll('files').filter((f): f is File => typeof f !== 'string' && f.size > 0);
+    if (files.length === 0) notice = { kind: 'error', text: 'Choose at least one photo.' };
+    else {
+      const body = new FormData();
+      for (const f of files) body.append('files', f, f.name);
+      const res = await fetch(`${apiBase}/admin/media/attach-by-code/preview`, { method: 'POST', headers, body });
+      const json = await res.json().catch(() => null);
+      if (json?.success) plan = json.data as Plan;
+      else notice = { kind: 'error', text: json?.error?.message ?? `The preview failed (HTTP ${res.status}).` };
+    }
+  } else if (action === 'apply') {
+    let pairs: Array<{ assetId: string; productId: string }> = [];
+    try { pairs = JSON.parse(String(form.get('pairs') ?? '[]')); } catch { pairs = []; }
+    const res = await fetch(`${apiBase}/admin/media/attach-by-code/apply`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ pairs }) });
+    const json = await res.json().catch(() => null);
+    if (json?.success) {
+      const d = json.data as { attached: number; alreadyPresent: number; missing: number };
+      notice = { kind: 'success', text: `Attached ${d.attached} photo${d.attached === 1 ? '' : 's'}${d.alreadyPresent ? `, ${d.alreadyPresent} already on the product` : ''}${d.missing ? `, ${d.missing} no longer in the library` : ''}.` };
+    } else notice = { kind: 'error', text: json?.error?.message ?? `Attaching failed (HTTP ${res.status}).` };
+  }
+}
+const byProduct = new Map<string, Plan['matched']>();
+for (const m of plan?.matched ?? []) byProduct.set(m.productId, [...(byProduct.get(m.productId) ?? []), m]);
+---
+<AdminLayout title="Product photos" description="Upload photos named by product code; preview the match, then attach." activePath="/admin/photos">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl space-y-8">
+    <div class="pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Product photos by code</h2>
+      <p class="text-sm text-gray-500 mt-1 max-w-2xl">Name each file by the product's code — <code class="font-mono text-xs">GP-C10.webp</code>, then <code class="font-mono text-xs">GP-C10-2.jpg</code>, <code class="font-mono text-xs">GP-C10-3.jpg</code> for the gallery. Choose the whole folder at once. You see the match before anything is attached.</p>
+    </div>
+
+    {notice && <div class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`} role="status">{notice.text}</div>}
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+      <form method="POST" enctype="multipart/form-data" class="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="action" value="preview" />
+        <div class="flex-1 min-w-[18rem]">
+          <label for="files" class="block text-xs font-bold text-gray-700 mb-1">Photos (JPG, PNG, WebP, AVIF — as many as you like)</label>
+          <input id="files" name="files" type="file" accept=".jpg,.jpeg,.png,.webp,.avif,image/*" multiple required class="block w-full text-sm text-gray-700 file:mr-3 file:bg-brand-dark file:text-white file:font-black file:text-xs file:px-4 file:py-2.5 file:rounded-xl file:border-0 file:uppercase file:tracking-wider" />
+        </div>
+        <button type="submit" class="bg-white border border-gray-300 hover:bg-gray-50 text-brand-dark font-black text-xs px-5 py-3 rounded-xl uppercase tracking-wider">Preview the match</button>
+      </form>
+      <p class="text-xs text-gray-500 mt-3">First photo of a product becomes its main photo; the product's other photos become its gallery. A file already on the product is skipped.</p>
+    </section>
+
+    {plan && (
+      <section class="space-y-6">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="bg-white border border-gray-200 rounded-2xl p-4"><div class="text-2xl font-black text-green-700 tabular-nums">{plan.matched.length}</div><div class="text-xs text-gray-500 font-bold uppercase tracking-wider">Matched</div></div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-4"><div class="text-2xl font-black text-gray-700 tabular-nums">{plan.unmatched.length}</div><div class="text-xs text-gray-500 font-bold uppercase tracking-wider">No product</div></div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-4"><div class="text-2xl font-black text-amber-700 tabular-nums">{plan.ambiguous.length}</div><div class="text-xs text-gray-500 font-bold uppercase tracking-wider">Ambiguous</div></div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-4"><div class="text-2xl font-black text-red-700 tabular-nums">{plan.refused.length}</div><div class="text-xs text-gray-500 font-bold uppercase tracking-wider">Refused</div></div>
+        </div>
+
+        {plan.matched.length > 0 && (
+          <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 class="text-sm font-black text-brand-dark">Will be attached</h3>
+              <form method="POST">
+                <input type="hidden" name="action" value="apply" />
+                <input type="hidden" name="pairs" value={JSON.stringify(plan.matched.map((m) => ({ assetId: m.assetId, productId: m.productId })))} />
+                <button type="submit" class="bg-brand-dark hover:bg-black text-white font-black text-xs px-5 py-2.5 rounded-xl uppercase tracking-wider shadow-sm">Attach {plan.matched.length} photo{plan.matched.length === 1 ? '' : 's'}</button>
+              </form>
+            </div>
+            <ul class="divide-y divide-gray-100">
+              {[...byProduct.entries()].map(([productId, files]) => (
+                <li class="px-5 py-3 flex items-start gap-4">
+                  <div class="flex gap-2 shrink-0">{files.map((f) => <img src={f.url} alt="" width="56" height="56" loading="lazy" class="w-14 h-14 object-contain bg-gray-50 border border-gray-200 rounded-lg" />)}</div>
+                  <div class="min-w-0">
+                    <div class="font-bold text-brand-dark">{files[0].productName}</div>
+                    <div class="text-xs text-gray-500 font-mono truncate">{files.map((f) => f.file).join(' · ')}</div>
+                    <a href={`/admin/products/${productId}/listing`} class="text-xs font-bold text-gray-600 underline underline-offset-2">Open listing</a>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {(plan.unmatched.length > 0 || plan.ambiguous.length > 0 || plan.refused.length > 0) && (
+          <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 space-y-4 text-sm">
+            <h3 class="text-sm font-black text-brand-dark">Not attached — rename and preview again</h3>
+            {plan.unmatched.length > 0 && <div><div class="text-xs font-black uppercase tracking-wider text-gray-400 mb-1">No product has this code</div><ul class="font-mono text-xs text-gray-700 space-y-0.5">{plan.unmatched.map((f) => <li>{f}</li>)}</ul></div>}
+            {plan.ambiguous.length > 0 && <div><div class="text-xs font-black uppercase tracking-wider text-gray-400 mb-1">Could be more than one product — use the full code</div><ul class="text-xs text-gray-700 space-y-0.5">{plan.ambiguous.map((a) => <li><span class="font-mono">{a.file}</span> → {a.candidates.join(' or ')}</li>)}</ul></div>}
+            {plan.refused.length > 0 && <div><div class="text-xs font-black uppercase tracking-wider text-gray-400 mb-1">Refused</div><ul class="text-xs text-gray-700 space-y-0.5">{plan.refused.map((r) => <li><span class="font-mono">{r.file}</span>{r.productName ? ` ↛ ${r.productName}` : ''} — {r.reason}</li>)}</ul></div>}
+            <p class="text-xs text-gray-500">Previewed files are kept in the <a href="/admin/media" class="underline underline-offset-2">media library</a>, where any of them can also be assigned by hand.</p>
+          </div>
+        )}
+      </section>
+    )}
+  </div>
+</AdminLayout>

@@ -35,6 +35,25 @@ export interface FeedProduct {
   longDescription?: string | null;
   /** Every gallery image in display order (primary first); extras become g:additional_image_link. */
   imageUrls?: string[];
+  /** For the listing-quality report only. */
+  id?: string;
+  verifiedSpecCount?: number;
+}
+
+/**
+ * "GoldPlus Cable GP-L01V" is brand + kind + code: nothing a shopper types.
+ * A title earns its place when, brand and code removed, it still says something
+ * measurable (a wattage, a capacity, a length, a connector, a version).
+ */
+export function titleIsCodeOnly(name: string, modelNumber: string | null, sku: string): boolean {
+  let rest = name.replace(/^goldplus\s*/i, '');
+  for (const code of [modelNumber ?? '', sku]) {
+    const key = code.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    if (key) rest = rest.split(/\s+/).filter((w) => w.replace(/[^a-z0-9]/gi, '').toLowerCase() !== key).join(' ');
+  }
+  const words = rest.trim().split(/\s+/).filter(Boolean);
+  const measurable = /\d+\s?(w|mah|gb|mb|tb|m|cm|mm|a|v|h|hz|khz)\b|usb-c|type-c|micro-usb|lightning|bluetooth\s?\d|\bpd\b|\bqc\d|\bgan\b|\btws\b/i;
+  return words.length <= 3 && !measurable.test(rest);
 }
 
 export const STOREFRONT_BASE_URL = 'https://shopgoldplus.com';
@@ -144,6 +163,10 @@ export interface FeedQualityIssue {
   slug: string;
   included: boolean;
   issues: string[];
+  id?: string;
+  name?: string;
+  categoryName?: string | null;
+  hasImage?: boolean;
 }
 
 export interface FeedQualityReport {
@@ -175,8 +198,10 @@ export class FeedQualityUseCase {
       if (!googleProductCategoryFor(p)) issues.push('no_google_category');
       if (!(p.longDescription ?? '').trim()) issues.push('no_long_description');
       if ((p.imageUrls ?? []).length < 2) issues.push('single_image');
+      if (titleIsCodeOnly(p.name, p.modelNumber, p.sku)) issues.push('title_is_code_only');
+      if ((p.verifiedSpecCount ?? 0) === 0) issues.push('no_verified_specs');
       for (const issue of issues) issueCounts[issue] = (issueCounts[issue] ?? 0) + 1;
-      return { sku: p.sku, slug: p.slug, included: isFeedIncluded(p), issues };
+      return { sku: p.sku, slug: p.slug, included: isFeedIncluded(p), issues, id: p.id, name: p.name, categoryName: p.categoryName ?? null, hasImage: !!(p.imageUrl && p.imageUrl.trim()) };
     });
     const included = rows.filter((r) => r.included).length;
     return {

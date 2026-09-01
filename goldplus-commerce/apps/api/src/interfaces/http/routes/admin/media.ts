@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
+import { planPhotoAttachments, IMAGE_EXTENSIONS } from '../../../../domain/media/PhotoCodeMatcher';
 
 /**
  * Media library admin surface (Wave 2B DAM). Thin transport over
@@ -141,6 +143,55 @@ routes.post('/:id/assign-product', requirePermissions([PERMISSIONS.MEDIA_MANAGE]
   if ('kind' in outcome) return bad(c, 'NOT_FOUND', 'Asset or product not found.', 404);
   await audit(c, 'MEDIA_ASSET_ASSIGNED_PRODUCT', (c.req.param('id') ?? ''), outcome);
   return ok(c, outcome);
+});
+
+
+// ── Photos by code ──────────────────────────────────────────────────────────
+// Drop a folder of photos named by product code. PREVIEW stores them in the
+// library (deduplicated by checksum, assigned to nothing) and returns the plan:
+// which file goes to which product, what matched nothing, what is ambiguous,
+// what was refused. APPLY assigns the listed asset→product pairs — the first
+// photo of a product with no photo becomes its primary, the rest its gallery.
+routes.post('/attach-by-code/preview', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
+  const body = await c.req.parseBody({ all: true });
+  const raw = body['files'];
+  const files = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Choose at least one photo.' } }, 400);
+  const bad = files.filter((f) => !IMAGE_EXTENSIONS.has(('.' + f.name.split('.').pop()).toLowerCase()));
+  if (bad.length) return c.json({ success: false, error: { code: 'BAD_INPUT', message: `Not an image: ${bad.map((f) => f.name).join(', ')}` } }, 400);
+  const registry = Registry.getInstance();
+  const products = await registry.productRepo.listCodeIndex();
+  const plan = planPhotoAttachments(files.map((f) => f.name), products);
+  const actorId = (c.get('user') as any).id as string;
+  const stored: Record<string, { assetId: string; url: string }> = {};
+  for (const f of files) {
+    const [outcome] = await registry.mediaLibraryUseCase.upload({ files: [{ filename: f.name, mime: f.type, buffer: Buffer.from(await f.arrayBuffer()) }], altText: plan.matched.find((m) => m.file === f.name)?.productName ?? null, caption: null, actorId });
+    if (outcome.kind === 'STORED') stored[f.name] = { assetId: outcome.asset.id, url: outcome.asset.url };
+    else plan.refused.push({ file: f.name, productName: '', reason: `rejected by the media library (${outcome.reason})` });
+  }
+  const matched = plan.matched.filter((m) => stored[m.file]).map((m) => ({ ...m, assetId: stored[m.file].assetId, url: stored[m.file].url }));
+  return c.json({ success: true, data: { matched, unmatched: plan.unmatched, ambiguous: plan.ambiguous, refused: plan.refused } });
+});
+
+routes.post('/attach-by-code/apply', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const pairs: Array<{ assetId: string; productId: string }> = Array.isArray(body?.pairs) ? body.pairs.filter((p: any) => typeof p?.assetId === 'string' && typeof p?.productId === 'string') : [];
+  if (pairs.length === 0) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Nothing to attach.' } }, 400);
+  const registry = Registry.getInstance();
+  let attached = 0, alreadyPresent = 0, missing = 0;
+  for (const { assetId, productId } of pairs) {
+    const asset = await registry.mediaLibraryRepo.findById(assetId);
+    if (!asset) { missing += 1; continue; }
+    const existing = await registry.productImageRepo.findByProductId(productId);
+    if (existing.some((img) => img.url === asset.url)) { alreadyPresent += 1; continue; }
+    if (existing.length === 0) await registry.mediaLibraryUseCase.assignToProduct(assetId, productId);
+    else await registry.productImageRepo.add({ productId, url: asset.url, altText: asset.altText ?? null, makePrimary: false });
+    attached += 1;
+  }
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: (c.get('user') as any).id, action: 'PRODUCT_PHOTOS_ATTACHED_BY_CODE', entity: 'product_photo_batch', entityId: randomUUID(), newState: { pairs: pairs.length, attached, alreadyPresent, missing },
+  });
+  return c.json({ success: true, data: { attached, alreadyPresent, missing } });
 });
 
 export default routes;

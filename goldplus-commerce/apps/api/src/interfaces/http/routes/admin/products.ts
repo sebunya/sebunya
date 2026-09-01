@@ -11,6 +11,8 @@ import { RecordProductSlugChangeUseCase } from '../../../../application/use-case
 import { validateStockAdjustment } from '../../../../domain/inventory/Inventory';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { parsePriceTiers } from '../../../../domain/products/PriceTiers';
+import { UpdateProductListingUseCase } from '../../../../application/use-cases/products/UpdateProductListingUseCase';
+import { FeedQualityUseCase } from '../../../../application/use-cases/seo-growth/MerchantFeedUseCase';
 
 /** Above this a value cannot be a shilling price; it is a typo or an int4 overflow. */
 const MAX_PRICE_UGX = 100_000_000;
@@ -206,6 +208,45 @@ routes.post('/attributes', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), asy
 
 import { ProductEntity } from '../../../../domain/products/ProductEntity';
 import { randomUUID } from 'node:crypto';
+
+// ── Listing quality ─────────────────────────────────────────────────────────
+// Every live product ranked by what still holds its Shopping listing back.
+// Registered before '/:id' so the path is not read as a product id.
+routes.get('/listing-quality', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const report = await new FeedQualityUseCase(() => registry.seoGrowthRepo.feedProducts()).execute();
+  const products = [...report.products].sort((a, b) => b.issues.length - a.issues.length || (a.name ?? '').localeCompare(b.name ?? ''));
+  return c.json({ success: true, data: { ...report, products } });
+});
+
+routes.get('/:id/listing', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const listing = await registry.productRepo.getListing(c.req.param('id') ?? '');
+  if (!listing) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Product not found.' } }, 404);
+  const attributes = await registry.attributeRepo.findByCategoryId(listing.categoryId);
+  return c.json({ success: true, data: { ...listing, categoryAttributes: attributes.map((a) => ({ id: a.id, name: a.name, unit: a.unit })) } });
+});
+
+routes.put('/:id/listing', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
+  const productId = c.req.param('id') ?? '';
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Body must be JSON.' } }, 400);
+  const registry = Registry.getInstance();
+  const uc = new UpdateProductListingUseCase(registry.productRepo, registry.attributeRepo);
+  const result = await uc.execute({
+    productId,
+    name: typeof body.name === 'string' ? body.name : undefined,
+    shortDescription: typeof body.shortDescription === 'string' ? body.shortDescription : undefined,
+    longDescription: typeof body.longDescription === 'string' ? body.longDescription : undefined,
+    isFeedEligible: typeof body.isFeedEligible === 'boolean' ? body.isFeedEligible : undefined,
+    specs: Array.isArray(body.specs) ? body.specs.map((s: any) => ({ name: String(s?.name ?? ''), value: String(s?.value ?? ''), unit: s?.unit == null ? null : String(s.unit), isVerified: s?.isVerified === true || s?.isVerified === 'true' })) : undefined,
+  });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } }, result.code === 'NOT_FOUND' ? 404 : 400);
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: (c.get('user') as any).id, action: 'PRODUCT_LISTING_UPDATED', entity: 'product', entityId: productId, newState: result.changed,
+  });
+  return c.json({ success: true, data: result.changed });
+});
 
 // Get all categories
 routes.get('/categories', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) => {

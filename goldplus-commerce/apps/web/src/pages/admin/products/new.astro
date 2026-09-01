@@ -84,7 +84,7 @@ if (Astro.request.method === 'POST') {
       </div>
     </div>
 
-    {status && <div class="mb-6"><FormFeedback kind={status} message={message} /></div>}
+    {status && <div class="mb-6"><FormFeedback status={status} message={message} /></div>}
 
     <form method="POST" class="space-y-6">
       <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6">

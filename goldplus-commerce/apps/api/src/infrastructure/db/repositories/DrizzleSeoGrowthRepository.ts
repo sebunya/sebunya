@@ -579,9 +579,11 @@ export class DrizzleSeoGrowthRepository {
     priceUgx: number; floorPriceUgx: number | null; stockStatus: string; imageUrl: string | null;
     modelNumber: string | null; isFeedEligible: boolean; active: boolean; approvalStatus: string;
     categoryName: string | null; subcategory: string | null; longDescription: string; imageUrls: string[];
+    id: string; verifiedSpecCount: number;
   }>> {
     const rows = rowsOf(await db.execute(sql`
-      select p.sku, p.slug, p.name, p.short_description, p.long_description, p.price_ugx, p.stock_status,
+      select p.id, p.sku, p.slug, p.name, p.short_description, p.long_description, p.price_ugx, p.stock_status,
+             (select count(*) from product_attribute_values v where v.product_id = p.id and v.is_verified = true)::int as verified_spec_count,
              p.category_name, p.subcategory,
              coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id order by i.is_primary desc, i.display_order asc limit 1), p.image_url) as image_url,
              coalesce((select array_agg(u order by ord) from (select ${displayImageUrlSql('i')} as u, row_number() over (order by i.is_primary desc, i.display_order asc) as ord from product_images i where i.product_id = p.id) g), '{}') as image_urls,
@@ -610,6 +612,8 @@ export class DrizzleSeoGrowthRepository {
       subcategory: r.subcategory == null ? null : String(r.subcategory),
       longDescription: String(r.long_description ?? ''),
       imageUrls: Array.isArray(r.image_urls) ? r.image_urls.map(String) : [],
+      id: String(r.id),
+      verifiedSpecCount: Number(r.verified_spec_count ?? 0),
     }));
   }
 

@@ -80,6 +80,12 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
             Public Storefront &rarr;
           </a>
           <a 
+            href={`/admin/products/${product.id}/listing`} 
+            class="bg-white hover:bg-gray-50 text-brand-dark font-black text-xs px-4 py-2 rounded-xl transition-colors shadow-xs uppercase tracking-wider border border-gray-300"
+          >
+            Listing
+          </a>
+          <a 
             href={`/admin/products/${product.id}/edit-properties`} 
             class="bg-white hover:bg-gray-50 text-brand-dark font-black text-xs px-4 py-2 rounded-xl transition-colors shadow-xs uppercase tracking-wider border border-gray-300"
           >

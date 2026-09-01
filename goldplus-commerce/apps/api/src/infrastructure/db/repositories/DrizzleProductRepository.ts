@@ -549,6 +549,45 @@ export class DrizzleProductRepository implements IProductRepository {
     return { floorPriceUgx: row?.floorPrice ?? null, tierBPriceUgx: row?.tierBPrice ?? null, tierCPriceUgx: row?.tierCPrice ?? null };
   }
 
+  // ── Listing (title, descriptions, specs) ──────────────────────────────────
+  async findListingTarget(productId: string): Promise<{ id: string; categoryId: string } | null> {
+    const row = await db.query.products.findFirst({ where: eq(products.id, productId), columns: { id: true, categoryId: true } });
+    return row ? { id: row.id, categoryId: row.categoryId } : null;
+  }
+
+  async updateListingText(productId: string, patch: { name?: string; shortDescription?: string; longDescription?: string }): Promise<void> {
+    await db.update(products).set({ ...patch, updatedAt: new Date() }).where(eq(products.id, productId));
+  }
+
+  /** Everything the listing editor shows for one product. */
+  async getListing(productId: string): Promise<{
+    id: string; name: string; slug: string; sku: string; modelNumber: string; categoryId: string; categoryName: string | null; subcategory: string | null;
+    shortDescription: string; longDescription: string; isFeedEligible: boolean; approvalStatus: string; active: boolean;
+    images: Array<{ id: string; url: string; isPrimary: boolean; displayOrder: number }>;
+    specs: Array<{ attributeId: string; name: string; unit: string | null; value: string; isVerified: boolean }>;
+  } | null> {
+    const row = await db.query.products.findFirst({ where: eq(products.id, productId) });
+    if (!row) return null;
+    const [imageRows, valueRows] = await Promise.all([
+      db.query.productImages.findMany({ where: eq(productImages.productId, productId), orderBy: [desc(productImages.isPrimary), asc(productImages.displayOrder)] }),
+      db.select({ attributeId: productAttributeValues.attributeId, value: productAttributeValues.value, isVerified: productAttributeValues.isVerified, name: attributesTable.name, unit: attributesTable.unit, order: attributesTable.displayOrder })
+        .from(productAttributeValues).innerJoin(attributesTable, eq(attributesTable.id, productAttributeValues.attributeId)).where(eq(productAttributeValues.productId, productId)),
+    ]);
+    const display = await displayUrlMap(imageRows);
+    return {
+      id: row.id, name: row.name, slug: row.slug, sku: row.sku, modelNumber: row.modelNumber, categoryId: row.categoryId, categoryName: row.categoryName ?? null, subcategory: row.subcategory ?? null,
+      shortDescription: row.shortDescription ?? '', longDescription: row.longDescription ?? '', isFeedEligible: row.isFeedEligible, approvalStatus: row.approvalStatus, active: row.active,
+      images: imageRows.map((i) => ({ id: i.id, url: display.get(i.url) ?? i.url, isPrimary: i.isPrimary, displayOrder: i.displayOrder })),
+      specs: valueRows.sort((a, b) => a.order - b.order).map((v) => ({ attributeId: v.attributeId, name: v.name, unit: v.unit, value: v.value, isVerified: v.isVerified })),
+    };
+  }
+
+  /** Every product with the codes a photo filename can name it by. */
+  async listCodeIndex(): Promise<Array<{ id: string; name: string; category: string; codes: string[] }>> {
+    const rows = await db.select({ id: products.id, name: products.name, categoryName: products.categoryName, sku: products.sku, modelNumber: products.modelNumber }).from(products);
+    return rows.map((r) => ({ id: r.id, name: r.name, category: r.categoryName ?? '', codes: [r.sku, r.modelNumber].filter((c): c is string => !!c) }));
+  }
+
   /** Merchant-feed listing is opt-out (0128): a sellable product is in the feed unless excluded here. */
   async setFeedEligibility(productId: string, eligible: boolean): Promise<void> {
     await db.update(products).set({ isFeedEligible: eligible, updatedAt: new Date() }).where(eq(products.id, productId));

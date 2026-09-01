@@ -35,6 +35,20 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Manage physical catalogue items, definitions and specs.'
   },
   {
+    label: 'Listing quality',
+    href: '/admin/listing-quality',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Every product ranked by what still holds its Google Shopping listing back; edit title, descriptions, specs and photos in one place.'
+  },
+  {
+    label: 'Product photos',
+    href: '/admin/photos',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Upload a folder of photos named by product code, preview the match, attach.'
+  },
+  {
     label: 'Platform Modules',
     href: '/admin/platform-modules',
     group: 'Commerce',

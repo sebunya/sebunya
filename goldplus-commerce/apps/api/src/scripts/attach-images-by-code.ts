@@ -26,39 +26,8 @@ import { db, endDbConnection } from '../infrastructure/db/client';
  *
  *   ACTOR_USER_ID=<uuid> IMAGES_DIR=/import-images [DRY_RUN=1] npx tsx src/scripts/attach-images-by-code.ts
  */
-/** Letters-and-digits tokens: "GP - P07 PB" → ["gp","p07","pb"]; "gp-p07-pb-2.webp" → ["gp","p07","pb","2"]. */
-/**
- * Letter runs and digit runs are separate tokens ("gp01" → gp, 1; "p07" → p, 7)
- * and digit runs compare by VALUE, so a photographer's "gp-001" is the price
- * list's "GP01" and "GP - P07 PB" is "gp-p07-pb".
- */
-const tokens = (v: string) => (v.toLowerCase().match(/[a-z]+|\d+/g) ?? []).map((t) => (/^\d+$/.test(t) ? String(Number(t)) : t));
-/** The code without its "gp" prefix: what must appear, in order, as whole tokens in the filename. */
-const codeKey = (code: string) => { const t = tokens(code); const stripped = t[0] === 'gp' || t[0] === 'gd' ? t.slice(1) : t; return stripped.length ? stripped : t; };
-/**
- * Does the code appear in the filename as whole tokens? Separators are free:
- * "GP04", "gp-04" and "gp 04" all name GP04, and "gp-p07-pb" names GP-P07-PB —
- * any run of filename tokens whose concatenation equals the code (with or
- * without the gp prefix) counts. A code can never match INSIDE another token.
- */
-const containsRun = (hay: string[], run: string[]) => {
-  if (run.length === 0) return false;
-  // A short bare key ('1', '4') would match almost any filename; it is only
-  // accepted with its gp prefix present.
-  const bare = run.join('');
-  const want = new Set(bare.length >= 3 ? [bare, `gp${bare}`] : [`gp${bare}`]);
-  for (let i = 0; i < hay.length; i += 1) {
-    let acc = '';
-    for (let j = i; j < hay.length && acc.length < 40; j += 1) { acc += hay[j]; if (want.has(acc)) return true; }
-  }
-  return false;
-};
-/** A word in the filename that names a KIND of product; used only to refuse a match, never to make one. */
-const KIND: Array<[RegExp, RegExp]> = [
-  [/power ?bank|powerbank/, /power bank/i], [/charger|charging/, /charger/i], [/cable/, /cable/i], [/earbud|earphone|headset|headphone/, /earphone|bluetooth|headset|earbud/i],
-  [/speaker/, /speaker|bluetooth/i], [/mouse/, /mouse/i], [/sound ?card/, /sound card/i], [/memory ?card|sd ?card/, /memory card/i], [/flash ?drive|usb ?drive/, /flash drive/i],
-  [/battery/, /battery/i], [/card ?reader/, /card reader/i], [/car /, /car /i],
-];
+import { planPhotoAttachments } from '../domain/media/PhotoCodeMatcher';
+
 const MIME: Record<string, string> = { '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.avif': 'image/avif' };
 const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
@@ -71,34 +40,13 @@ async function main(): Promise<void> {
   const r = Registry.getInstance();
 
   const products = rowsOf(await db.execute(sql`select id, name, slug, sku, model_number, category_name from products`)).map((p) => ({
-    id: String(p.id), name: String(p.name), slug: String(p.slug), category: String(p.category_name ?? ''),
-    keys: [...new Set([String(p.sku ?? ''), String(p.model_number ?? '')].map((c) => codeKey(c).join('-')).filter((k) => k.replace(/-/g, '').length >= 1))].map((k) => k.split('-')),
+    id: String(p.id), name: String(p.name), category: String(p.category_name ?? ''), codes: [String(p.sku ?? ''), String(p.model_number ?? '')].filter(Boolean),
   }));
   const files = readdirSync(dir).filter((f) => MIME[extname(f).toLowerCase()] && statSync(join(dir, f)).isFile()).sort();
-
-  const plan = new Map<string, string[]>(); const unmatched: string[] = []; const ambiguous: string[] = []; const conflicts: string[] = [];
-  for (const file of files) {
-    const stem = file.replace(extname(file), '');
-    const hay = tokens(stem);
-    // Longest code that appears as a whole-token run wins; equal lengths tie.
-    let best: { id: string; len: number }[] = [];
-    for (const p of products) for (const k of p.keys) {
-      if (!containsRun(hay, k)) continue;
-      const len = k.join('').length;
-      if (!best.length || len > best[0].len) best = [{ id: p.id, len }];
-      else if (len === best[0].len && !best.some((b) => b.id === p.id)) best.push({ id: p.id, len });
-    }
-    if (best.length === 0) { unmatched.push(file); continue; }
-    if (best.length > 1) { ambiguous.push(`${file} → ${best.map((b) => products.find((p) => p.id === b.id)?.name).join(' | ')}`); continue; }
-    const product = products.find((p) => p.id === best[0].id)!;
-    // The filename says what KIND of thing it is; if the product is a different
-    // kind, the code collided (the photo set and the price list use different
-    // schemes) and the match is refused rather than guessed.
-    const spaced = stem.toLowerCase().replace(/[^a-z0-9]+/g, ' ') + ' ';
-    const kind = KIND.find(([inFile]) => inFile.test(spaced));
-    if (kind && !kind[1].test(`${product.name} ${product.category}`)) { conflicts.push(`${file} ↛ ${product.name} (filename says a different kind of product)`); continue; }
-    plan.set(product.id, [...(plan.get(product.id) ?? []), file]);
-  }
+  const result = planPhotoAttachments(files, products);
+  const plan = new Map<string, string[]>();
+  for (const m of result.matched) plan.set(m.productId, [...(plan.get(m.productId) ?? []), m.file]);
+  const unmatched = result.unmatched; const ambiguous = result.ambiguous.map((a) => `${a.file} → ${a.candidates.join(' | ')}`); const conflicts = result.refused.map((r) => `${r.file} ↛ ${r.productName} (${r.reason})`);
   console.log(`files ${files.length}: matched ${[...plan.values()].flat().length} to ${plan.size} products, unmatched ${unmatched.length}, ambiguous ${ambiguous.length}, refused ${conflicts.length}`);
   for (const [id, fs] of plan) console.log(`  ${products.find((p) => p.id === id)?.name}: ${fs.join(', ')}`);
   for (const f of unmatched) console.log(`  UNMATCHED ${f}`);
