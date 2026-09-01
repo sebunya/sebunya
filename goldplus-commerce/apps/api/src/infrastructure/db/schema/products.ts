@@ -38,7 +38,7 @@ export const products = pgTable('products', {
   
   specifications: jsonb('specifications').$type<Record<string, string | number>>().default({}).notNull(),
   approvalStatus: varchar('approval_status', { length: 20 }).default('draft').notNull(),
-  isFeedEligible: boolean('is_feed_eligible').default(false).notNull(),
+  isFeedEligible: boolean('is_feed_eligible').default(true).notNull(),
   isPreOrderEnabled: boolean('is_pre_order_enabled').default(false).notNull(),
   hasRetailPrice: boolean('has_retail_price').default(false).notNull(),
   hasImage: boolean('has_image').default(false).notNull(),

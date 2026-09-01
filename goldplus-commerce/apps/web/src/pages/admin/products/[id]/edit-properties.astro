@@ -61,6 +61,7 @@ if (Astro.request.method === 'POST') {
   const stockQuantity = Number(form.get('stockQuantity') ?? 0);
   const imageUrl = String(form.get('imageUrl') ?? '').trim() || undefined;
   const active = form.get('active') === 'on' || form.get('active') === 'true';
+  const isFeedEligible = form.get('isFeedEligible') === 'on' || form.get('isFeedEligible') === 'true';
   const approvalStatus = String(form.get('approvalStatus') ?? 'draft');
 
   const res = await authedJson(`/admin/products/${encodeURIComponent(id ?? '')}`, {
@@ -68,7 +69,7 @@ if (Astro.request.method === 'POST') {
     body: JSON.stringify({
       name, sku, modelNumber, slug, categoryId, subcategory,
       shortDescription, longDescription, priceUgx, floorPriceUgx, tierBPriceUgx, tierCPriceUgx, stockStatus,
-      stockQuantity, imageUrl, active, approvalStatus
+      stockQuantity, imageUrl, active, approvalStatus, isFeedEligible
     }),
   });
 
@@ -287,6 +288,22 @@ if (Astro.request.method === 'POST') {
               <div>
                 <span class="text-sm font-bold text-brand-dark block">Active & Enabled</span>
                 <span class="text-xs text-gray-500">Makes the item immediately queryable on endpoints.</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="flex flex-col justify-center">
+            <label class="flex items-center gap-3 select-none cursor-pointer">
+              <input
+                id="isFeedEligible"
+                name="isFeedEligible"
+                type="checkbox"
+                checked={product.isFeedEligible !== false}
+                class="w-5 h-5 accent-brand-green rounded border-gray-300 focus:ring-brand-green"
+              />
+              <div>
+                <span class="text-sm font-bold text-brand-dark block">Listed in the Google Merchant feed</span>
+                <span class="text-xs text-gray-500">Untick to keep this product out of Google Shopping. It is only sent once it is approved, active, priced and has a photo.</span>
               </div>
             </label>
           </div>

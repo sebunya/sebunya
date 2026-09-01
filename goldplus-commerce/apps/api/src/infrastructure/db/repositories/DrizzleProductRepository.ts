@@ -549,6 +549,16 @@ export class DrizzleProductRepository implements IProductRepository {
     return { floorPriceUgx: row?.floorPrice ?? null, tierBPriceUgx: row?.tierBPrice ?? null, tierCPriceUgx: row?.tierCPrice ?? null };
   }
 
+  /** Merchant-feed listing is opt-out (0128): a sellable product is in the feed unless excluded here. */
+  async setFeedEligibility(productId: string, eligible: boolean): Promise<void> {
+    await db.update(products).set({ isFeedEligible: eligible, updatedAt: new Date() }).where(eq(products.id, productId));
+  }
+
+  async feedEligibilityFor(productId: string): Promise<boolean> {
+    const row = await db.query.products.findFirst({ where: eq(products.id, productId), columns: { isFeedEligible: true } });
+    return row?.isFeedEligible ?? true;
+  }
+
   async updateProductProperties(product: ProductEntity, categoryId: string, tiers: PriceTierPatch = {}): Promise<void> {
     await this.save(product, categoryId);
     const priceRow = await db.query.productPrices.findFirst({ where: eq(productPrices.productId, product.id) });

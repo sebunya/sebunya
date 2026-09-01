@@ -261,8 +261,8 @@ routes.get('/:id', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) =>
   }
   // 0127 — the product's own price tiers travel with it so the editor can show
   // and change the floor (Price A) beside the retail price (Price D).
-  const priceTiers = await registry.productRepo.getPriceTiers(productId);
-  return c.json({ success: true, data: { ...product, priceTiers } });
+  const [priceTiers, isFeedEligible] = await Promise.all([registry.productRepo.getPriceTiers(productId), registry.productRepo.feedEligibilityFor(productId)]);
+  return c.json({ success: true, data: { ...product, priceTiers, isFeedEligible } });
 });
 
 // Create product
@@ -543,6 +543,8 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
 
     // Save entity through repository orchestration
     await registry.productRepo.updateProductProperties(productEntity, categoryId, tiers.value);
+    // Merchant-feed listing is opt-out; only an explicit boolean changes it.
+    if (typeof body.isFeedEligible === 'boolean') await registry.productRepo.setFeedEligibility(productId, body.isFeedEligible);
 
     // U6 AC6 — a slug change 301s the old product URL to the new one so inbound
     // links keep resolving. Fail-open: the product update already committed and
