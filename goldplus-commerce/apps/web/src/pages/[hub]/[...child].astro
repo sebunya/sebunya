@@ -74,7 +74,9 @@ const faqs = hub.faqs
   })
   .filter((f): f is { question: string; answer: string } => Boolean(f));
 
-// JSON-LD: breadcrumbs + a plain ItemList of the real products (name + url only).
+// JSON-LD: breadcrumbs + an ItemList carrying the same product facts the shop
+// page publishes — an engine reading a category page should not have to open 24
+// product pages to learn what is sold and for how much.
 const crumbs = [
   { name: 'Home', url: `${SITE_ORIGIN}/` },
   { name: hub.h1, url: `${SITE_ORIGIN}${hubPath(hub.slug)}` },
@@ -83,11 +85,20 @@ const crumbs = [
 const itemListJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'ItemList',
+  name: child ? child.h1 : hub.h1,
+  numberOfItems: Math.min(products.length, 24),
   itemListElement: products.slice(0, 24).map((p, i) => ({
     '@type': 'ListItem',
     position: i + 1,
-    name: p.name,
-    url: `${SITE_ORIGIN}/products/${p.slug}`,
+    item: {
+      '@type': 'Product',
+      name: p.name,
+      url: `${SITE_ORIGIN}/products/${p.slug}`,
+      ...(p.primaryImageUrl ? { image: /^https?:\/\//i.test(p.primaryImageUrl) ? p.primaryImageUrl : `${SITE_ORIGIN}${p.primaryImageUrl}` } : {}),
+      ...(p.retailPriceUgx != null
+        ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: p.retailPriceUgx, availability: p.availability?.kind === 'in_stock' ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock', url: `${SITE_ORIGIN}/products/${p.slug}` } }
+        : {}),
+    },
   })),
 };
 

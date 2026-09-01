@@ -30,6 +30,21 @@ describe('answer-engine surfaces', () => {
     expect(src).toMatch(/const openingHours = .*\? *`\$\{dayRange\[0\]\}-\$\{dayRange\[1\]\} \$\{hoursRange\[0\]\}-\$\{hoursRange\[1\]\}`\s*: null;/s);
   });
 
+  it('one GoldPlus entity: the Store and the WebSite reference the Organization by id', () => {
+    const src = read('apps/web/src/components/SiteJsonLd.astro');
+    expect(src).toContain('const ORG_ID = `${SITE_ORIGIN}/#organization`;');
+    expect(src).toContain("'@id': ORG_ID,");
+    expect(src).toContain('parentOrganization: { \'@id\': ORG_ID }');
+    expect(src).toContain('publisher: { \'@id\': ORG_ID }');
+  });
+
+  it('category hub pages carry the same product facts as the shop page', () => {
+    const src = read('apps/web/src/pages/[hub]/[...child].astro');
+    expect(src).toContain("'@type': 'Product'");
+    expect(src).toContain("priceCurrency: 'UGX'");
+    expect(src).toContain('numberOfItems: Math.min(products.length, 24)');
+  });
+
   it('the shop page states what it lists', () => {
     const src = read('apps/web/src/pages/shop.astro');
     expect(src).toContain("import { serializeJsonLd, breadcrumbJsonLd } from '../lib/jsonld';");
