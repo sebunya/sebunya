@@ -137,3 +137,27 @@ describe('published links point at real pages', () => {
     expect(() => read('apps/web/src/pages/delivery/kampala-wakiso.astro')).not.toThrow();
   });
 });
+
+/**
+ * Crawlers request /favicon.ico and /apple-touch-icon.png by convention no
+ * matter what the link tags say — both 404'd for Googlebot and Applebot until
+ * 2026-09-02, and an SVG apple-touch-icon is ignored by Apple devices entirely.
+ */
+describe('the icons crawlers ask for by convention exist', () => {
+  it('ships a real .ico and a PNG touch icon', () => {
+    const ico = readFileSync(resolve(ROOT, 'apps/web/public/favicon.ico'));
+    // ICO container: reserved 0, type 1 (icon), one image.
+    expect(ico.readUInt16LE(0)).toBe(0);
+    expect(ico.readUInt16LE(2)).toBe(1);
+    expect(ico.readUInt16LE(4)).toBe(1);
+    const png = readFileSync(resolve(ROOT, 'apps/web/public/apple-touch-icon.png'));
+    expect(png.subarray(1, 4).toString('ascii')).toBe('PNG');
+  });
+
+  it('declares them, and never points Apple at an SVG', () => {
+    const layout = read('apps/web/src/layouts/BaseLayout.astro');
+    expect(layout).toContain('<link rel="icon" href="/favicon.ico" sizes="32x32" />');
+    expect(layout).toContain('<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />');
+    expect(layout).not.toMatch(/apple-touch-icon"[^>]*\.svg/);
+  });
+});

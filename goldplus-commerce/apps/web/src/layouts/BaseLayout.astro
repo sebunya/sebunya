@@ -175,8 +175,12 @@ const measurement = resolveMeasurementConfig(import.meta.env);
         }
       );
     </script>}
+    {/* Crawlers and browsers request /favicon.ico by convention whatever the
+        link tags say, and Apple devices ignore an SVG apple-touch-icon — both
+        were 404ing for Googlebot and Applebot until 2026-09-02. */}
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
-    <link rel="apple-touch-icon" href="/icon-192.svg" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#0A0A0A" />
   </head>
