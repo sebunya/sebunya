@@ -20,6 +20,7 @@ export type StorefrontDiscount =
       percentBps: number;
       percent: number;
       priceFloorUgx: number;
+      startsIso: string;
       endsIso: string;
       name: string;
     };
@@ -56,6 +57,7 @@ export async function resolveStorefrontDiscount(
       // The promotion's own EXTRA floor (usually 0). Every surface combines it
       // with the product's floor via effectiveFloorUgx, exactly as the evaluator does.
       priceFloorUgx: version.priceFloorUgx,
+      startsIso: version.schedule.startsAt.toISOString(),
       endsIso: version.schedule.endsAt.toISOString(),
       name: definition.name,
     };

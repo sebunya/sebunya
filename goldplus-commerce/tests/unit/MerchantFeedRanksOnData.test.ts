@@ -59,6 +59,33 @@ describe('the merchant feed carries what Shopping ranks on', () => {
     expect((many.match(/g:additional_image_link>/g) ?? []).length / 2).toBe(10);
   });
 
+  it('verified specs become product_detail; the Features spec becomes highlights; nothing appears without data', () => {
+    const xml = buildMerchantFeedXml([base({ verifiedSpecs: [
+      { name: 'Output power', value: '100', unit: 'W' },
+      { name: 'Ports', value: 'USB-C', unit: null },
+      { name: 'Features', value: 'Smart chip, temperature protection, flame guard', unit: null },
+    ] })]);
+    expect(xml).toContain('<g:attribute_name>Output power</g:attribute_name>');
+    expect(xml).toContain('<g:attribute_value>100 W</g:attribute_value>');
+    expect(xml).toContain('<g:attribute_value>USB-C</g:attribute_value>');
+    expect((xml.match(/<g:product_detail>/g) ?? []).length).toBe(3);
+    expect(xml).toContain('<g:product_highlight>Smart chip</g:product_highlight>');
+    expect(xml).toContain('<g:product_highlight>flame guard</g:product_highlight>');
+    const bare = buildMerchantFeedXml([base()]);
+    expect(bare).not.toContain('g:product_detail');
+    expect(bare).not.toContain('g:product_highlight');
+  });
+
+  it('a live campaign states its window as sale_price_effective_date; a dateless one does not', () => {
+    const discount = { percentBps: 1000, priceFloorUgx: 0, saleStartIso: '2026-09-01T00:00:00.000Z', saleEndIso: '2026-09-08T00:00:00.000Z' };
+    const xml = buildMerchantFeedXml([base()], undefined, discount);
+    expect(xml).toContain('<g:sale_price>14400 UGX</g:sale_price>');
+    expect(xml).toContain('<g:sale_price_effective_date>2026-09-01T00:00:00.000Z/2026-09-08T00:00:00.000Z</g:sale_price_effective_date>');
+    const dateless = buildMerchantFeedXml([base()], undefined, { percentBps: 1000, priceFloorUgx: 0 });
+    expect(dateless).toContain('<g:sale_price>');
+    expect(dateless).not.toContain('sale_price_effective_date');
+  });
+
   it('the long description wins when written; availability knows preorder', () => {
     expect(feedDescription({ shortDescription: 'short', longDescription: '  long text  ' })).toBe('long text');
     expect(feedDescription({ shortDescription: 'short', longDescription: '' })).toBe('short');

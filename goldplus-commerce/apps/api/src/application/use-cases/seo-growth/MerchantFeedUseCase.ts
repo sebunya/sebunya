@@ -38,6 +38,8 @@ export interface FeedProduct {
   /** For the listing-quality report only. */
   id?: string;
   verifiedSpecCount?: number;
+  /** Maker-verified specifications → g:product_detail / g:product_highlight. */
+  verifiedSpecs?: Array<{ name: string; value: string; unit: string | null }>;
 }
 
 /**
@@ -62,6 +64,9 @@ export const STOREFRONT_BASE_URL = 'https://shopgoldplus.com';
 export interface FeedDiscount {
   percentBps: number;
   priceFloorUgx: number;
+  /** The promotion's real window; the feed states it so Google shows the sale price only while the shop charges it. */
+  saleStartIso?: string;
+  saleEndIso?: string;
 }
 
 export function escapeXml(value: string): string {
@@ -95,6 +100,8 @@ export const feedDescription = (p: Pick<FeedProduct, 'shortDescription' | 'longD
   ((p.longDescription ?? '').trim() || p.shortDescription).trim().slice(0, 5000);
 
 const MAX_ADDITIONAL_IMAGES = 10;
+const MAX_HIGHLIGHTS = 10;
+const MAX_PRODUCT_DETAILS = 30;
 
 export function buildMerchantFeedXml(
   products: FeedProduct[],
@@ -126,6 +133,8 @@ export function buildMerchantFeedXml(
       // one shared formula, floor included, so the feed cannot drift from the
       // shop the way a hand-copied calculation did.
       ...(saleUgx !== null ? [`      <g:sale_price>${saleUgx} UGX</g:sale_price>`] : []),
+      // The sale window, so Google's sale price and the shop's expire together.
+      ...(saleUgx !== null && discount?.saleStartIso && discount?.saleEndIso ? [`      <g:sale_price_effective_date>${escapeXml(`${discount.saleStartIso}/${discount.saleEndIso}`)}</g:sale_price_effective_date>`] : []),
       '      <g:condition>new</g:condition>',
       '      <g:brand>GoldPlus</g:brand>',
     ];
@@ -138,6 +147,19 @@ export function buildMerchantFeedXml(
     if (googleCategory) lines.push(`      <g:google_product_category>${escapeXml(googleCategory)}</g:google_product_category>`);
     const productType = productTypeFor(p);
     if (productType) lines.push(`      <g:product_type>${escapeXml(productType)}</g:product_type>`);
+    // Maker-verified specifications, exactly as recorded — never invented.
+    const specs = (p.verifiedSpecs ?? []).slice(0, MAX_PRODUCT_DETAILS);
+    for (const s of specs) {
+      lines.push('      <g:product_detail>');
+      lines.push(`        <g:attribute_name>${escapeXml(s.name)}</g:attribute_name>`);
+      lines.push(`        <g:attribute_value>${escapeXml(s.unit ? `${s.value} ${s.unit}` : s.value)}</g:attribute_value>`);
+      lines.push('      </g:product_detail>');
+    }
+    // The Features spec, one highlight per comma-separated feature (max 150 chars each).
+    const features = specs.find((s) => s.name.toLowerCase() === 'features');
+    for (const h of (features?.value ?? '').split(/,\s*/).map((v) => v.trim()).filter((v) => v.length > 0 && v.length <= 150).slice(0, MAX_HIGHLIGHTS)) {
+      lines.push(`      <g:product_highlight>${escapeXml(h)}</g:product_highlight>`);
+    }
     lines.push('    </item>');
     return lines.join('\n');
   });

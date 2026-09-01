@@ -86,7 +86,7 @@ routes.get('/merchant-feed.xml', async (c) => {
       xml: buildMerchantFeedXml(
         products,
         STOREFRONT_BASE_URL,
-        campaign.active ? { percentBps: campaign.percentBps, priceFloorUgx: campaign.priceFloorUgx } : null,
+        campaign.active ? { percentBps: campaign.percentBps, priceFloorUgx: campaign.priceFloorUgx, saleStartIso: campaign.startsIso, saleEndIso: campaign.endsIso } : null,
       ),
       builtAt: now,
     };
