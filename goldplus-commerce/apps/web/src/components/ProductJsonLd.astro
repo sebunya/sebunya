@@ -22,6 +22,9 @@ const node: Record<string, unknown> = {
   name: product.name,
   category: product.categoryName,
   url,
+  // The house brand: every product here is GoldPlus-branded; Google's product
+  // rich results and Merchant free listings want brand on the page as in the feed.
+  brand: { '@type': 'Brand', name: 'GoldPlus' },
 };
 
 const hasValidSku = product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending');
@@ -37,6 +40,8 @@ const specEntries = Object.entries(product.verifiedSpecs).filter(([_, v]) => {
 });
 if (specEntries.length > 0) {
   node.description = specEntries.map(([k, v]) => `${k}: ${v}`).join('; ');
+} else if (product.longDescription?.trim() || product.shortDescription?.trim()) {
+  node.description = (product.longDescription?.trim() || product.shortDescription).trim();
 }
 
 if (product.primaryImageUrl) node.image = /^https?:\/\//i.test(product.primaryImageUrl) ? product.primaryImageUrl : `${SITE_ORIGIN}${product.primaryImageUrl}`;
@@ -60,6 +65,7 @@ if (product.retailPriceUgx !== null) {
     priceCurrency: 'UGX',
     price: product.retailPriceUgx,
     url,
+    itemCondition: 'https://schema.org/NewCondition',
   };
   const availUrl = availabilityUrl[product.availability.kind];
   if (availUrl) offers.availability = availUrl;

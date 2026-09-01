@@ -46,6 +46,8 @@ describe('the storefront serves renditions', () => {
       expect(src, r).toMatch(/COALESCE\(\(SELECT \$\{displayImageUrlSql\('i'\)\}.*LIMIT 1\), \$\{products\.imageUrl\}\)/);
     }
     // Google requires absolute image URLs.
-    expect(read('apps/api/src/application/use-cases/seo-growth/MerchantFeedUseCase.ts')).toContain("<g:image_link>${escapeXml(/^https?:\\/\\//i.test(p.imageUrl!) ? p.imageUrl! : `${baseUrl}");
+    const feedXml = read('apps/api/src/application/use-cases/seo-growth/MerchantFeedUseCase.ts');
+    expect(feedXml).toContain('<g:image_link>${escapeXml(absolute(baseUrl, p.imageUrl!))}</g:image_link>');
+    expect(feedXml).toMatch(/const absolute = \(baseUrl: string, url: string\): string =>\s*\/\^https\?:/);
   });
 });

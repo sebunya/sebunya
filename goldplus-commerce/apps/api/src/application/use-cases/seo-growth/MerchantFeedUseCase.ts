@@ -1,4 +1,5 @@
 import { salePriceUgx, effectiveFloorUgx } from '@goldplus/shared';
+import { googleProductCategoryFor, productTypeFor } from '../../../domain/advertising/GoogleProductCategory';
 
 /**
  * Merchant Center product feed + feed-quality diagnostics.
@@ -27,6 +28,13 @@ export interface FeedProduct {
   isFeedEligible: boolean;
   active: boolean;
   approvalStatus: string;
+  /** Our taxonomy, for g:product_type and the Google category mapping. */
+  categoryName?: string | null;
+  subcategory?: string | null;
+  /** Preferred over shortDescription when the owner has written one. */
+  longDescription?: string | null;
+  /** Every gallery image in display order (primary first); extras become g:additional_image_link. */
+  imageUrls?: string[];
 }
 
 export const STOREFRONT_BASE_URL = 'https://shopgoldplus.com';
@@ -58,7 +66,16 @@ export function isFeedIncluded(p: FeedProduct): boolean {
 }
 
 const availability = (stockStatus: string): string =>
-  stockStatus === 'in_stock' ? 'in stock' : 'out of stock';
+  stockStatus === 'in_stock' ? 'in stock' : stockStatus === 'pre_order' ? 'preorder' : 'out of stock';
+
+const absolute = (baseUrl: string, url: string): string =>
+  /^https?:\/\//i.test(url) ? url : `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+
+/** Google's description limit is 5000 chars; the long description wins when the owner wrote one. */
+export const feedDescription = (p: Pick<FeedProduct, 'shortDescription' | 'longDescription'>): string =>
+  ((p.longDescription ?? '').trim() || p.shortDescription).trim().slice(0, 5000);
+
+const MAX_ADDITIONAL_IMAGES = 10;
 
 export function buildMerchantFeedXml(
   products: FeedProduct[],
@@ -75,10 +92,12 @@ export function buildMerchantFeedXml(
       '    <item>',
       `      <g:id>${escapeXml(p.sku)}</g:id>`,
       `      <title>${escapeXml(p.name)}</title>`,
-      `      <description>${escapeXml(p.shortDescription)}</description>`,
+      `      <description>${escapeXml(feedDescription(p))}</description>`,
       `      <link>${escapeXml(link)}</link>`,
       // Google requires an absolute image URL; stored URLs are site-relative paths.
-      `      <g:image_link>${escapeXml(/^https?:\/\//i.test(p.imageUrl!) ? p.imageUrl! : `${baseUrl}${p.imageUrl!.startsWith('/') ? '' : '/'}${p.imageUrl!}`)}</g:image_link>`,
+      `      <g:image_link>${escapeXml(absolute(baseUrl, p.imageUrl!))}</g:image_link>`,
+      // The rest of the gallery, primary excluded, at most ten — Google shows them on the listing.
+      ...(p.imageUrls ?? []).filter((u) => u && u !== p.imageUrl).slice(0, MAX_ADDITIONAL_IMAGES).map((u) => `      <g:additional_image_link>${escapeXml(absolute(baseUrl, u))}</g:additional_image_link>`),
       `      <g:availability>${availability(p.stockStatus)}</g:availability>`,
       `      <g:price>${p.priceUgx} UGX</g:price>`,
       // Merchant Center wants the campaign price as g:sale_price alongside the
@@ -94,6 +113,12 @@ export function buildMerchantFeedXml(
     if (p.modelNumber && p.modelNumber.trim() !== '') {
       lines.push(`      <g:mpn>${escapeXml(p.modelNumber)}</g:mpn>`);
     }
+    // Where the product sits in Google's taxonomy (only when the mapping is
+    // sure) and in ours (always, for grouping and bidding).
+    const googleCategory = googleProductCategoryFor(p);
+    if (googleCategory) lines.push(`      <g:google_product_category>${escapeXml(googleCategory)}</g:google_product_category>`);
+    const productType = productTypeFor(p);
+    if (productType) lines.push(`      <g:product_type>${escapeXml(productType)}</g:product_type>`);
     lines.push('    </item>');
     return lines.join('\n');
   });
@@ -146,6 +171,10 @@ export class FeedQualityUseCase {
       else if (p.shortDescription.trim().length < 50) issues.push('description_under_50_chars');
       if (!p.modelNumber || p.modelNumber.trim() === '') issues.push('missing_mpn');
       if (p.name.length > 150) issues.push('title_over_150_chars');
+      // What still holds the listing back once it is in the feed.
+      if (!googleProductCategoryFor(p)) issues.push('no_google_category');
+      if (!(p.longDescription ?? '').trim()) issues.push('no_long_description');
+      if ((p.imageUrls ?? []).length < 2) issues.push('single_image');
       for (const issue of issues) issueCounts[issue] = (issueCounts[issue] ?? 0) + 1;
       return { sku: p.sku, slug: p.slug, included: isFeedIncluded(p), issues };
     });

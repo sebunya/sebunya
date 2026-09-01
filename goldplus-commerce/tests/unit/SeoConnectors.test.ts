@@ -19,7 +19,7 @@ import { SEO_INTEGRATION_ENV_VARS } from '../../apps/api/src/application/use-cas
 const product = (over: Partial<FeedProduct> = {}): FeedProduct => ({
   sku: 'GP-100',
   slug: 'solar-panel-100w',
-  name: 'Solar Panel 100W',
+  name: 'Solar Charger 100W',
   shortDescription: 'A durable 100W monocrystalline solar panel for home and business use in Uganda.',
   priceUgx: 350_000,
   stockStatus: 'in_stock',
@@ -28,13 +28,19 @@ const product = (over: Partial<FeedProduct> = {}): FeedProduct => ({
   isFeedEligible: true,
   active: true,
   approvalStatus: 'approved',
+  // A complete listing: the diagnostics also want a Google category (the name
+  // decides), a written long description and a second image.
+  categoryName: 'Power Devices',
+  subcategory: 'Solar',
+  longDescription: 'A durable 100W monocrystalline solar panel for home and business use in Uganda, with a 25-year output warranty.',
+  imageUrls: ['https://cdn.shopgoldplus.com/p/gp-100.jpg', 'https://cdn.shopgoldplus.com/p/gp-100-2.jpg'],
   ...over,
 });
 
 describe('Merchant feed XML', () => {
   it('escapes XML special characters everywhere', () => {
     const xml = buildMerchantFeedXml([
-      product({ name: 'Cable 2.5mm² <Copper> & "Earth"', shortDescription: `It's <b>good</b> & long enough to describe usage clearly.` }),
+      product({ name: 'Cable 2.5mm² <Copper> & "Earth"', shortDescription: `It's <b>good</b> & long enough to describe usage clearly.`, longDescription: '' }),
     ]);
     expect(xml).toContain('Cable 2.5mm² &lt;Copper&gt; &amp; &quot;Earth&quot;');
     expect(xml).toContain('It&apos;s &lt;b&gt;good&lt;/b&gt; &amp;');

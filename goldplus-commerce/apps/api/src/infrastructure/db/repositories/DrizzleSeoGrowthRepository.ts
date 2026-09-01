@@ -578,10 +578,13 @@ export class DrizzleSeoGrowthRepository {
     sku: string; slug: string; name: string; shortDescription: string;
     priceUgx: number; floorPriceUgx: number | null; stockStatus: string; imageUrl: string | null;
     modelNumber: string | null; isFeedEligible: boolean; active: boolean; approvalStatus: string;
+    categoryName: string | null; subcategory: string | null; longDescription: string; imageUrls: string[];
   }>> {
     const rows = rowsOf(await db.execute(sql`
-      select p.sku, p.slug, p.name, p.short_description, p.price_ugx, p.stock_status,
+      select p.sku, p.slug, p.name, p.short_description, p.long_description, p.price_ugx, p.stock_status,
+             p.category_name, p.subcategory,
              coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id order by i.is_primary desc, i.display_order asc limit 1), p.image_url) as image_url,
+             coalesce((select array_agg(u order by ord) from (select ${displayImageUrlSql('i')} as u, row_number() over (order by i.is_primary desc, i.display_order asc) as ord from product_images i where i.product_id = p.id) g), '{}') as image_urls,
              p.model_number, p.is_feed_eligible, p.active, p.approval_status,
              pp.floor_price
       from products p
@@ -603,6 +606,10 @@ export class DrizzleSeoGrowthRepository {
       isFeedEligible: Boolean(r.is_feed_eligible),
       active: Boolean(r.active),
       approvalStatus: String(r.approval_status ?? ''),
+      categoryName: r.category_name == null ? null : String(r.category_name),
+      subcategory: r.subcategory == null ? null : String(r.subcategory),
+      longDescription: String(r.long_description ?? ''),
+      imageUrls: Array.isArray(r.image_urls) ? r.image_urls.map(String) : [],
     }));
   }
 
