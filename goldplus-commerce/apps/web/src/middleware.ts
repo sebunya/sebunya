@@ -1,6 +1,6 @@
 import { defineMiddleware } from "astro:middleware";
 import { prefersMarkdown, markdownResponse } from "./lib/agentMarkdown";
-import { agentDocumentFor } from "./lib/agentDocuments";
+import { agentDocumentFor, agentRepresentablePath } from "./lib/agentDocuments";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 import { apiBase } from "./lib/api";
 import { SESSION_COOKIE_NAME } from "./lib/session";
@@ -81,12 +81,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
     !context.url.pathname.startsWith('/api/');
   if (wantsMarkdown) {
     try {
-      const markdown = await agentDocumentFor(context.url.pathname);
-      if (markdown) {
-        const html = await next();
-        const htmlTokens = html.status === 200 ? Math.ceil((await html.clone().text()).length / 4) : undefined;
-        return markdownResponse(markdown, htmlTokens);
-      }
+      // Note what is NOT here: rendering the HTML page to measure it. Reporting
+      // a saving is not worth doing the work the agent asked us to skip.
+      const markdown = await agentDocumentFor(context.url);
+      if (markdown) return markdownResponse(markdown);
     } catch {
       // An agent asking for Markdown must never be worse off than one asking
       // for HTML: fall through and serve the page.
@@ -132,5 +130,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  return next();
+  const response = await next();
+  // Tell agents the cheaper representation exists. Only for documents we can
+  // actually serve as Markdown, so the header never promises a 404.
+  if (isDocument && response.status === 200 && agentRepresentablePath(path)) {
+    response.headers.append('Link', `<${context.url.origin}${path}>; rel="alternate"; type="text/markdown"`);
+    response.headers.append('Vary', 'Accept');
+  }
+  return response;
 });

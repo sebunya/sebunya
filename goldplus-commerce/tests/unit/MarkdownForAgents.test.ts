@@ -51,12 +51,28 @@ describe('markdown content negotiation', () => {
     expect(res.headers.get('content-signal')).toBe('search=yes, ai-input=yes, ai-train=no');
   });
 
+  it('does not render the HTML page it was asked to replace', () => {
+    const mw = read('apps/web/src/middleware.ts');
+    const block = mw.slice(mw.indexOf('if (wantsMarkdown)'), mw.indexOf('const adminPath'));
+    // The old implementation called next() and read the body just to report a
+    // token saving — doing the work the agent asked us to skip.
+    expect(block).not.toContain('next()');
+    expect(block).toContain('agentDocumentFor(context.url)');
+  });
+
+  it('advertises the markdown alternate only for paths it can actually serve', () => {
+    const mw = read('apps/web/src/middleware.ts');
+    expect(mw).toContain('agentRepresentablePath(path)');
+    expect(mw).toContain('rel="alternate"; type="text/markdown"');
+    expect(mw).toContain("response.headers.append('Vary', 'Accept')");
+  });
+
   it('never applies to admin or API paths, and falls through when there is nothing to serve', () => {
     const mw = read('apps/web/src/middleware.ts');
     expect(mw).toContain("context.request.method === 'GET'");
     expect(mw).toContain("!context.url.pathname.startsWith('/admin')");
     expect(mw).toContain("!context.url.pathname.startsWith('/api/')");
-    expect(mw).toMatch(/if \(markdown\) \{/);
+    expect(mw).toContain('if (markdown) return markdownResponse(markdown);');
     expect(mw).toContain('} catch {');
   });
 
@@ -67,5 +83,29 @@ describe('markdown content negotiation', () => {
     expect(docs).toContain('RETURNS_POLICY.windowDays');
     expect(docs).toContain('p.verifiedSpecs');
     expect(docs).not.toMatch(/Wilson Road|0705 004545/);
+  });
+
+  it('reads the catalogue once for all list documents instead of per request', () => {
+    const docs = read('apps/web/src/lib/agentDocuments.ts');
+    expect(docs).toContain('CATALOGUE_TTL_MS');
+    expect(docs).toContain('catalogueInflight');
+    // Every list document goes through the cache, never straight to the fetch.
+    const direct = docs.split('\n').filter((l) => l.includes('fetchApprovedCatalogue(apiBase)'));
+    expect(direct.length).toBe(1);
+  });
+
+  it('carries the page\'s structured data and honours /shop filters', () => {
+    const docs = read('apps/web/src/lib/agentDocuments.ts');
+    expect(docs).toContain('jsonLd: [productJsonLd(p)]');
+    expect(docs).toContain('hasMerchantReturnPolicy: merchantReturnPolicyJsonLd()');
+    expect(docs).toContain('filterDiscoveryProducts(all, { search, category, subcategory }, taxonomy)');
+    expect(docs).toContain('normalizeSortParam');
+  });
+
+  it('covers the pages an agent actually lands on', () => {
+    const docs = read('apps/web/src/lib/agentDocuments.ts');
+    for (const marker of ["pathname === '/'", "pathname === '/faq'", "pathname === '/shop'", '/^\\/products\\/([^/]+)$/', 'hubDocument(pathname)']) {
+      expect(docs, marker).toContain(marker);
+    }
   });
 });
