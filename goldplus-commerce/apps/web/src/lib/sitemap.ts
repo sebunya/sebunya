@@ -20,6 +20,7 @@ export const STATIC_SITEMAP_PATHS: readonly string[] = [
   '/shop',
   '/product-finder',
   '/verification',
+  '/faq',
   '/support',
   '/support/issue',
   '/support/fake',

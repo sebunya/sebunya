@@ -1,0 +1,121 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getBusinessInfo } from '../lib/businessInfo';
+import { getStorefrontCopy } from '../lib/storefrontCopy';
+import { serializeJsonLd, breadcrumbJsonLd } from '../lib/jsonld';
+import { SITE_ORIGIN } from '../lib/sitemap';
+
+/**
+ * The questions customers actually ask, answered from what the site already
+ * commits to — business info for the shop and delivery, the checkout's own
+ * payment copy, the battery module for fitment, and the returns page's own
+ * words. Nothing here is a new promise: a policy this page cannot source is
+ * described exactly as the policy page describes it.
+ *
+ * The visible answers and the FAQPage data are built from the SAME array, so
+ * the structured data can never drift from what a reader sees — which is both
+ * Google's requirement and the reason an answer engine can quote it.
+ */
+const [biz, copy] = await Promise.all([getBusinessInfo(), getStorefrontCopy()]);
+
+const cutoff = `${biz.sameDayCutoffHour % 12 || 12}${biz.sameDayCutoffHour >= 12 ? 'pm' : 'am'}`;
+const faqs: Array<{ q: string; a: string; links?: Array<{ label: string; href: string }> }> = [
+  {
+    q: 'Do you deliver, and how long does it take?',
+    a: `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays.toLowerCase()}. Order before ${cutoff} and your order goes out on the same day's run; after that it goes on the next one. The delivery fee is calculated for your address and shown before you pay — never added afterwards.`,
+    links: [{ label: 'Delivery details', href: '/delivery' }],
+  },
+  {
+    q: 'Where is the GoldPlus shop and when is it open?',
+    a: `GoldPlus is at ${biz.addressLine1.replace(/\.$/, '')} — ${biz.addressLine2.replace(/\.$/, '')}. The shop is open ${biz.openDays.toLowerCase()}, ${biz.shopHours}. You can call or WhatsApp ${biz.phoneDisplay} before you come, and you are welcome to collect an online order at the shop instead of paying for delivery.`,
+    links: [{ label: 'Find us on the map', href: biz.mapUrl }],
+  },
+  {
+    q: 'How do I know which replacement battery fits my phone?',
+    a: 'Three ways, and you never pay before the fit is confirmed. Search your phone in the battery finder; or read the code printed on the battery inside your phone and match it to the code in the product name; or send us your phone model on WhatsApp and we tell you which pack fits. Batteries whose fit we know are listed by the phone they fit — an iPhone 13 Pro battery says so in its name.',
+    links: [{ label: 'Battery finder', href: '/battery-finder' }, { label: 'All batteries', href: '/shop?category=power-devices&q=battery' }],
+  },
+  {
+    q: 'How can I pay?',
+    a: `Two ways, both offered at checkout. ${copy.payment.pesapal.description} Or choose "${copy.payment.offline.label.toLowerCase()}": ${copy.payment.offline.description.charAt(0).toLowerCase()}${copy.payment.offline.description.slice(1)}`,
+  },
+  {
+    q: 'Are GoldPlus products genuine, and what if something is faulty?',
+    a: 'GoldPlus is the brand as well as the shop: the products are GoldPlus-branded, and every unit is tested before it is sold. Product pages list the maker\'s own specifications. If something is faulty, contact support with your order number and a description of the fault — support verifies the purchase, checks the coverage stated on your listing or receipt, and explains the assessment, repair or replacement. Return windows and refund methods are being finalised in the formal policy; until it takes effect, each return is assessed individually and you are told the outcome and the reasons directly.',
+    links: [{ label: 'Warranty', href: '/warranty' }, { label: 'Returns', href: '/returns' }, { label: 'Contact support', href: '/support' }],
+  },
+];
+
+const canonical = `${SITE_ORIGIN}/faq`;
+const faqJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  '@id': `${canonical}#faq`,
+  mainEntity: faqs.map((f) => ({
+    '@type': 'Question',
+    name: f.q,
+    acceptedAnswer: { '@type': 'Answer', text: f.a },
+  })),
+};
+const crumbs = breadcrumbJsonLd([
+  { name: 'GoldPlus', url: SITE_ORIGIN },
+  { name: 'Questions and answers', url: canonical },
+]);
+---
+<BaseLayout
+  title="Questions and answers"
+  description="Delivery, the shop address and hours, finding the battery that fits your phone, how to pay, and what happens if something is faulty."
+  canonicalUrl={canonical}
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" is:inline set:html={serializeJsonLd(faqJsonLd)} />
+    <script type="application/ld+json" is:inline set:html={serializeJsonLd(crumbs)} />
+  </Fragment>
+
+  <main class="bg-white">
+    <section class="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
+      <div class="container mx-auto max-w-3xl px-4 lg:px-8">
+        <h1 class="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Questions and answers</h1>
+        <p class="mt-3 text-base leading-relaxed text-slate-600">
+          The things people ask us most, answered plainly. If yours is not here,
+          <a href="/support" class="font-bold text-brand-primary underline underline-offset-2">ask support</a> —
+          we answer on WhatsApp on {biz.phoneDisplay}.
+        </p>
+      </div>
+    </section>
+
+    <section class="py-10 sm:py-14">
+      <div class="container mx-auto max-w-3xl px-4 lg:px-8">
+        <dl class="divide-y divide-slate-100">
+          {faqs.map((f) => (
+            <div class="py-7 first:pt-0">
+              <dt class="text-lg font-black leading-snug text-slate-900">{f.q}</dt>
+              <dd class="mt-3 text-[15px] leading-relaxed text-slate-600">
+                {f.a}
+                {f.links && (
+                  <span class="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+                    {f.links.map((l) => (
+                      <a
+                        href={l.href}
+                        class="text-sm font-bold text-brand-primary underline underline-offset-2 hover:no-underline"
+                        {...(l.href.startsWith('http') ? { target: '_blank', rel: 'noopener' } : {})}
+                      >{l.label} &rarr;</a>
+                    ))}
+                  </span>
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+
+        <div class="mt-10 rounded-2xl border border-slate-200 bg-slate-50 p-6">
+          <h2 class="text-base font-black text-slate-900">Still stuck?</h2>
+          <p class="mt-2 text-sm leading-relaxed text-slate-600">
+            Send us the phone model or the product code and we will tell you exactly what fits and what it costs, delivered.
+          </p>
+          <a href="/support" class="mt-4 inline-block rounded-xl bg-slate-900 px-6 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-black">Contact support</a>
+        </div>
+      </div>
+    </section>
+  </main>
+</BaseLayout>

@@ -58,6 +58,7 @@ export const GET: APIRoute = async () => {
     `- Shop, all products: ${SITE_ORIGIN}/shop`,
     `- Phone battery finder (find the battery that fits a phone): ${SITE_ORIGIN}/battery-finder`,
     `- Product finder: ${SITE_ORIGIN}/product-finder`,
+    `- Questions and answers (delivery, shop hours, battery fitment, payment, faults): ${SITE_ORIGIN}/faq`,
     `- Guides and advice: ${SITE_ORIGIN}/blog`,
     `- Delivery: ${SITE_ORIGIN}/delivery`,
     `- Returns: ${SITE_ORIGIN}/returns`,

@@ -66,3 +66,37 @@ describe('answer-engine surfaces', () => {
     expect(src).not.toMatch(/Wilson Road|0705 004545/);
   });
 });
+
+/**
+ * The FAQ is the page an answer engine quotes for "does GoldPlus deliver",
+ * "where is the shop", "which battery fits my phone". Its promises must be
+ * the site's existing promises: business info, the checkout's own payment
+ * copy, and the returns page's own wording — never a new commitment.
+ */
+describe('the FAQ answers from the site\'s own commitments', () => {
+  const src = read('apps/web/src/pages/faq.astro');
+
+  it('renders the visible answers and the FAQPage data from one array', () => {
+    expect(src).toContain("'@type': 'FAQPage'");
+    expect(src).toContain('mainEntity: faqs.map');
+    expect(src).toContain('{faqs.map((f) => (');
+    expect((src.match(/^\s*q: '/gm) ?? []).length).toBe(5);
+  });
+
+  it('sources every answer, inventing no policy', () => {
+    expect(src).toContain('getBusinessInfo');
+    expect(src).toContain('getStorefrontCopy');
+    expect(src).toContain('biz.deliveryNote');
+    expect(src).toContain('copy.payment.pesapal.description');
+    // No hard-coded address, phone, hours, or a returns window the policy page does not state.
+    expect(src).not.toMatch(/Wilson Road|0705 004545|8:30am/);
+    expect(src).not.toMatch(/\b(7|14|30)[- ]day\b/i);
+    expect(src).toContain('being finalised in the formal policy');
+  });
+
+  it('is reachable: sitemap, footer and llms.txt point at it', () => {
+    expect(read('apps/web/src/lib/sitemap.ts')).toContain("'/faq'");
+    expect(read('apps/web/src/layouts/BaseLayout.astro')).toContain('href="/faq"');
+    expect(read('apps/web/src/pages/llms.txt.ts')).toContain('/faq');
+  });
+});
