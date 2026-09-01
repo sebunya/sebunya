@@ -42,7 +42,14 @@ shopgoldplus.com, www.shopgoldplus.com {
   # Same-origin, so the existing img-src 'self' CSP already permits it.
   handle /uploads/* {
     root * /srv/media
-    header Cache-Control "public, max-age=31536000, immutable"
+    # Only a file that EXISTS is immutable. A miss must never carry the year-long
+    # header: Cloudflare cached six 404s for a year on 2026-09-01 after the files
+    # were requested before they were on the volume, and the photos stayed
+    # broken after the files arrived.
+    @present file
+    header @present Cache-Control "public, max-age=31536000, immutable"
+    @absent not file
+    header @absent Cache-Control "no-store"
     file_server
   }
 
