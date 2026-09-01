@@ -26,6 +26,49 @@ const organization = {
   sameAs,
 };
 
+/**
+ * The shop as a PLACE. An answer engine asked "where do I buy a phone battery
+ * in Kampala" can only name a business it can pin down: a street, a phone
+ * number, opening hours. Every value is the admin-editable business_info the
+ * footer already prints — parsed, never invented, and omitted when absent.
+ */
+const to24h = (t: string): string | null => {
+  const m = t.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);
+  if (!m) return null;
+  let h = Number(m[1]) % 12;
+  if (m[3].toLowerCase() === 'pm') h += 12;
+  return `${String(h).padStart(2, '0')}:${m[2] ?? '00'}`;
+};
+const DAY = { monday: 'Mo', tuesday: 'Tu', wednesday: 'We', thursday: 'Th', friday: 'Fr', saturday: 'Sa', sunday: 'Su' } as const;
+const hoursRange = biz.shopHours.split(/\s*(?:to|–|-)\s*/i).map(to24h);
+const dayRange = biz.openDays.toLowerCase().split(/\s*(?:to|–|-)\s*/).map((d) => DAY[d.trim() as keyof typeof DAY]);
+const openingHours = hoursRange.length === 2 && hoursRange.every(Boolean) && dayRange.length === 2 && dayRange.every(Boolean)
+  ? `${dayRange[0]}-${dayRange[1]} ${hoursRange[0]}-${hoursRange[1]}`
+  : null;
+
+const store: Record<string, unknown> = {
+  '@context': 'https://schema.org',
+  '@type': 'Store',
+  '@id': `${SITE_ORIGIN}/#store`,
+  name: 'GoldPlus',
+  url: SITE_ORIGIN,
+  image: `${SITE_ORIGIN}/goldplus-logo-header-desktop-150x43.png`,
+  telephone: biz.phoneDial.replace(/^tel:/, ''),
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: biz.addressLine1,
+    addressLocality: 'Kampala',
+    addressCountry: 'UG',
+  },
+  areaServed: ['Kampala', 'Wakiso'],
+  currenciesAccepted: 'UGX',
+  parentOrganization: { '@type': 'Organization', name: 'ShopGoldPlus', url: SITE_ORIGIN },
+};
+if (openingHours) store.openingHours = openingHours;
+if (biz.mapUrl) store.hasMap = biz.mapUrl;
+if (biz.addressLine2) store.description = biz.addressLine2;
+if (sameAs.length > 0) store.sameAs = sameAs;
+
 const website = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
@@ -40,3 +83,4 @@ const website = {
 ---
 <script type="application/ld+json" is:inline set:html={serializeJsonLd(organization)} />
 <script type="application/ld+json" is:inline set:html={serializeJsonLd(website)} />
+<script type="application/ld+json" is:inline set:html={serializeJsonLd(store)} />

@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { serializeJsonLd, breadcrumbJsonLd } from '../lib/jsonld';
 import ProductCard from '../components/ProductCard.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase, publicApiBase } from '../lib/api';
@@ -148,12 +149,39 @@ const activeFilters = [
   subcategory ? { label: subcategoryLabel, href: shopUrl({ subcategory: '' }) } : null,
   sort !== 'default' ? { label: 'Custom sort', href: shopUrl({ sort: 'default' }) } : null,
 ].filter((item): item is { label: string; href: string } => Boolean(item));
+
+const shopItemList = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: pageTitle,
+  numberOfItems: pageProducts.length,
+  itemListElement: pageProducts.map((p, i) => ({
+    '@type': 'ListItem',
+    position: (page - 1) * PAGE_SIZE + i + 1,
+    item: {
+      '@type': 'Product',
+      name: p.name,
+      url: `${SITE_ORIGIN}/products/${p.slug}`,
+      ...(p.primaryImageUrl ? { image: /^https?:\/\//i.test(p.primaryImageUrl) ? p.primaryImageUrl : `${SITE_ORIGIN}${p.primaryImageUrl}` } : {}),
+      ...(p.retailPriceUgx != null ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: p.retailPriceUgx, availability: p.availability?.kind === 'in_stock' ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock', url: `${SITE_ORIGIN}/products/${p.slug}` } } : {}),
+    },
+  })),
+};
+const shopBreadcrumb = breadcrumbJsonLd([
+  { name: 'GoldPlus', url: SITE_ORIGIN },
+  { name: 'Shop', url: `${SITE_ORIGIN}/shop` },
+]);
 ---
 
 <BaseLayout title={pageTitle} description={pageDescription} robotsMeta={robotsMeta} canonicalUrl={canonicalUrl}>
   <Fragment slot="head">
     {page > 1 && <link rel="prev" href={`${SITE_ORIGIN}${shopUrl({ page: page - 1 })}`} />}
     {page < totalPages && <link rel="next" href={`${SITE_ORIGIN}${shopUrl({ page: page + 1 })}`} />}
+    {/* What this page actually lists, in the order a visitor sees it, so an
+        engine answering "which chargers does GoldPlus sell" reads products
+        rather than guessing from link text. Prices are the real ones. */}
+    <script type="application/ld+json" is:inline set:html={serializeJsonLd(shopItemList)} />
+    <script type="application/ld+json" is:inline set:html={serializeJsonLd(shopBreadcrumb)} />
   </Fragment>
   <header class="border-b border-slate-800 bg-slate-950 py-10 text-white sm:py-12">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
