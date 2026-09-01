@@ -6,255 +6,754 @@
       "title": "GoldPlus GP-C08 12W USB Fast Charger, 2A (UK plug)",
       "longDescription": "A compact 12W wall charger with a single USB-A port and a UK 3-pin plug. Charges at up to 2A (5V) and supports 9V/1A fast charging for phones that accept it. Works with iPhone, Android and other USB-powered devices. ABS body with circuit protection and an explosion-proof resistor. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Input", "value": "100-240V ~50/60Hz 0.3A" },
-        { "name": "Output", "value": "5V⎓2A, 9V⎓1A" },
-        { "name": "Output power", "value": "12", "unit": "W" },
-        { "name": "Ports", "value": "USB-A" },
-        { "name": "Plug", "value": "UK 3-pin" },
-        { "name": "Works with", "value": "iPhone, Android and other USB-powered devices" },
-        { "name": "Colour", "value": "White/Black" },
-        { "name": "Material", "value": "ABS" },
-        { "name": "Protection", "value": "Circuit protection with explosion-proof resistor" }
-      ]
+        {
+          "name": "Input",
+          "value": "100-240V ~50/60Hz 0.3A"
+        },
+        {
+          "name": "Output",
+          "value": "5V⎓2A, 9V⎓1A"
+        },
+        {
+          "name": "Output power",
+          "value": "12",
+          "unit": "W"
+        },
+        {
+          "name": "Ports",
+          "value": "USB-A"
+        },
+        {
+          "name": "Plug",
+          "value": "UK 3-pin"
+        },
+        {
+          "name": "Works with",
+          "value": "iPhone, Android and other USB-powered devices"
+        },
+        {
+          "name": "Colour",
+          "value": "White/Black"
+        },
+        {
+          "name": "Material",
+          "value": "ABS"
+        },
+        {
+          "name": "Protection",
+          "value": "Circuit protection with explosion-proof resistor"
+        }
+      ],
+      "shortDescription": "12W USB wall charger, 2A, UK plug. Charges iPhone, Android and any USB device."
     },
     {
       "sku": "GP-C10",
       "title": "GoldPlus GP-C10 100W USB-C PD Super Fast Charger (UK plug)",
       "longDescription": "GoldPlus's fastest wall charger: a single USB-C port with multi-protocol PD fast charging, labelled 100W, in a white-and-black ABS body with a UK 3-pin plug. Outputs 5V⎓3A, 9V⎓2.2A and 12V⎓1.6A with a smart chip, temperature protection and flame-guard housing. Works with iPhone, Android and other USB-C devices. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Input", "value": "100-240V ~50/60Hz 0.7A" },
-        { "name": "Output", "value": "5V⎓3A, 9V⎓2.2A, 12V⎓1.6A" },
-        { "name": "Output power", "value": "100", "unit": "W" },
-        { "name": "Ports", "value": "USB-C" },
-        { "name": "Fast charging", "value": "PD, multi-protocol" },
-        { "name": "Plug", "value": "UK 3-pin" },
-        { "name": "Works with", "value": "iPhone, Android and other USB-powered devices" },
-        { "name": "Colour", "value": "White/Black" },
-        { "name": "Material", "value": "ABS" },
-        { "name": "Protection", "value": "Smart chip, temperature protection, flame guard, circuit protection with explosion-proof resistor" }
-      ]
+        {
+          "name": "Input",
+          "value": "100-240V ~50/60Hz 0.7A"
+        },
+        {
+          "name": "Output",
+          "value": "5V⎓3A, 9V⎓2.2A, 12V⎓1.6A"
+        },
+        {
+          "name": "Output power",
+          "value": "100",
+          "unit": "W"
+        },
+        {
+          "name": "Ports",
+          "value": "USB-C"
+        },
+        {
+          "name": "Fast charging",
+          "value": "PD, multi-protocol"
+        },
+        {
+          "name": "Plug",
+          "value": "UK 3-pin"
+        },
+        {
+          "name": "Works with",
+          "value": "iPhone, Android and other USB-powered devices"
+        },
+        {
+          "name": "Colour",
+          "value": "White/Black"
+        },
+        {
+          "name": "Material",
+          "value": "ABS"
+        },
+        {
+          "name": "Protection",
+          "value": "Smart chip, temperature protection, flame guard, circuit protection with explosion-proof resistor"
+        }
+      ],
+      "shortDescription": "100W USB-C PD wall charger with smart chip and flame-guard body. UK plug."
     },
     {
       "sku": "GP-C12",
       "title": "GoldPlus GP-C12 50W GaN USB-C Fast Charger with USB-C to Lightning Cable (UK plug)",
       "longDescription": "A 50W GaN wall charger with a single USB-C port and a UK 3-pin plug, sold as a kit with a braided USB-C to Lightning cable for iPhone. Outputs 5V⎓3A, 9V⎓2.2A and 12V⎓1.6A, with temperature, overcurrent and short-circuit protection in an ABS body. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Input", "value": "100-240V ~50/60Hz 0.7A" },
-        { "name": "Output", "value": "5V⎓3A, 9V⎓2.2A, 12V⎓1.6A" },
-        { "name": "Output power", "value": "50", "unit": "W" },
-        { "name": "Ports", "value": "USB-C" },
-        { "name": "Technology", "value": "GaN" },
-        { "name": "In the box", "value": "Charger, USB-C to Lightning cable" },
-        { "name": "Plug", "value": "UK 3-pin" },
-        { "name": "Works with", "value": "iPhone, Android and other USB-powered devices" },
-        { "name": "Colour", "value": "White/Black" },
-        { "name": "Material", "value": "ABS" },
-        { "name": "Protection", "value": "Temperature, overcurrent and short-circuit protection; explosion-proof resistor" }
-      ]
+        {
+          "name": "Input",
+          "value": "100-240V ~50/60Hz 0.7A"
+        },
+        {
+          "name": "Output",
+          "value": "5V⎓3A, 9V⎓2.2A, 12V⎓1.6A"
+        },
+        {
+          "name": "Output power",
+          "value": "50",
+          "unit": "W"
+        },
+        {
+          "name": "Ports",
+          "value": "USB-C"
+        },
+        {
+          "name": "Technology",
+          "value": "GaN"
+        },
+        {
+          "name": "In the box",
+          "value": "Charger, USB-C to Lightning cable"
+        },
+        {
+          "name": "Plug",
+          "value": "UK 3-pin"
+        },
+        {
+          "name": "Works with",
+          "value": "iPhone, Android and other USB-powered devices"
+        },
+        {
+          "name": "Colour",
+          "value": "White/Black"
+        },
+        {
+          "name": "Material",
+          "value": "ABS"
+        },
+        {
+          "name": "Protection",
+          "value": "Temperature, overcurrent and short-circuit protection; explosion-proof resistor"
+        }
+      ],
+      "shortDescription": "50W GaN USB-C charger with a braided USB-C to Lightning cable in the box. UK plug."
     },
     {
       "sku": "GP-C13",
       "title": "GoldPlus GP-C13 50W GaN USB-C Fast Charger with USB-C to USB-C Cable (UK plug)",
       "longDescription": "A 50W GaN wall charger with a single USB-C port and a UK 3-pin plug, sold as a kit with a braided USB-C to USB-C cable. Outputs 5V⎓3A, 9V⎓2.2A and 12V⎓1.6A, with temperature, overcurrent and short-circuit protection in an ABS body. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Input", "value": "100-240V ~50/60Hz 0.7A" },
-        { "name": "Output", "value": "5V⎓3A, 9V⎓2.2A, 12V⎓1.6A" },
-        { "name": "Output power", "value": "50", "unit": "W" },
-        { "name": "Ports", "value": "USB-C" },
-        { "name": "Technology", "value": "GaN" },
-        { "name": "In the box", "value": "Charger, USB-C to USB-C cable" },
-        { "name": "Plug", "value": "UK 3-pin" },
-        { "name": "Works with", "value": "iPhone, Android and other USB-powered devices" },
-        { "name": "Colour", "value": "White/Black" },
-        { "name": "Material", "value": "ABS" },
-        { "name": "Protection", "value": "Temperature, overcurrent and short-circuit protection; explosion-proof resistor" }
-      ]
+        {
+          "name": "Input",
+          "value": "100-240V ~50/60Hz 0.7A"
+        },
+        {
+          "name": "Output",
+          "value": "5V⎓3A, 9V⎓2.2A, 12V⎓1.6A"
+        },
+        {
+          "name": "Output power",
+          "value": "50",
+          "unit": "W"
+        },
+        {
+          "name": "Ports",
+          "value": "USB-C"
+        },
+        {
+          "name": "Technology",
+          "value": "GaN"
+        },
+        {
+          "name": "In the box",
+          "value": "Charger, USB-C to USB-C cable"
+        },
+        {
+          "name": "Plug",
+          "value": "UK 3-pin"
+        },
+        {
+          "name": "Works with",
+          "value": "iPhone, Android and other USB-powered devices"
+        },
+        {
+          "name": "Colour",
+          "value": "White/Black"
+        },
+        {
+          "name": "Material",
+          "value": "ABS"
+        },
+        {
+          "name": "Protection",
+          "value": "Temperature, overcurrent and short-circuit protection; explosion-proof resistor"
+        }
+      ],
+      "shortDescription": "50W GaN USB-C charger with a braided USB-C to USB-C cable in the box. UK plug."
     },
     {
       "sku": "GP-CA01",
       "title": "GoldPlus GP-CA01 65W Fast Charging Car Charger, USB-C PD 30W + USB-A QC4.0, with USB-C Cable",
       "longDescription": "A 65W car charger with two ports — USB-C with PD 30W and USB-A with QC 4.0 — so a phone and a second device fast-charge together from one socket. Smart chip, temperature control and an LED light ring; black ABS body; includes a USB-C to USB-C cable. Outputs 5V⎓6A, 9V⎓5A and 12V⎓4A in total. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Output", "value": "5V⎓6A, 9V⎓5A, 12V⎓4A" },
-        { "name": "Output power", "value": "65", "unit": "W" },
-        { "name": "Ports", "value": "USB-C (PD 30W) + USB-A (QC 4.0)" },
-        { "name": "In the box", "value": "Car charger, USB-C to USB-C cable" },
-        { "name": "Works with", "value": "iPhone, Android and other USB-powered devices" },
-        { "name": "Colour", "value": "Black" },
-        { "name": "Material", "value": "ABS" },
-        { "name": "Features", "value": "Smart chip, temperature control, LED light" },
-        { "name": "Protection", "value": "Circuit protection with explosion-proof resistor" }
-      ]
+        {
+          "name": "Output",
+          "value": "5V⎓6A, 9V⎓5A, 12V⎓4A"
+        },
+        {
+          "name": "Output power",
+          "value": "65",
+          "unit": "W"
+        },
+        {
+          "name": "Ports",
+          "value": "USB-C (PD 30W) + USB-A (QC 4.0)"
+        },
+        {
+          "name": "In the box",
+          "value": "Car charger, USB-C to USB-C cable"
+        },
+        {
+          "name": "Works with",
+          "value": "iPhone, Android and other USB-powered devices"
+        },
+        {
+          "name": "Colour",
+          "value": "Black"
+        },
+        {
+          "name": "Material",
+          "value": "ABS"
+        },
+        {
+          "name": "Features",
+          "value": "Smart chip, temperature control, LED light"
+        },
+        {
+          "name": "Protection",
+          "value": "Circuit protection with explosion-proof resistor"
+        }
+      ],
+      "shortDescription": "65W car charger: USB-C PD 30W plus USB-A QC4.0, LED ring, USB-C cable included."
     },
     {
       "sku": "GP-CA02",
       "title": "GoldPlus GP-CA02 55W Mini Car Charger, USB-A QC3.0 + USB-C PD 36W, with USB-C Cable",
       "longDescription": "A mini-size 55W car charger with USB-A (QC 3.0) and USB-C (PD 36W) ports and an auto-ID chip that matches the charge to the device. LED lamp ring, ABS body, includes a USB-C to USB-C cable. Outputs 5V⎓6A, 9V⎓5A and 12V⎓4A in total. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Output", "value": "5V⎓6A, 9V⎓5A, 12V⎓4A" },
-        { "name": "Output power", "value": "55", "unit": "W" },
-        { "name": "Ports", "value": "USB-A (QC 3.0) + USB-C (PD 36W)" },
-        { "name": "In the box", "value": "Car charger, USB-C to USB-C cable" },
-        { "name": "Works with", "value": "iPhone, Android and other USB-powered devices" },
-        { "name": "Colour", "value": "White/Black" },
-        { "name": "Material", "value": "ABS" },
-        { "name": "Features", "value": "Auto-ID chip, LED lamp, mini size" },
-        { "name": "Protection", "value": "Circuit protection with explosion-proof resistor" }
-      ]
+        {
+          "name": "Output",
+          "value": "5V⎓6A, 9V⎓5A, 12V⎓4A"
+        },
+        {
+          "name": "Output power",
+          "value": "55",
+          "unit": "W"
+        },
+        {
+          "name": "Ports",
+          "value": "USB-A (QC 3.0) + USB-C (PD 36W)"
+        },
+        {
+          "name": "In the box",
+          "value": "Car charger, USB-C to USB-C cable"
+        },
+        {
+          "name": "Works with",
+          "value": "iPhone, Android and other USB-powered devices"
+        },
+        {
+          "name": "Colour",
+          "value": "White/Black"
+        },
+        {
+          "name": "Material",
+          "value": "ABS"
+        },
+        {
+          "name": "Features",
+          "value": "Auto-ID chip, LED lamp, mini size"
+        },
+        {
+          "name": "Protection",
+          "value": "Circuit protection with explosion-proof resistor"
+        }
+      ],
+      "shortDescription": "55W mini car charger: USB-A QC3.0 plus USB-C PD 36W, auto-ID chip, cable included."
     },
     {
       "sku": "GP-L01V",
       "title": "GoldPlus GP-L01 Micro-USB Fast Charging Cable, 1 m, 3A",
       "longDescription": "A 1-metre high-speed charging and data cable from USB-A to Micro-USB, rated at 3A for fast, stable charging. PVC body in black, built for everyday use with any phone that charges over Micro-USB. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Connectors", "value": "USB-A to Micro-USB" },
-        { "name": "Length", "value": "1", "unit": "m" },
-        { "name": "Max output", "value": "3", "unit": "A" },
-        { "name": "Material", "value": "PVC" },
-        { "name": "Colour", "value": "Black" },
-        { "name": "Works with", "value": "All phones with Micro-USB" }
-      ]
+        {
+          "name": "Connectors",
+          "value": "USB-A to Micro-USB"
+        },
+        {
+          "name": "Length",
+          "value": "1",
+          "unit": "m"
+        },
+        {
+          "name": "Max output",
+          "value": "3",
+          "unit": "A"
+        },
+        {
+          "name": "Material",
+          "value": "PVC"
+        },
+        {
+          "name": "Colour",
+          "value": "Black"
+        },
+        {
+          "name": "Works with",
+          "value": "All phones with Micro-USB"
+        }
+      ],
+      "shortDescription": "1 m Micro-USB charging and data cable rated 3A. Fits every Micro-USB phone."
     },
     {
       "sku": "GP-L03C",
       "title": "GoldPlus GP-L03 USB-C Fast Charging Cable, 1 m, 3A",
       "longDescription": "A 1-metre high-speed charging and data cable from USB-A to USB-C, rated at 3A for fast, stable charging. PVC body in black, built for everyday use with any USB-C phone. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Connectors", "value": "USB-A to USB-C" },
-        { "name": "Length", "value": "1", "unit": "m" },
-        { "name": "Max output", "value": "3", "unit": "A" },
-        { "name": "Material", "value": "PVC" },
-        { "name": "Colour", "value": "Black" },
-        { "name": "Works with", "value": "All phones with USB-C" }
-      ]
+        {
+          "name": "Connectors",
+          "value": "USB-A to USB-C"
+        },
+        {
+          "name": "Length",
+          "value": "1",
+          "unit": "m"
+        },
+        {
+          "name": "Max output",
+          "value": "3",
+          "unit": "A"
+        },
+        {
+          "name": "Material",
+          "value": "PVC"
+        },
+        {
+          "name": "Colour",
+          "value": "Black"
+        },
+        {
+          "name": "Works with",
+          "value": "All phones with USB-C"
+        }
+      ],
+      "shortDescription": "1 m USB-C charging and data cable rated 3A. Fits every USB-C phone."
     },
     {
       "sku": "GD-PD01-C-TO-C",
       "title": "GoldPlus GP-PD01 USB-C to USB-C PD Fast Data Cable, 1 m, 20W, Braided",
       "longDescription": "A braided 1-metre USB-C to USB-C data cable rated for 20W PD fast charging. PVC core with a 48-strand weave: highly elastic, wear-resistant and stretch-resistant, with a lengthened body designed not to disconnect. Blue. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Connectors", "value": "USB-C to USB-C" },
-        { "name": "Length", "value": "1", "unit": "m" },
-        { "name": "Max output", "value": "20", "unit": "W" },
-        { "name": "Material", "value": "PVC + 48-strand weave (braided)" },
-        { "name": "Colour", "value": "Blue" },
-        { "name": "Works with", "value": "All phones with USB-C" }
-      ]
+        {
+          "name": "Connectors",
+          "value": "USB-C to USB-C"
+        },
+        {
+          "name": "Length",
+          "value": "1",
+          "unit": "m"
+        },
+        {
+          "name": "Max output",
+          "value": "20",
+          "unit": "W"
+        },
+        {
+          "name": "Material",
+          "value": "PVC + 48-strand weave (braided)"
+        },
+        {
+          "name": "Colour",
+          "value": "Blue"
+        },
+        {
+          "name": "Works with",
+          "value": "All phones with USB-C"
+        }
+      ],
+      "shortDescription": "1 m braided USB-C to USB-C cable, 20W PD, wear- and stretch-resistant."
     },
     {
       "sku": "GP-W03",
       "title": "GoldPlus GP-W03 Wireless Earbuds, Bluetooth 5.4, 4h Play Time, LED Display Case",
       "longDescription": "True-wireless earbuds on Bluetooth 5.4 with bass enhancement, HD calls and noise elimination, in a charging case with an LED battery display. 4 hours of music or talk per charge, 100 hours standby, 1.5-hour charge over Type-C. 30mAh per earbud, 230mAh case, 10-metre range, copper-ring speaker. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Bluetooth version", "value": "5.4" },
-        { "name": "Play time", "value": "4", "unit": "h" },
-        { "name": "Talk time", "value": "4", "unit": "h" },
-        { "name": "Standby time", "value": "100", "unit": "h" },
-        { "name": "Charging time", "value": "1.5", "unit": "h" },
-        { "name": "Earbud battery", "value": "30mAh / 3.7V" },
-        { "name": "Charging case battery", "value": "230mAh / 3.7V" },
-        { "name": "Range", "value": "10", "unit": "m" },
-        { "name": "Impedance", "value": "32Ω ±10%" },
-        { "name": "Sensitivity", "value": "92dB ±3dB" },
-        { "name": "Frequency response", "value": "20Hz–20kHz" },
-        { "name": "Charging port", "value": "Type-C" },
-        { "name": "Features", "value": "Bass enhancement, HD call, noise elimination, LED battery display" }
-      ]
+        {
+          "name": "Bluetooth version",
+          "value": "5.4"
+        },
+        {
+          "name": "Play time",
+          "value": "4",
+          "unit": "h"
+        },
+        {
+          "name": "Talk time",
+          "value": "4",
+          "unit": "h"
+        },
+        {
+          "name": "Standby time",
+          "value": "100",
+          "unit": "h"
+        },
+        {
+          "name": "Charging time",
+          "value": "1.5",
+          "unit": "h"
+        },
+        {
+          "name": "Earbud battery",
+          "value": "30mAh / 3.7V"
+        },
+        {
+          "name": "Charging case battery",
+          "value": "230mAh / 3.7V"
+        },
+        {
+          "name": "Range",
+          "value": "10",
+          "unit": "m"
+        },
+        {
+          "name": "Impedance",
+          "value": "32Ω ±10%"
+        },
+        {
+          "name": "Sensitivity",
+          "value": "92dB ±3dB"
+        },
+        {
+          "name": "Frequency response",
+          "value": "20Hz–20kHz"
+        },
+        {
+          "name": "Charging port",
+          "value": "Type-C"
+        },
+        {
+          "name": "Features",
+          "value": "Bass enhancement, HD call, noise elimination, LED battery display"
+        }
+      ],
+      "shortDescription": "Bluetooth 5.4 earbuds, 4h play, 100h standby, LED battery case. Bass and HD calls."
     },
     {
       "sku": "GP-W04",
       "title": "GoldPlus GP-W04 Open-Ear Clip Wireless Earphones, Bluetooth 5.4, Smart Touch",
       "longDescription": "Open-ear clip earphones that sit over the ear, on Bluetooth 5.4 with intelligent noise reduction and smart-touch controls for tracks and volume. 4–5 hours of talk or 4 hours of music per charge, 100 hours standby, 2-hour charge. PC+ABS body with a frosted high-gloss finish; 28mAh per earphone; 10-metre range. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Bluetooth version", "value": "5.4" },
-        { "name": "Wearing method", "value": "Over-the-ear clip (open style)" },
-        { "name": "Talk time", "value": "4–5", "unit": "h" },
-        { "name": "Play time", "value": "4", "unit": "h" },
-        { "name": "Standby time", "value": "100", "unit": "h" },
-        { "name": "Charging time", "value": "2", "unit": "h" },
-        { "name": "Earphone battery", "value": "28mAh" },
-        { "name": "Range", "value": "10", "unit": "m" },
-        { "name": "Material", "value": "PC + ABS, frosted high-gloss" },
-        { "name": "Features", "value": "Smart touch (tracks, volume), intelligent noise reduction" }
-      ]
+        {
+          "name": "Bluetooth version",
+          "value": "5.4"
+        },
+        {
+          "name": "Wearing method",
+          "value": "Over-the-ear clip (open style)"
+        },
+        {
+          "name": "Talk time",
+          "value": "4–5",
+          "unit": "h"
+        },
+        {
+          "name": "Play time",
+          "value": "4",
+          "unit": "h"
+        },
+        {
+          "name": "Standby time",
+          "value": "100",
+          "unit": "h"
+        },
+        {
+          "name": "Charging time",
+          "value": "2",
+          "unit": "h"
+        },
+        {
+          "name": "Earphone battery",
+          "value": "28mAh"
+        },
+        {
+          "name": "Range",
+          "value": "10",
+          "unit": "m"
+        },
+        {
+          "name": "Material",
+          "value": "PC + ABS, frosted high-gloss"
+        },
+        {
+          "name": "Features",
+          "value": "Smart touch (tracks, volume), intelligent noise reduction"
+        }
+      ],
+      "shortDescription": "Open-ear clip earphones, Bluetooth 5.4, smart touch, 4–5h talk, noise reduction."
     },
     {
       "sku": "GP-W05",
       "title": "GoldPlus GP-W05 Wireless Earphones, Bluetooth 5.4, Smart Touch, Noise Reduction",
       "longDescription": "True-wireless earphones on Bluetooth 5.4 with intelligent noise reduction and smart-touch controls for tracks and volume, in a charging case with an LED battery display. 4 hours of music or talk per charge, 100 hours standby, 1.5-hour charge over Type-C. 30mAh per earbud, 230mAh case, 10-metre range. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Bluetooth version", "value": "5.4" },
-        { "name": "Play time", "value": "4", "unit": "h" },
-        { "name": "Talk time", "value": "4", "unit": "h" },
-        { "name": "Standby time", "value": "100", "unit": "h" },
-        { "name": "Charging time", "value": "1.5", "unit": "h" },
-        { "name": "Earbud battery", "value": "30mAh / 3.7V" },
-        { "name": "Charging case battery", "value": "230mAh / 3.7V" },
-        { "name": "Range", "value": "10", "unit": "m" },
-        { "name": "Impedance", "value": "32Ω ±10%" },
-        { "name": "Sensitivity", "value": "92dB ±3dB" },
-        { "name": "Frequency response", "value": "20Hz–20kHz" },
-        { "name": "Charging port", "value": "Type-C" },
-        { "name": "Features", "value": "Smart touch (tracks, volume), intelligent noise reduction" }
-      ]
+        {
+          "name": "Bluetooth version",
+          "value": "5.4"
+        },
+        {
+          "name": "Play time",
+          "value": "4",
+          "unit": "h"
+        },
+        {
+          "name": "Talk time",
+          "value": "4",
+          "unit": "h"
+        },
+        {
+          "name": "Standby time",
+          "value": "100",
+          "unit": "h"
+        },
+        {
+          "name": "Charging time",
+          "value": "1.5",
+          "unit": "h"
+        },
+        {
+          "name": "Earbud battery",
+          "value": "30mAh / 3.7V"
+        },
+        {
+          "name": "Charging case battery",
+          "value": "230mAh / 3.7V"
+        },
+        {
+          "name": "Range",
+          "value": "10",
+          "unit": "m"
+        },
+        {
+          "name": "Impedance",
+          "value": "32Ω ±10%"
+        },
+        {
+          "name": "Sensitivity",
+          "value": "92dB ±3dB"
+        },
+        {
+          "name": "Frequency response",
+          "value": "20Hz–20kHz"
+        },
+        {
+          "name": "Charging port",
+          "value": "Type-C"
+        },
+        {
+          "name": "Features",
+          "value": "Smart touch (tracks, volume), intelligent noise reduction"
+        }
+      ],
+      "shortDescription": "Bluetooth 5.4 earphones, smart touch, 4h play, LED case, intelligent noise reduction."
     },
     {
       "sku": "GP-W06",
       "title": "GoldPlus GP-W06 Open-Ear Hook Wireless Earphones, Bluetooth 5.4, Hi-Res Audio, Noise Reduction",
       "longDescription": "Open-ear earphones with an ultra-thin over-ear hook, on Bluetooth 5.4 with noise reduction and Hi-Res Audio Wireless. Dual-host design: use one earphone or both. 4 hours of music or talk per charge, 100 hours standby, 1.5-hour charge over Type-C. 30mAh per earbud, 230mAh case, 10-metre range. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Bluetooth version", "value": "5.4" },
-        { "name": "Wearing method", "value": "Over-the-ear hook (open style)" },
-        { "name": "Play time", "value": "4", "unit": "h" },
-        { "name": "Talk time", "value": "4", "unit": "h" },
-        { "name": "Standby time", "value": "100", "unit": "h" },
-        { "name": "Charging time", "value": "1.5", "unit": "h" },
-        { "name": "Earbud battery", "value": "30mAh / 3.7V" },
-        { "name": "Charging case battery", "value": "230mAh / 3.7V" },
-        { "name": "Range", "value": "10", "unit": "m" },
-        { "name": "Impedance", "value": "32Ω ±10%" },
-        { "name": "Sensitivity", "value": "92dB ±3dB" },
-        { "name": "Frequency response", "value": "20Hz–20kHz" },
-        { "name": "Charging port", "value": "Type-C" },
-        { "name": "Features", "value": "Hi-Res Audio Wireless, noise reduction, dual-host (single or both)" }
-      ]
+        {
+          "name": "Bluetooth version",
+          "value": "5.4"
+        },
+        {
+          "name": "Wearing method",
+          "value": "Over-the-ear hook (open style)"
+        },
+        {
+          "name": "Play time",
+          "value": "4",
+          "unit": "h"
+        },
+        {
+          "name": "Talk time",
+          "value": "4",
+          "unit": "h"
+        },
+        {
+          "name": "Standby time",
+          "value": "100",
+          "unit": "h"
+        },
+        {
+          "name": "Charging time",
+          "value": "1.5",
+          "unit": "h"
+        },
+        {
+          "name": "Earbud battery",
+          "value": "30mAh / 3.7V"
+        },
+        {
+          "name": "Charging case battery",
+          "value": "230mAh / 3.7V"
+        },
+        {
+          "name": "Range",
+          "value": "10",
+          "unit": "m"
+        },
+        {
+          "name": "Impedance",
+          "value": "32Ω ±10%"
+        },
+        {
+          "name": "Sensitivity",
+          "value": "92dB ±3dB"
+        },
+        {
+          "name": "Frequency response",
+          "value": "20Hz–20kHz"
+        },
+        {
+          "name": "Charging port",
+          "value": "Type-C"
+        },
+        {
+          "name": "Features",
+          "value": "Hi-Res Audio Wireless, noise reduction, dual-host (single or both)"
+        }
+      ],
+      "shortDescription": "Open-ear hook earphones, Bluetooth 5.4, Hi-Res Audio, 4h play, wear one or both."
     },
     {
       "sku": "GP02BT",
       "title": "GoldPlus GP02BT Open-Style Bluetooth Headphones (OWS), LED Power Display, 4.5h Music",
       "longDescription": "Open-wearing (OWS) Bluetooth 5.4 headphones with a memory-steel ear hook and a composite diaphragm speaker — ultra-light, zero-burden wearing that leaves the ear open. About 4.5 hours of music or 4 hours of talk at 80% volume; the case has an LED power display with real-time monitoring. 30mAh per earbud, 250mAh case, about 1-hour charge, 10-metre range. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Bluetooth version", "value": "5.4" },
-        { "name": "Wearing method", "value": "Open-style (OWS), memory-steel ear hook" },
-        { "name": "Music time", "value": "About 4.5 hours at 80% volume" },
-        { "name": "Talk time", "value": "About 4 hours at 80% volume" },
-        { "name": "Charging time", "value": "About 1 hour" },
-        { "name": "Earbud battery", "value": "30mAh" },
-        { "name": "Charging case battery", "value": "250mAh" },
-        { "name": "Range", "value": "10", "unit": "m" },
-        { "name": "Speaker", "value": "Composite diaphragm, 32Ω / Φ13mm" },
-        { "name": "Signal-to-noise ratio", "value": ">94dB" },
-        { "name": "Frequency response", "value": "60Hz–20kHz" },
-        { "name": "Features", "value": "LED power display with real-time monitoring" }
-      ]
+        {
+          "name": "Bluetooth version",
+          "value": "5.4"
+        },
+        {
+          "name": "Wearing method",
+          "value": "Open-style (OWS), memory-steel ear hook"
+        },
+        {
+          "name": "Music time",
+          "value": "About 4.5 hours at 80% volume"
+        },
+        {
+          "name": "Talk time",
+          "value": "About 4 hours at 80% volume"
+        },
+        {
+          "name": "Charging time",
+          "value": "About 1 hour"
+        },
+        {
+          "name": "Earbud battery",
+          "value": "30mAh"
+        },
+        {
+          "name": "Charging case battery",
+          "value": "250mAh"
+        },
+        {
+          "name": "Range",
+          "value": "10",
+          "unit": "m"
+        },
+        {
+          "name": "Speaker",
+          "value": "Composite diaphragm, 32Ω / Φ13mm"
+        },
+        {
+          "name": "Signal-to-noise ratio",
+          "value": ">94dB"
+        },
+        {
+          "name": "Frequency response",
+          "value": "60Hz–20kHz"
+        },
+        {
+          "name": "Features",
+          "value": "LED power display with real-time monitoring"
+        }
+      ],
+      "shortDescription": "Open-style (OWS) Bluetooth 5.4 headphones, memory-steel hook, 4.5h music, LED display."
     },
     {
       "sku": "GP03BT",
       "title": "GoldPlus GP03BT TWS Wireless Earphones, Bluetooth 5.4, 6h Play Time, Zinc Alloy Case",
       "longDescription": "True-wireless (TWS) earphones on Bluetooth 5.4 in a zinc-alloy case, with a high-quality speaker and continuous playback of 6 hours at 80% volume — 5 hours of talk. 35mAh per earphone, 230mAh case, about 1.1-hour charge, 10-metre range. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
       "specs": [
-        { "name": "Bluetooth version", "value": "5.4" },
-        { "name": "Music time", "value": "6 hours at 80% volume" },
-        { "name": "Talk time", "value": "5 hours at 80% volume" },
-        { "name": "Charging time", "value": "About 1.1 hours" },
-        { "name": "Earphone battery", "value": "35mAh" },
-        { "name": "Charging case battery", "value": "230mAh" },
-        { "name": "Range", "value": "10", "unit": "m" },
-        { "name": "Speaker", "value": "32Ω / Φ13mm" },
-        { "name": "Signal-to-noise ratio", "value": "≥94dB" },
-        { "name": "Frequency response", "value": "60Hz–20kHz" },
-        { "name": "Body", "value": "Zinc alloy shell" }
-      ]
+        {
+          "name": "Bluetooth version",
+          "value": "5.4"
+        },
+        {
+          "name": "Music time",
+          "value": "6 hours at 80% volume"
+        },
+        {
+          "name": "Talk time",
+          "value": "5 hours at 80% volume"
+        },
+        {
+          "name": "Charging time",
+          "value": "About 1.1 hours"
+        },
+        {
+          "name": "Earphone battery",
+          "value": "35mAh"
+        },
+        {
+          "name": "Charging case battery",
+          "value": "230mAh"
+        },
+        {
+          "name": "Range",
+          "value": "10",
+          "unit": "m"
+        },
+        {
+          "name": "Speaker",
+          "value": "32Ω / Φ13mm"
+        },
+        {
+          "name": "Signal-to-noise ratio",
+          "value": "≥94dB"
+        },
+        {
+          "name": "Frequency response",
+          "value": "60Hz–20kHz"
+        },
+        {
+          "name": "Body",
+          "value": "Zinc alloy shell"
+        }
+      ],
+      "shortDescription": "TWS earphones, Bluetooth 5.4, 6h play time, zinc-alloy case, high-quality speaker."
     }
   ]
 }
