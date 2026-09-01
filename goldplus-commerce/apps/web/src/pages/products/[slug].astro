@@ -362,7 +362,7 @@ if (product) {
 }
 ---
 
-<BaseLayout title={pageTitle} description={description} canonicalUrl={canonical} robotsMeta={lifecycleNoindex ? 'noindex,follow' : undefined}>
+<BaseLayout title={pageTitle} description={description} canonicalUrl={canonical} image={product?.primaryImageUrl ?? undefined} robotsMeta={lifecycleNoindex ? 'noindex,follow' : undefined}>
   {product && (
     <Fragment slot="head">
       <ProductJsonLd product={product} url={canonical} />

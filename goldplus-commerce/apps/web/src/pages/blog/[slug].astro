@@ -43,7 +43,7 @@ const jsonLd = serializeJsonLd({
     logo: { '@type': 'ImageObject', url: `${SITE_ORIGIN}/icon-512.svg` },
   },
   mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
-  ...(post.coverImageUrl ? { image: [post.coverImageUrl] } : {}),
+  ...(post.coverImageUrl ? { image: [/^https?:\/\//i.test(post.coverImageUrl) ? post.coverImageUrl : `${SITE_ORIGIN}${post.coverImageUrl}`] } : {}),
 });
 
 const breadcrumbs = serializeJsonLd(

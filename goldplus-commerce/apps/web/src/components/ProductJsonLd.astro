@@ -1,5 +1,6 @@
 ---
 import type { ProductPublicDto } from '@goldplus/shared';
+import { SITE_ORIGIN } from '../lib/sitemap';
 
 interface Props {
   product: ProductPublicDto;
@@ -38,7 +39,7 @@ if (specEntries.length > 0) {
   node.description = specEntries.map(([k, v]) => `${k}: ${v}`).join('; ');
 }
 
-if (product.primaryImageUrl) node.image = product.primaryImageUrl;
+if (product.primaryImageUrl) node.image = /^https?:\/\//i.test(product.primaryImageUrl) ? product.primaryImageUrl : `${SITE_ORIGIN}${product.primaryImageUrl}`;
 
 const verifiedAttrs = product.attributeValues.filter((v) => v.isVerified);
 if (verifiedAttrs.length > 0) {

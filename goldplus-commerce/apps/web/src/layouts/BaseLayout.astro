@@ -114,6 +114,8 @@ const footerSocialLinks = [
 // canonical host — the same one the sitemaps and the pages that already pass
 // canonicalUrl explicitly use.
 const canonical = canonicalUrl ?? `${SITE_ORIGIN}${Astro.url.pathname}`;
+// Share-card crawlers (WhatsApp, Facebook, X) ignore a relative og:image; always emit an absolute URL.
+const shareImage = /^https?:\/\//i.test(image) ? image : `${SITE_ORIGIN}${image.startsWith('/') ? '' : '/'}${image}`;
 const measurement = resolveMeasurementConfig(import.meta.env);
 ---
 
@@ -130,14 +132,14 @@ const measurement = resolveMeasurementConfig(import.meta.env);
     <meta property="og:url" content={canonical} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content={image} />
+    <meta property="og:image" content={shareImage} />
 
     {/* Twitter */}
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:url" content={canonical} />
     <meta property="twitter:title" content={title} />
     <meta property="twitter:description" content={description} />
-    <meta property="twitter:image" content={image} />
+    <meta property="twitter:image" content={shareImage} />
     <link rel="canonical" href={canonical} />
     {robotsMeta && <meta name="robots" content={robotsMeta} />}
     <slot name="head" />
