@@ -3,6 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import { getBusinessInfo } from '../lib/businessInfo';
 import { getStorefrontCopy } from '../lib/storefrontCopy';
 import { serializeJsonLd, breadcrumbJsonLd } from '../lib/jsonld';
+import { RETURNS_POLICY } from '../lib/returnsPolicy';
 import { SITE_ORIGIN } from '../lib/sitemap';
 
 /**
@@ -41,7 +42,7 @@ const faqs: Array<{ q: string; a: string; links?: Array<{ label: string; href: s
   },
   {
     q: 'Are GoldPlus products genuine, and what if something is faulty?',
-    a: 'GoldPlus is the brand as well as the shop: the products are GoldPlus-branded, and every unit is tested before it is sold. Product pages list the maker\'s own specifications. If something is faulty, contact support with your order number and a description of the fault — support verifies the purchase, checks the coverage stated on your listing or receipt, and explains the assessment, repair or replacement. Return windows and refund methods are being finalised in the formal policy; until it takes effect, each return is assessed individually and you are told the outcome and the reasons directly.',
+    a: `GoldPlus is the brand as well as the shop: the products are GoldPlus-branded, and every unit is tested before it is sold. Product pages list the maker's own specifications. If a product is faulty, we replace it or refund you, and GoldPlus pays the cost of getting it back to us — tell support what the fault is, with your order number. Changed your mind instead? Return it unused and complete within ${RETURNS_POLICY.windowDays} days of delivery or collection, and the refund goes back the way you paid; for a change-of-mind return the carriage back to us is yours.`,
     links: [{ label: 'Warranty', href: '/warranty' }, { label: 'Returns', href: '/returns' }, { label: 'Contact support', href: '/support' }],
   },
 ];

@@ -83,6 +83,22 @@ describe('the FAQ answers from the site\'s own commitments', () => {
     expect((src.match(/^\s*q: '/gm) ?? []).length).toBe(5);
   });
 
+  it('states the owner-set returns policy from the one constant', () => {
+    expect(src).toContain("import { RETURNS_POLICY } from '../lib/returnsPolicy';");
+    expect(src).toContain('${RETURNS_POLICY.windowDays} days of delivery');
+    expect(src).toContain('GoldPlus pays the cost of getting it back to us');
+    const policy = read('apps/web/src/lib/returnsPolicy.ts');
+    expect(policy).toContain('windowDays: 14');
+    expect(policy).toContain("changeOfMindShippingPaidBy: 'customer'");
+    expect(policy).toContain("faultyShippingPaidBy: 'GoldPlus'");
+    // The policy page and the offer schema read the same decision.
+    expect(read('apps/web/src/pages/returns.astro')).toContain('14 days from delivery or collection');
+    const pdp = read('apps/web/src/components/ProductJsonLd.astro');
+    expect(pdp).toContain('hasMerchantReturnPolicy: merchantReturnPolicyJsonLd()');
+    expect(policy).toContain('MerchantReturnFiniteReturnWindow');
+    expect(policy).toContain('merchantReturnDays: RETURNS_POLICY.windowDays');
+  });
+
   it('sources every answer, inventing no policy', () => {
     expect(src).toContain('getBusinessInfo');
     expect(src).toContain('getStorefrontCopy');
@@ -90,8 +106,8 @@ describe('the FAQ answers from the site\'s own commitments', () => {
     expect(src).toContain('copy.payment.pesapal.description');
     // No hard-coded address, phone, hours, or a returns window the policy page does not state.
     expect(src).not.toMatch(/Wilson Road|0705 004545|8:30am/);
-    expect(src).not.toMatch(/\b(7|14|30)[- ]day\b/i);
-    expect(src).toContain('being finalised in the formal policy');
+    // No literal window in the copy: the number comes from the shared constant.
+    expect(src).not.toMatch(/\b(7|14|30)[- ]days? of\b/);
   });
 
   it('is reachable: sitemap, footer and llms.txt point at it', () => {

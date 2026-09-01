@@ -1,6 +1,7 @@
 ---
 import type { ProductPublicDto } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
+import { merchantReturnPolicyJsonLd } from '../lib/returnsPolicy';
 
 interface Props {
   product: ProductPublicDto;
@@ -66,6 +67,8 @@ if (product.retailPriceUgx !== null) {
     price: product.retailPriceUgx,
     url,
     itemCondition: 'https://schema.org/NewCondition',
+    // The shop's returns promise, on the offer Google reads.
+    hasMerchantReturnPolicy: merchantReturnPolicyJsonLd(),
   };
   const availUrl = availabilityUrl[product.availability.kind];
   if (availUrl) offers.availability = availUrl;
