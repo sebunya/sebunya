@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { Registry } from '../infrastructure/Registry';
+import { requireMediaVolume } from './requireMediaVolume';
 import { db, endDbConnection } from '../infrastructure/db/client';
 
 /**
@@ -62,6 +63,7 @@ const MIME: Record<string, string> = { '.webp': 'image/webp', '.jpg': 'image/jpe
 const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 async function main(): Promise<void> {
+  requireMediaVolume();
   const actorId = String(process.env.ACTOR_USER_ID ?? '').trim();
   if (!/^[0-9a-f-]{36}$/i.test(actorId)) throw new Error('ACTOR_USER_ID must be the acting admin uuid.');
   const dir = String(process.env.IMAGES_DIR ?? '/import-images');
