@@ -149,7 +149,7 @@ describe('the icons crawlers ask for by convention exist', () => {
     // ICO container: reserved 0, type 1 (icon), one image.
     expect(ico.readUInt16LE(0)).toBe(0);
     expect(ico.readUInt16LE(2)).toBe(1);
-    expect(ico.readUInt16LE(4)).toBe(1);
+    expect(ico.readUInt16LE(4)).toBeGreaterThanOrEqual(1);
     const png = readFileSync(resolve(ROOT, 'apps/web/public/apple-touch-icon.png'));
     expect(png.subarray(1, 4).toString('ascii')).toBe('PNG');
   });
@@ -171,5 +171,36 @@ describe('the blog has a feed', () => {
     expect(feed).toContain('} catch {');
     expect(read('apps/web/src/layouts/BaseLayout.astro')).toContain('type="application/rss+xml"');
     expect(read('apps/web/src/pages/llms.txt.ts')).toContain('/rss.xml');
+  });
+});
+
+/**
+ * The brand mark the owner supplied (2026-09-02). A wordmark is unreadable at
+ * 32px, so small icons carry the monogram; and social platforms cannot render
+ * an SVG, so the default share card and the publisher logo are raster.
+ */
+describe('brand assets are raster where raster is required', () => {
+  it('the favicon holds several real sizes', () => {
+    const ico = readFileSync(resolve(ROOT, 'apps/web/public/favicon.ico'));
+    expect(ico.readUInt16LE(2)).toBe(1);
+    expect(ico.readUInt16LE(4)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('shares a PNG card, never an SVG', () => {
+    const layout = read('apps/web/src/layouts/BaseLayout.astro');
+    expect(layout).toContain("image = '/og-default.png',");
+    expect(layout).not.toMatch(/image = '\/[^']*\.svg'/);
+    const card = readFileSync(resolve(ROOT, 'apps/web/public/og-default.png'));
+    expect(card.subarray(1, 4).toString('ascii')).toBe('PNG');
+    // 1200x630 is what the platforms crop to.
+    expect(card.readUInt32BE(16)).toBe(1200);
+    expect(card.readUInt32BE(20)).toBe(630);
+    expect(read('apps/web/src/pages/blog/[slug].astro')).toContain('/icon-512.png');
+  });
+
+  it('installs get PNG icons including a maskable one', () => {
+    const manifest = JSON.parse(read('apps/web/public/manifest.json')) as { icons: Array<{ src: string; type: string; purpose: string }> };
+    expect(manifest.icons.some((i) => i.type === 'image/png' && i.purpose === 'any')).toBe(true);
+    expect(manifest.icons.some((i) => i.purpose === 'maskable')).toBe(true);
   });
 });

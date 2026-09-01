@@ -40,7 +40,7 @@ const jsonLd = serializeJsonLd({
   publisher: {
     '@type': 'Organization',
     name: 'GoldPlus',
-    logo: { '@type': 'ImageObject', url: `${SITE_ORIGIN}/icon-512.svg` },
+    logo: { '@type': 'ImageObject', url: `${SITE_ORIGIN}/icon-512.png` },
   },
   mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
   ...(post.coverImageUrl ? { image: [/^https?:\/\//i.test(post.coverImageUrl) ? post.coverImageUrl : `${SITE_ORIGIN}${post.coverImageUrl}`] } : {}),
