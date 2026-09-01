@@ -43,11 +43,12 @@ describe('markdown content negotiation', () => {
   });
 
   it('reports token counts and keeps caches from mixing variants', async () => {
-    const res = markdownResponse('# Title\n\nbody text', 4000);
+    const res = markdownResponse('# Title\n\nbody text');
     expect(res.headers.get('Content-Type')).toBe('text/markdown; charset=utf-8');
     expect(res.headers.get('Vary')).toBe('Accept');
     expect(res.headers.get('x-markdown-tokens')).toBe(String(estimateTokens('# Title\n\nbody text')));
-    expect(res.headers.get('x-original-tokens')).toBe('4000');
+    // Not reported: measuring it means rendering the HTML the agent skipped.
+    expect(res.headers.get('x-original-tokens')).toBeNull();
     expect(res.headers.get('content-signal')).toBe('search=yes, ai-input=yes, ai-train=no');
   });
 
@@ -102,10 +103,25 @@ describe('markdown content negotiation', () => {
     expect(docs).toContain('normalizeSortParam');
   });
 
-  it('covers the pages an agent actually lands on', () => {
+  it('routes from one table, so discovery can never promise a document that does not exist', () => {
     const docs = read('apps/web/src/lib/agentDocuments.ts');
-    for (const marker of ["pathname === '/'", "pathname === '/faq'", "pathname === '/shop'", '/^\\/products\\/([^/]+)$/', 'hubDocument(pathname)']) {
+    // Both entry points read ROUTES; neither keeps its own path list.
+    expect(docs).toContain('const route = ROUTES.find((r) => r.match(path));');
+    expect(docs).toContain('return ROUTES.some((r) => r.match(path));');
+    for (const marker of [
+      "match: (p) => p === '/'", "match: (p) => p === '/faq'", "match: (p) => p === '/shop'",
+      "match: (p) => p === '/battery-finder'", "match: (p) => p === '/returns'",
+      "match: (p) => p === '/warranty'", "match: (p) => p === '/delivery/kampala-wakiso'",
+      "match: (p) => p === '/blog'", '/^\\/blog\\/[^/]+$/', '/^\\/products\\/[^/]+$/', 'hubMatches(p)',
+    ]) {
       expect(docs, marker).toContain(marker);
     }
+  });
+
+  it('an explicit ?page= returns that page, matching the HTML pagination', () => {
+    const docs = read('apps/web/src/lib/agentDocuments.ts');
+    expect(docs).toContain('const PAGE_SIZE = 24;');
+    expect(docs).toContain("url.searchParams.get('page')");
+    expect(docs).toContain('Next page:');
   });
 });

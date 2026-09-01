@@ -63,10 +63,11 @@ export function renderAgentMarkdown(doc: AgentDocument): string {
 }
 
 /**
- * `htmlBytes` is what the same page costs an agent as HTML; reporting it lets a
- * caller see the saving, exactly as Cloudflare's headers do.
+ * Cloudflare also reports `x-original-tokens`, but it already has the HTML in
+ * hand. We would have to render the page we were asked NOT to render, so the
+ * saving goes unreported rather than being paid for twice.
  */
-export function markdownResponse(markdown: string, htmlTokenEstimate?: number): Response {
+export function markdownResponse(markdown: string): Response {
   const headers: Record<string, string> = {
     'Content-Type': 'text/markdown; charset=utf-8',
     // Caches must keep Markdown and HTML as separate variants.
@@ -77,7 +78,6 @@ export function markdownResponse(markdown: string, htmlTokenEstimate?: number): 
     // and Cloudflare treats an origin content-signal as authoritative.
     'content-signal': 'search=yes, ai-input=yes, ai-train=no',
   };
-  if (htmlTokenEstimate && htmlTokenEstimate > 0) headers['x-original-tokens'] = String(htmlTokenEstimate);
   return new Response(markdown, { headers });
 }
 
