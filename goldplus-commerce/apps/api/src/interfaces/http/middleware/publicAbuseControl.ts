@@ -1,8 +1,9 @@
 import { Context, Next } from 'hono';
 import { logger } from '../../../infrastructure/logging/logger';
-import { clientAddress, clientBucketKey } from '../clientAddress';
+import { clientAddress, clientBucketKey, isInternalCall } from '../clientAddress';
 import { abuseControlStore } from '../../../infrastructure/security/RedisAbuseControlStore';
 import { limitFor } from '../../../domain/security/AbuseControlPolicy';
+
 import {
   classifyPublicEndpoint,
   publicEndpointPolicy,
@@ -31,6 +32,12 @@ export function publicAbuseControl() {
     // rateLimiter. Distributed correctness is proven by the real-Redis
     // integration suite, not by unit tests.
     if (process.env.NODE_ENV === 'test') {
+      return next();
+    }
+
+    // Our own server-side rendering is not a public client; counting it as one
+    // put every visitor in a single bucket. See isInternalServiceCall.
+    if (isInternalCall(c)) {
       return next();
     }
 

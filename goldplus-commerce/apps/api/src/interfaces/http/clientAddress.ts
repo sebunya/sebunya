@@ -6,8 +6,7 @@ import {
   isDegradedAttribution,
   resolveClientAddress,
   resolveProxyConfig,
-  UNKNOWN_CLIENT_IP,
-} from '../../domain/identity/ClientAddress';
+  UNKNOWN_CLIENT_IP, isInternalServiceCall } from '../../domain/identity/ClientAddress';
 import { logger } from '../../infrastructure/logging/logger';
 
 export { UNKNOWN_CLIENT_IP, clientBucketKey, isDegradedAttribution };
@@ -81,6 +80,18 @@ export function clientAddress(c: Context): ClientAddress {
     realIp: c.req.header('x-real-ip') ?? null,
     remoteAddr: remoteAddrOf(c),
     trustedHops: proxyConfig().trustedHops,
+  });
+}
+
+/**
+ * Is this our own server-side rendering calling, rather than a public client?
+ * Kept here because this file is the single place allowed to read forwarding
+ * headers — see the domain predicate for why the distinction is exact.
+ */
+export function isInternalCall(c: Context): boolean {
+  return isInternalServiceCall({
+    forwardedFor: c.req.header('x-forwarded-for') ?? null,
+    realIp: c.req.header('x-real-ip') ?? null,
   });
 }
 
