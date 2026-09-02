@@ -43,9 +43,15 @@ const waLink = (prefill?: string) =>
 
 
 // ---- cart: read through the SIGNED credential, never an id in a URL ----
-const headerUserId = await resolveAuthenticatedUserId(Astro.cookies);
+// Resolved in middleware: a component renders after the response has begun, so
+// minting a credential here would set a cookie the browser never receives.
+const headerUserId = Astro.locals.gpUserId !== undefined
+  ? Astro.locals.gpUserId
+  : await resolveAuthenticatedUserId(Astro.cookies);
 const signedIn = headerUserId !== null;
-const headerCart = resolveCartCredential(Astro.cookies, headerUserId);
+const headerCart = Astro.locals.gpCart !== undefined
+  ? Astro.locals.gpCart
+  : resolveCartCredential(Astro.cookies, headerUserId);
 let cartCount = 0;
 let cartItems: Array<{ name: string; qty: number; price: string }> = [];
 let subtotal = '0';

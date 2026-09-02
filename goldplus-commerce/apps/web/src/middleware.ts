@@ -1,6 +1,8 @@
 import { defineMiddleware } from "astro:middleware";
 import { prefersMarkdown, markdownResponse } from "./lib/agentMarkdown";
 import { agentDocumentFor, agentRepresentablePath } from "./lib/agentDocuments";
+import { resolveCartCredential } from "./lib/cartCredential";
+import { resolveAuthenticatedUserId } from "./lib/customerAuth";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 import { apiBase } from "./lib/api";
 import { SESSION_COOKIE_NAME } from "./lib/session";
@@ -127,6 +129,23 @@ export const onRequest = defineMiddleware(async (context, next) => {
       // honest "brand-new visitor" signal (the cookie then persists 180 days), so
       // the header can pick welcome vs signup without a per-page profile lookup.
       context.locals.gpVisitIsNew = true;
+    }
+  }
+
+  // The cart credential is minted HERE, not in the header component. Setting a
+  // cookie from a component runs after the response has begun, so Astro drops
+  // it with a warning and the shopper is handed a brand-new basket on every
+  // page — 343 such warnings per container in six hours before this moved
+  // (2026-09-02). Documents only: an asset request has no basket.
+  if (isDocument) {
+    try {
+      const userId = await resolveAuthenticatedUserId(context.cookies);
+      context.locals.gpUserId = userId;
+      context.locals.gpCart = resolveCartCredential(context.cookies, userId);
+    } catch {
+      // A basket is not worth failing a page render for; the component falls
+      // back to resolving one itself.
+      context.locals.gpCart = undefined;
     }
   }
 

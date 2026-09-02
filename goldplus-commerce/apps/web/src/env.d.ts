@@ -25,5 +25,12 @@ declare namespace App {
     gpVisit?: string;
     /** True only on the first-ever document request from this browser (cookie just minted). */
     gpVisitIsNew?: boolean;
+    /**
+     * The cart credential for this request, resolved in middleware because
+     * minting one sets a cookie and a component renders too late to do that.
+     */
+    gpCart?: { token: string; cartId: string; fresh: boolean } | null;
+    /** The signed-in customer for this request, resolved once per render. */
+    gpUserId?: string | null;
   }
 }
