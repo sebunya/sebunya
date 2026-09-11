@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ciGwT2cTmHWE8fKe0yu3gVmGl5huAHnfhh88w3Ie8WJtTb8c3vd1zhcA8FMCF3S
+\restrict LuvCr66mHXPLxIxnrLKYRh71dJWPLmF00FA3OlRC1wvMPQsFu1OwjOIrk3gK6dz
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -668,6 +668,263 @@ CREATE TABLE public.automation_versions (
 
 
 --
+-- Name: battery_aliases; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.battery_aliases (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    battery_product_id uuid NOT NULL,
+    alias character varying(120) NOT NULL,
+    alias_normalised character varying(120) NOT NULL,
+    alias_type text DEFAULT 'SEARCH'::text NOT NULL,
+    source character varying(200),
+    verification_status text DEFAULT 'UNVERIFIED'::text NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT battery_aliases_type_chk CHECK ((alias_type = ANY (ARRAY['CANONICAL'::text, 'SUPPLIER'::text, 'BARCODE'::text, 'CUSTOMER'::text, 'LEGACY'::text, 'SEARCH'::text, 'DEVICE_NAME'::text]))),
+    CONSTRAINT battery_aliases_verification_chk CHECK ((verification_status = ANY (ARRAY['UNVERIFIED'::text, 'VERIFIED'::text])))
+);
+
+
+--
+-- Name: battery_evidence_assets; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.battery_evidence_assets (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    subject_type text NOT NULL,
+    subject_id uuid NOT NULL,
+    asset_id uuid NOT NULL,
+    kind text DEFAULT 'OTHER'::text NOT NULL,
+    note character varying(300),
+    created_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT battery_evidence_kind_chk CHECK ((kind = ANY (ARRAY['FRONT'::text, 'BACK'::text, 'LABEL'::text, 'CONNECTOR'::text, 'PACKAGING'::text, 'BARCODE'::text, 'FIT_TEST'::text, 'DOCUMENT'::text, 'OTHER'::text]))),
+    CONSTRAINT battery_evidence_subject_chk CHECK ((subject_type = ANY (ARRAY['BATTERY'::text, 'COMPATIBILITY'::text])))
+);
+
+
+--
+-- Name: battery_finder_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.battery_finder_config (
+    id boolean DEFAULT true NOT NULL,
+    config jsonb DEFAULT '{}'::jsonb NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT battery_finder_config_singleton CHECK ((id = true))
+);
+
+
+--
+-- Name: battery_finder_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.battery_finder_events (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL,
+    event_type text NOT NULL,
+    mode text NOT NULL,
+    query_normalised character varying(120),
+    outcome text DEFAULT 'NONE'::text NOT NULL,
+    brand_id uuid,
+    series_id uuid,
+    device_id uuid,
+    battery_product_id uuid,
+    result_count integer DEFAULT 0 NOT NULL,
+    alias_hit boolean DEFAULT false NOT NULL,
+    session_hash character varying(64),
+    CONSTRAINT battery_finder_events_mode_chk CHECK ((mode = ANY (ARRAY['FIND_BY_PHONE'::text, 'SEARCH_CODE'::text, 'PRODUCT_PAGE'::text, 'CART'::text]))),
+    CONSTRAINT battery_finder_events_outcome_chk CHECK ((outcome = ANY (ARRAY['NONE'::text, 'RESOLVED'::text, 'NO_RESULT'::text, 'AMBIGUOUS'::text, 'VERIFIED_IN_STOCK'::text, 'VERIFIED_OUT_OF_STOCK'::text, 'CONDITIONAL'::text, 'AWAITING_VERIFICATION'::text]))),
+    CONSTRAINT battery_finder_events_type_chk CHECK ((event_type = ANY (ARRAY['SEARCH'::text, 'DEVICE_SELECTED'::text, 'RESULT_VIEWED'::text, 'PRODUCT_VIEWED'::text, 'ADDED_TO_CART'::text, 'REQUEST_SUBMITTED'::text])))
+);
+
+
+--
+-- Name: battery_import_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.battery_import_events (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    session_id uuid NOT NULL,
+    action character varying(40) NOT NULL,
+    actor_id uuid NOT NULL,
+    reason text NOT NULL,
+    evidence jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: battery_import_mapping_templates; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.battery_import_mapping_templates (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    import_type text NOT NULL,
+    name character varying(120) NOT NULL,
+    mapping jsonb NOT NULL,
+    created_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT battery_import_templates_type_chk CHECK ((import_type = ANY (ARRAY['BATTERY_CATALOGUE'::text, 'COMPATIBILITY'::text, 'STOCK_RECEIPT'::text, 'STOCK_COUNT'::text, 'PRICE_UPDATE'::text])))
+);
+
+
+--
+-- Name: battery_import_rows; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.battery_import_rows (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    session_id uuid NOT NULL,
+    row_number integer NOT NULL,
+    row_key character varying(200),
+    source_data jsonb NOT NULL,
+    normalized_data jsonb,
+    proposed_action character varying(40) DEFAULT 'PENDING'::character varying NOT NULL,
+    validation_warnings jsonb DEFAULT '[]'::jsonb NOT NULL,
+    validation_errors jsonb DEFAULT '[]'::jsonb NOT NULL,
+    status text DEFAULT 'PENDING'::text NOT NULL,
+    resolution character varying(40),
+    resolution_note character varying(500),
+    resolved_by uuid,
+    resolved_at timestamp with time zone,
+    applied_record_ids jsonb,
+    before_snapshot jsonb,
+    after_snapshot jsonb,
+    applied_at timestamp with time zone,
+    error text,
+    CONSTRAINT battery_import_rows_status_chk CHECK ((status = ANY (ARRAY['PENDING'::text, 'VALID'::text, 'INVALID'::text, 'HELD'::text, 'EXCLUDED'::text, 'APPLIED'::text, 'SKIPPED'::text, 'FAILED'::text, 'ROLLED_BACK'::text])))
+);
+
+
+--
+-- Name: battery_import_sessions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.battery_import_sessions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    import_type text NOT NULL,
+    name character varying(160) NOT NULL,
+    source_filename character varying(255) NOT NULL,
+    source_sha256 character varying(64) NOT NULL,
+    source_sheet character varying(120),
+    source_columns jsonb DEFAULT '[]'::jsonb NOT NULL,
+    status text DEFAULT 'UPLOADED'::text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    mapping jsonb,
+    mapping_template_id uuid,
+    total_rows integer DEFAULT 0 NOT NULL,
+    valid_rows integer DEFAULT 0 NOT NULL,
+    invalid_rows integer DEFAULT 0 NOT NULL,
+    held_rows integer DEFAULT 0 NOT NULL,
+    excluded_rows integer DEFAULT 0 NOT NULL,
+    applied_rows integer DEFAULT 0 NOT NULL,
+    failed_rows integer DEFAULT 0 NOT NULL,
+    preview_digest character varying(64),
+    rollback_info jsonb,
+    created_by uuid NOT NULL,
+    approved_by uuid,
+    approved_at timestamp with time zone,
+    applied_by uuid,
+    applied_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT battery_import_sessions_status_chk CHECK ((status = ANY (ARRAY['UPLOADED'::text, 'MAPPED'::text, 'READY_FOR_APPROVAL'::text, 'APPROVED'::text, 'APPLYING'::text, 'APPLIED'::text, 'PARTIALLY_APPLIED'::text, 'FAILED'::text, 'ROLLED_BACK'::text, 'ROLLBACK_PARTIAL'::text, 'REJECTED'::text]))),
+    CONSTRAINT battery_import_sessions_type_chk CHECK ((import_type = ANY (ARRAY['BATTERY_CATALOGUE'::text, 'COMPATIBILITY'::text, 'STOCK_RECEIPT'::text, 'STOCK_COUNT'::text, 'PRICE_UPDATE'::text])))
+);
+
+
+--
+-- Name: battery_profiles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.battery_profiles (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    canonical_code character varying(80) NOT NULL,
+    canonical_code_normalised character varying(80) NOT NULL,
+    code_status text DEFAULT 'PROVISIONAL'::text NOT NULL,
+    supplier_code character varying(120),
+    barcode character varying(64),
+    battery_category text DEFAULT 'PHONE'::text NOT NULL,
+    chemistry text,
+    nominal_voltage_mv integer,
+    capacity_mah integer,
+    watt_hours numeric(7,2),
+    length_mm numeric(6,2),
+    width_mm numeric(6,2),
+    thickness_mm numeric(6,2),
+    weight_g numeric(7,2),
+    connector_notes character varying(300),
+    warranty_months integer,
+    supplier_name character varying(160),
+    supplier_reference character varying(160),
+    packaging_notes text,
+    safety_notes text,
+    internal_notes text,
+    public_notes text,
+    lifecycle_status text DEFAULT 'DRAFT'::text NOT NULL,
+    verification_status text DEFAULT 'UNVERIFIED'::text NOT NULL,
+    verified_by uuid,
+    verified_at timestamp with time zone,
+    published_by uuid,
+    published_at timestamp with time zone,
+    archived_at timestamp with time zone,
+    source_import_session_id uuid,
+    source_reference character varying(200),
+    created_by uuid,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT battery_profiles_active_published_chk CHECK (((lifecycle_status <> 'ACTIVE'::text) OR ((published_by IS NOT NULL) AND (published_at IS NOT NULL)))),
+    CONSTRAINT battery_profiles_category_chk CHECK ((battery_category = ANY (ARRAY['PHONE'::text, 'MIFI_ROUTER'::text, 'OTHER'::text]))),
+    CONSTRAINT battery_profiles_chemistry_chk CHECK (((chemistry IS NULL) OR (chemistry = ANY (ARRAY['LI_ION'::text, 'LI_POLYMER'::text, 'NIMH'::text, 'OTHER'::text])))),
+    CONSTRAINT battery_profiles_code_status_chk CHECK ((code_status = ANY (ARRAY['CONFIRMED'::text, 'PROVISIONAL'::text, 'DEVICE_NAMED'::text, 'MISSING'::text]))),
+    CONSTRAINT battery_profiles_lifecycle_chk CHECK ((lifecycle_status = ANY (ARRAY['DRAFT'::text, 'REVIEW'::text, 'READY'::text, 'ACTIVE'::text, 'ARCHIVED'::text]))),
+    CONSTRAINT battery_profiles_specs_positive_chk CHECK ((((capacity_mah IS NULL) OR (capacity_mah > 0)) AND ((nominal_voltage_mv IS NULL) OR (nominal_voltage_mv > 0)) AND ((watt_hours IS NULL) OR (watt_hours > (0)::numeric)) AND ((warranty_months IS NULL) OR (warranty_months >= 0)))),
+    CONSTRAINT battery_profiles_verification_chk CHECK ((verification_status = ANY (ARRAY['UNVERIFIED'::text, 'VERIFIED'::text]))),
+    CONSTRAINT battery_profiles_verified_evidence_chk CHECK (((verification_status <> 'VERIFIED'::text) OR ((verified_by IS NOT NULL) AND (verified_at IS NOT NULL))))
+);
+
+
+--
+-- Name: battery_requests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.battery_requests (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    source text DEFAULT 'FINDER_NO_RESULT'::text NOT NULL,
+    query_text character varying(200),
+    query_normalised character varying(120),
+    brand_text character varying(80),
+    device_text character varying(120),
+    model_number_text character varying(80),
+    battery_code_text character varying(120),
+    contact_name character varying(120),
+    contact_phone character varying(32),
+    notes character varying(1000),
+    status text DEFAULT 'OPEN'::text NOT NULL,
+    resolution_note character varying(500),
+    resolved_device_id uuid,
+    resolved_alias_id uuid,
+    resolved_battery_product_id uuid,
+    resolved_by uuid,
+    resolved_at timestamp with time zone,
+    session_hash character varying(64),
+    CONSTRAINT battery_requests_source_chk CHECK ((source = ANY (ARRAY['FINDER_NO_RESULT'::text, 'PRODUCT_PAGE'::text, 'ADMIN'::text]))),
+    CONSTRAINT battery_requests_status_chk CHECK ((status = ANY (ARRAY['OPEN'::text, 'MAPPED_DEVICE'::text, 'ALIAS_ADDED'::text, 'BATTERY_MAPPED'::text, 'DRAFT_CREATED'::text, 'INVALID'::text, 'RESOLVED'::text])))
+);
+
+
+--
 -- Name: behavioural_intervention_definitions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -765,6 +1022,42 @@ CREATE TABLE public.behavioural_intervention_versions (
     CONSTRAINT behavioural_intervention_versions_content_object_chk CHECK ((jsonb_typeof(content) = 'object'::text)),
     CONSTRAINT behavioural_intervention_versions_suppression_object_chk CHECK ((jsonb_typeof(suppression) = 'object'::text)),
     CONSTRAINT behavioural_intervention_versions_target_chk CHECK (((target_behaviour)::text = ANY ((ARRAY['PRODUCT_DISCOVERY'::character varying, 'CHECKOUT_COMPLETION'::character varying, 'PRODUCT_EDUCATION'::character varying, 'FEEDBACK_COMPLETION'::character varying])::text[])))
+);
+
+
+--
+-- Name: blog_post_products; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.blog_post_products (
+    post_id uuid NOT NULL,
+    product_id uuid NOT NULL,
+    "position" integer DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: blog_posts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.blog_posts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    slug character varying(200) NOT NULL,
+    title character varying(200) NOT NULL,
+    excerpt character varying(400) DEFAULT ''::character varying NOT NULL,
+    body text DEFAULT ''::text NOT NULL,
+    cover_image_url character varying(1000),
+    cover_image_alt character varying(300),
+    status character varying(16) DEFAULT 'DRAFT'::character varying NOT NULL,
+    meta_title character varying(200),
+    meta_description character varying(320),
+    published_at timestamp with time zone,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    author_id uuid,
+    author_name character varying(120) DEFAULT 'GoldPlus'::character varying NOT NULL,
+    CONSTRAINT blog_posts_published_at_check CHECK (((((status)::text = 'PUBLISHED'::text) AND (published_at IS NOT NULL)) OR ((status)::text <> 'PUBLISHED'::text))),
+    CONSTRAINT blog_posts_status_check CHECK (((status)::text = ANY ((ARRAY['DRAFT'::character varying, 'PUBLISHED'::character varying, 'ARCHIVED'::character varying])::text[])))
 );
 
 
@@ -2377,6 +2670,51 @@ CREATE TABLE public.delivery_zones (
 
 
 --
+-- Name: device_brands; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.device_brands (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(60) NOT NULL,
+    name_normalised character varying(60) NOT NULL,
+    slug character varying(80) NOT NULL,
+    search_aliases text[] DEFAULT '{}'::text[] NOT NULL,
+    search_aliases_normalised text[] DEFAULT '{}'::text[] NOT NULL,
+    logo_asset_id uuid,
+    is_featured boolean DEFAULT false NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL,
+    status text DEFAULT 'ACTIVE'::text NOT NULL,
+    created_by uuid,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT device_brands_status_chk CHECK ((status = ANY (ARRAY['ACTIVE'::text, 'ARCHIVED'::text])))
+);
+
+
+--
+-- Name: device_series; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.device_series (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    brand_id uuid NOT NULL,
+    name character varying(80) NOT NULL,
+    name_normalised character varying(80) NOT NULL,
+    slug character varying(100) NOT NULL,
+    search_aliases text[] DEFAULT '{}'::text[] NOT NULL,
+    search_aliases_normalised text[] DEFAULT '{}'::text[] NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL,
+    status text DEFAULT 'ACTIVE'::text NOT NULL,
+    created_by uuid,
+    updated_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT device_series_status_chk CHECK ((status = ANY (ARRAY['ACTIVE'::text, 'ARCHIVED'::text])))
+);
+
+
+--
 -- Name: devices; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2400,7 +2738,21 @@ CREATE TABLE public.devices (
     is_active boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT devices_connector_type_chk CHECK (((connector_type IS NULL) OR ((connector_type)::text = ANY ((ARRAY['usb_c'::character varying, 'micro_usb'::character varying, 'lightning'::character varying, 'other'::character varying])::text[]))))
+    brand_id uuid,
+    series_id uuid,
+    model_number character varying(80),
+    model_number_normalised character varying(80),
+    variant character varying(80),
+    variant_normalised character varying(80),
+    status text DEFAULT 'ACTIVE'::text NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL,
+    merged_into_device_id uuid,
+    source_reference character varying(200),
+    created_by uuid,
+    updated_by uuid,
+    archived_at timestamp with time zone,
+    CONSTRAINT devices_connector_type_chk CHECK (((connector_type IS NULL) OR ((connector_type)::text = ANY ((ARRAY['usb_c'::character varying, 'micro_usb'::character varying, 'lightning'::character varying, 'other'::character varying])::text[])))),
+    CONSTRAINT devices_status_chk CHECK ((status = ANY (ARRAY['ACTIVE'::text, 'ARCHIVED'::text, 'MERGED'::text])))
 );
 
 
@@ -2961,6 +3313,34 @@ CREATE TABLE public.identity_links (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     profile_id uuid
+);
+
+
+--
+-- Name: inventory_movements; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.inventory_movements (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    location_id uuid,
+    movement_type text NOT NULL,
+    quantity_delta integer NOT NULL,
+    quantity_before integer NOT NULL,
+    quantity_after integer NOT NULL,
+    reason character varying(500) NOT NULL,
+    supplier_name character varying(160),
+    reference_number character varying(120),
+    unit_cost_ugx integer,
+    receipt_id uuid,
+    count_id uuid,
+    import_session_id uuid,
+    actor_id uuid NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT inventory_movements_balance_chk CHECK (((quantity_after = (quantity_before + quantity_delta)) AND (quantity_after >= 0))),
+    CONSTRAINT inventory_movements_cost_chk CHECK (((unit_cost_ugx IS NULL) OR (unit_cost_ugx >= 0))),
+    CONSTRAINT inventory_movements_type_chk CHECK ((movement_type = ANY (ARRAY['OPENING'::text, 'RECEIPT'::text, 'COUNT'::text, 'ADJUSTMENT'::text, 'DAMAGED'::text, 'LOST'::text, 'RETURN'::text, 'CORRECTION'::text])))
 );
 
 
@@ -4712,9 +5092,31 @@ CREATE TABLE public.product_device_compatibility (
     evidence_source character varying(300),
     notes text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    evidence_status text DEFAULT 'SUPPLIER_LISTED'::text NOT NULL,
+    workflow_status text DEFAULT 'DRAFT'::text NOT NULL,
+    evidence_type character varying(60),
+    evidence_asset_id uuid,
+    public_condition character varying(300),
+    created_by uuid,
+    submitted_by uuid,
+    submitted_at timestamp with time zone,
+    reviewed_by uuid,
+    reviewed_at timestamp with time zone,
+    review_note character varying(500),
+    published_by uuid,
+    published_at timestamp with time zone,
+    archived_at timestamp with time zone,
+    source_import_session_id uuid,
+    source_reference character varying(200),
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT product_device_compat_active_chk CHECK (((workflow_status <> 'ACTIVE'::text) OR ((evidence_status <> 'REJECTED'::text) AND (published_by IS NOT NULL) AND (published_at IS NOT NULL)))),
+    CONSTRAINT product_device_compat_conditional_chk CHECK (((evidence_status <> 'CONDITIONAL'::text) OR ((public_condition IS NOT NULL) AND (length((public_condition)::text) > 0)))),
     CONSTRAINT product_device_compat_confidence_chk CHECK (((confidence)::text = ANY ((ARRAY['verified'::character varying, 'inferred'::character varying, 'declared'::character varying])::text[]))),
+    CONSTRAINT product_device_compat_evidence_status_chk CHECK ((evidence_status = ANY (ARRAY['SUPPLIER_LISTED'::text, 'PACKAGE_VERIFIED'::text, 'FIT_TESTED'::text, 'VERIFIED_EXACT'::text, 'CONDITIONAL'::text, 'REJECTED'::text]))),
     CONSTRAINT product_device_compat_fit_chk CHECK (((fit_type)::text = ANY ((ARRAY['exact'::character varying, 'universal'::character varying, 'adapter_required'::character varying])::text[]))),
-    CONSTRAINT product_device_compat_verified_evidence_chk CHECK ((((confidence)::text <> 'verified'::text) OR ((verified_by IS NOT NULL) AND (verified_at IS NOT NULL) AND (evidence_source IS NOT NULL))))
+    CONSTRAINT product_device_compat_verified_evidence_chk CHECK ((((confidence)::text <> 'verified'::text) OR ((verified_by IS NOT NULL) AND (verified_at IS NOT NULL) AND (evidence_source IS NOT NULL)))),
+    CONSTRAINT product_device_compat_workflow_chk CHECK ((workflow_status = ANY (ARRAY['DRAFT'::text, 'REVIEW'::text, 'READY'::text, 'ACTIVE'::text, 'ARCHIVED'::text])))
 );
 
 
@@ -4784,7 +5186,11 @@ CREATE TABLE public.product_prices (
     product_id uuid NOT NULL,
     retail_price integer NOT NULL,
     dealer_price integer,
-    cost_price integer
+    cost_price integer,
+    floor_price integer,
+    tier_b_price integer,
+    tier_c_price integer,
+    CONSTRAINT product_prices_floor_check CHECK (((floor_price IS NULL) OR ((floor_price > 0) AND (floor_price <= retail_price))))
 );
 
 
@@ -4827,7 +5233,7 @@ CREATE TABLE public.products (
     active boolean DEFAULT true NOT NULL,
     specifications jsonb DEFAULT '{}'::jsonb NOT NULL,
     approval_status character varying(20) DEFAULT 'draft'::character varying NOT NULL,
-    is_feed_eligible boolean DEFAULT false NOT NULL,
+    is_feed_eligible boolean DEFAULT true NOT NULL,
     is_pre_order_enabled boolean DEFAULT false NOT NULL,
     has_retail_price boolean DEFAULT false NOT NULL,
     has_image boolean DEFAULT false NOT NULL,
@@ -5336,6 +5742,1300 @@ CREATE TABLE public.search_product_insights (
     last_observed_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT search_product_insight_integrity CHECK (((impression_count >= 0) AND (click_count >= 0) AND (conversion_count >= 0) AND (click_count <= impression_count) AND (conversion_count <= click_count) AND ((last_rank >= 1) AND (last_rank <= 50)) AND (rank_sum >= impression_count)))
+);
+
+
+--
+-- Name: seo_aeo_observations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_aeo_observations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    prompt_id uuid NOT NULL,
+    engine text NOT NULL,
+    model_version text,
+    executed_at timestamp with time zone DEFAULT now() NOT NULL,
+    response_excerpt text,
+    we_mentioned boolean NOT NULL,
+    we_cited boolean NOT NULL,
+    citation_url text,
+    competitors_mentioned jsonb DEFAULT '[]'::jsonb NOT NULL,
+    competitors_cited jsonb DEFAULT '[]'::jsonb NOT NULL,
+    evidence_ref text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_aeo_obs_engine_chk CHECK ((engine = ANY (ARRAY['CHATGPT'::text, 'GEMINI'::text, 'PERPLEXITY'::text, 'CLAUDE'::text, 'COPILOT'::text, 'OTHER'::text])))
+);
+
+
+--
+-- Name: seo_aeo_prompts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_aeo_prompts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    prompt text NOT NULL,
+    engine text NOT NULL,
+    category text,
+    intent text,
+    status text DEFAULT 'PLANNED'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_aeo_prompts_engine_chk CHECK ((engine = ANY (ARRAY['CHATGPT'::text, 'GEMINI'::text, 'PERPLEXITY'::text, 'CLAUDE'::text, 'COPILOT'::text, 'OTHER'::text]))),
+    CONSTRAINT seo_aeo_prompts_status_chk CHECK ((status = ANY (ARRAY['PLANNED'::text, 'QUEUED'::text, 'EXECUTED'::text, 'FAILED'::text, 'NOT_TESTED'::text, 'UNAVAILABLE'::text])))
+);
+
+
+--
+-- Name: seo_alerts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_alerts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    severity text NOT NULL,
+    kind text NOT NULL,
+    message text NOT NULL,
+    dedupe_key text NOT NULL,
+    status text DEFAULT 'OPEN'::text NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    resolved_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_alerts_severity_chk CHECK ((severity = ANY (ARRAY['CRITICAL'::text, 'HIGH'::text, 'INFO'::text]))),
+    CONSTRAINT seo_alerts_status_chk CHECK ((status = ANY (ARRAY['OPEN'::text, 'ACKNOWLEDGED'::text, 'RESOLVED'::text])))
+);
+
+
+--
+-- Name: seo_battery_compat; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_battery_compat (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    phone_brand text NOT NULL,
+    phone_model text NOT NULL,
+    model_number text,
+    variant text,
+    battery_product_id uuid,
+    battery_reference text NOT NULL,
+    status text DEFAULT 'UNVERIFIED'::text NOT NULL,
+    evidence_source text,
+    evidence_note text,
+    verified_by uuid,
+    verified_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_battery_compat_evidence_source_chk CHECK (((evidence_source IS NULL) OR (evidence_source = ANY (ARRAY['MANUFACTURER_SHEET'::text, 'SUPPLIER_SHEET'::text, 'PHYSICAL_QA'::text, 'CATALOGUE_EVIDENCE'::text])))),
+    CONSTRAINT seo_battery_compat_status_chk CHECK ((status = ANY (ARRAY['VERIFIED'::text, 'PROVISIONAL'::text, 'UNVERIFIED'::text, 'REJECTED'::text]))),
+    CONSTRAINT seo_battery_compat_verified_evidence_chk CHECK (((status <> 'VERIFIED'::text) OR (evidence_source IS NOT NULL)))
+);
+
+
+--
+-- Name: seo_battery_finder_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_battery_finder_events (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL,
+    query text NOT NULL,
+    phone_brand text,
+    phone_model text,
+    matched boolean NOT NULL,
+    match_count integer DEFAULT 0 NOT NULL,
+    clicked_product_id uuid
+);
+
+
+--
+-- Name: seo_change_ledger; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_change_ledger (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    actor_id uuid,
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL,
+    scope text NOT NULL,
+    target text NOT NULL,
+    old_value jsonb,
+    new_value jsonb,
+    reason text NOT NULL,
+    experiment_id uuid,
+    deployment_ref text,
+    validation_state text DEFAULT 'PENDING'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_change_scope_chk CHECK ((scope = ANY (ARRAY['URL'::text, 'TEMPLATE'::text, 'ROBOTS'::text, 'SITEMAP'::text, 'REDIRECT'::text, 'SCHEMA'::text, 'CONTENT'::text, 'METADATA'::text, 'NAVIGATION'::text, 'SETTINGS'::text, 'OTHER'::text]))),
+    CONSTRAINT seo_change_validation_chk CHECK ((validation_state = ANY (ARRAY['PENDING'::text, 'VALIDATED'::text, 'ROLLED_BACK'::text, 'FAILED'::text])))
+);
+
+
+--
+-- Name: seo_competitors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_competitors (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    canonical_name text NOT NULL,
+    aliases jsonb DEFAULT '[]'::jsonb NOT NULL,
+    domains jsonb DEFAULT '[]'::jsonb NOT NULL,
+    business_type text DEFAULT 'UNRESOLVED'::text NOT NULL,
+    country text,
+    uganda_relevance text DEFAULT 'UNKNOWN'::text NOT NULL,
+    local_presence boolean,
+    product_overlap jsonb DEFAULT '[]'::jsonb NOT NULL,
+    category_overlap jsonb DEFAULT '[]'::jsonb NOT NULL,
+    b2b_relevant boolean,
+    is_marketplace boolean DEFAULT false NOT NULL,
+    is_brand boolean DEFAULT false NOT NULL,
+    directness text DEFAULT 'UNRESOLVED'::text NOT NULL,
+    status text DEFAULT 'ACTIVE'::text NOT NULL,
+    merged_into_id uuid,
+    evidence_source text,
+    evidence_state text DEFAULT 'UNKNOWN'::text NOT NULL,
+    last_verified_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_competitors_business_type_chk CHECK ((business_type = ANY (ARRAY['MARKETPLACE'::text, 'CLASSIFIED_MARKETPLACE'::text, 'REGIONAL_MARKETPLACE'::text, 'CROSS_BORDER_MARKETPLACE'::text, 'LOCAL_ECOMMERCE'::text, 'OMNICHANNEL_RETAILER'::text, 'SPECIALIST_ACCESSORY_RETAILER'::text, 'PHONE_RETAILER'::text, 'COMPUTER_RETAILER'::text, 'TELECOM_RETAILER'::text, 'DIRECT_BRAND'::text, 'B2B_CORPORATE_SUPPLIER'::text, 'MANUFACTURER_BENCHMARK'::text, 'SOCIAL_COMMERCE'::text, 'INFORMATIONAL_SERP_COMPETITOR'::text, 'UNRESOLVED'::text]))),
+    CONSTRAINT seo_competitors_directness_chk CHECK ((directness = ANY (ARRAY['DIRECT'::text, 'ADJACENT'::text, 'SERP_ONLY'::text, 'UNRESOLVED'::text]))),
+    CONSTRAINT seo_competitors_evidence_state_chk CHECK ((evidence_state = ANY (ARRAY['OBSERVED'::text, 'VERIFIED'::text, 'MANAGEMENT_SUPPLIED'::text, 'INFERRED'::text, 'UNKNOWN'::text]))),
+    CONSTRAINT seo_competitors_relevance_chk CHECK ((uganda_relevance = ANY (ARRAY['HIGH'::text, 'MEDIUM'::text, 'LOW'::text, 'UNKNOWN'::text]))),
+    CONSTRAINT seo_competitors_status_chk CHECK ((status = ANY (ARRAY['ACTIVE'::text, 'CANDIDATE'::text, 'IGNORED'::text, 'MERGED'::text])))
+);
+
+
+--
+-- Name: seo_crawl_pages; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_crawl_pages (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    run_id uuid NOT NULL,
+    url text NOT NULL,
+    final_url text NOT NULL,
+    http_status integer NOT NULL,
+    redirect_chain jsonb DEFAULT '[]'::jsonb NOT NULL,
+    content_type text,
+    canonical text,
+    meta_robots text,
+    title text,
+    meta_description text,
+    h1 text,
+    headings jsonb,
+    word_count integer,
+    images_missing_alt integer,
+    internal_links jsonb,
+    structured_data_types jsonb,
+    issues jsonb,
+    response_ms integer,
+    content_hash text,
+    crawled_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: seo_crawl_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_crawl_runs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    finished_at timestamp with time zone,
+    status text DEFAULT 'RUNNING'::text NOT NULL,
+    scope text NOT NULL,
+    page_limit integer NOT NULL,
+    pages_crawled integer DEFAULT 0 NOT NULL,
+    notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_crawl_runs_status_chk CHECK ((status = ANY (ARRAY['RUNNING'::text, 'COMPLETE'::text, 'FAILED'::text, 'CANCELLED'::text])))
+);
+
+
+--
+-- Name: seo_crawler_hits; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_crawler_hits (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    hit_at timestamp with time zone NOT NULL,
+    hit_date date NOT NULL,
+    path text NOT NULL,
+    crawler text NOT NULL,
+    verification text DEFAULT 'UNVERIFIED'::text NOT NULL,
+    status_code integer,
+    bytes integer,
+    response_ms integer,
+    user_agent text,
+    source_file text,
+    ingested_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_crawler_hits_verification_chk CHECK ((verification = ANY (ARRAY['VERIFIED'::text, 'SPOOFED'::text, 'UNVERIFIED'::text, 'NOT_CHECKED'::text])))
+);
+
+
+--
+-- Name: seo_experiments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_experiments (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name text NOT NULL,
+    hypothesis text NOT NULL,
+    cohort text,
+    start_at timestamp with time zone,
+    end_at timestamp with time zone,
+    change text NOT NULL,
+    baseline jsonb,
+    metric text NOT NULL,
+    result text,
+    confidence text,
+    decision text DEFAULT 'PENDING'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_experiments_decision_chk CHECK ((decision = ANY (ARRAY['PENDING'::text, 'ADOPT'::text, 'REVERT'::text, 'INCONCLUSIVE'::text])))
+);
+
+
+--
+-- Name: seo_gap_records; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_gap_records (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    query_id uuid NOT NULL,
+    our_position integer,
+    our_url text,
+    leader_competitor_id uuid,
+    leader_position integer,
+    leader_url text,
+    leader_page_type text,
+    observed_gaps jsonb DEFAULT '[]'::jsonb NOT NULL,
+    confidence text DEFAULT 'LOW'::text NOT NULL,
+    action text,
+    owner text,
+    experiment_id uuid,
+    result text,
+    status text DEFAULT 'OPEN'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_gap_confidence_chk CHECK ((confidence = ANY (ARRAY['HIGH'::text, 'MEDIUM'::text, 'LOW'::text]))),
+    CONSTRAINT seo_gap_status_chk CHECK ((status = ANY (ARRAY['OPEN'::text, 'IN_PROGRESS'::text, 'RESOLVED'::text, 'REJECTED'::text])))
+);
+
+
+--
+-- Name: seo_guardian_actions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_guardian_actions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    run_id uuid,
+    signal_id uuid,
+    idempotency_key text NOT NULL,
+    remediation_class text NOT NULL,
+    tier text NOT NULL,
+    mode text,
+    decision text NOT NULL,
+    decision_reason text,
+    entity text,
+    proposed_urls integer DEFAULT 0 NOT NULL,
+    executed_at timestamp with time zone,
+    outcome text,
+    outcome_detail text,
+    verified_at timestamp with time zone,
+    verification text,
+    rolled_back_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_guardian_actions_decision_chk CHECK ((decision = ANY (ARRAY['ALLOWED'::text, 'DENIED'::text]))),
+    CONSTRAINT seo_guardian_actions_executed_chk CHECK (((executed_at IS NULL) OR (outcome IS NOT NULL))),
+    CONSTRAINT seo_guardian_actions_mode_chk CHECK (((mode IS NULL) OR (mode = ANY (ARRAY['CANARY'::text, 'FULL'::text])))),
+    CONSTRAINT seo_guardian_actions_outcome_chk CHECK (((outcome IS NULL) OR (outcome = ANY (ARRAY['SUCCEEDED'::text, 'FAILED'::text, 'SKIPPED'::text])))),
+    CONSTRAINT seo_guardian_actions_tier_chk CHECK ((tier = ANY (ARRAY['TIER_0_OBSERVE'::text, 'TIER_1_INTERNAL'::text, 'TIER_2_REVERSIBLE'::text, 'TIER_3_STRUCTURAL'::text, 'TIER_4_DESTRUCTIVE'::text]))),
+    CONSTRAINT seo_guardian_actions_verification_chk CHECK (((verification IS NULL) OR (verification = ANY (ARRAY['VERIFIED'::text, 'NOT_VERIFIED'::text, 'NOT_APPLICABLE'::text, 'PENDING'::text]))))
+);
+
+
+--
+-- Name: seo_guardian_policy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_guardian_policy (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    scope text DEFAULT 'GLOBAL'::text NOT NULL,
+    organic_agents_enabled boolean DEFAULT true NOT NULL,
+    autonomous_writes_enabled boolean DEFAULT false NOT NULL,
+    external_writes_enabled boolean DEFAULT false NOT NULL,
+    content_autopublish_enabled boolean DEFAULT false NOT NULL,
+    email_notifications_enabled boolean DEFAULT true NOT NULL,
+    observe_only_mode boolean DEFAULT true NOT NULL,
+    change_budget jsonb DEFAULT '{}'::jsonb NOT NULL,
+    materiality_thresholds jsonb DEFAULT '{}'::jsonb NOT NULL,
+    autonomy_by_class jsonb DEFAULT '{}'::jsonb NOT NULL,
+    updated_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: seo_guardian_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_guardian_runs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    agent text NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    finished_at timestamp with time zone,
+    status text DEFAULT 'RUNNING'::text NOT NULL,
+    freshness text,
+    freshness_lag_days integer,
+    comparison_valid boolean,
+    latest_source_date date,
+    signals_evaluated integer DEFAULT 0 NOT NULL,
+    material_changes integer DEFAULT 0 NOT NULL,
+    incidents_opened integer DEFAULT 0 NOT NULL,
+    actions_attempted integer DEFAULT 0 NOT NULL,
+    actions_failed integer DEFAULT 0 NOT NULL,
+    circuit_state text DEFAULT 'CLOSED'::text NOT NULL,
+    circuit_reasons jsonb DEFAULT '[]'::jsonb NOT NULL,
+    notification_sent boolean DEFAULT false NOT NULL,
+    notification_events jsonb DEFAULT '[]'::jsonb NOT NULL,
+    policy_version text NOT NULL,
+    error text,
+    CONSTRAINT seo_guardian_runs_circuit_chk CHECK ((circuit_state = ANY (ARRAY['CLOSED'::text, 'OPEN'::text, 'HALF_OPEN'::text]))),
+    CONSTRAINT seo_guardian_runs_freshness_chk CHECK (((freshness IS NULL) OR (freshness = ANY (ARRAY['COMPLETE'::text, 'PARTIAL'::text, 'DELAYED'::text, 'STALE'::text, 'UNKNOWN'::text])))),
+    CONSTRAINT seo_guardian_runs_status_chk CHECK ((status = ANY (ARRAY['RUNNING'::text, 'COMPLETED'::text, 'FAILED'::text, 'SKIPPED_LOCKED'::text])))
+);
+
+
+--
+-- Name: seo_guardian_signals; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_guardian_signals (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    idempotency_key text NOT NULL,
+    agent text NOT NULL,
+    entity text NOT NULL,
+    change_type text NOT NULL,
+    state text DEFAULT 'FIRST_OBSERVED'::text NOT NULL,
+    consecutive_observations integer DEFAULT 0 NOT NULL,
+    first_observed_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_observed_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_absent_at timestamp with time zone,
+    confirmed_at timestamp with time zone,
+    recovered_at timestamp with time zone,
+    baseline_value numeric,
+    current_value numeric,
+    relative_change numeric,
+    absolute_change numeric,
+    materiality text,
+    commercially_important boolean DEFAULT false NOT NULL,
+    alert_id uuid,
+    evidence jsonb DEFAULT '{}'::jsonb NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_guardian_signals_materiality_chk CHECK (((materiality IS NULL) OR (materiality = ANY (ARRAY['MATERIAL'::text, 'IMMATERIAL'::text, 'INSUFFICIENT_BASELINE'::text, 'NOT_COMPARABLE'::text])))),
+    CONSTRAINT seo_guardian_signals_state_chk CHECK ((state = ANY (ARRAY['FIRST_OBSERVED'::text, 'PENDING_CONFIRMATION'::text, 'CONFIRMED'::text, 'ONGOING'::text, 'RECOVERING'::text, 'RECOVERED'::text])))
+);
+
+
+--
+-- Name: seo_integration_audit; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_integration_audit (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    connection_id uuid,
+    provider_id text,
+    actor_id uuid,
+    action text NOT NULL,
+    detail jsonb DEFAULT '{}'::jsonb NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: seo_integration_connections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_integration_connections (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    provider_id text NOT NULL,
+    name text NOT NULL,
+    status text DEFAULT 'NOT_CONFIGURED'::text NOT NULL,
+    account_ref text,
+    property_ref text,
+    config jsonb DEFAULT '{}'::jsonb NOT NULL,
+    enabled_capabilities jsonb DEFAULT '[]'::jsonb NOT NULL,
+    sync_frequency text,
+    backfill_window_days integer,
+    last_success_at timestamp with time zone,
+    last_attempt_at timestamp with time zone,
+    last_error text,
+    data_freshness_at timestamp with time zone,
+    quota_state jsonb,
+    created_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_int_connections_status_chk CHECK ((status = ANY (ARRAY['NOT_CONFIGURED'::text, 'CONFIGURING'::text, 'AUTHORIZATION_REQUIRED'::text, 'READY'::text, 'CONNECTED'::text, 'SYNCING'::text, 'HEALTHY'::text, 'STALE'::text, 'RATE_LIMITED'::text, 'AUTH_EXPIRED'::text, 'PERMISSION_ERROR'::text, 'PROVIDER_ERROR'::text, 'DISABLED'::text])))
+);
+
+
+--
+-- Name: seo_integration_credentials; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_integration_credentials (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    connection_id uuid NOT NULL,
+    auth_type text NOT NULL,
+    ciphertext text NOT NULL,
+    mask text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    status text DEFAULT 'ACTIVE'::text NOT NULL,
+    expires_at timestamp with time zone,
+    created_by uuid,
+    last_rotated_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_int_credentials_auth_type_chk CHECK ((auth_type = ANY (ARRAY['OAUTH2'::text, 'SERVICE_ACCOUNT'::text, 'API_KEY'::text, 'BEARER_TOKEN'::text, 'BASIC_AUTH'::text, 'CUSTOM_HEADER'::text, 'NONE'::text]))),
+    CONSTRAINT seo_int_credentials_status_chk CHECK ((status = ANY (ARRAY['ACTIVE'::text, 'ROTATED'::text, 'REVOKED'::text, 'EXPIRED'::text])))
+);
+
+
+--
+-- Name: seo_integration_providers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_integration_providers (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    provider_id text NOT NULL,
+    canonical_name text NOT NULL,
+    family text NOT NULL,
+    description text DEFAULT ''::text NOT NULL,
+    auth_types jsonb DEFAULT '[]'::jsonb NOT NULL,
+    capabilities jsonb DEFAULT '[]'::jsonb NOT NULL,
+    supports jsonb DEFAULT '{}'::jsonb NOT NULL,
+    default_sync_frequency text,
+    docs_url text,
+    enabled boolean DEFAULT true NOT NULL,
+    experimental boolean DEFAULT false NOT NULL,
+    adapter_version text DEFAULT '1'::text NOT NULL,
+    manifest jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_int_providers_family_chk CHECK ((family = ANY (ARRAY['GOOGLE_SEARCH'::text, 'GOOGLE_ANALYTICS'::text, 'GOOGLE_MERCHANT'::text, 'GOOGLE_LOCAL'::text, 'GOOGLE_PERFORMANCE'::text, 'MICROSOFT_SEARCH'::text, 'INDEXING_PROTOCOL'::text, 'SERP_PROVIDER'::text, 'KEYWORD_PROVIDER'::text, 'BACKLINK_PROVIDER'::text, 'AI_ENGINE'::text, 'WEB_PERFORMANCE'::text, 'CUSTOM_READ_ONLY'::text, 'OTHER'::text])))
+);
+
+
+--
+-- Name: seo_integration_sync_jobs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_integration_sync_jobs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    connection_id uuid NOT NULL,
+    job_type text NOT NULL,
+    status text DEFAULT 'QUEUED'::text NOT NULL,
+    requested_at timestamp with time zone DEFAULT now() NOT NULL,
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    records_read integer DEFAULT 0 NOT NULL,
+    records_inserted integer DEFAULT 0 NOT NULL,
+    records_updated integer DEFAULT 0 NOT NULL,
+    records_rejected integer DEFAULT 0 NOT NULL,
+    cursor jsonb,
+    error text,
+    requested_by uuid,
+    CONSTRAINT seo_int_sync_jobs_status_chk CHECK ((status = ANY (ARRAY['QUEUED'::text, 'RUNNING'::text, 'COMPLETE'::text, 'FAILED'::text, 'CANCELLED'::text]))),
+    CONSTRAINT seo_int_sync_jobs_type_chk CHECK ((job_type = ANY (ARRAY['BACKFILL'::text, 'INCREMENTAL'::text, 'MANUAL'::text, 'SCHEDULED'::text, 'TEST'::text])))
+);
+
+
+--
+-- Name: seo_integration_usage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_integration_usage (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    provider_id text NOT NULL,
+    day date NOT NULL,
+    request_count integer DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: seo_integrations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_integrations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    provider text NOT NULL,
+    status text DEFAULT 'READY_FOR_CREDENTIALS'::text NOT NULL,
+    config jsonb DEFAULT '{}'::jsonb NOT NULL,
+    last_success_at timestamp with time zone,
+    last_failure_at timestamp with time zone,
+    last_error text,
+    sync_state jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_integrations_provider_chk CHECK ((provider = ANY (ARRAY['GSC'::text, 'GA4'::text, 'MERCHANT_CENTER'::text, 'GBP'::text, 'KEYWORD_PROVIDER'::text, 'RANK_TRACKER'::text, 'BACKLINK_PROVIDER'::text, 'BING_WEBMASTER'::text, 'INDEXNOW'::text, 'PAGESPEED'::text, 'CRUX'::text]))),
+    CONSTRAINT seo_integrations_status_chk CHECK ((status = ANY (ARRAY['READY_FOR_CREDENTIALS'::text, 'CONNECTED'::text, 'ERROR'::text, 'DISABLED'::text])))
+);
+
+
+--
+-- Name: seo_intel_action_requests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_action_requests (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    request_key text NOT NULL,
+    opportunity_key text NOT NULL,
+    action_class text NOT NULL,
+    entity_id text NOT NULL,
+    evidence_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    policy_version text NOT NULL,
+    preconditions jsonb DEFAULT '[]'::jsonb NOT NULL,
+    unmet_preconditions jsonb DEFAULT '[]'::jsonb NOT NULL,
+    confidence text NOT NULL,
+    blast_radius integer DEFAULT 0 NOT NULL,
+    expected_effect text,
+    rollback_class text NOT NULL,
+    verification_plan text,
+    state text NOT NULL,
+    decision_reason text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_intel_ar_no_execution_chk CHECK (((state <> 'PROPOSED'::text) OR (decision_reason IS NOT NULL))),
+    CONSTRAINT seo_intel_ar_rollback_chk CHECK ((rollback_class = ANY (ARRAY['NONE_REQUIRED'::text, 'AUTOMATIC'::text, 'MANUAL'::text, 'IRREVERSIBLE'::text]))),
+    CONSTRAINT seo_intel_ar_state_chk CHECK ((state = ANY (ARRAY['PROPOSED'::text, 'DENIED'::text, 'DEFERRED'::text, 'APPROVAL_REQUIRED'::text, 'NOT_AUTHORISED'::text])))
+);
+
+
+--
+-- Name: seo_intel_answer_units; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_answer_units (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    answer_key text NOT NULL,
+    template_id text,
+    display_question text NOT NULL,
+    intent text NOT NULL,
+    answer_type text NOT NULL,
+    readiness text DEFAULT 'DRAFT_ONLY'::text NOT NULL,
+    confidence text DEFAULT 'LOW'::text NOT NULL,
+    blocked_reason text,
+    fact_refs jsonb DEFAULT '[]'::jsonb NOT NULL,
+    missing_facts jsonb DEFAULT '[]'::jsonb NOT NULL,
+    unverified_facts jsonb DEFAULT '[]'::jsonb NOT NULL,
+    product_entities jsonb DEFAULT '[]'::jsonb NOT NULL,
+    category_entities jsonb DEFAULT '[]'::jsonb NOT NULL,
+    fact_hash text NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_evaluated_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_material_change_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_intel_au_readiness_chk CHECK ((readiness = ANY (ARRAY['READY'::text, 'PARTIAL'::text, 'BLOCKED_BY_MISSING_FACT'::text, 'DRAFT_ONLY'::text]))),
+    CONSTRAINT seo_intel_au_ready_chk CHECK (((readiness <> 'READY'::text) OR (missing_facts = '[]'::jsonb)))
+);
+
+
+--
+-- Name: seo_intel_cannibalisation; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_cannibalisation (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    finding_key text NOT NULL,
+    cluster_key text,
+    classification text NOT NULL,
+    confidence numeric,
+    rationale text NOT NULL,
+    affected_urls jsonb DEFAULT '[]'::jsonb NOT NULL,
+    persistence integer DEFAULT 0 NOT NULL,
+    status text DEFAULT 'OPEN'::text NOT NULL,
+    opportunity_key text,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_material_change_at timestamp with time zone DEFAULT now() NOT NULL,
+    resolved_reason text,
+    CONSTRAINT seo_intel_can_class_chk CHECK ((classification = ANY (ARRAY['BENIGN_MULTI_URL'::text, 'INTENT_SPLIT'::text, 'TRUE_CANNIBALISATION'::text, 'CANONICAL_CONFLICT'::text, 'CONTENT_OVERLAP'::text, 'INTERNAL_LINK_SIGNAL_PROBLEM'::text, 'LIFECYCLE_CONFLICT'::text, 'TEMPORARY_RANKING_VARIANCE'::text, 'INSUFFICIENT_EVIDENCE'::text]))),
+    CONSTRAINT seo_intel_can_resolved_chk CHECK (((status <> 'RESOLVED'::text) OR (resolved_reason IS NOT NULL))),
+    CONSTRAINT seo_intel_can_status_chk CHECK ((status = ANY (ARRAY['OPEN'::text, 'MONITORING'::text, 'RESOLVED'::text, 'SUPERSEDED'::text])))
+);
+
+
+--
+-- Name: seo_intel_clusters; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_clusters (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    cluster_key text NOT NULL,
+    label text NOT NULL,
+    cluster_method text NOT NULL,
+    cluster_version integer DEFAULT 1 NOT NULL,
+    cluster_confidence numeric,
+    membership_signature text NOT NULL,
+    member_count integer DEFAULT 0 NOT NULL,
+    entity_id text,
+    entity_type text,
+    primary_intent text DEFAULT 'UNKNOWN'::text NOT NULL,
+    secondary_intent text,
+    intent_confidence numeric,
+    intent_method text,
+    current_owner_url text,
+    current_owner_type text,
+    preferred_owner_url text,
+    preferred_owner_type text,
+    ownership_decision text,
+    ownership_rationale text,
+    impressions integer,
+    clicks integer,
+    ctr numeric,
+    avg_position numeric,
+    demand_state text DEFAULT 'UNKNOWN'::text NOT NULL,
+    source_observed_at timestamp with time zone,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_intel_cl_demand_chk CHECK ((demand_state = ANY (ARRAY['KNOWN'::text, 'UNKNOWN'::text, 'PARTIAL'::text, 'STALE'::text, 'NOT_APPLICABLE'::text]))),
+    CONSTRAINT seo_intel_cl_method_chk CHECK ((cluster_method = ANY (ARRAY['RULE'::text, 'ENTITY_MATCH'::text, 'SEMANTIC'::text, 'HYBRID'::text]))),
+    CONSTRAINT seo_intel_cl_unknown_chk CHECK (((demand_state <> 'UNKNOWN'::text) OR ((impressions IS NULL) AND (clicks IS NULL))))
+);
+
+
+--
+-- Name: seo_intel_content; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_content (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    content_key text NOT NULL,
+    url text NOT NULL,
+    page_purpose text,
+    primary_intent text,
+    cluster_key text,
+    classification text DEFAULT 'INSUFFICIENT_EVIDENCE'::text NOT NULL,
+    catalogue_relevance text,
+    content_completeness numeric,
+    commercial_value text,
+    internal_link_role text,
+    schema_eligibility text,
+    performance_state text,
+    semantic_hash text NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_material_change_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_intel_content_class_chk CHECK ((classification = ANY (ARRAY['PERFORMING'::text, 'IMPROVING'::text, 'DECAYING'::text, 'THIN'::text, 'DUPLICATIVE'::text, 'OUTDATED'::text, 'MISALIGNED'::text, 'HIGH_POTENTIAL'::text, 'MISSING'::text, 'INSUFFICIENT_EVIDENCE'::text])))
+);
+
+
+--
+-- Name: seo_intel_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_history (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    opportunity_key text NOT NULL,
+    run_id uuid,
+    event_type text NOT NULL,
+    from_state jsonb,
+    to_state jsonb,
+    reason text NOT NULL,
+    policy_version text NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_intel_hist_event_chk CHECK ((event_type = ANY (ARRAY['CREATED'::text, 'SCORE_CHANGED'::text, 'PRIORITY_CHANGED'::text, 'READINESS_CHANGED'::text, 'STATUS_CHANGED'::text, 'POLICY_REEVALUATED'::text, 'EVIDENCE_ENRICHED'::text, 'EVIDENCE_INVALIDATED'::text, 'ROOT_CAUSE_ASSIGNED'::text, 'ROOT_CAUSE_REASSIGNED'::text, 'WORK_ITEM_LINKED'::text, 'DECAYED'::text, 'CLOSED'::text, 'SOURCE_REVISED'::text, 'CLUSTER_ENRICHED'::text, 'OWNERSHIP_CHANGED'::text, 'ANSWER_READINESS_CHANGED'::text, 'CANNIBALISATION_CLASSIFIED'::text])))
+);
+
+
+--
+-- Name: seo_intel_opportunities; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_opportunities (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    opportunity_key text NOT NULL,
+    opportunity_class text NOT NULL,
+    entity_type text NOT NULL,
+    entity_id text NOT NULL,
+    entity_label text,
+    root_cause_key text,
+    policy_version text NOT NULL,
+    engine_version text NOT NULL,
+    materialisation_version integer NOT NULL,
+    source_hash text NOT NULL,
+    semantic_hash text NOT NULL,
+    evaluation_hash text NOT NULL,
+    score numeric,
+    adjusted_score numeric,
+    unscored_weight_share numeric,
+    commercial_readiness text DEFAULT 'UNKNOWN'::text NOT NULL,
+    seo_ready boolean,
+    content_ready boolean,
+    seo_blockers jsonb DEFAULT '[]'::jsonb NOT NULL,
+    confidence text DEFAULT 'LOW'::text NOT NULL,
+    evidence_completeness numeric,
+    evidence_available jsonb DEFAULT '[]'::jsonb NOT NULL,
+    evidence_missing jsonb DEFAULT '[]'::jsonb NOT NULL,
+    effort text,
+    risk text,
+    priority_bucket text DEFAULT 'WATCH'::text NOT NULL,
+    recommended_action_class text,
+    blocked_by jsonb DEFAULT '[]'::jsonb NOT NULL,
+    status text DEFAULT 'OPEN'::text NOT NULL,
+    closed_reason text,
+    work_item_id uuid,
+    source_observed_at timestamp with time zone,
+    source_period_start date,
+    source_period_end date,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_material_change_at timestamp with time zone DEFAULT now() NOT NULL,
+    ingested_at timestamp with time zone DEFAULT now() NOT NULL,
+    materialised_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_run_id uuid,
+    last_run_id uuid,
+    CONSTRAINT seo_intel_opp_closed_chk CHECK (((status <> ALL (ARRAY['CLOSED'::text, 'DECAYED'::text])) OR (closed_reason IS NOT NULL))),
+    CONSTRAINT seo_intel_opp_confidence_chk CHECK ((confidence = ANY (ARRAY['HIGH'::text, 'MEDIUM'::text, 'LOW'::text]))),
+    CONSTRAINT seo_intel_opp_effort_chk CHECK (((effort IS NULL) OR (effort = ANY (ARRAY['TRIVIAL'::text, 'LOW'::text, 'MEDIUM'::text, 'HIGH'::text, 'STRUCTURAL'::text])))),
+    CONSTRAINT seo_intel_opp_entity_chk CHECK ((entity_type = ANY (ARRAY['QUERY_CLUSTER'::text, 'URL'::text, 'PRODUCT'::text, 'PRODUCT_FAMILY'::text, 'CATEGORY'::text, 'COMPATIBILITY'::text, 'CONTENT'::text, 'TEMPLATE'::text]))),
+    CONSTRAINT seo_intel_opp_priority_chk CHECK ((priority_bucket = ANY (ARRAY['NOW'::text, 'NEXT'::text, 'WATCH'::text, 'BLOCKED'::text]))),
+    CONSTRAINT seo_intel_opp_risk_chk CHECK (((risk IS NULL) OR (risk = ANY (ARRAY['LOW'::text, 'MEDIUM'::text, 'HIGH'::text, 'CRITICAL'::text])))),
+    CONSTRAINT seo_intel_opp_status_chk CHECK ((status = ANY (ARRAY['OPEN'::text, 'READY'::text, 'WATCH'::text, 'BLOCKED'::text, 'ACTION_PENDING'::text, 'ACTIONED'::text, 'VERIFYING'::text, 'RECOVERED'::text, 'DECAYING'::text, 'DECAYED'::text, 'CLOSED'::text])))
+);
+
+
+--
+-- Name: seo_intel_query_membership; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_query_membership (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    membership_key text NOT NULL,
+    cluster_key text NOT NULL,
+    raw_query text NOT NULL,
+    normalized_query text NOT NULL,
+    membership_method text NOT NULL,
+    membership_confidence numeric,
+    source text NOT NULL,
+    source_observed_at timestamp with time zone,
+    is_backfill boolean DEFAULT false NOT NULL,
+    impressions integer,
+    clicks integer,
+    demand_state text DEFAULT 'UNKNOWN'::text NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_intel_qm_demand_chk CHECK ((demand_state = ANY (ARRAY['KNOWN'::text, 'UNKNOWN'::text, 'PARTIAL'::text, 'STALE'::text, 'NOT_APPLICABLE'::text]))),
+    CONSTRAINT seo_intel_qm_method_chk CHECK ((membership_method = ANY (ARRAY['RULE'::text, 'ENTITY_MATCH'::text, 'SEMANTIC'::text, 'HYBRID'::text]))),
+    CONSTRAINT seo_intel_qm_unknown_chk CHECK (((demand_state <> 'UNKNOWN'::text) OR ((impressions IS NULL) AND (clicks IS NULL))))
+);
+
+
+--
+-- Name: seo_intel_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_runs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    mode text NOT NULL,
+    status text DEFAULT 'STARTED'::text NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    finished_at timestamp with time zone,
+    policy_version text NOT NULL,
+    engine_version text NOT NULL,
+    materialisation_version integer NOT NULL,
+    entities_evaluated integer DEFAULT 0 NOT NULL,
+    opportunities_created integer DEFAULT 0 NOT NULL,
+    opportunities_updated integer DEFAULT 0 NOT NULL,
+    opportunities_unchanged integer DEFAULT 0 NOT NULL,
+    opportunities_closed integer DEFAULT 0 NOT NULL,
+    history_events integer DEFAULT 0 NOT NULL,
+    work_items_created integer DEFAULT 0 NOT NULL,
+    work_items_updated integer DEFAULT 0 NOT NULL,
+    evidence_state jsonb DEFAULT '{}'::jsonb NOT NULL,
+    error text,
+    CONSTRAINT seo_intel_runs_mode_chk CHECK ((mode = ANY (ARRAY['INCREMENTAL'::text, 'FULL_REBUILD'::text, 'BACKFILL'::text, 'REPLAY'::text]))),
+    CONSTRAINT seo_intel_runs_status_chk CHECK ((status = ANY (ARRAY['STARTED'::text, 'COMPLETED'::text, 'FAILED'::text, 'ABANDONED'::text, 'SKIPPED_LOCKED'::text])))
+);
+
+
+--
+-- Name: seo_intel_score_components; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_score_components (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    opportunity_key text NOT NULL,
+    policy_version text NOT NULL,
+    evaluation_hash text NOT NULL,
+    component text NOT NULL,
+    raw_evidence jsonb,
+    evidence_state text NOT NULL,
+    normalized numeric,
+    weight numeric NOT NULL,
+    contribution numeric NOT NULL,
+    reason_code text NOT NULL,
+    evaluated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_intel_sc_state_chk CHECK ((evidence_state = ANY (ARRAY['KNOWN'::text, 'UNKNOWN'::text, 'PARTIAL'::text, 'STALE'::text, 'NOT_APPLICABLE'::text, 'MODELLED'::text])))
+);
+
+
+--
+-- Name: seo_intel_source_cursors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_source_cursors (
+    source_key text NOT NULL,
+    cursor_at timestamp with time zone,
+    cursor_id text,
+    snapshot_id text,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: seo_intel_source_state; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_intel_source_state (
+    source_key text NOT NULL,
+    entity_id text NOT NULL,
+    state_hash text NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: seo_keyword_imports; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_keyword_imports (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    provider text NOT NULL,
+    imported_at timestamp with time zone DEFAULT now() NOT NULL,
+    country text DEFAULT 'UG'::text NOT NULL,
+    language text DEFAULT 'en'::text NOT NULL,
+    methodology text,
+    row_count integer DEFAULT 0 NOT NULL,
+    imported_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: seo_link_graph; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_link_graph (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    from_path text NOT NULL,
+    to_path text NOT NULL,
+    anchor text,
+    rel text,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: seo_log_ingestions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_log_ingestions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    source_name text NOT NULL,
+    format text NOT NULL,
+    lines_read integer DEFAULT 0 NOT NULL,
+    lines_parsed integer DEFAULT 0 NOT NULL,
+    lines_rejected integer DEFAULT 0 NOT NULL,
+    crawler_hits integer DEFAULT 0 NOT NULL,
+    window_start timestamp with time zone,
+    window_end timestamp with time zone,
+    created_by uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: seo_opportunities; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_opportunities (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    kind text NOT NULL,
+    title text NOT NULL,
+    detail text NOT NULL,
+    query_id uuid,
+    url text,
+    opportunity_value text DEFAULT 'UNKNOWN'::text NOT NULL,
+    evidence_confidence text DEFAULT 'LOW'::text NOT NULL,
+    commercial_readiness text DEFAULT 'UNKNOWN'::text NOT NULL,
+    technical_readiness text DEFAULT 'UNKNOWN'::text NOT NULL,
+    effort text DEFAULT 'M'::text NOT NULL,
+    risk text DEFAULT 'LOW'::text NOT NULL,
+    status text DEFAULT 'OPEN'::text NOT NULL,
+    source text NOT NULL,
+    evidence jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_opps_commercial_readiness_chk CHECK ((commercial_readiness = ANY (ARRAY['READY'::text, 'GATED'::text, 'BLOCKED'::text, 'UNKNOWN'::text]))),
+    CONSTRAINT seo_opps_effort_chk CHECK ((effort = ANY (ARRAY['S'::text, 'M'::text, 'L'::text, 'XL'::text]))),
+    CONSTRAINT seo_opps_evidence_confidence_chk CHECK ((evidence_confidence = ANY (ARRAY['HIGH'::text, 'MEDIUM'::text, 'LOW'::text]))),
+    CONSTRAINT seo_opps_kind_chk CHECK ((kind = ANY (ARRAY['HIGH_IMPRESSION_LOW_CTR'::text, 'POSITION_2_5'::text, 'POSITION_5_10'::text, 'STRIKING_DISTANCE_11_20'::text, 'RISING_QUERY'::text, 'DECLINING_QUERY'::text, 'NEW_QUERY'::text, 'CANNIBALISATION'::text, 'MISSING_CATEGORY'::text, 'MISSING_PRODUCT'::text, 'ATTRIBUTE_GAP'::text, 'INTERNAL_LINK_GAP'::text, 'STRUCTURED_DATA'::text, 'MERCHANT_GAP'::text, 'LOCAL_GAP'::text, 'BACKLINK_GAP'::text, 'CONTENT_DECAY'::text, 'SERP_FEATURE'::text, 'TECHNICAL_ISSUE'::text]))),
+    CONSTRAINT seo_opps_risk_chk CHECK ((risk = ANY (ARRAY['LOW'::text, 'MEDIUM'::text, 'HIGH'::text]))),
+    CONSTRAINT seo_opps_status_chk CHECK ((status = ANY (ARRAY['OPEN'::text, 'PLANNED'::text, 'DONE'::text, 'DISMISSED'::text]))),
+    CONSTRAINT seo_opps_technical_readiness_chk CHECK ((technical_readiness = ANY (ARRAY['READY'::text, 'GATED'::text, 'BLOCKED'::text, 'UNKNOWN'::text]))),
+    CONSTRAINT seo_opps_value_chk CHECK ((opportunity_value = ANY (ARRAY['HIGH'::text, 'MEDIUM'::text, 'LOW'::text, 'UNKNOWN'::text])))
+);
+
+
+--
+-- Name: seo_product_lifecycle; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_product_lifecycle (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    state text NOT NULL,
+    successor_product_id uuid,
+    disposition text DEFAULT 'UNDECIDED'::text NOT NULL,
+    decided_by uuid,
+    decided_at timestamp with time zone,
+    rationale text,
+    evidence jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_product_lifecycle_disposition_chk CHECK ((disposition = ANY (ARRAY['RETAIN_200'::text, 'OFFER_ALTERNATIVE'::text, 'REDIRECT_301_SUCCESSOR'::text, 'REDIRECT_301_REPLACEMENT'::text, 'GONE_410'::text, 'UNPUBLISH'::text, 'UNDECIDED'::text]))),
+    CONSTRAINT seo_product_lifecycle_redirect_chk CHECK (((disposition <> ALL (ARRAY['REDIRECT_301_SUCCESSOR'::text, 'REDIRECT_301_REPLACEMENT'::text])) OR (successor_product_id IS NOT NULL))),
+    CONSTRAINT seo_product_lifecycle_state_chk CHECK ((state = ANY (ARRAY['ACTIVE'::text, 'TEMPORARILY_OUT_OF_STOCK'::text, 'DISCONTINUED_WITH_SUCCESSOR'::text, 'DISCONTINUED_NO_SUCCESSOR'::text, 'SEASONAL'::text, 'DRAFT'::text, 'UNPUBLISHED'::text])))
+);
+
+
+--
+-- Name: seo_queries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_queries (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    query text NOT NULL,
+    normalized_query text NOT NULL,
+    intent text DEFAULT 'UNKNOWN'::text NOT NULL,
+    funnel_stage text,
+    category text,
+    subcategory text,
+    product_type text,
+    brand text,
+    model text,
+    flags jsonb DEFAULT '{}'::jsonb NOT NULL,
+    target_path text,
+    country text DEFAULT 'UG'::text NOT NULL,
+    city text,
+    device text DEFAULT 'ALL'::text NOT NULL,
+    language text DEFAULT 'en'::text NOT NULL,
+    source text NOT NULL,
+    volume integer,
+    volume_source text,
+    cpc_usd numeric,
+    difficulty numeric,
+    difficulty_methodology text,
+    priority text DEFAULT 'UNTRIAGED'::text NOT NULL,
+    commercial_value text DEFAULT 'UNKNOWN'::text NOT NULL,
+    readiness text DEFAULT 'UNKNOWN'::text NOT NULL,
+    evidence_state text DEFAULT 'UNKNOWN'::text NOT NULL,
+    last_observed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_queries_commercial_value_chk CHECK ((commercial_value = ANY (ARRAY['HIGH'::text, 'MEDIUM'::text, 'LOW'::text, 'UNKNOWN'::text]))),
+    CONSTRAINT seo_queries_device_chk CHECK ((device = ANY (ARRAY['MOBILE'::text, 'DESKTOP'::text, 'ALL'::text]))),
+    CONSTRAINT seo_queries_evidence_state_chk CHECK ((evidence_state = ANY (ARRAY['OBSERVED'::text, 'VERIFIED'::text, 'MANAGEMENT_SUPPLIED'::text, 'INFERRED'::text, 'UNKNOWN'::text]))),
+    CONSTRAINT seo_queries_intent_chk CHECK ((intent = ANY (ARRAY['COMMERCIAL'::text, 'INFORMATIONAL'::text, 'NAVIGATIONAL'::text, 'LOCAL'::text, 'TRANSACTIONAL'::text, 'COMPARISON'::text, 'UNKNOWN'::text]))),
+    CONSTRAINT seo_queries_priority_chk CHECK ((priority = ANY (ARRAY['P0'::text, 'P1'::text, 'P2'::text, 'P3'::text, 'UNTRIAGED'::text]))),
+    CONSTRAINT seo_queries_readiness_chk CHECK ((readiness = ANY (ARRAY['READY'::text, 'GATED'::text, 'BLOCKED'::text, 'UNKNOWN'::text]))),
+    CONSTRAINT seo_queries_source_chk CHECK ((source = ANY (ARRAY['GSC'::text, 'SITE_SEARCH'::text, 'CATALOGUE'::text, 'OPERATOR'::text, 'SERP_OBSERVATION'::text, 'CSV_IMPORT'::text, 'CUSTOMER_SERVICE'::text])))
+);
+
+
+--
+-- Name: seo_render_diffs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_render_diffs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    url text NOT NULL,
+    observed_at timestamp with time zone DEFAULT now() NOT NULL,
+    render_state text DEFAULT 'NOT_ATTEMPTED'::text NOT NULL,
+    raw_status integer,
+    raw_title text,
+    raw_meta_description text,
+    raw_h1 text,
+    raw_word_count integer,
+    raw_link_count integer,
+    raw_canonical text,
+    raw_meta_robots text,
+    raw_jsonld_count integer,
+    rendered_title text,
+    rendered_meta_description text,
+    rendered_h1 text,
+    rendered_word_count integer,
+    rendered_link_count integer,
+    rendered_canonical text,
+    rendered_meta_robots text,
+    rendered_jsonld_count integer,
+    differences jsonb DEFAULT '[]'::jsonb NOT NULL,
+    severity text DEFAULT 'NONE'::text NOT NULL,
+    error text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_render_diffs_render_state_chk CHECK ((render_state = ANY (ARRAY['NOT_ATTEMPTED'::text, 'RENDERED'::text, 'RENDER_FAILED'::text, 'FETCH_FAILED'::text]))),
+    CONSTRAINT seo_render_diffs_severity_chk CHECK ((severity = ANY (ARRAY['NONE'::text, 'INFO'::text, 'WARNING'::text, 'CRITICAL'::text, 'UNKNOWN'::text]))),
+    CONSTRAINT seo_render_diffs_verdict_chk CHECK (((render_state = 'RENDERED'::text) OR (severity = 'UNKNOWN'::text)))
+);
+
+
+--
+-- Name: seo_robots_versions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_robots_versions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    version integer NOT NULL,
+    content text NOT NULL,
+    status text DEFAULT 'DRAFT'::text NOT NULL,
+    note text,
+    created_by uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    approved_by uuid,
+    approved_at timestamp with time zone,
+    published_at timestamp with time zone,
+    superseded_at timestamp with time zone,
+    restored_from_id uuid,
+    CONSTRAINT seo_robots_versions_approved_chk CHECK (((status <> ALL (ARRAY['APPROVED'::text, 'PUBLISHED'::text])) OR ((approved_by IS NOT NULL) AND (approved_at IS NOT NULL)))),
+    CONSTRAINT seo_robots_versions_status_chk CHECK ((status = ANY (ARRAY['DRAFT'::text, 'PENDING_APPROVAL'::text, 'APPROVED'::text, 'PUBLISHED'::text, 'SUPERSEDED'::text, 'REJECTED'::text])))
+);
+
+
+--
+-- Name: seo_serp_domains; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_serp_domains (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    domain text NOT NULL,
+    classification text DEFAULT 'UNREVIEWED'::text NOT NULL,
+    competitor_id uuid,
+    occurrences integer DEFAULT 1 NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_serp_domains_classification_chk CHECK ((classification = ANY (ARRAY['KNOWN_COMPETITOR'::text, 'NEW_COMMERCIAL'::text, 'MANUFACTURER'::text, 'PUBLISHER'::text, 'FORUM'::text, 'VIDEO'::text, 'SOCIAL'::text, 'MARKETPLACE'::text, 'LOCAL_LISTING'::text, 'OTHER'::text, 'UNREVIEWED'::text])))
+);
+
+
+--
+-- Name: seo_serp_observations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_serp_observations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    query_id uuid NOT NULL,
+    engine text DEFAULT 'GOOGLE'::text NOT NULL,
+    provider text NOT NULL,
+    country text DEFAULT 'UG'::text NOT NULL,
+    city text,
+    device text DEFAULT 'MOBILE'::text NOT NULL,
+    language text DEFAULT 'en'::text NOT NULL,
+    observed_at timestamp with time zone DEFAULT now() NOT NULL,
+    rank integer,
+    url text,
+    domain text,
+    title text,
+    result_type text DEFAULT 'ORGANIC'::text NOT NULL,
+    serp_features jsonb DEFAULT '[]'::jsonb NOT NULL,
+    competitor_id uuid,
+    raw_provider_id text,
+    evidence_ref text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_serp_obs_device_chk CHECK ((device = ANY (ARRAY['MOBILE'::text, 'DESKTOP'::text, 'ALL'::text]))),
+    CONSTRAINT seo_serp_obs_engine_chk CHECK ((engine = ANY (ARRAY['GOOGLE'::text, 'BING'::text, 'OTHER'::text]))),
+    CONSTRAINT seo_serp_obs_result_type_chk CHECK ((result_type = ANY (ARRAY['ORGANIC'::text, 'SHOPPING'::text, 'FREE_LISTING'::text, 'LOCAL_PACK'::text, 'MAPS'::text, 'IMAGE'::text, 'VIDEO'::text, 'PAA'::text, 'FEATURED_SNIPPET'::text, 'FORUM'::text, 'KNOWLEDGE_PANEL'::text, 'AI_OVERVIEW'::text, 'RELATED'::text, 'OTHER'::text])))
+);
+
+
+--
+-- Name: seo_storage_tests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_storage_tests (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    claimed_capacity_gb numeric NOT NULL,
+    tested_capacity_gb numeric,
+    read_mb_s numeric,
+    write_mb_s numeric,
+    method text NOT NULL,
+    tool text,
+    tester text NOT NULL,
+    tested_at date NOT NULL,
+    result text NOT NULL,
+    evidence_note text,
+    created_by uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_storage_tests_result_chk CHECK ((result = ANY (ARRAY['PASS'::text, 'FAIL'::text, 'INCONCLUSIVE'::text])))
+);
+
+
+--
+-- Name: seo_web_vitals; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_web_vitals (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    url text NOT NULL,
+    source text NOT NULL,
+    form_factor text NOT NULL,
+    collected_at timestamp with time zone DEFAULT now() NOT NULL,
+    collection_date date NOT NULL,
+    lcp_ms numeric,
+    inp_ms numeric,
+    cls numeric,
+    ttfb_ms numeric,
+    fcp_ms numeric,
+    performance_score numeric,
+    distributions jsonb,
+    sample_size integer,
+    connection_id uuid,
+    raw jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT seo_web_vitals_form_factor_chk CHECK ((form_factor = ANY (ARRAY['MOBILE'::text, 'DESKTOP'::text, 'ALL'::text]))),
+    CONSTRAINT seo_web_vitals_score_chk CHECK (((performance_score IS NULL) OR (source = 'PAGESPEED_LAB'::text))),
+    CONSTRAINT seo_web_vitals_source_chk CHECK ((source = ANY (ARRAY['PAGESPEED_LAB'::text, 'CRUX_FIELD'::text])))
+);
+
+
+--
+-- Name: seo_work_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.seo_work_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    title text NOT NULL,
+    detail text,
+    state text DEFAULT 'BACKLOG'::text NOT NULL,
+    priority text DEFAULT 'MEDIUM'::text NOT NULL,
+    opportunity_id uuid,
+    gap_id uuid,
+    observation_id uuid,
+    change_ledger_id uuid,
+    target_url text,
+    assignee_id uuid,
+    created_by uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    outcome text,
+    outcome_note text,
+    outcome_measured_at timestamp with time zone,
+    CONSTRAINT seo_work_items_done_chk CHECK (((state <> 'DONE'::text) OR (outcome IS NOT NULL))),
+    CONSTRAINT seo_work_items_outcome_chk CHECK (((outcome IS NULL) OR (outcome = ANY (ARRAY['IMPROVED'::text, 'NO_CHANGE'::text, 'REGRESSED'::text, 'INCONCLUSIVE'::text, 'NOT_MEASURED'::text])))),
+    CONSTRAINT seo_work_items_priority_chk CHECK ((priority = ANY (ARRAY['LOW'::text, 'MEDIUM'::text, 'HIGH'::text, 'CRITICAL'::text]))),
+    CONSTRAINT seo_work_items_state_chk CHECK ((state = ANY (ARRAY['BACKLOG'::text, 'READY'::text, 'IN_PROGRESS'::text, 'BLOCKED'::text, 'SHIPPED'::text, 'VALIDATING'::text, 'DONE'::text, 'ABANDONED'::text])))
+);
+
+
+--
+-- Name: stock_count_lines; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.stock_count_lines (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    count_id uuid NOT NULL,
+    product_id uuid NOT NULL,
+    system_quantity integer NOT NULL,
+    counted_quantity integer NOT NULL,
+    reason character varying(300),
+    movement_id uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT stock_count_lines_qty_chk CHECK (((counted_quantity >= 0) AND (system_quantity >= 0)))
+);
+
+
+--
+-- Name: stock_counts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.stock_counts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    count_type text DEFAULT 'CYCLE'::text NOT NULL,
+    location_id uuid,
+    status text DEFAULT 'DRAFT'::text NOT NULL,
+    notes character varying(1000),
+    created_by uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    applied_by uuid,
+    applied_at timestamp with time zone,
+    cancelled_by uuid,
+    cancelled_at timestamp with time zone,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT stock_counts_status_chk CHECK ((status = ANY (ARRAY['DRAFT'::text, 'APPLIED'::text, 'CANCELLED'::text]))),
+    CONSTRAINT stock_counts_type_chk CHECK ((count_type = ANY (ARRAY['CYCLE'::text, 'FULL'::text])))
+);
+
+
+--
+-- Name: stock_locations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.stock_locations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    code character varying(20) NOT NULL,
+    name character varying(80) NOT NULL,
+    is_default boolean DEFAULT false NOT NULL,
+    status text DEFAULT 'ACTIVE'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT stock_locations_status_chk CHECK ((status = ANY (ARRAY['ACTIVE'::text, 'ARCHIVED'::text])))
+);
+
+
+--
+-- Name: stock_receipt_lines; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.stock_receipt_lines (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    receipt_id uuid NOT NULL,
+    product_id uuid,
+    scanned_code character varying(120),
+    match_kind text DEFAULT 'EXISTING'::text NOT NULL,
+    quantity integer NOT NULL,
+    unit_cost_ugx integer,
+    notes character varying(300),
+    movement_id uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT stock_receipt_lines_cost_chk CHECK (((unit_cost_ugx IS NULL) OR (unit_cost_ugx >= 0))),
+    CONSTRAINT stock_receipt_lines_match_chk CHECK ((match_kind = ANY (ARRAY['EXISTING'::text, 'NEW'::text, 'AMBIGUOUS'::text]))),
+    CONSTRAINT stock_receipt_lines_qty_chk CHECK ((quantity > 0))
+);
+
+
+--
+-- Name: stock_receipts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.stock_receipts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    supplier_name character varying(160) NOT NULL,
+    supplier_reference character varying(120),
+    location_id uuid,
+    status text DEFAULT 'DRAFT'::text NOT NULL,
+    notes character varying(1000),
+    created_by uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    applied_by uuid,
+    applied_at timestamp with time zone,
+    cancelled_by uuid,
+    cancelled_at timestamp with time zone,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT stock_receipts_status_chk CHECK ((status = ANY (ARRAY['DRAFT'::text, 'APPLIED'::text, 'CANCELLED'::text])))
 );
 
 
@@ -6020,6 +7720,86 @@ ALTER TABLE ONLY public.automation_versions
 
 
 --
+-- Name: battery_aliases battery_aliases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_aliases
+    ADD CONSTRAINT battery_aliases_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: battery_evidence_assets battery_evidence_assets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_evidence_assets
+    ADD CONSTRAINT battery_evidence_assets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: battery_finder_config battery_finder_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_finder_config
+    ADD CONSTRAINT battery_finder_config_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: battery_finder_events battery_finder_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_finder_events
+    ADD CONSTRAINT battery_finder_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: battery_import_events battery_import_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_import_events
+    ADD CONSTRAINT battery_import_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: battery_import_mapping_templates battery_import_mapping_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_import_mapping_templates
+    ADD CONSTRAINT battery_import_mapping_templates_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: battery_import_rows battery_import_rows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_import_rows
+    ADD CONSTRAINT battery_import_rows_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: battery_import_sessions battery_import_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_import_sessions
+    ADD CONSTRAINT battery_import_sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: battery_profiles battery_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_profiles
+    ADD CONSTRAINT battery_profiles_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: battery_requests battery_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_requests
+    ADD CONSTRAINT battery_requests_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: behavioural_intervention_definitions behavioural_intervention_definitions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -6057,6 +7837,30 @@ ALTER TABLE ONLY public.behavioural_intervention_outcomes
 
 ALTER TABLE ONLY public.behavioural_intervention_versions
     ADD CONSTRAINT behavioural_intervention_versions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: blog_post_products blog_post_products_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blog_post_products
+    ADD CONSTRAINT blog_post_products_pkey PRIMARY KEY (post_id, product_id);
+
+
+--
+-- Name: blog_posts blog_posts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blog_posts
+    ADD CONSTRAINT blog_posts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: blog_posts blog_posts_slug_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blog_posts
+    ADD CONSTRAINT blog_posts_slug_key UNIQUE (slug);
 
 
 --
@@ -6740,6 +8544,22 @@ ALTER TABLE ONLY public.delivery_zones
 
 
 --
+-- Name: device_brands device_brands_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_brands
+    ADD CONSTRAINT device_brands_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: device_series device_series_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_series
+    ADD CONSTRAINT device_series_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: devices devices_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -6985,6 +8805,14 @@ ALTER TABLE ONLY public.homepage_content
 
 ALTER TABLE ONLY public.identity_links
     ADD CONSTRAINT identity_links_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: inventory_movements inventory_movements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_pkey PRIMARY KEY (id);
 
 
 --
@@ -8076,6 +9904,430 @@ ALTER TABLE ONLY public.search_product_insights
 
 
 --
+-- Name: seo_aeo_observations seo_aeo_observations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_aeo_observations
+    ADD CONSTRAINT seo_aeo_observations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_aeo_prompts seo_aeo_prompts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_aeo_prompts
+    ADD CONSTRAINT seo_aeo_prompts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_alerts seo_alerts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_alerts
+    ADD CONSTRAINT seo_alerts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_battery_compat seo_battery_compat_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_battery_compat
+    ADD CONSTRAINT seo_battery_compat_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_battery_finder_events seo_battery_finder_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_battery_finder_events
+    ADD CONSTRAINT seo_battery_finder_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_change_ledger seo_change_ledger_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_change_ledger
+    ADD CONSTRAINT seo_change_ledger_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_competitors seo_competitors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_competitors
+    ADD CONSTRAINT seo_competitors_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_crawl_pages seo_crawl_pages_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_crawl_pages
+    ADD CONSTRAINT seo_crawl_pages_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_crawl_runs seo_crawl_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_crawl_runs
+    ADD CONSTRAINT seo_crawl_runs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_crawler_hits seo_crawler_hits_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_crawler_hits
+    ADD CONSTRAINT seo_crawler_hits_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_experiments seo_experiments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_experiments
+    ADD CONSTRAINT seo_experiments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_gap_records seo_gap_records_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_gap_records
+    ADD CONSTRAINT seo_gap_records_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_guardian_actions seo_guardian_actions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_guardian_actions
+    ADD CONSTRAINT seo_guardian_actions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_guardian_policy seo_guardian_policy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_guardian_policy
+    ADD CONSTRAINT seo_guardian_policy_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_guardian_runs seo_guardian_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_guardian_runs
+    ADD CONSTRAINT seo_guardian_runs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_guardian_signals seo_guardian_signals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_guardian_signals
+    ADD CONSTRAINT seo_guardian_signals_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_integration_audit seo_integration_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_integration_audit
+    ADD CONSTRAINT seo_integration_audit_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_integration_connections seo_integration_connections_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_integration_connections
+    ADD CONSTRAINT seo_integration_connections_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_integration_credentials seo_integration_credentials_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_integration_credentials
+    ADD CONSTRAINT seo_integration_credentials_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_integration_providers seo_integration_providers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_integration_providers
+    ADD CONSTRAINT seo_integration_providers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_integration_sync_jobs seo_integration_sync_jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_integration_sync_jobs
+    ADD CONSTRAINT seo_integration_sync_jobs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_integration_usage seo_integration_usage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_integration_usage
+    ADD CONSTRAINT seo_integration_usage_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_integrations seo_integrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_integrations
+    ADD CONSTRAINT seo_integrations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_intel_action_requests seo_intel_action_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_action_requests
+    ADD CONSTRAINT seo_intel_action_requests_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_intel_answer_units seo_intel_answer_units_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_answer_units
+    ADD CONSTRAINT seo_intel_answer_units_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_intel_cannibalisation seo_intel_cannibalisation_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_cannibalisation
+    ADD CONSTRAINT seo_intel_cannibalisation_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_intel_clusters seo_intel_clusters_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_clusters
+    ADD CONSTRAINT seo_intel_clusters_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_intel_content seo_intel_content_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_content
+    ADD CONSTRAINT seo_intel_content_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_intel_history seo_intel_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_history
+    ADD CONSTRAINT seo_intel_history_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_intel_opportunities seo_intel_opportunities_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_opportunities
+    ADD CONSTRAINT seo_intel_opportunities_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_intel_query_membership seo_intel_query_membership_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_query_membership
+    ADD CONSTRAINT seo_intel_query_membership_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_intel_runs seo_intel_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_runs
+    ADD CONSTRAINT seo_intel_runs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_intel_score_components seo_intel_score_components_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_score_components
+    ADD CONSTRAINT seo_intel_score_components_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_intel_source_cursors seo_intel_source_cursors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_source_cursors
+    ADD CONSTRAINT seo_intel_source_cursors_pkey PRIMARY KEY (source_key);
+
+
+--
+-- Name: seo_intel_source_state seo_intel_source_state_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_source_state
+    ADD CONSTRAINT seo_intel_source_state_pkey PRIMARY KEY (source_key, entity_id);
+
+
+--
+-- Name: seo_keyword_imports seo_keyword_imports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_keyword_imports
+    ADD CONSTRAINT seo_keyword_imports_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_link_graph seo_link_graph_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_link_graph
+    ADD CONSTRAINT seo_link_graph_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_log_ingestions seo_log_ingestions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_log_ingestions
+    ADD CONSTRAINT seo_log_ingestions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_opportunities seo_opportunities_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_opportunities
+    ADD CONSTRAINT seo_opportunities_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_product_lifecycle seo_product_lifecycle_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_product_lifecycle
+    ADD CONSTRAINT seo_product_lifecycle_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_queries seo_queries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_queries
+    ADD CONSTRAINT seo_queries_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_render_diffs seo_render_diffs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_render_diffs
+    ADD CONSTRAINT seo_render_diffs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_robots_versions seo_robots_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_robots_versions
+    ADD CONSTRAINT seo_robots_versions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_serp_domains seo_serp_domains_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_serp_domains
+    ADD CONSTRAINT seo_serp_domains_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_serp_observations seo_serp_observations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_serp_observations
+    ADD CONSTRAINT seo_serp_observations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_storage_tests seo_storage_tests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_storage_tests
+    ADD CONSTRAINT seo_storage_tests_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_web_vitals seo_web_vitals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_web_vitals
+    ADD CONSTRAINT seo_web_vitals_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seo_work_items seo_work_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_work_items
+    ADD CONSTRAINT seo_work_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: stock_count_lines stock_count_lines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stock_count_lines
+    ADD CONSTRAINT stock_count_lines_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: stock_counts stock_counts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stock_counts
+    ADD CONSTRAINT stock_counts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: stock_locations stock_locations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stock_locations
+    ADD CONSTRAINT stock_locations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: stock_receipt_lines stock_receipt_lines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stock_receipt_lines
+    ADD CONSTRAINT stock_receipt_lines_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: stock_receipts stock_receipts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stock_receipts
+    ADD CONSTRAINT stock_receipts_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: storefront_copy storefront_copy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -8582,6 +10834,146 @@ CREATE UNIQUE INDEX automation_versions_def_version_idx ON public.automation_ver
 
 
 --
+-- Name: battery_aliases_active_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX battery_aliases_active_idx ON public.battery_aliases USING btree (alias_normalised) WHERE is_active;
+
+
+--
+-- Name: battery_aliases_product_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_aliases_product_idx ON public.battery_aliases USING btree (battery_product_id);
+
+
+--
+-- Name: battery_aliases_trgm_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_aliases_trgm_idx ON public.battery_aliases USING gin (alias_normalised public.gin_trgm_ops);
+
+
+--
+-- Name: battery_evidence_subject_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_evidence_subject_idx ON public.battery_evidence_assets USING btree (subject_type, subject_id);
+
+
+--
+-- Name: battery_finder_events_device_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_finder_events_device_idx ON public.battery_finder_events USING btree (device_id, event_type);
+
+
+--
+-- Name: battery_finder_events_occurred_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_finder_events_occurred_idx ON public.battery_finder_events USING btree (occurred_at);
+
+
+--
+-- Name: battery_finder_events_query_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_finder_events_query_idx ON public.battery_finder_events USING btree (query_normalised, outcome);
+
+
+--
+-- Name: battery_import_events_session_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_import_events_session_idx ON public.battery_import_events USING btree (session_id, created_at);
+
+
+--
+-- Name: battery_import_rows_session_row_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX battery_import_rows_session_row_idx ON public.battery_import_rows USING btree (session_id, row_number);
+
+
+--
+-- Name: battery_import_rows_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_import_rows_status_idx ON public.battery_import_rows USING btree (session_id, status);
+
+
+--
+-- Name: battery_import_sessions_source_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX battery_import_sessions_source_idx ON public.battery_import_sessions USING btree (import_type, source_sha256);
+
+
+--
+-- Name: battery_import_sessions_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_import_sessions_status_idx ON public.battery_import_sessions USING btree (status, created_at);
+
+
+--
+-- Name: battery_import_templates_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX battery_import_templates_name_idx ON public.battery_import_mapping_templates USING btree (import_type, name);
+
+
+--
+-- Name: battery_profiles_barcode_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX battery_profiles_barcode_idx ON public.battery_profiles USING btree (barcode) WHERE ((barcode IS NOT NULL) AND (lifecycle_status <> 'ARCHIVED'::text));
+
+
+--
+-- Name: battery_profiles_code_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX battery_profiles_code_idx ON public.battery_profiles USING btree (canonical_code_normalised) WHERE (lifecycle_status <> 'ARCHIVED'::text);
+
+
+--
+-- Name: battery_profiles_code_trgm_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_profiles_code_trgm_idx ON public.battery_profiles USING gin (canonical_code_normalised public.gin_trgm_ops);
+
+
+--
+-- Name: battery_profiles_lifecycle_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_profiles_lifecycle_idx ON public.battery_profiles USING btree (lifecycle_status, battery_category);
+
+
+--
+-- Name: battery_profiles_product_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX battery_profiles_product_idx ON public.battery_profiles USING btree (product_id);
+
+
+--
+-- Name: battery_requests_query_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_requests_query_idx ON public.battery_requests USING btree (query_normalised);
+
+
+--
+-- Name: battery_requests_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX battery_requests_status_idx ON public.battery_requests USING btree (status, created_at);
+
+
+--
 -- Name: behavioural_intervention_definitions_key_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -8649,6 +11041,20 @@ CREATE UNIQUE INDEX behavioural_intervention_versions_digest_idx ON public.behav
 --
 
 CREATE INDEX behavioural_intervention_versions_experiment_idx ON public.behavioural_intervention_versions USING btree (experiment_id);
+
+
+--
+-- Name: blog_post_products_product_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX blog_post_products_product_idx ON public.blog_post_products USING btree (product_id);
+
+
+--
+-- Name: blog_posts_published_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX blog_posts_published_idx ON public.blog_posts USING btree (status, published_at DESC);
 
 
 --
@@ -9534,10 +11940,73 @@ CREATE INDEX dest_log_status_idx ON public.measurement_destination_delivery_logs
 
 
 --
--- Name: devices_brand_model_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: device_brands_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX devices_brand_model_idx ON public.devices USING btree (brand_normalised, model_normalised);
+CREATE UNIQUE INDEX device_brands_name_idx ON public.device_brands USING btree (name_normalised);
+
+
+--
+-- Name: device_brands_order_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX device_brands_order_idx ON public.device_brands USING btree (status, is_featured, display_order);
+
+
+--
+-- Name: device_brands_slug_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX device_brands_slug_idx ON public.device_brands USING btree (slug);
+
+
+--
+-- Name: device_series_brand_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX device_series_brand_name_idx ON public.device_series USING btree (brand_id, name_normalised);
+
+
+--
+-- Name: device_series_brand_slug_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX device_series_brand_slug_idx ON public.device_series USING btree (brand_id, slug);
+
+
+--
+-- Name: device_series_order_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX device_series_order_idx ON public.device_series USING btree (brand_id, status, display_order);
+
+
+--
+-- Name: devices_brand_series_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX devices_brand_series_idx ON public.devices USING btree (brand_id, series_id, status, display_order);
+
+
+--
+-- Name: devices_identity_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX devices_identity_idx ON public.devices USING btree (brand_normalised, model_normalised, COALESCE(model_number_normalised, ''::character varying), COALESCE(variant_normalised, ''::character varying));
+
+
+--
+-- Name: devices_model_number_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX devices_model_number_idx ON public.devices USING btree (model_number_normalised);
+
+
+--
+-- Name: devices_model_trgm_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX devices_model_trgm_idx ON public.devices USING gin (model_normalised public.gin_trgm_ops);
 
 
 --
@@ -9979,6 +12448,27 @@ CREATE INDEX identity_links_profile_idx ON public.identity_links USING btree (pr
 --
 
 CREATE INDEX identity_links_session_idx ON public.identity_links USING btree (session_id);
+
+
+--
+-- Name: inventory_movements_occurred_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX inventory_movements_occurred_idx ON public.inventory_movements USING btree (occurred_at);
+
+
+--
+-- Name: inventory_movements_product_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX inventory_movements_product_idx ON public.inventory_movements USING btree (product_id, occurred_at);
+
+
+--
+-- Name: inventory_movements_receipt_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX inventory_movements_receipt_idx ON public.inventory_movements USING btree (receipt_id);
 
 
 --
@@ -10815,6 +13305,20 @@ CREATE INDEX product_device_compat_device_idx ON public.product_device_compatibi
 
 
 --
+-- Name: product_device_compat_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX product_device_compat_id_idx ON public.product_device_compatibility USING btree (id);
+
+
+--
+-- Name: product_device_compat_workflow_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX product_device_compat_workflow_idx ON public.product_device_compatibility USING btree (workflow_status, evidence_status);
+
+
+--
 -- Name: product_finder_sessions_anonymous_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -11333,6 +13837,601 @@ CREATE UNIQUE INDEX search_product_insight_query_product_idx ON public.search_pr
 
 
 --
+-- Name: seo_aeo_observations_prompt_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_aeo_observations_prompt_idx ON public.seo_aeo_observations USING btree (prompt_id, executed_at DESC);
+
+
+--
+-- Name: seo_alerts_open_dedupe_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_alerts_open_dedupe_idx ON public.seo_alerts USING btree (dedupe_key) WHERE (status = 'OPEN'::text);
+
+
+--
+-- Name: seo_battery_compat_combo_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_battery_compat_combo_idx ON public.seo_battery_compat USING btree (phone_brand, phone_model, COALESCE(variant, ''::text), battery_reference);
+
+
+--
+-- Name: seo_battery_compat_product_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_battery_compat_product_idx ON public.seo_battery_compat USING btree (battery_product_id);
+
+
+--
+-- Name: seo_battery_compat_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_battery_compat_status_idx ON public.seo_battery_compat USING btree (status);
+
+
+--
+-- Name: seo_battery_finder_events_matched_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_battery_finder_events_matched_idx ON public.seo_battery_finder_events USING btree (matched, occurred_at);
+
+
+--
+-- Name: seo_battery_finder_events_occurred_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_battery_finder_events_occurred_idx ON public.seo_battery_finder_events USING btree (occurred_at);
+
+
+--
+-- Name: seo_change_ledger_occurred_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_change_ledger_occurred_idx ON public.seo_change_ledger USING btree (occurred_at DESC);
+
+
+--
+-- Name: seo_competitors_canonical_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_competitors_canonical_name_idx ON public.seo_competitors USING btree (canonical_name);
+
+
+--
+-- Name: seo_competitors_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_competitors_status_idx ON public.seo_competitors USING btree (status);
+
+
+--
+-- Name: seo_crawl_pages_run_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_crawl_pages_run_idx ON public.seo_crawl_pages USING btree (run_id);
+
+
+--
+-- Name: seo_crawl_pages_url_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_crawl_pages_url_idx ON public.seo_crawl_pages USING btree (url);
+
+
+--
+-- Name: seo_crawler_hits_date_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_crawler_hits_date_idx ON public.seo_crawler_hits USING btree (hit_date DESC, crawler);
+
+
+--
+-- Name: seo_crawler_hits_path_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_crawler_hits_path_idx ON public.seo_crawler_hits USING btree (path, hit_date DESC);
+
+
+--
+-- Name: seo_crawler_hits_verification_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_crawler_hits_verification_idx ON public.seo_crawler_hits USING btree (verification, hit_date DESC);
+
+
+--
+-- Name: seo_gap_records_query_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_gap_records_query_idx ON public.seo_gap_records USING btree (query_id);
+
+
+--
+-- Name: seo_gap_records_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_gap_records_status_idx ON public.seo_gap_records USING btree (status);
+
+
+--
+-- Name: seo_guardian_actions_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_guardian_actions_key_idx ON public.seo_guardian_actions USING btree (idempotency_key);
+
+
+--
+-- Name: seo_guardian_actions_run_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_guardian_actions_run_idx ON public.seo_guardian_actions USING btree (run_id);
+
+
+--
+-- Name: seo_guardian_policy_scope_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_guardian_policy_scope_idx ON public.seo_guardian_policy USING btree (scope);
+
+
+--
+-- Name: seo_guardian_runs_agent_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_guardian_runs_agent_idx ON public.seo_guardian_runs USING btree (agent, started_at DESC);
+
+
+--
+-- Name: seo_guardian_signals_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_guardian_signals_key_idx ON public.seo_guardian_signals USING btree (idempotency_key);
+
+
+--
+-- Name: seo_guardian_signals_state_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_guardian_signals_state_idx ON public.seo_guardian_signals USING btree (state, last_observed_at DESC);
+
+
+--
+-- Name: seo_int_audit_connection_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_int_audit_connection_idx ON public.seo_integration_audit USING btree (connection_id);
+
+
+--
+-- Name: seo_int_audit_occurred_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_int_audit_occurred_idx ON public.seo_integration_audit USING btree (occurred_at);
+
+
+--
+-- Name: seo_int_connections_provider_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_int_connections_provider_idx ON public.seo_integration_connections USING btree (provider_id);
+
+
+--
+-- Name: seo_int_connections_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_int_connections_status_idx ON public.seo_integration_connections USING btree (status);
+
+
+--
+-- Name: seo_int_credentials_connection_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_int_credentials_connection_idx ON public.seo_integration_credentials USING btree (connection_id, status);
+
+
+--
+-- Name: seo_int_providers_provider_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_int_providers_provider_id_idx ON public.seo_integration_providers USING btree (provider_id);
+
+
+--
+-- Name: seo_int_sync_jobs_connection_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_int_sync_jobs_connection_idx ON public.seo_integration_sync_jobs USING btree (connection_id, requested_at);
+
+
+--
+-- Name: seo_int_sync_jobs_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_int_sync_jobs_status_idx ON public.seo_integration_sync_jobs USING btree (status);
+
+
+--
+-- Name: seo_int_usage_provider_day_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_int_usage_provider_day_idx ON public.seo_integration_usage USING btree (provider_id, day);
+
+
+--
+-- Name: seo_integrations_provider_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_integrations_provider_idx ON public.seo_integrations USING btree (provider);
+
+
+--
+-- Name: seo_intel_ar_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_intel_ar_key_idx ON public.seo_intel_action_requests USING btree (request_key);
+
+
+--
+-- Name: seo_intel_ar_opp_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_ar_opp_idx ON public.seo_intel_action_requests USING btree (opportunity_key);
+
+
+--
+-- Name: seo_intel_au_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_intel_au_key_idx ON public.seo_intel_answer_units USING btree (answer_key);
+
+
+--
+-- Name: seo_intel_au_readiness_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_au_readiness_idx ON public.seo_intel_answer_units USING btree (readiness);
+
+
+--
+-- Name: seo_intel_can_class_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_can_class_idx ON public.seo_intel_cannibalisation USING btree (classification, status);
+
+
+--
+-- Name: seo_intel_can_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_intel_can_key_idx ON public.seo_intel_cannibalisation USING btree (finding_key);
+
+
+--
+-- Name: seo_intel_cl_intent_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_cl_intent_idx ON public.seo_intel_clusters USING btree (primary_intent);
+
+
+--
+-- Name: seo_intel_cl_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_intel_cl_key_idx ON public.seo_intel_clusters USING btree (cluster_key);
+
+
+--
+-- Name: seo_intel_cl_owner_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_cl_owner_idx ON public.seo_intel_clusters USING btree (current_owner_url) WHERE (current_owner_url IS NOT NULL);
+
+
+--
+-- Name: seo_intel_content_class_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_content_class_idx ON public.seo_intel_content USING btree (classification);
+
+
+--
+-- Name: seo_intel_content_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_intel_content_key_idx ON public.seo_intel_content USING btree (content_key);
+
+
+--
+-- Name: seo_intel_hist_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_hist_key_idx ON public.seo_intel_history USING btree (opportunity_key, occurred_at DESC);
+
+
+--
+-- Name: seo_intel_hist_run_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_hist_run_idx ON public.seo_intel_history USING btree (run_id);
+
+
+--
+-- Name: seo_intel_opp_entity_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_opp_entity_idx ON public.seo_intel_opportunities USING btree (entity_type, entity_id);
+
+
+--
+-- Name: seo_intel_opp_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_intel_opp_key_idx ON public.seo_intel_opportunities USING btree (opportunity_key);
+
+
+--
+-- Name: seo_intel_opp_priority_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_opp_priority_idx ON public.seo_intel_opportunities USING btree (priority_bucket, adjusted_score DESC NULLS LAST) WHERE (status <> ALL (ARRAY['CLOSED'::text, 'DECAYED'::text]));
+
+
+--
+-- Name: seo_intel_opp_root_cause_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_opp_root_cause_idx ON public.seo_intel_opportunities USING btree (root_cause_key) WHERE (root_cause_key IS NOT NULL);
+
+
+--
+-- Name: seo_intel_opp_work_item_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_opp_work_item_idx ON public.seo_intel_opportunities USING btree (work_item_id) WHERE (work_item_id IS NOT NULL);
+
+
+--
+-- Name: seo_intel_qm_cluster_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_qm_cluster_idx ON public.seo_intel_query_membership USING btree (cluster_key);
+
+
+--
+-- Name: seo_intel_qm_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_intel_qm_key_idx ON public.seo_intel_query_membership USING btree (membership_key);
+
+
+--
+-- Name: seo_intel_runs_started_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_runs_started_idx ON public.seo_intel_runs USING btree (started_at DESC);
+
+
+--
+-- Name: seo_intel_sc_component_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_sc_component_idx ON public.seo_intel_score_components USING btree (component, contribution DESC);
+
+
+--
+-- Name: seo_intel_sc_unique_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_intel_sc_unique_idx ON public.seo_intel_score_components USING btree (opportunity_key, evaluation_hash, component);
+
+
+--
+-- Name: seo_intel_source_state_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_intel_source_state_key_idx ON public.seo_intel_source_state USING btree (source_key);
+
+
+--
+-- Name: seo_link_graph_edge_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_link_graph_edge_idx ON public.seo_link_graph USING btree (from_path, to_path, COALESCE(anchor, ''::text));
+
+
+--
+-- Name: seo_link_graph_to_path_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_link_graph_to_path_idx ON public.seo_link_graph USING btree (to_path);
+
+
+--
+-- Name: seo_log_ingestions_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_log_ingestions_created_idx ON public.seo_log_ingestions USING btree (created_at DESC);
+
+
+--
+-- Name: seo_opportunities_kind_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_opportunities_kind_idx ON public.seo_opportunities USING btree (kind);
+
+
+--
+-- Name: seo_opportunities_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_opportunities_status_idx ON public.seo_opportunities USING btree (status);
+
+
+--
+-- Name: seo_product_lifecycle_disposition_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_product_lifecycle_disposition_idx ON public.seo_product_lifecycle USING btree (disposition);
+
+
+--
+-- Name: seo_product_lifecycle_product_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_product_lifecycle_product_idx ON public.seo_product_lifecycle USING btree (product_id);
+
+
+--
+-- Name: seo_queries_category_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_queries_category_idx ON public.seo_queries USING btree (category);
+
+
+--
+-- Name: seo_queries_normalized_query_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_queries_normalized_query_idx ON public.seo_queries USING btree (normalized_query);
+
+
+--
+-- Name: seo_queries_priority_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_queries_priority_idx ON public.seo_queries USING btree (priority);
+
+
+--
+-- Name: seo_render_diffs_severity_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_render_diffs_severity_idx ON public.seo_render_diffs USING btree (severity, observed_at DESC);
+
+
+--
+-- Name: seo_render_diffs_url_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_render_diffs_url_idx ON public.seo_render_diffs USING btree (url, observed_at DESC);
+
+
+--
+-- Name: seo_robots_versions_published_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_robots_versions_published_idx ON public.seo_robots_versions USING btree (((status = 'PUBLISHED'::text))) WHERE (status = 'PUBLISHED'::text);
+
+
+--
+-- Name: seo_robots_versions_version_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_robots_versions_version_idx ON public.seo_robots_versions USING btree (version);
+
+
+--
+-- Name: seo_serp_domains_domain_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_serp_domains_domain_idx ON public.seo_serp_domains USING btree (domain);
+
+
+--
+-- Name: seo_serp_obs_domain_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_serp_obs_domain_idx ON public.seo_serp_observations USING btree (domain);
+
+
+--
+-- Name: seo_serp_obs_query_observed_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_serp_obs_query_observed_idx ON public.seo_serp_observations USING btree (query_id, observed_at DESC);
+
+
+--
+-- Name: seo_storage_tests_product_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_storage_tests_product_idx ON public.seo_storage_tests USING btree (product_id, tested_at);
+
+
+--
+-- Name: seo_web_vitals_measurement_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX seo_web_vitals_measurement_idx ON public.seo_web_vitals USING btree (url, source, form_factor, collection_date);
+
+
+--
+-- Name: seo_web_vitals_url_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_web_vitals_url_idx ON public.seo_web_vitals USING btree (url, collected_at DESC);
+
+
+--
+-- Name: seo_work_items_opportunity_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_work_items_opportunity_idx ON public.seo_work_items USING btree (opportunity_id);
+
+
+--
+-- Name: seo_work_items_state_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX seo_work_items_state_idx ON public.seo_work_items USING btree (state, priority, created_at DESC);
+
+
+--
+-- Name: stock_count_lines_product_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX stock_count_lines_product_idx ON public.stock_count_lines USING btree (count_id, product_id);
+
+
+--
+-- Name: stock_counts_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX stock_counts_status_idx ON public.stock_counts USING btree (status, created_at);
+
+
+--
+-- Name: stock_locations_code_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX stock_locations_code_idx ON public.stock_locations USING btree (code);
+
+
+--
+-- Name: stock_locations_default_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX stock_locations_default_idx ON public.stock_locations USING btree (is_default) WHERE is_default;
+
+
+--
+-- Name: stock_receipt_lines_receipt_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX stock_receipt_lines_receipt_idx ON public.stock_receipt_lines USING btree (receipt_id);
+
+
+--
+-- Name: stock_receipts_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX stock_receipts_status_idx ON public.stock_receipts USING btree (status, created_at);
+
+
+--
 -- Name: support_assisted_preference_requests_pending_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -11702,6 +14801,110 @@ ALTER TABLE ONLY public.automation_versions
 
 
 --
+-- Name: battery_aliases battery_aliases_battery_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_aliases
+    ADD CONSTRAINT battery_aliases_battery_product_id_fkey FOREIGN KEY (battery_product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: battery_evidence_assets battery_evidence_assets_asset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_evidence_assets
+    ADD CONSTRAINT battery_evidence_assets_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.media_assets(id);
+
+
+--
+-- Name: battery_finder_events battery_finder_events_battery_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_finder_events
+    ADD CONSTRAINT battery_finder_events_battery_product_id_fkey FOREIGN KEY (battery_product_id) REFERENCES public.products(id) ON DELETE SET NULL;
+
+
+--
+-- Name: battery_finder_events battery_finder_events_brand_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_finder_events
+    ADD CONSTRAINT battery_finder_events_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES public.device_brands(id) ON DELETE SET NULL;
+
+
+--
+-- Name: battery_finder_events battery_finder_events_device_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_finder_events
+    ADD CONSTRAINT battery_finder_events_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(id) ON DELETE SET NULL;
+
+
+--
+-- Name: battery_finder_events battery_finder_events_series_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_finder_events
+    ADD CONSTRAINT battery_finder_events_series_id_fkey FOREIGN KEY (series_id) REFERENCES public.device_series(id) ON DELETE SET NULL;
+
+
+--
+-- Name: battery_import_events battery_import_events_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_import_events
+    ADD CONSTRAINT battery_import_events_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.battery_import_sessions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: battery_import_rows battery_import_rows_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_import_rows
+    ADD CONSTRAINT battery_import_rows_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.battery_import_sessions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: battery_import_sessions battery_import_sessions_mapping_template_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_import_sessions
+    ADD CONSTRAINT battery_import_sessions_mapping_template_id_fkey FOREIGN KEY (mapping_template_id) REFERENCES public.battery_import_mapping_templates(id) ON DELETE SET NULL;
+
+
+--
+-- Name: battery_profiles battery_profiles_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_profiles
+    ADD CONSTRAINT battery_profiles_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: battery_requests battery_requests_resolved_alias_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_requests
+    ADD CONSTRAINT battery_requests_resolved_alias_id_fkey FOREIGN KEY (resolved_alias_id) REFERENCES public.battery_aliases(id) ON DELETE SET NULL;
+
+
+--
+-- Name: battery_requests battery_requests_resolved_battery_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_requests
+    ADD CONSTRAINT battery_requests_resolved_battery_product_id_fkey FOREIGN KEY (resolved_battery_product_id) REFERENCES public.products(id) ON DELETE SET NULL;
+
+
+--
+-- Name: battery_requests battery_requests_resolved_device_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.battery_requests
+    ADD CONSTRAINT battery_requests_resolved_device_id_fkey FOREIGN KEY (resolved_device_id) REFERENCES public.devices(id) ON DELETE SET NULL;
+
+
+--
 -- Name: behavioural_intervention_events behavioural_intervention_events_definition_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -11763,6 +14966,30 @@ ALTER TABLE ONLY public.behavioural_intervention_versions
 
 ALTER TABLE ONLY public.behavioural_intervention_versions
     ADD CONSTRAINT behavioural_intervention_versions_experiment_id_fkey FOREIGN KEY (experiment_id) REFERENCES public.experiments(id);
+
+
+--
+-- Name: blog_post_products blog_post_products_post_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blog_post_products
+    ADD CONSTRAINT blog_post_products_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.blog_posts(id) ON DELETE CASCADE;
+
+
+--
+-- Name: blog_post_products blog_post_products_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blog_post_products
+    ADD CONSTRAINT blog_post_products_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+
+--
+-- Name: blog_posts blog_posts_author_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blog_posts
+    ADD CONSTRAINT blog_posts_author_id_fkey FOREIGN KEY (author_id) REFERENCES public.users(id);
 
 
 --
@@ -12166,6 +15393,46 @@ ALTER TABLE ONLY public.delivery_config_value
 
 
 --
+-- Name: device_brands device_brands_logo_asset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_brands
+    ADD CONSTRAINT device_brands_logo_asset_id_fkey FOREIGN KEY (logo_asset_id) REFERENCES public.media_assets(id) ON DELETE SET NULL;
+
+
+--
+-- Name: device_series device_series_brand_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_series
+    ADD CONSTRAINT device_series_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES public.device_brands(id);
+
+
+--
+-- Name: devices devices_brand_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.devices
+    ADD CONSTRAINT devices_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES public.device_brands(id);
+
+
+--
+-- Name: devices devices_merged_into_device_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.devices
+    ADD CONSTRAINT devices_merged_into_device_id_fkey FOREIGN KEY (merged_into_device_id) REFERENCES public.devices(id);
+
+
+--
+-- Name: devices devices_series_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.devices
+    ADD CONSTRAINT devices_series_id_fkey FOREIGN KEY (series_id) REFERENCES public.device_series(id);
+
+
+--
 -- Name: experience_profiles experience_profiles_customer_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -12355,6 +15622,38 @@ ALTER TABLE ONLY public.gsc_performance
 
 ALTER TABLE ONLY public.identity_links
     ADD CONSTRAINT identity_links_profile_fk FOREIGN KEY (profile_id) REFERENCES public.experience_profiles(id) ON DELETE CASCADE;
+
+
+--
+-- Name: inventory_movements inventory_movements_count_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_count_id_fkey FOREIGN KEY (count_id) REFERENCES public.stock_counts(id) ON DELETE SET NULL;
+
+
+--
+-- Name: inventory_movements inventory_movements_location_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.stock_locations(id);
+
+
+--
+-- Name: inventory_movements inventory_movements_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: inventory_movements inventory_movements_receipt_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_receipt_id_fkey FOREIGN KEY (receipt_id) REFERENCES public.stock_receipts(id) ON DELETE SET NULL;
 
 
 --
@@ -12870,6 +16169,14 @@ ALTER TABLE ONLY public.product_device_compatibility
 
 
 --
+-- Name: product_device_compatibility product_device_compatibility_evidence_asset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_device_compatibility
+    ADD CONSTRAINT product_device_compatibility_evidence_asset_id_fkey FOREIGN KEY (evidence_asset_id) REFERENCES public.media_assets(id) ON DELETE SET NULL;
+
+
+--
 -- Name: product_device_compatibility product_device_compatibility_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -13150,6 +16457,246 @@ ALTER TABLE ONLY public.search_product_insights
 
 
 --
+-- Name: seo_aeo_observations seo_aeo_observations_prompt_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_aeo_observations
+    ADD CONSTRAINT seo_aeo_observations_prompt_id_fkey FOREIGN KEY (prompt_id) REFERENCES public.seo_aeo_prompts(id);
+
+
+--
+-- Name: seo_battery_compat seo_battery_compat_battery_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_battery_compat
+    ADD CONSTRAINT seo_battery_compat_battery_product_id_fkey FOREIGN KEY (battery_product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: seo_competitors seo_competitors_merged_into_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_competitors
+    ADD CONSTRAINT seo_competitors_merged_into_id_fkey FOREIGN KEY (merged_into_id) REFERENCES public.seo_competitors(id);
+
+
+--
+-- Name: seo_crawl_pages seo_crawl_pages_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_crawl_pages
+    ADD CONSTRAINT seo_crawl_pages_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.seo_crawl_runs(id) ON DELETE CASCADE;
+
+
+--
+-- Name: seo_gap_records seo_gap_records_leader_competitor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_gap_records
+    ADD CONSTRAINT seo_gap_records_leader_competitor_id_fkey FOREIGN KEY (leader_competitor_id) REFERENCES public.seo_competitors(id);
+
+
+--
+-- Name: seo_gap_records seo_gap_records_query_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_gap_records
+    ADD CONSTRAINT seo_gap_records_query_id_fkey FOREIGN KEY (query_id) REFERENCES public.seo_queries(id);
+
+
+--
+-- Name: seo_guardian_actions seo_guardian_actions_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_guardian_actions
+    ADD CONSTRAINT seo_guardian_actions_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.seo_guardian_runs(id);
+
+
+--
+-- Name: seo_guardian_actions seo_guardian_actions_signal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_guardian_actions
+    ADD CONSTRAINT seo_guardian_actions_signal_id_fkey FOREIGN KEY (signal_id) REFERENCES public.seo_guardian_signals(id);
+
+
+--
+-- Name: seo_guardian_signals seo_guardian_signals_alert_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_guardian_signals
+    ADD CONSTRAINT seo_guardian_signals_alert_id_fkey FOREIGN KEY (alert_id) REFERENCES public.seo_alerts(id);
+
+
+--
+-- Name: seo_integration_connections seo_integration_connections_provider_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_integration_connections
+    ADD CONSTRAINT seo_integration_connections_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES public.seo_integration_providers(provider_id);
+
+
+--
+-- Name: seo_integration_credentials seo_integration_credentials_connection_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_integration_credentials
+    ADD CONSTRAINT seo_integration_credentials_connection_id_fkey FOREIGN KEY (connection_id) REFERENCES public.seo_integration_connections(id) ON DELETE CASCADE;
+
+
+--
+-- Name: seo_integration_sync_jobs seo_integration_sync_jobs_connection_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_integration_sync_jobs
+    ADD CONSTRAINT seo_integration_sync_jobs_connection_id_fkey FOREIGN KEY (connection_id) REFERENCES public.seo_integration_connections(id) ON DELETE CASCADE;
+
+
+--
+-- Name: seo_intel_history seo_intel_history_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_history
+    ADD CONSTRAINT seo_intel_history_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.seo_intel_runs(id);
+
+
+--
+-- Name: seo_intel_opportunities seo_intel_opportunities_created_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_opportunities
+    ADD CONSTRAINT seo_intel_opportunities_created_run_id_fkey FOREIGN KEY (created_run_id) REFERENCES public.seo_intel_runs(id);
+
+
+--
+-- Name: seo_intel_opportunities seo_intel_opportunities_last_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_opportunities
+    ADD CONSTRAINT seo_intel_opportunities_last_run_id_fkey FOREIGN KEY (last_run_id) REFERENCES public.seo_intel_runs(id);
+
+
+--
+-- Name: seo_intel_opportunities seo_intel_opportunities_work_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_intel_opportunities
+    ADD CONSTRAINT seo_intel_opportunities_work_item_id_fkey FOREIGN KEY (work_item_id) REFERENCES public.seo_work_items(id);
+
+
+--
+-- Name: seo_opportunities seo_opportunities_query_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_opportunities
+    ADD CONSTRAINT seo_opportunities_query_id_fkey FOREIGN KEY (query_id) REFERENCES public.seo_queries(id);
+
+
+--
+-- Name: seo_product_lifecycle seo_product_lifecycle_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_product_lifecycle
+    ADD CONSTRAINT seo_product_lifecycle_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: seo_product_lifecycle seo_product_lifecycle_successor_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_product_lifecycle
+    ADD CONSTRAINT seo_product_lifecycle_successor_product_id_fkey FOREIGN KEY (successor_product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: seo_robots_versions seo_robots_versions_restored_from_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_robots_versions
+    ADD CONSTRAINT seo_robots_versions_restored_from_id_fkey FOREIGN KEY (restored_from_id) REFERENCES public.seo_robots_versions(id);
+
+
+--
+-- Name: seo_serp_domains seo_serp_domains_competitor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_serp_domains
+    ADD CONSTRAINT seo_serp_domains_competitor_id_fkey FOREIGN KEY (competitor_id) REFERENCES public.seo_competitors(id);
+
+
+--
+-- Name: seo_serp_observations seo_serp_observations_competitor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_serp_observations
+    ADD CONSTRAINT seo_serp_observations_competitor_id_fkey FOREIGN KEY (competitor_id) REFERENCES public.seo_competitors(id);
+
+
+--
+-- Name: seo_serp_observations seo_serp_observations_query_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_serp_observations
+    ADD CONSTRAINT seo_serp_observations_query_id_fkey FOREIGN KEY (query_id) REFERENCES public.seo_queries(id);
+
+
+--
+-- Name: seo_storage_tests seo_storage_tests_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.seo_storage_tests
+    ADD CONSTRAINT seo_storage_tests_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: stock_count_lines stock_count_lines_count_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stock_count_lines
+    ADD CONSTRAINT stock_count_lines_count_id_fkey FOREIGN KEY (count_id) REFERENCES public.stock_counts(id) ON DELETE CASCADE;
+
+
+--
+-- Name: stock_count_lines stock_count_lines_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stock_count_lines
+    ADD CONSTRAINT stock_count_lines_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: stock_counts stock_counts_location_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stock_counts
+    ADD CONSTRAINT stock_counts_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.stock_locations(id);
+
+
+--
+-- Name: stock_receipt_lines stock_receipt_lines_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stock_receipt_lines
+    ADD CONSTRAINT stock_receipt_lines_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: stock_receipt_lines stock_receipt_lines_receipt_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stock_receipt_lines
+    ADD CONSTRAINT stock_receipt_lines_receipt_id_fkey FOREIGN KEY (receipt_id) REFERENCES public.stock_receipts(id) ON DELETE CASCADE;
+
+
+--
+-- Name: stock_receipts stock_receipts_location_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stock_receipts
+    ADD CONSTRAINT stock_receipts_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.stock_locations(id);
+
+
+--
 -- Name: survey_events survey_events_definition_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -13297,5 +16844,5 @@ ALTER TABLE ONLY public.wishlists
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ciGwT2cTmHWE8fKe0yu3gVmGl5huAHnfhh88w3Ie8WJtTb8c3vd1zhcA8FMCF3S
+\unrestrict LuvCr66mHXPLxIxnrLKYRh71dJWPLmF00FA3OlRC1wvMPQsFu1OwjOIrk3gK6dz
 

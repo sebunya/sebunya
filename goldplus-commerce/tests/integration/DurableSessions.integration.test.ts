@@ -39,8 +39,16 @@ suite('durable revocable sessions (real PostgreSQL)', () => {
       '../../apps/api/src/infrastructure/db/repositories/DrizzleSessionRepository'
     );
     const svcMod = await import('../../apps/api/src/infrastructure/security/SessionService');
+    // The REAL user repository, not a stub: logout-all is only truthful if the
+    // revocation cutoff is actually stamped on the user, and a stub would let
+    // that half of the guarantee rot unnoticed (it already had — this double
+    // was constructed with one argument against a two-argument constructor,
+    // which the dynamic import hid from the type checker).
+    const userRepoMod = await import(
+      '../../apps/api/src/infrastructure/db/repositories/DrizzleUserRepository'
+    );
     repo = new repoMod.DrizzleSessionRepository();
-    service = new svcMod.SessionService(repo);
+    service = new svcMod.SessionService(repo, new userRepoMod.DrizzleUserRepository());
   });
 
   afterAll(async () => {

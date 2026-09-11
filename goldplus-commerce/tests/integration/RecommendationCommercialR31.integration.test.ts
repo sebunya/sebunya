@@ -197,8 +197,13 @@ suite("commercial attribution on real PostgreSQL", () => {
   });
 
   it("media-cost ingestion dedupes on the logical key (AC15 date/currency held deterministic)", async () => {
+    // Relative to today, never a literal. This assertion is about the 30-day
+    // WINDOW, so a hardcoded date silently stops testing it the moment the
+    // date ages out — which is exactly what happened: the row was written
+    // "2026-08-01 is inside the 30-day window" and quietly expired.
+    const withinWindow = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
     const fact = {
-      spendDate: "2026-08-01",
+      spendDate: withinWindow,
       channel: "paid_social",
       platform: `r31-${suffix}`,
       account: "acct-1",

@@ -86,29 +86,53 @@ export class SettlePaymentUseCase {
       // Each effect is isolated: one failing must not stop the others, and none
       // may undo a confirmed payment. But each failure is REPORTED — an effect
       // that fails silently is an obligation nobody knows they owe.
-      await this.effects
-        .markFulfilmentPaid(verification.orderId)
-        .catch((e) => this.effects.onEffectFailed('fulfilment_payment_confirmed', verification.orderId, e));
-      await this.effects
-        .settleLoyalty(verification.orderId)
-        .catch((e) => this.effects.onEffectFailed('loyalty_settlement', verification.orderId, e));
-      await this.effects
-        .enqueueAdminEmail(verification.orderId)
-        .catch((e) => this.effects.onEffectFailed('admin_email', verification.orderId, e));
-      await this.effects
-        .recordMeasurement({ verification, trackingId: input.orderTrackingId, reference: input.merchantReference })
-        .catch((e) => this.effects.onEffectFailed('measurement', verification.orderId, e));
-      await this.effects
-        .enqueueCustomerMessage(verification.orderId, 'ORDER_PAYMENT_SUCCESS')
-        .catch((e) => this.effects.onEffectFailed('customer_message', verification.orderId, e));
+      await this.runEffect('fulfilment_payment_confirmed', verification.orderId, () =>
+        this.effects.markFulfilmentPaid(verification.orderId));
+      await this.runEffect('loyalty_settlement', verification.orderId, () =>
+        this.effects.settleLoyalty(verification.orderId));
+      await this.runEffect('admin_email', verification.orderId, () =>
+        this.effects.enqueueAdminEmail(verification.orderId));
+      await this.runEffect('measurement', verification.orderId, () =>
+        this.effects.recordMeasurement({ verification, trackingId: input.orderTrackingId, reference: input.merchantReference }));
+      await this.runEffect('customer_message', verification.orderId, () =>
+        this.effects.enqueueCustomerMessage(verification.orderId, 'ORDER_PAYMENT_SUCCESS'));
     } else if (settlement.kind === 'FAILED' && settlement.orderId) {
       // A decline or reversal is the moment the customer most needs to hear
       // from us. Nothing else runs on this branch.
-      await this.effects
-        .enqueueCustomerMessage(settlement.orderId, 'ORDER_PAYMENT_FAILED')
-        .catch((e) => this.effects.onEffectFailed('customer_message', settlement.orderId!, e));
+      await this.runEffect('customer_message', settlement.orderId, () =>
+        this.effects.enqueueCustomerMessage(settlement.orderId!, 'ORDER_PAYMENT_FAILED'));
     }
 
     return { verification, settlement, confirmed: paymentDidConfirm(settlement) };
+  }
+
+  /**
+   * Run one post-settlement effect in isolation.
+   *
+   * `effect().catch(...)` is NOT enough, and the gap is not theoretical: a
+   * `.catch()` only ever handles a REJECTED PROMISE. An effect that throws
+   * SYNCHRONOUSLY — a missing collaborator method, a null dereference while
+   * building a template, a config read that throws before the first await —
+   * never produces a promise to reject, so the handler is never attached and
+   * the error escapes `execute()` altogether. The money is already settled by
+   * then (settlement commits above, deliberately, before any effect runs), so
+   * nothing is lost — but every LATER effect is skipped, the caller sees a
+   * throw instead of a result, and the IPN route answers the provider with a
+   * failure for a payment that in fact succeeded, inviting a pointless retry.
+   *
+   * A try/catch around the invocation captures both shapes. Reporting is
+   * itself guarded: a failing reporter must not become the thing that breaks
+   * the chain it exists to observe.
+   */
+  private async runEffect(name: string, orderId: string, run: () => Promise<void>): Promise<void> {
+    try {
+      await run();
+    } catch (error) {
+      try {
+        this.effects.onEffectFailed(name, orderId, error);
+      } catch {
+        // Deliberately swallowed: there is nowhere left to report to.
+      }
+    }
   }
 }

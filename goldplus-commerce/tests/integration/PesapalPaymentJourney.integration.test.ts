@@ -217,7 +217,11 @@ suite('Pesapal payment journey (real PostgreSQL)', () => {
         settleLoyalty: async () => void effects.push('loyalty'),
         enqueueAdminEmail: async () => void effects.push('email'),
         recordMeasurement: async () => void effects.push('measurement'),
-        onEffectFailed: () => undefined,
+        enqueueCustomerMessage: async () => void effects.push('customer_message'),
+        // Surfaced, not swallowed: a silent double drifting out of step with
+        // SettlePaymentEffects is what let this journey go green-then-red.
+        onEffectFailed: (effect: string, _orderId: string, error: unknown) =>
+          void effects.push(`FAILED:${effect}:${(error as Error)?.message ?? error}`),
       },
     );
     const poller = new ReconcilePendingPaymentsUseCase(repo, settle, {
@@ -230,7 +234,8 @@ suite('Pesapal payment journey (real PostgreSQL)', () => {
     expect(result.confirmed).toBeGreaterThanOrEqual(1);
     expect((await orderRow(orderId)).payment_status).toBe('paid');
     expect((await orderRow(orderId)).status).toBe('processing');
-    expect(effects).toEqual(expect.arrayContaining(['fulfilment', 'loyalty', 'email', 'measurement']));
+    expect(effects).toEqual(expect.arrayContaining(['fulfilment', 'loyalty', 'email', 'measurement', 'customer_message']));
+    expect(effects.filter((e) => e.startsWith('FAILED:'))).toEqual([]);
   });
 
   it('the state machine holds at the real write path: a terminal attempt refuses resurrection', async () => {
