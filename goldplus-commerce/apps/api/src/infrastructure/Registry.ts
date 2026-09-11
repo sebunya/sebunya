@@ -497,6 +497,7 @@ import { DrizzleFulfilmentRepository } from './db/repositories/DrizzleFulfilment
 import { CreateFulfilmentTaskOnOrderPlacedUseCase } from '../application/use-cases/fulfilment/CreateFulfilmentTaskOnOrderPlacedUseCase';
 import { MarkFulfilmentPaymentConfirmedUseCase } from '../application/use-cases/fulfilment/MarkFulfilmentPaymentConfirmedUseCase';
 import { TransitionFulfilmentTaskUseCase } from '../application/use-cases/fulfilment/TransitionFulfilmentTaskUseCase';
+import { ReinstateFulfilmentTaskUseCase } from '../application/use-cases/fulfilment/ReinstateFulfilmentTaskUseCase';
 import { ListFulfilmentQueueUseCase } from '../application/use-cases/fulfilment/ListFulfilmentQueueUseCase';
 import { GetFulfilmentOverviewUseCase } from '../application/use-cases/fulfilment/GetFulfilmentOverviewUseCase';
 import { AssignFulfilmentTaskUseCase } from '../application/use-cases/fulfilment/AssignFulfilmentTaskUseCase';
@@ -966,6 +967,10 @@ export class Registry {
     // class field initialiser may not read a field that has not run yet.
     dispatches: { getByTask: (taskId: string) => this.fulfilmentDispatchRepo.getByTask(taskId) },
     packingSessions: { getByTask: (taskId: string) => this.packingSessionRepo.getByTask(taskId) },
+  });
+  /** Recovery for a task cancelled against a still-open order (see the use case). */
+  public readonly reinstateFulfilmentTaskUseCase = new ReinstateFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, {
+    findById: (id: string) => this.orderRepo.findById(id),
   });
   public readonly listFulfilmentQueueUseCase = new ListFulfilmentQueueUseCase(this.fulfilmentRepo);
   public readonly fulfilmentSlaEventRepo = new DrizzleFulfilmentSlaEventRepository();

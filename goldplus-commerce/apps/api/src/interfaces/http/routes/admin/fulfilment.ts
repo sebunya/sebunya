@@ -144,6 +144,40 @@ routes.patch('/:id/status', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), asy
   return c.json(res);
 });
 
+const reinstateBodySchema = z.object({
+  reason: z.string().trim().max(2000).nullish(),
+});
+
+/**
+ * Bring a cancelled task back into the queue. The recovery half of a one-way
+ * door: cancellation is terminal and task creation is keyed on a unique
+ * order_id, so without this an order still open to the customer could be
+ * cancelled out of every operational surface with no way back but SQL.
+ */
+routes.post('/:id/reinstate', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = reinstateBodySchema.safeParse(body ?? {});
+  if (!parsed.success) {
+    return c.json(
+      { success: false, error: { code: 'INVALID_BODY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>,
+      400
+    );
+  }
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().reinstateFulfilmentTaskUseCase.execute({
+    taskId: id,
+    actorId,
+    reason: parsed.data.reason ?? null,
+  });
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' ? 404 : 409;
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, status);
+  }
+  const res: ApiResponse<typeof result> = { success: true, data: result };
+  return c.json(res);
+});
+
 const assignBodySchema = z.object({
   assignedTo: z.string().uuid().nullable(),
 });
