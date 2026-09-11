@@ -50,7 +50,7 @@ beforeEach(() => {
 describe('IntegrationCredentialVault', () => {
   it('round-trips an object payload', () => {
     const vault = new IntegrationCredentialVault(SECRET);
-    const payload = { apiKey: 'AIzaSyEXAMPLE-abcdef123456', nested: { a: 1 } };
+    const payload = { apiKey: 'AIzaSyEXAMPLE-abcdef123456', nested: { a: 1 } }; // secret-scan: allow — fixture: a fake key, asserted to be REDACTED by the vault
     const ciphertext = vault.encrypt(payload);
     expect(ciphertext.split('.')).toHaveLength(3);
     expect(ciphertext).not.toContain('AIzaSy');
@@ -87,7 +87,7 @@ describe('IntegrationCredentialVault', () => {
   });
 
   it('service-account masks derive from client_email, never key material', () => {
-    const sa = { client_email: 'seo-bot@project.iam.gserviceaccount.com', private_key: '-----BEGIN PRIVATE KEY-----\nABCDEFTOPSECRET\n-----END PRIVATE KEY-----' };
+    const sa = { client_email: 'seo-bot@project.iam.gserviceaccount.com', private_key: '-----BEGIN PRIVATE KEY-----\nABCDEFTOPSECRET\n-----END PRIVATE KEY-----' }; // secret-scan: allow — fixture: a fake PEM body, asserted never to appear in a mask
     const mask = maskOf(sa);
     expect(mask).toBe('••••-BOT');
     expect(mask).not.toContain('SECRET');
