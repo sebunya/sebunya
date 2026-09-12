@@ -284,8 +284,11 @@ describe('the payment route is a thin transport adapter', () => {
     join(__dirname, '../../apps/api/src/interfaces/http/routes/commerce.ts'),
     'utf8',
   );
+  // The route delegates its answer to respondToStartOutcome (shared with the
+  // guest pay-by-reference route since 2026-09-12); the adapter under test is
+  // the responder plus the route.
   const handler = route.slice(
-    route.indexOf("routes.post('/payments/pesapal/start'"),
+    route.indexOf('function respondToStartOutcome'),
     route.indexOf("routes.get('/payments/pesapal/callback'"),
   );
 

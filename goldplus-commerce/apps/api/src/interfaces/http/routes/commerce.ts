@@ -5,6 +5,8 @@ import { ApiResponse } from '@goldplus/shared';
 import { customerSessionMiddleware } from '../middleware/customerSession';
 import { createHash } from 'crypto';
 import { clientIp } from '../clientAddress';
+import type { StartPaymentOutcome } from '../../../application/use-cases/commerce/StartOrderPaymentUseCase';
+import { verifyOrderByContact } from '../../../application/services/OrderContactVerification';
 import { CHECKOUT_POLICY_VERSION } from '../../../domain/commerce/CheckoutPrincipal';
 import { isCheckoutSuccess } from '../../../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { isRedirectReady } from '../../../application/use-cases/commerce/StartOrderPaymentUseCase';
@@ -770,125 +772,22 @@ interface RateLimitEntry {
 
 const failedAttemptsLimiter = new Map<string, RateLimitEntry>();
 
+/** Route-level wrapper: body + client address in, the shared proof out. */
+async function verifyOrderRequest(c: any) {
+  const body = await c.req.json().catch(() => null);
+  return verifyOrderByContact(
+    { reference: body?.reference, contact: body?.contact, ip: clientIp(c), now: Date.now() },
+    { attempts: failedAttemptsLimiter, findOrder: (reference: string) => registry.getOrderByIdUseCase.execute(reference) },
+  );
+}
+
 routes.post('/orders/lookup', async (c) => {
   try {
-    const body = await c.req.json();
-    const rawRef = body.reference;
-    const rawContact = body.contact;
-
-    // Strict type safety: reject non-string inputs immediately to prevent malformed payload abuse
-    if (typeof rawRef !== 'string' || typeof rawContact !== 'string') {
-      return c.json({
-        success: false,
-        error: {
-          code: 'VERIFICATION_FAILED',
-          message: 'We could not verify that order. Please check your reference and contact details.'
-        }
-      }, 400);
+    const verified = await verifyOrderRequest(c);
+    if (!verified.ok) {
+      return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
     }
-
-    const reference = rawRef.trim();
-    const contact = rawContact.trim();
-
-    // Enforce size limits and non-empty checks
-    if (!reference || !contact || reference.length > 80 || contact.length > 120) {
-      return c.json({
-        success: false,
-        error: {
-          code: 'VERIFICATION_FAILED',
-          message: 'We could not verify that order. Please check your reference and contact details.'
-        }
-      }, 400);
-    }
-
-    // Direct block of GP-DRAFT lookups to avoid hitting the database
-    if (reference.toUpperCase().startsWith('GP-DRAFT-')) {
-      return c.json({
-        success: false,
-        error: {
-          code: 'VERIFICATION_FAILED',
-          message: 'We could not verify that order. Please check your reference and contact details.'
-        }
-      }, 400);
-    }
-
-    const ip = clientIp(c);
-
-    // Create safe anonymous fingerprint using SHA-256 (no raw credentials stored in keys)
-    const fingerprint = createHash('sha256')
-      .update(`${ip}-${reference.toUpperCase()}`)
-      .digest('hex');
-
-    const now = Date.now();
-    const limitWindowMs = 10 * 60 * 1000; // 10 minutes
-    const maxFailedAttempts = 5;
-
-    // Self-cleaning Map inline to prevent memory growth
-    for (const [key, val] of failedAttemptsLimiter.entries()) {
-      if (val.resetTime <= now) {
-        failedAttemptsLimiter.delete(key);
-      }
-    }
-
-    // Rate Limiter Enforcement
-    const record = failedAttemptsLimiter.get(fingerprint);
-    if (record && record.resetTime > now) {
-      if (record.count >= maxFailedAttempts) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'TOO_MANY_REQUESTS',
-            message: 'Too many lookup attempts. Please wait a few minutes and try again.'
-          }
-        }, 429);
-      }
-    }
-
-    const registerFailure = () => {
-      const current = failedAttemptsLimiter.get(fingerprint);
-      if (current && current.resetTime > now) {
-        current.count += 1;
-      } else {
-        failedAttemptsLimiter.set(fingerprint, {
-          count: 1,
-          resetTime: now + limitWindowMs,
-        });
-      }
-    };
-
-    const order = await registry.getOrderByIdUseCase.execute(reference);
-    if (!order) {
-      registerFailure();
-      return c.json({
-        success: false,
-        error: {
-          code: 'VERIFICATION_FAILED',
-          message: 'We could not verify that order. Please check your reference and contact details.'
-        }
-      }, 401);
-    }
-
-    const normalizedContact = contact.toLowerCase();
-    const storedEmail = (order.customerEmail ?? '').trim().toLowerCase();
-    const storedPhone = (order.customerPhone ?? '').trim();
-
-    const contactMatch =
-      (storedEmail && normalizedContact === storedEmail) ||
-      (storedPhone && normalizedContact.replace(/\s+/g, '') === storedPhone.replace(/\s+/g, ''));
-
-    if (!contactMatch) {
-      registerFailure();
-      return c.json({
-        success: false,
-        error: {
-          code: 'VERIFICATION_FAILED',
-          message: 'We could not verify that order. Please check your reference and contact details.'
-        }
-      }, 401);
-    }
-
-    // Clean rate limit tracking on success
-    failedAttemptsLimiter.delete(fingerprint);
+    const order = verified.order;
 
     // Minimize public response fields to prevent unnecessary database UUIDs or coordinates from leaking
     const maskedOrder = {
@@ -975,6 +874,67 @@ routes.get('/orders/:id', customerSessionMiddleware, async (c) => {
  * The principal is now derived server-side from the verified checkout intent, and
  * outcomes are typed. This handler only maps them to status codes.
  */
+/** One answer for every way a payment may be started, so two doors cannot drift. */
+function respondToStartOutcome(c: any, outcome: StartPaymentOutcome, traceId: string) {
+  if (isRedirectReady(outcome)) {
+    const data: PaymentStartResponseDto = {
+      redirectUrl: outcome.redirectUrl,
+      orderTrackingId: outcome.orderTrackingId,
+      merchantReference: outcome.merchantReference,
+      reused: outcome.kind === 'ALREADY_STARTED',
+    };
+    return c.json({ success: true, data });
+  }
+  // Status per outcome, not one blanket 400. A server misconfiguration is a 503,
+  // an already-paid order is a 409, and neither is the caller's mistake.
+  const status =
+    outcome.kind === 'NOT_FOUND' ? 404
+    : outcome.kind === 'ALREADY_PAID' ? 409
+    : outcome.kind === 'PROVIDER_NOT_CONFIGURED' ? 503
+    : outcome.kind === 'PROVIDER_UNAVAILABLE' ? 502
+    : 409;
+  const code =
+    outcome.kind === 'PROVIDER_NOT_CONFIGURED' ? 'PAYMENT_NOT_CONFIGURED'
+    : outcome.kind === 'PROVIDER_UNAVAILABLE' ? 'PAYMENT_PROVIDER_UNAVAILABLE'
+    : outcome.reason;
+  // A stable code and a generic message; the diagnostic detail is in the log
+  // line the trace id points at, not in the customer's error box.
+  return c.json(
+    { success: false, error: { code, message: 'Payment could not be started for this order.', traceId } },
+    status as 404 | 409 | 502 | 503,
+  );
+}
+
+/**
+ * Guest pay-by-reference (2026-09-12). A customer without an account proves
+ * the order is theirs the same way the public lookup does — reference plus
+ * the checkout phone or email — and payment is then started through the SAME
+ * use case and rules as the checkout page, using the principal recorded when
+ * the order was created. Until this existed, a guest whose online payment
+ * failed after leaving the checkout had no way to pay online again except by
+ * asking us for a link.
+ */
+routes.post('/orders/lookup/pay', async (c) => {
+  const traceId = createHash('sha256').update(`${Date.now()}:${Math.random()}`).digest('hex').slice(0, 16);
+  const verified = await verifyOrderRequest(c);
+  if (!verified.ok) {
+    return c.json({ success: false, error: { code: verified.code, message: verified.message, traceId } }, verified.status);
+  }
+  const checkout = await registry.checkoutIdempotencyRepo.findByOrderId(verified.order.id);
+  if (!checkout) {
+    return c.json(
+      { success: false, error: { code: 'ORDER_NOT_PAYABLE', message: 'This order cannot be paid for online. Our team will confirm it with you.', traceId } },
+      409,
+    );
+  }
+  const outcome = await registry.startOrderPaymentUseCase.execute({
+    orderId: verified.order.id,
+    principalKey: checkout.principalKey,
+    traceId,
+  });
+  return respondToStartOutcome(c, outcome, traceId);
+});
+
 routes.post('/payments/pesapal/start', async (c) => {
   const traceId = createHash('sha256')
     .update(`${Date.now()}:${Math.random()}`)
@@ -1005,39 +965,7 @@ routes.post('/payments/pesapal/start', async (c) => {
     traceId,
   });
 
-  if (isRedirectReady(outcome)) {
-    const data: PaymentStartResponseDto = {
-      redirectUrl: outcome.redirectUrl,
-      orderTrackingId: outcome.orderTrackingId,
-      merchantReference: outcome.merchantReference,
-      reused: outcome.kind === 'ALREADY_STARTED',
-    };
-    return c.json({ success: true, data });
-  }
-
-  // Status per outcome, not one blanket 400. A server misconfiguration is a 503,
-  // an already-paid order is a 409, and neither is the caller's mistake.
-  const status =
-    outcome.kind === 'NOT_FOUND' ? 404
-    : outcome.kind === 'ALREADY_PAID' ? 409
-    : outcome.kind === 'PROVIDER_NOT_CONFIGURED' ? 503
-    : outcome.kind === 'PROVIDER_UNAVAILABLE' ? 502
-    : 409;
-
-  const code =
-    outcome.kind === 'PROVIDER_NOT_CONFIGURED' ? 'PAYMENT_NOT_CONFIGURED'
-    : outcome.kind === 'PROVIDER_UNAVAILABLE' ? 'PAYMENT_PROVIDER_UNAVAILABLE'
-    : outcome.reason;
-
-  return c.json(
-    {
-      success: false,
-      // A stable code and a generic message. The diagnostic detail is in the log
-      // line the trace id points at, not in the customer's browser.
-      error: { code, message: 'Payment could not be started for this order.', traceId },
-    },
-    status as 404 | 409 | 502 | 503,
-  );
+  return respondToStartOutcome(c, outcome, traceId);
 });
 
 routes.get('/payments/pesapal/callback', async (c) => {

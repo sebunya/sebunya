@@ -172,7 +172,7 @@ export async function submitCheckout(args: {
  */
 export type PaymentStartResult =
   | { ok: true; data: PaymentStartResponseDto }
-  | { ok: false; status: number; code: PaymentStartErrorCode | 'NETWORK' };
+  | { ok: false; status: number; code: PaymentStartErrorCode | 'NETWORK'; message?: string };
 
 export async function startPayment(args: {
   orderId: string;
@@ -220,6 +220,29 @@ export async function startPayment(args: {
  *
  * Every branch is spelled out so no case falls through to the API's own message.
  */
+
+/**
+ * Guest pay-by-reference: start (or resume) online payment for an order the
+ * customer proves is theirs with the reference plus the checkout phone or
+ * email. Same server rules as the checkout page's payment start.
+ */
+export async function startPaymentByReference(args: { reference: string; contact: string }): Promise<PaymentStartResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/commerce/orders/lookup/pay`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ reference: args.reference, contact: args.contact }),
+    });
+  } catch {
+    return { ok: false, status: 0, code: 'NETWORK', message: 'We could not reach the payment service.' };
+  }
+  const json = (await res.json().catch(() => null)) as { success?: boolean; data?: PaymentStartResponseDto; error?: { code?: string; message?: string } } | null;
+  if (res.ok && json?.success && json.data?.redirectUrl) return { ok: true, data: json.data };
+  const code = String(json?.error?.code ?? 'PAYMENT_START_FAILED') as PaymentStartErrorCode;
+  return { ok: false, status: res.status, code, message: json?.error?.message ?? 'Payment could not be started for this order.' };
+}
+
 export function paymentStartMessageFor(code: PaymentStartErrorCode | 'NETWORK'): string {
   switch (code) {
     case 'ORDER_ALREADY_PAID':

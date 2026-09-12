@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { postJson, whatsappSupportNumber } from '../lib/api';
+import { startPaymentByReference, paymentStartMessageFor } from '../lib/checkoutClient';
 import { formatUgx } from '../lib/money';
 import { orderStatusCopy, paymentStatusCopy, STATUS_TONE_CLASS } from '../lib/orderStatusCopy';
 
@@ -43,6 +44,8 @@ let errorMsg: string | undefined;
 let submittedRef = (Astro.url.searchParams.get('reference') ?? '').trim().slice(0, 80);
 let followupOk = false;
 let followupError: string | undefined;
+let payError: string | undefined;
+let submittedContact = '';
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -50,12 +53,23 @@ if (Astro.request.method === 'POST') {
   const reference = String(form.get('reference') ?? '').trim();
   const contact = String(form.get('contact') ?? '').trim();
   submittedRef = reference;
+  submittedContact = contact;
 
   if (!reference || !contact) {
     errorMsg = 'Enter both your order reference and the phone number or email used at checkout.';
   } else {
     // Both actions re-verify the order — a follow-up is never raised for an
     // unverified reference, and the ticket carries the real order details.
+    // Pay by reference (2026-09-12): the same proof as the lookup, then the
+    // provider handoff. A success leaves this page for PesaPal; a refusal
+    // falls through to the lookup so the order is still shown with the reason.
+    if (intent === 'pay') {
+      const pay = await startPaymentByReference({ reference, contact });
+      if (pay.ok) return Astro.redirect(pay.data.redirectUrl, 303);
+      payError = pay.code === 'VERIFICATION_FAILED' || pay.code === 'TOO_MANY_REQUESTS'
+        ? pay.message
+        : paymentStartMessageFor(pay.code);
+    }
     const result = await lookupOrder(reference, contact);
     if (!result.ok) {
       errorMsg = result.code === 'NETWORK'
@@ -169,14 +183,23 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
                   {order.paymentStatus === 'failed' ? (
                     <>
                       <p class="font-semibold">Your online payment did not go through — nothing was taken.</p>
-                      <p class="mt-1 text-xs">Your order is still saved. You can pay on delivery or at our shop, or ask us on WhatsApp and we will send you a payment link.</p>
+                      <p class="mt-1 text-xs">Your order is still saved. Pay online now, or pay on delivery or at our shop.</p>
                     </>
                   ) : (
                     <>
                       <p class="font-semibold">Waiting for payment before we prepare it.</p>
-                      <p class="mt-1 text-xs">If you started paying online and it has not cleared, please do not pay again. Request a follow-up below or ask us on WhatsApp and we will check.</p>
+                      <p class="mt-1 text-xs">If you already paid online and it has not cleared, please do not pay again — ask us on WhatsApp and we will check. Otherwise you can pay online now, or pay on delivery.</p>
                     </>
                   )}
+                  {payError && (
+                    <p class="mt-3 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-800" role="alert">{payError}</p>
+                  )}
+                  <form method="POST" action="/track-order" class="mt-3">
+                    <input type="hidden" name="intent" value="pay" />
+                    <input type="hidden" name="reference" value={order.orderNumber} />
+                    <input type="hidden" name="contact" value={submittedContact} />
+                    <button type="submit" class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white hover:bg-black transition-colors">Pay now with Mobile Money or card →</button>
+                  </form>
                 </div>
               ) : (
                 <ol class="mt-6 space-y-0" aria-label="Dispatch progress">
