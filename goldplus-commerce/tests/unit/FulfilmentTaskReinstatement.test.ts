@@ -47,6 +47,12 @@ const makeRepo = (snap: FulfilmentTaskSnapshot | null) => {
         state.updated = task;
         state.snap = task.toSnapshot();
       },
+      updateWhereStatus: async (task: FulfilmentTask, expected: string) => {
+        if (state.snap?.status !== expected) return false;
+        state.updated = task;
+        state.snap = task.toSnapshot();
+        return true;
+      },
     } as any,
   };
 };

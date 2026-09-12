@@ -57,7 +57,13 @@ export class ReinstateFulfilmentTaskUseCase {
 
     const task = FulfilmentTask.rehydrate(snapshot);
     task.reinstate();
-    await this.repo.update(task);
+    // Compare-and-swap on the stored status: if another operator reinstated
+    // this task between our read and our write, we are the loser and say so —
+    // one reinstatement, one audit entry, however many people pressed.
+    const applied = await this.repo.updateWhereStatus(task, 'CANCELLED');
+    if (!applied) {
+      return { ok: false, code: 'NOT_CANCELLED', message: 'This task was reinstated a moment ago by someone else.' };
+    }
 
     await new CreateAuditLogUseCase(this.audit).execute({
       actorId: input.actorId,

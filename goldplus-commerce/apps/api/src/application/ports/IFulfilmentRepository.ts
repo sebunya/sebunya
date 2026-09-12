@@ -27,6 +27,13 @@ export interface IFulfilmentRepository {
   findById(id: string): Promise<FulfilmentTaskSnapshot | null>;
   /** Persist an already-mutated task (transition / payment mirror / cancel). */
   update(task: FulfilmentTask): Promise<void>;
+  /**
+   * Write the task ONLY if its stored status is still `expectedStatus`, and
+   * say whether it was. The compare-and-swap for recovery actions: two
+   * operators pressing "reinstate" at the same moment must produce one
+   * reinstatement and one refusal, not two.
+   */
+  updateWhereStatus(task: FulfilmentTask, expectedStatus: FulfilmentStatus): Promise<boolean>;
   listQueue(query: FulfilmentQueueQuery): Promise<FulfilmentQueuePage>;
   /** Badge count: number of unacknowledged NEW tasks. */
   countNew(): Promise<number>;

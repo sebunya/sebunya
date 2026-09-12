@@ -117,6 +117,26 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
       })
       .where(eq(fulfilmentTasks.id, s.id));
   }
+  async updateWhereStatus(task: FulfilmentTask, expectedStatus: FulfilmentStatus): Promise<boolean> {
+    const s = task.toSnapshot();
+    const rows = await db
+      .update(fulfilmentTasks)
+      .set({
+        status: s.status,
+        paymentStatus: s.paymentStatus,
+        priority: s.priority,
+        slaDueAt: s.slaDueAt,
+        slaPolicyVersion: s.slaPolicyVersion,
+        teamId: s.teamId,
+        assignedTo: s.assignedTo,
+        assignedAt: s.assignedAt,
+        notes: s.notes,
+        updatedAt: s.updatedAt,
+      })
+      .where(and(eq(fulfilmentTasks.id, s.id), eq(fulfilmentTasks.status, expectedStatus)))
+      .returning({ id: fulfilmentTasks.id });
+    return rows.length > 0;
+  }
 
   async findOrdersWithoutActiveTask(limit: number): Promise<Array<{
     orderId: string; orderNumber: string | null; orderStatus: string; taskStatus: string | null;
