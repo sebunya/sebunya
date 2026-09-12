@@ -8,14 +8,14 @@ Vocabulary is the programme's evidence vocabulary: FOUND / REPRODUCED / FIXED / 
 
 | Item | Value | Evidence |
 |---|---|---|
-| Local HEAD | `66602ab8` | `git log` |
-| Origin HEAD | `66602ab8` | `git push` output |
-| Host git HEAD | `66602ab8` | `git rev-parse` on goldplus-prod |
+| Local HEAD | `757d05a5` | `git log` |
+| Origin HEAD | `757d05a5` | `git push` output |
+| Host git HEAD | `757d05a5` | `git rev-parse` on goldplus-prod |
 | API runtime | `rollback-89ba2b7a` image | `docker inspect` image id = tag id |
-| Web runtime | `rollback-66602ab8` image, DEPLOYED 2026-09-12 and LIVE VERIFIED: settings, verification, dealers, governance, users and customer pages answer 303 unauthenticated, storefront and shop 200, 0 web errors, 0 new API level-50 lines. Authenticated rendering of the four corrected pages rests on the passing build; no admin session was available to this session | `docker inspect` image id = tag id |
+| Web runtime | `rollback-757d05a5` image (66602ab8 plus the self-critique follow-up), DEPLOYED 2026-09-12 and LIVE VERIFIED: settings, verification, dealers, governance, users and customer pages answer 303 unauthenticated, storefront and shop 200, 0 web errors, 0 new API level-50 lines. Authenticated rendering of the four corrected pages was checked by serving the built SSR bundle locally with a session cookie and reading the output (200, corrected values present, 0 errors); no production admin session was available | `docker inspect` image id = tag id |
 | Services | 2 api + 2 web, all healthy, 0 restarts | `docker ps` |
 | Migrations | journal entries 0000–0130 (131), last `0130_order_payment_method` | `_journal.json` |
-| Clean-tree suite | unit + architecture: 453 files / 7,798 tests, 0 failures | `vitest run tests/unit tests/architecture` |
+| Clean-tree suite | unit + architecture: 453 files / 7,798 tests; one known intermittent (`ExperienceProfile` opaque-token case) failed in the full run and passed 3/3 in isolation, UNRESOLVED INTERMITTENT | `vitest run tests/unit tests/architecture` |
 | Integration suite | not run on this workstation (Docker down, `ZeroSkipGate` fails by design when the env is absent) | `docker info` |
 | New level-50 API log lines since the roll | 0 new; the 2 present are the pre-existing PAYMENT_SILENCE alarms | `docker logs --since 20m` |
 
