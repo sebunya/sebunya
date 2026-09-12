@@ -20,7 +20,14 @@ export class RedisFailureLockout implements FailureLockoutStore {
     if (this.client) return this.client;
     if (!this.redisUrl) return null;
     try {
-      this.client = new Redis(this.redisUrl, { maxRetriesPerRequest: 1, connectTimeout: 1_000, lazyConnect: true, enableOfflineQueue: false });
+      // Same recipe as the abuse-control store, which is proven against this
+      // Redis: connect eagerly, queue commands until the socket is up, and cap
+      // each command at 250 ms so a slow Redis degrades to the local counter
+      // instead of stalling a request. The first cut used lazyConnect with the
+      // offline queue OFF, so a burst's first commands were rejected before
+      // the socket existed ("Stream isn't writeable") and every replica fell
+      // back to its own counter — the exact split the store exists to close.
+      this.client = new Redis(this.redisUrl, { connectTimeout: 1_000, commandTimeout: 250, maxRetriesPerRequest: 1, enableOfflineQueue: true, lazyConnect: false });
       this.client.on('error', (err) => { logger.warn({ err: err.message }, '[FailureLockout] redis error'); });
       return this.client;
     } catch (err) {
