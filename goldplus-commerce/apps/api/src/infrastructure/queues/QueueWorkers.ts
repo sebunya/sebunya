@@ -281,6 +281,11 @@ export function registerAllWorkers(): void {
       'synthetic-cron',
       {},
       {
+        // A cron that fails every run must not grow Redis without bound: QueueService's
+        // default is removeOnFail:false, and production held 4,511 retained failures
+        // (2026-09-12) under a noeviction Redis with no maxmemory. Keep the last few
+        // hundred for diagnosis; drop the rest.
+        removeOnFail: { count: 200 },
         repeat: {
           pattern: '*/5 * * * *',
         },
@@ -293,6 +298,11 @@ export function registerAllWorkers(): void {
       'abandonment-scan-cron',
       {},
       {
+        // A cron that fails every run must not grow Redis without bound: QueueService's
+        // default is removeOnFail:false, and production held 4,511 retained failures
+        // (2026-09-12) under a noeviction Redis with no maxmemory. Keep the last few
+        // hundred for diagnosis; drop the rest.
+        removeOnFail: { count: 200 },
         repeat: {
           pattern: '30 * * * *',
         },
@@ -308,6 +318,11 @@ export function registerAllWorkers(): void {
       'search-console-guardian-cron',
       {},
       {
+        // A cron that fails every run must not grow Redis without bound: QueueService's
+        // default is removeOnFail:false, and production held 4,511 retained failures
+        // (2026-09-12) under a noeviction Redis with no maxmemory. Keep the last few
+        // hundred for diagnosis; drop the rest.
+        removeOnFail: { count: 200 },
         repeat: {
           pattern: '0 */6 * * *',
         },
@@ -323,6 +338,11 @@ export function registerAllWorkers(): void {
       'seo-integration-schedule-reconcile',
       {},
       {
+        // A cron that fails every run must not grow Redis without bound: QueueService's
+        // default is removeOnFail:false, and production held 4,511 retained failures
+        // (2026-09-12) under a noeviction Redis with no maxmemory. Keep the last few
+        // hundred for diagnosis; drop the rest.
+        removeOnFail: { count: 200 },
         repeat: {
           pattern: '10 * * * *',
         },
@@ -335,6 +355,11 @@ export function registerAllWorkers(): void {
       'recommendation-materialize-cron',
       {},
       {
+        // A cron that fails every run must not grow Redis without bound: QueueService's
+        // default is removeOnFail:false, and production held 4,511 retained failures
+        // (2026-09-12) under a noeviction Redis with no maxmemory. Keep the last few
+        // hundred for diagnosis; drop the rest.
+        removeOnFail: { count: 200 },
         repeat: {
           pattern: '0 * * * *',
         },
