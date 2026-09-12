@@ -149,6 +149,26 @@ describe('order abandonment — cancelled through the canonical lifecycle, never
     expect(readerBlock).toContain('not exists');
     expect(readerBlock).toContain("'pending', 'verification_pending', 'verification_failed'");
   });
+
+  /**
+   * COD safety: a pay-on-delivery / manual / admin-created order NEVER creates
+   * a payment attempt and is unpaid by design until delivered. Both sweeps must
+   * therefore require the order to HAVE attempted online payment (an `exists`
+   * over payment_attempts), or enabling order_abandonment_hours /
+   * reservation_ttl_hours would auto-cancel legitimate COD orders and release
+   * their stock. Pinned as a contract scan over BOTH reader queries.
+   */
+  it('both sweep readers require an online payment attempt (never touch COD/manual orders)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const registry = readFileSync(join(__dirname, '../../apps/api/src/infrastructure/Registry.ts'), 'utf8');
+    const staleBlock = registry.slice(registry.indexOf('listStaleUnpaidOrders'), registry.indexOf('listReservedUnpaidOrders'));
+    const reservedBlock = registry.slice(registry.indexOf('listReservedUnpaidOrders'), registry.indexOf('expireStaleReservationsUseCase'));
+    for (const block of [staleBlock, reservedBlock]) {
+      // an `exists` over payment_attempts with no status filter = "has attempted"
+      expect(block).toMatch(/exists\s*\(\s*select 1 from payment_attempts a0\s*where a0\.order_id = o\.id\s*\)/);
+    }
+  });
 });
 
 describe('RESERVED_LEDGER_MISMATCH is an alert, not a report line', () => {
