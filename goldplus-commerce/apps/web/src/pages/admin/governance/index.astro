@@ -110,7 +110,7 @@ const myPermissionLabel = myPermissionCount === null ? 'Permissions: not loaded'
             <a href="/admin/roles" class="text-[10px] font-black uppercase tracking-wide text-brand-dark underline">Open Roles &rarr;</a>
           </div>
           {rolesDenied && (
-            <div class="p-6 text-xs text-gray-500">Permission denied: viewing roles requires the manage-roles permission. The roles still apply; this account cannot list them.</div>
+            <div class="p-6 text-xs text-gray-500">Permission denied: listing roles requires the roles.manage permission. The roles still apply; this account cannot list them.</div>
           )}
           {rolesFailed && (
             <div class="p-6 text-xs text-gray-500">Roles could not be loaded right now (service unreachable). Nothing is shown rather than a stale copy.</div>

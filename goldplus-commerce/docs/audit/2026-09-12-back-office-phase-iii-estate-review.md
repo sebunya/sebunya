@@ -15,7 +15,7 @@ Vocabulary is the programme's evidence vocabulary: FOUND / REPRODUCED / FIXED / 
 | Web runtime | `rollback-757d05a5` image (66602ab8 plus the self-critique follow-up), DEPLOYED 2026-09-12 and LIVE VERIFIED: settings, verification, dealers, governance, users and customer pages answer 303 unauthenticated, storefront and shop 200, 0 web errors, 0 new API level-50 lines. Authenticated rendering of the four corrected pages was checked by serving the built SSR bundle locally with a session cookie and reading the output (200, corrected values present, 0 errors); no production admin session was available | `docker inspect` image id = tag id |
 | Services | 2 api + 2 web, all healthy, 0 restarts | `docker ps` |
 | Migrations | journal entries 0000–0130 (131), last `0130_order_payment_method` | `_journal.json` |
-| Clean-tree suite | unit + architecture: 453 files / 7,798 tests; one known intermittent (`ExperienceProfile` opaque-token case) failed in the full run and passed 3/3 in isolation, UNRESOLVED INTERMITTENT | `vitest run tests/unit tests/architecture` |
+| Clean-tree suite | unit + architecture: 453 files / 7,798 tests, 0 failures. The long-running `ExperienceProfile` intermittent is FIXED at its cause: the tampered-token case built the flipped character from a second random token, so about 1.5% of runs left the token unchanged | `vitest run tests/unit tests/architecture` |
 | Integration suite | not run on this workstation (Docker down, `ZeroSkipGate` fails by design when the env is absent) | `docker info` |
 | New level-50 API log lines since the roll | 0 new; the 2 present are the pre-existing PAYMENT_SILENCE alarms | `docker logs --since 20m` |
 
@@ -36,8 +36,8 @@ Production counts are exact `count(*)` taken 2026-09-12 18:40 UTC.
 
 | Module | Primary operator | Before | Depth | Features added this programme | After | Tests | Remaining gap | Verdict |
 |---|---|---|---|---|---|---|---|---|
-| Users & roles (`/admin/users`, 14 API handlers) | System administrator | 2 | OPERATED | Last-admin guard on revoke; account deactivate/reactivate with reason, session invalidation, self-lockout refusal; History link | 3 | `AdminUserGovernanceGuards` (10), `admin-user-management` | MFA enrolment UI does not exist (0 of 7 users enrolled); `/admin/roles` is a read-only list | READY |
-| Governance page (`/admin/governance`) | System administrator | 1 (stale: claimed admins cannot be created in-console) | RENDERED (built SSR server, session cookie; no write path exists) | Copy corrected to the truth, links to Users | 1 (informational by design) | `AdminSurfaceIntegrity` realigned | Static permissions matrix is hand-written, not read from `role_permissions` (253 rows) | READY, informational |
+| Users & roles (`/admin/users`, 14 API handlers) | System administrator | 2 | OPERATED | Last-admin guard on revoke; account deactivate/reactivate with reason, session invalidation, self-lockout refusal; History link; the create form now labels each role with its permission count and warns when a role is empty | 3 | `AdminUserGovernanceGuards` (10), `admin-user-management` | **Nine of the twelve roles hold zero permissions in production** (Owner 130, PLATFORM_ADMINISTRATOR 121, LEGAL_REVIEWER 2, all others 0): ANALYST and SUPPORT_OPERATOR are offered at creation and would produce a user who can sign in and open nothing. Permission sets per role are an OWNER decision. MFA enrolment UI does not exist (0 of 7 enrolled) | READY, one OWNER decision |
+| Governance page (`/admin/governance`) | System administrator | 1 (stale admin-creation copy; five invented roles with invented Level 5..1 ranks; a hand-written permissions matrix; a 'Role: Super administrator' badge for everyone) | RENDERED (built SSR server, session cookie) | Copy corrected; roles, active users and permission codes now read from `/admin/roles` with honest denied/unavailable states; the badge shows the session's own permission count from `/auth/admin-session` | 2 (functional read) | `AdminSurfaceIntegrity` realigned | Read-only; the Roles screen remains the place to inspect a role in full | READY |
 | Customer workspace (`/admin/customers/:id`, new) | Customer-service agent | 0 | OPERATED (LIVE VERIFIED 303 unauth, API 401) | One screen: identity, orders newest-first, loyalty balance from the ledger, support by email, links to Orders/Support/History | 3 | `GetCustomerWorkspace` (4) | Read-only; no notes or tags; 7 users in prod so scale is not a concern | READY |
 | Support inbox (`/admin/support`) | Customer-service agent | 2 | OPERATED | Exact filters q/status/priority/assignee/overdue, summary, honest empty state, per-row status update | 3 | route-protection sweep | `support_issues` = 0 rows: never used in production; no assignment workflow beyond a field | READY, unused |
 | Quotes (`/admin/quotes`) | Store administrator | 2 | DB+CODE | none | 2 | sweep | 1 `quote_requests` row; list only, no reply/convert action | BASIC |
@@ -48,7 +48,7 @@ Production counts are exact `count(*)` taken 2026-09-12 18:40 UTC.
 | Fulfilment (`/admin/fulfilment`, 48 handlers) | Fulfilment operator | 3 (P1: tasks could advance on cancelled orders) | OPERATED (stale tasks cancelled via script, read back) | Forward moves refused when the order is terminal; stale-task cancel script | 3 | `FulfilmentTaskRefusesTerminalOrder` | 24 tasks, 0 dispatches, 0 deliveries, 0 teams: the packing→dispatch→delivery chain has never run end to end in production | READY, unexercised downstream |
 | Delivery (`/admin/delivery`, `/launch`, `/calibration`, 34 handlers) | Store administrator | 3 | DB+CODE | none this phase | 3 | contract tests in `docs/delivery` suite | 6 config values, 1 version, 0 zones; five launch numbers never supplied by the owner (OWNER ACTION) | READY, values pending |
 | Delivery zones (`/admin/pricing/delivery-zones`, 10 handlers) | Store administrator | 2 | CODE | none | 2 | sweep | 0 rows | BASIC |
-| Products (`/admin/products`, 23 handlers) | Catalogue manager | 3 | OPERATED earlier in programme (import of 192) | History link on detail | 3 | listing/approval tests | 29 of 192 products have an image; readiness is a photo gap, not a code gap | READY, CONTENT GAP |
+| Products (`/admin/products`, 23 handlers) | Catalogue manager | 3 (carried an invented fallback product, never rendered) | OPERATED earlier in programme (import of 192); list RENDERED locally after the fix | History link on detail; invented fallback removed | 3 | listing/approval tests | 29 of 192 products have an image; readiness is a photo gap, not a code gap | READY, CONTENT GAP |
 | Listing editor / listing quality / copy quality | Catalogue manager | 3 / 3 / 2 | DB+CODE | none | 3 / 3 / 2 | listing tests | Copy-quality export is API-only | READY |
 | Inventory (`/admin/inventory`, 4 handlers) | Inventory controller | 2 | OPERATED | Per-row History link filtered to STOCK_ADJUSTED | 3 | sweep, audit filter tests | `stock_receipts`, `stock_counts` tables exist with no page and no route: receipts and counts are schema only; 1 stock location | READY for adjustments, BASIC for receipts/counts |
 | Pricing (`/admin/pricing`, 8 handlers) | Finance operator | 3 | DB+CODE | none | 3 | price-floor tests | 24 adjustments, 28 quotes; no bulk price change (deliberately deferred, see §5) | READY |
@@ -115,7 +115,8 @@ Ordered by value (§82), each with before / problem / capability / benefit / ris
 8. **Order exception presets limited to true exceptions** — after my own presets had manufactured urgency. Live: DEPLOYED.
 9. **Checkout intent divert on un-collectable orders** — a failed order no longer wedges the customer. Live: DEPLOYED.
 10. **Admin-managed WhatsApp block and footer; hero final copy**. Live: LIVE VERIFIED on the storefront.
-11. **Truthful Settings, Verification, Dealers, Governance pages** — four pages stated invented or stale facts (session 24 h vs 7 days, cookie Strict vs Lax, a recommendation engine version, a gateway timeout, "Verified / Safe" hologram status, an aggregation API "being designed", two invented dealer businesses, "admins cannot be created here"). Corrected at 34daedc2 and the self-critique follow-up; all four pages rendered through the built server and read back. Live: see §9.
+11. **Deactivation is proven to bite immediately** — checked, not assumed: the admin auth path (`liveSession`) rejects a token whose user is inactive or whose issue time precedes the revocation cutoff on every request, so a deactivated administrator loses access at once rather than at the 7-day token expiry.
+12. **Truthful Settings, Verification, Dealers, Governance and Products pages** — four pages stated invented or stale facts (session 24 h vs 7 days, cookie Strict vs Lax, a recommendation engine version, a gateway timeout, "Verified / Safe" hologram status, an aggregation API "being designed", two invented dealer businesses, an invented fallback product, five invented roles with ranks, a hardcoded 'Super administrator' badge, "admins cannot be created here"). Corrected across 34daedc2, 757d05a5, f1f5d475 and 3bbcdae5; all four pages rendered through the built server and read back. Live: see §9.
 
 ## 4. Deferred items with triggers (§83 context)
 
@@ -126,6 +127,7 @@ Ordered by value (§82), each with before / problem / capability / benefit / ris
 | Bulk price / stock operations | 192 SKUs are still one-by-one workable; bulk writes to price or stock without preview/confirm/audit are the highest-regression change in the estate | a second price-list import, or > 50 SKUs needing one change | commercial semantics changed en masse |
 | Stock receipts and counts UI | tables exist, no page, no route, 0 rows; one stock location | the first supplier delivery recorded outside adjustments | new write path without a workflow owner |
 | MFA enrolment UI | `requireStepUp` exists; 0 enrolled; only one active platform administrator | a second administrator, or the credential rotation the owner still owes | lockout of the only admin |
+| Permission sets for the nine empty roles | Which screens a support operator, analyst, fulfilment manager or merchandiser may touch is a business decision; guessing would grant access nobody approved | the owner names the first person to hold one of these roles | over- or under-granting a real person |
 | Roles editor | 12 roles / 92 permissions are seeded; no operator has needed a custom role | first custom-role request | permission drift |
 | Controlled activation / release readiness clients | shells with 0 rows; the API exists | first measurement destination goes live | speculative UI |
 | Deployment page (maintenance flag) | API only; owner deploys by script | first request to toggle maintenance from a browser | none |
@@ -146,6 +148,7 @@ Ordered by value (§82), each with before / problem / capability / benefit / ris
 10. GTM/sGTM configuration and `PUBLIC_GTM_ID`.
 11. Secrets disaster recovery: `.env.production` exists on the host only.
 12. Restrict origin ports 80/443 to Cloudflare.
+13. Decide the permission sets for the nine empty roles before creating any user with them.
 
 ## 6. Remaining Level 0–2 modules (§83), each with the reason
 
@@ -159,7 +162,7 @@ Context: strong for orders, payments, customers, audit; weak for growth modules 
 
 ## 8. Self-critique (§85)
 
-1. **Thought mature, actually basic:** Settings. It looked like a configuration console; it is static text, and four of its values were wrong or invented until today. Likewise Governance, which contradicted the Users screen.
+1. **Thought mature, actually basic:** Settings. It looked like a configuration console; it is static text, and four of its values were wrong or invented until today. Governance was worse than I first scored it: I corrected its admin-creation copy and moved on, and only on the second pass questioned the five roles and the permissions matrix beneath it, which were invented outright. The lesson is recorded: a page that states access facts must read them from the authority.
 2. **Misleading feature I built:** the first order presets ("Awaiting payment", "Paid in preparation") manufactured urgency for normal states. Removed at 7a2c3d6b.
 3. **Approximate path:** audit filters over 200 in-memory rows. Now DB-side.
 4. **Link to nowhere:** the Refund link. Now a real panel.

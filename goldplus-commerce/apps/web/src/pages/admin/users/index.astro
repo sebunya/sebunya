@@ -70,6 +70,26 @@ if (!token) {
     }
   }
 
+  // Permission count per role, from the roles API. In production nine of the
+  // twelve roles hold no permissions at all, so a user created with one of
+  // them can sign in and open nothing. The select says so instead of letting
+  // the grant fail silently. If roles cannot be listed, labels stay plain.
+  const permissionCountByRole = new Map<string, number>();
+  try {
+    const rr = await fetch(`${apiBase}/admin/roles`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
+    const rj = rr.ok ? await rr.json().catch(() => null) : null;
+    if (rj?.success && Array.isArray(rj.data)) {
+      for (const r of rj.data as { name: string; permissionCodes: string[] }[]) permissionCountByRole.set(r.name, r.permissionCodes.length);
+    }
+  } catch {
+    // labels stay plain
+  }
+  const roleLabel = (name: string, suffix = ''): string => {
+    const n = permissionCountByRole.get(name);
+    if (n === undefined) return `${name}${suffix}`;
+    if (n === 0) return `${name} — no permissions yet: can sign in, opens nothing${suffix}`;
+    return `${name} — ${n} permissions${suffix}`;
+  };
   let grantRequests: any[] = [];
   try {
     const gr = await fetch(`${apiBase}/admin/users/grant-requests`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
@@ -194,10 +214,10 @@ try {
         <input name="email" type="email" required placeholder="email@shopgoldplus.com" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
         <input name="initialPassword" type="password" required minlength="12" placeholder="Initial password (min 12)" autocomplete="new-password" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
         <select name="roleName" aria-label="Governance role for the new user" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
-          <option value="LEGAL_REVIEWER">LEGAL_REVIEWER</option>
-          <option value="ANALYST">ANALYST</option>
-          <option value="SUPPORT_OPERATOR">SUPPORT_OPERATOR</option>
-          <option value="PLATFORM_ADMINISTRATOR">PLATFORM_ADMINISTRATOR (needs approval)</option>
+          <option value="LEGAL_REVIEWER">{roleLabel('LEGAL_REVIEWER')}</option>
+          <option value="ANALYST">{roleLabel('ANALYST')}</option>
+          <option value="SUPPORT_OPERATOR">{roleLabel('SUPPORT_OPERATOR')}</option>
+          <option value="PLATFORM_ADMINISTRATOR">{roleLabel('PLATFORM_ADMINISTRATOR', ' (needs approval)')}</option>
         </select>
         <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Create user</button>
       </form>
