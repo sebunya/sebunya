@@ -516,6 +516,24 @@ export class ExecuteCheckoutIntentUseCase {
         // so this degrades to a spent intent rather than a dead end.
         const existing = await this.deps.orderReader.findById(decision.orderId);
         if (!existing) return { kind: 'INTENT_SPENT', reason: 'INTENT_SPENT' };
+        // The order the intent produced is un-collectable: its payment failed,
+        // or the order itself was cancelled or failed. A new checkout with a
+        // different basket is then a NEW order, not a duplicate of a dead one,
+        // so it must go THROUGH — not be answered "you already ordered" and
+        // pointed at an order that cannot be paid. Observed in production on
+        // 2026-09-12: an order parked in PAYMENT_REVIEW (payment_status=failed)
+        // held the intent, every fresh checkout was superseded by it, and
+        // startPayment for it returned NOT_PAYABLE — a total dead end with no
+        // new order creatable until the intent's 12h expiry. Degrading to a
+        // spent intent lets the caller mint a fresh one and place the order.
+        // A paid order is never treated as dead; a merely unpaid-but-live order
+        // (pending payment) is still protected from duplication.
+        const uncollectable =
+          existing.paymentStatus !== 'paid' &&
+          (existing.paymentStatus === 'failed' ||
+            existing.orderStatus === 'cancelled' ||
+            existing.orderStatus === 'failed');
+        if (uncollectable) return { kind: 'INTENT_SPENT', reason: 'INTENT_SPENT' };
         return {
           kind: 'SUPERSEDED_BY_ORDER',
           reason: 'INTENT_ALREADY_ORDERED',

@@ -45,6 +45,7 @@ const order = (over: Record<string, unknown> = {}) =>
     totalUgx: 1000,
     pricingSnapshot: null,
     paymentStatus: 'unpaid',
+    orderStatus: 'received',
     ...over,
   }) as never;
 
@@ -468,6 +469,32 @@ describe('an existing record is answered without doing commerce work', () => {
     expect(outcome.kind).toBe('SUPERSEDED_BY_ORDER');
     expect(trace.ordersCreated).toBe(0);
     if (!isCheckoutSuccess(outcome)) expect(outcome.existingOrder?.orderId).toBe('order-1');
+  });
+
+  // 2026-09-12: the order a spent intent produced can be un-collectable — its
+  // payment failed, or it was cancelled. A different basket must then create a
+  // new order rather than be superseded by a dead one and told to pay it.
+  it.each([
+    { label: 'a failed payment', over: { paymentStatus: 'failed' } },
+    { label: 'a cancelled order', over: { orderStatus: 'cancelled' } },
+    { label: 'a failed order', over: { orderStatus: 'failed' } },
+  ])('lets a new basket through when the earlier order is un-collectable ($label)', async ({ over }) => {
+    const { useCase } = build({
+      ...notClaimed(record({ fingerprint: 'DIFFERENT', state: 'COMPLETED', orderId: 'order-1' })),
+      existingOrder: order(over),
+    });
+    const outcome = await useCase.execute(command);
+    expect(outcome.kind).toBe('INTENT_SPENT');
+  });
+
+  it('still protects a PAID earlier order from duplication on a different basket', async () => {
+    const { useCase, trace } = build({
+      ...notClaimed(record({ fingerprint: 'DIFFERENT', state: 'COMPLETED', orderId: 'order-1' })),
+      existingOrder: order({ paymentStatus: 'paid' }),
+    });
+    const outcome = await useCase.execute(command);
+    expect(outcome.kind).toBe('SUPERSEDED_BY_ORDER');
+    expect(trace.ordersCreated).toBe(0);
   });
 
   it('reports a spent intent that produced nothing, so the caller can start afresh', async () => {
