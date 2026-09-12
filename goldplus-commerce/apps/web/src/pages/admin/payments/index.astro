@@ -48,6 +48,26 @@ if (Astro.request.method === "POST") {
       notice = json?.success
         ? { kind: "success", text: `Re-verified ${ref}: provider says "${json.data.providerStatus}", settlement ${json.data.settlement}.` }
         : { kind: "error", text: json?.error?.message || "Could not re-verify." };
+    } else if (intent === "refund") {
+      // Thin form over the guarded refund path: completed attempts only,
+      // capped by collected-minus-refunded in the ledger, idempotent on the key
+      // this render issued, permission enforced by the API.
+      const ref = String(form.get("reference") || "");
+      const res = await fetch(`${apiBase}/admin/payments/attempts/${encodeURIComponent(ref)}/refund`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          amountUgx: String(form.get("amountUgx") || "").trim(),
+          reason: String(form.get("reason") || "").trim(),
+          idempotencyKey: String(form.get("idempotencyKey") || "").trim(),
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: json.data.alreadyProcessed
+            ? `That refund was already recorded (${json.data.refundId}) — nothing was sent twice.`
+            : `Refund requested for ${ref}: provider says "${json.data.providerStatus}". It is recorded in the ledger; settlement follows the provider.` }
+        : { kind: "error", text: res.status === 403 ? "Not permitted: your account cannot request refunds." : (json?.error?.message || "Refund could not be requested. Nothing was sent.") };
     } else if (intent === "sweep") {
       const res = await fetch(`${apiBase}/admin/payments/reconcile/run`, { method: "POST", headers, body: "{}" });
       const json = await res.json().catch(() => null);
@@ -75,6 +95,21 @@ const [funnel, queue, opsConfig] = await Promise.all([
   get(`/admin/payments/queue${paymentQuery ? `?q=${encodeURIComponent(paymentQuery)}` : ""}`),
   get("/admin/payments/ops-config"),
 ]);
+
+// A refund is offered only for ONE deliberately searched, completed attempt —
+// never from the general listing — with the ledger position shown first.
+let refundTarget: { merchantReference: string; orderId: string; amountUgx: number; refundedUgx: number; remainingUgx: number; refunds: any[] } | null = null;
+if (paymentQuery && queue && Array.isArray(queue.rows)) {
+  const completed = queue.rows.filter((r: any) => r.ourStatus === 'completed');
+  if (completed.length === 1) {
+    const a = completed[0];
+    const ledger = await get(`/admin/payments/orders/${encodeURIComponent(a.orderId)}/refunds`);
+    const refunds: any[] = Array.isArray(ledger?.refunds) ? ledger.refunds : [];
+    const refundedUgx = refunds.filter((x) => x.status === 'requested' || x.status === 'settled').reduce((n, x) => n + (Number(x.amountUgx) || 0), 0);
+    refundTarget = { merchantReference: a.merchantReference, orderId: a.orderId, amountUgx: Number(a.amountUgx) || 0, refundedUgx, remainingUgx: Math.max(0, (Number(a.amountUgx) || 0) - refundedUgx), refunds };
+  }
+}
+const refundIdempotencyKey = crypto.randomUUID();
 
 const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}`);
 const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
@@ -181,6 +216,43 @@ const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
             </tbody>
           </table>
         </div>
+      )}
+      {paymentQuery && queue && queue.rows.length > 0 && !refundTarget && (
+        <p class="mt-3 text-xs text-gray-500">Refunds are possible only on a single completed (paid) attempt. Search for that attempt's exact merchant reference to refund it.</p>
+      )}
+      {refundTarget && (
+        <section class="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5" aria-labelledby="refund-heading">
+          <h3 id="refund-heading" class="text-sm font-black text-amber-900">Refund {refundTarget.merchantReference}</h3>
+          <dl class="mt-2 grid grid-cols-3 gap-3 text-xs">
+            <div><dt class="font-bold text-amber-800">Collected</dt><dd class="font-mono">{ugx(refundTarget.amountUgx)}</dd></div>
+            <div><dt class="font-bold text-amber-800">Already refunded</dt><dd class="font-mono">{ugx(refundTarget.refundedUgx)}</dd></div>
+            <div><dt class="font-bold text-amber-800">Remaining refundable</dt><dd class="font-mono font-black">{ugx(refundTarget.remainingUgx)}</dd></div>
+          </dl>
+          {refundTarget.refunds.length > 0 && (
+            <ul class="mt-3 text-xs text-amber-900 space-y-1">
+              {refundTarget.refunds.map((x: any) => <li class="font-mono">{new Date(x.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' })} · {ugx(Number(x.amountUgx) || 0)} · {x.status} · {x.reason}</li>)}
+            </ul>
+          )}
+          {refundTarget.remainingUgx > 0 ? (
+            <form method="POST" class="mt-4 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+              <input type="hidden" name="intent" value="refund" />
+              <input type="hidden" name="reference" value={refundTarget.merchantReference} />
+              <input type="hidden" name="idempotencyKey" value={refundIdempotencyKey} />
+              <label class="text-xs block">Amount (UGX)
+                <input name="amountUgx" type="number" inputmode="numeric" min="1" max={refundTarget.remainingUgx} step="1" value={refundTarget.remainingUgx} required class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" />
+              </label>
+              <label class="text-xs block sm:col-span-2">Reason (recorded in the ledger)
+                <input name="reason" required minlength="5" maxlength="300" placeholder="e.g. Item out of stock — full refund agreed with customer" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" />
+              </label>
+              <div class="flex flex-col gap-2">
+                <label class="text-[11px] flex items-start gap-2"><input type="checkbox" required class="mt-0.5" /> I confirm this sends money back to the customer and cannot be undone here.</label>
+                <button type="submit" class="rounded-full bg-amber-700 px-5 py-2 text-sm font-bold text-white">Request refund</button>
+              </div>
+            </form>
+          ) : (
+            <p class="mt-4 text-sm font-bold text-amber-900">No refundable balance remains on this attempt.</p>
+          )}
+        </section>
       )}
     </section>
 
