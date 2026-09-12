@@ -75,6 +75,8 @@ if (Astro.request.method === 'POST') {
 // Fetch current order state and payment attempts
 let order: any = null;
 let paymentAttempts: any[] = [];
+let refunds: any[] = [];
+let refundsLoaded = false;
 let isSample = false;
 let apiError = '';
 
@@ -109,6 +111,13 @@ try {
     if (json && json.success && json.data) {
       order = json.data.order;
       paymentAttempts = json.data.paymentAttempts || [];
+      // Refund ledger for this order (existing payments endpoint). Hidden if the
+      // operator lacks PAYMENTS_READ; never blocks the order page.
+      try {
+        const rr = await fetch(`${apiBase}/admin/payments/orders/${encodeURIComponent(order.id)}/refunds`, { headers: { Authorization: `Bearer ${token}` } });
+        const rj = rr.ok ? await rr.json().catch(() => null) : null;
+        if (rj?.success && Array.isArray(rj.data?.refunds)) { refunds = rj.data.refunds; refundsLoaded = true; }
+      } catch { /* refunds are context, not the order */ }
     } else {
       order = fallbackOrder;
       isSample = true;
@@ -436,6 +445,15 @@ if (currentStatus === 'received') {
 } else if (currentStatus === 'delivery_failed') {
   transitionOptions.push('dispatched', 'completed', 'cancelled');
 }
+// Money already collected vs given back — what an operator must know before a refund.
+const collectedUgx = paymentAttempts.filter((a: any) => a.status === 'completed').reduce((n: number, a: any) => n + (Number(a.amount) || 0), 0);
+const refundedUgx = refunds.filter((r: any) => r.status === 'requested' || r.status === 'settled').reduce((n: number, r: any) => n + (Number(r.amountUgx) || 0), 0);
+const remainingRefundableUgx = Math.max(0, collectedUgx - refundedUgx);
+const completedAttempt = paymentAttempts.find((a: any) => a.status === 'completed');
+const orderHistoryHref = `/admin/audit?entity=order&entityId=${encodeURIComponent(order.id)}`;
+const orderPaymentsHref = `/admin/payments?q=${encodeURIComponent(order.orderNumber || order.id)}`;
+const customerHref = order.userId ? `/admin/customer-dna/${encodeURIComponent(order.userId)}` : null;
+
 ---
 
 <AdminLayout 
@@ -458,6 +476,11 @@ if (currentStatus === 'received') {
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs text-gray-400 font-medium font-mono">ID: {order.id}</span>
+        <nav aria-label="Related records" class="mt-2 flex flex-wrap gap-2 text-[11px] font-bold">
+          <a href={orderHistoryHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">History</a>
+          <a href={orderPaymentsHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Payments</a>
+          {customerHref && <a href={customerHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Customer</a>}
+        </nav>
       </div>
     </div>
 
@@ -602,6 +625,33 @@ if (currentStatus === 'received') {
         </div>
 
         {/* Relational PesaPal Payment Attempts */}
+        {refundsLoaded && (
+          <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3">
+              <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Refunds</h3>
+              <span class="text-[10px] font-bold text-gray-500">Collected {formatter.format(collectedUgx)} · Refunded {formatter.format(refundedUgx)} · Remaining {formatter.format(remainingRefundableUgx)}</span>
+            </div>
+            <div class="p-6 text-xs">
+              {refunds.length > 0 ? (
+                <ul class="space-y-2">
+                  {refunds.map((r: any) => (
+                    <li class="flex flex-wrap justify-between gap-2 border-b border-gray-50 pb-2">
+                      <span class="font-mono">{new Date(r.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' })}</span>
+                      <span class="font-black">{formatter.format(Number(r.amountUgx) || 0)}</span>
+                      <span class="uppercase font-bold text-[10px]">{r.status}</span>
+                      <span class="text-gray-500 basis-full">{r.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p class="text-gray-500">No refunds recorded on this order.</p>}
+              <p class="mt-4">
+                {completedAttempt && remainingRefundableUgx > 0
+                  ? <a href={`/admin/payments?q=${encodeURIComponent(completedAttempt.merchantReference)}`} class="inline-flex rounded-full bg-slate-900 px-4 py-2 font-bold text-white">Refund on the payments page →</a>
+                  : <span class="font-bold text-gray-600">{collectedUgx === 0 ? 'Nothing has been collected on this order, so there is nothing to refund.' : 'No refundable balance remains.'}</span>}
+              </p>
+            </div>
+          </div>
+        )}
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
           <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
             <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Relational Payment Attempts (Read-Only)</h3>
