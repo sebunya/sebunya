@@ -16,5 +16,13 @@ docker exec goldplus-commerce-postgres-1 sh -c 'pg_dump -U "$POSTGRES_USER" -d "
 [ -s "$OUT" ] || { echo "STOP: empty dump $OUT"; rm -f "$OUT"; exit 1; }
 # Prove the dump is readable before trusting it.
 docker exec -i goldplus-commerce-postgres-1 pg_restore --list > /dev/null < "$OUT"
+# The media volume holds every product photo and has never been backed up
+# either (7.3 MB on 2026-09-12). A tar of the volume alongside the dump.
+MEDIA_VOL="${MEDIA_VOL:-goldplus-commerce_media_uploads}"
+MEDIA_OUT="$DIR/goldplus-media-nightly-$STAMP.tar.gz"
+docker run --rm -v "$MEDIA_VOL":/media:ro -v "$DIR":/out alpine:3 sh -c "tar -czf /out/$(basename "$MEDIA_OUT") -C /media ." 
+[ -s "$MEDIA_OUT" ] || { echo "STOP: empty media archive $MEDIA_OUT"; rm -f "$MEDIA_OUT"; exit 1; }
+tar -tzf "$MEDIA_OUT" > /dev/null
 find "$DIR" -name 'goldplus-prod-nightly-*.dump' -mtime +"$KEEP_DAYS" -delete
-echo "OK $OUT $(stat -c %s "$OUT") bytes; $(ls "$DIR" | wc -l) kept"
+find "$DIR" -name 'goldplus-media-nightly-*.tar.gz' -mtime +"$KEEP_DAYS" -delete
+echo "OK db=$OUT ($(stat -c %s "$OUT") bytes) media=$MEDIA_OUT ($(stat -c %s "$MEDIA_OUT") bytes); $(ls "$DIR" | wc -l) files kept"

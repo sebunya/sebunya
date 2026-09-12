@@ -1,4 +1,4 @@
-# Nightly database backup
+# Nightly database + media backup
 
 Install ON the production host (owner action — it changes the host):
 
@@ -8,7 +8,7 @@ Install ON the production host (owner action — it changes the host):
     sudo systemctl start goldplus-pg-backup.service   # first run, now
     systemctl list-timers | grep goldplus                # verify
 
-Verify: `ls -l /root/goldplus-db-backups/nightly` shows a dump under a minute old, and
+Verify: `ls -l /root/goldplus-db-backups/nightly` shows a dump AND a media archive under a minute old, and
 `journalctl -u goldplus-pg-backup.service` ends with `OK ...`.
 
 Restore rehearsal is what `scripts/migrate-prod.sh` already does with a dump
