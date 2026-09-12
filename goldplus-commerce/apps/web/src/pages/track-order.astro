@@ -61,7 +61,7 @@ if (Astro.request.method === 'POST') {
     // Both actions re-verify the order — a follow-up is never raised for an
     // unverified reference, and the ticket carries the real order details.
     // Pay by reference (2026-09-12): the same proof as the lookup, then the
-    // provider handoff. A success leaves this page for PesaPal; a refusal
+    // provider handoff. A success leaves this page for the payment provider; a refusal
     // falls through to the lookup so the order is still shown with the reason.
     if (intent === 'pay') {
       const pay = await startPaymentByReference({ reference, contact });
