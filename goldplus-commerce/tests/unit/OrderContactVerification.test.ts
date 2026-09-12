@@ -2,16 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { verifyOrderByContact, CONTACT_LOCKOUT_MAX_FAILURES, CONTACT_LOCKOUT_WINDOW_MS } from '../../apps/api/src/application/services/OrderContactVerification';
+import { MemoryFailureLockout } from '../../apps/api/src/application/ports/FailureLockoutStore';
 
 const order = { id: 'o1', orderNumber: 'GP-202609-ABCD', customerEmail: 'Robert@Example.com', customerPhone: '+256 705 004545' };
-const deps = (found: typeof order | null = order) => ({ attempts: new Map<string, { count: number; resetTime: number }>(), findOrder: async () => found });
+const deps = (found: typeof order | null = order) => ({ lockout: new MemoryFailureLockout(), findOrder: async () => found });
 const run = (reference: unknown, contact: unknown, d = deps(), now = 1_000_000, ip = '41.84.203.9') =>
   verifyOrderByContact({ reference, contact, ip, now }, d);
 
 describe('verifyOrderByContact — the one proof a guest has', () => {
   it('refuses wrong types, empties, over-long values and demo drafts with a 400, before touching the store', async () => {
     for (const [r, c] of [[12, 'x'], ['GP-1', 42], ['', 'a@b.c'], ['GP-1', ''], ['x'.repeat(81), 'a@b.c'], ['GP-1', 'y'.repeat(121)], ['GP-DRAFT-1234', 'a@b.c']] as const) {
-      const res = await run(r, c, { attempts: new Map(), findOrder: async () => { throw new Error('must not be called'); } });
+      const res = await run(r, c, { lockout: new MemoryFailureLockout(), findOrder: async () => { throw new Error('must not be called'); } });
       expect(res.ok).toBe(false);
       if (!res.ok) expect(res.status).toBe(400);
     }
@@ -30,8 +31,8 @@ describe('verifyOrderByContact — the one proof a guest has', () => {
     const d2 = deps();
     const b = await run('GP-202609-ABCD', 'someone@else.com', d2);
     expect(b).toMatchObject({ ok: false, status: 401, code: 'VERIFICATION_FAILED' });
-    expect(d.attempts.size).toBe(1);
-    expect(d2.attempts.size).toBe(1);
+    expect(d.lockout.size).toBe(1);
+    expect(d2.lockout.size).toBe(1);
   });
 
   it(`locks the (address, reference) pair after ${CONTACT_LOCKOUT_MAX_FAILURES} failures, and only that pair`, async () => {
@@ -47,7 +48,7 @@ describe('verifyOrderByContact — the one proof a guest has', () => {
     const d = deps();
     for (let i = 0; i < CONTACT_LOCKOUT_MAX_FAILURES; i++) await run('GP-202609-ABCD', 'wrong@x.y', d);
     expect((await run('GP-202609-ABCD', '+256705004545', d, 1_000_000 + CONTACT_LOCKOUT_WINDOW_MS + 1)).ok).toBe(true);
-    expect(d.attempts.size).toBe(0);
+    expect(d.lockout.size).toBe(0);
   });
 });
 

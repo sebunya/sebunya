@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { FailureLockoutStore } from '../ports/FailureLockoutStore';
 
 /**
  * The one way a customer without an account proves an order is theirs: the
@@ -6,7 +7,7 @@ import { createHash } from 'node:crypto';
  * public lookup has always used exactly this proof; the guest pay-by-reference
  * path (2026-09-12) needs the same proof, so it lives here once and both
  * routes call it. Pure: the caller supplies the clock, the client address, the
- * shared failed-attempt map and the order finder.
+ * shared failure-lockout store and the order finder.
  *
  * Five failed attempts per (address, reference) in ten minutes lock that pair
  * out; a success clears it. An unknown reference and a wrong contact are the
@@ -20,7 +21,8 @@ export interface VerifiableOrder {
 }
 
 export interface ContactVerificationDeps<O extends VerifiableOrder> {
-  attempts: Map<string, { count: number; resetTime: number }>;
+  /** Shared across replicas in production (Redis); in-memory in tests. */
+  lockout: FailureLockoutStore;
   findOrder(reference: string): Promise<O | null>;
 }
 
@@ -44,29 +46,23 @@ export async function verifyOrderByContact<O extends VerifiableOrder>(
   if (reference.toUpperCase().startsWith('GP-DRAFT-')) return failed();
 
   const fingerprint = createHash('sha256').update(`${input.ip}-${reference.toUpperCase()}`).digest('hex');
-  for (const [key, val] of deps.attempts.entries()) {
-    if (val.resetTime <= input.now) deps.attempts.delete(key);
-  }
-  const record = deps.attempts.get(fingerprint);
-  if (record && record.resetTime > input.now && record.count >= CONTACT_LOCKOUT_MAX_FAILURES) {
+  if ((await deps.lockout.failures(fingerprint, input.now)) >= CONTACT_LOCKOUT_MAX_FAILURES) {
     return { ok: false, status: 429, code: 'TOO_MANY_REQUESTS', message: 'Too many lookup attempts. Please wait a few minutes and try again.' };
   }
-  const registerFailure = (): ContactVerificationResult<O> => {
-    const current = deps.attempts.get(fingerprint);
-    if (current && current.resetTime > input.now) current.count += 1;
-    else deps.attempts.set(fingerprint, { count: 1, resetTime: input.now + CONTACT_LOCKOUT_WINDOW_MS });
+  const registerFailure = async (): Promise<ContactVerificationResult<O>> => {
+    await deps.lockout.recordFailure(fingerprint, input.now, CONTACT_LOCKOUT_WINDOW_MS);
     return { ok: false, status: 401, code: 'VERIFICATION_FAILED', message: FAILED_MESSAGE };
   };
 
   const order = await deps.findOrder(reference);
-  if (!order) return registerFailure();
+  if (!order) return await registerFailure();
   const normalizedContact = contact.toLowerCase();
   const storedEmail = (order.customerEmail ?? '').trim().toLowerCase();
   const storedPhone = (order.customerPhone ?? '').trim();
   const contactMatch =
     (storedEmail !== '' && normalizedContact === storedEmail) ||
     (storedPhone !== '' && normalizedContact.replace(/\s+/g, '') === storedPhone.replace(/\s+/g, ''));
-  if (!contactMatch) return registerFailure();
-  deps.attempts.delete(fingerprint);
+  if (!contactMatch) return await registerFailure();
+  await deps.lockout.clear(fingerprint);
   return { ok: true, order };
 }

@@ -7,6 +7,7 @@ import { createHash } from 'crypto';
 import { clientIp } from '../clientAddress';
 import type { StartPaymentOutcome } from '../../../application/use-cases/commerce/StartOrderPaymentUseCase';
 import { verifyOrderByContact } from '../../../application/services/OrderContactVerification';
+import { RedisFailureLockout } from '../../../infrastructure/security/RedisFailureLockout';
 import { CHECKOUT_POLICY_VERSION } from '../../../domain/commerce/CheckoutPrincipal';
 import { isCheckoutSuccess } from '../../../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { isRedirectReady } from '../../../application/use-cases/commerce/StartOrderPaymentUseCase';
@@ -765,19 +766,17 @@ const maskEmail = (email: string | null | undefined) => {
   return name.slice(0, 1) + '***' + name.slice(-1) + '@' + domain;
 };
 
-interface RateLimitEntry {
-  count: number;
-  resetTime: number;
-}
 
-const failedAttemptsLimiter = new Map<string, RateLimitEntry>();
+// Shared across replicas: a burst of wrong contacts split between two API
+// containers never reached five on either one (proven live 2026-09-12).
+const orderContactLockout = new RedisFailureLockout('lockout:order-contact');
 
 /** Route-level wrapper: body + client address in, the shared proof out. */
 async function verifyOrderRequest(c: any) {
   const body = await c.req.json().catch(() => null);
   return verifyOrderByContact(
     { reference: body?.reference, contact: body?.contact, ip: clientIp(c), now: Date.now() },
-    { attempts: failedAttemptsLimiter, findOrder: (reference: string) => registry.getOrderByIdUseCase.execute(reference) },
+    { lockout: orderContactLockout, findOrder: (reference: string) => registry.getOrderByIdUseCase.execute(reference) },
   );
 }
 
