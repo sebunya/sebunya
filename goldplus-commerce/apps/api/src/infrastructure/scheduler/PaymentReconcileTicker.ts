@@ -1,6 +1,7 @@
 import { Registry } from '../Registry';
 import { logger } from '../logging/logger';
 import { checkCallbackSilence } from '../../application/use-cases/payments/PaymentSilenceUseCases';
+import { describeSkippedSweeps } from '../../domain/payments/PaymentOpsSilence';
 
 /**
  * Runs the payment reconciliation poller on a schedule.
@@ -36,6 +37,7 @@ let running = false;
 /** Throttle: the silence alert repeats at most hourly while in breach. */
 let lastSilenceAlertAt = 0;
 let lastCallbackAlertAt = 0;
+let lastSweepsOffAlertAt = 0;
 
 async function runOnce(): Promise<void> {
   if (running) return;
@@ -60,19 +62,29 @@ async function runOnce(): Promise<void> {
   // Each stage isolated: reconciliation failing must not stop reservations
   // expiring, and vice versa. Every stage is a no-op-with-reason while its
   // operator threshold is unset.
+  let reservationsSkipped: 'ttl_not_configured' | null = null;
+  let abandonmentSkipped: 'window_not_configured' | null = null;
   try {
     const expired = await registry.expireStaleReservationsUseCase.execute(new Date());
+    reservationsSkipped = expired.skipped;
     if (expired.released > 0) logger.warn({ ...expired }, '[payment-ops] expired reservations released stock back to sale');
   } catch (error) {
     logger.error({ err: error }, '[payment-ops] reservation expiry failed');
   }
   try {
     const abandoned = await registry.abandonStaleUnpaidOrdersUseCase.execute(new Date());
+    abandonmentSkipped = abandoned.skipped;
     if (abandoned.abandoned > 0 || abandoned.errors.length > 0) {
       logger.warn({ ...abandoned }, '[payment-ops] stale unpaid orders abandoned');
     }
   } catch (error) {
     logger.error({ err: error }, '[payment-ops] abandonment failed');
+  }
+  // Once an hour, not every ten minutes: loud enough to be seen, quiet enough to be read.
+  const sweepsOff = describeSkippedSweeps({ reservations: { skipped: reservationsSkipped }, abandonment: { skipped: abandonmentSkipped } });
+  if (sweepsOff && Date.now() - lastSweepsOffAlertAt > 3_600_000) {
+    lastSweepsOffAlertAt = Date.now();
+    logger.warn({ reservationsSkipped, abandonmentSkipped }, sweepsOff);
   }
   try {
     await registry.alertOnLedgerMismatchUseCase.execute();
