@@ -169,7 +169,8 @@ describe("Slice 9-B public route, copy and artifact safety", () => {
   it("adds accessible support and policy navigation", () => expect(page).toContain('aria-label="Preference support and policy links"'));
   it("adds visible focus treatment and responsive layouts", () => expect(page).toMatch(/focus-visible:ring-2[\s\S]*sm:grid-cols-2/));
   it("makes the page discoverable from the scoped footer integration", () => {
-    expect(footer).toContain('href="/preferences"');
+    // Footer links are admin-managed content; the SSR fallback/seed is DEFAULT_HOMEPAGE_CONTENT.footer.
+    expect(read("packages/shared/src/homepage/index.ts")).toContain("href: '/preferences'");
   });
   it("provides five customer guidance actions", () => expect(customerRightsGuidance).toHaveLength(5));
 });
