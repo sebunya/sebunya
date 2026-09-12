@@ -63,20 +63,38 @@ test.describe("shop and search", () => {
 });
 
 test.describe("product pages — truthful rails", () => {
-  test("the charger PDP recommends compatible products", async ({ page }) => {
-    const response = await page.goto("/products/generic-fast-charger");
-    expect(response?.status()).toBe(200);
-    await expect(page.getByText("You may also need").first()).toBeVisible();
-  });
+  // Discover live products rather than pin slugs: the two this spec used to
+  // name were retired demo products, and the spec failed on every run against
+  // production (6 of 27 checks) while asserting nothing about the live shop.
+  const API = process.env.E2E_API_BASE ?? "https://api.shopgoldplus.com";
+  const RAIL = "You may also need";
 
-  test("the car-mount PDP has NO setup rail — honest emptiness, not filler", async ({ page }) => {
-    const response = await page.goto("/products/car-dashboard-mount");
-    expect(response?.status()).toBe(200);
-    await expect(page.getByText("You may also need")).toHaveCount(0);
+  async function liveSlugs(request: import("@playwright/test").APIRequestContext): Promise<string[]> {
+    const res = await request.get(`${API}/products?limit=24`);
+    const json = (await res.json()) as { data?: Array<{ slug: string }> };
+    return (json.data ?? []).map((p) => p.slug);
+  }
+
+  test("every sampled PDP shows the rail exactly when the API has items for it — never filler, never a lost rail", async ({ page, request }) => {
+    const slugs = (await liveSlugs(request)).slice(0, 8);
+    expect(slugs.length).toBeGreaterThan(0);
+    for (const slug of slugs) {
+      const product = (await (await request.get(`${API}/products/${slug}`)).json()) as { data?: { id: string } };
+      const id = product.data?.id;
+      expect(id, slug).toBeTruthy();
+      const rec = (await (await request.get(`${API}/recommendations?placement=complete_setup&productId=${id}&limit=4`)).json()) as { data?: { items: unknown[] } };
+      const apiHasItems = (rec.data?.items?.length ?? 0) > 0;
+      const response = await page.goto(`/products/${slug}`);
+      expect(response?.status(), slug).toBe(200);
+      const railCount = await page.getByText(RAIL).count();
+      // The page must agree with its own engine: a rail with nothing behind it
+      // is filler; items with no rail is a broken page.
+      expect(railCount > 0, `${slug}: api items=${apiHasItems} rail=${railCount}`).toBe(apiHasItems);
+    }
   });
 
   test("a product the catalogue does not contain is a 404, never a fabricated page", async ({ page }) => {
-    const response = await page.goto("/products/goldplus-built-in-cable-power-bank-gp-pd-w3");
+    const response = await page.goto(`/products/this-product-does-not-exist-${Date.now()}`);
     expect(response?.status()).toBe(404);
   });
 });
