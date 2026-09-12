@@ -16,8 +16,12 @@ routes.get('/', requirePermissions([PERMISSIONS.AUDIT_READ]), async (c) => {
   const limitParam = c.req.query('limit');
   const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
 
+  const q = (k: string) => { const v = c.req.query(k)?.trim(); return v ? v.slice(0, 120) : undefined; };
   const uc = new ListAuditLogsUseCase(Registry.getInstance().auditRepo);
-  const data = await uc.execute({ limit: Number.isFinite(limit) ? (limit as number) : undefined });
+  const data = await uc.execute({
+    limit: Number.isFinite(limit) ? (limit as number) : undefined,
+    entity: q('entity'), entityId: q('entityId'), actorId: q('actorId'), action: q('action'),
+  });
 
   const res: ApiResponse<AuditLogListItem[]> = { success: true, data };
   return c.json(res);

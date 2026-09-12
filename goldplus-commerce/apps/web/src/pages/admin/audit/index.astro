@@ -15,6 +15,8 @@ interface AuditRow {
   entity: string;
   entityId: string;
   createdAt: string;
+  previousState?: unknown;
+  newState?: unknown;
 }
 
 const token = readSessionToken(Astro.request);
@@ -22,11 +24,20 @@ if (!token) {
   return Astro.redirect('/admin/login?returnTo=/admin/audit', 303);
 }
 
+// Filters: one record's history (entity + entityId), or narrow the feed by actor/action.
+const f = (k: string) => (Astro.url.searchParams.get(k) ?? '').trim().slice(0, 120);
+const filters = { entity: f('entity'), entityId: f('entityId'), actorId: f('actorId'), action: f('action') };
+const activeFilters = Object.entries(filters).filter(([, v]) => v);
+const auditQuery = new URLSearchParams({ limit: '100', ...Object.fromEntries(activeFilters) }).toString();
+const activeFilterText = activeFilters.map(([k, v]) => k + '=' + v).join(' · ');
+const entityHistoryHref = (entity: string, entityId: string) => '/admin/audit?entity=' + encodeURIComponent(entity) + '&entityId=' + encodeURIComponent(entityId);
+const prettyState = (v: unknown) => { try { return v == null ? '' : JSON.stringify(v, null, 1).slice(0, 1200); } catch { return String(v); } };
+const changeText = (r: AuditRow) => (r.previousState != null || r.newState != null) ? prettyState(r.previousState) + '\n→\n' + prettyState(r.newState) : '';
 let rows: AuditRow[] = [];
 let fetchError: string | null = null;
 
 try {
-  const res = await fetch(`${apiBase}/admin/audit?limit=100`, {
+  const res = await fetch(`${apiBase}/admin/audit?${auditQuery}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401 || res.status === 403) {
@@ -44,6 +55,10 @@ try {
   fetchError = 'Cannot reach the audit service right now.';
 }
 
+const activeFilterSummary = activeFilters.length > 0
+  ? 'Showing ' + rows.length + (rows.length === 1 ? ' entry' : ' entries') + ' for ' + activeFilterText + '. Entity + record id shows the full history of that record.'
+  : '';
+
 const shortId = (id: string | null) => (id ? id.slice(0, 8) : '—');
 ---
 
@@ -58,6 +73,25 @@ const shortId = (id: string | null) => (id ? id.slice(0, 8) : '—');
       <p class="text-sm text-gray-500 mt-1">Every critical event is serialized and persisted irreversibly. Last 100 entries, newest first.</p>
     </div>
 
+    <form method="GET" class="mb-6 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end" aria-label="Filter audit log">
+      <label class="text-xs block">Entity
+        <input name="entity" value={filters.entity} placeholder="order, product, …" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" />
+      </label>
+      <label class="text-xs block">Record id
+        <input name="entityId" value={filters.entityId} placeholder="uuid" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" />
+      </label>
+      <label class="text-xs block">Action contains
+        <input name="action" value={filters.action} placeholder="STOCK_ADJUSTED" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" />
+      </label>
+      <label class="text-xs block">Actor id
+        <input name="actorId" value={filters.actorId} placeholder="uuid" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" />
+      </label>
+      <div class="flex gap-2">
+        <button type="submit" class="rounded-full bg-slate-900 px-5 py-2 text-sm font-bold text-white">Filter</button>
+        {activeFilters.length > 0 && <a href="/admin/audit" class="rounded-full border px-4 py-2 text-sm font-bold">Clear</a>}
+      </div>
+    </form>
+    {activeFilterSummary && <p class="mb-4 text-xs text-slate-600">{activeFilterSummary}</p>}
     {fetchError && (
       <div class="mb-6">
         <Notice kind="not-configured" title="Audit service unavailable" message={fetchError} />
@@ -80,6 +114,7 @@ const shortId = (id: string | null) => (id ? id.slice(0, 8) : '—');
                 <th class="px-6 py-4">Command Executed</th>
                 <th class="px-6 py-4">Entity Realm</th>
                 <th class="px-6 py-4">Primary Key</th>
+                <th class="px-6 py-4">What changed</th>
               </tr>
             </thead>
             <tbody class="text-xs divide-y divide-gray-50">
@@ -89,7 +124,10 @@ const shortId = (id: string | null) => (id ? id.slice(0, 8) : '—');
                   <td class="px-6 py-3 font-mono text-gray-400" title={r.actorId ?? 'system'}>{shortId(r.actorId)}</td>
                   <td class="px-6 py-3 font-bold text-brand-dark text-sm">{r.action}</td>
                   <td class="px-6 py-3 font-mono text-gray-400 uppercase tracking-wider">{r.entity}</td>
-                  <td class="px-6 py-3 font-mono text-gray-400" title={r.entityId}>{shortId(r.entityId)}</td>
+                  <td class="px-6 py-3 font-mono text-gray-400" title={r.entityId}><a href={entityHistoryHref(r.entity, r.entityId)} class="hover:underline">{shortId(r.entityId)}</a></td>
+                  <td class="px-6 py-3 text-gray-600">
+                    {changeText(r) ? <details><summary class="cursor-pointer text-[11px] font-bold">old → new</summary><pre class="mt-2 max-w-md whitespace-pre-wrap break-words text-[10px] font-mono text-gray-500">{changeText(r)}</pre></details> : <span class="text-gray-300">—</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
