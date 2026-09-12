@@ -1,0 +1,7 @@
+[Unit]
+Description=GoldPlus nightly PostgreSQL logical backup
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/goldplus/app/goldplus-commerce/ops/backup/pg-backup.sh
