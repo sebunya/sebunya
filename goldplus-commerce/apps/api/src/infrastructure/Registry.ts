@@ -1989,16 +1989,12 @@ export class Registry {
         where o.payment_status in ('unpaid', 'failed')
           and o.status in ('received', 'pending_payment')
           and o.created_at < ${olderThan}
-          -- COD/manual/admin orders NEVER create a payment attempt, and an
-          -- unpaid COD order is meant to stay unpaid until it is delivered.
-          -- Requiring an attempt scopes abandonment to orders that actually
-          -- went to online payment and did not complete — never a pay-on-
-          -- delivery order (which would otherwise match unpaid+received+no-
-          -- live-attempt and be wrongly auto-cancelled once the window is set).
-          and exists (
-            select 1 from payment_attempts a0
-            where a0.order_id = o.id
-          )
+          -- Only online-prepaid orders are abandoned by time. A pay-on-delivery
+          -- ('offline') or legacy/admin (NULL) order is unpaid by design and must
+          -- never be auto-cancelled. payment_method is recorded at checkout
+          -- (migration 0130) and backfilled to 'pesapal' for historical orders
+          -- that have a payment attempt.
+          and o.payment_method = 'pesapal'
           and not exists (
             select 1 from payment_attempts a
             where a.order_id = o.id
@@ -2019,12 +2015,8 @@ export class Registry {
           and o.created_at < ${olderThan}
           -- Same COD safety as listStaleUnpaidOrders: a pay-on-delivery order
           -- holds a reservation and is unpaid by design; its stock must not be
-          -- returned to sale by the TTL sweep. Only online-payment orders that
-          -- actually attempted and did not complete are eligible.
-          and exists (
-            select 1 from payment_attempts a0
-            where a0.order_id = o.id
-          )
+          -- returned to sale by the TTL sweep. Only online-prepaid orders qualify.
+          and o.payment_method = 'pesapal'
           and not exists (
             select 1 from payment_attempts a
             where a.order_id = o.id

@@ -16,6 +16,7 @@ export interface IOrderRepository {
 
 export interface ITransactionalPricedOrderRepository extends IOrderRepository {
   savePricedOrder(input: {
+    paymentMethod?: 'pesapal' | 'offline' | null;
     order: Order;
     quote: PricingQuote;
     reservationIds: string[];
@@ -324,7 +325,7 @@ export class CheckoutUseCase {
         loyaltyReservation ? { discountUgx: loyaltyReservation.valueUgx, redemptionId: loyaltyReservation.reservationId } : null,
       );
       try {
-        const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink, stitching: dto.stitching ?? null });
+        const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink, stitching: dto.stitching ?? null, paymentMethod: dto.paymentMethod ?? null });
         if (saved.duplicate && reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id });
         if (loyaltyReservation && this.loyaltyRedemption) {
           if (saved.duplicate) {

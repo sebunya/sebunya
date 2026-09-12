@@ -165,8 +165,9 @@ describe('order abandonment — cancelled through the canonical lifecycle, never
     const staleBlock = registry.slice(registry.indexOf('listStaleUnpaidOrders'), registry.indexOf('listReservedUnpaidOrders'));
     const reservedBlock = registry.slice(registry.indexOf('listReservedUnpaidOrders'), registry.indexOf('expireStaleReservationsUseCase'));
     for (const block of [staleBlock, reservedBlock]) {
-      // an `exists` over payment_attempts with no status filter = "has attempted"
-      expect(block).toMatch(/exists\s*\(\s*select 1 from payment_attempts a0\s*where a0\.order_id = o\.id\s*\)/);
+      // Only orders whose recorded payment mode is online-prepaid are swept.
+      // 'offline' (COD) and NULL (legacy/admin) are never auto-cancelled or released.
+      expect(block).toMatch(/o\.payment_method = 'pesapal'/);
     }
   });
 });

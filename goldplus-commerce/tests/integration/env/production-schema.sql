@@ -4614,6 +4614,7 @@ CREATE TABLE public.orders (
     delivery_address character varying(255) NOT NULL,
     status character varying(30) DEFAULT 'received'::character varying NOT NULL,
     payment_status character varying(30) DEFAULT 'unpaid'::character varying NOT NULL,
+    payment_method character varying(20),
     subtotal_amount bigint NOT NULL,
     delivery_fee bigint DEFAULT 0 NOT NULL,
     total_amount bigint NOT NULL,

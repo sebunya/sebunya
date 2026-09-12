@@ -142,6 +142,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
    */
   async savePricedOrder(input: {
     order: Order;
+    paymentMethod?: 'pesapal' | 'offline' | null;
     quote: PricingQuote;
     reservationIds: string[];
     clientOrderKey: string | null;
@@ -180,6 +181,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
         pricingBaseSubtotal: input.quote.baseSubtotalUgx, pricingDiscountTotal: input.quote.discountTotalUgx,
         pricingTaxTotal: input.quote.taxUgx, pricingCalculationVersion: input.quote.calculationVersion,
         pricingSnapshot: encodePricingJsonb(input.order.pricingSnapshot as any) as any,
+        paymentMethod: input.paymentMethod ?? null,
       });
 
       // Same transaction as the insert above. A zero-row result means the lease

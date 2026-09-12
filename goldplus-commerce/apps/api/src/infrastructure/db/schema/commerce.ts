@@ -64,6 +64,9 @@ export const orders = pgTable('orders', {
   deliveryAddress: varchar('delivery_address', { length: 255 }).notNull(),
   status: varchar('status', { length: 30 }).default('received').notNull(),
   paymentStatus: varchar('payment_status', { length: 30 }).default('unpaid').notNull(),
+  // Payment mode chosen at checkout ('pesapal' online-prepaid | 'offline' pay-on-delivery).
+  // NULL for legacy/admin orders. The payment-ops sweeps act only on 'pesapal'.
+  paymentMethod: varchar('payment_method', { length: 20 }),
   subtotalAmount: bigint('subtotal_amount', { mode: 'number' }).notNull(),
   deliveryFee: bigint('delivery_fee', { mode: 'number' }).notNull().default(0),
   totalAmount: bigint('total_amount', { mode: 'number' }).notNull(),
