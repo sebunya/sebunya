@@ -125,6 +125,7 @@ let reference: string | undefined;
 let createdOrderId: string | undefined;
 /** Set only when a refusal has somewhere useful to send the customer. */
 let feedbackAction: { href: string; label: string } | undefined;
+let receivedActionLabel = 'View & track this order';
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
 
@@ -464,10 +465,12 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
 
            // The order EXISTS and is payable; only the handoff failed. The intent
            // is kept so the customer can retry onto the same order rather than
-           // creating a second one.
+           // creating a second one — and the order page has its own Pay button,
+           // so the customer is given that door rather than only a sentence.
            status = 'error';
            reference = dto.orderNumber || dto.orderId;
            message = paymentStartMessageFor(payRes.code);
+           feedbackAction = { href: `/orders/${dto.orderId}`, label: 'Open your order and pay there' };
         } else if (outcome.status === 'awaiting_payment') {
            // Payable, but the customer chose the offline path.
            status = 'received';
@@ -483,19 +486,23 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            }
         }
      } else if (result.code === 'CHECKOUT_ALREADY_ORDERED' && result.existingOrder) {
-        // This checkout already produced an order. Creating a second one for a
-        // customer who wanted to change how they pay is not a fix, so the order
-        // they have is named and offered instead.
+        // This checkout already produced an order. Nothing failed: the order
+        // the customer wanted exists and is theirs. Until 2026-09-12 this was
+        // rendered as a red "Could not complete" above a form whose button
+        // would only refuse again, with a small underlined link as the sole
+        // way out. It is the SAME outcome as a fresh order, so it gets the
+        // same screen: order number, one big button, and the basket cleared
+        // (it became this order) so the page cannot offer a second one.
         const paid = result.existingOrder.paymentStatus === 'paid';
-        status = 'error';
+        status = 'received';
         reference = result.existingOrder.orderNumber;
+        createdOrderId = result.existingOrder.orderId;
+        receivedActionLabel = paid ? 'View your order' : 'Continue to payment';
         message = paid
-          ? 'You have already paid for this order. There is nothing more to do, and we have not taken a second payment.'
-          : 'You already have an order from this checkout, and it is not paid yet. Open it to pay for it, so you do not order the same thing twice.';
-        feedbackAction = {
-          href: `/orders/${result.existingOrder.orderId}`,
-          label: paid ? 'View this order' : 'Open this order to pay',
-        };
+          ? 'You have already paid for this order — there is nothing more to do, and we have not taken a second payment.'
+          : 'You placed this order a moment ago and it is saved for you. Nothing has been charged yet. Continue to payment, or open the order to pay on delivery or at the shop — you will not be charged twice.';
+        clearCheckoutIntent(Astro.cookies);
+        await clearBasketAfterOrder();
      } else if (result.code === 'STOCK_NOT_RESERVED' && result.details) {
         // The order exists and is recorded truthfully; it simply cannot be paid.
         status = 'error';
@@ -642,7 +649,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
          <p class="text-slate-500 max-w-md mx-auto mb-10 leading-relaxed text-sm">{message || 'Our team will call you to confirm your delivery and the total before you pay.'}</p>
          <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
            {createdOrderId && (
-             <a href={`/orders/${createdOrderId}`} class="inline-block bg-brand-primary text-gray-950 px-8 py-2.5 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 transition-all text-xs tracking-wider uppercase cursor-pointer hover:scale-[1.01] active:scale-95">View &amp; track this order</a>
+             <a href={`/orders/${createdOrderId}`} class="inline-block bg-brand-primary text-gray-950 px-8 py-2.5 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 transition-all text-xs tracking-wider uppercase cursor-pointer hover:scale-[1.01] active:scale-95">{receivedActionLabel}</a>
            )}
            <a href="/shop" class="inline-block bg-slate-900 text-white px-8 py-2.5 rounded-full font-bold hover:bg-slate-950 transition-all text-xs tracking-wider uppercase cursor-pointer hover:scale-[1.01] active:scale-95">Continue shopping</a>
          </div>

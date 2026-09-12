@@ -302,7 +302,7 @@ export function customerMessageFor(result: CheckoutCallResult): {
       // links to it; this is the fallback wording.
       return {
         status: 'error',
-        message: 'You already have an order from this checkout. Open it to pay for it or to check it, rather than ordering the same thing twice.',
+        message: 'Good news — this order is already saved for you and nothing has been charged. Open it to pay, so you are not charged twice.',
       };
     case 'CHECKOUT_INTENT_EXPIRED':
     case 'CHECKOUT_INTENT_INVALID':

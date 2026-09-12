@@ -31,7 +31,7 @@ const c = status ? palette[status] : null;
       {message && <p class="text-xs mt-1 leading-relaxed">{message}</p>}
       {reference && <p class="text-xs mt-2 font-mono text-gray-700">Ref: {reference}</p>}
       {actionHref && actionLabel && (
-        <a href={actionHref} class="inline-block mt-3 text-xs font-bold underline underline-offset-2">{actionLabel}</a>
+        <a href={actionHref} class="inline-flex items-center gap-1.5 mt-3 rounded-full bg-gray-900 text-white px-4 py-2 text-xs font-bold hover:bg-black transition-colors">{actionLabel} <span aria-hidden="true">→</span></a>
       )}
     </div>
   </div>
