@@ -202,11 +202,20 @@ routes.post('/support/report-fake', async (c) => {
 
 // ---------- Verification check (unchanged — own audit table) ----------
 routes.post('/verification/check', async (c) => {
-  const body = await c.req.json();
+  // Public form: the body is whatever the caller typed. An unparseable body or
+  // a missing/non-string code used to reach the repository as `undefined` and
+  // answer 500 (postgres UNDEFINED_VALUE, proven live 2026-09-12). It is a
+  // caller error, so it is a 400.
+  const body = (await c.req.json().catch(() => null)) as { code?: unknown } | null;
+  const code = typeof body?.code === 'string' ? body.code.trim() : '';
+  if (!code) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_INPUT', message: 'A verification code is required.' } };
+    return c.json(res, 400);
+  }
   const ip = clientIp(c);
   const ua = c.req.header('user-agent') || '';
 
-  const result = await registry.verificationCheckUseCase.execute(body.code, ip, ua);
+  const result = await registry.verificationCheckUseCase.execute(code, ip, ua);
 
   // Loyalty PART J: a signed-in scan is attributable and may earn — through
   // the versioned 'verification_scan' rule, which is INACTIVE until activated.
@@ -218,7 +227,7 @@ routes.post('/verification/check', async (c) => {
     if (verified?.subject) {
       const successful = Boolean((result as { isSuccessful?: boolean }).isSuccessful);
       const earn = await registry.earnForVerificationScanUseCase
-        .execute({ userId: verified.subject, code: String(body.code ?? ''), successful })
+        .execute({ userId: verified.subject, code, successful })
         .catch(() => null);
       if (earn?.ok) loyaltyPoints = earn.points;
       // Gamification (0087): first successful scan = Authenticator badge;

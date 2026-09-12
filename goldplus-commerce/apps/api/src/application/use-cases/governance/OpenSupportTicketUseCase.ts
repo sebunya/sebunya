@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { ISupportRepository } from '../../ports/ISupportRepository';
 import { SupportTicket } from '../../../domain/support/SupportTicket';
-import { isNonEmpty, isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../../services/validationHelpers';
+import { isNonEmpty, isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone, text,
+} from '../../services/validationHelpers';
 
 export interface OpenSupportTicketInput {
   subject: string;
@@ -21,11 +22,11 @@ export class OpenSupportTicketUseCase {
   constructor(private readonly support: ISupportRepository) {}
 
   async execute(input: OpenSupportTicketInput): Promise<OpenSupportTicketResult> {
-    const subject = (input.subject ?? '').trim();
-    const description = (input.description ?? '').trim();
+    const subject = text(input.subject);
+    const description = text(input.description);
     const email = normalizeEmail(input.email);
     const phone = normalizePhone(input.phone);
-    const productModel = (input.productModel ?? '').trim() || null;
+    const productModel = text(input.productModel) || null;
 
     if (!subject) return { ok: false, code: 'BAD_INPUT', message: 'Subject is required.' };
     if (!description) return { ok: false, code: 'BAD_INPUT', message: 'Description is required.' };

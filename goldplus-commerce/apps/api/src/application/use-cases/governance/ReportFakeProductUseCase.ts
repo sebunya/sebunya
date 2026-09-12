@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { IFakeReportRepository } from '../../ports/IFakeReportRepository';
 import { FakeReport } from '../../../domain/fakeReports/FakeReport';
-import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../../services/validationHelpers';
+import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone, text,
+} from '../../services/validationHelpers';
 
 export interface ReportFakeProductInput {
   // TODO: migrate this workflow to persist structuredLocation as JSON metadata or dedicated columns.
@@ -21,8 +22,8 @@ export class ReportFakeProductUseCase {
   constructor(private readonly reports: IFakeReportRepository) {}
 
   async execute(input: ReportFakeProductInput): Promise<ReportFakeProductResult> {
-    const locationFound = (input.locationFound ?? '').trim();
-    const productDescription = (input.productDescription ?? '').trim();
+    const locationFound = text(input.locationFound);
+    const productDescription = text(input.productDescription);
     const email = normalizeEmail(input.reporterEmail);
     const phone = normalizePhone(input.reporterPhone);
 

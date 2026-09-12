@@ -29,6 +29,7 @@ const BASE = 'https://goldplus.invalid';
 export const DEFAULT_RETURN_TO = '/account';
 
 /** Backslash, space, DEL, or any C0 control character (a raw newline could split a Location header). */
+// eslint-disable-next-line no-control-regex -- matching control characters IS the point: this is the header-splitting guard
 const NEVER_LEGITIMATE = /[\\\u0000-\u0020\u007f]/;
 
 export function safeReturnTo(value: string | null | undefined, fallback = DEFAULT_RETURN_TO): string {
