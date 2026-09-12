@@ -32,7 +32,19 @@ routes.use('*', authMiddleware);
  */
 routes.get('/queue', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
   const registry = Registry.getInstance();
-  const attempts = await registry.pesapalPaymentRepo.listRecent(50);
+  // Search by the identifiers staff receive (merchant reference, provider
+  // tracking id, order number/id). Exact, indexed lookups; a blank query keeps
+  // the recent listing exactly as before.
+  const q = (c.req.query('q') ?? '').trim().slice(0, 120);
+  const { FindPaymentAttemptsUseCase } = await import('../../../../application/use-cases/payments/FindPaymentAttemptsUseCase');
+  const attempts = q
+    ? await new FindPaymentAttemptsUseCase({
+        findByMerchantReference: (r) => registry.pesapalPaymentRepo.findByMerchantReference(r),
+        findByTrackingId: (t) => registry.pesapalPaymentRepo.findByTrackingId(t),
+        findOrder: (id) => registry.orderRepo.findById(id),
+        findAttemptsByOrderId: (id) => registry.pesapalPaymentRepo.findAttemptsByOrderId(id),
+      }).execute(q)
+    : await registry.pesapalPaymentRepo.listRecent(50);
   const rows = await Promise.all(
     attempts.map(async (a) => {
       let provider: { status: string; code: number | null; method: string | null; confirmation: string | null } | null = null;
@@ -73,6 +85,7 @@ routes.get('/queue', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) 
     success: true,
     data: {
       rows,
+      query: q || null,
       counts: { total: rows.length, disagreements: disagreements.length },
       note:
         rows.length === 0

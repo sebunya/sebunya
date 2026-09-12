@@ -15,6 +15,8 @@ import { apiBase } from "../../../lib/api";
  */
 
 const token = readSessionToken(Astro.request);
+// Search by merchant reference, provider tracking id, or order number/id (exact keys).
+const paymentQuery = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 120);
 if (!token) return Astro.redirect("/admin/login?returnTo=/admin/payments", 303);
 const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
@@ -70,7 +72,7 @@ const get = async (path: string) => {
 
 const [funnel, queue, opsConfig] = await Promise.all([
   get("/admin/payments/funnel"),
-  get("/admin/payments/queue"),
+  get(`/admin/payments/queue${paymentQuery ? `?q=${encodeURIComponent(paymentQuery)}` : ""}`),
   get("/admin/payments/ops-config"),
 ]);
 
@@ -138,6 +140,17 @@ const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
     <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
       <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
         <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Attempts — our record beside the provider's</h3>
+        <form method="GET" class="flex flex-wrap gap-2 items-center mb-3" aria-label="Find a payment attempt">
+          <input name="q" value={paymentQuery} placeholder="Order number, merchant reference or tracking id" class="min-w-[18rem] flex-1 rounded-lg border px-3 py-2 text-sm font-mono" aria-label="Order number, merchant reference or tracking id" />
+          <button type="submit" class="rounded-full bg-slate-900 px-5 py-2 text-sm font-bold text-white">Find</button>
+          {paymentQuery && <a href="/admin/payments" class="rounded-full border px-4 py-2 text-sm font-bold">Clear</a>}
+        </form>
+        {paymentQuery && queue && queue.rows.length === 0 && (
+          <p class="mb-3 text-sm text-slate-700">No payment attempt matches <span class="font-mono">{paymentQuery}</span>. Search takes the exact order number (GP-…), the merchant reference from the receipt (GP-GP-…), or the provider tracking id. Partial text does not match.</p>
+        )}
+        {paymentQuery && queue && queue.rows.length > 0 && (
+          <p class="mb-3 text-xs font-bold text-slate-600">{queue.rows.length} attempt{queue.rows.length === 1 ? '' : 's'} for <span class="font-mono">{paymentQuery}</span></p>
+        )}
         {queue && <span class="text-[10px] font-bold text-gray-400">{queue.counts.total} recent · {queue.counts.disagreements} disagreement(s)</span>}
       </div>
       {queue?.note && <p class={`text-xs mb-3 ${queue.counts.disagreements > 0 ? "text-red-700 font-bold" : "text-gray-500"}`}>{queue.note}</p>}
