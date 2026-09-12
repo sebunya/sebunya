@@ -26,7 +26,7 @@ const configGroups = [
     title: 'Cart settings',
     items: [
       { label: 'Cart Retention Period', key: 'CART_EXPIRATION_TTL', value: `${CART_RETENTION_DAYS} days`, desc: `Guest carts are kept for ${CART_RETENTION_DAYS} days so customers can return and continue shopping.`, source: 'Shared code constant' },
-      { label: 'Guest Cart Resolution', key: 'CART_ASSOCIATION_METHOD', value: 'device-cookie-uuid', desc: 'Keeps guest carts tied to this browser.', source: 'Deployment setting' }
+      { label: 'Guest Cart Credential', key: 'CART_CREDENTIAL', value: 'Signed __Host-gp_cart cookie', desc: 'A guest cart is tied to the browser by an HMAC-signed, HttpOnly cookie (packages/shared cart-credential); an unsigned or tampered value never resolves a cart.', source: 'Shared code' }
     ]
   },
   {

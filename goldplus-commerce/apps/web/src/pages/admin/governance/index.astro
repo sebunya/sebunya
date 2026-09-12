@@ -1,6 +1,7 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -22,44 +23,39 @@ function parseJwtEmail(jwtToken) {
 
 const adminEmail = parseJwtEmail(token);
 
-const roles = [
-  { 
-    name: 'Super administrator', 
-    desc: 'Full unrestricted access across all catalogs, rules, system configurations, and core operations.',
-    level: 'Level 5'
-  },
-  { 
-    name: 'Operations manager', 
-    desc: 'Manages orders, fulfillment workflows, stock levels, and reviews checkout system statuses.',
-    level: 'Level 4'
-  },
-  { 
-    name: 'Merchandising manager', 
-    desc: 'Oversees catalog layout maps, product listings, and creates/previews recommendation rules.',
-    level: 'Level 3'
-  },
-  { 
-    name: 'Support agent', 
-    desc: 'Authorized to inspect customer carts, view active orders, and access diagnostic tools.',
-    level: 'Level 2'
-  },
-  { 
-    name: 'Read-only reviewer', 
-    desc: 'Auditing access allowing visibility into settings and rules without authorization to modify data.',
-    level: 'Level 1'
+// Roles come from the same API the Roles screen uses. This page used to
+// carry five invented roles with invented "Level 5..1" ranks and a
+// hand-written permissions matrix; production has twelve roles with other
+// names. Static claims about access are the one thing this page must not
+// make — removed 2026-09-12.
+type RoleRow = { id: string; name: string; permissionCodes: string[]; userCount: number };
+let roles: RoleRow[] = [];
+let rolesDenied = false;
+let rolesFailed = false;
+try {
+  const res = await fetch(`${apiBase}/admin/roles`, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 401 || res.status === 403) rolesDenied = true;
+  else if (!res.ok) rolesFailed = true;
+  else {
+    const body = await res.json().catch(() => null);
+    if (body?.success && Array.isArray(body.data)) roles = body.data as RoleRow[];
+    else rolesFailed = true;
   }
-];
-
-const matrixHeaders = ['Feature', 'View', 'Create', 'Edit', 'Delete / Archive', 'Export / Diagnostic'];
-const matrixRows = [
-  { name: 'Products', canView: true, canCreate: true, canEdit: true, canDelete: false, canExport: true },
-  { name: 'Orders', canView: true, canCreate: false, canEdit: true, canDelete: false, canExport: true },
-  { name: 'Carts', canView: true, canCreate: false, canEdit: false, canDelete: false, canExport: true },
-  { name: 'Recommendations', canView: true, canCreate: true, canEdit: true, canDelete: true, canExport: true },
-  { name: 'Merchandising', canView: true, canCreate: false, canEdit: true, canDelete: false, canExport: false },
-  { name: 'Settings', canView: true, canCreate: false, canEdit: true, canDelete: false, canExport: false },
-  { name: 'Users and roles', canView: true, canCreate: false, canEdit: false, canDelete: false, canExport: false }
-];
+} catch {
+  rolesFailed = true;
+}
+const totalPermissionCodes = new Set(roles.flatMap((r) => r.permissionCodes)).size;
+// The signed-in administrator's own grant, from the session endpoint. The
+// badge used to read "Role: Super administrator" for everyone.
+let myPermissionCount: number | null = null;
+try {
+  const me = await fetch(`${apiBase}/auth/admin-session`, { headers: { Authorization: `Bearer ${token}` } });
+  const body = me.ok ? await me.json().catch(() => null) : null;
+  if (body?.success && Array.isArray(body.data?.permissions)) myPermissionCount = body.data.permissions.length;
+} catch {
+  myPermissionCount = null;
+}
+const myPermissionLabel = myPermissionCount === null ? 'Permissions: not loaded' : `Permissions: ${myPermissionCount}`;
 ---
 
 <AdminLayout 
@@ -92,7 +88,7 @@ const matrixRows = [
               <div class="flex-1 min-w-0">
                 <h4 class="font-bold text-brand-dark text-sm break-all">{adminEmail}</h4>
                 <div class="flex flex-wrap gap-2 mt-2">
-                  <span class="px-2 py-0.5 bg-gray-100 text-gray-600 border border-gray-200 rounded text-[9px] font-black uppercase tracking-wider">Role: Super administrator</span>
+                  <span class="px-2 py-0.5 bg-gray-100 text-gray-600 border border-gray-200 rounded text-[9px] font-black uppercase tracking-wider">{myPermissionLabel}</span>
                   <span class="px-2 py-0.5 bg-green-50 text-green-700 border border-green-100 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
                     <span class="w-1.5 h-1.5 bg-green-500 rounded-full inline-block"></span>
                     Session Active
@@ -107,71 +103,57 @@ const matrixRows = [
           </div>
         </section>
 
-        <!-- Permissions Grid Matrix -->
+        <!-- Roles and permissions, read from the roles API -->
         <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-          <div class="p-5 bg-gray-50 border-b border-gray-100">
-            <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Permissions matrix</h3>
+          <div class="p-5 bg-gray-50 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+            <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Roles and permissions</h3>
+            <a href="/admin/roles" class="text-[10px] font-black uppercase tracking-wide text-brand-dark underline">Open Roles &rarr;</a>
           </div>
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr class="border-b border-gray-100 text-[9px] uppercase font-black text-gray-400">
-                  {matrixHeaders.map((h, idx) => {
-                    const isFirst = idx === 0;
-                    return (
-                      <th class={isFirst ? "p-4 pl-6" : "p-4 text-center"}>{h}</th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-50 font-medium">
-                {matrixRows.map(row => (
-                  <tr class="hover:bg-gray-50/50 transition-colors">
-                    <td class="p-4 pl-6 font-bold text-brand-dark">{row.name}</td>
-                    <td class="p-4 text-center">
-                      <span class={row.canView ? "inline-block w-2 h-2 rounded-full bg-green-500" : "inline-block w-2 h-2 rounded-full bg-gray-200"}></span>
-                    </td>
-                    <td class="p-4 text-center">
-                      <span class={row.canCreate ? "inline-block w-2 h-2 rounded-full bg-green-500" : "inline-block w-2 h-2 rounded-full bg-gray-200"}></span>
-                    </td>
-                    <td class="p-4 text-center">
-                      <span class={row.canEdit ? "inline-block w-2 h-2 rounded-full bg-green-500" : "inline-block w-2 h-2 rounded-full bg-gray-200"}></span>
-                    </td>
-                    <td class="p-4 text-center">
-                      <span class={row.canDelete ? "inline-block w-2 h-2 rounded-full bg-green-500" : "inline-block w-2 h-2 rounded-full bg-gray-200"}></span>
-                    </td>
-                    <td class="p-4 text-center">
-                      <span class={row.canExport ? "inline-block w-2 h-2 rounded-full bg-green-500" : "inline-block w-2 h-2 rounded-full bg-gray-200"}></span>
-                    </td>
+          {rolesDenied && (
+            <div class="p-6 text-xs text-gray-500">Permission denied: viewing roles requires the manage-roles permission. The roles still apply; this account cannot list them.</div>
+          )}
+          {rolesFailed && (
+            <div class="p-6 text-xs text-gray-500">Roles could not be loaded right now (service unreachable). Nothing is shown rather than a stale copy.</div>
+          )}
+          {!rolesDenied && !rolesFailed && roles.length === 0 && (
+            <div class="p-6 text-xs text-gray-500">No roles are defined.</div>
+          )}
+          {roles.length > 0 && (
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr class="border-b border-gray-100 text-[9px] uppercase font-black text-gray-400">
+                    <th class="p-4 pl-6">Role</th>
+                    <th class="p-4 text-center">Active users</th>
+                    <th class="p-4 text-center">Permissions</th>
+                    <th class="p-4">Permission codes</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div class="px-6 py-3 bg-gray-50/50 border-t border-gray-100 text-[10px] text-gray-400 flex items-center gap-3">
-             <span class="flex items-center gap-1.5"><span class="w-2 h-2 bg-green-500 rounded-full"></span> Supported</span>
-             <span class="flex items-center gap-1.5"><span class="w-2 h-2 bg-gray-200 rounded-full"></span> Restricted</span>
-          </div>
-        </section>
-
-        <!-- Admin Roles Overview -->
-        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-          <div class="p-5 bg-gray-50 border-b border-gray-100">
-            <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Admin roles</h3>
-          </div>
-          <div class="divide-y divide-gray-100">
-            {roles.map(role => (
-              <div class="p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4 hover:bg-gray-50/30 transition-colors">
-                <div class="space-y-1">
-                  <div class="flex items-center gap-3">
-                    <h4 class="font-black text-sm text-brand-dark">{role.name}</h4>
-                    <span class="px-1.5 py-0.5 bg-gray-100 border border-gray-200 text-gray-500 rounded text-[8px] font-bold tracking-wide font-mono">{role.level}</span>
-                  </div>
-                  <p class="text-xs text-gray-500 leading-relaxed max-w-lg">{role.desc}</p>
-                </div>
+                </thead>
+                <tbody class="divide-y divide-gray-50 font-medium">
+                  {roles.map((role) => (
+                    <tr class="hover:bg-gray-50/50 transition-colors align-top">
+                      <td class="p-4 pl-6 font-bold text-brand-dark font-mono">{role.name}</td>
+                      <td class="p-4 text-center tabular-nums">{role.userCount}</td>
+                      <td class="p-4 text-center tabular-nums">{role.permissionCodes.length}</td>
+                      <td class="p-4">
+                        <details>
+                          <summary class="cursor-pointer text-gray-500">Show</summary>
+                          <div class="mt-2 flex flex-wrap gap-1">
+                            {role.permissionCodes.map((code) => (
+                              <span class="px-1.5 py-0.5 bg-gray-100 border border-gray-200 text-gray-600 rounded text-[9px] font-mono">{code}</span>
+                            ))}
+                          </div>
+                        </details>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div class="px-6 py-3 bg-gray-50/50 border-t border-gray-100 text-[10px] text-gray-400">
+                {roles.length} roles · {totalPermissionCodes} distinct permission codes in use · a role with 0 active users is defined but unassigned.
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </section>
 
       </div>

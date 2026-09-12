@@ -72,7 +72,11 @@ describe("the opaque token contract", () => {
     // The R2 bypass: a random string of the right SHAPE used to mint a
     // profile. Shape alone no longer resolves — the signature must verify.
     expect(hashVisitToken("A".repeat(44))).toBeNull();
-    const tampered = signedToken().slice(0, 43) + (signedToken().endsWith("A") ? "B" : "A");
+    // ONE token: this line used to call signedToken() twice, so the flipped
+    // last character was chosen from a different random token and about 1.5%
+    // of runs produced the original token unchanged (the long-running flake).
+    const genuine = signedToken();
+    const tampered = genuine.slice(0, -1) + (genuine.endsWith("A") ? "B" : "A");
     expect(hashVisitToken(tampered)).toBeNull();
   });
 
