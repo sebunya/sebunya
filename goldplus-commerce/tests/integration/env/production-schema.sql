@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict LuvCr66mHXPLxIxnrLKYRh71dJWPLmF00FA3OlRC1wvMPQsFu1OwjOIrk3gK6dz
+\restrict 5WSfPbFXF4DukebpNSeRP5cTNe26NB4n0hxYzfEURcJUFYfhqLUPl96tveXJJOj
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -11110,7 +11110,7 @@ CREATE INDEX cart_abandonments_classified_idx ON public.cart_abandonments USING 
 -- Name: cart_abandonments_open_cart_uq; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX cart_abandonments_open_cart_uq ON public.cart_abandonments USING btree (cart_id, status);
+CREATE UNIQUE INDEX cart_abandonments_open_cart_uq ON public.cart_abandonments USING btree (cart_id) WHERE ((status)::text = 'OPEN'::text);
 
 
 --
@@ -16844,5 +16844,5 @@ ALTER TABLE ONLY public.wishlists
 -- PostgreSQL database dump complete
 --
 
-\unrestrict LuvCr66mHXPLxIxnrLKYRh71dJWPLmF00FA3OlRC1wvMPQsFu1OwjOIrk3gK6dz
+\unrestrict 5WSfPbFXF4DukebpNSeRP5cTNe26NB4n0hxYzfEURcJUFYfhqLUPl96tveXJJOj
 
