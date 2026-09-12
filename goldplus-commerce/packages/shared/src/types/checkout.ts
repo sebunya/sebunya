@@ -170,6 +170,8 @@ export type PaymentStartErrorCode =
   | 'ORDER_NOT_FOUND'
   | 'ORDER_ALREADY_PAID'
   | 'ORDER_NOT_PAYABLE'
+  /** The shop closed this order (cancelled or failed); nothing can be collected for it. */
+  | 'ORDER_CANCELLED'
   | 'OFFLINE_DRAFT_NOT_PAYABLE'
   | 'PAYMENT_NOT_CONFIGURED'
   | 'PAYMENT_PROVIDER_UNAVAILABLE'

@@ -47,7 +47,7 @@ interface Trace {
 
 function build(opts: {
   checkout?: IdempotencyRecord | null;
-  order?: { id: string; paymentStatus: string } | null;
+  order?: { id: string; paymentStatus: string; orderStatus?: string } | null;
   attempts?: Array<{ status: string; redirectUrl: string | null; orderTrackingId: string | null; merchantReference: string }>;
   providerThrows?: Error;
 } = {}) {
@@ -157,6 +157,19 @@ describe('payment is not started for an order that must not be paid', () => {
 
     expect(outcome.kind).toBe('ALREADY_PAID');
     expect(trace.providerCalls).toBe(0);
+  });
+
+  it.each(['cancelled', 'failed'])('refuses a %s order at the server, not only in the storefront', async (orderStatus) => {
+    const { useCase, trace } = build({ order: { id: 'order-1', paymentStatus: 'pending', orderStatus } });
+    const outcome = await useCase.execute(command);
+
+    expect(outcome).toMatchObject({ kind: 'NOT_PAYABLE', reason: 'ORDER_CANCELLED' });
+    expect(trace.providerCalls).toBe(0);
+  });
+
+  it('an open order with an unknown status field is still payable (legacy readers omit it)', async () => {
+    const { useCase } = build({ order: { id: 'order-1', paymentStatus: 'pending', orderStatus: 'received' } });
+    expect((await useCase.execute(command)).kind).toBe('REDIRECT_READY');
   });
 
   it('refuses an offline draft before looking anything up', async () => {

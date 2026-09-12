@@ -52,7 +52,7 @@ export async function verifyOrderByContact<O extends VerifiableOrder>(
 
   const fingerprint = createHash('sha256').update(reference.toUpperCase()).digest('hex');
   if ((await deps.lockout.failures(fingerprint, input.now)) >= CONTACT_LOCKOUT_MAX_FAILURES) {
-    return { ok: false, status: 429, code: 'TOO_MANY_REQUESTS', message: 'Too many lookup attempts. Please wait a few minutes and try again.' };
+    return { ok: false, status: 429, code: 'TOO_MANY_REQUESTS', message: 'Too many attempts for this order reference. Please wait about 10 minutes and try again, or message us on WhatsApp and we will check it for you.' };
   }
   const registerFailure = async (): Promise<ContactVerificationResult<O>> => {
     await deps.lockout.recordFailure(fingerprint, input.now, CONTACT_LOCKOUT_WINDOW_MS);

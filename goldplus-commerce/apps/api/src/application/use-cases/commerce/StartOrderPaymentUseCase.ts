@@ -93,8 +93,16 @@ export interface PaymentAttemptReader {
 }
 
 export interface StartPaymentOrderReader {
-  findById(orderId: string): Promise<{ id: string; paymentStatus: string; totalUgx: number } | null>;
+  findById(orderId: string): Promise<{ id: string; paymentStatus: string; totalUgx: number; orderStatus?: string } | null>;
 }
+
+/**
+ * Orders nothing can be collected for. Until 2026-09-12 only the storefront
+ * hid the pay button for these; the use case checked paymentStatus alone, so
+ * a direct call — and, once guests could pay by reference, a plain form post —
+ * could open a provider transaction for an order the shop had already closed.
+ */
+const CLOSED_ORDER_STATUSES = new Set(['cancelled', 'failed']);
 
 export interface StartOrderPaymentDeps {
   idempotency: ICheckoutIdempotencyRepository;
@@ -160,6 +168,10 @@ export class StartOrderPaymentUseCase {
 
     if (order.paymentStatus === 'paid') {
       return { kind: 'ALREADY_PAID', reason: 'ORDER_ALREADY_PAID' };
+    }
+    if (order.orderStatus && CLOSED_ORDER_STATUSES.has(order.orderStatus)) {
+      this.deps.observer?.onNotPayable(orderId, command.traceId, `order:${order.orderStatus}`);
+      return { kind: 'NOT_PAYABLE', reason: 'ORDER_CANCELLED' };
     }
 
     // The saga must have reached the point where the order is payable. Starting

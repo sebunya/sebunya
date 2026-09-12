@@ -2160,7 +2160,7 @@ export class Registry {
     orders: {
       findById: async (orderId) => {
         const order = await this.orderRepo.findById(orderId);
-        return order ? { id: order.id, paymentStatus: order.paymentStatus, totalUgx: order.totalUgx } : null;
+        return order ? { id: order.id, paymentStatus: order.paymentStatus, totalUgx: order.totalUgx, orderStatus: order.orderStatus } : null;
       },
     },
     attempts: {

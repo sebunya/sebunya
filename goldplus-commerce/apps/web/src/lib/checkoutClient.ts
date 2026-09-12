@@ -249,6 +249,8 @@ export function paymentStartMessageFor(code: PaymentStartErrorCode | 'NETWORK'):
       return 'This order has already been paid. No further payment is needed.';
     case 'ORDER_NOT_PAYABLE':
       return 'This order cannot be paid for yet. Our team will contact you to confirm it.';
+    case 'ORDER_CANCELLED':
+      return 'This order was cancelled, so there is nothing to pay. If that is a mistake, message us and we will reopen it — or place a fresh order.';
     case 'OFFLINE_DRAFT_NOT_PAYABLE':
       return 'This is a local draft saved on your device and cannot be paid for online.';
     case 'PAYMENT_NOT_CONFIGURED':
