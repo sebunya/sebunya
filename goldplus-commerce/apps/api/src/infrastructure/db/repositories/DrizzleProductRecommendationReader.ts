@@ -144,7 +144,17 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     const rows = await db
       .select({ targetProductId: productCompatibilityMappings.targetProductId })
       .from(productCompatibilityMappings)
-      .where(eq(productCompatibilityMappings.productId, productId))
+      // Same rule as the product finder and the mapping repository: only an
+      // ENABLED mapping with a positive verdict is a recommendation. Without
+      // this an operator disabling a pair, or recording it as incompatible,
+      // still saw it offered under "You may also need".
+      .where(
+        and(
+          eq(productCompatibilityMappings.productId, productId),
+          eq(productCompatibilityMappings.enabled, true),
+          inArray(productCompatibilityMappings.verdict, ["exact", "compatible", "conditional"]),
+        ),
+      )
       .orderBy(asc(productCompatibilityMappings.targetProductId))
       .limit(limit);
     return rows.map((r) => r.targetProductId).filter((id): id is string => typeof id === "string");
